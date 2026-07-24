@@ -19,16 +19,16 @@ Companion to [OurHikeValues.md](OurHikeValues.md) and [FEATURES.md](FEATURES.md)
 ```mermaid
 flowchart TB
     subgraph Sources["Data Sources (external, upstream)"]
-        ATC["ATC GIS data\ncenterline, shelters,\ncampsites, water,\ncrossings, resupply"]
-        USGS["USGS National Map\nelevation / topo"]
-        OSM["OpenStreetMap\nroads, land cover"]
+        ATC["ATC GIS data\ncenterline, side trails, shelters,\ncampsites, viewpoints, parking,\ncommunities (partial resupply proxy)"]
+        USGS["USGS US Topo / National Map\nraster background map\n+ hydrography (streams/springs)"]
+        OSM["OpenStreetMap\nsupplementary POIs only:\nwater sources, resupply shops"]
     end
 
     subgraph Pipeline["Data Pipeline (Python + DuckDB spatial)"]
         Ingest["Ingest raw extracts"]
         Corridor["Compute 30-mile trail\ncorridor buffer"]
-        Clip["Clip USGS/OSM to corridor,\njoin with ATC POIs"]
-        Export["Export: PMTiles (base map)\n+ GeoJSON/FlatGeobuf (POIs)"]
+        Clip["Clip USGS raster + OSM/NHD\nto corridor, join with ATC POIs"]
+        Export["Export: raster PMTiles (base map)\n+ GeoJSON/FlatGeobuf (POIs)"]
         Ingest --> Corridor --> Clip --> Export
     end
 

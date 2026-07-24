@@ -54,6 +54,18 @@ To point it at a different Experience Builder app (e.g. if the ATC publishes a s
 
 **Gap to flag:** FEATURES.md's v1 POI list calls for **water sources** and general **resupply points**, but neither has a dedicated layer among the 9 exposed on this public map. `communities` (designated trail towns) is a partial substitute for resupply, but there's no water source layer at all here. Worth confirming with ATC directly whether that data exists in a non-public layer, or whether water sources need to come from another source (e.g., OSM, or FarOut's own crowdsourced data, which we don't have access to).
 
+## Spatial spike (done)
+
+`spike_corridor.py` proves the core Phase 1 operation: buffer the full AT centerline (3,025 segments, GA to Maine) by 30 miles, union it into one corridor polygon, and clip real ATC POI data (campsites, shelters) against it. Run it with:
+
+```
+.venv/Scripts/python spike_corridor.py
+```
+
+Output goes to `data/spike/` (`corridor.geojson`, `campsites_clipped.geojson`, `shelters_clipped.geojson`).
+
+**Gotcha hit and fixed - watch for this in any future `ST_Transform` call:** EPSG:4326's *authority-defined* axis order is (lat, lon), but every geometry source we actually use (GeoJSON, GeoPandas, etc.) is (lon, lat). Without `always_xy := true`, `ST_Transform` silently swaps the axes instead of erroring - the buffer/union still "succeeds" but produces geometry transformed as if every point were on the wrong side of the globe, which only surfaced as `ST_Area` returning `nan` on the reprojected-back result. Always pass `always_xy := true` on both the forward and inverse transform.
+
 ## Next steps
 
 See [../ROADMAP.md](../ROADMAP.md) Phase 1 - once sources are confirmed complete, the DuckDB spatial spike (buffer the centerline 30 miles, clip a real OSM extract against it) is next.

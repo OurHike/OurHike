@@ -15,12 +15,13 @@ Companion to [OurHikeValues.md](OurHikeValues.md), [FEATURES.md](FEATURES.md), a
 ## Phase 1 — Data pipeline
 
 - [ ] **DuckDB spatial spike.** Prove the core operation works before building on top of it: buffer the AT centerline by 30 miles, clip a real OSM/USGS extract against it, export the result. Can start against public AT centerline data even before ATC access is finalized, since this is validating the *method*, not the final dataset. *(Explicitly punted earlier — first real coding task when picked back up.)*
-- [ ] **Ingestion scripts** — pull raw extracts from ATC (POIs), USGS (elevation/topo), OSM (roads/land cover) into formats DuckDB reads directly (GeoJSON/Shapefile/GeoPackage/FlatGeobuf).
+- [ ] **Ingestion scripts** — pull raw extracts from ATC (POIs), USGS (elevation/topo), OSM (roads/land cover) into formats DuckDB reads directly (GeoJSON/Shapefile/GeoPackage/FlatGeobuf). *(ATC side started — see `pipeline/`: `discover_sources.py` finds layer URLs from ATC's public ArcGIS map, `fetch_all.py` pulls all 9 registered layers. USGS/OSM ingestion not started.)*
 - [ ] **Corridor computation** — generate the 30-mile buffer once (`ST_Buffer` + `ST_Union` over the centerline + waypoints).
 - [ ] **Clip & join** — intersect USGS/OSM against the corridor; join ATC POI layers into one schema.
 - [ ] **Unified POI schema** — one schema for water/shelter/campsite/crossing/resupply, designed to not bake in AT-only or NYNJTC-only assumptions (value #7), even though only the AT is in scope for v1.
 - [ ] **Export** — base map as PMTiles, POI layers as GeoJSON/FlatGeobuf. Check package sizes are reasonable for a phone download.
 - [ ] **Publish** — push versioned packages to Cloudflare R2. Manual trigger is fine to start; automate later.
+- [ ] **Decide where/how the pipeline actually runs in production.** It should not run inside the client app or as an always-on service — source data (ATC/USGS/OSM) changes rarely, so this is a script run centrally on some slow cadence (manual trigger by a maintainer vs. a scheduled job like GitHub Actions cron are the two obvious options). Deserves more thought than v1 needs right now — revisit once the full pipeline (corridor/clip/export) exists and there's a real cadence to design around, rather than deciding upfront.
 
 ## Phase 2 — Client app (MVP)
 

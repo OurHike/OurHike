@@ -1,0 +1,78 @@
+{
+  "_comment": "Registry of upstream data sources for the OurHike pipeline. Generated/updated by discover_sources.py - re-run that script rather than hand-editing urls here.",
+  "sources": [
+    {
+      "key": "trail_club_sections",
+      "title": "A.T. Trail Club Sections",
+      "provider": "ATC",
+      "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/APPA_Trail_Club_Sections/FeatureServer/0",
+      "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
+      "discovered_date": "2026-07-24"
+    },
+    {
+      "key": "centerline",
+      "title": "A.T. Centerline",
+      "provider": "ATC",
+      "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Centerline/FeatureServer/0",
+      "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
+      "discovered_date": "2026-07-24",
+      "notes": "Also given directly by user as https://arcg.is/1nqL542"
+    },
+    {
+      "key": "side_trails",
+      "title": "A.T. Side Trails",
+      "provider": "ATC",
+      "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Facilities/FeatureServer/6",
+      "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
+      "discovered_date": "2026-07-24"
+    },
+    {
+      "key": "campsites",
+      "title": "A.T. Campsites",
+      "provider": "ATC",
+      "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Facilities/FeatureServer/1",
+      "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
+      "discovered_date": "2026-07-24"
+    },
+    {
+      "key": "shelters",
+      "title": "A.T. Shelters",
+      "provider": "ATC",
+      "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Facilities/FeatureServer/4",
+      "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
+      "discovered_date": "2026-07-24"
+    },
+    {
+      "key": "parking",
+      "title": "A.T. Parking",
+      "provider": "ATC",
+      "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Facilities/FeatureServer/2",
+      "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
+      "discovered_date": "2026-07-24"
+    },
+    {
+      "key": "viewpoints",
+      "title": "A.T. Viewpoints",
+      "provider": "ATC",
+      "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Facilities/FeatureServer/5",
+      "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
+      "discovered_date": "2026-07-24"
+    },
+    {
+      "key": "communities",
+      "title": "A.T. Communities",
+      "provider": "ATC",
+      "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/AT_Communities/FeatureServer/0",
+      "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
+      "discovered_date": "2026-07-24"
+    },
+    {
+      "key": "half_mile_points_from_springer",
+      "title": "A.T. Half Mile Points From Springer",
+      "provider": "ATC",
+      "url": "https://services9.arcgis.com/Nb3RpWJ36xRlYQj2/arcgis/rest/services/Half_Mile_Points040726_NoM/FeatureServer/18",
+      "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
+      "discovered_date": "2026-07-24"
+    }
+  ]
+}

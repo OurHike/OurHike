@@ -18,6 +18,7 @@ Keep this simple. One thing, done well: an offline-capable map app for hikers, b
 - "You are here" GPS positioning while fully offline
 - Basic search/filter by POI type
 - Same core experience on phone (iOS + Android, day one) and on the web
+- **Waypoint icon spec** (2026-07-25, from [Guthook Guides redesign case study](https://www.zoesymon.com/guthook-guides) — see "UX principles" below): ~8 color-coded POI categories, one accent color per category against a contrasting background, WCAG AA contrast compliance. A concrete, testable spec to design the shelter/water/resupply/etc. icons against, not just "make it readable."
 
 **Explicitly deferred**, not because they're low-value, but to keep v1 shippable:
 - Community-submitted condition reports & maintainer verification
@@ -48,6 +49,18 @@ Given the "one codebase" preference, needing phone + web day one, no in-app purc
 Why this over Flutter or React Native: it draws from the largest possible volunteer developer pool (plain web skills are far more common than Dart or React Native's native-module knowledge), everything in the stack is fully open source with no vendor lock-in, and it sidesteps app-store complexity entirely for anything except distribution — which matters since no purchases happen in the app anyway.
 
 **Trade-off to know about:** continuous background GPS track-recording (tracking your route while the phone is locked in your pocket) is weaker in a PWA/Capacitor app than a fully native one. Foreground use — open the app, see the map, see "you are here," look up nearby water/shelters — works fine with this approach. If background track-recording becomes a priority later, Capacitor supports native GPS plugins to close most of that gap without a rewrite.
+
+## UX principles (inspiration)
+
+Pulled from [Zoe Symon's Guthook Guides (now FarOut) redesign case study](https://www.zoesymon.com/guthook-guides) (2026-07-25) — a UX case study on the app we're most directly positioned against, worth referencing again later. Cross-cutting design guidance, not phase-specific:
+
+- **"Use the app less often, and find information faster when you do."** Optimize for quick lookups, not session time/engagement metrics — the opposite of typical app growth goals, and a natural fit with value #1 (hike your own hike): no reason to manufacture engagement.
+- **Architect for extensibility from day one.** Guthook's original build reportedly lacked this and it limited later feature work — validates our existing instinct (unified POI schema, avoiding AT/NYNJTC-only assumptions per value #7) rather than introducing something new.
+- **Community features should be core, not bolted on.** Their research found thru-hiking is inherently social — direct validation of the commenting/upvoting/guides items under Community reporting below.
+- **Fast, low-friction onboarding** — minimal setup before the map is usable, no heavy signup wall blocking time-to-value. Fits our no-account-needed PWA approach.
+- **Separate "available" from "owned/downloaded" content clearly** — relevant once we have per-section downloads or any paid tier, so users aren't confused about what they already have.
+- **A good feature undermined by poor discoverability is its own failure mode.** Their route-creation tool was well-liked but hard to find — worth designing findability in explicitly (e.g. for our own trip-planning tools under Extras below), not just building the feature and assuming it'll be found.
+- **Process note, not a feature:** they ran open-ended surveys across thru-hikers/section-hikers/day-hikers *before* designing anything — worth doing something similar once NYNJTC's soft launch gives us real users, rather than guessing at priorities.
 
 ---
 

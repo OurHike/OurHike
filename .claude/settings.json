@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\".venv/Scripts/pip.exe\" install *)",
+      "Bash(\".venv/Scripts/python.exe\" -c \"import rasterio; print\\(rasterio.__version__\\)\")",
+      "Bash(curl -s \"https://tnmaccess.nationalmap.gov/api/v1/datasets\" -o /tmp/tnm_datasets.json)",
+      "Bash(curl -s https://tnmaccess.nationalmap.gov/api/v1/datasets -o __TRACKED_VAR__/tnm_datasets.json)",
+      "Bash(.venv/Scripts/python.exe -c ' *)",
+      "Bash(curl -s 'https://tnmaccess.nationalmap.gov/api/v1/products?bbox=-74.6,40.7,-73.3,41.8&datasets=US%20Topo&max=5' -o /c/Users/james/AppData/Local/Temp/claude/c--Users-james-OneDrive-Documents-GitHub-OurHike/0447ac21-c7a3-46be-b8d7-05eca169221e/scratchpad/tnm_products.json)",
+      "Bash(curl -s https://prd-tnm.s3.amazonaws.com/StagedProducts/Maps/USTopo/PDF/NY/NY_Bayville_20230531_TM_geo.pdf -o /c/Users/james/AppData/Local/Temp/claude/c--Users-james-OneDrive-Documents-GitHub-OurHike/0447ac21-c7a3-46be-b8d7-05eca169221e/scratchpad/test_quad.pdf)",
+      "WebFetch(domain:www.wikitrail.org)",
+      "Bash(curl -s \"http://www.wikitrail.org/\" --max-time 20)",
+      "Bash(curl -s \"http://www.wikitrail.org/about\" --max-time 20)",
+      "Bash(grep -v \"^\\\\s*$\")",
+      "Bash(curl -s \"http://www.wikitrail.org/sections/kml/at/3044?c=1\" --max-time 20)",
+      "Bash(curl -s http://www.wikitrail.org/sections/kml/at/3044?c=1 --max-time 20 -o /c/Users/james/AppData/Local/Temp/claude/c--Users-james-OneDrive-Documents-GitHub-OurHike/0447ac21-c7a3-46be-b8d7-05eca169221e/scratchpad/wikitrail_sample.kmz)",
+      "Bash(unzip -o -q wikitrail_sample.kmz -d wikitrail_sample)",
+      "Bash(curl -s \"http://www.wikitrail.org/planner/new/at\" --max-time 20)",
+      "Bash(curl -s http://www.wikitrail.org/sections/kml/at/1?c=3044 --max-time 30 -o /c/Users/james/AppData/Local/Temp/claude/c--Users-james-OneDrive-Documents-GitHub-OurHike/0447ac21-c7a3-46be-b8d7-05eca169221e/scratchpad/wikitrail_full.kmz)",
+      "Bash(curl -sI \"http://www.wikitrail.org/sections/kml/at/1?c=100\" --max-time 20)"
+    ]
+  }
+}

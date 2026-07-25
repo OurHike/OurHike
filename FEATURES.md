@@ -18,6 +18,7 @@ Keep this simple. One thing, done well: an offline-capable map app for hikers, b
 - "You are here" GPS positioning while fully offline
 - Basic search/filter by POI type
 - Same core experience on phone (iOS + Android, day one) and on the web
+- **Waypoint icon spec** (2026-07-25, from [Guthook Guides redesign case study](https://www.zoesymon.com/guthook-guides) — see "UX principles" below): ~8 color-coded POI categories, one accent color per category against a contrasting background, WCAG AA contrast compliance. A concrete, testable spec to design the shelter/water/resupply/etc. icons against, not just "make it readable."
 
 **Explicitly deferred**, not because they're low-value, but to keep v1 shippable:
 - Community-submitted condition reports & maintainer verification
@@ -33,10 +34,11 @@ Keep this simple. One thing, done well: an offline-capable map app for hikers, b
 - Per value #5, this is about *sustainability*, not paywalling safety data — core map/POI data stays free everywhere; monetization is additive (e.g., donations, maybe premium convenience features later), never a gate on safety-relevant info.
 - Longer-term intent: revenue should flow toward funding ATC / affiliated maintaining clubs, not just cover OurHike's own hosting costs.
 
-## Data sources (decided 2026-07-24)
+## Data sources (decided 2026-07-24, refined 2026-07-24)
 
-- **Trail POI data (centerline, shelters, campsites, water sources, road crossings, resupply):** from the ATC's own GIS program (ArcGIS-hosted: [arcg.is/1nqL542](https://arcg.is/1nqL542)) — the same authoritative source FarOut itself uses. The ATC has maintained this data since 1998. Exact licensing/access terms still need to be confirmed with ATC directly; the user can help pull the data or make an introduction.
-- **Offline base map tiles:** USGS National Map ([apps.nationalmap.gov/downloader](https://apps.nationalmap.gov/downloader/)) and/or OpenStreetMap ([openstreetmap.org/export](https://www.openstreetmap.org/export)), both open data. **Scoped to a ~30-mile corridor around the trail and its waypoints only** — not full state/regional coverage. This keeps offline downloads small for hikers and hosting costs low (value #8), while still covering everything within a reasonable resupply/support range of the trail.
+- **Trail POI data (centerline, side trails, shelters, campsites, viewpoints, parking, communities):** from the ATC's own public GIS map (ArcGIS-hosted: [arcg.is/1nqL542](https://arcg.is/1nqL542), 9 layers cataloged programmatically — see `pipeline/`) — the same authoritative source FarOut itself uses. The ATC has maintained this data since 1998. Exact redistribution terms still need to be confirmed with ATC directly; the user can help pull the data or make an introduction. **Confirmed gap: ATC's data has no dedicated water-source or general resupply layer.**
+- **Water sources & resupply POIs (filling the gap above):** OpenStreetMap tags (`amenity=drinking_water`, `natural=spring` for water; shops/post offices/hostels for resupply) plus USGS hydrography (streams/springs) as an approximate water proxy. Both are unverified/approximate, not confirmed-current data — the UI should be honest about that distinction (value #4), not present them with the same confidence as ATC's official facility data.
+- **Offline base map tiles:** **USGS US Topo / National Map raster tiles** ([apps.nationalmap.gov/downloader](https://apps.nationalmap.gov/downloader/)), clipped to the corridor — public domain, pre-rendered, the topo format hikers already trust. OpenStreetMap is deliberately *not* used for the background map (see TECHNICAL_ARCHITECTURE.md for the raster-vs-vector reasoning) — its role is limited to the supplementary POIs above. **Scoped to a ~30-mile corridor around the trail and its waypoints only** — not full state/regional coverage. This keeps offline downloads small for hikers and hosting costs low (value #8), while still covering everything within a reasonable resupply/support range of the trail.
 
 ## Platform/tech approach — recommendation
 
@@ -47,6 +49,18 @@ Given the "one codebase" preference, needing phone + web day one, no in-app purc
 Why this over Flutter or React Native: it draws from the largest possible volunteer developer pool (plain web skills are far more common than Dart or React Native's native-module knowledge), everything in the stack is fully open source with no vendor lock-in, and it sidesteps app-store complexity entirely for anything except distribution — which matters since no purchases happen in the app anyway.
 
 **Trade-off to know about:** continuous background GPS track-recording (tracking your route while the phone is locked in your pocket) is weaker in a PWA/Capacitor app than a fully native one. Foreground use — open the app, see the map, see "you are here," look up nearby water/shelters — works fine with this approach. If background track-recording becomes a priority later, Capacitor supports native GPS plugins to close most of that gap without a rewrite.
+
+## UX principles (inspiration)
+
+Pulled from [Zoe Symon's Guthook Guides (now FarOut) redesign case study](https://www.zoesymon.com/guthook-guides) (2026-07-25) — a UX case study on the app we're most directly positioned against, worth referencing again later. Cross-cutting design guidance, not phase-specific:
+
+- **"Use the app less often, and find information faster when you do."** Optimize for quick lookups, not session time/engagement metrics — the opposite of typical app growth goals, and a natural fit with value #1 (hike your own hike): no reason to manufacture engagement.
+- **Architect for extensibility from day one.** Guthook's original build reportedly lacked this and it limited later feature work — validates our existing instinct (unified POI schema, avoiding AT/NYNJTC-only assumptions per value #7) rather than introducing something new.
+- **Community features should be core, not bolted on.** Their research found thru-hiking is inherently social — direct validation of the commenting/upvoting/guides items under Community reporting below.
+- **Fast, low-friction onboarding** — minimal setup before the map is usable, no heavy signup wall blocking time-to-value. Fits our no-account-needed PWA approach.
+- **Separate "available" from "owned/downloaded" content clearly** — relevant once we have per-section downloads or any paid tier, so users aren't confused about what they already have.
+- **A good feature undermined by poor discoverability is its own failure mode.** Their route-creation tool was well-liked but hard to find — worth designing findability in explicitly (e.g. for our own trip-planning tools under Extras below), not just building the feature and assuming it'll be found.
+- **Process note, not a feature:** they ran open-ended surveys across thru-hikers/section-hikers/day-hikers *before* designing anything — worth doing something similar once NYNJTC's soft launch gives us real users, rather than guessing at priorities.
 
 ---
 
@@ -59,6 +73,15 @@ Grouped by value, for later prioritization — not committed, just not forgotten
 - Maintainer verification/flagging workflow
 - Moderation queue for club admins
 - Link between hiker reports and official trail-maintenance logs
+- **Club data-entry tooling** (2026-07-24): local ATC-affiliated clubs need a way to directly add/edit their own shelters, water sources, campsites, and other trail features - not just via the GIS pipeline, which only they (not volunteers at large) can realistically operate. This is the actual mechanism behind "per-club admin roles" below, made concrete.
+- **Community submission + upvoting** (2026-07-24): beyond condition reports, let community members submit their own POIs/corrections and have other members upvote them - a lightweight trust signal ahead of full maintainer verification. Needs a spam/abuse-resistant design before it ships (value #4 - trustworthy above all - means a wrong upvoted submission is worse than no submission).
+- **Place-based social commenting, FarOut-style** (2026-07-24): comment threads tied to a specific map location, not just structured condition reports. This is the single feature most directly competing with FarOut's actual daily-use appeal, so it matters a lot - but it also sits in the most direct tension with value #9 ("be magical," not just have a magic feature): unmoderated place-based comments are exactly the kind of feature that can tip into the things value #9 explicitly warns against (broadcast/overcrowding pressure, unattended-cache-style posts, oversharing). Needs real moderation/design thought before building, not just a clone of FarOut's comment UI.
+- **User-generated guides** (2026-07-24): let hikers compile their own guides/route collections from the underlying data (a bigger, more curated unit than a single comment or report) - e.g. "my recommended water sources for a NOBO thru-hike." Not scoped further yet; revisit once the underlying POI/reporting data model exists to build on.
+
+### Water reliability prediction *(#4)*
+- Predict whether a given water source is likely flowing or dry right now, rather than just showing the last static entry. wikitrail.org's own founding story is literally a hiker hitting a "should be flowing" water source that was dry - this is a real, recurring failure mode of static trail data, not a hypothetical.
+- Likely inputs: historical hiker reports (frequency/recency of "dry" vs "flowing" reports at a source), seasonal/precipitation patterns, and possibly NHD stream classification (perennial vs intermittent) already noted as a data source in TECHNICAL_ARCHITECTURE.md.
+- Directly extends value #4's existing "reported 3 days ago vs. confirmed today" idea from a passive timestamp into an actual predictive signal - but the bar is high: a confidently wrong prediction is more dangerous than an honest "unknown," so this should ship after there's enough real report volume to back it, not as a launch feature.
 
 ### Trail magic, done right *(#9)*
 - Point-in-time help requests/offers between hikers — ephemeral, expires automatically, never a persistent pin

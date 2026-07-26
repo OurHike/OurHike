@@ -1,0 +1,9 @@
+duckdb
+requests
+rasterio
+numpy
+affine
+pillow
+pdfplumber
+tifffile
+imagecodecs

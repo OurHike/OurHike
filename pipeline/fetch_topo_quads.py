@@ -38,12 +38,14 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 import duckdb
+import rasterio
 import requests
 
 ROOT = Path(__file__).parent
 CORRIDOR_PATH = ROOT / "data" / "spike" / "corridor.geojson"
 METADATA_URL = "https://prd-tnm.s3.amazonaws.com/StagedProducts/Maps/Metadata/ustopo_current.zip"
 METADATA_DIR = ROOT / "data" / "raw" / "topo_metadata"
+METADATA_STATE_PATH = METADATA_DIR / "fetch_state.json"
 OUT_DIR = ROOT / "data" / "raw" / "topo_quads"
 MANIFEST_PATH = OUT_DIR / "manifest.json"
 
@@ -57,11 +59,21 @@ DATED_SUFFIX_RE = re.compile(r"_\d{8}_TM_geo$")
 def fetch_metadata_csv() -> Path:
     csv_path = METADATA_DIR / "ustopo_current.csv"
     METADATA_DIR.mkdir(parents=True, exist_ok=True)
+
+    state = json.loads(METADATA_STATE_PATH.read_text()) if METADATA_STATE_PATH.exists() else {}
+    head = requests.head(METADATA_URL, timeout=30)
+    head.raise_for_status()
+    remote_last_modified = head.headers.get("Last-Modified")
+    if state.get("last_modified") == remote_last_modified and csv_path.exists():
+        print(f"Quad metadata inventory unchanged since last fetch, skipping -> {csv_path}")
+        return csv_path
+
     print(f"Fetching quad metadata inventory from {METADATA_URL} ...")
     resp = requests.get(METADATA_URL, timeout=120)
     resp.raise_for_status()
     with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
         z.extract("ustopo_current.csv", METADATA_DIR)
+    METADATA_STATE_PATH.write_text(json.dumps({"last_modified": remote_last_modified}))
     print(f"  -> {csv_path}")
     return csv_path
 
@@ -139,7 +151,7 @@ def main():
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     manifest = json.loads(MANIFEST_PATH.read_text()) if MANIFEST_PATH.exists() else {}
 
-    downloaded = skipped = unmatched = 0
+    downloaded = skipped = unmatched = corrupted = 0
     total_bytes = 0
     for n, (product_filename,) in enumerate(kept, 1):
         state = product_filename.split("_", 1)[0]
@@ -171,6 +183,23 @@ def main():
         resp.raise_for_status()
         local_path.write_bytes(resp.content)
         total_bytes += len(resp.content)
+
+        # Validate readability, not just presence - 3 quads out of 1,654 were
+        # confirmed genuinely corrupted on USGS's own S3 bucket (LZW decode
+        # failures in a later strip; verified independently via tifffile too,
+        # not a rasterio quirk) despite downloading with a matching HTTP
+        # status and exact Content-Length. Without this check, that kind of
+        # corruption goes undetected until something downstream tries to
+        # actually read the file - see fix_corrupted_quads.py for the
+        # re-download-then-fallback recovery path for anything flagged here.
+        try:
+            with rasterio.open(local_path) as src:
+                src.read(1)
+        except Exception as e:
+            print(f"  [{n}/{len(kept)}] CORRUPTED after download: {state}/{filename} ({e}) - run fix_corrupted_quads.py")
+            corrupted += 1
+            continue
+
         manifest[tif_url] = {
             "last_modified": remote_last_modified,
             "local_path": str(local_path.relative_to(ROOT)),
@@ -181,9 +210,11 @@ def main():
     MANIFEST_PATH.write_text(json.dumps(manifest, indent=2))
     print(
         f"\nDone. {downloaded} downloaded ({total_bytes / 1e9:.2f} GB), "
-        f"{skipped} already up to date, {unmatched} unmatched. "
+        f"{skipped} already up to date, {unmatched} unmatched, {corrupted} corrupted. "
         f"Manifest -> {MANIFEST_PATH}"
     )
+    if corrupted:
+        print(f"{corrupted} quad(s) downloaded but failed validation - run fix_corrupted_quads.py to work around them.")
 
 
 if __name__ == "__main__":

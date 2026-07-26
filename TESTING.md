@@ -58,4 +58,4 @@ Not scaffolded yet (see TECHNICAL_ARCHITECTURE.md). When it exists, it would lik
 
 ## CI
 
-Not yet wired up. Natural next step once the pipeline suite above is stable: a GitHub Actions workflow running `pytest` on every push/PR.
+`.github/workflows/pipeline-tests.yml` runs `pytest` on every push and on PRs targeting `main`. It's not (yet) a required check via branch protection - a red run doesn't currently block merging, it's just visible on the PR.

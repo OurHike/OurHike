@@ -8,6 +8,7 @@ Uses only already-fetched ATC data (see fetch_all.py) - no OSM/USGS involved
 here; those are separate, purpose-built ingestion tasks per FEATURES.md, not
 part of proving this method works.
 """
+
 import duckdb
 
 RAW_DIR = "data/raw"
@@ -75,7 +76,9 @@ def main():
         con.execute(f"COPY {layer}_clipped TO '{OUT_DIR}/{layer}_clipped.geojson' WITH (FORMAT GDAL, DRIVER 'GeoJSON')")
         print(f"{layer}: {within}/{total} within 30mi corridor -> {OUT_DIR}/{layer}_clipped.geojson")
         if within < total:
-            print(f"  NOTE: {total - within} {layer} fell outside the corridor - worth a look (bad centerline data or a distant spur-trail site)")
+            print(
+                f"  NOTE: {total - within} {layer} fell outside the corridor - worth a look (bad centerline data or a distant spur-trail site)"
+            )
 
 
 if __name__ == "__main__":

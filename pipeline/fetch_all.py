@@ -16,6 +16,7 @@ non-empty output file before writing data/raw/manifest.json - if any source
 is missing or failed, the script exits non-zero rather than silently
 continuing.
 """
+
 import json
 import sys
 from pathlib import Path
@@ -46,12 +47,7 @@ def main():
         except Exception as e:
             print(f"  {key}: couldn't check edit date ({e}), will fetch anyway")
 
-        if (
-            edit_date is not None
-            and prior
-            and prior.get("data_last_edit_date") == edit_date
-            and out_path.exists()
-        ):
+        if edit_date is not None and prior and prior.get("data_last_edit_date") == edit_date and out_path.exists():
             print(f"{src['title']} ({key}): up to date (unchanged since last fetch), skipping")
             results[key] = prior
             continue

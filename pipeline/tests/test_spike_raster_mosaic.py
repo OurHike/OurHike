@@ -5,8 +5,8 @@ Both bugs here were found on real USGS data mid-session, not hypothesized in
 advance - see TESTING.md for the "encode every gotcha as a regression test"
 convention this follows.
 """
+
 import os
-import tempfile
 
 import numpy as np
 import pytest
@@ -24,9 +24,16 @@ def _write_multistrip_tiff(path, height=200, width=50):
     mode we saw in production: corruption in a later strip, not the first."""
     transform = from_bounds(-74.1, 41.0, -74.0, 41.1, width, height)
     profile = {
-        "driver": "GTiff", "height": height, "width": width, "count": 1,
-        "dtype": "uint8", "crs": "EPSG:4326", "transform": transform,
-        "compress": "lzw", "blockysize": 16, "tiled": False,
+        "driver": "GTiff",
+        "height": height,
+        "width": width,
+        "count": 1,
+        "dtype": "uint8",
+        "crs": "EPSG:4326",
+        "transform": transform,
+        "compress": "lzw",
+        "blockysize": 16,
+        "tiled": False,
     }
     with rasterio.open(path, "w", **profile) as dst:
         dst.write(np.random.randint(1, 255, (1, height, width), dtype="uint8"))
@@ -90,12 +97,15 @@ def test_completeness_check_fails_when_a_cell_has_no_output():
     assert not is_complete
 
 
-@pytest.mark.parametrize("a, b, expected", [
-    ((-75.0, 40.0, -74.0, 41.0), (-74.5, 40.5, -73.5, 41.5), True),   # overlapping
-    ((-75.0, 40.0, -74.0, 41.0), (-74.0, 41.0, -73.0, 42.0), False),  # touching at a corner only, not overlapping
-    ((-75.0, 40.0, -74.0, 41.0), (-70.0, 35.0, -69.0, 36.0), False),  # far apart
-    ((-75.0, 40.0, -74.0, 41.0), (-75.0, 40.0, -74.0, 41.0), True),   # identical
-])
+@pytest.mark.parametrize(
+    "a, b, expected",
+    [
+        ((-75.0, 40.0, -74.0, 41.0), (-74.5, 40.5, -73.5, 41.5), True),  # overlapping
+        ((-75.0, 40.0, -74.0, 41.0), (-74.0, 41.0, -73.0, 42.0), False),  # touching at a corner only, not overlapping
+        ((-75.0, 40.0, -74.0, 41.0), (-70.0, 35.0, -69.0, 36.0), False),  # far apart
+        ((-75.0, 40.0, -74.0, 41.0), (-75.0, 40.0, -74.0, 41.0), True),  # identical
+    ],
+)
 def test_bounds_intersect(a, b, expected):
     assert bounds_intersect(a, b) is expected
 
@@ -108,8 +118,13 @@ def test_clip_to_polygon_zeroes_pixels_outside_and_keeps_pixels_inside():
     width = height = 20
     transform = from_bounds(-74.0, 41.0, -73.8, 41.2, width, height)
     profile = {
-        "driver": "GTiff", "height": height, "width": width, "count": 1,
-        "dtype": "uint8", "crs": "EPSG:4326", "transform": transform,
+        "driver": "GTiff",
+        "height": height,
+        "width": width,
+        "count": 1,
+        "dtype": "uint8",
+        "crs": "EPSG:4326",
+        "transform": transform,
     }
     with MemoryFile() as memfile:
         with memfile.open(**profile) as dataset:

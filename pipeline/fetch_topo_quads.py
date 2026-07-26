@@ -30,6 +30,7 @@ Incremental: compares each quad's S3 Last-Modified against
 data/raw/topo_quads/manifest.json from the previous run, and only
 re-downloads quads that are new or have actually changed.
 """
+
 import io
 import json
 import re

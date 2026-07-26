@@ -21,6 +21,7 @@ import requests
 
 API_URL = "https://opentrail.org/api/getData"
 OUT_PATH = Path(__file__).parent / "data" / "raw" / "opentrail_at.geojson"
+STATE_PATH = Path(__file__).parent / "data" / "raw" / "opentrail_state.json"
 
 # Best-effort inferred from feature titles/counts - not documented by the API.
 ICON_LEGEND = {
@@ -35,10 +36,17 @@ ICON_LEGEND = {
 }
 
 
-def fetch_at_data() -> dict:
-    resp = requests.get(API_URL, params={"trail": "AT"}, timeout=60)
+def fetch_at_data(etag: str | None):
+    """Returns (data_or_None, new_etag). data is None if the server confirmed
+    nothing changed (304) - the API's own README documents ETag/If-None-Match
+    support, so this uses real HTTP conditional requests rather than
+    reimplementing change detection client-side."""
+    headers = {"If-None-Match": etag} if etag else {}
+    resp = requests.get(API_URL, params={"trail": "AT"}, headers=headers, timeout=60)
+    if resp.status_code == 304:
+        return None, etag
     resp.raise_for_status()
-    return resp.json()
+    return resp.json(), resp.headers.get("ETag")
 
 
 def strip_comments(fc: dict) -> dict:
@@ -53,13 +61,22 @@ def strip_comments(fc: dict) -> dict:
 
 
 def main():
-    print(f"Fetching AT waypoint data from {API_URL} ...")
-    fc = fetch_at_data()
+    state = json.loads(STATE_PATH.read_text()) if STATE_PATH.exists() else {}
+    prior_etag = state.get("etag")
+
+    print(f"Checking {API_URL} ...")
+    fc, new_etag = fetch_at_data(prior_etag if OUT_PATH.exists() else None)
+
+    if fc is None:
+        print("Up to date (304 Not Modified), skipping.")
+        return
+
     print(f"  {len(fc['features'])} features fetched.")
     fc = strip_comments(fc)
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(json.dumps(fc))
+    STATE_PATH.write_text(json.dumps({"etag": new_etag}))
     print(f"Saved (comments excluded) -> {OUT_PATH}")
 
     counts = {}

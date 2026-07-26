@@ -43,3 +43,15 @@ def fetch_layer_to_file(layer_url: str, out_path: Path) -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(fc))
     return len(fc["features"])
+
+
+def get_layer_edit_date(layer_url: str) -> int | None:
+    """Fetch a layer's dataLastEditDate (epoch ms) - a cheap metadata-only
+    request, used to skip re-fetching layers that haven't changed. Returns
+    None if the service doesn't expose editingInfo (some don't)."""
+    resp = requests.get(layer_url, params={"f": "json"}, timeout=30)
+    resp.raise_for_status()
+    editing_info = resp.json().get("editingInfo")
+    if not editing_info:
+        return None
+    return editing_info.get("dataLastEditDate")

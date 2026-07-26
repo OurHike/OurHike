@@ -73,6 +73,33 @@
       "url": "https://services9.arcgis.com/Nb3RpWJ36xRlYQj2/arcgis/rest/services/Half_Mile_Points040726_NoM/FeatureServer/18",
       "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
       "discovered_date": "2026-07-24"
+    },
+    {
+      "key": "bridges",
+      "title": "A.T. Bridges",
+      "provider": "ATC",
+      "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Facilities/FeatureServer/0",
+      "discovered_via": "Directly listing the ANST_Facilities FeatureServer root (not in the public Experience Builder map's curated layer list)",
+      "discovered_date": "2026-07-25",
+      "notes": "Added to registry for later - not yet fetched."
+    },
+    {
+      "key": "privies",
+      "title": "A.T. Privies",
+      "provider": "ATC",
+      "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Facilities/FeatureServer/3",
+      "discovered_via": "Directly listing the ANST_Facilities FeatureServer root (not in the public Experience Builder map's curated layer list)",
+      "discovered_date": "2026-07-25",
+      "notes": "Added to registry for later - not yet fetched."
+    },
+    {
+      "key": "at_treadway",
+      "title": "A.T. Treadway",
+      "provider": "ATC",
+      "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Facilities/FeatureServer/7",
+      "discovered_via": "Directly listing the ANST_Facilities FeatureServer root (not in the public Experience Builder map's curated layer list)",
+      "discovered_date": "2026-07-25",
+      "notes": "Added to registry for later - not yet fetched. Unclear yet how this differs from the ANST_Centerline layer already in use - worth checking when fetched."
     }
   ]
 }

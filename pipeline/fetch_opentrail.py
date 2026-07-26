@@ -14,6 +14,7 @@ sources and resupply-relevant POIs (icon "w" and "r" below), plus "t" (towns)
 as useful resupply context. Icon meanings are inferred from the data, not
 documented by the API - treat as best-effort until cross-checked.
 """
+
 import json
 from pathlib import Path
 

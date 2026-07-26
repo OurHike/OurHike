@@ -2,6 +2,7 @@
 the change-aware ingest work: verify unchanged sources are actually skipped
 (no query call made) and changed/new sources are actually fetched, using the
 real main() against a temp directory, not a reimplementation of its logic."""
+
 import json
 
 import fetch_all
@@ -26,7 +27,8 @@ def _setup(tmp_path, monkeypatch, prior_manifest):
 
 def test_unchanged_source_is_skipped_not_refetched(tmp_path, monkeypatch, requests_mock):
     out_path, manifest_path = _setup(
-        tmp_path, monkeypatch,
+        tmp_path,
+        monkeypatch,
         prior_manifest={"fake": {"title": "Fake Layer", "url": LAYER_URL, "feature_count": 1, "data_last_edit_date": 123}},
     )
     (out_path / "fake.geojson").write_text('{"type": "FeatureCollection", "features": []}')
@@ -44,7 +46,8 @@ def test_unchanged_source_is_skipped_not_refetched(tmp_path, monkeypatch, reques
 
 def test_changed_source_is_refetched(tmp_path, monkeypatch, requests_mock):
     out_path, manifest_path = _setup(
-        tmp_path, monkeypatch,
+        tmp_path,
+        monkeypatch,
         prior_manifest={"fake": {"title": "Fake Layer", "url": LAYER_URL, "feature_count": 1, "data_last_edit_date": 111}},
     )
     (out_path / "fake.geojson").write_text('{"type": "FeatureCollection", "features": []}')

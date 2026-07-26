@@ -14,7 +14,7 @@ Strategy per quad:
    a substitute raster covering the same footprint, saved alongside the
    originals so the mosaic step can use it as a drop-in replacement.
 """
-import json
+
 from pathlib import Path
 
 import duckdb
@@ -78,12 +78,10 @@ def fetch_fallback(quad_key: str, out_path: Path):
     png_path = out_path.with_suffix(".png")
     png_path.write_bytes(resp.content)
 
-    transform = rasterio.transform.from_bounds(
-        west - margin, south - margin, east + margin, north + margin, 2400, 2400
-    )
+    transform = rasterio.transform.from_bounds(west - margin, south - margin, east + margin, north + margin, 2400, 2400)
     with rasterio.open(png_path) as src:
         data = src.read((1, 2, 3))  # drop the alpha band - bulk quads are 3-band RGB, and
-        profile = src.profile        # merge() requires matching band counts across inputs
+        profile = src.profile  # merge() requires matching band counts across inputs
     profile.update(driver="GTiff", crs="EPSG:4326", transform=transform, count=3)
     with rasterio.open(out_path, "w", **profile) as dst:
         dst.write(data)
@@ -95,10 +93,10 @@ def main():
         path = QUADS_DIR / rel_path
         print(f"{quad_key}: re-downloading...")
         if redownload(path):
-            print(f"  fixed by re-download.")
+            print("  fixed by re-download.")
             continue
 
-        print(f"  still corrupted after re-download - falling back to live export service...")
+        print("  still corrupted after re-download - falling back to live export service...")
         fallback_path = FALLBACK_DIR / f"{quad_key}.tif"
         fetch_fallback(quad_key, fallback_path)
         if validate(fallback_path):

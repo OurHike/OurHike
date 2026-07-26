@@ -15,6 +15,7 @@ Real complications the single-tile prototype didn't have to deal with:
   outputs one clipped tile per cell, skipping cells with no corridor
   overlap - the same reason real map tile systems don't ship one giant image.
 """
+
 import json
 import sys
 from pathlib import Path

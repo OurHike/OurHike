@@ -15,9 +15,9 @@ with tiny in-memory rasters, rather than calling fetch_fallback() itself
 contract between fetch_fallback()'s output and merge()'s input, not in any
 particular network call.
 """
+
 import numpy as np
 import pytest
-import rasterio
 from rasterio.io import MemoryFile
 from rasterio.merge import merge
 from rasterio.transform import from_bounds

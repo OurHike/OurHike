@@ -7,6 +7,7 @@ geometry, rather than calling the script. That's deliberate: the bug lives
 in the ST_Transform/always_xy behavior itself, which any future script using
 this pattern could reintroduce, not just this one file.
 """
+
 import duckdb
 import pytest
 

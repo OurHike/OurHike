@@ -17,6 +17,7 @@ prints a note if a url changed) while preserving any hand-added fields like
 "notes". Sources that disappear from the app are kept (not deleted) with a
 warning, since that likely means the app changed, not that the layer is gone.
 """
+
 import argparse
 import json
 import re
@@ -82,7 +83,9 @@ def discover_layers(experience_url_or_id: str) -> tuple[list[dict], str]:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("experience", help="Experience Builder URL or item ID, e.g. https://experience.arcgis.com/experience/<id>")
+    parser.add_argument(
+        "experience", help="Experience Builder URL or item ID, e.g. https://experience.arcgis.com/experience/<id>"
+    )
     parser.add_argument("--provider", default="ATC", help="Provider label to store on newly discovered sources (default: ATC)")
     args = parser.parse_args()
 
@@ -109,10 +112,7 @@ def main():
             "title": layer["title"],
             "provider": prior.get("provider", args.provider),
             "url": layer["url"],
-            "discovered_via": (
-                f"Experience Builder app {item_id} -> Web Map item "
-                f"{layer['webmap_item']} -> operationalLayers"
-            ),
+            "discovered_via": (f"Experience Builder app {item_id} -> Web Map item {layer['webmap_item']} -> operationalLayers"),
             "discovered_date": today,
         }
         if "notes" in prior:

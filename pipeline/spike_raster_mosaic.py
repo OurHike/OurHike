@@ -14,7 +14,19 @@ Real complications the single-tile prototype didn't have to deal with:
   the corridor-intersecting grid used elsewhere in the pipeline) and
   outputs one clipped tile per cell, skipping cells with no corridor
   overlap - the same reason real map tile systems don't ship one giant image.
+- Every US Topo GeoTIFF is a scan of the *entire printed map sheet* - a white
+  margin plus a header/footer collar (USGS/US Topo logos, title, scale bar,
+  legend, adjoining-quadrangle diagram) - and its georeferenced raster extent
+  covers that whole sheet, not just the actual mapped area. Left uncropped,
+  that collar gets treated as real terrain and shows up as white bands and
+  text in the exported background. USGS's own metadata CSV
+  (ustopo_current.csv, already fetched by fetch_topo_quads.py) gives the true
+  neatline per quad via westbc/eastbc/northbc/southbc - a clean 7.5'x7.5' box
+  for a standard quad, confirmed noticeably smaller than the raw raster's
+  full extent (e.g. CT_Ansonia: 0.125x0.125deg neatline vs a ~0.17x0.16deg
+  raster). Each quad is cropped to that neatline before reprojecting.
 """
+import csv
 import json
 import sys
 from pathlib import Path
@@ -25,17 +37,50 @@ import rasterio
 from rasterio.io import MemoryFile
 from rasterio.mask import mask
 from rasterio.merge import merge
+from rasterio.transform import from_bounds as transform_from_bounds
 from rasterio.vrt import WarpedVRT
 from rasterio.warp import transform_bounds
+
+from fetch_topo_quads import bare_key
 
 CORRIDOR_PATH = Path(__file__).parent / "data" / "spike" / "corridor.geojson"
 QUADS_DIR = Path(__file__).parent / "data" / "raw" / "topo_quads"
 FALLBACK_DIR = Path(__file__).parent / "data" / "raw" / "topo_quads_fallback"
 OUT_DIR = Path(__file__).parent / "data" / "processed" / "topo_background"
+METADATA_CSV_PATH = Path(__file__).parent / "data" / "raw" / "topo_metadata" / "ustopo_current.csv"
 
 CELL_DEGREES = 1.0
 TARGET_RES_DEG = 0.0001  # ~11m/pixel at these latitudes - plenty for a phone background map
 DST_CRS = "EPSG:4326"
+
+
+def load_neatlines():
+    """Maps each quad's bare key (see fetch_topo_quads.bare_key) to its real
+    neatline bounds (west, south, east, north) from USGS's own metadata CSV -
+    the true mapped area, not the collar-inflated raster extent."""
+    neatlines = {}
+    with open(METADATA_CSV_PATH, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            key = bare_key(row["product_filename"].rsplit(".", 1)[0])
+            neatlines[key] = (float(row["westbc"]), float(row["southbc"]), float(row["eastbc"]), float(row["northbc"]))
+    return neatlines
+
+
+def open_cropped_vrt(path, neatline):
+    """Open `path` reprojected to DST_CRS via a WarpedVRT, cropped to
+    `neatline` (west, south, east, north) instead of auto-sizing from the
+    full source extent - excludes the collar for any quad with a metadata
+    match. Falls back to the old auto-sized behavior if neatline is None
+    (shouldn't normally happen for a real USGS quad, but not fatal if it
+    does - better a slightly-oversized tile than a crashed run)."""
+    src = rasterio.open(path)
+    if neatline is None:
+        return WarpedVRT(src, crs=DST_CRS, resolution=(TARGET_RES_DEG, TARGET_RES_DEG))
+    west, south, east, north = neatline
+    width = max(1, round((east - west) / TARGET_RES_DEG))
+    height = max(1, round((north - south) / TARGET_RES_DEG))
+    dst_transform = transform_from_bounds(west, south, east, north, width, height)
+    return WarpedVRT(src, crs=DST_CRS, transform=dst_transform, width=width, height=height)
 
 
 def load_corridor_and_cells():
@@ -63,9 +108,14 @@ def load_corridor_and_cells():
     return corridor_geom, cells
 
 
-def index_quad_bounds():
-    """Read each quad's bounds once and reproject to EPSG:4326 so we can test
-    cell overlap without opening files repeatedly.
+def index_quad_bounds(neatlines):
+    """Read each quad's bounds once so we can test cell overlap without
+    opening files repeatedly. Uses the real neatline (from `neatlines`,
+    keyed by bare_key - see load_neatlines()) when a metadata match exists,
+    since that's the quad's actual mapped area - the collar-inflated full
+    raster extent would otherwise make cell-overlap tests match cells the
+    quad has no real data in. Falls back to the full reprojected raster
+    extent for any quad with no metadata match.
 
     Also validates each quad can actually be read: 3 of 1,654 quads
     (NC_Glade_Valley, VA_Marion, WV_Princeton) are corrupted on USGS's own S3
@@ -86,12 +136,13 @@ def index_quad_bounds():
     for path in paths:
         try:
             with rasterio.open(path) as src:
-                bounds_4326 = transform_bounds(src.crs, DST_CRS, *src.bounds)
+                full_bounds_4326 = transform_bounds(src.crs, DST_CRS, *src.bounds)
                 src.read(1)  # full-band read - a corner-pixel read misses corruption in later strips
         except Exception as e:
             bad.append((path, str(e)))
             continue
-        index.append((path, bounds_4326))
+        neatline = neatlines.get(bare_key(path.stem))
+        index.append((path, neatline if neatline else full_bounds_4326, neatline))
 
     if bad:
         print(f"WARNING: {len(bad)} quad(s) failed to read and will be skipped:")
@@ -112,8 +163,11 @@ def main():
     corridor_geom, cells = load_corridor_and_cells()
     print(f"{len(cells)} cells intersect the corridor.")
 
+    print("Loading quad neatlines from USGS metadata...")
+    neatlines = load_neatlines()
+
     print("Indexing quad bounds (one header read per quad)...")
-    quad_index = index_quad_bounds()
+    quad_index = index_quad_bounds(neatlines)
     print(f"{len(quad_index)} quads indexed.")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -121,7 +175,7 @@ def main():
     skipped_cells = []
 
     for i, cell in enumerate(cells):
-        matching = [path for path, b in quad_index if bounds_intersect(b, cell)]
+        matching = [(path, neatline) for path, b, neatline in quad_index if bounds_intersect(b, cell)]
         if not matching:
             print(f"  cell {i + 1}/{len(cells)}: SKIPPED - no quads matched this cell at all")
             skipped_cells.append((i, "no matching quads"))
@@ -129,9 +183,8 @@ def main():
 
         vrts = []
         try:
-            for path in matching:
-                src = rasterio.open(path)
-                vrt = WarpedVRT(src, crs=DST_CRS, resolution=(TARGET_RES_DEG, TARGET_RES_DEG))
+            for path, neatline in matching:
+                vrt = open_cropped_vrt(path, neatline)
                 vrts.append(vrt)
 
             try:
@@ -142,7 +195,7 @@ def main():
                 # corner-pixel check wasn't reliable enough), so this
                 # shouldn't trigger from known corruption anymore - it's a
                 # safety net for anything unexpected, not the primary defense.
-                print(f"  cell {i + 1}/{len(cells)}: SKIPPED - merge failed ({e}); quads: {[p.name for p in matching]}")
+                print(f"  cell {i + 1}/{len(cells)}: SKIPPED - merge failed ({e}); quads: {[p.name for p, _ in matching]}")
                 skipped_cells.append((i, f"merge failed: {e}"))
                 continue
         finally:

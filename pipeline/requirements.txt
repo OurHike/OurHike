@@ -7,3 +7,5 @@ pillow
 pdfplumber
 tifffile
 imagecodecs
+pmtiles
+shapely

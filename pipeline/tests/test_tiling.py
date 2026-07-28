@@ -1,4 +1,5 @@
 """Unit tests for the hand-rolled Web Mercator XYZ tile math in lib/tiling.py."""
+
 import pytest
 
 from lib.tiling import WEB_MERCATOR_HALF_WORLD, tile_bounds_merc, tile_range_for_bounds
@@ -10,12 +11,15 @@ def test_zoom_zero_tile_covers_the_whole_world():
     assert tile_bounds_merc(0, 0, 0) == pytest.approx((-R, -R, R, R))
 
 
-@pytest.mark.parametrize("x, y, expected", [
-    (0, 0, (-R, 0, 0, R)),   # northwest quadrant
-    (1, 0, (0, 0, R, R)),    # northeast quadrant
-    (0, 1, (-R, -R, 0, 0)),  # southwest quadrant
-    (1, 1, (0, -R, R, 0)),   # southeast quadrant
-])
+@pytest.mark.parametrize(
+    "x, y, expected",
+    [
+        (0, 0, (-R, 0, 0, R)),  # northwest quadrant
+        (1, 0, (0, 0, R, R)),  # northeast quadrant
+        (0, 1, (-R, -R, 0, 0)),  # southwest quadrant
+        (1, 1, (0, -R, R, 0)),  # southeast quadrant
+    ],
+)
 def test_zoom_one_quadrants(x, y, expected):
     assert tile_bounds_merc(1, x, y) == pytest.approx(expected)
 

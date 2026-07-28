@@ -29,6 +29,7 @@ not one DuckDB query per candidate tile - an earlier attempt at the latter
 was killed after 2 minutes with zero output; loading the corridor polygon
 once and testing intersections directly finishes in seconds.
 """
+
 import io
 import json
 from pathlib import Path
@@ -67,9 +68,7 @@ def load_corridor():
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
     con.execute(f"CREATE TABLE corridor AS SELECT * FROM ST_Read('{CORRIDOR_PATH.as_posix()}')")
-    bounds_4326 = con.execute(
-        "SELECT ST_XMin(geom), ST_YMin(geom), ST_XMax(geom), ST_YMax(geom) FROM corridor"
-    ).fetchone()
+    bounds_4326 = con.execute("SELECT ST_XMin(geom), ST_YMin(geom), ST_XMax(geom), ST_YMax(geom) FROM corridor").fetchone()
     gj = con.execute(f"""
         SELECT ST_AsGeoJSON(ST_Transform(geom, '{GEOGRAPHIC_CRS}', '{MERC_CRS}', always_xy := true))
         FROM corridor

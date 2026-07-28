@@ -3,6 +3,7 @@
 Handles pagination via resultOffset since ArcGIS servers cap how many
 features they'll return per request (maxRecordCount).
 """
+
 import json
 from pathlib import Path
 

@@ -26,6 +26,7 @@ Real complications the single-tile prototype didn't have to deal with:
   full extent (e.g. CT_Ansonia: 0.125x0.125deg neatline vs a ~0.17x0.16deg
   raster). Each quad is cropped to that neatline before reprojecting.
 """
+
 import csv
 import json
 import sys

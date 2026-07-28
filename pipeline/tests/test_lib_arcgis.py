@@ -1,6 +1,7 @@
 """HTTP-mocked tests for lib/arcgis.py. No real network calls - requests_mock
 raises on any unmocked request, which is the isolation guarantee this suite
 relies on (see TESTING.md)."""
+
 from lib.arcgis import fetch_layer_geojson, get_layer_edit_date
 
 LAYER_URL = "https://services1.arcgis.com/fake/arcgis/rest/services/Fake/FeatureServer/0"

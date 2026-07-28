@@ -2,6 +2,7 @@
 raster into a PMTiles archive. Synthetic fixtures throughout (tiny GeoTIFFs
 and a tiny corridor polygon), not the real 1,654-quad dataset - see
 TESTING.md for why."""
+
 import io
 import json
 
@@ -38,8 +39,13 @@ def _write_cell(path, bounds=FIXTURE_BOUNDS, value=FIXTURE_VALUE, size=200):
     west, south, east, north = bounds
     transform = from_bounds(west, south, east, north, size, size)
     profile = {
-        "driver": "GTiff", "height": size, "width": size, "count": 3,
-        "dtype": "uint8", "crs": "EPSG:4326", "transform": transform,
+        "driver": "GTiff",
+        "height": size,
+        "width": size,
+        "count": 3,
+        "dtype": "uint8",
+        "crs": "EPSG:4326",
+        "transform": transform,
     }
     with rasterio.open(path, "w", **profile) as dst:
         dst.write(np.full((3, size, size), value, dtype="uint8"))
@@ -53,8 +59,13 @@ def _write_partial_cell(path, bounds=FIXTURE_BOUNDS, value=FIXTURE_VALUE, size=2
     west, south, east, north = bounds
     transform = from_bounds(west, south, east, north, size, size)
     profile = {
-        "driver": "GTiff", "height": size, "width": size, "count": 3,
-        "dtype": "uint8", "crs": "EPSG:4326", "transform": transform,
+        "driver": "GTiff",
+        "height": size,
+        "width": size,
+        "count": 3,
+        "dtype": "uint8",
+        "crs": "EPSG:4326",
+        "transform": transform,
     }
     arr = np.zeros((3, size, size), dtype="uint8")
     arr[:, :, : size // 2] = value  # west half real, east half nodata
@@ -66,14 +77,16 @@ def _write_corridor(path, bounds):
     west, south, east, north = bounds
     fc = {
         "type": "FeatureCollection",
-        "features": [{
-            "type": "Feature",
-            "properties": {},
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [[[west, south], [east, south], [east, north], [west, north], [west, south]]],
-            },
-        }],
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[west, south], [east, south], [east, north], [west, north], [west, south]]],
+                },
+            }
+        ],
     }
     path.write_text(json.dumps(fc))
 
@@ -140,7 +153,10 @@ def test_render_tile_combines_two_adjacent_cells_without_one_overwriting_the_oth
     # spike_raster_mosaic.py) - this test guards against that regressing.
     west_bounds, east_bounds = (-74.1, 41.0, -74.0, 41.2), (-74.0, 41.0, -73.9, 41.2)
     assert (west_bounds[0], west_bounds[2], east_bounds[0], east_bounds[2]) == (
-        FIXTURE_BOUNDS[0], -74.0, -74.0, FIXTURE_BOUNDS[2],
+        FIXTURE_BOUNDS[0],
+        -74.0,
+        -74.0,
+        FIXTURE_BOUNDS[2],
     )  # sanity: the two halves really do add up to FIXTURE_BOUNDS with no gap/overlap
 
     west_path, east_path = tmp_path / "tile_000.tif", tmp_path / "tile_001.tif"

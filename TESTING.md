@@ -31,16 +31,22 @@ Found a bug where the code did something surprising or silently wrong? Before mo
 
 ## Pipeline (Python)
 
-**Framework:** pytest, with `requests-mock` for HTTP isolation (any unmocked request raises rather than silently hitting the network).
+**Framework:** pytest, with `requests-mock` for HTTP isolation (any unmocked request raises rather than silently hitting the network) and `pytest-cov` for a visibility-only coverage report (see below - not a merge gate).
+
+**Lint/format:** Ruff, pinned to a narrow rule set (pyflakes + core pycodestyle errors + import sorting - see the comment in `pyproject.toml`'s `[tool.ruff.lint]`) rather than its much larger default rule set, and matching this project's "boring, low-maintenance" preference over a maximalist lint config.
 
 **Quick start:**
 ```
 cd pipeline
 .venv/Scripts/pip install -r requirements-dev.txt   # Windows; .venv/bin/pip on macOS/Linux
-.venv/Scripts/python -m pytest                        # run everything
+.venv/Scripts/python -m pytest                        # run everything (prints a coverage summary too)
 .venv/Scripts/python -m pytest tests/test_x.py         # one file
 .venv/Scripts/python -m pytest -k test_name            # one test
+.venv/Scripts/python -m ruff check .                   # lint
+.venv/Scripts/python -m ruff format .                  # auto-format
 ```
+
+**On coverage:** the report is there to show what's untested, not to chase a percentage - CI doesn't fail on a coverage threshold. Padding coverage numbers pulls in the opposite direction from this file's actual rule (test real gotchas as regressions), so it's deliberately not gated.
 
 **Layout:** `pipeline/tests/`, one file per source module, `conftest.py` for shared fixtures. `pipeline/pyproject.toml` sets `pythonpath = ["."]` so tests can `import fetch_all`, `from lib import arcgis`, etc. directly - these are standalone scripts, not an installed package.
 
@@ -58,4 +64,4 @@ Not scaffolded yet (see TECHNICAL_ARCHITECTURE.md). When it exists, it would lik
 
 ## CI
 
-`.github/workflows/pipeline-tests.yml` runs `pytest` on every push and on PRs targeting `main`. It's not (yet) a required check via branch protection - a red run doesn't currently block merging, it's just visible on the PR.
+`.github/workflows/pipeline-tests.yml` runs `ruff check`, `ruff format --check`, and `pytest` on every push and on PRs targeting `main`. It's not (yet) a required check via branch protection - a red run doesn't currently block merging, it's just visible on the PR.

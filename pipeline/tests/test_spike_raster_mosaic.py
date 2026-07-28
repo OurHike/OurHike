@@ -5,8 +5,8 @@ Both bugs here were found on real USGS data mid-session, not hypothesized in
 advance - see TESTING.md for the "encode every gotcha as a regression test"
 convention this follows.
 """
+
 import os
-import tempfile
 
 import numpy as np
 import pytest
@@ -26,9 +26,16 @@ def _write_multistrip_tiff(path, height=200, width=50):
     mode we saw in production: corruption in a later strip, not the first."""
     transform = from_bounds(-74.1, 41.0, -74.0, 41.1, width, height)
     profile = {
-        "driver": "GTiff", "height": height, "width": width, "count": 1,
-        "dtype": "uint8", "crs": "EPSG:4326", "transform": transform,
-        "compress": "lzw", "blockysize": 16, "tiled": False,
+        "driver": "GTiff",
+        "height": height,
+        "width": width,
+        "count": 1,
+        "dtype": "uint8",
+        "crs": "EPSG:4326",
+        "transform": transform,
+        "compress": "lzw",
+        "blockysize": 16,
+        "tiled": False,
     }
     with rasterio.open(path, "w", **profile) as dst:
         dst.write(np.random.randint(1, 255, (1, height, width), dtype="uint8"))
@@ -92,12 +99,15 @@ def test_completeness_check_fails_when_a_cell_has_no_output():
     assert not is_complete
 
 
-@pytest.mark.parametrize("a, b, expected", [
-    ((-75.0, 40.0, -74.0, 41.0), (-74.5, 40.5, -73.5, 41.5), True),   # overlapping
-    ((-75.0, 40.0, -74.0, 41.0), (-74.0, 41.0, -73.0, 42.0), False),  # touching at a corner only, not overlapping
-    ((-75.0, 40.0, -74.0, 41.0), (-70.0, 35.0, -69.0, 36.0), False),  # far apart
-    ((-75.0, 40.0, -74.0, 41.0), (-75.0, 40.0, -74.0, 41.0), True),   # identical
-])
+@pytest.mark.parametrize(
+    "a, b, expected",
+    [
+        ((-75.0, 40.0, -74.0, 41.0), (-74.5, 40.5, -73.5, 41.5), True),  # overlapping
+        ((-75.0, 40.0, -74.0, 41.0), (-74.0, 41.0, -73.0, 42.0), False),  # touching at a corner only, not overlapping
+        ((-75.0, 40.0, -74.0, 41.0), (-70.0, 35.0, -69.0, 36.0), False),  # far apart
+        ((-75.0, 40.0, -74.0, 41.0), (-75.0, 40.0, -74.0, 41.0), True),  # identical
+    ],
+)
 def test_bounds_intersect(a, b, expected):
     assert bounds_intersect(a, b) is expected
 
@@ -109,10 +119,7 @@ def test_load_neatlines_matches_dated_filenames_via_bare_key(tmp_path, monkeypat
     real CT_Ansonia row, confirmed against the actual quad on disk: its
     georeferenced raster extent is noticeably bigger than this neatline."""
     csv_path = tmp_path / "ustopo_current.csv"
-    csv_path.write_text(
-        "product_filename,westbc,eastbc,northbc,southbc\n"
-        "CT_Ansonia.pdf,-73.125,-73.0,41.375,41.25\n"
-    )
+    csv_path.write_text("product_filename,westbc,eastbc,northbc,southbc\nCT_Ansonia.pdf,-73.125,-73.0,41.375,41.25\n")
     monkeypatch.setattr(spike_raster_mosaic, "METADATA_CSV_PATH", csv_path)
 
     neatlines = load_neatlines()
@@ -131,8 +138,13 @@ def test_open_cropped_vrt_excludes_collar_outside_the_neatline(tmp_path):
     full_bounds = (-75.05, 40.95, -74.95, 41.05)  # 0.1 x 0.1 deg, collar included
     transform = from_bounds(*full_bounds, size, size)
     profile = {
-        "driver": "GTiff", "height": size, "width": size, "count": 1,
-        "dtype": "uint8", "crs": "EPSG:4326", "transform": transform,
+        "driver": "GTiff",
+        "height": size,
+        "width": size,
+        "count": 1,
+        "dtype": "uint8",
+        "crs": "EPSG:4326",
+        "transform": transform,
     }
     arr = np.full((1, size, size), 50, dtype="uint8")  # 50 = collar
     arr[:, 10:90, 10:90] = 200  # 200 = real map interior - exactly the neatline below
@@ -161,8 +173,13 @@ def test_open_cropped_vrt_falls_back_to_full_extent_when_no_neatline(tmp_path):
     size = 20
     transform = from_bounds(-74.1, 41.0, -74.0, 41.1, size, size)
     profile = {
-        "driver": "GTiff", "height": size, "width": size, "count": 1,
-        "dtype": "uint8", "crs": "EPSG:4326", "transform": transform,
+        "driver": "GTiff",
+        "height": size,
+        "width": size,
+        "count": 1,
+        "dtype": "uint8",
+        "crs": "EPSG:4326",
+        "transform": transform,
     }
     path = tmp_path / "quad.tif"
     with rasterio.open(path, "w", **profile) as dst:
@@ -184,8 +201,13 @@ def test_clip_to_polygon_zeroes_pixels_outside_and_keeps_pixels_inside():
     width = height = 20
     transform = from_bounds(-74.0, 41.0, -73.8, 41.2, width, height)
     profile = {
-        "driver": "GTiff", "height": height, "width": width, "count": 1,
-        "dtype": "uint8", "crs": "EPSG:4326", "transform": transform,
+        "driver": "GTiff",
+        "height": height,
+        "width": width,
+        "count": 1,
+        "dtype": "uint8",
+        "crs": "EPSG:4326",
+        "transform": transform,
     }
     with MemoryFile() as memfile:
         with memfile.open(**profile) as dataset:

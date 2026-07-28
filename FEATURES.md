@@ -15,7 +15,7 @@ Keep this simple. One thing, done well: an offline-capable map app for hikers, b
 - Trailheads & road crossings
 - Shelters & campsites
 - Resupply points (towns, stores, post offices)
-- "You are here" GPS positioning while fully offline. **Map controls (locate-me, zoom, scale, legend) detailed 2026-07-28: see [MAP_OPTIONS.md](features/MAP_OPTIONS.md)** - reuses MapLibre's built-in controls plus a hand-built legend, with web vs. mobile UX spec'd separately
+- "You are here" GPS positioning while fully offline. **Map controls (locate-me, zoom, scale, legend) detailed 2026-07-28: see [MAP_OPTIONS.md](features/MAP_OPTIONS.md)** - reuses MapLibre's built-in controls plus a hand-built legend, with web vs. mobile UX spec'd separately. **The compass button on that same control, and dark-mode auto-detection for the outdoor usability pass below, are detailed 2026-07-28 in [UX_CUSTOMIZATION.md](features/UX_CUSTOMIZATION.md)** - full auto-rotate is real Post-MVP work, flagged there as harder than it looks.
 - Basic search/filter by POI type
 - Same core experience on phone (iOS + Android, day one) and on the web
 - **Waypoint icon spec** (2026-07-25, from [Guthook Guides redesign case study](https://www.zoesymon.com/guthook-guides) — see "UX principles" below): ~8 color-coded POI categories, one accent color per category against a contrasting background, WCAG AA contrast compliance. A concrete, testable spec to design the shelter/water/resupply/etc. icons against, not just "make it readable."
@@ -111,6 +111,9 @@ Grouped by value, for later prioritization — not committed, just not forgotten
 - Org/club as a first-class data model concept — trails and POIs scoped to a club/region
 - Per-club admin roles
 - Onboarding path for the next ATC-affiliated club with no NYNJTC-specific assumptions baked in
+
+### UX customization *(#1, #4, #5, #7)*
+- Persistent light/dark/metric-units preferences, which waypoint types display and at what label density, and auto-rotate (heading-up map orientation). **Design drafted 2026-07-28: see [UX_CUSTOMIZATION.md](features/UX_CUSTOMIZATION.md)** - leads with a real planning distinction (persistent settings vs. momentary on-map controls, and app-wide preferences vs. map-specific ones) before the individual toggles, and takes auto-rotate's real platform difficulty (no built-in MapLibre support, a genuine iOS/Capacitor permission dependency) as seriously as the wrong-way alert's.
 
 ### Extras
 - Elevation profiles per trail/section

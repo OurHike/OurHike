@@ -65,6 +65,8 @@ Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHN
 - **The wrapped app-store app (Capacitor):** native push (APNs/FCM), no special caveats beyond the usual platform permission prompt.
 - **The web PWA specifically:** Web Push works on iOS Safari, but **only for installs added to the Home Screen** - a hiker just using OurHike in a regular Safari tab cannot receive it at all, iOS support only since 16.4 (any current device, so not a practical gap, just a real mechanic worth knowing). The service worker ROADMAP.md's Phase 2 already scaffolds is the prerequisite either way. Practically: the wrapped app is the more reliable channel for the one notification this feature sends: if this ships, prompting/encouraging Home Screen installation for web users becomes more than a nice-to-have.
 
+**Reused elsewhere:** [UX_CUSTOMIZATION.md](UX_CUSTOMIZATION.md)'s auto-rotate feature reuses this section's trailing-GPS-window bearing computation directly, preferring it over the device compass while the hiker is actually moving - one bearing calculation, two features.
+
 ## Data model additions
 
 ```

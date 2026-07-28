@@ -128,15 +128,27 @@ Output: 51 tiles in `data/processed/topo_background/`, ~9.5GB total, at a fixed 
 .venv/Scripts/python export_pmtiles.py
 ```
 
+Optional flags override the defaults below: `--min-zoom`, `--max-zoom`, `--out` (e.g. `--max-zoom=13 --out=data/processed/background_z13.pmtiles` rebuilds the full-detail archive - see below).
+
 **Format choices, backed by real measurements on this project's own data, not defaults:**
 - **512x512px tiles, WebP quality 80.** WebP came out ~7-8x smaller than PNG on real sample tiles with no visible quality loss for a background/context basemap (the safety-relevant POI data is separate vector GeoJSON, untouched by this lossy step). 512px tiles (via MapLibre's `tileSize: 512` raster option) compress better per unit ground area than 256px - a 512px tile at zoom *z* covers the same ground area as four 256px tiles at zoom *z+1*, so it's the same effective resolution with 4x fewer files and less per-file header overhead.
-- **Zoom levels 6 through 13** in this 512px scheme - equivalent in ground resolution to 256px zoom 7-14. Zoom 13 here already meets-or-exceeds the source's native ~11m/pixel resolution, so going further would just upsample noise; MapLibre oversamples past the max zoom automatically for closer pinch-zooms.
-- Corridor-vs-tile intersection uses shapely in a plain Python loop, not one DuckDB query per candidate tile (an earlier attempt at the latter was killed after 2 minutes with zero output - loading the corridor polygon once and testing intersections directly finishes in seconds).
+- **Zoom levels 6 through 12 by default** in this 512px scheme - equivalent in ground resolution to 256px zoom 7-13. Corridor-vs-tile intersection uses shapely in a plain Python loop, not one DuckDB query per candidate tile (an earlier attempt at the latter was killed after 2 minutes with zero output - loading the corridor polygon once and testing intersections directly finishes in seconds).
 
-**Real output:** 21,748 tiles, 0 empty/skipped, **1.18GB** for the entire 2,190-mile trail's background map. (A first pass came in at 556.6MB, but that run still had the US Topo collar bug above baked into the source mosaic - removing the collar means more of every tile is genuinely detailed terrain instead of blank white space, which compresses far less than blank space does. 1.18GB is the correct, current number.)
+**Real output at the default max zoom (12):** 5,816 tiles, 0 empty/skipped, **314MB** for the entire 2,190-mile trail's background map.
+
+**Why 12, not 13 (changed 2026-07-28):** the first real run went to zoom 13 (matching the source's native ~11m/pixel resolution exactly) and came to 1.18GB. Measuring the real per-zoom breakdown of that archive found zoom 13 *alone* was 73% of every byte in it:
+
+| zoom | tiles | size | % of total |
+|---|---|---|---|
+| 6-10 | 501 | 12.3 MB | 1.0% |
+| 11 | 1,139 | 52.0 MB | 4.4% |
+| 12 | 4,176 | 249.6 MB | 21.1% |
+| 13 | 15,932 | 868.0 MB | 73.4% |
+
+For a background/context layer (not the precise trail line or POI locations, which are separate vector data), that last zoom level's detail gain wasn't worth 73% of the download - so 12 is now the default, cutting the whole-corridor package by ~73% for a still-detailed ~19m/pixel result. **The zoom-13 archive isn't gone, just not the default** - it's kept as `data/processed/background_z13.pmtiles` (rebuilt via `--max-zoom=13 --out=...`) for [ROADMAP.md](../ROADMAP.md)'s planned per-user zoom-choice setting (Phase 2) - hikers with more data/storage headroom will eventually be able to opt into more detail.
 
 A completeness check at the end (mirroring the pattern in `spike_raster_mosaic.py`) confirms every one of the 51 source cells contributed to at least one tile at max zoom, failing loudly rather than silently shipping a coverage gap.
 
 ## Next steps
 
-See [../ROADMAP.md](../ROADMAP.md) Phase 1 for what's still open - notably the unified POI schema (joining ATC + opentrail.org + NHD into one schema) and the real Publish step (change-aware release to Cloudflare R2 so hikers don't re-download data that hasn't changed - chunking granularity, per-state vs per-section vs whole-corridor, is still an open decision there).
+See [../ROADMAP.md](../ROADMAP.md) Phase 1 for what's still open - notably the unified POI schema (joining ATC + opentrail.org + NHD into one schema) and the real Publish step (change-aware release to Cloudflare R2 so hikers don't re-download data that hasn't changed). **Chunking granularity decided 2026-07-28: whole corridor, one package** (not per-state/per-section) - see ROADMAP.md Phase 2's "Offline download flow" for why, and its new "quality/size tradeoff in settings" item for the zoom-11/12/13 choice this Export step now supports.

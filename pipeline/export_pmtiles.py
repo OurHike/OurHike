@@ -18,11 +18,16 @@ README.md's "Exporting the background as PMTiles" section for the numbers):
   WebP came out ~7-8x smaller than PNG on real sample tiles with no visible
   quality loss for a background/context basemap - the safety-relevant POI
   data is separate vector GeoJSON, untouched by this lossy step.
-- Zoom 6-13 in this 512px scheme, which is exactly equivalent in ground
-  resolution to 256px zoom 7-14 (worldsize/(2^z*512) == worldsize/(2^(z+1)*256)):
-  zoom 13 here already meets-or-exceeds the source's native ~11m/pixel
-  resolution, so going further would just upsample noise - MapLibre
-  oversamples past the max zoom automatically for closer pinch-zooms.
+- Zoom 6-12 in this 512px scheme (equivalent in ground resolution to 256px
+  zoom 7-13: worldsize/(2^z*512) == worldsize/(2^(z+1)*256)). Zoom 13 was the
+  first real run's max zoom (matching the source's native ~11m/pixel
+  resolution exactly) but turned out to be 73% of the entire archive's bytes
+  on its own (868MB of 1.18GB) for a resolution gain over zoom 12 that a
+  background/context layer doesn't need - trimming it cuts the whole-corridor
+  download to ~314MB, a ~73% reduction, for a still-detailed ~19m/pixel
+  result. See ROADMAP.md's Phase 2 "quality/size tradeoff in settings" item -
+  the plan is to eventually let hikers choose 11/12/13 themselves rather than
+  bake in one fixed default forever.
 
 Corridor-vs-tile intersection is done with shapely in a plain Python loop,
 not one DuckDB query per candidate tile - an earlier attempt at the latter
@@ -30,6 +35,7 @@ was killed after 2 minutes with zero output; loading the corridor polygon
 once and testing intersections directly finishes in seconds.
 """
 
+import argparse
 import io
 import json
 from pathlib import Path
@@ -54,7 +60,7 @@ CELLS_DIR = ROOT / "data" / "processed" / "topo_background"
 OUT_PATH = ROOT / "data" / "processed" / "background.pmtiles"
 
 MIN_ZOOM = 6
-MAX_ZOOM = 13
+MAX_ZOOM = 12
 TILE_PX = 512
 WEBP_QUALITY = 80
 MERC_CRS = "EPSG:3857"
@@ -215,4 +221,21 @@ def main():
 
 
 if __name__ == "__main__":
+    # Kept outside main() deliberately - main() is called directly (with
+    # MIN_ZOOM/MAX_ZOOM/OUT_PATH monkeypatched) by the test suite, and
+    # argparse.parse_args() with no explicit argv reads sys.argv, which
+    # would try to parse pytest's own command-line arguments if this lived
+    # inside main() instead.
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--min-zoom", type=int, default=MIN_ZOOM, help=f"Minimum zoom level (default: {MIN_ZOOM})")
+    parser.add_argument(
+        "--max-zoom",
+        type=int,
+        default=MAX_ZOOM,
+        help=f"Maximum zoom level (default: {MAX_ZOOM}) - e.g. --max-zoom=13 rebuilds the full-detail "
+        "archive for the future per-user zoom-choice feature (see ROADMAP.md)",
+    )
+    parser.add_argument("--out", type=Path, default=OUT_PATH, help=f"Output .pmtiles path (default: {OUT_PATH})")
+    args = parser.parse_args()
+    MIN_ZOOM, MAX_ZOOM, OUT_PATH = args.min_zoom, args.max_zoom, args.out
     main()

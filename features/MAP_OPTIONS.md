@@ -130,6 +130,8 @@ Closure
 
 This section is a detail spec, not new scope - it's fleshing out controls for MVP items (GPS positioning, the waypoint icon spec, the outdoor usability pass) that are already committed, the same relationship TRAIL_BLAZE_COLORS.md has to the MVP trail-line item.
 
+**Extended by [UX_CUSTOMIZATION.md](UX_CUSTOMIZATION.md):** the compass in `NavigationControl` above gets a real reset-to-north behavior once auto-rotate exists, and the legend's job grows to also reflect that doc's `layer_detail_level` and `waypoint_types_shown` settings - same legend, same "read from schemes that already exist" principle, not a second one.
+
 ## Data model sketch (settings, client-side)
 
 ```
@@ -138,6 +140,7 @@ MapDisplaySettings   (client-side, IndexedDB - same no-account storage model as 
   max_background_zoom: 11 | 12 | 13   (already planned in ROADMAP.md - same settings screen)
   show_roads: bool (default false)
   show_closures: always-on, not user-hideable (see "Reroutes / closures" above)
+  # extended by UX_CUSTOMIZATION.md: waypoint_types_shown, layer_detail_level, auto_rotate_enabled
 ```
 
 ## Open questions (for you, not decided here)

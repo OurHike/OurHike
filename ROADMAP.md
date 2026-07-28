@@ -52,6 +52,8 @@ Thirteen features have full design drafts, plus one consolidated reference doc, 
 
 ## Phase 2 — Client app & backend (MVP, backend added 2026-07-28)
 
+**v1 MVP screens now wireframed (2026-07-28)** — see [WIREFRAMES.md](WIREFRAMES.md) for the full screen-by-screen spec (map, legend, blaze rendering, downloads, onboarding, reporting, closures, warnings, wrong-way alert, settings, staleness), reconciled against this roadmap and the feature docs. Two spots need attention before/while building: the wireframe's per-section download screens are superseded by this phase's whole-corridor decision below (already resolved, just build to this doc, not the wireframe there); the reporting screens' "unsafe behaviour"/"say thanks" split isn't reflected in REPORT_A_PROBLEM.md's data model yet (still open — see WIREFRAMES.md's Known Deviations #2).
+
 - [ ] **Scaffold the PWA** — React + TypeScript, Vite, basic service worker + manifest.
 - [ ] **Map rendering** — MapLibre GL JS reading PMTiles directly in-browser (via the `pmtiles` library's MapLibre protocol handler).
 - [ ] **Offline download flow, chunking decided 2026-07-28: whole corridor, one package** — a hiker downloads the entire trail's data at once, not picked-by-section; store via Cache API/IndexedDB. This is the core "why would I use this instead of a browser tab" feature. Same answer applies to Phase 1's change-aware Publish step (same hashing/versioning granularity question, decided once here, not twice).

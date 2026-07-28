@@ -64,6 +64,8 @@ Nothing here should assume "the Appalachian Trail" specifically — a Hike refer
 
 FEATURES.md's v1 MVP is deliberately narrow (trail line, water, crossings, shelters/campsites, resupply, GPS, search) and explicitly defers "trip planning tools" to Post-MVP/Extras. This document doesn't argue that should change — it's here so that when trip planning *does* get picked up, there's a real design to build from instead of starting cold. If/when it's time to schedule this, FEATURES.md's "Extras" section is the natural place to expand past its current one-line mention, and a ROADMAP.md Phase 2+ (or later) item would track the actual build.
 
+**Update 2026-07-28:** [TRIP_PLANNING.md](TRIP_PLANNING.md) is that build - waypoint-based day-hike planning, bulk multi-day adjustment, POI-aware planning assistance, and a distance/elevation difficulty estimate, all built on top of the Hike/Segment tree here rather than a second structure.
+
 ## Open questions (for you, not decided here)
 
 - **Naming.** "Hike" and "Segment" are working names, not committed terminology — easy to change before anything's built.

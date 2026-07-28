@@ -15,7 +15,9 @@ from rasterio.io import MemoryFile
 from rasterio.mask import mask
 from rasterio.transform import from_bounds
 
-from spike_raster_mosaic import bounds_intersect
+import spike_raster_mosaic
+from fetch_topo_quads import bare_key
+from spike_raster_mosaic import bounds_intersect, load_neatlines, open_cropped_vrt
 
 
 def _write_multistrip_tiff(path, height=200, width=50):
@@ -108,6 +110,87 @@ def test_completeness_check_fails_when_a_cell_has_no_output():
 )
 def test_bounds_intersect(a, b, expected):
     assert bounds_intersect(a, b) is expected
+
+
+def test_load_neatlines_matches_dated_filenames_via_bare_key(tmp_path, monkeypatch):
+    """load_neatlines() keys its lookup by bare_key() so a locally-downloaded,
+    dated filename (CT_Ansonia_20240815_TM_geo.tif) matches USGS's own
+    undated product_filename column (CT_Ansonia.pdf) - real values from the
+    real CT_Ansonia row, confirmed against the actual quad on disk: its
+    georeferenced raster extent is noticeably bigger than this neatline."""
+    csv_path = tmp_path / "ustopo_current.csv"
+    csv_path.write_text("product_filename,westbc,eastbc,northbc,southbc\nCT_Ansonia.pdf,-73.125,-73.0,41.375,41.25\n")
+    monkeypatch.setattr(spike_raster_mosaic, "METADATA_CSV_PATH", csv_path)
+
+    neatlines = load_neatlines()
+
+    assert neatlines[bare_key("CT_Ansonia_20240815_TM_geo")] == (-73.125, 41.25, -73.0, 41.375)
+
+
+def test_open_cropped_vrt_excludes_collar_outside_the_neatline(tmp_path):
+    """The actual fix: every US Topo GeoTIFF is a full printed-sheet scan (see
+    module docstring) - white margin plus a header/footer collar - and its
+    georeferenced extent covers that whole sheet, not just the real mapped
+    area. This builds a synthetic quad with a distinct "collar" value
+    surrounding a smaller "map interior" region, and confirms cropping to a
+    neatline matching that interior excludes the collar value entirely."""
+    size = 100
+    full_bounds = (-75.05, 40.95, -74.95, 41.05)  # 0.1 x 0.1 deg, collar included
+    transform = from_bounds(*full_bounds, size, size)
+    profile = {
+        "driver": "GTiff",
+        "height": size,
+        "width": size,
+        "count": 1,
+        "dtype": "uint8",
+        "crs": "EPSG:4326",
+        "transform": transform,
+    }
+    arr = np.full((1, size, size), 50, dtype="uint8")  # 50 = collar
+    arr[:, 10:90, 10:90] = 200  # 200 = real map interior - exactly the neatline below
+    path = tmp_path / "quad.tif"
+    with rasterio.open(path, "w", **profile) as dst:
+        dst.write(arr)
+
+    neatline = (-75.04, 40.96, -74.96, 41.04)  # matches the interior block exactly
+
+    vrt = open_cropped_vrt(path, neatline)
+    try:
+        data = vrt.read(1)
+    finally:
+        vrt.close()
+        vrt.src_dataset.close()
+
+    assert not np.any(data == 50), "collar value leaked into the cropped output"
+    assert np.any(data == 200)
+
+
+def test_open_cropped_vrt_falls_back_to_full_extent_when_no_neatline(tmp_path):
+    """Defensive path: a quad with no metadata match (neatline=None) still
+    produces a usable VRT sized from its own full extent, rather than
+    crashing the run - better a possibly-collar-inflated tile than no tile
+    at all for a quad USGS's own metadata doesn't cover."""
+    size = 20
+    transform = from_bounds(-74.1, 41.0, -74.0, 41.1, size, size)
+    profile = {
+        "driver": "GTiff",
+        "height": size,
+        "width": size,
+        "count": 1,
+        "dtype": "uint8",
+        "crs": "EPSG:4326",
+        "transform": transform,
+    }
+    path = tmp_path / "quad.tif"
+    with rasterio.open(path, "w", **profile) as dst:
+        dst.write(np.full((1, size, size), 123, dtype="uint8"))
+
+    vrt = open_cropped_vrt(path, None)
+    try:
+        assert np.any(vrt.read(1) == 123)
+    finally:
+        vrt.close()
+        vrt.src_dataset.close()
 
 
 def test_clip_to_polygon_zeroes_pixels_outside_and_keeps_pixels_inside():

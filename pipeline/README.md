@@ -116,9 +116,27 @@ Real complications this had to handle that a single-tile test wouldn't:
 - **One mosaic sized to the corridor's full bounding rectangle would be enormous** even downsampled, since the actual corridor is a thin ~60-mile-wide winding band, not a filled rectangle (GA to Maine as a rectangle is most empty space). So this processes in small geographic cells (matching the corridor-intersecting grid used elsewhere in the pipeline) and outputs one clipped tile per cell - the same reason real map tile systems don't ship one giant image.
 - **Corrupted source quads** (see above) are validated with a full-band read (a corner-pixel read isn't reliable - it missed 2 of the 3 known-bad quads) and skipped/substituted rather than crashing the run.
 - **Every corridor-intersecting cell must produce a tile** - a hard completeness check at the end (matching the pattern used everywhere else in this pipeline) fails the run if any cell has no output, rather than silently reporting a partial result as if it were complete.
+- **Every US Topo GeoTIFF is a scan of the entire printed map sheet, not just the map** - a white margin plus a header/footer collar (USGS/US Topo logos, title, scale bar, legend, adjoining-quadrangle diagram), and its georeferenced raster extent covers that whole sheet. Left uncropped, the collar gets treated as real terrain - it showed up as white bands and text baked into the exported background. Fixed by cropping every quad to its real neatline (the actual mapped area) before reprojecting, using the `westbc`/`eastbc`/`northbc`/`southbc` columns already present in USGS's own metadata CSV (`ustopo_current.csv`, fetched by `fetch_topo_quads.py`) - a clean 7.5'x7.5' box per quad, confirmed noticeably smaller than the raw raster's full extent (e.g. `CT_Ansonia`: a 0.125x0.125deg neatline vs a ~0.17x0.16deg raster).
 
-Output: 51 tiles in `data/processed/topo_background/`, ~9GB total, at a fixed ~11m/pixel resolution (plenty for a phone background map at this stage - full production tiling/zoom-level generation is a separate later step, see TECHNICAL_ARCHITECTURE.md's "Export" pipeline step).
+Output: 51 tiles in `data/processed/topo_background/`, ~9.5GB total, at a fixed ~11m/pixel resolution (plenty for a phone background map at this stage).
+
+## Exporting the background as PMTiles (done)
+
+`export_pmtiles.py` packages the 51 corridor-clipped cells above into a single **PMTiles** archive - a Web Mercator XYZ tile pyramid MapLibre GL JS reads directly in-browser, no tile server required (see `TECHNICAL_ARCHITECTURE.md`'s "Export" pipeline step).
+
+```
+.venv/Scripts/python export_pmtiles.py
+```
+
+**Format choices, backed by real measurements on this project's own data, not defaults:**
+- **512x512px tiles, WebP quality 80.** WebP came out ~7-8x smaller than PNG on real sample tiles with no visible quality loss for a background/context basemap (the safety-relevant POI data is separate vector GeoJSON, untouched by this lossy step). 512px tiles (via MapLibre's `tileSize: 512` raster option) compress better per unit ground area than 256px - a 512px tile at zoom *z* covers the same ground area as four 256px tiles at zoom *z+1*, so it's the same effective resolution with 4x fewer files and less per-file header overhead.
+- **Zoom levels 6 through 13** in this 512px scheme - equivalent in ground resolution to 256px zoom 7-14. Zoom 13 here already meets-or-exceeds the source's native ~11m/pixel resolution, so going further would just upsample noise; MapLibre oversamples past the max zoom automatically for closer pinch-zooms.
+- Corridor-vs-tile intersection uses shapely in a plain Python loop, not one DuckDB query per candidate tile (an earlier attempt at the latter was killed after 2 minutes with zero output - loading the corridor polygon once and testing intersections directly finishes in seconds).
+
+**Real output:** 21,748 tiles, 0 empty/skipped, **1.18GB** for the entire 2,190-mile trail's background map. (A first pass came in at 556.6MB, but that run still had the US Topo collar bug above baked into the source mosaic - removing the collar means more of every tile is genuinely detailed terrain instead of blank white space, which compresses far less than blank space does. 1.18GB is the correct, current number.)
+
+A completeness check at the end (mirroring the pattern in `spike_raster_mosaic.py`) confirms every one of the 51 source cells contributed to at least one tile at max zoom, failing loudly rather than silently shipping a coverage gap.
 
 ## Next steps
 
-See [../ROADMAP.md](../ROADMAP.md) Phase 1 for what's still open - notably the unified POI schema (joining ATC + opentrail.org + NHD into one schema) and the real Export/Publish steps (PMTiles packaging, change-aware release so hikers don't re-download data that hasn't changed).
+See [../ROADMAP.md](../ROADMAP.md) Phase 1 for what's still open - notably the unified POI schema (joining ATC + opentrail.org + NHD into one schema) and the real Publish step (change-aware release to Cloudflare R2 so hikers don't re-download data that hasn't changed - chunking granularity, per-state vs per-section vs whole-corridor, is still an open decision there).

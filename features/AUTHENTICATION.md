@@ -1,6 +1,6 @@
 # OurHike — Authentication (Feature Design Draft v1)
 
-Companion to [FEATURES.md](FEATURES.md), [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](OurHikeValues.md). Also underpins [SEGMENTS.md](SEGMENTS.md) (cross-device sync), [VOLUNTEERING.md](VOLUNTEERING.md) (club admin access), and [REPORT_A_PROBLEM.md](REPORT_A_PROBLEM.md) (reporter identity/spam prevention) - all three raised a version of "we'll need some identity eventually" as an open question. This is that answer.
+Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](../OurHikeValues.md). Also underpins [SEGMENTS.md](SEGMENTS.md) (cross-device sync), [VOLUNTEERING.md](VOLUNTEERING.md) (club admin access), and [REPORT_A_PROBLEM.md](REPORT_A_PROBLEM.md) (reporter identity/spam prevention) - all three raised a version of "we'll need some identity eventually" as an open question. This is that answer.
 
 **Scope decided 2026-07-28: Post-MVP, but build it first.** FEATURES.md's v1 MVP is deliberately "no-account-needed" (a stated UX principle, tied to value #1) - none of the core MVP features (trail line, water, shelters, GPS, search) need per-user state. The need here comes entirely from the three Post-MVP features above, so this doesn't jump the MVP queue. It should, however, be the **first** Post-MVP feature actually built, since all three others depend on it to reach their real versions rather than a stopgap (a device-local anonymous ID, client-only storage, etc.).
 

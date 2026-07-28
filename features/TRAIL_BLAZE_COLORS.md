@@ -1,6 +1,6 @@
 # OurHike — Trail Blaze Colors (Feature Design Draft v1)
 
-Companion to [FEATURES.md](FEATURES.md), [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](OurHikeValues.md). Also relevant to [SEGMENTS.md](SEGMENTS.md) - see "Segments integration" below.
+Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](../OurHikeValues.md). Also relevant to [SEGMENTS.md](SEGMENTS.md) - see "Segments integration" below.
 
 **Scope note, framed differently than the last four drafts:** this isn't new scope - it's a correctness detail of a feature FEATURES.md already lists in the **v1 MVP itself** ("Trail line / route data, downloadable for offline use"). Hikers navigate real trails partly *by* blaze color - a junction where the map's line color doesn't match what's painted on the tree is a trustworthiness gap (value #4), not a missing nice-to-have. Recommend treating this as part of the MVP trail-line work, not Post-MVP - flagging clearly in case that read is wrong.
 

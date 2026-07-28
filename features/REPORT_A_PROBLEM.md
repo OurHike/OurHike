@@ -1,6 +1,6 @@
 # OurHike — Report a Problem (Feature Design Draft v1)
 
-Companion to [FEATURES.md](FEATURES.md), [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](OurHikeValues.md). Fleshes out FEATURES.md's existing "hiker-submitted condition reports" line (Community reporting, values #2/#4) with the concrete shape described: report types, location mechanism, and a path toward richer follow-up over time.
+Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](../OurHikeValues.md). Fleshes out FEATURES.md's existing "hiker-submitted condition reports" line (Community reporting, values #2/#4) with the concrete shape described: report types, location mechanism, and a path toward richer follow-up over time.
 
 **Scope note up front:** like [SEGMENTS.md](SEGMENTS.md) and [VOLUNTEERING.md](VOLUNTEERING.md), this is Post-MVP (Community reporting) - a design ready to build from, not an argument to reprioritize v1. Unlike those two, though, this feature **can't ship without the Phase 2+ backend** - see "Architecture fit" below.
 

@@ -25,7 +25,7 @@ Keep this simple. One thing, done well: an offline-capable map app for hikers, b
 - Community-submitted condition reports & maintainer verification
 - Trail magic / hiker-to-hiker features
 - Multi-club admin/config tooling
-- Weather integration
+- Weather integration (design drafted 2026-07-28, see [HIKER_SAFETY.md](features/HIKER_SAFETY.md))
 - Any in-app purchases (see business model below)
 
 ## Business model
@@ -81,6 +81,9 @@ Grouped by value, for later prioritization — not committed, just not forgotten
 - **Community submission + upvoting** (2026-07-24): beyond condition reports, let community members submit their own POIs/corrections and have other members upvote them - a lightweight trust signal ahead of full maintainer verification. Needs a spam/abuse-resistant design before it ships (value #4 - trustworthy above all - means a wrong upvoted submission is worse than no submission).
 - **Place-based social commenting, FarOut-style** (2026-07-24): comment threads tied to a specific map location, not just structured condition reports. This is the single feature most directly competing with FarOut's actual daily-use appeal, so it matters a lot - but it also sits in the most direct tension with value #9 ("be magical," not just have a magic feature): unmoderated place-based comments are exactly the kind of feature that can tip into the things value #9 explicitly warns against (broadcast/overcrowding pressure, unattended-cache-style posts, oversharing). Needs real moderation/design thought before building, not just a clone of FarOut's comment UI.
 - **User-generated guides** (2026-07-24): let hikers compile their own guides/route collections from the underlying data (a bigger, more curated unit than a single comment or report) - e.g. "my recommended water sources for a NOBO thru-hike." Not scoped further yet; revisit once the underlying POI/reporting data model exists to build on.
+
+### Hiker safety *(#1, #2, #4, #9)*
+- Serious-tier warning pins (bear sightings, dangerous humans, blow downs) escalated from Community reporting's existing types via moderation, not self-declared; a configurable anonymity window for comment name/date; a responsibly-sourced NWS weather-alert relay plus elevation-aware daily conditions; and a deliberately conservative wrong-way/off-trail alert - explicitly scoped as **the only notification OurHike ever sends**. **Design drafted 2026-07-28: see [HIKER_SAFETY.md](features/HIKER_SAFETY.md).**
 
 ### Water reliability prediction *(#4)*
 - Predict whether a given water source is likely flowing or dry right now, rather than just showing the last static entry. wikitrail.org's own founding story is literally a hiker hitting a "should be flowing" water source that was dry - this is a real, recurring failure mode of static trail data, not a hypothetical.

@@ -6,20 +6,21 @@ Companion to [OurHikeValues.md](OurHikeValues.md), [FEATURES.md](FEATURES.md), a
 
 ## Feature design docs
 
-Twelve features have full design drafts, written 2026-07-28 and now organized in [features/](features/) so nothing gets lost. Each is already linked in context from FEATURES.md and from the phase items above — this section is just the one place that lists all twelve together:
+Twelve features have full design drafts, plus one consolidated reference doc, written 2026-07-28 and now organized in [features/](features/) so nothing gets lost. Each is already linked in context from FEATURES.md and from the phase items above — this section is just the one place that lists them all together. **A cross-feature alignment review on 2026-07-28 moved Authentication, Report a Problem, Map Options' closures, and Hiker Safety's warnings/wrong-way alert into v1 MVP** (see TECHNICAL_ARCHITECTURE.md's revised Backend section) — the notes below reflect that revision, not the original scope each doc launched with:
 
-- [features/AUTHENTICATION.md](features/AUTHENTICATION.md) — Google/Apple/email sign-in, verification, optional MFA. Post-MVP, but build first — Segments, Volunteering, Report a Problem, and Map Options' closures all depend on it.
+- [features/AUTHENTICATION.md](features/AUTHENTICATION.md) — Google/Apple/email sign-in, verification, optional MFA. **Moved into v1 MVP 2026-07-28** (browsing the map still needs no account - this exists so a moderator/reporter can be identified) - still foundational for Segments, Volunteering, and Report a Problem too.
 - [features/TRAIL_BLAZE_COLORS.md](features/TRAIL_BLAZE_COLORS.md) — render the trail line in its real painted blaze color, with a neutral fallback when unknown. A v1 MVP correctness detail, not Post-MVP.
 - [features/SEGMENTS.md](features/SEGMENTS.md) — hierarchical Hike → Segment tree so hikers can plan and track a thru-hike, section, or day-hike however suits them. Post-MVP (Extras).
 - [features/TRIP_PLANNING.md](features/TRIP_PLANNING.md) — builds on Segments: day-hiker waypoint planning, bulk multi-day date shifts, POI-aware planning assistance. Post-MVP (Extras).
-- [features/REPORT_A_PROBLEM.md](features/REPORT_A_PROBLEM.md) — hiker-submitted condition reports (blow downs, trash, bad hikers, flooding, shelter repair, animals), with "bad hikers" routed internal-only. Post-MVP (Community reporting).
+- [features/REPORT_A_PROBLEM.md](features/REPORT_A_PROBLEM.md) — hiker-submitted condition reports (blow downs, trash, bad hikers, flooding, shelter repair, animals), with "bad hikers" routed internal-only. **Moved into v1 MVP 2026-07-28** alongside Map Options' closures and Hiker Safety's warnings, both of which reuse this exact moderation mechanism.
 - [features/VOLUNTEERING.md](features/VOLUNTEERING.md) — club work-project management, plus upcoming projects shown on the map to encourage hikers to join one. Post-MVP (Trail magic).
-- [features/MAP_OPTIONS.md](features/MAP_OPTIONS.md) — user-controlled background tile source, roads/sidewalk-walkability overlay, DuckDB-backed snap-to-trail for Segments, and trail-closure marking/display. Mostly Post-MVP; its map-chrome section (legend/scale/locate/zoom) is a v1 MVP detail spec.
-- [features/HIKER_SAFETY.md](features/HIKER_SAFETY.md) — moderator-escalated serious warning pins, a configurable anonymity window for comments, a responsibly-sourced NWS weather-alert relay and elevation-aware daily conditions, and a deliberately conservative wrong-way/off-trail alert scoped as the only notification OurHike ever sends. Post-MVP.
+- [features/MAP_OPTIONS.md](features/MAP_OPTIONS.md) — user-controlled background tile source, roads/sidewalk-walkability overlay, DuckDB-backed snap-to-trail for Segments, and trail-closure marking/display. **Trail closures moved into v1 MVP 2026-07-28**, and its map-chrome section (legend/scale/locate/zoom) is a v1 MVP detail spec too; background tile options, roads/sidewalks, and snap-to-segment stay Post-MVP.
+- [features/HIKER_SAFETY.md](features/HIKER_SAFETY.md) — moderator-escalated serious warning pins, a configurable anonymity window for comments, a responsibly-sourced NWS weather-alert relay and elevation-aware daily conditions, and a deliberately conservative wrong-way/off-trail alert scoped as the only notification OurHike ever sends. **Warning pins and the wrong-way alert moved into v1 MVP 2026-07-28**; the anonymity window and weather integration stay Post-MVP.
 - [features/DATA_NUDGES.md](features/DATA_NUDGES.md) — low-friction, non-gamified prompts to keep water/shelter/resupply data fresh: no notification of any kind, just visual map prominence for stale POIs and open reports, self-limiting the moment anyone contributes. Post-MVP (Community reporting).
 - [features/UX_CUSTOMIZATION.md](features/UX_CUSTOMIZATION.md) — light/dark mode, metric units, which waypoints display and at what detail, and auto-rotate/compass. Splits persistent settings from on-map controls up front; auto-rotate is real Post-MVP work given the platform constraints, the rest is mostly MVP-detail or light Post-MVP settings polish.
 - [features/ONBOARDING.md](features/ONBOARDING.md) — a deliberately minimal first-run flow (value-prop, the download choice, contextual location permission) scoped as v1 MVP; trail names, a settings mention, and helpful-info tips are a second, Post-MVP tier that waits on Authentication and UX Customization existing first.
 - [features/COMMUNITY_BUILDING.md](features/COMMUNITY_BUILDING.md) — forming a "Tramily" and sharing routes, on-demand/periodic safety check-ins, and content-attached "@" mentions. This project's biggest privacy-vs-connection tension yet, resolved as a deliberate, scoped exception (opt-in/mutual/revocable/minimal-retention) rather than loosening the stance Hiker Safety and Data Nudges already took. Post-MVP.
+- [features/IDENTITY_AND_PRIVACY.md](features/IDENTITY_AND_PRIVACY.md) — **not a feature, a consolidated reference** written during the 2026-07-28 alignment review: ties together identity/privacy design scattered across five docs (who sees what, on which surface, governed by which mechanism) and replaces five separate small settings models with one canonical `UserPreferences`.
 
 ## Phase 1 — Data pipeline
 
@@ -48,7 +49,7 @@ Twelve features have full design drafts, written 2026-07-28 and now organized in
   - `fetch_topo_quads.py` already had this per-quad via S3 `Last-Modified` headers against its own manifest (built in from the start, no change needed).
   - Still open: *where* this actually gets triggered weekly (manual run by a maintainer vs. a scheduled job e.g. GitHub Actions cron) - the cadence and "don't do unnecessary work" logic are now real, but nothing calls these scripts on a schedule yet.
 
-## Phase 2 — Client app (MVP)
+## Phase 2 — Client app & backend (MVP, backend added 2026-07-28)
 
 - [ ] **Scaffold the PWA** — React + TypeScript, Vite, basic service worker + manifest.
 - [ ] **Map rendering** — MapLibre GL JS reading PMTiles directly in-browser (via the `pmtiles` library's MapLibre protocol handler).
@@ -58,6 +59,16 @@ Twelve features have full design drafts, written 2026-07-28 and now organized in
 - [ ] **POI browsing/search** — filter/list water sources, shelters, campsites, resupply points, crossings over the GeoJSON layer.
 - [ ] **Outdoor usability pass** — test readability in sunlight glare, one-handed/gloved use. Ties directly to value #4 (trustworthy above all) — a map that's unreadable at a junction fails at its one job. **Dark-mode auto-detection (`prefers-color-scheme`) is a near-free detail of this pass, not a separate build: see [UX_CUSTOMIZATION.md](features/UX_CUSTOMIZATION.md)** — worth noting dark mode doesn't solve the glare problem this pass actually owns; they're different problems despite sounding related.
 - [ ] **Elevation profile chart, moved into MVP 2026-07-28** — interactive elevation profile + gain/loss + Naismith's Rule time estimate for any selected stretch of trail, consuming the dense elevation data from Phase 1 above. See FEATURES.md's MVP list for the full rationale (competitive parity with FarOut, plus a real safety angle).
+
+### Backend & safety features, moved into MVP 2026-07-28
+
+Browsing everything above stays account-free. These five items are what actually need a live backend and real accounts, and only these — see TECHNICAL_ARCHITECTURE.md's Backend section and FEATURES.md's "Safety & community contributions" group for the full reasoning.
+
+- [ ] **Backend scaffold** — FastAPI + Postgres, per TECHNICAL_ARCHITECTURE.md's revised Backend section. Needed so closures and serious warnings can be verified/moderated by someone — not because the core map needs a server.
+- [ ] **Authentication** — Google/Apple/email sign-in, email verification, optional MFA: see [AUTHENTICATION.md](features/AUTHENTICATION.md).
+- [ ] **Community condition reports & moderation queue** — all six report types (blow downs, trash, bad hikers, flooding, shelter repair, animals): see [REPORT_A_PROBLEM.md](features/REPORT_A_PROBLEM.md).
+- [ ] **Trail closures** — marking/display for storm damage and reroutes: see [MAP_OPTIONS.md](features/MAP_OPTIONS.md)'s "Reroutes / closures" section.
+- [ ] **Serious warning pins & wrong-way/off-trail alert** — moderator-escalated warnings, plus a deliberately conservative off-trail alert (still the only push notification OurHike sends): see [HIKER_SAFETY.md](features/HIKER_SAFETY.md).
 
 ## Phase 3 — App store packaging
 
@@ -75,7 +86,6 @@ Twelve features have full design drafts, written 2026-07-28 and now organized in
 
 ## Deferred (Phase 5+, post-MVP — see FEATURES.md)
 
-- Community condition reporting & maintainer verification
 - Trail magic features
 - Multi-club admin/config tooling
 - Weather integration (design drafted 2026-07-28, see [features/HIKER_SAFETY.md](features/HIKER_SAFETY.md))

@@ -1,12 +1,12 @@
 # OurHike — Hiker Safety (Feature Design Draft v1)
 
-Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](../OurHikeValues.md). Builds directly on [REPORT_A_PROBLEM.md](REPORT_A_PROBLEM.md) (serious warnings are an escalation of its existing report types, not a new report system), [AUTHENTICATION.md](AUTHENTICATION.md) (the anonymity setting lives on the identity layer it designs), [SEGMENTS.md](SEGMENTS.md) (a Hike's direction of travel is what "wrong way" is measured against), and [MAP_OPTIONS.md](MAP_OPTIONS.md) (off-trail detection reuses its DuckDB distance-to-trail math).
+Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](../OurHikeValues.md). Builds directly on [REPORT_A_PROBLEM.md](REPORT_A_PROBLEM.md) (serious warnings are an escalation of its existing report types, not a new report system), [AUTHENTICATION.md](AUTHENTICATION.md) (the anonymity setting lives on the identity layer it designs), [SEGMENTS.md](SEGMENTS.md) (a Hike's direction of travel is what "wrong way" is measured against), and [MAP_OPTIONS.md](MAP_OPTIONS.md) (off-trail detection reuses its DuckDB distance-to-trail math). The `anonymity_window_days` setting's data model consolidated 2026-07-28 into [IDENTITY_AND_PRIVACY.md](IDENTITY_AND_PRIVACY.md), which also reconciles this section against Community Building's check-in privacy - different audiences, not competing settings.
 
-**Scope note:** Post-MVP throughout, and structurally so, not just by priority - every sub-feature here depends on other Post-MVP infrastructure that would have to land first (Report a Problem's moderation queue and backend, Authentication's identity layer, and a push-notification capability nothing else in this project has needed yet). Worth being honest about that rather than treating this like Elevation, which could be pulled forward on its own because it didn't need anything else to move with it. Two pieces here (serious warning pins, the wrong-way alert) are genuinely safety-critical enough to deserve the same conversation - flagged below, not decided here, precisely because pulling them forward means pulling their dependencies forward too.
+**Scope note, revised 2026-07-28: split, not uniform.** This doc originally flagged serious warning pins and the wrong-way alert as "genuinely safety-critical enough to deserve the same MVP-promotion conversation Elevation got" without deciding it here - that conversation happened, and **both moved into v1 MVP**, along with their real dependencies (Authentication, Report a Problem's moderation queue and backend), rather than staying blocked behind a Post-MVP timeline. **The comment-anonymity window and NWS weather integration (sections 2-4) stay genuinely Post-MVP** - they don't carry the same physical-safety weight, and nothing about promoting the other two requires them to move too.
 
 ---
 
-## 1. Serious warnings as separate pins
+## 1. Serious warnings as separate pins - moved into v1 MVP 2026-07-28
 
 **Reuses [REPORT_A_PROBLEM.md](REPORT_A_PROBLEM.md)'s existing types rather than inventing new ones.** Bear sightings are the `animals` type; blow downs are already a type; "dangerous humans" is the same real-world concern that doc already calls `bad_hikers`. Nothing here needs a seventh report type - what's missing is a way for some reports, regardless of type, to be treated as more serious than others.
 
@@ -52,7 +52,9 @@ Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHN
 
 **The actual buildable path: replicate the approach directly on the same underlying free data, using what this project already has.** Same NWS point-lookup plumbing as section 3's alerts (literally the same API call, different response fields - current conditions/forecast instead of alerts - not a second integration). The elevation-sensitivity the user is right to flag ("weather changes a lot based on elevation") is exactly what the already-MVP dense 1-meter DEM elevation data (see [TRIP_PLANNING.md](TRIP_PLANNING.md)'s design history) is for - and it's a real opportunity to do this *better* than atweather.org's own approach, which is necessarily limited to named shelters/waypoints: OurHike's continuous elevation coverage means a forecast/current-temp reading could be offered at any point along the trail a hiker actually is, not just at a fixed list of named locations.
 
-## 5. Wrong-way / off-trail alert
+## 5. Wrong-way / off-trail alert - moved into v1 MVP 2026-07-28
+
+**Ships as the conservative in-app-cue version described below, not the full background-tracking/push version** - consistent with TECHNICAL_ARCHITECTURE.md's foreground-GPS-is-sufficient-for-MVP stance, which didn't need to change to accommodate this promotion.
 
 **Taking "extremely difficult to do well" seriously rather than hand-waving past it.** Two distinct failure modes, worth separating because they need different detection logic:
 
@@ -81,9 +83,6 @@ Report                       (extends REPORT_A_PROBLEM.md's existing model)
     posted: coarse ("X days ago") if viewer_now - report.timestamp < reporter.anonymity_window_days
             else report.timestamp (exact)
   }
-
-UserSafetySettings            (on AUTHENTICATION.md's User, or device-local pre-auth)
-  anonymity_window_days: int, user-configurable
 
 WeatherAlert                  (relayed + briefly cached server-side, not owned data)
   nws_alert_id, zone, headline, effective, expires, relayed_at

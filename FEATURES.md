@@ -4,11 +4,13 @@ This translates [OurHikeValues.md](OurHikeValues.md) into concrete features. v1 
 
 **v1 targets replacing two tools:** Avenza (what NYNJTC used, now shut down) and FarOut/Guthook (the ATC's current official AT map app, used by most thru-hikers). Revenue from OurHike is meant to help fund the ATC and its affiliated maintaining clubs — the nonprofits that actually build and maintain the trail — so this isn't just a free replacement, it's meant to be a better funding mechanism for them too.
 
+**Identity and privacy design is now consolidated in one place:** see [IDENTITY_AND_PRIVACY.md](features/IDENTITY_AND_PRIVACY.md) for how accounts, trail names, the comment-anonymity window, and check-in privacy all fit together, and for the single `UserPreferences` model that replaced five separate small settings objects.
+
 ---
 
 ## v1 MVP — Core Map App
 
-Keep this simple. One thing, done well: an offline-capable map app for hikers, built on a downloadable dataset, showing the handful of things thru-hikers actually need mid-hike.
+Keep this simple. One thing, done well: an offline-capable map app for hikers, built on a downloadable dataset, showing the handful of things thru-hikers actually need mid-hike. **Scope grew on 2026-07-28, worth being upfront about:** what began as a fully static, no-account v1 now includes real accounts and a live backend too - not because the core map experience below needs them (it still doesn't), but because closures and safety warnings need someone able to verify and moderate them, and building that narrowly would have cost nearly as much as building it for real. See the new "Safety & community contributions" group below, and TECHNICAL_ARCHITECTURE.md's Backend section for the full reasoning.
 
 - Trail line / route data, downloadable for offline use. **Design drafted 2026-07-28: see [TRAIL_BLAZE_COLORS.md](features/TRAIL_BLAZE_COLORS.md)** - the line should render in the real blaze color painted on the trail (already present as a proper coded field in ATC's own `side_trails` data), not an arbitrary app color, with a neutral fallback where the color is genuinely unknown.
 - Water sources
@@ -22,8 +24,16 @@ Keep this simple. One thing, done well: an offline-capable map app for hikers, b
 - **Waypoint icon spec** (2026-07-25, from [Guthook Guides redesign case study](https://www.zoesymon.com/guthook-guides) — see "UX principles" below): ~8 color-coded POI categories, one accent color per category against a contrasting background, WCAG AA contrast compliance. A concrete, testable spec to design the shelter/water/resupply/etc. icons against, not just "make it readable."
 - **Elevation profile, moved into MVP 2026-07-28** (originally scoped Post-MVP under [TRIP_PLANNING.md](features/TRIP_PLANNING.md) - pulled forward on its own, without the rest of that feature): a full interactive elevation profile chart plus gain/loss for any selected stretch of trail, and a time estimate via Naismith's Rule (a real, established hiking-pace formula, not a custom one). Real competitive weight (FarOut's signature feature) and a genuine safety angle - knowing a big climb is ahead affects pacing and whether to push on before dark (value #4). **Accuracy is the whole point, not a detail:** sourced from real bulk-downloadable USGS 1-meter DEM data (`prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/1m/`, the same S3 infrastructure the topo quads already come from, confirmed directly), sampled densely along the actual trail geometry rather than only at the existing half-mile markers - sparse sampling is exactly what makes other apps' gain/loss feel wrong (it misses real small ups-and-downs). Because this comes from a surveyed dataset rather than live phone GPS/barometer, it also avoids the *opposite* problem other apps have: sensor noise inflating apparent gain when summed over many small steps. The rest of trip planning (bulk multi-day editing, POI-aware planning assistance, the hierarchical Hike/Segment structure) stays Post-MVP as designed - this is just the elevation data and its display pulled forward on its own.
 
+### Safety & community contributions, moved into MVP 2026-07-28
+
+Browsing everything above still needs no account - these four items are what actually need Authentication and a live backend, and only these. Each was reviewed against the same bar Elevation was promoted on (real safety weight, not just a nice-to-have), rather than assumed into MVP by default.
+
+- **Accounts.** **Design drafted 2026-07-28: see [AUTHENTICATION.md](features/AUTHENTICATION.md)** - Google/Apple/email sign-in, needed so a moderator can be identified and a reporter isn't fully anonymous, not because browsing the map requires one.
+- **Community condition reports & moderation**, promoted alongside the two features below that reuse its exact verification mechanism - building that mechanism narrowly for just those two would have cost nearly as much as the real thing. **Design drafted 2026-07-28: see [REPORT_A_PROBLEM.md](features/REPORT_A_PROBLEM.md)** - all six report types (blow downs, trash, bad hikers, flooding, shelter repair, animals), the moderation queue, and the verification workflow.
+- **Trail closures.** **Design drafted 2026-07-28: see [MAP_OPTIONS.md](features/MAP_OPTIONS.md)'s "Reroutes / closures" section** - a real physical hazard (storm damage, washouts), the same weight of argument that moved Elevation into MVP. The rest of Map Options (background tile options, roads/sidewalk-walkability, snap-to-segment) stays Post-MVP.
+- **Serious warning pins & the wrong-way/off-trail alert.** **Design drafted 2026-07-28: see [HIKER_SAFETY.md](features/HIKER_SAFETY.md)** - moderator-escalated bear-sighting/dangerous-human/blow-down warnings, and a deliberately conservative wrong-way alert (still the only push notification OurHike sends). The rest of Hiker Safety (the comment-anonymity window, NWS weather integration) stays Post-MVP.
+
 **Explicitly deferred**, not because they're low-value, but to keep v1 shippable:
-- Community-submitted condition reports & maintainer verification
 - Trail magic / hiker-to-hiker features
 - Multi-club admin/config tooling
 - Weather integration (design drafted 2026-07-28, see [HIKER_SAFETY.md](features/HIKER_SAFETY.md))
@@ -59,7 +69,7 @@ Pulled from [Zoe Symon's Guthook Guides (now FarOut) redesign case study](https:
 - **"Use the app less often, and find information faster when you do."** Optimize for quick lookups, not session time/engagement metrics — the opposite of typical app growth goals, and a natural fit with value #1 (hike your own hike): no reason to manufacture engagement.
 - **Architect for extensibility from day one.** Guthook's original build reportedly lacked this and it limited later feature work — validates our existing instinct (unified POI schema, avoiding AT/NYNJTC-only assumptions per value #7) rather than introducing something new.
 - **Community features should be core, not bolted on.** Their research found thru-hiking is inherently social — direct validation of the commenting/upvoting/guides items under Community reporting below.
-- **Fast, low-friction onboarding** — minimal setup before the map is usable, no heavy signup wall blocking time-to-value. Fits our no-account-needed PWA approach.
+- **Fast, low-friction onboarding** — minimal setup before the map is usable, no heavy signup wall blocking time-to-value. **Still true for browsing after 2026-07-28's scope change:** an account is now needed to submit a report, mark a closure, or moderate one, but viewing the map, water, shelters, GPS, and even closures/warnings themselves stays account-free - see [ONBOARDING.md](features/ONBOARDING.md), which only asks for an account at the point a hiker actually tries to contribute, not on first launch.
 - **Separate "available" from "owned/downloaded" content clearly** — relevant once we have per-section downloads or any paid tier, so users aren't confused about what they already have.
 - **A good feature undermined by poor discoverability is its own failure mode.** Their route-creation tool was well-liked but hard to find — worth designing findability in explicitly (e.g. for our own trip-planning tools under Extras below), not just building the feature and assuming it'll be found.
 - **Process note, not a feature:** they ran open-ended surveys across thru-hikers/section-hikers/day-hikers *before* designing anything — worth doing something similar once NYNJTC's soft launch gives us real users, rather than guessing at priorities.
@@ -70,13 +80,11 @@ Pulled from [Zoe Symon's Guthook Guides (now FarOut) redesign case study](https:
 
 Grouped by value, for later prioritization — not committed, just not forgotten.
 
-### Authentication *(#1, #3, #7, #8)* — build this one first
-- **Design drafted 2026-07-28: see [AUTHENTICATION.md](features/AUTHENTICATION.md).** Google/Apple/email sign-in, email verification, optional MFA, recommended technical approach (Supabase Auth). Doesn't change the MVP's no-account-needed principle - this is foundational for Segments (cross-device sync), Volunteering (club admin access), and Report a Problem (reporter identity), so it should be the first Post-MVP feature actually built, ahead of the three below that depend on it.
+### Authentication - moved into MVP 2026-07-28, see the "Safety & community contributions" group above
+Google/Apple/email sign-in, email verification, optional MFA, recommended technical approach (Supabase Auth) - full design in [AUTHENTICATION.md](features/AUTHENTICATION.md). Still foundational for the Post-MVP features below that also depend on it (Segments' cross-device sync, Volunteering's club admin access), even though it now ships earlier than any of them.
 
 ### Community reporting *(#2, #4)*
-- Hiker-submitted condition reports (text + photo), with timestamp + reporter type shown. **Design drafted 2026-07-28: see [REPORT_A_PROBLEM.md](features/REPORT_A_PROBLEM.md)** - report types (blow downs, trash, bad hikers, flooding, shelter repair, animals), pick-a-location flow (existing POI, dropped pin, or current location), and a path toward richer type-specific follow-up over time.
-- Maintainer verification/flagging workflow
-- Moderation queue for club admins
+**The core condition-reporting mechanism (report types, moderation queue, verification workflow) moved into MVP 2026-07-28** - see the "Safety & community contributions" group above and [REPORT_A_PROBLEM.md](features/REPORT_A_PROBLEM.md). Everything below is still genuinely Post-MVP - extras on top of that now-MVP foundation, not the foundation itself:
 - Link between hiker reports and official trail-maintenance logs
 - **Club data-entry tooling** (2026-07-24): local ATC-affiliated clubs need a way to directly add/edit their own shelters, water sources, campsites, and other trail features - not just via the GIS pipeline, which only they (not volunteers at large) can realistically operate. This is the actual mechanism behind "per-club admin roles" below, made concrete.
 - **Community submission + upvoting** (2026-07-24): beyond condition reports, let community members submit their own POIs/corrections and have other members upvote them - a lightweight trust signal ahead of full maintainer verification. Needs a spam/abuse-resistant design before it ships (value #4 - trustworthy above all - means a wrong upvoted submission is worse than no submission).
@@ -85,7 +93,7 @@ Grouped by value, for later prioritization — not committed, just not forgotten
 - **Low-friction data-freshness prompts**, encouraging (never requiring) hikers to confirm water/shelter/resupply conditions or check off a resolved report. **Design drafted 2026-07-28: see [DATA_NUDGES.md](features/DATA_NUDGES.md)** - deliberately not a notification of any kind, just visual prominence on the map for data that's gone stale; the actual data-collection mechanism Water Reliability Prediction below already assumes exists.
 
 ### Hiker safety *(#1, #2, #4, #9)*
-- Serious-tier warning pins (bear sightings, dangerous humans, blow downs) escalated from Community reporting's existing types via moderation, not self-declared; a configurable anonymity window for comment name/date; a responsibly-sourced NWS weather-alert relay plus elevation-aware daily conditions; and a deliberately conservative wrong-way/off-trail alert - explicitly scoped as **the only notification OurHike ever sends**. **Design drafted 2026-07-28: see [HIKER_SAFETY.md](features/HIKER_SAFETY.md).**
+**Serious-tier warning pins and the wrong-way/off-trail alert moved into MVP 2026-07-28** - see the "Safety & community contributions" group above. **Still genuinely Post-MVP:** a configurable anonymity window for comment name/date, and a responsibly-sourced NWS weather-alert relay plus elevation-aware daily conditions. **Design drafted 2026-07-28: see [HIKER_SAFETY.md](features/HIKER_SAFETY.md).**
 
 ### Water reliability prediction *(#4)*
 - Predict whether a given water source is likely flowing or dry right now, rather than just showing the last static entry. wikitrail.org's own founding story is literally a hiker hitting a "should be flowing" water source that was dry - this is a real, recurring failure mode of static trail data, not a hypothetical.
@@ -93,7 +101,7 @@ Grouped by value, for later prioritization — not committed, just not forgotten
 - Directly extends value #4's existing "reported 3 days ago vs. confirmed today" idea from a passive timestamp into an actual predictive signal - but the bar is high: a confidently wrong prediction is more dangerous than an honest "unknown," so this should ship after there's enough real report volume to back it, not as a launch feature.
 
 ### Map display & planning options *(#4, #7, #8)*
-- User-selectable background tile source, plus roads/sidewalk-walkability and trail-closure overlays. **Design drafted 2026-07-28: see [MAP_OPTIONS.md](features/MAP_OPTIONS.md)** - free/live-tile-API options researched directly (USGS's own live service recommended; OSM's raw tiles and Esri's imagery both ruled out for this use, commercial OSM-styled options gated behind a real terms conversation), an honest walkability signal for trail-to-town road walks, DuckDB-backed snap-to-trail for Segment boundaries, and trail-closure marking/display for storm damage and reroutes - flagged there as possibly deserving the same MVP-promotion conversation elevation got, not decided in this list.
+**Trail-closure marking/display moved into MVP 2026-07-28** - see the "Safety & community contributions" group above. **Still genuinely Post-MVP:** user-selectable background tile source and DuckDB-backed snap-to-trail for Segment boundaries. **Design drafted 2026-07-28: see [MAP_OPTIONS.md](features/MAP_OPTIONS.md)** - free/live-tile-API options researched directly (USGS's own live service recommended; OSM's raw tiles and Esri's imagery both ruled out for this use, commercial OSM-styled options gated behind a real terms conversation), and an honest walkability signal for trail-to-town road walks.
 
 ### Trail magic, done right *(#9)*
 - Point-in-time help requests/offers between hikers — ephemeral, expires automatically, never a persistent pin

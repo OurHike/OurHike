@@ -8,7 +8,7 @@ Companion to [OurHikeValues.md](OurHikeValues.md) and [FEATURES.md](FEATURES.md)
 
 - **One client codebase** for phone (iOS + Android) and web.
 - **No in-app purchases** — any payment/donation flow lives on the web only (avoids app store fees).
-- **Offline-first** — hikers download data before losing signal; nothing safety-relevant requires a live connection.
+- **Offline-first** — hikers download data before losing signal; nothing safety-relevant requires a live connection. **Nuance added 2026-07-28:** this still holds for *viewing* previously-synced data (a downloaded closure/warning snapshot works fully offline), but *submitting* a report, marking a closure, or seeing something newer than the last sync needs connectivity - the same honest "last synced" framing already used for offline map staleness elsewhere in this project.
 - **Boring, low-maintenance, inheritable** (values #7, #8) — favor tools a volunteer-run nonprofit can keep running for a decade, over cutting-edge complexity.
 - **Open by default** (value #3) — open formats and open-source tooling throughout; avoid vendor lock-in.
 - **Fetched/generated data never gets committed to the git repo.** `pipeline/data/` (raw pulls, processed intermediates, quad downloads, etc.) is gitignored — only source code and the `sources.json` registry are tracked. Data is either re-derived on demand by rerunning the pipeline scripts, or lives in versioned object storage (Cloudflare R2) once actually published — never in repo history. This keeps clone size sane and avoids committing anything with unresolved licensing (see the ATC/opentrail.org license-status notes below) before it's actually cleared for shipping.
@@ -49,8 +49,8 @@ flowchart TB
         PWA --> Web
     end
 
-    subgraph Backend["Backend (Phase 2+, Python/FastAPI)"]
-        API["Community reports,\nmulti-club admin,\nweb donation/payment"]
+    subgraph Backend["Backend (Python/FastAPI) — auth + reports now MVP, decided 2026-07-28"]
+        API["Auth + community reports/\nmoderation, incl. closures\nand escalated warnings (MVP)\nmulti-club admin,\nweb donation/payment (Phase 2+)"]
     end
 
     ATC --> Ingest
@@ -59,8 +59,8 @@ flowchart TB
     Export --> Artifacts
     Artifacts --> PWA
     AppBuild --> PWA
-    Web -.->|"donation/payment UI\n(web only)"| API
-    PWA -.->|"Phase 2: reports sync"| API
+    Web -.->|"donation/payment UI\n(web only, Phase 2+)"| API
+    PWA -->|"auth, reports, closures (MVP)"| API
 ```
 
 ---
@@ -100,7 +100,7 @@ This is a script, not a service — it's rerun periodically (e.g. weekly, per th
 
 - **Stack:** React + TypeScript, **MapLibre GL JS** (open-source map renderer, no vendor lock-in) reading **PMTiles** directly in-browser. Two kinds of local data, per the pipeline decision above: a **raster** background (clipped USGS US Topo tiles, packaged as PMTiles) for terrain/context, and small **vector GeoJSON** layers (ATC + OSM + NHD) for the AT-specific POIs users actually search/filter — loaded directly as MapLibre GeoJSON sources, no vector-tiling step needed at this data volume.
 - **Offline:** service worker precaches the app shell; map/POI data for a chosen trail section is downloaded on demand and stored via the Cache API / IndexedDB — mirrors the "download this region" pattern hikers already know from Avenza/FarOut.
-- **GPS:** browser Geolocation API for "you are here," foreground use — sufficient for MVP (see trade-off below).
+- **GPS:** browser Geolocation API for "you are here," foreground use — sufficient for MVP (see trade-off below). **Still true even with the wrong-way alert now in MVP (2026-07-28):** its own design already recommends a conservative v1 - an in-app visual/audible cue while the app is open, not continuous background monitoring - so it fits this same foreground-GPS constraint rather than requiring the native background-location work to ship on day one.
 - **Packaging:** the same web build is wrapped with **Capacitor** to produce installable iOS and Android app-store builds. The web version and the app-store versions are the same codebase, not parallel implementations.
 - **No purchases in the wrapped app** — any payment/donation UI is only rendered in the unwrapped web context.
 
@@ -108,20 +108,23 @@ This is a script, not a service — it's rerun periodically (e.g. weekly, per th
 
 ---
 
-## Backend (Phase 2+)
+## Backend — split by what actually needs it (revised 2026-07-28)
 
-Not needed for MVP — the MVP client only reads static files from hosting. When community reporting, multi-club admin, or web donations arrive (see [FEATURES.md](FEATURES.md) Post-MVP section):
+**No longer "not needed for MVP."** Promoting Map Options' trail closures and Hiker Safety's serious warning pins/wrong-way alert into v1 MVP means someone has to be able to mark a closure and a moderator has to be able to escalate a warning - both reuse [REPORT_A_PROBLEM.md](features/REPORT_A_PROBLEM.md)'s exact moderation-queue mechanism, not a narrower one built just for these two. Building that mechanism narrowly would cost nearly the same as building the real thing, so **Authentication and the full Report a Problem feature (all six report types) ship as MVP too**, rather than the plumbing getting built twice. See [features/AUTHENTICATION.md](features/AUTHENTICATION.md) and [features/REPORT_A_PROBLEM.md](features/REPORT_A_PROBLEM.md) for the full designs, both now MVP-scoped.
+
+**What stays genuinely Phase 2+:** multi-club/org admin and the web-only donation/payment flow. Nothing about promoting the safety features requires either of those to move.
 
 - **Stack:** Python (FastAPI) — keeps the pipeline and backend in the same language.
-- **Database:** Postgres (with PostGIS if live spatial queries are ever needed) — added only once there's actual dynamic data to store.
-- **Scope:** community condition reports, moderation, multi-club/org admin, and the web-only donation/payment flow.
+- **Database:** Postgres (with PostGIS if live spatial queries are ever needed).
+- **MVP scope:** Authentication (accounts, at least enough to identify a reporter and a moderator), community condition reports + moderation queue (Report a Problem), closures, and warning escalation.
+- **Phase 2+ scope:** multi-club/org admin, the web-only donation/payment flow.
 
 ---
 
 ## Hosting & cost shape
 
-- **Cloudflare Pages** for the PWA build, **Cloudflare R2** for the PMTiles/GeoJSON data packages — R2 has no egress fees, which matters since map downloads are the bulk of the bandwidth. Both have free/low-cost tiers sufficient for MVP scale. No servers to run, which fits value #8 directly.
-- A small backend is added later, only when dynamic features actually require one.
+- **Cloudflare Pages** for the PWA build, **Cloudflare R2** for the PMTiles/GeoJSON data packages — R2 has no egress fees, which matters since map downloads are the bulk of the bandwidth. Both have free/low-cost tiers sufficient for MVP scale.
+- **A small backend (FastAPI + Postgres) is now part of MVP, not added later** - revised 2026-07-28 alongside promoting closures/warnings/wrong-way to v1 (see Backend section above). This is a real, deliberate cost/complexity increase over the original "no servers to run" MVP framing, not a detail - worth having front of mind in Phase 4 launch-readiness planning (hosting costs, moderation staffing) even though the data pipeline itself stays server-free.
 
 ---
 
@@ -131,15 +134,16 @@ Not needed for MVP — the MVP client only reads static files from hosting. When
 |---|---|
 | Client (phone + web) | React + TypeScript, MapLibre GL JS, PMTiles, Capacitor |
 | Data pipeline | Python, DuckDB (spatial extension) |
-| Backend (Phase 2+) | Python (FastAPI), Postgres/PostGIS if/when needed |
-| Hosting | Static hosting/CDN (MVP) → + small managed backend later |
+| Backend (MVP: auth, reports/moderation, closures; Phase 2+: multi-club admin, donations) | Python (FastAPI), Postgres/PostGIS if/when needed |
+| Hosting | Static hosting/CDN (map/POI data) + a small managed backend, both MVP as of 2026-07-28 |
 
 ---
 
 ## Risks & open questions
 
 - **ATC data licensing/access** — the public map is confirmed accessible and its 9 layers cataloged, but redistribution terms are still not confirmed directly with ATC; may shape what can actually be shipped and how.
-- **Water-source and resupply data completeness** — ATC's own data has no dedicated layer for either. NHD streams and OSM `drinking_water`/`spring` tags are the current stopgap, and both are approximate/unverified, not confirmed potable/current data — worth being explicit about that distinction in the UI (value #4), and revisiting once community condition-reporting (Phase 2) exists as the real long-term fix.
+- **Water-source and resupply data completeness** — ATC's own data has no dedicated layer for either. NHD streams and OSM `drinking_water`/`spring` tags are the current stopgap, and both are approximate/unverified, not confirmed potable/current data — worth being explicit about that distinction in the UI (value #4), and revisiting once community condition-reporting (now MVP, not Phase 2 - see Backend section above) exists as the real long-term fix.
+- **MVP scope grew materially on 2026-07-28** - Authentication, a live backend, the full Report a Problem feature, Map Options' closures, and Hiker Safety's serious warnings/wrong-way alert all moved from Post-MVP into v1, specifically so closures/warnings could be verified/moderated by someone rather than shipping a fake pipeline-fed stopgap. Worth tracking as a real, deliberate increase in v1 build cost and timeline, not something to lose track of amid the individual feature docs it touches.
 - **Raster background loses easy restyling** — a real trade-off from choosing pre-rendered USGS raster tiles over a self-built vector style: no simple semantic dark-mode/high-contrast swap for the Phase 2 "outdoor usability pass." Canvas-level filters are the fallback if that gap matters in practice.
 - **Background GPS** — acceptable gap for MVP, revisit if always-on tracking becomes a feature priority.
 - **DuckDB-WASM** (querying the offline dataset client-side, in-browser) — promising future option, not committed for MVP.

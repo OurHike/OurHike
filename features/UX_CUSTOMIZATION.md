@@ -1,6 +1,6 @@
 # OurHike — UX Customization (Feature Design Draft v1)
 
-Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](../OurHikeValues.md). Extends [MAP_OPTIONS.md](MAP_OPTIONS.md)'s `MapDisplaySettings` model and its already-designed MapLibre chrome, and reuses [HIKER_SAFETY.md](HIKER_SAFETY.md)'s GPS-trajectory bearing math for auto-rotate. [ONBOARDING.md](ONBOARDING.md) is where these settings first get a one-line mention - deliberately not a walkthrough of every default here.
+Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](../OurHikeValues.md). Extends [MAP_OPTIONS.md](MAP_OPTIONS.md)'s already-designed MapLibre chrome, and reuses [HIKER_SAFETY.md](HIKER_SAFETY.md)'s GPS-trajectory bearing math for auto-rotate. [ONBOARDING.md](ONBOARDING.md) is where these settings first get a one-line mention - deliberately not a walkthrough of every default here. Data model consolidated 2026-07-28 into [IDENTITY_AND_PRIVACY.md](IDENTITY_AND_PRIVACY.md)'s `UserPreferences`.
 
 **Scope note:** mixed, like Map Options before it. Dark-mode auto-detection and the compass button are near-free details of MVP items already committed (the outdoor usability pass, Map Options' chrome spec). Everything else here - manual theme override, layer/waypoint display preferences, metric units, and especially auto-rotate - is real Post-MVP settings work. Auto-rotate specifically turns out to be a harder problem than the one-line ask suggests, in the same way the wrong-way alert did - taken seriously below, not glossed over.
 
@@ -57,18 +57,7 @@ Two different questions, worth distinguishing rather than treating as one settin
 
 ## Data model sketch
 
-```
-AppPreferences                    (app-wide, not map-specific - client-side, no account, same
-                                    storage model as Segments/Map Options)
-  theme: light | dark | auto      (default: auto, via prefers-color-scheme)
-  unit_system: imperial | metric  (default: imperial, matching the AT's own convention)
-
-MapDisplaySettings                (extends MAP_OPTIONS.md's existing model)
-  + waypoint_types_shown: set of POI types (default: all)
-  + layer_detail_level: minimal | standard | full
-  + auto_rotate_enabled: bool     (default: false - not everyone wants this, and it costs
-                                    real permission friction on iOS to turn on)
-```
+**Update 2026-07-28: consolidated into [IDENTITY_AND_PRIVACY.md](IDENTITY_AND_PRIVACY.md)'s `UserPreferences`**, alongside Map Options', Onboarding's, and Hiker Safety's settings, rather than a separate `AppPreferences` model plus an extension to Map Options' own. This doc still owns the *why* behind each default (auto theme via `prefers-color-scheme`, imperial matching the AT's own convention, `auto_rotate_enabled` defaulting false given its real iOS permission cost) - only the data model shape moved: `theme`, `unit_system`, `waypoint_types_shown`, `layer_detail_level`, `auto_rotate_enabled`.
 
 ## Open questions (for you, not decided here)
 

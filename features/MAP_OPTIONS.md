@@ -4,7 +4,8 @@ Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHN
 
 **Scope note, and it's a mixed one - five sub-features, not one uniform bucket:**
 - **Map UI chrome** (legend, scale, locate-me, zoom) is a **detail spec against existing v1 MVP items** ("You are here" GPS, the waypoint icon spec, the outdoor usability pass) - same framing as TRAIL_BLAZE_COLORS.md, not new scope.
-- **Background tile options, roads/sidewalks, snap-to-segment, and reroutes/closures** are **Post-MVP** - real designs to build from, not an argument to reprioritize v1. One of them (reroutes/closures) is flagged below as arguably safety-critical enough to deserve the same MVP-promotion conversation elevation got - noted, not decided here.
+- **Reroutes/closures moved into v1 MVP 2026-07-28** - resolved the open question this doc originally raised (below), the same weight of argument that moved Elevation forward: storm damage and washouts are a real physical hazard, not a convenience feature. See "Reroutes / closures" below for the revised design, now backed by real Authentication + a moderation queue rather than a pipeline-fed stopgap.
+- **Background tile options, roads/sidewalks, and snap-to-segment stay Post-MVP** - real designs to build from, not an argument to reprioritize v1.
 
 ---
 
@@ -77,7 +78,7 @@ Extends, rather than replaces, [SEGMENTS.md](SEGMENTS.md)'s existing boundary de
 
 **"Prefer the current through-hike route" - a real disambiguation rule, not a vague preference:** near a junction (e.g. a shelter spur meeting the main trail), both `centerline` and `side_trails` may be within snapping distance of one tap. Rather than always picking whichever line is geometrically closest, **use the Hike's existing `type` field** (already in SEGMENTS.md's data model: thru | section | day) to break the tie - a thru/section-hike snaps onto `centerline` by default, since through-hikers are describing progress along the main trail; a day-hike snaps onto whichever line is actually closest, since a day-hike legitimately might be planning a spur to a shelter or viewpoint. No new field needed - this reuses a decision Segments already has to make anyway.
 
-## 4. Reroutes / closures
+## 4. Reroutes / closures - moved into v1 MVP 2026-07-28
 
 ### Checked against the real ATC data: this is genuinely new, not a decode job
 
@@ -101,13 +102,13 @@ Closure
   verified_by (club admin/maintainer), verified_at
 ```
 
-**Who can mark a closure - reuses the identity/role work already designed, doesn't invent a new one.** This is the same permission tier as Volunteering's club-admin access and Report a Problem's maintainer-verification workflow, both of which already point at [AUTHENTICATION.md](AUTHENTICATION.md) as the identity layer to build on. Before real club-admin tooling exists, this can follow the exact same stopgap Volunteering already proposed for its own admin gap: a hand-maintained file a club contact edits, fed through the pipeline the same change-aware way `sources.json` already works - not a blocker to shipping the map-display half first.
+**Who can mark a closure - reuses the identity/role work already designed, doesn't invent a new one.** This is the same permission tier as Volunteering's club-admin access and Report a Problem's maintainer-verification workflow, both of which already point at [AUTHENTICATION.md](AUTHENTICATION.md) as the identity layer to build on. **Update 2026-07-28:** since Authentication and Report a Problem's real moderation queue are both MVP now, closures go through that real workflow directly from day one - the "hand-maintained file, fed through the pipeline" stopgap originally proposed here (mirroring Volunteering's own admin gap) is no longer needed, since the real thing exists at the same time.
 
 **Display:** a closure covers a *stretch* of trail, not a point - so unlike most map features here, this renders as a distinct line treatment directly on the trail geometry itself (e.g. a dashed red overlay along the closed stretch), tappable for the reason/status/dates, rather than a pin. **This is deliberately not a routing/reroute-computation engine** - showing "this stretch is closed" is what's designed here; actually computing and suggesting a road-walk detour around it is a real, much bigger feature (needs an actual road-routing graph), flagged as a possible future extension and not designed here, the same way TRIP_PLANNING.md flagged structural bulk-editing without designing it.
 
 **The real safety tension, worth naming plainly rather than glossing over:** closures are exactly the kind of information that goes stale in a downloaded-once offline package - a hiker relying on a week-old download might walk into a closure marked *after* they downloaded. Not solved here, but worth flagging two honest partial answers: show a visible "data last synced [date]" indicator rather than hiding the staleness (same honesty principle as the existing "reported 3 days ago vs. confirmed today" idea in FEATURES.md's water-reliability section), and consider a lightweight "check for critical safety updates" ping when brief signal is available even in otherwise-offline use - a real design problem, flagged for later rather than solved here.
 
-**Worth raising directly, not deciding unilaterally:** this is arguably as safety-critical as the elevation profile was (storm damage and washouts are a real, physical hazard, not a convenience feature) - the same category of argument that moved elevation into v1 MVP. Flagging that this might deserve the same conversation, rather than assuming Post-MVP is right just because it's listed that way here.
+**Resolved 2026-07-28:** this raised, and now answers, the exact "does this deserve the same MVP-promotion conversation Elevation got" question - it does, and closures are v1 MVP as of this revision.
 
 ### Client setting
 
@@ -134,18 +135,10 @@ This section is a detail spec, not new scope - it's fleshing out controls for MV
 
 ## Data model sketch (settings, client-side)
 
-```
-MapDisplaySettings   (client-side, IndexedDB - same no-account storage model as Segments)
-  background_source: usgs_topo_offline | usgs_topo_live | (osm_styled_live, pending terms)
-  max_background_zoom: 11 | 12 | 13   (already planned in ROADMAP.md - same settings screen)
-  show_roads: bool (default false)
-  show_closures: always-on, not user-hideable (see "Reroutes / closures" above)
-  # extended by UX_CUSTOMIZATION.md: waypoint_types_shown, layer_detail_level, auto_rotate_enabled
-```
+**Update 2026-07-28: consolidated into [IDENTITY_AND_PRIVACY.md](IDENTITY_AND_PRIVACY.md)'s `UserPreferences`**, alongside UX Customization's, Onboarding's, and Hiker Safety's settings, rather than five separate small models. This doc still owns *why* each of these settings exists (the reasoning above doesn't move) - only the data model shape now lives in one canonical place: `background_source`, `max_background_zoom`, `show_roads` (all designed here). `show_closures` deliberately isn't in that model at all - it's always-on, not user-hideable (see "Reroutes / closures" above), a fixed display rule rather than a preference.
 
 ## Open questions (for you, not decided here)
 
-- **Whether reroutes/closures deserves MVP promotion**, the same conversation that moved elevation forward - flagged above, not decided here.
 - **Stadia Maps' (or a similar provider's) actual commercial-use terms for a nonprofit-funding, donation-soliciting app** - a real conversation to have directly with them, the same category of open question as ATC's and opentrail.org's unconfirmed redistribution terms.
 - **Whether extending the existing Protomaps self-hosted extract (more zooms, a wider region) is a better answer than any live third-party API** for "see more background than the downloaded corridor" - raised above, worth deciding once there's a real map in front of you rather than from this doc alone.
 - **Exact `no_sidewalk_high_speed` threshold** (which `highway=*` values, whether to also read `maxspeed` where tagged) - a real tuning decision once there's real OSM road data pulled for the corridor, not a question this doc can answer without it.

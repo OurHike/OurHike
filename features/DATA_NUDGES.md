@@ -39,7 +39,7 @@ Every water source, shelter/campsite, and resupply point gets a `last_confirmed_
 
 Every interaction above is a single tap for the common case, with an optional note/photo as an escalation path - the same "quick answer first, detail later" shape Report a Problem already uses. This is the direct answer to "hikers don't really want to spend a ton of time on their phone": the default path costs one tap, not a form.
 
-## New: `ConditionCheckIn` - a lighter sibling to Report a Problem's `Report`, not a replacement
+## New: `ConditionConfirmation` - a lighter sibling to Report a Problem's `Report`, not a replacement
 
 A "water's flowing fine" or "shelter was fine" check-in is a **confirmation**, not a problem report - routing it through the same moderation queue Report a Problem uses for accusations/hazards would be real overhead for no reason (there's nothing to verify about "someone confirmed normal conditions"). So it's a separate, lighter model that writes directly to the POI's `last_confirmed_at` with no moderation step. **It can still escalate into a real `Report`** when the quick answer actually indicates a problem (tapping "dry" or "full" prompts "want to report this?") - reusing Report a Problem's machinery exactly where it's actually needed, rather than duplicating problem-handling logic here too.
 
@@ -58,14 +58,14 @@ The write path (submitting a check-in, or reconfirming/resolving a report) needs
 ## Open questions (for you, not decided here)
 
 - **Exact staleness thresholds per POI type** - a water source's flow probably goes stale faster than a shelter's general condition. A real field-tuning question once there's real usage data, not something this doc can responsibly guess at.
-- **Whether `ConditionCheckIn` needs its own lightweight rate-limiting/identity**, or can ride entirely on whatever Report a Problem and Authentication eventually settle on - leaning toward the latter, not designed twice.
+- **Whether `ConditionConfirmation` needs its own lightweight rate-limiting/identity**, or can ride entirely on whatever Report a Problem and Authentication eventually settle on - leaning toward the latter, not designed twice.
 - **Whether a stale pin should ever hint "a few hikers have passed without updating"** - flagged as a real risk of backsliding into the gamification/guilt-messaging this doc explicitly rules out above. Leaning no, but not force-decided here.
 - **The Segments day-complete integration** - a real opportunity named above, but it depends on Segments/Trip Planning existing first, and isn't designed in full here.
 
 ## Data model sketch
 
 ```
-ConditionCheckIn                  (new - lighter sibling to Report a Problem's Report)
+ConditionConfirmation                  (new - lighter sibling to Report a Problem's Report)
   id
   poi reference (water source | shelter/campsite | resupply point)
   category: water_conditions | overnight_conditions

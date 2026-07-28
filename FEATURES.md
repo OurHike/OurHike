@@ -10,7 +10,7 @@ This translates [OurHikeValues.md](OurHikeValues.md) into concrete features. v1 
 
 Keep this simple. One thing, done well: an offline-capable map app for hikers, built on a downloadable dataset, showing the handful of things thru-hikers actually need mid-hike.
 
-- Trail line / route data, downloadable for offline use
+- Trail line / route data, downloadable for offline use. **Design drafted 2026-07-28: see [TRAIL_BLAZE_COLORS.md](TRAIL_BLAZE_COLORS.md)** - the line should render in the real blaze color painted on the trail (already present as a proper coded field in ATC's own `side_trails` data), not an arbitrary app color, with a neutral fallback where the color is genuinely unknown.
 - Water sources
 - Trailheads & road crossings
 - Shelters & campsites
@@ -67,6 +67,9 @@ Pulled from [Zoe Symon's Guthook Guides (now FarOut) redesign case study](https:
 ## Post-MVP (Phase 2+)
 
 Grouped by value, for later prioritization — not committed, just not forgotten.
+
+### Authentication *(#1, #3, #7, #8)* — build this one first
+- **Design drafted 2026-07-28: see [AUTHENTICATION.md](AUTHENTICATION.md).** Google/Apple/email sign-in, email verification, optional MFA, recommended technical approach (Supabase Auth). Doesn't change the MVP's no-account-needed principle - this is foundational for Segments (cross-device sync), Volunteering (club admin access), and Report a Problem (reporter identity), so it should be the first Post-MVP feature actually built, ahead of the three below that depend on it.
 
 ### Community reporting *(#2, #4)*
 - Hiker-submitted condition reports (text + photo), with timestamp + reporter type shown. **Design drafted 2026-07-28: see [REPORT_A_PROBLEM.md](REPORT_A_PROBLEM.md)** - report types (blow downs, trash, bad hikers, flooding, shelter repair, animals), pick-a-location flow (existing POI, dropped pin, or current location), and a path toward richer type-specific follow-up over time.

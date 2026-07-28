@@ -52,13 +52,15 @@ Segment
 
 FEATURES.md's current plan is a **no-account-needed PWA** — fast onboarding, no signup wall. Segments and completion state fit that directly: store them client-side, in the same IndexedDB the offline map cache already uses (per TECHNICAL_ARCHITECTURE.md's client section). No backend, no accounts, nothing new to run or pay for (value #8) — a hiker's plan just lives on their device, same as their downloaded map data.
 
-**Known trade-off worth naming now, not discovering later:** this means no cross-device sync without introducing accounts, which is a bigger, separate decision (and would connect to the multi-club/backend work already flagged as Phase 2+ in TECHNICAL_ARCHITECTURE.md). Fine for v1 of this feature; worth being upfront that "plan on my phone, check on my laptop" isn't included unless that tradeoff gets revisited deliberately.
+**Known trade-off worth naming now, not discovering later:** this means no cross-device sync without introducing accounts, which is a bigger, separate decision (and would connect to the multi-club/backend work already flagged as Phase 2+ in TECHNICAL_ARCHITECTURE.md). Fine for v1 of this feature; worth being upfront that "plan on my phone, check on my laptop" isn't included unless that tradeoff gets revisited deliberately. **Update 2026-07-28:** that revisit now has a real answer - see [AUTHENTICATION.md](AUTHENTICATION.md), scoped as the first Post-MVP feature to build, partly for this exact reason.
 
 **Export should reuse the format FEATURES.md already commits to.** "User data export (routes, saved hikes) in open formats (GPX/GeoJSON/CSV)" is already a Post-MVP line item (value #6 — belongs to the trails, not the platform). A Hike and its Segments map onto that cleanly: each Segment as a GeoJSON `LineString` feature (or a GPX track segment) along the centerline between its start/end references, with `name`/`status`/dates as properties. Building Segments with this in mind means the export item isn't a separate design problem later — it's the same data, serialized differently.
 
 ## Inheritability check (value #7)
 
 Nothing here should assume "the Appalachian Trail" specifically — a Hike references *a* trail centerline, and Segment boundaries reference *that* trail's own mile-markers/POIs. The moment a second club's trail data exists in the same schema, Segments work for it identically. Worth keeping in mind if/when the "trail reference" field above gets implemented — it should point at a trail id, not assume there's only ever one.
+
+**Related:** [TRAIL_BLAZE_COLORS.md](TRAIL_BLAZE_COLORS.md) - since Segments already tie to real trail-line geometry, a planned hike's segments can render in their real blaze color for free, with no changes needed here.
 
 ## Where this fits
 

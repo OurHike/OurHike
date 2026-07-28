@@ -10,7 +10,7 @@ This translates [OurHikeValues.md](OurHikeValues.md) into concrete features. v1 
 
 Keep this simple. One thing, done well: an offline-capable map app for hikers, built on a downloadable dataset, showing the handful of things thru-hikers actually need mid-hike.
 
-- Trail line / route data, downloadable for offline use
+- Trail line / route data, downloadable for offline use. **Design drafted 2026-07-28: see [TRAIL_BLAZE_COLORS.md](TRAIL_BLAZE_COLORS.md)** - the line should render in the real blaze color painted on the trail (already present as a proper coded field in ATC's own `side_trails` data), not an arbitrary app color, with a neutral fallback where the color is genuinely unknown.
 - Water sources
 - Trailheads & road crossings
 - Shelters & campsites

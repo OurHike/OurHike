@@ -60,6 +60,8 @@ FEATURES.md's current plan is a **no-account-needed PWA** — fast onboarding, n
 
 Nothing here should assume "the Appalachian Trail" specifically — a Hike references *a* trail centerline, and Segment boundaries reference *that* trail's own mile-markers/POIs. The moment a second club's trail data exists in the same schema, Segments work for it identically. Worth keeping in mind if/when the "trail reference" field above gets implemented — it should point at a trail id, not assume there's only ever one.
 
+**Related:** [TRAIL_BLAZE_COLORS.md](TRAIL_BLAZE_COLORS.md) - since Segments already tie to real trail-line geometry, a planned hike's segments can render in their real blaze color for free, with no changes needed here.
+
 ## Where this fits
 
 FEATURES.md's v1 MVP is deliberately narrow (trail line, water, crossings, shelters/campsites, resupply, GPS, search) and explicitly defers "trip planning tools" to Post-MVP/Extras. This document doesn't argue that should change — it's here so that when trip planning *does* get picked up, there's a real design to build from instead of starting cold. If/when it's time to schedule this, FEATURES.md's "Extras" section is the natural place to expand past its current one-line mention, and a ROADMAP.md Phase 2+ (or later) item would track the actual build.

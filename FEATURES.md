@@ -15,7 +15,7 @@ Keep this simple. One thing, done well: an offline-capable map app for hikers, b
 - Trailheads & road crossings
 - Shelters & campsites
 - Resupply points (towns, stores, post offices)
-- "You are here" GPS positioning while fully offline
+- "You are here" GPS positioning while fully offline. **Map controls (locate-me, zoom, scale, legend) detailed 2026-07-28: see [MAP_OPTIONS.md](features/MAP_OPTIONS.md)** - reuses MapLibre's built-in controls plus a hand-built legend, with web vs. mobile UX spec'd separately
 - Basic search/filter by POI type
 - Same core experience on phone (iOS + Android, day one) and on the web
 - **Waypoint icon spec** (2026-07-25, from [Guthook Guides redesign case study](https://www.zoesymon.com/guthook-guides) — see "UX principles" below): ~8 color-coded POI categories, one accent color per category against a contrasting background, WCAG AA contrast compliance. A concrete, testable spec to design the shelter/water/resupply/etc. icons against, not just "make it readable."
@@ -86,6 +86,9 @@ Grouped by value, for later prioritization — not committed, just not forgotten
 - Predict whether a given water source is likely flowing or dry right now, rather than just showing the last static entry. wikitrail.org's own founding story is literally a hiker hitting a "should be flowing" water source that was dry - this is a real, recurring failure mode of static trail data, not a hypothetical.
 - Likely inputs: historical hiker reports (frequency/recency of "dry" vs "flowing" reports at a source), seasonal/precipitation patterns, and possibly NHD stream classification (perennial vs intermittent) already noted as a data source in TECHNICAL_ARCHITECTURE.md.
 - Directly extends value #4's existing "reported 3 days ago vs. confirmed today" idea from a passive timestamp into an actual predictive signal - but the bar is high: a confidently wrong prediction is more dangerous than an honest "unknown," so this should ship after there's enough real report volume to back it, not as a launch feature.
+
+### Map display & planning options *(#4, #7, #8)*
+- User-selectable background tile source, plus roads/sidewalk-walkability and trail-closure overlays. **Design drafted 2026-07-28: see [MAP_OPTIONS.md](features/MAP_OPTIONS.md)** - free/live-tile-API options researched directly (USGS's own live service recommended; OSM's raw tiles and Esri's imagery both ruled out for this use, commercial OSM-styled options gated behind a real terms conversation), an honest walkability signal for trail-to-town road walks, DuckDB-backed snap-to-trail for Segment boundaries, and trail-closure marking/display for storm damage and reroutes - flagged there as possibly deserving the same MVP-promotion conversation elevation got, not decided in this list.
 
 ### Trail magic, done right *(#9)*
 - Point-in-time help requests/offers between hikers — ephemeral, expires automatically, never a persistent pin

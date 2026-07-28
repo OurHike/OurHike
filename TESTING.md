@@ -52,6 +52,8 @@ cd pipeline
 
 **Network isolation caveat:** DuckDB's spatial extension (`INSTALL spatial`) fetches from DuckDB's own extension repository over the network on first use *per machine* - this is a one-time local setup step, not a per-test-run network call, but it's a real exception to "tests never touch the network" worth knowing about if a fresh environment's first test run looks like it's doing something unexpected.
 
+**Blaze normalization, still to build (see `features/TRAIL_BLAZE_COLORS.md`):** decoding each trail-line source's raw color coding into one normalized `blaze_color` attribute happens here, during export - not on the client (see the Client section above, which only tests the client's *use* of the already-normalized value). Once built, this needs a regression test for exactly the gotcha `TRAIL_BLAZE_COLORS.md` already names from the real data: `side_trails`' `Blaze` field has 24 features with no value at all, 9 with the literal string `"Unknown"`, and 3 with `"Gold"`, none of which are in its actual 0-9 coded domain. The test should assert all three fall through to the neutral default with a warning logged - not a crash, and not a silently wrong color.
+
 **What's intentionally manual-only:** fetching the real ~1,650-quad USGS corridor dataset and mosaicking it (`fetch_topo_quads.py` + `spike_raster_mosaic.py`) is a real multi-GB, multi-minute operation against live services - run it by hand to verify changes that touch fetch/mosaic logic, don't expect it in `pytest`.
 
 ## Client (React/TypeScript) - not yet built
@@ -61,7 +63,7 @@ Not scaffolded yet (see ROADMAP.md Phase 2). Framework: **Vitest + React Testing
 The test plan below is drawn from [WIREFRAMES.md](WIREFRAMES.md) - it names the behaviors those v1 MVP screens need covered, written before the client itself so the first pass at each area can be built test-first per this file's core rule. Written as behaviors, not implementations, so they survive refactors.
 
 **Pure logic (fast unit tests, zero rendering):**
-1. **Blaze normalization** - each coded value 0-9 maps to its expected colour; `null`, `""`, `"Unknown"`, `"Gold"` all map to neutral grey **and emit a warning**; `centerline` features with no `Blaze` field take the per-source default; the code table is read from fetched metadata, not a literal.
+1. **Blaze normalization (client's half)** - the pipeline decodes raw source data into a normalized `blaze_color` string during export (see the Pipeline section below); the client's job is just mapping that already-clean string to a MapLibre paint style via a `match` expression. Test the client's defensive fallback: any `blaze_color` value that isn't one of the expected strings renders as the neutral grey and **emits a warning**, rather than the client trusting the pipeline blindly or crashing on an unexpected value.
 2. **Naismith** - 2.6 mi / 640 ft ⇒ `≈1h 10m`; rounds to 5-minute steps; descent never subtracts; output always carries `≈`; never formats an arrival time.
 3. **Download detail levels** - each of Light/Standard/Fine maps to its correct zoom (z11/z12/z13) and its correct measured size (64 MB/314 MB/1.18 GB, from `pipeline/README.md`) as a table-driven test, guarding against one of the three drifting out of sync with the other two. No per-section math - see WIREFRAMES.md Known Deviations #1.
 4. **Staleness tiers** - boundary tests at 14 and 60 days, `never confirmed` ⇒ stale, and staleness is independent of the verified/unverified flag (all four combinations produce the right pin treatment).

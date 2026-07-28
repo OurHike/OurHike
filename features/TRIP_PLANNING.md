@@ -1,6 +1,6 @@
 # OurHike — Trip Planning (Feature Design Draft v1)
 
-Companion to [FEATURES.md](FEATURES.md), [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](OurHikeValues.md). **Builds directly on [SEGMENTS.md](SEGMENTS.md) rather than replacing it** - see "This is not a second hierarchy" below, worth reading first if these two docs seem to overlap.
+Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](../OurHikeValues.md). **Builds directly on [SEGMENTS.md](SEGMENTS.md) rather than replacing it** - see "This is not a second hierarchy" below, worth reading first if these two docs seem to overlap.
 
 **Scope note up front:** same as Segments - Post-MVP (Extras), a design ready to build from, not an argument to reprioritize v1.
 

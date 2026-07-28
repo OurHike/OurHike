@@ -1,6 +1,6 @@
 # OurHike — Volunteering / Work Projects (Feature Design Draft v1)
 
-Companion to [FEATURES.md](FEATURES.md), [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](OurHikeValues.md). Expands FEATURES.md's existing one-line "volunteer-opportunity surfacing" item (under Trail magic) into a real design, split into the two sides the user described: a club-side module for managing work projects, and a hiker-facing map display encouraging people to join one.
+Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](../OurHikeValues.md). Expands FEATURES.md's existing one-line "volunteer-opportunity surfacing" item (under Trail magic) into a real design, split into the two sides the user described: a club-side module for managing work projects, and a hiker-facing map display encouraging people to join one.
 
 **Scope note up front:** like [SEGMENTS.md](SEGMENTS.md), this is Post-MVP (Trail magic, value #9) - a design ready to build from, not an argument to reprioritize v1.
 

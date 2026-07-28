@@ -1,6 +1,6 @@
 # OurHike — Segments (Feature Design Draft v1)
 
-Companion to [FEATURES.md](FEATURES.md), [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](OurHikeValues.md). Describes a proposed feature letting hikers break a hike into a personal, hierarchical set of pieces — and mark them done as they go.
+Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](../OurHikeValues.md). Describes a proposed feature letting hikers break a hike into a personal, hierarchical set of pieces — and mark them done as they go.
 
 **Scope note up front:** FEATURES.md currently places trip-planning tools under **Post-MVP / Extras**, not the v1 core map app. This document specs the feature so it's ready to build when that time comes, and doesn't assume it's jumping the v1 queue — see "Where this fits" at the end.
 

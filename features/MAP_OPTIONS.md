@@ -151,3 +151,5 @@ MapDisplaySettings   (client-side, IndexedDB - same no-account storage model as 
 ## Related: reused elsewhere
 
 [HIKER_SAFETY.md](HIKER_SAFETY.md)'s wrong-way/off-trail alert runs this doc's snap-to-segment distance math continuously against live GPS instead of once against a single tap - same `ST_LineLocatePoint`-based computation, not a second implementation.
+
+[DATA_NUDGES.md](DATA_NUDGES.md) reuses this doc's normalize-then-`match` rendering pattern a third time (after blaze colors and walkability) to highlight POIs whose data has gone stale, and feeds the same legend this doc already designs.

@@ -2,7 +2,7 @@
 
 Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](../OurHikeValues.md). Builds on [AUTHENTICATION.md](AUTHENTICATION.md) (trail name as a real public identity depends on it existing), [UX_CUSTOMIZATION.md](UX_CUSTOMIZATION.md) (onboarding is where its settings first get a chance to surface), and [MAP_OPTIONS.md](MAP_OPTIONS.md) (the download-zoom choice already planned for Phase 2).
 
-**Scope, since you asked for judgment rather than deciding it yourself:** split into two tiers, not one call. A **minimal Tier 1 belongs in v1 MVP** - it's really just "the smallest first-run moment needed before the app can do its one job," and one piece of it (choosing a download zoom/size) is already an MVP item in ROADMAP.md with nowhere else to live. **A richer Tier 2 is genuinely Post-MVP** - trail names depend on Authentication, and a settings walkthrough depends on UX Customization, neither of which exist as MVP features yet. Reasoning for the split below, not just the conclusion.
+**Scope, since you asked for judgment rather than deciding it yourself:** split into two tiers, not one call. A **minimal Tier 1 belongs in v1 MVP** - it's really just "the smallest first-run moment needed before the app can do its one job," and one piece of it (choosing a download zoom/size) is already an MVP item in ROADMAP.md with nowhere else to live. **Tier 2, revised 2026-07-28:** originally Post-MVP because trail names/Authentication weren't MVP features - now that Authentication, Report a Problem, and Map Options' closures have all moved into MVP too, Tier 2 is no longer gated by build phase, it's gated by *use*: account/trail-name creation is prompted contextually the first time a hiker actually tries to contribute (report a problem, mark a closure), not bundled into the generic first-run flow. A settings walkthrough still waits on UX Customization, which stays Post-MVP.
 
 ---
 
@@ -16,9 +16,9 @@ Onboarding usually exists to explain features and collect account info. But FEAT
 - **The download choice** - this isn't new scope, it's the first real moment for an MVP item that already exists nowhere else to live: ROADMAP.md's Phase 2 already commits to letting hikers pick a background zoom/size tradeoff (z11/z12/z13) before the whole-corridor offline download. A hiker can't use the app's core feature - the offline map - without making this choice once, so it belongs in onboarding by necessity, not by scope creep.
 - **Location permission, requested in context, not upfront-and-blind.** Well-established platform guidance (both Apple's and Google's own onboarding guidance say the same thing): ask for a permission when its value is obvious, not immediately on launch before the user understands why. "You are here" GPS is the app's whole point, so asking for it right after the value-prop screen - not before it - is the right moment, not a random speed bump.
 
-**Explicitly not in Tier 1:** account/trail name, a settings walkthrough, tutorial content. None of those have anything real to onboard into yet - Authentication and UX Customization are both still Post-MVP, and onboarding into a feature that doesn't exist isn't a v1 problem.
+**Explicitly not in Tier 1:** account/trail name, a settings walkthrough, tutorial content. Even with Authentication now in MVP, browsing the map still doesn't need an account - creating one is deferred to the moment a hiker actually tries to contribute (Tier 2 below), not bundled into the generic first-run flow just because the capability now ships earlier.
 
-## Tier 2 (Post-MVP) - once there's something worth onboarding into
+## Tier 2 - prompted at first contribution, not gated by Post-MVP anymore
 
 Everything in Tier 1, plus:
 
@@ -54,16 +54,7 @@ Tier 1 is entirely client-side - no backend involved, consistent with the MVP's 
 
 ## Data model sketch
 
-```
-OnboardingState                (client-side, IndexedDB - same storage model as Segments/Map Options)
-  completed: bool
-  download_choice_made: bool
-  location_permission_requested: bool
-
-TrailNameProfile                (client-side by default)
-  trail_name: string, optional
-  is_linked_to_account: bool     (true once/if tied to an AUTHENTICATION.md User)
-```
+**Update 2026-07-28: consolidated into [IDENTITY_AND_PRIVACY.md](IDENTITY_AND_PRIVACY.md)'s `UserPreferences`**, alongside Map Options', UX Customization's, and Hiker Safety's settings, rather than two separate small models here. This doc still owns the *why* (why trail name starts local-only, why it stays optional even once Authentication exists) - only the data model shape moved: `trail_name`, `is_linked_to_account`, `onboarding_completed`, `download_choice_made`, `location_permission_requested`.
 
 ## Open questions (for you, not decided here)
 

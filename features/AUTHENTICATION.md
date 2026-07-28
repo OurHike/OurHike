@@ -1,8 +1,8 @@
 # OurHike — Authentication (Feature Design Draft v1)
 
-Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](../OurHikeValues.md). Also underpins [SEGMENTS.md](SEGMENTS.md) (cross-device sync), [VOLUNTEERING.md](VOLUNTEERING.md) (club admin access), [REPORT_A_PROBLEM.md](REPORT_A_PROBLEM.md) (reporter identity/spam prevention), [MAP_OPTIONS.md](MAP_OPTIONS.md) (who can mark a trail closure), and [HIKER_SAFETY.md](HIKER_SAFETY.md) (the per-user comment-anonymity window) - all five raised a version of "we'll need some identity eventually" as an open question. This is that answer. [ONBOARDING.md](ONBOARDING.md) is where a trail name first gets collected - locally at first, becoming a real `User.display_name` only once linked to an account here. [COMMUNITY_BUILDING.md](COMMUNITY_BUILDING.md) (Tramily groups, check-ins, mentions) needs real, mutually-verifiable accounts throughout - none of it works on a device-local anonymous ID alone.
+Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](../OurHikeValues.md). Also underpins [SEGMENTS.md](SEGMENTS.md) (cross-device sync), [VOLUNTEERING.md](VOLUNTEERING.md) (club admin access), [REPORT_A_PROBLEM.md](REPORT_A_PROBLEM.md) (reporter identity/spam prevention), [MAP_OPTIONS.md](MAP_OPTIONS.md) (who can mark a trail closure), and [HIKER_SAFETY.md](HIKER_SAFETY.md) (the per-user comment-anonymity window) - all five raised a version of "we'll need some identity eventually" as an open question. This is that answer. [ONBOARDING.md](ONBOARDING.md) is where a trail name first gets collected - locally at first, becoming a real `User.display_name` only once linked to an account here. [COMMUNITY_BUILDING.md](COMMUNITY_BUILDING.md) (Tramily groups, check-ins, mentions) needs real, mutually-verifiable accounts throughout - none of it works on a device-local anonymous ID alone. See [IDENTITY_AND_PRIVACY.md](IDENTITY_AND_PRIVACY.md) for how this model relates to the trail name, anonymity window, and check-in privacy designs across those docs.
 
-**Scope decided 2026-07-28: Post-MVP, but build it first.** FEATURES.md's v1 MVP is deliberately "no-account-needed" (a stated UX principle, tied to value #1) - none of the core MVP features (trail line, water, shelters, GPS, search) need per-user state. The need here comes entirely from the three Post-MVP features above, so this doesn't jump the MVP queue. It should, however, be the **first** Post-MVP feature actually built, since all three others depend on it to reach their real versions rather than a stopgap (a device-local anonymous ID, client-only storage, etc.).
+**Scope revised 2026-07-28: moved into v1 MVP.** Originally scoped Post-MVP-but-build-first, since FEATURES.md's MVP was deliberately "no-account-needed" and none of the original MVP features (trail line, water, shelters, GPS, search) needed per-user state. **That's still true for browsing** - viewing the map, water, shelters, elevation profile, and even closures/warnings themselves still needs no account. What changed: [MAP_OPTIONS.md](MAP_OPTIONS.md)'s trail closures and [HIKER_SAFETY.md](HIKER_SAFETY.md)'s serious warning pins/wrong-way alert both moved into MVP too, and both need someone identifiable to mark, verify, or moderate them - so this can no longer wait for Segments/Volunteering/Report a Problem's Post-MVP timeline. Full breadth (Google/Apple/email, MFA) ships as designed below, not a stripped-down stopgap version.
 
 ---
 
@@ -46,6 +46,8 @@ User
   linked providers: [google, apple, email]  (a user may have more than one)
   password_hash (only relevant if "email" is a linked provider)
   mfa_enabled (bool)
+  display_name (the trail name from ONBOARDING.md, once linked to this account -
+                not the real name from email/OAuth, per IDENTITY_AND_PRIVACY.md)
   created_at
 
 EmailChangeRequest

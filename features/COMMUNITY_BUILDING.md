@@ -71,10 +71,16 @@ CheckIn
   session_active: bool                  (auto-tracking only - explicit stop control)
   # deliberately no history table by default - latest point replaces the last one
 
+Note                                    (new - only exists when there's nothing else to attach a mention to)
+  id, author_user_id
+  location reference (point - same anchoring pattern as Segments' boundaries)
+  text
+  timestamp
+
 Mention
   id
   from_user_id, to_user_id              (must be mutually connected)
-  attached_to: Report | ConditionCheckIn | Segment | standalone Note
+  attached_to: Report | ConditionConfirmation | Segment | Note
   timestamp
 ```
 

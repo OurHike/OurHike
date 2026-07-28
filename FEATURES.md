@@ -101,7 +101,7 @@ Grouped by value, for later prioritization — not committed, just not forgotten
 - Volunteer-opportunity surfacing (trail maintenance workdays, club events). **Design drafted 2026-07-28: see [VOLUNTEERING.md](features/VOLUNTEERING.md)** - a club-side work-project management module, plus (the more important half) upcoming projects shown on the map to encourage hikers to join one.
 - Hiker-friendly local business directory
 - Contextual Leave No Trace reminders (e.g., bear-country food storage) tied to location/season
-- No location-sharing or contact exchange without explicit, per-instance consent
+- No location-sharing or contact exchange without explicit, per-instance consent. **This principle's real test case, design drafted 2026-07-28: see [COMMUNITY_BUILDING.md](features/COMMUNITY_BUILDING.md)** - Tramily group-forming, on-demand or ~30-min check-in location sharing, and content-attached "@" mentions, all scoped opt-in/mutual/revocable rather than loosened for this feature.
 
 ### Data openness & portability *(#3, #6)*
 - User data export (routes, saved hikes) in open formats (GPX/GeoJSON/CSV)
@@ -115,6 +115,9 @@ Grouped by value, for later prioritization — not committed, just not forgotten
 
 ### Fuller onboarding *(#1, #4)*
 - An optional trail name (a real hiking-culture nickname, not a generic username - local-only by default, a real public identity only once linked to Authentication), a one-line settings mention rather than a walkthrough, and skippable helpful-info tips reusing the waypoint icon spec. **Design drafted 2026-07-28, second tier of [ONBOARDING.md](features/ONBOARDING.md)** - waits on Authentication and UX Customization actually existing, since there's nothing yet to onboard a hiker into otherwise.
+
+### Community building *(#1, #2, #4, #9)*
+- Forming a "Tramily" and sharing a planned route, on-demand or periodic location check-ins for safety, and lightweight "@" mentions attached to existing content rather than a chat thread. **Design drafted 2026-07-28: see [COMMUNITY_BUILDING.md](features/COMMUNITY_BUILDING.md)** - named directly as this project's biggest privacy-vs-connection tension yet, resolved as a deliberate, carefully-scoped exception (opt-in, mutual, revocable, minimal-retention) rather than a general loosening of the stance Hiker Safety and Data Nudges already took.
 
 ### UX customization *(#1, #4, #5, #7)*
 - Persistent light/dark/metric-units preferences, which waypoint types display and at what label density, and auto-rotate (heading-up map orientation). **Design drafted 2026-07-28: see [UX_CUSTOMIZATION.md](features/UX_CUSTOMIZATION.md)** - leads with a real planning distinction (persistent settings vs. momentary on-map controls, and app-wide preferences vs. map-specific ones) before the individual toggles, and takes auto-rotate's real platform difficulty (no built-in MapLibre support, a genuine iOS/Capacitor permission dependency) as seriously as the wrong-way alert's.

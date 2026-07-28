@@ -34,6 +34,8 @@ A trail name isn't just a display name - it's a specific, well-known hiking conv
 - **Local personalization** - a trail name stored client-side (same no-account storage model as Segments/Map Options), used to label a hiker's own device - e.g. their own Segments, their own contributions in Data Nudges/Report a Problem. Works today, needs no backend, and **is itself a small privacy feature** even before Hiker Safety's anonymity window exists: a trail name is already a partial pseudonym by convention, so defaulting to it rather than a real name is a low-friction complement to - not a replacement for - the anonymity-window mechanism [HIKER_SAFETY.md](HIKER_SAFETY.md) already designs.
 - **A public, cross-device identity** - only meaningful once linked to a real [AUTHENTICATION.md](AUTHENTICATION.md) account. Worth being explicit in the UI about which tier a hiker is in ("saved on this device" vs. "linked to your account") rather than implying portability that doesn't exist yet.
 
+This is exactly the identity [COMMUNITY_BUILDING.md](COMMUNITY_BUILDING.md) shows to a Tramily or in an "@" mention - a trail name, not a real name, by default.
+
 Entering a trail name should stay optional at every point - even once Authentication exists, forcing it during onboarding would be exactly the "heavy signup wall" this doc is trying to avoid.
 
 ## Settings during onboarding - mention, don't force

@@ -6,7 +6,7 @@ Companion to [OurHikeValues.md](OurHikeValues.md), [FEATURES.md](FEATURES.md), a
 
 ## Feature design docs
 
-Seven features have full design drafts, written 2026-07-28 and now organized in [features/](features/) so nothing gets lost. Each is already linked in context from FEATURES.md and from the phase items above — this section is just the one place that lists all seven together:
+Eight features have full design drafts, written 2026-07-28 and now organized in [features/](features/) so nothing gets lost. Each is already linked in context from FEATURES.md and from the phase items above — this section is just the one place that lists all eight together:
 
 - [features/AUTHENTICATION.md](features/AUTHENTICATION.md) — Google/Apple/email sign-in, verification, optional MFA. Post-MVP, but build first — Segments, Volunteering, Report a Problem, and Map Options' closures all depend on it.
 - [features/TRAIL_BLAZE_COLORS.md](features/TRAIL_BLAZE_COLORS.md) — render the trail line in its real painted blaze color, with a neutral fallback when unknown. A v1 MVP correctness detail, not Post-MVP.
@@ -15,6 +15,7 @@ Seven features have full design drafts, written 2026-07-28 and now organized in 
 - [features/REPORT_A_PROBLEM.md](features/REPORT_A_PROBLEM.md) — hiker-submitted condition reports (blow downs, trash, bad hikers, flooding, shelter repair, animals), with "bad hikers" routed internal-only. Post-MVP (Community reporting).
 - [features/VOLUNTEERING.md](features/VOLUNTEERING.md) — club work-project management, plus upcoming projects shown on the map to encourage hikers to join one. Post-MVP (Trail magic).
 - [features/MAP_OPTIONS.md](features/MAP_OPTIONS.md) — user-controlled background tile source, roads/sidewalk-walkability overlay, DuckDB-backed snap-to-trail for Segments, and trail-closure marking/display. Mostly Post-MVP; its map-chrome section (legend/scale/locate/zoom) is a v1 MVP detail spec.
+- [features/HIKER_SAFETY.md](features/HIKER_SAFETY.md) — moderator-escalated serious warning pins, a configurable anonymity window for comments, a responsibly-sourced NWS weather-alert relay and elevation-aware daily conditions, and a deliberately conservative wrong-way/off-trail alert scoped as the only notification OurHike ever sends. Post-MVP.
 
 ## Phase 1 — Data pipeline
 
@@ -73,7 +74,7 @@ Seven features have full design drafts, written 2026-07-28 and now organized in 
 - Community condition reporting & maintainer verification
 - Trail magic features
 - Multi-club admin/config tooling
-- Weather integration
+- Weather integration (design drafted 2026-07-28, see [features/HIKER_SAFETY.md](features/HIKER_SAFETY.md))
 
 ---
 

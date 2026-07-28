@@ -147,3 +147,7 @@ MapDisplaySettings   (client-side, IndexedDB - same no-account storage model as 
 - **Whether extending the existing Protomaps self-hosted extract (more zooms, a wider region) is a better answer than any live third-party API** for "see more background than the downloaded corridor" - raised above, worth deciding once there's a real map in front of you rather than from this doc alone.
 - **Exact `no_sidewalk_high_speed` threshold** (which `highway=*` values, whether to also read `maxspeed` where tagged) - a real tuning decision once there's real OSM road data pulled for the corridor, not a question this doc can answer without it.
 - **Closure geometry precision** - whether a closure needs to reference exact start/end points along the centerline (precise, more data-entry effort for a volunteer) or a looser "this general stretch" description (faster to report, less precise) - worth deciding based on what club volunteers will actually have time to enter in the field.
+
+## Related: reused elsewhere
+
+[HIKER_SAFETY.md](HIKER_SAFETY.md)'s wrong-way/off-trail alert runs this doc's snap-to-segment distance math continuously against live GPS instead of once against a single tap - same `ST_LineLocatePoint`-based computation, not a second implementation.

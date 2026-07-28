@@ -69,7 +69,7 @@ Pulled from [Zoe Symon's Guthook Guides (now FarOut) redesign case study](https:
 Grouped by value, for later prioritization — not committed, just not forgotten.
 
 ### Community reporting *(#2, #4)*
-- Hiker-submitted condition reports (text + photo), with timestamp + reporter type shown
+- Hiker-submitted condition reports (text + photo), with timestamp + reporter type shown. **Design drafted 2026-07-28: see [REPORT_A_PROBLEM.md](REPORT_A_PROBLEM.md)** - report types (blow downs, trash, bad hikers, flooding, shelter repair, animals), pick-a-location flow (existing POI, dropped pin, or current location), and a path toward richer type-specific follow-up over time.
 - Maintainer verification/flagging workflow
 - Moderation queue for club admins
 - Link between hiker reports and official trail-maintenance logs
@@ -86,7 +86,7 @@ Grouped by value, for later prioritization — not committed, just not forgotten
 ### Trail magic, done right *(#9)*
 - Point-in-time help requests/offers between hikers — ephemeral, expires automatically, never a persistent pin
 - **Explicitly excluded, permanently:** any feature for broadcasting unattended caches ("food left at mile X")
-- Volunteer-opportunity surfacing (trail maintenance workdays, club events)
+- Volunteer-opportunity surfacing (trail maintenance workdays, club events). **Design drafted 2026-07-28: see [VOLUNTEERING.md](VOLUNTEERING.md)** - a club-side work-project management module, plus (the more important half) upcoming projects shown on the map to encourage hikers to join one.
 - Hiker-friendly local business directory
 - Contextual Leave No Trace reminders (e.g., bear-country food storage) tied to location/season
 - No location-sharing or contact exchange without explicit, per-instance consent

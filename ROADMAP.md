@@ -6,7 +6,7 @@ Companion to [OurHikeValues.md](OurHikeValues.md), [FEATURES.md](FEATURES.md), a
 
 ## Feature design docs
 
-Twelve features have full design drafts, plus one consolidated reference doc, written 2026-07-28 and now organized in [features/](features/) so nothing gets lost. Each is already linked in context from FEATURES.md and from the phase items above — this section is just the one place that lists them all together. **A cross-feature alignment review on 2026-07-28 moved Authentication, Report a Problem, Map Options' closures, and Hiker Safety's warnings/wrong-way alert into v1 MVP** (see TECHNICAL_ARCHITECTURE.md's revised Backend section) — the notes below reflect that revision, not the original scope each doc launched with:
+Thirteen features have full design drafts, plus one consolidated reference doc, written 2026-07-28 and now organized in [features/](features/) so nothing gets lost. Each is already linked in context from FEATURES.md and from the phase items above — this section is just the one place that lists them all together. **A cross-feature alignment review on 2026-07-28 moved Authentication, Report a Problem, Map Options' closures, and Hiker Safety's warnings/wrong-way alert into v1 MVP** (see TECHNICAL_ARCHITECTURE.md's revised Backend section) — the notes below reflect that revision, not the original scope each doc launched with:
 
 - [features/AUTHENTICATION.md](features/AUTHENTICATION.md) — Google/Apple/email sign-in, verification, optional MFA. **Moved into v1 MVP 2026-07-28** (browsing the map still needs no account - this exists so a moderator/reporter can be identified) - still foundational for Segments, Volunteering, and Report a Problem too.
 - [features/TRAIL_BLAZE_COLORS.md](features/TRAIL_BLAZE_COLORS.md) — render the trail line in its real painted blaze color, with a neutral fallback when unknown. A v1 MVP correctness detail, not Post-MVP.
@@ -21,6 +21,7 @@ Twelve features have full design drafts, plus one consolidated reference doc, wr
 - [features/ONBOARDING.md](features/ONBOARDING.md) — a deliberately minimal first-run flow (value-prop, the download choice, contextual location permission) scoped as v1 MVP; trail names, a settings mention, and helpful-info tips are a second, Post-MVP tier that waits on Authentication and UX Customization existing first.
 - [features/COMMUNITY_BUILDING.md](features/COMMUNITY_BUILDING.md) — forming a "Tramily" and sharing routes, on-demand/periodic safety check-ins, and content-attached "@" mentions. This project's biggest privacy-vs-connection tension yet, resolved as a deliberate, scoped exception (opt-in/mutual/revocable/minimal-retention) rather than loosening the stance Hiker Safety and Data Nudges already took. Post-MVP.
 - [features/IDENTITY_AND_PRIVACY.md](features/IDENTITY_AND_PRIVACY.md) — **not a feature, a consolidated reference** written during the 2026-07-28 alignment review: ties together identity/privacy design scattered across five docs (who sees what, on which surface, governed by which mechanism) and replaces five separate small settings models with one canonical `UserPreferences`.
+- [features/PRICING_MODEL.md](features/PRICING_MODEL.md) — extends the existing Business Model section in FEATURES.md: a thru-hike pass (validated against FarOut's real $74.99 AT guide price), a regional pass tied to Multi-club support becoming a real feature, a volunteer exemption blocked on Volunteering's not-yet-built hour-tracking, and an annual all-access ceiling. Reuses the existing MVP/Post-MVP line as the paywall boundary rather than inventing a new one. Post-MVP, timing deliberately undecided.
 
 ## Phase 1 — Data pipeline
 
@@ -80,7 +81,7 @@ Browsing everything above stays account-free. These five items are what actually
 ## Phase 4 — Launch readiness
 
 - [ ] **Real-trail field testing** — offline mode, GPS accuracy, battery drain, tested on an actual section of trail, ideally by NYNJTC or ATC volunteers.
-- [ ] **Web-only donation/payment flow** — basic Stripe (or similar) checkout on the web version only, nothing equivalent in the wrapped app.
+- [ ] **Web-only donation/payment flow** — basic Stripe (or similar) checkout on the web version only, nothing equivalent in the wrapped app. **The actual tier/entitlement structure this checkout sells, design drafted 2026-07-28: see [PRICING_MODEL.md](features/PRICING_MODEL.md)** — thru-hike pass, regional pass, all-access ceiling, and a club-admin-granted volunteer exemption.
 - [ ] **Inheritability docs** — keep FEATURES.md/TECHNICAL_ARCHITECTURE.md current, add a CONTRIBUTING.md / setup guide aimed at "the next club," not just this one.
 - [ ] **Soft launch with NYNJTC** — first real users, gather feedback, iterate before wider release.
 

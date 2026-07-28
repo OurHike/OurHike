@@ -45,6 +45,7 @@ Browsing everything above still needs no account - these four items are what act
 - Any paid tier, donation flow, or sponsorship purchase lives on the **web version only**. The mobile app can link out to the web for that.
 - Per value #5, this is about *sustainability*, not paywalling safety data — core map/POI data stays free everywhere; monetization is additive (e.g., donations, maybe premium convenience features later), never a gate on safety-relevant info.
 - Longer-term intent: revenue should flow toward funding ATC / affiliated maintaining clubs, not just cover OurHike's own hosting costs.
+- **The actual pricing structure (tiers, what's gated vs. free, persona-by-persona), design drafted 2026-07-28: see [PRICING_MODEL.md](features/PRICING_MODEL.md)** - a thru-hike pass (validated against FarOut's own real $74.99 AT guide price), a regional pass for local/heavy users tied to Multi-club support becoming a real feature, a volunteer exemption gated on Volunteering's not-yet-built hour-tracking, and an annual all-access ceiling. The paywall boundary reuses the existing MVP/Post-MVP line throughout - nothing already free moves behind it.
 
 ## Data sources (decided 2026-07-24, refined 2026-07-24)
 
@@ -120,6 +121,7 @@ Google/Apple/email sign-in, email verification, optional MFA, recommended techni
 - Org/club as a first-class data model concept — trails and POIs scoped to a club/region
 - Per-club admin roles
 - Onboarding path for the next ATC-affiliated club with no NYNJTC-specific assumptions baked in
+- **Graduates from a future-proofing principle into an actual product surface, per [PRICING_MODEL.md](features/PRICING_MODEL.md):** a regional trail pass (local/heavy users, dozens of trails beyond the AT) needs a real multi-trail data model to exist, not just an inheritable schema - this pricing tier is the concrete reason to actually build it.
 
 ### Fuller onboarding *(#1, #4)*
 - An optional trail name (a real hiking-culture nickname, not a generic username - local-only by default, a real public identity only once linked to Authentication), a one-line settings mention rather than a walkthrough, and skippable helpful-info tips reusing the waypoint icon spec. **Design drafted 2026-07-28, second tier of [ONBOARDING.md](features/ONBOARDING.md)** - waits on Authentication and UX Customization actually existing, since there's nothing yet to onboard a hiker into otherwise.

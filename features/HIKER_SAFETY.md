@@ -22,6 +22,8 @@ Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHN
 
 **The real concern, worth stating plainly:** a name plus an exact date/time next to a trail-mile location is a location-and-pattern-of-life disclosure, not just a comment byline - a legitimate, known worry for solo hikers in particular. Masking it for a while is a genuine safety feature, not decoration.
 
+**Complementary to, not a substitute for, [ONBOARDING.md](ONBOARDING.md)'s trail name.** A trail name is already a partial pseudonym by hiking convention, which helps before this window even exists - but it doesn't mask the exact date/location the way this mechanism does, so both matter together, not either/or.
+
 **Design - a display-layer redaction, not a data deletion.** The underlying `Report` (from Report a Problem) keeps its real `reporter_id` and real `timestamp` always - moderation, spam-prevention, and the "reported 3 days ago vs. confirmed today" honesty principle already in FEATURES.md all need the real data underneath. What changes is what's *shown*:
 
 - **Name/handle:** hidden, shown only as the existing `reporter_type` category (thru-hiker/section-hiker/day-hiker/maintainer) - which isn't identity-revealing on its own, so it stays visible even while anonymized.

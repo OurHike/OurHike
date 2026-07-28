@@ -60,7 +60,7 @@ FEATURES.md's current plan is a **no-account-needed PWA** — fast onboarding, n
 
 Nothing here should assume "the Appalachian Trail" specifically — a Hike references *a* trail centerline, and Segment boundaries reference *that* trail's own mile-markers/POIs. The moment a second club's trail data exists in the same schema, Segments work for it identically. Worth keeping in mind if/when the "trail reference" field above gets implemented — it should point at a trail id, not assume there's only ever one.
 
-**Related:** [TRAIL_BLAZE_COLORS.md](TRAIL_BLAZE_COLORS.md) - since Segments already tie to real trail-line geometry, a planned hike's segments can render in their real blaze color for free, with no changes needed here.
+**Related:** [TRAIL_BLAZE_COLORS.md](TRAIL_BLAZE_COLORS.md) - since Segments already tie to real trail-line geometry, a planned hike's segments can render in their real blaze color for free, with no changes needed here. **Update 2026-07-28:** [MAP_OPTIONS.md](MAP_OPTIONS.md) upgrades the "user drops a pin" boundary case above - instead of storing the raw tapped coordinate, it snaps onto the nearest point on real trail geometry (DuckDB's `ST_LineLocatePoint`/`ST_LineInterpolatePoint`), and uses this doc's `Hike.type` field to prefer the main centerline over a side trail for thru/section hikes.
 
 ## Where this fits
 

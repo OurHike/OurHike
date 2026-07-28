@@ -106,5 +106,5 @@ Grouped by value, for later prioritization — not committed, just not forgotten
 
 ### Extras
 - Elevation profiles per trail/section
-- Trip planning tools (distance, elevation gain, estimated time) — informational, not prescriptive (no streaks/leaderboards, per value #1). **Design drafted 2026-07-28: see [SEGMENTS.md](SEGMENTS.md)** — lets a hiker break a thru-hike/section/day-hike into a personal, hierarchical set of pieces (a "segment" means a day to a thru-hiker, a leg between landmarks to a day-hiker) and mark them done as they go.
+- Trip planning tools (distance, elevation gain, estimated time) — informational, not prescriptive (no streaks/leaderboards, per value #1). **Design drafted 2026-07-28: see [SEGMENTS.md](SEGMENTS.md)** (the underlying hierarchical Hike/Segment structure - a "segment" means a day to a thru-hiker, a leg between landmarks to a day-hiker) **and [TRIP_PLANNING.md](TRIP_PLANNING.md)** (waypoint-based day-hike planning, bulk multi-day adjustment, POI-aware planning assistance, and a distance/elevation-gain-and-loss difficulty estimate, honest about what it can't capture).
 - Weather overlay relevant to trail conditions

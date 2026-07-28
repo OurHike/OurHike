@@ -6,7 +6,7 @@ Companion to [OurHikeValues.md](OurHikeValues.md), [FEATURES.md](FEATURES.md), a
 
 ## Feature design docs
 
-Eleven features have full design drafts, written 2026-07-28 and now organized in [features/](features/) so nothing gets lost. Each is already linked in context from FEATURES.md and from the phase items above — this section is just the one place that lists all eleven together:
+Twelve features have full design drafts, written 2026-07-28 and now organized in [features/](features/) so nothing gets lost. Each is already linked in context from FEATURES.md and from the phase items above — this section is just the one place that lists all twelve together:
 
 - [features/AUTHENTICATION.md](features/AUTHENTICATION.md) — Google/Apple/email sign-in, verification, optional MFA. Post-MVP, but build first — Segments, Volunteering, Report a Problem, and Map Options' closures all depend on it.
 - [features/TRAIL_BLAZE_COLORS.md](features/TRAIL_BLAZE_COLORS.md) — render the trail line in its real painted blaze color, with a neutral fallback when unknown. A v1 MVP correctness detail, not Post-MVP.
@@ -19,6 +19,7 @@ Eleven features have full design drafts, written 2026-07-28 and now organized in
 - [features/DATA_NUDGES.md](features/DATA_NUDGES.md) — low-friction, non-gamified prompts to keep water/shelter/resupply data fresh: no notification of any kind, just visual map prominence for stale POIs and open reports, self-limiting the moment anyone contributes. Post-MVP (Community reporting).
 - [features/UX_CUSTOMIZATION.md](features/UX_CUSTOMIZATION.md) — light/dark mode, metric units, which waypoints display and at what detail, and auto-rotate/compass. Splits persistent settings from on-map controls up front; auto-rotate is real Post-MVP work given the platform constraints, the rest is mostly MVP-detail or light Post-MVP settings polish.
 - [features/ONBOARDING.md](features/ONBOARDING.md) — a deliberately minimal first-run flow (value-prop, the download choice, contextual location permission) scoped as v1 MVP; trail names, a settings mention, and helpful-info tips are a second, Post-MVP tier that waits on Authentication and UX Customization existing first.
+- [features/COMMUNITY_BUILDING.md](features/COMMUNITY_BUILDING.md) — forming a "Tramily" and sharing routes, on-demand/periodic safety check-ins, and content-attached "@" mentions. This project's biggest privacy-vs-connection tension yet, resolved as a deliberate, scoped exception (opt-in/mutual/revocable/minimal-retention) rather than loosening the stance Hiker Safety and Data Nudges already took. Post-MVP.
 
 ## Phase 1 — Data pipeline
 

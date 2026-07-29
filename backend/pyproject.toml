@@ -1,0 +1,19 @@
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "--cov=. --cov-report=term-missing"
+
+[tool.coverage.run]
+omit = [".venv/*", "tests/*", "alembic/*"]
+
+[tool.ruff]
+line-length = 130
+
+[tool.ruff.lint]
+# Same narrow, explicit rule set as pipeline/pyproject.toml, for the same
+# reason (see the comment there): this Ruff version's real zero-config
+# default is ~829 rules, far more opinionated than this project wants.
+# pyflakes (F) + core pycodestyle errors (E4/E7/E9) + import sorting (I) -
+# matching the "boring, low-maintenance" preference (see TESTING.md) rather
+# than every available rule category.
+select = ["E4", "E7", "E9", "F", "I"]

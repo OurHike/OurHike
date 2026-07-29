@@ -1,0 +1,8 @@
+.scaffold-check {
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--paper-100);
+  padding: var(--space-6, 24px);
+}

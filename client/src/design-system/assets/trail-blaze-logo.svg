@@ -1,0 +1,9 @@
+<svg width="40" height="100" viewBox="0 0 40 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="OurHike trail blaze mark">
+  <defs>
+    <filter id="ourhike-blaze-jag" x="-40%" y="-15%" width="180%" height="130%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.03 0.09" numOctaves="2" seed="7" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="10" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </defs>
+  <rect x="10" y="8" width="20" height="84" rx="10" fill="#ffffff" filter="url(#ourhike-blaze-jag)"/>
+</svg>

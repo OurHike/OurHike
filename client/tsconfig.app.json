@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "esnext",
+    "types": ["vite/client", "@testing-library/jest-dom"],
+    "allowArbitraryExtensions": true,
+    "skipLibCheck": true,
+
+    /* Design system components are copied as plain .jsx + a sibling .d.ts
+       (see src/design-system/README.md) - allowJs lets them be imported as-is
+       rather than ported to .tsx now; checkJs stays off since they're untyped
+       JS, typed only via their .d.ts. */
+    "allowJs": true,
+    "checkJs": false,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"]
+}

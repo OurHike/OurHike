@@ -3,7 +3,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import profiles
+from app.routers import closures, hikes, moderation, preferences, profiles, reports, wrong_way
 
 app = FastAPI(title="OurHike backend")
 
@@ -29,3 +29,9 @@ def health() -> dict[str, str]:
 
 
 app.include_router(profiles.router)
+app.include_router(hikes.router)
+app.include_router(preferences.router)
+app.include_router(reports.router)
+app.include_router(closures.router)
+app.include_router(wrong_way.router)
+app.include_router(moderation.router)

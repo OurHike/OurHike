@@ -41,7 +41,7 @@ None of this needs designing now - the data model just needs room to add per-typ
 ```
 Report
   id
-  type: blowdown | trash | bad_hikers | flooding | shelter_repair | animals
+  type: blowdown | trash | bad_hikers | flooding | shelter_repair | animals | thanks
   location reference:
     - existing POI id, OR
     - a dropped/GPS pin (lat/lon)
@@ -52,7 +52,9 @@ Report
   photo (optional)
   follow_up (type-specific structured fields - empty in v1, additive later)
   status: submitted | verified | resolved | dismissed
-  visibility: public | internal-only (bad_hikers defaults to internal-only - see above)
+  visibility: public | internal-only | club-only
+              (bad_hikers defaults to internal-only - see above; thanks is
+               club-only - see SAYING_THANKS.md)
 ```
 
 ## Architecture fit
@@ -65,6 +67,7 @@ This is the reason a live backend is now part of v1 MVP at all, not just a Phase
 - ~~**Minimal identity for reporters.**~~ **Resolved 2026-07-28:** [AUTHENTICATION.md](AUTHENTICATION.md) is now MVP too, built specifically so this doesn't need its own bespoke device-local identity scheme - real accounts exist by the time this feature ships.
 - **How "verified" actually happens.** FEATURES.md already plans a maintainer verification/flagging workflow in the abstract; this feature is what gives it real content to verify. Worth designing them together rather than this doc assuming a workflow that doesn't exist yet.
 - **Possible future extension:** [TRIP_PLANNING.md](TRIP_PLANNING.md) wants hiker-reported trail difficulty (rocky/rough tread that elevation data alone doesn't capture) and floats this reporting infrastructure as the natural home for it, once there's real report volume to learn from - not designed here, just noted so it isn't invented twice.
+- **Related:** [SAYING_THANKS.md](SAYING_THANKS.md) adds the `thanks` type above (2026-07-29), resolving WIREFRAMES.md's Known Deviations #2. It is the one type that deliberately does *not* use this doc's moderation queue or its four states - there is nothing to verify about gratitude, and "Not confirmed" on a thank-you note would read as a rejection. It also adds optional `maintainer_id`/`club_id` attribution, resolved by location against VOLUNTEERING.md's `MaintainerAssignment` records.
 - **Related:** [MAP_OPTIONS.md](MAP_OPTIONS.md)'s trail-closure feature reuses this doc's moderation-queue pattern directly (a closure is functionally a condition report that renders as a line instead of a pin) rather than building a second review workflow.
 - **Related:** [HIKER_SAFETY.md](HIKER_SAFETY.md) adds a moderator-escalated `severity` tier on top of the report types here (bear sightings under `animals`, dangerous humans under `bad_hikers`), and directly names the "bad hikers" handling above as needing the real moderation-policy conversation this doc already deferred - now with an actual feature waiting on the answer.
 - **Related:** [DATA_NUDGES.md](DATA_NUDGES.md) adds a `last_reconfirmed_at` field to the `Report` model above (a fast "still there?" tap that refreshes it without changing `status`, distinct from a "resolved" tap that does), and introduces a separate, lighter `ConditionConfirmation` model for confirmations that were never a problem report to begin with - renamed 2026-07-28 from its original `ConditionCheckIn` to avoid colliding with Community Building's unrelated `CheckIn` (location-sharing) model.

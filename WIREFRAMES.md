@@ -211,6 +211,10 @@ Turn 14 of the wireframe answers that open question, but not by simply routing `
 
 This is a real product/data-model decision — whether "say thanks" is a seventh `Report` type, a separate model entirely, or something else — not something to resolve silently in a docs-hygiene pass. Recommend picking this up explicitly in the next planning round, before backend/report work starts, since [MAP_OPTIONS.md](features/MAP_OPTIONS.md)'s closures and [HIKER_SAFETY.md](features/HIKER_SAFETY.md)'s warnings both build on the same `Report`/moderation-queue mechanism and would inherit whatever shape this takes.
 
+> **Resolved 2026-07-29 — see [SAYING_THANKS.md](features/SAYING_THANKS.md).** A thanks is a comment about a specific place: the **seventh `Report` type**, same fields plus photos, optionally tagging a maintainer. It skips the moderation queue (there is nothing to verify), gets its own two states (`Sent` / `Delivered`) because "Not confirmed" on a thank-you note would be insulting, and gets a new `club_only` visibility rather than reusing `internal_only`, which was named for the `bad_hikers` safety case and means a different audience.
+>
+> The decision pulled in a dependency: to thank a maintainer you cannot name, the app must know who looks after which stretch **and when**, so [VOLUNTEERING.md](features/VOLUNTEERING.md) now carries a versioned `MaintainerAssignment` model. Lookups are always as-of the thanks' authored date, never "now" — a thanks written in June about a section reassigned in July belongs to the June maintainer.
+
 ---
 
 ## Design tokens & components

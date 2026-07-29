@@ -18,6 +18,26 @@ from shapely.geometry import LineString, MultiLineString
 
 import export_elevation
 
+
+def _index_for_dir(dem_dir, tmp_path):
+    """Turn a directory of local fixture DEM tiles into the tile-index JSON
+    that index_elevation_tiles() now reads (see fetch_elevation.py - the real
+    pipeline resolves remote COG URLs rather than downloading tiles)."""
+    import json as _json
+
+    import rasterio as _rio
+    from rasterio.warp import transform_bounds as _tb
+
+    entries = []
+    for path in sorted(dem_dir.glob("*/*.tif")) + sorted(dem_dir.glob("*.tif")):
+        with _rio.open(path) as src:
+            b = _tb(src.crs, "EPSG:4326", *src.bounds)
+        entries.append({"url": path.as_posix(), "bounds": list(b)})
+    out = tmp_path / "tile_index.json"
+    out.write_text(_json.dumps(entries))
+    return out
+
+
 # Real approximate trailhead coordinates (also used by export_elevation.py
 # itself - see its module docstring) - kept independent here rather than
 # imported, so a typo in the module's own constants wouldn't silently make
@@ -78,7 +98,7 @@ def _setup(tmp_path, monkeypatch, centerline_coord_groups, dem_tiles):
     manifest_path = tmp_path / "elevation_manifest.json"
 
     monkeypatch.setattr(export_elevation, "CENTERLINE_PATH", centerline_path)
-    monkeypatch.setattr(export_elevation, "ELEVATION_DIR", elevation_dir)
+    monkeypatch.setattr(export_elevation, "ELEVATION_INDEX_PATH", _index_for_dir(elevation_dir, tmp_path))
     monkeypatch.setattr(export_elevation, "OUT_PATH", out_path)
     monkeypatch.setattr(export_elevation, "MANIFEST_PATH", manifest_path)
 
@@ -211,7 +231,7 @@ def test_export_elevation_samples_correctly_from_a_dem_tile_in_a_non_wgs84_proje
     with rasterio.open(tile_path, "w", **profile) as dst:
         dst.write(np.full((1, 40, 40), 1234.5, dtype="float32"))
 
-    tile_index = export_elevation.index_elevation_tiles(tmp_path)
+    tile_index = export_elevation.index_elevation_tiles(_index_for_dir(tmp_path, tmp_path))
     sampler = export_elevation.ElevationSampler(tile_index)
     try:
         value = sampler.sample(-84.15, 34.65)  # well inside wgs84_bounds

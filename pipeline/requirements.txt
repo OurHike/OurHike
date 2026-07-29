@@ -9,3 +9,4 @@ tifffile
 imagecodecs
 pmtiles
 shapely
+boto3

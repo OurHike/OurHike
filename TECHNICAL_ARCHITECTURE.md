@@ -27,9 +27,13 @@ flowchart TB
 
     subgraph Pipeline["Data Pipeline (Python + DuckDB spatial)"]
         Ingest["Ingest raw extracts"]
+        Load["Load raw -> DuckDB\n(ELT 'L' - planned, not yet built,\nsee pipeline/DBT.md)"]
+        DBT["dbt: staging -> intermediate -> marts\n(ELT 'T' - tabular/attribute data only,\ntested + documented - planned,\nsee pipeline/DBT.md)"]
         Corridor["Compute 30-mile trail\ncorridor buffer"]
         Clip["Clip USGS raster + OSM/NHD\nto corridor, join with ATC POIs"]
         Export["Export: raster PMTiles (base map)\n+ GeoJSON/FlatGeobuf (POIs)"]
+        Ingest --> Load --> DBT
+        DBT -.->|"unified POI marts -\nnot yet wired into\nExport"| Export
         Ingest --> Corridor --> Clip --> Export
     end
 
@@ -81,10 +85,12 @@ flowchart TB
 
 **Pipeline steps:**
 1. **Ingest** — pull raw extracts from ATC, USGS, OSM into a working format DuckDB can read directly (GeoJSON, Shapefile, GeoPackage, FlatGeobuf). *(ATC side done — see `pipeline/discover_sources.py` + `pipeline/fetch_all.py`. As of 2026-07-25, ingest is change-aware, not just repeatable: each fetch script checks a cheap upstream signal first and skips the real (slower/larger) pull entirely if nothing changed — `fetch_all.py` checks each ATC layer's `editingInfo.dataLastEditDate`, `fetch_opentrail.py` uses real HTTP conditional requests (`ETag`/`If-None-Match`), `fetch_topo_quads.py` already compared S3 `Last-Modified` per quad. This matters because most sources here (especially USGS) update on the order of years, not days — most scheduled runs should do a handful of cheap metadata checks and transfer nothing.)*
-2. **Corridor** — build the 30-mile buffer geometry once from the trail centerline + waypoints. *(Done — see `pipeline/spike_corridor.py`; validated on the real 3,025-segment centerline, ~81,138 sq mi corridor.)*
-3. **Clip & join** — clip the USGS raster background to the corridor; intersect OSM/NHD POI data against it; join everything into a unified POI schema. *(POI clipping validated in the spike using ATC campsites/shelters. Raster clipping now validated at real scale too — see `pipeline/spike_raster_mosaic.py`, mosaicking the real 1,654 downloaded US Topo quads (14GB) per corridor-intersecting grid cell, reprojecting each quad from its native UTM zone via a lazy `WarpedVRT` before merging, since quads across the trail span multiple UTM zones and can't be merged directly. Hit and now handles a real corruption in one of USGS's own hosted source files (confirmed via a byte-exact-matching re-download that still failed to decode) — bad quads are validated and skipped rather than crashing the run.)*
-4. **Export** — write the background as **raster PMTiles** (single static archive, no tile server required) and POI layers as **GeoJSON/FlatGeobuf**. Each output artifact (the background, and each POI layer separately — not one bundle) gets its own content hash (SHA256), computed after export.
-5. **Publish, change-aware end to end (planned 2026-07-25):** the same "skip if unchanged" principle from Ingest, carried all the way to what actually ships to hikers, since the goal isn't just less work for us — it's less data hikers need to pull over trail-side signal.
+2. **Load** — load already-fetched raw data into DuckDB tables *before* any transformation, the "L" in an extract-**load**-transform (ELT) pipeline. *(Design decided 2026-07-29, not yet built — see `pipeline/DBT.md`. Deliberately excludes raster pixel data; only lightweight raster metadata loads, keeping the warehouse itself small per value #8.)*
+3. **Transform (dbt)** — turn loaded raw tables into clean, tested, documented staging/intermediate/marts models — SQL by default, Python only for a documented, measured exception. *(Design decided 2026-07-29, not yet built — see `pipeline/DBT.md`, including the first planned vertical slice: ATC shelters/campsites + opentrail waypoints unified into one `dim_pois` mart, directly targeting the "Unified POI schema" item below for a subset of sources.)*
+4. **Corridor** — build the 30-mile buffer geometry once from the trail centerline + waypoints. *(Done — see `pipeline/spike_corridor.py`; validated on the real 3,025-segment centerline, ~81,138 sq mi corridor.)*
+5. **Clip & join** — clip the USGS raster background to the corridor; intersect OSM/NHD POI data against it; join everything into a unified POI schema. *(POI clipping validated in the spike using ATC campsites/shelters. Raster clipping now validated at real scale too — see `pipeline/spike_raster_mosaic.py`, mosaicking the real 1,654 downloaded US Topo quads (14GB) per corridor-intersecting grid cell, reprojecting each quad from its native UTM zone via a lazy `WarpedVRT` before merging, since quads across the trail span multiple UTM zones and can't be merged directly. Hit and now handles a real corruption in one of USGS's own hosted source files (confirmed via a byte-exact-matching re-download that still failed to decode) — bad quads are validated and skipped rather than crashing the run. The POI-side unified schema is now planned via dbt, see step 3 above — not yet wired into this clip/export flow.)*
+6. **Export** — write the background as **raster PMTiles** (single static archive, no tile server required) and POI layers as **GeoJSON/FlatGeobuf**. Each output artifact (the background, and each POI layer separately — not one bundle) gets its own content hash (SHA256), computed after export.
+7. **Publish, change-aware end to end (planned 2026-07-25):** the same "skip if unchanged" principle from Ingest, carried all the way to what actually ships to hikers, since the goal isn't just less work for us — it's less data hikers need to pull over trail-side signal.
    - A small version manifest (`latest.json`) in R2 lists a version id + content hash per artifact/chunk.
    - Publish compares freshly computed hashes against that manifest; unchanged artifacts are never re-uploaded, and if *nothing* changed, no new version is published at all — not even a no-op version bump.
    - The client mirrors this: it stores the hash of each chunk it already downloaded, and before flagging "update available" it fetches the tiny manifest and diffs hashes against its local cache — only flagging chunks that actually changed. A hiker who's downloaded GA→VA shouldn't be prompted to re-pull those because a shelter in Maine moved.
@@ -134,6 +140,7 @@ This is a script, not a service — it's rerun periodically (e.g. weekly, per th
 |---|---|
 | Client (phone + web) | React + TypeScript, MapLibre GL JS, PMTiles, Capacitor |
 | Data pipeline | Python, DuckDB (spatial extension) |
+| Data transform (design decided 2026-07-29, not yet built) | dbt-core + dbt-duckdb (SQL, staging/intermediate/marts inside the same DuckDB file) - see [pipeline/DBT.md](pipeline/DBT.md) |
 | Backend (MVP: auth, reports/moderation, closures; Phase 2+: multi-club admin, donations) | Python (FastAPI), Postgres/PostGIS if/when needed |
 | Hosting | Static hosting/CDN (map/POI data) + a small managed backend, both MVP as of 2026-07-28 |
 

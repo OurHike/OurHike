@@ -1,0 +1,91 @@
+.reporting {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+  padding: var(--space-5, 20px);
+  background: var(--bg-page);
+}
+.reporting__title {
+  margin: 0;
+  font-size: 20px;
+  color: var(--fg-1);
+}
+.reporting__subtitle {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-3);
+}
+.reporting__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2, 8px);
+}
+.reporting__tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 76px;
+  padding: var(--space-3, 12px);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: 12px;
+  cursor: pointer;
+}
+.reporting__tile-glyph {
+  font-size: 20px;
+}
+.reporting__people {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+.reporting__card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  padding: var(--space-4, 16px);
+  text-align: left;
+  border-radius: 12px;
+  cursor: pointer;
+}
+.reporting__card--unsafe {
+  color: var(--fg-1);
+  background: color-mix(in srgb, var(--blaze-yellow) 14%, var(--bg-surface));
+  border: 1px solid color-mix(in srgb, var(--blaze-yellow) 55%, transparent);
+}
+.reporting__card-title {
+  font-size: 15px;
+  font-weight: 700;
+}
+.reporting__card-body {
+  font-size: 13px;
+  color: var(--fg-2);
+}
+.reporting__limit {
+  margin: 0;
+  padding: var(--space-3, 12px);
+  font-size: 13px;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: 10px;
+}
+.reporting__reassurance {
+  margin: 0;
+  padding: var(--space-3, 12px);
+  font-size: 13px;
+  color: var(--brand-primary);
+  background: color-mix(in srgb, var(--forest-600) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--forest-600) 30%, transparent);
+  border-radius: 10px;
+}

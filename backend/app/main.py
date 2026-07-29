@@ -3,7 +3,16 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import closures, hikes, moderation, preferences, profiles, reports, wrong_way
+from app.routers import (
+    closures,
+    hikes,
+    maintainer_assignments,
+    moderation,
+    preferences,
+    profiles,
+    reports,
+    wrong_way,
+)
 
 app = FastAPI(title="OurHike backend")
 
@@ -34,4 +43,5 @@ app.include_router(preferences.router)
 app.include_router(reports.router)
 app.include_router(closures.router)
 app.include_router(wrong_way.router)
+app.include_router(maintainer_assignments.router)
 app.include_router(moderation.router)

@@ -103,4 +103,33 @@ describe('MapView', () => {
 
     expect(screen.getByRole('region', { name: /trail map/i })).toBeInTheDocument()
   })
+
+  it('attaches the map chrome once the map exists', () => {
+    render(<MapView {...PROPS} />)
+    const [map] = MockMap.live
+
+    expect(map.controls.length).toBeGreaterThan(0)
+  })
+
+  it('re-attaches chrome for a units change without rebuilding the map underneath the hiker', () => {
+    // Switching the scale bar to metric is a display preference. Rebuilding the
+    // whole map for it would drop the WebGL context and re-read tiles - a
+    // visible flash mid-walk for what should be a three-control swap.
+    const { rerender } = render(<MapView {...PROPS} units="imperial" />)
+    const builtInitially = MockMap.instances.length
+
+    rerender(<MapView {...PROPS} units="metric" />)
+
+    expect(MockMap.instances).toHaveLength(builtInitially)
+    expect(MockMap.live).toHaveLength(1)
+  })
+
+  it('leaves no controls attached after unmount', () => {
+    const { unmount } = render(<MapView {...PROPS} />)
+    const [map] = MockMap.live
+
+    unmount()
+
+    expect(map.controls).toHaveLength(0)
+  })
 })

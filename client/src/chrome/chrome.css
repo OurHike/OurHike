@@ -1,0 +1,199 @@
+/* Map screen chrome. Sizes here are load-bearing, not decorative -
+   WIREFRAMES.md's "Load-bearing values" lists them explicitly:
+   42px map controls, 38px header buttons, >=44px effective touch targets.
+
+   The 38px/44px pair is not a contradiction. 38px is what is DRAWN, so the
+   header stays visually quiet; 44px is what can be HIT, which is the minimum
+   that stays usable for a cold, gloved, one-handed tap on a moving trail.
+   The gap is made up with an invisible expanded hit area rather than by
+   inflating the visible button. */
+
+:root {
+  --map-control-size: 42px;
+  --header-button-size: 38px;
+  --min-touch-target: 44px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- Status strip ---------- */
+
+.status-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  padding: 4px var(--space-4, 16px);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-3);
+  background: var(--bg-page);
+}
+
+.status-strip__conditions {
+  display: flex;
+  gap: var(--space-2, 8px);
+  flex: 1;
+}
+
+.status-strip__flag {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.status-strip__sync {
+  margin-left: auto;
+}
+
+/* ---------- Header (read-only zone) ---------- */
+
+.map-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4, 16px);
+  padding: var(--space-2, 8px) var(--space-4, 16px);
+  background: var(--bg-page);
+  border-bottom: 1px solid var(--border-1);
+}
+
+.map-header__eyebrow {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.map-header__position {
+  margin: 2px 0 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.map-header__actions {
+  display: flex;
+  /* WIREFRAMES.md: two 38px icon buttons, gap 7px. */
+  gap: 7px;
+}
+
+.map-header__button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--header-button-size);
+  height: var(--header-button-size);
+  padding: 0;
+  color: var(--fg-2);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: 10px;
+  cursor: pointer;
+  /* Design-system rule: fades and colour transitions only, 120-200ms. */
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+/* Expands the hit area from the drawn 38px to the required 44px without
+   changing what is drawn. */
+.map-header__button::after {
+  content: '';
+  position: absolute;
+  inset: calc((var(--header-button-size) - var(--min-touch-target)) / 2);
+}
+
+.map-header__button:hover {
+  background: var(--bg-sunken);
+  color: var(--fg-1);
+}
+
+.map-header__button:active {
+  transform: scale(0.97);
+}
+
+/* ---------- Map canvas ---------- */
+
+.map-view {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+/* MapLibre's own controls, sized to the 42px the wireframe specifies. */
+.map-view .maplibregl-ctrl button {
+  width: var(--map-control-size);
+  height: var(--map-control-size);
+}
+
+/* ---------- Tab bar ---------- */
+
+.tab-bar {
+  display: flex;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-1);
+  /* Keeps the bar clear of the home indicator on notched phones. */
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.tab-bar__tab {
+  flex: 1;
+  min-height: var(--min-touch-target);
+  padding: var(--space-2, 8px) 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-3);
+  background: none;
+  border: 0;
+  border-top: 2px solid transparent;
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    border-color 160ms ease;
+}
+
+.tab-bar__tab[aria-selected='true'] {
+  color: var(--brand-primary);
+  border-top-color: var(--brand-primary);
+}
+
+/* ---------- Screen shell ---------- */
+
+.map-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100svh;
+  background: var(--bg-page);
+}
+
+/* Positioning context for the attribution, which sits over the canvas. */
+.map-screen__canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.map-screen__attribution {
+  position: absolute;
+  left: var(--space-2, 8px);
+  bottom: var(--space-2, 8px);
+  font-size: 10px;
+  color: var(--fg-2);
+  background: color-mix(in srgb, var(--bg-surface) 82%, transparent);
+  padding: 2px 6px;
+  border-radius: 4px;
+  pointer-events: none;
+}

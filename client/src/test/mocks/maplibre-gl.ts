@@ -1,0 +1,116 @@
+// Stand-in for the whole `maplibre-gl` module in tests.
+//
+// This is not a convenience mock. jsdom has no WebGL context, so a real
+// `maplibregl.Map` cannot be constructed in this environment at all - without
+// this, no map code is testable.
+//
+// It deliberately RECORDS every construction and every control added, because
+// the facts most worth asserting about map setup are lifecycle facts: that
+// exactly one LIVE map exists at a time (two would mean two WebGL contexts,
+// two GPS watchers and doubled tile reads), and that unmount really tears one
+// down rather than leaking it.
+
+import { vi } from 'vitest'
+
+type Listener = (...args: unknown[]) => void
+
+export class MockMap {
+  /** Every map ever constructed this test, in order - including ones since removed. */
+  static instances: MockMap[] = []
+
+  /** The maps that are still live (constructed and not yet `.remove()`d). */
+  static get live(): MockMap[] {
+    return MockMap.instances.filter((m) => !m.removed)
+  }
+
+  readonly options: Record<string, unknown>
+  readonly controls: Array<{ control: unknown; position?: string }> = []
+  removed = false
+  private readonly listeners = new Map<string, Listener[]>()
+
+  constructor(options: Record<string, unknown>) {
+    this.options = options
+    MockMap.instances.push(this)
+  }
+
+  on(event: string, handler: Listener): this {
+    this.listeners.set(event, [...(this.listeners.get(event) ?? []), handler])
+    return this
+  }
+
+  off(event: string, handler: Listener): this {
+    this.listeners.set(
+      event,
+      (this.listeners.get(event) ?? []).filter((h) => h !== handler),
+    )
+    return this
+  }
+
+  /** Test-only: fire an event that real MapLibre would fire itself. */
+  emit(event: string, payload?: unknown): void {
+    for (const handler of [...(this.listeners.get(event) ?? [])]) handler(payload)
+  }
+
+  listenerCount(event: string): number {
+    return (this.listeners.get(event) ?? []).length
+  }
+
+  addControl(control: unknown, position?: string): this {
+    this.controls.push({ control, position })
+    return this
+  }
+
+  removeControl(control: unknown): this {
+    const at = this.controls.findIndex((c) => c.control === control)
+    if (at !== -1) this.controls.splice(at, 1)
+    return this
+  }
+
+  remove(): void {
+    this.removed = true
+  }
+
+  getCanvas(): HTMLCanvasElement {
+    return document.createElement('canvas')
+  }
+}
+
+class MockControl {
+  readonly options?: Record<string, unknown>
+
+  constructor(options?: Record<string, unknown>) {
+    this.options = options
+  }
+
+  onAdd(): HTMLElement {
+    return document.createElement('div')
+  }
+  onRemove(): void {}
+}
+
+export class NavigationControl extends MockControl {}
+export class GeolocateControl extends MockControl {}
+export class ScaleControl extends MockControl {}
+export class AttributionControl extends MockControl {}
+
+export const addProtocol = vi.fn()
+export const removeProtocol = vi.fn()
+
+export { MockMap as Map }
+
+/** Clear recorded state between tests. */
+export function resetMapLibreMock(): void {
+  MockMap.instances.length = 0
+  addProtocol.mockClear()
+  removeProtocol.mockClear()
+}
+
+export default {
+  Map: MockMap,
+  addProtocol,
+  removeProtocol,
+  NavigationControl,
+  GeolocateControl,
+  ScaleControl,
+  AttributionControl,
+}

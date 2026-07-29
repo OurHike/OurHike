@@ -499,3 +499,70 @@
   font-size: 11px;
   color: var(--fg-3);
 }
+
+/* ---------- Closure sheet ---------- */
+
+.closure-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  max-height: 70%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-4, 16px);
+  background: var(--bg-surface);
+  border-top: 3px solid #b2321f;
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+.closure-sheet__status {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #b2321f;
+}
+
+.closure-sheet__range {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  color: var(--fg-2);
+}
+
+.closure-sheet__note {
+  margin: 0;
+  font-size: 14px;
+  color: var(--fg-1);
+}
+
+.closure-sheet__meta {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fg-2);
+}
+
+.closure-sheet__link {
+  font-size: 14px;
+  color: var(--link);
+}
+
+.closure-sheet__limit {
+  margin: 0;
+  padding: var(--space-3, 12px);
+  font-size: 13px;
+  color: var(--fg-2);
+  background: var(--bg-sunken);
+  border-radius: 10px;
+}
+
+.closure-sheet__age {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fg-3);
+}

@@ -52,15 +52,50 @@ cd pipeline
 
 **Network isolation caveat:** DuckDB's spatial extension (`INSTALL spatial`) fetches from DuckDB's own extension repository over the network on first use *per machine* - this is a one-time local setup step, not a per-test-run network call, but it's a real exception to "tests never touch the network" worth knowing about if a fresh environment's first test run looks like it's doing something unexpected.
 
+**Blaze normalization, still to build (see `features/TRAIL_BLAZE_COLORS.md`):** decoding each trail-line source's raw color coding into one normalized `blaze_color` attribute happens here, during export - not on the client (see the Client section above, which only tests the client's *use* of the already-normalized value). Once built, this needs a regression test for exactly the gotcha `TRAIL_BLAZE_COLORS.md` already names from the real data: `side_trails`' `Blaze` field has 24 features with no value at all, 9 with the literal string `"Unknown"`, and 3 with `"Gold"`, none of which are in its actual 0-9 coded domain. The test should assert all three fall through to the neutral default with a warning logged - not a crash, and not a silently wrong color.
+
 **What's intentionally manual-only:** fetching the real ~1,650-quad USGS corridor dataset and mosaicking it (`fetch_topo_quads.py` + `spike_raster_mosaic.py`) is a real multi-GB, multi-minute operation against live services - run it by hand to verify changes that touch fetch/mosaic logic, don't expect it in `pytest`.
 
 ## Client (React/TypeScript) - not yet built
 
-Not scaffolded yet (see ROADMAP.md Phase 2). When it exists, the natural fit is Vitest or Jest + React Testing Library - same philosophy as above (pure-function/component unit tests, no real network in the suite, mock the pipeline's data API), not a from-scratch set of conventions.
+Not scaffolded yet (see ROADMAP.md Phase 2). Framework: **Vitest + React Testing Library** - Vitest because it shares Vite's transform pipeline (the confirmed bundler per TECHNICAL_ARCHITECTURE.md) instead of adding a second one; same philosophy as the pipeline above (pure-function/component unit tests, no real network in the suite, mock any data/API calls), not a from-scratch set of conventions.
+
+The test plan below is drawn from [WIREFRAMES.md](WIREFRAMES.md) - it names the behaviors those v1 MVP screens need covered, written before the client itself so the first pass at each area can be built test-first per this file's core rule. Written as behaviors, not implementations, so they survive refactors.
+
+**Pure logic (fast unit tests, zero rendering):**
+1. **Blaze normalization (client's half)** - the pipeline decodes raw source data into a normalized `blaze_color` string during export (see the Pipeline section below); the client's job is just mapping that already-clean string to a MapLibre paint style via a `match` expression. Test the client's defensive fallback: any `blaze_color` value that isn't one of the expected strings renders as the neutral grey and **emits a warning**, rather than the client trusting the pipeline blindly or crashing on an unexpected value.
+2. **Naismith** - 2.6 mi / 640 ft ⇒ `≈1h 10m`; rounds to 5-minute steps; descent never subtracts; output always carries `≈`; never formats an arrival time.
+3. **Download detail levels** - each of Light/Standard/Fine maps to its correct zoom (z11/z12/z13) and its correct measured size (64 MB/314 MB/1.18 GB, from `pipeline/README.md`) as a table-driven test, guarding against one of the three drifting out of sync with the other two. No per-section math - see WIREFRAMES.md Known Deviations #1.
+4. **Staleness tiers** - boundary tests at 14 and 60 days, `never confirmed` ⇒ stale, and staleness is independent of the verified/unverified flag (all four combinations produce the right pin treatment).
+5. **Onboarding step counter** - total derived from the live step list; skipping a step does not change the total; adding a future step (trail name) yields "of 4" without touching call sites.
+6. **Wrong-way detector** - table-driven against synthetic GPS traces: short backtrack to a spring ⇒ silent; standing still at a shelter ⇒ silent; sustained reversal past the persistence threshold ⇒ cue, then push; off-line distance under threshold ⇒ silent. False negatives are acceptable; **false positives are the failure**.
+
+**Component tests:**
+7. **Legend contents** - equals exactly what the viewport contains, with correct counts; recomputes on pan/zoom; closure and serious-warning rows render **without** a hide control.
+8. **Map chrome** - compass + locate present and ≥44px effective target; zoom buttons absent on mobile, present on web; scale bar respects the unit preference; attribution always rendered.
+9. **Report status rendering** - each of Waiting / Confirmed / Fixed / Not confirmed renders its own affordance; "Not confirmed" applies no penalty styling to the reporter.
+10. **Closure sheet** - shows status, dates, marked-by, sync age; offers no detour computation; renders the barred-band line treatment distinctly from a red blaze.
+
+**Integration / E2E:**
+11. **First run** - three onboarding steps, each skippable; location asked only after the value-prop screen; **no notification prompt anywhere** in first run; a fresh install can reach a usable map with zero taps beyond the flow.
+12. **Report -> sign-in -> submit** - the report survives the sign-in detour intact; the stored timestamp is the authoring time, not the send time; internal-only report types never appear in any public query result (mock the API here - see Backend below for the server-side half of the same invariant).
+13. **Offline outbox** - write three items with the network off, restore network, all three sync with original timestamps and no duplicates; deleting a queued item deletes it for good.
+14. **Download + detail** - choose each of Light/Standard/Fine for the single whole-corridor package; the size shown matches the measured figure.
+15. **Closure freshness** - with a 3-day-old package, the closure sheet shows the sync age; after sync, newly-marked closures appear.
+
+**Invariants worth asserting explicitly (regression guards):**
+16. No route in the app exposes a closures toggle or a warnings toggle - assert on the settings schema, not the DOM.
+17. Serious warnings never enqueue a push; the wrong-way alert is the only push publisher in the client codebase.
+
+**Field testing (not automatable):** thresholds for off-trail distance and wrong-direction persistence need real GPS behaviour under tree canopy, ideally with NYNJTC/ATC volunteers, before the push path ships. Sunlight-glare readability and gloved one-handed use likewise (WIREFRAMES.md's `9d` is the greyscale pass to test against).
 
 ## Backend (Python/FastAPI, Phase 2+) - not yet built
 
-Not scaffolded yet (see TECHNICAL_ARCHITECTURE.md). When it exists, it would likely reuse pytest and much of the pipeline's approach (HTTP mocking, synthetic fixtures over real data/DB where possible).
+Not scaffolded yet (see TECHNICAL_ARCHITECTURE.md). When it exists, it would likely reuse pytest and much of the pipeline's approach (HTTP mocking, synthetic fixtures over real data/DB where possible). Three invariants from the wireframe handoff belong here specifically, since they're only meaningfully enforceable server-side:
+
+- `severity: serious` on a `Report` is only ever set by a user with a moderator role; a self-set attempt is rejected server-side, not just hidden client-side.
+- Any report type intended to stay private (`bad_hikers` today - see [WIREFRAMES.md](WIREFRAMES.md) Known Deviations #2 for the still-open question of exactly what replaces it) has `visibility: internal-only` set on write, and public map/search API queries filter it out at the query level, not just in client rendering.
+- Browsing endpoints (map, POIs, elevation, closures, warnings) require no auth token - a signed-out client can fetch all of them.
 
 ## CI
 

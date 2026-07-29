@@ -128,7 +128,7 @@ Output: 51 tiles in `data/processed/topo_background/`, ~9.5GB total, at a fixed 
 .venv/Scripts/python export_pmtiles.py
 ```
 
-Optional flags override the defaults below: `--min-zoom`, `--max-zoom`, `--out` (e.g. `--max-zoom=13 --out=data/processed/background_z13.pmtiles` rebuilds the full-detail archive - see below).
+Optional flags override the defaults below: `--min-zoom`, `--max-zoom`, `--out`. All three download tiers are built this way - see "All three download tiers are built" below for the exact commands and measured sizes.
 
 **Format choices, backed by real measurements on this project's own data, not defaults:**
 - **512x512px tiles, WebP quality 80.** WebP came out ~7-8x smaller than PNG on real sample tiles with no visible quality loss for a background/context basemap (the safety-relevant POI data is separate vector GeoJSON, untouched by this lossy step). 512px tiles (via MapLibre's `tileSize: 512` raster option) compress better per unit ground area than 256px - a 512px tile at zoom *z* covers the same ground area as four 256px tiles at zoom *z+1*, so it's the same effective resolution with 4x fewer files and less per-file header overhead.
@@ -146,6 +146,20 @@ Optional flags override the defaults below: `--min-zoom`, `--max-zoom`, `--out` 
 | 13 | 15,932 | 868.0 MB | 73.4% |
 
 For a background/context layer (not the precise trail line or POI locations, which are separate vector data), that last zoom level's detail gain wasn't worth 73% of the download - so 12 is now the default, cutting the whole-corridor package by ~73% for a still-detailed ~19m/pixel result. **The zoom-13 archive isn't gone, just not the default** - it's kept as `data/processed/background_z13.pmtiles` (rebuilt via `--max-zoom=13 --out=...`) for [ROADMAP.md](../ROADMAP.md)'s planned per-user zoom-choice setting (Phase 2) - hikers with more data/storage headroom will eventually be able to opt into more detail.
+
+### All three download tiers are built (2026-07-29)
+
+The per-user zoom choice above is no longer a plan - the app ships it. `client/src/lib/downloadDetail.ts` offers Light / Standard / Fine, `publish.py`'s `BACKGROUND_ARCHIVES` maps each tier to its archive, and all three now exist:
+
+| tier | zooms | build | tiles | measured | app advertises | drift |
+|---|---|---|---|---|---|---|
+| Light | 6-11 | `--max-zoom=11 --out=data/processed/background_z11.pmtiles` | 1,640 | **64,403,146 B** (64.4 MB) | 64 MB | +0.6% |
+| Standard | 6-12 | *(default)* | 5,816 | **313,987,530 B** (314 MB) | 314 MB | -0.0% |
+| Fine | 6-13 | `--max-zoom=13 --out=data/processed/background_z13.pmtiles` | 21,747 | **1,182,024,009 B** (1.18 GB) | 1.18 GB | +0.2% |
+
+All three land within 0.6% of the figure the app shows before someone commits to a download - which matters because that figure is weighed against remaining phone storage at a trailhead, not read as an approximation. Worth re-measuring whenever the source rasters are refreshed; a tier drifting far from its advertised size is a real problem, not a rounding detail.
+
+Light came out almost exactly on the estimate implied by the per-zoom table above (52.0 MB for z11 plus 12.3 MB for z6-10 = 64.3 MB), which is a useful confirmation that the breakdown is trustworthy for predicting future tiers.
 
 A completeness check at the end (mirroring the pattern in `spike_raster_mosaic.py`) confirms every one of the 51 source cells contributed to at least one tile at max zoom, failing loudly rather than silently shipping a coverage gap.
 

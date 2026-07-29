@@ -1,0 +1,60 @@
+// The map's own MapLibre controls: compass, locate, scale bar.
+//
+// Placement follows WIREFRAMES.md's one interaction rule for this screen -
+// everything tapped mid-walk sits in the lower third, everything read but not
+// touched sits above. So compass and locate stack bottom-right in the thumb
+// zone, and the scale bar sits bottom-left, read but never pressed.
+//
+// Zoom buttons are web-only on purpose. Pinch already covers zoom on a phone,
+// and the thumb zone is the most reachable real estate on the screen - spending
+// it on the least necessary control is a bad trade when the user is walking.
+
+import { GeolocateControl, NavigationControl, ScaleControl } from 'maplibre-gl'
+import type { Map as MapLibreMap } from 'maplibre-gl'
+
+export type ScaleUnits = 'imperial' | 'metric'
+
+export interface MapChromeOptions {
+  /** Web only - touch platforms rely on pinch (see note above). */
+  showZoomButtons: boolean
+  units: ScaleUnits
+}
+
+/** WIREFRAMES.md: scale bar is 64px wide. */
+const SCALE_MAX_WIDTH = 64
+
+/**
+ * Adds the map's controls and returns a detach function that removes every one
+ * of them - so a remount cannot leave a second set stacked on the first.
+ */
+export function attachMapChrome(
+  map: MapLibreMap,
+  { showZoomButtons, units }: MapChromeOptions,
+): () => void {
+  const compass = new NavigationControl({
+    showZoom: showZoomButtons,
+    // Always present: tapping it resets north-up, which is the way back when
+    // a rotated map has stopped matching the paper picture in someone's head.
+    showCompass: true,
+    visualizePitch: false,
+  })
+
+  const locate = new GeolocateControl({
+    // Continuous, not a single fix - the blue dot has to follow the walk.
+    trackUserLocation: true,
+    showAccuracyCircle: true,
+    positionOptions: { enableHighAccuracy: true },
+  })
+
+  const scale = new ScaleControl({ unit: units, maxWidth: SCALE_MAX_WIDTH })
+
+  map.addControl(compass, 'bottom-right')
+  map.addControl(locate, 'bottom-right')
+  map.addControl(scale, 'bottom-left')
+
+  return () => {
+    for (const control of [compass, locate, scale]) {
+      map.removeControl(control)
+    }
+  }
+}

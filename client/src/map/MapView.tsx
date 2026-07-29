@@ -8,10 +8,11 @@
 // surface exactly that, so the effect below is written to survive it: build
 // once per effect run, and fully undo the build on cleanup.
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Map as MapLibreMap } from 'maplibre-gl'
 import { registerPMTilesProtocol } from './protocol'
 import { buildMapStyle } from './style'
+import { attachMapChrome, type ScaleUnits } from './mapChrome'
 
 export interface MapViewProps {
   /** `pmtiles://` URL for the downloaded topo archive. */
@@ -22,14 +23,24 @@ export interface MapViewProps {
   center?: [number, number]
   /** Initial zoom only. */
   zoom?: number
+  /** Web only; touch platforms rely on pinch (see mapChrome.ts). */
+  showZoomButtons?: boolean
+  units?: ScaleUnits
 }
 
 const DEFAULT_CENTER: [number, number] = [-77.1, 39.3]
 const DEFAULT_ZOOM = 12
 
-export function MapView({ topoArchiveUrl, trailsUrl, center, zoom }: MapViewProps) {
+export function MapView({
+  topoArchiveUrl,
+  trailsUrl,
+  center,
+  zoom,
+  showZoomButtons = false,
+  units = 'imperial',
+}: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const mapRef = useRef<MapLibreMap | null>(null)
+  const [map, setMap] = useState<MapLibreMap | null>(null)
 
   // `center`/`zoom` are deliberately NOT dependencies. A parent writing
   // center={[x, y]} inline hands over a new array identity on every render; if
@@ -42,7 +53,7 @@ export function MapView({ topoArchiveUrl, trailsUrl, center, zoom }: MapViewProp
     // The style resolves pmtiles:// URLs, so the protocol has to exist first.
     registerPMTilesProtocol()
 
-    const map = new MapLibreMap({
+    const created = new MapLibreMap({
       container,
       style: buildMapStyle({ topoArchiveUrl, trailsUrl }),
       center: center ?? DEFAULT_CENTER,
@@ -51,17 +62,25 @@ export function MapView({ topoArchiveUrl, trailsUrl, center, zoom }: MapViewProp
       // WIREFRAMES.md, rather than by MapLibre's default control.
       attributionControl: false,
     })
-    mapRef.current = map
+    setMap(created)
 
     return () => {
-      map.remove()
-      mapRef.current = null
+      created.remove()
+      setMap(null)
     }
     // Intentionally omitting `center`/`zoom` - see the note above. Including
     // them would rebuild the whole map whenever a parent re-rendered with an
     // inline array, which is the bug this omission exists to avoid.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topoArchiveUrl, trailsUrl])
+
+  // Chrome lives in its own effect so that changing a display preference -
+  // switching the scale bar to metric, say - re-attaches three controls
+  // instead of tearing down and rebuilding the entire map underneath the hiker.
+  useEffect(() => {
+    if (map === null) return
+    return attachMapChrome(map, { showZoomButtons, units })
+  }, [map, showZoomButtons, units])
 
   return (
     <div

@@ -100,9 +100,18 @@ class Report(Base):
 
     reporter_type = Column(Enum(ReporterType, native_enum=False, length=20), nullable=False)
 
-    # The authoring time, set by the server at creation - distinct from any
-    # later edit time. Never accepted from the client; see the router.
+    # When the report was WRITTEN. WIREFRAMES.md is explicit that this is
+    # "the moment of writing, not of sending" - a report composed offline on
+    # Monday and synced on Thursday must read as Monday, or a maintainer
+    # mis-prioritises it and a `bad_hikers` timeline is distorted. The client
+    # supplies it via `ReportCreate.authored_at`; the server falls back to now
+    # when it is absent, and refuses a future-dated claim outright.
     timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    # When the server actually received it - always server truth, never the
+    # client's claim. Keeping both is what lets a genuinely three-day-old
+    # report be told apart from a backdated one.
+    received_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     note = Column(Text, nullable=True)
     photo_url = Column(String, nullable=True)

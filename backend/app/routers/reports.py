@@ -6,6 +6,8 @@ account, matching every other browsing endpoint in this app; submitting
 it to and, later, moderate against.
 """
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -68,7 +70,19 @@ def create_report(
     """Submit a new report. `visibility` and `severity` are never taken
     from the request - `visibility` is derived from `type` here, and
     `severity` stays at the model's `normal` default until a later verify
-    action (built elsewhere) can raise it."""
+    action (built elsewhere) can raise it.
+
+    `timestamp` is the moment the report was WRITTEN, which for an
+    offline-first app is not the moment it arrived: the client supplies
+    `authored_at` when flushing its outbox, and the server falls back to now
+    only when it is absent. `received_at` is always server truth."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    authored = payload.authored_at
+    if authored is not None and authored.tzinfo is not None:
+        # Stored naive-UTC throughout; duckdb-engine cannot marshal
+        # TIMESTAMPTZ without pytz (see app/models/profile.py).
+        authored = authored.astimezone(timezone.utc).replace(tzinfo=None)
+
     report = Report(
         reporter_id=current_user.id,
         type=payload.type,
@@ -79,6 +93,8 @@ def create_report(
         note=payload.note,
         photo_url=payload.photo_url,
         visibility=_visibility_for(payload.type),
+        timestamp=authored if authored is not None else now,
+        received_at=now,
     )
     db.add(report)
     db.commit()

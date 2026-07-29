@@ -43,6 +43,10 @@ class ReportType(str, enum.Enum):
     flooding = "flooding"
     shelter_repair = "shelter_repair"
     animals = "animals"
+    # A comment about a specific place, not a condition report - see
+    # ../../../features/SAYING_THANKS.md. Shares every field; diverges in
+    # visibility (club_only), states, and in skipping the moderation queue.
+    thanks = "thanks"
 
 
 class ReporterType(str, enum.Enum):
@@ -61,7 +65,12 @@ class ReportStatus(str, enum.Enum):
 
 class Visibility(str, enum.Enum):
     public = "public"
+    # Goes to safety moderators. Named for the bad_hikers case.
     internal_only = "internal_only"
+    # Goes to the club and the maintainer - a different audience, for a
+    # different reason (morale, not risk). Kept distinct from internal_only
+    # so "who can see this" never depends on also reading the type.
+    club_only = "club_only"
 
 
 class Severity(str, enum.Enum):
@@ -132,3 +141,9 @@ class Report(Base):
     # Server-controlled; only a later verify action (another task) can
     # raise this to `serious` - no field on the create schema at all.
     severity = Column(Enum(Severity, native_enum=False, length=20), nullable=False, default=Severity.normal)
+
+    # Optional attribution for a `thanks` (SAYING_THANKS.md). Both may be
+    # empty: "someone cleared forty blowdowns and I have no idea who" is a
+    # complete thanks, resolved by location instead of being refused.
+    maintainer_id = Column(String, ForeignKey("profiles.id"), nullable=True)
+    club_id = Column(String, ForeignKey("clubs.id"), nullable=True)

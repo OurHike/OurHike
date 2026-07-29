@@ -24,7 +24,7 @@ from app.core.auth import require_role
 from app.db.session import get_db
 from app.models.closure import Closure, ModerationStatus
 from app.models.profile import Profile
-from app.models.report import Report, ReportStatus
+from app.models.report import Report, ReportStatus, ReportType
 from app.schemas.closure import ClosureOut
 from app.schemas.moderation import ReportVerifyRequest
 from app.schemas.report import ReportOut
@@ -42,6 +42,17 @@ def verify_report(
     report = db.get(Report, report_id)
     if report is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
+
+    # A thanks is not a claim about the world, so there is nothing to verify
+    # (../../../features/SAYING_THANKS.md). Refused here rather than merely
+    # hidden in the UI, so gratitude cannot end up in the queue that closures
+    # and warnings share and bury real safety work. Dismissal stays available
+    # below - that is abuse removal, which is a different action.
+    if report.type is ReportType.thanks:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A thanks has nothing to verify.",
+        )
 
     report.status = ReportStatus.verified
     report.severity = payload.severity

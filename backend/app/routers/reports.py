@@ -28,6 +28,10 @@ _INTERNAL_ONLY_TYPES = {ReportType.bad_hikers}
 
 
 def _visibility_for(report_type: ReportType) -> Visibility:
+    # Three audiences, not two. A thanks is club-facing: not a public hazard
+    # pin, and not the safety-moderator inbox internal_only means.
+    if report_type is ReportType.thanks:
+        return Visibility.club_only
     return Visibility.internal_only if report_type in _INTERNAL_ONLY_TYPES else Visibility.public
 
 
@@ -93,6 +97,8 @@ def create_report(
         note=payload.note,
         photo_url=payload.photo_url,
         visibility=_visibility_for(payload.type),
+        maintainer_id=payload.maintainer_id,
+        club_id=payload.club_id,
         timestamp=authored if authored is not None else now,
         received_at=now,
     )

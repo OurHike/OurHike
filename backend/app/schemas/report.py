@@ -40,6 +40,10 @@ class ReportCreate(BaseModel):
     photo_url: str | None = None
     authored_at: datetime | None = None
 
+    # Only meaningful for `thanks`; both optional, both may be absent.
+    maintainer_id: str | None = None
+    club_id: str | None = None
+
     @field_validator("authored_at")
     @classmethod
     def _reject_future_authoring(cls, value: datetime | None) -> datetime | None:
@@ -71,6 +75,8 @@ class ReportOut(BaseModel):
     photo_url: str | None
     follow_up: Any | None
     received_at: datetime
+    maintainer_id: str | None
+    club_id: str | None
     status: ReportStatus
     visibility: Visibility
     severity: Severity

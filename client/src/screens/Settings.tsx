@@ -1,7 +1,12 @@
 // Settings (WIREFRAMES.md §10). Five groups over one canonical
 // UserPreferences model.
 //
-// The account row is absent - it needs the backend and is Phase E5.
+// The account row (Phase E5) states plainly that signing out keeps
+// everything. The map, the outbox and the preferences are local first, and an
+// account only syncs them (IDENTITY_AND_PRIVACY.md) - but nobody knows that
+// from the outside, and someone who suspects signing out might discard a
+// queued report simply will not sign out. Saying it is what makes the option
+// usable.
 //
 // Rows that are not built yet are shown with a "Later" tag and disabled,
 // rather than hidden. That is WIREFRAMES.md's explicit instruction and it is
@@ -17,9 +22,16 @@
 
 import { syncAgeLabel } from '../lib/syncAge'
 import type { UserPreferences } from '../lib/userPreferences'
+import { REPORTER_TYPES } from '../lib/contributionFlow'
+import type { ReportDraft } from '../lib/outbox'
 import './settings.css'
 
 export interface SettingsProps {
+  /** Null when signed out. */
+  account: { email: string } | null
+  reporterType: ReportDraft['reporter_type']
+  onSignIn: () => void
+  onSignOut: () => void
   preferences: UserPreferences
   onChange: (patch: Partial<UserPreferences>) => void
   lastSyncedAt: Date | null
@@ -34,6 +46,10 @@ function LaterTag() {
 }
 
 export function Settings({
+  account,
+  reporterType,
+  onSignIn,
+  onSignOut,
   preferences,
   onChange,
   lastSyncedAt,
@@ -45,12 +61,48 @@ export function Settings({
     <main className="settings">
       <section className="settings__group">
         <h2 className="settings__heading">You</h2>
+
         <p className="settings__row">
           <span className="settings__label">Trail name</span>
           <span className="settings__value">
-            {preferences.trail_name ?? 'Not set · on this device'}
+            {`${preferences.trail_name ?? 'Not set'} · ${
+              account === null ? 'on this device' : 'Linked'
+            }`}
           </span>
         </p>
+
+        <p className="settings__row">
+          <span className="settings__label">Reports signed as</span>
+          <span className="settings__value">
+            {REPORTER_TYPES.find((r) => r.id === reporterType)?.label ?? reporterType}
+          </span>
+        </p>
+
+        {REPORTER_TYPES.find((r) => r.id === reporterType)?.clubGranted && (
+          <p className="settings__note">Unverified until a club confirms it.</p>
+        )}
+
+        {account === null ? (
+          <button type="button" className="settings__action" onClick={onSignIn}>
+            Sign in
+          </button>
+        ) : (
+          <>
+            <p className="settings__row">
+              <span className="settings__label">Account</span>
+              <span className="settings__value">{account.email}</span>
+            </p>
+            <button type="button" className="settings__action" onClick={onSignOut}>
+              Sign out
+            </button>
+            <p className="settings__note">
+              Signing out stays on this phone — your downloaded map, anything waiting in
+              your outbox, and these settings are all kept.
+            </p>
+          </>
+        )}
+
+        <p className="settings__note">Reading the map never needs an account.</p>
       </section>
 
       <section className="settings__group">

@@ -6,8 +6,11 @@ import { DEFAULT_PREFERENCES } from '../lib/userPreferences'
 
 // WIREFRAMES.md §10. Five groups, one canonical UserPreferences model.
 //
-// The account row is deliberately absent here - it needs the backend, and is
-// Phase E5 of the build plan.
+// The account row landed in Phase E5. Signing out must never destroy what is
+// on the phone: the map, the outbox and the preferences are all local first
+// and an account only syncs them (IDENTITY_AND_PRIVACY.md). An app that wiped
+// a queued report because someone signed out would be losing work they had
+// no reason to think was at risk.
 //
 // The schema-level guarantee that no closures/warnings toggle can exist lives
 // in lib/userPreferences.test.ts, where TESTING.md item 16 says to put it.
@@ -15,6 +18,10 @@ import { DEFAULT_PREFERENCES } from '../lib/userPreferences'
 // someone why they cannot find the switch they went looking for.
 
 const PROPS = {
+  account: null as { email: string } | null,
+  reporterType: 'thru' as const,
+  onSignIn: vi.fn(),
+  onSignOut: vi.fn(),
   preferences: DEFAULT_PREFERENCES,
   onChange: vi.fn(),
   lastSyncedAt: new Date('2026-07-29T09:00:00Z'),
@@ -98,10 +105,69 @@ describe('Settings', () => {
     expect(screen.getByRole('checkbox', { name: /roads & walkability/i })).toBeDisabled()
   })
 
-  it('has no account row yet - that needs the backend', () => {
+  it('offers sign-in when signed out', async () => {
+    const user = userEvent.setup()
     render(<Settings {...PROPS} />)
 
-    expect(screen.queryByRole('button', { name: /sign in|account/i })).toBe(null)
+    await user.click(screen.getByRole('button', { name: /sign in/i }))
+
+    expect(PROPS.onSignIn).toHaveBeenCalled()
+  })
+
+  it('shows the account and offers sign-out when signed in', async () => {
+    const user = userEvent.setup()
+    render(<Settings {...PROPS} account={{ email: 'pat@example.org' }} />)
+
+    expect(screen.getByText('pat@example.org')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /sign out/i }))
+
+    expect(PROPS.onSignOut).toHaveBeenCalled()
+  })
+
+  it('says the trail name lives only on this device while signed out', () => {
+    render(<Settings {...PROPS} />)
+
+    expect(screen.getByText(/on this device/i)).toBeInTheDocument()
+  })
+
+  it('says the trail name is linked once an account exists', () => {
+    render(
+      <Settings
+        {...PROPS}
+        account={{ email: 'pat@example.org' }}
+        preferences={{ ...DEFAULT_PREFERENCES, trail_name: 'Switchback' }}
+      />,
+    )
+
+    expect(screen.getByText(/linked/i)).toBeInTheDocument()
+  })
+
+  it('promises signing out keeps the map, the outbox and the settings', () => {
+    // The assurance that matters most on this screen. Someone who believes
+    // signing out might discard a queued report simply will not sign out.
+    render(<Settings {...PROPS} account={{ email: 'pat@example.org' }} />)
+
+    expect(
+      screen.getByText(/stays on this phone|nothing is deleted/i),
+    ).toBeInTheDocument()
+  })
+
+  it('shows the reporter type reports are signed with', () => {
+    render(<Settings {...PROPS} />)
+
+    expect(screen.getByText(/thru-hiker/i)).toBeInTheDocument()
+  })
+
+  it('says a maintainer claim is still unverified', () => {
+    render(<Settings {...PROPS} reporterType="maintainer" />)
+
+    expect(screen.getByText(/unverified/i)).toBeInTheDocument()
+  })
+
+  it('still says reading the map needs no account, even on the account row', () => {
+    render(<Settings {...PROPS} />)
+
+    expect(screen.getByText(/never needs an account/i)).toBeInTheDocument()
   })
 
   it('shows when data last synced, and offers to sync now', async () => {

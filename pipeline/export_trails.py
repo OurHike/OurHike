@@ -38,6 +38,9 @@ import json
 from pathlib import Path
 
 import duckdb
+from pyproj import Transformer
+from shapely import wkt as shapely_wkt
+from shapely.ops import transform as shapely_transform
 
 from lib.arcgis import get_field_coded_domain
 from lib.blaze import normalize_blaze_color
@@ -55,6 +58,11 @@ METERS_PER_MILE = 1609.344
 # a CONUS-spanning buffer operation.
 PROJECTED_CRS = "EPSG:5070"
 GEOGRAPHIC_CRS = "EPSG:4326"
+
+# Built once: pyproj Transformers are relatively expensive to construct and
+# are reused across every feature in the export.
+_TO_METRIC = Transformer.from_crs(GEOGRAPHIC_CRS, PROJECTED_CRS, always_xy=True).transform
+_TO_GEOGRAPHIC = Transformer.from_crs(PROJECTED_CRS, GEOGRAPHIC_CRS, always_xy=True).transform
 
 
 def load_line_sources(sources_path: Path | None = None) -> list[dict]:
@@ -210,6 +218,126 @@ def clip_to_corridor(con: duckdb.DuckDBPyConnection, records: list[dict]) -> lis
     return [r for r in records if r["id"] in kept_ids]
 
 
+"""Trail-geometry simplification.
+
+WHY THIS STEP EXISTS
+--------------------
+The corridor-clipped centerline export is real GPS-surveyed geometry, and
+there is a great deal of it: 4,224 features carrying 772,603 coordinates,
+which serialises to ~31 MB of GeoJSON. Every one of those bytes is parsed by
+the phone on each map load, and MapLibre keeps the parsed result in memory
+for as long as the layer is mounted.
+
+TECHNICAL_ARCHITECTURE.md deliberately chose GeoJSON over vector tiles for
+these layers, on the grounds that they are "small vector GeoJSON" that hikers
+search and filter. That reasoning still holds - but 31 MB is not small, and
+the gap between the decision and the data is what this function closes. It
+closes it by removing vertices rather than by changing format, so the
+architecture decision stands.
+
+WHY 1 METRE
+-----------
+Measured against the real export, not guessed:
+
+    tolerance   coordinates    GeoJSON     features lost
+    none            772,603     31.0 MB    -
+    1 ft (0.3 m)    510,075     20.8 MB    0
+    1 m             273,262     11.6 MB    0
+    5.5 m            79,666      4.1 MB    0
+
+1 metre was chosen over the alternatives at both ends for two reasons.
+
+*It is below one screen pixel at every zoom OurHike ships.* The background
+archive tops out at z13, where one 512px tile pixel covers roughly 9.5 m of
+ground at AT latitudes; at the default z12 it is ~19 m. A 1 m displacement
+cannot move a line by even a fraction of a pixel, so the simplified geometry
+is not merely close to the original - it is indistinguishable from it on
+screen, at any zoom a hiker can reach.
+
+*It is also below the source data's own accuracy.* This is GPS-surveyed
+centerline data whose real positional error is metres. Keeping sub-metre
+vertices preserves survey noise rather than trail shape - a finer tolerance
+(1 ft would cost ~9 MB more) buys precision the source never actually had.
+
+Against the other direction: 5.5 m would save a further 7.5 MB and would
+still be invisible at z12/z13. It was not taken because 1 m keeps ~3.4x more
+vertices for a file that is already small enough, leaving headroom for things
+that read the geometry rather than draw it - a future zoom past z13, or the
+route-tracing that SEGMENTS.md's completion tracking implies. Download size
+is no longer the binding constraint at 11.6 MB; fidelity for later consumers
+is the better thing to spend the difference on.
+
+None of this is one-way. Simplification happens at export and the
+full-precision source stays in data/raw, so changing the tolerance later is a
+re-run of this script, not a re-fetch from ATC.
+
+HOW IT IS APPLIED
+-----------------
+In EPSG:5070 (NAD83 / Conus Albers), where the unit genuinely is the metre -
+the same projected CRS build_corridor() already uses for the 30-mile buffer,
+reused here rather than introducing a second way of measuring distance.
+
+Simplifying in raw lon/lat degrees would have been easier and wrong in an
+awkward way: a degree of longitude at AT latitudes is ~15% shorter than a
+degree of latitude, so a single degree-valued tolerance means two different
+distances depending on direction. Projecting first makes "1 metre" mean one
+metre on both axes.
+"""
+
+DEFAULT_SIMPLIFY_TOLERANCE_M = 1.0
+
+
+def simplify_records(records: list[dict], tolerance_m: float = DEFAULT_SIMPLIFY_TOLERANCE_M) -> list[dict]:
+    """Return `records` with each geometry simplified to `tolerance_m` metres.
+
+    Douglas-Peucker, which guarantees no point on the simplified line is
+    further than the tolerance from the original - the property that makes
+    this safe to do to safety-relevant geometry at all. Endpoints are always
+    preserved, so a line still meets whatever it met before.
+
+    A tolerance of 0 returns the source geometry untouched, which is the
+    supported way for a consumer that needs full precision to ask for it.
+
+    Never drops a feature. This pipeline has already produced one silent
+    geometry-loss bug (3 MultiLineString centerline features vanishing from an
+    export, which would have erased real trail mileage with no error raised),
+    so a degenerate simplification result falls back to the original geometry
+    rather than being written out or skipped.
+    """
+    if tolerance_m < 0:
+        raise ValueError(f"tolerance_m must be >= 0, got {tolerance_m}")
+    if not records or tolerance_m == 0:
+        return [dict(record) for record in records]
+
+    simplified: list[dict] = []
+    for record in records:
+        geom = shapely_wkt.loads(record["wkt"])
+        projected = shapely_transform(_TO_METRIC, geom)
+        reduced = shapely_transform(
+            _TO_GEOGRAPHIC,
+            # preserve_topology=False is correct for lines: the flag guards
+            # against self-intersection when simplifying polygons, and the
+            # faster algorithm still keeps both endpoints.
+            projected.simplify(tolerance_m, preserve_topology=False),
+        )
+
+        # A line reduced below two points renders as nothing at all - the
+        # worst kind of failure, because the output still looks clean. Keep
+        # the original instead.
+        if reduced.is_empty or not _has_drawable_geometry(reduced):
+            reduced = geom
+
+        simplified.append({**record, "wkt": reduced.wkt})
+
+    return simplified
+
+
+def _has_drawable_geometry(geom) -> bool:
+    if geom.geom_type == "LineString":
+        return len(geom.coords) >= 2
+    return bool(geom.geoms) and all(len(part.coords) >= 2 for part in geom.geoms)
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with open(path, "rb") as f:
@@ -256,6 +384,18 @@ def write_trails(con: duckdb.DuckDBPyConnection, records: list[dict]) -> dict:
     }
 
 
+def _total_coordinates(records: list[dict]) -> int:
+    """Vertex count across an export, for the reduction line main() prints."""
+    total = 0
+    for record in records:
+        geom = shapely_wkt.loads(record["wkt"])
+        if geom.geom_type == "LineString":
+            total += len(geom.coords)
+        else:
+            total += sum(len(part.coords) for part in geom.geoms)
+    return total
+
+
 def main() -> dict:
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
@@ -276,8 +416,19 @@ def main() -> dict:
     clipped = clip_to_corridor(con, all_records)
     print(f"  {len(clipped)}/{len(all_records)} within the corridor.")
 
-    manifest = write_trails(con, clipped)
-    print(f"  trails: {len(clipped)} features -> {OUT_DIR / 'trails'}.{{geojson,fgb}}")
+    # Simplify AFTER clipping, so the corridor test runs against full-precision
+    # geometry and a feature can never be excluded because simplification moved
+    # it. See simplify_records' rationale block for why 1 m.
+    before = _total_coordinates(clipped)
+    simplified = simplify_records(clipped)
+    after = _total_coordinates(simplified)
+    print(
+        f"  simplified to {DEFAULT_SIMPLIFY_TOLERANCE_M} m: "
+        f"{before:,} -> {after:,} coordinates ({100 - after * 100 // max(before, 1)}% smaller)"
+    )
+
+    manifest = write_trails(con, simplified)
+    print(f"  trails: {len(simplified)} features -> {OUT_DIR / 'trails'}.{{geojson,fgb}}")
 
     manifest_path = OUT_DIR / "trails_manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2))

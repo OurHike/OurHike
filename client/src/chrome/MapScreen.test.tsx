@@ -44,6 +44,13 @@ const PROPS = {
   hiddenTypes: new Set<string>(),
   onToggleType: vi.fn(),
 
+  searchOpen: false,
+  onCloseSearch: vi.fn(),
+  searchablePois: [
+    { id: 's1', name: 'Rocky Run Shelter', type: 'shelter', mile: 1043.2 },
+  ],
+  onSelectSearchResult: vi.fn(),
+
   elevation: {
     samples: [
       { mile: 1400, elevationFt: 1200 },
@@ -126,6 +133,18 @@ describe('MapScreen', () => {
     render(<MapScreen {...PROPS} legendOpen />)
 
     expect(screen.getByRole('dialog', { name: /legend/i })).toBeInTheDocument()
+  })
+
+  it('keeps search out of the way until the header asks for it', () => {
+    render(<MapScreen {...PROPS} />)
+
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
+  })
+
+  it('lets search take over once opened', () => {
+    render(<MapScreen {...PROPS} searchOpen />)
+
+    expect(screen.getByRole('searchbox')).toBeInTheDocument()
   })
 
   it('wires the header buttons to the legend and search handlers', async () => {

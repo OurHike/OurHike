@@ -14,12 +14,14 @@ import { Header, type HikeDirection } from './Header'
 import { TabBar } from './TabBar'
 import type { TabId } from './tabs'
 import { Legend, type BlazeCount } from './Legend'
+import { Search } from './Search'
 import { ElevationRibbon, type ElevationRibbonProps } from './ElevationRibbon'
 import { WaypointLanes, type WaypointLanesProps } from './WaypointLanes'
 import { MapView } from '../map/MapView'
 import { ATTRIBUTION } from '../map/style'
 import type { ScaleUnits } from '../map/mapChrome'
 import type { BoundingBox, MapPoint } from '../lib/legendContents'
+import type { SearchablePoi } from '../lib/searchPoi'
 import './chrome.css'
 
 export interface MapScreenProps {
@@ -43,6 +45,13 @@ export interface MapScreenProps {
 
   legendOpen: boolean
   onCloseLegend: () => void
+
+  // Search takes over the header rather than sitting beside it
+  // (WIREFRAMES.md Interactions), so the shell owns whether it is showing.
+  searchOpen: boolean
+  onCloseSearch: () => void
+  searchablePois: SearchablePoi[]
+  onSelectSearchResult: (poi: SearchablePoi) => void
   bbox: BoundingBox
   viewportPoints: MapPoint[]
   blazeCounts: BlazeCount[]
@@ -77,6 +86,10 @@ export function MapScreen({
   onOpenSearch,
   legendOpen,
   onCloseLegend,
+  searchOpen,
+  onCloseSearch,
+  searchablePois,
+  onSelectSearchResult,
   bbox,
   viewportPoints,
   blazeCounts,
@@ -116,6 +129,13 @@ export function MapScreen({
           units={units}
         />
         <p className="map-screen__attribution">{ATTRIBUTION}</p>
+
+        <Search
+          open={searchOpen}
+          pois={searchablePois}
+          onSelect={onSelectSearchResult}
+          onClose={onCloseSearch}
+        />
       </div>
 
       <Legend

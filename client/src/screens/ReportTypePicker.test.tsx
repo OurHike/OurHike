@@ -9,12 +9,11 @@ import { ReportTypePicker } from './ReportTypePicker'
 // buttons", because reporting that someone threatened you should not look
 // like reporting litter.
 //
-// "Say thanks to a maintainer" is NOT here. WIREFRAMES.md's own Known
-// Deviations #2 flags it as an open product/data-model question - it is not a
-// condition report, has no hazard location, and does not fit the Report
-// model's type enum as written. Shipping a guess would bake in the wrong
-// shape; a test asserts its absence so it stays an open question rather than
-// quietly becoming a decision.
+// "Say thanks to a maintainer" now lives in that same people section, decided
+// 2026-07-29 (features/SAYING_THANKS.md, resolving Known Deviations #2): a
+// thanks is a comment about a specific place, so it is the seventh report
+// type. It is deliberately NOT a sixth condition tile - it is not a trail
+// condition, and the grid stays at five.
 
 const PROPS = { onPick: vi.fn() }
 
@@ -63,10 +62,35 @@ describe('ReportTypePicker', () => {
     expect(PROPS.onPick).toHaveBeenCalledWith('bad_hikers')
   })
 
-  it('does not offer "say thanks" - its data model is still an open question', () => {
+  it('offers the thanks card, mapped to the thanks type', async () => {
+    const user = userEvent.setup()
     render(<ReportTypePicker {...PROPS} />)
 
-    expect(screen.queryByText(/thanks/i)).toBe(null)
+    await user.click(screen.getByRole('button', { name: /say thanks/i }))
+
+    expect(PROPS.onPick).toHaveBeenCalledWith('thanks')
+  })
+
+  it('keeps thanks out of the conditions grid - it is not a trail condition', () => {
+    render(<ReportTypePicker {...PROPS} />)
+    const grid = screen.getByRole('group', { name: /trail conditions/i })
+
+    expect(within(grid).queryByText(/thanks/i)).toBe(null)
+  })
+
+  it('puts thanks in the people section, alongside the unsafe card', () => {
+    render(<ReportTypePicker {...PROPS} />)
+    const people = screen.getByRole('group', { name: /about people on the trail/i })
+
+    expect(
+      within(people).getByRole('button', { name: /say thanks/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('does not offer a rating or score anywhere - thanks is not a review', () => {
+    render(<ReportTypePicker {...PROPS} />)
+
+    expect(screen.queryByText(/rate|rating|stars|★/i)).toBe(null)
   })
 
   it('warns that the unsafe path is not an emergency service, before it is tapped', () => {

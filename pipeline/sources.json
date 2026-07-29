@@ -16,7 +16,8 @@
       "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Centerline/FeatureServer/0",
       "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
       "discovered_date": "2026-07-24",
-      "notes": "Also given directly by user as https://arcg.is/1nqL542"
+      "notes": "Also given directly by user as https://arcg.is/1nqL542",
+      "blaze_default": "White"
     },
     {
       "key": "side_trails",
@@ -24,7 +25,8 @@
       "provider": "ATC",
       "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Facilities/FeatureServer/6",
       "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
-      "discovered_date": "2026-07-24"
+      "discovered_date": "2026-07-24",
+      "blaze_field": "Blaze"
     },
     {
       "key": "campsites",

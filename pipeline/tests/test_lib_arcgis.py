@@ -2,7 +2,7 @@
 raises on any unmocked request, which is the isolation guarantee this suite
 relies on (see TESTING.md)."""
 
-from lib.arcgis import fetch_layer_geojson, get_layer_edit_date
+from lib.arcgis import fetch_layer_geojson, get_field_coded_domain, get_layer_edit_date
 
 LAYER_URL = "https://services1.arcgis.com/fake/arcgis/rest/services/Fake/FeatureServer/0"
 
@@ -28,3 +28,56 @@ def test_fetch_layer_geojson_paginates_until_short_page(requests_mock):
     fc = fetch_layer_geojson(LAYER_URL)
     assert len(fc["features"]) == 1001
     assert fc["type"] == "FeatureCollection"
+
+
+def test_get_field_coded_domain_returns_code_to_label_mapping_when_present(requests_mock):
+    """Mirrors side_trails' real `Blaze` field: an esriFieldTypeInteger with a
+    codedValue domain - fetched from the field metadata, not hand-coded."""
+    requests_mock.get(
+        LAYER_URL,
+        json={
+            "fields": [
+                {"name": "OBJECTID", "type": "esriFieldTypeOID", "alias": "OBJECTID"},
+                {
+                    "name": "Blaze",
+                    "type": "esriFieldTypeInteger",
+                    "alias": "Blaze",
+                    "domain": {
+                        "type": "codedValue",
+                        "name": "BlazeDomain",
+                        "codedValues": [
+                            {"name": "None", "code": 0},
+                            {"name": "Blue", "code": 1},
+                            {"name": "White", "code": 2},
+                            {"name": "Other", "code": 9},
+                        ],
+                    },
+                },
+            ]
+        },
+    )
+    assert get_field_coded_domain(LAYER_URL, "Blaze") == {0: "None", 1: "Blue", 2: "White", 9: "Other"}
+
+
+def test_get_field_coded_domain_returns_none_when_domain_is_not_coded_value_type(requests_mock):
+    requests_mock.get(
+        LAYER_URL,
+        json={
+            "fields": [
+                {
+                    "name": "Width",
+                    "type": "esriFieldTypeDouble",
+                    "alias": "Width",
+                    "domain": {"type": "range", "name": "WidthRange", "range": [0, 100]},
+                },
+                {"name": "Notes", "type": "esriFieldTypeString", "alias": "Notes", "domain": None},
+            ]
+        },
+    )
+    assert get_field_coded_domain(LAYER_URL, "Width") is None  # range domain, not coded-value
+    assert get_field_coded_domain(LAYER_URL, "Notes") is None  # no domain at all
+
+
+def test_get_field_coded_domain_returns_none_when_field_not_found(requests_mock):
+    requests_mock.get(LAYER_URL, json={"fields": [{"name": "OBJECTID", "type": "esriFieldTypeOID"}]})
+    assert get_field_coded_domain(LAYER_URL, "Blaze") is None

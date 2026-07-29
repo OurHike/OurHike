@@ -1,0 +1,69 @@
+name: Backend tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pytest-duckdb:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: python -m ruff check .
+
+      - name: Check formatting
+        run: python -m ruff format --check .
+
+      - name: Run tests (DuckDB - fast, local-dev-equivalent)
+        run: python -m pytest -v
+
+  pytest-postgres:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ourhike
+          POSTGRES_PASSWORD: ourhike
+          POSTGRES_DB: ourhike_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # The real correctness gate: same test suite as the DuckDB job above,
+      # against the real production database engine (Postgres) instead of
+      # the local-dev DuckDB convenience layer. See backend/README.md.
+      DATABASE_URL: postgresql+psycopg://ourhike:ourhike@localhost:5432/ourhike_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests (Postgres)
+        run: python -m pytest -v

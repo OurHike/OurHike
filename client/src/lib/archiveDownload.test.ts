@@ -1,0 +1,309 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { get, set, del } from 'idb-keyval'
+import {
+  downloadArchive,
+  ARCHIVE_PARTIAL_KEY,
+  ARCHIVE_PROGRESS_KEY,
+  ArchiveSizeMismatchError,
+} from './archiveDownload'
+import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
+
+// The download behind Downloads.tsx's buttons. WIREFRAMES.md `7a` requires a
+// failed transfer to RESUME rather than restart, and that promise is the
+// whole reason this module is more than a fetch call: re-pulling 300 MB from
+// zero because a connection dropped at 90% is exactly the failure someone on
+// trailhead wifi cannot afford.
+//
+// Two traps get specific attention below.
+//
+// **A server that ignores Range.** Ask for `bytes=N-` and a compliant server
+// answers 206 with the remainder. A server that does not support ranges
+// answers 200 with the WHOLE file - and appending that to the bytes already
+// held produces a corrupt archive of exactly the right length, which passes
+// every size check and then renders a broken map. The status code has to be
+// checked, not assumed.
+//
+// **Never destroying a good archive.** Partial bytes live under their own
+// key. A failed or aborted attempt must leave both the partial progress and
+// any previously-completed archive intact.
+
+vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
+
+const mockedGet = vi.mocked(get)
+const mockedSet = vi.mocked(set)
+const mockedDel = vi.mocked(del)
+
+const URL_ = 'https://cdn.example.org/background.pmtiles'
+
+/** In-memory stand-in for IndexedDB. */
+function withStore(initial: Record<string, unknown> = {}) {
+  const store: Record<string, unknown> = { ...initial }
+  mockedGet.mockImplementation(async (key) => store[key as string])
+  mockedSet.mockImplementation(async (key, value) => {
+    store[key as string] = value
+  })
+  mockedDel.mockImplementation(async (key) => {
+    delete store[key as string]
+  })
+  return store
+}
+
+function bytes(...values: number[]) {
+  return new Uint8Array(values)
+}
+
+/** A fetch returning `chunks` as a stream, with the given status/headers. */
+function mockFetch({
+  chunks,
+  status = 200,
+  totalBytes,
+  contentRange,
+}: {
+  chunks: Uint8Array[]
+  status?: number
+  totalBytes?: number
+  contentRange?: string
+}) {
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(chunk)
+        controller.close()
+      },
+    })
+    const headers = new Headers()
+    const declared = totalBytes ?? chunks.reduce((n, c) => n + c.length, 0)
+    headers.set('content-length', String(declared))
+    if (contentRange) headers.set('content-range', contentRange)
+
+    return new Response(body, { status, headers })
+  })
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+describe('downloadArchive — a clean first run', () => {
+  it('stores the finished archive where the map reads it from', async () => {
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3), bytes(4, 5, 6)] })
+
+    await downloadArchive(URL_)
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeInstanceOf(Blob)
+  })
+
+  it('stores every byte it was sent, in order', async () => {
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3), bytes(4, 5, 6)] })
+
+    await downloadArchive(URL_)
+    const stored = new Uint8Array(
+      await (store[CORRIDOR_ARCHIVE_KEY] as Blob).arrayBuffer(),
+    )
+
+    expect([...stored]).toEqual([1, 2, 3, 4, 5, 6])
+  })
+
+  it('reports progress as chunks arrive, not only at the end', async () => {
+    withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3), bytes(4, 5, 6)] })
+    const onProgress = vi.fn()
+
+    await downloadArchive(URL_, { onProgress })
+
+    expect(onProgress.mock.calls.length).toBeGreaterThan(1)
+    expect(onProgress).toHaveBeenLastCalledWith({ receivedBytes: 6, totalBytes: 6 })
+  })
+
+  it('clears the partial state once the archive is complete', async () => {
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+
+    await downloadArchive(URL_)
+
+    expect(store[ARCHIVE_PARTIAL_KEY]).toBeUndefined()
+    expect(store[ARCHIVE_PROGRESS_KEY]).toBeUndefined()
+  })
+
+  it('asks for the whole file when nothing is held yet', async () => {
+    withStore()
+    const spy = mockFetch({ chunks: [bytes(1, 2, 3)] })
+
+    await downloadArchive(URL_)
+    const init = spy.mock.calls[0][1] as RequestInit | undefined
+
+    expect(new Headers(init?.headers).get('range')).toBeNull()
+  })
+})
+
+describe('downloadArchive — resuming', () => {
+  it('asks only for the bytes it does not already have', async () => {
+    withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([bytes(1, 2, 3)]),
+      [ARCHIVE_PROGRESS_KEY]: { receivedBytes: 3, totalBytes: 6 },
+    })
+    const spy = mockFetch({
+      chunks: [bytes(4, 5, 6)],
+      status: 206,
+      totalBytes: 3,
+      contentRange: 'bytes 3-5/6',
+    })
+
+    await downloadArchive(URL_)
+    const init = spy.mock.calls[0][1] as RequestInit | undefined
+
+    expect(new Headers(init?.headers).get('range')).toBe('bytes=3-')
+  })
+
+  it('joins the resumed bytes onto what it already had', async () => {
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([bytes(1, 2, 3)]),
+      [ARCHIVE_PROGRESS_KEY]: { receivedBytes: 3, totalBytes: 6 },
+    })
+    mockFetch({
+      chunks: [bytes(4, 5, 6)],
+      status: 206,
+      totalBytes: 3,
+      contentRange: 'bytes 3-5/6',
+    })
+
+    await downloadArchive(URL_)
+    const stored = new Uint8Array(
+      await (store[CORRIDOR_ARCHIVE_KEY] as Blob).arrayBuffer(),
+    )
+
+    expect([...stored]).toEqual([1, 2, 3, 4, 5, 6])
+  })
+
+  it('counts resumed progress from what was already held, not from zero', async () => {
+    withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([bytes(1, 2, 3)]),
+      [ARCHIVE_PROGRESS_KEY]: { receivedBytes: 3, totalBytes: 6 },
+    })
+    const onProgress = vi.fn()
+    mockFetch({
+      chunks: [bytes(4, 5, 6)],
+      status: 206,
+      totalBytes: 3,
+      contentRange: 'bytes 3-5/6',
+    })
+
+    await downloadArchive(URL_, { onProgress })
+
+    expect(onProgress).toHaveBeenLastCalledWith({ receivedBytes: 6, totalBytes: 6 })
+  })
+
+  it('starts over safely when the server ignores Range and sends the whole file', async () => {
+    // The silent-corruption trap: appending a full 200 body to existing
+    // partial bytes yields a file of plausible length that is entirely wrong.
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([bytes(1, 2, 3)]),
+      [ARCHIVE_PROGRESS_KEY]: { receivedBytes: 3, totalBytes: 6 },
+    })
+    mockFetch({ chunks: [bytes(9, 9, 9, 9, 9, 9)], status: 200, totalBytes: 6 })
+
+    await downloadArchive(URL_)
+    const stored = new Uint8Array(
+      await (store[CORRIDOR_ARCHIVE_KEY] as Blob).arrayBuffer(),
+    )
+
+    expect([...stored]).toEqual([9, 9, 9, 9, 9, 9])
+  })
+})
+
+describe('downloadArchive — failure', () => {
+  it('keeps what it received when the connection drops', async () => {
+    const store = withStore()
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      // Pull-based, so the first read genuinely delivers a chunk and the
+      // SECOND one fails. Calling controller.error() straight after an
+      // enqueue in start() discards the queued chunk instead, which models a
+      // connection that died before delivering anything - a different case,
+      // and not the one this test is about.
+      let pulls = 0
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (pulls === 0) controller.enqueue(bytes(1, 2, 3))
+          else controller.error(new TypeError('network error'))
+          pulls += 1
+        },
+      })
+      const headers = new Headers({ 'content-length': '6' })
+      return new Response(body, { status: 200, headers })
+    })
+
+    await expect(downloadArchive(URL_)).rejects.toThrow()
+
+    expect(store[ARCHIVE_PARTIAL_KEY]).toBeInstanceOf(Blob)
+    expect(store[ARCHIVE_PROGRESS_KEY]).toMatchObject({ receivedBytes: 3 })
+  })
+
+  it('leaves a previously-downloaded archive untouched when a new attempt fails', async () => {
+    const good = new Blob([bytes(7, 7, 7)])
+    const store = withStore({ [CORRIDOR_ARCHIVE_KEY]: good })
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('offline'))
+
+    await expect(downloadArchive(URL_)).rejects.toThrow()
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBe(good)
+  })
+
+  it('refuses to store an archive shorter than the server said it would be', async () => {
+    // Truncation is the failure a size check exists to catch: a short PMTiles
+    // archive opens fine and then returns nothing for tiles past the cut.
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)], totalBytes: 99 })
+
+    await expect(downloadArchive(URL_)).rejects.toBeInstanceOf(ArchiveSizeMismatchError)
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
+  })
+
+  it('keeps the partial bytes after a size mismatch, so a resume can finish it', async () => {
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)], totalBytes: 99 })
+
+    await expect(downloadArchive(URL_)).rejects.toThrow()
+
+    expect(store[ARCHIVE_PARTIAL_KEY]).toBeInstanceOf(Blob)
+  })
+
+  it('stops when aborted, keeping what it has', async () => {
+    const store = withStore()
+    const controller = new AbortController()
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      const body = new ReadableStream<Uint8Array>({
+        start(streamController) {
+          streamController.enqueue(bytes(1, 2, 3))
+          controller.abort()
+          streamController.enqueue(bytes(4, 5, 6))
+          streamController.close()
+        },
+      })
+      return new Response(body, {
+        status: 200,
+        headers: new Headers({ 'content-length': '6' }),
+      })
+    })
+
+    await expect(downloadArchive(URL_, { signal: controller.signal })).rejects.toThrow()
+
+    expect(store[ARCHIVE_PARTIAL_KEY]).toBeInstanceOf(Blob)
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
+  })
+
+  it('rejects a non-OK response without touching stored state', async () => {
+    const store = withStore()
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 404, statusText: 'Not Found' }),
+    )
+
+    await expect(downloadArchive(URL_)).rejects.toThrow(/404/)
+    expect(store[ARCHIVE_PARTIAL_KEY]).toBeUndefined()
+  })
+})

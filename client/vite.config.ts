@@ -48,10 +48,10 @@ export default defineConfig({
             display: 'standalone',
             start_url: '/',
             icons: [
-              // Placeholder solid-color icons - no real OurHike logo exists
-              // yet (see .claude/OurHike Design System/readme.md's own "no
-              // logo" flag). Swap these for real brand icons the moment they
-              // exist.
+              // Rasterized from the real logo mark (chosen 2026-07-28, see
+              // .claude/OurHike Design System/ -> components/core/Logo.jsx) -
+              // simplified slightly for these sizes (square corners, no
+              // torn-edge texture; see that dir's assets/ for why).
               { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
               {
                 src: 'icons/icon-512.png',

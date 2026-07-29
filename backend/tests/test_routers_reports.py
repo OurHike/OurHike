@@ -182,3 +182,107 @@ def test_list_reports_requires_no_authentication(client):
     response = client.get("/reports")
 
     assert response.status_code == 200
+
+
+# --- Offline-authored reports -------------------------------------------
+#
+# WIREFRAMES.md is explicit that a report carries "the moment of writing,
+# not of sending", that the outbox holds queued reports "with their
+# authored timestamps", and that `9c`'s offline outbox syncs them "with
+# their original timestamps". A server-assigned creation time cannot
+# express any of that: a blowdown written on Monday and synced on
+# Thursday would be recorded as Thursday, which changes how a maintainer
+# prioritises it and, for a `bad_hikers` report, distorts the timeline of
+# a safety investigation.
+#
+# So there is one sanctioned, bounded channel for it - `authored_at` -
+# separate from the raw `timestamp` key, which stays ignored (see the
+# test above). A client's claim about when it wrote something is a claim,
+# not a fact, so `received_at` records server truth alongside it and a
+# future-dated claim is refused outright.
+
+
+def test_create_report_accepts_a_client_authored_at_for_a_report_written_offline(client):
+    user_id = str(uuid.uuid4())
+    authored = datetime.now(timezone.utc) - timedelta(days=3)
+    payload = dict(_VALID_PAYLOAD, authored_at=authored.isoformat())
+
+    response = client.post("/reports", json=payload, headers=_auth_headers(user_id))
+
+    assert response.status_code == 201
+    stored = datetime.fromisoformat(response.json()["timestamp"]).replace(tzinfo=timezone.utc)
+    assert abs((stored - authored).total_seconds()) < 5
+
+
+def test_create_report_defaults_the_timestamp_to_now_when_authored_at_is_omitted(client):
+    user_id = str(uuid.uuid4())
+    before = datetime.now(timezone.utc)
+
+    response = client.post("/reports", json=_VALID_PAYLOAD, headers=_auth_headers(user_id))
+
+    assert response.status_code == 201
+    stored = datetime.fromisoformat(response.json()["timestamp"]).replace(tzinfo=timezone.utc)
+    assert stored >= before - timedelta(seconds=5)
+
+
+def test_create_report_records_received_at_as_server_time_not_the_clients_claim(client):
+    user_id = str(uuid.uuid4())
+    authored = datetime.now(timezone.utc) - timedelta(days=3)
+    payload = dict(_VALID_PAYLOAD, authored_at=authored.isoformat())
+    before = datetime.now(timezone.utc)
+
+    response = client.post("/reports", json=payload, headers=_auth_headers(user_id))
+
+    received = datetime.fromisoformat(response.json()["received_at"]).replace(tzinfo=timezone.utc)
+    # Server truth, so a backdated claim can always be told apart from a
+    # report that really was filed three days ago.
+    assert received >= before - timedelta(seconds=5)
+    assert received - authored > timedelta(days=2)
+
+
+def test_create_report_rejects_an_authored_at_in_the_future(client):
+    user_id = str(uuid.uuid4())
+    payload = dict(
+        _VALID_PAYLOAD,
+        authored_at=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+    )
+
+    response = client.post("/reports", json=payload, headers=_auth_headers(user_id))
+
+    assert response.status_code == 422
+
+
+def test_create_report_tolerates_small_clock_skew_on_authored_at(client):
+    # Phone clocks drift; a minute ahead is skew, not tampering.
+    user_id = str(uuid.uuid4())
+    payload = dict(
+        _VALID_PAYLOAD,
+        authored_at=(datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat(),
+    )
+
+    response = client.post("/reports", json=payload, headers=_auth_headers(user_id))
+
+    assert response.status_code == 201
+
+
+def test_an_outbox_flush_keeps_each_reports_own_authored_at(client):
+    """TESTING.md item 13's server-side half: three reports written offline
+    at different times, all synced in one burst, keep their own times."""
+    user_id = str(uuid.uuid4())
+    headers = _auth_headers(user_id)
+    authored = [datetime.now(timezone.utc) - timedelta(days=d) for d in (5, 3, 1)]
+
+    for when in authored:
+        response = client.post(
+            "/reports",
+            json=dict(_VALID_PAYLOAD, authored_at=when.isoformat()),
+            headers=headers,
+        )
+        assert response.status_code == 201
+
+    listed = client.get("/reports").json()
+    stored = sorted(datetime.fromisoformat(r["timestamp"]).replace(tzinfo=timezone.utc) for r in listed)
+
+    assert len(stored) == 3
+    for actual, expected in zip(stored, sorted(authored)):
+        assert abs((actual - expected).total_seconds()) < 5

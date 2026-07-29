@@ -566,3 +566,39 @@
   font-size: 12px;
   color: var(--fg-3);
 }
+
+/* ---------- Serious warning sheet ---------- */
+
+.warning-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  max-height: 70%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-4, 16px);
+  background: var(--bg-surface);
+  border-top: 3px solid #b2321f;
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+.warning-sheet__badge {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #b2321f;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.warning-sheet__note {
+  margin: 0;
+  font-size: 15px;
+  color: var(--fg-1);
+}

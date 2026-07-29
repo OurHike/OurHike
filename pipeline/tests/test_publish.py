@@ -97,3 +97,60 @@ def test_publish_manifest_records_one_hash_per_artifact_not_one_hash_for_everyth
     assert set(remote["artifacts"].keys()) == {"trails.geojson", "shelters.geojson"}
     assert remote["artifacts"]["trails.geojson"]["sha256"] != remote["artifacts"]["shelters.geojson"]["sha256"]
     assert "sha256" not in remote or not isinstance(remote.get("sha256"), str)
+
+
+# --- Background raster archives, one per download tier -------------------
+#
+# The client's Downloads screen offers Light / Standard / Fine
+# (client/src/lib/downloadDetail.ts), and each tier is a whole separate
+# PMTiles archive built at a different max zoom. Publish has to be able to
+# deliver all three, which was not true before background_z11.pmtiles
+# existed: the app offered a Light download the pipeline could not produce.
+#
+# Naming the mapping explicitly - rather than a hardcoded tuple of filenames -
+# is what makes that mismatch visible. A tier with no archive behind it is now
+# a failing test rather than a download that silently 404s on a mountain.
+
+
+def test_background_archives_cover_every_tier_the_client_offers():
+    """The tiers here must match downloadDetail.ts's three levels exactly."""
+    assert set(publish.BACKGROUND_ARCHIVES) == {"light", "standard", "fine"}
+
+
+def test_each_tier_maps_to_a_distinct_archive():
+    names = list(publish.BACKGROUND_ARCHIVES.values())
+
+    assert len(set(names)) == len(names)
+
+
+def test_collect_gathers_every_background_archive_that_exists(tmp_path, monkeypatch):
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    for name in publish.BACKGROUND_ARCHIVES.values():
+        (tmp_path / name).write_bytes(b"fake pmtiles bytes for " + name.encode())
+
+    artifacts = publish.collect_artifacts()
+
+    for name in publish.BACKGROUND_ARCHIVES.values():
+        assert name in artifacts
+
+
+def test_collect_skips_a_tier_that_has_not_been_built_yet(tmp_path, monkeypatch):
+    """A fresh checkout that has only run some exports still publishes what it
+    has - a missing tier is not an error, just an absence."""
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    (tmp_path / publish.BACKGROUND_ARCHIVES["standard"]).write_bytes(b"only standard")
+
+    artifacts = publish.collect_artifacts()
+
+    assert publish.BACKGROUND_ARCHIVES["standard"] in artifacts
+    assert publish.BACKGROUND_ARCHIVES["light"] not in artifacts
+
+
+def test_collect_hashes_each_archive_by_content(tmp_path, monkeypatch):
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    light = publish.BACKGROUND_ARCHIVES["light"]
+    (tmp_path / light).write_bytes(b"some bytes")
+
+    artifacts = publish.collect_artifacts()
+
+    assert artifacts[light]["sha256"] == publish.sha256_file(tmp_path / light)

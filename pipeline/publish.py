@@ -6,8 +6,8 @@ section flags is already resolved (ROADMAP.md Phase 2: "whole corridor, one
 package") - this module doesn't need to revisit it, just diff whatever
 per-artifact manifests Export already produces (export_trails.py's
 trails_manifest.json, export_poi.py's poi/manifest.json, export_elevation.py's
-elevation_manifest.json) plus export_pmtiles.py's background.pmtiles /
-background_z13.pmtiles, which don't get their own manifest today - this
+elevation_manifest.json) plus export_pmtiles.py's per-tier background
+archives (see BACKGROUND_ARCHIVES), which don't get their own manifest - this
 module hashes those directly rather than silently skipping the two largest
 artifacts in the whole pipeline.
 
@@ -46,6 +46,28 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+# One background raster archive per download tier the client offers.
+#
+# The Downloads screen (client/src/lib/downloadDetail.ts) lets a hiker pick
+# Light / Standard / Fine, and each is a separate PMTiles archive built at a
+# different max zoom by export_pmtiles.py:
+#
+#     light     z6-11    ~64 MB    export_pmtiles.py --max-zoom 11 --out ...
+#     standard  z6-12    ~314 MB   export_pmtiles.py                (default)
+#     fine      z6-13    ~1.18 GB  export_pmtiles.py --max-zoom 13 --out ...
+#
+# Written as a named mapping rather than a hardcoded tuple of filenames so
+# that a tier the app offers but the pipeline cannot produce is a failing
+# test rather than a download that 404s on a mountain. That was a real gap:
+# background_z11.pmtiles did not exist while the app was already offering
+# Light.
+BACKGROUND_ARCHIVES = {
+    "light": "background_z11.pmtiles",
+    "standard": "background.pmtiles",
+    "fine": "background_z13.pmtiles",
+}
+
+
 def collect_artifacts() -> dict[str, dict]:
     """Gather every publishable artifact into one flat {name: {path, sha256}}
     dict, reading whichever of Export's manifests actually exist (a fresh
@@ -77,7 +99,7 @@ def collect_artifacts() -> dict[str, dict]:
         manifest = json.loads(elevation_manifest.read_text())
         artifacts["elevation_profile.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
-    for name in ("background.pmtiles", "background_z13.pmtiles"):
+    for name in BACKGROUND_ARCHIVES.values():
         path = PROCESSED_DIR / name
         if path.exists():
             artifacts[name] = {"path": str(path), "sha256": sha256_file(path)}

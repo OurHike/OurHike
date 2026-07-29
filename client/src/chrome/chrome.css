@@ -602,3 +602,54 @@
   font-size: 15px;
   color: var(--fg-1);
 }
+
+/* ---------- Wrong-way cue ---------- */
+
+.wrong-way-cue {
+  position: absolute;
+  left: var(--space-2, 8px);
+  right: var(--space-2, 8px);
+  bottom: calc(var(--space-2, 8px) + 56px);
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-4, 16px);
+  background: var(--bg-surface);
+  border: 2px solid var(--blaze-orange);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgb(0 0 0 / 18%);
+}
+
+.wrong-way-cue__text {
+  margin: 0;
+  font-size: 15px;
+  color: var(--fg-1);
+}
+
+.wrong-way-cue__actions {
+  display: flex;
+  gap: var(--space-2, 8px);
+}
+
+.wrong-way-cue__primary,
+.wrong-way-cue__secondary {
+  flex: 1;
+  min-height: var(--min-touch-target);
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.wrong-way-cue__primary {
+  color: var(--fg-on-dark);
+  background: var(--brand-secondary);
+  border: 0;
+}
+
+.wrong-way-cue__secondary {
+  color: var(--fg-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+}

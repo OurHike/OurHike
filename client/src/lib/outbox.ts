@@ -21,13 +21,28 @@ import { get, set } from 'idb-keyval'
 export const OUTBOX_KEY = 'ourhike:outbox'
 
 export interface ReportDraft {
-  type: 'blowdown' | 'trash' | 'bad_hikers' | 'flooding' | 'shelter_repair' | 'animals'
+  type:
+    | 'blowdown'
+    | 'trash'
+    | 'bad_hikers'
+    | 'flooding'
+    | 'shelter_repair'
+    | 'animals'
+    // A comment about a specific place rather than a trail condition - see
+    // features/SAYING_THANKS.md. Shares this whole shape, which is why it is
+    // a report type instead of a second model.
+    | 'thanks'
   reporter_type: 'thru' | 'section' | 'day' | 'maintainer'
   note?: string
   poi_id?: string
   lat?: number
   lon?: number
   photo_url?: string
+  /** Thanks only, and both optional - see SAYING_THANKS.md. Either may be
+   *  absent: not knowing who to thank is the ordinary case, and the server
+   *  resolves it from location and authored date instead. */
+  maintainer_id?: string
+  club_id?: string
 }
 
 export interface OutboxItem {

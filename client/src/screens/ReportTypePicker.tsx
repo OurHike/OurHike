@@ -7,11 +7,12 @@
 // litter. The heavier affordance sets the right expectation for the heavier
 // form behind it.
 //
-// "Say thanks to a maintainer" is NOT built. WIREFRAMES.md's own Known
-// Deviations #2 leaves it an open product and data-model question: it is not
-// a condition report, has no hazard location, and does not fit the Report
-// type enum as written. Shipping a guess would bake in the wrong shape and be
-// far harder to walk back than the gap is to live with.
+// "Say thanks to a maintainer" sits in that same people section, decided
+// 2026-07-29 (features/SAYING_THANKS.md, resolving WIREFRAMES.md's Known
+// Deviations #2): a thanks is a comment about a specific place, so it is the
+// seventh report type. It is deliberately not a sixth condition tile - it is
+// not a trail condition, and it belongs beside the other card that is about
+// people rather than about the trail.
 
 import type { ReportDraft } from '../lib/outbox'
 import './reporting.css'
@@ -76,6 +77,18 @@ export function ReportTypePicker({ onPick }: ReportTypePickerProps) {
           Call 911 if you are in danger now. This reaches volunteers, sometimes days
           later.
         </p>
+
+        <button
+          type="button"
+          className="reporting__card reporting__card--thanks"
+          onClick={() => onPick('thanks')}
+        >
+          <span className="reporting__card-title">Say thanks to a maintainer</span>
+          <span className="reporting__card-body">
+            Someone looks after this stretch. If you don&rsquo;t know who, we&rsquo;ll
+            work it out from where you are.
+          </span>
+        </button>
       </section>
 
       <p className="reporting__reassurance">

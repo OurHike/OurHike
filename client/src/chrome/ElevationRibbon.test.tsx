@@ -1,0 +1,122 @@
+import { describe, it, expect, afterEach } from 'vitest'
+import { render, screen, cleanup } from '@testing-library/react'
+import { ElevationRibbon } from './ElevationRibbon'
+import { naismithTime } from '../lib/naismith'
+
+// WIREFRAMES.md §1.3. The geometry values are specified exactly - viewBox
+// "0 0 100 40" with preserveAspectRatio="none" so the profile stretches to
+// whatever width the phone has, 54px tall, 36px left inset for the lane
+// labels below it - and are asserted here because they are what keep the
+// ribbon aligned with the waypoint lanes underneath.
+//
+// The callout ("+640 ft · 2.6 mi · ≈1h 10m") must derive its estimate from
+// lib/naismith.ts rather than carrying its own copy of the arithmetic, and
+// must never read as an arrival clock.
+
+const SAMPLES = [
+  { mile: 1400, elevationFt: 1200 },
+  { mile: 1402, elevationFt: 1500 },
+  { mile: 1404, elevationFt: 1840 },
+  { mile: 1406, elevationFt: 1600 },
+  { mile: 1408, elevationFt: 2100 },
+  { mile: 1410, elevationFt: 980 },
+]
+
+const PROPS = {
+  samples: SAMPLES,
+  currentMile: 1405,
+  upcomingClimb: { startMile: 1406, endMile: 1408.6, ascentFt: 640 },
+}
+
+afterEach(() => {
+  cleanup()
+})
+
+describe('ElevationRibbon', () => {
+  it('uses the exact SVG geometry the wireframe specifies', () => {
+    render(<ElevationRibbon {...PROPS} />)
+    const svg = screen.getByRole('img', { name: /elevation profile/i })
+
+    expect(svg).toHaveAttribute('viewBox', '0 0 100 40')
+    expect(svg).toHaveAttribute('preserveAspectRatio', 'none')
+  })
+
+  it('labels the lowest and highest elevation in the window', () => {
+    render(<ElevationRibbon {...PROPS} />)
+
+    expect(screen.getByText(/980 ft/)).toBeInTheDocument()
+    expect(screen.getByText(/2,100 ft/)).toBeInTheDocument()
+  })
+
+  it('marks where you are as a percentage along the window', () => {
+    render(<ElevationRibbon {...PROPS} />)
+
+    // 1405 of 1400-1410 is halfway.
+    expect(screen.getByTestId('you-are-here')).toHaveAttribute('x1', '50')
+  })
+
+  it('shades the area under the profile rather than drawing a bare line', () => {
+    render(<ElevationRibbon {...PROPS} />)
+
+    // A filled area closes back along the baseline; a bare polyline does not.
+    expect(screen.getByTestId('profile-area').getAttribute('d')).toMatch(/Z$/)
+  })
+
+  it('highlights the upcoming climb', () => {
+    render(<ElevationRibbon {...PROPS} />)
+
+    expect(screen.getByTestId('upcoming-climb')).toBeInTheDocument()
+  })
+
+  it('states the climb ahead as ascent, distance and an estimate', () => {
+    render(<ElevationRibbon {...PROPS} />)
+
+    expect(screen.getByText(/\+640 ft · 2\.6 mi · ≈1h 10m/)).toBeInTheDocument()
+  })
+
+  it('takes its estimate from lib/naismith rather than keeping a second copy of the maths', () => {
+    render(<ElevationRibbon {...PROPS} />)
+    const expected = naismithTime({ distanceMi: 2.6, ascentFt: 640 })
+
+    expect(screen.getByText(new RegExp(expected.replace(/[≈]/, '≈')))).toBeInTheDocument()
+  })
+
+  it('never presents the estimate as a clock time - it is a duration, not an arrival', () => {
+    render(<ElevationRibbon {...PROPS} />)
+    const callout = screen.getByTestId('climb-callout').textContent ?? ''
+
+    // No "3:45", no "PM" - WIREFRAMES.md is explicit that an arrival time
+    // would be a promise this rule cannot keep.
+    expect(callout).not.toMatch(/\d{1,2}:\d{2}/)
+    expect(callout).not.toMatch(/[ap]\.?m\.?/i)
+  })
+
+  it('always carries the ≈ prefix, so the estimate never reads as precise', () => {
+    render(<ElevationRibbon {...PROPS} />)
+
+    expect(screen.getByTestId('climb-callout')).toHaveTextContent('≈')
+  })
+
+  it('omits the callout entirely when there is no climb ahead', () => {
+    render(<ElevationRibbon {...PROPS} upcomingClimb={undefined} />)
+
+    expect(screen.queryByTestId('climb-callout')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('upcoming-climb')).not.toBeInTheDocument()
+  })
+
+  it('renders without crashing when the profile is flat', () => {
+    // A flat window makes max === min; naive scaling would divide by zero and
+    // emit NaN into the path, which renders as nothing at all.
+    render(
+      <ElevationRibbon
+        samples={[
+          { mile: 1400, elevationFt: 1000 },
+          { mile: 1410, elevationFt: 1000 },
+        ]}
+        currentMile={1405}
+      />,
+    )
+
+    expect(screen.getByTestId('profile-area').getAttribute('d')).not.toMatch(/NaN/)
+  })
+})

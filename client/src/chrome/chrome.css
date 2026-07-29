@@ -197,3 +197,226 @@
   border-radius: 4px;
   pointer-events: none;
 }
+
+/* ---------- Elevation ribbon ---------- */
+
+/* WIREFRAMES.md: 54px tall, 36px left inset for the lane labels below, which
+   is what keeps a pin at 60% sitting under the right part of the climb. */
+.elevation-ribbon {
+  position: relative;
+  height: 54px;
+  padding-left: 36px;
+  background: var(--bg-page);
+  border-bottom: 1px solid var(--border-1);
+}
+
+.elevation-ribbon__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.elevation-ribbon__area {
+  fill: color-mix(in srgb, var(--forest-600) 22%, transparent);
+}
+
+.elevation-ribbon__line {
+  stroke: var(--forest-600);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.elevation-ribbon__climb {
+  fill: color-mix(in srgb, var(--blaze-orange) 16%, transparent);
+}
+
+.elevation-ribbon__here {
+  stroke: var(--stone-900);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.elevation-ribbon__labels {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 36px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 2px 4px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 7.5px;
+  color: var(--fg-3);
+}
+
+.elevation-ribbon__callout {
+  position: absolute;
+  right: var(--space-2, 8px);
+  top: 4px;
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--fg-1);
+  background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+/* ---------- Waypoint lanes ---------- */
+
+.waypoint-lanes {
+  background: var(--bg-page);
+}
+
+/* WIREFRAMES.md: 19px per lane, dashed top rule, mono 7.5px gutter label. */
+.waypoint-lane {
+  position: relative;
+  height: 19px;
+  padding-left: 36px;
+  border-top: 1px dashed var(--border-2);
+}
+
+.waypoint-lane__label {
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 7.5px;
+  letter-spacing: 0.06em;
+  color: var(--fg-3);
+}
+
+.waypoint-lane__track {
+  position: relative;
+  height: 100%;
+}
+
+.waypoint-pin {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 3px;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--fg-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.waypoint-pin__count {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 8px;
+  font-weight: 700;
+}
+
+/* ---------- Legend sheet ---------- */
+
+.legend {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  max-height: 60%;
+  overflow-y: auto;
+  padding: var(--space-4, 16px);
+  background: var(--bg-surface);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+.legend__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.legend__title {
+  margin: 0;
+  font-size: 15px;
+}
+
+.legend__close {
+  min-width: var(--min-touch-target);
+  min-height: var(--min-touch-target);
+  font-size: 20px;
+  color: var(--fg-2);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.legend__empty {
+  margin: var(--space-3, 12px) 0 0;
+  color: var(--fg-3);
+  font-size: 13px;
+}
+
+.legend__blazes,
+.legend__pins {
+  margin: var(--space-3, 12px) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Pin types read as a 2-column grid; blaze rows stay full width so the line
+   swatch has room to show its dash rhythm. */
+.legend__pins {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2, 8px);
+}
+
+.legend__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  min-height: var(--min-touch-target);
+  font-size: 13px;
+}
+
+.legend__swatch {
+  width: 22px;
+  height: 4px;
+  border-radius: 2px;
+  border: 1px solid var(--border-2);
+}
+
+.legend__label {
+  flex: 1;
+}
+
+.legend__count {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.legend__toggle {
+  min-width: var(--min-touch-target);
+  min-height: var(--min-touch-target);
+  color: var(--fg-2);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+/* Deliberately a plain label, not a disabled button. There is no off switch
+   for a safety layer, so there is no control here to disable. */
+.legend__always {
+  font-size: 10px;
+  color: var(--fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}

@@ -5,12 +5,12 @@ import { resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { MapScreen } from './MapScreen'
 import { ATTRIBUTION } from '../map/style'
 
-// WIREFRAMES.md's map screen, top to bottom: status strip, header, [elevation
-// ribbon and waypoint lanes - D8, not yet built], map canvas, tab bar. This
-// covers the shell holding those together and the one thing that must be on
-// screen no matter what: attribution. USGS topo is public domain, but OSM is
-// ODbL and its credit is a licence condition, not a nicety - so it is asserted
-// here rather than left to whichever component happens to render last.
+// WIREFRAMES.md's map screen, top to bottom: status strip, header, elevation
+// ribbon, waypoint lanes, map canvas, tab bar - plus the legend sheet over the
+// top of it. This covers the shell holding them together and the one thing
+// that must be on screen no matter what: attribution. USGS topo is public
+// domain, but OSM is ODbL and its credit is a licence condition, not a nicety,
+// so it is asserted here rather than left to whichever component renders last.
 
 vi.mock('maplibre-gl', () => import('../test/mocks/maplibre-gl'))
 vi.mock('../map/protocol', () => ({
@@ -33,6 +33,29 @@ const PROPS = {
   onSelectTab: vi.fn(),
   onOpenLegend: vi.fn(),
   onOpenSearch: vi.fn(),
+
+  legendOpen: false,
+  onCloseLegend: vi.fn(),
+  bbox: { west: -78, south: 39, east: -77, north: 40 },
+  viewportPoints: [
+    { id: 'w1', type: 'water', lat: 39.5, lon: -77.5, confidence: 'high' as const },
+  ],
+  blazeCounts: [{ blaze: 'White', count: 12 }],
+  hiddenTypes: new Set<string>(),
+  onToggleType: vi.fn(),
+
+  elevation: {
+    samples: [
+      { mile: 1400, elevationFt: 1200 },
+      { mile: 1410, elevationFt: 1800 },
+    ],
+    currentMile: 1405,
+  },
+  waypoints: {
+    points: [{ id: 'w1', type: 'water', mile: 1402 }],
+    startMile: 1400,
+    endMile: 1410,
+  },
 }
 
 beforeEach(() => {
@@ -73,6 +96,36 @@ describe('MapScreen', () => {
     await user.click(screen.getByRole('tab', { name: 'Downloads' }))
 
     expect(PROPS.onSelectTab).toHaveBeenCalledWith('downloads')
+  })
+
+  it('slots the elevation ribbon and waypoint lanes above the canvas', () => {
+    render(<MapScreen {...PROPS} />)
+
+    expect(screen.getByRole('img', { name: /elevation profile/i })).toBeInTheDocument()
+    expect(screen.getByTestId('lane-water')).toBeInTheDocument()
+  })
+
+  it('omits the ribbon and lanes rather than showing empty ones when there is no data', () => {
+    // An empty ribbon reads as "nothing ahead of you", which is a different and
+    // much worse claim than "we don't have the profile for this stretch."
+    render(<MapScreen {...PROPS} elevation={undefined} waypoints={undefined} />)
+
+    expect(
+      screen.queryByRole('img', { name: /elevation profile/i }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByTestId('lane-water')).not.toBeInTheDocument()
+  })
+
+  it('keeps the legend sheet closed until it is asked for', () => {
+    render(<MapScreen {...PROPS} />)
+
+    expect(screen.queryByRole('dialog', { name: /legend/i })).not.toBeInTheDocument()
+  })
+
+  it('shows the legend sheet over the map once open', () => {
+    render(<MapScreen {...PROPS} legendOpen />)
+
+    expect(screen.getByRole('dialog', { name: /legend/i })).toBeInTheDocument()
   })
 
   it('wires the header buttons to the legend and search handlers', async () => {

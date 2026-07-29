@@ -6,8 +6,9 @@ A design system for **OurHike** — inspired visually by the New York-New Jersey
 
 ## Sources
 - Aesthetic reference: https://www.nynjtc.org/ (homepage, About Us, Membership, site-overview pages) — used only as a style/tone reference; all copy and branding here is written for OurHike.
-- No Figma file, codebase, or brand asset package was attached or accessible this run — everything below was built from the reference site's **public page copy and mission content** read via web research, not from CSS/design-file inspection. **No OurHike logo file was available**, so a plain-type wordmark stands in everywhere a mark would go (see `guidelines/brand-wordmark.card.html`).
-- If you have OurHike's actual brand guide, logo files, font files, or a Figma link, attach them and ask for a refresh — this system will be corrected against real source material.
+- No Figma file, codebase, or brand asset package was attached or accessible this run — everything below was built from the reference site's **public page copy and mission content** read via web research, not from CSS/design-file inspection.
+- **Real logo now exists (2026-07-28):** see `components/core/Logo.jsx` and the "Logo mark" section below. `guidelines/brand-wordmark.card.html`'s plain-type wordmark predates this and should be treated as superseded, not current.
+- If you have OurHike's actual brand guide, font files, or a Figma link, attach them and ask for a refresh — this system will be corrected against real source material.
 
 ## Content fundamentals
 - **Voice:** warm, plain-spoken, mission-driven register, modeled on the trail-conference reference. Mix of "we" (organizational voice) and direct "you" address in calls to action.
@@ -28,6 +29,16 @@ No direct CSS/asset access was possible this run, so the palette and system belo
 - **Motion:** minimal — fast (120–200ms) ease-standard fades/color transitions only; buttons scale to 97% on press. No bounce/spring easing.
 - **Borders/shadows:** hairline 1px borders in stone-150; two shadow levels (card, raised) — no inner shadows except form-field focus rings (soft forest-green glow).
 
+## Logo mark
+
+Chosen 2026-07-28 from the "Logo Ideas" design project, direction **4a — Dual-Tone Horizontal Lockup**. High-fidelity: colors and proportions are final, not a placeholder.
+
+- **Icon:** a rounded-square (radius ~21% of width) split diagonally, hard 50/50, into `--forest-600` and `--stone-700` — not a blended gradient, two flat triangles. A white "trail blaze" capsule sits centered on top, edges deliberately irregular (torn/hand-painted feel, via an SVG `feTurbulence`+`feDisplacementMap` filter) rather than a clean rounded rectangle.
+- **Wordmark:** "OurHike", Public Sans weight 800, `letter-spacing: -0.02em`, color `--stone-900`. Paired with the icon in a `gap: 16px` flex row at the 96px reference size; both scale proportionally together at other sizes.
+- **Icon-only crop:** the same construction alone, for favicons/app icons/compact nav — no wordmark.
+- **Use `components/core/Logo.jsx`** (`<Logo />` for the full lockup, `<Logo iconOnly />` for the icon alone) — don't hand-roll the SVG elsewhere; the torn-edge filter and diagonal-split math are easy to get subtly wrong by eye.
+- Static assets: `assets/logo-icon.svg` (icon only, self-contained, literal colors — for contexts like `index.html`'s favicon link that load outside the app's CSS), `assets/logo-icon-192.png` / `assets/logo-icon-512.png` (rasterized for PWA manifest icons; simplified slightly from the live SVG — square-cornered, no torn-edge noise — since neither reads clearly at those sizes or matters once an OS applies its own icon masking), `assets/trail-blaze-logo.svg` (the blaze capsule alone, for anywhere just that mark is needed independent of the icon background).
+
 ## Iconography
 No icon font, SVG sprite, or icon system was found in accessible sources. Recommendation documented in `guidelines/imagery-iconography.card.html`: simple 1.5px-stroke line icons (e.g. Lucide, CDN-linked) for compass/map/mile-marker glyphs; no emoji in UI. **Flag:** if OurHike has an existing icon set, provide it and this section will be replaced with the real assets.
 
@@ -38,7 +49,7 @@ No webfont files were available. Substituted nearest Google Fonts matches: **Bit
 - `styles.css` — root stylesheet, imports all tokens
 - `tokens/` — `colors.css`, `typography.css`, `spacing.css`, `effects.css` (radius/shadow/motion)
 - `guidelines/` — foundation specimen cards (Colors, Type, Spacing, Brand groups)
-- `components/core/` — Button, Badge, Card
+- `components/core/` — Button, Badge, Card, Logo
 - `components/forms/` — Input, Select
 - `components/navigation/` — NavBar, Footer
 - `components/feedback/` — Callout
@@ -46,12 +57,11 @@ No webfont files were available. Substituted nearest Google Fonts matches: **Bit
 - `SKILL.md` — portable skill file for use in Claude Code
 
 ## Intentional additions
-No source component library was available, so a standard nonprofit-site component set was authored from scratch (Button, Badge, Card, Input, Select, NavBar, Footer, Callout) sized to what a trail-conservation site needs (trail listings, difficulty tags, membership CTAs, closures/alerts).
+No source component library was available, so a standard nonprofit-site component set was authored from scratch (Button, Badge, Card, Input, Select, NavBar, Footer, Callout) sized to what a trail-conservation site needs (trail listings, difficulty tags, membership CTAs, closures/alerts). `Logo` is the exception — it's not an original addition, it's a faithful implementation of the real, chosen brand mark (see "Logo mark" above).
 
 ## Caveats — please help me iterate
 1. **No design-file or codebase access this run** — only public reference-site page text was available, no real CSS, exact hex values, or type specs. Everything visual here is an informed, trail-themed original for OurHike, not a trace of any existing site.
-2. **No OurHike logo or icon assets available** — a plain-type wordmark stands in; no icons were copied in.
-3. **Fonts are Google Fonts substitutes**, not OurHike's real brand fonts.
-4. **The website UI kit is one interpretive homepage**, not a full site audit.
+2. **Fonts are Google Fonts substitutes**, not OurHike's real brand fonts.
+3. **The website UI kit is one interpretive homepage**, not a full site audit.
 
-**Bold ask:** if you can attach OurHike's Figma file, a link to its site repo, or its actual logo/font files, I can replace every placeholder above with the real thing and get this system pixel-accurate. Please share what you have!
+**Bold ask:** if you can attach OurHike's Figma file, a link to its site repo, or its actual font files, I can replace every remaining placeholder above with the real thing and get this system pixel-accurate. Please share what you have!

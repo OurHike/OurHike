@@ -68,7 +68,7 @@ Wireframed as a per-section list with a per-section detail override. **This inte
 
 Three screens, each skippable, each with a step counter:
 
-1. **What OurHike is** — wordmark (type-only; no logo asset exists yet), a small map vignette, two short paragraphs: what it does offline, and that paid memberships fund the ATC and volunteer clubs. "No account. Nothing to sign up for."
+1. **What OurHike is** — the real logo mark (see `.claude/OurHike Design System/` → `components/core/Logo.jsx`, chosen 2026-07-28 — supersedes this turn's original type-only wordmark), a small map vignette, two short paragraphs: what it does offline, and that paid memberships fund the ATC and volunteer clubs. "No account. Nothing to sign up for."
 2. **Map size** — the whole corridor at Light 64 MB / **Standard 314 MB** (recommended) / Fine 1.18 GB. ⚠ The wireframe copy adds "...or take single sections later, in Downloads" — **drop that clause**, see Known Deviations.
 3. **Location permission** — asked as an overlay **on top of the already-downloading map**, so the reason is visible. Copy: works with no signal, position never leaves the phone.
 
@@ -220,7 +220,7 @@ Real values live in this repo, not in this file — see [.claude/OurHike Design 
 ## Assets
 
 - **Icons:** Lucide line icons throughout (1.75–2.1px stroke) — `droplet`, `house`, `tent`, `mountain`, `signpost`, `square-parking`, `tree-pine`, `waves`, `trash-2`, `hammer`, `paw-print`, `shield-alert`, `heart-handshake`, `triangle-alert`, `octagon-alert`, `compass`, `locate-fixed`, `list`, `search`, `bell`, `lock`, `clock`, `refresh-cw`, `badge-check`, `shield-check`.
-- **No logo file exists** — a type-only wordmark stands in (same gap `.claude/OurHike Design System/readme.md` already notes). Ask the client/ATC for real brand assets.
+- **Real logo mark chosen 2026-07-28** — see `.claude/OurHike Design System/` → `components/core/Logo.jsx` (React) and `assets/logo-icon.svg` (standalone, for favicons/app icons). Supersedes every "no logo yet" note elsewhere in this doc and in the design system's own readme.
 - **No photography** — placeholders only.
 - **Map data:** USGS US Topo (public domain), ATC GIS layers, OpenStreetMap (ODbL — **visible "© OpenStreetMap" attribution required** once the Protomaps context basemap ships), USGS NHD, USGS 3DEP 1m DEM.
 

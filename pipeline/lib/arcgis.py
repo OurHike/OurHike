@@ -56,3 +56,22 @@ def get_layer_edit_date(layer_url: str) -> int | None:
     if not editing_info:
         return None
     return editing_info.get("dataLastEditDate")
+
+
+def get_field_coded_domain(layer_url: str, field_name: str) -> dict[int, str] | None:
+    """Fetch a layer's field metadata and return field_name's coded-value
+    domain as a {code: label} dict - e.g. side_trails' `Blaze` field, so its
+    0-9 color codes are decoded from the service's own metadata rather than
+    hand-copied (see features/TRAIL_BLAZE_COLORS.md). Returns None if the
+    field isn't found, has no domain, or has a non-coded domain (e.g. a
+    numeric range domain)."""
+    resp = requests.get(layer_url, params={"f": "json"}, timeout=30)
+    resp.raise_for_status()
+    fields = resp.json().get("fields", [])
+    for field in fields:
+        if field.get("name") == field_name:
+            domain = field.get("domain")
+            if domain and domain.get("type") == "codedValue":
+                return {cv["code"]: cv["name"] for cv in domain.get("codedValues", [])}
+            return None
+    return None

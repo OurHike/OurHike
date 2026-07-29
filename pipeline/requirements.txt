@@ -9,4 +9,8 @@ tifffile
 imagecodecs
 pmtiles
 shapely
+# Explicit rather than transitive: export_trails.py reprojects to EPSG:5070
+# to simplify in real metres. rasterio happens to pull pyproj in locally,
+# which is exactly why this was missing - it worked here and failed in CI.
+pyproj
 boto3

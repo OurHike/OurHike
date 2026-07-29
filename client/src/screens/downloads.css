@@ -1,0 +1,103 @@
+.downloads {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+  padding: var(--space-5, 20px);
+  background: var(--bg-page);
+  min-height: 100%;
+}
+.downloads__title {
+  margin: 0;
+  font-size: 20px;
+  color: var(--fg-1);
+}
+.downloads__scope {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: 14px;
+}
+.downloads__primary,
+.downloads__secondary {
+  min-height: var(--min-touch-target, 44px);
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+}
+.downloads__primary {
+  color: var(--fg-on-dark);
+  background: var(--brand-primary);
+  border: 0;
+}
+.downloads__secondary {
+  color: var(--danger);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+}
+.downloads__progress,
+.downloads__failed,
+.downloads__done {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+.downloads__bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--bg-sunken);
+  overflow: hidden;
+}
+.downloads__bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--brand-primary);
+}
+.downloads__bytes {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--fg-2);
+}
+.detail-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.detail-picker__legend {
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.detail-picker__option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  min-height: var(--min-touch-target, 44px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.detail-picker__name {
+  flex: 1;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+.detail-picker__size {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--fg-2);
+}
+.detail-picker__recommended {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--brand-primary);
+}

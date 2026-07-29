@@ -40,6 +40,34 @@ WorkProject
                to ship the map-display half of this feature
 ```
 
+## Maintainer assignments — who looks after which stretch, and when
+
+**Added 2026-07-29**, pulled in by [SAYING_THANKS.md](SAYING_THANKS.md): to let a hiker thank a maintainer they cannot name, the app has to be able to answer *"who looks after this mile?"* from a location alone. That question turns out to be useful well beyond thanks — it is the same lookup a closure, a shelter-repair report, or a work project needs to route itself to the right club.
+
+```
+MaintainerAssignment
+  id
+  maintainer_id      (a Profile with the maintainer role)
+  club_id            (the club the assignment is made by)
+  trail reference    (which centerline - same inheritability note as Segments)
+  start reference, end reference
+                     (real trail geography, NOT free text - the same anchoring
+                      SEGMENTS.md already specifies: a mile-marker point, a
+                      shelter/campsite/parking POI, or a pin snapped onto real
+                      trail geometry via MAP_OPTIONS.md's ST_LineLocatePoint math)
+  effective_from     (date the assignment starts)
+  effective_to       (nullable - null means "current")
+  publicly_creditable (bool, default false - see SAYING_THANKS.md's opt-in rule)
+```
+
+**Why assignments are versioned rather than edited in place.** Sections change hands. A record that is simply overwritten can answer "who looks after mile 1,043 today" and nothing else — but the questions that actually matter are historical: who cleared this in June, who should hear about a report written three weeks ago, who was responsible when this bridge was last inspected. `effective_from`/`effective_to` make those answerable; an editable `current_maintainer` field destroys the answer every time a section is reassigned.
+
+**Resolution returns zero or more, never exactly one.** Stretches overlap at boundaries, hand off mid-season, and go unassigned when a volunteer steps back. Any consumer of this lookup has to handle all three: zero means fall back to the club, two means both hear about it.
+
+**Lookups are always as-of a date, never implicitly "now."** See [SAYING_THANKS.md](SAYING_THANKS.md) for the case that forces this — a thanks written in June, synced in August, about a section reassigned in July belongs to the June maintainer. Defaulting the lookup to "now" would quietly misattribute it, and misattributed credit is worse than none.
+
+**Scope note:** the assignment model is small enough to build ahead of the rest of this doc's admin module, and [SAYING_THANKS.md](SAYING_THANKS.md) needs it in MVP. Populating it before real club admin tooling exists uses the same pipeline-fed stopgap this doc already proposes for work projects, and [MAP_OPTIONS.md](MAP_OPTIONS.md) proposes for closures — one pattern, not three.
+
 ## What this deliberately isn't
 
 Per value #1 (hike your own hike, no prescriptive gamification): no leaderboard of volunteer hours, no "you've volunteered less than other hikers" nudging, no public volunteer profile. The feature's job is to make a real opportunity visible at the moment someone might act on it - not to manufacture participation through comparison or guilt. This mirrors the same restraint FEATURES.md and SEGMENTS.md already apply elsewhere.

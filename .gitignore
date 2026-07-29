@@ -1,2 +1,6 @@
 personal_reference/
 .claude/settings.json
+
+# Coverage data, when pytest is run from the repo root rather than backend/
+# (backend/.gitignore only covers the backend/ subtree).
+.coverage

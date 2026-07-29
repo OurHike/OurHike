@@ -29,5 +29,11 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src"],
+
+  /* Tests are checked by tsconfig.test.json instead, which adds node types.
+     Keeping them out here is what lets this config's `types` stay free of
+     "node" - so application code cannot reach for process/fs and still
+     typecheck, while a test that genuinely needs them still can. */
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test/**"]
 }

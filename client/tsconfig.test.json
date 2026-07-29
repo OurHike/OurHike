@@ -1,0 +1,13 @@
+{
+  /* Test-only type-checking. Identical to the app config except that node
+     types are available: a few tests legitimately need fs/path/process (the
+     one-notification codebase scan in src/lib/push.test.ts, for one), and the
+     app config deliberately withholds them from application code. */
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo",
+    "types": ["vite/client", "@testing-library/jest-dom", "node", "vitest/globals"]
+  },
+  "include": ["src"],
+  "exclude": []
+}

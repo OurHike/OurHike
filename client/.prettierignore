@@ -1,0 +1,7 @@
+dist/
+dev-dist/
+coverage/
+node_modules/
+public/dev-data/
+src/design-system/
+package-lock.json

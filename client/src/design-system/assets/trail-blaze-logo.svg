@@ -1,0 +1,25 @@
+<svg width="600" height="900" viewBox="0 0 600 900" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    
+    <filter id="paintedEdge" x="-30%" y="-30%" width="160%" height="160%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.012 0.03" numOctaves="4" seed="7" result="noise"></feTurbulence>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="34" xChannelSelector="R" yChannelSelector="G"></feDisplacementMap>
+    </filter>
+
+    
+    <filter id="brushTexture" x="-20%" y="-20%" width="140%" height="140%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.06 0.18" numOctaves="3" seed="22" result="grain"></feTurbulence>
+      <feColorMatrix in="grain" type="matrix" values="0 0 0 0 1&#xA;                0 0 0 0 1&#xA;                0 0 0 0 1&#xA;                0 0 0 0.06 0" result="softGrain"></feColorMatrix>
+      <feComposite in="softGrain" in2="SourceGraphic" operator="in"></feComposite>
+    </filter>
+  </defs>
+
+  
+  <rect x="215" y="200" width="170" height="500" fill="#ffffff" filter="url(#paintedEdge)"></rect>
+
+  
+  <rect x="215" y="200" width="170" height="500" fill="#ffffff" filter="url(#paintedEdge)" opacity="0.9"></rect>
+  <g filter="url(#brushTexture)">
+    <rect x="215" y="200" width="170" height="500" fill="#000000"></rect>
+  </g>
+</svg>

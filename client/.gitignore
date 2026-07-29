@@ -1,0 +1,32 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+dev-dist
+*.local
+*.tsbuildinfo
+coverage
+
+# Local dev-only data slice (copied by hand from pipeline/data/processed/, see
+# README.md) - never committed, same "generated data doesn't get committed"
+# rule TECHNICAL_ARCHITECTURE.md already applies to pipeline/data/.
+public/dev-data
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

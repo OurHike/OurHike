@@ -188,7 +188,7 @@ Confidence stays separate: a dashed pin means *never verified to exist*; stalene
 
 Meaning, not decoration — keep these regardless of restyling:
 
-- Naismith: 5 km/h + 1 h per 600 m ascent, **rounded to 5 minutes, always prefixed `≈`, never shown as an arrival clock**, no descent credit (a known weakness of the rule — don't silently "improve" it).
+- Naismith: 5 km/h + 1 h per 600 m ascent, **rounded to 5 minutes, always prefixed `≈`, never shown as an arrival clock**, no descent credit (a known weakness of the rule — don't silently "improve" it). **Superseded in part 2026-07-30 — see [features/PERSONALIZED_PACE.md](features/PERSONALIZED_PACE.md).** Descent is now in scope, but deliberately and in a *separate* estimator: plain `naismithTime()` keeps no descent term, so nothing silently improves. The rounding, the `≈` and the no-arrival-clock rule all still hold, and matter more once an estimate is personalized and therefore invites more trust.
 - Download sizes: whole-corridor archive at z11 ≈ 64 MB, z12 ≈ 314 MB (default), z13 ≈ 1.18 GB (see `pipeline/README.md`).
 - Blaze dash rhythms per hue (table above) and the neutral-grey fallback `#8a8271`.
 - Closure = barred band + hard casing; blaze = thin dash + hairline casing.

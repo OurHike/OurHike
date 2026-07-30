@@ -33,12 +33,17 @@ const CONDITION_TYPES: Array<{
   // The two below genuinely overlap - a feral hog is both - so each carries a
   // hint. The distinction has to be legible where someone is choosing, not in
   // a data dictionary nobody reads.
-  { id: 'animals', label: 'Animals', glyph: '🐾', hint: 'An encounter that worried you' },
+  {
+    id: 'animals',
+    label: 'Animals',
+    glyph: '🐾',
+    hint: 'Sightings, food raids, anything aggressive',
+  },
   {
     id: 'invasive_species',
     label: 'Invasive species',
     glyph: '🌿',
-    hint: 'A plant or animal spreading where it should not be',
+    hint: "Plants or pests that shouldn't be here",
   },
 ]
 

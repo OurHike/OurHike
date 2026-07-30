@@ -76,7 +76,20 @@ Three screens, each skippable, each with a step counter:
 
 ### 6. Reporting (`14a`–`14d`) — supersedes turn `8` — ⚠ see Known Deviations
 
-Five condition types in a 2-col grid: blow down, flooding, trash, shelter repair, animals. Then a separate section, **"About people on the trail,"** with two full-width cards, deliberately not icon buttons:
+Six condition types in a 2-col grid (`14a`, updated 2026-07-30 to add invasive species):
+
+| tile | Lucide icon | subtitle |
+|---|---|---|
+| Blow down | `tree-pine` | — |
+| Flooding | `waves` | — |
+| Trash | `trash-2` | — |
+| Shelter repair | `hammer` | — |
+| Animals | `paw-print` | Sightings, food raids, anything aggressive |
+| Invasive species | `leaf` | Plants or pests that shouldn't be here |
+
+Only the last two carry a subtitle, and that asymmetry is the point: they genuinely overlap (a feral hog is both), so the difference has to be legible where someone is choosing rather than in a data dictionary nobody reads. `animals` is a safety encounter — the type [HIKER_SAFETY.md](features/HIKER_SAFETY.md) escalates to `severity: serious`; `invasive_species` is an ecological observation with no personal-risk dimension. See [features/REPORT_A_PROBLEM.md](features/REPORT_A_PROBLEM.md) for why they are separate types rather than one.
+
+Then a separate section, **"About people on the trail,"** with two full-width cards, deliberately not icon buttons:
 
 - **Something unsafe happened** (amber) — threats, robbery, being followed. Private to club moderators, never a public pin with a name. Its own form has chips (Threatened / Followed / Theft / Assault / Harassment / Other), a note, GPS location, and opens with an honest limit: **call 911 if you're in danger now; this reaches volunteers, sometimes days later.** If moderators confirm a pattern it can become an unnamed warning.
 - **Say thanks to a maintainer** (green) — pick the club or a specific crew, tap what made the difference (blazes / blow down cleared / shelter / privy / bridge / tread work), leave a note. Negative feedback is nudged to the club directly rather than a public complaint.
@@ -223,7 +236,7 @@ Real values live in this repo, not in this file — see [.claude/OurHike Design 
 
 ## Assets
 
-- **Icons:** Lucide line icons throughout (1.75–2.1px stroke) — `droplet`, `house`, `tent`, `mountain`, `signpost`, `square-parking`, `tree-pine`, `waves`, `trash-2`, `hammer`, `paw-print`, `shield-alert`, `heart-handshake`, `triangle-alert`, `octagon-alert`, `compass`, `locate-fixed`, `list`, `search`, `bell`, `lock`, `clock`, `refresh-cw`, `badge-check`, `shield-check`.
+- **Icons:** Lucide line icons throughout (1.75–2.1px stroke). ⚠ **Known implementation gap:** the built report-type picker (`client/src/screens/ReportTypePicker.tsx`) uses emoji glyphs, not Lucide — a deviation introduced when that screen was first built, before any icon library was added as a dependency. The wireframe names a real Lucide icon per tile (see §6's table). Worth closing as its own change across every screen at once rather than one tile at a time, since a mixed emoji/Lucide picker would look worse than a consistently-emoji one. — `droplet`, `house`, `tent`, `mountain`, `signpost`, `square-parking`, `tree-pine`, `waves`, `trash-2`, `hammer`, `paw-print`, `shield-alert`, `heart-handshake`, `triangle-alert`, `octagon-alert`, `compass`, `locate-fixed`, `list`, `search`, `bell`, `lock`, `clock`, `refresh-cw`, `badge-check`, `shield-check`.
 - **Real logo mark chosen 2026-07-28** — see `.claude/OurHike Design System/` → `components/core/Logo.jsx` (React) and `assets/logo-icon.svg` (standalone, for favicons/app icons). Supersedes every "no logo yet" note elsewhere in this doc and in the design system's own readme.
 - **No photography** — placeholders only.
 - **Map data:** USGS US Topo (public domain), ATC GIS layers, OpenStreetMap (ODbL — **visible "© OpenStreetMap" attribution required** once the Protomaps context basemap ships), USGS NHD, USGS 3DEP 1m DEM.

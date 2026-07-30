@@ -55,7 +55,10 @@ describe('ReportTypePicker', () => {
     const grid = screen.getByRole('group', { name: /trail conditions/i })
 
     expect(within(grid).getByRole('button', { name: /invasive/i })).toHaveAccessibleName(
-      /spreading|plant|not native|shouldn|should not/i,
+      /Plants or pests that shouldn't be here/i,
+    )
+    expect(within(grid).getByRole('button', { name: /animals/i })).toHaveAccessibleName(
+      /Sightings, food raids, anything aggressive/i,
     )
   })
 

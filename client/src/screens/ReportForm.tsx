@@ -23,6 +23,7 @@ const TITLES: Record<ReportFormType, string> = {
   trash: 'Trash',
   shelter_repair: 'Shelter repair',
   animals: 'Animals',
+  invasive_species: 'Invasive species',
   bad_hikers: 'Something unsafe happened',
   thanks: 'Say thanks',
 }

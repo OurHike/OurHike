@@ -19,12 +19,27 @@ import './reporting.css'
 
 export type ReportTypeId = ReportDraft['type']
 
-const CONDITION_TYPES: Array<{ id: ReportTypeId; label: string; glyph: string }> = [
+const CONDITION_TYPES: Array<{
+  id: ReportTypeId
+  label: string
+  glyph: string
+  /** Only where a tile needs telling apart from its neighbour. */
+  hint?: string
+}> = [
   { id: 'blowdown', label: 'Blow down', glyph: '🪵' },
   { id: 'flooding', label: 'Flooding', glyph: '💧' },
   { id: 'trash', label: 'Trash', glyph: '🗑' },
   { id: 'shelter_repair', label: 'Shelter repair', glyph: '🔨' },
-  { id: 'animals', label: 'Animals', glyph: '🐾' },
+  // The two below genuinely overlap - a feral hog is both - so each carries a
+  // hint. The distinction has to be legible where someone is choosing, not in
+  // a data dictionary nobody reads.
+  { id: 'animals', label: 'Animals', glyph: '🐾', hint: 'An encounter that worried you' },
+  {
+    id: 'invasive_species',
+    label: 'Invasive species',
+    glyph: '🌿',
+    hint: 'A plant or animal spreading where it should not be',
+  },
 ]
 
 export interface ReportTypePickerProps {
@@ -48,6 +63,9 @@ export function ReportTypePicker({ onPick }: ReportTypePickerProps) {
               {type.glyph}
             </span>
             <span>{type.label}</span>
+            {type.hint !== undefined && (
+              <span className="reporting__tile-hint">{type.hint}</span>
+            )}
           </button>
         ))}
       </section>

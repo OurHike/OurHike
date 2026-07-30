@@ -23,11 +23,11 @@ afterEach(() => {
 })
 
 describe('ReportTypePicker', () => {
-  it('offers exactly the five condition types', () => {
+  it('offers exactly the six condition types', () => {
     render(<ReportTypePicker {...PROPS} />)
     const grid = screen.getByRole('group', { name: /trail conditions/i })
 
-    expect(within(grid).getAllByRole('button')).toHaveLength(5)
+    expect(within(grid).getAllByRole('button')).toHaveLength(6)
   })
 
   it.each([
@@ -36,6 +36,7 @@ describe('ReportTypePicker', () => {
     [/trash/i, 'trash'],
     [/shelter/i, 'shelter_repair'],
     [/animals/i, 'animals'],
+    [/invasive/i, 'invasive_species'],
   ])('reports %s as the %s type', async (label, type) => {
     const user = userEvent.setup()
     render(<ReportTypePicker {...PROPS} />)
@@ -43,6 +44,19 @@ describe('ReportTypePicker', () => {
     await user.click(screen.getByRole('button', { name: label }))
 
     expect(PROPS.onPick).toHaveBeenCalledWith(type)
+  })
+
+  it('distinguishes invasive species from animals at the point of choice', async () => {
+    // The two genuinely overlap - a feral hog is both - so the difference has
+    // to be legible where someone is choosing, not in a data dictionary
+    // nobody reads. `animals` is an encounter that worried you;
+    // `invasive_species` is something spreading where it should not be.
+    render(<ReportTypePicker {...PROPS} />)
+    const grid = screen.getByRole('group', { name: /trail conditions/i })
+
+    expect(within(grid).getByRole('button', { name: /invasive/i })).toHaveAccessibleName(
+      /spreading|plant|not native|shouldn|should not/i,
+    )
   })
 
   it('keeps the people section separate from the conditions grid', () => {

@@ -1,8 +1,17 @@
 name: Backend tests
 
 on:
+  # `main` only. Matching every branch here would double every PR's CI:
+  # pushing to a PR branch fires BOTH the push event and the pull_request
+  # event for the same commit, running each job twice for an identical
+  # result. The pull_request trigger below already covers branches.
+  #
+  # This run is still worth keeping for main itself - it is post-merge
+  # validation against the real merge commit, which is exactly what caught
+  # the flaky staleness boundary test in #32 (green on the PR, red on the
+  # merge).
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
     branches: [main]
 

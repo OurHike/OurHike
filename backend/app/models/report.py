@@ -43,6 +43,14 @@ class ReportType(str, enum.Enum):
     flooding = "flooding"
     shelter_repair = "shelter_repair"
     animals = "animals"
+    # Problem plants or animals disrupting the local environment
+    # (../../../features/REPORT_A_PROBLEM.md, 2026-07-30). Deliberately
+    # separate from `animals`, which is scoped to SAFETY encounters and is
+    # what HIKER_SAFETY.md escalates to severity=serious. An invasive report
+    # is an ecological observation with no personal-risk dimension; folding
+    # the two together would either dilute the safety signal or treat a plant
+    # sighting as a hazard.
+    invasive_species = "invasive_species"
     # A comment about a specific place, not a condition report - see
     # ../../../features/SAYING_THANKS.md. Shares every field; diverges in
     # visibility (club_only), states, and in skipping the moderation queue.

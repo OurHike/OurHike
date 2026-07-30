@@ -17,7 +17,7 @@ A hiker taps **Report a Problem** and:
 
 ## Problem types
 
-**Blow downs, trash, flooding, shelter repair, animals** are all trail/infrastructure conditions - low-risk to show on the map quickly once verified, the same way a condition report about a water source already works.
+**Blow downs, trash, flooding, shelter repair, animals, invasive species** are all trail/infrastructure conditions - low-risk to show on the map quickly once verified, the same way a condition report about a water source already works.
 
 **"Bad hikers" needs different handling, flagged explicitly.** This category reports on *people*, not trail conditions - a meaningfully different risk profile:
 
@@ -33,15 +33,46 @@ v1 doesn't need type-specific fields - type + location + note + optional photo i
 - **Flooding:** still passable? approximate depth?
 - **Blow down:** passable around it, or fully blocking the trail?
 - **Shelter repair:** which part (roof, floor, privy, water source nearby)?
+- **Invasive species:** which species (if known), rough extent, spreading or contained?
 
 None of this needs designing now - the data model just needs room to add per-type fields later without a schema rewrite (see below).
+
+## Invasive species (added 2026-07-30)
+
+An eighth type, for problem plants or animals disrupting the local environment
+- hemlock woolly adelgid, Japanese knotweed, feral hogs. A hiker submits a
+description, photos, location and whatever else they noticed, exactly like any
+other condition report; nothing about the shape of the report is special.
+
+**Why it is not folded into `animals`.** That type is scoped to *safety*
+encounters - [HIKER_SAFETY.md](HIKER_SAFETY.md) uses it for bear sightings and
+escalates it to `severity: serious` when a moderator confirms a pattern. An
+invasive report is an *ecological* observation with no personal-risk dimension:
+knotweed is not dangerous to the hiker who reported it, and routing it through
+the same type would mean either diluting the safety signal or treating a plant
+sighting as a hazard.
+
+**The real overlap, worth naming.** Some invasives *are* animals, and some are
+genuinely a safety concern - a feral hog is both. A hiker could reasonably pick
+either type, so the two need distinguishing at the point of choice rather than
+in a data dictionary nobody reads: `animals` is for an encounter that worried
+you, `invasive_species` for something spreading where it should not be. A
+report filed under the "wrong" one is not a failure - moderators see both, and
+a genuinely dangerous invasive can still be escalated through the normal
+severity path.
+
+**Visibility is public**, like every other condition type. Nothing about an
+invasive report identifies a person, so none of the `bad_hikers` reasoning for
+`internal_only` applies. It goes through the same moderation queue as the rest
+- unlike `thanks`, there is something here to verify.
 
 ## Data model sketch
 
 ```
 Report
   id
-  type: blowdown | trash | bad_hikers | flooding | shelter_repair | animals | thanks
+  type: blowdown | trash | bad_hikers | flooding | shelter_repair | animals
+      | invasive_species | thanks
   location reference:
     - existing POI id, OR
     - a dropped/GPS pin (lat/lon)

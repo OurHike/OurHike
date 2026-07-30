@@ -28,6 +28,10 @@ export interface ReportDraft {
     | 'flooding'
     | 'shelter_repair'
     | 'animals'
+    // Problem plants or animals disrupting the local environment. Distinct
+    // from 'animals', which is a safety encounter - see
+    // features/REPORT_A_PROBLEM.md.
+    | 'invasive_species'
     // A comment about a specific place rather than a trail condition - see
     // features/SAYING_THANKS.md. Shares this whole shape, which is why it is
     // a report type instead of a second model.

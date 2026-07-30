@@ -90,8 +90,8 @@ def test_a_stale_source_exits_non_zero_so_ci_can_gate_on_it():
 
 
 def test_an_unknown_source_is_reported_separately_from_a_stale_one():
-    """"I could not check" and "this definitely changed" call for different
-    responses - retry versus refetch - so they are not merged."""
+    """Not knowing and knowing-it-changed call for different responses -
+    retry versus refetch - so they are not merged."""
     summary = summarise(_report(atc=Freshness.UNKNOWN, topo=Freshness.STALE))
 
     assert summary["unknown"] == ["atc"]

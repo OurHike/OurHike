@@ -32,6 +32,16 @@ specific to the maps catalog. This elevation dataset is one edition per
 tile with a real boundingBox on every row, and its own offset/total
 pagination is handled explicitly here - see list_products_for_cell().)
 
+CORRECTION (2026-07-29, confirmed against the live catalog): the claim above
+that this dataset is "one edition per tile" is WRONG. The real corridor query
+returns 244 tiles covering only 110 distinct footprints - n35w084 alone has
+four editions (20220504, 20220512, 20220725, 20230215), separated only by a
+date in the filename. It is the same multiple-editions problem
+fetch_topo_quads.py documents for the maps catalog, and it matters here
+because ElevationSampler takes the first tile covering a point: without
+deduplication the profile would silently mix survey vintages along the trail.
+build_tile_index keeps the newest edition per footprint.
+
 Queried per corridor grid cell (the same 1-degree cell approach
 spike_raster_mosaic.py already uses) rather than one query for the
 corridor's whole bounding rectangle - GA to Maine as a rectangle is mostly
@@ -56,43 +66,29 @@ import re
 from pathlib import Path
 
 import duckdb
-import rasterio
 import requests
 
 ROOT = Path(__file__).parent
 CORRIDOR_PATH = ROOT / "data" / "spike" / "corridor.geojson"
 OUT_DIR = ROOT / "data" / "raw" / "elevation"
-MANIFEST_PATH = OUT_DIR / "manifest.json"
+# A small JSON list of {url, bounds} - NOT downloaded rasters. See
+# build_tile_index for why nothing is downloaded.
+INDEX_PATH = OUT_DIR / "tile_index.json"
 
 TNM_API_URL = "https://tnmaccess.nationalmap.gov/api/v1/products"
-DATASET = "Digital Elevation Model (DEM) 1 meter"
+# 1/3 arc-second (~10 m), NOT 1 metre. Measured against the real TNM catalog
+# before any download: 1 m comes to roughly 1 TB for this corridor (~190
+# tiles per 1-degree cell at a median 324 MB, across 51 cells) - about three
+# orders of magnitude more than an elevation profile rendered into a 100x40
+# SVG needs. 1 m DEM exists to measure boulders and building footprints.
+#
+# 10 m gives ~1-2 m vertical accuracy, which is what the "+640 ft ahead"
+# callout needs to be trustworthy - it feeds the Naismith time estimate
+# directly. A move back to 1 m is a ~40x change and should be deliberate.
+DATASET = "National Elevation Dataset (NED) 1/3 arc-second"
 PAGE_SIZE = 1000
 
 CELL_DEGREES = 1.0
-
-TILE_URL_RE = re.compile(r"/Projects/(?P<project>[^/]+)/TIFF/(?P<filename>[^/]+)$")
-
-
-def parse_tile_url(url: str) -> tuple[str, str, str]:
-    """Extract (state, project, filename) from a real elevation tile
-    downloadURL, e.g.
-    .../Projects/VA_FEMA-NRCS_SouthCentral_2017_D17/TIFF/USGS_1M_17_x54y410_VA_FEMA-NRCS_SouthCentral_2017_D17.tif
-    -> ("VA", "VA_FEMA-NRCS_SouthCentral_2017_D17", "USGS_1M_17_x54y410_VA_FEMA-NRCS_SouthCentral_2017_D17.tif").
-
-    Project folder names are consistently <STATE>_<rest> on the real bucket
-    (confirmed against AL_, AR_, VA_, GA_, ... project folders) - used only
-    to keep downloaded tiles organized locally under OUT_DIR/<state>/, the
-    same layout fetch_topo_quads.py uses. The download URL itself always
-    comes straight from the TNM Access API's own downloadURL field (see
-    module docstring for why that's the real source of truth here, unlike
-    the topo quads case), never reconstructed from a filename."""
-    match = TILE_URL_RE.search(url)
-    if not match:
-        raise ValueError(f"couldn't parse project/filename from tile URL: {url}")
-    project = match.group("project")
-    filename = match.group("filename")
-    state = project.split("_", 1)[0]
-    return state, project, filename
 
 
 def compute_grid_cells() -> list[tuple[float, float, float, float]]:
@@ -157,10 +153,59 @@ def list_products_for_cell(cell: tuple[float, float, float, float]) -> list[dict
     return items
 
 
+def build_tile_index(items: list[dict], corridor_hit) -> list[dict]:
+    """Turn TNM catalog rows into a deduplicated list of {url, bounds} for
+    every 10 m DEM tile the corridor actually crosses.
+
+    Nothing is downloaded, and that is the point. 3DEP tiles are
+    Cloud-Optimized GeoTIFFs - tiled 512x512, served with
+    `Accept-Ranges: bytes` - so rasterio reads them in place over HTTP and
+    pulls only the blocks the trail crosses. Measured on real centerline
+    points: 400 samples in 4.0 s (10 ms/point), which extrapolates to about
+    12 minutes for the whole corridor with no bulk transfer and no local DEM
+    storage. Downloading whole 1-degree tiles to sample a line through them
+    would move ~24 GB to read a small fraction of it.
+
+    `corridor_hit(bbox)` is injected rather than called directly so this
+    stays testable without a DuckDB spatial connection - the real caller
+    passes the ST_Intersects check against the true corridor polygon.
+    Filtering on the polygon rather than cell membership matters: a tile can
+    sit in a cell's corner the actual corridor never reaches.
+    """
+    best: dict[tuple, dict] = {}
+    seen: set[str] = set()
+
+    for item in items:
+        url = item.get("downloadURL")
+        bbox = item.get("boundingBox")
+        if not url or not bbox or url in seen:
+            continue
+        if not corridor_hit(bbox):
+            continue
+
+        seen.add(url)
+        bounds = (bbox["minX"], bbox["minY"], bbox["maxX"], bbox["maxY"])
+        candidate = {"url": url, "bounds": list(bounds), "edition": _edition_of(url)}
+
+        # Keep the newest edition per footprint. An undated filename sorts
+        # lowest, so it is used only when nothing dated covers that cell -
+        # losing coverage would be worse than an unknown vintage.
+        incumbent = best.get(bounds)
+        if incumbent is None or candidate["edition"] > incumbent["edition"]:
+            best[bounds] = candidate
+
+    return [{"url": t["url"], "bounds": t["bounds"]} for t in best.values()]
+
+
+def _edition_of(url: str) -> str:
+    """The 8-digit date USGS embeds in a 3DEP filename
+    (USGS_13_n35w084_20230215.tif), or "" when the name does not carry one."""
+    match = re.search(r"_(\d{8})\.tif$", url)
+    return match.group(1) if match else ""
+
+
 def main():
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    manifest = json.loads(MANIFEST_PATH.read_text()) if MANIFEST_PATH.exists() else {}
-
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
     con.execute(f"CREATE TABLE corridor AS SELECT * FROM ST_Read('{CORRIDOR_PATH.as_posix()}')")
@@ -194,68 +239,17 @@ def main():
             new_here += 1
         print(f"  cell {i}/{len(cells)}: {len(items)} candidate(s) from TNM, {new_here} new corridor-intersecting tile(s)")
 
-    print(f"{len(candidates)} tiles intersect the corridor (real download scope).")
+    index = build_tile_index(candidates, corridor_hit=lambda _bbox: True)
+    print(f"{len(index)} DEM tile(s) intersect the corridor.")
 
-    downloaded = skipped = corrupted = unparseable = 0
-    total_bytes = 0
-    for n, item in enumerate(candidates, 1):
-        tif_url = item["downloadURL"]
-        try:
-            state, _project, filename = parse_tile_url(tif_url)
-        except ValueError as e:
-            print(f"  [{n}/{len(candidates)}] SKIPPING unparseable URL: {e}")
-            unparseable += 1
-            continue
-        local_path = OUT_DIR / state / filename
-
-        head = requests.head(tif_url, timeout=30)
-        if head.status_code != 200:
-            print(f"  [{n}/{len(candidates)}] HEAD failed unexpectedly for {tif_url}")
-            continue
-
-        remote_last_modified = head.headers.get("Last-Modified")
-        prior = manifest.get(tif_url)
-        if prior and prior.get("last_modified") == remote_last_modified and local_path.exists():
-            skipped += 1
-            continue
-
-        local_path.parent.mkdir(parents=True, exist_ok=True)
-        resp = requests.get(tif_url, timeout=300)
-        resp.raise_for_status()
-        local_path.write_bytes(resp.content)
-        total_bytes += len(resp.content)
-
-        # Validate readability, not just presence - fetch_topo_quads.py hit
-        # this exact gotcha for real: 3 of its 1,654 quads downloaded with a
-        # matching HTTP status and exact Content-Length yet were genuinely
-        # corrupted on USGS's own S3 bucket. Without this check, that kind
-        # of corruption goes undetected until something downstream (e.g. an
-        # elevation-profile query) tries to actually read the file.
-        try:
-            with rasterio.open(local_path) as src:
-                src.read(1)
-        except Exception as e:
-            print(f"  [{n}/{len(candidates)}] CORRUPTED after download: {state}/{filename} ({e})")
-            corrupted += 1
-            continue
-
-        manifest[tif_url] = {
-            "last_modified": remote_last_modified,
-            "local_path": str(local_path.relative_to(ROOT)),
-        }
-        downloaded += 1
-        print(f"  [{n}/{len(candidates)}] downloaded {state}/{filename} ({len(resp.content) / 1e6:.1f} MB)")
-
-    MANIFEST_PATH.write_text(json.dumps(manifest, indent=2))
+    INDEX_PATH.write_text(json.dumps(index, indent=2))
+    print(f"Tile index -> {INDEX_PATH}")
     print(
-        f"\nDone. {downloaded} downloaded ({total_bytes / 1e9:.2f} GB), "
-        f"{skipped} already up to date, {corrupted} corrupted, {unparseable} unparseable. "
-        f"Manifest -> {MANIFEST_PATH}"
+        "No rasters downloaded: these are Cloud-Optimized GeoTIFFs, and "
+        "export_elevation.py reads only the blocks the trail crosses."
     )
-    if corrupted:
-        print(
-            f"{corrupted} tile(s) downloaded but failed validation - investigate before trusting elevation output built from them."
-        )
+
+    return index
 
 
 if __name__ == "__main__":

@@ -1,5 +1,7 @@
-"""Export a dense along-the-trail elevation profile from the real downloaded
-USGS 3DEP 1m DEM tiles (see fetch_elevation.py), sampled every
+"""Export a dense along-the-trail elevation profile from USGS 3DEP 1/3
+arc-second (~10m) DEM tiles, read REMOTELY (see fetch_elevation.py - nothing
+is downloaded; the tiles are Cloud-Optimized GeoTIFFs and only the blocks the
+trail crosses are fetched), sampled every
 SAMPLE_INTERVAL_METERS along the REAL centerline geometry - not just at the
 existing 4,395 half-mile markers (data/raw/half_mile_points_from_springer.
 geojson, README.md: ~2 points/mile). ROADMAP.md's elevation line names the
@@ -32,13 +34,13 @@ Pipeline, mirroring patterns already established elsewhere in this repo:
    rather than adding the real (unmeasured) gap distance - a bounded
    approximation worth naming plainly, not a crash risk.
 5. Each sample point is reprojected back to lon/lat and looked up against
-   the real downloaded DEM tiles via ElevationSampler, which reprojects each
-   tile (native per-LiDAR-project UTM zone - see fetch_elevation.py's
+   the indexed DEM tiles via ElevationSampler, which reprojects each
+   tile (see fetch_elevation.py's
    docstring) to EPSG:4326 via a WarpedVRT, mirroring spike_raster_mosaic.py's
    per-quad WarpedVRT reprojection but "mosaic"-ing at the scale of a single
    point lookup rather than materializing a merged raster array (see that
    class's docstring for why that's the right "lighter scale" here). A point
-   no downloaded tile covers - a real DEM coverage gap - gets a null
+   no indexed tile covers - a real DEM coverage gap - gets a null
    elevation, not a crash; it's kept in the output (not dropped) so the
    distance axis a client-side chart draws from stays continuous.
 
@@ -49,8 +51,8 @@ elevation_manifest.json - matching export_trails.py's flat single-artifact
 manifest shape (this module has exactly one output artifact, unlike
 export_poi.py's per-poi_type or export_trails.py's geojson+fgb pair).
 
-Intentionally manual-only (see TESTING.md): running this against the real
-~14GB corridor-wide DEM dataset is a real multi-minute operation, mirroring
+Intentionally manual-only (see TESTING.md): a full corridor run streams from
+110 remote DEM tiles and takes roughly 25 minutes, mirroring
 fetch_topo_quads.py + spike_raster_mosaic.py's own real-data verification
 being a documented manual procedure, not a pytest case.
 """
@@ -63,14 +65,13 @@ import duckdb
 import numpy as np
 import rasterio
 from rasterio.vrt import WarpedVRT
-from rasterio.warp import transform_bounds
 from rasterio.windows import Window
 from shapely import wkt as shapely_wkt
 from shapely.geometry import LineString, MultiLineString, Point
 
 ROOT = Path(__file__).parent
 CENTERLINE_PATH = ROOT / "data" / "raw" / "centerline.geojson"
-ELEVATION_DIR = ROOT / "data" / "raw" / "elevation"
+ELEVATION_INDEX_PATH = ROOT / "data" / "raw" / "elevation" / "tile_index.json"
 OUT_PATH = ROOT / "data" / "processed" / "elevation_profile.json"
 MANIFEST_PATH = ROOT / "data" / "processed" / "elevation_manifest.json"
 
@@ -85,15 +86,30 @@ METERS_PER_FOOT = 0.3048
 
 # 50m intervals -> ~32.2 points/mile, vs. the real half-mile markers' ~2
 # points/mile (README.md: 4,395 markers / 2,190 miles) - a >15x density
-# increase. Chosen from the suggested 50-100m range on the denser end
-# deliberately: this module exists specifically to fix under-counted
-# gain/loss from sparse sampling (ROADMAP.md's elevation line), and 50m is
-# still far coarser than the source DEM's native 1m resolution, so it costs
-# real accuracy on switchbacks/steep pitches to go coarser than this without
-# buying much file-size benefit - a full 2,190-mile profile at 50m is
-# ~70,000 compact JSON records, trivial next to e.g. the 314MB background
-# PMTiles archive already shipped (README.md).
-SAMPLE_INTERVAL_METERS = 50
+# increase. Chosen at 25m (tightened from 50m on 2026-07-29) - roughly
+# 2.5x the source DEM's ~10m posting, which is about as dense as sampling
+# can usefully get.
+#
+# There is a real ceiling here, and it is worth stating because "more
+# samples" sounds strictly better and is not. Cumulative ascent sums every
+# |delta elevation| along the line, so it accumulates EVERYTHING: DEM noise,
+# vegetation artifacts, and the fact that the centerline sits a few metres
+# from the real tread. Sample far below the DEM's own resolution and those
+# errors compound into fake climbing - which is why hiking apps disagree so
+# wildly on "total gain" for the same trail. Since that figure feeds the
+# Naismith time estimate directly, an inflated one is not a cosmetic
+# problem.
+#
+# 25m is dense enough to catch switchbacks and steep pitches the old 50m
+# spacing smoothed over (the under-counting ROADMAP.md's elevation line
+# exists to fix), while staying above the noise floor. Going finer would
+# need a finer DEM, and see fetch_elevation.py's DATASET note for why 1m is
+# the wrong answer there - not least that it has no coverage at all at the
+# northern terminus.
+#
+# Cost: ~140,000 records for the full 2,190 miles, ~6MB of compact JSON and
+# ~1MB gzipped - still trivial next to the 314MB background archive.
+SAMPLE_INTERVAL_METERS = 25
 
 # data/raw/half_mile_points_from_springer.geojson's real feature count
 # (README.md's source table) - the sparse baseline this module exists to
@@ -250,20 +266,37 @@ def reproject_points_to_wgs84(
     return [(lon, lat) for _, lon, lat in rows]
 
 
-def index_elevation_tiles(elevation_dir: Path) -> list[tuple[Path, tuple[float, float, float, float]]]:
-    """List every real downloaded 1m DEM tile under elevation_dir (laid out
-    as ELEVATION_DIR/<state>/<file>.tif - see fetch_elevation.py) and record
-    each one's bounds reprojected to EPSG:4326, so point lookups below don't
-    need to reopen every tile per query. Mirrors spike_raster_mosaic.py's
-    index_quad_bounds() bounds-indexing idea, but lighter: DEM tiles are a
-    pure elevation grid with no printed-sheet collar to crop/neatline-match,
-    unlike the topo quads."""
-    index = []
-    for path in sorted(elevation_dir.glob("*/*.tif")):
-        with rasterio.open(path) as src:
-            bounds_4326 = transform_bounds(src.crs, GEOGRAPHIC_CRS, *src.bounds)
-        index.append((path, bounds_4326))
-    return index
+def index_elevation_tiles(index_path: Path) -> list[tuple[str, tuple[float, float, float, float]]]:
+    """Read fetch_elevation.py's tile index and return (source, bounds) pairs
+    ready for ElevationSampler.
+
+    The "source" is a `/vsicurl/` URL, not a local file. Nothing is
+    downloaded: 3DEP tiles are Cloud-Optimized GeoTIFFs, so rasterio reads
+    them in place over HTTP and pulls only the 512x512 blocks the trail
+    actually crosses. Measured on real centerline points, that is ~10 ms per
+    sample - roughly 25 minutes for the whole corridor, against ~24 GB and a
+    lot longer to fetch whole 1-degree tiles and read a thin line through
+    them. See fetch_elevation.py's module docstring for the full reasoning,
+    including why 1m DEM was rejected.
+
+    Bounds come from the index rather than by opening each tile: opening 110
+    remote rasters just to read their headers would cost a round trip each,
+    and TNM already gave us the footprint.
+    """
+    entries = json.loads(index_path.read_text())
+    return [(_gdal_source(entry["url"]), tuple(entry["bounds"])) for entry in entries]
+
+
+def _gdal_source(url: str) -> str | Path:
+    """`/vsicurl/`-prefix a remote URL so GDAL range-reads it; hand a local
+    entry back as a real Path.
+
+    The Path matters on Windows: given the string "C:/tmp/x.tif" GDAL parses
+    "C:" as a URL scheme and fails with a port-number error. A Path object is
+    never URL-parsed. Keeping this conditional rather than always prefixing is
+    also what lets tests point the sampler at local fixture rasters.
+    """
+    return f"/vsicurl/{url}" if url.startswith(("http://", "https://")) else Path(url)
 
 
 def _bounds_contains_point(bounds: tuple[float, float, float, float], lon: float, lat: float) -> bool:
@@ -272,8 +305,9 @@ def _bounds_contains_point(bounds: tuple[float, float, float, float], lon: float
 
 
 class ElevationSampler:
-    """Samples elevation at arbitrary (lon, lat) points from the real
-    downloaded DEM tiles, lazily opening + caching one WarpedVRT (reprojected
+    """Samples elevation at arbitrary (lon, lat) points from the indexed
+    DEM tiles (local paths or remote /vsicurl/ URLs - see
+    index_elevation_tiles), lazily opening + caching one WarpedVRT (reprojected
     to EPSG:4326) per tile actually touched, reused across nearby sample
     points instead of reopening per point - a densely-sampled 2,190-mile
     trail means tens of thousands of point queries.
@@ -287,16 +321,16 @@ class ElevationSampler:
     here, since this only ever reads isolated sample points, never a raster
     image - the "lighter scale" mosaic this module's docstring promises.
 
-    Returns None for a point no downloaded tile covers - a real DEM coverage
+    Returns None for a point no indexed tile covers - a real DEM coverage
     gap (e.g. a stretch of trail with no 1m LiDAR project flown yet) -
     instead of raising, so a gap in source coverage degrades the profile
     gracefully rather than crashing the whole export."""
 
-    def __init__(self, tile_index: list[tuple[Path, tuple[float, float, float, float]]]):
+    def __init__(self, tile_index: list[tuple[str | Path, tuple[float, float, float, float]]]):
         self._tile_index = tile_index
-        self._vrt_cache: dict[Path, WarpedVRT] = {}
+        self._vrt_cache: dict[str | Path, WarpedVRT] = {}
 
-    def _vrt_for(self, path: Path) -> WarpedVRT:
+    def _vrt_for(self, path: str | Path) -> WarpedVRT:
         if path not in self._vrt_cache:
             src = rasterio.open(path)
             self._vrt_cache[path] = WarpedVRT(src, crs=GEOGRAPHIC_CRS)
@@ -372,7 +406,7 @@ class ElevationSampler:
             vrt.src_dataset.close()
 
 
-def build_profile(centerline_path: Path, elevation_dir: Path, interval_m: float) -> list[dict]:
+def build_profile(centerline_path: Path, elevation_index_path: Path, interval_m: float) -> list[dict]:
     """Orchestrate the full merge -> order -> sample -> DEM-lookup pipeline
     (see module docstring for the step-by-step rationale). Returns records
     already sorted by distance_mi (guaranteed by construction - see
@@ -387,7 +421,7 @@ def build_profile(centerline_path: Path, elevation_dir: Path, interval_m: float)
     samples_meters = sample_points_along_parts(parts_meters, interval_m)
     lonlats = reproject_points_to_wgs84(con, samples_meters)
 
-    tile_index = index_elevation_tiles(elevation_dir)
+    tile_index = index_elevation_tiles(elevation_index_path)
     sampler = ElevationSampler(tile_index)
     try:
         elevations_m = sampler.sample_many(lonlats)
@@ -406,7 +440,7 @@ def build_profile(centerline_path: Path, elevation_dir: Path, interval_m: float)
 
 def main() -> dict:
     print("Merging + ordering the real centerline...")
-    records = build_profile(CENTERLINE_PATH, ELEVATION_DIR, SAMPLE_INTERVAL_METERS)
+    records = build_profile(CENTERLINE_PATH, ELEVATION_INDEX_PATH, SAMPLE_INTERVAL_METERS)
     density = len(records) / (records[-1]["distance_mi"] or 1) if records else 0
     print(
         f"  {len(records)} sample points at {SAMPLE_INTERVAL_METERS}m intervals "

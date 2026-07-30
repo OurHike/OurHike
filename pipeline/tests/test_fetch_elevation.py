@@ -22,7 +22,7 @@ from rasterio.io import MemoryFile
 from rasterio.transform import from_bounds
 
 import fetch_elevation
-from fetch_elevation import compute_grid_cells, list_products_for_cell, parse_tile_url
+from fetch_elevation import compute_grid_cells, list_products_for_cell
 
 # A small square fixture corridor - fits inside exactly one 1-degree grid
 # cell, so tests only need to mock one TNM Access API call.
@@ -147,38 +147,6 @@ def _mock_tnm_response(requests_mock, items):
 # --- parse_tile_url ---------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "url, expected",
-    [
-        (
-            "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/1m/Projects/"
-            "VA_FEMA-NRCS_SouthCentral_2017_D17/TIFF/USGS_1M_17_x54y410_VA_FEMA-NRCS_SouthCentral_2017_D17.tif",
-            ("VA", "VA_FEMA-NRCS_SouthCentral_2017_D17", "USGS_1M_17_x54y410_VA_FEMA-NRCS_SouthCentral_2017_D17.tif"),
-        ),
-        (
-            # Real, observed inconsistency: some projects/vintages use lowercase
-            # "1m" with no UTM-zone digit before the grid cell ID.
-            "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/1m/Projects/"
-            "AL_25Co_B1_2017/TIFF/USGS_1m_x51y383_AL_25Co_B1_2017.tif",
-            ("AL", "AL_25Co_B1_2017", "USGS_1m_x51y383_AL_25Co_B1_2017.tif"),
-        ),
-    ],
-)
-def test_parse_tile_url(url, expected):
-    assert parse_tile_url(url) == expected
-
-
-def test_parse_tile_url_raises_on_unexpected_url_shape():
-    """Defensive: a URL that doesn't match the real .../Projects/<x>/TIFF/<y>
-    shape should fail loudly, not silently return garbage a caller might use
-    to build a bad local path."""
-    with pytest.raises(ValueError):
-        parse_tile_url("https://example.com/not/a/real/tile/path.tif")
-
-
-# --- compute_grid_cells -------------------------------------------------
-
-
 def test_compute_grid_cells_returns_one_cell_for_a_small_corridor(tmp_path, monkeypatch):
     corridor_path = tmp_path / "corridor.geojson"
     _write_corridor(corridor_path, CORRIDOR_BOUNDS)
@@ -228,93 +196,3 @@ def test_list_products_for_cell_stops_after_a_single_page_when_total_fits(reques
 
 
 # --- main(): skip / download / corridor-filter / validate ---------------
-
-
-def test_fetch_elevation_skips_a_tile_whose_last_modified_is_unchanged_from_the_manifest(tmp_path, monkeypatch, requests_mock):
-    out_dir, manifest_path = _setup(tmp_path, monkeypatch)
-    local_path = out_dir / "VA" / "USGS_1M_17_x54y410_VA_Fake_2020.tif"
-    local_path.parent.mkdir(parents=True)
-    local_path.write_bytes(_tif_bytes(CORRIDOR_BOUNDS))
-    manifest_path.write_text(
-        json.dumps({INSIDE_URL: {"last_modified": "Wed, 01 Jan 2025 00:00:00 GMT", "local_path": str(local_path)}})
-    )
-
-    inside_bbox = {"minX": CORRIDOR_BOUNDS[0], "minY": CORRIDOR_BOUNDS[1], "maxX": CORRIDOR_BOUNDS[2], "maxY": CORRIDOR_BOUNDS[3]}
-    _mock_tnm_response(requests_mock, [{"downloadURL": INSIDE_URL, "boundingBox": inside_bbox}])
-    requests_mock.head(INSIDE_URL, headers={"Last-Modified": "Wed, 01 Jan 2025 00:00:00 GMT"})
-    # Deliberately no GET mock for INSIDE_URL - if the skip logic fails and
-    # main() tries to re-download anyway, requests_mock raises NoMockAddress
-    # and this test fails loudly, exactly the isolation guarantee wanted
-    # (same pattern as test_fetch_all.py's unchanged-source test).
-
-    fetch_elevation.main()
-
-    manifest = json.loads(manifest_path.read_text())
-    assert manifest[INSIDE_URL]["last_modified"] == "Wed, 01 Jan 2025 00:00:00 GMT"
-
-
-def test_fetch_elevation_downloads_a_tile_intersecting_the_corridor(tmp_path, monkeypatch, requests_mock):
-    out_dir, manifest_path = _setup(tmp_path, monkeypatch)
-
-    inside_bbox = {"minX": CORRIDOR_BOUNDS[0], "minY": CORRIDOR_BOUNDS[1], "maxX": CORRIDOR_BOUNDS[2], "maxY": CORRIDOR_BOUNDS[3]}
-    _mock_tnm_response(requests_mock, [{"downloadURL": INSIDE_URL, "boundingBox": inside_bbox}])
-    requests_mock.head(INSIDE_URL, headers={"Last-Modified": "Wed, 01 Jan 2025 00:00:00 GMT"})
-    requests_mock.get(INSIDE_URL, content=_tif_bytes(CORRIDOR_BOUNDS))
-
-    fetch_elevation.main()
-
-    local_path = out_dir / "VA" / "USGS_1M_17_x54y410_VA_Fake_2020.tif"
-    assert local_path.exists()
-    manifest = json.loads(manifest_path.read_text())
-    assert manifest[INSIDE_URL]["last_modified"] == "Wed, 01 Jan 2025 00:00:00 GMT"
-    assert manifest[INSIDE_URL]["local_path"] == str(local_path.relative_to(fetch_elevation.ROOT))
-
-
-def test_fetch_elevation_does_not_download_a_tile_outside_the_corridor(tmp_path, monkeypatch, requests_mock):
-    out_dir, _ = _setup(tmp_path, monkeypatch, write_corridor=_write_triangle_corridor)
-
-    # Near the triangle's base - well inside the real polygon.
-    inside_bbox = {"minX": -75.01, "minY": 41.0, "maxX": -74.99, "maxY": 41.02}
-    # In the corner of the corridor's own *bounding rectangle* the triangle
-    # never actually reaches - a bbox-vs-cell check alone would wrongly
-    # accept this; only a bbox-vs-real-polygon check correctly excludes it.
-    outside_bbox = {"minX": -75.05, "minY": 41.08, "maxX": -75.03, "maxY": 41.1}
-    _mock_tnm_response(
-        requests_mock,
-        [
-            {"downloadURL": INSIDE_URL, "boundingBox": inside_bbox},
-            {"downloadURL": OUTSIDE_URL, "boundingBox": outside_bbox},
-        ],
-    )
-    requests_mock.head(INSIDE_URL, headers={"Last-Modified": "Wed, 01 Jan 2025 00:00:00 GMT"})
-    requests_mock.get(INSIDE_URL, content=_tif_bytes((-75.01, 41.0, -74.99, 41.02)))
-    # Deliberately no HEAD/GET mock for OUTSIDE_URL - if the corridor filter
-    # fails and main() tries to fetch it anyway, requests_mock raises
-    # NoMockAddress and this test fails loudly.
-
-    fetch_elevation.main()
-
-    assert (out_dir / "VA" / "USGS_1M_17_x54y410_VA_Fake_2020.tif").exists()
-    assert not (out_dir / "VA" / "USGS_1M_17_x99y999_VA_Fake_2020.tif").exists()
-
-
-def test_fetch_elevation_validates_downloaded_tile_readability_not_just_http_status(tmp_path, monkeypatch, requests_mock):
-    """Mirrors fetch_topo_quads.py's real-corruption-catching discipline: a
-    tile can download with HTTP 200 and a plausible Content-Length yet still
-    be genuinely unreadable - that must be caught and excluded from the
-    manifest, not trusted just because the HTTP layer reported success."""
-    out_dir, manifest_path = _setup(tmp_path, monkeypatch)
-
-    inside_bbox = {"minX": CORRIDOR_BOUNDS[0], "minY": CORRIDOR_BOUNDS[1], "maxX": CORRIDOR_BOUNDS[2], "maxY": CORRIDOR_BOUNDS[3]}
-    _mock_tnm_response(requests_mock, [{"downloadURL": INSIDE_URL, "boundingBox": inside_bbox}])
-    requests_mock.head(INSIDE_URL, headers={"Last-Modified": "Wed, 01 Jan 2025 00:00:00 GMT"})
-    requests_mock.get(INSIDE_URL, content=_corrupted_tif_bytes(tmp_path, CORRIDOR_BOUNDS), status_code=200)
-
-    fetch_elevation.main()  # should not raise despite the corrupted download
-
-    manifest = json.loads(manifest_path.read_text())
-    assert INSIDE_URL not in manifest, "a corrupted tile must not be recorded as successfully fetched"
-    local_path = out_dir / "VA" / "USGS_1M_17_x54y410_VA_Fake_2020.tif"
-    with pytest.raises(Exception):
-        with rasterio.open(local_path) as src:
-            src.read(1)  # confirms the fixture really is unreadable, not a vacuous pass

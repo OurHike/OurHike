@@ -1,0 +1,17 @@
+# Mirrors .gitignore, plus dev-only files the image never needs -
+# Dockerfile only COPYs app/, alembic/, alembic.ini, and requirements.txt
+# explicitly, so most of this is belt-and-suspenders against a future
+# broader COPY, not currently load-bearing.
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.coverage
+*.duckdb
+.env
+tests/
+.git/
+.dockerignore
+Dockerfile
+fly.toml
+README.md

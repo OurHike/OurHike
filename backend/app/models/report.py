@@ -29,10 +29,10 @@ here is stored naive-UTC (a duckdb-engine/pytz gap, not a style choice).
 
 import enum
 import uuid
-from datetime import datetime, timezone
 
 from sqlalchemy import JSON, Column, DateTime, Enum, Float, ForeignKey, String, Text
 
+from app.core.time import utc_now
 from app.db.base import Base
 
 
@@ -123,12 +123,12 @@ class Report(Base):
     # mis-prioritises it and a `bad_hikers` timeline is distorted. The client
     # supplies it via `ReportCreate.authored_at`; the server falls back to now
     # when it is absent, and refuses a future-dated claim outright.
-    timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    timestamp = Column(DateTime, nullable=False, default=utc_now)
 
     # When the server actually received it - always server truth, never the
     # client's claim. Keeping both is what lets a genuinely three-day-old
     # report be told apart from a backdated one.
-    received_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    received_at = Column(DateTime, nullable=False, default=utc_now)
 
     note = Column(Text, nullable=True)
     photo_url = Column(String, nullable=True)

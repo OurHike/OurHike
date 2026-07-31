@@ -111,6 +111,16 @@ FeatureGateEvent              (backend, Postgres - what GrowthBook's warehouse-n
   feature_key, variant, user_id, club_id, hike_id | segment_id, app_version, timestamp
 ```
 
+## Phased rollout
+
+Three phases, deliberately ordered so the safety net exists before anything depends on it. Nothing here blocks MVP launch.
+
+**Phase 1 - the gate itself, with no experiment running on it.** Define the manifest format, add the backend endpoint that serves it, and build the client runtime that caches it and evaluates locally. Ship `HARDCODED_DEFAULTS` and the fallback path in section 1, and give every gate a stable `control` variant. The goal of this phase is that the fallback is proven before a single hiker is behind a real flag - including the `feature_gate_error` signal, so a fallback firing in production is visible rather than silent.
+
+**Phase 2 - per-chapter targeting.** Extend the profile model with `club_id`/`chapter_id`, add chapter-scoped rules, and give chapter admins a way to set them (a maintainer editing GrowthBook's dashboard directly is enough to start - see the open question below). Add the two communication surfaces from section 5.
+
+**Phase 3 - evidence.** Instrument the event taxonomy from section 6, stand up self-hosted GrowthBook against the event store, and run the first A/B test on a deliberately low-risk surface - something where being wrong costs nothing, since the point of the first experiment is testing the measurement apparatus, not the feature. Review results before widening anything.
+
 ## Open questions (for you, not decided here)
 
 - **Sync cadence and "recent enough" threshold** for FlagEvaluation's staleness check - needs to balance getting hikers onto new experiments promptly against not treating a hiker who's been offline for a multi-day stretch as suddenly ineligible for cached flags they were already correctly assigned to. A field-testing question, similar to the wrong-way alert's thresholds.

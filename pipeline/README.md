@@ -197,6 +197,12 @@ It's `check_freshness.py`'s output-side sibling: `check_freshness.py` (run befor
 
 Exits non-zero if any check finds a real problem - `publish.py` shouldn't run after that until the cause is fixed.
 
+## Publishing
+
+Publishing artifacts to Cloudflare R2 is intentionally write-disabled by default. Set `R2_WRITE_ENABLED=true` in the trusted environment that is allowed to publish; otherwise `publish.py` refuses to upload anything, so developers with only read access to the bucket cannot accidentally write to it.
+
+To serve `data/processed/` locally instead - for testing the client's offline download without publishing anything - use `serve_processed.py`, which answers byte-range requests and sets the CORS headers a cross-origin bucket needs. See [../client/README.md](../client/README.md).
+
 ## Next steps
 
 See [../ROADMAP.md](../ROADMAP.md) Phase 1 for what's still open - notably the unified POI schema (joining ATC + opentrail.org + NHD into one schema) and the real Publish step (change-aware release to Cloudflare R2 so hikers don't re-download data that hasn't changed). **Chunking granularity decided 2026-07-28: whole corridor, one package** (not per-state/per-section) - see ROADMAP.md Phase 2's "Offline download flow" for why, and its new "quality/size tradeoff in settings" item for the zoom-11/12/13 choice this Export step now supports.

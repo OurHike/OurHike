@@ -19,6 +19,11 @@ import publish
 BUCKET = "ourhike-test-bucket"
 
 
+@pytest.fixture(autouse=True)
+def enable_r2_writes(monkeypatch):
+    monkeypatch.setenv(publish.WRITE_ENABLED_ENV_VAR, "true")
+
+
 @pytest.fixture
 def s3_client():
     with mock_aws():
@@ -42,6 +47,13 @@ def local_artifacts(tmp_path):
         "trails.geojson": {"path": str(trails_path), "sha256": publish.sha256_file(trails_path)},
         "shelters.geojson": {"path": str(poi_path), "sha256": publish.sha256_file(poi_path)},
     }
+
+
+def test_publish_requires_an_explicit_write_opt_in(monkeypatch, s3_client, local_artifacts):
+    monkeypatch.delenv(publish.WRITE_ENABLED_ENV_VAR, raising=False)
+
+    with pytest.raises(PermissionError):
+        publish.publish(local_artifacts, s3_client=s3_client, bucket=BUCKET)
 
 
 def test_publish_creates_the_first_manifest_when_none_exists_yet_in_the_bucket(s3_client, local_artifacts):

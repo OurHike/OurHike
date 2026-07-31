@@ -24,6 +24,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 # against real Postgres, which already has Alembic's native impl.
 from alembic.ddl.postgresql import PostgresqlImpl  # noqa: E402
 
+# --- Empty-metadata gap, worth flagging explicitly --------------------------
+# `import app.models` below is a side-effect import: it's what registers
+# every model onto Base.metadata. Without it, target_metadata is
+# Base.metadata exactly as it exists right *now* - and nothing else this
+# file imports (app.config, app.db.base) ever imports the actual model
+# modules, so autogenerate would silently compare against an empty schema
+# and emit a no-op migration regardless of how many real models exist.
+# Confirmed: this was exactly what happened before this import was added -
+# `alembic revision --autogenerate` produced an empty upgrade()/downgrade()
+# pair against a fresh database. The app itself never hits this gap in
+# practice (importing app.main pulls in every router, which pulls in the
+# models each one uses), but nothing on that path runs here.
+import app.models  # noqa: E402,F401
 from app.config import settings  # noqa: E402
 from app.db.base import Base  # noqa: E402
 

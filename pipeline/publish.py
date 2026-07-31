@@ -21,6 +21,9 @@ everything" - the same reasoning `export_pmtiles.py`/`export_trails.py`/
 R2 credentials/endpoint are read from the environment only (R2_ENDPOINT_URL,
 R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY) - never hardcoded, same
 discipline backend/app/config.py already applies to Supabase credentials.
+
+Writes are disabled by default. A trusted environment must explicitly opt in by
+setting R2_WRITE_ENABLED=true before publish.py is allowed to upload anything.
 """
 
 from __future__ import annotations
@@ -36,6 +39,7 @@ import boto3
 ROOT = Path(__file__).parent
 PROCESSED_DIR = ROOT / "data" / "processed"
 MANIFEST_KEY = "latest.json"
+WRITE_ENABLED_ENV_VAR = "R2_WRITE_ENABLED"
 
 
 def sha256_file(path: Path) -> str:
@@ -123,12 +127,20 @@ def _load_remote_manifest(s3_client, bucket: str) -> dict | None:
     return json.loads(body)
 
 
+def writes_enabled() -> bool:
+    """Whether this environment is explicitly allowed to publish to R2."""
+    return os.environ.get(WRITE_ENABLED_ENV_VAR, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def publish(artifacts: dict[str, dict] | None = None, *, s3_client=None, bucket: str | None = None) -> dict:
     """Diff `artifacts` (defaults to collect_artifacts()'s real output)
     against the bucket's current latest.json, upload only what changed, and
     write a new manifest version only if at least one artifact actually
     changed. Returns a summary dict - uploaded/skipped artifact names,
     whether a new version was written, and the resulting version id."""
+    if not writes_enabled():
+        raise PermissionError(f"R2 writes are disabled. Set {WRITE_ENABLED_ENV_VAR}=true before publishing.")
+
     if artifacts is None:
         artifacts = collect_artifacts()
 
@@ -204,4 +216,8 @@ def main() -> dict:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except PermissionError as exc:
+        print(exc)
+        raise SystemExit(1)

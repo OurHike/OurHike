@@ -22,10 +22,10 @@ the same person.
 """
 
 import enum
-from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, Enum, String
 
+from app.core.time import utc_now
 from app.db.base import Base
 
 # A tz-aware `datetime` gets stored as a naive UTC one (tzinfo stripped)
@@ -61,4 +61,4 @@ class Profile(Base):
 
     display_name = Column(String, nullable=True)
 
-    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    created_at = Column(DateTime, nullable=False, default=utc_now)

@@ -26,28 +26,32 @@ This is ordered so that each step unblocks the next. Steps 1–3 get a working m
 
 Everything downstream needs this. Without it the app has no data to fetch.
 
-**1.1 Create the bucket.** Cloudflare dashboard → R2 → Create bucket. Any name; you'll put it in an env var. R2 has no egress fees, which is why it was chosen — a 314 MB download per hiker would be ruinous on S3.
+**1.1 Create the bucket.** ✅ **Done** — bucket `your-hike` created 2026-07-31. (Cloudflare dashboard → R2 → Create bucket, for reference.)
 
-**1.2 Create an API token.** R2 → Manage API Tokens → Create → **Object Read & Write**, scoped to that bucket. You get an Access Key ID and a Secret Access Key. The secret is shown **once**.
+**1.2 Create an API token.** Still manual — dashboard-only, since minting credentials isn't something to automate. R2 → Manage API Tokens → Create → **Object Read & Write**, scoped to `your-hike`. You get an Access Key ID and a Secret Access Key. The secret is shown **once**.
 
-**1.3 Set four environment variables** where you run the pipeline:
+**1.3 Set four repository secrets in GitHub** (not just local env vars — publishing now runs in CI, see 1.6): Settings → Secrets and variables → Actions → **Secrets** tab → New repository secret, one each for:
 
 ```
 R2_ENDPOINT_URL=https://<accountid>.r2.cloudflarestorage.com
-R2_BUCKET=<your bucket name>
+R2_BUCKET=your-hike
 R2_ACCESS_KEY_ID=<from 1.2>
 R2_SECRET_ACCESS_KEY=<from 1.2>
 ```
 
+Use **repository** secrets, not environment-scoped ones: `r2-credentials-check.yml` (see below) runs with no `environment:` set, so environment-scoped secrets would be invisible to it. `publish-vector-data.yml`'s job runs under the `production` environment but still resolves repository secrets fine — no conflict either way.
+
 `pipeline/publish.py` reads these and nothing else. It is written and tested against mocked S3, so it should work first time.
+
+Once the four secrets are set, dispatch the **"R2 credentials check"** workflow (Actions tab → workflow_dispatch) to confirm they're valid before attempting a real publish — it only calls `head_bucket`, so it's safe to run any time.
 
 **1.4 Configure CORS — this one is easy to miss and fails confusingly.** The client reads PMTiles via HTTP **range requests**. Without CORS exposing the right headers, the map fails in a way that looks like a corrupt archive rather than a permissions problem.
 
-R2 → your bucket → Settings → CORS policy:
+R2 → `your-hike` → Settings → CORS policy. The app is hosted on GitHub Pages (see step 3 — that's settled now, unlike when this list was first written), so the real origin to allow is:
 
 ```json
 [{
-  "AllowedOrigins": ["https://<your-domain>", "http://localhost:5173"],
+  "AllowedOrigins": ["https://jaimito-asuntos-gringuenos.github.io", "http://localhost:5173"],
   "AllowedMethods": ["GET", "HEAD"],
   "AllowedHeaders": ["range", "if-match", "content-type"],
   "ExposeHeaders": ["content-length", "content-range", "etag", "accept-ranges"],
@@ -57,14 +61,11 @@ R2 → your bucket → Settings → CORS policy:
 
 `ExposeHeaders` matters as much as `AllowedHeaders`: the resumable download reads `content-range` to know whether the server honoured a range request, and treats a missing/200 response as "start over" rather than corrupting the file.
 
-**1.5 Enable public read access**, either R2's public bucket URL or a custom domain. A custom domain is worth it — the bucket URL ends up baked into the client.
+**1.5 Enable public read access**, either R2's public bucket URL or a custom domain. A custom domain is worth it — the URL ends up baked into the client build as `DATA_BASE_URL` (step 2 below).
 
-**1.6 Publish.**
+**1.6 Publish — now a CI workflow, not a local script.** Dispatch **"Publish vector data"** (Actions tab → workflow_dispatch) with `publish` ticked. Leaving it unticked does a dry run: builds and quality-checks everything without uploading, useful for checking upstream still parses. `include_elevation` adds ~25 min and isn't read by any client code yet, so leave it off unless you're specifically testing that.
 
-```
-cd pipeline
-.venv/Scripts/python publish.py
-```
+Local publish (`cd pipeline && .venv/Scripts/python publish.py` with the four vars from 1.3 set locally) still works identically — CI just runs the same script.
 
 Roughly 1.6 GB on the first run (all three background tiers plus trails, POIs and elevation). Subsequent runs upload only what changed — it diffs SHA-256 per artifact against the bucket's `latest.json`.
 
@@ -74,34 +75,23 @@ Roughly 1.6 GB on the first run (all three background tiers plus trails, POIs an
 
 ## 2. Point the client at the bucket
 
-Once 1.5 gives you a URL, this is a small code change — tell me the URL and I'll do it, or:
+No longer a code change — the client already reads the bucket URL from a build-time variable (`client/src/lib/config.ts`'s `VITE_DATA_BASE_URL`), not a hardcoded value in `App.tsx`.
 
-`client/src/App.tsx` currently renders a scaffold placeholder. It needs to render `MapScreen` with:
+Set it as a **repository variable** (not a secret — it's a public URL): Settings → Secrets and variables → Actions → **Variables** tab → New repository variable → `DATA_BASE_URL` = the public URL from 1.5. `.github/workflows/pages.yml` picks it up as `VITE_DATA_BASE_URL` at build time.
 
-```
-topoArchiveUrl = pmtiles://<your-r2-url>/background.pmtiles
-trailsUrl      = <your-r2-url>/trails.geojson
-```
-
-**This is the step that turns the repo into a working map**, and it needs nothing but the URL.
+**This is the step that turns the repo into a working map**, and it needs nothing but the URL, set once.
 
 ---
 
 ## 3. Host the client
 
-A static build — no server needed.
+✅ **Already done, and automatic** — `.github/workflows/pages.yml` builds and deploys the client to GitHub Pages on every push to `main`: the beta landing page at `https://jaimito-asuntos-gringuenos.github.io/OurHike/` and the installable app at `.../OurHike/app/`. Cloudflare Pages was the original plan when this list was written, but GitHub Pages is what actually got wired up (it's what gives the PWA the HTTPS a browser requires before offering "Install app").
 
-```
-cd client && npm run build     # outputs to client/dist
-```
+Nothing to configure — but after setting `DATA_BASE_URL` (step 2), the site needs a **redeploy** to pick it up, since it's baked in at build time. Either push any commit to `main`, or dispatch **"Deploy Pages"** manually (Actions tab → workflow_dispatch) to redeploy with no code change.
 
-Cloudflare Pages is the natural fit (same account as R2, and same-origin avoids a second CORS surface). Vercel or Netlify work identically.
-
-**Set the build command to `npm run build`, output directory `dist`, root directory `client`.**
-
-Two things to check after deploying:
+Two things to check after that redeploy:
 - The PWA installs (service worker registers, manifest loads). iOS Web Push **only** works for home-screen installs, which matters for the wrong-way alert later.
-- HTTPS. Geolocation and service workers both require it.
+- The Downloads screen actually fetches data instead of saying "data source not configured" (that message means `DATA_BASE_URL` didn't make it into the build).
 
 **After step 3 you have a working offline map.** Steps 4–6 are only needed for contributions — reporting, closures, accounts.
 
@@ -199,4 +189,4 @@ Confirms all four upstream sources are unchanged since the last fetch. Exits non
 
 ## Rough ordering if you want a working map fastest
 
-Steps **1 → 2 → 3** only. That is R2, one URL change, and a static deploy — and it gives you the offline topo map, trails, POIs and elevation profile working on a phone, with no accounts, no backend and no database. Everything in 4–6 exists to support contributing, which nobody can do until people are using the map anyway.
+Steps **1 → 2 → 3** only, and 3 is already automatic. Concretely: finish R2 (API token, secrets, CORS, public access, publish), set the `DATA_BASE_URL` repository variable, then redeploy Pages — and you have the offline topo map, trails, POIs and elevation profile working on a phone, with no accounts, no backend and no database. Everything in 4–6 exists to support contributing, which nobody can do until people are using the map anyway.

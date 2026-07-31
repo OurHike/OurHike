@@ -26,6 +26,7 @@ import { BLAZE_MATCH_EXPRESSION } from '../lib/blaze'
 export const TOPO_SOURCE_ID = 'usgs-topo'
 export const TRAILS_SOURCE_ID = 'trails'
 
+export const BACKDROP_LAYER_ID = 'backdrop'
 export const TOPO_LAYER_ID = 'topo'
 export const TRAIL_CASING_LAYER_ID = 'trail-casing'
 export const BLAZE_LAYER_ID = 'trail-blaze'
@@ -103,6 +104,17 @@ export function buildMapStyle({
       },
     },
     layers: [
+      {
+        // Under everything, because the topo tiles are transparent outside the
+        // corridor (export_pmtiles.py's encode_webp) and a 30-mile ribbon
+        // leaves most of a zoomed-out view uncovered. Without this that ground
+        // is empty canvas; with it, it reads as unmapped paper - which is what
+        // it honestly is. Paper rather than a neutral grey so the uncovered
+        // area belongs to the same map as the parts that are covered.
+        id: BACKDROP_LAYER_ID,
+        type: 'background',
+        paint: { 'background-color': '#f7f3e9' },
+      },
       {
         id: TOPO_LAYER_ID,
         type: 'raster',

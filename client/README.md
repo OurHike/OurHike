@@ -52,6 +52,27 @@ allow `GET`, allow the `Range` request header, and expose `Content-Range` and
 renders — a failure that looks like a broken map rather than a misconfigured
 bucket.
 
+## Testing the whole flow before deploying
+
+Worth doing before relying on this somewhere with no signal. `localhost` counts
+as a secure context, so the service worker registers and the app installs — the
+whole flow is testable without deploying anything.
+
+```bash
+# terminal 1 - serves data/processed/ the way R2 will, ranges and CORS included
+cd pipeline && python serve_processed.py
+
+# terminal 2
+cd client
+VITE_DATA_BASE_URL=http://localhost:8787 npm run build
+npm run preview
+```
+
+Then open the preview URL, download the map, and switch off networking. The map
+should still draw. `pipeline/serve_processed.py` exists because Python's
+`http.server` ignores `Range` entirely, which PMTiles depends on — testing
+against it would prove nothing about production.
+
 ## Deploying
 
 Any static host works; the build output is `dist/`. Build command

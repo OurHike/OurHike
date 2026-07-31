@@ -53,9 +53,19 @@ import './App.css'
 
 const TRAIL_NAME = 'Appalachian Trail'
 
-// Harpers Ferry - the ATC's own headquarters and the trail's traditional
-// midpoint. Only ever the opening view before a fix arrives.
-const FALLBACK_CENTER: [number, number] = [-77.1, 39.3]
+// The whole trail, Springer to Katahdin, as the opening view. Taken from the
+// published topo archive's own header bounds, so it frames exactly the ground
+// the map actually covers rather than a hand-typed guess.
+//
+// Opening on the entire corridor rather than a point on it because before there
+// is a GPS fix the app genuinely does not know where the hiker is, and Harpers
+// Ferry - the previous default - is a confident-looking answer to that question
+// that is wrong for everyone not standing in Harpers Ferry. A view of the whole
+// trail says "somewhere on this" honestly, and the first fix zooms in.
+const CORRIDOR_BOUNDS: [[number, number], [number, number]] = [
+  [-84.73, 34.2],
+  [-68.3, 46.34],
+]
 
 const EMPTY_BBOX: BoundingBox = { west: 0, south: 0, east: 0, north: 0 }
 
@@ -384,7 +394,7 @@ function App() {
       blazeCounts={[]}
       hiddenTypes={hiddenTypes}
       onToggleType={handleToggleType}
-      center={FALLBACK_CENTER}
+      bounds={CORRIDOR_BOUNDS}
       onViewportChange={handleViewportChange}
       onMapReady={handleMapReady}
     />

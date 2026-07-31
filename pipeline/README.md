@@ -163,6 +163,8 @@ Light came out almost exactly on the estimate implied by the per-zoom table abov
 
 A completeness check at the end (mirroring the pattern in `spike_raster_mosaic.py`) confirms every one of the 51 source cells contributed to at least one tile at max zoom, failing loudly rather than silently shipping a coverage gap.
 
+Publishing artifacts to Cloudflare R2 is intentionally write-disabled by default. Set `R2_WRITE_ENABLED=true` in the trusted environment that is allowed to publish; otherwise `publish.py` refuses to upload anything, so developers with only read access to the bucket cannot accidentally write to it.
+
 ## Next steps
 
 See [../ROADMAP.md](../ROADMAP.md) Phase 1 for what's still open - notably the unified POI schema (joining ATC + opentrail.org + NHD into one schema) and the real Publish step (change-aware release to Cloudflare R2 so hikers don't re-download data that hasn't changed). **Chunking granularity decided 2026-07-28: whole corridor, one package** (not per-state/per-section) - see ROADMAP.md Phase 2's "Offline download flow" for why, and its new "quality/size tradeoff in settings" item for the zoom-11/12/13 choice this Export step now supports.

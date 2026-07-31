@@ -139,9 +139,7 @@ def publish(artifacts: dict[str, dict] | None = None, *, s3_client=None, bucket:
     changed. Returns a summary dict - uploaded/skipped artifact names,
     whether a new version was written, and the resulting version id."""
     if not writes_enabled():
-        raise PermissionError(
-            f"R2 writes are disabled. Set {WRITE_ENABLED_ENV_VAR}=true before publishing."
-        )
+        raise PermissionError(f"R2 writes are disabled. Set {WRITE_ENABLED_ENV_VAR}=true before publishing.")
 
     if artifacts is None:
         artifacts = collect_artifacts()

@@ -31,6 +31,13 @@ export class MockMap {
   removed = false
   /** Test-settable, since the shell derives the legend from it. */
   bounds = { west: -180, south: -85, east: 180, north: 85 }
+  /** Images registered on the style, by id. */
+  readonly images = new Map<string, unknown>()
+  /** Every paint property written, keyed `layerId/property`. */
+  readonly paintProperties = new Map<string, unknown>()
+  /** Test-settable: real MapLibre only accepts images and paint writes once the
+   *  style has loaded, and callers have to cope with both answers. */
+  styleLoaded = false
   private readonly listeners = new Map<string, Listener[]>()
 
   constructor(options: Record<string, unknown>) {
@@ -68,6 +75,24 @@ export class MockMap {
   removeControl(control: unknown): this {
     const at = this.controls.findIndex((c) => c.control === control)
     if (at !== -1) this.controls.splice(at, 1)
+    return this
+  }
+
+  isStyleLoaded(): boolean {
+    return this.styleLoaded
+  }
+
+  hasImage(id: string): boolean {
+    return this.images.has(id)
+  }
+
+  addImage(id: string, image: unknown): this {
+    this.images.set(id, image)
+    return this
+  }
+
+  setPaintProperty(layerId: string, property: string, value: unknown): this {
+    this.paintProperties.set(`${layerId}/${property}`, value)
     return this
   }
 

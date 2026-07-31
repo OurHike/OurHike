@@ -26,9 +26,23 @@ import { BLAZE_MATCH_EXPRESSION } from '../lib/blaze'
 export const TOPO_SOURCE_ID = 'usgs-topo'
 export const TRAILS_SOURCE_ID = 'trails'
 
+export const BACKDROP_LAYER_ID = 'backdrop'
 export const TOPO_LAYER_ID = 'topo'
 export const TRAIL_CASING_LAYER_ID = 'trail-casing'
 export const BLAZE_LAYER_ID = 'trail-blaze'
+
+/**
+ * What the map paints where it has no topo tile to paint.
+ *
+ * A MapLibre style with no `background` layer draws nothing at all in the gaps,
+ * and "nothing at all" composites down to the black behind the canvas. That is
+ * the failure this constant exists to remove, and the gaps are not an edge case:
+ * the corridor archive is a 30-mile strip, so panning off it, zooming out below
+ * the archive's own minzoom, or simply moving faster than tiles decode all land
+ * on a hole. `--paper-100`, the same tone as USGS topo's paper, so the edge of
+ * coverage reads as the map running out of ink rather than the app dying.
+ */
+export const MAP_BACKGROUND_COLOR = '#f7f3e9'
 
 // ODbL requires a visible "© OpenStreetMap". WIREFRAMES.md's map-corner mockup
 // shows the shorthand "© OSM", but its own Assets section states the full form
@@ -103,6 +117,16 @@ export function buildMapStyle({
       },
     },
     layers: [
+      {
+        // First layer, and the only one that draws with no data behind it: a
+        // background layer covers the whole canvas at every zoom and every
+        // camera position, so there is no combination of pan, zoom and missing
+        // archive that can leave the hiker looking at black. Everything below
+        // draws over it. See MAP_BACKGROUND_COLOR.
+        id: BACKDROP_LAYER_ID,
+        type: 'background',
+        paint: { 'background-color': MAP_BACKGROUND_COLOR },
+      },
       {
         id: TOPO_LAYER_ID,
         type: 'raster',

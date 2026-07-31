@@ -130,6 +130,11 @@
   flex: 1;
   min-height: 0;
   position: relative;
+  /* The last line of defence against a black map, covering the window the
+     style's own background layer cannot: before WebGL has painted a first
+     frame, and if the context is lost or never obtained at all. Same paper as
+     MAP_BACKGROUND_COLOR, so the handover is invisible. */
+  background: var(--bg-page);
 }
 
 /* MapLibre's own controls, sized to the 42px the wireframe specifies. */

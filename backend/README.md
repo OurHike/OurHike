@@ -44,6 +44,33 @@ Supabase Auth issues the JWTs this backend verifies (`SUPABASE_JWT_SECRET`) - se
 
 `app/` is the FastAPI application (`main.py`'s `app`, `config.py`'s env-driven `Settings`, `db/` for the SQLAlchemy engine/session/base). `alembic/` holds migrations, wired to `app.db.base`'s metadata and `app.config`'s `DATABASE_URL` - see `alembic/env.py`. `tests/` mirrors `pipeline/tests/`'s shape: `conftest.py` for shared fixtures (a fresh per-test DuckDB engine/session, a `TestClient` with `get_db` overridden), one file per behavior area.
 
+## Migrations
+
+`alembic/versions/` has one migration so far (`initial_schema`), creating all seven tables (`clubs`, `profiles`, `closures`, `hikes`, `maintainer_assignments`, `reports`, `user_preferences`). Generated and verified locally against DuckDB (both `upgrade head` and `downgrade base` run clean) - review it yourself before trusting it against real data, the same way you'd review any migration.
+
+**A real bug this surfaced, now fixed:** `app/models/__init__.py` was empty, and nothing else reachable from `alembic/env.py` ever imported the actual model modules - so `Base.metadata` was empty at the exact moment autogenerate looked at it, and `alembic revision --autogenerate` silently produced a no-op migration (`pass`/`pass`) instead of one creating any tables. `app/models/__init__.py` now imports every model (so `Base.metadata` is complete for any caller, not just this one), and `alembic/env.py` explicitly imports `app.models` too, since nothing else in its own import chain would trigger that registration. Worth knowing this existed if a *future* model ever gets added without a matching entry in `app/models/__init__.py` - the symptom would be the same silent empty migration, not an error.
+
+**Applying it to a real database** (not run as part of this change - needs real credentials this environment doesn't have):
+
+```
+DATABASE_URL=postgresql+psycopg://... .venv/Scripts/python -m alembic upgrade head
+```
+
+Point `DATABASE_URL` at the real Supabase Postgres connection string first. Deliberately a manual, separate step from deployment (see Deployment below) - a migration should be a reviewed, intentional action, not something that fires automatically on every container start/restart.
+
 ## CI
 
 `.github/workflows/backend-tests.yml` runs `ruff check`, `ruff format --check`, and two pytest jobs on every push and on PRs targeting `main` - one against the DuckDB fixture (fast, always runs), one against a real `postgres:16` service (the actual correctness gate for the database this backend really runs on). Same visibility-only posture as the pipeline's CI (see `../TESTING.md`'s CI section): not yet a required check via branch protection.
+
+## Deployment
+
+`Dockerfile` + `fly.toml` target [Fly.io](https://fly.io) - picked over Render specifically to avoid Render's free-tier sleep-on-idle behavior (a cold start on the first request after idle is a worse experience for something safety-adjacent than a small ongoing hosting cost). `fly.toml` deliberately keeps `min_machines_running = 1` for the same reason - see the comment in that file if that tradeoff ever needs revisiting.
+
+**Not yet done, and needs real decisions first:**
+1. `fly apps create` (or `fly launch`) with a real, globally-unique app name - `fly.toml`'s `app = "ourhike-backend"` is a placeholder, update it to match.
+2. Set the real secrets Fly.io needs at runtime (`fly secrets set DATABASE_URL=... SUPABASE_JWT_SECRET=... SUPABASE_URL=... SUPABASE_ANON_KEY=...`) - never committed, never baked into the image.
+3. `fly deploy` from this directory.
+4. Run the Migrations step above against the real `DATABASE_URL` - not automatic, see why above.
+5. Point the client's API base URL at the deployed app, and add its origin to Supabase's allowed redirect URLs (see `../LAUNCH_CHECKLIST.md`).
+
+**Build/deploy config is untested against a real Fly.io account or Docker daemon** - this sandbox has neither available (see the DuckDB-locally note above for the same constraint applied to Postgres). The Dockerfile follows a standard, well-established FastAPI/uvicorn pattern and `fly.toml`'s shape matches Fly's own documented format, but "should work" isn't the same claim as "confirmed working" - budget for the first real `fly deploy` to surface something this couldn't catch locally.

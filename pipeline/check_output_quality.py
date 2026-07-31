@@ -118,6 +118,7 @@ sys.exit(main()) at the very bottom - the only place this module actually
 exits the process.
 """
 
+import argparse
 import hashlib
 import json
 import sys
@@ -723,8 +724,34 @@ def check_all(changed_sources: set[str] | None = None) -> list[dict]:
     return [trails, poi, elevation, corridor, topo_quads, baseline]
 
 
-def main() -> int:
-    reports = check_all()
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Note the deviation from argparse's own convention: `argv=None` means
+    "no arguments", NOT "read sys.argv". The real entry point passes
+    sys.argv[1:] explicitly instead. Falling back to sys.argv would make a
+    bare main() pick up whatever argv the surrounding process happened to
+    have - under pytest that is pytest's own flags, and every existing
+    main() test fails with "unrecognized arguments"."""
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument(
+        "--changed-source",
+        action="append",
+        default=[],
+        metavar="NAME",
+        dest="changed_sources",
+        help=(
+            "An upstream source check_freshness.py reported as STALE, repeatable. "
+            "A count drop is only flagged if no source that feeds it changed - so "
+            "without this, a legitimate drop caused by an upstream change is "
+            "reported as unexplained. Passed in rather than looked up, so this "
+            "gate never needs the network; see baseline_verdict()."
+        ),
+    )
+    return parser.parse_args([] if argv is None else argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    reports = check_all(changed_sources=set(args.changed_sources))
     for report in reports:
         print(f"  {report['verdict'].value.upper():8} {report['check']:12} {report['detail']}")
 
@@ -747,4 +774,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

@@ -890,3 +890,32 @@ def test_main_flags_a_baseline_drop_on_a_second_run(passing_pipeline, tmp_path):
     exit_code = check_output_quality.main()
 
     assert exit_code != 0
+
+
+def test_main_accepts_a_changed_source_that_explains_the_drop(passing_pipeline, tmp_path):
+    """The suppression path, reached the way an operator actually reaches it.
+
+    flag_drops() has always known how to suppress a drop that an upstream
+    change explains, but main() took no arguments - so nothing outside the
+    tests could supply one, and every legitimate upstream-caused drop was
+    reported as unexplained. Same collapse as the test above, with the
+    explanation supplied on the command line."""
+    assert check_output_quality.main() == 0
+
+    collapsed_poi_manifest = _poi_manifest(tmp_path, {"crossing": 0, "shelter": 1})
+    check_output_quality.POI_MANIFEST.write_text(json.dumps(collapsed_poi_manifest))
+
+    # 'atc' is what COUNT_UPSTREAM_SOURCES says feeds poi:shelter.
+    assert check_output_quality.main(["--changed-source", "atc"]) == 0
+
+
+def test_main_still_flags_a_drop_an_unrelated_changed_source_cannot_explain(passing_pipeline, tmp_path):
+    """Suppression is scoped to sources that actually feed the count that
+    dropped - naming an unrelated one must not wave the drop through."""
+    assert check_output_quality.main() == 0
+
+    collapsed_poi_manifest = _poi_manifest(tmp_path, {"crossing": 0, "shelter": 1})
+    check_output_quality.POI_MANIFEST.write_text(json.dumps(collapsed_poi_manifest))
+
+    # poi:shelter is fed by 'atc' alone, so an elevation refresh explains nothing.
+    assert check_output_quality.main(["--changed-source", "elevation"]) != 0

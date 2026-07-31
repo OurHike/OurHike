@@ -75,9 +75,29 @@ against it would prove nothing about production.
 
 ## Deploying
 
-Any static host works; the build output is `dist/`. Build command
-`npm run build`, output directory `dist`, and `VITE_DATA_BASE_URL` set in the
-host's environment variables.
+`.github/workflows/pages.yml` publishes to GitHub Pages on every push to
+`main` — the beta landing page (`site/`) at `/OurHike/` and this app at
+`/OurHike/app/`. Enable it once under Settings → Pages → Source →
+**GitHub Actions**, and set `DATA_BASE_URL` as a repository *variable* (not a
+secret — it is public either way, and secrets are unavailable to the build in
+the form Vite needs).
+
+Any other static host works too; the build output is `dist/`, the build
+command is `npm run build`.
+
+### Serving from a subpath
+
+`VITE_BASE_PATH` controls where the app expects to live, trailing slash
+required. This matters more for a PWA than for an ordinary site: `scope` and
+`start_url` in the manifest decide which pages the installed app owns, so a
+manifest claiming `/` while served from `/OurHike/app/` either fails install
+validation or installs an app that opens the wrong page. It defaults to `/`, so
+a root-domain deploy needs nothing set.
+
+One Windows gotcha: Git Bash rewrites a leading-slash value into a Windows
+path, so `VITE_BASE_PATH=/OurHike/app/ npm run build` silently produces
+`C:/Program Files/Git/OurHike/app/`. Use PowerShell, or prefix with
+`MSYS_NO_PATHCONV=1`.
 
 **HTTPS is not optional.** Android only offers "Install app" for a page served
 over HTTPS with a manifest, a service worker and the two icons — all of which

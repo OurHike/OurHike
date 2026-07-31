@@ -4,3 +4,6 @@ personal_reference/
 # Coverage data, when pytest is run from the repo root rather than backend/
 # (backend/.gitignore only covers the backend/ subtree).
 .coverage
+
+# Assembled GitHub Pages output (landing page + built app), built by CI.
+_site/

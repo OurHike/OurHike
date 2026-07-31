@@ -4,8 +4,19 @@ import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Where the app will be served from. GitHub Pages serves a project site under
+// /<repo>/, not at the domain root, and a PWA is unusually sensitive to that:
+// `scope` and `start_url` decide which pages the installed app owns, so a
+// manifest claiming "/" on a subpath install either fails validation or
+// installs an app that opens the wrong page. Settable so the same build works
+// at a root domain later without editing this file.
+//
+// Must have a trailing slash - Vite joins it to asset paths directly.
+const BASE = process.env.VITE_BASE_PATH ?? '/'
+
 // https://vite.dev/config/
 export default defineConfig({
+  base: BASE,
   // Explicit root resolved from this file's own URL, not process.cwd(): on
   // Windows, a shell invocation with a lowercase drive letter (e.g. `c:\...`)
   // makes Vitest's internal root-comparison silently mismatch against the
@@ -46,7 +57,11 @@ export default defineConfig({
             theme_color: '#355c3a',
             background_color: '#f7f3e9',
             display: 'standalone',
-            start_url: '/',
+            // Both follow BASE rather than being hardcoded to the root - see
+            // the note above.
+            id: BASE,
+            scope: BASE,
+            start_url: BASE,
             icons: [
               // Rasterized from the real logo mark (chosen 2026-07-28, see
               // .claude/OurHike Design System/ -> components/core/Logo.jsx) -

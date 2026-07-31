@@ -73,18 +73,21 @@ def _write_partial_cell(path, bounds=FIXTURE_BOUNDS, value=FIXTURE_VALUE, size=2
         dst.write(arr)
 
 
-def _write_corridor(path, bounds):
-    west, south, east, north = bounds
+def _write_centerline(path, coords=((-74.05, 41.05), (-73.95, 41.15))):
+    """A short synthetic centerline, inside FIXTURE_BOUNDS by default - the
+    line load_corridor() now buffers 30 miles (via lib/corridor.py's
+    build_corridor(), exactly like export_poi.py/export_trails.py) to build
+    the real corridor polygon fresh, replacing the old fixture that wrote a
+    corridor polygon straight to disk (see export_pmtiles.CENTERLINE_PATH -
+    load_corridor() deliberately no longer reads a pre-built corridor file
+    at all, stale or otherwise)."""
     fc = {
         "type": "FeatureCollection",
         "features": [
             {
                 "type": "Feature",
                 "properties": {},
-                "geometry": {
-                    "type": "Polygon",
-                    "coordinates": [[[west, south], [east, south], [east, north], [west, north], [west, south]]],
-                },
+                "geometry": {"type": "LineString", "coordinates": [[lon, lat] for lon, lat in coords]},
             }
         ],
     }
@@ -281,11 +284,11 @@ def test_end_to_end_export_round_trips_through_a_real_pmtiles_file(tmp_path, mon
     cells_dir = tmp_path / "cells"
     cells_dir.mkdir()
     _write_cell(cells_dir / "tile_000.tif")
-    corridor_path = tmp_path / "corridor.geojson"
-    _write_corridor(corridor_path, FIXTURE_BOUNDS)
+    centerline_path = tmp_path / "centerline.geojson"
+    _write_centerline(centerline_path)
     out_path = tmp_path / "background.pmtiles"
 
-    monkeypatch.setattr(export_pmtiles, "CORRIDOR_PATH", corridor_path)
+    monkeypatch.setattr(export_pmtiles, "CENTERLINE_PATH", centerline_path)
     monkeypatch.setattr(export_pmtiles, "CELLS_DIR", cells_dir)
     monkeypatch.setattr(export_pmtiles, "OUT_PATH", out_path)
     monkeypatch.setattr(export_pmtiles, "MIN_ZOOM", 6)
@@ -297,6 +300,11 @@ def test_end_to_end_export_round_trips_through_a_real_pmtiles_file(tmp_path, mon
     with open(out_path, "rb") as f:
         tiles = list(all_tiles(MmapSource(f)))
 
+    # The fresh 30-mile-buffered corridor is far bigger than the fixture cell
+    # (confirmed empirically: it spans 2 candidate tiles at z6, not 1), but
+    # only the one tile that actually overlaps the fixture cell ever gets
+    # real data out of render_tile() - every other candidate is empty/skipped
+    # and never written - so exactly one tile is still expected here.
     assert len(tiles) == 1
     (z, x, y), data = tiles[0]
     assert z == 6
@@ -309,3 +317,79 @@ def test_end_to_end_export_round_trips_through_a_real_pmtiles_file(tmp_path, mon
     # edge between the fixture's real data and the surrounding empty area.
     assert np.any(img > 10)
     assert img[img > 10].mean() == pytest.approx(FIXTURE_VALUE, abs=30)
+
+
+def test_main_does_not_raise_when_the_only_cell_covers_every_zoom_tier(tmp_path, monkeypatch):
+    """A genuinely complete multi-zoom export - the fixture cell renders real
+    data at every zoom in MIN_ZOOM..MAX_ZOOM - must not trip the widened,
+    per-zoom completeness check. Guards against the fix for the zoom-tier gap
+    (see test_main_exits_when_a_cell_renders_at_max_zoom_but_has_a_gap_at_a_lower_zoom
+    below) being over-eager and false-positiving on an ordinary, complete
+    run."""
+    cells_dir = tmp_path / "cells"
+    cells_dir.mkdir()
+    _write_cell(cells_dir / "tile_000.tif")
+    centerline_path = tmp_path / "centerline.geojson"
+    _write_centerline(centerline_path)
+    out_path = tmp_path / "background.pmtiles"
+
+    monkeypatch.setattr(export_pmtiles, "CENTERLINE_PATH", centerline_path)
+    monkeypatch.setattr(export_pmtiles, "CELLS_DIR", cells_dir)
+    monkeypatch.setattr(export_pmtiles, "OUT_PATH", out_path)
+    monkeypatch.setattr(export_pmtiles, "MIN_ZOOM", 6)
+    monkeypatch.setattr(export_pmtiles, "MAX_ZOOM", 7)
+
+    export_pmtiles.main()  # must not raise SystemExit
+
+    with open(out_path, "rb") as f:
+        tiles = list(all_tiles(MmapSource(f)))
+    assert sorted(z for (z, x, y), data in tiles) == [6, 7]  # one real tile per zoom tier
+
+
+def test_main_exits_when_a_cell_renders_at_max_zoom_but_has_a_gap_at_a_lower_zoom(tmp_path, monkeypatch, capsys):
+    """Regression test for the zoom-tier completeness gap: the old check only
+    tracked coverage `if z == MAX_ZOOM`, so a cell that rendered fine at the
+    top zoom tier but came back all-nodata at some lower zoom (z6..z11, used
+    for trip-overview zoom-out) shipped silently - the check was structurally
+    blind to every zoom tier except the last.
+
+    render_tile is faked to force MIN_ZOOM's outcome to empty for this cell
+    while leaving every other zoom (including MAX_ZOOM) rendering for real -
+    a deterministic stand-in for the low-zoom-only gap described above,
+    rather than fighting incidental resampling/tile-boundary geometry to
+    reproduce it naturally. Because MAX_ZOOM genuinely still renders real
+    data here, the old MAX_ZOOM-only check would have reported this run as
+    complete; the new per-zoom check must not."""
+    cells_dir = tmp_path / "cells"
+    cells_dir.mkdir()
+    _write_cell(cells_dir / "tile_000.tif")
+    centerline_path = tmp_path / "centerline.geojson"
+    _write_centerline(centerline_path)
+    out_path = tmp_path / "background.pmtiles"
+
+    monkeypatch.setattr(export_pmtiles, "CENTERLINE_PATH", centerline_path)
+    monkeypatch.setattr(export_pmtiles, "CELLS_DIR", cells_dir)
+    monkeypatch.setattr(export_pmtiles, "OUT_PATH", out_path)
+    monkeypatch.setattr(export_pmtiles, "MIN_ZOOM", 6)
+    monkeypatch.setattr(export_pmtiles, "MAX_ZOOM", 7)
+
+    real_render_tile = export_pmtiles.render_tile
+
+    def fake_render_tile(z, x, y, cell_index):
+        arr, matching = real_render_tile(z, x, y, cell_index)
+        if z == export_pmtiles.MIN_ZOOM:
+            return None, matching  # force this zoom tier's real data to a gap
+        return arr, matching
+
+    monkeypatch.setattr(export_pmtiles, "render_tile", fake_render_tile)
+
+    with pytest.raises(SystemExit) as exc_info:
+        export_pmtiles.main()
+    assert exc_info.value.code == 1
+
+    # The lower tier (6) is flagged; the top tier (7), which genuinely
+    # rendered real data here, is not - confirming the check actually caught
+    # the *lower-zoom* gap rather than failing for some unrelated reason.
+    output = capsys.readouterr().out
+    assert "zoom 6: tile_000.tif" in output
+    assert "zoom 7: tile_000.tif" not in output

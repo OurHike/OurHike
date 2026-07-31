@@ -30,8 +30,10 @@ exactly how stale data survives.
 """
 
 import json
+import random
 import re
 import sys
+from datetime import date
 from enum import Enum
 from pathlib import Path
 
@@ -49,7 +51,9 @@ HTTP_TIMEOUT = 30
 # How many topo quads to spot-check. All 1,654 would mean 1,654 HEAD requests
 # for a dataset that is re-published as a batch, so a sample is enough to
 # notice a new release - and a sample that finds nothing is reported as a
-# sample, not as proof the whole set is current.
+# sample, not as proof the whole set is current. See topo_sample() for how
+# the sample is actually chosen - it must not be a flat alphabetical slice
+# (see that function's docstring for the state-bias bug that was).
 TOPO_SAMPLE_SIZE = 25
 
 
@@ -94,14 +98,28 @@ def summarise(reports: list[dict]) -> dict:
 # --- Recorded markers ------------------------------------------------------
 
 
-def recorded_atc_markers() -> dict[str, str]:
+def recorded_atc_markers() -> dict[str, str | None]:
+    """Every layer currently in the ATC manifest, keyed by source key, to
+    its recorded edit-date marker - or None if fetch_all.py recorded the
+    layer without one.
+
+    That null case is real, not hypothetical: fetch_all.py tolerates a
+    failed dataLastEditDate lookup and still fetches and records the layer
+    rather than failing the whole run (see fetch_all.py's handling around
+    get_layer_edit_date). This function used to filter such entries out via
+    an `is not None` guard, which silently dropped them rather than
+    reporting them - they never reached check_all()'s comparison loop at
+    all, so the rollup could print "atc: FRESH" while that layer had never
+    actually been checked. Every registered entry is returned now, null or
+    not, so the caller can classify a null one as unknown instead of it
+    vanishing from consideration.
+    """
     if not ATC_MANIFEST.exists():
         return {}
     manifest = json.loads(ATC_MANIFEST.read_text())
     return {
-        key: str(entry.get("data_last_edit_date"))
+        key: None if entry.get("data_last_edit_date") is None else str(entry.get("data_last_edit_date"))
         for key, entry in manifest.items()
-        if entry.get("data_last_edit_date") is not None
     }
 
 
@@ -158,6 +176,71 @@ def upstream_opentrail_marker() -> str | None:
         return response.headers.get("ETag")
     except requests.RequestException:
         return None
+
+
+def topo_quad_state(url: str) -> str:
+    """The state-code path segment of a topo-quad manifest key.
+
+    Manifest keys are full S3 URLs of the form `.../GeoTIFF/<STATE>/<file>`
+    (see fetch_topo_quads.py's BUCKET_URL/GEOTIFF_PREFIX/<state>/<filename>
+    construction) - the state is always the segment immediately before the
+    filename, regardless of how deep the prefix in front of it is.
+    """
+    parts = url.rsplit("/", 2)
+    return parts[-2] if len(parts) >= 2 else url
+
+
+def topo_sample(manifest: dict, size: int | None = None, seed: str | None = None) -> list[str]:
+    """`size` quad URLs to spot-check upstream, spread across states rather
+    than a flat alphabetical slice.
+
+    `sorted(manifest)[:size]` (the old implementation) sorts full S3 URLs,
+    which sorts by state code before anything else in the path - so a flat
+    slice is always the same alphabetically-first state's quads, every run,
+    forever (verified against the real manifest: 100% Connecticut, out of
+    15 registered states, while 2 of the 3 known-corrupted quads live in
+    VA/WV - states a flat sorted slice could never reach). A real USGS
+    release to any of the other 14 states was permanently invisible to this
+    check, no matter how many times it ran.
+
+    Fixed two ways, both stateless (no persisted cursor file needed):
+    quads are grouped by state and round-robin picked, so one run's sample
+    spans every state rather than one; and both the state visiting order
+    and which quads are picked within each state are seeded from `seed`
+    (today's date by default), so a manifest with more states than `size`,
+    or a state with more quads than its round-robin share, gets different
+    coverage on different days rather than the same slice forever.
+
+    `size` defaults via a None sentinel rather than `=TOPO_SAMPLE_SIZE`
+    directly in the signature - a plain default is bound once at import
+    time, so monkeypatch.setattr(module, "TOPO_SAMPLE_SIZE", ...) in a test
+    would silently stop taking effect on this parameter.
+    """
+    if size is None:
+        size = TOPO_SAMPLE_SIZE
+    if seed is None:
+        seed = date.today().isoformat()
+
+    by_state: dict[str, list[str]] = {}
+    for key in manifest:
+        by_state.setdefault(topo_quad_state(key), []).append(key)
+
+    states = sorted(by_state)
+    random.Random(seed).shuffle(states)
+    for state in states:
+        keys = by_state[state]
+        keys.sort()
+        random.Random(f"{seed}:{state}").shuffle(keys)
+
+    sample: list[str] = []
+    round_index = 0
+    while len(sample) < size and any(by_state[s] for s in states):
+        state = states[round_index % len(states)]
+        if by_state[state]:
+            sample.append(by_state[state].pop())
+        round_index += 1
+
+    return sample
 
 
 def upstream_topo_markers(sample: list[str]) -> dict[str, str | None]:
@@ -229,6 +312,13 @@ def check_all() -> list[dict]:
         changed = []
         unknown = []
         for key, recorded in recorded_atc.items():
+            if recorded is None:
+                # Recorded but with no edit date (a tolerated failed lookup
+                # in fetch_all.py) - unknown, not a stale/fresh guess, and
+                # not worth an upstream request when there is nothing to
+                # compare it to.
+                unknown.append(key)
+                continue
             upstream = upstream_atc_marker(manifest[key]["url"])
             verdict = compare_marker(recorded, upstream)
             if verdict is Freshness.STALE:
@@ -236,7 +326,7 @@ def check_all() -> list[dict]:
             elif verdict is Freshness.UNKNOWN:
                 unknown.append(key)
         freshness = Freshness.STALE if changed else Freshness.UNKNOWN if unknown else Freshness.FRESH
-        detail = f"{len(changed)} changed, {len(unknown)} unreachable of {len(recorded_atc)} layers"
+        detail = f"{len(changed)} changed, {len(unknown)} unknown of {len(recorded_atc)} layers"
         reports.append({"source": "atc", "freshness": freshness, "detail": detail})
 
     reports.append(
@@ -251,7 +341,7 @@ def check_all() -> list[dict]:
         reports.append({"source": "topo_quads", "freshness": Freshness.STALE, "detail": "never fetched"})
     else:
         manifest = json.loads(TOPO_MANIFEST.read_text())
-        sample = sorted(manifest)[:TOPO_SAMPLE_SIZE]
+        sample = topo_sample(manifest)
         upstream = upstream_topo_markers(sample)
         verdicts = [compare_marker(manifest[url].get("last_modified"), upstream[url]) for url in sample]
         freshness = (

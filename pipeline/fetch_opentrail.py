@@ -20,9 +20,23 @@ from pathlib import Path
 
 import requests
 
+from lib.completeness import fail_if_incomplete
+
 API_URL = "https://opentrail.org/api/getData"
 OUT_PATH = Path(__file__).parent / "data" / "raw" / "opentrail_at.geojson"
 STATE_PATH = Path(__file__).parent / "data" / "raw" / "opentrail_state.json"
+
+# A well-formed-but-empty or drastically-shrunk API response must not
+# silently overwrite good local data and get its ETag persisted - a later
+# run would otherwise see 304 Not Modified against that *new* (bad) ETag and
+# treat the degraded state as confirmed-current forever, with no recovery
+# path short of a human noticing and deleting STATE_PATH by hand. 50% is a
+# deliberately loose threshold: normal upstream editing (a handful of POIs
+# added, removed, or re-tagged between runs) should never lose half the
+# dataset, so a drop past this line reads as "something's structurally
+# broken" (bad filter, auth failure returning an empty-but-valid body, API
+# response shape change) rather than routine community editing.
+MAX_FEATURE_DROP_RATIO = 0.5
 
 # Best-effort inferred from feature titles/counts - not documented by the API.
 ICON_LEGEND = {
@@ -61,6 +75,34 @@ def strip_comments(fc: dict) -> dict:
     return fc
 
 
+def regression_problems(new_count: int, prior_out_path: Path) -> list[str]:
+    """Problem strings (suitable for lib.completeness.fail_if_incomplete) if
+    `new_count` looks like a broken fetch relative to whatever's already on
+    disk at `prior_out_path` - see MAX_FEATURE_DROP_RATIO's comment for why.
+    A prior file that doesn't exist yet, isn't parseable, or itself has zero
+    features means there's nothing on-disk worth protecting, so nothing is
+    flagged in that case - this only guards an existing good state."""
+    if not prior_out_path.exists():
+        return []
+    try:
+        prior_count = len(json.loads(prior_out_path.read_text())["features"])
+    except (json.JSONDecodeError, KeyError):
+        return []
+    if prior_count == 0:
+        return []
+
+    if new_count == 0:
+        return [f"opentrail fetch returned 0 features (previously {prior_count}) - refusing to overwrite {prior_out_path}"]
+    if new_count < prior_count * (1 - MAX_FEATURE_DROP_RATIO):
+        drop_ratio = 1 - new_count / prior_count
+        return [
+            f"opentrail fetch returned {new_count} features, down from {prior_count} "
+            f"({drop_ratio:.0%} drop, over the {MAX_FEATURE_DROP_RATIO:.0%} threshold) "
+            f"- refusing to overwrite {prior_out_path}"
+        ]
+    return []
+
+
 def main():
     state = json.loads(STATE_PATH.read_text()) if STATE_PATH.exists() else {}
     prior_etag = state.get("etag")
@@ -74,6 +116,14 @@ def main():
 
     print(f"  {len(fc['features'])} features fetched.")
     fc = strip_comments(fc)
+
+    # Guard against persisting a degraded response (and its ETag) over good
+    # local data - see MAX_FEATURE_DROP_RATIO / regression_problems above.
+    # Must run before either write below: on refusal, OUT_PATH and
+    # STATE_PATH both need to stay exactly as they were so next run's
+    # ETag-based skip logic keeps comparing against the last known-good
+    # state instead of a newly-persisted bad one.
+    fail_if_incomplete(regression_problems(len(fc["features"]), OUT_PATH), label="Refusing to persist opentrail fetch")
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(json.dumps(fc))

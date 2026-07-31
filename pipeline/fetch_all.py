@@ -12,16 +12,20 @@ nothing has changed upstream, so most runs do ~9 small metadata checks and
 no actual data transfer.
 
 After fetching, this verifies that every source in the registry produced a
-non-empty output file before writing data/raw/manifest.json - if any source
-is missing or failed, the script exits non-zero rather than silently
-continuing.
+non-empty feature collection before writing data/raw/manifest.json - not
+just that a fetch was attempted. An ArcGIS FeatureServer query error can
+come back as HTTP 200 with an empty features array rather than a non-2xx
+status (lib/arcgis.py's fetch_layer_geojson() has no floor for this), which
+would otherwise be recorded as an ordinary successful fetch with
+feature_count 0. If any source is missing, failed, or comes back with
+feature_count 0, the script exits non-zero rather than silently continuing.
 """
 
 import json
-import sys
 from pathlib import Path
 
 from lib.arcgis import fetch_layer_to_file, get_layer_edit_date
+from lib.completeness import count_problems, fail_if_incomplete
 
 ROOT = Path(__file__).parent
 SOURCES_PATH = ROOT / "sources.json"
@@ -35,7 +39,6 @@ def main():
     prior_manifest = json.loads(MANIFEST_PATH.read_text()) if MANIFEST_PATH.exists() else {}
 
     results = {}
-    failures = []
     for src in sources:
         key = src["key"]
         out_path = RAW_DIR / f"{key}.geojson"
@@ -64,13 +67,17 @@ def main():
             }
         except Exception as e:
             print(f"  FAILED: {e}")
-            failures.append(key)
 
-    # Completeness check: every registered source must have succeeded.
-    missing = [s["key"] for s in sources if s["key"] not in results]
-    if missing or failures:
-        print(f"\nIncomplete fetch. Missing/failed sources: {sorted(set(missing + failures))}")
-        sys.exit(1)
+    # Completeness check: every registered source must have produced a
+    # non-empty feature collection, not merely an entry in `results` - a
+    # source missing entirely (never attempted, or caught by the except
+    # above) and a source that "succeeded" with feature_count 0 (see the
+    # module docstring) are both a count of 0 here, so neither can slip a
+    # manifest.json that looks authoritative but isn't. Runs before the
+    # manifest is written, matching the "incomplete run leaves no artifact
+    # that looks authoritative" pattern this project uses elsewhere.
+    counts = {src["key"]: results.get(src["key"], {}).get("feature_count", 0) for src in sources}
+    fail_if_incomplete(count_problems(counts), label="Incomplete fetch")
 
     MANIFEST_PATH.write_text(json.dumps(results, indent=2))
     print(f"\nAll {len(sources)} sources up to date. Manifest -> {MANIFEST_PATH}")

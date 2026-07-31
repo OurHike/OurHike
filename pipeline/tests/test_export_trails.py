@@ -271,3 +271,112 @@ def test_export_trails_clips_a_line_feature_outside_the_corridor(tmp_path, monke
     names = {f["properties"]["name"] for f in fc["features"] if f["properties"]["source"] == "side_trails"}
     assert "Near Spur" in names
     assert "Far Spur" not in names
+
+
+def test_export_trails_exits_nonzero_when_a_source_returns_zero_features(tmp_path, monkeypatch, requests_mock, con, capsys):
+    """Regression test for the missing completeness gate: main() already
+    printed each source's feature count ("N line features normalized") but
+    never checked it, so a source silently returning 0 features (e.g. an
+    ArcGIS schema change) would print 0 and still exit 0. Neither centerline
+    nor side_trails is intentionally allowed to be empty (unlike
+    export_poi.py's `crossing` poi_type), so this must fail loudly - a
+    machine-checkable exit code, not just a log line - and must do so before
+    any output, including the manifest, gets written."""
+    raw_dir, out_dir = _run_export(tmp_path, monkeypatch, [_centerline_source(), _side_trails_source()])
+    requests_mock.get(LAYER_URL, json=BLAZE_DOMAIN_RESPONSE)
+
+    _write_centerline(raw_dir / "centerline.geojson")
+    _write_fc(raw_dir / "side_trails.geojson", [])  # e.g. an upstream schema change
+
+    with pytest.raises(SystemExit) as exc_info:
+        export_trails.main()
+
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert "side_trails: 0, expected >= 1" in captured.out
+    assert not (out_dir / "trails_manifest.json").exists()  # failed before the manifest was written
+
+
+def test_export_trails_falls_back_to_feature_id_when_global_id_is_explicitly_null(tmp_path, monkeypatch, con):
+    """Regression test: properties.get("GlobalID", feature.get("id")) only
+    falls back when the "GlobalID" key is ABSENT, not when it's present but
+    JSON null - dict.get's default only kicks in on a missing key, so a raw
+    feature carrying an explicit `"GlobalID": null` would return None
+    directly instead of falling back, and two such features would collide
+    on the literal output id f"{key}:None". The fix checks the RESULTING
+    VALUE (like lib/poi_schema.py's unify_poi()) and must still fall back to
+    the feature's own top-level id here."""
+    raw_dir, out_dir = _run_export(tmp_path, monkeypatch, [_centerline_source()])
+    _write_fc(
+        raw_dir / "centerline.geojson",
+        [_line_feature(CENTERLINE_COORDS, {"GlobalID": None, "Name": "Null GlobalID Segment"}, feature_id="feat-42")],
+    )
+
+    export_trails.main()
+
+    fc = json.loads((out_dir / "trails.geojson").read_text())
+    assert fc["features"][0]["properties"]["id"] == "centerline:feat-42"
+
+
+def test_export_trails_substitutes_a_synthetic_id_and_warns_when_a_feature_has_no_global_id_or_top_level_id(
+    tmp_path, monkeypatch, con, capsys
+):
+    """Regression test: when a feature has neither a usable GlobalID nor a
+    top-level GeoJSON id, main() must not crash and must not let two such
+    features collide on the same output id (both landing on the literal
+    f"{key}:None" would be a real, silent collision) - it substitutes a
+    synthetic per-feature id and warns loudly instead, matching this file's
+    established convention of warning and carrying on rather than aborting
+    the whole run over one bad feature."""
+    raw_dir, out_dir = _run_export(tmp_path, monkeypatch, [_centerline_source()])
+    _write_fc(
+        raw_dir / "centerline.geojson",
+        [
+            {
+                "type": "Feature",
+                "properties": {"GlobalID": None, "Name": "First Idless Segment"},
+                "geometry": {"type": "LineString", "coordinates": [[lon, lat] for lon, lat in CENTERLINE_COORDS]},
+            },
+            {
+                "type": "Feature",
+                "properties": {"GlobalID": None, "Name": "Second Idless Segment"},
+                "geometry": {"type": "LineString", "coordinates": [[lon, lat] for lon, lat in NEAR_COORDS]},
+            },
+        ],
+    )
+
+    export_trails.main()
+
+    fc = json.loads((out_dir / "trails.geojson").read_text())
+    assert len(fc["features"]) == 2  # neither feature silently dropped
+    ids = {f["properties"]["id"] for f in fc["features"]}
+    assert len(ids) == 2  # the two synthetic ids don't collide
+    assert "centerline:None" not in ids
+
+    captured = capsys.readouterr()
+    assert "WARNING" in captured.out
+    assert "no GlobalID and no top-level id" in captured.out
+
+
+def test_export_trails_warning_names_the_fallback_id_when_a_decode_failure_coincides_with_a_null_global_id(
+    tmp_path, monkeypatch, requests_mock, con, capsys
+):
+    """Regression test for the other properties.get("GlobalID",
+    feature.get("id")) call site - the undecodable-blaze warning in
+    normalize_source_features. An explicit `"GlobalID": null` must still
+    fall back to the feature's own top-level id in the warning text, not
+    print the literal id "None"."""
+    raw_dir, out_dir = _run_export(tmp_path, monkeypatch, [_centerline_source(), _side_trails_source()])
+    requests_mock.get(LAYER_URL, json=BLAZE_DOMAIN_RESPONSE)
+
+    _write_centerline(raw_dir / "centerline.geojson")
+    _write_fc(
+        raw_dir / "side_trails.geojson",
+        [_line_feature(NEAR_COORDS, {"GlobalID": None, "Name": "Gold Spur", "Blaze": "Gold"}, feature_id="side-fallback")],
+    )
+
+    export_trails.main()
+
+    captured = capsys.readouterr()
+    assert "feature 'side-fallback' has an undecodable" in captured.out
+    assert "feature None has an undecodable" not in captured.out

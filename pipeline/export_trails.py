@@ -8,9 +8,11 @@ the 30-mile corridor and write one combined GeoJSON + FlatGeobuf artifact,
 with a SHA256 content hash per artifact in a manifest - same
 "content hash per artifact" pattern export_poi.py already uses.
 
-Corridor: computed fresh here from data/raw/centerline.geojson, mirroring
-spike_corridor.py's/export_poi.py's ST_Buffer(30mi) + ST_Union_Agg pattern
-exactly, including the always_xy gotcha (see README.md).
+Corridor: built via lib/corridor.py's build_corridor() (shared with
+export_poi.py - both used to carry an identical, verbatim-duplicated copy of
+this function before that extraction) from data/raw/centerline.geojson,
+mirroring spike_corridor.py's/export_poi.py's ST_Buffer(30mi) + ST_Union_Agg
+pattern exactly, including the always_xy gotcha (see README.md).
 
 Line sources: any sources.json entry carrying blaze metadata (`blaze_field`
 or `blaze_default`) - today that's `centerline` (blaze_default: "White",
@@ -44,14 +46,13 @@ from shapely.ops import transform as shapely_transform
 
 from lib.arcgis import get_field_coded_domain
 from lib.blaze import normalize_blaze_color
+from lib.completeness import count_problems, fail_if_incomplete
+from lib.corridor import build_corridor
 
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
 OUT_DIR = ROOT / "data" / "processed"
 SOURCES_PATH = ROOT / "sources.json"
-
-BUFFER_MILES = 30
-METERS_PER_MILE = 1609.344
 
 # Same CRS choice as spike_corridor.py/export_poi.py, for the same reason:
 # EPSG:5070 (NAD83 / Conus Albers) is equal-area, meters, and appropriate for
@@ -83,6 +84,36 @@ def load_features(path: Path) -> list[dict]:
     return data.get("features", [])
 
 
+def _resolve_feature_id(key: str, feature: dict, properties: dict, index: int) -> str | int:
+    """A feature's stable identity - used both for the record `id`
+    build_trail_records writes and for any warning that names a feature.
+
+    Checks the RESULTING VALUE at each fallback step, not just key
+    presence: dict.get(key, default) only falls back when the key is
+    ABSENT, so a raw feature carrying an explicit `"GlobalID": null` (a real
+    shape some ArcGIS exports use) would return None directly instead of
+    falling back to the feature's own id - and two such features would then
+    collide on the literal id f"{key}:None". This mirrors lib/poi_schema.py's
+    unify_poi(), which gets this right the same way for POI sources.
+
+    If GlobalID and the feature's own top-level id are BOTH really absent,
+    substitutes a synthetic id built from `index` (the feature's position in
+    its source's feature list, so it's unique within that source) and warns
+    loudly - this file's convention is a loud warning and carrying on, never
+    raising and killing the whole batch over one bad feature (see module
+    docstring)."""
+    feature_id = properties.get("GlobalID")
+    if feature_id is None:
+        feature_id = feature.get("id")
+    if feature_id is None:
+        feature_id = f"generated-{index}"
+        print(
+            f"WARNING: {key} feature at position {index} has no GlobalID and no top-level id - "
+            f"substituting synthetic id {feature_id!r}"
+        )
+    return feature_id
+
+
 def normalize_source_features(source: dict, features: list[dict]) -> list[dict]:
     """Attach a normalized blaze_color to every feature of one line source,
     per lib/blaze.py's normalize_blaze_color contract:
@@ -100,12 +131,12 @@ def normalize_source_features(source: dict, features: list[dict]) -> list[dict]:
     coded_domain = get_field_coded_domain(source["url"], blaze_field) if blaze_field else None
 
     normalized = []
-    for feature in features:
+    for index, feature in enumerate(features):
         properties = feature.get("properties") or {}
         raw_value = properties.get(blaze_field) if blaze_field else None
         blaze_color, decoded = normalize_blaze_color(raw_value, coded_domain, source.get("blaze_default"))
         if not decoded:
-            feature_id = properties.get("GlobalID", feature.get("id"))
+            feature_id = _resolve_feature_id(key, feature, properties, index)
             print(
                 f"WARNING: {key} feature {feature_id!r} has an undecodable blaze value "
                 f"({raw_value!r}) - falling back to {blaze_color!r}"
@@ -149,11 +180,11 @@ def build_trail_records(source: dict, normalized_features: list[dict]) -> list[d
     dropped or crashing the run."""
     key = source["key"]
     records = []
-    for feature in normalized_features:
+    for index, feature in enumerate(normalized_features):
         geometry = feature.get("geometry") or {}
         wkt = geometry_to_wkt(geometry)
         properties = feature.get("properties") or {}
-        feature_id = properties.get("GlobalID", feature.get("id"))
+        feature_id = _resolve_feature_id(key, feature, properties, index)
         if wkt is None:
             print(
                 f"WARNING: {key} feature {feature_id!r} has unsupported or missing geometry ({geometry.get('type')!r}) - skipped"
@@ -169,32 +200,6 @@ def build_trail_records(source: dict, normalized_features: list[dict]) -> list[d
             }
         )
     return records
-
-
-def build_corridor(con: duckdb.DuckDBPyConnection) -> None:
-    """Build the 'corridor' table fresh from RAW_DIR/centerline.geojson -
-    mirrors spike_corridor.py's/export_poi.py's ST_Buffer(30mi) +
-    ST_Union_Agg pattern exactly, including always_xy on both transform legs
-    (see README.md's "Gotcha hit and fixed" note - without it ST_Transform
-    silently swaps lat/lon and produces garbage geometry)."""
-    centerline_path = (RAW_DIR / "centerline.geojson").as_posix()
-    con.execute("INSTALL spatial; LOAD spatial;")
-    con.execute(f"CREATE OR REPLACE TABLE centerline_raw AS SELECT * FROM ST_Read('{centerline_path}')")
-
-    buffer_meters = BUFFER_MILES * METERS_PER_MILE
-    con.execute(f"""
-        CREATE OR REPLACE TABLE corridor AS
-        SELECT ST_Transform(
-            ST_Union_Agg(
-                ST_Buffer(
-                    ST_Transform(geom, '{GEOGRAPHIC_CRS}', '{PROJECTED_CRS}', always_xy := true),
-                    {buffer_meters}
-                )
-            ),
-            '{PROJECTED_CRS}', '{GEOGRAPHIC_CRS}', always_xy := true
-        ) AS geom
-        FROM centerline_raw
-    """)
 
 
 def clip_to_corridor(con: duckdb.DuckDBPyConnection, records: list[dict]) -> list[dict]:
@@ -401,17 +406,28 @@ def main() -> dict:
     con.execute("INSTALL spatial; LOAD spatial;")
 
     print("Building 30-mile corridor from centerline...")
-    build_corridor(con)
+    build_corridor(con, RAW_DIR / "centerline.geojson")
 
     sources = load_line_sources()
     all_records = []
+    counts = {}
     for source in sources:
         key = source["key"]
         features = load_features(RAW_DIR / f"{key}.geojson")
         normalized = normalize_source_features(source, features)
         records = build_trail_records(source, normalized)
         print(f"  {key}: {len(records)} line features normalized.")
+        counts[key] = len(records)
         all_records.extend(records)
+
+    # Completeness check: every line source this export processes (today:
+    # centerline, side_trails - see load_line_sources) must produce at least
+    # one feature. Unlike export_poi.py's `crossing` poi_type, none of this
+    # file's sources are intentionally allowed to come back empty, so a
+    # source silently returning 0 features (e.g. an ArcGIS schema change)
+    # must fail the run loudly instead of just logging a count of 0 and
+    # exiting 0. Runs before any output (manifest included) is written.
+    fail_if_incomplete(count_problems(counts), label="Incomplete trail export")
 
     clipped = clip_to_corridor(con, all_records)
     print(f"  {len(clipped)}/{len(all_records)} within the corridor.")

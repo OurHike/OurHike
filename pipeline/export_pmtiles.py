@@ -51,11 +51,13 @@ from rasterio.vrt import WarpedVRT
 from rasterio.warp import Resampling, transform_bounds
 from shapely.geometry import box, shape
 
+from lib.completeness import count_problems, fail_if_incomplete
+from lib.corridor import build_corridor
 from lib.tiling import tile_bounds_merc, tile_range_for_bounds
 from spike_raster_mosaic import bounds_intersect
 
 ROOT = Path(__file__).parent
-CORRIDOR_PATH = ROOT / "data" / "spike" / "corridor.geojson"
+CENTERLINE_PATH = ROOT / "data" / "raw" / "centerline.geojson"
 CELLS_DIR = ROOT / "data" / "processed" / "topo_background"
 OUT_PATH = ROOT / "data" / "processed" / "background.pmtiles"
 
@@ -70,10 +72,13 @@ GEOGRAPHIC_CRS = "EPSG:4326"
 def load_corridor():
     """Returns (bounds_4326, corridor_merc) - the corridor's native lon/lat
     bounds (for the PMTiles header) and its EPSG:3857 shapely geometry (for
-    fast tile-intersection tests)."""
+    fast tile-intersection tests). Built fresh from CENTERLINE_PATH via
+    lib/corridor.py's build_corridor() on every call - deliberately never
+    read from data/spike/corridor.geojson, which is stale proof-of-concept
+    output (see lib/corridor.py's own docstring for the full story)."""
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
-    con.execute(f"CREATE TABLE corridor AS SELECT * FROM ST_Read('{CORRIDOR_PATH.as_posix()}')")
+    build_corridor(con, CENTERLINE_PATH)
     bounds_4326 = con.execute("SELECT ST_XMin(geom), ST_YMin(geom), ST_XMax(geom), ST_YMax(geom) FROM corridor").fetchone()
     gj = con.execute(f"""
         SELECT ST_AsGeoJSON(ST_Transform(geom, '{GEOGRAPHIC_CRS}', '{MERC_CRS}', always_xy := true))
@@ -173,7 +178,7 @@ def build_header(bounds_4326):
 
 
 def main():
-    print("Loading corridor...")
+    print("Building corridor from centerline...")
     bounds_4326, corridor_merc = load_corridor()
 
     print("Indexing source cells...")
@@ -188,7 +193,12 @@ def main():
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     written = empty = 0
-    cells_covered_at_max_zoom = set()
+    # Per-zoom, not just at MAX_ZOOM: a cell can render fine at the top zoom
+    # tier yet come back all-nodata at some lower zoom (z6..z11, used for
+    # trip-overview zoom-out) - tracking coverage only at MAX_ZOOM made that
+    # kind of gap structurally uncatchable for the other 6 zoom tiers this
+    # file ships.
+    cells_covered_by_zoom = {z: set() for z in range(MIN_ZOOM, MAX_ZOOM + 1)}
 
     with write(str(OUT_PATH)) as writer:
         for i, (z, x, y) in enumerate(tiles, 1):
@@ -198,8 +208,7 @@ def main():
             else:
                 writer.write_tile(zxy_to_tileid(z, x, y), encode_webp(arr))
                 written += 1
-                if z == MAX_ZOOM:
-                    cells_covered_at_max_zoom.update(matching)
+                cells_covered_by_zoom[z].update(matching)
             if i % 2000 == 0 or i == len(tiles):
                 print(f"  {i}/{len(tiles)} processed ({written} written, {empty} empty/skipped)")
 
@@ -209,15 +218,18 @@ def main():
     print(f"\nDone. {written} tiles written, {empty} empty/skipped -> {OUT_PATH} ({size_mb:.1f} MB)")
 
     # Coverage check: every source cell should contribute to at least one
-    # written tile at max zoom, or the export silently dropped real corridor
-    # coverage - mirrors the completeness check in spike_raster_mosaic.py.
-    all_cells = {path for path, _ in cell_index}
-    missing = sorted(p.name for p in all_cells - cells_covered_at_max_zoom)
-    if missing:
-        print(f"\nIncomplete: {len(missing)}/{len(cell_index)} source cell(s) never contributed a tile at max zoom:")
-        for name in missing:
-            print(f"  {name}")
-        raise SystemExit(1)
+    # written tile at EVERY zoom tier (MIN_ZOOM..MAX_ZOOM inclusive), not just
+    # the top one, or the export silently dropped real corridor coverage at
+    # that zoom - mirrors the completeness check in spike_raster_mosaic.py/
+    # export_poi.py, via the same shared lib/completeness.py gate.
+    all_cells = sorted({path for path, _ in cell_index}, key=lambda p: p.name)
+    counts = {
+        f"zoom {z}: {path.name}": int(path in cells_covered_by_zoom[z])
+        for z in range(MIN_ZOOM, MAX_ZOOM + 1)
+        for path in all_cells
+    }
+    problems = count_problems(counts)
+    fail_if_incomplete(problems, label="Incomplete background export")
 
 
 if __name__ == "__main__":

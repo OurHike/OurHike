@@ -79,7 +79,9 @@ Change-aware via real HTTP conditional requests (the API documents `ETag`/`If-No
 
 Scope: **1,654 quads, ~14GB** (vs. 300-500GB for a naive full-state pull across all 14 AT states) - corridor-scoping is what keeps this download/hosting-sized reasonably (value #8). Change-aware per-quad via S3 `Last-Modified` against `data/raw/topo_quads/manifest.json`.
 
-**Known data-quality issue:** 3 of the 1,654 quads (`NC_Glade_Valley`, `VA_Marion`, `WV_Princeton`) are genuinely corrupted on USGS's own S3 bucket - confirmed via two independent codebases (rasterio/GDAL and tifffile/imagecodecs both fail to decode the same strip on a byte-exact-verified fresh download), not a truncated download on our end. `fetch_topo_quads.py` itself only checks HTTP presence/`Last-Modified`, not actual readability, so this kind of corruption goes undetected until something tries to read the file - **run `fix_corrupted_quads.py` after any fresh `fetch_topo_quads.py` run** to catch and work around this (see below). Open item: add a lightweight read-check to `fetch_topo_quads.py` itself so this isn't a separate manual step forever.
+**Known data-quality issue:** 3 of the 1,654 quads (`NC_Glade_Valley`, `VA_Marion`, `WV_Princeton`) are genuinely corrupted on USGS's own S3 bucket - confirmed via two independent codebases (rasterio/GDAL and tifffile/imagecodecs both fail to decode the same strip on a byte-exact-verified fresh download), not a truncated download on our end. `fetch_topo_quads.py` itself only checks HTTP presence/`Last-Modified`, not actual readability, so this kind of corruption goes undetected until something tries to read the file - **run `fix_corrupted_quads.py` after any fresh `fetch_topo_quads.py` run** to catch and work around this (see below).
+
+Still an open item *for this whole-corridor path specifically*: add a lightweight read-check to `fetch_topo_quads.py` itself so this isn't a separate manual step. The per-cell CI path (`fetch_and_mosaic_cell.py`, see further down) already does this - it calls `fix_corrupted_quads.py`'s recovery logic (`fix_quad()`) inline the moment a quad fails validation, rather than requiring a second command. That couldn't be backported here without `fetch_topo_quads.py` importing from `fix_corrupted_quads.py`, which already imports from *it* (`bare_key`) - a circular import. Untangling that (probably by moving `bare_key` somewhere both can import from) is real but small future work, not done as part of adding the per-cell path.
 
 ### Fixing corrupted quads
 
@@ -119,6 +121,21 @@ Real complications this had to handle that a single-tile test wouldn't:
 - **Every US Topo GeoTIFF is a scan of the entire printed map sheet, not just the map** - a white margin plus a header/footer collar (USGS/US Topo logos, title, scale bar, legend, adjoining-quadrangle diagram), and its georeferenced raster extent covers that whole sheet. Left uncropped, the collar gets treated as real terrain - it showed up as white bands and text baked into the exported background. Fixed by cropping every quad to its real neatline (the actual mapped area) before reprojecting, using the `westbc`/`eastbc`/`northbc`/`southbc` columns already present in USGS's own metadata CSV (`ustopo_current.csv`, fetched by `fetch_topo_quads.py`) - a clean 7.5'x7.5' box per quad, confirmed noticeably smaller than the raw raster's full extent (e.g. `CT_Ansonia`: a 0.125x0.125deg neatline vs a ~0.17x0.16deg raster).
 
 Output: 51 tiles in `data/processed/topo_background/`, ~9.5GB total, at a fixed ~11m/pixel resolution (plenty for a phone background map at this stage).
+
+## Per-cell fetch + mosaic (for CI, not local use)
+
+`fetch_and_mosaic_cell.py` fetches and mosaics exactly **one** corridor cell - the unit of work a GitHub Actions matrix job runs so this raster pipeline can execute on a hosted runner's disk, which can't hold the whole corridor's ~14GB raw + ~9.5GB processed data at once. Peak disk for a single cell is a few hundred MB. It's built entirely from the same functions the two whole-corridor scripts above use internally (`fetch_quads_for_cell`, `resolve_state_index`, `index_quads_in_dir`, `mosaic_one_cell`), plus `fix_corrupted_quads.py`'s `fix_quad()` for inline corruption recovery - unlike the whole-corridor path, a corrupted quad here is redownloaded-then-substituted in the same job, not flagged for a separate manual step.
+
+Needs `cells.json` first - the corridor's cell grid plus each cell's quad list (`lib/corridor_grid.py`), computed once from small vector data, no rasters touched:
+
+```
+.venv/Scripts/python build_cells_manifest.py
+.venv/Scripts/python fetch_and_mosaic_cell.py --cell-index 0
+```
+
+**Does not replace the whole-corridor workflow above** - `fetch_topo_quads.py`/`spike_raster_mosaic.py` are still how a maintainer runs the full pipeline locally. The two paths never share fetched files: the per-cell path downloads into `data/raw/topo_quads_cell_NNN/`, not `data/raw/topo_quads/<state>/`, so a local whole-corridor run and a local per-cell run can coexist on the same checkout without colliding.
+
+Roughly 22.9% of corridor quads (378 of 1,654) bbox-overlap more than one 1-degree cell, so a quad near a cell boundary gets fetched once per owning cell rather than shared - about 3.6GB of deliberate, bounded redundancy across the whole corridor, accepted rather than adding a cross-job quad cache (which would reintroduce the disk/coordination problem this per-cell split exists to avoid).
 
 ## Exporting the background as PMTiles (done)
 
@@ -163,7 +180,28 @@ Light came out almost exactly on the estimate implied by the per-zoom table abov
 
 A completeness check at the end (mirroring the pattern in `spike_raster_mosaic.py`) confirms every one of the 51 source cells contributed to at least one tile at max zoom, failing loudly rather than silently shipping a coverage gap.
 
+## Checking output quality before publish (done)
+
+`check_output_quality.py` is the gate between Export and Publish. It runs after `export_trails.py`, `export_poi.py`, `export_elevation.py`, and `export_pmtiles.py` have all produced their output, and before `publish.py` ships any of it to R2:
+
+```
+.venv/Scripts/python check_output_quality.py
+```
+
+It's `check_freshness.py`'s output-side sibling: `check_freshness.py` (run before fetching) asks whether anything *upstream* has changed; this asks whether *this run's own output* can be trusted, after everything has already run. Four checks, in priority order - see the module's own docstring for the full reasoning behind each, especially the corridor one:
+
+1. **Completeness cross-check** - re-reads `trails_manifest.json`, `poi/manifest.json`, and `elevation_manifest.json`, re-hashes the artifact file each one points at (catching drift between a manifest and what's actually on disk), and re-checks the same non-zero feature/point-count rule each exporting script already enforces on itself (`crossing` excepted, same as `export_poi.py`'s own exception) - a second, independent check for the case where a script's own gate has a bug or got bypassed.
+2. **Corridor cross-check** - the one check no single export script can run on itself. Rebuilds the 30-mile corridor twice, independently, from `data/raw/centerline.geojson`, and requires both a plausible (non-degenerate) result and agreement between the two builds.
+3. **`fetch_topo_quads.py` backstop** - re-verifies that every quad recorded in `data/raw/topo_quads/manifest.json` still exists on disk, and that a sample of them still reads as a valid raster, as defense in depth alongside that script's own exit-code gate.
+4. **Drop-vs-baseline detection** - compares this run's counts against `data/quality_baseline.json` (gitignored, like everything else under `data/`) and flags a count dropping more than ~10% with no matching `check_freshness.py`-reported upstream change. Only rewrites the baseline on a fully-passing run.
+
+Exits non-zero if any check finds a real problem - `publish.py` shouldn't run after that until the cause is fixed.
+
+## Publishing
+
 Publishing artifacts to Cloudflare R2 is intentionally write-disabled by default. Set `R2_WRITE_ENABLED=true` in the trusted environment that is allowed to publish; otherwise `publish.py` refuses to upload anything, so developers with only read access to the bucket cannot accidentally write to it.
+
+To serve `data/processed/` locally instead - for testing the client's offline download without publishing anything - use `serve_processed.py`, which answers byte-range requests and sets the CORS headers a cross-origin bucket needs. See [../client/README.md](../client/README.md).
 
 ## Next steps
 

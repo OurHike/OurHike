@@ -101,6 +101,61 @@ def test_publish_does_not_write_a_new_manifest_version_when_nothing_changed(s3_c
     assert first["version"] == second["version"]
 
 
+def test_publish_preserves_previously_published_artifacts_not_present_in_this_runs_local_set(
+    s3_client, local_artifacts, tmp_path
+):
+    """Reproduces the real go-live bug: a maintainer re-runs only
+    export_trails.py (e.g. after an ATC edit) in a checkout where the rest of
+    data/processed/ isn't present locally - data/ is fully gitignored and
+    these artifacts run hundreds of MB to over a GB each, so a partial local
+    checkout is the normal case, not an edge case (collect_artifacts()
+    already tolerates this, see test_collect_skips_a_tier_that_has_not_been_built_yet).
+    The R2 objects for everything else are still live, untouched by this run
+    - the manifest must keep saying so, not silently drop them out from under
+    a hiker's client just because this run's local set didn't include them."""
+    # First publish: a "full" checkout - trails, poi, and elevation all
+    # present locally, establishing a rich remote manifest.
+    elevation_path = tmp_path / "elevation_profile.json"
+    elevation_path.write_text('{"profile": [1, 2, 3]}')
+    full_local_artifacts = dict(local_artifacts)
+    full_local_artifacts["elevation_profile.json"] = {
+        "path": str(elevation_path),
+        "sha256": publish.sha256_file(elevation_path),
+    }
+
+    first = publish.publish(full_local_artifacts, s3_client=s3_client, bucket=BUCKET)
+    assert set(first["uploaded"]) == {"trails.geojson", "shelters.geojson", "elevation_profile.json"}
+
+    # Second publish: a partial local checkout - only trails.geojson exists
+    # locally this run, and it changed. elevation_profile.json and
+    # shelters.geojson are simply absent from this run's local set, the same
+    # way they'd be absent from a checkout that only ran export_trails.py.
+    changed_trails_path = tmp_path / "trails_changed.geojson"
+    changed_trails_path.write_text('{"type": "FeatureCollection", "features": [{"id": "new"}]}')
+    partial_local_artifacts = {
+        "trails.geojson": {
+            "path": str(changed_trails_path),
+            "sha256": publish.sha256_file(changed_trails_path),
+        },
+    }
+
+    second = publish.publish(partial_local_artifacts, s3_client=s3_client, bucket=BUCKET)
+
+    assert second["uploaded"] == ["trails.geojson"]
+    assert second["version_written"] is True
+
+    remote = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())
+    # All three artifacts from the first publish must still be listed - not
+    # just the one artifact this run's local set happened to contain.
+    assert set(remote["artifacts"].keys()) == {"trails.geojson", "shelters.geojson", "elevation_profile.json"}
+    # The artifact that changed reflects the new content...
+    assert remote["artifacts"]["trails.geojson"]["sha256"] == partial_local_artifacts["trails.geojson"]["sha256"]
+    # ...while the artifacts absent from this run's local set keep the hash
+    # they were published with, untouched.
+    assert remote["artifacts"]["shelters.geojson"]["sha256"] == local_artifacts["shelters.geojson"]["sha256"]
+    assert remote["artifacts"]["elevation_profile.json"]["sha256"] == full_local_artifacts["elevation_profile.json"]["sha256"]
+
+
 def test_publish_manifest_records_one_hash_per_artifact_not_one_hash_for_everything(s3_client, local_artifacts):
     publish.publish(local_artifacts, s3_client=s3_client, bucket=BUCKET)
 

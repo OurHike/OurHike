@@ -176,9 +176,20 @@ def publish(artifacts: dict[str, dict] | None = None, *, s3_client=None, bucket:
         }
 
     new_version = str(uuid.uuid4())
+    # Merge, don't replace: an artifact that's live in remote_artifacts but
+    # wasn't produced by this run's collect_artifacts() (e.g. a checkout that
+    # only re-ran export_trails.py, with no local elevation_manifest.json or
+    # background pmtiles tier) must survive into the new manifest untouched -
+    # the R2 object is still there, only the local checkout is partial. Local
+    # entries win by name where both exist, since a freshly-collected entry
+    # for a name that changed is the new source of truth; any remote name
+    # with no local counterpart this run is preserved as-is.
     new_manifest = {
         "version": new_version,
-        "artifacts": {name: {"sha256": entry["sha256"]} for name, entry in artifacts.items()},
+        "artifacts": {
+            **remote_artifacts,
+            **{name: {"sha256": entry["sha256"]} for name, entry in artifacts.items()},
+        },
     }
     s3_client.put_object(Bucket=bucket, Key=MANIFEST_KEY, Body=json.dumps(new_manifest, indent=2).encode("utf-8"))
 

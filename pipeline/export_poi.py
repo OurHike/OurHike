@@ -8,10 +8,13 @@ principle TECHNICAL_ARCHITECTURE.md's Export step describes, and the same
 change-aware-publish idea fetch_all.py's manifest already uses for raw
 sources).
 
-Corridor: computed fresh here from data/raw/centerline.geojson, mirroring
-spike_corridor.py's ST_Buffer(30mi) + ST_Union_Agg pattern (including the
-always_xy gotcha - see README.md) exactly, rather than reading
-data/spike/corridor.geojson, which is stale proof-of-concept output.
+Corridor: built via lib/corridor.py's build_corridor() (shared with
+export_trails.py - both used to carry an identical, verbatim-duplicated
+copy of this function before that extraction) from
+data/raw/centerline.geojson, mirroring spike_corridor.py's ST_Buffer(30mi) +
+ST_Union_Agg pattern (including the always_xy gotcha - see README.md)
+exactly, rather than reading data/spike/corridor.geojson, which is stale
+proof-of-concept output.
 
 Sources and what they feed (see README.md's source tables + real-feature
 inspection, 2026-07-28):
@@ -51,6 +54,8 @@ from pathlib import Path
 
 import duckdb
 
+from lib.completeness import count_problems, fail_if_incomplete
+from lib.corridor import build_corridor
 from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES, unify_poi
 
 ROOT = Path(__file__).parent
@@ -58,14 +63,6 @@ RAW_DIR = ROOT / "data" / "raw"
 OUT_DIR = ROOT / "data" / "processed" / "poi"
 
 TRAIL_ID = "AT"
-BUFFER_MILES = 30
-METERS_PER_MILE = 1609.344
-
-# Same CRS choice as spike_corridor.py, for the same reason: EPSG:5070 (NAD83
-# / Conus Albers) is equal-area, meters, and appropriate for a CONUS-spanning
-# buffer operation.
-PROJECTED_CRS = "EPSG:5070"
-GEOGRAPHIC_CRS = "EPSG:4326"
 
 # (raw filename stem, poi_type, source name used in unified ids, field_map)
 # - the three ATC sources that map ~1:1 onto one poi_type each.
@@ -118,32 +115,6 @@ def unify_all_sources(trail_id: str = TRAIL_ID) -> list[dict]:
         unified.append(unify_poi(feature, poi_type, OPENTRAIL_SOURCE, trail_id, field_map))
 
     return unified
-
-
-def build_corridor(con: duckdb.DuckDBPyConnection) -> None:
-    """Build the 'corridor' table fresh from RAW_DIR/centerline.geojson -
-    mirrors spike_corridor.py's ST_Buffer(30mi) + ST_Union_Agg pattern
-    exactly, including always_xy on both transform legs (see README.md's
-    "Gotcha hit and fixed" note - without it ST_Transform silently swaps
-    lat/lon and produces garbage geometry)."""
-    centerline_path = (RAW_DIR / "centerline.geojson").as_posix()
-    con.execute("INSTALL spatial; LOAD spatial;")
-    con.execute(f"CREATE OR REPLACE TABLE centerline AS SELECT * FROM ST_Read('{centerline_path}')")
-
-    buffer_meters = BUFFER_MILES * METERS_PER_MILE
-    con.execute(f"""
-        CREATE OR REPLACE TABLE corridor AS
-        SELECT ST_Transform(
-            ST_Union_Agg(
-                ST_Buffer(
-                    ST_Transform(geom, '{GEOGRAPHIC_CRS}', '{PROJECTED_CRS}', always_xy := true),
-                    {buffer_meters}
-                )
-            ),
-            '{PROJECTED_CRS}', '{GEOGRAPHIC_CRS}', always_xy := true
-        ) AS geom
-        FROM centerline
-    """)
 
 
 def clip_to_corridor(con: duckdb.DuckDBPyConnection, unified: list[dict]) -> list[dict]:
@@ -227,7 +198,7 @@ def main() -> dict:
     con.execute("INSTALL spatial; LOAD spatial;")
 
     print("Building 30-mile corridor from centerline...")
-    build_corridor(con)
+    build_corridor(con, RAW_DIR / "centerline.geojson")
 
     print("Unifying POI sources...")
     unified = unify_all_sources(TRAIL_ID)
@@ -237,10 +208,20 @@ def main() -> dict:
     print(f"  {len(clipped)}/{len(unified)} within the corridor.")
 
     manifest = {}
+    counts = {}
     for poi_type in POI_TYPES:
         records = [r for r in clipped if r["poi_type"] == poi_type]
+        counts[poi_type] = len(records)
         manifest[poi_type] = write_poi_type(con, poi_type, records)
         print(f"  {poi_type}: {len(records)} features -> {OUT_DIR / poi_type}.{{geojson,fgb}}")
+
+    # Completeness check: every poi_type must produce at least one feature -
+    # a genuinely broken source (e.g. shelter silently returning 0 after an
+    # upstream schema change) would otherwise be structurally indistinguishable
+    # from crossing's expected, intentional emptiness (see module docstring)
+    # and ship silently. crossing is the only poi_type allowed to be 0.
+    problems = count_problems(counts, minimums={"crossing": 0})
+    fail_if_incomplete(problems, label="Incomplete POI export")
 
     manifest_path = OUT_DIR / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2))

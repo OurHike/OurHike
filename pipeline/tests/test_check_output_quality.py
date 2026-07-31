@@ -1,0 +1,892 @@
+"""Tests for check_output_quality.py - "did the pipeline actually produce
+complete, correct output?", checked after export and before publish.
+
+See that module's own docstring for the full reasoning behind each of its
+four checks (most notably check #2, the corridor cross-check, whose real
+value only makes sense once you know every consumer now builds the
+corridor fresh rather than reading a stale committed file). Small synthetic
+fixtures throughout - tiny GeoJSON/GeoTIFF built in test code, never real
+pipeline output - per TESTING.md.
+"""
+
+import json
+
+import numpy as np
+import pytest
+import rasterio
+from rasterio.transform import from_bounds
+
+import check_output_quality
+from check_output_quality import Verdict
+
+# --- Shared fixtures ---------------------------------------------------------
+
+# Same neighborhood/coordinates test_lib_corridor.py's/test_export_poi.py's/
+# test_export_trails.py's own synthetic centerline fixtures use - far from
+# any real data, and it lets the "plausible area" assertions below reuse the
+# same expected range those tests already established for this exact line.
+CENTERLINE_COORDS = [(-74.0, 41.0), (-73.9, 41.1)]
+
+
+def _write_centerline(path, coords=CENTERLINE_COORDS):
+    fc = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {},
+                "geometry": {"type": "LineString", "coordinates": [[lon, lat] for lon, lat in coords]},
+            }
+        ],
+    }
+    path.write_text(json.dumps(fc))
+
+
+def _write_tiny_geotiff(path):
+    """Same tiny-fixture shape test_fetch_topo_quads.py's own
+    _write_tiny_geotiff() uses - duplicated here rather than imported across
+    test modules, per this project's small-synthetic-fixture-in-test-code
+    convention (see TESTING.md)."""
+    transform = from_bounds(-74.1, 41.0, -74.0, 41.1, 4, 4)
+    profile = {
+        "driver": "GTiff",
+        "height": 4,
+        "width": 4,
+        "count": 1,
+        "dtype": "uint8",
+        "crs": "EPSG:4326",
+        "transform": transform,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(path, "w", **profile) as dst:
+        dst.write(np.full((1, 4, 4), 100, dtype="uint8"))
+
+
+def _artifact_entry(path, content, feature_count):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content)
+    return {"path": str(path), "sha256": check_output_quality.sha256_file(path), "feature_count": feature_count}
+
+
+# --- sha256_file / read_manifest / artifact_problems ------------------------
+
+
+def test_read_manifest_returns_none_when_the_file_does_not_exist(tmp_path):
+    assert check_output_quality.read_manifest(tmp_path / "absent.json") is None
+
+
+def test_read_manifest_loads_the_json_file(tmp_path):
+    path = tmp_path / "m.json"
+    path.write_text(json.dumps({"a": 1}))
+
+    assert check_output_quality.read_manifest(path) == {"a": 1}
+
+
+def test_artifact_problems_flags_a_missing_path_field():
+    assert check_output_quality.artifact_problems("x", {}) == ["x: manifest entry has no path"]
+
+
+def test_artifact_problems_flags_a_file_missing_from_disk(tmp_path):
+    entry = {"path": str(tmp_path / "gone.geojson"), "sha256": "whatever"}
+
+    problems = check_output_quality.artifact_problems("x", entry)
+
+    assert len(problems) == 1
+    assert "file missing on disk" in problems[0]
+
+
+def test_artifact_problems_flags_a_sha256_mismatch(tmp_path):
+    """The real independent check this module exists to add: the manifest
+    can say whatever it wants, this re-hashes the actual file."""
+    path = tmp_path / "trails.geojson"
+    path.write_text("real content")
+    entry = {"path": str(path), "sha256": "0" * 64}
+
+    problems = check_output_quality.artifact_problems("x", entry)
+
+    assert len(problems) == 1
+    assert "sha256 mismatch" in problems[0]
+
+
+def test_artifact_problems_is_empty_when_the_file_matches_the_manifest(tmp_path):
+    path = tmp_path / "trails.geojson"
+    path.write_text("real content")
+    entry = {"path": str(path), "sha256": check_output_quality.sha256_file(path)}
+
+    assert check_output_quality.artifact_problems("x", entry) == []
+
+
+# --- summarise ----------------------------------------------------------------
+
+
+def _report(**verdicts):
+    return [
+        {"check": name, "verdict": verdict, "problems": [f"{name} problem"] if verdict is Verdict.PROBLEM else []}
+        for name, verdict in verdicts.items()
+    ]
+
+
+def test_summarise_is_clean_when_everything_is_ok():
+    summary = check_output_quality.summarise(_report(trails=Verdict.OK, poi=Verdict.OK))
+
+    assert summary["failed_checks"] == []
+    assert summary["exit_code"] == 0
+
+
+def test_summarise_names_exactly_which_checks_failed():
+    summary = check_output_quality.summarise(_report(trails=Verdict.PROBLEM, poi=Verdict.OK))
+
+    assert summary["failed_checks"] == ["trails"]
+    assert summary["problems"]["trails"] == ["trails problem"]
+
+
+def test_summarise_exit_code_is_nonzero_when_any_check_has_a_problem():
+    assert check_output_quality.summarise(_report(trails=Verdict.PROBLEM))["exit_code"] != 0
+
+
+def test_summarise_separates_skipped_from_failed():
+    summary = check_output_quality.summarise(_report(topo_quads=Verdict.SKIPPED, trails=Verdict.PROBLEM))
+
+    assert summary["skipped"] == ["topo_quads"]
+    assert summary["failed_checks"] == ["trails"]
+
+
+def test_summarise_skipped_alone_does_not_gate_the_exit_code():
+    """Nothing was produced yet for a SKIPPED check to evaluate - a
+    different situation from evaluating something and finding it wrong, so
+    it must not fail the run on its own."""
+    summary = check_output_quality.summarise(_report(topo_quads=Verdict.SKIPPED, baseline=Verdict.SKIPPED))
+
+    assert summary["exit_code"] == 0
+
+
+# --- Check 1: trails_verdict --------------------------------------------------
+
+
+def test_trails_verdict_is_problem_when_manifest_is_missing(tmp_path):
+    report = check_output_quality.trails_verdict(tmp_path / "absent.json")
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert report["counts"] == {}
+
+
+def test_trails_verdict_ok_for_a_complete_matching_manifest(tmp_path):
+    manifest_path = tmp_path / "trails_manifest.json"
+    manifest = {
+        "geojson": _artifact_entry(tmp_path / "trails.geojson", "geojson bytes", 10),
+        "fgb": _artifact_entry(tmp_path / "trails.fgb", "fgb bytes", 10),
+    }
+    manifest_path.write_text(json.dumps(manifest))
+
+    report = check_output_quality.trails_verdict(manifest_path)
+
+    assert report["verdict"] is Verdict.OK
+    assert report["problems"] == []
+    assert report["counts"] == {"trails": 10}
+
+
+def test_trails_verdict_flags_a_zero_feature_count(tmp_path):
+    manifest_path = tmp_path / "trails_manifest.json"
+    manifest = {
+        "geojson": _artifact_entry(tmp_path / "trails.geojson", "geojson bytes", 0),
+        "fgb": _artifact_entry(tmp_path / "trails.fgb", "fgb bytes", 0),
+    }
+    manifest_path.write_text(json.dumps(manifest))
+
+    report = check_output_quality.trails_verdict(manifest_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert any("trails: 0" in p for p in report["problems"])
+
+
+def test_trails_verdict_flags_a_sha256_mismatch_against_the_real_file_on_disk(tmp_path):
+    """The independent second check this module exists to add: a manifest
+    written by a passing export_trails.py run whose artifact file was
+    edited/corrupted/truncated afterwards must not read as OK just because
+    the recorded feature_count still looks fine."""
+    manifest_path = tmp_path / "trails_manifest.json"
+    entry = _artifact_entry(tmp_path / "trails.geojson", "original content", 10)
+    (tmp_path / "trails.geojson").write_text("tampered content")  # changes on disk after the manifest was written
+    manifest = {"geojson": entry, "fgb": _artifact_entry(tmp_path / "trails.fgb", "fgb bytes", 10)}
+    manifest_path.write_text(json.dumps(manifest))
+
+    report = check_output_quality.trails_verdict(manifest_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert any("sha256 mismatch" in p for p in report["problems"])
+
+
+def test_trails_verdict_flags_a_kind_missing_from_an_otherwise_present_manifest(tmp_path):
+    manifest_path = tmp_path / "trails_manifest.json"
+    manifest_path.write_text(json.dumps({"geojson": _artifact_entry(tmp_path / "trails.geojson", "geojson bytes", 10)}))
+
+    report = check_output_quality.trails_verdict(manifest_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert any("trails.fgb" in p and "missing" in p for p in report["problems"])
+
+
+def test_trails_verdict_flags_geojson_fgb_feature_count_disagreement(tmp_path):
+    manifest_path = tmp_path / "trails_manifest.json"
+    manifest = {
+        "geojson": _artifact_entry(tmp_path / "trails.geojson", "geojson bytes", 10),
+        "fgb": _artifact_entry(tmp_path / "trails.fgb", "fgb bytes", 9),
+    }
+    manifest_path.write_text(json.dumps(manifest))
+
+    report = check_output_quality.trails_verdict(manifest_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert any("disagree" in p for p in report["problems"])
+
+
+# --- Check 1: poi_verdict ------------------------------------------------------
+
+
+def _poi_manifest(tmp_path, counts: dict) -> dict:
+    manifest = {}
+    for poi_type in check_output_quality.POI_TYPES:
+        count = counts.get(poi_type, 5)
+        manifest[poi_type] = {
+            "geojson": _artifact_entry(tmp_path / f"{poi_type}.geojson", f"{poi_type} geojson", count),
+            "fgb": _artifact_entry(tmp_path / f"{poi_type}.fgb", f"{poi_type} fgb", count),
+        }
+    return manifest
+
+
+def test_poi_verdict_is_problem_when_manifest_is_missing(tmp_path):
+    report = check_output_quality.poi_verdict(tmp_path / "absent.json")
+
+    assert report["verdict"] is Verdict.PROBLEM
+
+
+def test_poi_verdict_ok_when_every_type_has_features_except_crossing(tmp_path):
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(_poi_manifest(tmp_path, {"crossing": 0})))
+
+    report = check_output_quality.poi_verdict(manifest_path)
+
+    assert report["verdict"] is Verdict.OK
+    assert report["counts"]["poi:crossing"] == 0
+    assert report["counts"]["poi:shelter"] == 5
+
+
+def test_poi_verdict_flags_a_zero_count_poi_type_other_than_crossing(tmp_path):
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(_poi_manifest(tmp_path, {"crossing": 0, "shelter": 0})))
+
+    report = check_output_quality.poi_verdict(manifest_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert any("poi:shelter" in p for p in report["problems"])
+
+
+def test_poi_verdict_does_not_flag_crossing_at_zero():
+    """Mirrors export_poi.py's own minimums={"crossing": 0} - there is no
+    NHD-crossing fetch script yet, so an empty crossing layer is expected,
+    not a bug."""
+    problems = check_output_quality.count_problems({"poi:crossing": 0, "poi:shelter": 5}, minimums={"poi:crossing": 0})
+
+    assert problems == []
+
+
+def test_poi_verdict_flags_a_kind_missing_within_an_otherwise_present_poi_type(tmp_path):
+    manifest = _poi_manifest(tmp_path, {"crossing": 0})
+    del manifest["shelter"]["fgb"]
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest))
+
+    report = check_output_quality.poi_verdict(manifest_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert any("poi.shelter.fgb" in p and "missing" in p for p in report["problems"])
+
+
+def test_poi_verdict_flags_geojson_fgb_feature_count_disagreement_for_one_poi_type(tmp_path):
+    manifest = _poi_manifest(tmp_path, {"crossing": 0})
+    manifest["shelter"]["fgb"]["feature_count"] = 4  # geojson stayed at 5 - a real write-path bug would look like this
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest))
+
+    report = check_output_quality.poi_verdict(manifest_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert any("poi.shelter" in p and "disagree" in p for p in report["problems"])
+
+
+def test_poi_verdict_flags_a_poi_type_missing_from_the_manifest_entirely(tmp_path):
+    manifest = _poi_manifest(tmp_path, {})
+    del manifest["water"]
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest))
+
+    report = check_output_quality.poi_verdict(manifest_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert any("poi.water" in p and "missing" in p for p in report["problems"])
+
+
+# --- Check 1: elevation_verdict ------------------------------------------------
+
+
+def test_elevation_verdict_is_problem_when_manifest_is_missing(tmp_path):
+    report = check_output_quality.elevation_verdict(tmp_path / "absent.json")
+
+    assert report["verdict"] is Verdict.PROBLEM
+
+
+def test_elevation_verdict_ok_for_a_nonzero_point_count(tmp_path):
+    entry = _artifact_entry(tmp_path / "elevation_profile.json", "profile bytes", 0)
+    entry["point_count"] = entry.pop("feature_count")
+    manifest_path = tmp_path / "elevation_manifest.json"
+    manifest_path.write_text(json.dumps({**entry, "point_count": 139219}))
+
+    report = check_output_quality.elevation_verdict(manifest_path)
+
+    assert report["verdict"] is Verdict.OK
+    assert report["counts"] == {"elevation": 139219}
+
+
+def test_elevation_verdict_flags_a_zero_point_count(tmp_path):
+    entry = _artifact_entry(tmp_path / "elevation_profile.json", "profile bytes", 0)
+    manifest_path = tmp_path / "elevation_manifest.json"
+    manifest_path.write_text(json.dumps({"path": entry["path"], "sha256": entry["sha256"], "point_count": 0}))
+
+    report = check_output_quality.elevation_verdict(manifest_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+
+
+def test_elevation_verdict_includes_null_elevation_pct_in_the_detail_when_present(tmp_path):
+    entry = _artifact_entry(tmp_path / "elevation_profile.json", "profile bytes", 0)
+    manifest_path = tmp_path / "elevation_manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "path": entry["path"],
+                "sha256": entry["sha256"],
+                "point_count": 100,
+                "null_elevation_count": 3,
+                "null_elevation_pct": 3.0,
+            }
+        )
+    )
+
+    report = check_output_quality.elevation_verdict(manifest_path)
+
+    assert report["verdict"] is Verdict.OK
+    assert "3.0%" in report["detail"]
+
+
+def test_elevation_verdict_works_without_null_elevation_pct_for_an_older_manifest(tmp_path):
+    """Real-data gotcha found while building this module: the local
+    elevation_manifest.json on disk right now predates null_elevation_pct
+    being added to export_elevation.py's manifest (it has never been
+    regenerated since, since a full run is intentionally manual-only - see
+    that script's docstring). A manifest missing this newer field entirely
+    must still work, not just one that has it set to null."""
+    entry = _artifact_entry(tmp_path / "elevation_profile.json", "profile bytes", 0)
+    manifest_path = tmp_path / "elevation_manifest.json"
+    manifest_path.write_text(json.dumps({"path": entry["path"], "sha256": entry["sha256"], "point_count": 139219}))
+
+    report = check_output_quality.elevation_verdict(manifest_path)
+
+    assert report["verdict"] is Verdict.OK
+    assert "139219 points" in report["detail"]
+
+
+# --- Check 2: corridor_verdict -------------------------------------------------
+
+
+def test_corridor_verdict_is_problem_when_centerline_is_missing(tmp_path):
+    report = check_output_quality.corridor_verdict(tmp_path / "absent.geojson")
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert "missing" in report["problems"][0]
+
+
+def test_corridor_verdict_ok_for_a_real_centerline_fixture(tmp_path):
+    centerline_path = tmp_path / "centerline.geojson"
+    _write_centerline(centerline_path)
+
+    report = check_output_quality.corridor_verdict(centerline_path)
+
+    assert report["verdict"] is Verdict.OK
+    assert report["problems"] == []
+
+
+def test_corridor_verdict_flags_a_degenerate_corridor_for_an_empty_centerline(tmp_path):
+    """Zero features means zero corridor area - a garbage-but-internally-
+    consistent result the two-independent-builds-agree check alone would
+    wave through, since both builds would agree with each other and both be
+    empty. Confirmed empirically: build_corridor() over zero rows returns
+    one row with area 0.0 and a null bbox, not an error."""
+    centerline_path = tmp_path / "centerline.geojson"
+    centerline_path.write_text(json.dumps({"type": "FeatureCollection", "features": []}))
+
+    report = check_output_quality.corridor_verdict(centerline_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert any("degenerate" in p for p in report["problems"])
+
+
+def test_corridor_verdict_flags_area_disagreement_between_two_independent_builds(tmp_path, monkeypatch):
+    """Proves the comparison logic actually has teeth: forces
+    corridor_stats() to return two different results (standing in for real
+    non-determinism, or centerline.geojson changing mid-run - see the
+    module docstring) and confirms corridor_verdict() notices, rather than
+    only ever comparing a value against itself."""
+    centerline_path = tmp_path / "centerline.geojson"
+    centerline_path.write_text("irrelevant - corridor_stats is faked below")
+    results = iter(
+        [
+            {"area_sq_mi": 81000.0, "bbox": (-84.0, 34.0, -68.0, 46.0)},
+            {"area_sq_mi": 90000.0, "bbox": (-84.0, 34.0, -68.0, 46.0)},
+        ]
+    )
+    monkeypatch.setattr(check_output_quality, "corridor_stats", lambda path: next(results))
+
+    report = check_output_quality.corridor_verdict(centerline_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert any("disagree on area" in p for p in report["problems"])
+
+
+def test_corridor_verdict_flags_bbox_disagreement_between_two_independent_builds(tmp_path, monkeypatch):
+    centerline_path = tmp_path / "centerline.geojson"
+    centerline_path.write_text("irrelevant - corridor_stats is faked below")
+    results = iter(
+        [
+            {"area_sq_mi": 81000.0, "bbox": (-84.0, 34.0, -68.0, 46.0)},
+            {"area_sq_mi": 81000.0, "bbox": (-84.5, 34.0, -68.0, 46.0)},
+        ]
+    )
+    monkeypatch.setattr(check_output_quality, "corridor_stats", lambda path: next(results))
+
+    report = check_output_quality.corridor_verdict(centerline_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert any("bbox xmin" in p for p in report["problems"])
+
+
+def test_corridor_verdict_is_problem_when_the_corridor_build_itself_raises(tmp_path, monkeypatch):
+    centerline_path = tmp_path / "centerline.geojson"
+    centerline_path.write_text("irrelevant - corridor_stats is faked below")
+
+    def _raise(path):
+        raise RuntimeError("synthetic DuckDB failure")
+
+    monkeypatch.setattr(check_output_quality, "corridor_stats", _raise)
+
+    report = check_output_quality.corridor_verdict(centerline_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert "corridor build failed" in report["problems"][0]
+
+
+def test_corridor_verdict_does_not_flag_two_builds_that_genuinely_agree(tmp_path, monkeypatch):
+    centerline_path = tmp_path / "centerline.geojson"
+    centerline_path.write_text("irrelevant - corridor_stats is faked below")
+    stats = {"area_sq_mi": 81000.0, "bbox": (-84.0, 34.0, -68.0, 46.0)}
+    monkeypatch.setattr(check_output_quality, "corridor_stats", lambda path: dict(stats))
+
+    report = check_output_quality.corridor_verdict(centerline_path)
+
+    assert report["verdict"] is Verdict.OK
+
+
+# --- Check 3: topo_quads_verdict -----------------------------------------------
+
+
+def _topo_entry(local_path):
+    return {"last_modified": "Thu, 19 Sep 2024 21:20:18 GMT", "local_path": str(local_path)}
+
+
+def test_topo_quads_verdict_is_skipped_when_manifest_is_missing(tmp_path):
+    """SKIPPED, not PROBLEM: unlike trails/poi/elevation, this module's
+    documented position (after the four EXPORT scripts) doesn't guarantee a
+    FETCH-stage manifest exists yet."""
+    report = check_output_quality.topo_quads_verdict(tmp_path / "absent.json")
+
+    assert report["verdict"] is Verdict.SKIPPED
+
+
+def test_topo_quads_verdict_ok_when_recorded_quads_exist_and_sample_is_readable(tmp_path):
+    quad_path = tmp_path / "CT_Ansonia.tif"
+    _write_tiny_geotiff(quad_path)
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps({"https://x/CT_Ansonia.tif": _topo_entry(quad_path)}))
+
+    report = check_output_quality.topo_quads_verdict(manifest_path, sample_size=1)
+
+    assert report["verdict"] is Verdict.OK
+    assert report["problems"] == []
+
+
+def test_topo_quads_verdict_flags_a_manifest_entry_whose_file_no_longer_exists(tmp_path):
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps({"https://x/gone.tif": _topo_entry(tmp_path / "gone.tif")}))
+
+    report = check_output_quality.topo_quads_verdict(manifest_path, sample_size=1)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert any("missing from disk" in p for p in report["problems"])
+
+
+def test_topo_quads_verdict_flags_an_unreadable_quad_found_in_the_sample(tmp_path):
+    """The actual independent value this backstop adds: a quad that passed
+    fetch_topo_quads.py's own read-validation once, at download time, can
+    still be found broken later (disk fault, interrupted copy) - this
+    re-runs that same validation now."""
+    bad_path = tmp_path / "bad.tif"
+    bad_path.write_bytes(b"not a real geotiff")
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps({"https://x/bad.tif": _topo_entry(bad_path)}))
+
+    report = check_output_quality.topo_quads_verdict(manifest_path, sample_size=1)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert any("readability re-check" in p for p in report["problems"])
+
+
+def test_topo_quads_verdict_does_not_double_report_a_missing_file_as_also_unreadable(tmp_path):
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps({"https://x/gone.tif": _topo_entry(tmp_path / "gone.tif")}))
+
+    report = check_output_quality.topo_quads_verdict(manifest_path, sample_size=1)
+
+    assert len(report["problems"]) == 1
+
+
+def test_resolve_topo_local_path_returns_an_absolute_path_unchanged():
+    absolute = check_output_quality.ROOT / "data" / "raw" / "topo_quads" / "CT" / "x.tif"
+
+    assert check_output_quality._resolve_topo_local_path(str(absolute)) == absolute
+
+
+def test_resolve_topo_local_path_joins_a_relative_path_with_root():
+    """fetch_topo_quads.py stores local_path relative to ROOT when possible
+    (see fetch_one_quad()'s docstring) - this must reconstruct the same
+    absolute path a script running from pipeline/ would resolve."""
+    result = check_output_quality._resolve_topo_local_path("data/raw/topo_quads/CT/x.tif")
+
+    assert result == check_output_quality.ROOT / "data" / "raw" / "topo_quads" / "CT" / "x.tif"
+
+
+def test_quad_is_readable_true_for_a_valid_geotiff(tmp_path):
+    path = tmp_path / "good.tif"
+    _write_tiny_geotiff(path)
+
+    assert check_output_quality._quad_is_readable(path) is True
+
+
+def test_quad_is_readable_false_for_unreadable_bytes(tmp_path):
+    path = tmp_path / "bad.tif"
+    path.write_bytes(b"garbage, not a geotiff")
+
+    assert check_output_quality._quad_is_readable(path) is False
+
+
+def test_quad_is_readable_false_for_a_file_that_does_not_exist(tmp_path):
+    assert check_output_quality._quad_is_readable(tmp_path / "does_not_exist.tif") is False
+
+
+def _quad_manifest_urls(counts: dict) -> dict:
+    """A synthetic manifest keyed the same way the real one is - full
+    S3-shaped URLs with a state path segment - mirroring
+    test_check_freshness.py's own _quad_manifest() fixture builder."""
+    manifest = {}
+    for state, count in counts.items():
+        for i in range(count):
+            url = f"https://prd-tnm.s3.amazonaws.com/StagedProducts/Maps/USTopo/GeoTIFF/{state}/{state}_quad_{i:03}.tif"
+            manifest[url] = _topo_entry(f"data/raw/topo_quads/{state}/{state}_quad_{i:03}.tif")
+    return manifest
+
+
+def test_topo_readability_sample_never_exceeds_what_the_manifest_actually_has():
+    manifest = _quad_manifest_urls({"CT": 3})
+
+    sample = check_output_quality.topo_readability_sample(manifest, size=25)
+
+    assert set(sample) == set(manifest)
+
+
+def test_topo_readability_sample_of_an_empty_manifest_is_empty():
+    assert check_output_quality.topo_readability_sample({}, size=25) == []
+
+
+def test_topo_readability_sample_spreads_across_the_full_range_not_a_flat_prefix():
+    """A flat sorted(manifest)[:size] prefix would be permanently limited to
+    whichever state sorts alphabetically first - the exact bug
+    check_freshness.py's topo_sample() was written to fix for the remote
+    HTTP-sampling case. A stride across the whole sorted list reaches every
+    state here too."""
+    manifest = _quad_manifest_urls({"CT": 40, "GA": 40, "VA": 40, "WV": 40})
+
+    sample = check_output_quality.topo_readability_sample(manifest, size=20)
+
+    states = {url.rsplit("/", 2)[-2] for url in sample}
+    assert states == {"CT", "GA", "VA", "WV"}
+
+
+def test_topo_readability_sample_size_respects_a_monkeypatched_module_constant(monkeypatch):
+    """Regression guard for the default-bound-at-import-time gotcha (see
+    check_freshness.py's own equivalent test for topo_sample()): `size`
+    must resolve TOPO_READABILITY_SAMPLE_SIZE inside the function body via a
+    None sentinel, not as a plain `=TOPO_READABILITY_SAMPLE_SIZE` signature
+    default, or this monkeypatch would silently stop taking effect."""
+    manifest = _quad_manifest_urls({"CT": 10})
+    monkeypatch.setattr(check_output_quality, "TOPO_READABILITY_SAMPLE_SIZE", 3)
+
+    sample = check_output_quality.topo_readability_sample(manifest)
+
+    assert len(sample) == 3
+
+
+def test_topo_readability_sample_is_deterministic():
+    """Same manifest, same sample every time - unlike check_freshness.py's
+    day-seeded remote sample, this local readability spot-check has no
+    upstream-timing reason to vary run to run, so it should not be flaky to
+    assert on."""
+    manifest = _quad_manifest_urls({"CT": 40, "GA": 20, "VA": 30})
+
+    first = check_output_quality.topo_readability_sample(manifest, size=25)
+    second = check_output_quality.topo_readability_sample(manifest, size=25)
+
+    assert first == second
+
+
+# --- Check 4: baseline_verdict / flag_drops / load_baseline / save_baseline --
+
+
+def test_load_baseline_returns_none_when_the_file_does_not_exist(tmp_path):
+    assert check_output_quality.load_baseline(tmp_path / "absent.json") is None
+
+
+def test_save_baseline_then_load_baseline_roundtrips(tmp_path):
+    path = tmp_path / "quality_baseline.json"
+    check_output_quality.save_baseline({"trails": 4224, "elevation": 139219}, path)
+
+    assert check_output_quality.load_baseline(path) == {"trails": 4224, "elevation": 139219}
+
+
+def test_flag_drops_is_empty_when_nothing_dropped():
+    assert check_output_quality.flag_drops({"trails": 100}, {"trails": 100}) == []
+
+
+def test_flag_drops_is_empty_when_a_count_increased():
+    assert check_output_quality.flag_drops({"trails": 150}, {"trails": 100}) == []
+
+
+def test_flag_drops_flags_a_drop_over_the_threshold():
+    problems = check_output_quality.flag_drops({"trails": 85}, {"trails": 100})
+
+    assert len(problems) == 1
+    assert "trails" in problems[0]
+    assert "15.0%" in problems[0]
+
+
+def test_flag_drops_does_not_flag_a_drop_under_the_threshold():
+    assert check_output_quality.flag_drops({"trails": 91}, {"trails": 100}) == []
+
+
+def test_flag_drops_does_not_flag_a_drop_of_exactly_the_threshold():
+    """ "More than 10%" (the task's own framing) is exclusive - exactly 10%
+    should not fire, only strictly more."""
+    assert check_output_quality.flag_drops({"trails": 90}, {"trails": 100}, threshold=0.10) == []
+
+
+def test_flag_drops_flags_a_drop_of_just_over_the_threshold():
+    assert check_output_quality.flag_drops({"trails": 89}, {"trails": 100}, threshold=0.10) != []
+
+
+def test_flag_drops_respects_a_monkeypatched_module_constant_threshold(monkeypatch):
+    """Same default-bound-at-import-time gotcha guard as
+    topo_readability_sample()'s test above, applied to `threshold` here."""
+    monkeypatch.setattr(check_output_quality, "DROP_THRESHOLD", 0.5)
+
+    assert check_output_quality.flag_drops({"trails": 60}, {"trails": 100}) == []
+
+
+def test_flag_drops_suppresses_a_flagged_drop_when_a_matching_upstream_source_changed():
+    problems = check_output_quality.flag_drops({"trails": 85}, {"trails": 100}, changed_sources={"atc"})
+
+    assert problems == []
+
+
+def test_flag_drops_still_flags_when_the_changed_source_does_not_match():
+    """trails depends on "atc" (centerline/side_trails) - a reported
+    "opentrail" change cannot explain a trails drop."""
+    problems = check_output_quality.flag_drops({"trails": 85}, {"trails": 100}, changed_sources={"opentrail"})
+
+    assert len(problems) == 1
+
+
+def test_flag_drops_ignores_a_name_absent_from_current():
+    """A manifest that is entirely missing is already its own PROBLEM from
+    trails_verdict()/poi_verdict()/elevation_verdict() directly - reporting
+    it again here as a "100% drop" would just restate the same fact."""
+    assert check_output_quality.flag_drops({}, {"trails": 100}) == []
+
+
+def test_flag_drops_ignores_a_zero_baseline():
+    assert check_output_quality.flag_drops({"poi:crossing": 0}, {"poi:crossing": 0}) == []
+
+
+def test_baseline_verdict_is_skipped_when_no_baseline_exists_yet(tmp_path):
+    report = check_output_quality.baseline_verdict({"trails": 100}, tmp_path / "absent.json")
+
+    assert report["verdict"] is Verdict.SKIPPED
+
+
+def test_baseline_verdict_ok_when_there_are_no_drops(tmp_path):
+    path = tmp_path / "quality_baseline.json"
+    check_output_quality.save_baseline({"trails": 100}, path)
+
+    report = check_output_quality.baseline_verdict({"trails": 100}, path)
+
+    assert report["verdict"] is Verdict.OK
+
+
+def test_baseline_verdict_is_problem_when_a_drop_is_unexplained(tmp_path):
+    path = tmp_path / "quality_baseline.json"
+    check_output_quality.save_baseline({"trails": 100}, path)
+
+    report = check_output_quality.baseline_verdict({"trails": 50}, path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert len(report["problems"]) == 1
+
+
+# --- Orchestration: _safe_verdict / check_all / main --------------------------
+
+
+def test_safe_verdict_converts_an_exception_into_a_problem_report_instead_of_raising():
+    def boom():
+        raise ValueError("synthetic failure")
+
+    report = check_output_quality._safe_verdict("widget", boom)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert report["check"] == "widget"
+    assert "synthetic failure" in report["problems"][0]
+    assert report["counts"] == {}
+
+
+def test_safe_verdict_passes_through_a_normal_result_unchanged():
+    report = check_output_quality._safe_verdict("widget", lambda: {"check": "widget", "verdict": Verdict.OK})
+
+    assert report == {"check": "widget", "verdict": Verdict.OK}
+
+
+def test_check_all_returns_one_report_per_check(tmp_path, monkeypatch):
+    for attr in ("TRAILS_MANIFEST", "POI_MANIFEST", "ELEVATION_MANIFEST", "TOPO_QUADS_MANIFEST"):
+        monkeypatch.setattr(check_output_quality, attr, tmp_path / "absent.json")
+    monkeypatch.setattr(check_output_quality, "CENTERLINE_PATH", tmp_path / "absent.geojson")
+    monkeypatch.setattr(check_output_quality, "BASELINE_PATH", tmp_path / "absent_baseline.json")
+
+    reports = check_output_quality.check_all()
+
+    assert {r["check"] for r in reports} == {"trails", "poi", "elevation", "corridor", "topo_quads", "baseline"}
+
+
+def test_check_all_topo_quads_and_baseline_are_skipped_not_problem_when_nothing_has_run_yet(tmp_path, monkeypatch):
+    for attr in ("TRAILS_MANIFEST", "POI_MANIFEST", "ELEVATION_MANIFEST"):
+        monkeypatch.setattr(check_output_quality, attr, tmp_path / "absent.json")
+    monkeypatch.setattr(check_output_quality, "CENTERLINE_PATH", tmp_path / "absent.geojson")
+    monkeypatch.setattr(check_output_quality, "TOPO_QUADS_MANIFEST", tmp_path / "absent_topo.json")
+    monkeypatch.setattr(check_output_quality, "BASELINE_PATH", tmp_path / "absent_baseline.json")
+
+    reports = check_output_quality.check_all()
+
+    by_check = {r["check"]: r["verdict"] for r in reports}
+    assert by_check["topo_quads"] is Verdict.SKIPPED
+    assert by_check["baseline"] is Verdict.SKIPPED
+    assert by_check["trails"] is Verdict.PROBLEM
+
+
+@pytest.fixture
+def passing_pipeline(tmp_path, monkeypatch):
+    """A complete, self-consistent, passing set of manifests plus a real
+    (tiny, synthetic) centerline - enough for trails_verdict/poi_verdict/
+    elevation_verdict/corridor_verdict to all report OK. topo_quads and
+    baseline are left absent on purpose (SKIPPED, which never gates
+    exit_code) so this fixture stays focused on the four checks that always
+    run given this module's documented position in the pipeline."""
+    trails_manifest = tmp_path / "trails_manifest.json"
+    trails_manifest.write_text(
+        json.dumps(
+            {
+                "geojson": _artifact_entry(tmp_path / "trails.geojson", "geojson bytes", 10),
+                "fgb": _artifact_entry(tmp_path / "trails.fgb", "fgb bytes", 10),
+            }
+        )
+    )
+
+    poi_manifest = tmp_path / "poi_manifest.json"
+    poi_manifest.write_text(json.dumps(_poi_manifest(tmp_path, {"crossing": 0})))
+
+    elevation_manifest = tmp_path / "elevation_manifest.json"
+    elevation_entry = _artifact_entry(tmp_path / "elevation_profile.json", "elevation bytes", 0)
+    elevation_manifest.write_text(
+        json.dumps(
+            {
+                "path": elevation_entry["path"],
+                "sha256": elevation_entry["sha256"],
+                "point_count": 139219,
+                "null_elevation_count": 0,
+                "null_elevation_pct": 0.0,
+            }
+        )
+    )
+
+    centerline_path = tmp_path / "centerline.geojson"
+    _write_centerline(centerline_path)
+
+    monkeypatch.setattr(check_output_quality, "TRAILS_MANIFEST", trails_manifest)
+    monkeypatch.setattr(check_output_quality, "POI_MANIFEST", poi_manifest)
+    monkeypatch.setattr(check_output_quality, "ELEVATION_MANIFEST", elevation_manifest)
+    monkeypatch.setattr(check_output_quality, "CENTERLINE_PATH", centerline_path)
+    monkeypatch.setattr(check_output_quality, "TOPO_QUADS_MANIFEST", tmp_path / "absent_topo_manifest.json")
+    monkeypatch.setattr(check_output_quality, "BASELINE_PATH", tmp_path / "quality_baseline.json")
+
+
+def test_main_returns_zero_when_everything_passes(passing_pipeline):
+    assert check_output_quality.main() == 0
+
+
+def test_main_writes_a_new_baseline_only_when_everything_passes(passing_pipeline):
+    check_output_quality.main()
+
+    baseline = json.loads(check_output_quality.BASELINE_PATH.read_text())
+    assert baseline["counts"]["trails"] == 10
+    assert baseline["counts"]["elevation"] == 139219
+    assert baseline["counts"]["poi:crossing"] == 0
+
+
+def test_main_does_not_write_a_baseline_when_a_check_fails(passing_pipeline, tmp_path):
+    (tmp_path / "trails.geojson").write_text("tampered after the manifest recorded its hash")
+
+    exit_code = check_output_quality.main()
+
+    assert exit_code != 0
+    assert not check_output_quality.BASELINE_PATH.exists()
+
+
+def test_main_flags_a_baseline_drop_on_a_second_run(passing_pipeline, tmp_path):
+    """End-to-end: a first passing run records a baseline; a second run
+    whose shelter count collapsed 5 -> 1 (still >= poi_verdict's own
+    per-type minimum of 1, so poi_verdict ALONE reports OK on this second
+    run) must still fail overall - only the baseline comparison can catch a
+    real 80% decline that stays technically non-empty."""
+    assert check_output_quality.main() == 0
+
+    collapsed_poi_manifest = _poi_manifest(tmp_path, {"crossing": 0, "shelter": 1})
+    check_output_quality.POI_MANIFEST.write_text(json.dumps(collapsed_poi_manifest))
+
+    second_poi_report = check_output_quality.poi_verdict(check_output_quality.POI_MANIFEST)
+    assert second_poi_report["verdict"] is Verdict.OK  # confirms this is really testing check #4, not check #1
+
+    exit_code = check_output_quality.main()
+
+    assert exit_code != 0

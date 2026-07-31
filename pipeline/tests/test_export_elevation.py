@@ -180,6 +180,28 @@ def test_export_elevation_orders_disconnected_centerline_segments_by_trail_direc
     assert ordered[1].coords[-1] == pytest.approx((-80.0, 40.1))
 
 
+# --- cross-part gap diagnostic (logging only - does not affect sampling) ---
+
+
+def test_measure_cross_part_gaps_sums_and_maxes_known_synthetic_gaps():
+    """Pure-function test (no DuckDB/rasterio/filesystem involved) against a
+    hand-computable answer: three already-in-meters parts with a 30m gap
+    between the first pair (part_a ends at x=100, part_b starts at x=130)
+    and a 40m gap between the second pair (part_b ends at x=200, part_c
+    starts at x=240). sample_points_along_parts() never adds this real gap
+    distance to distance_mi (see its docstring) - this asserts exactly what
+    that leaves out: a 70m total across both gaps, and a 40m max single
+    gap, not the two conflated into one number."""
+    part_a = LineString([(0, 0), (100, 0)])
+    part_b = LineString([(130, 0), (200, 0)])
+    part_c = LineString([(240, 0), (300, 0)])
+
+    total_gap_m, max_gap_m = export_elevation.measure_cross_part_gaps([part_a, part_b, part_c])
+
+    assert total_gap_m == pytest.approx(70.0)
+    assert max_gap_m == pytest.approx(40.0)
+
+
 # --- DEM coverage gaps -----------------------------------------------------
 
 
@@ -202,6 +224,37 @@ def test_export_elevation_handles_a_gap_in_dem_coverage_without_crashing(tmp_pat
     assert any(e is None for e in elevations), "points past the DEM tile's extent should be null, not crash the run"
     assert any(e is not None for e in elevations), "points within DEM coverage should still get a real value"
     assert manifest["point_count"] == len(profile)
+
+
+def test_export_elevation_manifest_reports_null_elevation_count_and_percentage(tmp_path, monkeypatch):
+    """LAUNCH_CHECKLIST.md currently claims '0% DEM gaps', but nothing was
+    counting that fraction run-over-run, so a regression from 0% could pass
+    unnoticed. The manifest (not just a transient print line, so it's
+    diffable run-over-run) must carry both how many and what percentage of
+    points came back with a null elevation_ft for this real, correctly-
+    handled DEM coverage gap - reusing the same partial-coverage fixture as
+    test_export_elevation_handles_a_gap_in_dem_coverage_without_crashing,
+    which already confirms it produces some null points."""
+    out_path, manifest_path = _setup(
+        tmp_path,
+        monkeypatch,
+        [(-74.0, 41.0), (-73.0, 41.5)],
+        [("XX/tile.tif", (-74.1, 40.9, -73.6, 41.3), 900.0)],  # only covers the western half of the line
+    )
+
+    manifest = export_elevation.main()
+
+    profile = json.loads(out_path.read_text())
+    expected_count = sum(1 for p in profile if p["elevation_ft"] is None)
+    assert expected_count > 0, "fixture must actually produce some null points, or this test proves nothing"
+    expected_pct = expected_count / len(profile) * 100
+
+    assert manifest["null_elevation_count"] == expected_count
+    assert manifest["null_elevation_pct"] == pytest.approx(expected_pct, abs=0.01)
+
+    on_disk_manifest = json.loads(manifest_path.read_text())
+    assert on_disk_manifest["null_elevation_count"] == expected_count
+    assert on_disk_manifest["null_elevation_pct"] == pytest.approx(expected_pct, abs=0.01)
 
 
 def test_export_elevation_samples_correctly_from_a_dem_tile_in_a_non_wgs84_projection(tmp_path):

@@ -33,6 +33,10 @@ Pipeline, mirroring patterns already established elsewhere in this repo:
    the interval carries straight across that gap as if the pieces touched,
    rather than adding the real (unmeasured) gap distance - a bounded
    approximation worth naming plainly, not a crash risk.
+   measure_cross_part_gaps() quantifies (never corrects) that same gap
+   distance - main() logs the total and largest single gap so the size of
+   the approximation is visible run-over-run, not just described in prose
+   here.
 5. Each sample point is reprojected back to lon/lat and looked up against
    the indexed DEM tiles via ElevationSampler, which reprojects each
    tile (see fetch_elevation.py's
@@ -42,11 +46,15 @@ Pipeline, mirroring patterns already established elsewhere in this repo:
    class's docstring for why that's the right "lighter scale" here). A point
    no indexed tile covers - a real DEM coverage gap - gets a null
    elevation, not a crash; it's kept in the output (not dropped) so the
-   distance axis a client-side chart draws from stays continuous.
+   distance axis a client-side chart draws from stays continuous. main()
+   counts what fraction of a run's points land null so a coverage
+   regression is visible in elevation_manifest.json, not just noticed by
+   eye.
 
 Output: a compact JSON array of {distance_mi, elevation_ft} records, sorted
 by distance (guaranteed by construction), to data/processed/
-elevation_profile.json, with a SHA256 content hash in data/processed/
+elevation_profile.json, with a SHA256 content hash and DEM-null-coverage
+counts (null_elevation_count, null_elevation_pct) in data/processed/
 elevation_manifest.json - matching export_trails.py's flat single-artifact
 manifest shape (this module has exactly one output artifact, unlike
 export_poi.py's per-poi_type or export_trails.py's geojson+fgb pair).
@@ -406,18 +414,44 @@ class ElevationSampler:
             vrt.src_dataset.close()
 
 
-def build_profile(centerline_path: Path, elevation_index_path: Path, interval_m: float) -> list[dict]:
+def measure_cross_part_gaps(parts_meters: list[LineString]) -> tuple[float, float]:
+    """Diagnostic-only: measures the real, straight-line distance between
+    each ordered/reprojected (EPSG:5070 meters) part's end and the next
+    part's start - exactly the gap sample_points_along_parts() intentionally
+    does NOT add to its cumulative distance (see module docstring point 4
+    and that function's own docstring). Does not affect sampling or output
+    records at all; purely quantifies how big that already-documented
+    approximation is on a given run.
+
+    Returns (total_gap_m, max_gap_m) summed/maxed across every consecutive
+    pair of parts - (0.0, 0.0) for 0 or 1 parts, where there's no gap to
+    measure."""
+    total_gap_m = 0.0
+    max_gap_m = 0.0
+    for prev_part, next_part in zip(parts_meters, parts_meters[1:]):
+        gap = Point(prev_part.coords[-1]).distance(Point(next_part.coords[0]))
+        total_gap_m += gap
+        max_gap_m = max(max_gap_m, gap)
+    return total_gap_m, max_gap_m
+
+
+def build_profile(centerline_path: Path, elevation_index_path: Path, interval_m: float) -> tuple[list[dict], tuple[float, float]]:
     """Orchestrate the full merge -> order -> sample -> DEM-lookup pipeline
-    (see module docstring for the step-by-step rationale). Returns records
-    already sorted by distance_mi (guaranteed by construction - see
-    sample_points_along_parts), each with a null elevation_ft for any point
-    outside every downloaded DEM tile's coverage."""
+    (see module docstring for the step-by-step rationale). Returns
+    (records, cross_part_gaps):
+    - records: sorted by distance_mi (guaranteed by construction - see
+      sample_points_along_parts), each with a null elevation_ft for any
+      point outside every downloaded DEM tile's coverage.
+    - cross_part_gaps: the (total_gap_m, max_gap_m) tuple from
+      measure_cross_part_gaps() - a diagnostic main() logs, not a value
+      reflected in any record's distance_mi."""
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
 
     merged = load_merged_trail_line(con, centerline_path)
     parts_wgs84 = ordered_oriented_parts(merged)
     parts_meters = reproject_lines_to_meters(con, parts_wgs84)
+    cross_part_gaps = measure_cross_part_gaps(parts_meters)
     samples_meters = sample_points_along_parts(parts_meters, interval_m)
     lonlats = reproject_points_to_wgs84(con, samples_meters)
 
@@ -435,17 +469,27 @@ def build_profile(centerline_path: Path, elevation_index_path: Path, interval_m:
         }
         for (distance_m, _pt), elevation_m in zip(samples_meters, elevations_m)
     ]
-    return records
+    return records, cross_part_gaps
 
 
 def main() -> dict:
     print("Merging + ordering the real centerline...")
-    records = build_profile(CENTERLINE_PATH, ELEVATION_INDEX_PATH, SAMPLE_INTERVAL_METERS)
+    records, (total_gap_m, max_gap_m) = build_profile(CENTERLINE_PATH, ELEVATION_INDEX_PATH, SAMPLE_INTERVAL_METERS)
     density = len(records) / (records[-1]["distance_mi"] or 1) if records else 0
     print(
         f"  {len(records)} sample points at {SAMPLE_INTERVAL_METERS}m intervals "
         f"(~{density:.1f}/mile, vs. {HALF_MILE_MARKER_COUNT} half-mile markers at ~2/mile)."
     )
+    print(
+        f"  Cross-part gaps not counted in distance_mi (real, unmeasured space "
+        f"between disconnected centerline pieces - see module docstring point 4): "
+        f"total {total_gap_m:.1f}m ({total_gap_m / METERS_PER_MILE:.3f}mi), "
+        f"max single gap {max_gap_m:.1f}m ({max_gap_m / METERS_PER_MILE:.3f}mi)."
+    )
+
+    null_elevation_count = sum(1 for r in records if r["elevation_ft"] is None)
+    null_elevation_pct = (null_elevation_count / len(records) * 100) if records else 0.0
+    print(f"  {null_elevation_count} points with no DEM coverage ({null_elevation_pct:.2f}% of {len(records)}).")
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(json.dumps(records))
@@ -454,6 +498,8 @@ def main() -> dict:
         "path": str(OUT_PATH),
         "sha256": sha256_file(OUT_PATH),
         "point_count": len(records),
+        "null_elevation_count": null_elevation_count,
+        "null_elevation_pct": round(null_elevation_pct, 2),
     }
     MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
     MANIFEST_PATH.write_text(json.dumps(manifest, indent=2))

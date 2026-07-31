@@ -1,267 +1,129 @@
-# Feature Gating & Experimentation
+# OurHike — Feature Gating & Experimentation (Feature Design Draft v1)
 
-## Why this matters for OurHike
+Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](../OurHikeValues.md). Overlaps deliberately with ROADMAP.md's Deferred "Multi-club admin/config tooling" — per-chapter flag control is one of the first real things that tooling needs, so this doc treats it as the same effort, not a competing one. Post-MVP: nothing here blocks the map, safety features, or launch.
 
-Feature gating is the right platform-level investment for OurHike because it:
+**Why now, not later:** the ask itself is the reasoning — a working feature-gate makes every feature built *after* it land with real evidence behind it instead of a guess, so the earlier it exists post-launch, the more of the roadmap benefits. Recommend building this right after MVP launch stabilizes, not deferred indefinitely with everything else in Phase 5+.
 
-- makes every future feature safer to ship.
-- lets local chapters opt in only when they are ready.
-- allows evidence to drive product decisions instead of guesswork.
-- keeps wild experiments from affecting the whole trail network.
-- enables transparent communication for hikers who are seeing a new experience.
-
-The goal is not to gate the app itself, but to gate feature rollout. The default experience must remain the current production behavior, and any gating or experiment failure must degrade gracefully to stable functionality.
+**What this needs to deliver, restated up front:** local chapters can opt features in or out for their own region, independent of app-code changes. A/B/n experiments run against real evidence (club, role, device, trail segment, hike type as targeting dimensions), with sampling/holdouts to ramp safely. Results land in dashboards that explain findings, not raw dumps. Every failure mode - missing config, evaluation bug, unreachable backend - defaults to stable production behavior, never an error state, and never blocks the app. A hiker behind a gate can always find out.
 
 ---
 
-## Requirements
+## 1. The non-negotiable constraint, stated first because it drives every other decision
 
-1. Local chapter control
-   - Chapters should be able to opt features in or out for their own region.
-   - Chapter targeting must be a first-class dimension in the gate model.
+**A broken, unreachable, or misconfigured gate must never be able to stop the app from working — especially mid-hike, with no signal.** This shapes the architecture more than the choice of tool does. Three consequences, all hard requirements, not preferences:
 
-2. Experimentation and evidence
-   - Support A/B/n experiments with clear metrics.
-   - Allow multiple influencers: club, user role, device type, trail section, hike type, and other attributes.
-   - Support sampling and holdouts so we can ramp features safely.
+- **Evaluation must never require a live network call.** Not "should be fast when offline" — must be structurally incapable of blocking on one. A hiker locked out of the map because a flag-evaluation request timed out on a ridge with no signal is a real, unacceptable failure mode this design has to make impossible, not just unlikely.
+- **Every failure mode resolves to the same default: current production behavior.** Missing cache, stale cache, malformed payload, unreachable backend, an unknown flag key, a bug in the evaluation code itself - all of them fall through to "act like the flag doesn't exist," not to an error state, a blank screen, or a guess. One fallback path, applied universally, not a per-flag judgment call that's easy to get wrong under pressure later. Log the failure for diagnostics; never surface it to the hiker.
+- **The fallback default lives in the app bundle itself, not in any fetched config.** If it were part of the synced payload, a bad sync could corrupt the fallback along with everything else. It has to be a hardcoded constant shipped with the app - the one thing that's true even if literally nothing else is reachable.
 
-3. Dashboard-driven analysis
-   - Provide clear dashboards for results, not raw data dumps.
-   - Translate findings into easy-to-read outcomes: which variant performed better, where, and why.
+## 2. Architecture: the backend mediates, the client never talks to the flag tool directly
 
-4. Fail-safe defaults
-   - The app must never be stopped by a gate, especially on trail.
-   - Any evaluation error or missing config must default to the stable production path.
+This is the design choice that actually delivers section 1, not the tool choice - the tool matters less than what nothing on the hiker's phone is ever allowed to depend on.
 
-5. Clear communication
-   - Users should know when they are behind a feature gate or participating in an experiment.
-   - Messaging should explain that the feature is being tested and what to expect.
+```
+[Self-hosted flag/experiment tool]
+        |  (backend polls periodically, or on each authenticated session)
+        v
+[OurHike FastAPI backend]  -- resolves club/chapter + user attributes into a targeting context,
+        |                      caches the last-good evaluation result server-side too
+        |  (bundled into the same sync the client already does for map/report data)
+        v
+[Client - PWA/Capacitor]  -- writes the flag payload into the same IndexedDB cache
+        |                      already used for offline map data (same mechanism, not a new one)
+        v
+[FlagEvaluation.evaluate(key)]  -- a pure, synchronous, local function. Reads only the cache.
+                                    Cache missing/stale/malformed/unreachable -> hardcoded default.
+                                    Never awaits anything. Cannot throw in a way that breaks a caller.
+```
 
----
+Why route through the backend instead of the client SDK talking to the flag tool directly (the vendor-default setup for every tool researched below): it keeps a third-party JS SDK and its network behavior out of an app whose entire value proposition is reliable offline operation, gives one place (the backend) to add retries/circuit-breaking/logging instead of every client needing its own, and makes per-chapter targeting a server-side lookup against data the backend already owns (club membership) rather than something the client has to know how to compute. The backend already syncs report/closure/preference data on the same rhythm - this is one more field in that same payload, not a new sync path.
 
-## Recommendation
+**Keep the evaluation call-site decoupled from whichever tool sits behind it.** Client and backend code should call a small OurHike-owned interface (`evaluate(key, context) -> variant`), not GrowthBook's SDK directly - either a thin internal wrapper or the real [OpenFeature](https://openfeature.dev/) standard (a vendor-neutral CNCF spec built for exactly this). The tool behind that interface is a swappable implementation detail, not something every call site needs to know about - relevant given section 3 below is a strong recommendation, not a permanent commitment.
 
-### Primary recommendation: GrowthBook (self-hosted)
+## 3. Tool recommendation: GrowthBook (self-hosted), PostHog as the credible alternative
 
-**GrowthBook is the strongest fit for OurHike's needs.** It is open source, supports both feature flags and experimentation, and includes analysis dashboards for A/B tests.
+Researched four real candidates (GrowthBook, Unleash, Flagsmith, PostHog) against: self-hostable under a genuinely open license, works with zero live network dependency once synced, produces dashboards that explain *why* a result is significant (not just raw counts), and fits this project's established "boring, low-maintenance, reuse what we already run" preference (see TECHNICAL_ARCHITECTURE.md's DuckDB/R2 choices for the same instinct applied elsewhere).
 
-Why GrowthBook?
+**Recommendation: [GrowthBook](https://github.com/growthbook/growthbook)**, self-hosted, MIT-licensed core.
 
-- Built for experimentation, not just flags.
-- Supports percentage rollouts, phased releases, and feature flag targeting by attributes.
-- Lets us define metrics and view experiment results in dashboards.
-- Open-source server and SDKs are available for both browser and Python.
-- Can be self-hosted in the same volunteer-friendly stack as the rest of the project.
+- **The offline-safety philosophy is close to a direct match, not something bolted on.** GrowthBook states its own design principle as "your application should never depend on GrowthBook being available" - SDKs cache flag definitions with stale-while-revalidate semantics and keep evaluating correctly if connectivity drops entirely. That's the same posture section 1 requires, from the tool's own stated intent, not something OurHike has to fight the tool to get.
+- **Its experimentation *analysis* is warehouse-native SQL - and OurHike already has a usable warehouse for that half.** For the statistical analysis (Bayesian/frequentist, sequential testing, guardrail metrics on the free tier - see the cost section below for what's Enterprise-only), GrowthBook queries whatever SQL source you point it at rather than running its own OLAP store - pointing it at the existing Supabase Postgres avoids standing up a *second* analytics database on top of the operational one below.
+- **Real cost, stated plainly:** two things, not one - OurHike needs to design and populate its own event-logging schema in Postgres (which experiment ran, which variant, which outcome events - see section 6 below for a starting taxonomy) before GrowthBook's dashboards have anything to analyze, *and* (see cost section) GrowthBook's own operational store is a separate database it does bring with it.
 
-How it helps OurHike:
+**PostHog is the honest alternative, not a lesser option - a real trade-off, not a tiebreaker.** Also MIT-licensed, self-hostable, also supports local/bootstrapped offline evaluation. The difference: PostHog owns its *own* event ingestion (call `capture()`, PostHog stores and indexes it in a ClickHouse instance it provisions for you) - meaningfully less setup work to get a first experiment running end-to-end, because there's no schema to design before the first dashboard has data. The cost is a heavier self-hosted stack (ClickHouse plus supporting services, more infrastructure than GrowthBook's footprint below, not less), and an experimentation feature that's a strong module on a broader analytics platform rather than the platform's central specialty. If OurHike wants one tool to also eventually cover general product analytics and session replay - not just this ask - PostHog is worth revisiting; for "get a rigorous, safe feature-gate shipped with the least new infrastructure," GrowthBook is still the better fit, just not a *zero*-new-infrastructure fit - see below.
 
-- Local chapters can be a targeting attribute (`chapter_id`, `club_id`, `region`).
-- A/B tests can use multiple attributes to measure influence across chapters, hiker type, device, and route.
-- Sampling is built in: start with 10% of eligible users for a new experience, then widen.
-- Data lives in our control, avoiding vendor lock-in.
+### Cost, specifically (corrected after checking, not assumed)
 
-### Secondary option: Unleash + Metabase/Superset
+- **The software: genuinely $0.** MIT-licensed self-hosted core, unlimited seats, no GrowthBook licensing fee - you only pay for the infrastructure you run it on.
+- **But GrowthBook's own operational data (flag definitions, experiment configs, user accounts) requires MongoDB specifically - not Postgres, despite the warehouse-native analysis side above.** This is a real, separate piece of infrastructure OurHike doesn't currently run. Small-scale (a few hundred flags/experiments) needs under 512MB storage and shared/modest CPU-RAM - realistically free-tier-compatible on MongoDB Atlas's perpetual free M0 tier, or a small container alongside wherever the FastAPI backend ends up hosted (Fly.io/Render/Railway, the same shortlist `LAUNCH_CHECKLIST.md` already names). Not expensive, but not "reuse what we already run" the way the warehouse side is.
+- **The GrowthBook app server itself** (NextJS + Express + a Python stats engine, one Docker image) is similarly small at this scale - likely marginal cost added to whatever's already hosting the backend, possibly free-tier-compatible on its own.
+- **Free tier ceiling worth knowing: 1 project, 2 environments.** This doc's per-chapter design (section 4) uses *targeting attributes* within one project (`club_id` as a rule), not separate GrowthBook projects per chapter - deliberately, so it stays inside the free tier. If that ever changes to "each chapter wants its own fully separate project," that crosses into Enterprise licensing (custom pricing, contact sales) - worth knowing now so nobody builds toward that shape by accident later.
+- **Enterprise-only, and worth flagging given the safety framing in section 1:** guardrail metrics and holdout experiments - GrowthBook's own automated "is this experiment quietly hurting a metric we care about" checks - are gated behind a paid Enterprise license, not available self-hosted for free. For v1, that means guardrail-style safety has to be a manual watch (someone checking error/crash rates during a rollout) rather than an automated stop, until/unless Enterprise licensing is worth it later. SSO/SCIM are also Enterprise-only but low-relevance here - a handful of trusted maintainers logging into GrowthBook's own dashboard directly doesn't need automated identity-provider sync.
 
-If we want a leaner first step for pure feature gating, **Unleash** is a solid open-source feature flag server with strong targeting and rollout strategies.
+**Ruled out:** Unleash and Flagsmith are both credible, real open-source options, but neither is built around experimentation analysis the way GrowthBook is - they're feature-flag platforms first, with A/B analysis as a lighter add-on. Given "good insights is paramount" was the explicit ask, not just "ship flags safely," the two tools built experimentation-first were the right shortlist. (A third name, Flagr, came up in a separate independent pass at this same question - not included here since it wasn't independently verified against the criteria above the way these four were; worth a real look before ruling in or out, not a name to carry forward on faith.)
 
-Why Unleash?
+## 4. Per-chapter control
 
-- Open-source and mature.
-- Supports strategy-based targeting by user attributes and percentage rollout.
-- Good when the immediate need is safe rollout rather than deep experiment analytics.
+Each club/chapter gets a targeting attribute the backend already knows (club membership, once multi-club admin exists even in minimal form) - GrowthBook's targeting rules key off arbitrary attributes passed at evaluation time, so "NYNJTC hikers see the new elevation chart, ATC hikers don't yet" is a targeting rule, not a code branch. A chapter that wants zero involvement gets zero involvement by default - flags default to "off/current behavior" for any club that hasn't opted in, matching "easy and up to local chapters if they want it" directly: opting in is a rule a club admin sets, not a decision that touches app code.
 
-Analytics would be added separately via a dashboard tool such as **Metabase** or **Apache Superset**.
+**Minimum useful targeting dimensions** (what GrowthBook's rules should be able to key off, at launch): `club_id`/`chapter_id`, `user_id` or anonymous device id, `role` (hiker / maintainer / club_admin), `device_type` (web / iOS / Android), `trail_segment` or region, `app_version`. Concrete worked example of what a rule set looks like: `club_id = atc` → `new-closure-flow` enabled 100%; `club_id = nynjtc` → same flag at 25%; everyone else → stable control. This is standard GrowthBook rule configuration, not custom code OurHike has to build.
 
-### Alternative option: Flagr for strong A/B capabilities
+**For unauthenticated hikers** (browsing needs no account, per this project's own standing rule), chapter can't come from a login - infer it from the downloaded trail package/selected region instead, same signal the client already has for other region-scoped behavior.
 
-**Flagr** is worth considering if we want a single open-source platform with built-in experiment analytics and statistical reporting. It is less widely known than GrowthBook, but it delivers both flags and A/B evaluation.
+## 5. Clear communication when a hiker is behind a gate
 
----
+Two layers, not one, because they serve different moments:
 
-## Strong recommendation summary
+- **In-context, at the point of use:** a small, non-blocking marker directly on or near the gated UI element itself - e.g. a quiet "Preview" tag, not a popup or interrupt. This is what actually satisfies "clear communication" in the moment it matters, and it's a different thing from a notification: it's passive, local information sitting where a hiker's eyes already are, not something pushed at them. Doesn't conflict with the app's standing anti-interruption posture (see below) because nothing fires, nothing requires acknowledgment, nothing appears unless they're already looking at the affected feature.
+- **On request, for the full picture:** a quiet, permanent Settings entry ("Experimental features: 2 active" or similar) that opens a detail view listing exactly which flags are active for them and what each one changes, in plain language. Consistent with the app's existing UX principle, already stated elsewhere in this project: "use the app less often, and find information faster when you do... no reason to manufacture engagement" (HIKER_SAFETY.md) - same posture as how the app already handles staleness indicators elsewhere: visible on request, never in the way.
 
-1. Start with **GrowthBook self-hosted** for integrated flags + experiments.
-2. Use **GrowthBook dashboards** for initial experiment reporting.
-3. Complement with **Metabase** or **Superset** on top of Postgres for business-level dashboards if we want additional query power.
-4. Use **OpenFeature** or a small internal abstraction layer to keep the runtime evaluation implementation decoupled from the selected backend.
+## 6. Evidence: what to track, and where results show up
 
----
+**A starting event taxonomy** (answers what to log without over-specifying before real features exist to measure against - expect this to evolve once there's a first real experiment):
 
-## Proposed architecture
+- `feature_gate_exposed` - a user was evaluated by the gate (the raw exposure count experiments are measured against).
+- `feature_gate_viewed` - the user actually saw the gated UI, not just got assigned a variant.
+- `feature_gate_action` - the user performed the core action under test.
+- `feature_gate_error` - evaluation fell through to the fallback default (this is the signal that tells you section 1's safety net is firing in practice, not just in theory - worth its own dashboard panel from day one).
 
-### 1. Feature gate model
+Each event carries `feature_key`, `variant`, `user_id`/anonymous id, `club_id`, relevant hike/segment context, `app_version`, and a timestamp - written to Postgres, which is what GrowthBook's warehouse-native analysis queries directly (section 3). **What to measure first**, once there's a real experiment running: adoption/engagement for the gated feature, the `feature_gate_error` rate specifically, chapter-level differences, and any usability regression - in that order of priority, safety signal before growth signal.
 
-Define feature gates as first-class objects.
+## Data model additions
 
-Example fields:
+```
+FeatureFlagCache            (client-side, IndexedDB - same mechanism as offline map data)
+  flags: { [key]: { variant: string, payload: any } }
+  synced_at: timestamp
+  last_sync_failed_at: timestamp | null   (drives a quiet staleness indicator only -
+                                            never affects evaluation itself)
 
-- `key`: stable feature identifier, e.g. `new-closure-flow`.
-- `description`: why the gate exists and what we are testing.
-- `defaultVariant`: the stable, production-safe behavior.
-- `rules`: ordered rules that target chapters, user roles, device types, or other attributes.
-- `rolloutPct`: how much traffic is exposed when a rule matches.
-- `variants`: named variants such as `control`, `enabled`, or `preview`.
-- `status`: draft / running / paused / retired.
+FlagEvaluation.evaluate(key, context)    (client-side, pure, synchronous, offline-safe by construction)
+  -> cache has key AND cache is well-formed AND synced_at is recent enough:
+       return cache.flags[key].variant
+  -> anything else at all (missing, stale, malformed, key unknown):
+       return HARDCODED_DEFAULTS[key]    (shipped in the app bundle, never fetched, never overridden)
 
-### 2. Targeting dimensions
+ClubFlagTarget               (backend, Postgres - extends the eventual multi-club admin model)
+  club_id, flag_key, enabled: bool        (opt-in per chapter, defaults to false/current-behavior)
 
-At minimum, support:
+FeatureGateEvent              (backend, Postgres - what GrowthBook's warehouse-native analysis queries)
+  event_type: exposed | viewed | action | error
+  feature_key, variant, user_id, club_id, hike_id | segment_id, app_version, timestamp
+```
 
-- `chapter_id`/`club_id`
-- `user_id` / anonymous device id
-- `role` (`hiker`, `maintainer`, `club_admin`)
-- `device_type` (`web`, `ios`, `android`)
-- `trail_segment` / `region`
-- `app_version`
-- `locale`
+## Phased rollout
 
-This supports multiple influencers and lets us measure whether an experiment behaves differently by chapter, device, or user role.
+Three phases, deliberately ordered so the safety net exists before anything depends on it. Nothing here blocks MVP launch.
 
-### 3. Safe fallback logic
+**Phase 1 - the gate itself, with no experiment running on it.** Define the manifest format, add the backend endpoint that serves it, and build the client runtime that caches it and evaluates locally. Ship `HARDCODED_DEFAULTS` and the fallback path in section 1, and give every gate a stable `control` variant. The goal of this phase is that the fallback is proven before a single hiker is behind a real flag - including the `feature_gate_error` signal, so a fallback firing in production is visible rather than silent.
 
-The core safety rule is:
+**Phase 2 - per-chapter targeting.** Extend the profile model with `club_id`/`chapter_id`, add chapter-scoped rules, and give chapter admins a way to set them (a maintainer editing GrowthBook's dashboard directly is enough to start - see the open question below). Add the two communication surfaces from section 5.
 
-- evaluate the gate when possible;
-- if evaluation fails, use the stable control/default path;
-- never allow a flag error to prevent the app from loading or the feature from rendering.
+**Phase 3 - evidence.** Instrument the event taxonomy from section 6, stand up self-hosted GrowthBook against the event store, and run the first A/B test on a deliberately low-risk surface - something where being wrong costs nothing, since the point of the first experiment is testing the measurement apparatus, not the feature. Review results before widening anything.
 
-Implementation guidance:
+## Open questions (for you, not decided here)
 
-- Keep feature flag evaluation off the critical app startup path when possible.
-- If config is unavailable, treat the user as `control` and continue.
-- Log failure details for diagnostics, but do not expose them to the hiker.
-- For offline clients, cache the latest feature manifest and use it; if stale or missing, continue with stable behavior.
-
-### 4. Offline-first support
-
-Because OurHike is offline-capable, the gate system must also be tolerant of offline or intermittent connectivity.
-
-- Fetch a minimal gate manifest on app startup or sync.
-- Cache it locally in IndexedDB or the service worker cache.
-- Evaluate gates locally with the cached manifest.
-- If the device is offline or the manifest cannot be fetched, use the last-known config or stable default.
-
-This keeps gating safe on trail and still lets chapters control behavior when the hiker has had at least one online sync.
-
-### 5. Chapter-level control
-
-Make chapter/club an explicit targeting attribute.
-
-- Store `club_id` or `chapter_id` on the user profile when available.
-- For unauthenticated hikers, infer chapter from the downloaded trail package or selected region.
-- Let chapter admins choose gate settings for their own region.
-- Use chapter-level rules as a first pass, then apply user-level or percentage-based overrides.
-
-This means a chapter can say:
-
-- `club_id = atc` gets `new-closure-flow` enabled for 100%.
-- `club_id = nynjtc` gets `new-closure-flow` enabled for 25%.
-- everyone else sees the stable control.
-
-### 6. Transparently communicate to users
-
-Every gate should carry a presentation contract.
-
-- If the user is in a non-control variant, show a short banner or badge.
-- Example text: "This feature is currently in preview for your chapter. If you notice anything unexpected, please let us know." 
-- If local chapter admins are running experiments, consider a chapter-specific note like: "Your chapter has enabled an experimental hiking route preview for this trail."
-- For any new gate, define a `helpUrl` or `learnMore` endpoint so the app can link to a short explanation.
-
----
-
-## Evidence & analytics
-
-### Event tracking
-
-Track events tied to gates and user outcomes.
-
-Primary event categories:
-
-- `feature_gate_exposed` - user evaluated by the gate.
-- `feature_gate_viewed` - user saw the gated UI.
-- `feature_gate_action` - user performed the core action under test.
-- `feature_gate_error` - evaluation or fallback occurred.
-- `feature_gate_outcome` - whether the result was positive, negative, or neutral.
-
-Example event payload:
-
-- `feature_key`
-- `variant`
-- `user_id` or anonymous identifier
-- `club_id` / `chapter_id`
-- `hike_id` / `segment_id`
-- `app_version`
-- `device_type`
-- `timestamp`
-- outcome-specific attributes (e.g. `reported_closure`, `route_saved`)
-
-### Dashboard & analysis
-
-GrowthBook can consume the event store and deliver built-in experiment dashboards.
-
-For additional business-level analysis, add an open-source BI layer:
-
-- **Metabase** for simple query + dashboard creation.
-- **Apache Superset** if we want more advanced SQL exploration.
-
-The fastest path is:
-
-1. Store feature events in Postgres or a dedicated analytics dataset.
-2. Let GrowthBook read a derived metric table for experiment reporting.
-3. Use Metabase/Superset for chapter-level, trail-level, and cohort reports.
-
-### What to measure first
-
-- adoption and engagement for the gated feature.
-- crash / fallback / error rates.
-- chapter-level performance differences.
-- retention of users exposed to the experiment.
-- any safety or usability regressions.
-
----
-
-## Phased rollout plan
-
-### Phase 1: Basic gate infrastructure
-
-- Add a `features/FEATURE_GATING.md` design doc.
-- Define a simple feature gate manifest format.
-- Add a backend endpoint to serve gate config and a client runtime to cache it.
-- Implement the safe fallback pattern in the client and backend.
-- Add a stable `control` variant for every new gate.
-
-### Phase 2: Chapter targeting and local control
-
-- Extend the profile model with `club_id` / `chapter_id`.
-- Allow chapter-level gate rules in the backend.
-- Add an admin UI or simple config mechanism for chapter admins to control their own gates.
-- Surface transparent messages for users behind gates.
-
-### Phase 3: Evidence collection and dashboards
-
-- Instrument gate exposure and outcome events.
-- Self-host GrowthBook, connect it to the event store, and build initial dashboards.
-- Run the first A/B test on a low-risk surface.
-- Review results before widening the rollout.
-
----
-
-## Open questions
-
-- Should the first rollout be a self-hosted GrowthBook server or a smaller Unleash deployment?
-- How will club/chapter ownership be represented for offline users who are not signed in?
-- Which early metrics are the minimum required before a feature graduates from experiment to stable?
-- How will we minimize the privacy footprint of event tracking while preserving useful experiment signal?
-
----
-
-## Why this is the right opportunity now
-
-A feature gate platform is not just a nice-to-have add-on. For OurHike it is a leverage point:
-
-- It protects safety-sensitive features from broad release too early.
-- It gives chapters agency over their own rollout pace.
-- It makes product decisions measurable and defensible.
-- It supports the projects values of low-maintenance, open-source, and trustworthy software.
-
-If we build it early, every later feature becomes easier to ship and safer to operate.
+- **Sync cadence and "recent enough" threshold** for FlagEvaluation's staleness check - needs to balance getting hikers onto new experiments promptly against not treating a hiker who's been offline for a multi-day stretch as suddenly ineligible for cached flags they were already correctly assigned to. A field-testing question, similar to the wrong-way alert's thresholds.
+- **Who administers flags day to day** - a full admin UI is real scope; a minimal v1 (a maintainer editing GrowthBook's own dashboard directly, backend just proxies/caches) is probably enough to start, with a proper in-app "chapter admin" surface as later work once multi-club tooling exists for real.
+- **Self-hosting GrowthBook alongside the existing backend** - same host as FastAPI, or a separate small service (which also decides whether the new MongoDB requirement rides alongside it or lives separately)? An infra/ops choice for whoever sets up hosting, not a data-model question.
+- **How to minimize the privacy footprint of the event taxonomy above** while still preserving useful experiment signal - this project has a consistently privacy-conscious stance elsewhere (IDENTITY_AND_PRIVACY.md); worth a real pass once real events exist, not assumed safe by default.

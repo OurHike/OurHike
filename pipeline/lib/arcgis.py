@@ -32,9 +32,7 @@ def fetch_layer_geojson(layer_url: str) -> dict:
         if not batch:
             break
         features.extend(batch)
-        if len(batch) < PAGE_SIZE:
-            break
-        offset += PAGE_SIZE
+        offset += len(batch)
     return {"type": "FeatureCollection", "features": features}
 
 

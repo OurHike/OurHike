@@ -96,16 +96,15 @@ def con():
     return c
 
 
-def test_export_poi_clips_features_outside_the_corridor(tmp_path, monkeypatch, con):
+def test_export_poi_clips_features_outside_the_corridor(tmp_path, con):
     """A synthetic feature far from the trail should not appear in output -
     mirrors spike_corridor.py's own clip step, on tiny synthetic data rather
     than the full real 14GB dataset."""
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()
     _write_centerline(raw_dir / "centerline.geojson")
-    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
 
-    export_poi.build_corridor(con)
+    export_poi.build_corridor(con, raw_dir / "centerline.geojson")
 
     unified = [
         {
@@ -192,6 +191,32 @@ def test_export_poi_crossing_layer_is_present_but_empty_pending_nhd_ingestion(tm
 
     fgb_count = con.execute(f"SELECT COUNT(*) FROM ST_Read('{fgb_path.as_posix()}')").fetchone()[0]
     assert fgb_count == 0
+
+
+def test_export_poi_a_non_crossing_type_returning_zero_features_fails_the_run(tmp_path, monkeypatch, con):
+    """Unlike `crossing` (intentionally always empty pending NHD ingestion -
+    see test_export_poi_crossing_layer_is_present_but_empty_pending_nhd_ingestion),
+    every other poi_type is expected to be non-empty for real AT corridor
+    data. A genuinely broken source - e.g. shelters.geojson silently coming
+    back with zero features after an upstream schema change - must fail the
+    run loudly instead of shipping a structurally-identical-to-crossing empty
+    layer with no signal anything went wrong."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    _write_fc(raw_dir / "shelters.geojson", [])  # simulate shelter silently returning 0 features
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+
+    with pytest.raises(SystemExit) as exc_info:
+        export_poi.main()
+
+    assert exc_info.value.code == 1
+    # The manifest is the "this run succeeded" artifact - it must not be
+    # written when the run is incomplete, matching fetch_all.py's pattern.
+    assert not (out_dir / "manifest.json").exists()
 
 
 def test_export_poi_opentrail_seasonal_water_tag_is_not_treated_as_shelter(tmp_path, monkeypatch, con):

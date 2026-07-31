@@ -21,6 +21,8 @@ import duckdb
 import rasterio
 import requests
 
+from fetch_topo_quads import bare_key
+
 QUADS_DIR = Path(__file__).parent / "data" / "raw" / "topo_quads"
 METADATA_CSV = Path(__file__).parent / "data" / "raw" / "topo_metadata" / "ustopo_current.csv"
 FALLBACK_DIR = Path(__file__).parent / "data" / "raw" / "topo_quads_fallback"
@@ -52,9 +54,9 @@ def redownload(path: Path) -> bool:
     return validate(path)
 
 
-def fetch_fallback(quad_key: str, out_path: Path):
+def fetch_fallback(quad_key: str, out_path: Path, metadata_csv: Path):
     con = duckdb.connect()
-    con.execute(f"CREATE TABLE quads AS SELECT * FROM read_csv_auto('{METADATA_CSV.as_posix()}')")
+    con.execute(f"CREATE TABLE quads AS SELECT * FROM read_csv_auto('{metadata_csv.as_posix()}')")
     row = con.execute(f"""
         SELECT westbc, eastbc, northbc, southbc FROM quads
         WHERE product_filename LIKE '{quad_key}%'
@@ -79,30 +81,59 @@ def fetch_fallback(quad_key: str, out_path: Path):
     png_path.write_bytes(resp.content)
 
     transform = rasterio.transform.from_bounds(west - margin, south - margin, east + margin, north + margin, 2400, 2400)
-    with rasterio.open(png_path) as src:
-        data = src.read((1, 2, 3))  # drop the alpha band - bulk quads are 3-band RGB, and
-        profile = src.profile  # merge() requires matching band counts across inputs
+    try:
+        with rasterio.open(png_path) as src:
+            data = src.read((1, 2, 3))  # drop the alpha band - bulk quads are 3-band RGB, and
+            profile = src.profile  # merge() requires matching band counts across inputs
+    except Exception:
+        # The export service returned something rasterio can't decode as an
+        # image (or with fewer than 3 bands) - same class of failure
+        # fetch_one_quad() already guards against for the bulk download path.
+        # Leave out_path unwritten so the caller's validate(fallback_path)
+        # reports this as a normal failed fallback instead of crashing the
+        # whole run on one bad response.
+        png_path.unlink(missing_ok=True)
+        return
     profile.update(driver="GTiff", crs="EPSG:4326", transform=transform, count=3)
     with rasterio.open(out_path, "w", **profile) as dst:
         dst.write(data)
     png_path.unlink()
 
 
+def fix_quad(label: str, path: Path, metadata_csv: Path, fallback_dir: Path) -> dict:
+    """Redownload-then-fallback recovery for one corrupted quad - the
+    reactive per-quad version of this script's original global BAD_QUADS
+    pass, callable for *any* quad that fails validation, not just the three
+    known ones (closes the open item in pipeline/README.md's topo-fetch
+    section: "add a lightweight read-check to fetch_topo_quads.py itself so
+    this isn't a separate manual step forever").
+
+    `label` is only used for the print statements - main()'s BAD_QUADS loop
+    passes the bare quad key (matching this script's original output
+    exactly), fetch_and_mosaic_cell.py's reactive path passes the full
+    product_filename. Either way, the actual footprint lookup always
+    derives the real quad key from `path` itself via bare_key(), so a
+    mismatched label can't cause a wrong fallback fetch."""
+    print(f"{label}: re-downloading...")
+    if redownload(path):
+        print("  fixed by re-download.")
+        return {"status": "fixed_by_redownload"}
+
+    print("  still corrupted after re-download - falling back to live export service...")
+    quad_key = bare_key(path.stem)
+    fallback_path = fallback_dir / f"{quad_key}.tif"
+    fetch_fallback(quad_key, fallback_path, metadata_csv)
+    if validate(fallback_path):
+        print(f"  fallback substitute created -> {fallback_path}")
+        return {"status": "fallback", "path": fallback_path}
+    print(f"  FALLBACK ALSO FAILED for {quad_key} - needs manual attention")
+    return {"status": "failed"}
+
+
 def main():
     for quad_key, rel_path in BAD_QUADS.items():
         path = QUADS_DIR / rel_path
-        print(f"{quad_key}: re-downloading...")
-        if redownload(path):
-            print("  fixed by re-download.")
-            continue
-
-        print("  still corrupted after re-download - falling back to live export service...")
-        fallback_path = FALLBACK_DIR / f"{quad_key}.tif"
-        fetch_fallback(quad_key, fallback_path)
-        if validate(fallback_path):
-            print(f"  fallback substitute created -> {fallback_path}")
-        else:
-            print(f"  FALLBACK ALSO FAILED for {quad_key} - needs manual attention")
+        fix_quad(quad_key, path, METADATA_CSV, FALLBACK_DIR)
 
 
 if __name__ == "__main__":

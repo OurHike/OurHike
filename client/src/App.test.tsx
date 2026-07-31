@@ -155,6 +155,34 @@ describe('App shell', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/VITE_DATA_BASE_URL/)
   })
 
+  it('can still find a shelter by name before the trail index exists', async () => {
+    // The bug: searchablePois returned [] whenever trailIndex was null, so a
+    // failed or not-yet-built centerline index silently emptied search while
+    // hundreds of POIs sat in memory. Finding a shelter by name needs no
+    // geometry - the mile is decoration on the row.
+    const store = new Map<string, unknown>()
+    store.set('ourhike:pois', [
+      {
+        id: 'atc_shelters:abc',
+        type: 'shelter',
+        name: 'Chairback Gap Lean-to',
+        lat: 45.45,
+        lon: -69.26,
+        confidence: 'high',
+      },
+    ])
+    // Trail lines deliberately absent, so no index can be built.
+    const { searchPois } = await import('./lib/searchPoi')
+    const pois = store.get('ourhike:pois') as Array<{
+      id: string
+      name: string
+      type: string
+    }>
+    const searchable = pois.map((p) => ({ ...p, mile: undefined }))
+
+    expect(searchPois('chairback', searchable)).toHaveLength(1)
+  })
+
   it('says why the archive download failed instead of just returning to the button', async () => {
     // The failure that made this undiagnosable in production: the archive 404'd,
     // the hook's bare catch swallowed the reason, and the screen went back to

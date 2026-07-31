@@ -10,7 +10,16 @@ export interface SearchablePoi {
   id: string
   name: string
   type: string
-  mile: number
+  /**
+   * Distance along the trail, when it is known.
+   *
+   * Optional because it comes from the centerline index, which is built after
+   * the trail lines download and can legitimately be absent - and search must
+   * not depend on it. Requiring it once meant a null index emptied the search
+   * results entirely: 800-odd shelters and water sources sitting in memory,
+   * unfindable, because a number decorating each row could not be computed.
+   */
+  mile?: number
 }
 
 export interface SearchOptions {

@@ -90,7 +90,11 @@ type Coordinates = Array<[number, number]>
 export function buildTrailIndex(collection: FeatureCollection): TrailIndex {
   const parts: Coordinates[] = []
 
-  for (const feature of collection.features) {
+  // Defensive about the shape, not the contents: this arrives over a network
+  // from a bucket, and a truncated or unexpected payload should degrade to
+  // "we don't know where you are" rather than throw somewhere the caller
+  // reports as a failed download.
+  for (const feature of collection?.features ?? []) {
     if (feature.properties?.source !== 'centerline') continue
     if (feature.geometry.type !== 'LineString') continue
 

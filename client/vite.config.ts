@@ -41,10 +41,25 @@ export default defineConfig({
           // code, not a service-worker caching rule - see
           // src/map/pmtilesSource.ts - so there's no custom SW logic to
           // inject.
-          registerType: 'prompt', // never silently swap the running app
-          // mid-session - matches this project's "honest about staleness"
-          // stance elsewhere (a hiker relying on the app mid-junction should
-          // choose when to reload, not have it happen under them).
+          // autoUpdate, reversing an earlier 'prompt' setting. The intent
+          // behind prompt was sound - do not swap the app under a hiker
+          // mid-junction - but nothing ever supplied the prompt, so a new
+          // build installed, sat in `waiting`, and the old bundle kept being
+          // served indefinitely. Every deploy looked like it had not
+          // happened, and the only escape was clearing site data through
+          // browser settings, which is not a thing to ask of someone who
+          // wants a map.
+          //
+          // Safe to apply automatically because the service worker holds only
+          // the app shell. The downloaded map, POIs, outbox and preferences
+          // are all in IndexedDB, which a worker swap does not touch - so an
+          // update can never cost someone the map they walked in with.
+          registerType: 'autoUpdate',
+          workbox: {
+            // Drop precaches from superseded builds rather than letting a
+            // phone accumulate every app shell it has ever seen.
+            cleanupOutdatedCaches: true,
+          },
           includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
           manifest: {
             name: 'OurHike',

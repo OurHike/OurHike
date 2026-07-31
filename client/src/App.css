@@ -20,3 +20,27 @@
   color: var(--ink-900, #2b2620);
   font-size: 0.875rem;
 }
+
+/* "A new version is ready." Shown on every screen rather than one tab: a
+   stale app is not a Downloads-screen problem. Quiet and inline - it never
+   blocks, because the running version still works and the hiker chooses when
+   to swap it (see lib/useAppUpdate.ts). */
+.app__update {
+  margin: 0;
+  padding: var(--space-2, 8px) var(--space-4, 16px);
+  background: var(--bg-sunken);
+  border-bottom: 1px solid var(--border-1);
+  font-size: 0.875rem;
+  color: var(--fg-2);
+}
+
+.app__update-action {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--brand-primary);
+  text-decoration: underline;
+  cursor: pointer;
+}

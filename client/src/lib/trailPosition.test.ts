@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { Feature, FeatureCollection } from 'geojson'
-import { buildTrailIndex, locateOnTrail } from './trailPosition'
+import { buildTrailIndex, locateOnTrail, MAX_OFF_TRAIL_MILES } from './trailPosition'
 
 // Synthetic geometry throughout, in the shape the real trails.geojson uses:
 // LineString features carrying a `source` of 'centerline' or something else.
@@ -137,9 +137,42 @@ describe('locateOnTrail', () => {
     const onTrail = locateOnTrail(index, { lon: -77, lat: 39 })
     expect(onTrail?.offTrailFeet).toBeCloseTo(0, 0)
 
-    // A tenth of a degree of longitude at this latitude is several miles out.
-    const wellOff = locateOnTrail(index, { lon: -76.9, lat: 39 })
-    expect(wellOff?.offTrailFeet).toBeGreaterThan(20_000)
+    // A fiftieth of a degree of longitude at this latitude is about a mile:
+    // off the trail, but still close enough to be placed on it.
+    const wellOff = locateOnTrail(index, { lon: -76.98, lat: 39 })
+    expect(wellOff?.offTrailFeet).toBeGreaterThan(4_000)
+  })
+
+  it('does not place a fix that is only near in latitude', () => {
+    // The bug: buckets are latitude-only, so the nearest candidate could be
+    // most of a continent due west and still be measured and returned. A phone
+    // in Indianapolis - same latitude as the trail in Maryland - got a
+    // confident mile number in the header, because nothing downstream looked
+    // at offTrailFeet.
+    expect(locateOnTrail(index, { lon: -86.16, lat: 39 })).toBeNull()
+  })
+
+  it('still places a fix a couple of miles off the trail', () => {
+    // The gate has to leave room for the ordinary reasons someone is off the
+    // centerline - a spur to a shelter, a water carry, a road walk into town -
+    // or it would blank out the mile exactly when it is most wanted.
+    const twoMilesNorth = locateOnTrail(index, {
+      lon: -77,
+      lat: 39 + MILE_IN_DEGREES_LAT * 2,
+    })
+
+    expect(twoMilesNorth).not.toBeNull()
+  })
+
+  it('never returns a fix farther off the trail than the gate allows', () => {
+    // Whatever the gate is, the promise is that offTrailFeet on a returned fix
+    // is within it: callers read the mile without re-checking the distance.
+    for (const lon of [-77.05, -77.02, -77, -76.98, -76.95]) {
+      const fix = locateOnTrail(index, { lon, lat: 39.02 })
+      if (fix !== null) {
+        expect(fix.offTrailFeet).toBeLessThanOrEqual(MAX_OFF_TRAIL_MILES * 5280)
+      }
+    }
   })
 
   it('finds the trail across a latitude-bucket boundary', () => {

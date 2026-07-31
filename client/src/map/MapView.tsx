@@ -13,6 +13,7 @@ import { Map as MapLibreMap } from 'maplibre-gl'
 import { registerPMTilesProtocol } from './protocol'
 import { buildMapStyle } from './style'
 import { attachMapChrome, type ScaleUnits } from './mapChrome'
+import type { BoundingBox } from '../lib/legendContents'
 
 export interface MapViewProps {
   /** `pmtiles://` URL for the downloaded topo archive. */
@@ -26,6 +27,18 @@ export interface MapViewProps {
   /** Web only; touch platforms rely on pinch (see mapChrome.ts). */
   showZoomButtons?: boolean
   units?: ScaleUnits
+  /**
+   * What is on screen now, so the legend can describe it. Must be stable
+   * across renders (useCallback) - an inline function would re-subscribe on
+   * every render of the parent.
+   */
+  onViewportChange?: (bbox: BoundingBox) => void
+  /**
+   * The live map, handed over on build and `null` on teardown, so the shell
+   * can move the camera imperatively. `center` cannot do that job - it seeds
+   * the opening view only, and the first GPS fix usually lands after it.
+   */
+  onMapReady?: (map: MapLibreMap | null) => void
 }
 
 const DEFAULT_CENTER: [number, number] = [-77.1, 39.3]
@@ -38,6 +51,8 @@ export function MapView({
   zoom,
   showZoomButtons = false,
   units = 'imperial',
+  onViewportChange,
+  onMapReady,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [map, setMap] = useState<MapLibreMap | null>(null)
@@ -81,6 +96,34 @@ export function MapView({
     if (map === null) return
     return attachMapChrome(map, { showZoomButtons, units })
   }, [map, showZoomButtons, units])
+
+  useEffect(() => {
+    if (map === null || onViewportChange === undefined) return
+
+    const report = () => {
+      const bounds = map.getBounds()
+      onViewportChange({
+        west: bounds.getWest(),
+        south: bounds.getSouth(),
+        east: bounds.getEast(),
+        north: bounds.getNorth(),
+      })
+    }
+
+    // Reported once up front as well as on every move, so the legend is
+    // correct for the opening view rather than only after the first pan.
+    report()
+    map.on('moveend', report)
+    return () => {
+      map.off('moveend', report)
+    }
+  }, [map, onViewportChange])
+
+  useEffect(() => {
+    if (onMapReady === undefined) return
+    onMapReady(map)
+    return () => onMapReady(null)
+  }, [map, onMapReady])
 
   return (
     <div

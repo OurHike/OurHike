@@ -122,3 +122,12 @@ async function persistPartial(blob: Blob, totalBytes: number): Promise<void> {
 export async function readDownloadProgress(): Promise<DownloadProgress | null> {
   return ((await get(ARCHIVE_PROGRESS_KEY)) as DownloadProgress | undefined) ?? null
 }
+
+/** Reclaims the space, partial bytes included - someone deleting a 1.18 GB
+ *  map to free room would not expect a stalled attempt to keep holding
+ *  several hundred megabytes of it. */
+export async function deleteArchive(): Promise<void> {
+  await del(CORRIDOR_ARCHIVE_KEY)
+  await del(ARCHIVE_PARTIAL_KEY)
+  await del(ARCHIVE_PROGRESS_KEY)
+}

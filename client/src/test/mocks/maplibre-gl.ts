@@ -25,7 +25,12 @@ export class MockMap {
 
   readonly options: Record<string, unknown>
   readonly controls: Array<{ control: unknown; position?: string }> = []
+  /** Every imperative camera move, in order - so a test can assert the map
+   *  was actually moved to the first GPS fix. */
+  readonly cameraMoves: Array<Record<string, unknown>> = []
   removed = false
+  /** Test-settable, since the shell derives the legend from it. */
+  bounds = { west: -180, south: -85, east: 180, north: 85 }
   private readonly listeners = new Map<string, Listener[]>()
 
   constructor(options: Record<string, unknown>) {
@@ -64,6 +69,20 @@ export class MockMap {
     const at = this.controls.findIndex((c) => c.control === control)
     if (at !== -1) this.controls.splice(at, 1)
     return this
+  }
+
+  jumpTo(options: Record<string, unknown>): this {
+    this.cameraMoves.push(options)
+    return this
+  }
+
+  getBounds() {
+    return {
+      getWest: () => this.bounds.west,
+      getSouth: () => this.bounds.south,
+      getEast: () => this.bounds.east,
+      getNorth: () => this.bounds.north,
+    }
   }
 
   remove(): void {

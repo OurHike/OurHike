@@ -17,6 +17,7 @@ import { Legend, type BlazeCount } from './Legend'
 import { Search } from './Search'
 import { ElevationRibbon, type ElevationRibbonProps } from './ElevationRibbon'
 import { WaypointLanes, type WaypointLanesProps } from './WaypointLanes'
+import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapView } from '../map/MapView'
 import { ATTRIBUTION } from '../map/style'
 import type { ScaleUnits } from '../map/mapChrome'
@@ -29,9 +30,10 @@ export interface MapScreenProps {
   trailsUrl: string
 
   trailName: string
-  state: string
-  mile: number
-  direction: HikeDirection
+  // All three are omitted until they are actually known - see HeaderProps.
+  state?: string
+  mile?: number
+  direction?: HikeDirection
 
   time: Date
   online: boolean
@@ -67,6 +69,11 @@ export interface MapScreenProps {
 
   showZoomButtons?: boolean
   units?: ScaleUnits
+
+  /** Opening camera only; later moves are the hiker's. */
+  center?: [number, number]
+  onViewportChange?: (bbox: BoundingBox) => void
+  onMapReady?: (map: MapLibreMap | null) => void
 }
 
 export function MapScreen({
@@ -99,6 +106,9 @@ export function MapScreen({
   waypoints,
   showZoomButtons = false,
   units = 'imperial',
+  center,
+  onViewportChange,
+  onMapReady,
 }: MapScreenProps) {
   return (
     <div className="map-screen">
@@ -127,6 +137,9 @@ export function MapScreen({
           trailsUrl={trailsUrl}
           showZoomButtons={showZoomButtons}
           units={units}
+          center={center}
+          onViewportChange={onViewportChange}
+          onMapReady={onMapReady}
         />
         <p className="map-screen__attribution">{ATTRIBUTION}</p>
 

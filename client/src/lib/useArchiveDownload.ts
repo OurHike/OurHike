@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { get } from 'idb-keyval'
 import {
+  deleteArchive,
   downloadArchive,
   readDownloadProgress,
   type DownloadProgress,
@@ -75,7 +76,13 @@ export function useArchiveDownload(archiveUrl: string) {
     }
   }, [archiveUrl])
 
+  const remove = useCallback(async () => {
+    abortRef.current?.abort()
+    await deleteArchive()
+    setStatus({ state: 'not-downloaded' })
+  }, [])
+
   useEffect(() => () => abortRef.current?.abort(), [])
 
-  return { status, start: run, resume: run }
+  return { status, start: run, resume: run, remove }
 }

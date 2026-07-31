@@ -10,10 +10,16 @@ export type HikeDirection = 'NOBO' | 'SOBO'
 
 export interface HeaderProps {
   trailName: string
-  state: string
-  /** Current position along the trail, in miles. */
-  mile: number
-  direction: HikeDirection
+  /** Omitted until the fix is placed in a state. */
+  state?: string
+  /**
+   * Current position along the trail, in miles. Omitted before there is a GPS
+   * fix, and omitted rather than zeroed: "mi 0.0" is Springer Mountain, which
+   * is a confident claim about somewhere the hiker is almost certainly not.
+   */
+  mile?: number
+  /** Omitted until enough movement has happened to tell which way. */
+  direction?: HikeDirection
   onOpenLegend: () => void
   onOpenSearch: () => void
 }
@@ -42,9 +48,13 @@ export function Header({
     <header className="map-header">
       <div className="map-header__read">
         <p className="map-header__eyebrow">
-          {trailName} · {state}
+          {state === undefined ? trailName : `${trailName} · ${state}`}
         </p>
-        <p className="map-header__position">{`mi ${formatMile(mile)} · ${direction}`}</p>
+        <p className="map-header__position">
+          {mile === undefined
+            ? 'Looking for GPS…'
+            : `mi ${formatMile(mile)}${direction === undefined ? '' : ` · ${direction}`}`}
+        </p>
       </div>
 
       <div className="map-header__actions">

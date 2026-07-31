@@ -29,10 +29,34 @@ import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
 
 export const ARCHIVE_PARTIAL_KEY = 'ourhike:corridor-archive:partial'
 export const ARCHIVE_PROGRESS_KEY = 'ourhike:corridor-archive:progress'
+export const ARCHIVE_SOURCE_KEY = 'ourhike:corridor-archive:source'
 
 export interface DownloadProgress {
   receivedBytes: number
   totalBytes: number
+}
+
+/**
+ * What the held partial bytes actually came from.
+ *
+ * Without this a resume asks for "the rest of the file" with no statement of
+ * which file, and gets whatever is at that URL now. Two ways that ends badly:
+ * the archive is republished between attempts, or the hiker picks a different
+ * detail level - and either way the result is bytes from two different
+ * archives concatenated into one.
+ *
+ * The size check cannot catch that, and not by oversight: totalBytes is
+ * DEFINED as heldBytes + declared, and a completed resume accumulates exactly
+ * heldBytes + declared. Both sides of that comparison are the same expression,
+ * so it can only ever catch a SHORT transfer. A spliced one always passes,
+ * producing a PMTiles file whose directory and tile offsets disagree - a map
+ * that reports itself downloaded and renders wrong past the seam, with no
+ * network to correct it.
+ */
+interface PartialSource {
+  url: string
+  /** Absent when the bucket does not expose ETag; the url check still applies. */
+  etag?: string
 }
 
 export interface DownloadOptions {
@@ -54,12 +78,31 @@ export async function downloadArchive(
   url: string,
   { onProgress, signal }: DownloadOptions = {},
 ): Promise<void> {
-  const heldBlob = (await get(ARCHIVE_PARTIAL_KEY)) as Blob | undefined
+  const storedBlob = (await get(ARCHIVE_PARTIAL_KEY)) as Blob | undefined
+  const storedSource = (await get(ARCHIVE_SOURCE_KEY)) as PartialSource | undefined
+
+  // Only resume onto bytes we can prove came from this same URL. An
+  // unidentified partial - a different detail level, or one written by a build
+  // before this record existed - is discarded rather than appended to.
+  const usable = storedBlob !== undefined && storedSource?.url === url
+  if (storedBlob !== undefined && !usable) await discardPartial()
+
+  const heldBlob = usable ? storedBlob : undefined
   const heldBytes = heldBlob?.size ?? 0
+
+  const headers: Record<string, string> = {}
+  if (heldBytes > 0) {
+    headers.Range = `bytes=${heldBytes}-`
+    // If-Range makes the server itself arbitrate: the range is honoured only
+    // while the object still matches, and a republished archive comes back 200
+    // with the whole body instead. The 206 check below already treats that as
+    // "start clean", so the correct behaviour is code that already exists.
+    if (storedSource?.etag !== undefined) headers['If-Range'] = storedSource.etag
+  }
 
   const response = await fetch(url, {
     signal,
-    headers: heldBytes > 0 ? { Range: `bytes=${heldBytes}-` } : undefined,
+    headers: heldBytes > 0 ? headers : undefined,
   })
 
   if (!response.ok) {
@@ -76,6 +119,21 @@ export async function downloadArchive(
 
   const declared = Number(response.headers.get('content-length') ?? 0)
   const totalBytes = resumed ? heldBytes + declared : declared
+
+  // Taken from the response actually being read, so a partial is always
+  // labelled with the version it came from. A weak ETag is dropped: it only
+  // promises semantic equivalence, which is not the byte-for-byte identity a
+  // range append depends on.
+  const responseEtag = response.headers.get('etag') ?? undefined
+  const source: PartialSource = {
+    url,
+    etag:
+      responseEtag !== undefined && !responseEtag.startsWith('W/')
+        ? responseEtag
+        : resumed
+          ? storedSource?.etag
+          : undefined,
+  }
 
   let receivedBytes = accumulated.size
   onProgress?.({ receivedBytes, totalBytes })
@@ -96,7 +154,7 @@ export async function downloadArchive(
   } catch (error) {
     // Everything received so far is kept. The next attempt picks up here
     // rather than starting again.
-    await persistPartial(accumulated, totalBytes)
+    await persistPartial(accumulated, totalBytes, source)
     throw error
   }
 
@@ -104,18 +162,32 @@ export async function downloadArchive(
     // Truncation: a short PMTiles archive opens fine and then returns nothing
     // for tiles past the cut, which looks like missing map rather than a
     // failed download. Keep the bytes so a resume can finish the job.
-    await persistPartial(accumulated, totalBytes)
+    await persistPartial(accumulated, totalBytes, source)
     throw new ArchiveSizeMismatchError(totalBytes, accumulated.size)
   }
 
   await set(CORRIDOR_ARCHIVE_KEY, accumulated)
-  await del(ARCHIVE_PARTIAL_KEY)
-  await del(ARCHIVE_PROGRESS_KEY)
+  await discardPartial()
 }
 
-async function persistPartial(blob: Blob, totalBytes: number): Promise<void> {
+async function persistPartial(
+  blob: Blob,
+  totalBytes: number,
+  source: PartialSource,
+): Promise<void> {
+  // Source first. Every later write can fail - quota is exactly the situation
+  // that produces a partial - and a partial with no source record is discarded
+  // on the next attempt rather than resumed onto blindly. Writing the identity
+  // last would leave the dangerous combination (bytes, no identity) reachable.
+  await set(ARCHIVE_SOURCE_KEY, source)
   await set(ARCHIVE_PARTIAL_KEY, blob)
   await set(ARCHIVE_PROGRESS_KEY, { receivedBytes: blob.size, totalBytes })
+}
+
+async function discardPartial(): Promise<void> {
+  await del(ARCHIVE_PARTIAL_KEY)
+  await del(ARCHIVE_PROGRESS_KEY)
+  await del(ARCHIVE_SOURCE_KEY)
 }
 
 /** What Downloads.tsx shows on load, before anything is tapped. */
@@ -128,6 +200,5 @@ export async function readDownloadProgress(): Promise<DownloadProgress | null> {
  *  several hundred megabytes of it. */
 export async function deleteArchive(): Promise<void> {
   await del(CORRIDOR_ARCHIVE_KEY)
-  await del(ARCHIVE_PARTIAL_KEY)
-  await del(ARCHIVE_PROGRESS_KEY)
+  await discardPartial()
 }

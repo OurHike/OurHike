@@ -295,6 +295,17 @@ def test_mosaic_one_cell_merges_and_clips_a_real_matching_quad(tmp_path):
     assert result_profile["crs"] == "EPSG:4326"
     assert result_profile["driver"] == "GTiff"
 
+    # Compression is a disk-budget decision, not a preference. All 51 cells have
+    # to coexist on whichever machine assembles the PMTiles tiers, and
+    # uncompressed they measure 14.59 GB - more than a hosted runner has.
+    # DEFLATE takes that to ~3.7 GB (3.92x, measured on a real 300 MB cell).
+    # Asserted here so removing it fails a test rather than a CI run an hour in.
+    assert result_profile["compress"] == "deflate"
+    assert result_profile["tiled"] is True
+    # No predictor: measured 3.20x against DEFLATE's 3.92x on the same cell.
+    # It helps smooth gradients and hurts scanned topo maps, which are all edges.
+    assert "predictor" not in result_profile
+
 
 def test_mosaic_one_cell_returns_none_when_no_source_data_falls_within_the_cell(tmp_path):
     """A quad that doesn't actually overlap the cell's bounds at all (a

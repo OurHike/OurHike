@@ -247,6 +247,27 @@ def mosaic_one_cell(cell: tuple, matching: list[tuple], corridor_geom: dict):
 
     out_profile = profile.copy()
     out_profile["transform"] = clipped_transform
+    # Compressed and tiled on the way out, which matters far more than it looks.
+    # These cells are intermediates - export_pmtiles.py reads them and nothing
+    # ships them - but all 51 have to exist at once on whichever machine
+    # assembles the tiers, and uncompressed they are 14.59 GB. That is measured,
+    # not estimated: `du -sh` reports 9.5G on the dev machine because it counts
+    # allocated blocks, and README.md repeated that figure for a while. An ext4
+    # CI runner materializes the full 14.59 GB and runs out of disk.
+    #
+    # DEFLATE takes a representative 300 MB cell to 76.6 MB - 3.92x, measured on
+    # real output, so the set lands near 3.7 GB. Nothing downstream changes:
+    # export_pmtiles.py reads through rasterio.open/WarpedVRT, which decompresses
+    # transparently.
+    #
+    # No predictor=2 on purpose. It helps smooth elevation rasters and hurts
+    # here - measured 3.20x against DEFLATE's 3.92x on the same cell, because
+    # scanned topo maps are full of hard ink edges rather than gradients.
+    #
+    # tiled=True is the other half. The default is strips one row tall, so
+    # rendering a low-zoom tile drags whole rows across the file; 512px blocks
+    # let a reader touch only the window it wants.
+    out_profile.update(compress="deflate", tiled=True, blockxsize=512, blockysize=512)
     return clipped_arr, out_profile
 
 

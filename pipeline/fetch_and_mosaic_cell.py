@@ -1,9 +1,14 @@
 """Fetch + mosaic exactly one corridor cell - the per-cell unit of work a
 GitHub Actions matrix job runs, so the whole-corridor raster pipeline can
 run on hosted runners whose disk can't hold the full ~14GB of raw quads plus
-~9.5GB of mosaicked output at once (see TECHNICAL_ARCHITECTURE.md/the CI
+~3.7GB of mosaicked output at once (see TECHNICAL_ARCHITECTURE.md/the CI
 plan for the numbers). Peak disk for a single cell is at most a few hundred
 MB (worst measured case: 81 quads, ~689MB raw), comfortably under that.
+
+That 3.7GB is post-compression. Before mosaic_one_cell() started writing
+DEFLATE, the set was 14.59GB and this docstring claimed 9.5GB - `du -sh`'s
+allocated-block figure on the dev machine, not what a Linux runner would
+actually need. Anyone sizing a runner from the old number was ~4x low.
 
 Deliberately a new script rather than a --cell-index flag bolted onto
 fetch_topo_quads.py/spike_raster_mosaic.py: those two stay documented and

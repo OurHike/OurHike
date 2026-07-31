@@ -68,14 +68,27 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Fetch upstream sources
+      # fetch_all.py covers the ArcGIS sources only - it drives lib/arcgis.py and
+      # iterates sources.json. opentrail.org is a different API with its own
+      # script, and export_poi.py reads its output directly
+      # (export_poi.py:108), so both fetches are required before any export.
+      - name: Fetch ArcGIS sources
         run: python fetch_all.py
+
+      - name: Fetch opentrail.org POIs
+        run: python fetch_opentrail.py
 
       - name: Export trail lines
         run: python export_trails.py
 
       - name: Export POIs
         run: python export_poi.py
+
+      # Elevation has its own fetch too, and it is the slow one - it streams
+      # USGS 3DEP tiles, which is why the whole leg is opt-in.
+      - name: Fetch elevation tiles
+        if: inputs.include_elevation
+        run: python fetch_elevation.py
 
       - name: Export elevation profile
         if: inputs.include_elevation

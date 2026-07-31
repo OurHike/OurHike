@@ -1,0 +1,304 @@
+# Builds the USGS topo raster background in CI and publishes it to R2.
+#
+# The other half of the map. publish-vector-data.yml handles trail lines and
+# POIs in minutes; this handles ~14 GB of source imagery and needs a fan-out to
+# do it, which is why they are separate workflows rather than one.
+#
+# They are also independently landable: publish.py merges rather than replaces
+# the remote manifest, so publishing raster alone cannot orphan the vector
+# artifacts already live, and vice versa.
+#
+# SHAPE, and why it has to be this one:
+#
+#   compute-cells   builds the corridor fresh and splits it into 1x1-degree
+#                   cells, emitting cells.json
+#   mosaic          one job per cell, fetching only that cell's quads
+#   assemble        every cell back on one runner, then three PMTiles tiers
+#   publish         upload, on a runner that never held the intermediates
+#
+# The fan-out is not an optimisation. A hosted runner cannot hold the whole
+# corridor's raw quads, so per-cell is the only way this runs here at all -
+# and fetch_topo_quads.py's whole-corridor path additionally reads
+# data/spike/corridor.geojson, a stale artifact no fresh checkout has and which
+# lib/corridor.py forbids trusting. Only its --metadata-only flag is CI-safe.
+#
+# assemble cannot be sharded: export_pmtiles.py hardcodes its cells directory
+# and its completeness gate requires every discovered cell to contribute at
+# every zoom. So all 51 tiles genuinely must reconverge, which is what makes
+# the DEFLATE compression in mosaic_one_cell() load-bearing rather than tidy -
+# uncompressed they are 14.59 GB.
+#
+# Start with max_cells set low. A first run at 51 cells costs an hour to find
+# out something trivial was wrong.
+
+name: Build raster background
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_cells:
+        description: "Cells to build (0 = all). Start small; assemble and publish are skipped unless this is 0."
+        type: string
+        default: "2"
+      publish:
+        description: "Upload to R2. Ignored unless max_cells is 0, since a partial corridor must never ship."
+        type: boolean
+        default: false
+
+concurrency:
+  group: build-raster
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  compute-cells:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: pipeline
+    outputs:
+      matrix: ${{ steps.cells.outputs.matrix }}
+      total: ${{ steps.cells.outputs.total }}
+      partial: ${{ steps.cells.outputs.partial }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      # Reported rather than assumed. The runner's real disk is the number this
+      # whole design turns on, and GitHub's published spec has not matched
+      # observed free space - so it gets printed on every run instead of
+      # remembered once.
+      - name: Runner capacity
+        run: |
+          echo "disk:"; df -h / /mnt 2>/dev/null || df -h /
+          echo "cpus: $(nproc)"
+          echo "memory:"; free -g
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Warm the DuckDB spatial extension
+        run: python -c "import duckdb; duckdb.connect().execute('INSTALL spatial; LOAD spatial;')"
+
+      # centerline.geojson, which build_cells_manifest.py builds the corridor
+      # from. fetch_all.py is the only producer.
+      - name: Fetch ArcGIS sources
+        run: python fetch_all.py
+
+      # The quad inventory. --metadata-only is the sole CI-safe entry point
+      # into fetch_topo_quads.py - see this file's header.
+      - name: Fetch the quad metadata inventory
+        run: python fetch_topo_quads.py --metadata-only
+
+      - name: Build the cell manifest
+        run: python build_cells_manifest.py
+
+      - name: Plan the matrix
+        id: cells
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import os
+          from pathlib import Path
+
+          cells = json.loads(Path("data/raw/cells.json").read_text())["cells"]
+          total = len(cells)
+
+          requested = int(os.environ["MAX_CELLS"] or 0)
+          count = total if requested <= 0 else min(requested, total)
+
+          print(f"matrix={json.dumps([c['index'] for c in cells[:count]])}")
+          print(f"total={total}")
+          print(f"partial={'false' if count == total else 'true'}")
+          PY
+        env:
+          MAX_CELLS: ${{ inputs.max_cells }}
+
+      - name: Say what will run
+        run: |
+          echo "${{ steps.cells.outputs.total }} cells in the corridor."
+          if [ "${{ steps.cells.outputs.partial }}" = "true" ]; then
+            echo "::warning::Building a SUBSET. assemble and publish are skipped - a partial corridor must never ship."
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: corridor-inputs
+          path: |
+            pipeline/data/raw/cells.json
+            pipeline/data/raw/corridor.geojson
+          retention-days: 1
+          if-no-files-found: error
+
+  mosaic:
+    needs: compute-cells
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: pipeline
+    strategy:
+      # One bad cell should not cancel the other 50 - the point of a first run
+      # is learning how many fail and why, not stopping at the first.
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        cell: ${{ fromJSON(needs.compute-cells.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Warm the DuckDB spatial extension
+        run: python -c "import duckdb; duckdb.connect().execute('INSTALL spatial; LOAD spatial;')"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: corridor-inputs
+          path: pipeline/data/raw/
+
+      - name: Fetch the quad metadata inventory
+        run: python fetch_topo_quads.py --metadata-only
+
+      - name: Mosaic cell ${{ matrix.cell }}
+        run: python fetch_and_mosaic_cell.py --cell-index ${{ matrix.cell }}
+
+      - name: Report what this cell cost
+        if: always()
+        run: |
+          echo "disk after:"; df -h /
+          du -sh data/raw/topo_quads_cell_* 2>/dev/null || true
+          ls -la data/processed/topo_background/ 2>/dev/null || true
+
+      # Each tile is its own artifact so assemble can pull them with one
+      # pattern. Retention is minimal: these are intermediates that exist only
+      # to cross between runners.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: topo-tile-${{ matrix.cell }}
+          path: pipeline/data/processed/topo_background/
+          retention-days: 1
+          if-no-files-found: error
+
+  assemble:
+    needs: [compute-cells, mosaic]
+    # A partial corridor must never become a PMTiles archive - it would look
+    # like a complete map with holes in it, which is worse than no map.
+    if: needs.compute-cells.outputs.partial == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Reclaims ~10-15 GB of preinstalled toolchains this job will never use.
+      # Cheap insurance on the one step whose disk headroom is genuinely tight.
+      - name: Reclaim disk
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL || true
+          df -h /
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: topo-tile-*
+          merge-multiple: true
+          path: pipeline/data/processed/topo_background/
+
+      - name: Confirm every cell arrived
+        run: |
+          found=$(ls data/processed/topo_background/*.tif 2>/dev/null | wc -l)
+          echo "$found of ${{ needs.compute-cells.outputs.total }} tiles present"
+          du -sh data/processed/topo_background/
+          if [ "$found" -ne "${{ needs.compute-cells.outputs.total }}" ]; then
+            echo "::error::Missing tiles. fail-fast is off, so a failed cell gets here as an absence rather than a stopped run - and export_pmtiles.py would happily build an archive with a hole in it."
+            exit 1
+          fi
+
+      - name: Build Light (z6-11)
+        run: python export_pmtiles.py --max-zoom 11 --out data/processed/background_z11.pmtiles
+
+      - name: Build Standard (z6-12)
+        run: python export_pmtiles.py
+
+      - name: Build Fine (z6-13)
+        run: python export_pmtiles.py --max-zoom 13 --out data/processed/background_z13.pmtiles
+
+      - name: What was built
+        run: ls -la data/processed/*.pmtiles && df -h /
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pmtiles-archives
+          path: pipeline/data/processed/*.pmtiles
+          retention-days: 3
+          if-no-files-found: error
+
+  publish:
+    needs: [compute-cells, assemble]
+    if: inputs.publish && needs.compute-cells.outputs.partial == 'false'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # A separate job from assemble on purpose, and safe here where it would
+      # not be for the vector half: publish.py builds background paths from
+      # PROCESSED_DIR at publish time rather than reading a baked manifest, so
+      # nothing depends on this being the runner that produced them. It needs
+      # ~1.6 GB rather than assemble's ~7 GB.
+      - uses: actions/download-artifact@v4
+        with:
+          name: pmtiles-archives
+          path: pipeline/data/processed/
+
+      - name: What will be published
+        run: ls -la data/processed/*.pmtiles
+
+      - name: Publish to R2
+        env:
+          R2_WRITE_ENABLED: "true"
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: python publish.py

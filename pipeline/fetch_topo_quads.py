@@ -31,6 +31,7 @@ data/raw/topo_quads/manifest.json from the previous run, and only
 re-downloads quads that are new or have actually changed.
 """
 
+import argparse
 import io
 import json
 import re
@@ -342,4 +343,26 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # --metadata-only exists because build_cells_manifest.py needs
+    # ustopo_current.csv and nothing else could produce it. fetch_metadata_csv()
+    # is the only producer, and it was reachable only through main() - which
+    # dies four lines later on data/spike/corridor.geojson, a stale
+    # proof-of-concept artifact lib/corridor.py:15-20 explicitly forbids
+    # trusting and that no fresh checkout has at all.
+    #
+    # So the whole-corridor path here cannot run in CI, and the per-cell path
+    # (build_cells_manifest.py then fetch_and_mosaic_cell.py) is not merely
+    # preferred but the only route. This flag returns before any of that,
+    # exposing the one CI-safe thing this script owns.
+    parser = argparse.ArgumentParser(description="Fetch USGS topo quads for the AT corridor.")
+    parser.add_argument(
+        "--metadata-only",
+        action="store_true",
+        help="Fetch just the quad metadata inventory (ustopo_current.csv) and stop. What build_cells_manifest.py needs.",
+    )
+    args = parser.parse_args()
+
+    if args.metadata_only:
+        fetch_metadata_csv()
+    else:
+        main()

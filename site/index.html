@@ -370,16 +370,23 @@
         gap: 0.9rem;
       }
 
+      /* A padding gutter with the marker absolutely positioned in it, rather
+         than a two-column grid. Grid looks like the natural fit and is wrong
+         here: it makes every text run and every inline element its own grid
+         item, so a step containing a link or a <strong> gets shattered across
+         cells instead of flowing as one sentence. */
       .steps li {
         counter-increment: step;
-        display: grid;
-        grid-template-columns: 1.9rem 1fr;
-        gap: 0.85rem;
-        align-items: start;
+        position: relative;
+        padding-left: 2.75rem;
+        min-height: 1.9rem;
       }
 
       .steps li::before {
         content: counter(step);
+        position: absolute;
+        left: 0;
+        top: 0;
         display: grid;
         place-items: center;
         width: 1.9rem;
@@ -400,20 +407,23 @@
         gap: 0.55rem;
       }
 
+      /* Same gutter approach as .steps, and for the same reason - these items
+         are plain text today, so grid has not broken them yet, but the first
+         one to contain a link would shatter exactly the way the install steps
+         did. Not worth leaving as a trap. */
       .checks li {
-        display: grid;
-        grid-template-columns: 1.4rem 1fr;
-        gap: 0.65rem;
-        align-items: start;
+        position: relative;
+        padding-left: 1.7rem;
       }
 
       .checks li::before {
         content: "";
+        position: absolute;
+        left: 0;
+        top: 0.35rem;
         width: 1.05rem;
         height: 1.05rem;
-        margin-top: 0.3rem;
         border-radius: 50%;
-        background: var(--accent);
         -webkit-mask: var(--tick) center / 0.7rem no-repeat;
         mask: var(--tick) center / 0.7rem no-repeat;
         background-color: var(--accent);

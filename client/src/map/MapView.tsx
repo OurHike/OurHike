@@ -24,6 +24,13 @@ export interface MapViewProps {
   center?: [number, number]
   /** Initial zoom only. */
   zoom?: number
+  /**
+   * Opening view as a bounding box, `[[west, south], [east, north]]`. Takes
+   * precedence over `center`/`zoom`, and is the better way to say "show all of
+   * this" - the zoom that fits a box depends on the size of the screen, so
+   * picking one here would frame it differently on every phone.
+   */
+  bounds?: [[number, number], [number, number]]
   /** Web only; touch platforms rely on pinch (see mapChrome.ts). */
   showZoomButtons?: boolean
   units?: ScaleUnits
@@ -49,6 +56,7 @@ export function MapView({
   trailsUrl,
   center,
   zoom,
+  bounds,
   showZoomButtons = false,
   units = 'imperial',
   onViewportChange,
@@ -71,8 +79,12 @@ export function MapView({
     const created = new MapLibreMap({
       container,
       style: buildMapStyle({ topoArchiveUrl, trailsUrl }),
-      center: center ?? DEFAULT_CENTER,
-      zoom: zoom ?? DEFAULT_ZOOM,
+      // `bounds` wins where it is given: MapLibre works out the zoom that fits
+      // the box on this particular screen, which is the whole point of asking
+      // for a box rather than a zoom number.
+      ...(bounds === undefined
+        ? { center: center ?? DEFAULT_CENTER, zoom: zoom ?? DEFAULT_ZOOM }
+        : { bounds, fitBoundsOptions: { padding: 24 } }),
       // Attribution is rendered by the app's own chrome, positioned per
       // WIREFRAMES.md, rather than by MapLibre's default control.
       attributionControl: false,

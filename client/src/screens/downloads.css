@@ -101,3 +101,39 @@
   letter-spacing: 0.04em;
   color: var(--brand-primary);
 }
+
+/* Install prompt (InstallPrompt.tsx). Sits above the download because
+   installing and downloading are one decision - make this work offline - not
+   two separate asks. */
+.install-prompt {
+  margin-bottom: var(--space-5, 20px);
+  padding: var(--space-4, 16px);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-1);
+  border-radius: 12px;
+}
+.install-prompt__title {
+  margin: 0 0 var(--space-2, 8px);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--fg-1);
+}
+.install-prompt__body {
+  margin: 0 0 var(--space-3, 12px);
+  font-size: 14px;
+  color: var(--fg-2);
+}
+.install-prompt__steps {
+  margin: 0;
+  padding-left: var(--space-5, 20px);
+  font-size: 14px;
+  color: var(--fg-2);
+}
+.install-prompt__steps li {
+  margin-bottom: var(--space-1, 4px);
+}
+.install-prompt__caveat {
+  margin: var(--space-3, 12px) 0 0;
+  font-size: 13px;
+  color: var(--fg-3);
+}

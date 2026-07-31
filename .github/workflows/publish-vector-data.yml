@@ -99,8 +99,17 @@ jobs:
       # check reports SKIPPED rather than comparing - the completeness and
       # corridor checks still do real work, and a SKIPPED check says so out loud
       # instead of quietly passing.
+      # --optional elevation unless it was built: this run deliberately produces
+      # a subset, which publish.py supports, and a gate that insisted on the
+      # full set would contradict the thing it gates. It only excuses an ABSENT
+      # artifact - one that exists and fails still fails.
       - name: Check output quality
-        run: python check_output_quality.py
+        run: |
+          if [ "${{ inputs.include_elevation }}" = "true" ]; then
+            python check_output_quality.py
+          else
+            python check_output_quality.py --optional elevation
+          fi
 
       - name: What would be published
         run: |

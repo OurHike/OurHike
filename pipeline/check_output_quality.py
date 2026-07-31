@@ -134,6 +134,14 @@ from lib.poi_schema import POI_TYPES
 
 ROOT = Path(__file__).parent
 PROCESSED_DIR = ROOT / "data" / "processed"
+#: Marks the one verdict an --optional run is allowed to excuse: the manifest
+#: was not there at all, so this artifact was never built. Set structurally by
+#: the verdict functions rather than sniffed out of the problem text, because
+#: the text is not distinctive enough to carry the decision - artifact_problems()
+#: says "file missing on disk" for a manifest that IS present whose artifact has
+#: gone, which is the opposite situation and must never be excused.
+MANIFEST_MISSING = "manifest-missing"
+
 TRAILS_MANIFEST = PROCESSED_DIR / "trails_manifest.json"
 POI_MANIFEST = PROCESSED_DIR / "poi" / "manifest.json"
 ELEVATION_MANIFEST = PROCESSED_DIR / "elevation_manifest.json"
@@ -254,7 +262,14 @@ def trails_verdict(manifest_path: Path | None = None) -> dict:
     manifest = read_manifest(manifest_path)
     if manifest is None:
         problem = "trails_manifest.json missing - export_trails.py may not have run"
-        return {"check": "trails", "verdict": Verdict.PROBLEM, "detail": problem, "problems": [problem], "counts": {}}
+        return {
+            "check": "trails",
+            "verdict": Verdict.PROBLEM,
+            "detail": problem,
+            "problems": [problem],
+            "counts": {},
+            "reason": MANIFEST_MISSING,
+        }
 
     problems: list[str] = []
     kind_counts: dict[str, int] = {}
@@ -297,7 +312,14 @@ def poi_verdict(manifest_path: Path | None = None) -> dict:
     manifest = read_manifest(manifest_path)
     if manifest is None:
         problem = "poi/manifest.json missing - export_poi.py may not have run"
-        return {"check": "poi", "verdict": Verdict.PROBLEM, "detail": problem, "problems": [problem], "counts": {}}
+        return {
+            "check": "poi",
+            "verdict": Verdict.PROBLEM,
+            "detail": problem,
+            "problems": [problem],
+            "counts": {},
+            "reason": MANIFEST_MISSING,
+        }
 
     problems: list[str] = []
     counts: dict[str, int] = {}
@@ -349,7 +371,14 @@ def elevation_verdict(manifest_path: Path | None = None) -> dict:
     manifest = read_manifest(manifest_path)
     if manifest is None:
         problem = "elevation_manifest.json missing - export_elevation.py may not have run"
-        return {"check": "elevation", "verdict": Verdict.PROBLEM, "detail": problem, "problems": [problem], "counts": {}}
+        return {
+            "check": "elevation",
+            "verdict": Verdict.PROBLEM,
+            "detail": problem,
+            "problems": [problem],
+            "counts": {},
+            "reason": MANIFEST_MISSING,
+        }
 
     problems = artifact_problems("elevation_profile.json", manifest)
     point_count = manifest.get("point_count", 0)
@@ -710,13 +739,13 @@ def _safe_verdict(check_name: str, fn) -> dict:
 
 
 def as_optional(report: dict) -> dict:
-    """Downgrade a "manifest missing" PROBLEM to SKIPPED, for a run that was
+    """Downgrade a "never built" PROBLEM to SKIPPED, for a run that was
     never meant to produce that artifact in the first place.
 
-    Only the missing case is downgraded. A manifest that exists and fails
-    its checks is still a PROBLEM however this is called - "I did not build
-    it" and "I built it and it is wrong" are different answers, and only
-    the first is excusable.
+    Only that case. A manifest that exists and fails its checks stays a
+    PROBLEM however this is called - "I did not build it" and "I built it
+    and it is wrong" are different answers, and only the first is
+    excusable.
 
     This exists because publish.py already supports partial publishes
     ("a fresh checkout that's only run some export scripts still publishes
@@ -724,9 +753,9 @@ def as_optional(report: dict) -> dict:
     that insists on a full set contradicts the thing it is gating. Made
     explicit per-run rather than inferred, so a full run that silently
     loses its elevation export still fails loudly."""
-    if report["verdict"] is not Verdict.PROBLEM or not report["problems"]:
+    if report["verdict"] is not Verdict.PROBLEM:
         return report
-    if not all("missing" in problem for problem in report["problems"]):
+    if report.get("reason") != MANIFEST_MISSING:
         return report
 
     return {**report, "verdict": Verdict.SKIPPED, "problems": []}

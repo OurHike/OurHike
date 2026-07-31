@@ -113,6 +113,18 @@ export function buildTrailIndex(collection: FeatureCollection): TrailIndex {
   const flat: Coordinates = parts.flat()
   const count = flat.length
 
+  // Where each piece begins in the flattened array. The straight-line jump
+  // from the end of one piece to the start of the next is not trail - it is
+  // the gap between two pieces the source data never joined - so it must not
+  // be added to the running total. Counting those gaps measured the corridor
+  // at 4,055 miles against the AT's real ~2,197.
+  const partStarts = new Set<number>()
+  let offset = 0
+  for (const part of parts) {
+    partStarts.add(offset)
+    offset += part.length
+  }
+
   const lons = new Float64Array(count)
   const lats = new Float64Array(count)
   const miles = new Float64Array(count)
@@ -122,7 +134,7 @@ export function buildTrailIndex(collection: FeatureCollection): TrailIndex {
 
   for (let i = 0; i < count; i += 1) {
     const [lon, lat] = flat[i]
-    if (i > 0) {
+    if (i > 0 && !partStarts.has(i)) {
       const [prevLon, prevLat] = flat[i - 1]
       cumulativeFeet += haversineFeet({ lon: prevLon, lat: prevLat }, { lon, lat })
     }

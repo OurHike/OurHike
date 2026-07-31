@@ -67,6 +67,29 @@ describe('buildTrailIndex', () => {
     expect(index.lats[index.lats.length - 1]).toBeCloseTo(40 + MILE_IN_DEGREES_LAT, 5)
   })
 
+  // Regression, caught against the real corridor rather than a fixture: with
+  // the gaps counted, trails.geojson measured 4,055 miles against the AT's
+  // real ~2,197. The straight-line jump from the end of one piece to the start
+  // of the next is not trail, and a hiker's mile marker must not include it.
+  it('does not count the gap between two disconnected pieces as distance walked', () => {
+    const index = buildTrailIndex(
+      collection([
+        line([
+          [-77, 39],
+          [-77, 39 + MILE_IN_DEGREES_LAT],
+        ]),
+        // Starts a full degree north - a gap of about 69 miles.
+        line([
+          [-77, 40],
+          [-77, 40 + MILE_IN_DEGREES_LAT],
+        ]),
+      ]),
+    )
+
+    // Two one-mile pieces total two miles, however far apart they sit.
+    expect(index.totalMiles).toBeCloseTo(2, 1)
+  })
+
   it('ignores spurs, so a mile marker always means distance along the AT itself', () => {
     const index = buildTrailIndex(
       collection([

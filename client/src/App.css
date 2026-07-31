@@ -1,8 +1,22 @@
-.scaffold-check {
+/* Screens that are not the map still need the tab bar pinned and their own
+   content scrollable underneath it, which the map screen gets from its own
+   grid (chrome.css). */
+.app__screen {
   min-height: 100svh;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   background: var(--paper-100);
-  padding: var(--space-6, 24px);
+}
+
+.app__screen > :first-child {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.app__notice {
+  margin: 0;
+  padding: var(--space-3, 12px) var(--space-4, 16px);
+  background: var(--warning-100, #fdf1d6);
+  color: var(--ink-900, #2b2620);
+  font-size: 0.875rem;
 }

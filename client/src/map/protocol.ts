@@ -10,9 +10,18 @@
 // every caller to coordinate.
 
 import { addProtocol } from 'maplibre-gl'
-import { Protocol } from 'pmtiles'
+import { PMTiles, Protocol } from 'pmtiles'
+import { CORRIDOR_ARCHIVE_KEY, IndexedDbArchiveSource } from './pmtilesSource'
 
 export const PMTILES_SCHEME = 'pmtiles'
+
+/**
+ * The style URL that resolves to the archive on this phone rather than to the
+ * network. The key is part of the URL because `Protocol.add()` indexes an
+ * archive by its source's `getKey()`, and this is the string a `pmtiles://`
+ * lookup matches against.
+ */
+export const CORRIDOR_ARCHIVE_URL = `${PMTILES_SCHEME}://${CORRIDOR_ARCHIVE_KEY}`
 
 let registered: Protocol | null = null
 
@@ -20,6 +29,11 @@ export function registerPMTilesProtocol(): Protocol {
   if (registered !== null) return registered
 
   const protocol = new Protocol()
+  // Registering the archive is what makes this an offline map. An unregistered
+  // pmtiles:// URL falls through to pmtiles' own FetchSource and is requested
+  // over HTTP - which on a ridge with no signal renders nothing at all, having
+  // downloaded the corridor package for no purpose.
+  protocol.add(new PMTiles(new IndexedDbArchiveSource()))
   addProtocol(PMTILES_SCHEME, protocol.tile)
   registered = protocol
 

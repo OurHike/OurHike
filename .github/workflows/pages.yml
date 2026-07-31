@@ -1,0 +1,86 @@
+# Publishes the beta landing page and the installable app to GitHub Pages.
+#
+# GitHub Pages is what makes this installable at all: a PWA needs HTTPS before
+# any browser will offer "Install app", and Pages provides it for free on a
+# project site.
+#
+# Two things land, at the two paths the site is written to expect:
+#
+#   /OurHike/       site/index.html      - the beta announcement and install steps
+#   /OurHike/app/   client/dist/         - the app itself
+#
+# The app's `base` has to match its serving path exactly, because a PWA's
+# `scope` and `start_url` decide which pages the installed app owns - see the
+# note in client/vite.config.ts.
+#
+# Set the DATA_BASE_URL repository variable (Settings -> Secrets and variables
+# -> Actions -> Variables) to the public R2 bucket URL. Without it the app
+# still builds and installs; its Downloads screen says the data source is not
+# configured rather than firing requests that would 404.
+
+name: Deploy Pages
+
+on:
+  push:
+    branches: [main]
+  # So the site can be republished after setting DATA_BASE_URL, with no code change.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two deploys race; let a newer commit supersede an in-flight one.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install
+        working-directory: client
+        run: npm ci
+
+      - name: Build the app
+        working-directory: client
+        env:
+          # Trailing slash matters - Vite joins this to asset paths directly.
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/app/
+          VITE_DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
+        run: npm run build
+
+      - name: Assemble the site
+        run: |
+          mkdir -p _site/app
+          cp -r site/. _site/
+          cp -r client/dist/. _site/app/
+          cp client/public/favicon.svg _site/favicon.svg
+          # Pages runs Jekyll by default, which skips files beginning with an
+          # underscore - Vite does not emit any today, but a build tool changing
+          # its naming should not silently break the deploy.
+          touch _site/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -25,3 +25,12 @@ export function getDownloadDetail(level: DetailLevel): DownloadDetail {
   if (!found) throw new Error(`Unknown download detail level: ${level}`)
   return found
 }
+
+/** The reverse lookup, for reading the choice back out of
+ *  UserPreferences.max_background_zoom - which is where it is stored, since
+ *  the zoom ceiling IS what the choice means. */
+export function detailLevelForZoom(zoom: number): DetailLevel {
+  const found = DOWNLOAD_DETAIL_LEVELS.find((d) => d.zoom === zoom)
+  if (!found) throw new Error(`No download detail level for zoom ${zoom}`)
+  return found.level
+}

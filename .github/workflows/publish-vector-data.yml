@@ -68,14 +68,27 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Fetch upstream sources
+      # fetch_all.py covers the ArcGIS sources only - it drives lib/arcgis.py and
+      # iterates sources.json. opentrail.org is a different API with its own
+      # script, and export_poi.py reads its output directly
+      # (export_poi.py:108), so both fetches are required before any export.
+      - name: Fetch ArcGIS sources
         run: python fetch_all.py
+
+      - name: Fetch opentrail.org POIs
+        run: python fetch_opentrail.py
 
       - name: Export trail lines
         run: python export_trails.py
 
       - name: Export POIs
         run: python export_poi.py
+
+      # Elevation has its own fetch too, and it is the slow one - it streams
+      # USGS 3DEP tiles, which is why the whole leg is opt-in.
+      - name: Fetch elevation tiles
+        if: inputs.include_elevation
+        run: python fetch_elevation.py
 
       - name: Export elevation profile
         if: inputs.include_elevation
@@ -86,8 +99,17 @@ jobs:
       # check reports SKIPPED rather than comparing - the completeness and
       # corridor checks still do real work, and a SKIPPED check says so out loud
       # instead of quietly passing.
+      # --optional elevation unless it was built: this run deliberately produces
+      # a subset, which publish.py supports, and a gate that insisted on the
+      # full set would contradict the thing it gates. It only excuses an ABSENT
+      # artifact - one that exists and fails still fails.
       - name: Check output quality
-        run: python check_output_quality.py
+        run: |
+          if [ "${{ inputs.include_elevation }}" = "true" ]; then
+            python check_output_quality.py
+          else
+            python check_output_quality.py --optional elevation
+          fi
 
       - name: What would be published
         run: |

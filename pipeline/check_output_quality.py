@@ -709,12 +709,45 @@ def _safe_verdict(check_name: str, fn) -> dict:
         return {"check": check_name, "verdict": Verdict.PROBLEM, "detail": problem, "problems": [problem], "counts": {}}
 
 
-def check_all(changed_sources: set[str] | None = None) -> list[dict]:
+def as_optional(report: dict) -> dict:
+    """Downgrade a "manifest missing" PROBLEM to SKIPPED, for a run that was
+    never meant to produce that artifact in the first place.
+
+    Only the missing case is downgraded. A manifest that exists and fails
+    its checks is still a PROBLEM however this is called - "I did not build
+    it" and "I built it and it is wrong" are different answers, and only
+    the first is excusable.
+
+    This exists because publish.py already supports partial publishes
+    ("a fresh checkout that's only run some export scripts still publishes
+    what it has", collect_artifacts()), so a gate standing in front of it
+    that insists on a full set contradicts the thing it is gating. Made
+    explicit per-run rather than inferred, so a full run that silently
+    loses its elevation export still fails loudly."""
+    if report["verdict"] is not Verdict.PROBLEM or not report["problems"]:
+        return report
+    if not all("missing" in problem for problem in report["problems"]):
+        return report
+
+    return {**report, "verdict": Verdict.SKIPPED, "problems": []}
+
+
+def check_all(
+    changed_sources: set[str] | None = None,
+    optional: set[str] | None = None,
+) -> list[dict]:
     """Every check's verdict, in the priority order the module docstring
     lays out. Never raises - see _safe_verdict()."""
-    trails = _safe_verdict("trails", trails_verdict)
-    poi = _safe_verdict("poi", poi_verdict)
-    elevation = _safe_verdict("elevation", elevation_verdict)
+    if optional is None:
+        optional = set()
+
+    def verdict(name: str, fn) -> dict:
+        report = _safe_verdict(name, fn)
+        return as_optional(report) if name in optional else report
+
+    trails = verdict("trails", trails_verdict)
+    poi = verdict("poi", poi_verdict)
+    elevation = verdict("elevation", elevation_verdict)
     corridor = _safe_verdict("corridor", corridor_verdict)
     topo_quads = _safe_verdict("topo_quads", topo_quads_verdict)
 
@@ -746,12 +779,29 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "gate never needs the network; see baseline_verdict()."
         ),
     )
+    parser.add_argument(
+        "--optional",
+        action="append",
+        default=[],
+        metavar="CHECK",
+        choices=["trails", "poi", "elevation"],
+        dest="optional",
+        help=(
+            "An artifact this run was not meant to produce, repeatable. Its "
+            "manifest being absent reports SKIPPED instead of failing. An "
+            "artifact that IS present still has to pass. Use it when "
+            "deliberately publishing a subset, which publish.py supports."
+        ),
+    )
     return parser.parse_args([] if argv is None else argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    reports = check_all(changed_sources=set(args.changed_sources))
+    reports = check_all(
+        changed_sources=set(args.changed_sources),
+        optional=set(args.optional),
+    )
     for report in reports:
         print(f"  {report['verdict'].value.upper():8} {report['check']:12} {report['detail']}")
 

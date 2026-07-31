@@ -892,6 +892,33 @@ def test_main_flags_a_baseline_drop_on_a_second_run(passing_pipeline, tmp_path):
     assert exit_code != 0
 
 
+def test_main_fails_when_an_expected_artifact_was_never_built(passing_pipeline):
+    """The default stays strict: a missing manifest is a problem unless the
+    caller says otherwise. This is what --optional has to not break."""
+    check_output_quality.ELEVATION_MANIFEST.unlink()
+
+    assert check_output_quality.main() != 0
+
+
+def test_main_skips_an_artifact_the_run_was_never_meant_to_build(passing_pipeline):
+    """A CI job that publishes only trails and POIs legitimately has no
+    elevation manifest. publish.py already supports that partial publish, so
+    a gate in front of it that insists on the full set contradicts the thing
+    it is gating."""
+    check_output_quality.ELEVATION_MANIFEST.unlink()
+
+    assert check_output_quality.main(["--optional", "elevation"]) == 0
+
+
+def test_optional_does_not_excuse_an_artifact_that_exists_and_is_wrong(passing_pipeline, tmp_path):
+    """The distinction the flag rests on: "I did not build it" is excusable,
+    "I built it and it is broken" is not. Tampering with the artifact after
+    the manifest recorded its hash must still fail, --optional or not."""
+    (tmp_path / "elevation_profile.json").write_text("tampered after hashing")
+
+    assert check_output_quality.main(["--optional", "elevation"]) != 0
+
+
 def test_main_accepts_a_changed_source_that_explains_the_drop(passing_pipeline, tmp_path):
     """The suppression path, reached the way an operator actually reaches it.
 

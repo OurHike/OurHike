@@ -22,6 +22,7 @@ import type { DownloadStatus } from '../screens/Downloads'
 
 export function useArchiveDownload(archiveUrl: string) {
   const [status, setStatus] = useState<DownloadStatus>({ state: 'not-downloaded' })
+  const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
   // On mount, reflect what is already on the phone: a finished archive, an
@@ -52,6 +53,7 @@ export function useArchiveDownload(archiveUrl: string) {
   }, [])
 
   const run = useCallback(async () => {
+    setError(null)
     const controller = new AbortController()
     abortRef.current = controller
 
@@ -66,9 +68,14 @@ export function useArchiveDownload(archiveUrl: string) {
         totalBytes: finished?.size ?? 0,
         completedAt: new Date(),
       })
-    } catch {
-      // Whatever arrived is already persisted by downloadArchive; surface the
-      // resumable state rather than an error the hiker can do nothing with.
+    } catch (thrown) {
+      // Whatever arrived is already persisted by downloadArchive, so the
+      // resumable state is still what the screen shows. But the reason is kept
+      // and surfaced too - this catch used to swallow it entirely, and when the
+      // archive 404'd the screen simply returned to "Download the map" with no
+      // explanation at all. "Nothing happened" is the one answer that leaves
+      // someone with no idea whether to retry, wait, or check their signal.
+      setError(thrown instanceof Error ? thrown.message : 'The map download failed.')
       const partial = await readDownloadProgress()
       setStatus(
         partial === null ? { state: 'not-downloaded' } : { state: 'failed', ...partial },
@@ -77,6 +84,7 @@ export function useArchiveDownload(archiveUrl: string) {
   }, [archiveUrl])
 
   const remove = useCallback(async () => {
+    setError(null)
     abortRef.current?.abort()
     await deleteArchive()
     setStatus({ state: 'not-downloaded' })
@@ -84,5 +92,5 @@ export function useArchiveDownload(archiveUrl: string) {
 
   useEffect(() => () => abortRef.current?.abort(), [])
 
-  return { status, start: run, resume: run, remove }
+  return { status, error, start: run, resume: run, remove }
 }

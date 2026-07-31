@@ -116,6 +116,7 @@ function App() {
     start: startArchive,
     resume: resumeArchive,
     remove: removeArchive,
+    error: archiveError,
   } = useArchiveDownload(archiveUrl(detailLevel))
 
   const refreshTrailData = useCallback(async () => {
@@ -300,6 +301,11 @@ function App() {
           {dataError !== null && (
             <p role="alert" className="app__notice">
               {dataError}
+            </p>
+          )}
+          {archiveError !== null && (
+            <p role="alert" className="app__notice">
+              {archiveError}
             </p>
           )}
           <InstallPrompt

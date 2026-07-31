@@ -155,6 +155,34 @@ describe('App shell', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/VITE_DATA_BASE_URL/)
   })
 
+  it('says why the archive download failed instead of just returning to the button', async () => {
+    // The failure that made this undiagnosable in production: the archive 404'd,
+    // the hook's bare catch swallowed the reason, and the screen went back to
+    // "Download the map" with nothing said. "Nothing happened" leaves someone
+    // with no idea whether to retry, wait, or check their signal.
+    const user = userEvent.setup()
+    returningHiker()
+    vi.mocked(fetch).mockImplementation((url) =>
+      String(url).includes('.pmtiles')
+        ? Promise.resolve({ ok: false, status: 404, statusText: 'Not Found' } as Response)
+        : Promise.resolve({
+            ok: true,
+            blob: () =>
+              Promise.resolve(new Blob(['{"type":"FeatureCollection","features":[]}'])),
+            text: () => Promise.resolve('{"features":[]}'),
+          } as unknown as Response),
+    )
+
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    await user.click(await screen.findByRole('button', { name: /download the map/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/404|not found|failed/i)).toBeInTheDocument()
+    })
+  })
+
   it('does not start the huge archive download once the small one has already failed', async () => {
     // The few megabytes of trail lines and POIs are the canary. Whatever
     // stopped them - no signal, a missing key, a misconfigured bucket - will

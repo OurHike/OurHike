@@ -211,6 +211,8 @@ Exits non-zero if any check finds a real problem - `publish.py` shouldn't run af
 
 Publishing artifacts to Cloudflare R2 is intentionally write-disabled by default. Set `R2_WRITE_ENABLED=true` in the trusted environment that is allowed to publish; otherwise `publish.py` refuses to upload anything, so developers with only read access to the bucket cannot accidentally write to it.
 
+**Where this is going, designed 2026-07-31: [DATA_RELEASES.md](DATA_RELEASES.md).** `publish.py` today overwrites live keys at the bucket root, which means a publish can land on top of a download already in progress and gives a hiker no way to pin a dataset or be told one changed. The plan replaces that with immutable dated release folders, a daily upstream check that only flags, a weekly incremental build, a verification battery run against the published bytes, and release only via a merged code change. Nothing in that plan is built yet - everything described below is still how publishing works.
+
 To serve `data/processed/` locally instead - for testing the client's offline download without publishing anything - use `serve_processed.py`, which answers byte-range requests and sets the CORS headers a cross-origin bucket needs. See [../client/README.md](../client/README.md).
 
 ## Next steps

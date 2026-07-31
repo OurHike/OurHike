@@ -90,6 +90,48 @@ describe('ReportForm', () => {
     expect(screen.getByText(/1,043\.2/)).toBeInTheDocument()
   })
 
+  it('files no coordinates at all rather than 0,0 when there is no fix', async () => {
+    // The bug: the shell passed lat 0 / lon 0 / mile 0 whenever the GPS had not
+    // reported yet, so a report written at a trailhead with no sky view was
+    // filed at Null Island - and, by its mile, at Springer Mountain. Both are
+    // confident, checkable-looking answers, which is what makes them worse
+    // than an absent one. The reports API takes lat and lon as optional.
+    const user = userEvent.setup()
+    render(<ReportForm {...PROPS} location={null} />)
+
+    await user.click(screen.getByRole('button', { name: /send|save/i }))
+
+    const submission = vi.mocked(PROPS.onSubmit).mock.calls[0][0]
+    expect(submission.lat).toBeUndefined()
+    expect(submission.lon).toBeUndefined()
+    // Still a report worth filing: a blowdown with no coordinates is a real
+    // contribution, and dropping it would cost more than the missing pin.
+    expect(submission.type).toBe('blowdown')
+  })
+
+  it('says the location is unknown instead of showing mile zero', () => {
+    render(<ReportForm {...PROPS} location={null} />)
+
+    expect(screen.getByText(/no gps fix/i)).toBeInTheDocument()
+    expect(screen.queryByText(/mi 0\.0/)).not.toBeInTheDocument()
+  })
+
+  it('still sends the coordinates when only the trail mile is unknown', async () => {
+    // Being off the centerline, or not having downloaded the trail index yet,
+    // says nothing about the fix itself - it is the mile alone that cannot be
+    // worked out, and a maintainer can still find the spot from lat/lon.
+    const user = userEvent.setup()
+    render(<ReportForm {...PROPS} location={{ lat: 35.6, lon: -83.5 }} />)
+
+    expect(screen.getByText(/not matched to a trail mile/i)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /send|save/i }))
+
+    expect(PROPS.onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ lat: 35.6, lon: -83.5 }),
+    )
+  })
+
   it('shows how the report will be signed', () => {
     render(<ReportForm {...PROPS} />)
 

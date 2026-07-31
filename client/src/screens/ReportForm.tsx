@@ -31,18 +31,44 @@ const TITLES: Record<ReportFormType, string> = {
 export interface ReportFormLocation {
   lat: number
   lon: number
-  mile: number
+  /**
+   * Omitted when the fix cannot be placed on the centerline - off the trail,
+   * or before the trail index has been downloaded. The coordinates are still
+   * worth sending; only the mile is unknown.
+   */
+  mile?: number
 }
 
 export interface ReportFormSubmission extends ReportDraft {
   authoredAt: Date
 }
 
+/**
+ * What the form says about where the report will land.
+ *
+ * "mi 0.0" is Springer Mountain and 0,0 is the Atlantic off West Africa, so
+ * neither is a stand-in for "we don't know yet" - this is the same rule the
+ * header already keeps about the mile readout (chrome/Header.tsx). A
+ * maintainer reading a queue of blowdowns needs to be able to tell the reports
+ * with a place from the ones without, and both wrong answers hide that.
+ */
+function describeLocation(location: ReportFormLocation | null): string {
+  if (location === null) return 'No GPS fix — this report will have no location'
+  if (location.mile === undefined)
+    return 'Location saved, but not matched to a trail mile'
+
+  return `mi ${location.mile.toLocaleString('en-US', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })}`
+}
+
 export interface ReportFormProps {
   type: ReportFormType
   trailName: string | null
   reporterType: ReportDraft['reporter_type']
-  location: ReportFormLocation
+  /** Null when there is no GPS fix at all - see the note above. */
+  location: ReportFormLocation | null
   onSubmit: (submission: ReportFormSubmission) => void
   onCancel: () => void
   online?: boolean
@@ -92,12 +118,7 @@ export function ReportForm({
         <input type="file" accept="image/*" className="reporting__photo" />
       </label>
 
-      <p className="reporting__meta">
-        {`mi ${location.mile.toLocaleString('en-US', {
-          minimumFractionDigits: 1,
-          maximumFractionDigits: 1,
-        })}`}
-      </p>
+      <p className="reporting__meta">{describeLocation(location)}</p>
 
       <p className="reporting__meta">
         {`Signed as ${trailName ?? 'not set'} · ${reporterType}`}
@@ -119,8 +140,12 @@ export function ReportForm({
               type,
               reporter_type: reporterType,
               note: note.trim() === '' ? undefined : note.trim(),
-              lat: location.lat,
-              lon: location.lon,
+              // Both omitted rather than zeroed with no fix. The reports API
+              // takes lat and lon as optional for exactly this case, and a
+              // report pinned at 0,0 is not a report with a missing location -
+              // it is a report at a confident, wrong place in the Atlantic.
+              lat: location?.lat,
+              lon: location?.lon,
               authoredAt,
             })
           }

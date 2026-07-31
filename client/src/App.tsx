@@ -70,6 +70,18 @@ const CORRIDOR_BOUNDS: [[number, number], [number, number]] = [
 
 const EMPTY_BBOX: BoundingBox = { west: 0, south: 0, east: 0, north: 0 }
 
+/** Close enough to read a shelter's surroundings, on the first GPS fix. */
+const FIX_ZOOM = 13
+
+/** Where a search result lands. Only ever zooms IN: someone already at 16
+ *  looking at a spring does not want to be pulled back out to see a shelter. */
+const SEARCH_RESULT_ZOOM = 14
+
+interface Camera {
+  center: [number, number]
+  zoom: number
+}
+
 /** MapLibre needs a resolvable URL even with nothing downloaded; an empty
  *  collection draws nothing, where a missing URL logs a style error. */
 function emptyTrailsUrl(): string {
@@ -100,7 +112,13 @@ function App() {
   const [lastSyncedAt] = useState<Date | null>(null)
 
   const [direction, setDirection] = useState<DirectionTracker | null>(null)
-  const mapRef = useRef<MapLibreMap | null>(null)
+  // The live map is state rather than a ref because effects have to run when
+  // it appears. It appears more than once: the map screen unmounts whenever
+  // another tab is showing, so every trip through Downloads builds a new one.
+  const [map, setMap] = useState<MapLibreMap | null>(null)
+  // Where the camera was left, so a rebuilt map opens where the hiker left it
+  // instead of snapping back to the whole corridor.
+  const [camera, setCamera] = useState<Camera | null>(null)
   const hasJumpedToFix = useRef(false)
 
   const now = useClock()
@@ -147,17 +165,21 @@ function App() {
     void refreshTrailData()
   }, [refreshTrailData])
 
-  // The map is built once, long before a fix usually arrives, so the first one
-  // moves the camera imperatively. Only the first: after that the view belongs
-  // to whoever is panning it.
+  // The map is usually built long before a fix arrives, so the first one moves
+  // the camera imperatively. Only the first: after that the view belongs to
+  // whoever is panning it.
+  //
+  // `map` is a dependency because a fix that lands while another tab is
+  // showing has no map to move. Without it that fix was simply dropped - the
+  // effect had already run against a null map and would not run again - and
+  // the hiker stayed looking at the whole trail until the watch happened to
+  // report again.
   useEffect(() => {
-    if (gps.status !== 'located' || hasJumpedToFix.current) return
-    const map = mapRef.current
-    if (map === null) return
+    if (map === null || gps.status !== 'located' || hasJumpedToFix.current) return
 
-    map.jumpTo({ center: [gps.at.lon, gps.at.lat], zoom: 13 })
+    map.jumpTo({ center: [gps.at.lon, gps.at.lat], zoom: FIX_ZOOM })
     hasJumpedToFix.current = true
-  }, [gps])
+  }, [map, gps])
 
   const fix = useMemo(() => {
     if (trailIndex === null || gps.status !== 'located') return null
@@ -258,10 +280,22 @@ function App() {
     })
   }, [removeArchive])
 
-  const handleViewportChange = useCallback((next: BoundingBox) => setBbox(next), [])
-  const handleMapReady = useCallback((map: MapLibreMap | null) => {
-    mapRef.current = map
-  }, [])
+  // Every move is also where the camera would have to be put back, so this is
+  // the one place that remembers it. Reading the map rather than deriving a
+  // centre from the bounding box keeps a round trip through another tab exact:
+  // re-fitting a box adds its padding again each time, so the view would creep
+  // outwards with every visit to Downloads.
+  const handleViewportChange = useCallback(
+    (next: BoundingBox) => {
+      setBbox(next)
+      if (map === null) return
+      const centre = map.getCenter()
+      setCamera({ center: [centre.lng, centre.lat], zoom: map.getZoom() })
+    },
+    [map],
+  )
+
+  const handleMapReady = useCallback((next: MapLibreMap | null) => setMap(next), [])
 
   const handleToggleType = useCallback((type: string) => {
     setHiddenTypes((current) => {
@@ -301,11 +335,15 @@ function App() {
         type={reporting.type}
         trailName={preferences.trail_name}
         reporterType="thru"
-        location={{
-          lat: gps.status === 'located' ? gps.at.lat : 0,
-          lon: gps.status === 'located' ? gps.at.lon : 0,
-          mile: fix?.mile ?? 0,
-        }}
+        // Null with no fix, rather than 0,0 - which is a real place in the
+        // Atlantic, and one a maintainer cannot tell from a missing location.
+        // The mile is separately unknown when the fix is off the centerline or
+        // the trail index has not been downloaded yet.
+        location={
+          gps.status === 'located'
+            ? { lat: gps.at.lat, lon: gps.at.lon, mile: fix?.mile }
+            : null
+        }
         online={online}
         onSubmit={(submission) => void handleSubmitReport(submission)}
         onCancel={() => setReporting(null)}
@@ -400,8 +438,15 @@ function App() {
       searchablePois={searchablePois}
       onSelectSearchResult={(poi) => {
         const found = pois.find((p) => p.id === poi.id)
-        if (found !== undefined)
-          mapRef.current?.jumpTo({ center: [found.lon, found.lat] })
+        // Centring alone left the zoom wherever it was, which from the opening
+        // view of the whole corridor meant tapping a result moved the map by a
+        // few pixels and looked like nothing happened at all.
+        if (found !== undefined && map !== null) {
+          map.jumpTo({
+            center: [found.lon, found.lat],
+            zoom: Math.max(map.getZoom(), SEARCH_RESULT_ZOOM),
+          })
+        }
         setSearchOpen(false)
       }}
       bbox={bbox}
@@ -409,7 +454,12 @@ function App() {
       blazeCounts={[]}
       hiddenTypes={hiddenTypes}
       onToggleType={handleToggleType}
-      bounds={CORRIDOR_BOUNDS}
+      // The corridor is the opening view only. Once there is a camera to put
+      // back, it wins: `bounds` would otherwise re-frame the entire trail
+      // every time the map screen came back from another tab.
+      center={camera?.center}
+      zoom={camera?.zoom}
+      bounds={camera === null ? CORRIDOR_BOUNDS : undefined}
       onViewportChange={handleViewportChange}
       onMapReady={handleMapReady}
     />

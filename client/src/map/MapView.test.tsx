@@ -133,3 +133,46 @@ describe('MapView', () => {
     expect(map.controls).toHaveLength(0)
   })
 })
+
+describe('opening view', () => {
+  it('fits the whole corridor when given bounds, letting MapLibre pick the zoom', () => {
+    // A zoom number cannot express "show all of this" - what fits depends on
+    // the screen, so the same number frames it differently on every phone.
+    render(
+      <MapView
+        topoArchiveUrl="pmtiles://archive"
+        trailsUrl="/trails.geojson"
+        bounds={[
+          [-84.73, 34.2],
+          [-68.3, 46.34],
+        ]}
+      />,
+    )
+
+    const options = MockMap.instances[0].options
+    expect(options.bounds).toEqual([
+      [-84.73, 34.2],
+      [-68.3, 46.34],
+    ])
+    // center/zoom must not also be set - MapLibre would have to reconcile two
+    // conflicting instructions about the same camera.
+    expect(options.center).toBeUndefined()
+    expect(options.zoom).toBeUndefined()
+  })
+
+  it('still honours center and zoom when no bounds are given', () => {
+    render(
+      <MapView
+        topoArchiveUrl="pmtiles://archive"
+        trailsUrl="/trails.geojson"
+        center={[-77.1, 39.3]}
+        zoom={12}
+      />,
+    )
+
+    const options = MockMap.instances[0].options
+    expect(options.center).toEqual([-77.1, 39.3])
+    expect(options.zoom).toBe(12)
+    expect(options.bounds).toBeUndefined()
+  })
+})

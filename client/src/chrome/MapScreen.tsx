@@ -72,6 +72,8 @@ export interface MapScreenProps {
 
   /** Opening camera only; later moves are the hiker's. */
   center?: [number, number]
+  /** Opening view as `[[west, south], [east, north]]`; wins over `center`. */
+  bounds?: [[number, number], [number, number]]
   onViewportChange?: (bbox: BoundingBox) => void
   onMapReady?: (map: MapLibreMap | null) => void
 }
@@ -107,6 +109,7 @@ export function MapScreen({
   showZoomButtons = false,
   units = 'imperial',
   center,
+  bounds,
   onViewportChange,
   onMapReady,
 }: MapScreenProps) {
@@ -138,6 +141,7 @@ export function MapScreen({
           showZoomButtons={showZoomButtons}
           units={units}
           center={center}
+          bounds={bounds}
           onViewportChange={onViewportChange}
           onMapReady={onMapReady}
         />

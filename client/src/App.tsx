@@ -36,6 +36,7 @@ import { useArchiveDownload } from './lib/useArchiveDownload'
 import { useClock } from './lib/useClock'
 import { useOnline } from './lib/useOnline'
 import { useInstallPrompt } from './lib/useInstallPrompt'
+import { useAppUpdate } from './lib/useAppUpdate'
 import { useGeolocation } from './lib/useGeolocation'
 import { buildTrailIndex, locateOnTrail, type TrailIndex } from './lib/trailPosition'
 import {
@@ -105,6 +106,7 @@ function App() {
   const now = useClock()
   const online = useOnline()
   const install = useInstallPrompt()
+  useAppUpdate()
 
   useEffect(() => {
     void loadPreferences().then(setPreferences)

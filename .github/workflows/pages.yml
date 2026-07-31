@@ -52,13 +52,54 @@ jobs:
         working-directory: client
         run: npm ci
 
+      # The data URL is not secret - Vite inlines it into a public JS bundle, so
+      # it is readable by anyone who opens the app either way. A variable is the
+      # right home for it, and the only one whose value survives into a build
+      # log where it can be checked. But "Secrets and variables" is one settings
+      # page with two tabs, picking the wrong one is easy, and the failure was
+      # silent: an empty string built a working app that could not download
+      # anything. Accepting either is worth more than being right about which.
+      - name: Resolve the data source
+        id: data
+        env:
+          FROM_VAR: ${{ vars.DATA_BASE_URL }}
+          FROM_SECRET: ${{ secrets.DATA_BASE_URL }}
+        run: |
+          URL="${FROM_VAR:-$FROM_SECRET}"
+          if [ -z "$URL" ]; then
+            echo "::warning::DATA_BASE_URL is set as neither a variable nor a secret. Building anyway; the app will say its data source is not configured."
+          elif [ -z "$FROM_VAR" ]; then
+            echo "::warning::DATA_BASE_URL is a secret. It works, but GitHub masks it in logs - move it to the Variables tab to keep it readable here."
+          else
+            echo "Data source: $URL"
+          fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
       - name: Build the app
         working-directory: client
         env:
           # Trailing slash matters - Vite joins this to asset paths directly.
           VITE_BASE_PATH: /${{ github.event.repository.name }}/app/
-          VITE_DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
+          VITE_DATA_BASE_URL: ${{ steps.data.outputs.url }}
         run: npm run build
+
+      # Proves what actually got inlined, rather than trusting that it did. The
+      # bundle is the artifact that ships, so it is the only honest place to
+      # check - and a bundle with no bucket in it is the exact state that
+      # produced "No data source is configured" in production.
+      - name: Confirm the data source reached the bundle
+        working-directory: client
+        run: |
+          if [ -z "${{ steps.data.outputs.url }}" ]; then
+            echo "No data source configured - skipping the check."
+            exit 0
+          fi
+          if grep -rqF "${{ steps.data.outputs.url }}" dist/assets/*.js; then
+            echo "Data source is present in the built bundle."
+          else
+            echo "::error::DATA_BASE_URL was set but is absent from the built bundle - the app would ship unable to download anything."
+            exit 1
+          fi
 
       - name: Assemble the site
         run: |

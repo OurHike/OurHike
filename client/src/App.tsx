@@ -217,6 +217,11 @@ function App() {
       setDataError(
         error instanceof Error ? error.message : 'Trail data failed to download.',
       )
+      // Stop here rather than starting the archive anyway. These few megabytes
+      // are the canary: whatever stopped them - no signal, a missing key, a
+      // misconfigured bucket - will stop the next several hundred too, and
+      // finding that out costs a hiker their data allowance to learn nothing.
+      return
     }
     await startArchive()
   }, [refreshTrailData, startArchive])

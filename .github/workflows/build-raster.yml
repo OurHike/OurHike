@@ -135,6 +135,7 @@ jobs:
           path: |
             pipeline/data/raw/cells.json
             pipeline/data/raw/corridor.geojson
+            pipeline/data/raw/centerline.geojson
           retention-days: 1
           if-no-files-found: error
 
@@ -224,6 +225,18 @@ jobs:
           df -h /
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL || true
           df -h /
+
+      # export_pmtiles.py builds the corridor fresh from centerline.geojson
+      # (export_pmtiles.py:81) to decide which tiles fall inside it, so this job
+      # needs the raw inputs as well as the mosaicked cells. Carried from
+      # compute-cells rather than re-fetched: it is the same corridor the 51
+      # cells were cut against, and re-running fetch_all.py here could pick up
+      # an ArcGIS update mid-run and clip against a centerline the tiles never
+      # saw.
+      - uses: actions/download-artifact@v4
+        with:
+          name: corridor-inputs
+          path: pipeline/data/raw/
 
       - uses: actions/download-artifact@v4
         with:

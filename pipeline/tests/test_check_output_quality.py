@@ -919,6 +919,23 @@ def test_optional_does_not_excuse_an_artifact_that_exists_and_is_wrong(passing_p
     assert check_output_quality.main(["--optional", "elevation"]) != 0
 
 
+def test_optional_does_not_excuse_a_manifest_whose_artifact_vanished(passing_pipeline, tmp_path):
+    """The near-miss the first version of --optional actually got wrong.
+
+    It decided what to excuse by looking for "missing" in the problem text,
+    and artifact_problems() says "file missing on disk" for a manifest that
+    IS present whose artifact has gone - the opposite situation. A run that
+    built elevation and then lost the file was being waved through as
+    though it had never built it.
+
+    The tampered-file test above did not catch it, because that path
+    reports "sha256 mismatch" instead. Hence the structural `reason` field
+    rather than a smarter substring."""
+    (tmp_path / "elevation_profile.json").unlink()
+
+    assert check_output_quality.main(["--optional", "elevation"]) != 0
+
+
 def test_main_accepts_a_changed_source_that_explains_the_drop(passing_pipeline, tmp_path):
     """The suppression path, reached the way an operator actually reaches it.
 

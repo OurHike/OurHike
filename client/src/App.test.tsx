@@ -154,4 +154,32 @@ describe('App shell', () => {
     // download that would silently 404 is worth saying out loud.
     expect(await screen.findByRole('alert')).toHaveTextContent(/VITE_DATA_BASE_URL/)
   })
+
+  it('does not start the huge archive download once the small one has already failed', async () => {
+    // The few megabytes of trail lines and POIs are the canary. Whatever
+    // stopped them - no signal, a missing key, a misconfigured bucket - will
+    // stop the next several hundred too, and a hiker pays for that in data to
+    // learn nothing.
+    const user = userEvent.setup()
+    returningHiker()
+    vi.mocked(fetch).mockResolvedValue({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+    } as Response)
+
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    await user.click(await screen.findByRole('button', { name: /download the map/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/failed to fetch/i)).toBeInTheDocument()
+    })
+
+    // Only the trail-data attempt should have gone out. The archive request
+    // would be the one after it.
+    const requested = vi.mocked(fetch).mock.calls.map((c) => String(c[0]))
+    expect(requested.some((url) => url.includes('.pmtiles'))).toBe(false)
+  })
 })

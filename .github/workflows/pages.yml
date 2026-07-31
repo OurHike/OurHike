@@ -4,10 +4,15 @@
 # any browser will offer "Install app", and Pages provides it for free on a
 # project site.
 #
-# Two things land, at the two paths the site is written to expect:
+# Two things land, at the two paths the site is written to expect - shown here
+# for a project site, where <prefix> is /<repo>:
 #
-#   /OurHike/       site/index.html      - the beta announcement and install steps
-#   /OurHike/app/   client/dist/         - the app itself
+#   <prefix>/       site/index.html      - the beta announcement and install steps
+#   <prefix>/app/   client/dist/         - the app itself
+#
+# On a user/org site - a repo named <owner>.github.io - <prefix> is empty and
+# the same two things land at / and /app/. The build derives which it is from
+# the repository name; see "Resolve the serving path" below.
 #
 # The app's `base` has to match its serving path exactly, because a PWA's
 # `scope` and `start_url` decide which pages the installed app owns - see the
@@ -75,11 +80,30 @@ jobs:
           fi
           echo "url=$URL" >> "$GITHUB_OUTPUT"
 
+      # Where Pages will serve this from, which depends on the repository's
+      # name and nothing else. A repo named <owner>.github.io is a user/org
+      # site served at the domain root; anything else is a project site served
+      # under /<repo>/. Deriving it means a move between the two - or a
+      # transfer to a different owner - needs no edit here, and cannot leave
+      # the app's `base` disagreeing with its actual URL, which is the one
+      # mistake that breaks a PWA's scope rather than just its asset paths.
+      - name: Resolve the serving path
+        id: site
+        env:
+          REPO: ${{ github.event.repository.name }}
+        run: |
+          case "$REPO" in
+            *.github.io) PREFIX="" ;;
+            *)           PREFIX="/$REPO" ;;
+          esac
+          echo "Serving from ${PREFIX:-/}"
+          echo "prefix=$PREFIX" >> "$GITHUB_OUTPUT"
+
       - name: Build the app
         working-directory: client
         env:
           # Trailing slash matters - Vite joins this to asset paths directly.
-          VITE_BASE_PATH: /${{ github.event.repository.name }}/app/
+          VITE_BASE_PATH: ${{ steps.site.outputs.prefix }}/app/
           VITE_DATA_BASE_URL: ${{ steps.data.outputs.url }}
         run: npm run build
 

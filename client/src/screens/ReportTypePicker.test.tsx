@@ -15,7 +15,7 @@ import { ReportTypePicker } from './ReportTypePicker'
 // type. It is deliberately NOT a sixth condition tile - it is not a trail
 // condition, and the grid stays at five.
 
-const PROPS = { onPick: vi.fn() }
+const PROPS = { onPick: vi.fn(), onCancel: vi.fn() }
 
 afterEach(() => {
   cleanup()
@@ -132,5 +132,22 @@ describe('ReportTypePicker', () => {
     render(<ReportTypePicker {...PROPS} />)
 
     expect(screen.getByText(/never needs an account/i)).toBeInTheDocument()
+  })
+
+  it('offers a way out that files nothing - the flow hides the tab bar', async () => {
+    const user = userEvent.setup()
+    render(<ReportTypePicker {...PROPS} />)
+
+    await user.click(screen.getByRole('button', { name: /^cancel$/i }))
+
+    expect(PROPS.onCancel).toHaveBeenCalled()
+    expect(PROPS.onPick).not.toHaveBeenCalled()
+  })
+
+  it('keeps cancelling out of the conditions grid, so it cannot be tapped for one', () => {
+    render(<ReportTypePicker {...PROPS} />)
+    const grid = screen.getByRole('group', { name: /trail conditions/i })
+
+    expect(within(grid).queryByRole('button', { name: /^cancel$/i })).toBe(null)
   })
 })

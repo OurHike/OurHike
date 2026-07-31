@@ -124,6 +124,23 @@ describe('App shell', () => {
     ).toBeInTheDocument()
   })
 
+  it('backs out of the report flow without filing anything', async () => {
+    // The reporting flow replaces the whole shell, tab bar included, so the
+    // type picker was a screen with no exit: the only way off it was to pick a
+    // report type and then cancel the form behind it.
+    const user = userEvent.setup()
+    returningHiker()
+    render(<App />)
+
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+    await user.click(await screen.findByRole('button', { name: /^cancel$/i }))
+
+    expect(await screen.findByRole('heading', { name: 'You' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'More', selected: true })).toBeInTheDocument()
+  })
+
   it('saves a report to the outbox rather than asking to sign in first', async () => {
     const user = userEvent.setup()
     returningHiker()

@@ -63,6 +63,8 @@ R2 → `your-hike` → Settings → CORS policy. The app is hosted on GitHub Pag
 
 **1.5 Enable public read access**, either R2's public bucket URL or a custom domain. A custom domain is worth it — the URL ends up baked into the client build as `DATA_BASE_URL` (step 2 below).
 
+**Decided 2026-07-31: start with the R2.dev subdomain, not a custom domain.** Gets a working map faster with no DNS to set up. Cloudflare documents the r2.dev subdomain as meant for testing/light use, not sustained production traffic, so this is a deliberate stopgap — **switch `DATA_BASE_URL` to `https://data.ourhike.app` once that domain is set up as a custom domain on this bucket.** Nothing else about steps 2/3 changes when that happens: swapping the repository variable and redeploying Pages is the whole migration, no code change.
+
 **1.6 Publish — now a CI workflow, not a local script.** Dispatch **"Publish vector data"** (Actions tab → workflow_dispatch) with `publish` ticked. Leaving it unticked does a dry run: builds and quality-checks everything without uploading, useful for checking upstream still parses. `include_elevation` adds ~25 min and isn't read by any client code yet, so leave it off unless you're specifically testing that.
 
 Local publish (`cd pipeline && .venv/Scripts/python publish.py` with the four vars from 1.3 set locally) still works identically — CI just runs the same script.
@@ -78,6 +80,8 @@ Roughly 1.6 GB on the first run (all three background tiers plus trails, POIs an
 No longer a code change — the client already reads the bucket URL from a build-time variable (`client/src/lib/config.ts`'s `VITE_DATA_BASE_URL`), not a hardcoded value in `App.tsx`.
 
 Set it as a **repository variable** (not a secret — it's a public URL): Settings → Secrets and variables → Actions → **Variables** tab → New repository variable → `DATA_BASE_URL` = the public URL from 1.5. `.github/workflows/pages.yml` picks it up as `VITE_DATA_BASE_URL` at build time.
+
+**Currently the R2.dev subdomain (see 1.5); revisit once `data.ourhike.app` is set up as a custom domain** and update `DATA_BASE_URL` to `https://data.ourhike.app`, then redeploy Pages (step 3) to pick it up.
 
 **This is the step that turns the repo into a working map**, and it needs nothing but the URL, set once.
 

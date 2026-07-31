@@ -120,6 +120,75 @@ def test_atc_markers_are_empty_when_nothing_has_been_fetched(tmp_path, monkeypat
     assert check_freshness.recorded_atc_markers() == {}
 
 
+def test_recorded_atc_markers_keeps_a_null_edit_date_as_none_not_dropped(tmp_path, monkeypatch):
+    """fetch_all.py tolerates a failed edit-date lookup and still fetches
+    and records the layer, with a null date, rather than failing the whole
+    run (see fetch_all.py). This used to filter such entries out via an
+    `is not None` guard, which silently dropped them instead of surfacing
+    them - a null-dated layer never reached check_all()'s comparison loop
+    at all, so the rollup could report "atc: FRESH" while that layer was
+    never actually checked."""
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "centerline": {"data_last_edit_date": 1723739016398},
+                "shelters": {"data_last_edit_date": None},
+            }
+        )
+    )
+    monkeypatch.setattr(check_freshness, "ATC_MANIFEST", manifest)
+
+    assert check_freshness.recorded_atc_markers() == {
+        "centerline": "1723739016398",
+        "shelters": None,
+    }
+
+
+def test_a_null_recorded_atc_marker_rolls_up_as_unknown_not_a_false_fresh(tmp_path, monkeypatch, requests_mock):
+    """The failure that actually matters here, not just the dict in
+    isolation: prove check_all()'s rollup no longer reports "atc: FRESH"
+    when one layer's edit date was never recorded. Every other source is
+    pointed at a nonexistent path (or stubbed) so this test exercises only
+    the ATC path."""
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "centerline": {
+                    "url": "https://example.com/centerline",
+                    "data_last_edit_date": 1723739016398,
+                },
+                "shelters": {
+                    "url": "https://example.com/shelters",
+                    "data_last_edit_date": None,
+                },
+            }
+        )
+    )
+    monkeypatch.setattr(check_freshness, "ATC_MANIFEST", manifest)
+    monkeypatch.setattr(check_freshness, "OPENTRAIL_STATE", tmp_path / "absent_opentrail.json")
+    monkeypatch.setattr(check_freshness, "TOPO_MANIFEST", tmp_path / "absent_topo.json")
+    monkeypatch.setattr(check_freshness, "ELEVATION_INDEX", tmp_path / "absent_elevation.json")
+    monkeypatch.setattr(check_freshness, "upstream_opentrail_marker", lambda: None)
+    monkeypatch.setattr(check_freshness, "upstream_elevation_marker", lambda: None)
+
+    requests_mock.get(
+        "https://example.com/centerline?f=json",
+        json={"editingInfo": {"dataLastEditDate": 1723739016398}},
+    )
+    # "shelters" (the null-dated layer) is deliberately left unmocked: a
+    # null recorded marker must be classified unknown without even
+    # attempting an upstream request, so a stray request here would fail
+    # this test loudly (NoMockAddress) instead of silently passing.
+
+    reports = check_freshness.check_all()
+
+    atc_report = next(r for r in reports if r["source"] == "atc")
+    assert atc_report["freshness"] is Freshness.UNKNOWN
+    assert "1 unknown" in atc_report["detail"]
+
+
 def test_elevation_marker_is_the_set_of_tile_editions(tmp_path, monkeypatch):
     """3DEP has no per-file timestamp worth trusting, but the catalog embeds
     an edition date in every filename - so the marker is which editions the
@@ -175,3 +244,109 @@ def test_elevation_edition_key_survives_an_unconventional_filename(url, expected
     """An unparseable name must not crash the check or silently drop a tile
     from the marker - a dropped tile would read as 'unchanged'."""
     assert check_freshness.edition_key(url) == expected
+
+
+# --- Topo quad sampling -----------------------------------------------------
+#
+# sorted(manifest)[:TOPO_SAMPLE_SIZE] (the old implementation) sorts full S3
+# manifest URLs, which sorts by state code before anything else in the path -
+# so a flat slice was always the same alphabetically-first state's quads,
+# every run, forever. topo_sample() replaces it with a sample stratified
+# across states and rotated day to day.
+
+
+def _quad_manifest(counts: dict[str, int]) -> dict:
+    """A synthetic topo-quad manifest with `count` quads per state, keyed
+    the same way the real manifest is - full S3 URLs with the state as the
+    path segment immediately before the filename (see
+    fetch_topo_quads.py's BUCKET_URL/GEOTIFF_PREFIX/<state>/<filename>)."""
+    manifest = {}
+    for state, count in counts.items():
+        for i in range(count):
+            url = f"https://prd-tnm.s3.amazonaws.com/StagedProducts/Maps/USTopo/GeoTIFF/{state}/{state}_quad_{i:03}.tif"
+            manifest[url] = {"last_modified": "Thu, 19 Sep 2024 21:20:18 GMT"}
+    return manifest
+
+
+def test_topo_quad_state_reads_the_state_segment_from_a_manifest_url():
+    url = "https://prd-tnm.s3.amazonaws.com/StagedProducts/Maps/USTopo/GeoTIFF/CT/CT_Ansonia_20240815_TM_geo.tif"
+
+    assert check_freshness.topo_quad_state(url) == "CT"
+
+
+def test_topo_quad_state_falls_back_to_the_whole_string_when_unparseable():
+    """Mirrors edition_key()'s own defensive fallback: an unparseable key
+    must not crash sampling or silently vanish from it."""
+    assert check_freshness.topo_quad_state("not_a_url") == "not_a_url"
+
+
+def test_topo_sample_is_not_permanently_limited_to_one_state():
+    """The exact bug, reproduced: a manifest shaped like the real one (one
+    state - Connecticut in production - with fewer quads than the sample
+    size, others with far more) used to make every quad outside that one
+    state permanently invisible, no matter how many times the check ran."""
+    manifest = _quad_manifest({"CT": 40, "GA": 76, "VA": 316, "WV": 65})
+
+    sample = check_freshness.topo_sample(manifest, size=25, seed="2026-07-30")
+
+    assert {check_freshness.topo_quad_state(u) for u in sample} == {"CT", "GA", "VA", "WV"}
+
+
+def test_topo_sample_gives_every_state_an_equal_share_when_the_sample_allows_it():
+    manifest = _quad_manifest({"CT": 5, "GA": 5, "VA": 5})
+
+    sample = check_freshness.topo_sample(manifest, size=6, seed="2026-07-30")
+
+    counts = {}
+    for url in sample:
+        state = check_freshness.topo_quad_state(url)
+        counts[state] = counts.get(state, 0) + 1
+    assert counts == {"CT": 2, "GA": 2, "VA": 2}
+
+
+def test_topo_sample_rotates_which_quads_it_picks_across_different_seeds():
+    """Breadth across states in one run isn't enough on its own - a state
+    with more quads than its round-robin share must also get different
+    quads checked on different days, not the same ones forever."""
+    manifest = _quad_manifest({"CT": 40, "GA": 5})
+
+    today = check_freshness.topo_sample(manifest, size=6, seed="2026-07-30")
+    tomorrow = check_freshness.topo_sample(manifest, size=6, seed="2026-07-31")
+
+    assert set(today) != set(tomorrow)
+
+
+def test_topo_sample_is_deterministic_for_a_given_seed():
+    """Same seed, same sample - a real run must not be flaky, and a test
+    asserting on sample contents must not be either."""
+    manifest = _quad_manifest({"CT": 40, "GA": 20, "VA": 30})
+
+    first = check_freshness.topo_sample(manifest, size=25, seed="2026-07-30")
+    second = check_freshness.topo_sample(manifest, size=25, seed="2026-07-30")
+
+    assert first == second
+
+
+def test_topo_sample_size_respects_a_monkeypatched_module_constant(monkeypatch):
+    """Regression guard for the default-bound-at-import-time gotcha: `size`
+    must resolve TOPO_SAMPLE_SIZE inside the function body via a None
+    sentinel, not as a plain `=TOPO_SAMPLE_SIZE` signature default, or this
+    monkeypatch would silently stop taking effect."""
+    manifest = _quad_manifest({"CT": 10, "GA": 10})
+    monkeypatch.setattr(check_freshness, "TOPO_SAMPLE_SIZE", 3)
+
+    sample = check_freshness.topo_sample(manifest, seed="2026-07-30")
+
+    assert len(sample) == 3
+
+
+def test_topo_sample_never_exceeds_what_the_manifest_actually_has():
+    manifest = _quad_manifest({"CT": 2, "GA": 1})
+
+    sample = check_freshness.topo_sample(manifest, size=25, seed="2026-07-30")
+
+    assert set(sample) == set(manifest)
+
+
+def test_topo_sample_of_an_empty_manifest_is_empty():
+    assert check_freshness.topo_sample({}, size=25, seed="2026-07-30") == []

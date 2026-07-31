@@ -6,6 +6,7 @@ advance - see TESTING.md for the "encode every gotcha as a regression test"
 convention this follows.
 """
 
+import json
 import os
 
 import numpy as np
@@ -17,7 +18,28 @@ from rasterio.transform import from_bounds
 
 import spike_raster_mosaic
 from fetch_topo_quads import bare_key
-from spike_raster_mosaic import bounds_intersect, load_neatlines, open_cropped_vrt
+from spike_raster_mosaic import bounds_intersect, index_quads_in_dir, load_neatlines, mosaic_one_cell, open_cropped_vrt
+
+# Same neighborhood/coordinates test_lib_corridor.py's, test_export_poi.py's,
+# and test_spike_corridor.py's own synthetic centerline fixtures use - far
+# from any real data, so it can't collide with anything, and it lets the
+# bbox assertions below reuse the same plausible-range test_lib_corridor.py
+# already established for this exact line's 30-mile buffer.
+_CENTERLINE_COORDS = [(-74.0, 41.0), (-73.9, 41.1)]
+
+
+def _write_centerline(path, coords=_CENTERLINE_COORDS):
+    fc = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {},
+                "geometry": {"type": "LineString", "coordinates": [[lon, lat] for lon, lat in coords]},
+            }
+        ],
+    }
+    path.write_text(json.dumps(fc))
 
 
 def _write_multistrip_tiff(path, height=200, width=50):
@@ -224,3 +246,212 @@ def test_clip_to_polygon_zeroes_pixels_outside_and_keeps_pixels_inside():
     # (outside) should be zeroed.
     assert clipped[0, :, : width // 4].max() == 255
     assert clipped[0, :, 3 * width // 4 :].max() == 0
+
+
+def _square_polygon(west, south, east, north):
+    return {"type": "Polygon", "coordinates": [[[west, south], [east, south], [east, north], [west, north], [west, south]]]}
+
+
+def test_mosaic_one_cell_returns_none_with_both_reason_strings_when_nothing_matches():
+    """print_reason and summary_reason were two DIFFERENT strings in the
+    pre-extraction code (one for the live per-cell log line, one for the
+    final "Incomplete" recap) - preserved separately here rather than
+    collapsed into one, so this extraction doesn't change either output."""
+    arr, result = mosaic_one_cell((-75.0, 41.0, -74.0, 42.0), [], _square_polygon(-75.0, 41.0, -74.0, 42.0))
+
+    assert arr is None
+    assert result["print_reason"] == "no quads matched this cell at all"
+    assert result["summary_reason"] == "no matching quads"
+
+
+def test_mosaic_one_cell_merges_and_clips_a_real_matching_quad(tmp_path):
+    quad_bounds = (-74.06, 41.00, -74.00, 41.06)
+    size = 60
+    transform = from_bounds(*quad_bounds, size, size)
+    profile = {
+        "driver": "GTiff",
+        "height": size,
+        "width": size,
+        "count": 1,
+        "dtype": "uint8",
+        "crs": "EPSG:4326",
+        "transform": transform,
+    }
+    quad_path = tmp_path / "quad.tif"
+    with rasterio.open(quad_path, "w", **profile) as dst:
+        dst.write(np.full((1, size, size), 200, dtype="uint8"))
+
+    # A small cell fully inside the quad's own extent, and a corridor polygon
+    # matching the cell exactly so the final clip doesn't zero anything out -
+    # isolates "does merge+clip wiring work" from the clip-boundary behavior
+    # already covered by test_clip_to_polygon_zeroes_pixels_outside_and_keeps_pixels_inside.
+    cell = (-74.04, 41.02, -74.02, 41.04)
+    corridor_geom = _square_polygon(*cell)
+
+    arr, result_profile = mosaic_one_cell(cell, [(quad_path, None)], corridor_geom)
+
+    assert arr is not None
+    assert arr.max() == 200
+    assert result_profile["crs"] == "EPSG:4326"
+    assert result_profile["driver"] == "GTiff"
+
+
+def test_mosaic_one_cell_returns_none_when_no_source_data_falls_within_the_cell(tmp_path):
+    """A quad that doesn't actually overlap the cell's bounds at all (a
+    defensive case - in practice the caller only passes quads bounds_intersect()
+    already matched, but mosaic_one_cell() shouldn't assume that holds)."""
+    quad_bounds = (-70.0, 35.0, -69.94, 35.06)  # nowhere near the cell below
+    size = 20
+    transform = from_bounds(*quad_bounds, size, size)
+    profile = {
+        "driver": "GTiff",
+        "height": size,
+        "width": size,
+        "count": 1,
+        "dtype": "uint8",
+        "crs": "EPSG:4326",
+        "transform": transform,
+    }
+    quad_path = tmp_path / "far_away_quad.tif"
+    with rasterio.open(quad_path, "w", **profile) as dst:
+        dst.write(np.full((1, size, size), 200, dtype="uint8"))
+
+    cell = (-74.04, 41.02, -74.02, 41.04)
+    corridor_geom = _square_polygon(*cell)
+
+    arr, result = mosaic_one_cell(cell, [(quad_path, None)], corridor_geom)
+
+    assert arr is None
+    assert result["print_reason"] == "merged result was empty/all-nodata"
+    assert result["summary_reason"] == "empty/all-nodata merge result"
+
+
+def test_index_quads_in_dir_does_not_leak_files_from_a_sibling_directory(tmp_path):
+    """Guards the generalization from the hardcoded module-level QUADS_DIR/
+    FALLBACK_DIR constants (index_quad_bounds()) to an explicit-path
+    parameter (index_quads_in_dir()) - a real place to introduce a bug if the
+    refactor accidentally globs more broadly than the given directory."""
+    target_dir = tmp_path / "target"
+    sibling_dir = tmp_path / "sibling"
+    (target_dir / "CT").mkdir(parents=True)
+    (sibling_dir / "CT").mkdir(parents=True)
+
+    def write_quad(path):
+        transform = from_bounds(-74.1, 41.0, -74.0, 41.1, 4, 4)
+        profile = {
+            "driver": "GTiff",
+            "height": 4,
+            "width": 4,
+            "count": 1,
+            "dtype": "uint8",
+            "crs": "EPSG:4326",
+            "transform": transform,
+        }
+        with rasterio.open(path, "w", **profile) as dst:
+            dst.write(np.full((1, 4, 4), 100, dtype="uint8"))
+
+    write_quad(target_dir / "CT" / "in_target.tif")
+    write_quad(sibling_dir / "CT" / "in_sibling.tif")
+
+    index = index_quads_in_dir(target_dir, None, {})
+
+    names = [path.name for path, _bounds, _neatline in index]
+    assert names == ["in_target.tif"]
+
+
+def test_index_quads_in_dir_includes_fallback_dir_when_given(tmp_path):
+    quads_dir = tmp_path / "quads"
+    fallback_dir = tmp_path / "fallback"
+    (quads_dir / "CT").mkdir(parents=True)
+    fallback_dir.mkdir(parents=True)
+
+    transform = from_bounds(-74.1, 41.0, -74.0, 41.1, 4, 4)
+    profile = {
+        "driver": "GTiff",
+        "height": 4,
+        "width": 4,
+        "count": 1,
+        "dtype": "uint8",
+        "crs": "EPSG:4326",
+        "transform": transform,
+    }
+    with rasterio.open(quads_dir / "CT" / "bulk.tif", "w", **profile) as dst:
+        dst.write(np.full((1, 4, 4), 100, dtype="uint8"))
+    with rasterio.open(fallback_dir / "substitute.tif", "w", **profile) as dst:
+        dst.write(np.full((1, 4, 4), 100, dtype="uint8"))
+
+    index = index_quads_in_dir(quads_dir, fallback_dir, {})
+
+    names = sorted(path.name for path, _bounds, _neatline in index)
+    assert names == ["bulk.tif", "substitute.tif"]
+
+
+def test_load_corridor_and_cells_builds_fresh_from_centerline_not_the_stale_spike_file(tmp_path, monkeypatch):
+    """Regression test for the corridor-freshness fix: load_corridor_and_cells()
+    must derive both the corridor geometry and the cell grid from
+    CENTERLINE_PATH via lib.corridor.build_corridor(), never by reading
+    data/spike/corridor.geojson (confirmed stale - see lib/corridor.py's
+    module docstring). A synthetic centerline fixture proves this: the
+    resulting corridor/cells land in this tiny fixture's own neighborhood,
+    not the real AT's GA-to-Maine extent a read of the stale file would have
+    produced instead."""
+    centerline_path = tmp_path / "centerline.geojson"
+    _write_centerline(centerline_path)
+    monkeypatch.setattr(spike_raster_mosaic, "CENTERLINE_PATH", centerline_path)
+
+    corridor_geom, cells = spike_raster_mosaic.load_corridor_and_cells()
+
+    assert corridor_geom["type"] in ("Polygon", "MultiPolygon")
+    assert len(cells) >= 1
+    # Same sane-neighborhood bounds test_lib_corridor.py's own always_xy
+    # regression test asserts for this exact coordinate pair's 30-mile
+    # buffer - nowhere near the real AT corridor's GA-to-Maine extent, which
+    # is what a read of the stale data/spike/corridor.geojson would have
+    # produced instead.
+    for west, south, east, north in cells:
+        assert -76 < west < -72
+        assert -76 < east < -72
+        assert 39 < south < 43
+        assert 39 < north < 43
+
+
+def test_main_completeness_check_reports_per_cell_reasons_via_shared_helper(tmp_path, monkeypatch, capsys):
+    """Regression test for the completeness-check retrofit onto
+    lib.completeness.fail_if_incomplete(): with a fresh corridor built but
+    zero quads on disk, every cell fails to produce a tile, so main() must
+    still sys.exit(1) and print the same per-cell "cell {i+1}: {reason}"
+    lines the original inline `if skipped_cells: ... sys.exit(1)` block
+    printed - only the summary header's wording now comes from the shared
+    helper (see lib/completeness.py's fail_if_incomplete)."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    centerline_path = raw_dir / "centerline.geojson"
+    _write_centerline(centerline_path)
+
+    metadata_csv = raw_dir / "ustopo_current.csv"
+    metadata_csv.write_text("product_filename,westbc,eastbc,northbc,southbc\n")  # header only, no quads
+
+    quads_dir = tmp_path / "topo_quads"
+    quads_dir.mkdir()
+    fallback_dir = tmp_path / "topo_quads_fallback"
+    fallback_dir.mkdir()
+    out_dir = tmp_path / "topo_background"
+
+    monkeypatch.setattr(spike_raster_mosaic, "CENTERLINE_PATH", centerline_path)
+    monkeypatch.setattr(spike_raster_mosaic, "METADATA_CSV_PATH", metadata_csv)
+    monkeypatch.setattr(spike_raster_mosaic, "QUADS_DIR", quads_dir)
+    monkeypatch.setattr(spike_raster_mosaic, "FALLBACK_DIR", fallback_dir)
+    monkeypatch.setattr(spike_raster_mosaic, "OUT_DIR", out_dir)
+
+    _, cells = spike_raster_mosaic.load_corridor_and_cells()
+    expected_cell_count = len(cells)
+    assert expected_cell_count >= 1
+
+    with pytest.raises(SystemExit) as exc_info:
+        spike_raster_mosaic.main()
+
+    assert exc_info.value.code == 1
+    out = capsys.readouterr().out
+    assert f"Incomplete raster mosaic: {expected_cell_count} problem(s):" in out
+    assert "cell 1: no matching quads" in out
+    assert f"cell {expected_cell_count}: no matching quads" in out

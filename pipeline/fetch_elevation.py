@@ -48,32 +48,72 @@ corridor's whole bounding rectangle - GA to Maine as a rectangle is mostly
 empty space, so one giant query would pull in tiles nowhere near the actual
 trail. Candidate tiles are deduplicated by download URL across cells, then
 filtered against the real corridor polygon (not just cell membership) since
-a tile can sit in a cell's corner the corridor itself never reaches.
+a tile can sit in a cell's corner the corridor itself never reaches. The
+corridor itself is built fresh on every run, from data/raw/centerline.geojson
+via lib/corridor.py's build_corridor() (the same 30-mile buffer
+export_poi.py/export_trails.py use) - never read from
+data/spike/corridor.geojson, which is stale proof-of-concept output (see
+lib/corridor.py's docstring for why that file specifically must not be read).
 
-Incremental: compares each tile's real S3 Last-Modified (one HEAD request
-per tile, same as fetch_topo_quads.py) against
-data/raw/elevation/manifest.json from the previous run, and only
-re-downloads tiles that are new or changed. Every downloaded tile is
-validated for actual readability via rasterio before being recorded in the
-manifest - not just trusted because the HTTP layer reported 200 - matching
-fetch_topo_quads.py's discipline there (3 of its 1,654 quads downloaded
-successfully by every HTTP measure yet were genuinely corrupted on USGS's
-own bucket).
+No incremental fetch, no manifest, no per-tile validation - because nothing
+is downloaded. Unlike fetch_topo_quads.py, this script never HEADs a tile to
+compare its S3 Last-Modified against a manifest.json, and never opens a
+downloaded file with rasterio to check it reads cleanly: there is no local
+file for either check to apply to. 3DEP tiles are Cloud-Optimized GeoTIFFs,
+so export_elevation.py streams only the blocks it needs straight from each
+tile's URL at read time (see build_tile_index below) - there was never a
+download step here for a manifest or a readability check to guard. The real
+design is narrower: query the TNM catalog per grid cell, dedupe to the
+newest edition per footprint, filter to what actually intersects the
+corridor polygon, and write the resulting {url, bounds} list to
+tile_index.json for export_elevation.py to read later.
+
+The safety net this file does have is on the write itself, not on
+individual tiles: main() refuses to overwrite a known-good tile_index.json
+with one that shrank more than expected (see write_gate_problems), rather
+than silently clobbering a good index with a bad run's output.
 """
 
+import argparse
 import json
+import os
 import re
 from pathlib import Path
 
 import duckdb
 import requests
 
+from lib.completeness import fail_if_incomplete
+from lib.corridor import build_corridor
+
 ROOT = Path(__file__).parent
-CORRIDOR_PATH = ROOT / "data" / "spike" / "corridor.geojson"
+# The source line build_corridor() buffers into the 'corridor' table fresh
+# on every run (see module docstring) - deliberately never
+# data/spike/corridor.geojson, which is stale proof-of-concept output.
+CENTERLINE_PATH = ROOT / "data" / "raw" / "centerline.geojson"
 OUT_DIR = ROOT / "data" / "raw" / "elevation"
 # A small JSON list of {url, bounds} - NOT downloaded rasters. See
 # build_tile_index for why nothing is downloaded.
 INDEX_PATH = OUT_DIR / "tile_index.json"
+
+# Write-gate tolerances for the final tile_index.json write (see
+# write_gate_problems). Expressed as a fraction of the PREVIOUS run's count,
+# not a fixed tile count, so the check keeps working unmodified as the
+# corridor's real tile count changes over time (new surveys, corridor scope
+# changes, etc.) rather than needing retuning.
+SHRINK_TOLERANCE = 0.15
+
+# First-run-only backstop, used only when there is no previous index to
+# scale against. Deliberately NOT derived from today's real corridor count
+# (110 tiles) - tying it to that would turn a safety net into a maintenance
+# chore that needs bumping every time the corridor legitimately grows. It
+# exists only to catch a first run that comes back with next to nothing
+# (e.g. a malformed query silently matching almost no tiles).
+COLD_START_MIN_TILES = 10
+
+# Explicit override for an intentional shrink (e.g. a real corridor/dataset
+# change), settable via --allow-shrink or this env var - see main().
+ALLOW_SHRINK_ENV_VAR = "FETCH_ELEVATION_ALLOW_SHRINK"
 
 TNM_API_URL = "https://tnmaccess.nationalmap.gov/api/v1/products"
 # 1/3 arc-second (~10 m), NOT 1 metre. Measured against the real TNM catalog
@@ -98,7 +138,7 @@ def compute_grid_cells() -> list[tuple[float, float, float, float]]:
     stays small (see module docstring)."""
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
-    con.execute(f"CREATE TABLE corridor AS SELECT * FROM ST_Read('{CORRIDOR_PATH.as_posix()}')")
+    build_corridor(con, CENTERLINE_PATH)
     xmin, ymin, xmax, ymax = con.execute(
         "SELECT ST_XMin(geom), ST_YMin(geom), ST_XMax(geom), ST_YMax(geom) FROM corridor"
     ).fetchone()
@@ -204,11 +244,55 @@ def _edition_of(url: str) -> str:
     return match.group(1) if match else ""
 
 
-def main():
+def _env_flag_set(name: str) -> bool:
+    """True when env var `name` holds a truthy value ("1", "true", "yes",
+    case-insensitive) - unset, empty, "0", and "false" all count as not set,
+    same forgiving parsing most boolean env-var flags use."""
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes")
+
+
+def write_gate_problems(
+    old_count: int | None,
+    new_count: int,
+    *,
+    tolerance: float = SHRINK_TOLERANCE,
+    cold_start_min: int = COLD_START_MIN_TILES,
+) -> list[str]:
+    """Problem strings for an index write that should be refused (suitable
+    for lib.completeness.fail_if_incomplete), or [] when it's safe to
+    proceed. Pure count comparison - no filesystem/network/DuckDB - so
+    main() can gate its tile_index.json write with it and tests can exercise
+    it directly.
+
+    Two independent checks:
+    (a) Relative shrink: once a previous index exists (`old_count` is not
+        None), `new_count` must not fall more than `tolerance` below it -
+        self-scaling against whatever the corridor legitimately produced
+        last run, rather than a fixed tile count that would need retuning
+        as corridor scope grows.
+    (b) Cold-start floor: when there is no previous index at all (first run
+        ever, `old_count` is None), there is nothing to scale against, so
+        `new_count` is checked against a small absolute floor instead.
+    """
+    if old_count is None:
+        if new_count < cold_start_min:
+            return [f"cold-start floor: {new_count} tile(s) with no previous index to compare against (minimum {cold_start_min})"]
+        return []
+
+    floor = old_count * (1 - tolerance)
+    if new_count < floor:
+        return [
+            f"relative shrink check: {new_count} tile(s) vs {old_count} previously - "
+            f"more than {tolerance:.0%} smaller (floor {floor:.1f})"
+        ]
+    return []
+
+
+def main(allow_shrink: bool = False):
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
-    con.execute(f"CREATE TABLE corridor AS SELECT * FROM ST_Read('{CORRIDOR_PATH.as_posix()}')")
+    build_corridor(con, CENTERLINE_PATH)
 
     cells = compute_grid_cells()
     print(f"{len(cells)} cell(s) intersect the 30-mile AT corridor.")
@@ -240,7 +324,23 @@ def main():
         print(f"  cell {i}/{len(cells)}: {len(items)} candidate(s) from TNM, {new_here} new corridor-intersecting tile(s)")
 
     index = build_tile_index(candidates, corridor_hit=lambda _bbox: True)
-    print(f"{len(index)} DEM tile(s) intersect the corridor.")
+    new_count = len(index)
+    print(f"{new_count} DEM tile(s) intersect the corridor.")
+
+    old_count = len(json.loads(INDEX_PATH.read_text())) if INDEX_PATH.exists() else None
+    print(f"Previous index: {old_count if old_count is not None else 'none (first run)'} tile(s) -> new: {new_count} tile(s).")
+
+    problems = write_gate_problems(old_count, new_count)
+    if problems:
+        if allow_shrink:
+            print(f"--allow-shrink ({ALLOW_SHRINK_ENV_VAR}) set: overriding the write gate:")
+            for problem in problems:
+                print(f"  {problem}")
+        else:
+            # Exits non-zero without writing INDEX_PATH - the last-good
+            # index stays in place. See write_gate_problems for why this
+            # triggers.
+            fail_if_incomplete(problems, label="Refusing to overwrite tile index")
 
     INDEX_PATH.write_text(json.dumps(index, indent=2))
     print(f"Tile index -> {INDEX_PATH}")
@@ -253,4 +353,20 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # argparse kept outside main() deliberately - main() is called directly
+    # (with allow_shrink passed as a plain kwarg) by the test suite, and
+    # argparse.parse_args() with no explicit argv reads sys.argv, which would
+    # try to parse pytest's own command-line arguments if this lived inside
+    # main() instead (see export_pmtiles.py for the same pattern).
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument(
+        "--allow-shrink",
+        action="store_true",
+        default=_env_flag_set(ALLOW_SHRINK_ENV_VAR),
+        help=(
+            "Accept a tile_index.json write that shrank beyond the normal tolerance "
+            f"instead of refusing it (also settable via {ALLOW_SHRINK_ENV_VAR}=1)."
+        ),
+    )
+    args = parser.parse_args()
+    main(allow_shrink=args.allow_shrink)

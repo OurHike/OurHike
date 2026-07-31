@@ -103,6 +103,32 @@ def main():
     seen_keys = set()
     for layer in layers:
         key = slugify(layer["title"])
+        if key in seen_keys:
+            # Two distinct layers discovered in *this* run slugified to the
+            # same registry key - e.g. "A.T. Bridges" and "Bridges" both ->
+            # "bridges" (slugify() strips the "A.T. " prefix), or two titles
+            # differing only by punctuation/whitespace. seen_urls above only
+            # dedups exact URL repeats within the same web map, so it can't
+            # catch this. fetch_all.py derives its output path purely from
+            # `key` (data/raw/<key>.geojson), so silently appending a second
+            # entry here would leave sources.json with two entries sharing
+            # one key - the second silently overwriting the first's fetched
+            # file next time fetch_all.py runs, with nothing in sources.json
+            # itself to show it ever happened. This is a manually-invoked
+            # tool with a human checkpoint before the result is used (re-run
+            # discovery, review sources.json, *then* run fetch_all
+            # separately), so a loud warning that lets the run finish - not a
+            # hard raise that blocks all discovery over one bad title - is
+            # the better default: drop the colliding layer and let the human
+            # resolve it (rename the title in ArcGIS, or hand-edit the key)
+            # before the next fetch.
+            print(
+                f"  WARNING: layer '{layer['title']}' ({layer['url']}) slugifies to key '{key}', "
+                f"already claimed by another layer discovered this run - skipping it rather than "
+                f"writing a duplicate-key entry to sources.json. Rename one of the source titles "
+                f"in ArcGIS and re-run discovery to fix."
+            )
+            continue
         seen_keys.add(key)
         prior = existing.get(key, {})
         if prior.get("url") and prior["url"] != layer["url"]:

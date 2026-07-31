@@ -5,6 +5,8 @@ real main() against a temp directory, not a reimplementation of its logic."""
 
 import json
 
+import pytest
+
 import fetch_all
 
 LAYER_URL = "https://services1.arcgis.com/fake/arcgis/rest/services/Fake/FeatureServer/0"
@@ -53,9 +55,16 @@ def test_changed_source_is_refetched(tmp_path, monkeypatch, requests_mock):
     (out_path / "fake.geojson").write_text('{"type": "FeatureCollection", "features": []}')
 
     requests_mock.get(LAYER_URL, json={"editingInfo": {"dataLastEditDate": 999}})
+    # Two pages: a short-but-nonempty page followed by the empty page that
+    # actually ends pagination (see test_lib_arcgis.py) - a single fixed
+    # non-empty response would make fetch_layer_geojson's pagination loop
+    # request forever against a mock that never runs dry.
     requests_mock.get(
         LAYER_URL + "/query",
-        json={"features": [{"type": "Feature", "properties": {}, "geometry": None}]},
+        [
+            {"json": {"features": [{"type": "Feature", "properties": {}, "geometry": None}]}},
+            {"json": {"features": []}},
+        ],
     )
 
     fetch_all.main()
@@ -69,9 +78,38 @@ def test_first_ever_run_fetches_unconditionally(tmp_path, monkeypatch, requests_
     out_path, manifest_path = _setup(tmp_path, monkeypatch, prior_manifest=None)
 
     requests_mock.get(LAYER_URL, json={"editingInfo": {"dataLastEditDate": 42}})
-    requests_mock.get(LAYER_URL + "/query", json={"features": []})
+    # See test_changed_source_is_refetched: a terminal empty page is required
+    # to end pagination, not just a page shorter than PAGE_SIZE.
+    requests_mock.get(
+        LAYER_URL + "/query",
+        [
+            {"json": {"features": [{"type": "Feature", "properties": {}, "geometry": None}]}},
+            {"json": {"features": []}},
+        ],
+    )
 
     fetch_all.main()
 
     manifest = json.loads(manifest_path.read_text())
     assert manifest["fake"]["data_last_edit_date"] == 42
+    assert manifest["fake"]["feature_count"] == 1
+
+
+def test_zero_feature_response_is_treated_as_a_failure(tmp_path, monkeypatch, requests_mock):
+    # An ArcGIS FeatureServer query error can come back as HTTP 200 with an
+    # empty features array rather than a non-2xx status - lib/arcgis.py's
+    # fetch_layer_geojson() has no floor for this, so a source coming back
+    # with feature_count 0 must not be treated as an ordinary successful
+    # fetch (see fetch_all.py's completeness check).
+    out_path, manifest_path = _setup(tmp_path, monkeypatch, prior_manifest=None)
+
+    requests_mock.get(LAYER_URL, json={"editingInfo": {"dataLastEditDate": 42}})
+    requests_mock.get(LAYER_URL + "/query", json={"features": []})
+
+    with pytest.raises(SystemExit) as exc_info:
+        fetch_all.main()
+
+    assert exc_info.value.code == 1
+    # An incomplete run must not leave behind a manifest that looks
+    # authoritative.
+    assert not manifest_path.exists()

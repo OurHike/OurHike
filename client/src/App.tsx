@@ -19,6 +19,7 @@ import { TabBar } from './chrome/TabBar'
 import type { TabId } from './chrome/tabs'
 import { Downloads } from './screens/Downloads'
 import { More } from './screens/More'
+import { InstallPrompt } from './screens/InstallPrompt'
 import { Onboarding, type OnboardingResult } from './screens/Onboarding'
 import { ReportForm, type ReportFormSubmission } from './screens/ReportForm'
 import { ReportTypePicker, type ReportTypeId } from './screens/ReportTypePicker'
@@ -34,6 +35,7 @@ import {
 import { useArchiveDownload } from './lib/useArchiveDownload'
 import { useClock } from './lib/useClock'
 import { useOnline } from './lib/useOnline'
+import { useInstallPrompt } from './lib/useInstallPrompt'
 import { useGeolocation } from './lib/useGeolocation'
 import { buildTrailIndex, locateOnTrail, type TrailIndex } from './lib/trailPosition'
 import {
@@ -92,6 +94,7 @@ function App() {
 
   const now = useClock()
   const online = useOnline()
+  const install = useInstallPrompt()
 
   useEffect(() => {
     void loadPreferences().then(setPreferences)
@@ -294,6 +297,11 @@ function App() {
               {dataError}
             </p>
           )}
+          <InstallPrompt
+            platform={install.platform}
+            canPrompt={install.canPrompt}
+            onInstall={install.install}
+          />
           <Downloads
             status={archiveStatus}
             detailLevel={detailLevel}

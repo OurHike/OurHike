@@ -8,9 +8,13 @@
 // that distinction load-bearing rather than decorative.
 //
 // The trick is that no coverage maths is needed to draw it. The hatch is painted
-// by the background layer, which sits UNDER the opaque topo raster - so it shows
-// through exactly where a tile is missing and is hidden everywhere a tile
-// rendered. The map tells the truth about its own coverage for free.
+// by the background layer, which sits UNDER the topo raster - so it shows
+// through exactly where there is no topo ink and is hidden everywhere there is.
+// That covers both shapes of "no ink" without telling them apart: no tile at all
+// (off the corridor, below the archive's minzoom, archive not downloaded), and
+// the transparent nodata ground inside a tile, which export_pmtiles.py's RGBA
+// encoding made see-through rather than black. The map tells the truth about its
+// own coverage for free.
 //
 // The pattern is generated rather than shipped as an asset: it is 32x32 flat
 // colour, an offline-first app should not spend a network round trip or a build

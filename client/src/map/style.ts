@@ -32,15 +32,18 @@ export const TRAIL_CASING_LAYER_ID = 'trail-casing'
 export const BLAZE_LAYER_ID = 'trail-blaze'
 
 /**
- * What the map paints where it has no topo tile to paint.
+ * What the map paints wherever it has no topo ink to paint.
  *
- * A MapLibre style with no `background` layer draws nothing at all in the gaps,
- * and "nothing at all" composites down to the black behind the canvas. That is
- * the failure this constant exists to remove, and the gaps are not an edge case:
- * the corridor archive is a 30-mile strip, so panning off it, zooming out below
- * the archive's own minzoom, or simply moving faster than tiles decode all land
- * on a hole. `--paper-100`, the same tone as USGS topo's paper, so the edge of
- * coverage reads as the map running out of ink rather than the app dying.
+ * `--paper-100`, the same tone as USGS topo's own paper, so uncovered ground
+ * belongs to the same map as the covered parts. Named rather than inlined
+ * because backdrop.ts reads it: whichever of the two is showing, the paper has
+ * to be the same paper.
+ *
+ * Uncovered ground is not an edge case, and reaching it does not need the
+ * pipeline's transparent-nodata tiles to be involved at all - the corridor
+ * archive is a 30-mile strip, so panning off it, zooming out below the
+ * archive's own minzoom, opening the app before the download finishes, or
+ * simply moving faster than tiles decode each leave a hole too.
  */
 export const MAP_BACKGROUND_COLOR = '#f7f3e9'
 
@@ -118,11 +121,17 @@ export function buildMapStyle({
     },
     layers: [
       {
-        // First layer, and the only one that draws with no data behind it: a
-        // background layer covers the whole canvas at every zoom and every
-        // camera position, so there is no combination of pan, zoom and missing
-        // archive that can leave the hiker looking at black. Everything below
-        // draws over it. See MAP_BACKGROUND_COLOR.
+        // Under everything, because the topo tiles are transparent outside the
+        // corridor (export_pmtiles.py's encode_webp) and a 30-mile ribbon
+        // leaves most of a zoomed-out view uncovered. Without this that ground
+        // is empty canvas; with it, it reads as unmapped paper - which is what
+        // it honestly is. Paper rather than a neutral grey so the uncovered
+        // area belongs to the same map as the parts that are covered.
+        //
+        // First in the list, and the only layer here bound to no source: it
+        // covers the whole canvas at every zoom and every camera position, so
+        // the "never black" guarantee survives a missing archive and an
+        // off-corridor pan as well as the transparent ground it was added for.
         id: BACKDROP_LAYER_ID,
         type: 'background',
         paint: { 'background-color': MAP_BACKGROUND_COLOR },

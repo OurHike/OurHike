@@ -393,3 +393,49 @@ def test_main_exits_when_a_cell_renders_at_max_zoom_but_has_a_gap_at_a_lower_zoo
     output = capsys.readouterr().out
     assert "zoom 6: tile_000.tif" in output
     assert "zoom 7: tile_000.tif" not in output
+
+
+def test_encode_webp_makes_nodata_transparent_not_black():
+    """The corridor is a ribbon and every tile is a square, so most of most
+    tiles is outside it. Written as RGB that ground is not "nothing", it is
+    the colour black - a real z6 tile measured 99% black before this. Fine
+    while the map opened zoomed in over the corridor; a black rectangle the
+    moment it opened on the whole trail."""
+    import io
+
+    import numpy as np
+    from PIL import Image
+
+    from export_pmtiles import encode_webp
+
+    arr = np.zeros((3, 512, 512), dtype="uint8")
+    arr[:, :256, :] = 120  # real map on the top half only
+
+    decoded = np.array(Image.open(io.BytesIO(encode_webp(arr))))
+
+    assert decoded.shape == (512, 512, 4), "tiles must carry an alpha channel"
+    assert decoded[:256, :, 3].min() == 255, "mapped ground must be fully opaque"
+    assert decoded[256:, :, 3].max() == 0, "nodata must be fully transparent"
+
+
+def test_encode_webp_keeps_real_map_pixels_intact():
+    """Alpha must not cost colour fidelity on the ground that IS mapped."""
+    import io
+
+    import numpy as np
+    from PIL import Image
+
+    from export_pmtiles import encode_webp
+
+    arr = np.full((3, 512, 512), 200, dtype="uint8")
+
+    decoded = np.array(Image.open(io.BytesIO(encode_webp(arr))))
+
+    # A WebP whose alpha is 255 everywhere is stored without an alpha channel,
+    # so a fully-mapped tile decodes back as RGB. That is the encoder being
+    # sensible, not the alpha being lost - opaque is opaque either way - and it
+    # means a tile fully inside the corridor costs nothing for this change.
+    if decoded.shape[2] == 4:
+        assert decoded[:, :, 3].min() == 255
+    # WEBP_QUALITY is lossy, so this is a closeness check rather than equality.
+    assert abs(int(decoded[:, :, :3].mean()) - 200) < 5

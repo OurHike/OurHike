@@ -1,0 +1,142 @@
+# Builds the vector half of the map in CI and publishes it to R2.
+#
+# "Vector half" means the trail lines and the POIs - everything except the USGS
+# topo raster background. That split is what makes this workflow small enough to
+# be worth having: export_trails.py and export_poi.py read only the ArcGIS and
+# opentrail GeoJSON that fetch_all.py pulls (export_trails.py:409-416,
+# export_poi.py:105-108), and never touch the 14 GB of topo quads. So this runs
+# in minutes on a hosted runner with no special disk handling, where the raster
+# stage needs a 51-way matrix and its own workflow.
+#
+# What a hiker gets from this alone: the trail drawn by blaze colour, shelters,
+# water, campsites and resupply, local search, and their mile along the trail -
+# on a blank background instead of topo. Genuinely useful, and honestly not the
+# finished thing.
+#
+# Nothing here runs on a push. Publishing overwrites what hikers download, so it
+# is a deliberate act: dispatch it, and tick `publish` only when you mean it.
+# Left unticked it builds and gates and uploads nothing, which is the right way
+# to find out whether upstream data still parses.
+
+name: Publish vector data
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Upload to R2. Leave unticked for a dry run that builds and checks only."
+        type: boolean
+        default: false
+      include_elevation:
+        description: "Also build the elevation profile. Adds ~25 min; no client code reads it yet."
+        type: boolean
+        default: false
+
+# One publish at a time. Two concurrent runs would race on latest.json and could
+# interleave uploads, leaving the manifest describing a mixture of two builds.
+concurrency:
+  group: publish-data
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    # Building and publishing share a job on purpose. The export scripts record
+    # absolute paths in their manifests (export_trails.py:387) and publish.py
+    # reads those paths back, so the two only agree on one filesystem. Splitting
+    # them across jobs would work only as long as the runner's checkout path
+    # never changed - a trap rather than a design.
+    environment: production
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: pipeline
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      # Runtime deps only - this builds real data rather than running the suite.
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fetch upstream sources
+        run: python fetch_all.py
+
+      - name: Export trail lines
+        run: python export_trails.py
+
+      - name: Export POIs
+        run: python export_poi.py
+
+      - name: Export elevation profile
+        if: inputs.include_elevation
+        run: python export_elevation.py
+
+      # Runs before publish, never after. On a hosted runner there is no
+      # data/quality_baseline.json from a previous run, so the drop-vs-baseline
+      # check reports SKIPPED rather than comparing - the completeness and
+      # corridor checks still do real work, and a SKIPPED check says so out loud
+      # instead of quietly passing.
+      - name: Check output quality
+        run: python check_output_quality.py
+
+      - name: What would be published
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          from publish import collect_artifacts
+
+          artifacts = collect_artifacts()
+          total = 0
+          for name, entry in sorted(artifacts.items()):
+              size = Path(entry["path"]).stat().st_size
+              total += size
+              print(f"{size / 1e6:9.2f} MB  {name}")
+          print(f"{total / 1e6:9.2f} MB  TOTAL across {len(artifacts)} artifacts")
+          PY
+
+      # Kept short-lived: these are inspectable evidence for a dry run, not a
+      # distribution channel. R2 is the distribution channel.
+      - name: Upload built artifacts for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: vector-data
+          path: |
+            pipeline/data/processed/trails.geojson
+            pipeline/data/processed/trails_manifest.json
+            pipeline/data/processed/poi/
+            pipeline/data/processed/elevation_manifest.json
+          retention-days: 3
+          if-no-files-found: error
+
+      - name: Publish to R2
+        if: inputs.publish
+        env:
+          # The gate publish.py checks. Set only on this step, so every other
+          # step in this workflow is structurally incapable of writing to the
+          # bucket - see publish.py's writes_enabled().
+          R2_WRITE_ENABLED: "true"
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: python publish.py
+
+      - name: Say what happened
+        if: always()
+        run: |
+          if [ "${{ inputs.publish }}" = "true" ]; then
+            echo "Published. The client needs DATA_BASE_URL set and a Pages redeploy to see it."
+          else
+            echo "Dry run - nothing was uploaded. Re-run with 'publish' ticked to upload."
+          fi

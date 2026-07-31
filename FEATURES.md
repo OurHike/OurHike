@@ -57,6 +57,8 @@ Browsing everything above still needs no account - these four items are what act
 
 Given the "one codebase" preference, needing phone + web day one, no in-app purchases, and the values around sustainability (#8) and being inheritable by other volunteer-run clubs (#7), my recommendation:
 
+- **Feature gating and experimentation should be built as a cross-cutting platform capability.** Start with chapter-aware flags, safe stable defaults, offline-friendly cache evaluation, and clear in-app messaging for any user who sees a preview. This makes every subsequent feature easier to ship and turns product decisions into evidence rather than opinion.
+
 **A Progressive Web App (PWA)** — a single web codebase (e.g., React/TypeScript) using **MapLibre GL JS** (open-source map renderer, no vendor lock-in, unlike Mapbox or Google Maps) for the map itself, with offline map data shipped as **PMTiles** (single static archive files — no tile server to run or pay for, which fits the bounded 30-mile-corridor dataset well). The same codebase is wrapped with **Capacitor** to produce installable iOS and Android app shells for the app stores, so hikers can still find and install a "real app" — just built from the one web codebase, not a second implementation.
 
 Why this over Flutter or React Native: it draws from the largest possible volunteer developer pool (plain web skills are far more common than Dart or React Native's native-module knowledge), everything in the stack is fully open source with no vendor lock-in, and it sidesteps app-store complexity entirely for anything except distribution — which matters since no purchases happen in the app anyway.

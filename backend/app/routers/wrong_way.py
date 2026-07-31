@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
+from app.core.orm import get_or_404
 from app.db.session import get_db
 from app.models.hike import Hike
 from app.models.profile import Profile
@@ -33,11 +34,11 @@ def create_wrong_way_event(
     current_user: Profile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> WrongWayEventAck:
-    hike = db.get(Hike, payload.hike_id)
+    hike = get_or_404(db, Hike, payload.hike_id, detail="Hike not found")
     # 404, not 403, matching hikes.py's "don't leak id validity to a
     # non-owner" convention - a nonexistent hike and someone else's hike
     # look identical to the caller.
-    if hike is None or hike.user_id != current_user.id:
+    if hike.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Hike not found")
 
     return WrongWayEventAck(received=True)

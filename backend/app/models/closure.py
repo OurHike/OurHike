@@ -28,10 +28,10 @@ routing/geometry field here, only reason/status/dates for a hiker to read.
 
 import enum
 import uuid
-from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, String, Text
 
+from app.core.time import utc_now
 from app.db.base import Base
 
 
@@ -64,7 +64,7 @@ class Closure(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
 
     reported_by = Column(String, ForeignKey("profiles.id"), nullable=False)
-    reported_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    reported_at = Column(DateTime, nullable=False, default=utc_now)
 
     # Deliberate MVP minimalism, not a Trail table - multi-trail stays
     # Post-MVP (see app/models/hike.py's identical pattern/reasoning).

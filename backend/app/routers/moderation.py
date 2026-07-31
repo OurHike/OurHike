@@ -15,12 +15,12 @@ undecided; this router only enforces *who* can make that judgment call
 require first - that's left to the human doing the verifying.
 """
 
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_role
+from app.core.orm import commit_and_refresh, get_or_404
+from app.core.time import utc_now
 from app.db.session import get_db
 from app.models.closure import Closure, ModerationStatus
 from app.models.profile import Profile
@@ -39,9 +39,7 @@ def verify_report(
     current_user: Profile = Depends(require_role("maintainer", "club_admin")),
     db: Session = Depends(get_db),
 ) -> Report:
-    report = db.get(Report, report_id)
-    if report is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
+    report = get_or_404(db, Report, report_id, detail="Report not found")
 
     # A thanks is not a claim about the world, so there is nothing to verify
     # (../../../features/SAYING_THANKS.md). Refused here rather than merely
@@ -56,9 +54,7 @@ def verify_report(
 
     report.status = ReportStatus.verified
     report.severity = payload.severity
-    db.commit()
-    db.refresh(report)
-    return report
+    return commit_and_refresh(db, report)
 
 
 @router.post("/reports/{report_id}/dismiss", response_model=ReportOut)
@@ -67,14 +63,10 @@ def dismiss_report(
     current_user: Profile = Depends(require_role("maintainer", "club_admin")),
     db: Session = Depends(get_db),
 ) -> Report:
-    report = db.get(Report, report_id)
-    if report is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
+    report = get_or_404(db, Report, report_id, detail="Report not found")
 
     report.status = ReportStatus.dismissed
-    db.commit()
-    db.refresh(report)
-    return report
+    return commit_and_refresh(db, report)
 
 
 @router.post("/closures/{closure_id}/verify", response_model=ClosureOut)
@@ -83,16 +75,12 @@ def verify_closure(
     current_user: Profile = Depends(require_role("maintainer", "club_admin")),
     db: Session = Depends(get_db),
 ) -> Closure:
-    closure = db.get(Closure, closure_id)
-    if closure is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Closure not found")
+    closure = get_or_404(db, Closure, closure_id, detail="Closure not found")
 
     closure.moderation_status = ModerationStatus.verified
     closure.verified_by = current_user.id
-    closure.verified_at = datetime.now(timezone.utc).replace(tzinfo=None)
-    db.commit()
-    db.refresh(closure)
-    return closure
+    closure.verified_at = utc_now()
+    return commit_and_refresh(db, closure)
 
 
 @router.post("/closures/{closure_id}/dismiss", response_model=ClosureOut)
@@ -101,11 +89,7 @@ def dismiss_closure(
     current_user: Profile = Depends(require_role("maintainer", "club_admin")),
     db: Session = Depends(get_db),
 ) -> Closure:
-    closure = db.get(Closure, closure_id)
-    if closure is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Closure not found")
+    closure = get_or_404(db, Closure, closure_id, detail="Closure not found")
 
     closure.moderation_status = ModerationStatus.dismissed
-    db.commit()
-    db.refresh(closure)
-    return closure
+    return commit_and_refresh(db, closure)

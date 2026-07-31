@@ -4,6 +4,7 @@ import {
   downloadArchive,
   ARCHIVE_PARTIAL_KEY,
   ARCHIVE_PROGRESS_KEY,
+  ARCHIVE_SOURCE_KEY,
   ArchiveSizeMismatchError,
 } from './archiveDownload'
 import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
@@ -58,11 +59,13 @@ function mockFetch({
   status = 200,
   totalBytes,
   contentRange,
+  etag,
 }: {
   chunks: Uint8Array[]
   status?: number
   totalBytes?: number
   contentRange?: string
+  etag?: string
 }) {
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
     const body = new ReadableStream<Uint8Array>({
@@ -75,6 +78,7 @@ function mockFetch({
     const declared = totalBytes ?? chunks.reduce((n, c) => n + c.length, 0)
     headers.set('content-length', String(declared))
     if (contentRange) headers.set('content-range', contentRange)
+    if (etag) headers.set('etag', etag)
 
     return new Response(body, { status, headers })
   })
@@ -147,6 +151,9 @@ describe('downloadArchive — resuming', () => {
     withStore({
       [ARCHIVE_PARTIAL_KEY]: new Blob([bytes(1, 2, 3)]),
       [ARCHIVE_PROGRESS_KEY]: { receivedBytes: 3, totalBytes: 6 },
+      // A partial written by this module always records where it came from;
+      // one without it is deliberately discarded rather than resumed onto.
+      [ARCHIVE_SOURCE_KEY]: { url: URL_ },
     })
     const spy = mockFetch({
       chunks: [bytes(4, 5, 6)],
@@ -165,6 +172,9 @@ describe('downloadArchive — resuming', () => {
     const store = withStore({
       [ARCHIVE_PARTIAL_KEY]: new Blob([bytes(1, 2, 3)]),
       [ARCHIVE_PROGRESS_KEY]: { receivedBytes: 3, totalBytes: 6 },
+      // A partial written by this module always records where it came from;
+      // one without it is deliberately discarded rather than resumed onto.
+      [ARCHIVE_SOURCE_KEY]: { url: URL_ },
     })
     mockFetch({
       chunks: [bytes(4, 5, 6)],
@@ -185,6 +195,9 @@ describe('downloadArchive — resuming', () => {
     withStore({
       [ARCHIVE_PARTIAL_KEY]: new Blob([bytes(1, 2, 3)]),
       [ARCHIVE_PROGRESS_KEY]: { receivedBytes: 3, totalBytes: 6 },
+      // A partial written by this module always records where it came from;
+      // one without it is deliberately discarded rather than resumed onto.
+      [ARCHIVE_SOURCE_KEY]: { url: URL_ },
     })
     const onProgress = vi.fn()
     mockFetch({
@@ -205,6 +218,9 @@ describe('downloadArchive — resuming', () => {
     const store = withStore({
       [ARCHIVE_PARTIAL_KEY]: new Blob([bytes(1, 2, 3)]),
       [ARCHIVE_PROGRESS_KEY]: { receivedBytes: 3, totalBytes: 6 },
+      // A partial written by this module always records where it came from;
+      // one without it is deliberately discarded rather than resumed onto.
+      [ARCHIVE_SOURCE_KEY]: { url: URL_ },
     })
     mockFetch({ chunks: [bytes(9, 9, 9, 9, 9, 9)], status: 200, totalBytes: 6 })
 
@@ -305,5 +321,101 @@ describe('downloadArchive — failure', () => {
 
     await expect(downloadArchive(URL_)).rejects.toThrow(/404/)
     expect(store[ARCHIVE_PARTIAL_KEY]).toBeUndefined()
+  })
+})
+
+// The failure mode the size check is structurally unable to catch. totalBytes is
+// DEFINED as heldBytes + declared, and a completed resume accumulates exactly
+// heldBytes + declared - both sides of that comparison are the same expression.
+// So a spliced archive always passes it, and the result is a PMTiles file whose
+// directory and tile offsets disagree: a map that reports itself downloaded and
+// renders wrong past the seam, offline, with no network to correct it.
+describe('downloadArchive — refusing to splice two different archives', () => {
+  it('discards partial bytes that came from a different URL', async () => {
+    // A hiker who starts Standard, fails, then picks Light. Appending z12 bytes
+    // onto z11 bytes would produce exactly the right length and a broken map.
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([bytes(9, 9, 9)]),
+      [ARCHIVE_PROGRESS_KEY]: { receivedBytes: 3, totalBytes: 6 },
+      [ARCHIVE_SOURCE_KEY]: { url: 'https://cdn.example.org/background_z13.pmtiles' },
+    })
+    const fetchSpy = mockFetch({ chunks: [bytes(1, 2, 3)] })
+
+    await downloadArchive(URL_)
+
+    // No Range header at all: this is a fresh start, not a resume.
+    expect(fetchSpy.mock.calls[0][1]).toMatchObject({ headers: undefined })
+    const stored = store[CORRIDOR_ARCHIVE_KEY] as Blob
+    expect(stored.size).toBe(3)
+  })
+
+  it('discards a partial with no source record, rather than resuming onto it blindly', async () => {
+    // Written by a build before the source record existed, or left behind when
+    // a quota failure interrupted persistPartial partway through.
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([bytes(9, 9, 9)]),
+      [ARCHIVE_PROGRESS_KEY]: { receivedBytes: 3, totalBytes: 6 },
+    })
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+
+    await downloadArchive(URL_)
+
+    expect((store[CORRIDOR_ARCHIVE_KEY] as Blob).size).toBe(3)
+  })
+
+  it('sends If-Range so the server itself refuses a stale resume', async () => {
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([bytes(1, 2, 3)]),
+      [ARCHIVE_PROGRESS_KEY]: { receivedBytes: 3, totalBytes: 6 },
+      [ARCHIVE_SOURCE_KEY]: { url: URL_, etag: '"v1"' },
+    })
+    const fetchSpy = mockFetch({
+      chunks: [bytes(4, 5, 6)],
+      status: 206,
+      etag: '"v1"',
+    })
+
+    await downloadArchive(URL_)
+
+    expect(fetchSpy.mock.calls[0][1]).toMatchObject({
+      headers: { Range: 'bytes=3-', 'If-Range': '"v1"' },
+    })
+    expect((store[CORRIDOR_ARCHIVE_KEY] as Blob).size).toBe(6)
+  })
+
+  it('starts clean when the archive was republished mid-download', async () => {
+    // If-Range makes the server arbitrate: a changed object comes back 200 with
+    // the whole body instead of 206, and the existing status check treats that
+    // as "start clean". The held bytes must NOT survive into the result.
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([bytes(9, 9, 9)]),
+      [ARCHIVE_PROGRESS_KEY]: { receivedBytes: 3, totalBytes: 6 },
+      [ARCHIVE_SOURCE_KEY]: { url: URL_, etag: '"v1"' },
+    })
+    mockFetch({ chunks: [bytes(1, 2, 3, 4)], status: 200, etag: '"v2"' })
+
+    await downloadArchive(URL_)
+
+    const stored = store[CORRIDOR_ARCHIVE_KEY] as Blob
+    expect(stored.size).toBe(4)
+    expect(new Uint8Array(await stored.arrayBuffer())).toEqual(bytes(1, 2, 3, 4))
+  })
+
+  it('records the source alongside the bytes when a transfer is interrupted', async () => {
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2)], totalBytes: 99, etag: '"v1"' })
+
+    await expect(downloadArchive(URL_)).rejects.toThrow(ArchiveSizeMismatchError)
+
+    expect(store[ARCHIVE_SOURCE_KEY]).toEqual({ url: URL_, etag: '"v1"' })
+  })
+
+  it('ignores a weak ETag, which does not promise the byte identity a resume needs', async () => {
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2)], totalBytes: 99, etag: 'W/"v1"' })
+
+    await expect(downloadArchive(URL_)).rejects.toThrow(ArchiveSizeMismatchError)
+
+    expect(store[ARCHIVE_SOURCE_KEY]).toEqual({ url: URL_, etag: undefined })
   })
 })

@@ -34,10 +34,9 @@ Options: closures are always shown, never hideable).
 value going in is already UTC by construction.
 """
 
-from datetime import datetime, timezone
-
 from sqlalchemy import JSON, Column, DateTime, ForeignKey, String
 
+from app.core.time import utc_now
 from app.db.base import Base
 
 
@@ -51,6 +50,6 @@ class UserPreferences(Base):
     updated_at = Column(
         DateTime,
         nullable=False,
-        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-        onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        default=utc_now,
+        onupdate=utc_now,
     )

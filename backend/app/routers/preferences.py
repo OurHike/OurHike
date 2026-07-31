@@ -2,12 +2,12 @@
 `UserPreferences` model (../../../features/IDENTITY_AND_PRIVACY.md).
 """
 
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
+from app.core.orm import commit_and_refresh
+from app.core.time import utc_now
 from app.db.session import get_db
 from app.models.preferences import UserPreferences
 from app.models.profile import Profile
@@ -44,7 +44,7 @@ def put_my_preferences(
     on the first call, replaces its contents on every later call, matching a
     client syncing its whole local `UserPreferences` state wholesale.
     """
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = utc_now()
     data = preferences.model_dump(mode="json")
 
     row = db.get(UserPreferences, current_user.id)
@@ -55,6 +55,5 @@ def put_my_preferences(
         row.data = data
         row.updated_at = now
 
-    db.commit()
-    db.refresh(row)
+    row = commit_and_refresh(db, row)
     return PreferencesOut(**row.data, updated_at=row.updated_at)

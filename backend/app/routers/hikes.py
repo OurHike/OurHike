@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
 from app.core.hike_direction import derive_direction
+from app.core.orm import commit_and_refresh, get_or_404
 from app.db.session import get_db
 from app.models.hike import Hike
 from app.models.profile import Profile
@@ -24,8 +25,8 @@ def _get_owned_hike_or_404(hike_id: str, current_user: Profile, db: Session) -> 
     that doesn't exist at all - not a 403 - so a caller can't use this
     endpoint to learn whether some other user's hike id is valid.
     """
-    hike = db.get(Hike, hike_id)
-    if hike is None or hike.user_id != current_user.id:
+    hike = get_or_404(db, Hike, hike_id, detail="Hike not found")
+    if hike.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Hike not found")
     return hike
 
@@ -38,9 +39,7 @@ def create_hike(
 ) -> Hike:
     hike = Hike(user_id=current_user.id, **payload.model_dump())
     db.add(hike)
-    db.commit()
-    db.refresh(hike)
-    return hike
+    return commit_and_refresh(db, hike)
 
 
 @router.get("", response_model=list[HikeOut])
@@ -71,9 +70,7 @@ def update_hike(
     hike = _get_owned_hike_or_404(hike_id, current_user, db)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(hike, field, value)
-    db.commit()
-    db.refresh(hike)
-    return hike
+    return commit_and_refresh(db, hike)
 
 
 @router.delete("/{hike_id}", status_code=status.HTTP_204_NO_CONTENT)

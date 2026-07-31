@@ -10,10 +10,11 @@ Closures reuse "the same permission tier" - read here as the same split
 Report a Problem establishes, not a stated decision of its own.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user, require_role
+from app.core.orm import commit_and_refresh, get_or_404
 from app.db.session import get_db
 from app.models.closure import Closure, ModerationStatus
 from app.models.profile import Profile
@@ -39,9 +40,7 @@ def create_closure(
         end_mile_marker=payload.end_mile_marker,
     )
     db.add(closure)
-    db.commit()
-    db.refresh(closure)
-    return closure
+    return commit_and_refresh(db, closure)
 
 
 @router.get("", response_model=list[ClosureOut])
@@ -62,9 +61,7 @@ def update_closure(
     """Update a closure's real-world status/reason/note. Role-gated -
     modifying a closure (as opposed to reporting one) is a moderator
     action."""
-    closure = db.get(Closure, closure_id)
-    if closure is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Closure not found")
+    closure = get_or_404(db, Closure, closure_id, detail="Closure not found")
 
     if payload.status is not None:
         closure.status = payload.status
@@ -73,9 +70,7 @@ def update_closure(
     if payload.note is not None:
         closure.note = payload.note
 
-    db.commit()
-    db.refresh(closure)
-    return closure
+    return commit_and_refresh(db, closure)
 
 
 # `POST /closures/{id}/verify` and `/dismiss` - the actual moderation-queue

@@ -23,6 +23,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.core.orm import commit_and_refresh
 from app.db.session import get_db
 from app.models.profile import Profile, Role
 
@@ -43,6 +44,15 @@ def verify_supabase_jwt(token: str) -> dict:
     verification failure as a 500.
     """
     return jwt.decode(token, settings.supabase_jwt_secret, algorithms=["HS256"])
+
+
+def _get_or_create_profile(db: Session, user_id: str) -> Profile:
+    profile = db.get(Profile, user_id)
+    if profile is None:
+        profile = Profile(id=user_id, role=Role.hiker)
+        db.add(profile)
+        commit_and_refresh(db, profile)
+    return profile
 
 
 def get_current_user(
@@ -69,14 +79,7 @@ def get_current_user(
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing subject claim")
 
-    profile = db.get(Profile, user_id)
-    if profile is None:
-        profile = Profile(id=user_id, role=Role.hiker)
-        db.add(profile)
-        db.commit()
-        db.refresh(profile)
-
-    return profile
+    return _get_or_create_profile(db, user_id)
 
 
 def require_role(*roles: str):

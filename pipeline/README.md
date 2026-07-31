@@ -195,6 +195,14 @@ It's `check_freshness.py`'s output-side sibling: `check_freshness.py` (run befor
 3. **`fetch_topo_quads.py` backstop** - re-verifies that every quad recorded in `data/raw/topo_quads/manifest.json` still exists on disk, and that a sample of them still reads as a valid raster, as defense in depth alongside that script's own exit-code gate.
 4. **Drop-vs-baseline detection** - compares this run's counts against `data/quality_baseline.json` (gitignored, like everything else under `data/`) and flags a count dropping more than ~10% with no matching `check_freshness.py`-reported upstream change. Only rewrites the baseline on a fully-passing run.
 
+Check 4 needs to be told what changed upstream, because this gate deliberately never touches the network — standing directly in front of `publish.py`, it should not be able to fail because an upstream host is down. Pass the sources `check_freshness.py` reported as STALE:
+
+```
+.venv/Scripts/python check_output_quality.py --changed-source atc --changed-source opentrail
+```
+
+Without them the check is conservative rather than wrong: a real drop that an upstream refresh fully explains still gets flagged, so a legitimate change reads as a problem until someone says otherwise.
+
 Exits non-zero if any check finds a real problem - `publish.py` shouldn't run after that until the cause is fixed.
 
 ## Publishing

@@ -307,6 +307,19 @@ def main():
             total_bytes += result["bytes"]
             print(f"  [{n}/{len(kept)}] downloaded {result['state']}/{result['filename']} ({result['bytes'] / 1e6:.1f} MB)")
 
+    # Written BEFORE the completeness gate below, deliberately, and unlike every
+    # sibling script in this pipeline - which all gate first. The difference is
+    # what the manifest IS. Elsewhere (trails_manifest.json, poi/manifest.json)
+    # it describes publishable output, so writing one for an incomplete run
+    # would hand the publish step something it must not ship. Here it is a
+    # resumption record: "last_modified" is the only field read back, and it is
+    # what lets the next run skip a quad it already has.
+    #
+    # Gating first would therefore mean one corrupted quad discards the record
+    # of the ~1,650 that downloaded fine, and the next run re-fetches all 14 GB.
+    # Corrupted quads are already absent from the manifest (fetch_one_quad only
+    # records the "downloaded" branch), so they retry on their own without this
+    # file being withheld.
     MANIFEST_PATH.write_text(json.dumps(manifest, indent=2))
     print(
         f"\nDone. {downloaded} downloaded ({total_bytes / 1e9:.2f} GB), "

@@ -171,15 +171,23 @@ function App() {
     )
   }, [fix])
 
-  const searchablePois: SearchablePoi[] = useMemo(() => {
-    if (trailIndex === null) return []
-    return pois.map((poi) => ({
-      id: poi.id,
-      name: poi.name,
-      type: poi.type,
-      mile: locateOnTrail(trailIndex, { lon: poi.lon, lat: poi.lat })?.mile ?? 0,
-    }))
-  }, [pois, trailIndex])
+  // Built from the POIs alone. The mile is added where the centerline index
+  // exists and simply omitted where it does not - searching for a shelter by
+  // name needs no geometry, and gating the whole list on the index meant a
+  // missing one silently emptied search while 800-odd POIs sat in memory.
+  const searchablePois: SearchablePoi[] = useMemo(
+    () =>
+      pois.map((poi) => ({
+        id: poi.id,
+        name: poi.name,
+        type: poi.type,
+        mile:
+          trailIndex === null
+            ? undefined
+            : locateOnTrail(trailIndex, { lon: poi.lon, lat: poi.lat })?.mile,
+      })),
+    [pois, trailIndex],
+  )
 
   const viewportPoints: MapPoint[] = useMemo(
     () =>

@@ -65,10 +65,12 @@ export function Search({ open, pois, onSelect, onClose }: SearchProps) {
               >
                 <span className="search__result-name">{poi.name}</span>
                 <span className="search__result-meta">
-                  {`${typeLabel(poi.type)} · mi ${poi.mile.toLocaleString('en-US', {
-                    minimumFractionDigits: 1,
-                    maximumFractionDigits: 1,
-                  })}`}
+                  {poi.mile === undefined
+                    ? typeLabel(poi.type)
+                    : `${typeLabel(poi.type)} · mi ${poi.mile.toLocaleString('en-US', {
+                        minimumFractionDigits: 1,
+                        maximumFractionDigits: 1,
+                      })}`}
                 </span>
               </button>
             </li>

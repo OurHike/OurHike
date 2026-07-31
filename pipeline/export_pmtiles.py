@@ -156,7 +156,28 @@ def render_tile(z, x, y, cell_index):
 
 
 def encode_webp(arr) -> bytes:
-    img = Image.fromarray(np.moveaxis(arr, 0, -1), mode="RGB")
+    """RGBA, not RGB - the alpha channel is what stops the corridor being a
+    black rectangle.
+
+    The corridor is a 30-mile ribbon and every tile is a square, so most of
+    most tiles is outside it. mosaic_one_cell() masks that ground with
+    nodata=0 and merge() fills gaps with 0, and written as RGB those pixels
+    are not "nothing", they are the colour black. Measured on a real z6 tile
+    before this change: 99% black. Fine while the map opened zoomed in over
+    the corridor, and immediately obvious once it opened on the whole trail.
+
+    Alpha is derived from the same all-zero convention the rest of this
+    pipeline already uses for nodata - the `not np.any(dst)` check in
+    render_tile() above decides a tile is empty exactly this way.
+
+    Honest limitation: a source pixel that is genuinely pure black in all
+    three channels becomes transparent. Scanned topo ink is essentially never
+    exactly 0 after bilinear resampling, and one see-through pixel is a far
+    smaller wrong than a black continent.
+    """
+    rgb = np.moveaxis(arr, 0, -1)
+    alpha = np.where(rgb.any(axis=-1), 255, 0).astype("uint8")
+    img = Image.fromarray(np.dstack([rgb, alpha]), mode="RGBA")
     buf = io.BytesIO()
     img.save(buf, format="WEBP", quality=WEBP_QUALITY)
     return buf.getvalue()

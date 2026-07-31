@@ -1,8 +1,15 @@
 /* Screens that are not the map still need the tab bar pinned and their own
    content scrollable underneath it, which the map screen gets from its own
-   grid (chrome.css). */
+   grid (chrome.css).
+
+   `height`, not `min-height`: a floor lets the column grow past the viewport
+   whenever the content does, and a flex item that is already as tall as its
+   content never scrolls - so the page scrolled instead and carried the tab bar
+   away below the fold. Settings is long enough to do that on any phone, which
+   left the only navigation off-screen until you scrolled to the bottom of it.
+   A fixed height is what makes the overflow below land on the content. */
 .app__screen {
-  min-height: 100svh;
+  height: 100svh;
   display: flex;
   flex-direction: column;
   background: var(--paper-100);
@@ -10,6 +17,9 @@
 
 .app__screen > :first-child {
   flex: 1;
+  /* Flex items floor at their content height by default; the tab bar only
+     stays put if this one is allowed to be shorter than what is inside it. */
+  min-height: 0;
   overflow-y: auto;
 }
 

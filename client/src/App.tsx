@@ -288,7 +288,12 @@ function App() {
 
   if (reporting !== null) {
     if (reporting.step === 'pick') {
-      return <ReportTypePicker onPick={(type) => setReporting({ step: 'form', type })} />
+      return (
+        <ReportTypePicker
+          onPick={(type) => setReporting({ step: 'form', type })}
+          onCancel={() => setReporting(null)}
+        />
+      )
     }
 
     return (

@@ -49,9 +49,17 @@ const CONDITION_TYPES: Array<{
 
 export interface ReportTypePickerProps {
   onPick: (type: ReportTypeId) => void
+  /**
+   * Backing out. Required, not optional: the reporting flow replaces the whole
+   * shell including the tab bar (App.tsx), so a screen here with no way out is
+   * one a hiker is stuck on - and someone who opened this to look at the
+   * choices, or opened it by accident, has to be able to leave without filing
+   * a report to escape.
+   */
+  onCancel: () => void
 }
 
-export function ReportTypePicker({ onPick }: ReportTypePickerProps) {
+export function ReportTypePicker({ onPick, onCancel }: ReportTypePickerProps) {
   return (
     <main className="reporting">
       <h1 className="reporting__title">Report a problem</h1>
@@ -117,6 +125,14 @@ export function ReportTypePicker({ onPick }: ReportTypePickerProps) {
       <p className="reporting__reassurance">
         Reading the map — water, shelters, closures, warnings — never needs an account.
       </p>
+
+      {/* Bottom, and secondary, exactly as on the form behind it: the way out
+          of the flow should be in the same place at both steps. */}
+      <div className="reporting__actions">
+        <button type="button" className="reporting__secondary" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
     </main>
   )
 }

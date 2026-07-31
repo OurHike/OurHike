@@ -22,10 +22,10 @@ from. See `app/core/hike_direction.py`.
 """
 
 import uuid
-from datetime import datetime, timezone
 
 from sqlalchemy import Column, Date, DateTime, Float, ForeignKey, String
 
+from app.core.time import utc_now
 from app.db.base import Base
 
 
@@ -57,4 +57,4 @@ class Hike(Base):
     # Naive UTC, matching app/models/profile.py's exact pattern - see that
     # module's docstring for why (duckdb-engine can't marshal TIMESTAMPTZ
     # back out without the optional pytz package).
-    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    created_at = Column(DateTime, nullable=False, default=utc_now)

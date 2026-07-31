@@ -6,13 +6,15 @@ account, matching every other browsing endpoint in this app; submitting
 it to and, later, moderate against.
 """
 
-from datetime import datetime, timezone
+from datetime import timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
 from app.core.auth import bearer_scheme, get_current_user
+from app.core.orm import commit_and_refresh
+from app.core.time import utc_now
 from app.db.session import get_db
 from app.models.profile import Profile
 from app.models.report import Report, ReportStatus, ReportType, Visibility
@@ -80,7 +82,7 @@ def create_report(
     offline-first app is not the moment it arrived: the client supplies
     `authored_at` when flushing its outbox, and the server falls back to now
     only when it is absent. `received_at` is always server truth."""
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = utc_now()
     authored = payload.authored_at
     if authored is not None and authored.tzinfo is not None:
         # Stored naive-UTC throughout; duckdb-engine cannot marshal
@@ -103,9 +105,7 @@ def create_report(
         received_at=now,
     )
     db.add(report)
-    db.commit()
-    db.refresh(report)
-    return report
+    return commit_and_refresh(db, report)
 
 
 @router.get("", response_model=list[ReportOut])

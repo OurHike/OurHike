@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { act, render, screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { get, set } from 'idb-keyval'
 import App from './App'
+import { MockMap, resetMapLibreMock } from './test/mocks/maplibre-gl'
 import { PREFERENCES_KEY } from './lib/preferences'
 import { DEFAULT_PREFERENCES } from './lib/userPreferences'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
@@ -18,6 +19,7 @@ const store = new Map<string, unknown>()
 
 beforeEach(() => {
   store.clear()
+  resetMapLibreMock()
   vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
   vi.mocked(set).mockImplementation((key, value) => {
     store.set(key as string, value)
@@ -46,6 +48,22 @@ async function completeOnboarding(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('button', { name: 'Continue' }))
   await user.click(screen.getByRole('button', { name: 'Continue' }))
   await user.click(screen.getByRole('button', { name: /not now/i }))
+}
+
+/**
+ * The live map, once MapView's effect has actually built it.
+ *
+ * `findByRole('region')` resolves the moment MapView's container div lands in
+ * the DOM - which is a commit BEFORE the effect that constructs the map runs.
+ * Reading `MockMap.live[0]` straight after it is therefore a race that usually
+ * wins on a quiet machine and loses under load: it went green on both of #86's
+ * PR runs and red on the merge commit, with `Cannot read properties of
+ * undefined (reading 'options')`. Waiting for the map itself is the thing these
+ * tests actually mean.
+ */
+async function liveMap() {
+  await waitFor(() => expect(MockMap.live.length).toBeGreaterThan(0))
+  return MockMap.live[0]
 }
 
 describe('App shell', () => {
@@ -111,6 +129,123 @@ describe('App shell', () => {
     expect(await screen.findByRole('region', { name: /trail map/i })).toBeInTheDocument()
   })
 
+  it('comes back to the view the hiker left, not to the whole trail, after another tab', async () => {
+    // The bug: the map screen unmounts whenever another tab is showing, so
+    // coming back builds a new map - and the new one was handed the opening
+    // corridor bounds again. Checking the download progress threw away where
+    // someone had zoomed to, every time, and the first-fix jump was a one-way
+    // latch that never brought them back.
+    const user = userEvent.setup()
+    returningHiker()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    const opening = await liveMap()
+    // Stand in for the hiker panning and zooming to a shelter.
+    opening.center = { lng: -78.4, lat: 38.6 }
+    opening.zoom = 15
+    act(() => opening.emit('moveend'))
+
+    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    await screen.findByText('Offline map')
+    await user.click(screen.getByRole('tab', { name: 'Trail' }))
+    await screen.findByRole('region', { name: /trail map/i })
+
+    const rebuilt = await liveMap()
+    expect(rebuilt).not.toBe(opening)
+    expect(rebuilt.options.center).toEqual([-78.4, 38.6])
+    expect(rebuilt.options.zoom).toBe(15)
+    // Bounds would re-fit the whole corridor and win over the centre.
+    expect(rebuilt.options.bounds).toBeUndefined()
+  })
+
+  it('opens on the whole corridor when there is no view to come back to', async () => {
+    returningHiker()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    // Before a fix or a pan the app genuinely does not know where the hiker
+    // is, and the whole trail is the honest opening answer.
+    expect((await liveMap()).options.bounds).toEqual([
+      [-84.73, 34.2],
+      [-68.3, 46.34],
+    ])
+  })
+
+  it('zooms in on a search result rather than nudging the corridor view', async () => {
+    // The bug: the jump set a centre and left the zoom alone. From the opening
+    // view of the entire trail that moved the map by a few pixels, so tapping
+    // a shelter you had just searched for looked like nothing had happened.
+    const user = userEvent.setup()
+    returningHiker()
+    store.set(
+      'ourhike:trails',
+      new Blob([JSON.stringify({ type: 'FeatureCollection', features: [] })]),
+    )
+    store.set('ourhike:pois', [
+      {
+        id: 'atc_shelters:abc',
+        type: 'shelter',
+        name: 'Chairback Gap Lean-to',
+        lat: 45.45,
+        lon: -69.26,
+        confidence: 'high',
+      },
+    ])
+
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('button', { name: 'Search' }))
+    await user.type(await screen.findByRole('searchbox'), 'chairback')
+    // Waiting for the result also waits out the map rebuild that loading trail
+    // data triggers - the POIs and the new trails URL land in the same commit.
+    const result = await screen.findByRole('button', { name: /chairback/i })
+    const map = await liveMap()
+
+    await user.click(result)
+
+    const moved = map.cameraMoves.at(-1)
+    expect(moved?.center).toEqual([-69.26, 45.45])
+    expect(moved?.zoom as number).toBeGreaterThanOrEqual(14)
+  })
+
+  it('does not pull the map back out when a search result is found while zoomed in', async () => {
+    const user = userEvent.setup()
+    returningHiker()
+    store.set(
+      'ourhike:trails',
+      new Blob([JSON.stringify({ type: 'FeatureCollection', features: [] })]),
+    )
+    store.set('ourhike:pois', [
+      {
+        id: 'atc_water:xyz',
+        type: 'water',
+        name: 'Spring below the gap',
+        lat: 45.45,
+        lon: -69.26,
+        confidence: 'high',
+      },
+    ])
+
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('button', { name: 'Search' }))
+    await user.type(await screen.findByRole('searchbox'), 'spring')
+    // Zoom in only once the result is on screen: loading the trail data
+    // rebuilds the map, and a zoom set on the outgoing one goes with it.
+    const result = await screen.findByRole('button', { name: /spring below/i })
+
+    const map = await liveMap()
+    map.zoom = 16
+    act(() => map.emit('moveend'))
+
+    await user.click(result)
+
+    expect(map.cameraMoves.at(-1)?.zoom).toBe(16)
+  })
+
   it('reaches the report flow from More', async () => {
     const user = userEvent.setup()
     returningHiker()
@@ -123,6 +258,23 @@ describe('App shell', () => {
     expect(
       await screen.findByRole('heading', { name: 'Report a problem' }),
     ).toBeInTheDocument()
+  })
+
+  it('backs out of the report flow without filing anything', async () => {
+    // The reporting flow replaces the whole shell, tab bar included, so the
+    // type picker was a screen with no exit: the only way off it was to pick a
+    // report type and then cancel the form behind it.
+    const user = userEvent.setup()
+    returningHiker()
+    render(<App />)
+
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+    await user.click(await screen.findByRole('button', { name: /^cancel$/i }))
+
+    expect(await screen.findByRole('heading', { name: 'You' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'More', selected: true })).toBeInTheDocument()
   })
 
   it('saves a report to the outbox rather than asking to sign in first', async () => {
@@ -140,6 +292,30 @@ describe('App shell', () => {
       const queued = store.get('ourhike:outbox') as Array<{ payload: { type: string } }>
       expect(queued).toHaveLength(1)
       expect(queued[0].payload.type).toBe('blowdown')
+    })
+  })
+
+  it('queues a report with no coordinates rather than pinning it at 0,0', async () => {
+    // There is no GPS in jsdom, which is exactly the case that was broken: the
+    // shell filled in lat 0 / lon 0 / mile 0, so every report written before a
+    // fix arrived was filed in the Atlantic and at Springer Mountain at once.
+    const user = userEvent.setup()
+    returningHiker()
+    render(<App />)
+
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+    await user.click(await screen.findByRole('button', { name: /blow down/i }))
+    await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
+
+    await waitFor(() => {
+      const queued = store.get('ourhike:outbox') as Array<{
+        payload: { lat?: number; lon?: number }
+      }>
+      expect(queued).toHaveLength(1)
+      expect(queued[0].payload.lat).toBeUndefined()
+      expect(queued[0].payload.lon).toBeUndefined()
     })
   })
 

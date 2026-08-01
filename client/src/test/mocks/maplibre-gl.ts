@@ -31,11 +31,32 @@ export class MockMap {
   removed = false
   /** Test-settable, since the shell derives the legend from it. */
   bounds = { west: -180, south: -85, east: 180, north: 85 }
+  /** Seeded from the construction options and moved by jumpTo, so a test can
+   *  read back where the camera actually ended up rather than only what it was
+   *  asked to do. The shell reads this to remember the view across a tab. */
+  center = { lng: 0, lat: 0 }
+  zoom = 0
+  /** Images registered on the style, by id. */
+  readonly images = new Map<string, unknown>()
+  /** Every paint property written, keyed `layerId/property`. */
+  readonly paintProperties = new Map<string, unknown>()
+  /** Test-settable: real MapLibre only accepts images and paint writes once the
+   *  style has loaded, and callers have to cope with both answers. */
+  styleLoaded = false
   private readonly listeners = new Map<string, Listener[]>()
 
   constructor(options: Record<string, unknown>) {
     this.options = options
+    this.applyCamera(options)
     MockMap.instances.push(this)
+  }
+
+  private applyCamera(options: Record<string, unknown>): void {
+    const { center, zoom } = options
+    if (Array.isArray(center) && center.length === 2) {
+      this.center = { lng: Number(center[0]), lat: Number(center[1]) }
+    }
+    if (typeof zoom === 'number') this.zoom = zoom
   }
 
   on(event: string, handler: Listener): this {
@@ -71,9 +92,36 @@ export class MockMap {
     return this
   }
 
+  isStyleLoaded(): boolean {
+    return this.styleLoaded
+  }
+
+  hasImage(id: string): boolean {
+    return this.images.has(id)
+  }
+
+  addImage(id: string, image: unknown): this {
+    this.images.set(id, image)
+    return this
+  }
+
+  setPaintProperty(layerId: string, property: string, value: unknown): this {
+    this.paintProperties.set(`${layerId}/${property}`, value)
+    return this
+  }
+
   jumpTo(options: Record<string, unknown>): this {
     this.cameraMoves.push(options)
+    this.applyCamera(options)
     return this
+  }
+
+  getCenter() {
+    return { ...this.center }
+  }
+
+  getZoom(): number {
+    return this.zoom
   }
 
   getBounds() {

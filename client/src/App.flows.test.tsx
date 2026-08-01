@@ -101,8 +101,18 @@ function hikerOnTrail(overrides: Record<string, unknown> = {}) {
   store.set(POIS_KEY, [SHELTER])
 }
 
-/** Report a GPS fix five miles up the synthetic centerline. */
+/**
+ * Report a GPS fix five miles up the synthetic centerline.
+ *
+ * Waits for the watch to exist first, and that is not defensive padding. The
+ * watch starts in an effect that runs only once loaded preferences say
+ * location is allowed - a commit or two AFTER the map screen appears - so
+ * firing straight after `findByRole` sometimes found `watchSuccess` still
+ * undefined. The optional call then swallowed the fix, no further fix was ever
+ * sent, and the test failed looking for a mile that was never going to arrive.
+ */
 async function reportFix(lat = 39 + 5 * MILE_LAT, lon = -77) {
+  await waitFor(() => expect(watchSuccess).toBeDefined())
   await act(async () => {
     watchSuccess?.({
       coords: { latitude: lat, longitude: lon, accuracy: 5 },
@@ -171,11 +181,17 @@ describe('search, with a real index behind it', () => {
     )
     await user.click(await screen.findByText('Chairback Gap Lean-to'))
 
+    // Centre AND zoom: from the opening view of the whole corridor, centring
+    // alone moves the map a few pixels and looks like nothing happened.
     await waitFor(() =>
-      expect(MockMap.instances[0].cameraMoves).toContainEqual({
-        center: [SHELTER.lon, SHELTER.lat],
-      }),
+      expect(MockMap.instances[0].cameraMoves).toContainEqual(
+        expect.objectContaining({ center: [SHELTER.lon, SHELTER.lat] }),
+      ),
     )
+    const jump = MockMap.instances[0].cameraMoves.find(
+      (move) => Array.isArray(move.center) && move.center[0] === SHELTER.lon,
+    )
+    expect(jump?.zoom).toBeGreaterThanOrEqual(14)
   })
 
   it('shows the mile alongside a result once the index exists', async () => {
@@ -461,12 +477,19 @@ describe('a fix that arrives while the map is not on screen', () => {
     hikerOnTrail()
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
+    // Wait for the map itself, not just its container div: findByRole resolves
+    // a commit before MapView's effect constructs the map, so reading
+    // instances[0] straight after it races the build and can find nothing at
+    // all. Here that would fail as a TypeError rather than as the assertion.
+    await waitFor(() => expect(MockMap.instances.length).toBeGreaterThan(0))
+    const built = MockMap.instances[0]
+
     await user.click(screen.getByRole('tab', { name: 'Downloads' }))
     await screen.findByText('Offline map')
 
     await reportFix()
 
-    expect(MockMap.instances[0].cameraMoves).toHaveLength(0)
+    expect(built.cameraMoves).toHaveLength(0)
   })
 })
 

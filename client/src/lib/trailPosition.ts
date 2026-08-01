@@ -31,6 +31,24 @@ const FEET_PER_MILE = 5280
  *  than any plausible distance between a hiker and the trail. */
 const BUCKET_DEGREES = 0.05
 
+/**
+ * Farthest a fix can be from the centerline and still be given a mile.
+ *
+ * Buckets are latitude-only, so without this the answer to "where am I on the
+ * trail" was "the nearest AT vertex at your latitude, however far east or west
+ * that is." A phone in Indianapolis, which shares a latitude with the trail in
+ * Maryland, was told it was standing on it - and told confidently, with a mile
+ * number in the header, because nothing downstream looked at offTrailFeet.
+ *
+ * Three miles rather than a rounder number because it has to fit inside the
+ * bucket search: from anywhere inside a bucket, the ±1 neighbours cover at
+ * least BUCKET_DEGREES (about 3.45 miles) in each direction, so every point
+ * within this radius is guaranteed to be a candidate. A wider gate would pass
+ * or fail depending on where in its bucket the fix happened to land, which is
+ * a worse thing to be than merely conservative.
+ */
+export const MAX_OFF_TRAIL_MILES = 3
+
 export interface LonLat {
   lon: number
   lat: number
@@ -169,9 +187,10 @@ export function buildTrailIndex(collection: FeatureCollection): TrailIndex {
 
 /**
  * The trail point nearest a fix. Null when the index is empty or the fix is
- * nowhere near the corridor - "we don't know where you are on the trail" is a
- * real answer, and a better one than a mile number measured to a point three
- * states away.
+ * nowhere near the corridor - farther than MAX_OFF_TRAIL_MILES from any
+ * centerline vertex. "We don't know where you are on the trail" is a real
+ * answer, and a better one than a mile number measured to a point three states
+ * away.
  */
 export function locateOnTrail(index: TrailIndex, at: LonLat): TrailFix | null {
   if (index.lons.length === 0) return null
@@ -198,6 +217,10 @@ export function locateOnTrail(index: TrailIndex, at: LonLat): TrailFix | null {
   }
 
   if (bestIndex === -1) return null
+  // Near in latitude is not near. Longitude is not bucketed at all, so the
+  // nearest candidate can be most of a continent away and still have been
+  // measured - see MAX_OFF_TRAIL_MILES.
+  if (bestFeet > MAX_OFF_TRAIL_MILES * FEET_PER_MILE) return null
 
   return { mile: index.miles[bestIndex], offTrailFeet: bestFeet }
 }

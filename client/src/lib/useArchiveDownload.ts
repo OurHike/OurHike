@@ -24,6 +24,9 @@ export function useArchiveDownload(archiveUrl: string) {
   const [status, setStatus] = useState<DownloadStatus>({ state: 'not-downloaded' })
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  /** The attempt currently in flight, so a delete can wait for it to stop
+   *  writing before it starts deleting - see `remove`. */
+  const runningRef = useRef<Promise<void> | null>(null)
 
   // On mount, reflect what is already on the phone: a finished archive, an
   // interrupted one worth resuming, or neither.
@@ -83,14 +86,32 @@ export function useArchiveDownload(archiveUrl: string) {
     }
   }, [archiveUrl])
 
+  /** Wraps `run` so the in-flight attempt is always knowable. */
+  const start = useCallback(() => {
+    const attempt = run()
+    runningRef.current = attempt
+    return attempt
+  }, [run])
+
   const remove = useCallback(async () => {
     setError(null)
     abortRef.current?.abort()
+
+    // Aborting does not stop the attempt immediately, and what it does on the
+    // way out is SAVE: downloadArchive keeps whatever arrived so it can be
+    // resumed, which is right when the app is closing and wrong when the
+    // hiker has just asked for the space back. Deleting first raced those
+    // writes and lost - the partial bytes came back, the screen went to
+    // "failed" rather than "not downloaded", and several hundred megabytes
+    // stayed on a phone that had been told they were gone.
+    await runningRef.current?.catch(() => undefined)
+    runningRef.current = null
+
     await deleteArchive()
     setStatus({ state: 'not-downloaded' })
   }, [])
 
   useEffect(() => () => abortRef.current?.abort(), [])
 
-  return { status, error, start: run, resume: run, remove }
+  return { status, error, start, resume: start, remove }
 }

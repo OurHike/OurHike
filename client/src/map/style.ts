@@ -31,6 +31,22 @@ export const TOPO_LAYER_ID = 'topo'
 export const TRAIL_CASING_LAYER_ID = 'trail-casing'
 export const BLAZE_LAYER_ID = 'trail-blaze'
 
+/**
+ * What the map paints wherever it has no topo ink to paint.
+ *
+ * `--paper-100`, the same tone as USGS topo's own paper, so uncovered ground
+ * belongs to the same map as the covered parts. Named rather than inlined
+ * because backdrop.ts reads it: whichever of the two is showing, the paper has
+ * to be the same paper.
+ *
+ * Uncovered ground is not an edge case, and reaching it does not need the
+ * pipeline's transparent-nodata tiles to be involved at all - the corridor
+ * archive is a 30-mile strip, so panning off it, zooming out below the
+ * archive's own minzoom, opening the app before the download finishes, or
+ * simply moving faster than tiles decode each leave a hole too.
+ */
+export const MAP_BACKGROUND_COLOR = '#f7f3e9'
+
 // ODbL requires a visible "© OpenStreetMap". WIREFRAMES.md's map-corner mockup
 // shows the shorthand "© OSM", but its own Assets section states the full form
 // is required - the abbreviation does not satisfy the licence, so the full
@@ -111,9 +127,14 @@ export function buildMapStyle({
         // is empty canvas; with it, it reads as unmapped paper - which is what
         // it honestly is. Paper rather than a neutral grey so the uncovered
         // area belongs to the same map as the parts that are covered.
+        //
+        // First in the list, and the only layer here bound to no source: it
+        // covers the whole canvas at every zoom and every camera position, so
+        // the "never black" guarantee survives a missing archive and an
+        // off-corridor pan as well as the transparent ground it was added for.
         id: BACKDROP_LAYER_ID,
         type: 'background',
-        paint: { 'background-color': '#f7f3e9' },
+        paint: { 'background-color': MAP_BACKGROUND_COLOR },
       },
       {
         id: TOPO_LAYER_ID,

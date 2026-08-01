@@ -13,6 +13,7 @@ import { Map as MapLibreMap } from 'maplibre-gl'
 import { registerPMTilesProtocol } from './protocol'
 import { buildMapStyle } from './style'
 import { attachMapChrome, type ScaleUnits } from './mapChrome'
+import { attachMapBackdrop } from './backdrop'
 import type { BoundingBox } from '../lib/legendContents'
 
 export interface MapViewProps {
@@ -113,6 +114,14 @@ export function MapView({
     if (map === null) return
     return attachMapChrome(map, { showZoomButtons, units })
   }, [map, showZoomButtons, units])
+
+  // The backdrop's paper colour is in the style itself and needs nothing here.
+  // This adds only the hatch on top of it, which needs a loaded style and so
+  // cannot be expressed in buildMapStyle - see backdrop.ts.
+  useEffect(() => {
+    if (map === null) return
+    return attachMapBackdrop(map)
+  }, [map])
 
   useEffect(() => {
     if (map === null || onViewportChange === undefined) return

@@ -9,6 +9,8 @@ import {
   TRAILS_SOURCE_ID,
   BLAZE_LAYER_ID,
   TRAIL_CASING_LAYER_ID,
+  BACKDROP_LAYER_ID,
+  MAP_BACKGROUND_COLOR,
 } from './style'
 
 // See WIREFRAMES.md "Trail line rendering — blazes". Two rules there are
@@ -88,6 +90,33 @@ describe('buildMapStyle', () => {
     const ids = style().layers.map((l) => l.id)
 
     expect(ids.indexOf('topo')).toBeLessThan(ids.indexOf(TRAIL_CASING_LAYER_ID))
+  })
+
+  it('paints a background under everything, so no camera position can show black', () => {
+    // The corridor archive is a 30-mile strip. Panning off it, zooming out
+    // below its minzoom, or opening the app before the download finishes all
+    // leave the topo raster with nothing to draw - and a style with no
+    // background layer draws nothing at all there, which composites to black.
+    const backdrop = layer(BACKDROP_LAYER_ID)
+
+    expect(backdrop.type).toBe('background')
+    expect((backdrop.paint as Record<string, unknown>)['background-color']).toBe(
+      MAP_BACKGROUND_COLOR,
+    )
+  })
+
+  it('puts that background first, beneath every other layer', () => {
+    expect(style().layers[0].id).toBe(BACKDROP_LAYER_ID)
+  })
+
+  it('needs no source for the background, so it survives a missing archive', () => {
+    // A background layer bound to a source would go blank in exactly the case
+    // it exists to cover: the archive absent or unreadable.
+    expect(layer(BACKDROP_LAYER_ID)).not.toHaveProperty('source')
+  })
+
+  it('uses fully opaque paper, not a colour with alpha that black could show through', () => {
+    expect(MAP_BACKGROUND_COLOR).toMatch(/^#[0-9a-f]{6}$/i)
   })
 
   it('reads the basemap from the pmtiles archive URL it was given', () => {

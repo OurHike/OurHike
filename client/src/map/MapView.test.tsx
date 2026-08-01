@@ -175,4 +175,15 @@ describe('opening view', () => {
     expect(options.zoom).toBe(12)
     expect(options.bounds).toBeUndefined()
   })
+
+  describe('the opening view, without bounds', () => {
+    it('falls back to its own default camera when given neither bounds nor center', () => {
+      render(<MapView {...PROPS} />)
+
+      const options = MockMap.instances[0].options
+      expect(options.center).toBeDefined()
+      expect(options.zoom).toBeDefined()
+      expect(options.bounds).toBeUndefined()
+    })
+  })
 })

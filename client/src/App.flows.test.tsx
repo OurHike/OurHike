@@ -1,0 +1,511 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { act, render, screen, cleanup, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { get, set, del } from 'idb-keyval'
+import App from './App'
+import { PREFERENCES_KEY } from './lib/preferences'
+import { DEFAULT_PREFERENCES } from './lib/userPreferences'
+import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
+import { CORRIDOR_ARCHIVE_KEY } from './map/pmtilesSource'
+import { archiveUrl } from './lib/config'
+import { MockMap, resetMapLibreMock } from './test/mocks/maplibre-gl'
+
+// App.test.tsx covers the shell: which screen you land on and what it says
+// before any data exists. This covers what happens once data and a GPS fix DO
+// exist - the paths a hiker is actually on for the length of a hike, and the
+// ones that only run after a download succeeds.
+
+vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
+vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
+
+const store = new Map<string, unknown>()
+
+/** A centerline running due north, so a mile of latitude is about a mile. */
+const MILE_LAT = 1 / 69.05
+const TRAILS_GEOJSON = JSON.stringify({
+  type: 'FeatureCollection',
+  features: [
+    {
+      type: 'Feature',
+      properties: { source: 'centerline' },
+      geometry: {
+        type: 'LineString',
+        coordinates: Array.from({ length: 40 }, (_, i) => [-77, 39 + i * MILE_LAT]),
+      },
+    },
+  ],
+})
+
+const SHELTER = {
+  id: 'atc_shelters:abc',
+  type: 'shelter',
+  name: 'Chairback Gap Lean-to',
+  lat: 39 + 5 * MILE_LAT,
+  lon: -77,
+  confidence: 'high' as const,
+}
+
+let watchSuccess: ((position: GeolocationPosition) => void) | undefined
+
+beforeEach(() => {
+  store.clear()
+  watchSuccess = undefined
+  resetMapLibreMock()
+
+  vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
+  vi.mocked(set).mockImplementation((key, value) => {
+    store.set(key as string, value)
+    return Promise.resolve()
+  })
+  vi.mocked(del).mockImplementation((key) => {
+    store.delete(key as string)
+    return Promise.resolve()
+  })
+
+  vi.stubGlobal('fetch', vi.fn())
+  vi.stubGlobal('navigator', {
+    geolocation: {
+      watchPosition: (success: (position: GeolocationPosition) => void) => {
+        watchSuccess = success
+        return 1
+      },
+      clearWatch: () => {},
+    },
+    userAgent: '',
+    platform: '',
+  })
+  // jsdom implements neither, and App revokes/creates one per trail-data load.
+  vi.stubGlobal('URL', {
+    ...URL,
+    createObjectURL: vi.fn(() => 'blob:trails'),
+    revokeObjectURL: vi.fn(),
+  })
+})
+
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
+  vi.unstubAllGlobals()
+})
+
+/** Onboarded, location allowed, trail data already on the phone. */
+function hikerOnTrail(overrides: Record<string, unknown> = {}) {
+  store.set(PREFERENCES_KEY, {
+    ...DEFAULT_PREFERENCES,
+    onboarding_completed: true,
+    download_choice_made: true,
+    location_permission_requested: true,
+    ...overrides,
+  })
+  store.set(TRAILS_BLOB_KEY, new Blob([TRAILS_GEOJSON]))
+  store.set(POIS_KEY, [SHELTER])
+}
+
+/** Report a GPS fix five miles up the synthetic centerline. */
+async function reportFix(lat = 39 + 5 * MILE_LAT, lon = -77) {
+  await act(async () => {
+    watchSuccess?.({
+      coords: { latitude: lat, longitude: lon, accuracy: 5 },
+      timestamp: Date.now(),
+    } as unknown as GeolocationPosition)
+  })
+}
+
+describe('once there is a GPS fix', () => {
+  it('shows the mile instead of still looking for GPS', async () => {
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await reportFix()
+
+    expect(await screen.findByText(/mi 5\./)).toBeInTheDocument()
+  })
+
+  it('moves the camera to the first fix, since the map was built before it arrived', async () => {
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await reportFix()
+
+    await waitFor(() => expect(MockMap.instances[0].cameraMoves).toHaveLength(1))
+    expect(MockMap.instances[0].cameraMoves[0]).toMatchObject({ zoom: 13 })
+  })
+
+  it('leaves the camera alone after that, because the view belongs to whoever is panning it', async () => {
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await reportFix()
+    await waitFor(() => expect(MockMap.instances[0].cameraMoves).toHaveLength(1))
+    await reportFix(39 + 6 * MILE_LAT)
+
+    expect(MockMap.instances[0].cameraMoves).toHaveLength(1)
+  })
+
+  it('starts tracking a direction of travel once it has two fixes', async () => {
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await reportFix(39 + 5 * MILE_LAT)
+    await reportFix(39 + 8 * MILE_LAT)
+
+    expect(await screen.findByText(/mi 8\./)).toBeInTheDocument()
+  })
+})
+
+describe('search, with a real index behind it', () => {
+  it('jumps the map to the result that was picked', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('button', { name: /search/i }))
+    await user.type(
+      await screen.findByRole('searchbox', { name: /search the downloaded map/i }),
+      'chairback',
+    )
+    await user.click(await screen.findByText('Chairback Gap Lean-to'))
+
+    await waitFor(() =>
+      expect(MockMap.instances[0].cameraMoves).toContainEqual({
+        center: [SHELTER.lon, SHELTER.lat],
+      }),
+    )
+  })
+
+  it('shows the mile alongside a result once the index exists', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('button', { name: /search/i }))
+    await user.type(
+      await screen.findByRole('searchbox', { name: /search the downloaded map/i }),
+      'chairback',
+    )
+
+    expect(await screen.findByText(/Shelter · mi 5\./)).toBeInTheDocument()
+  })
+
+  it('closes without moving the map when the search is cancelled', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('button', { name: /search/i }))
+    await user.click(await screen.findByRole('button', { name: /cancel/i }))
+
+    expect(
+      screen.queryByRole('searchbox', { name: /search the downloaded map/i }),
+    ).not.toBeInTheDocument()
+  })
+})
+
+describe('the legend', () => {
+  it('opens and closes', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('button', { name: /legend/i }))
+    const legend = await screen.findByRole('dialog', { name: /legend/i })
+
+    await user.click(within(legend).getByRole('button', { name: /close|done/i }))
+
+    expect(screen.queryByRole('dialog', { name: /legend/i })).not.toBeInTheDocument()
+  })
+
+  it('hides a type when it is toggled off, and shows it again when toggled back', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('button', { name: /legend/i }))
+    const legend = await screen.findByRole('dialog', { name: /legend/i })
+    const hide = within(legend).getAllByRole('button', { name: /hide|show/i })[0]
+    const label = hide.getAttribute('aria-label') ?? ''
+
+    await user.click(hide)
+    expect(within(legend).queryByRole('button', { name: label })).not.toBeInTheDocument()
+
+    // Toggling back is the half that a Set-based toggle gets wrong if it only
+    // ever adds.
+    const restore = within(legend).getAllByRole('button', { name: /hide|show/i })[0]
+    await user.click(restore)
+    expect(
+      within(legend).getAllByRole('button', { name: /hide|show/i }).length,
+    ).toBeGreaterThan(0)
+  })
+})
+
+describe('downloading everything', () => {
+  function servesEverything() {
+    vi.mocked(fetch).mockImplementation((url) =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        blob: () => Promise.resolve(new Blob([TRAILS_GEOJSON])),
+        text: () =>
+          Promise.resolve(
+            String(url).includes('poi_shelter')
+              ? JSON.stringify({
+                  type: 'FeatureCollection',
+                  features: [
+                    {
+                      type: 'Feature',
+                      properties: {
+                        id: SHELTER.id,
+                        name: SHELTER.name,
+                        confidence: 'high',
+                      },
+                      geometry: {
+                        type: 'Point',
+                        coordinates: [SHELTER.lon, SHELTER.lat],
+                      },
+                    },
+                  ],
+                })
+              : JSON.stringify({ type: 'FeatureCollection', features: [] }),
+          ),
+        headers: new Headers({ 'content-length': '3' }),
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new Uint8Array([1, 2, 3]))
+            controller.close()
+          },
+        }),
+      } as unknown as Response),
+    )
+  }
+
+  it('fetches the trail data and then the archive, in that order', async () => {
+    const user = userEvent.setup()
+    store.set(PREFERENCES_KEY, {
+      ...DEFAULT_PREFERENCES,
+      onboarding_completed: true,
+      download_choice_made: true,
+    })
+    servesEverything()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    await user.click(await screen.findByRole('button', { name: /download the map/i }))
+
+    await waitFor(() => expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob))
+    await waitFor(() => expect(store.get(CORRIDOR_ARCHIVE_KEY)).toBeInstanceOf(Blob))
+  })
+
+  it('deletes the map, the trail data and the POIs together', async () => {
+    // Someone reclaiming space expects all of it back, not the raster alone.
+    const user = userEvent.setup()
+    hikerOnTrail()
+    store.set(CORRIDOR_ARCHIVE_KEY, new Blob(['archive']))
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    await user.click(await screen.findByRole('button', { name: /delete/i }))
+
+    await waitFor(() => expect(store.has(CORRIDOR_ARCHIVE_KEY)).toBe(false))
+    expect(store.has(TRAILS_BLOB_KEY)).toBe(false)
+    expect(store.has(POIS_KEY)).toBe(false)
+  })
+
+  it('records a new detail level as a max background zoom', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    await user.click(await screen.findByRole('radio', { name: /light/i }))
+
+    await waitFor(() => {
+      const saved = store.get(PREFERENCES_KEY) as { max_background_zoom: number }
+      expect(saved.max_background_zoom).toBe(11)
+    })
+  })
+})
+
+describe('reporting, with a fix to attach', () => {
+  it('files the report at the position the hiker is actually standing', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await reportFix()
+
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+    await user.click(await screen.findByRole('button', { name: /blow down/i }))
+    await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
+
+    await waitFor(() => {
+      const queued = store.get('ourhike:outbox') as Array<{
+        payload: { lat?: number; lon?: number }
+      }>
+      expect(queued).toHaveLength(1)
+      expect(queued[0].payload.lat).toBeCloseTo(SHELTER.lat, 4)
+      expect(queued[0].payload.lon).toBeCloseTo(SHELTER.lon, 4)
+    })
+  })
+
+  it('drops the draft and returns to the tab it came from when cancelled', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+    await user.click(await screen.findByRole('button', { name: /blow down/i }))
+    await user.click(await screen.findByRole('button', { name: /^cancel$/i }))
+
+    expect(await screen.findByRole('heading', { name: 'You' })).toBeInTheDocument()
+    expect(store.get('ourhike:outbox')).toBeUndefined()
+  })
+
+  it('counts what is waiting in the outbox', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+    await user.click(await screen.findByRole('button', { name: /blow down/i }))
+    await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
+
+    expect(await screen.findByText(/1 .*(waiting|queued|outbox)/i)).toBeInTheDocument()
+  })
+})
+
+describe('preferences from the More screen', () => {
+  it('saves a changed setting straight away, with no explicit save step', async () => {
+    // The wrong-way alert is the one live toggle on this screen today - the
+    // rest are marked Later and deliberately disabled.
+    const user = userEvent.setup()
+    hikerOnTrail({ wrong_way_alert_enabled: false })
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('checkbox', { name: /wrong-way alert/i }))
+
+    await waitFor(() => {
+      const saved = store.get(PREFERENCES_KEY) as { wrong_way_alert_enabled: boolean }
+      expect(saved.wrong_way_alert_enabled).toBe(true)
+    })
+  })
+})
+
+describe('the placeholder actions on More', () => {
+  // Sign-in, sync and export are all wired to no-ops today: the backend they
+  // need is Phase 2 (ROADMAP.md). Rendered and clickable anyway so the shape of
+  // the screen is real, and asserted here so a wiring mistake shows up as a
+  // failing test rather than as a button that throws in someone's hand.
+  it.each([/sign in/i, /^sync$/i, /export gpx/i, /export geojson/i])(
+    'does not throw when %s is tapped',
+    async (name) => {
+      const user = userEvent.setup()
+      hikerOnTrail()
+      render(<App />)
+      await screen.findByRole('region', { name: /trail map/i })
+      await user.click(screen.getByRole('tab', { name: 'More' }))
+
+      await user.click(await screen.findByRole('button', { name }))
+
+      expect(await screen.findByRole('heading', { name: 'You' })).toBeInTheDocument()
+    },
+  )
+})
+
+describe('when the trail data cannot be downloaded', () => {
+  it('says so even when what failed was not an Error', async () => {
+    // fetch can reject with anything at all, and a rejection this code cannot
+    // read the message off still has to produce a sentence rather than
+    // "undefined" or a blank alert.
+    const user = userEvent.setup()
+    store.set(PREFERENCES_KEY, {
+      ...DEFAULT_PREFERENCES,
+      onboarding_completed: true,
+      download_choice_made: true,
+    })
+    vi.mocked(fetch).mockRejectedValue('the network went away')
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    await user.click(await screen.findByRole('button', { name: /download the map/i }))
+
+    expect(await screen.findByText('Trail data failed to download.')).toBeInTheDocument()
+  })
+})
+
+describe('a fix that arrives while the map is not on screen', () => {
+  it('does not try to move a map that is not mounted', async () => {
+    // The map only exists on the Trail tab. A fix landing while someone is on
+    // Downloads has no camera to move, and must not reach for one.
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    await screen.findByText('Offline map')
+
+    await reportFix()
+
+    expect(MockMap.instances[0].cameraMoves).toHaveLength(0)
+  })
+})
+
+describe('resuming an interrupted download', () => {
+  it('picks up where it left off rather than starting again', async () => {
+    // WIREFRAMES.md 7a. Re-pulling 300 MB from zero because a connection
+    // dropped at 90% is the failure that promise exists to prevent.
+    const user = userEvent.setup()
+    hikerOnTrail()
+    store.set('ourhike:corridor-archive:partial', new Blob([new Uint8Array([1, 2, 3])]))
+    store.set('ourhike:corridor-archive:progress', { receivedBytes: 3, totalBytes: 6 })
+    // Must be the URL this build would request. VITE_DATA_BASE_URL is unset
+    // under test, so that is a bare '/background.pmtiles' - and a partial
+    // recorded against any other URL is deliberately discarded, not resumed.
+    store.set('ourhike:corridor-archive:source', { url: archiveUrl('standard') })
+
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    const resume = await screen.findByRole('button', { name: /resume/i })
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 206,
+      statusText: 'Partial Content',
+      headers: new Headers({ 'content-length': '3', 'content-range': 'bytes 3-5/6' }),
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array([4, 5, 6]))
+          controller.close()
+        },
+      }),
+    } as unknown as Response)
+    await user.click(resume)
+
+    await waitFor(() =>
+      expect(vi.mocked(fetch).mock.calls[0][1]).toMatchObject({
+        headers: expect.objectContaining({ Range: 'bytes=3-' }),
+      }),
+    )
+  })
+})

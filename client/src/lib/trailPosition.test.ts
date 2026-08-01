@@ -17,6 +17,16 @@ function collection(features: Feature[]): FeatureCollection {
   return { type: 'FeatureCollection', features }
 }
 
+/** A feature with `geometry: null` - valid GeoJSON, and not expressible in
+ *  @types/geojson's default Feature, which is why this casts. */
+function nullGeometry(): Feature {
+  return {
+    type: 'Feature',
+    properties: { source: 'centerline' },
+    geometry: null,
+  } as unknown as Feature
+}
+
 /** Roughly a mile of latitude, near enough for asserting on tenths. */
 const MILE_IN_DEGREES_LAT = 1 / 69.05
 
@@ -116,6 +126,57 @@ describe('buildTrailIndex', () => {
     expect(index.lons).toHaveLength(0)
     expect(index.totalMiles).toBe(0)
   })
+
+  // This runs on whatever bytes came out of a bucket. Every one of these
+  // degrades to "we don't know where you are", which is survivable; a throw
+  // here surfaces to the hiker as a failed download of data that in fact
+  // arrived, and takes the POI search down with it.
+  describe('given a payload that is not what it should be', () => {
+    it('survives a collection with no features array', () => {
+      const index = buildTrailIndex({
+        type: 'FeatureCollection',
+      } as unknown as FeatureCollection)
+
+      expect(index.lons).toHaveLength(0)
+    })
+
+    it('survives a null geometry, which is valid GeoJSON in its own right', () => {
+      const index = buildTrailIndex(collection([nullGeometry()]))
+
+      expect(index.lons).toHaveLength(0)
+    })
+
+    it('keeps the good centerline pieces alongside a broken one', () => {
+      // The case that matters most: one bad feature must not cost the map
+      // every other mile marker in the file.
+      const index = buildTrailIndex(
+        collection([
+          nullGeometry(),
+          line([
+            [-77, 39],
+            [-77, 39 + MILE_IN_DEGREES_LAT],
+          ]),
+        ]),
+      )
+
+      expect(index.lons).toHaveLength(2)
+      expect(index.totalMiles).toBeCloseTo(1, 1)
+    })
+
+    it('survives a LineString with no coordinates', () => {
+      const index = buildTrailIndex(
+        collection([
+          {
+            type: 'Feature',
+            properties: { source: 'centerline' },
+            geometry: { type: 'LineString' },
+          } as unknown as Feature,
+        ]),
+      )
+
+      expect(index.lons).toHaveLength(0)
+    })
+  })
 })
 
 describe('locateOnTrail', () => {
@@ -167,5 +228,30 @@ describe('locateOnTrail', () => {
     expect(
       locateOnTrail(buildTrailIndex(collection([])), { lon: -77, lat: 39 }),
     ).toBeNull()
+  })
+
+  it('says it does not know when a coordinate in the index is not a number', () => {
+    // A payload that survived JSON.parse but carries a broken coordinate pair.
+    // Every distance to it comes out NaN, so no candidate ever beats the
+    // starting best - and the honest answer is "no idea", not the first index
+    // in the list.
+    const broken = buildTrailIndex(
+      collection([
+        {
+          type: 'Feature',
+          properties: { source: 'centerline' },
+          geometry: {
+            type: 'LineString',
+            coordinates: [
+              [NaN, 39],
+              [NaN, 39.01],
+            ],
+          },
+        } as Feature,
+      ]),
+    )
+
+    expect(broken.lons).toHaveLength(2)
+    expect(locateOnTrail(broken, { lon: -77, lat: 39 })).toBeNull()
   })
 })

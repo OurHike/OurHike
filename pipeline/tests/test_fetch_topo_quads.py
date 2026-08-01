@@ -218,3 +218,47 @@ def test_completeness_problems_still_gates_on_corrupted_alongside_unmatched():
     problems = completeness_problems(unmatched=50, corrupted=1)
 
     assert len(problems) == 1
+
+
+# --- run() / --metadata-only -------------------------------------------------
+#
+# .github/workflows/build-raster.yml runs `fetch_topo_quads.py --metadata-only`
+# in two separate jobs, and it is the ONLY entry point into this script that is
+# safe on a CI runner: main() reads data/spike/corridor.geojson four lines in, a
+# stale proof-of-concept artifact lib/corridor.py forbids trusting and that no
+# fresh checkout has. So the flag is load-bearing for the whole raster pipeline
+# - which is exactly why it needs a test that a refactor cannot quietly break.
+
+
+def test_metadata_only_fetches_the_inventory_and_stops(monkeypatch):
+    """The CI-safe path: the quad inventory build_cells_manifest.py needs, and
+    none of the whole-corridor work that would fail on a hosted runner."""
+    calls = []
+    monkeypatch.setattr(fetch_topo_quads, "fetch_metadata_csv", lambda: calls.append("metadata"))
+    monkeypatch.setattr(fetch_topo_quads, "main", lambda: calls.append("main"))
+
+    fetch_topo_quads.run(["--metadata-only"])
+
+    assert calls == ["metadata"]
+
+
+def test_without_the_flag_it_still_runs_the_whole_corridor_fetch(monkeypatch):
+    """The flag adds a path rather than replacing one - running this script by
+    hand locally has to keep doing what it always did."""
+    calls = []
+    monkeypatch.setattr(fetch_topo_quads, "fetch_metadata_csv", lambda: calls.append("metadata"))
+    monkeypatch.setattr(fetch_topo_quads, "main", lambda: calls.append("main"))
+
+    fetch_topo_quads.run([])
+
+    assert calls == ["main"]
+
+
+def test_an_unknown_flag_is_rejected_rather_than_silently_ignored(monkeypatch):
+    """A typo'd flag in a workflow file must fail the job, not run the
+    whole-corridor path by accident on a runner that cannot survive it."""
+    monkeypatch.setattr(fetch_topo_quads, "fetch_metadata_csv", lambda: None)
+    monkeypatch.setattr(fetch_topo_quads, "main", lambda: None)
+
+    with pytest.raises(SystemExit):
+        fetch_topo_quads.run(["--metadata-onlyy"])

@@ -6,9 +6,30 @@ import { useAppUpdate } from './useAppUpdate'
 // bundle kept being served - so every deploy looked like it had not happened
 // and the only escape was clearing site data through browser settings.
 
-function stubServiceWorker({ controlled }: { controlled: boolean }) {
+function stubServiceWorker({
+  controlled,
+  updateFails = false,
+  getRegistrationFails = false,
+}: {
+  controlled: boolean
+  updateFails?: boolean
+  getRegistrationFails?: boolean
+}) {
   const listeners: Record<string, Array<() => void>> = {}
-  const update = vi.fn(() => Promise.resolve())
+
+  // Counted by hand rather than with vi.fn(), and that is load-bearing for the
+  // offline tests below. vi.fn() attaches its own handler to whatever promise
+  // the implementation returns so it can record settled results - which marks
+  // a rejected one as handled. A stub built on vi.fn() therefore swallows
+  // exactly the unhandled rejection those tests exist to detect, and they pass
+  // against the unfixed hook. A plain function leaves the rejection alone.
+  let updateCalls = 0
+  const update = () => {
+    updateCalls += 1
+    return updateFails
+      ? Promise.reject(new TypeError('Failed to fetch'))
+      : Promise.resolve()
+  }
 
   const sw = {
     controller: controlled ? {} : null,
@@ -18,12 +39,15 @@ function stubServiceWorker({ controlled }: { controlled: boolean }) {
     removeEventListener: (type: string, fn: () => void) => {
       listeners[type] = (listeners[type] ?? []).filter((f) => f !== fn)
     },
-    getRegistration: () => Promise.resolve({ update }),
+    getRegistration: () =>
+      getRegistrationFails
+        ? Promise.reject(new Error('no registration'))
+        : Promise.resolve({ update }),
   }
 
   vi.stubGlobal('navigator', { serviceWorker: sw, userAgent: '', platform: '' })
   return {
-    update,
+    updateCalls: () => updateCalls,
     fireControllerChange: () => listeners.controllerchange?.forEach((fn) => fn()),
     listenerCount: () => (listeners.controllerchange ?? []).length,
   }
@@ -40,7 +64,7 @@ describe('useAppUpdate', () => {
     const sw = stubServiceWorker({ controlled: true })
 
     renderHook(() => useAppUpdate())
-    await vi.waitFor(() => expect(sw.update).toHaveBeenCalled())
+    await vi.waitFor(() => expect(sw.updateCalls()).toBeGreaterThan(0))
   })
 
   it('keeps asking, since a PWA can stay open for days without navigating', async () => {
@@ -51,7 +75,7 @@ describe('useAppUpdate', () => {
     await vi.advanceTimersByTimeAsync(3500)
 
     // Once on mount plus three intervals.
-    expect(sw.update.mock.calls.length).toBeGreaterThanOrEqual(4)
+    expect(sw.updateCalls()).toBeGreaterThanOrEqual(4)
   })
 
   it('reloads once the new worker takes control of an already-controlled page', () => {
@@ -104,5 +128,68 @@ describe('useAppUpdate', () => {
     vi.stubGlobal('navigator', { userAgent: '', platform: '' })
 
     expect(() => renderHook(() => useAppUpdate())).not.toThrow()
+  })
+})
+
+// Offline is not an edge case here - it is the condition this whole app exists
+// for. update() re-fetches the worker script, so with no signal it rejects
+// every single time the interval fires. Unhandled, that is an
+// `unhandledrejection` an hour, for days, on exactly the hike the app is built
+// around: noise in any error reporting added later, and noise at the hiker in a
+// browser that surfaces them. There is nothing to act on either way - the next
+// tick tries again and the running app is fine meanwhile - so it is caught.
+describe('useAppUpdate with no signal', () => {
+  // Listens on `process`, not on window's `unhandledrejection`. jsdom does not
+  // dispatch that event for rejections originating in test code, so a window
+  // listener sits there seeing nothing and the assertion passes whether the
+  // bug is present or not - it was written that way first and proved toothless
+  // against the pre-fix code. Node is what actually reports these (it is what
+  // Vitest's own "Unhandled Errors" section reads), and a listener added here
+  // observes without suppressing, since process handlers do not mark a
+  // rejection handled.
+  async function rejectionsWhile(run: () => void): Promise<unknown[]> {
+    const seen: unknown[] = []
+    const onUnhandled = (reason: unknown) => seen.push(reason)
+    process.on('unhandledRejection', onUnhandled)
+    try {
+      run()
+      // Node reports an unhandled rejection only after the microtask queue has
+      // drained and the promise is still without a handler, so this has to
+      // outlast a macrotask rather than a single await.
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    } finally {
+      process.off('unhandledRejection', onUnhandled)
+    }
+    return seen
+  }
+
+  it('stays quiet when the update check cannot reach the network', async () => {
+    const sw = stubServiceWorker({ controlled: true, updateFails: true })
+
+    const rejections = await rejectionsWhile(() => renderHook(() => useAppUpdate()))
+
+    expect(sw.updateCalls()).toBeGreaterThan(0)
+    expect(rejections).toEqual([])
+  })
+
+  it('stays quiet when the registration itself cannot be read', async () => {
+    stubServiceWorker({ controlled: true, getRegistrationFails: true })
+
+    const rejections = await rejectionsWhile(() => renderHook(() => useAppUpdate()))
+
+    expect(rejections).toEqual([])
+  })
+
+  it('keeps checking after a failed check, rather than giving up', async () => {
+    // A hiker who walks back into signal should get the new build. A check
+    // that stopped rescheduling itself on the first offline failure would
+    // leave them on the old one until they closed the app.
+    vi.useFakeTimers()
+    const sw = stubServiceWorker({ controlled: true, updateFails: true })
+
+    renderHook(() => useAppUpdate(1000))
+    await vi.advanceTimersByTimeAsync(3500)
+
+    expect(sw.updateCalls()).toBeGreaterThanOrEqual(4)
   })
 })

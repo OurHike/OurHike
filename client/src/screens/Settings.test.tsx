@@ -200,4 +200,20 @@ describe('Settings', () => {
 
     expect(screen.getByText(/OpenStreetMap/i)).toBeInTheDocument()
   })
+
+  it('exports GeoJSON as well as GPX', async () => {
+    const user = userEvent.setup()
+    render(<Settings {...PROPS} />)
+
+    await user.click(screen.getByRole('button', { name: /GeoJSON/i }))
+
+    expect(PROPS.onExport).toHaveBeenCalledWith('geojson')
+  })
+
+  it('shows a reporter type it has no label for rather than a blank', () => {
+    // The set of reporter types can grow server-side ahead of this build.
+    render(<Settings {...PROPS} reporterType={'ridgerunner' as 'thru'} />)
+
+    expect(screen.getByText('ridgerunner')).toBeInTheDocument()
+  })
 })

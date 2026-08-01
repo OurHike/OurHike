@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { DOWNLOAD_DETAIL_LEVELS, getDownloadDetail } from './downloadDetail'
+import {
+  DOWNLOAD_DETAIL_LEVELS,
+  detailLevelForZoom,
+  getDownloadDetail,
+  type DetailLevel,
+} from './downloadDetail'
 
 // Whole-corridor, one package (ROADMAP.md Phase 2, WIREFRAMES.md Known
 // Deviations #1) - a single download's detail choice, not a per-section
@@ -49,5 +54,16 @@ describe('downloadDetail', () => {
     expect(getDownloadDetail('standard').recommended).toBe(true)
     expect(getDownloadDetail('light').recommended).toBe(false)
     expect(getDownloadDetail('fine').recommended).toBe(false)
+  })
+
+  // Both lookups throw rather than returning a default. A silent fallback here
+  // would hand back the wrong archive URL or the wrong size figure, and the
+  // hiker would find out by downloading 1.18 GB they did not choose.
+  it('refuses an unknown detail level rather than guessing one', () => {
+    expect(() => getDownloadDetail('ultra' as DetailLevel)).toThrow(/ultra/)
+  })
+
+  it('refuses a zoom that matches no detail level', () => {
+    expect(() => detailLevelForZoom(9)).toThrow(/zoom 9/)
   })
 })

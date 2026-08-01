@@ -9,9 +9,17 @@
 const MB = 1_000_000
 const GB = 1_000_000_000
 
-/** Trims "1.20" to "1.2" and "2.00" to "2" without touching "1.18". */
+/** Trims "1.20" to "1.2" and "2.00" to "2" without touching "1.18".
+ *
+ *  Anchored to a decimal point rather than stripping trailing zeros outright:
+ *  a bare "10" must come back as "10", not "1". The previous version guarded
+ *  that with an `includes('.')` check, which read as defensive but was dead -
+ *  both callers arrive via toFixed(), which always yields a point - so the
+ *  case it protected against could never be observed and the guard could not
+ *  be tested. Handling it in the pattern makes the function safe for any
+ *  string AND leaves nothing unreachable behind it. */
 function trimZeros(value: string): string {
-  return value.includes('.') ? value.replace(/\.?0+$/, '') : value
+  return value.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '')
 }
 
 export function formatBytes(bytes: number): string {

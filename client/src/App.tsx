@@ -54,6 +54,14 @@ import './App.css'
 
 const TRAIL_NAME = 'Appalachian Trail'
 
+// Sign in, sign out, sync and export are all rendered and all do nothing: what
+// they need is the backend, which is Phase 2 (ROADMAP.md). They share one
+// placeholder rather than getting an identical empty arrow each, because the
+// sign-out control in particular is unreachable today - Settings renders it
+// only when `account` is set, and that is hardcoded null below - and four
+// separate copies would mean carrying a function nothing can ever call.
+const notYet = () => undefined
+
 // The whole trail, Springer to Katahdin, as the opening view. Taken from the
 // published topo archive's own header bounds, so it frames exactly the ground
 // the map actually covers rather than a hand-typed guess.
@@ -83,7 +91,19 @@ function emptyTrailsUrl(): string {
 type ReportingState = null | { step: 'pick' } | { step: 'form'; type: ReportTypeId }
 
 function App() {
-  const [preferences, setPreferences] = useState<UserPreferences | null>(null)
+  // Two pieces of state rather than one nullable, because null only ever meant
+  // "not read off the phone yet" - and saying that with a boolean keeps the
+  // preferences themselves always a whole object. That removes an unreachable
+  // null check from every reader below, including one inside updatePreferences
+  // that no caller could ever satisfy: nothing renders, and so nothing can
+  // change a preference, until the load has finished.
+  //
+  // Starting from DEFAULT_PREFERENCES rather than a placeholder is not a
+  // behaviour change: the two values anything read before the load completes
+  // (location_permission_requested, max_background_zoom) were already falling
+  // back to exactly these defaults.
+  const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES)
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false)
   const [activeTab, setActiveTab] = useState<TabId>('trail')
   const [legendOpen, setLegendOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -109,19 +129,20 @@ function App() {
   useAppUpdate()
 
   useEffect(() => {
-    void loadPreferences().then(setPreferences)
+    void loadPreferences().then((stored) => {
+      setPreferences(stored)
+      setPreferencesLoaded(true)
+    })
   }, [])
 
   useEffect(() => {
     void listQueued().then((queue) => setQueuedCount(queue.length))
   }, [reporting])
 
-  const locationAllowed = preferences?.location_permission_requested ?? false
+  const locationAllowed = preferences.location_permission_requested
   const gps = useGeolocation(locationAllowed)
 
-  const detailLevel: DetailLevel = detailLevelForZoom(
-    preferences?.max_background_zoom ?? DEFAULT_PREFERENCES.max_background_zoom,
-  )
+  const detailLevel: DetailLevel = detailLevelForZoom(preferences.max_background_zoom)
 
   const {
     status: archiveStatus,
@@ -140,7 +161,22 @@ function App() {
       return URL.createObjectURL(data.trails)
     })
     setPois(data.pois)
-    setTrailIndex(buildTrailIndex(JSON.parse(await data.trails.text())))
+
+    // Best-effort, and separate from the POIs above on purpose. A shelter is
+    // findable by name with no geometry at all, so a trails.geojson that
+    // arrived truncated or malformed should cost the mile numbers decorating
+    // each row and nothing else.
+    //
+    // buildTrailIndex() guards the shape it is handed, but JSON.parse runs
+    // first and throws on the more likely symptom of a truncated download -
+    // half a file. Uncaught, that escaped through the `void refreshTrailData()`
+    // below as an unhandled rejection: no index, no message, and no search
+    // either, which is the failure this whole path was rebuilt to avoid.
+    try {
+      setTrailIndex(buildTrailIndex(JSON.parse(await data.trails.text())))
+    } catch {
+      setTrailIndex(null)
+    }
   }, [])
 
   useEffect(() => {
@@ -203,7 +239,6 @@ function App() {
 
   const updatePreferences = useCallback((patch: Partial<UserPreferences>) => {
     setPreferences((current) => {
-      if (current === null) return current
       const next = { ...current, ...patch }
       void savePreferences(next)
       return next
@@ -280,7 +315,9 @@ function App() {
     [],
   )
 
-  if (preferences === null) return null
+  // Nothing renders until the phone's own preferences have been read, so a
+  // returning hiker never sees a flash of the first-run onboarding.
+  if (!preferencesLoaded) return null
 
   if (!preferences.onboarding_completed) {
     return <Onboarding onComplete={handleOnboardingComplete} />
@@ -356,13 +393,13 @@ function App() {
           <More
             account={null}
             reporterType="thru"
-            onSignIn={() => undefined}
-            onSignOut={() => undefined}
+            onSignIn={notYet}
+            onSignOut={notYet}
             preferences={preferences}
             onChange={updatePreferences}
             lastSyncedAt={lastSyncedAt}
-            onSync={() => undefined}
-            onExport={() => undefined}
+            onSync={notYet}
+            onExport={notYet}
             now={now}
             onStartReport={() => setReporting({ step: 'pick' })}
             queuedReportCount={queuedCount}
@@ -395,8 +432,15 @@ function App() {
       searchablePois={searchablePois}
       onSelectSearchResult={(poi) => {
         const found = pois.find((p) => p.id === poi.id)
+        // The miss is unreachable, and kept for the type checker: every result
+        // the sheet can offer was built by mapping this same `pois` array, so
+        // its id is always in it. Ignored for coverage rather than covered -
+        // there is no input that produces a search result pointing at a POI
+        // the app does not hold.
+        /* v8 ignore start */
         if (found !== undefined)
           mapRef.current?.jumpTo({ center: [found.lon, found.lat] })
+        /* v8 ignore stop */
         setSearchOpen(false)
       }}
       bbox={bbox}

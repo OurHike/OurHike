@@ -51,10 +51,20 @@ export function useAppUpdate(intervalMs: number = UPDATE_CHECK_MS): void {
     // A PWA can stay open for days. Without an explicit check the browser only
     // looks for a new worker on navigation, which a standalone app may not do
     // for a very long time.
+    // Swallowing the rejection is the whole point, not laziness.
+    // registration.update() re-fetches the worker script, so it rejects
+    // whenever there is no signal - which for this app is not an edge case but
+    // the normal condition for days at a time. Left unhandled it raised an
+    // `unhandledrejection` every hour on exactly the hike this app is for,
+    // which is noise in any error reporting we add later and, in a browser
+    // that surfaces them, noise at the hiker. There is nothing to do about it
+    // either way: the next tick tries again, and the running app is fine
+    // meanwhile.
     const check = () => {
-      void navigator.serviceWorker.getRegistration().then((registration) => {
-        void registration?.update()
-      })
+      void navigator.serviceWorker
+        .getRegistration()
+        .then((registration) => registration?.update())
+        .catch(() => {})
     }
 
     check()

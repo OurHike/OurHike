@@ -135,4 +135,15 @@ describe('clusterWaypoints', () => {
 
     expect(Object.keys(lanes).sort()).toEqual(['else', 'sleep', 'water'])
   })
+
+  it('does not divide by zero on a window with no width', () => {
+    // A degenerate window puts every point at 0% rather than at NaN%, which
+    // would place the pins nowhere at all.
+    const lanes = clusterWaypoints([{ id: 'w1', type: 'water', mile: 1400 }], {
+      startMile: 1400,
+      endMile: 1400,
+    })
+
+    expect(lanes.water[0].positionPct).toBe(0)
+  })
 })

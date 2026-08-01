@@ -131,4 +131,53 @@ describe('useInstallPrompt', () => {
 
     expect(() => result.current.install()).not.toThrow()
   })
+
+  it('hands the deferred event back to the browser when the app asks to install', async () => {
+    stubDisplayMode(false)
+    stubUserAgent('Mozilla/5.0 (Linux; Android 14; Pixel 8) Chrome/120')
+
+    const { result } = renderHook(() => useInstallPrompt())
+
+    const event = new Event('beforeinstallprompt') as Event & {
+      prompt: () => Promise<void>
+      userChoice: Promise<{ outcome: string }>
+    }
+    event.prompt = vi.fn(() => Promise.resolve())
+    event.userChoice = Promise.resolve({ outcome: 'accepted' })
+    act(() => {
+      window.dispatchEvent(event)
+    })
+
+    await act(async () => {
+      result.current.install()
+    })
+
+    expect(event.prompt).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops offering after the prompt has been used, since it is single-use', async () => {
+    // A beforeinstallprompt event can only be prompted once. Leaving the button
+    // live afterwards offers something that silently does nothing.
+    stubDisplayMode(false)
+    stubUserAgent('Mozilla/5.0 (Linux; Android 14; Pixel 8) Chrome/120')
+
+    const { result } = renderHook(() => useInstallPrompt())
+
+    const event = new Event('beforeinstallprompt') as Event & {
+      prompt: () => Promise<void>
+      userChoice: Promise<{ outcome: string }>
+    }
+    event.prompt = vi.fn(() => Promise.resolve())
+    event.userChoice = Promise.resolve({ outcome: 'dismissed' })
+    act(() => {
+      window.dispatchEvent(event)
+    })
+
+    await act(async () => {
+      result.current.install()
+      await event.userChoice
+    })
+
+    expect(result.current.canPrompt).toBe(false)
+  })
 })

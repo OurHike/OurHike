@@ -5,6 +5,7 @@ import { get, set } from 'idb-keyval'
 import App from './App'
 import { PREFERENCES_KEY } from './lib/preferences'
 import { DEFAULT_PREFERENCES } from './lib/userPreferences'
+import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 
 // The shell decides what a hiker sees, so what is worth testing here is the
 // routing between screens and the honesty of what it shows before any data
@@ -155,13 +156,12 @@ describe('App shell', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/VITE_DATA_BASE_URL/)
   })
 
-  it('can still find a shelter by name before the trail index exists', async () => {
-    // The bug: searchablePois returned [] whenever trailIndex was null, so a
-    // failed or not-yet-built centerline index silently emptied search while
-    // hundreds of POIs sat in memory. Finding a shelter by name needs no
-    // geometry - the mile is decoration on the row.
-    const store = new Map<string, unknown>()
-    store.set('ourhike:pois', [
+  /** POIs on the phone, but a trails.geojson too damaged to index - the state
+   *  in which search used to go silently empty. */
+  function poisWithoutAUsableIndex() {
+    returningHiker()
+    store.set(TRAILS_BLOB_KEY, new Blob(['{"type":"FeatureCollection","featu']))
+    store.set(POIS_KEY, [
       {
         id: 'atc_shelters:abc',
         type: 'shelter',
@@ -171,16 +171,69 @@ describe('App shell', () => {
         confidence: 'high',
       },
     ])
-    // Trail lines deliberately absent, so no index can be built.
-    const { searchPois } = await import('./lib/searchPoi')
-    const pois = store.get('ourhike:pois') as Array<{
-      id: string
-      name: string
-      type: string
-    }>
-    const searchable = pois.map((p) => ({ ...p, mile: undefined }))
+  }
 
-    expect(searchPois('chairback', searchable)).toHaveLength(1)
+  it('can still find a shelter by name when the trail index could not be built', async () => {
+    // The bug: searchablePois returned [] whenever trailIndex was null, so a
+    // failed or not-yet-built centerline index silently emptied search while
+    // hundreds of POIs sat in memory. Finding a shelter by name needs no
+    // geometry - the mile is decoration on the row.
+    //
+    // Driven through the real App rather than by calling searchPois() on a
+    // hand-built list: the defect was in App's own searchablePois memo, and a
+    // test that never renders App cannot see it. The first version of this
+    // test did exactly that and passed against the unfixed code.
+    const user = userEvent.setup()
+    poisWithoutAUsableIndex()
+    render(<App />)
+
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('button', { name: /search/i }))
+    await user.type(
+      await screen.findByRole('searchbox', { name: /search the downloaded map/i }),
+      'chairback',
+    )
+
+    expect(await screen.findByText('Chairback Gap Lean-to')).toBeInTheDocument()
+  })
+
+  it('omits the mile on a result rather than inventing mile zero for it', async () => {
+    // The other half of the same fix. The old code defaulted an uncomputable
+    // mile to `?? 0`, which reads as Springer Mountain - a confident, precise,
+    // wrong answer of exactly the kind this app is not supposed to give.
+    const user = userEvent.setup()
+    poisWithoutAUsableIndex()
+    render(<App />)
+
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('button', { name: /search/i }))
+    await user.type(
+      await screen.findByRole('searchbox', { name: /search the downloaded map/i }),
+      'chairback',
+    )
+
+    await screen.findByText('Chairback Gap Lean-to')
+    expect(screen.getByText('Shelter')).toBeInTheDocument()
+    expect(screen.queryByText(/mi 0\.0/)).not.toBeInTheDocument()
+  })
+
+  it('keeps the POIs usable when the trail lines arrive damaged, instead of throwing', async () => {
+    // JSON.parse on half a downloaded file throws, and that used to escape
+    // through `void refreshTrailData()` as an unhandled rejection - taking the
+    // POIs with it and saying nothing to anyone.
+    const seen: unknown[] = []
+    const onUnhandled = (reason: unknown) => seen.push(reason)
+    process.on('unhandledRejection', onUnhandled)
+    try {
+      poisWithoutAUsableIndex()
+      render(<App />)
+      await screen.findByRole('region', { name: /trail map/i })
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    } finally {
+      process.off('unhandledRejection', onUnhandled)
+    }
+
+    expect(seen).toEqual([])
   })
 
   it('says why the archive download failed instead of just returning to the button', async () => {

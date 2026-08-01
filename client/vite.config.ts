@@ -101,11 +101,11 @@ export default defineConfig({
       reporter: ['text'], // visibility only, not a merge gate - matches
       // pipeline/pyproject.toml's pytest-cov stance exactly, see TESTING.md.
 
-      // Measure the app, not the harness. `all` pulls in source files no test
-      // imports so an untested module shows as 0% rather than vanishing from
+      // Measure the app, not the harness. An explicit `include` is what makes
+      // a source file no test imports show up as 0% rather than vanishing from
       // the report - the whole point of looking at coverage is seeing what is
-      // NOT covered.
-      all: true,
+      // NOT covered. (Vitest 4 dropped the separate `all` flag that used to do
+      // this; `include` covers it, and passing `all` fails `tsc -b`.)
       include: ['src/**/*.{ts,tsx,js,jsx}'],
       exclude: [
         // Test doubles and setup. Scaffolding, and measuring it says nothing

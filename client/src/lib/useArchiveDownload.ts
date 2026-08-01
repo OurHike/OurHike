@@ -34,20 +34,33 @@ export function useArchiveDownload(archiveUrl: string) {
     let cancelled = false
 
     void (async () => {
-      const finished = (await get(CORRIDOR_ARCHIVE_KEY)) as Blob | undefined
-      if (cancelled) return
-      if (finished !== undefined) {
-        setStatus({
-          state: 'downloaded',
-          totalBytes: finished.size,
-          completedAt: new Date(),
-        })
-        return
-      }
+      try {
+        const finished = (await get(CORRIDOR_ARCHIVE_KEY)) as Blob | undefined
+        if (cancelled) return
+        if (finished !== undefined) {
+          setStatus({
+            state: 'downloaded',
+            totalBytes: finished.size,
+            completedAt: new Date(),
+          })
+          return
+        }
 
-      const partial = await readDownloadProgress()
-      if (cancelled || partial === null) return
-      setStatus({ state: 'failed', ...partial })
+        const partial = await readDownloadProgress()
+        if (cancelled || partial === null) return
+        setStatus({ state: 'failed', ...partial })
+      } catch {
+        // Both reads are IndexedDB, which can fail outright - storage evicted
+        // under pressure, a corrupt database, private browsing. Unhandled that
+        // was an unhandled rejection on app start; handled, it simply leaves
+        // the initial not-downloaded state, which is the honest reading of "we
+        // could not find out what is on this phone".
+        //
+        // Deliberately silent rather than surfaced: this runs before the hiker
+        // has asked for anything, and the Downloads screen offering the
+        // download is already the right next step. A failure they DID ask for
+        // still reports itself - see the catch in `run`.
+      }
     })()
 
     return () => {

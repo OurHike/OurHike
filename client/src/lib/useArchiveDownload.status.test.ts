@@ -50,6 +50,28 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
+/**
+ * Runs `body` while watching Node for unhandled rejections.
+ *
+ * Listens on `process`, not on window's `unhandledrejection`: jsdom does not
+ * dispatch that event for rejections originating in test code, so a window
+ * listener sees nothing and passes whether the bug is there or not. This is
+ * what Vitest's own "Unhandled Errors" section reads, and a process listener
+ * observes without suppressing.
+ */
+async function rejectionsWhile(body: () => Promise<void>): Promise<unknown[]> {
+  const seen: unknown[] = []
+  const onUnhandled = (reason: unknown) => seen.push(reason)
+  process.on('unhandledRejection', onUnhandled)
+  try {
+    await body()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  } finally {
+    process.off('unhandledRejection', onUnhandled)
+  }
+  return seen
+}
+
 describe('useArchiveDownload on mount', () => {
   it('starts at not-downloaded when the phone holds nothing', async () => {
     const { result } = renderHook(() => useArchiveDownload(URL_))
@@ -89,6 +111,43 @@ describe('useArchiveDownload on mount', () => {
         totalBytes: 100,
       })
     })
+  })
+
+  it('falls back to not-downloaded when the phone cannot say what it holds', async () => {
+    // IndexedDB can fail outright - storage evicted under pressure, a corrupt
+    // database, private browsing. This runs on mount, before the hiker has
+    // asked for anything, so the failure has nowhere useful to go: it must not
+    // become an unhandled rejection on app start, and the honest state is the
+    // one that offers the download.
+    vi.mocked(get).mockRejectedValue(new Error('IndexedDB is gone'))
+
+    let hook: ReturnType<
+      typeof renderHook<ReturnType<typeof useArchiveDownload>, unknown>
+    >
+    const rejections = await rejectionsWhile(async () => {
+      await act(async () => {
+        hook = renderHook(() => useArchiveDownload(URL_))
+      })
+    })
+
+    expect(rejections).toEqual([])
+    expect(hook!.result.current.status).toEqual({ state: 'not-downloaded' })
+  })
+
+  it('survives the progress read failing after the archive read succeeded', async () => {
+    vi.mocked(readDownloadProgress).mockRejectedValue(new Error('IndexedDB is gone'))
+
+    let hook: ReturnType<
+      typeof renderHook<ReturnType<typeof useArchiveDownload>, unknown>
+    >
+    const rejections = await rejectionsWhile(async () => {
+      await act(async () => {
+        hook = renderHook(() => useArchiveDownload(URL_))
+      })
+    })
+
+    expect(rejections).toEqual([])
+    expect(hook!.result.current.status).toEqual({ state: 'not-downloaded' })
   })
 
   it('does not write state into a screen that has already gone away', async () => {

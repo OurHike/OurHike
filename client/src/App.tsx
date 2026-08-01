@@ -153,10 +153,7 @@ function App() {
     const data = await loadTrailData()
     if (data === null) return
 
-    setTrailsUrl((previous) => {
-      URL.revokeObjectURL(previous)
-      return URL.createObjectURL(data.trails)
-    })
+    setTrailsUrl(URL.createObjectURL(data.trails))
     setPois(data.pois)
     setTrailIndex(buildTrailIndex(JSON.parse(await data.trails.text())))
   }, [])
@@ -164,6 +161,15 @@ function App() {
   useEffect(() => {
     void refreshTrailData()
   }, [refreshTrailData])
+
+  // Revoking belongs here rather than inside the setTrailsUrl updater it used
+  // to live in. A state updater has to be pure: React may run it more than
+  // once for a single update and may throw a render away entirely, and either
+  // one leaked a blob URL - or, in the discarded-render case, revoked the URL
+  // the map was still using. As a cleanup it runs exactly once per value, when
+  // that value stops being current, which is precisely when the bytes behind
+  // it stop being needed.
+  useEffect(() => () => URL.revokeObjectURL(trailsUrl), [trailsUrl])
 
   // The map is usually built long before a fix arrives, so the first one moves
   // the camera imperatively. Only the first: after that the view belongs to
@@ -274,10 +280,7 @@ function App() {
     await deleteTrailData()
     setPois([])
     setTrailIndex(null)
-    setTrailsUrl((previous) => {
-      URL.revokeObjectURL(previous)
-      return emptyTrailsUrl()
-    })
+    setTrailsUrl(emptyTrailsUrl())
   }, [removeArchive])
 
   // Every move is also where the camera would have to be put back, so this is

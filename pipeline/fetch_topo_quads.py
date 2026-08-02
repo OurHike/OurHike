@@ -342,7 +342,7 @@ def main():
     fail_if_incomplete(completeness_problems(unmatched, corrupted), label="Incomplete topo quad fetch")
 
 
-if __name__ == "__main__":
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     # --metadata-only exists because build_cells_manifest.py needs
     # ustopo_current.csv and nothing else could produce it. fetch_metadata_csv()
     # is the only producer, and it was reachable only through main() - which
@@ -360,9 +360,21 @@ if __name__ == "__main__":
         action="store_true",
         help="Fetch just the quad metadata inventory (ustopo_current.csv) and stop. What build_cells_manifest.py needs.",
     )
-    args = parser.parse_args()
+    return parser.parse_args([] if argv is None else argv)
 
-    if args.metadata_only:
+
+def run(argv: list[str] | None = None) -> None:
+    """Entry point, split out of the __main__ block so it can be tested.
+
+    build-raster.yml's compute-cells and mosaic jobs both invoke
+    `--metadata-only`, and while it sat inline under `if __name__` nothing
+    could import it - so the one flag CI actually depends on was the one
+    thing here with no test at all."""
+    if parse_args(argv).metadata_only:
         fetch_metadata_csv()
     else:
         main()
+
+
+if __name__ == "__main__":
+    run(sys.argv[1:])

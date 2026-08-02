@@ -418,4 +418,68 @@ describe('downloadArchive — refusing to splice two different archives', () => 
 
     expect(store[ARCHIVE_SOURCE_KEY]).toEqual({ url: URL_, etag: undefined })
   })
+
+  describe('downloadArchive — a response with nothing to read', () => {
+    it('fails loudly rather than storing an empty archive', async () => {
+      // A 200 with a null body is not a zero-byte map, it is a broken response.
+      // Writing it to CORRIDOR_ARCHIVE_KEY would leave the app convinced it has
+      // a map, offline, with no way to find out otherwise.
+      const store = withStore()
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(null, { status: 200, headers: { 'content-length': '3' } }),
+      )
+
+      await expect(downloadArchive(URL_)).rejects.toThrow(/no response body/)
+      expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
+    })
+  })
+
+  describe('downloadArchive — a server that never says how big the file is', () => {
+    it('still stores what arrived, rather than treating no length as zero length', async () => {
+      // A chunked response carries no content-length. There is nothing to check
+      // the size against, so the length check has to stand down instead of
+      // deciding the archive is short - refusing a complete download over a
+      // header the server was never obliged to send would be its own bug.
+      const store = withStore()
+      vi.spyOn(globalThis, 'fetch').mockImplementation(
+        async () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(bytes(1, 2, 3, 4))
+                controller.close()
+              },
+            }),
+            { status: 200 },
+          ),
+      )
+
+      await downloadArchive(URL_)
+
+      const stored = store[CORRIDOR_ARCHIVE_KEY] as Blob
+      expect(stored.size).toBe(4)
+      expect(store[ARCHIVE_PARTIAL_KEY]).toBeUndefined()
+    })
+
+    it('reports progress against an unknown total rather than a made-up one', async () => {
+      withStore()
+      vi.spyOn(globalThis, 'fetch').mockImplementation(
+        async () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(bytes(1, 2))
+                controller.close()
+              },
+            }),
+            { status: 200 },
+          ),
+      )
+      const onProgress = vi.fn()
+
+      await downloadArchive(URL_, { onProgress })
+
+      expect(onProgress).toHaveBeenCalledWith({ receivedBytes: 2, totalBytes: 0 })
+    })
+  })
 })

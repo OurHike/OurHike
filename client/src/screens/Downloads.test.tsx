@@ -150,4 +150,19 @@ describe('Downloads', () => {
 
     expect(screen.queryByText(/remaining|seam|mixed detail/i)).toBe(null)
   })
+
+  it('shows 0% rather than NaN% before the total size is known', () => {
+    // The first progress callback can land before content-length has been
+    // read, and "NaN%" on a progress bar reads as a broken app.
+    render(
+      <Downloads
+        {...PROPS}
+        status={{ state: 'downloading', receivedBytes: 0, totalBytes: 0 }}
+      />,
+    )
+
+    expect(
+      screen.getByRole('progressbar', { name: /download progress/i }),
+    ).toHaveAttribute('aria-valuenow', '0')
+  })
 })

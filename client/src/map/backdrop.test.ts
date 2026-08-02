@@ -130,4 +130,42 @@ describe('attachMapBackdrop', () => {
     expect(() => mock.emit('load')).not.toThrow()
     expect(warn).toHaveBeenCalled()
   })
+
+  it('does nothing if the load event was already in flight when it detached', () => {
+    // `off` cannot recall an event the map has already begun dispatching, so
+    // the handler can still run after teardown. Without the guard that means
+    // addImage/setPaintProperty against a map React has finished with.
+    const map = newMap()
+    const mock = MockMap.instances[0]
+
+    // Registered BEFORE the backdrop so it runs first in the dispatch, which
+    // is what a real unmount racing a 'load' looks like from in here: the
+    // teardown has happened by the time apply() is reached, but apply() is
+    // already on its way.
+    let detach = () => {}
+    mock.on('load', () => detach())
+    detach = attachMapBackdrop(map)
+    mock.emit('load')
+
+    expect(mock.images.size).toBe(0)
+  })
+
+  it('does not re-add the pattern when it is already on the map', () => {
+    // Real MapLibre throws on a duplicate image id, and this effect re-runs
+    // whenever the live map changes identity - so a second attach against a
+    // map that already carries the pattern has to skip the add and go straight
+    // to the paint property.
+    const map = newMap()
+    const mock = MockMap.instances[0]
+
+    attachMapBackdrop(map)
+    mock.emit('load')
+    const addImage = vi.spyOn(mock, 'addImage')
+
+    attachMapBackdrop(map)
+    mock.emit('load')
+
+    expect(addImage).not.toHaveBeenCalled()
+    expect(mock.images.size).toBe(1)
+  })
 })

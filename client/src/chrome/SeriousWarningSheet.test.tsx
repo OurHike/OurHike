@@ -102,4 +102,14 @@ describe('SeriousWarningSheet', () => {
 
     expect(screen.queryByRole('button', { name: /hide|mute|stop showing/i })).toBe(null)
   })
+
+  it('says a hiker reported it when no name came with the report', () => {
+    // Anonymous is the ordinary case, not an error state - the sheet still has
+    // to attribute the warning to a person rather than showing a blank.
+    render(
+      <SeriousWarningSheet {...PROPS} warning={{ ...WARNING, reporterName: null }} />,
+    )
+
+    expect(screen.getByText(/reported by a hiker/i)).toBeInTheDocument()
+  })
 })

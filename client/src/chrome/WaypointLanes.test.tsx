@@ -87,4 +87,13 @@ describe('WaypointLanes', () => {
     expect(screen.getByTestId('lane-sleep')).toBeInTheDocument()
     expect(screen.getByTestId('lane-else')).toBeInTheDocument()
   })
+
+  it('draws a waypoint type it has no glyph for rather than dropping it', () => {
+    // The pipeline can publish a POI type this build has never heard of. A
+    // neutral dot on the lane is the honest rendering; leaving it off the
+    // ribbon entirely would hide a real thing on the trail.
+    render(<WaypointLanes {...PROPS} points={[{ id: 'x1', type: 'yurt', mile: 1405 }]} />)
+
+    expect(screen.getByTestId('lane-else')).toHaveTextContent('•')
+  })
 })

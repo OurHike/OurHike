@@ -670,6 +670,53 @@ def test_save_baseline_then_load_baseline_roundtrips(tmp_path):
     assert check_output_quality.load_baseline(path) == {"trails": 4224, "elevation": 139219}
 
 
+def test_save_baseline_keeps_counts_a_partial_run_did_not_rebuild(tmp_path):
+    """A run that skipped elevation must not erase elevation's last
+    known-good figure. save_baseline() merges rather than replaces, so a
+    partial publish records what it built without forgetting what it
+    didn't."""
+    path = tmp_path / "quality_baseline.json"
+    check_output_quality.save_baseline({"trails": 4224, "elevation": 139219}, path)
+
+    # What a `--optional elevation` run produces: no elevation counts at all.
+    check_output_quality.save_baseline({"trails": 4224}, path)
+
+    assert check_output_quality.load_baseline(path) == {"trails": 4224, "elevation": 139219}
+
+
+def test_save_baseline_still_takes_the_new_figure_for_what_a_run_did_rebuild(tmp_path):
+    """Merging must not turn the baseline into a high-water mark. A count
+    this run actually measured replaces the old one, in both directions -
+    otherwise an accepted, explained drop would keep re-flagging forever."""
+    path = tmp_path / "quality_baseline.json"
+    check_output_quality.save_baseline({"trails": 4224, "elevation": 139219}, path)
+
+    check_output_quality.save_baseline({"trails": 3000, "elevation": 200000}, path)
+
+    assert check_output_quality.load_baseline(path) == {"trails": 3000, "elevation": 200000}
+
+
+def test_a_partial_run_does_not_blind_the_next_full_runs_drop_detection(tmp_path):
+    """The bug --optional introduced, end to end at the baseline layer.
+
+    Before --optional, a missing manifest was a PROBLEM, so a partial run
+    exited non-zero and never recorded a baseline at all - the protection
+    was accidental. Making partial runs pass removed it: the run then wrote
+    a baseline with no elevation entry, and flag_drops() only compares names
+    present in both sides, so the next full run had nothing to compare
+    against and waved a total collapse straight through."""
+    path = tmp_path / "quality_baseline.json"
+    check_output_quality.save_baseline({"trails": 4224, "elevation": 139219}, path)
+
+    # A publish-vector-data run with include_elevation off - the default path.
+    check_output_quality.save_baseline({"trails": 4224}, path)
+
+    # The next full run, with elevation collapsed to almost nothing.
+    drops = check_output_quality.flag_drops({"trails": 4224, "elevation": 12}, check_output_quality.load_baseline(path))
+
+    assert any("elevation" in d for d in drops), "a partial run must not blind the next full one"
+
+
 def test_flag_drops_is_empty_when_nothing_dropped():
     assert check_output_quality.flag_drops({"trails": 100}, {"trails": 100}) == []
 
@@ -917,6 +964,93 @@ def test_optional_does_not_excuse_an_artifact_that_exists_and_is_wrong(passing_p
     (tmp_path / "elevation_profile.json").write_text("tampered after hashing")
 
     assert check_output_quality.main(["--optional", "elevation"]) != 0
+
+
+# --- as_optional -------------------------------------------------------------
+#
+# Tested directly as well as through main() below. The whole --optional feature
+# rests on this one function drawing the line between "I did not build it" and
+# "I built it and it is wrong", and going through main() means a full on-disk
+# pipeline fixture per case - which makes the cheap, exhaustive cases expensive
+# enough not to write. These are the exhaustive ones.
+
+
+def test_as_optional_excuses_a_manifest_that_was_never_built():
+    report = {
+        "check": "elevation",
+        "verdict": Verdict.PROBLEM,
+        "detail": "gone",
+        "problems": ["gone"],
+        "counts": {},
+        "reason": check_output_quality.MANIFEST_MISSING,
+    }
+
+    assert check_output_quality.as_optional(report)["verdict"] is Verdict.SKIPPED
+
+
+def test_as_optional_clears_the_problems_it_excused():
+    """A SKIPPED check carrying problems would still print them, reading as a
+    failure that somehow passed."""
+    report = {
+        "check": "elevation",
+        "verdict": Verdict.PROBLEM,
+        "detail": "gone",
+        "problems": ["gone"],
+        "counts": {},
+        "reason": check_output_quality.MANIFEST_MISSING,
+    }
+
+    assert check_output_quality.as_optional(report)["problems"] == []
+
+
+def test_as_optional_refuses_a_problem_with_no_reason_recorded():
+    """_safe_verdict()'s catch-all builds a PROBLEM with no `reason` - a check
+    that CRASHED. Excusing that would turn every unexpected exception in an
+    optional check into a silent pass."""
+    report = {"check": "elevation", "verdict": Verdict.PROBLEM, "detail": "boom", "problems": ["boom"], "counts": {}}
+
+    assert check_output_quality.as_optional(report)["verdict"] is Verdict.PROBLEM
+
+
+def test_as_optional_refuses_a_problem_reported_for_some_other_reason():
+    report = {
+        "check": "elevation",
+        "verdict": Verdict.PROBLEM,
+        "detail": "sha256 mismatch",
+        "problems": ["sha256 mismatch"],
+        "counts": {},
+        "reason": "something-else",
+    }
+
+    assert check_output_quality.as_optional(report)["verdict"] is Verdict.PROBLEM
+
+
+def test_as_optional_leaves_a_passing_check_exactly_as_it_found_it():
+    report = {"check": "elevation", "verdict": Verdict.OK, "detail": "fine", "problems": [], "counts": {"elevation": 10}}
+
+    assert check_output_quality.as_optional(report) == report
+
+
+def test_as_optional_leaves_an_already_skipped_check_alone():
+    report = {"check": "baseline", "verdict": Verdict.SKIPPED, "detail": "no baseline yet", "problems": [], "counts": {}}
+
+    assert check_output_quality.as_optional(report) == report
+
+
+def test_every_missing_manifest_verdict_records_the_reason(tmp_path):
+    """The three verdict functions set `reason` structurally rather than
+    as_optional() sniffing it out of the problem text - and if one of them
+    ever stops, --optional silently stops excusing that artifact."""
+    for verdict_fn in (
+        check_output_quality.trails_verdict,
+        check_output_quality.poi_verdict,
+        check_output_quality.elevation_verdict,
+    ):
+        report = verdict_fn(tmp_path / "absent.json")
+
+        assert report["verdict"] is Verdict.PROBLEM
+        assert report["reason"] == check_output_quality.MANIFEST_MISSING, verdict_fn.__name__
+        assert check_output_quality.as_optional(report)["verdict"] is Verdict.SKIPPED
 
 
 def test_optional_does_not_excuse_a_manifest_whose_artifact_vanished(passing_pipeline, tmp_path):

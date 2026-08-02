@@ -114,8 +114,14 @@ export async function downloadArchive(
   // WHOLE file - appending that to what we hold would produce a corrupt
   // archive of exactly the expected length, which passes every size check and
   // then renders a broken map. Start clean instead.
-  const resumed = heldBytes > 0 && response.status === 206
-  let accumulated: Blob = resumed && heldBlob ? heldBlob : new Blob([])
+  // Tested against the blob rather than against heldBytes, which says the same
+  // thing here - heldBytes IS heldBlob's size, and a 206 can only arrive in
+  // reply to the Range header above, which is only sent when that size is
+  // non-zero. Phrasing it this way lets the type narrowing flow into the line
+  // below, instead of needing a second `&& heldBlob` there that no input could
+  // ever make false.
+  const resumed = heldBlob !== undefined && response.status === 206
+  let accumulated: Blob = resumed ? heldBlob : new Blob([])
 
   const declared = Number(response.headers.get('content-length') ?? 0)
   const totalBytes = resumed ? heldBytes + declared : declared

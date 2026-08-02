@@ -72,6 +72,11 @@ export function MapView({
   // parent re-rendered. They seed the initial camera, and nothing more.
   useEffect(() => {
     const container = containerRef.current
+    // Unreachable, and kept for the type checker: the div this ref is attached
+    // to is rendered unconditionally, and an effect only runs after that div is
+    // in the DOM. Ignored for coverage rather than covered, since there is no
+    // way to render this component without its own container.
+    /* v8 ignore next */
     if (container === null) return
 
     // The style resolves pmtiles:// URLs, so the protocol has to exist first.

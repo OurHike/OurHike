@@ -114,9 +114,14 @@ export function buildTrailIndex(collection: FeatureCollection): TrailIndex {
   // reports as a failed download.
   for (const feature of collection?.features ?? []) {
     if (feature.properties?.source !== 'centerline') continue
-    if (feature.geometry.type !== 'LineString') continue
+    // `geometry` before `geometry.type`: a null geometry is valid GeoJSON, not
+    // a malformed payload, so a feature carrying one is a thing this can
+    // actually be handed. Guarding only the top-level `features` left that
+    // throwing a TypeError - from the same network payload the guard above
+    // exists to survive, which made the defence half a defence.
+    if (feature.geometry?.type !== 'LineString') continue
 
-    const coords = feature.geometry.coordinates as Coordinates
+    const coords = (feature.geometry.coordinates ?? []) as Coordinates
     if (coords.length < 2) continue
 
     // Flip a piece whose own coordinates run north-to-south, so every piece

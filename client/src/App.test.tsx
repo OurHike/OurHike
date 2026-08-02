@@ -6,6 +6,7 @@ import App from './App'
 import { MockMap, resetMapLibreMock } from './test/mocks/maplibre-gl'
 import { PREFERENCES_KEY } from './lib/preferences'
 import { DEFAULT_PREFERENCES } from './lib/userPreferences'
+import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 
 // The shell decides what a hiker sees, so what is worth testing here is the
 // routing between screens and the honesty of what it shows before any data
@@ -47,6 +48,22 @@ async function completeOnboarding(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('button', { name: 'Continue' }))
   await user.click(screen.getByRole('button', { name: 'Continue' }))
   await user.click(screen.getByRole('button', { name: /not now/i }))
+}
+
+/**
+ * The live map, once MapView's effect has actually built it.
+ *
+ * `findByRole('region')` resolves the moment MapView's container div lands in
+ * the DOM - which is a commit BEFORE the effect that constructs the map runs.
+ * Reading `MockMap.live[0]` straight after it is therefore a race that usually
+ * wins on a quiet machine and loses under load: it went green on both of #86's
+ * PR runs and red on the merge commit, with `Cannot read properties of
+ * undefined (reading 'options')`. Waiting for the map itself is the thing these
+ * tests actually mean.
+ */
+async function liveMap() {
+  await waitFor(() => expect(MockMap.live.length).toBeGreaterThan(0))
+  return MockMap.live[0]
 }
 
 describe('App shell', () => {
@@ -123,7 +140,7 @@ describe('App shell', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
 
-    const opening = MockMap.live[0]
+    const opening = await liveMap()
     // Stand in for the hiker panning and zooming to a shelter.
     opening.center = { lng: -78.4, lat: 38.6 }
     opening.zoom = 15
@@ -134,7 +151,7 @@ describe('App shell', () => {
     await user.click(screen.getByRole('tab', { name: 'Trail' }))
     await screen.findByRole('region', { name: /trail map/i })
 
-    const rebuilt = MockMap.live[0]
+    const rebuilt = await liveMap()
     expect(rebuilt).not.toBe(opening)
     expect(rebuilt.options.center).toEqual([-78.4, 38.6])
     expect(rebuilt.options.zoom).toBe(15)
@@ -149,7 +166,7 @@ describe('App shell', () => {
 
     // Before a fix or a pan the app genuinely does not know where the hiker
     // is, and the whole trail is the honest opening answer.
-    expect(MockMap.live[0].options.bounds).toEqual([
+    expect((await liveMap()).options.bounds).toEqual([
       [-84.73, 34.2],
       [-68.3, 46.34],
     ])
@@ -184,7 +201,7 @@ describe('App shell', () => {
     // Waiting for the result also waits out the map rebuild that loading trail
     // data triggers - the POIs and the new trails URL land in the same commit.
     const result = await screen.findByRole('button', { name: /chairback/i })
-    const map = MockMap.live[0]
+    const map = await liveMap()
 
     await user.click(result)
 
@@ -220,7 +237,7 @@ describe('App shell', () => {
     // rebuilds the map, and a zoom set on the outgoing one goes with it.
     const result = await screen.findByRole('button', { name: /spring below/i })
 
-    const map = MockMap.live[0]
+    const map = await liveMap()
     map.zoom = 16
     act(() => map.emit('moveend'))
 
@@ -315,13 +332,12 @@ describe('App shell', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/VITE_DATA_BASE_URL/)
   })
 
-  it('can still find a shelter by name before the trail index exists', async () => {
-    // The bug: searchablePois returned [] whenever trailIndex was null, so a
-    // failed or not-yet-built centerline index silently emptied search while
-    // hundreds of POIs sat in memory. Finding a shelter by name needs no
-    // geometry - the mile is decoration on the row.
-    const store = new Map<string, unknown>()
-    store.set('ourhike:pois', [
+  /** POIs on the phone, but a trails.geojson too damaged to index - the state
+   *  in which search used to go silently empty. */
+  function poisWithoutAUsableIndex() {
+    returningHiker()
+    store.set(TRAILS_BLOB_KEY, new Blob(['{"type":"FeatureCollection","featu']))
+    store.set(POIS_KEY, [
       {
         id: 'atc_shelters:abc',
         type: 'shelter',
@@ -331,16 +347,69 @@ describe('App shell', () => {
         confidence: 'high',
       },
     ])
-    // Trail lines deliberately absent, so no index can be built.
-    const { searchPois } = await import('./lib/searchPoi')
-    const pois = store.get('ourhike:pois') as Array<{
-      id: string
-      name: string
-      type: string
-    }>
-    const searchable = pois.map((p) => ({ ...p, mile: undefined }))
+  }
 
-    expect(searchPois('chairback', searchable)).toHaveLength(1)
+  it('can still find a shelter by name when the trail index could not be built', async () => {
+    // The bug: searchablePois returned [] whenever trailIndex was null, so a
+    // failed or not-yet-built centerline index silently emptied search while
+    // hundreds of POIs sat in memory. Finding a shelter by name needs no
+    // geometry - the mile is decoration on the row.
+    //
+    // Driven through the real App rather than by calling searchPois() on a
+    // hand-built list: the defect was in App's own searchablePois memo, and a
+    // test that never renders App cannot see it. The first version of this
+    // test did exactly that and passed against the unfixed code.
+    const user = userEvent.setup()
+    poisWithoutAUsableIndex()
+    render(<App />)
+
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('button', { name: /search/i }))
+    await user.type(
+      await screen.findByRole('searchbox', { name: /search the downloaded map/i }),
+      'chairback',
+    )
+
+    expect(await screen.findByText('Chairback Gap Lean-to')).toBeInTheDocument()
+  })
+
+  it('omits the mile on a result rather than inventing mile zero for it', async () => {
+    // The other half of the same fix. The old code defaulted an uncomputable
+    // mile to `?? 0`, which reads as Springer Mountain - a confident, precise,
+    // wrong answer of exactly the kind this app is not supposed to give.
+    const user = userEvent.setup()
+    poisWithoutAUsableIndex()
+    render(<App />)
+
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('button', { name: /search/i }))
+    await user.type(
+      await screen.findByRole('searchbox', { name: /search the downloaded map/i }),
+      'chairback',
+    )
+
+    await screen.findByText('Chairback Gap Lean-to')
+    expect(screen.getByText('Shelter')).toBeInTheDocument()
+    expect(screen.queryByText(/mi 0\.0/)).not.toBeInTheDocument()
+  })
+
+  it('keeps the POIs usable when the trail lines arrive damaged, instead of throwing', async () => {
+    // JSON.parse on half a downloaded file throws, and that used to escape
+    // through `void refreshTrailData()` as an unhandled rejection - taking the
+    // POIs with it and saying nothing to anyone.
+    const seen: unknown[] = []
+    const onUnhandled = (reason: unknown) => seen.push(reason)
+    process.on('unhandledRejection', onUnhandled)
+    try {
+      poisWithoutAUsableIndex()
+      render(<App />)
+      await screen.findByRole('region', { name: /trail map/i })
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    } finally {
+      process.off('unhandledRejection', onUnhandled)
+    }
+
+    expect(seen).toEqual([])
   })
 
   it('says why the archive download failed instead of just returning to the button', async () => {

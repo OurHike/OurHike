@@ -48,4 +48,20 @@ describe('formatBytes', () => {
     expect(formatBytes(0)).toBe('0 MB')
     expect(formatBytes(500_000)).toBe('0.5 MB')
   })
+
+  it('leaves a whole number alone rather than trimming digits out of it', () => {
+    // The trimming pass only ever runs on a decimal string; a value with no
+    // point must come back untouched, not have its trailing zeros eaten.
+    expect(formatBytes(300_000_000)).toBe('300 MB')
+    expect(formatBytes(64_000_000)).toBe('64 MB')
+  })
+
+  it('never eats a digit off a string that has no decimal point', () => {
+    // Guards the trimming pattern itself: applied unanchored, "10" would come
+    // back as "1". No caller reaches it that way today, which is exactly why
+    // it is asserted here rather than left to a comment.
+    expect(formatBytes(10_000_000)).toBe('10 MB')
+    expect(formatBytes(100_000_000)).toBe('100 MB')
+    expect(formatBytes(10_000_000_000)).toBe('10 GB')
+  })
 })

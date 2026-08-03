@@ -24,11 +24,48 @@ export interface WrongWayAlert {
 /**
  * The one permitted push. Named for its only caller on purpose - a generic
  * `sendPush(...)` would be an invitation.
+ *
+ * Delivered through the service worker registration rather than the
+ * `Notification` constructor, because on the platform this actually ships to
+ * the constructor does not work. Android Chrome throws outright - "Failed to
+ * construct 'Notification': Illegal constructor. Use
+ * ServiceWorkerRegistration.showNotification() instead" - and an installed
+ * iOS PWA, the only place iOS delivers web push at all, has no usable
+ * constructor either. Both want the registration.
+ *
+ * The constructor stays as the fallback because it is the path that works on
+ * a desktop browser during development, which is where this gets looked at.
  */
 export async function publishWrongWayAlert(alert: WrongWayAlert): Promise<boolean> {
   if (typeof Notification === 'undefined') return false
   if (Notification.permission !== 'granted') return false
 
-  new Notification(alert.title, { body: alert.body })
-  return true
+  const options: NotificationOptions = { body: alert.body }
+
+  if ('serviceWorker' in navigator) {
+    try {
+      // getRegistration(), not ready: `ready` never settles when nothing is
+      // registered, and a promise that hangs forever is a worse failure than
+      // a missed notification - it would leave the alert silently pending
+      // for the rest of the hike with nothing to time it out.
+      const registration = await navigator.serviceWorker.getRegistration()
+      if (registration !== undefined) {
+        await registration.showNotification(alert.title, options)
+        return true
+      }
+    } catch {
+      // Fall through: a registration that cannot show is not a reason to
+      // give up on telling someone they are walking the wrong way.
+    }
+  }
+
+  try {
+    new Notification(alert.title, options)
+    return true
+  } catch {
+    // Every path exhausted. Reported honestly rather than thrown: the caller
+    // (lib/wrongWayAlert.ts) treats a false as "the cue is all we have", and
+    // an exception here would take the in-app cue down with the push.
+    return false
+  }
 }

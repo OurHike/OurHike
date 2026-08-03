@@ -5,10 +5,11 @@ import {
   loadTrailData,
   deleteTrailData,
   POIS_KEY,
+  SPURS_STORE_KEY,
   TRAILS_BLOB_KEY,
   type StoredPoi,
 } from './trailData'
-import { POI_TYPES } from './config'
+import { POI_TYPES, SPURS_KEY } from './config'
 
 vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
 
@@ -39,15 +40,20 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-/** Serves trail lines for any trails URL and the given POIs for the rest. */
-function serve(pois: string = poiCollection([])) {
+/** Serves trail lines for any trails URL, the given POIs for poi_* and the
+ *  given spur detail for spurs.json. */
+function serve(pois: string = poiCollection([]), spurs: string = '{}') {
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string) =>
       Promise.resolve({
         ok: true,
+        status: 200,
         blob: () => Promise.resolve(new Blob(['{"type":"FeatureCollection"}'])),
-        text: () => Promise.resolve(url.includes('poi_') ? pois : '{}'),
+        text: () =>
+          Promise.resolve(
+            url.includes('poi_') ? pois : url.includes(SPURS_KEY) ? spurs : '{}',
+          ),
       }),
     ),
   )
@@ -77,7 +83,8 @@ describe('trail data', () => {
     await downloadTrailData()
 
     expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(POI_TYPES.length + 1)
+    // Every POI type, plus the trail lines, plus the spur detail.
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(POI_TYPES.length + 2)
   })
 
   it('reads POIs into the shape the map and search both use', async () => {
@@ -269,5 +276,99 @@ describe('trail data', () => {
 
     const pois = (await loadTrailData())?.pois ?? []
     expect([...new Set(pois.map((p) => p.id))]).toEqual(['ok'])
+  })
+})
+
+describe('spur detail', () => {
+  it('stores what each spur leads to, keyed by trail id', async () => {
+    serve(
+      poiCollection([]),
+      JSON.stringify({ 'side_trails:abc': { destination_poi_id: 'shelter:x' } }),
+    )
+
+    await downloadTrailData()
+
+    expect(store.get(SPURS_STORE_KEY)).toEqual({
+      'side_trails:abc': { destination_poi_id: 'shelter:x' },
+    })
+  })
+
+  it('treats a release with no spurs.json as no spur detail, not a failure', async () => {
+    // spurs.json did not exist before export_spurs.py. A phone pointed at an
+    // older release must still get its trails and POIs - the map draws every
+    // spur either way, it just cannot say where one goes.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(
+          url.includes(SPURS_KEY)
+            ? { ok: false, status: 404, statusText: 'Not Found' }
+            : {
+                ok: true,
+                status: 200,
+                blob: () => Promise.resolve(new Blob(['{"type":"FeatureCollection"}'])),
+                text: () => Promise.resolve(poiCollection([])),
+              },
+        ),
+      ),
+    )
+
+    await downloadTrailData()
+
+    expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
+    expect(store.get(SPURS_STORE_KEY)).toEqual({})
+  })
+
+  it('still fails on a broken spurs fetch that is not a 404', async () => {
+    // Only "this release predates the feature" is excused. A 503 is a failed
+    // download and must not be swallowed along with it.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(
+          url.includes(SPURS_KEY)
+            ? { ok: false, status: 503, statusText: 'Service Unavailable' }
+            : {
+                ok: true,
+                status: 200,
+                blob: () => Promise.resolve(new Blob(['{"type":"FeatureCollection"}'])),
+                text: () => Promise.resolve(poiCollection([])),
+              },
+        ),
+      ),
+    )
+
+    await expect(downloadTrailData()).rejects.toThrow(/503/)
+    // Nothing committed, same rule the POI failure already follows.
+    expect(store.get(TRAILS_BLOB_KEY)).toBeUndefined()
+  })
+
+  it('loads spur detail back with the rest of the trail data', async () => {
+    serve(poiCollection([]), JSON.stringify({ 'side_trails:abc': { length_ft: 385 } }))
+    await downloadTrailData()
+
+    const loaded = await loadTrailData()
+
+    expect(loaded?.spurs['side_trails:abc']).toEqual({ length_ft: 385 })
+  })
+
+  it('reads a release whose spur detail was never stored as an empty map', async () => {
+    // Data downloaded by a build before this feature: the blob and POIs are in
+    // IndexedDB, the spur key is not. That must load, not throw.
+    store.set(TRAILS_BLOB_KEY, new Blob(['{}']))
+    store.set(POIS_KEY, [])
+
+    const loaded = await loadTrailData()
+
+    expect(loaded?.spurs).toEqual({})
+  })
+
+  it('forgets spur detail when the download is deleted', async () => {
+    serve(poiCollection([]), JSON.stringify({ 'side_trails:abc': {} }))
+    await downloadTrailData()
+
+    await deleteTrailData()
+
+    expect(store.has(SPURS_STORE_KEY)).toBe(false)
   })
 })

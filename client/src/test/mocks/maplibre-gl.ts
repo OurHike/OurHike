@@ -24,7 +24,7 @@ export class MockMap {
   }
 
   readonly options: Record<string, unknown>
-  readonly controls: Array<{ control: unknown; position?: string }> = []
+  readonly controls: Array<{ control: AttachableControl; position?: string }> = []
   /** Every imperative camera move, in order - so a test can assert the map
    *  was actually moved to the first GPS fix. */
   readonly cameraMoves: Array<Record<string, unknown>> = []
@@ -110,14 +110,25 @@ export class MockMap {
     return (this.listeners.get(event) ?? []).length
   }
 
-  addControl(control: unknown, position?: string): this {
+  addControl(control: AttachableControl, position?: string): this {
     this.controls.push({ control, position })
+    control.onAdd(this)
     return this
   }
 
-  removeControl(control: unknown): this {
+  hasControl(control: AttachableControl): boolean {
+    return this.controls.some((c) => c.control === control)
+  }
+
+  removeControl(control: AttachableControl): this {
+    // Real MapLibre splices the control out only if it is attached, but calls
+    // onRemove() either way (Map.removeControl, maplibre-gl 6). That asymmetry
+    // is the whole reason removing one twice is fatal rather than idle, so the
+    // mock has to reproduce it - the previous `if (at !== -1)` around BOTH
+    // steps made a double removal silently harmless here and nowhere else.
     const at = this.controls.findIndex((c) => c.control === control)
     if (at !== -1) this.controls.splice(at, 1)
+    control.onRemove(this)
     return this
   }
 
@@ -195,6 +206,11 @@ export class MockMap {
   }
 
   remove(): void {
+    // Detaching every control is the FIRST thing real Map.remove() does, and
+    // modelling it is what makes a later removeControl() a second removal
+    // rather than a first one.
+    for (const { control } of this.controls) control.onRemove(this)
+    this.controls.length = 0
     this.removed = true
   }
 
@@ -225,17 +241,41 @@ export class MockVectorSource {
   }
 }
 
-class MockControl {
+/** The slice of `IControl` the map calls back into. */
+interface AttachableControl {
+  onAdd(map: unknown): HTMLElement
+  onRemove(map: unknown): void
+}
+
+class MockControl implements AttachableControl {
   readonly options?: Record<string, unknown>
+  /**
+   * The map this control is attached to - the mock's stand-in for the real
+   * controls' `_map`, which every one of them sets in onAdd and DELETES in
+   * onRemove after unsubscribing through it.
+   *
+   * That is why onRemove is not idempotent in MapLibre: called a second time
+   * it reaches `this._map.off(...)` on an undefined map and throws. Modelled
+   * here rather than left as a no-op, because a mock that tolerates a double
+   * removal cannot fail for the bug that a double removal actually is.
+   */
+  private attachedTo: unknown = undefined
 
   constructor(options?: Record<string, unknown>) {
     this.options = options
   }
 
-  onAdd(): HTMLElement {
+  onAdd(map: unknown): HTMLElement {
+    this.attachedTo = map
     return document.createElement('div')
   }
-  onRemove(): void {}
+
+  onRemove(): void {
+    if (this.attachedTo === undefined) {
+      throw new TypeError("Cannot read properties of undefined (reading 'off')")
+    }
+    this.attachedTo = undefined
+  }
 }
 
 export class NavigationControl extends MockControl {}

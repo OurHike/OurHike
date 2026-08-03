@@ -115,6 +115,27 @@ This is a script, not a service — it's rerun periodically (e.g. weekly, per th
 
 **Known trade-off:** continuous background GPS track-recording (while the phone is locked/backgrounded) is weaker here than in a fully native app. Fine for MVP's foreground "check the map, see nearby water/shelters" use case. If always-on background tracking becomes a priority later, Capacitor supports native GPS plugins to close most of that gap without a rewrite.
 
+### What happens when a screen throws (decided 2026-08-03)
+
+React's default is to unmount the **entire root** when an error escapes a render, an effect, or an effect's cleanup — not the component that threw. Once, that produced a white page with no tab bar on it, from a three-line defect in `mapChrome.ts`, reported as "the download tab shows nothing". The gap between those two descriptions is why this is an architecture note rather than a bug fix.
+
+Offline is what makes a blank screen worse here than on an ordinary web app. A reload happens with no signal, against a service worker, on the battery that gets someone home — so the usual escape hatch is the one thing least likely to help. [HIKER_SAFETY.md](features/HIKER_SAFETY.md) is about not misleading a hiker; a screen showing nothing at all is a different failure with the same consequence.
+
+**Two error boundaries** (`client/src/chrome/ErrorBoundary.tsx`):
+
+- One in `main.tsx`, around everything — the shell's own render, onboarding, the reporting flow.
+- One around `MapScreen`. The map is both the likeliest thing here to throw (WebGL, a GPS watcher, byte-range reads against an archive up to 1.18 GB, MapLibre attach/detach lifecycle) and the worst to lose, since it is what someone is looking at when they do not recognise where they are. Its own boundary means a map failure does not cost Downloads and More as well.
+
+**Three decisions inside that, each chosen rather than defaulted:**
+
+| | |
+|---|---|
+| **The tab bar stays** under the map fallback. | A fallback you cannot navigate out of is a white screen with words on it. |
+| **No reload button.** | See the offline note above. Switching tabs remounts the screen for free, and the boundary resets on the active tab so that is a real retry rather than the fallback again. |
+| **Nothing is recorded.** | There is no telemetry in this client, and adding some carries its own privacy weight — [IDENTITY_AND_PRIVACY.md](features/IDENTITY_AND_PRIVACY.md). Errors reach `console.error` and stop there. A deliberate no, revisitable if a real need appears. |
+
+The fallback copy names which screen went and says the rest still works, because both are true and "something went wrong" understates what is available. It also says the downloaded map and the outbox are untouched — the two things worth fearing for when a screen goes blank.
+
 ---
 
 ## Backend — split by what actually needs it (revised 2026-07-28)

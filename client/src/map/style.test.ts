@@ -3,7 +3,6 @@ import { validateStyleMin } from '@maplibre/maplibre-gl-style-spec'
 import { BLAZE_MATCH_EXPRESSION } from '../lib/blaze'
 import {
   buildMapStyle,
-  BLAZE_DASH_RHYTHMS,
   ATTRIBUTION,
   TOPO_SOURCE_ID,
   TRAILS_SOURCE_ID,
@@ -11,6 +10,11 @@ import {
   TRAIL_CASING_LAYER_ID,
   BACKDROP_LAYER_ID,
   MAP_BACKGROUND_COLOR,
+  PRIMARY_TRAIL_SOURCES,
+  PRIMARY_TRAIL_WIDTH,
+  TRAIL_LINE_WIDTHS,
+  DEFAULT_TRAIL_LINE_WIDTH,
+  CASING_OVERHANG,
 } from './style'
 import { POI_LAYER_ID, POI_SOURCE_ID } from './poiLayers'
 
@@ -18,8 +22,12 @@ import { POI_LAYER_ID, POI_SOURCE_ID } from './poiLayers'
 // load-bearing rather than decorative:
 //   1. ONE `match` expression drives line-color for every trail source - no
 //      per-layer hardcoded hexes, so a new imported source inherits the rule.
-//   2. Dash rhythm is a SECOND, hue-independent channel, so warm hues stay
-//      separable in greyscale and in glare (WIREFRAMES.md `9d`).
+//   2. Trail lines are SOLID, and WIDTH is the second, hue-independent
+//      channel: the AT centerline is the widest line on the map, so the
+//      through-line survives greyscale and glare (WIREFRAMES.md `9d`) with
+//      colour removed entirely. Dash rhythm used to carry that channel, and
+//      the gaps it left were what made the near-white centerline unreadable -
+//      what a hiker saw was a dotted grey-and-white thread, not a trail.
 
 const STYLE_OPTIONS = {
   topoArchiveUrl: 'pmtiles://ourhike-corridor',
@@ -36,6 +44,15 @@ function layer(id: string) {
   return found
 }
 
+/** What a `match` on `source` resolves to for one source key. */
+function widthFor(expression: unknown, source: string): number {
+  const [, , ...rest] = expression as unknown[]
+  for (let i = 0; i + 1 < rest.length; i += 2) {
+    if (rest[i] === source) return rest[i + 1] as number
+  }
+  return rest[rest.length - 1] as number
+}
+
 describe('buildMapStyle', () => {
   it('is a valid MapLibre style according to MapLibre’s own spec validator', () => {
     // Guards against typos and shape errors that hand-written assertions miss.
@@ -48,43 +65,93 @@ describe('buildMapStyle', () => {
     expect(paint['line-color']).toEqual(BLAZE_MATCH_EXPRESSION)
   })
 
-  it('drives the dash rhythm from the same blaze_color attribute, as a second data-driven channel', () => {
+  it('draws every trail line solid, so no line alternates with the casing beneath it', () => {
+    // The regression this replaces a whole block of dash-rhythm assertions to
+    // prevent from coming back. A dashed blaze over a dark casing is not a
+    // coloured line - it is a line alternating between its blaze colour and
+    // the casing showing through, and for the centerline, whose blaze is
+    // near-white, the casing is the part that reads. Asserted across every
+    // line layer bound to the trail source rather than on the blaze layer
+    // alone, since a casing drawn dashed would leave exactly the same gaps.
+    for (const l of style().layers) {
+      if (l.type !== 'line' || !('source' in l) || l.source !== TRAILS_SOURCE_ID) continue
+
+      expect(
+        (l.paint as Record<string, unknown> | undefined)?.['line-dasharray'],
+      ).toBeUndefined()
+    }
+  })
+
+  it('drives line-width from the source attribute, as a second data-driven channel', () => {
     const paint = layer(BLAZE_LAYER_ID).paint as Record<string, unknown>
-    const dash = paint['line-dasharray'] as unknown[]
+    const width = paint['line-width'] as unknown[]
 
-    expect(dash[0]).toBe('match')
-    expect(dash[1]).toEqual(['get', 'blaze_color'])
+    expect(width[0]).toBe('match')
+    expect(width[1]).toEqual(['get', 'source'])
   })
 
-  it.each([
-    ['White', [10, 6]],
-    ['Blue', [10, 6]],
-    ['Yellow', [6, 5]],
-    ['Orange', [10, 5]],
-    ['Red', [15, 5]],
-    ['Green', [13, 5]],
-  ] as const)('uses WIREFRAMES.md’s exact dash rhythm for %s', (blaze, rhythm) => {
-    expect(BLAZE_DASH_RHYTHMS[blaze]).toEqual(rhythm)
+  it('draws every through-route wider than every side trail, so the map has a subject', () => {
+    // Width is what carries the hue-independent channel now, and a
+    // through-route has to win it: a hiker who cannot tell colours apart - in
+    // glare, in greyscale, or at all - still needs to find the trail the map
+    // is about. Asserted over the whole primary tier rather than over the
+    // centerline alone, because the tier is where a second system lands.
+    const width = layer(BLAZE_LAYER_ID).paint as Record<string, unknown>
+    const others = Object.entries(TRAIL_LINE_WIDTHS)
+      .filter(([source]) => !PRIMARY_TRAIL_SOURCES.includes(source))
+      .map(([, w]) => w)
+
+    expect(PRIMARY_TRAIL_SOURCES.length).toBeGreaterThan(0)
+    for (const primary of PRIMARY_TRAIL_SOURCES) {
+      for (const other of [...others, DEFAULT_TRAIL_LINE_WIDTH]) {
+        expect(widthFor(width['line-width'], primary)).toBeGreaterThan(other)
+      }
+    }
   })
 
-  it('gives the neutral-grey fallback the sparse dotted rhythm, so undecoded lines read as uncertain', () => {
-    expect(BLAZE_DASH_RHYTHMS.None).toEqual([4, 6])
+  it('draws every source in the primary tier at the same through-route width', () => {
+    // The tier is a role, not another name for the AT. The NYNJTC maintains
+    // several trail systems, so a second through-route is a question of when
+    // rather than if, and it should arrive by joining PRIMARY_TRAIL_SOURCES -
+    // not by adding a layer, a width or a branch. Holding the whole list to
+    // one width is what keeps that a one-line change; it also means this test
+    // covers a source that does not exist yet, the day someone adds it.
+    const paint = layer(BLAZE_LAYER_ID).paint as Record<string, unknown>
+
+    for (const source of PRIMARY_TRAIL_SOURCES) {
+      expect(widthFor(paint['line-width'], source)).toBe(PRIMARY_TRAIL_WIDTH)
+    }
   })
 
-  it('keeps the warm hues pairwise-distinct by rhythm, so they survive greyscale and glare', () => {
-    // The whole point of rhythm being a second channel: yellow/orange/red are
-    // near-indistinguishable once desaturated (WIREFRAMES.md `9d`).
-    const warm = (['Yellow', 'Orange', 'Red'] as const).map((b) =>
-      BLAZE_DASH_RHYTHMS[b].join('/'),
-    )
+  it('draws a source it has never heard of, rather than a zero-width line', () => {
+    // A trail source imported later should reach the map on the fallback arm.
+    // Drawn at nothing at all, it would be real data hidden behind a client
+    // release - the same call poiLayers.ts makes for an unknown POI type.
+    const paint = layer(BLAZE_LAYER_ID).paint as Record<string, unknown>
 
-    expect(new Set(warm).size).toBe(warm.length)
+    expect(widthFor(paint['line-width'], 'some_source_added_in_2027')).toBeGreaterThan(0)
   })
 
   it('draws a casing layer underneath the blaze layer, never over it', () => {
     const ids = style().layers.map((l) => l.id)
 
     expect(ids.indexOf(TRAIL_CASING_LAYER_ID)).toBeLessThan(ids.indexOf(BLAZE_LAYER_ID))
+  })
+
+  it('overhangs that casing by the same hairline under a side trail as under a through-route', () => {
+    // A casing scaled proportionally instead of by a constant would be twice
+    // as heavy under a through-route as under everything else, which reads as
+    // a second, darker line rather than as an edge on the first one.
+    const casing = layer(TRAIL_CASING_LAYER_ID).paint as Record<string, unknown>
+    const blaze = layer(BLAZE_LAYER_ID).paint as Record<string, unknown>
+
+    for (const source of [...Object.keys(TRAIL_LINE_WIDTHS), 'anything_else']) {
+      const overhang =
+        (widthFor(casing['line-width'], source) - widthFor(blaze['line-width'], source)) /
+        2
+
+      expect(overhang).toBe(CASING_OVERHANG)
+    }
   })
 
   it('renders the topo raster beneath every trail layer', () => {

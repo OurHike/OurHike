@@ -3,7 +3,7 @@
 // Three decisions here are load-bearing rather than cosmetic.
 //
 //  1. SHAPE is the primary channel, colour is the second one. This is the same
-//     rule the blaze dash rhythms follow (style.ts), and for the same reason:
+//     rule the blaze line widths follow (style.ts), and for the same reason:
 //     these six accent colours sit between 1.06:1 and 2.19:1 of each other, so
 //     in the greyscale pass (WIREFRAMES.md `9d`) or in direct sun they are one
 //     colour. A droplet is still a droplet. Every category therefore gets a
@@ -30,9 +30,22 @@
 
 import { POI_TYPES, type PoiType } from '../lib/config'
 
-/** Rendered size in CSS pixels. Comfortably inside WIREFRAMES.md's 34px
- *  serious-warning pin, which should stay the biggest thing on the map. */
-export const POI_PIN_SIZE = 30
+/**
+ * Rendered size in CSS pixels.
+ *
+ * `--space-9` / the header-button size, which is a token this design system
+ * already has rather than a number invented for the map. Comfortably inside
+ * WIREFRAMES.md's serious-warning pin, which should stay the biggest thing on
+ * the map, and which moved up to one full touch target (44px) when this did -
+ * a warning pin that a water pin has caught up with has stopped outranking
+ * anything.
+ *
+ * The cost of drawing pins bigger is that fewer of them survive
+ * `icon-allow-overlap: false` at a given zoom. That is a trade the collision
+ * ordering was built to absorb: POI_PRIORITY in poiLayers.ts decides who
+ * survives, and water is first in it.
+ */
+export const POI_PIN_SIZE = 38
 
 /** Drawn at 2x so the pins stay crisp on a phone. */
 export const POI_PIN_PIXEL_RATIO = 2
@@ -86,14 +99,26 @@ export function poiIconId(type: string, confidence: PoiConfidence): string {
 }
 
 // Geometry, in image pixels from the centre outwards.
+//
+// Every one of these is a FRACTION of the pin rather than a fixed pixel count,
+// which is what makes {@link POI_PIN_SIZE} a single knob. Written as constants
+// they held their look at exactly one size: drawn bigger, the rim thinned out
+// and the glyph shrank inside a disc that grew around it, so a pin asked to be
+// larger came back not just larger but differently proportioned.
 const CENTER = PIXELS / 2
 const R_OUTER = CENTER
-const EDGE_WIDTH = 2
-const HALO_WIDTH = 5
+const EDGE_WIDTH = R_OUTER / 15
+const HALO_WIDTH = R_OUTER / 6
 const R_DISC = R_OUTER - EDGE_WIDTH - HALO_WIDTH
-/** Side of the centred box the glyph is drawn in. Its half-diagonal must stay
- *  inside {@link R_DISC} or the corners of a glyph would spill onto the halo. */
-const GLYPH_BOX = 28
+/**
+ * Side of the centred box the glyph is drawn in.
+ *
+ * Its half-diagonal must stay inside {@link R_DISC} or the corners of a glyph
+ * would spill onto the halo - so it is derived from that bound rather than
+ * checked against it. The largest box that fits has side `R_DISC * √2`; 86% of
+ * it leaves the corners some air.
+ */
+const GLYPH_BOX = R_DISC * Math.SQRT2 * 0.86
 
 /** Dash count around the rim of an unverified pin. Even, so the pattern closes
  *  cleanly where the last gap meets the first dash. */

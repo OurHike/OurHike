@@ -309,8 +309,9 @@ describe('buildPoiIcons', () => {
   })
 
   it('stays smaller than the serious-warning pin, which outranks it', () => {
-    // WIREFRAMES.md §7 puts that pin at 34px. A water pin drawn larger would
-    // outshout the one thing on this map that must never be outshouted.
-    expect(POI_PIN_SIZE).toBeLessThan(34)
+    // WIREFRAMES.md §8 puts that pin at 44px - one full touch target, and the
+    // biggest thing on the map. A water pin drawn larger, or merely drawn the
+    // same, would outshout the one thing here that must never be outshouted.
+    expect(POI_PIN_SIZE).toBeLessThan(44)
   })
 })

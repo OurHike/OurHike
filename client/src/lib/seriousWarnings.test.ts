@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import { warningsOnRoute, routeBannerText, WARNING_PIN } from './seriousWarnings'
+import { POI_PIN_SIZE } from '../map/poiIcons'
 
 // WIREFRAMES.md §8. `severity: serious` is set by a moderator, never
 // self-declared, and a serious warning surfaces prominently IN-APP - a route
 // banner on map open and a distinct pin - but never pushes.
 //
-// The pin is a variant inside the existing icon spec (34px, red,
+// The pin is a variant inside the existing icon spec (44px, red,
 // triangle-alert, high-contrast halo), not a new visual language. A warning
 // that looks like nothing else on the map is a warning nobody has learned to
 // read.
@@ -65,14 +66,19 @@ describe('routeBannerText', () => {
 
 describe('WARNING_PIN', () => {
   it('is the size and icon WIREFRAMES.md specifies', () => {
-    expect(WARNING_PIN).toMatchObject({ sizePx: 34, icon: 'triangle-alert' })
+    expect(WARNING_PIN).toMatchObject({ sizePx: 44, icon: 'triangle-alert' })
   })
 
   it('carries a high-contrast halo, so it survives a busy topo background', () => {
     expect(WARNING_PIN.halo).toBe(true)
   })
 
-  it('is larger than an ordinary waypoint pin, without being a new language', () => {
+  it('is larger than the pins really being drawn, not than a remembered number', () => {
+    // This reads POI_PIN_SIZE through WARNING_PIN.ordinaryPinPx rather than a
+    // literal of its own, which is what makes it a guard: the field used to
+    // say 17 while the map drew pins at 30, so growing the pins past the
+    // warning would not have failed anything here.
+    expect(WARNING_PIN.ordinaryPinPx).toBe(POI_PIN_SIZE)
     expect(WARNING_PIN.sizePx).toBeGreaterThan(WARNING_PIN.ordinaryPinPx)
   })
 })

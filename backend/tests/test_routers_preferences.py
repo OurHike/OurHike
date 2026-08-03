@@ -6,27 +6,10 @@ of it (Map Options: closures are always shown, never hideable) - several
 tests below exist specifically to pin that down at the API boundary.
 """
 
-from datetime import datetime, timedelta, timezone
-
-import jwt
 from sqlalchemy import select
 
-from app.config import settings
 from app.models.preferences import UserPreferences
-
-TEST_SECRET = settings.supabase_jwt_secret
-
-
-def _make_token(user_id: str) -> str:
-    payload = {
-        "sub": user_id,
-        "exp": datetime.now(timezone.utc) + timedelta(hours=1),
-    }
-    return jwt.encode(payload, TEST_SECRET, algorithm="HS256")
-
-
-def _auth_headers(user_id: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {_make_token(user_id)}"}
+from tests.tokens import auth_headers
 
 
 def _valid_preferences(**overrides) -> dict:
@@ -58,7 +41,7 @@ def test_get_preferences_me_requires_authentication(client):
 def test_put_preferences_creates_a_row_on_first_call(client):
     user_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
-    put_response = client.put("/preferences/me", json=_valid_preferences(), headers=_auth_headers(user_id))
+    put_response = client.put("/preferences/me", json=_valid_preferences(), headers=auth_headers(user_id))
     assert put_response.status_code == 200
     body = put_response.json()
     assert body["trail_name"] == "Switchback"
@@ -66,7 +49,7 @@ def test_put_preferences_creates_a_row_on_first_call(client):
     assert body["max_background_zoom"] == 12
     assert "updated_at" in body
 
-    get_response = client.get("/preferences/me", headers=_auth_headers(user_id))
+    get_response = client.get("/preferences/me", headers=auth_headers(user_id))
     assert get_response.status_code == 200
     assert get_response.json()["trail_name"] == "Switchback"
 
@@ -74,14 +57,14 @@ def test_put_preferences_creates_a_row_on_first_call(client):
 def test_put_preferences_upserts_on_a_second_call(client, db_session):
     user_id = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 
-    first = client.put("/preferences/me", json=_valid_preferences(theme="light"), headers=_auth_headers(user_id))
+    first = client.put("/preferences/me", json=_valid_preferences(theme="light"), headers=auth_headers(user_id))
     assert first.status_code == 200
 
-    second = client.put("/preferences/me", json=_valid_preferences(theme="dark"), headers=_auth_headers(user_id))
+    second = client.put("/preferences/me", json=_valid_preferences(theme="dark"), headers=auth_headers(user_id))
     assert second.status_code == 200
     assert second.json()["theme"] == "dark"
 
-    get_response = client.get("/preferences/me", headers=_auth_headers(user_id))
+    get_response = client.get("/preferences/me", headers=auth_headers(user_id))
     assert get_response.status_code == 200
     assert get_response.json()["theme"] == "dark"
 
@@ -96,7 +79,7 @@ def test_put_preferences_rejects_an_invalid_theme_value(client):
     response = client.put(
         "/preferences/me",
         json=_valid_preferences(theme="solarized"),
-        headers=_auth_headers(user_id),
+        headers=auth_headers(user_id),
     )
 
     assert response.status_code == 422
@@ -108,7 +91,7 @@ def test_put_preferences_rejects_an_out_of_range_max_background_zoom(client):
     response = client.put(
         "/preferences/me",
         json=_valid_preferences(max_background_zoom=14),
-        headers=_auth_headers(user_id),
+        headers=auth_headers(user_id),
     )
 
     assert response.status_code == 422
@@ -120,7 +103,7 @@ def test_put_preferences_does_not_accept_a_show_closures_field(client):
     response = client.put(
         "/preferences/me",
         json=_valid_preferences(show_closures=False),
-        headers=_auth_headers(user_id),
+        headers=auth_headers(user_id),
     )
 
     # extra="forbid" means an unknown field is a real validation error (422),

@@ -10,25 +10,11 @@ action, is the entire mechanism.
 """
 
 import uuid
-from datetime import datetime, timedelta, timezone
 
-import jwt
-
-from app.config import settings
 from app.models.closure import Closure, ModerationStatus
 from app.models.profile import Profile, Role
 from app.models.report import Report, ReportStatus, ReportType, Severity, Visibility
-
-TEST_SECRET = settings.supabase_jwt_secret
-
-
-def _make_token(user_id: str) -> str:
-    payload = {"sub": user_id, "exp": datetime.now(timezone.utc) + timedelta(hours=1)}
-    return jwt.encode(payload, TEST_SECRET, algorithm="HS256")
-
-
-def _auth_headers(user_id: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {_make_token(user_id)}"}
+from tests.tokens import auth_headers
 
 
 def _make_reporter_and_report(db_session, report_type=ReportType.blowdown):
@@ -57,7 +43,7 @@ def test_verify_report_rejects_a_plain_hiker_role_with_403(client, db_session):
     _reporter, report = _make_reporter_and_report(db_session)
     hiker_id = str(uuid.uuid4())
 
-    response = client.post(f"/reports/{report.id}/verify", json={}, headers=_auth_headers(hiker_id))
+    response = client.post(f"/reports/{report.id}/verify", json={}, headers=auth_headers(hiker_id))
 
     assert response.status_code == 403
 
@@ -69,7 +55,7 @@ def test_verify_report_can_set_severity_serious_in_the_same_action(client, db_se
     response = client.post(
         f"/reports/{report.id}/verify",
         json={"severity": "serious"},
-        headers=_auth_headers(maintainer_id),
+        headers=auth_headers(maintainer_id),
     )
 
     assert response.status_code == 200
@@ -82,7 +68,7 @@ def test_verify_report_defaults_severity_to_normal_when_omitted(client, db_sessi
     _reporter, report = _make_reporter_and_report(db_session)
     maintainer_id = _make_maintainer(db_session)
 
-    response = client.post(f"/reports/{report.id}/verify", json={}, headers=_auth_headers(maintainer_id))
+    response = client.post(f"/reports/{report.id}/verify", json={}, headers=auth_headers(maintainer_id))
 
     assert response.status_code == 200
     assert response.json()["severity"] == "normal"
@@ -104,8 +90,8 @@ def test_dismiss_report_requires_maintainer_or_club_admin_role(client, db_sessio
     hiker_id = str(uuid.uuid4())
     maintainer_id = _make_maintainer(db_session)
 
-    denied = client.post(f"/reports/{report.id}/dismiss", headers=_auth_headers(hiker_id))
-    allowed = client.post(f"/reports/{report.id}/dismiss", headers=_auth_headers(maintainer_id))
+    denied = client.post(f"/reports/{report.id}/dismiss", headers=auth_headers(hiker_id))
+    allowed = client.post(f"/reports/{report.id}/dismiss", headers=auth_headers(maintainer_id))
 
     assert denied.status_code == 403
     assert allowed.status_code == 200
@@ -126,7 +112,7 @@ def test_verify_closure_sets_verified_by_and_verified_at(client, db_session):
     db_session.commit()
     maintainer_id = _make_maintainer(db_session)
 
-    response = client.post(f"/closures/{closure.id}/verify", headers=_auth_headers(maintainer_id))
+    response = client.post(f"/closures/{closure.id}/verify", headers=auth_headers(maintainer_id))
 
     assert response.status_code == 200
     body = response.json()
@@ -150,8 +136,8 @@ def test_dismiss_closure_requires_maintainer_or_club_admin_role(client, db_sessi
     hiker_id = str(uuid.uuid4())
     maintainer_id = _make_maintainer(db_session)
 
-    denied = client.post(f"/closures/{closure.id}/dismiss", headers=_auth_headers(hiker_id))
-    allowed = client.post(f"/closures/{closure.id}/dismiss", headers=_auth_headers(maintainer_id))
+    denied = client.post(f"/closures/{closure.id}/dismiss", headers=auth_headers(hiker_id))
+    allowed = client.post(f"/closures/{closure.id}/dismiss", headers=auth_headers(maintainer_id))
 
     assert denied.status_code == 403
     assert allowed.status_code == 200
@@ -161,7 +147,7 @@ def test_dismiss_closure_requires_maintainer_or_club_admin_role(client, db_sessi
 def test_verify_report_that_does_not_exist_returns_404(client, db_session):
     maintainer_id = _make_maintainer(db_session)
 
-    response = client.post(f"/reports/{uuid.uuid4()}/verify", json={}, headers=_auth_headers(maintainer_id))
+    response = client.post(f"/reports/{uuid.uuid4()}/verify", json={}, headers=auth_headers(maintainer_id))
 
     assert response.status_code == 404
 

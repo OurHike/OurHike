@@ -20,6 +20,16 @@ import { DESKTOP_MIN_WIDTH } from '../lib/useDesktop'
 
 const css = readFileSync(resolve(process.cwd(), 'src/desktop.css'), 'utf8')
 
+/** The declarations of one selector, comments removed - so a rule can be
+ *  asserted on without a comment that mentions it counting as a match. */
+function declarationsOf(selector: string): string {
+  const bare = css.replace(/\/\*[\s\S]*?\*\//g, '')
+  const start = bare.indexOf(`${selector} {`)
+  if (start === -1) throw new Error(`no rule for ${selector} in desktop.css`)
+
+  return bare.slice(start, bare.indexOf('}', start))
+}
+
 /** Strip comments, then every balanced @media block, leaving only rules that
  *  apply unconditionally. */
 function unguardedRules(source: string): string {
@@ -77,6 +87,19 @@ describe('desktop layout contract', () => {
     expect(css.slice(0, css.indexOf('@media (pointer: fine)'))).not.toMatch(
       /--min-touch-target/,
     )
+  })
+
+  it('keeps the search out of the flow of the map canvas', () => {
+    // The one rule here that a jsdom test cannot see the effect of, so it is
+    // pinned as text instead. .map-screen__canvas is `display: flex`, so a
+    // statically positioned .search stops overlaying the map and becomes a
+    // flex sibling of it. The map does not give the width back, so the canvas
+    // grows past the frame: measured in Chromium at 1440px, the document
+    // gained 327px of horizontal overflow and the legend panel started at
+    // x=1462 - off the screen entirely.
+    const block = declarationsOf('.search')
+
+    expect(block).not.toMatch(/position:\s*(static|relative)/)
   })
 
   it('does not hide the legend close button without the component also dropping it', () => {

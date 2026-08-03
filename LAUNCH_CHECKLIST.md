@@ -192,7 +192,7 @@ Each of these is now an issue, so that fixing one closes it here too rather than
 - **Cumulative ascent from the 25 m elevation profile over-counts** ([#91](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/91)) — 594,520 ft against the ~510,000 ft consensus, because dense sampling accumulates DEM noise as fake climbing. The profile is correct for drawing; anything computing total ascent should decimate first.
 - **No end-to-end test against real published artifacts** ([#94](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/94)). Everything is verified against local files and mocks.
 - **Backend has never run against real Postgres outside CI** ([#95](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/95)).
-- **The report photo picker accepts a photo and discards it** ([#89](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/89)), and **POIs are never drawn on the map** ([#90](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/90)) — both found after this list was first written.
+- **The report form cannot attach a photo** ([#89](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/89)) — no longer silently: the picker is disabled and says so, rather than accepting a file and throwing it away. Making it work needs one decision, R2 or Supabase Storage, and then the client half; the backend half is already built, and **POIs are never drawn on the map** ([#90](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/90)) — both found after this list was first written.
 
 ## Rough ordering if you want a working map fastest
 

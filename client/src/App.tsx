@@ -12,7 +12,7 @@
 // exists to keep. Showing three provider buttons that cannot authenticate
 // would break it.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapScreen } from './chrome/MapScreen'
 import { TabBar } from './chrome/TabBar'
@@ -84,16 +84,20 @@ const notYet = () => undefined
 // is a GPS fix the app genuinely does not know where the hiker is, and Harpers
 // Ferry - the previous default - is a confident-looking answer to that question
 // that is wrong for everyone not standing in Harpers Ferry. A view of the whole
-// trail says "somewhere on this" honestly, and the first fix zooms in.
+// trail says "somewhere on this" honestly.
+//
+// And it stays that view. The first fix used to zoom the camera to it, which
+// takes the map away from anyone reading it - planning a resupply, looking at a
+// stretch two states north - for no reason beyond the phone having worked out
+// where they are. The camera is the hiker's from the first frame; the locate
+// control (map/mapChrome.ts) is how they ask to be taken to themselves, and it
+// is a tap away in the thumb zone.
 const CORRIDOR_BOUNDS: [[number, number], [number, number]] = [
   [-84.73, 34.2],
   [-68.3, 46.34],
 ]
 
 const EMPTY_BBOX: BoundingBox = { west: 0, south: 0, east: 0, north: 0 }
-
-/** Close enough to read a shelter's surroundings, on the first GPS fix. */
-const FIX_ZOOM = 13
 
 /** Where a search result lands. Only ever zooms IN: someone already at 16
  *  looking at a spring does not want to be pulled back out to see a shelter. */
@@ -154,7 +158,6 @@ function App() {
   // Where the camera was left, so a rebuilt map opens where the hiker left it
   // instead of snapping back to the whole corridor.
   const [camera, setCamera] = useState<Camera | null>(null)
-  const hasJumpedToFix = useRef(false)
 
   const now = useClock()
   const online = useOnline()
@@ -232,22 +235,8 @@ function App() {
   // it stop being needed.
   useEffect(() => () => URL.revokeObjectURL(trailsUrl), [trailsUrl])
 
-  // The map is usually built long before a fix arrives, so the first one moves
-  // the camera imperatively. Only the first: after that the view belongs to
-  // whoever is panning it.
-  //
-  // `map` is a dependency because a fix that lands while another tab is
-  // showing has no map to move. Without it that fix was simply dropped - the
-  // effect had already run against a null map and would not run again - and
-  // the hiker stayed looking at the whole trail until the watch happened to
-  // report again.
-  useEffect(() => {
-    if (map === null || gps.status !== 'located' || hasJumpedToFix.current) return
-
-    map.jumpTo({ center: [gps.at.lon, gps.at.lat], zoom: FIX_ZOOM })
-    hasJumpedToFix.current = true
-  }, [map, gps])
-
+  // A fix moves no camera - see CORRIDOR_BOUNDS. It is read for everything
+  // else: the mile below, the direction of travel, the elevation ribbon.
   const fix = useMemo(() => {
     if (trailIndex === null || gps.status !== 'located') return null
     return locateOnTrail(trailIndex, gps.at)

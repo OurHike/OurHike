@@ -25,8 +25,9 @@ export class MockMap {
 
   readonly options: Record<string, unknown>
   readonly controls: Array<{ control: AttachableControl; position?: string }> = []
-  /** Every imperative camera move, in order - so a test can assert the map
-   *  was actually moved to the first GPS fix. */
+  /** Every imperative camera move, in order - so a test can assert both the
+   *  moves the shell does make (a search result) and the ones it does not (a
+   *  GPS fix, which leaves the view alone). */
   readonly cameraMoves: Array<Record<string, unknown>> = []
   removed = false
   /** Test-settable, since the shell derives the legend from it. */

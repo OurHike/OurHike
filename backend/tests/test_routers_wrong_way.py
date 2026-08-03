@@ -10,24 +10,10 @@ explicitly out of scope - this endpoint's job ends at "accepted the event".
 """
 
 import uuid
-from datetime import datetime, timedelta, timezone
 
-import jwt
-
-from app.config import settings
 from app.models.hike import Hike
 from app.models.profile import Profile, Role
-
-TEST_SECRET = settings.supabase_jwt_secret
-
-
-def _make_token(user_id: str) -> str:
-    payload = {"sub": user_id, "exp": datetime.now(timezone.utc) + timedelta(hours=1)}
-    return jwt.encode(payload, TEST_SECRET, algorithm="HS256")
-
-
-def _auth_headers(user_id: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {_make_token(user_id)}"}
+from tests.tokens import auth_headers
 
 
 def test_post_wrong_way_event_requires_authentication(client, db_session):
@@ -58,7 +44,7 @@ def test_post_wrong_way_event_rejects_a_hike_that_does_not_belong_to_the_caller(
     response = client.post(
         "/wrong-way-events",
         json={"hike_id": hike.id},
-        headers=_auth_headers(other_id),
+        headers=auth_headers(other_id),
     )
 
     # 404, not 403 - matching hikes.py's existing "don't leak id validity to
@@ -78,7 +64,7 @@ def test_post_wrong_way_event_accepts_a_valid_event_for_the_callers_own_hike(cli
     response = client.post(
         "/wrong-way-events",
         json={"hike_id": hike.id},
-        headers=_auth_headers(owner_id),
+        headers=auth_headers(owner_id),
     )
 
     assert response.status_code == 202

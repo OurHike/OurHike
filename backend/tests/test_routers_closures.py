@@ -11,25 +11,10 @@ way Report's `status`/`visibility` split already works.
 """
 
 import uuid
-from datetime import datetime, timedelta, timezone
 
-import jwt
-
-from app.config import settings
 from app.models.closure import Closure, ModerationStatus
 from app.models.profile import Profile, Role
-
-TEST_SECRET = settings.supabase_jwt_secret
-
-
-def _make_token(user_id: str) -> str:
-    payload = {"sub": user_id, "exp": datetime.now(timezone.utc) + timedelta(hours=1)}
-    return jwt.encode(payload, TEST_SECRET, algorithm="HS256")
-
-
-def _auth_headers(user_id: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {_make_token(user_id)}"}
-
+from tests.tokens import auth_headers
 
 _VALID_PAYLOAD = {
     "reason_type": "storm_damage",
@@ -51,7 +36,7 @@ def test_create_closure_always_starts_at_moderation_status_submitted(client):
     # isn't even a field ReportCreate-equivalent accepts.
     payload = dict(_VALID_PAYLOAD, moderation_status="verified")
 
-    response = client.post("/closures", json=payload, headers=_auth_headers(user_id))
+    response = client.post("/closures", json=payload, headers=auth_headers(user_id))
 
     assert response.status_code == 201
     assert response.json()["moderation_status"] == "submitted"
@@ -110,7 +95,7 @@ def test_update_closure_status_rejected_for_a_plain_hiker_role_with_403(client, 
     response = client.patch(
         f"/closures/{closure.id}",
         json={"status": "closed"},
-        headers=_auth_headers(hiker_id),
+        headers=auth_headers(hiker_id),
     )
 
     assert response.status_code == 403
@@ -134,7 +119,7 @@ def test_update_closure_status_allowed_for_maintainer_role(client, db_session):
     response = client.patch(
         f"/closures/{closure.id}",
         json={"status": "closed"},
-        headers=_auth_headers(maintainer_id),
+        headers=auth_headers(maintainer_id),
     )
 
     assert response.status_code == 200

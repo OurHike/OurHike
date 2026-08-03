@@ -17,26 +17,13 @@ Two behaviours here carry the design's real weight:
 """
 
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import date
 
-import jwt
-
-from app.config import settings
 from app.models.club import Club
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.profile import Profile, Role
 from app.models.report import ReportType, Visibility
-
-TEST_SECRET = settings.supabase_jwt_secret
-
-
-def _auth_headers(user_id: str) -> dict[str, str]:
-    token = jwt.encode(
-        {"sub": user_id, "exp": datetime.now(timezone.utc) + timedelta(hours=1)},
-        TEST_SECRET,
-        algorithm="HS256",
-    )
-    return {"Authorization": f"Bearer {token}"}
+from tests.tokens import auth_headers
 
 
 def _club(db, name: str = "Mountain Club") -> Club:
@@ -231,7 +218,7 @@ _THANKS = {
 def test_a_thanks_is_club_only_never_public(client):
     user_id = str(uuid.uuid4())
 
-    response = client.post("/reports", json=_THANKS, headers=_auth_headers(user_id))
+    response = client.post("/reports", json=_THANKS, headers=auth_headers(user_id))
 
     assert response.status_code == 201
     assert response.json()["visibility"] == Visibility.club_only.value
@@ -239,7 +226,7 @@ def test_a_thanks_is_club_only_never_public(client):
 
 def test_a_thanks_never_appears_in_the_public_report_list(client):
     """It is not a hazard and does not belong as a pin on the safety map."""
-    client.post("/reports", json=_THANKS, headers=_auth_headers(str(uuid.uuid4())))
+    client.post("/reports", json=_THANKS, headers=auth_headers(str(uuid.uuid4())))
 
     assert [r for r in client.get("/reports").json() if r["type"] == "thanks"] == []
 
@@ -249,7 +236,7 @@ def test_a_thanks_can_name_the_maintainer_it_is_for(client, db_session):
     pat = _maintainer(db_session)
     payload = dict(_THANKS, maintainer_id=pat.id, club_id=club.id)
 
-    body = client.post("/reports", json=payload, headers=_auth_headers(str(uuid.uuid4()))).json()
+    body = client.post("/reports", json=payload, headers=auth_headers(str(uuid.uuid4()))).json()
 
     assert body["maintainer_id"] == pat.id
     assert body["club_id"] == club.id
@@ -258,7 +245,7 @@ def test_a_thanks_can_name_the_maintainer_it_is_for(client, db_session):
 def test_a_thanks_with_no_attribution_at_all_is_still_accepted(client):
     """ "Someone cleared forty blowdowns and I have no idea who" is a
     complete thanks - it resolves by location rather than being refused."""
-    response = client.post("/reports", json=_THANKS, headers=_auth_headers(str(uuid.uuid4())))
+    response = client.post("/reports", json=_THANKS, headers=auth_headers(str(uuid.uuid4())))
 
     assert response.status_code == 201
     assert response.json()["maintainer_id"] is None
@@ -267,7 +254,7 @@ def test_a_thanks_with_no_attribution_at_all_is_still_accepted(client):
 def test_a_condition_report_is_unaffected_and_still_public(client):
     payload = {"type": "blowdown", "reporter_type": "thru", "lat": 37.9, "lon": -79.1}
 
-    body = client.post("/reports", json=payload, headers=_auth_headers(str(uuid.uuid4()))).json()
+    body = client.post("/reports", json=payload, headers=auth_headers(str(uuid.uuid4()))).json()
 
     assert body["visibility"] == Visibility.public.value
 
@@ -278,7 +265,7 @@ def test_bad_hikers_stays_internal_only_not_club_only(client):
     have quietly reassigned the other."""
     payload = {"type": "bad_hikers", "reporter_type": "thru", "lat": 37.9, "lon": -79.1}
 
-    body = client.post("/reports", json=payload, headers=_auth_headers(str(uuid.uuid4()))).json()
+    body = client.post("/reports", json=payload, headers=auth_headers(str(uuid.uuid4()))).json()
 
     assert body["visibility"] == Visibility.internal_only.value
 
@@ -293,11 +280,11 @@ def test_verifying_a_thanks_is_refused(client, db_session):
     db_session.add(moderator)
     db_session.commit()
 
-    created = client.post("/reports", json=_THANKS, headers=_auth_headers(str(uuid.uuid4()))).json()
+    created = client.post("/reports", json=_THANKS, headers=auth_headers(str(uuid.uuid4()))).json()
     response = client.post(
         f"/reports/{created['id']}/verify",
         json={"severity": "normal"},
-        headers=_auth_headers(moderator.id),
+        headers=auth_headers(moderator.id),
     )
 
     assert response.status_code == 409
@@ -310,8 +297,8 @@ def test_a_thanks_can_still_be_dismissed_so_abuse_has_a_removal_path(client, db_
     db_session.add(moderator)
     db_session.commit()
 
-    created = client.post("/reports", json=_THANKS, headers=_auth_headers(str(uuid.uuid4()))).json()
-    response = client.post(f"/reports/{created['id']}/dismiss", headers=_auth_headers(moderator.id))
+    created = client.post("/reports", json=_THANKS, headers=auth_headers(str(uuid.uuid4()))).json()
+    response = client.post(f"/reports/{created['id']}/dismiss", headers=auth_headers(moderator.id))
 
     assert response.status_code == 200
 

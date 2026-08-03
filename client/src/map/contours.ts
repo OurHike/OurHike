@@ -28,6 +28,7 @@ import {
   type ContourUnits,
   type TerrainUrls,
 } from './terrain'
+import { whenStyleReady } from './styleReady'
 
 /**
  * jsdom has no `Worker`, and neither would a browser old enough to be worth
@@ -112,12 +113,14 @@ export function registerTerrain(units: ContourUnits = 'imperial'): TerrainUrls {
  * broken map.
  */
 export function attachContourUnits(map: MapLibreMap, units: ContourUnits): () => void {
-  let detached = false
-
-  const apply = () => {
-    if (detached) return
-
-    try {
+  return whenStyleReady(
+    map,
+    // The contour source is both the precondition and the target. It is also
+    // legitimately absent whenever the style's background is not the live one
+    // - see below - so this waits for a style that has it, and the detach ends
+    // the wait if none ever does.
+    () => map.getSource(CONTOUR_SOURCE_ID) !== undefined,
+    () => {
       const contours = map.getSource(CONTOUR_SOURCE_ID) as VectorTileSource | undefined
       // Absent whenever the background in the style is not the live one, which
       // is a normal state rather than a failure - nothing to retune.
@@ -133,21 +136,9 @@ export function attachContourUnits(map: MapLibreMap, units: ContourUnits): () =>
       if (contours.tiles?.length === 1 && contours.tiles[0] === wanted) return
 
       contours.setTiles([wanted])
-    } catch (error) {
-      console.warn('Contour interval not switched; leaving the previous one.', error)
-    }
-  }
-
-  // Checked first because a map that finished loading before this ran will
-  // never fire `load` again - waiting for it would leave the interval stuck on
-  // exactly the fast path.
-  if (map.isStyleLoaded()) apply()
-  else map.on('load', apply)
-
-  return () => {
-    detached = true
-    map.off('load', apply)
-  }
+    },
+    'Contour interval',
+  )
 }
 
 /** Test seam only - drops the cached source so a test can observe a fresh

@@ -18,8 +18,16 @@ function pixel(data: Uint8ClampedArray, x: number, y: number) {
   return [data[at], data[at + 1], data[at + 2], data[at + 3]]
 }
 
+/**
+ * A map whose style already holds the background layer, which is the state
+ * every real style built by buildMapStyle is in - the layer is declared in the
+ * style spec, so it exists as soon as the spec is parsed. Tests that want the
+ * not-there-yet state clear `layerIds` themselves.
+ */
 function newMap(): MapLibreMap {
-  return new MockMap({}) as unknown as MapLibreMap
+  const map = new MockMap({})
+  map.layerIds = [BACKDROP_LAYER_ID]
+  return map as unknown as MapLibreMap
 }
 
 beforeEach(() => {
@@ -77,14 +85,18 @@ describe('buildBackdropPattern', () => {
 })
 
 describe('attachMapBackdrop', () => {
-  it('waits for the style before touching it, then hangs the pattern on the background layer', () => {
+  it('waits for the background layer, then hangs the pattern on it', () => {
     const map = newMap()
     const mock = MockMap.instances[0]
+    // The state being modelled is a style whose spec has not been parsed yet,
+    // so the layer this writes to is not there to be written to.
+    mock.layerIds = []
 
     attachMapBackdrop(map)
     expect(mock.images.has(BACKDROP_PATTERN_ID)).toBe(false)
 
-    mock.emit('load')
+    mock.layerIds = [BACKDROP_LAYER_ID]
+    mock.emit('styledata')
 
     expect(mock.images.has(BACKDROP_PATTERN_ID)).toBe(true)
     expect(mock.paintProperties.get(`${BACKDROP_LAYER_ID}/background-pattern`)).toBe(
@@ -104,15 +116,17 @@ describe('attachMapBackdrop', () => {
     )
   })
 
-  it('does nothing on a load that arrives after detach', () => {
+  it('does nothing on a style event that arrives after detach', () => {
     const map = newMap()
     const mock = MockMap.instances[0]
+    mock.layerIds = []
 
     attachMapBackdrop(map)()
-    mock.emit('load')
+    mock.layerIds = [BACKDROP_LAYER_ID]
+    mock.emit('styledata')
 
     expect(mock.images.size).toBe(0)
-    expect(mock.listenerCount('load')).toBe(0)
+    expect(mock.listenerCount('styledata')).toBe(0)
   })
 
   it('leaves the map alive when the pattern cannot be applied - paper is the guarantee', () => {
@@ -131,21 +145,23 @@ describe('attachMapBackdrop', () => {
     expect(warn).toHaveBeenCalled()
   })
 
-  it('does nothing if the load event was already in flight when it detached', () => {
+  it('does nothing if the style event was already in flight when it detached', () => {
     // `off` cannot recall an event the map has already begun dispatching, so
     // the handler can still run after teardown. Without the guard that means
     // addImage/setPaintProperty against a map React has finished with.
     const map = newMap()
     const mock = MockMap.instances[0]
+    mock.layerIds = []
 
     // Registered BEFORE the backdrop so it runs first in the dispatch, which
-    // is what a real unmount racing a 'load' looks like from in here: the
+    // is what a real unmount racing a style event looks like from in here: the
     // teardown has happened by the time apply() is reached, but apply() is
     // already on its way.
     let detach = () => {}
-    mock.on('load', () => detach())
+    mock.on('styledata', () => detach())
     detach = attachMapBackdrop(map)
-    mock.emit('load')
+    mock.layerIds = [BACKDROP_LAYER_ID]
+    mock.emit('styledata')
 
     expect(mock.images.size).toBe(0)
   })

@@ -23,6 +23,7 @@
 
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { BACKDROP_LAYER_ID, MAP_BACKGROUND_COLOR } from './style'
+import { whenStyleReady } from './styleReady'
 
 export const BACKDROP_PATTERN_ID = 'off-archive-hatch'
 
@@ -91,29 +92,23 @@ export function buildBackdropPattern(): BackdropPattern {
  * a black screen, and is warned about rather than thrown.
  */
 export function attachMapBackdrop(map: MapLibreMap): () => void {
-  let detached = false
-
-  const apply = () => {
-    if (detached) return
-
-    try {
+  // This one was never broken: its effect depends only on the map, so it runs
+  // once at mount, where the style is reliably still loading and `load`
+  // reliably follows. It moves to the shared helper anyway - it is where the
+  // idiom the other two copied came from, and leaving the last copy in place
+  // would leave the next module something wrong to copy.
+  return whenStyleReady(
+    map,
+    // The background layer is what carries the pattern, so its presence is
+    // both the precondition for setPaintProperty and the narrowest signal that
+    // the style is parsed enough for addImage.
+    () => map.getLayer(BACKDROP_LAYER_ID) !== undefined,
+    () => {
       if (!map.hasImage(BACKDROP_PATTERN_ID)) {
         map.addImage(BACKDROP_PATTERN_ID, buildBackdropPattern())
       }
       map.setPaintProperty(BACKDROP_LAYER_ID, 'background-pattern', BACKDROP_PATTERN_ID)
-    } catch (error) {
-      console.warn('Off-archive backdrop pattern not applied; paper only.', error)
-    }
-  }
-
-  // `isStyleLoaded()` is checked first because a map that finished loading
-  // before this ran will never fire `load` again - waiting for it would leave
-  // the hatch permanently unapplied on exactly the fast path.
-  if (map.isStyleLoaded()) apply()
-  else map.on('load', apply)
-
-  return () => {
-    detached = true
-    map.off('load', apply)
-  }
+    },
+    'Off-archive backdrop pattern',
+  )
 }

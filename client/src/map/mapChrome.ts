@@ -26,6 +26,12 @@ const SCALE_MAX_WIDTH = 64
 /**
  * Adds the map's controls and returns a detach function that removes every one
  * of them - so a remount cannot leave a second set stacked on the first.
+ *
+ * The detach tolerates a map that is already gone, and has to. MapView tears
+ * the map down in its own effect's cleanup, and React runs that BEFORE this
+ * one - the map-building effect is declared first, so its cleanup goes first
+ * too. `Map.remove()` detaches every control on the way out, which leaves this
+ * function removing controls that are no longer attached.
  */
 export function attachMapChrome(
   map: MapLibreMap,
@@ -54,7 +60,18 @@ export function attachMapChrome(
 
   return () => {
     for (const control of [compass, locate, scale]) {
-      map.removeControl(control)
+      // Asking first, because `removeControl` does not. It calls the control's
+      // own `onRemove` whether or not the map still holds it, and every
+      // MapLibre control's `onRemove` unsubscribes through a `_map` reference
+      // it then deletes - so a second call reads `off` off undefined and
+      // throws.
+      //
+      // Thrown from an effect cleanup with no error boundary above it, React
+      // unmounts the whole root: leaving the map tab produced a white screen
+      // with no tab bar to get back from, which read as "the Downloads tab
+      // shows nothing". A control that is already detached is the outcome this
+      // function wants, so there is nothing to do about it but skip.
+      if (map.hasControl(control)) map.removeControl(control)
     }
   }
 }

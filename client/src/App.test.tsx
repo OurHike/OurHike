@@ -133,6 +133,28 @@ describe('App shell', () => {
     expect(await screen.findByRole('region', { name: /trail map/i })).toBeInTheDocument()
   })
 
+  // Reported as "the Downloads tab shows no data, nothing", and it was worse
+  // than that: leaving the map tore the map down, MapView's next effect cleanup
+  // then removed controls that teardown had already detached, and the TypeError
+  // escaping a commit-phase cleanup unmounted the entire root. A white page with
+  // no tab bar on it - reachable from either non-map tab, and on a phone as
+  // readily as on a desktop. The three-tab test above covers the same path, but
+  // reads as navigation rather than as the crash it is really guarding.
+  it.each(['Downloads', 'More'])(
+    'still renders %s after the map tab, rather than blanking the whole app',
+    async (tab) => {
+      const user = userEvent.setup()
+      returningHiker()
+      render(<App />)
+      await screen.findByRole('region', { name: /trail map/i })
+
+      await user.click(screen.getByRole('tab', { name: tab }))
+
+      expect(await screen.findByRole('tab', { name: tab, selected: true })).toBeVisible()
+      expect(screen.queryByRole('region', { name: /trail map/i })).not.toBeInTheDocument()
+    },
+  )
+
   it('comes back to the view the hiker left, not to the whole trail, after another tab', async () => {
     // The bug: the map screen unmounts whenever another tab is showing, so
     // coming back builds a new map - and the new one was handed the opening

@@ -1,0 +1,29 @@
+name: Task
+description: A piece of planned work — a feature, a chore, or a decision that needs making
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What needs doing?
+      description: The outcome, not the implementation. What is true once this is closed?
+    validations:
+      required: true
+
+  - type: input
+    id: design-doc
+    attributes:
+      label: Design doc
+      description: >-
+        Most work here already has a written design — see `features/`,
+        `TECHNICAL_ARCHITECTURE.md`, `WIREFRAMES.md`, or the docs under `pipeline/`. Link
+        it rather than restating it, so the two cannot drift apart. If there is no doc and
+        this is a substantial feature, the doc is probably the first task.
+      placeholder: features/HIKER_SAFETY.md
+
+  - type: textarea
+    id: blocked-on
+    attributes:
+      label: Blocked on anything?
+      description: >-
+        Another issue, a decision, a credential, or a season. Plenty of work here waits on
+        someone standing on the trail, and that is worth saying out loud.

@@ -3,6 +3,14 @@ import { StrictMode } from 'react'
 import { render, cleanup, screen } from '@testing-library/react'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { MapView } from './MapView'
+import { poiIconId } from './poiIcons'
+import {
+  poiFeatureCollection,
+  poiTypeFilter,
+  POI_LAYER_ID,
+  POI_SOURCE_ID,
+} from './poiLayers'
+import type { MapPoint } from '../lib/legendContents'
 
 // Lifecycle is the whole risk surface here. A map that gets built twice means
 // two WebGL contexts, two GPS watchers and doubled tile reads off a 314 MB
@@ -149,6 +157,88 @@ describe('MapView', () => {
     unmount()
 
     expect(map.controls).toHaveLength(0)
+  })
+})
+
+describe('POI pins', () => {
+  const POIS: MapPoint[] = [
+    { id: 'w1', type: 'water', lat: 39.3, lon: -77.1, confidence: 'high' },
+    { id: 's1', type: 'shelter', lat: 40.1, lon: -76.4, confidence: 'low' },
+  ]
+
+  /** Real MapLibre has its layers and sources by the time `load` fires. */
+  function loadStyle(map: MockMap): void {
+    map.layerIds = [POI_LAYER_ID]
+    map.sourceIds = [POI_SOURCE_ID]
+    map.emit('load')
+  }
+
+  it('registers the pin images once the style is up', () => {
+    render(<MapView {...PROPS} pois={POIS} />)
+    const [map] = MockMap.live
+
+    loadStyle(map)
+
+    expect(map.images.has(poiIconId('water', 'high'))).toBe(true)
+  })
+
+  it('pushes the POIs it was given into the source', () => {
+    render(<MapView {...PROPS} pois={POIS} />)
+    const [map] = MockMap.live
+
+    loadStyle(map)
+
+    expect(map.sourceData.get(POI_SOURCE_ID)).toEqual(poiFeatureCollection(POIS))
+  })
+
+  it('filters out the categories the hiker hid from the legend', () => {
+    render(<MapView {...PROPS} pois={POIS} hiddenTypes={new Set(['water'])} />)
+    const [map] = MockMap.live
+
+    loadStyle(map)
+
+    expect(map.filters.get(POI_LAYER_ID)).toEqual(poiTypeFilter(new Set(['water'])))
+  })
+
+  it('hides a category without rebuilding the map underneath the hiker', () => {
+    // Tapping a legend row is a filter change. Rebuilding the map for it would
+    // drop the WebGL context and re-read tiles off a 1.18 GB archive - a
+    // visible stall mid-walk for what should be one paint.
+    const { rerender } = render(
+      <MapView {...PROPS} pois={POIS} hiddenTypes={new Set()} />,
+    )
+    const [map] = MockMap.live
+    loadStyle(map)
+    const builtInitially = MockMap.instances.length
+
+    rerender(<MapView {...PROPS} pois={POIS} hiddenTypes={new Set(['water'])} />)
+
+    expect(MockMap.instances).toHaveLength(builtInitially)
+    expect(MockMap.live).toHaveLength(1)
+    expect(map.filters.get(POI_LAYER_ID)).toEqual(poiTypeFilter(new Set(['water'])))
+  })
+
+  it('takes POIs arriving after the map was built, which is the normal case', () => {
+    // The map screen renders before the download finishes and before
+    // IndexedDB has been read, so an empty first render is the rule rather
+    // than the exception.
+    const { rerender } = render(<MapView {...PROPS} />)
+    const [map] = MockMap.live
+    loadStyle(map)
+
+    rerender(<MapView {...PROPS} pois={POIS} />)
+
+    expect(MockMap.instances).toHaveLength(1)
+    expect(map.sourceData.get(POI_SOURCE_ID)).toEqual(poiFeatureCollection(POIS))
+  })
+
+  it('leaves no load listeners behind after unmount', () => {
+    const { unmount } = render(<MapView {...PROPS} pois={POIS} />)
+    const [map] = MockMap.live
+
+    unmount()
+
+    expect(map.listenerCount('load')).toBe(0)
   })
 })
 

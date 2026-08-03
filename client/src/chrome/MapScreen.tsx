@@ -55,6 +55,12 @@ export interface MapScreenProps {
   searchablePois: SearchablePoi[]
   onSelectSearchResult: (poi: SearchablePoi) => void
   bbox: BoundingBox
+  /**
+   * Every POI the app holds. Named for the legend, which is what first needed
+   * it, but it is the map's pin data too - both are handed this one array so a
+   * legend row can never name something the map is not drawing, which is
+   * exactly what it used to do.
+   */
   viewportPoints: MapPoint[]
   blazeCounts: BlazeCount[]
   hiddenTypes: Set<string>
@@ -141,6 +147,8 @@ export function MapScreen({
         <MapView
           topoArchiveUrl={topoArchiveUrl}
           trailsUrl={trailsUrl}
+          pois={viewportPoints}
+          hiddenTypes={hiddenTypes}
           showZoomButtons={showZoomButtons}
           units={units}
           center={center}

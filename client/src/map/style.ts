@@ -14,7 +14,13 @@
 //     which means one data-driven expression covers every blaze in a single
 //     layer; this needs no per-blaze layer fan-out.
 //
-// Not handled here: blaze "Black" (code 8). WIREFRAMES.md's table describes it
+// Not handled here: the POI pins, which are their own two modules -
+// poiLayers.ts for the source, layer and density rules, poiIcons.ts for the
+// pin images themselves. This file composes them in rather than spelling them
+// out, for the same reason the blaze expression is imported: the rendering
+// rule for a category should live in one place.
+//
+// Not handled here either: blaze "Black" (code 8). WIREFRAMES.md's table describes it
 // as "wide casing, no fill — drawn by absence," but the real data has zero
 // Black features today and lib/blaze.ts has no colour for it, so it falls to
 // the neutral-grey defensive fallback and logs a warning. Giving it a real
@@ -22,6 +28,7 @@
 
 import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec'
 import { BLAZE_MATCH_EXPRESSION } from '../lib/blaze'
+import { buildPoiLayer, buildPoiSource, POI_SOURCE_ID } from './poiLayers'
 
 export const TOPO_SOURCE_ID = 'usgs-topo'
 export const TRAILS_SOURCE_ID = 'trails'
@@ -118,6 +125,11 @@ export function buildMapStyle({
         data: trailsUrl,
         attribution: ATTRIBUTION,
       },
+      // Declared empty and filled in later - see buildPoiSource. Attributed
+      // like the other two: the POIs are ATC and OpenStreetMap-derived, and a
+      // source with no attribution is one release away from shipping
+      // uncredited.
+      [POI_SOURCE_ID]: { ...buildPoiSource(), attribution: ATTRIBUTION },
     },
     layers: [
       {
@@ -165,6 +177,9 @@ export function buildMapStyle({
           'line-width': BLAZE_LINE_WIDTH,
         },
       },
+      // Last, so a pin is never buried under the trail line it sits on. See
+      // poiLayers.ts for why this is one layer rather than one per category.
+      buildPoiLayer(),
     ],
   }
 }

@@ -89,12 +89,20 @@ jobs:
       # produced "No data source is configured" in production.
       - name: Confirm the data source reached the bundle
         working-directory: client
+        # Through env, not interpolated into the script body. `${{ }}` is
+        # substituted as literal text before bash ever sees the line, so a
+        # value containing a quote or a `$(...)` would be parsed as script
+        # rather than data. This one is set by a repo admin so it is not much
+        # of a threat, but the step above already does it the safe way and
+        # there is no reason for these two to differ.
+        env:
+          DATA_URL: ${{ steps.data.outputs.url }}
         run: |
-          if [ -z "${{ steps.data.outputs.url }}" ]; then
+          if [ -z "$DATA_URL" ]; then
             echo "No data source configured - skipping the check."
             exit 0
           fi
-          if grep -rqF "${{ steps.data.outputs.url }}" dist/assets/*.js; then
+          if grep -rqF -- "$DATA_URL" dist/assets/*.js; then
             echo "Data source is present in the built bundle."
           else
             echo "::error::DATA_BASE_URL was set but is absent from the built bundle - the app would ship unable to download anything."

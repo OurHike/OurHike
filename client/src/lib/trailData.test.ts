@@ -179,4 +179,95 @@ describe('trail data', () => {
     expect(store.get(TRAILS_BLOB_KEY)).toBe(originalTrails)
     expect(store.get(POIS_KEY)).toBe(originalPois)
   })
+
+  // Everything below is one POI row being wrong in a file where the other rows
+  // are fine. Dropping the whole download over one bad shelter would cost a
+  // hiker every other shelter in the file.
+  it('drops a POI with no usable coordinates rather than carrying a broken row', async () => {
+    // Nothing can be done with it: it cannot be drawn, found by search, or
+    // reported against.
+    serve(
+      poiCollection([
+        { id: 'a', name: 'No position', lat: 'not a number', lon: -77 },
+        { id: 'b', name: 'Fine', lat: 39, lon: -77 },
+        { id: 'c', name: 'Missing lon', lat: 39 },
+      ]),
+    )
+    await downloadTrailData()
+
+    // serve() hands the same file to every POI type, so the one good row
+    // arrives once per type - what matters is that only it survived.
+    const pois = (await loadTrailData())?.pois ?? []
+    expect([...new Set(pois.map((p) => p.id))]).toEqual(['b'])
+    expect(pois).toHaveLength(POI_TYPES.length)
+  })
+
+  it('falls back to the file it came from when a row does not name its own type', async () => {
+    serve(poiCollection([{ id: 'a', name: 'Unnamed type', lat: 39, lon: -77 }]))
+    await downloadTrailData()
+
+    const pois = (await loadTrailData())?.pois ?? []
+    expect(pois[0].type).toBe(POI_TYPES[0])
+  })
+
+  it('ignores a poi_type that is not a string', async () => {
+    serve(poiCollection([{ id: 'a', poi_type: 42, name: 'Odd', lat: 39, lon: -77 }]))
+    await downloadTrailData()
+
+    const pois = (await loadTrailData())?.pois ?? []
+    expect(pois[0].type).toBe(POI_TYPES[0])
+  })
+
+  it('shows a nameless POI as Unnamed rather than as blank or undefined', async () => {
+    serve(poiCollection([{ id: 'a', lat: 39, lon: -77 }]))
+    await downloadTrailData()
+
+    const pois = (await loadTrailData())?.pois ?? []
+    expect(pois[0].name).toBe('Unnamed')
+  })
+
+  it('builds an id from the position when the row carries none', async () => {
+    // Two POIs sharing a synthetic id would collapse into one in search, so it
+    // is derived from something that differs per row.
+    serve(poiCollection([{ name: 'Anonymous spring', lat: 39, lon: -77 }]))
+    await downloadTrailData()
+
+    const pois = (await loadTrailData())?.pois ?? []
+    expect(pois[0].id).toBe(`${POI_TYPES[0]}:39,-77`)
+  })
+
+  it('treats a file with no features array at all as simply empty', async () => {
+    serve(JSON.stringify({ type: 'FeatureCollection' }))
+    await downloadTrailData()
+
+    expect((await loadTrailData())?.pois).toEqual([])
+  })
+
+  it('returns no POIs, rather than throwing, when the trail lines are there but the POIs are not', async () => {
+    serve()
+    await downloadTrailData()
+    store.delete(POIS_KEY)
+
+    expect((await loadTrailData())?.pois).toEqual([])
+  })
+
+  it('skips a feature carrying no properties at all', async () => {
+    // GeoJSON allows `properties: null`, and a feature with nothing on it has
+    // no coordinates either - so it drops out rather than throwing on the way
+    // to reading them.
+    serve(
+      JSON.stringify({
+        type: 'FeatureCollection',
+        features: [
+          { type: 'Feature', geometry: null },
+          { type: 'Feature', properties: null, geometry: null },
+          { type: 'Feature', properties: { id: 'ok', name: 'Real', lat: 39, lon: -77 } },
+        ],
+      }),
+    )
+    await downloadTrailData()
+
+    const pois = (await loadTrailData())?.pois ?? []
+    expect([...new Set(pois.map((p) => p.id))]).toEqual(['ok'])
+  })
 })

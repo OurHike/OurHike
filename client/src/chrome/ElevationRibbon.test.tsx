@@ -119,4 +119,29 @@ describe('ElevationRibbon', () => {
 
     expect(screen.getByTestId('profile-area').getAttribute('d')).not.toMatch(/NaN/)
   })
+
+  it('renders without a profile at all when there are no samples yet', () => {
+    // Before elevation_profile.json has been downloaded. An empty ribbon is
+    // fine; a crash on samples[0] is not.
+    render(<ElevationRibbon samples={[]} currentMile={0} />)
+
+    expect(screen.getByTestId('profile-area').getAttribute('d')).not.toMatch(/NaN/)
+  })
+
+  it('does not divide by zero when every sample sits at the same mile', () => {
+    // A degenerate window - one sample repeated, or a profile clipped to a
+    // single point - would otherwise put NaN straight into the SVG path and
+    // render nothing, silently.
+    render(
+      <ElevationRibbon
+        samples={[
+          { mile: 1400, elevationFt: 1000 },
+          { mile: 1400, elevationFt: 1200 },
+        ]}
+        currentMile={1400}
+      />,
+    )
+
+    expect(screen.getByTestId('profile-area').getAttribute('d')).not.toMatch(/NaN/)
+  })
 })

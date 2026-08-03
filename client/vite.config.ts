@@ -100,6 +100,26 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text'], // visibility only, not a merge gate - matches
       // pipeline/pyproject.toml's pytest-cov stance exactly, see TESTING.md.
+
+      // Measure the app, not the harness. An explicit `include` is what makes
+      // a source file no test imports show up as 0% rather than vanishing from
+      // the report - the whole point of looking at coverage is seeing what is
+      // NOT covered. (Vitest 4 dropped the separate `all` flag that used to do
+      // this; `include` covers it, and passing `all` fails `tsc -b`.)
+      include: ['src/**/*.{ts,tsx,js,jsx}'],
+      exclude: [
+        // Test doubles and setup. Scaffolding, and measuring it says nothing
+        // about the app: an unused branch of a mock is a mock with a spare
+        // affordance, not untested product code.
+        'src/test/**',
+        '**/*.test.{ts,tsx}',
+        // Types only - erased at build, no statements to execute.
+        'src/**/*.d.ts',
+        // The bootstrap. Three lines of createRoot().render() whose only
+        // possible test is "does React mount", covered by every render() in
+        // the suite already.
+        'src/main.tsx',
+      ],
     },
   },
 })

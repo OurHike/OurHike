@@ -640,10 +640,32 @@ def load_baseline(path: Path | None = None) -> dict | None:
 
 
 def save_baseline(counts: dict, path: Path | None = None) -> None:
+    """Record this run's counts, MERGED over whatever the last run recorded
+    rather than replacing it.
+
+    Merged because a run does not necessarily rebuild everything. --optional
+    lets a partial run pass without an artifact it was never meant to
+    produce, and a skipped check contributes no counts - so a plain
+    overwrite would drop that artifact's entry from the baseline entirely.
+    flag_drops() only compares names present in BOTH sides, so the next full
+    run would then have nothing to compare its elevation against and would
+    wave through any drop at all, however total. The baseline is meant to be
+    the last KNOWN-GOOD figure, and a run that didn't look is not evidence
+    the figure changed.
+
+    Before --optional existed this was safe by accident: a missing manifest
+    was a PROBLEM, so the run exited non-zero and never reached this
+    function. Making partial runs pass is exactly what removed that
+    protection.
+
+    A stale entry left behind by a retired artifact is harmless in the other
+    direction, for the same reason - absent from `current`, it is never
+    compared."""
     if path is None:
         path = BASELINE_PATH
+    merged = {**(load_baseline(path) or {}), **counts}
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"counts": counts}, indent=2))
+    path.write_text(json.dumps({"counts": merged}, indent=2))
 
 
 def flag_drops(

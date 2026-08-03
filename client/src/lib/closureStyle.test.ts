@@ -8,10 +8,15 @@ import {
   CLOSURE_LAYER_ID,
   CLOSURE_CASING_LAYER_ID,
 } from './closureStyle'
-import { BLAZE_LINE_WIDTH, CASING_LINE_WIDTH, BLAZE_DASH_RHYTHMS } from '../map/style'
+import {
+  buildMapStyle,
+  BLAZE_LINE_WIDTH,
+  CASING_LINE_WIDTH,
+  BLAZE_LAYER_ID,
+} from '../map/style'
 
 // WIREFRAMES.md §7 and its Load-bearing values: "Closure = barred band + hard
-// casing; blaze = thin dash + hairline casing."
+// casing; blaze = solid line + hairline casing."
 //
 // This file exists for one reason. A closure that reads as a red blaze is a
 // safety failure - a hiker glancing at a phone in glare would see a side
@@ -21,8 +26,23 @@ import { BLAZE_LINE_WIDTH, CASING_LINE_WIDTH, BLAZE_DASH_RHYTHMS } from '../map/
 // red-green colour-blind hiker, which between them cover a great many of the
 // moments this warning matters most.
 
+/** The blaze layer's own paint, read out of the real style rather than
+ *  described here - the rhythm claims below are about what actually ships. */
+function blazePaint(): Record<string, unknown> {
+  const layer = buildMapStyle({
+    topoArchiveUrl: 'pmtiles://ourhike-corridor',
+    trailsUrl: '/data/trails.geojson',
+  }).layers.find((l) => l.id === BLAZE_LAYER_ID)
+
+  return (layer?.paint ?? {}) as Record<string, unknown>
+}
+
 describe('closure vs blaze, as structural difference', () => {
   it('draws a closure markedly wider than any blaze', () => {
+    // BLAZE_LINE_WIDTH is the WIDEST blaze on the map, not one of them, so
+    // this holds against the centerline rather than against a side trail.
+    // Widening the AT line therefore has to widen the closure band with it,
+    // and this is the test that says so.
     expect(CLOSURE_LINE_WIDTH).toBeGreaterThan(BLAZE_LINE_WIDTH * 2)
   })
 
@@ -35,10 +55,13 @@ describe('closure vs blaze, as structural difference', () => {
     expect(closureOverhang).toBeGreaterThan(blazeOverhang)
   })
 
-  it('bars a closure on a rhythm no blaze uses', () => {
-    const blazeRhythms = Object.values(BLAZE_DASH_RHYTHMS).map((r) => r.join('/'))
-
-    expect(blazeRhythms).not.toContain(CLOSURE_BAR_RHYTHM.join('/'))
+  it('bars a closure where every blaze is drawn solid', () => {
+    // This used to compare two dash rhythms, and now compares having one
+    // against having none - a stronger difference, and one that cannot drift
+    // by someone editing a number. Read off the shipped style so it fails if
+    // a dash is ever reintroduced on the trail lines.
+    expect(CLOSURE_BAR_RHYTHM.length).toBeGreaterThan(0)
+    expect(blazePaint()['line-dasharray']).toBeUndefined()
   })
 
   it('stays distinguishable with hue removed entirely', () => {
@@ -46,15 +69,14 @@ describe('closure vs blaze, as structural difference', () => {
     // differ on at least two independent channels.
     //
     // Widened to `number` deliberately. Compared as const literals, tsc
-    // narrows these to `6` and `2` and calls the check a tautology - which
-    // would make it pass forever, including on the day someone sets the two
-    // widths equal. This has to be a runtime comparison to be a guard at all.
+    // narrows these to their exact values and calls the check a tautology -
+    // which would make it pass forever, including on the day someone sets the
+    // two widths equal. This has to be a runtime comparison to be a guard.
     const closureWidth: number = CLOSURE_LINE_WIDTH
     const blazeWidth: number = BLAZE_LINE_WIDTH
 
     const differsOnWidth = closureWidth !== blazeWidth
-    const differsOnRhythm =
-      CLOSURE_BAR_RHYTHM.join('/') !== BLAZE_DASH_RHYTHMS.Red.join('/')
+    const differsOnRhythm = blazePaint()['line-dasharray'] === undefined
 
     expect(
       [differsOnWidth, differsOnRhythm].filter(Boolean).length,

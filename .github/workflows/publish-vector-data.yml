@@ -84,6 +84,15 @@ jobs:
       - name: Export POIs
         run: python export_poi.py
 
+      # AFTER the POIs, and that ordering is load-bearing rather than tidy.
+      # export_spurs.py publishes the id of the POI each spur leads to, and
+      # that id has to be the one the client already holds - so it resolves
+      # against export_poi.py's published records, not against the raw ATC
+      # points they were built from. Run first, it would publish links to POIs
+      # no device has ever heard of.
+      - name: Export spur destinations
+        run: python export_spurs.py
+
       # Elevation has its own fetch too, and it is the slow one - it streams
       # USGS 3DEP tiles, which is why the whole leg is opt-in.
       - name: Fetch elevation tiles

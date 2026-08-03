@@ -116,4 +116,33 @@ describe('attachMapChrome', () => {
 
     expect(m.controls).toHaveLength(0)
   })
+
+  // The order MapView actually unmounts in: the map-building effect is declared
+  // first, so React runs ITS cleanup - `map.remove()`, which detaches every
+  // control itself - before this one. Removing them a second time called each
+  // control's `onRemove` on a map reference it had already dropped, and the
+  // TypeError escaped an effect cleanup with no error boundary over it: React
+  // unmounted the entire app. Leaving the map tab went white, which is how the
+  // Downloads tab came to "show nothing".
+  it('survives a map that was already removed, rather than taking the app down', () => {
+    const m = map()
+    const detach = attachMapChrome(m, { showZoomButtons: false, units: 'imperial' })
+
+    m.remove()
+
+    expect(() => detach()).not.toThrow()
+  })
+
+  it('leaves a removed map alone rather than detaching its controls twice', () => {
+    const m = map()
+    const detach = attachMapChrome(m, { showZoomButtons: false, units: 'imperial' })
+
+    m.remove()
+    detach()
+
+    // `remove()` already emptied it. The assertion that matters is that detach
+    // did not reach for the controls again - `controls` staying empty is what
+    // the (now faithful) mock lets us see.
+    expect(m.controls).toHaveLength(0)
+  })
 })

@@ -1,0 +1,12 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a trail condition
+    url: https://jaimito-asuntos-gringuenos.github.io/OurHike/app/
+    about: >-
+      Blowdowns, flooding, shelter damage, closures and anything else about the trail
+      right now go through the app's own "Report a problem" flow, where a moderator sees
+      them. Nobody is watching GitHub for those.
+  - name: How this project plans work
+    url: https://github.com/jaimito-asuntos-gringuenos/OurHike/blob/main/CONTRIBUTING.md
+    about: >-
+      Where design decisions live, which docs are canonical, and how issues relate to them.

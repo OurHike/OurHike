@@ -1,0 +1,54 @@
+name: Trail data problem
+description: A shelter in the wrong place, a missing water source, a wrong blaze colour
+labels: ["data"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Use this for a **systematic data problem** — something wrong in the underlying data
+        that will still be wrong next season.
+
+
+        For a **current trail condition** (blowdown, flooding, shelter damage, a closure),
+        use the in-app "Report a problem" flow. It reaches a moderator; this form does not.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of problem?
+      options:
+        - A feature is in the wrong place
+        - A feature is missing entirely
+        - A feature does not exist on the ground
+        - Wrong attributes (name, blaze colour, seasonality, type)
+        - Trail geometry is wrong
+        - Something else
+    validations:
+      required: true
+
+  - type: textarea
+    id: where
+    attributes:
+      label: Where?
+      description: >-
+        Coordinates if you have them, otherwise a mile marker or the nearest named
+        landmark. Precision helps — "somewhere in Virginia" is hard to act on.
+    validations:
+      required: true
+
+  - type: textarea
+    id: detail
+    attributes:
+      label: What is wrong, and what should it say?
+    validations:
+      required: true
+
+  - type: input
+    id: source
+    attributes:
+      label: How do you know?
+      description: >-
+        Anything that lets this be checked without a site visit — a guidebook entry, a club
+        survey, your own GPS track, or simply that you were standing there. Most of this
+        data comes from ATC and opentrail.org, so a fix may need to go upstream rather than
+        into this repo, and knowing the source is what decides that.

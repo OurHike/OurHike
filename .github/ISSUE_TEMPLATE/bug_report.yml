@@ -1,0 +1,49 @@
+name: Bug report
+description: Something in the app, backend or pipeline does not work the way it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        This form is for defects in the software. For a **trail condition** — a blowdown,
+        flooding, a damaged shelter — use the in-app "Report a problem" flow instead, which
+        reaches someone who can act on it.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where does it happen?
+      options:
+        - Client — the map app
+        - Backend — reports, closures, moderation, accounts
+        - Pipeline — fetching, processing or publishing data
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: conditions
+    attributes:
+      label: Device and conditions
+      description: >-
+        Phone and browser for a client bug. Two details matter more here than in most
+        projects: whether you had signal at the time, and whether the corridor download
+        had finished.
+      placeholder: Pixel 7, Chrome, no signal, full corridor downloaded
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety
+      options:
+        - label: >-
+            This could mislead someone about where they are, where water is, or a hazard —
+            tick this and it gets looked at first.

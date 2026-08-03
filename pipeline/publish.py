@@ -72,6 +72,40 @@ BACKGROUND_ARCHIVES = {
 }
 
 
+# Build metadata that travels with a release but is not part of it.
+#
+# build_state.json records every upstream freshness marker as of the fetch
+# this build ran on (lib/freshness_state.capture_state). The scheduled check
+# reads it back over the public URL and diffs it against live upstreams, which
+# is what lets that job hold no R2 credentials at all.
+#
+# Deliberately NOT an artifact, for one reason that matters: an artifact's
+# hash changing is what writes a new version, and this file changes whenever
+# an upstream is edited - including edits that do not alter a single exported
+# byte. Treated as an artifact it would bump the version for a no-op, which is
+# the exact rule publish() exists to hold ("never a no-op bump").
+#
+# The other half of the same reasoning is why it uploads only alongside a
+# version write: a state uploaded on a run that published nothing would
+# describe upstreams *newer* than the data actually live in the bucket. The
+# check would then compare current markers against current markers, report
+# FRESH, and the map would go on serving the old data with nothing flagging
+# it. That is precisely the false-fresh failure the whole check exists to
+# prevent, so the state is only ever written together with the bytes it
+# describes.
+SIDECARS = ("build_state.json",)
+
+
+def collect_sidecars() -> dict[str, dict]:
+    """Build metadata to upload beside a new version. See SIDECARS."""
+    found: dict[str, dict] = {}
+    for name in SIDECARS:
+        path = PROCESSED_DIR / name
+        if path.exists():
+            found[name] = {"path": str(path), "sha256": sha256_file(path)}
+    return found
+
+
 def collect_artifacts() -> dict[str, dict]:
     """Gather every publishable artifact into one flat {name: {path, sha256}}
     dict, reading whichever of Export's manifests actually exist (a fresh
@@ -132,17 +166,28 @@ def writes_enabled() -> bool:
     return os.environ.get(WRITE_ENABLED_ENV_VAR, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def publish(artifacts: dict[str, dict] | None = None, *, s3_client=None, bucket: str | None = None) -> dict:
+def publish(
+    artifacts: dict[str, dict] | None = None,
+    *,
+    sidecars: dict[str, dict] | None = None,
+    s3_client=None,
+    bucket: str | None = None,
+) -> dict:
     """Diff `artifacts` (defaults to collect_artifacts()'s real output)
     against the bucket's current latest.json, upload only what changed, and
     write a new manifest version only if at least one artifact actually
     changed. Returns a summary dict - uploaded/skipped artifact names,
-    whether a new version was written, and the resulting version id."""
+    whether a new version was written, and the resulting version id.
+
+    `sidecars` (build metadata, see SIDECARS) never affects that decision and
+    is uploaded only when a version is written."""
     if not writes_enabled():
         raise PermissionError(f"R2 writes are disabled. Set {WRITE_ENABLED_ENV_VAR}=true before publishing.")
 
     if artifacts is None:
         artifacts = collect_artifacts()
+    if sidecars is None:
+        sidecars = collect_sidecars()
 
     if s3_client is None:
         s3_client = boto3.client(
@@ -171,11 +216,18 @@ def publish(artifacts: dict[str, dict] | None = None, *, s3_client=None, bucket:
         return {
             "uploaded": [],
             "skipped": sorted(skipped),
+            "sidecars": [],
             "version_written": False,
             "version": remote_manifest["version"] if remote_manifest else None,
         }
 
     new_version = str(uuid.uuid4())
+
+    # After the decision, never before: a sidecar must never be able to cause
+    # a version, and must never describe data that was not published.
+    for name, entry in sidecars.items():
+        s3_client.upload_file(entry["path"], bucket, name)
+
     # Merge, don't replace: an artifact that's live in remote_artifacts but
     # wasn't produced by this run's collect_artifacts() (e.g. a checkout that
     # only re-ran export_trails.py, with no local elevation_manifest.json or
@@ -191,11 +243,17 @@ def publish(artifacts: dict[str, dict] | None = None, *, s3_client=None, bucket:
             **{name: {"sha256": entry["sha256"]} for name, entry in artifacts.items()},
         },
     }
+    # Recorded so a reader can tell whether the live state describes this
+    # version's bytes, but kept out of "artifacts" so nothing downstream can
+    # mistake build metadata for something a hiker downloads.
+    if sidecars:
+        new_manifest["sidecars"] = {name: {"sha256": entry["sha256"]} for name, entry in sidecars.items()}
     s3_client.put_object(Bucket=bucket, Key=MANIFEST_KEY, Body=json.dumps(new_manifest, indent=2).encode("utf-8"))
 
     return {
         "uploaded": sorted(uploaded),
         "skipped": sorted(skipped),
+        "sidecars": sorted(sidecars),
         "version_written": True,
         "version": new_version,
     }
@@ -210,6 +268,8 @@ def main() -> dict:
     result = publish(artifacts)
     if result["version_written"]:
         print(f"Published version {result['version']}: uploaded {result['uploaded']}, skipped {result['skipped']}.")
+        if result["sidecars"]:
+            print(f"Build metadata published alongside it: {result['sidecars']}.")
     else:
         print(f"Nothing changed - all {len(result['skipped'])} artifacts already up to date. No new version written.")
     return result

@@ -58,7 +58,14 @@ export function Header({
       </div>
 
       <div className="map-header__actions">
-        <button type="button" className="map-header__button" onClick={onOpenLegend}>
+        {/* --legend so the desktop layout can hide it: at that width the
+            legend is a permanent panel, and a button that opens something
+            already open does nothing. */}
+        <button
+          type="button"
+          className="map-header__button map-header__button--legend"
+          onClick={onOpenLegend}
+        >
           <span className="visually-hidden">Legend</span>
           <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20">
             <path

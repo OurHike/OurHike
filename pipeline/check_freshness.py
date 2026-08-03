@@ -27,17 +27,52 @@ being rounded down to fine. Silence about a source nobody could check is
 exactly how stale data survives.
 
     .venv/Scripts/python check_freshness.py
+
+The *recorded* side lives in lib/freshness_state.py, so that this check can
+run somewhere other than the machine that did the fetching:
+
+    check_freshness.py                     compare against local data/raw/*
+    check_freshness.py --state URL|PATH    compare against a published capture
+    check_freshness.py --capture OUT       write this checkout's state, ask
+                                           nothing upstream
+    check_freshness.py --json OUT          also write the verdict as JSON
+    check_freshness.py --exit-zero         report; never fail on staleness
+
+`--state` is what makes a scheduled run possible at all: `data/raw/` is
+gitignored, so a fresh checkout would otherwise report every source STALE for
+the trivial reason that it has never fetched anything. A build captures its
+state and publishes it; the scheduled check reads that over plain HTTPS and
+needs no credentials to do it.
+
+`--exit-zero` exists because this module has two callers wanting opposite
+things from the same verdict. As a pre-build gate, exiting non-zero on
+stale-or-unknown is right - that is the gate doing its job. As a scheduled
+reporter it is wrong: staleness is the *normal* state between weekly builds,
+and a red X every single day for a legitimately-changed upstream trains
+people to ignore the one signal that matters. See pipeline/DATA_RELEASES.md.
 """
 
+import argparse
 import json
 import random
-import re
 import sys
 from datetime import date
-from enum import Enum
 from pathlib import Path
 
 import requests
+
+from lib import freshness_state
+from lib.freshness_state import (
+    Freshness,
+    StateUnavailable,
+    capture_state,
+    compare_marker,
+    compare_state,
+    edition_key,
+    load_state,
+    state_age_days,
+    summarise,
+)
 
 ROOT = Path(__file__).parent
 ATC_MANIFEST = ROOT / "data" / "raw" / "manifest.json"
@@ -56,91 +91,46 @@ HTTP_TIMEOUT = 30
 # (see that function's docstring for the state-bias bug that was).
 TOPO_SAMPLE_SIZE = 25
 
-
-class Freshness(str, Enum):
-    FRESH = "fresh"
-    STALE = "stale"
-    UNKNOWN = "unknown"
-
-
-def compare_marker(recorded, upstream) -> Freshness:
-    """One source's verdict.
-
-    Compared as strings so a JSON round trip cannot manufacture a difference:
-    ArcGIS hands back an epoch-millisecond int, S3 an HTTP date string, and
-    `json.load` will happily give back either type.
-    """
-    if upstream is None:
-        # Could not ask. Never fresh - see the module docstring.
-        return Freshness.UNKNOWN
-    if recorded is None:
-        return Freshness.STALE
-    return Freshness.FRESH if str(recorded) == str(upstream) else Freshness.STALE
-
-
-def summarise(reports: list[dict]) -> dict:
-    """Roll per-source verdicts into one answer plus a process exit code.
-
-    STALE and UNKNOWN are kept apart because they call for different
-    responses - refetch versus retry - and merging them would hide which one
-    happened.
-    """
-    stale = [r["source"] for r in reports if r["freshness"] is Freshness.STALE]
-    unknown = [r["source"] for r in reports if r["freshness"] is Freshness.UNKNOWN]
-
-    return {
-        "needs_refetch": stale,
-        "unknown": unknown,
-        "exit_code": 0 if not stale and not unknown else 1,
-    }
+# Re-exported rather than redefined. These moved to lib/freshness_state.py so
+# a build could capture state without importing the whole checking machinery,
+# but this module is still where callers and tests reach for them.
+__all__ = [
+    "Freshness",
+    "compare_marker",
+    "summarise",
+    "edition_key",
+    "check_all",
+    "recorded_state",
+]
 
 
 # --- Recorded markers ------------------------------------------------------
+#
+# Thin wrappers over lib/freshness_state.py that bind the module-level paths
+# above. The paths stay module attributes, read at call time, so a test can
+# point any single source at a nonexistent file and exercise the others.
+
+
+def recorded_state() -> dict:
+    """This checkout's recorded markers for every source."""
+    return capture_state(
+        atc_manifest=ATC_MANIFEST,
+        opentrail_state=OPENTRAIL_STATE,
+        topo_manifest=TOPO_MANIFEST,
+        elevation_index=ELEVATION_INDEX,
+    )
 
 
 def recorded_atc_markers() -> dict[str, str | None]:
     """Every layer currently in the ATC manifest, keyed by source key, to
     its recorded edit-date marker - or None if fetch_all.py recorded the
-    layer without one.
-
-    That null case is real, not hypothetical: fetch_all.py tolerates a
-    failed dataLastEditDate lookup and still fetches and records the layer
-    rather than failing the whole run (see fetch_all.py's handling around
-    get_layer_edit_date). This function used to filter such entries out via
-    an `is not None` guard, which silently dropped them rather than
-    reporting them - they never reached check_all()'s comparison loop at
-    all, so the rollup could print "atc: FRESH" while that layer had never
-    actually been checked. Every registered entry is returned now, null or
-    not, so the caller can classify a null one as unknown instead of it
-    vanishing from consideration.
-    """
-    if not ATC_MANIFEST.exists():
-        return {}
-    manifest = json.loads(ATC_MANIFEST.read_text())
-    return {
-        key: None if entry.get("data_last_edit_date") is None else str(entry.get("data_last_edit_date"))
-        for key, entry in manifest.items()
-    }
+    layer without one. See lib/freshness_state.atc_sources for why a null
+    marker is kept rather than filtered out."""
+    return {key: entry["marker"] for key, entry in freshness_state.atc_sources(ATC_MANIFEST).items()}
 
 
 def recorded_opentrail_marker() -> str | None:
-    if not OPENTRAIL_STATE.exists():
-        return None
-    return json.loads(OPENTRAIL_STATE.read_text()).get("etag")
-
-
-def edition_key(url: str) -> str:
-    """`n35w084:20230215` for a conventional 3DEP filename.
-
-    An unparseable name still yields a key rather than being skipped: a tile
-    silently dropped from the marker would make a real change look like no
-    change at all.
-    """
-    name = url.rsplit("/", 1)[-1]
-    match = re.match(r"USGS_1[3m]?_?(?P<cell>n\d+w\d+)_(?P<edition>\d{8})\.tif$", name)
-    if match is None:
-        return f"{name}:"
-    return f"{match['cell']}:{match['edition']}"
+    return freshness_state.opentrail_marker(OPENTRAIL_STATE)
 
 
 def recorded_elevation_marker() -> str | None:
@@ -149,10 +139,7 @@ def recorded_elevation_marker() -> str | None:
     TNM returns tiles in no guaranteed order, so a reshuffle must not read as
     a change - only a genuinely new edition should.
     """
-    if not ELEVATION_INDEX.exists():
-        return None
-    entries = json.loads(ELEVATION_INDEX.read_text())
-    return "|".join(sorted(edition_key(entry["url"]) for entry in entries))
+    return freshness_state.elevation_marker(ELEVATION_INDEX)
 
 
 # --- Upstream markers ------------------------------------------------------
@@ -257,11 +244,16 @@ def upstream_topo_markers(sample: list[str]) -> dict[str, str | None]:
     return markers
 
 
-def upstream_elevation_marker() -> str | None:
+def upstream_elevation_marker(recorded: str | None = None) -> str | None:
     """Re-run the same TNM discovery the index was built from and compare the
     edition set. This is the only way to notice 3DEP republishing a cell:
     there is no per-file timestamp to HEAD, but a new survey arrives as a new
-    dated filename."""
+    dated filename.
+
+    `recorded` is the marker to restrict the answer to. It defaults to reading
+    the local tile index, which is the only source that exists when this runs
+    beside a real fetch; a run comparing against a *published* state has no
+    local index and passes that state's marker in instead."""
     try:
         import fetch_elevation
 
@@ -288,7 +280,8 @@ def upstream_elevation_marker() -> str | None:
         # The corridor is fixed, so that second case only arises if 3DEP
         # starts publishing somewhere it never has - rare, and caught by a
         # full fetch_elevation.py run.
-        recorded = recorded_elevation_marker()
+        if recorded is None:
+            recorded = recorded_elevation_marker()
         if recorded is None:
             return None
         tracked_cells = {key.split(":", 1)[0] for key in recorded.split("|")}
@@ -299,81 +292,150 @@ def upstream_elevation_marker() -> str | None:
         return None
 
 
-def check_all() -> list[dict]:
+def gather_upstream(state: dict, *, local: bool = True) -> dict:
+    """Ask every upstream what it says now, shaped like the recorded state.
+
+    Deliberately sparser than `state` in two places, both of which
+    `compare_state` reads as "not checked", never as "current":
+
+    - An ATC layer with no recorded marker is not asked about at all. There
+      would be nothing to compare the answer to, and the request would cost a
+      round trip to learn nothing.
+    - Only a sample of topo quads is asked about. 1,654 HEAD requests is a lot
+      of traffic for a dataset USGS republishes in batches, and a new release
+      shows up in any sample.
+    - A source the state does not mention at all is not asked about either.
+      There is nothing to compare an answer to, and `compare_state` already
+      reports it as unchecked.
+    """
+    upstream: dict = {"atc": {}, "topo_quads": {}}
+
+    for key, entry in (state.get("atc") or {}).items():
+        marker = entry.get("marker") if isinstance(entry, dict) else entry
+        url = entry.get("url") if isinstance(entry, dict) else None
+        if marker is None or not url:
+            continue
+        upstream["atc"][key] = upstream_atc_marker(url)
+
+    if "opentrail" in state:
+        upstream["opentrail"] = upstream_opentrail_marker()
+
+    recorded_topo = state.get("topo_quads") or {}
+    if recorded_topo:
+        upstream["topo_quads"] = upstream_topo_markers(topo_sample(recorded_topo))
+
+    if "elevation" in state:
+        # Called with no arguments on the local path, exactly as it always was,
+        # so that it reads the tile index itself. A published state has no local
+        # index to read, so its recorded marker is handed in instead.
+        upstream["elevation"] = upstream_elevation_marker() if local else upstream_elevation_marker(state.get("elevation"))
+
+    return upstream
+
+
+def check_all(state: dict | None = None) -> list[dict]:
     """Every source's verdict. Never raises: a source that cannot be checked
-    reports UNKNOWN rather than taking the whole run down with it."""
-    reports: list[dict] = []
+    reports UNKNOWN rather than taking the whole run down with it.
 
-    recorded_atc = recorded_atc_markers()
-    if not recorded_atc:
-        reports.append({"source": "atc", "freshness": Freshness.STALE, "detail": "never fetched"})
-    else:
-        manifest = json.loads(ATC_MANIFEST.read_text())
-        changed = []
-        unknown = []
-        for key, recorded in recorded_atc.items():
-            if recorded is None:
-                # Recorded but with no edit date (a tolerated failed lookup
-                # in fetch_all.py) - unknown, not a stale/fresh guess, and
-                # not worth an upstream request when there is nothing to
-                # compare it to.
-                unknown.append(key)
-                continue
-            upstream = upstream_atc_marker(manifest[key]["url"])
-            verdict = compare_marker(recorded, upstream)
-            if verdict is Freshness.STALE:
-                changed.append(key)
-            elif verdict is Freshness.UNKNOWN:
-                unknown.append(key)
-        freshness = Freshness.STALE if changed else Freshness.UNKNOWN if unknown else Freshness.FRESH
-        detail = f"{len(changed)} changed, {len(unknown)} unknown of {len(recorded_atc)} layers"
-        reports.append({"source": "atc", "freshness": freshness, "detail": detail})
+    `state` is the recorded side to compare against, defaulting to whatever
+    this checkout's own `data/raw/` records."""
+    local = state is None
+    if state is None:
+        state = recorded_state()
+    return compare_state(state, gather_upstream(state, local=local))
 
-    reports.append(
-        {
-            "source": "opentrail",
-            "freshness": compare_marker(recorded_opentrail_marker(), upstream_opentrail_marker()),
-            "detail": "ETag",
-        }
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument(
+        "--state",
+        metavar="PATH|URL",
+        help="Compare against a published capture instead of this checkout's data/raw/.",
     )
-
-    if not TOPO_MANIFEST.exists():
-        reports.append({"source": "topo_quads", "freshness": Freshness.STALE, "detail": "never fetched"})
-    else:
-        manifest = json.loads(TOPO_MANIFEST.read_text())
-        sample = topo_sample(manifest)
-        upstream = upstream_topo_markers(sample)
-        verdicts = [compare_marker(manifest[url].get("last_modified"), upstream[url]) for url in sample]
-        freshness = (
-            Freshness.STALE
-            if Freshness.STALE in verdicts
-            else Freshness.UNKNOWN
-            if Freshness.UNKNOWN in verdicts
-            else Freshness.FRESH
-        )
-        reports.append(
-            {
-                "source": "topo_quads",
-                "freshness": freshness,
-                "detail": f"sampled {len(sample)} of {len(manifest)} quads",
-            }
-        )
-
-    reports.append(
-        {
-            "source": "elevation",
-            "freshness": compare_marker(recorded_elevation_marker(), upstream_elevation_marker()),
-            "detail": "3DEP tile editions",
-        }
+    parser.add_argument(
+        "--capture",
+        metavar="OUT",
+        type=Path,
+        help="Write this checkout's recorded state to OUT and exit. Asks nothing upstream.",
     )
+    parser.add_argument("--json", metavar="OUT", type=Path, help="Also write the verdict to OUT as JSON.")
+    parser.add_argument(
+        "--exit-zero",
+        action="store_true",
+        help="Exit 0 even when something is stale or unknown. For a reporter rather than a gate.",
+    )
+    return parser.parse_args(argv)
 
-    return reports
+
+def verdict_document(reports: list[dict], state: dict | None) -> dict:
+    """The whole answer as plain JSON, for a workflow to render or a later
+    build to read.
+
+    Carries the age of the state it compared against, because "fresh" against
+    a six-month-old capture is a different sentence from the one a reader
+    assumes, and a number nobody printed is a number nobody checked.
+    """
+    summary = summarise(reports)
+
+    sources = []
+    for report in reports:
+        entry = {
+            "source": report["source"],
+            "freshness": report["freshness"].value,
+            "detail": report["detail"],
+        }
+        # Which ATC layers moved, when the comparison knows. Naming them is
+        # the difference between "refetch something" and "refetch this".
+        if report.get("changed"):
+            entry["changed"] = report["changed"]
+        sources.append(entry)
+
+    return {
+        "checked_at": date.today().isoformat(),
+        "state_captured_at": (state or {}).get("captured_at"),
+        "state_age_days": state_age_days(state) if state else None,
+        "sources": sources,
+        "needs_refetch": summary["needs_refetch"],
+        "unknown": summary["unknown"],
+    }
 
 
-def main() -> int:
-    reports = check_all()
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+
+    if args.capture:
+        # Sources this checkout holds no record of are dropped rather than
+        # published as empty - see lib/freshness_state.drop_unrecorded. The
+        # vector and raster halves of the pipeline are separate workflows, and
+        # a state must not claim a verdict about a leg that never ran.
+        state = freshness_state.drop_unrecorded(recorded_state())
+        captured = [name for name in freshness_state.SOURCES if name in state]
+        args.capture.parent.mkdir(parents=True, exist_ok=True)
+        args.capture.write_text(json.dumps(state, indent=2))
+        print(f"Captured {', '.join(captured) or 'nothing'} to {args.capture}")
+        return 0
+
+    state: dict | None = None
+    if args.state:
+        try:
+            state = load_state(args.state)
+        except StateUnavailable as exc:
+            # Not a verdict about the data - the absence of one. Reported as
+            # its own outcome (exit 2) so a caller can tell "there is nothing
+            # published to compare against yet" apart from "an upstream
+            # changed", which is exactly the distinction a scheduled reporter
+            # needs to avoid crying wolf on a bucket that has never published.
+            print(f"No state to compare against: {exc}", file=sys.stderr)
+            return 2
+
+    reports = check_all(state)
     for report in reports:
         print(f"  {report['freshness'].value.upper():8} {report['source']:12} {report['detail']}")
+
+    if state is not None:
+        age = state_age_days(state)
+        captured = state.get("captured_at") or "an unrecorded date"
+        print(f"\nCompared against a state captured {captured}" + (f" ({age} days ago)" if age is not None else ""))
 
     summary = summarise(reports)
     if summary["needs_refetch"]:
@@ -383,7 +445,11 @@ def main() -> int:
     if summary["exit_code"] == 0:
         print("\nEverything upstream is unchanged. No refetch or reprocessing needed.")
 
-    return summary["exit_code"]
+    if args.json:
+        args.json.parent.mkdir(parents=True, exist_ok=True)
+        args.json.write_text(json.dumps(verdict_document(reports, state), indent=2))
+
+    return 0 if args.exit_zero else summary["exit_code"]
 
 
 if __name__ == "__main__":

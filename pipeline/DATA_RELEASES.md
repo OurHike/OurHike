@@ -11,7 +11,9 @@ Scope is **trail data only** — the artifacts `publish.py` ships to R2. User ac
 1. **A publish can corrupt a download already in progress.** `archiveDownload.ts` resumes a partial 314 MB / 1.18 GB archive with `Range` + `If-Range`. If R2's CORS policy fails to expose `etag`, there is no `If-Range` to send, R2 honours the range against the *new* object, and old bytes get spliced onto new ones. The client's size check provably cannot catch it — `totalBytes` is *defined* as `heldBytes + declared` (`archiveDownload.ts:47-54`), so both sides of the comparison are the same expression. The result is a PMTiles file that reports itself complete, renders wrong past the seam, and never falls back to the network (`pmtilesSource.ts:9-11,40-44`). Commit `e503bcb` hardened the client against this; the real fix is for the bytes behind a URL to never change.
 2. **A hiker cannot pin, and cannot be told.** A completed archive is stored under `ourhike:corridor-archive` with no hash, no ETag and no version (`pmtilesSource.ts:16`), so a republish is invisible to a device that already downloaded — no staleness signal, no "update available", no way for the app to even know. `latest.json`'s `version` is read by nothing but `publish.py` itself.
 3. **Publishing is the same act as releasing.** There is no state in which new data exists but is not yet being served. Every quality gate has to run *before* the upload, on local disk, and therefore tests something other than what hikers actually receive.
-4. **Nothing is incremental above the artifact level, and nothing runs on a schedule.** `check_freshness.py` is fully built and tested (28 tests) and wired into no workflow. Every raster build re-fetches all 51 cells' quads from scratch. There is no `cron:` anywhere in `.github/workflows/`.
+4. **Nothing is incremental above the artifact level.** Every raster build re-fetches all 51 cells' quads from scratch.
+
+   *Partly resolved.* §1 below is built: `check-upstream-freshness.yml` runs the check daily against a published `build_state.json` and holds no R2 credentials. The build itself (§2) is still neither scheduled nor incremental.
 
 The goal of this plan, stated as one property: **a hiker who has downloaded map data never loses access to it, and never has it changed underneath them.** Everything below follows from that.
 
@@ -52,7 +54,14 @@ Everything under `releases/<v>/` is **written once and never overwritten**. That
 
 ## 1. Daily freshness check — flags, never publishes
 
-New `.github/workflows/check-upstream-freshness.yml`: `schedule` (daily) + `workflow_dispatch`, `permissions: {contents: read, issues: write}`, **no R2 secrets at all**.
+**Built.** `.github/workflows/check-upstream-freshness.yml`: `schedule` (daily) + `workflow_dispatch`, `permissions: {contents: read, issues: write}`, **no R2 secrets at all**.
+
+Two things landed differently from the sketch below, both because the release layout in §2 does not exist yet:
+
+- The state is published as a **flat `build_state.json` at the bucket root**, not under `releases/<v>/`, matching the flat keys everything else uses today. It moves under the release folder when §2 lands.
+- It is a **sidecar in `publish.py`, not an artifact**: it uploads only when a version is actually written, and its own hash never causes a version. Both halves matter. Counted as an artifact it would bump the version whenever an upstream was edited without changing a single exported byte, breaking the "never a no-op bump" rule. Uploaded on a run that published nothing, it would describe upstreams *newer* than the bytes live in the bucket — the check would compare current markers against current markers, report FRESH, and the map would go on serving the old data with nothing flagging it. That is the exact false-fresh this check exists to prevent, so the state is only ever written together with the bytes it describes.
+
+One more distinction the sketch did not have: a state captured by a build that ran only part of the pipeline **omits** the sources it never touched, rather than publishing them as empty. The vector publish does not fetch topo quads or DEM tiles, and an empty entry would read as "we looked and found nothing" — a daily STALE for the raster half, forever. Omitted, it reads as UNKNOWN, which is what it is.
 
 `check_freshness.py` already normalises all four upstreams' freshness markers (ArcGIS `dataLastEditDate`, opentrail ETag, S3 `Last-Modified` on a date-seeded 25-quad sample, the 3DEP edition set) and already keeps STALE and UNKNOWN apart because they call for different responses. What it cannot do today is run in CI: its "recorded" side reads `data/raw/manifest.json` and friends, which no fresh checkout has, so on a hosted runner it would report everything STALE.
 

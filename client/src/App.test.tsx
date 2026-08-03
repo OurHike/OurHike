@@ -596,4 +596,28 @@ describe('Data Saver', () => {
 
     expect(Object.keys(styleOf(await liveMap()).sources)).toContain('osm')
   })
+  it('keeps the tab bar reachable when the map screen throws', async () => {
+    // #131 in miniature, and what #141 is about. A throw anywhere under the
+    // root - render, effect, or effect CLEANUP - unmounts the WHOLE tree by
+    // default, tab bar included. The hiker got a white page with no navigation
+    // on it, and the reported symptom was "the download tab shows nothing".
+    //
+    // The map is the likeliest thing here to throw and the worst to lose, so
+    // it has its own boundary: the map goes, the tabs stay.
+    const user = userEvent.setup()
+    returningHiker()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const MapLibre = await import('maplibre-gl')
+    vi.spyOn(MapLibre, 'Map').mockImplementation(() => {
+      throw new Error('WebGL context could not be created')
+    })
+
+    render(<App />)
+
+    // Something is on screen, and it says which screen went.
+    expect(await screen.findByRole('alert')).toHaveTextContent(/map stopped working/i)
+    // And the way out is still there, which is the whole point.
+    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    expect(await screen.findByText('Offline map')).toBeInTheDocument()
+  })
 })

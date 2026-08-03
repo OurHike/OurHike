@@ -687,3 +687,32 @@
   background: var(--bg-surface);
   border: 1px solid var(--border-2);
 }
+
+/* The fallback a broken screen leaves behind (chrome/ErrorBoundary.tsx).
+   Sized and coloured like the rest of the app rather than like an error page:
+   what happened is worth saying plainly, not worth alarming someone about
+   while they are standing on a mountain. */
+.screen-failed {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-3, 0.75rem);
+  padding: var(--space-5, 1.5rem);
+  min-height: 12rem;
+}
+
+.screen-failed__title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.screen-failed__body {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.screen-failed__body--quiet {
+  opacity: 0.75;
+  font-size: 0.9375rem;
+}

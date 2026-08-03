@@ -4,12 +4,14 @@ import {
   downloadTrailData,
   loadTrailData,
   deleteTrailData,
+  ELEVATION_STORE_KEY,
   POIS_KEY,
   SPURS_STORE_KEY,
   TRAILS_BLOB_KEY,
   type StoredPoi,
 } from './trailData'
-import { POI_TYPES, SPURS_KEY } from './config'
+import { ELEVATION_KEY, POI_TYPES, SPURS_KEY } from './config'
+import type { ElevationProfile } from './elevationProfile'
 
 vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
 
@@ -40,9 +42,16 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-/** Serves trail lines for any trails URL, the given POIs for poi_* and the
- *  given spur detail for spurs.json. */
-function serve(pois: string = poiCollection([]), spurs: string = '{}') {
+/** Serves trail lines for any trails URL, the given POIs for poi_*, the given
+ *  spur detail for spurs.json and the given samples for
+ *  elevation_profile.json. The elevation default is an empty array, which is
+ *  "this release publishes no usable profile" - the tests that care about one
+ *  pass their own. */
+function serve(
+  pois: string = poiCollection([]),
+  spurs: string = '{}',
+  elevation: string = '[]',
+) {
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string) =>
@@ -52,12 +61,42 @@ function serve(pois: string = poiCollection([]), spurs: string = '{}') {
         blob: () => Promise.resolve(new Blob(['{"type":"FeatureCollection"}'])),
         text: () =>
           Promise.resolve(
-            url.includes('poi_') ? pois : url.includes(SPURS_KEY) ? spurs : '{}',
+            url.includes('poi_')
+              ? pois
+              : url.includes(SPURS_KEY)
+                ? spurs
+                : url.includes(ELEVATION_KEY)
+                  ? elevation
+                  : '{}',
           ),
       }),
     ),
   )
 }
+
+/** Serves everything but elevation_profile.json, which gets the given failure. */
+function serveUntilElevationFails(status: number, statusText: string) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url: string) =>
+      Promise.resolve(
+        url.includes(ELEVATION_KEY)
+          ? { ok: false, status, statusText }
+          : {
+              ok: true,
+              status: 200,
+              blob: () => Promise.resolve(new Blob(['{"type":"FeatureCollection"}'])),
+              text: () => Promise.resolve(poiCollection([])),
+            },
+      ),
+    ),
+  )
+}
+
+const TWO_SAMPLES = JSON.stringify([
+  { distance_mi: 0, elevation_ft: 3782.2 },
+  { distance_mi: 1, elevation_ft: 3000 },
+])
 
 /** Serves trail lines, then fails on the POI type named. */
 function serveUntilPoiFails(failing: string) {
@@ -83,8 +122,9 @@ describe('trail data', () => {
     await downloadTrailData()
 
     expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
-    // Every POI type, plus the trail lines, plus the spur detail.
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(POI_TYPES.length + 2)
+    // Every POI type, plus the trail lines, plus the spur detail, plus the
+    // elevation profile.
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(POI_TYPES.length + 3)
   })
 
   it('reads POIs into the shape the map and search both use', async () => {
@@ -370,5 +410,79 @@ describe('spur detail', () => {
     await deleteTrailData()
 
     expect(store.has(SPURS_STORE_KEY)).toBe(false)
+  })
+})
+
+describe('the elevation profile', () => {
+  it('stores the published samples', async () => {
+    serve(poiCollection([]), '{}', TWO_SAMPLES)
+
+    await downloadTrailData()
+
+    const profile = store.get(ELEVATION_STORE_KEY) as ElevationProfile
+    expect(Array.from(profile.distanceMi)).toEqual([0, 1])
+    expect(profile.elevationFt[0]).toBeCloseTo(3782.2, 3)
+  })
+
+  it('treats a release with no elevation_profile.json as no profile, not a failure', async () => {
+    // It did not exist before export_elevation.py. A phone pointed at an older
+    // release must still get its trails and POIs; it just has no ribbon.
+    serveUntilElevationFails(404, 'Not Found')
+
+    await downloadTrailData()
+
+    expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
+    expect(store.get(ELEVATION_STORE_KEY)).toBeNull()
+  })
+
+  it('still fails on a broken elevation fetch that is not a 404', async () => {
+    // Only "this release predates the feature" is excused. A 503 is a failed
+    // download and must not be swallowed along with it.
+    serveUntilElevationFails(503, 'Service Unavailable')
+
+    await expect(downloadTrailData()).rejects.toThrow(/503/)
+    // Nothing committed, the same rule the POI failure already follows.
+    expect(store.get(TRAILS_BLOB_KEY)).toBeUndefined()
+  })
+
+  it('costs the ribbon and not the map when the profile arrives malformed', async () => {
+    // A truncated download of the largest vector artifact. The ribbon is a
+    // decoration on a screen whose job is showing a hiker where they are, so it
+    // gives itself up rather than taking the trail lines down with it.
+    serve(poiCollection([]), '{}', '[{"distance_mi":0,')
+
+    await downloadTrailData()
+
+    expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
+    expect(store.get(ELEVATION_STORE_KEY)).toBeNull()
+  })
+
+  it('loads the profile back with the rest of the trail data', async () => {
+    serve(poiCollection([]), '{}', TWO_SAMPLES)
+    await downloadTrailData()
+
+    const loaded = await loadTrailData()
+
+    expect(loaded?.elevation?.distanceMi.length).toBe(2)
+  })
+
+  it('reads a release whose profile was never stored as no profile', async () => {
+    // Data downloaded by a build before this feature: the blob and POIs are in
+    // IndexedDB, the elevation key is not. That must load, not throw.
+    store.set(TRAILS_BLOB_KEY, new Blob(['{}']))
+    store.set(POIS_KEY, [])
+
+    const loaded = await loadTrailData()
+
+    expect(loaded?.elevation).toBeNull()
+  })
+
+  it('forgets the profile when the download is deleted', async () => {
+    serve(poiCollection([]), '{}', TWO_SAMPLES)
+    await downloadTrailData()
+
+    await deleteTrailData()
+
+    expect(store.has(ELEVATION_STORE_KEY)).toBe(false)
   })
 })

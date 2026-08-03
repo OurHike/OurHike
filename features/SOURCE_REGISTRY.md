@@ -156,6 +156,8 @@ Two things keep that from becoming a lie:
 - **The staleness has to be visible to the hiker**, not just to us — the "last confirmed" surface [DATA_NUDGES.md](DATA_NUDGES.md) already designs for aging POI data, not a silent copy-forward.
 - **Quarantine expires.** After a bounded period a human decides retire-or-keep. Otherwise a layer gets copied forward for five years because nobody looked, which is the same failure as showing it fresh.
 
+**There is now a shipped precedent for the general shape of this.** [MAP_OPTIONS.md](MAP_OPTIONS.md)'s live topographic sheet (2026-08-03) took a dependency on a donation-funded tile host with no SLA, and mitigated it structurally rather than by trusting it: one constant in one file, a standard schema, and a named drop-in replacement that needs no cartography changes. Every registered source is that same bet at smaller stakes — someone else's server, outside our control, that the map reads from. Registration should ask the same question that decision answered: *when this goes away, what is the swap, and is it written down?*
+
 ## 3. Taking in the new data
 
 ### Nothing a registration does can change a hiker's map
@@ -180,7 +182,9 @@ An org can register a layer that would add hundreds of megabytes to a download h
 
 ### Geometry scope, honestly bounded
 
-Points and lines in v1 — points because `unify_poi` handles them today, lines because [`export_trails.py`](../pipeline/export_trails.py) does. **Polygons are deferred** ([LAND_OWNERSHIP.md](LAND_OWNERSHIP.md) is the one polygon design and it is Post-MVP with its own unmeasured size question). **Rasters are out**: an org's raster would need the whole mosaic/reprojection/tiling path, and that is the 1.18 GB archive, not a layer.
+Points and lines in v1 — points because `unify_poi` handles them today, lines because [`export_trails.py`](../pipeline/export_trails.py) does. **Polygons are deferred** ([LAND_OWNERSHIP.md](LAND_OWNERSHIP.md) is the one polygon design and it is Post-MVP with its own unmeasured size question).
+
+**Rasters are out, and the project just spent a release learning why.** The size argument alone would be enough — an org's raster needs the whole mosaic/reprojection/tiling path, and that is the 1.18 GB archive, not a layer. But [MAP_OPTIONS.md](MAP_OPTIONS.md)'s 2026-08-03 build note is the better reason: a raster mosaic is "a picture of a map", with labels baked into the pixels at one scale, seams between quads of different vintages, and contours that cannot be recoloured — "not defects in the pipeline, they are what a raster mosaic is." Accepting registered rasters would be signing this project up to inherit that from every organization that offers one.
 
 Following the `crossing` precedent — declared in `POI_TYPES`, shipped empty rather than faked — a registered source whose geometry we can't yet carry should be *recorded as registered and not exported*, rather than rejected and forgotten.
 

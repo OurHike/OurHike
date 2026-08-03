@@ -132,27 +132,26 @@ describe('once there is a GPS fix', () => {
     expect(await screen.findByText(/mi 5\./)).toBeInTheDocument()
   })
 
-  it('moves the camera to the first fix, since the map was built before it arrived', async () => {
+  // The mile assertions are what make this test mean anything: they prove each
+  // fix arrived and was used, so a run with an unmoved camera cannot be a run
+  // where no fix ever showed up.
+  it('leaves the camera on the whole corridor, since the view belongs to the hiker', async () => {
     hikerOnTrail()
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
+    // Wait for the map itself, not just its container div: findByRole resolves
+    // a commit before MapView's effect constructs the map, so reading
+    // instances[0] straight after it races the build and can find nothing at
+    // all. That would fail as a TypeError rather than as the assertion.
+    await waitFor(() => expect(MockMap.instances.length).toBeGreaterThan(0))
 
     await reportFix()
+    expect(await screen.findByText(/mi 5\./)).toBeInTheDocument()
 
-    await waitFor(() => expect(MockMap.instances[0].cameraMoves).toHaveLength(1))
-    expect(MockMap.instances[0].cameraMoves[0]).toMatchObject({ zoom: 13 })
-  })
-
-  it('leaves the camera alone after that, because the view belongs to whoever is panning it', async () => {
-    hikerOnTrail()
-    render(<App />)
-    await screen.findByRole('region', { name: /trail map/i })
-
-    await reportFix()
-    await waitFor(() => expect(MockMap.instances[0].cameraMoves).toHaveLength(1))
     await reportFix(39 + 6 * MILE_LAT)
+    expect(await screen.findByText(/mi 6\./)).toBeInTheDocument()
 
-    expect(MockMap.instances[0].cameraMoves).toHaveLength(1)
+    expect(MockMap.instances[0].cameraMoves).toHaveLength(0)
   })
 
   it('starts tracking a direction of travel once it has two fixes', async () => {
@@ -466,30 +465,6 @@ describe('when the trail data cannot be downloaded', () => {
     await user.click(await screen.findByRole('button', { name: /download the map/i }))
 
     expect(await screen.findByText('Trail data failed to download.')).toBeInTheDocument()
-  })
-})
-
-describe('a fix that arrives while the map is not on screen', () => {
-  it('does not try to move a map that is not mounted', async () => {
-    // The map only exists on the Trail tab. A fix landing while someone is on
-    // Downloads has no camera to move, and must not reach for one.
-    const user = userEvent.setup()
-    hikerOnTrail()
-    render(<App />)
-    await screen.findByRole('region', { name: /trail map/i })
-    // Wait for the map itself, not just its container div: findByRole resolves
-    // a commit before MapView's effect constructs the map, so reading
-    // instances[0] straight after it races the build and can find nothing at
-    // all. Here that would fail as a TypeError rather than as the assertion.
-    await waitFor(() => expect(MockMap.instances.length).toBeGreaterThan(0))
-    const built = MockMap.instances[0]
-
-    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
-    await screen.findByText('Offline map')
-
-    await reportFix()
-
-    expect(built.cameraMoves).toHaveLength(0)
   })
 })
 

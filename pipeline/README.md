@@ -32,6 +32,8 @@ Not everything in `sources.json` came from the Experience Builder app, though - 
 
 To point the script at a different Experience Builder app (e.g. if the ATC publishes a second public map, or another club/provider uses one), just pass that app's URL and a `--provider` label - nothing else in the script is ATC-specific.
 
+That `--provider` label is as far as this registry currently goes toward being multi-organization: every entry says `"ATC"`, and adding a thirteenth source is still a code change by whoever owns this repository. [../features/SOURCE_REGISTRY.md](../features/SOURCE_REGISTRY.md) is the design for letting an outside organization register its own layers and a contact to notify - including the fields this file would gain (`steward`, `kind`, `licence`, `field_map`, `freshness`, `trust`, `state`) and why the registry stays a reviewed file in git rather than becoming a database table.
+
 ## Fetching ATC sources
 
 `fetch_all.py` reads `sources.json` and downloads each layer (paginating past ArcGIS's per-request record cap via `lib/arcgis.py`) to `data/raw/<key>.geojson`. It's change-aware: before doing the full paginated fetch, it checks each layer's `editingInfo.dataLastEditDate` (one cheap metadata request) against the value recorded in `data/raw/manifest.json` from the last run, and skips the source entirely if unchanged. Only writes the manifest if **every** registered source succeeded or was confirmed up to date - if any layer fails or goes missing, it exits non-zero instead of silently producing a partial dataset.

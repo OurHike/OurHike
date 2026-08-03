@@ -38,8 +38,21 @@ export class MockMap {
   zoom = 0
   /** Images registered on the style, by id. */
   readonly images = new Map<string, unknown>()
+  /** Options each image was registered with, by id - `pixelRatio` is the
+   *  difference between a crisp pin and a pin at double size. */
+  readonly imageOptions = new Map<string, unknown>()
   /** Every paint property written, keyed `layerId/property`. */
   readonly paintProperties = new Map<string, unknown>()
+  /** The latest filter set on each layer, by layer id. */
+  readonly filters = new Map<string, unknown>()
+  /** Data pushed into each GeoJSON source, by source id. */
+  readonly sourceData = new Map<string, unknown>()
+  /** Test-settable: which layers and sources the style is holding. Real
+   *  MapLibre returns undefined for a layer that does not exist and throws if
+   *  you write to it anyway, so callers have to cope with both - which means
+   *  tests need to be able to produce both. */
+  layerIds: string[] = []
+  sourceIds: string[] = []
   /** Test-settable: real MapLibre only accepts images and paint writes once the
    *  style has loaded, and callers have to cope with both answers. */
   styleLoaded = false
@@ -74,6 +87,11 @@ export class MockMap {
 
   /** Test-only: fire an event that real MapLibre would fire itself. */
   emit(event: string, payload?: unknown): void {
+    // `load` fires BECAUSE the style finished loading, so a mock that fires it
+    // while still answering false to `isStyleLoaded()` models a state real
+    // MapLibre is never in - and one that quietly breaks anything re-checking
+    // later, which is every attach-on-ready helper in map/.
+    if (event === 'load') this.styleLoaded = true
     for (const handler of [...(this.listeners.get(event) ?? [])]) handler(payload)
   }
 
@@ -100,14 +118,34 @@ export class MockMap {
     return this.images.has(id)
   }
 
-  addImage(id: string, image: unknown): this {
+  addImage(id: string, image: unknown, options?: unknown): this {
     this.images.set(id, image)
+    if (options !== undefined) this.imageOptions.set(id, options)
     return this
   }
 
   setPaintProperty(layerId: string, property: string, value: unknown): this {
     this.paintProperties.set(`${layerId}/${property}`, value)
     return this
+  }
+
+  getLayer(id: string): { id: string } | undefined {
+    return this.layerIds.includes(id) ? { id } : undefined
+  }
+
+  setFilter(layerId: string, filter: unknown): this {
+    // Real MapLibre throws rather than ignoring a write to a layer that is not
+    // there, and code that forgets to check must fail here too.
+    if (this.getLayer(layerId) === undefined) {
+      throw new Error(`The layer '${layerId}' does not exist in the map's style.`)
+    }
+    this.filters.set(layerId, filter)
+    return this
+  }
+
+  getSource(id: string): { setData(data: unknown): void } | undefined {
+    if (!this.sourceIds.includes(id)) return undefined
+    return { setData: (data: unknown) => this.sourceData.set(id, data) }
   }
 
   jumpTo(options: Record<string, unknown>): this {

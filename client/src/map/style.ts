@@ -28,7 +28,7 @@
 
 import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec'
 import { BLAZE_MATCH_EXPRESSION } from '../lib/blaze'
-import { buildPoiLayer, POI_SOURCE, POI_SOURCE_ID } from './poiLayers'
+import { buildPoiLayer, buildPoiSource, POI_SOURCE_ID } from './poiLayers'
 
 export const TOPO_SOURCE_ID = 'usgs-topo'
 export const TRAILS_SOURCE_ID = 'trails'
@@ -125,10 +125,11 @@ export function buildMapStyle({
         data: trailsUrl,
         attribution: ATTRIBUTION,
       },
-      // Declared empty and filled in later - see POI_SOURCE. Attributed like
-      // the other two: the POIs are ATC and OpenStreetMap-derived, and a source
-      // with no attribution on it is one release away from shipping uncredited.
-      [POI_SOURCE_ID]: { ...POI_SOURCE, attribution: ATTRIBUTION },
+      // Declared empty and filled in later - see buildPoiSource. Attributed
+      // like the other two: the POIs are ATC and OpenStreetMap-derived, and a
+      // source with no attribution is one release away from shipping
+      // uncredited.
+      [POI_SOURCE_ID]: { ...buildPoiSource(), attribution: ATTRIBUTION },
     },
     layers: [
       {

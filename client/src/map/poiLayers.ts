@@ -140,12 +140,19 @@ export function buildPoiLayer(sourceId: string = POI_SOURCE_ID): LayerSpecificat
   }
 }
 
-export const POI_SOURCE: GeoJSONSourceSpecification = {
-  type: 'geojson',
-  // Empty until the shell pushes real data in. POIs arrive from IndexedDB
-  // after the map is built, and re-reading a style to add them would tear down
-  // the WebGL context underneath the hiker.
-  data: { type: 'FeatureCollection', features: [] },
+/**
+ * The POI source, empty.
+ *
+ * Empty until the shell pushes real data in: POIs arrive from IndexedDB after
+ * the map is built, and re-reading a style to add them would tear down the
+ * WebGL context underneath the hiker.
+ *
+ * A function rather than a shared constant, so each style gets its own
+ * `features` array instead of every map ever built pointing at one - the same
+ * care buildMapStyle takes with the two sources it spells out inline.
+ */
+export function buildPoiSource(): GeoJSONSourceSpecification {
+  return { type: 'geojson', data: { type: 'FeatureCollection', features: [] } }
 }
 
 export interface PoiFeatureCollection {

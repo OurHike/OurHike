@@ -24,6 +24,13 @@
 // the one that bit. Runs as part of `npm run build`, so a bundle that cannot
 // draw a map cannot be deployed - the build IS the artifact that ships, and it
 // is the only honest place to look.
+//
+// There is a second shape, added after it happened too: "the app never asked
+// for a file it needs." MapLibre's stylesheet was never imported, so nothing
+// positioned the map's controls and every one of them rendered off the bottom
+// of the screen. No reference is missing there - the reference was never
+// written - which the check above cannot see by construction, so the built CSS
+// is read for the rules themselves.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
@@ -60,6 +67,30 @@ const REQUIRED_ASSETS = [
       'Without it MapLibre parses no tiles at all and the map draws nothing but ' +
       'its background colour - silently, with no error event. ' +
       'See src/map/mapWorker.ts.',
+  },
+]
+
+/**
+ * Stylesheets the app has to have imported, identified by rules only they
+ * carry.
+ *
+ * Checked on the emitted CSS rather than on the import statement, because what
+ * matters is that the rules reached the bundle - an import that a tree-shake or
+ * a config change quietly dropped would still be sitting in the source.
+ */
+const REQUIRED_STYLESHEETS = [
+  {
+    what: "MapLibre's own stylesheet (maplibre-gl/dist/maplibre-gl.css)",
+    // Both come from that file and nowhere else. chrome.css styles
+    // `.maplibregl-ctrl button`, so the marker selectors are picked to be ones
+    // the app's own CSS cannot supply.
+    selectors: ['.maplibregl-canvas', '.maplibregl-ctrl-bottom-right'],
+    why:
+      'It is the only thing that positions what the map puts on itself. Without ' +
+      'it the canvas is not absolutely positioned, so compass, locate, the scale ' +
+      'bar and the zoom buttons follow it in normal flow and land past the bottom ' +
+      'edge of the map - in the DOM, below the fold, on a map that otherwise draws ' +
+      'perfectly. See src/map/MapView.tsx.',
   },
 ]
 
@@ -166,9 +197,29 @@ if (serviceWorker === undefined) {
   }
 }
 
+// 4. The stylesheets that make the map usable actually shipped.
+//
+// Separate from the asset checks above because there is no reference to look
+// for: Vite bundles imported CSS into the app's own stylesheet, so a forgotten
+// import leaves a build that is internally consistent and visibly broken.
+const stylesheets = files.filter((f) => f.endsWith('.css'))
+const styles = stylesheets.map((f) => readFileSync(f, 'utf8')).join('\n')
+
+for (const { what, selectors, why } of REQUIRED_STYLESHEETS) {
+  const missing = selectors.filter((selector) => !styles.includes(selector))
+  if (missing.length === 0) continue
+
+  problems.push(
+    `Missing from the built CSS: ${what}`,
+    `  no rule for ${missing.join(', ')} in ${stylesheets.length} emitted stylesheet(s)`,
+    `  ${why}`,
+  )
+}
+
 if (problems.length > 0) fail(problems)
 
 console.log(
   `Build output OK: ${referenced.size} referenced assets all published, ` +
-    `${REQUIRED_ASSETS.length} required asset(s) wired up and precached.`,
+    `${REQUIRED_ASSETS.length} required asset(s) wired up and precached, ` +
+    `${REQUIRED_STYLESHEETS.length} required stylesheet(s) in the built CSS.`,
 )

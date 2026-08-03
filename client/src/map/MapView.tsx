@@ -10,6 +10,19 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Map as MapLibreMap } from 'maplibre-gl'
+// MapLibre's own stylesheet, and not optional. Everything the map puts on
+// itself - compass, locate, the scale bar, the zoom buttons - is positioned by
+// this file and by nothing else. Without it `.maplibregl-canvas` is not
+// absolute, so the control container follows the canvas in normal flow instead
+// of sitting over it and lands past the bottom edge of the map: in a 1280x800
+// window the whole stack sat at y=804, four pixels below the fold, with the
+// document growing a scrollbar to reach it. The map drew correctly and had
+// nothing on it, which is exactly what it looked like.
+//
+// chrome.css's `.map-view .maplibregl-ctrl button` rule is an OVERRIDE of a
+// size set here (WIREFRAMES.md's 42px against MapLibre's 29px), which is the
+// tell that this import was forgotten rather than declined.
+import 'maplibre-gl/dist/maplibre-gl.css'
 import { registerPMTilesProtocol } from './protocol'
 import { registerMapWorker } from './mapWorker'
 import { buildMapStyle } from './style'

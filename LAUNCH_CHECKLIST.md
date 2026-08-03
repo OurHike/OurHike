@@ -170,7 +170,7 @@ I can write the Dockerfile and platform config once you pick a host — the choi
 **Legal and licensing, all previously flagged:**
 
 - **OpenStreetMap attribution is required by ODbL** and is already rendered by `MapScreen`. Do not remove it. It currently only matters once the Protomaps context basemap ships, but the code is already correct.
-- **opentrail.org licensing is unconfirmed** — `ROADMAP.md` Phase 1 has an open item to contact the maintainer. Their water and resupply data is in the build. Worth resolving before a public launch, not after.
+- **opentrail.org licensing is unconfirmed** — [#98](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/98) tracks contacting the maintainer. Their water and resupply data is in the build. Worth resolving before a public launch, not after.
 - USGS topo, USGS 3DEP and PAD-US are all public domain. ATC data is used with attribution.
 
 **Verify before launch:**
@@ -185,11 +185,14 @@ Confirms all four upstream sources are unchanged since the last fetch. Exits non
 
 ## Things I know are not done, stated plainly
 
-- **Real OAuth login has never been exercised end to end.** The auth code path is fully tested against a mocked Supabase client, but no real Google or Apple sign-in has happened, because that needs credentials only you can create. Expect to find something here.
-- **The wrong-way alert's thresholds (90 ft / 12 min / 25 min) are wireframe placeholders**, not validated numbers. `HIKER_SAFETY.md` explicitly declines to guess them pending field testing under tree canopy. The mechanism is tested; the numbers are not trustworthy yet, and this is the one feature where a false alarm costs the most.
-- **Cumulative ascent from the 25 m elevation profile over-counts** — 594,520 ft against the ~510,000 ft consensus, because dense sampling accumulates DEM noise as fake climbing. The profile is correct for drawing; anything computing total ascent should decimate first. Not yet done.
-- **No end-to-end test against real published artifacts.** Everything is verified against local files and mocks.
-- **Backend has never run against real Postgres outside CI.**
+Each of these is now an issue, so that fixing one closes it here too rather than leaving this list to be remembered. The [`v1-mvp`](https://github.com/jaimito-asuntos-gringuenos/OurHike/labels/v1-mvp) label is the current version of this list.
+
+- **Real OAuth login has never been exercised end to end** ([#92](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/92)). The auth code path is fully tested against a mocked Supabase client, but no real Google or Apple sign-in has happened, because that needs credentials only you can create. Expect to find something here.
+- **The wrong-way alert's thresholds (90 ft / 12 min / 25 min) are wireframe placeholders** ([#93](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/93)), not validated numbers. `HIKER_SAFETY.md` explicitly declines to guess them pending field testing under tree canopy. The mechanism is tested; the numbers are not trustworthy yet, and this is the one feature where a false alarm costs the most.
+- **Cumulative ascent from the 25 m elevation profile over-counts** ([#91](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/91)) — 594,520 ft against the ~510,000 ft consensus, because dense sampling accumulates DEM noise as fake climbing. The profile is correct for drawing; anything computing total ascent should decimate first.
+- **No end-to-end test against real published artifacts** ([#94](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/94)). Everything is verified against local files and mocks.
+- **Backend has never run against real Postgres outside CI** ([#95](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/95)).
+- **The report photo picker accepts a photo and discards it** ([#89](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/89)), and **POIs are never drawn on the map** ([#90](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/90)) — both found after this list was first written.
 
 ## Rough ordering if you want a working map fastest
 

@@ -110,6 +110,68 @@ describe('publishWrongWayAlert', () => {
     expect(spy).toHaveBeenCalledWith('Off trail', { body: 'Turn around' })
   })
 
+  it('delivers through the service worker, the only path a phone supports', async () => {
+    // The bug: this called `new Notification(...)` directly. Android Chrome
+    // refuses that outright - "Illegal constructor. Use
+    // ServiceWorkerRegistration.showNotification() instead" - and an
+    // installed iOS PWA, the only place iOS delivers web push at all, has no
+    // usable constructor either. The one notification OurHike is allowed to
+    // send was the one that could not arrive on a phone.
+    const constructor = vi.fn()
+    vi.stubGlobal(
+      'Notification',
+      Object.assign(constructor, { permission: 'granted' as NotificationPermission }),
+    )
+    const showNotification = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', {
+      serviceWorker: { getRegistration: vi.fn().mockResolvedValue({ showNotification }) },
+    })
+
+    expect(await publishWrongWayAlert({ title: 'Off trail', body: 'Turn around' })).toBe(
+      true,
+    )
+    expect(showNotification).toHaveBeenCalledWith('Off trail', { body: 'Turn around' })
+    expect(constructor).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the constructor where nothing is registered', async () => {
+    // A desktop browser during development, which is where this gets looked
+    // at - and the reason the constructor path is kept rather than removed.
+    const constructor = vi.fn()
+    vi.stubGlobal(
+      'Notification',
+      Object.assign(constructor, { permission: 'granted' as NotificationPermission }),
+    )
+    vi.stubGlobal('navigator', {
+      serviceWorker: { getRegistration: vi.fn().mockResolvedValue(undefined) },
+    })
+
+    expect(await publishWrongWayAlert({ title: 'Off trail', body: 'Turn around' })).toBe(
+      true,
+    )
+    expect(constructor).toHaveBeenCalledWith('Off trail', { body: 'Turn around' })
+  })
+
+  it('reports failure rather than throwing when no path works at all', async () => {
+    // wrongWayAlert.ts reads a false as "the in-app cue is all we have". An
+    // exception here would take the cue down with the push, which is the one
+    // outcome worse than a missed notification.
+    vi.stubGlobal(
+      'Notification',
+      Object.assign(
+        vi.fn(() => {
+          throw new TypeError('Illegal constructor')
+        }),
+        { permission: 'granted' as NotificationPermission },
+      ),
+    )
+    vi.stubGlobal('navigator', {
+      serviceWorker: { getRegistration: vi.fn().mockRejectedValue(new Error('no sw')) },
+    })
+
+    expect(await publishWrongWayAlert({ title: 'Off trail', body: '…' })).toBe(false)
+  })
+
   it('never asks for permission itself - that belongs to the hike-start flow', async () => {
     // HIKER_SAFETY.md puts the prompt at hike start, where the reason is
     // concrete. Asking here would mean prompting at the exact moment someone

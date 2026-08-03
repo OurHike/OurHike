@@ -1,0 +1,174 @@
+// Checks that the built app can actually draw a map, by reading the build
+// output rather than trusting that it is right.
+//
+// WHY A CHECK ON `dist/` AND NOT A UNIT TEST
+//
+// Every test in src/ mocks `maplibre-gl` outright, because jsdom has no WebGL
+// context and a real map cannot be constructed there at all. That mock is what
+// makes map code testable, and it is also a blind spot with a precise shape:
+// nothing in the suite ever asks whether the REAL MapLibre, in the REAL bundle,
+// can find the files it goes looking for at runtime. The style can be valid,
+// every layer can be in it, every unit test can pass, and the shipped app can
+// still draw nothing at all.
+//
+// That is not hypothetical. maplibre-gl 6 stopped inlining its web worker and
+// now resolves one from its own module URL - which after bundling is the app
+// chunk, so it fetched `assets/maplibre-gl-worker.mjs`, which no build ever
+// emitted, and 404'd. MapLibre fires no error for that. The worker is where
+// vector tiles are parsed, rasters decoded, GeoJSON cut into tiles and symbols
+// laid out, so the map drew nothing but its background colour: a blank sheet of
+// paper, on every platform, online and off. See src/map/mapWorker.ts.
+//
+// The general shape of that bug is "the app asks for a file the build did not
+// publish", so that is what is checked here, for every asset rather than only
+// the one that bit. Runs as part of `npm run build`, so a bundle that cannot
+// draw a map cannot be deployed - the build IS the artifact that ships, and it
+// is the only honest place to look.
+
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { dirname, join, relative } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const DIST = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist')
+
+/**
+ * Where the app's own emitted files live inside the output, and the prefix
+ * every reference to one carries.
+ *
+ * Vite writes them under `assets/` whatever `base` is set to, and `base` is a
+ * deploy-time variable (GitHub Pages serves this under /OurHike/app/), so
+ * references are matched on the `assets/<file>` tail rather than on a full
+ * path that changes per deploy.
+ */
+const ASSET_DIR = 'assets'
+
+/**
+ * The asset whose absence is silent.
+ *
+ * Listed by name rather than left to the generic check below, because the
+ * generic check can only compare what IS referenced against what exists - and
+ * the failure mode here was the reference disappearing entirely, leaving
+ * MapLibre to fall back on a guess that resolves to nothing. A bundle that has
+ * stopped mentioning the worker looks perfectly consistent; it is just blank.
+ */
+const REQUIRED_ASSETS = [
+  {
+    pattern: /^maplibre-gl-worker.*\.js$/,
+    expected: 'assets/maplibre-gl-worker-<hash>.js',
+    what: "MapLibre's web worker",
+    why:
+      'Without it MapLibre parses no tiles at all and the map draws nothing but ' +
+      'its background colour - silently, with no error event. ' +
+      'See src/map/mapWorker.ts.',
+  },
+]
+
+function walk(dir) {
+  const out = []
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry)
+    if (statSync(full).isDirectory()) out.push(...walk(full))
+    else out.push(full)
+  }
+  return out
+}
+
+function fail(lines) {
+  console.error(`\nBuild output check FAILED\n`)
+  for (const line of lines) console.error(`  ${line}`)
+  console.error('')
+  process.exit(1)
+}
+
+let files
+try {
+  files = walk(DIST)
+} catch {
+  fail([
+    `No build output at ${DIST}.`,
+    'This check reads what `vite build` produced, so run it after a build.',
+  ])
+}
+
+const present = new Set(
+  files.map((f) => relative(DIST, f).split(/[\\/]/).join('/')).filter(Boolean),
+)
+const emittedAssets = [...present]
+  .filter((p) => p.startsWith(`${ASSET_DIR}/`))
+  .map((p) => p.slice(ASSET_DIR.length + 1))
+
+// Only the text the browser actually executes. Sourcemaps and the precache
+// manifest are read separately or not at all; scanning them here would report
+// references that no runtime ever follows.
+const executable = files.filter((f) => /\.(js|mjs|css|html|webmanifest)$/.test(f))
+
+const problems = []
+
+// 1. Everything the app references, it publishes.
+const referenced = new Map()
+for (const file of executable) {
+  const text = readFileSync(file, 'utf8')
+  for (const [, name] of text.matchAll(/assets\/([A-Za-z0-9][A-Za-z0-9._-]*)/g)) {
+    if (!referenced.has(name)) referenced.set(name, new Set())
+    referenced.get(name).add(relative(DIST, file))
+  }
+}
+
+for (const [name, from] of [...referenced].sort()) {
+  if (present.has(`${ASSET_DIR}/${name}`)) continue
+  problems.push(
+    `Referenced but never emitted: ${ASSET_DIR}/${name}`,
+    `  referenced from: ${[...from].join(', ')}`,
+    `  The app will request this at runtime and get a 404.`,
+  )
+}
+
+// 2. The assets whose absence would be silent are there, and wired up.
+for (const { pattern, expected, what, why } of REQUIRED_ASSETS) {
+  const emitted = emittedAssets.filter((name) => pattern.test(name))
+  const wired = emitted.filter((name) => referenced.has(name))
+
+  if (emitted.length === 0) {
+    problems.push(`Missing from the build: ${what} (expected ${expected})`, `  ${why}`)
+  } else if (wired.length === 0) {
+    problems.push(
+      `Emitted but never referenced: ${what} (${emitted.join(', ')})`,
+      `  Nothing in the bundle points at it, so at runtime MapLibre falls back`,
+      `  to guessing a path next to the app chunk, where nothing is published.`,
+      `  ${why}`,
+    )
+  }
+}
+
+// 3. Whatever the app needs to draw a map, it needs on a ridge too.
+//
+// An offline-first map that fetches part of itself on demand works in town and
+// fails where it matters, which is the one failure this app cannot ship. The
+// service worker's precache list is generated by vite-plugin-pwa from the build
+// output, so this asks whether the real manifest really names them.
+const serviceWorker = files.find((f) => /(^|[\\/])sw\.js$/.test(f))
+if (serviceWorker === undefined) {
+  problems.push(
+    'No service worker in the build output.',
+    '  Without one nothing is precached and the app cannot open offline at all.',
+  )
+} else {
+  const precache = readFileSync(serviceWorker, 'utf8')
+  for (const { pattern, what } of REQUIRED_ASSETS) {
+    const emitted = emittedAssets.filter((name) => pattern.test(name))
+    if (emitted.length > 0 && !emitted.some((name) => precache.includes(name))) {
+      problems.push(
+        `Not precached: ${what} (${emitted.join(', ')})`,
+        `  The map would work with signal and go blank without it, which is the`,
+        `  one place this app is meant to work.`,
+      )
+    }
+  }
+}
+
+if (problems.length > 0) fail(problems)
+
+console.log(
+  `Build output OK: ${referenced.size} referenced assets all published, ` +
+    `${REQUIRED_ASSETS.length} required asset(s) wired up and precached.`,
+)

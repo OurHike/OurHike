@@ -113,9 +113,38 @@ export function ReportForm({
         />
       </label>
 
+      {/* The photo field, deliberately not a working file input.
+          It was one: `<input type="file" accept="image/*">` with no onChange,
+          no ref and no state behind it. A hiker photographing a washed-out
+          bridge got a control that accepted the photo, and a report that
+          arrived without it, with nothing anywhere indicating the loss.
+
+          The backend half is finished - `photo_url` exists on the schema, is
+          persisted, and is read back. What does not exist is anywhere to
+          upload TO. That is a decision (R2, already in the stack with
+          credentials, or Supabase Storage, already the auth provider), and
+          until it is made there is nothing for a picker to do.
+
+          So the control is disabled and says why, rather than removed. Removed
+          would be honest too, but a hiker who took a photo specifically to
+          attach would be left wondering whether they had missed the button;
+          this tells them, and tells them the note is what carries the report
+          for now. It is still a real <input>, still labelled "Photo", so the
+          day an upload target exists this is a working control and a wired
+          onChange rather than a re-add. */}
       <label className="reporting__field">
         <span className="reporting__field-label">Photo</span>
-        <input type="file" accept="image/*" className="reporting__photo" />
+        <input
+          type="file"
+          accept="image/*"
+          className="reporting__photo"
+          disabled
+          aria-describedby="photo-unavailable"
+        />
+        <span className="reporting__unavailable" id="photo-unavailable">
+          Photos can&rsquo;t be attached yet. Describe what you saw in the note and it
+          will reach the club just the same.
+        </span>
       </label>
 
       <p className="reporting__meta">{describeLocation(location)}</p>

@@ -192,7 +192,10 @@ Each of these is now an issue, so that fixing one closes it here too rather than
 - **Cumulative ascent needs one real validation run** ([#91](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/91)). The over-count is fixed in code: `pipeline/lib/elevation_gain.py` and `client/src/lib/elevationGain.ts` count a climb only once the ground reverses by more than the DEM can resolve, so noise is dropped and real climbs are still counted whole. What has *not* happened is the check — `pipeline/check_elevation_gain.py` compares the result against published figures section by section, and `pipeline/reference/published_gain.json` has no sections in it yet, so the check deliberately fails. It needs a full `export_elevation.py` run plus two or three cited section figures; until then the threshold is derived rather than confirmed.
 - **No end-to-end test against real published artifacts** ([#94](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/94)). Everything is verified against local files and mocks.
 - **Backend has never run against real Postgres outside CI** ([#95](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/95)).
-- **The report photo picker accepts a photo and discards it** ([#89](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/89)), and **POIs are never drawn on the map** ([#90](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/90)) — both found after this list was first written.
+- **The report form cannot attach a photo** ([#89](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/89)) — no longer silently: the picker is disabled and says so, rather than accepting a file and throwing it away. Making it work needs one decision, R2 or Supabase Storage, and then the client half; the backend half is already built.
+- **POIs are never drawn on the map** ([#90](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/90)).
+
+Both of the above were found after this list was first written.
 
 ## Rough ordering if you want a working map fastest
 

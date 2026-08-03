@@ -53,6 +53,17 @@ export class MockMap {
    *  tests need to be able to produce both. */
   layerIds: string[] = []
   sourceIds: string[] = []
+  /**
+   * Explicit stand-ins for sources whose behaviour a test needs to observe,
+   * by id - see MockVectorSource.
+   *
+   * The plain `sourceIds` list above covers the GeoJSON case, where the only
+   * interesting thing is what got pushed in. A vector source is different:
+   * retuning one is a read (what tiles is it on now?) followed by a
+   * conditional write, so a test has to be able to seed the read. Registering
+   * an object here wins over `sourceIds` for that id.
+   */
+  readonly sources = new Map<string, unknown>()
   /** Test-settable: real MapLibre only accepts images and paint writes once the
    *  style has loaded, and callers have to cope with both answers. */
   styleLoaded = false
@@ -143,7 +154,19 @@ export class MockMap {
     return this
   }
 
-  getSource(id: string): { setData(data: unknown): void } | undefined {
+  /**
+   * Real `getSource` answers with the union of every source kind, so callers
+   * have to feature-check what came back before using it - and this returns
+   * three different shapes for exactly that reason.
+   *
+   * An explicitly registered stand-in wins, so a test that cares about a
+   * vector source's tile URLs can seed them. Otherwise a source the style is
+   * declared to hold answers as a GeoJSON one. Otherwise undefined, which is
+   * both "no such source" and "the style has not loaded yet".
+   */
+  getSource(id: string): unknown {
+    const registered = this.sources.get(id)
+    if (registered !== undefined) return registered
     if (!this.sourceIds.includes(id)) return undefined
     return { setData: (data: unknown) => this.sourceData.set(id, data) }
   }
@@ -177,6 +200,28 @@ export class MockMap {
 
   getCanvas(): HTMLCanvasElement {
     return document.createElement('canvas')
+  }
+}
+
+/**
+ * Stand-in for a VectorTileSource, enough of one to observe a retune: it holds
+ * the tile URLs it was given and records every `setTiles` call, so a test can
+ * tell "re-pointed once" apart from "re-pointed on every render."
+ */
+export class MockVectorSource {
+  readonly setTilesCalls: string[][] = []
+  tiles: string[]
+
+  // Assigned in the body rather than declared as a parameter property: the
+  // project builds with `erasableSyntaxOnly`, which rejects the shorthand.
+  constructor(tiles: string[]) {
+    this.tiles = tiles
+  }
+
+  setTiles(tiles: string[]): this {
+    this.setTilesCalls.push(tiles)
+    this.tiles = tiles
+    return this
   }
 }
 

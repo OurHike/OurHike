@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  BACKGROUND_SOURCES,
   DEFAULT_PREFERENCES,
   PREFERENCE_KEYS,
   type UserPreferences,
@@ -68,8 +69,22 @@ describe('UserPreferences schema', () => {
     )
   })
 
-  it('defaults to the offline topo basemap - the only source that works with no signal', () => {
-    expect(DEFAULT_PREFERENCES.background_source).toBe('usgs_topo_offline')
+  it('defaults to the live topo sheet, which still renders the download with no signal', () => {
+    // Not a reversal of the offline-first premise: the live background is
+    // drawn OVER the archive rather than instead of it (map/style.ts), so with
+    // no signal this default shows exactly what usgs_topo_offline would. What
+    // it changes is first run, where nothing is downloaded yet and the other
+    // default would open the app on blank paper.
+    expect(DEFAULT_PREFERENCES.background_source).toBe('hiking_topo_live')
+  })
+
+  it('offers only backgrounds that are actually implemented', () => {
+    // The enum used to carry usgs_topo_live and osm_styled_live, neither of
+    // which was ever built. A value nothing can render is a settings row
+    // nobody can honour and a preference the backend would happily store.
+    expect([...BACKGROUND_SOURCES].sort()).toEqual(
+      ['hiking_topo_live', 'usgs_topo_offline'].sort(),
+    )
   })
 
   it('defaults theme to auto and units to imperial, per the canonical model', () => {

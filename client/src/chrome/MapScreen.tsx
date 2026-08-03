@@ -19,8 +19,9 @@ import { ElevationRibbon, type ElevationRibbonProps } from './ElevationRibbon'
 import { WaypointLanes, type WaypointLanesProps } from './WaypointLanes'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapView } from '../map/MapView'
-import { ATTRIBUTION } from '../map/style'
+import { attributionFor } from '../map/style'
 import type { ScaleUnits } from '../map/mapChrome'
+import type { BackgroundSource } from '../lib/userPreferences'
 import type { BoundingBox, MapPoint } from '../lib/legendContents'
 import type { SearchablePoi } from '../lib/searchPoi'
 import './chrome.css'
@@ -28,6 +29,9 @@ import './chrome.css'
 export interface MapScreenProps {
   topoArchiveUrl: string
   trailsUrl: string
+  /** Which background the map draws; also decides what the corner has to
+   *  credit, since the live sheet brings two more licences with it. */
+  background?: BackgroundSource
 
   trailName: string
   // All three are omitted until they are actually known - see HeaderProps.
@@ -89,6 +93,7 @@ export interface MapScreenProps {
 export function MapScreen({
   topoArchiveUrl,
   trailsUrl,
+  background = 'hiking_topo_live',
   trailName,
   state,
   mile,
@@ -147,6 +152,7 @@ export function MapScreen({
         <MapView
           topoArchiveUrl={topoArchiveUrl}
           trailsUrl={trailsUrl}
+          background={background}
           pois={viewportPoints}
           hiddenTypes={hiddenTypes}
           showZoomButtons={showZoomButtons}
@@ -157,7 +163,7 @@ export function MapScreen({
           onViewportChange={onViewportChange}
           onMapReady={onMapReady}
         />
-        <p className="map-screen__attribution">{ATTRIBUTION}</p>
+        <p className="map-screen__attribution">{attributionFor(background)}</p>
 
         <Search
           open={searchOpen}

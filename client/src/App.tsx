@@ -460,6 +460,7 @@ function App() {
     <MapScreen
       topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
       trailsUrl={trailsUrl}
+      background={preferences.background_source}
       trailName={TRAIL_NAME}
       mile={fix?.mile}
       direction={direction?.direction}

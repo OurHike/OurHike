@@ -77,6 +77,13 @@ from rasterio.windows import Window
 from shapely import wkt as shapely_wkt
 from shapely.geometry import LineString, MultiLineString, Point
 
+from lib.elevation_gain import (
+    DEFAULT_THRESHOLD_FT,
+    DEFAULT_THRESHOLD_M,
+    cumulative_gain_over_gaps,
+    raw_cumulative_gain,
+)
+
 ROOT = Path(__file__).parent
 CENTERLINE_PATH = ROOT / "data" / "raw" / "centerline.geojson"
 ELEVATION_INDEX_PATH = ROOT / "data" / "raw" / "elevation" / "tile_index.json"
@@ -491,6 +498,17 @@ def main() -> dict:
     null_elevation_pct = (null_elevation_count / len(records) * 100) if records else 0.0
     print(f"  {null_elevation_count} points with no DEM coverage ({null_elevation_pct:.2f}% of {len(records)}).")
 
+    # Both numbers, not just the good one. The raw sum is what this profile
+    # gives anyone who adds up its rises without thinking about it - 17% too
+    # high, because summing is the operation that turns DEM error into signal
+    # (lib/elevation_gain.py). Recording them side by side means the next
+    # person to reach for a total finds the corrected one *and* finds out why
+    # it is not the obvious one, rather than rederiving the bug.
+    elevations = [r["elevation_ft"] for r in records]
+    raw_gain_ft = raw_cumulative_gain(elevations)
+    gain_ft = cumulative_gain_over_gaps(elevations, DEFAULT_THRESHOLD_FT)
+    print(f"  Cumulative ascent {gain_ft:,.0f} ft at a {DEFAULT_THRESHOLD_M} m dead band; {raw_gain_ft:,.0f} ft raw.")
+
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(json.dumps(records))
 
@@ -500,6 +518,9 @@ def main() -> dict:
         "point_count": len(records),
         "null_elevation_count": null_elevation_count,
         "null_elevation_pct": round(null_elevation_pct, 2),
+        "cumulative_gain_ft": round(gain_ft),
+        "cumulative_gain_raw_ft": round(raw_gain_ft),
+        "cumulative_gain_threshold_m": DEFAULT_THRESHOLD_M,
     }
     MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
     MANIFEST_PATH.write_text(json.dumps(manifest, indent=2))

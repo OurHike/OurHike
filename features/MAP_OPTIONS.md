@@ -89,6 +89,20 @@ The split matters for failure behaviour: the paper is in `buildMapStyle` and can
 - `hiking_topo_live` **(default)** - the live topographic sheet, drawn over the archive. See the build note at the top of this section for why defaulting to it costs the offline premise nothing.
 - `usgs_topo_offline` - the downloaded corridor alone, and **no background request at all**. The honest choice for someone metering data or deliberately dark, which is a real reason to keep it and the only reason it is still a setting.
 
+**Data Saver overrides the choice, and says so (2026-08-03, [#122](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/122)).** Making the live sheet the default meant every hiker with signal started pulling tiles they had not asked for - roughly 2 MB for a fresh view, measured over the AT (DEM tiles run 110-130 KB each at z11-13). That is small against the 314 MB corridor download and it costs the project nothing, since OpenFreeMap is uncapped and the AWS DEM is Open Data with sponsored egress. It is a **consent** problem rather than a cost one: the archive is a size on a button someone taps, and this was a default they inherited.
+
+So `navigator.connection.saveData` now decides the background that is actually drawn (`client/src/lib/dataSaver.ts`). Data Saver is a preference the hiker set deliberately at the OS level, which is a better signal about their plan than our default could be, so it **wins** rather than merely nudging.
+
+Two things make that defensible rather than presumptuous, and neither ships without the other:
+
+- **It only ever subtracts.** The override can turn the live sheet off; nothing can turn background requests on for someone who chose the download.
+- **Settings says it plainly**, and only when the two actually disagree. Overriding a preference is fine; overriding one while the screen still claims otherwise is the exact quiet mismatch value #4 exists to prevent - and that row is the only place someone would go to find out why the map looks different.
+
+**Known limits, both real:**
+
+- **iOS gets nothing from this.** Safari implements no part of the Network Information API, so `saveData` is always undefined there and the honest description is that this improves Android and does nothing for iPhone. `@capacitor/network`'s `connectionType` would close the gap, blocked on [#101](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/101).
+- **Someone who leaves Data Saver on permanently cannot get the live sheet** without turning it off, because nothing stored distinguishes "chose the live sheet" from "never touched the default". Giving those two different answers needs a real "this was chosen" flag on the synced preferences - there is precedent in `download_choice_made` - and that is a contract change worth deciding rather than assuming. Flagged in #122, not decided here.
+
 The two names originally sketched here, `usgs_topo_live` and `osm_styled_live`, were **removed rather than kept as placeholders.** Neither was ever built, and a value nothing can render is a settings row nobody can honour and a preference the backend would happily store and sync back as a map with no background on it. A phone that saved one before this change drops it on read and falls back to the default (`client/src/lib/preferences.ts`), which is the mirror image of the merge-over-defaults rule that file already had for *missing* keys: a key holding a value this build no longer knows is not fixed by merging, because the key is present.
 
 ## 2. Roads & sidewalk-based walkability

@@ -97,7 +97,6 @@ export async function downloadTrailData({
 
   report('Trail lines')
   const trails = await (await fetchOrThrow(dataUrl(TRAILS_KEY), signal)).blob()
-  await set(TRAILS_BLOB_KEY, trails)
   completed += 1
 
   const pois: StoredPoi[] = []
@@ -108,6 +107,15 @@ export async function downloadTrailData({
     completed += 1
   }
 
+  // Nothing is committed until everything has arrived. Writing the trail lines
+  // as soon as they landed meant a POI fetch failing - signal dropping partway
+  // is the ordinary case here, not the edge one - left a store holding new
+  // trail lines and no POIs at all. That state is invisible: the map draws its
+  // trail, and search and the legend are simply empty, with the error long
+  // gone from a React state variable by the next launch. Holding both until
+  // the end costs the few megabytes already in hand and makes a failed
+  // download leave the phone exactly as it found it.
+  await set(TRAILS_BLOB_KEY, trails)
   await set(POIS_KEY, pois)
   report('Done')
 }

@@ -1,0 +1,117 @@
+{
+  "_README": [
+    "Cumulative-ascent test vectors, read by BOTH implementations:",
+    "",
+    "  pipeline/tests/test_lib_elevation_gain.py   (Python)",
+    "  client/src/lib/elevationGain.test.ts        (TypeScript)",
+    "",
+    "The algorithm exists twice because it is asked two different questions -",
+    "the pipeline asks once about the whole trail, the app asks about a window",
+    "that moves as a hiker walks - and two implementations of one number drift.",
+    "Not gradually and visibly, either: they drift the first time someone fixes",
+    "an edge case in one language and does not think to open the other file.",
+    "",
+    "Shared vectors turn that into a failing test in whichever language was not",
+    "updated, which is the only mechanism here that does not rely on remembering.",
+    "",
+    "Elevations are unitless; each case carries its own threshold in the same",
+    "unit. Add a case by adding it here - both suites pick it up with no code",
+    "change in either."
+  ],
+
+  "cases": [
+    {
+      "name": "a single climb counts its whole rise",
+      "elevations": [100, 200, 300, 400],
+      "threshold": 3,
+      "expected_gain": 300
+    },
+    {
+      "name": "every separate climb in a rolling profile counts",
+      "elevations": [0, 100, 50, 150, 100, 200],
+      "threshold": 3,
+      "expected_gain": 300
+    },
+    {
+      "name": "flat ground with DEM jitter has no gain",
+      "elevations": [1000, 1000.4, 999.3, 1000.2, 999.7, 1000.6, 999.5, 1000.1],
+      "threshold": 3,
+      "expected_gain": 0
+    },
+    {
+      "name": "a swing just under the threshold is dropped whole",
+      "elevations": [100, 102.9, 100, 102.9, 100],
+      "threshold": 3,
+      "expected_gain": 0
+    },
+    {
+      "name": "a swing just over the threshold is kept whole",
+      "elevations": [100, 103.1, 100, 103.1],
+      "threshold": 3,
+      "expected_gain": 6.2
+    },
+    {
+      "name": "a gentle climb below the step size still counts",
+      "elevations": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      "threshold": 3,
+      "expected_gain": 10
+    },
+    {
+      "name": "a pure descent has no gain",
+      "elevations": [500, 400, 300, 200, 100],
+      "threshold": 3,
+      "expected_gain": 0
+    },
+    {
+      "name": "a climb the profile ends on is counted",
+      "elevations": [0, 100, 50, 400],
+      "threshold": 3,
+      "expected_gain": 450
+    },
+    {
+      "name": "a climb is measured from the true low, not the first sample",
+      "elevations": [100, 98, 500],
+      "threshold": 3,
+      "expected_gain": 402
+    },
+    {
+      "name": "a zero threshold is the raw sum this replaces",
+      "elevations": [100, 101, 100, 101],
+      "threshold": 0,
+      "expected_gain": 2
+    },
+    {
+      "name": "no samples",
+      "elevations": [],
+      "threshold": 3,
+      "expected_gain": 0
+    },
+    {
+      "name": "one sample cannot have climbed",
+      "elevations": [42],
+      "threshold": 3,
+      "expected_gain": 0
+    }
+  ],
+
+  "gap_cases": [
+    {
+      "name": "a DEM gap is not bridged into a climb",
+      "elevations": [100, 110, null, 3000, 3010],
+      "threshold": 3,
+      "expected_gain": 20
+    },
+    {
+      "name": "each side of a gap is still measured",
+      "elevations": [0, 500, null, 0, 500],
+      "threshold": 3,
+      "expected_gain": 1000
+    },
+    {
+      "name": "a profile that is entirely nulls has no gain",
+      "elevations": [null, null, null],
+      "threshold": 3,
+      "expected_gain": 0
+    }
+  ]
+}

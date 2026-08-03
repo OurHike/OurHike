@@ -1,0 +1,55 @@
+{
+  "_README": [
+    "Published cumulative-ascent figures to check lib/elevation_gain.py's dead",
+    "band against. Read by check_elevation_gain.py.",
+    "",
+    "`sections` is EMPTY ON PURPOSE and the check fails while it stays that",
+    "way. Inventing plausible-looking section figures would make an",
+    "unvalidated threshold look validated, which is worse than no check: the",
+    "whole reason this file exists is that a gain number can agree with a",
+    "consensus by construction and mean nothing. An empty table that fails",
+    "loudly is the honest state.",
+    "",
+    "To fill it in: pick sections with a well-known, quotable gain figure and",
+    "unambiguous mileposts - the Whites (Franconia Ridge, the Presidentials),",
+    "the Roan Highlands, the Blood Mountain climb - and record where each",
+    "number came from. Two or three sections of genuinely different character",
+    "are worth more than a dozen from the same guidebook, because the point is",
+    "that ONE threshold has to work for all of them.",
+    "",
+    "Mileposts are northbound miles from Springer, matching",
+    "elevation_profile.json's distance_mi. Note that AT mileages shift between",
+    "years as the trail is relocated, so `source_year` is not optional detail."
+  ],
+
+  "_schema": {
+    "whole_trail": {
+      "published_gain_ft": "number, or null",
+      "source": "where the figure came from",
+      "source_year": "number"
+    },
+    "sections": [
+      {
+        "name": "human-readable, e.g. 'Franconia Ridge'",
+        "start_mi": "number, northbound miles from Springer",
+        "end_mi": "number",
+        "published_gain_ft": "number",
+        "source": "who published it",
+        "source_year": "number"
+      }
+    ]
+  },
+
+  "whole_trail": {
+    "published_gain_ft": 510000,
+    "source": "commonly cited consensus figure for the full AT, as recorded in issue #91",
+    "source_year": 2026,
+    "_note": [
+      "Approximate and rounded, and treated as such. It is reported by",
+      "check_elevation_gain.py but never gates: one scalar against one free",
+      "parameter is not a test, because some threshold always hits it."
+    ]
+  },
+
+  "sections": []
+}

@@ -169,7 +169,7 @@ I can write the Dockerfile and platform config once you pick a host — the choi
 
 **Legal and licensing, all previously flagged:**
 
-- **OpenStreetMap attribution is required by ODbL** and is already rendered by `MapScreen`. Do not remove it. It currently only matters once the Protomaps context basemap ships, but the code is already correct.
+- **OpenStreetMap attribution is required by ODbL** and is already rendered by `MapScreen`. Do not remove it. **This stopped being theoretical on 2026-08-03**: the live topographic background ships OSM vector tiles by default, so the credit is load-bearing now rather than pending the Protomaps context basemap. Two further conditions of use came with it, both already in the rendered string — OpenFreeMap's own terms for the hosting, and AWS Terrain Tiles' attribution requirement for the elevation behind the hillshade and contours.
 - **opentrail.org licensing is unconfirmed** — [#98](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/98) tracks contacting the maintainer. Their water and resupply data is in the build. Worth resolving before a public launch, not after.
 - USGS topo, USGS 3DEP and PAD-US are all public domain. ATC data is used with attribution.
 

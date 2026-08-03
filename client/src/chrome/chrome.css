@@ -404,8 +404,10 @@
   list-style: none;
 }
 
-/* Pin types read as a 2-column grid; blaze rows stay full width so the line
-   swatch has room to show its dash rhythm. */
+/* Pin types read as a 2-column grid; blaze rows stay full width so a blaze
+   name has room to sit on one line beside its swatch. The swatch is a solid
+   bar, which is now literally how the map draws the line (map/style.ts) - it
+   used to be a solid bar standing in for a dashed one. */
 .legend__pins {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

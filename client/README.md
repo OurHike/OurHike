@@ -14,14 +14,21 @@ npm run dev
 Everything except the map data works with no configuration. The map itself
 needs a published data bucket — see below.
 
-| Command             | What it does                                  |
-| ------------------- | --------------------------------------------- |
-| `npm run dev`       | Dev server with HMR                           |
-| `npm run build`     | Typecheck, then production build into `dist/` |
-| `npm run preview`   | Serve `dist/` locally                         |
-| `npm test`          | Full test suite with coverage                 |
-| `npm run typecheck` | App and test tsconfigs                        |
-| `npm run lint`      | oxlint                                        |
+| Command               | What it does                                            |
+| --------------------- | ------------------------------------------------------- |
+| `npm run dev`         | Dev server with HMR                                     |
+| `npm run build`       | Typecheck, production build into `dist/`, then check it |
+| `npm run check:build` | Re-run that check on an existing `dist/`                |
+| `npm run preview`     | Serve `dist/` locally                                   |
+| `npm test`            | Full test suite with coverage                           |
+| `npm run typecheck`   | App and test tsconfigs                                  |
+| `npm run lint`        | oxlint                                                  |
+
+`check:build` reads the build output and asks whether the app can actually draw
+a map — every asset it references is published, MapLibre's web worker among
+them, and precached for offline. It is part of `build` because the failure it
+guards against is silent: the map goes blank with no error anywhere. See
+`scripts/check-build-output.mjs`.
 
 ## Pointing it at data
 

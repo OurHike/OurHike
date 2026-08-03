@@ -246,6 +246,25 @@ export class AttributionControl extends MockControl {}
 export const addProtocol = vi.fn()
 export const removeProtocol = vi.fn()
 
+/**
+ * Where MapLibre would fetch its worker from.
+ *
+ * Real MapLibre starts this EMPTY and, left empty, falls back to guessing a
+ * path from its own module URL - which after bundling is the app chunk, next to
+ * which no worker is ever published. Modelling the empty start is the whole
+ * point: it is the state in which the shipped map drew nothing at all, and a
+ * mock that pre-filled it could not tell the two apart.
+ */
+let workerUrl = ''
+
+export function setWorkerUrl(value: string): void {
+  workerUrl = value
+}
+
+export function getWorkerUrl(): string {
+  return workerUrl
+}
+
 export { MockMap as Map }
 
 /** Clear recorded state between tests. */
@@ -253,12 +272,15 @@ export function resetMapLibreMock(): void {
   MockMap.instances.length = 0
   addProtocol.mockClear()
   removeProtocol.mockClear()
+  workerUrl = ''
 }
 
 export default {
   Map: MockMap,
   addProtocol,
   removeProtocol,
+  setWorkerUrl,
+  getWorkerUrl,
   NavigationControl,
   GeolocateControl,
   ScaleControl,

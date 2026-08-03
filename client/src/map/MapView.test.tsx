@@ -18,7 +18,10 @@ import type { MapPoint } from '../lib/legendContents'
 // React StrictMode deliberately mounts -> unmounts -> remounts in development
 // precisely to expose that class of bug, so these tests run under it.
 
-const { registrationOrder } = vi.hoisted(() => ({ registrationOrder: [] as number[] }))
+const { registrationOrder, workerOrder } = vi.hoisted(() => ({
+  registrationOrder: [] as number[],
+  workerOrder: [] as number[],
+}))
 
 vi.mock('maplibre-gl', () => import('../test/mocks/maplibre-gl'))
 
@@ -35,6 +38,21 @@ vi.mock('./protocol', async () => {
   }
 })
 
+// The same recording for the worker, which has the same before-any-map
+// requirement and a much quieter failure: MapLibre keeps ONE worker pool per
+// page and builds it for the first map, so a URL set after that is a URL the
+// pool never reads. The map then parses no tiles at all and draws nothing but
+// its background colour, with no error anywhere - see mapWorker.ts.
+vi.mock('./mapWorker', async () => {
+  const { MockMap: Recorded } = await import('../test/mocks/maplibre-gl')
+  return {
+    registerMapWorker: vi.fn(() => {
+      workerOrder.push(Recorded.instances.length)
+      return '/assets/maplibre-gl-worker-test.js'
+    }),
+  }
+})
+
 const PROPS = {
   topoArchiveUrl: 'pmtiles://ourhike-corridor',
   trailsUrl: '/data/trails.geojson',
@@ -43,6 +61,7 @@ const PROPS = {
 beforeEach(() => {
   resetMapLibreMock()
   registrationOrder.length = 0
+  workerOrder.length = 0
 })
 
 afterEach(() => {
@@ -96,6 +115,16 @@ describe('MapView', () => {
 
     expect(registrationOrder.length).toBeGreaterThan(0)
     expect(registrationOrder[0]).toBe(0)
+  })
+
+  it('points MapLibre at its bundled worker before constructing any map', () => {
+    // Not a detail of setup order: with no worker MapLibre parses no tiles of
+    // any kind, so the basemap, the contours, the trail line and the pins all
+    // draw nothing and the map is a blank sheet of paper. It shipped that way.
+    render(<MapView {...PROPS} />)
+
+    expect(workerOrder.length).toBeGreaterThan(0)
+    expect(workerOrder[0]).toBe(0)
   })
 
   it('builds the map against the container it rendered, using the style URLs it was given', () => {

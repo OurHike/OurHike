@@ -121,7 +121,13 @@ export function attachContourUnits(map: MapLibreMap, units: ContourUnits): () =>
       const contours = map.getSource(CONTOUR_SOURCE_ID) as VectorTileSource | undefined
       // Absent whenever the background in the style is not the live one, which
       // is a normal state rather than a failure - nothing to retune.
-      if (contours === undefined) return
+      //
+      // `setTiles` is feature-checked as well as the source, because getSource
+      // answers with the union of every source kind and only a vector one can
+      // be re-pointed. Same guard poiLayers.ts makes before calling setData,
+      // and for the same reason: the id is ours, but the shape behind it is
+      // whatever the current style put there.
+      if (contours === undefined || typeof contours.setTiles !== 'function') return
 
       const wanted = registerTerrain(units).contourTilesUrl
       if (contours.tiles?.length === 1 && contours.tiles[0] === wanted) return

@@ -16,7 +16,8 @@ import { attachContourUnits, registerTerrain } from './contours'
 import type { TerrainUrls } from './terrain'
 import { attachMapChrome, type ScaleUnits } from './mapChrome'
 import { attachMapBackdrop } from './backdrop'
-import type { BoundingBox } from '../lib/legendContents'
+import { attachHiddenPoiTypes, attachPoiData, attachPoiIcons } from './poiLayers'
+import type { BoundingBox, MapPoint } from '../lib/legendContents'
 import type { BackgroundSource } from '../lib/userPreferences'
 
 export interface MapViewProps {
@@ -26,6 +27,18 @@ export interface MapViewProps {
   trailsUrl: string
   /** Which background to draw - see lib/userPreferences.ts. */
   background?: BackgroundSource
+  /**
+   * The POIs to draw - the same array the legend counts. Pushed onto the live
+   * map rather than baked into the style, because they are read from IndexedDB
+   * well after the map is built and swapping a style out drops the WebGL
+   * context with it.
+   */
+  pois?: readonly MapPoint[]
+  /**
+   * POI categories the hiker has hidden from the legend. Applied as a filter
+   * on the pin layer, so hiding a category costs a filter, not a rebuild.
+   */
+  hiddenTypes?: ReadonlySet<string>
   /** Initial centre only - later camera moves go through the map imperatively. */
   center?: [number, number]
   /** Initial zoom only. */
@@ -57,10 +70,19 @@ export interface MapViewProps {
 const DEFAULT_CENTER: [number, number] = [-77.1, 39.3]
 const DEFAULT_ZOOM = 12
 
+// Module-level, so the default is the SAME value on every render. A `= []`
+// default parameter would hand over a fresh identity each time and re-run the
+// effect that depends on it, which for the POI source means re-serialising
+// every pin on the trail on every render of the map screen.
+const NO_POIS: readonly MapPoint[] = []
+const NOTHING_HIDDEN: ReadonlySet<string> = new Set()
+
 export function MapView({
   topoArchiveUrl,
   trailsUrl,
   background = 'hiking_topo_live',
+  pois = NO_POIS,
+  hiddenTypes = NOTHING_HIDDEN,
   center,
   zoom,
   bounds,
@@ -161,6 +183,26 @@ export function MapView({
     if (map === null) return
     return attachMapBackdrop(map)
   }, [map])
+
+  // Three separate effects rather than one, because they change on completely
+  // different clocks: the pin images are built once and never again, the POIs
+  // land once the download finishes, and the hidden set changes every time the
+  // hiker taps a legend row. Folding them together would re-register sixty
+  // rasterised badges on every one of those taps.
+  useEffect(() => {
+    if (map === null) return
+    return attachPoiIcons(map)
+  }, [map])
+
+  useEffect(() => {
+    if (map === null) return
+    return attachPoiData(map, pois)
+  }, [map, pois])
+
+  useEffect(() => {
+    if (map === null) return
+    return attachHiddenPoiTypes(map, hiddenTypes)
+  }, [map, hiddenTypes])
 
   useEffect(() => {
     if (map === null || onViewportChange === undefined) return

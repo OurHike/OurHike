@@ -15,6 +15,7 @@ import {
   DEM_SOURCE_ID,
   ELEVATION_ATTRIBUTION,
 } from './terrain'
+import { POI_LAYER_ID } from './poiLayers'
 
 // The live background exists because a raster mosaic of pre-rendered US Topo
 // quads cannot be restyled, cannot be read at a zoom it was not drawn for, and
@@ -142,15 +143,39 @@ describe('the live topographic background', () => {
     expect(metres).not.toContain('ele_ft')
   })
 
-  it('draws the trail over every background layer, never under one', () => {
-    // The blazes are the reason the map exists; a background layer on top of
-    // them would be a regression no amount of cartography makes up for.
+  it('draws the trail and the pins over every background layer, never under one', () => {
+    // The blazes are the reason the map exists and a pin buried under the
+    // hillshade is a POI the hiker cannot see; a background layer on top of
+    // either would be a regression no amount of cartography makes up for.
+    // Worth asserting against the whole live stack rather than one layer,
+    // since the stack is where a new layer would get appended by mistake.
     const order = ids(live())
     const lastBackground = Math.max(
       ...Object.values(LIVE_TOPO_LAYER_IDS).map((id) => order.indexOf(id)),
     )
 
     expect(lastBackground).toBeLessThan(order.indexOf('trail-casing'))
+    expect(lastBackground).toBeLessThan(order.indexOf(POI_LAYER_ID))
+  })
+
+  it('keeps the POI pins last of all, so they win collisions against our labels', () => {
+    // Not only about what draws on top. The live sheet added four SYMBOL
+    // layers (peak, place, water and contour labels) to a style that had none,
+    // and MapLibre declutters symbols across the whole style, not per layer -
+    // so those labels and the pins now compete for the same space.
+    //
+    // Which one loses is decided by layer order, and in a direction worth
+    // checking rather than assuming: PauseablePlacement starts at
+    // `order.length - 1` and decrements, so placement runs TOP-DOWN and the
+    // last layer has priority. Pins last therefore means a contour label can
+    // never suppress a water source - which is the way round it has to be,
+    // since water is the most safety-relevant thing on this map.
+    //
+    // Move this layer and that guarantee is silently gone, which is why it is
+    // asserted rather than left to the ordering in buildMapStyle.
+    const order = ids(live())
+
+    expect(order[order.length - 1]).toBe(POI_LAYER_ID)
   })
 
   it('credits every licence the live sheet pulls in', () => {
@@ -192,12 +217,17 @@ describe('the offline-only background', () => {
     expect(offline().sources.trails).toHaveProperty('attribution', ATTRIBUTION)
   })
 
-  it('still draws the archive and the trail, which is the whole map', () => {
+  it('still draws the archive, the trail and the pins, which is the whole map', () => {
+    // Exhaustive on purpose: the point of this one is that choosing the
+    // offline background subtracts the live layers and NOTHING else. An
+    // `toContain` here would pass just as happily if the trail or the pins
+    // went missing with them.
     expect(ids(offline())).toEqual([
       BACKDROP_LAYER_ID,
       TOPO_LAYER_ID,
       'trail-casing',
       'trail-blaze',
+      POI_LAYER_ID,
     ])
   })
 })

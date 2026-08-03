@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapScreen } from './chrome/MapScreen'
 import { TabBar } from './chrome/TabBar'
+import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import type { TabId } from './chrome/tabs'
 import { Downloads } from './screens/Downloads'
 import { More } from './screens/More'
@@ -468,62 +469,78 @@ function App() {
     )
   }
 
+  // The map is both the likeliest thing in this app to throw - WebGL, a GPS
+  // watcher, byte-range reads against an archive that can be 1.18 GB, and a
+  // pile of MapLibre attach/detach lifecycle - and the worst thing to lose,
+  // since it is what someone is looking at when they do not recognise where
+  // they are. Its own boundary keeps a map failure from costing Downloads and
+  // More as well, and the tab bar below the fallback is the way back to them.
   return (
-    <MapScreen
-      topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
-      trailsUrl={trailsUrl}
-      background={effectiveBackground(preferences.background_source, saveData)}
-      trailName={TRAIL_NAME}
-      mile={fix?.mile}
-      direction={direction?.direction}
-      time={now}
-      online={online}
-      hasGpsFix={gps.status === 'located'}
-      lastSyncedAt={lastSyncedAt}
-      activeTab={activeTab}
-      onSelectTab={setActiveTab}
-      onOpenLegend={() => setLegendOpen(true)}
-      onOpenSearch={() => setSearchOpen(true)}
-      legendOpen={legendOpen}
-      onCloseLegend={() => setLegendOpen(false)}
-      searchOpen={searchOpen}
-      onCloseSearch={() => setSearchOpen(false)}
-      searchablePois={searchablePois}
-      onSelectSearchResult={(poi) => {
-        const found = pois.find((p) => p.id === poi.id)
-        // Centring alone left the zoom wherever it was, which from the opening
-        // view of the whole corridor meant tapping a result moved the map by a
-        // few pixels and looked like nothing happened at all.
-        // The miss is unreachable, and kept for the type checker: every result
-        // the sheet can offer was built by mapping this same `pois` array, and
-        // the sheet only exists on the map screen, so `found` is always there
-        // and `map` is never null. Ignored for coverage rather than covered -
-        // no input produces a search result pointing at a POI the app does not
-        // hold, or a tap on a sheet that is not rendered.
-        /* v8 ignore start */
-        if (found !== undefined && map !== null) {
-          map.jumpTo({
-            center: [found.lon, found.lat],
-            zoom: Math.max(map.getZoom(), SEARCH_RESULT_ZOOM),
-          })
-        }
-        /* v8 ignore stop */
-        setSearchOpen(false)
-      }}
-      bbox={bbox}
-      viewportPoints={viewportPoints}
-      blazeCounts={[]}
-      hiddenTypes={hiddenTypes}
-      onToggleType={handleToggleType}
-      // The corridor is the opening view only. Once there is a camera to put
-      // back, it wins: `bounds` would otherwise re-frame the entire trail
-      // every time the map screen came back from another tab.
-      center={camera?.center}
-      zoom={camera?.zoom}
-      bounds={camera === null ? CORRIDOR_BOUNDS : undefined}
-      onViewportChange={handleViewportChange}
-      onMapReady={handleMapReady}
-    />
+    <ErrorBoundary
+      resetKey={activeTab}
+      fallback={() => (
+        <div className="app__screen">
+          <ScreenFailed what="The map" />
+          <TabBar active={activeTab} onSelect={setActiveTab} />
+        </div>
+      )}
+    >
+      <MapScreen
+        topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
+        trailsUrl={trailsUrl}
+        background={effectiveBackground(preferences.background_source, saveData)}
+        trailName={TRAIL_NAME}
+        mile={fix?.mile}
+        direction={direction?.direction}
+        time={now}
+        online={online}
+        hasGpsFix={gps.status === 'located'}
+        lastSyncedAt={lastSyncedAt}
+        activeTab={activeTab}
+        onSelectTab={setActiveTab}
+        onOpenLegend={() => setLegendOpen(true)}
+        onOpenSearch={() => setSearchOpen(true)}
+        legendOpen={legendOpen}
+        onCloseLegend={() => setLegendOpen(false)}
+        searchOpen={searchOpen}
+        onCloseSearch={() => setSearchOpen(false)}
+        searchablePois={searchablePois}
+        onSelectSearchResult={(poi) => {
+          const found = pois.find((p) => p.id === poi.id)
+          // Centring alone left the zoom wherever it was, which from the opening
+          // view of the whole corridor meant tapping a result moved the map by a
+          // few pixels and looked like nothing happened at all.
+          // The miss is unreachable, and kept for the type checker: every result
+          // the sheet can offer was built by mapping this same `pois` array, and
+          // the sheet only exists on the map screen, so `found` is always there
+          // and `map` is never null. Ignored for coverage rather than covered -
+          // no input produces a search result pointing at a POI the app does not
+          // hold, or a tap on a sheet that is not rendered.
+          /* v8 ignore start */
+          if (found !== undefined && map !== null) {
+            map.jumpTo({
+              center: [found.lon, found.lat],
+              zoom: Math.max(map.getZoom(), SEARCH_RESULT_ZOOM),
+            })
+          }
+          /* v8 ignore stop */
+          setSearchOpen(false)
+        }}
+        bbox={bbox}
+        viewportPoints={viewportPoints}
+        blazeCounts={[]}
+        hiddenTypes={hiddenTypes}
+        onToggleType={handleToggleType}
+        // The corridor is the opening view only. Once there is a camera to put
+        // back, it wins: `bounds` would otherwise re-frame the entire trail
+        // every time the map screen came back from another tab.
+        center={camera?.center}
+        zoom={camera?.zoom}
+        bounds={camera === null ? CORRIDOR_BOUNDS : undefined}
+        onViewportChange={handleViewportChange}
+        onMapReady={handleMapReady}
+      />
+    </ErrorBoundary>
   )
 }
 

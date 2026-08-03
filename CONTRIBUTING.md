@@ -85,7 +85,8 @@ The pipeline fetches large amounts of data from ATC, USGS and opentrail.org. Rea
 ## Pull requests
 
 - Branch off `main`. Small and focused beats comprehensive.
-- Link the issue and let the merge close it — `Closes #42`. This is the mechanism that keeps the tracker honest, rather than someone remembering to tick a box.
+- Link the issue and let the merge close it — `Closes #42`. This is the mechanism that keeps the tracker honest, rather than someone remembering to tick a box. CI checks it: a PR that closes no issue fails **PR has a linked issue**. Attaching the issue through the sidebar's Development panel counts too, though that fires no event, so the check needs a manual re-run afterwards. A bare `#42` mention does not count — referring to an issue and resolving it are different claims.
+- If a change genuinely has no issue behind it — a typo, a revert, a dependency bump — label it `no-issue` rather than opening an issue for the sole purpose of closing it. The exemption is there so the rule does not manufacture the paperwork it exists to prevent.
 - New behaviour comes with tests. See [TESTING.md](TESTING.md) for what is expected; the short version is that tests describe behaviour rather than implementation.
 - If a change contradicts something in a design doc, update the doc in the same PR. A doc that disagrees with the code is worse than no doc.
 - Lint and format before pushing. CI checks both and will fail on formatting alone.

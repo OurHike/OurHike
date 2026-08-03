@@ -30,6 +30,7 @@ import pytest
 
 import check_freshness
 from check_freshness import Freshness, compare_marker, summarise
+from lib import freshness_state
 
 
 def test_a_matching_marker_is_fresh():
@@ -350,3 +351,129 @@ def test_topo_sample_never_exceeds_what_the_manifest_actually_has():
 
 def test_topo_sample_of_an_empty_manifest_is_empty():
     assert check_freshness.topo_sample({}, size=25, seed="2026-07-30") == []
+
+
+# --- Running somewhere other than the machine that fetched -----------------
+#
+# The check was fully built and could only ever run beside a real fetch: its
+# recorded side read data/raw/*, which is gitignored, so a hosted runner
+# reported everything STALE for the trivial reason that a fresh checkout has
+# never fetched anything. These cover the seam that fixed it - see
+# test_lib_freshness_state.py for the state format itself.
+
+
+def _published_state(**overrides):
+    state = {
+        "version": freshness_state.STATE_VERSION,
+        "captured_at": "2026-07-01T00:00:00+00:00",
+        "atc": {"centerline": {"url": "https://arcgis.test/centerline", "marker": "1"}},
+        "opentrail": 'W/"abc"',
+    }
+    state.update(overrides)
+    return state
+
+
+def test_a_published_state_is_compared_without_any_local_data(tmp_path, monkeypatch, requests_mock):
+    """The whole point: no data/raw/, no credentials, still a real verdict.
+    Every local path is pointed at a nonexistent file to prove none is read."""
+    for name in ("ATC_MANIFEST", "OPENTRAIL_STATE", "TOPO_MANIFEST", "ELEVATION_INDEX"):
+        monkeypatch.setattr(check_freshness, name, tmp_path / "absent.json")
+    requests_mock.get("https://arcgis.test/centerline?f=json", json={"editingInfo": {"dataLastEditDate": 1}})
+    requests_mock.head("https://opentrail.org/api/getData?trail=AT", headers={"ETag": 'W/"abc"'})
+
+    reports = check_freshness.check_all(_published_state())
+
+    assert {r["source"]: r["freshness"] for r in reports}["atc"] is Freshness.FRESH
+
+
+def test_a_source_the_published_state_omits_is_never_asked_about(tmp_path, monkeypatch, requests_mock):
+    """A build that only ran the vector leg publishes no topo markers. Asking
+    upstream about them anyway would spend requests to learn nothing, and any
+    answer would have nothing to be compared against."""
+    for name in ("ATC_MANIFEST", "OPENTRAIL_STATE", "TOPO_MANIFEST", "ELEVATION_INDEX"):
+        monkeypatch.setattr(check_freshness, name, tmp_path / "absent.json")
+    requests_mock.get("https://arcgis.test/centerline?f=json", json={"editingInfo": {"dataLastEditDate": 1}})
+    requests_mock.head("https://opentrail.org/api/getData?trail=AT", headers={"ETag": 'W/"abc"'})
+
+    # No mock is registered for TNM or S3: a request to either fails loudly
+    # here rather than passing silently.
+    reports = check_freshness.check_all(_published_state())
+
+    verdicts = {r["source"]: r for r in reports}
+    assert verdicts["topo_quads"]["freshness"] is Freshness.UNKNOWN
+    assert verdicts["topo_quads"]["detail"] == "not in this state"
+
+
+def test_capture_writes_a_state_and_asks_nothing_upstream(tmp_path, monkeypatch):
+    """--capture runs inside a build, beside the fetch it is recording. A
+    single upstream request here would be a request the build did not need."""
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({"centerline": {"url": "https://x.test/c", "data_last_edit_date": 7}}))
+    monkeypatch.setattr(check_freshness, "ATC_MANIFEST", manifest)
+    for name in ("OPENTRAIL_STATE", "TOPO_MANIFEST", "ELEVATION_INDEX"):
+        monkeypatch.setattr(check_freshness, name, tmp_path / "absent.json")
+    out = tmp_path / "build_state.json"
+
+    # requests is not mocked at all: any network call raises.
+    assert check_freshness.main(["--capture", str(out)]) == 0
+
+    state = json.loads(out.read_text())
+    assert state["atc"]["centerline"]["marker"] == "7"
+    assert "topo_quads" not in state
+
+
+def test_a_state_that_cannot_be_loaded_exits_two_not_one(tmp_path):
+    """Distinct from a stale verdict on purpose. "Nothing published yet" and
+    "an upstream moved" want opposite responses, and a scheduled reporter that
+    conflated them would raise an alarm about a bucket that has simply never
+    published."""
+    assert check_freshness.main(["--state", str(tmp_path / "never_written.json")]) == 2
+
+
+def test_exit_zero_reports_staleness_without_failing_the_run(tmp_path, monkeypatch, requests_mock):
+    """Staleness is the normal state between weekly builds. A red X every day
+    for a legitimately-changed upstream trains people to ignore the signal."""
+    for name in ("ATC_MANIFEST", "OPENTRAIL_STATE", "TOPO_MANIFEST", "ELEVATION_INDEX"):
+        monkeypatch.setattr(check_freshness, name, tmp_path / "absent.json")
+    state = tmp_path / "state.json"
+    state.write_text(json.dumps(_published_state()))
+    requests_mock.get("https://arcgis.test/centerline?f=json", json={"editingInfo": {"dataLastEditDate": 999}})
+    requests_mock.head("https://opentrail.org/api/getData?trail=AT", headers={"ETag": 'W/"abc"'})
+
+    assert check_freshness.main(["--state", str(state)]) == 1
+    assert check_freshness.main(["--state", str(state), "--exit-zero"]) == 0
+
+
+def test_the_json_verdict_names_which_layers_moved(tmp_path, monkeypatch, requests_mock):
+    for name in ("ATC_MANIFEST", "OPENTRAIL_STATE", "TOPO_MANIFEST", "ELEVATION_INDEX"):
+        monkeypatch.setattr(check_freshness, name, tmp_path / "absent.json")
+    state = tmp_path / "state.json"
+    state.write_text(json.dumps(_published_state()))
+    out = tmp_path / "verdict.json"
+    requests_mock.get("https://arcgis.test/centerline?f=json", json={"editingInfo": {"dataLastEditDate": 999}})
+    requests_mock.head("https://opentrail.org/api/getData?trail=AT", headers={"ETag": 'W/"abc"'})
+
+    check_freshness.main(["--state", str(state), "--json", str(out), "--exit-zero"])
+
+    verdict = json.loads(out.read_text())
+    assert verdict["needs_refetch"] == ["atc"]
+    assert next(s for s in verdict["sources"] if s["source"] == "atc")["changed"] == ["centerline"]
+
+
+def test_the_json_verdict_records_how_old_the_state_it_trusted_was(tmp_path, monkeypatch, requests_mock):
+    """A FRESH verdict against a six-month-old capture means "nothing has
+    changed since a build six months ago", which is not what a reader assumes
+    it means. The age is published rather than left to be inferred."""
+    for name in ("ATC_MANIFEST", "OPENTRAIL_STATE", "TOPO_MANIFEST", "ELEVATION_INDEX"):
+        monkeypatch.setattr(check_freshness, name, tmp_path / "absent.json")
+    state = tmp_path / "state.json"
+    state.write_text(json.dumps(_published_state()))
+    out = tmp_path / "verdict.json"
+    requests_mock.get("https://arcgis.test/centerline?f=json", json={"editingInfo": {"dataLastEditDate": 1}})
+    requests_mock.head("https://opentrail.org/api/getData?trail=AT", headers={"ETag": 'W/"abc"'})
+
+    check_freshness.main(["--state", str(state), "--json", str(out), "--exit-zero"])
+
+    verdict = json.loads(out.read_text())
+    assert verdict["state_captured_at"] == "2026-07-01T00:00:00+00:00"
+    assert verdict["state_age_days"] >= 0

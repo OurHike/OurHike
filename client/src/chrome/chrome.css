@@ -183,6 +183,21 @@
   background: var(--bg-page);
 }
 
+/* Two wrappers that exist for the desktop layout (src/desktop.css) and are
+   deliberately inert here: each is a plain flex column that fills, which is
+   exactly what these children did as direct children of .map-screen.
+   __main is everything but the tab bar; __body is the map and the legend. */
+.map-screen__main,
+.map-screen__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  /* A flex item floors at its content size, and a map that cannot shrink puts
+     the overflow back on the page - the same trap .app__screen's own comment
+     describes. */
+  min-height: 0;
+}
+
 /* Positioning context for the attribution, which sits over the canvas. */
 .map-screen__canvas {
   position: relative;

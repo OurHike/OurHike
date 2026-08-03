@@ -120,29 +120,29 @@ describe('attachContourUnits', () => {
     expect(source.setTilesCalls).toEqual([])
   })
 
-  it('waits for the style when it is not loaded yet', () => {
+  it('waits for the contour source when the style has not brought it yet', () => {
     const m = map()
     const source = new MockVectorSource(['contour://3.28084/{z}/{x}/{y}'])
-    m.sources.set(CONTOUR_SOURCE_ID, source)
 
     attachContourUnits(m as never, 'metric')
     expect(source.setTilesCalls).toEqual([])
 
-    m.emit('load')
+    m.sources.set(CONTOUR_SOURCE_ID, source)
+    m.emit('styledata')
     expect(source.setTilesCalls).toHaveLength(1)
   })
 
-  it('does nothing after detach, so a late load cannot retune a stale map', () => {
+  it('does nothing after detach, so a late style event cannot retune a stale map', () => {
     const m = map()
     const source = new MockVectorSource(['contour://3.28084/{z}/{x}/{y}'])
-    m.sources.set(CONTOUR_SOURCE_ID, source)
 
     const detach = attachContourUnits(m as never, 'metric')
     detach()
-    m.emit('load')
+    m.sources.set(CONTOUR_SOURCE_ID, source)
+    m.emit('styledata')
 
     expect(source.setTilesCalls).toEqual([])
-    expect(m.listenerCount('load')).toBe(0)
+    expect(m.listenerCount('styledata')).toBe(0)
   })
 
   it('is a no-op on the offline background, where there is no contour source', () => {

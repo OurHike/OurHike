@@ -72,7 +72,33 @@ export class MockMap {
   constructor(options: Record<string, unknown>) {
     this.options = options
     this.applyCamera(options)
+    this.adoptStyleContents(options)
     MockMap.instances.push(this)
+  }
+
+  /**
+   * Takes the layer and source ids from the style it was built with.
+   *
+   * Real MapLibre answers `getLayer`/`getSource` from the style it parsed, so
+   * a mock that needs both a style AND a separate hand-written id list models
+   * a map that can hold a layer it does not have. That gap is what let the
+   * attach helpers look correct: their readiness question is "is this layer
+   * there yet", and the mock could only ever answer "no". A test that wants
+   * the not-yet state still gets it by assigning the lists directly.
+   */
+  private adoptStyleContents(options: Record<string, unknown>): void {
+    const style = options.style as
+      { layers?: Array<{ id?: unknown }>; sources?: Record<string, unknown> } | undefined
+    if (style === undefined || style === null) return
+
+    if (Array.isArray(style.layers)) {
+      this.layerIds = style.layers
+        .map((layer) => String(layer?.id))
+        .filter((id) => id !== 'undefined')
+    }
+    if (style.sources !== undefined && style.sources !== null) {
+      this.sourceIds = Object.keys(style.sources)
+    }
   }
 
   private applyCamera(options: Record<string, unknown>): void {

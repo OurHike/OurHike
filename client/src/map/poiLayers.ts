@@ -34,6 +34,7 @@ import {
   UNKNOWN_POI_TYPE,
   type PoiConfidence,
 } from './poiIcons'
+import { whenStyleReady } from './styleReady'
 
 export const POI_SOURCE_ID = 'pois'
 export const POI_LAYER_ID = 'poi-pins'
@@ -197,43 +198,14 @@ export function poiTypeFilter(hiddenTypes: ReadonlySet<string>): unknown[] {
   return ['!', ['in', ['get', 'poi_type'], ['literal', [...hiddenTypes].sort()]]]
 }
 
-/**
- * Runs `apply` against a style that is ready for it, and returns a detach.
- *
- * Every write below - images, source data, layer filter - is illegal on a
- * style that has not loaded, and legal forever after. Both halves matter:
- *
- *  - `isStyleLoaded()` is checked FIRST, because a style that finished loading
- *    before this ran will never fire `load` again. Waiting on the event alone
- *    would leave the pins permanently missing on exactly the fast path.
- *  - Failure is warned about, never thrown. These calls sit in React effects
- *    on the map screen; an exception here would take the map down over a pin.
- */
-function whenStyleReady(map: MapLibreMap, apply: () => void, what: string): () => void {
-  let detached = false
-
-  const guarded = () => {
-    if (detached) return
-    try {
-      apply()
-    } catch (error) {
-      console.warn(`${what} failed; the map is drawn without it.`, error)
-    }
-  }
-
-  if (map.isStyleLoaded()) guarded()
-  else map.on('load', guarded)
-
-  return () => {
-    detached = true
-    map.off('load', guarded)
-  }
-}
-
 /** Registers every pin image on a live map, and returns a detach function. */
 export function attachPoiIcons(map: MapLibreMap): () => void {
   return whenStyleReady(
     map,
+    // The pin layer existing proves the style spec carrying it is parsed,
+    // which is the condition addImage actually requires. There is no narrower
+    // question to ask: an image is not addressable until it has been added.
+    () => map.getLayer(POI_LAYER_ID) !== undefined,
     () => {
       for (const { id, image, pixelRatio } of buildPoiIcons()) {
         // Images outlive a style reload, and re-adding one throws.
@@ -248,6 +220,10 @@ export function attachPoiIcons(map: MapLibreMap): () => void {
 export function attachPoiData(map: MapLibreMap, pois: readonly MapPoint[]): () => void {
   return whenStyleReady(
     map,
+    // The source itself is the readiness question. This is the write that used
+    // to be lost for good: the POIs arrive from IndexedDB exactly once, so an
+    // attempt that landed while a tile was in flight never got a second turn.
+    () => map.getSource(POI_SOURCE_ID) !== undefined,
     () => {
       // `getSource` answers with the union of every source kind, and only the
       // GeoJSON one can be handed new data. The `setData` check is what makes
@@ -268,6 +244,9 @@ export function attachHiddenPoiTypes(
 ): () => void {
   return whenStyleReady(
     map,
+    // setFilter throws outright on a layer the style does not hold, so the
+    // layer's presence is exactly the precondition.
+    () => map.getLayer(POI_LAYER_ID) !== undefined,
     () => map.setFilter(POI_LAYER_ID, poiTypeFilter(hiddenTypes) as never),
     'POI visibility',
   )

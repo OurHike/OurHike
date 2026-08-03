@@ -259,29 +259,56 @@ describe('pushing all of it onto a live map', () => {
     expect(map.images.size).toBeGreaterThan(0)
   })
 
-  it('does nothing after detaching, even if load arrives late', () => {
+  it('does nothing after detaching, even if the layer arrives late', () => {
+    map.layerIds = []
     const detach = attachPoiIcons(map as never)
 
     detach()
-    map.emit('load')
+    map.layerIds = [POI_LAYER_ID]
+    map.emit('styledata')
 
     expect(map.images.size).toBe(0)
-    expect(map.listenerCount('load')).toBe(0)
+    expect(map.listenerCount('styledata')).toBe(0)
   })
 
-  it('honours a detach that lands part-way through the load event itself', () => {
-    // Not hypothetical: MapLibre dispatches `load` to a snapshot of its
-    // listeners, so an earlier handler unmounting the map screen removes this
-    // one from the map and cannot remove it from the snapshot. Without the
-    // detached check, that writes images onto a map React has already torn
-    // down.
+  it('honours a detach that lands part-way through the style event itself', () => {
+    // Not hypothetical: MapLibre dispatches to a snapshot of its listeners, so
+    // an earlier handler unmounting the map screen removes this one from the
+    // map and cannot remove it from the snapshot. Without the detached check,
+    // that writes images onto a map React has already torn down.
+    map.layerIds = []
     let detach = () => {}
-    map.on('load', () => detach())
+    map.on('styledata', () => detach())
     detach = attachPoiIcons(map as never)
 
-    map.emit('load')
+    map.layerIds = [POI_LAYER_ID]
+    map.emit('styledata')
 
     expect(map.images.size).toBe(0)
+  })
+
+  it('still lands the POIs when the style is busy at the moment they arrive', () => {
+    // The bug (#129). The gate asked whether the WHOLE style was loaded and
+    // waited on `load` when it was not - but `load` fires exactly once, while
+    // isStyleLoaded() goes false again on every tile fetch, every setData and
+    // every source reload. POIs arrive from IndexedDB once. One landing in
+    // such a window registered a listener for an event that had already
+    // happened, and the pins never appeared at all, for the life of the map,
+    // while the legend went on listing what was missing.
+    map.sourceIds = []
+    map.emit('load')
+    map.styleLoaded = false
+
+    const pois = [
+      { id: 'w1', type: 'water', lat: 39.3, lon: -77.1, confidence: 'high' as const },
+    ]
+    attachPoiData(map as never, pois)
+    expect(map.sourceData.get(POI_SOURCE_ID)).toBeUndefined()
+
+    map.sourceIds = [POI_SOURCE_ID]
+    map.emit('styledata')
+
+    expect(map.sourceData.get(POI_SOURCE_ID)).toEqual(poiFeatureCollection(pois))
   })
 
   it('does not re-register images a previous map screen already added', () => {
@@ -325,8 +352,12 @@ describe('pushing all of it onto a live map', () => {
     // would take the whole map down over a pin, which is the one outcome
     // worse than a missing pin.
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    map.styleLoaded = true
-    map.layerIds = []
+    // A layer that IS there and still refuses the write - a style swapped out
+    // from under the call. A layer that is merely absent is a different state
+    // now: it means "not yet", and waiting is the right answer to it.
+    vi.spyOn(map, 'setFilter').mockImplementation(() => {
+      throw new Error('style replaced mid-write')
+    })
 
     expect(() => attachHiddenPoiTypes(map as never, new Set(['water']))).not.toThrow()
     expect(warn).toHaveBeenCalled()

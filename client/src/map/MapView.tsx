@@ -12,15 +12,20 @@ import { useEffect, useRef, useState } from 'react'
 import { Map as MapLibreMap } from 'maplibre-gl'
 import { registerPMTilesProtocol } from './protocol'
 import { buildMapStyle } from './style'
+import { attachContourUnits, registerTerrain } from './contours'
+import type { TerrainUrls } from './terrain'
 import { attachMapChrome, type ScaleUnits } from './mapChrome'
 import { attachMapBackdrop } from './backdrop'
 import type { BoundingBox } from '../lib/legendContents'
+import type { BackgroundSource } from '../lib/userPreferences'
 
 export interface MapViewProps {
   /** `pmtiles://` URL for the downloaded topo archive. */
   topoArchiveUrl: string
   /** Local URL of the exported trail lines. */
   trailsUrl: string
+  /** Which background to draw - see lib/userPreferences.ts. */
+  background?: BackgroundSource
   /** Initial centre only - later camera moves go through the map imperatively. */
   center?: [number, number]
   /** Initial zoom only. */
@@ -55,6 +60,7 @@ const DEFAULT_ZOOM = 12
 export function MapView({
   topoArchiveUrl,
   trailsUrl,
+  background = 'hiking_topo_live',
   center,
   zoom,
   bounds,
@@ -82,9 +88,29 @@ export function MapView({
     // The style resolves pmtiles:// URLs, so the protocol has to exist first.
     registerPMTilesProtocol()
 
+    // Same contract for the DEM and contour protocols, with one difference
+    // worth being deliberate about: this one reaches the network, so it is
+    // only set up when a background that uses it was actually asked for.
+    // Someone who chose the downloaded archive to stay off the network should
+    // not have a DEM protocol registered behind their back.
+    //
+    // Best-effort, following backdrop.ts: contour generation needs a Web
+    // Worker and a blob URL, and if either is unavailable the honest outcome
+    // is a map without contours, not no map. A failure here costs terrain and
+    // nothing else - the archive, the trail lines and the paper are all in the
+    // style already.
+    let terrain: TerrainUrls | undefined
+    if (background === 'hiking_topo_live') {
+      try {
+        terrain = registerTerrain(units)
+      } catch (error) {
+        console.warn('Terrain unavailable; drawing the background without it.', error)
+      }
+    }
+
     const created = new MapLibreMap({
       container,
-      style: buildMapStyle({ topoArchiveUrl, trailsUrl }),
+      style: buildMapStyle({ topoArchiveUrl, trailsUrl, background, terrain, units }),
       // `bounds` wins where it is given: MapLibre works out the zoom that fits
       // the box on this particular screen, which is the whole point of asking
       // for a box rather than a zoom number.
@@ -104,16 +130,29 @@ export function MapView({
     // Intentionally omitting `center`/`zoom` - see the note above. Including
     // them would rebuild the whole map whenever a parent re-rendered with an
     // inline array, which is the bug this omission exists to avoid.
+    //
+    // `units` is omitted for the same reason, even though it seeds the contour
+    // interval: switching to metric must not cost a WebGL context. The units
+    // effect below re-points the contour source in place instead.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [topoArchiveUrl, trailsUrl])
+  }, [topoArchiveUrl, trailsUrl, background])
 
-  // Chrome lives in its own effect so that changing a display preference -
-  // switching the scale bar to metric, say - re-attaches three controls
-  // instead of tearing down and rebuilding the entire map underneath the hiker.
+  // Chrome lives in its own effect so that a preference which only affects the
+  // controls - the scale bar's units, the zoom buttons - re-attaches three
+  // controls instead of tearing down and rebuilding the entire map underneath
+  // the hiker.
   useEffect(() => {
     if (map === null) return
     return attachMapChrome(map, { showZoomButtons, units })
   }, [map, showZoomButtons, units])
+
+  // The contours' half of that same promise. The scale bar can just be
+  // re-created with new units; the contour source has to be re-pointed at a
+  // different tile URL, which is what this does - see contours.ts.
+  useEffect(() => {
+    if (map === null) return
+    return attachContourUnits(map, units)
+  }, [map, units])
 
   // The backdrop's paper colour is in the style itself and needs nothing here.
   // This adds only the hatch on top of it, which needs a loaded style and so

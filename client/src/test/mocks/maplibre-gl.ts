@@ -40,6 +40,13 @@ export class MockMap {
   readonly images = new Map<string, unknown>()
   /** Every paint property written, keyed `layerId/property`. */
   readonly paintProperties = new Map<string, unknown>()
+  /**
+   * Sources on the style, by id. Test-settable, and empty by default, because
+   * real `getSource` returns undefined both before the style loads and for a
+   * source the current style simply does not have - and code that retunes a
+   * source has to cope with both.
+   */
+  readonly sources = new Map<string, unknown>()
   /** Test-settable: real MapLibre only accepts images and paint writes once the
    *  style has loaded, and callers have to cope with both answers. */
   styleLoaded = false
@@ -100,6 +107,10 @@ export class MockMap {
     return this.images.has(id)
   }
 
+  getSource(id: string): unknown {
+    return this.sources.get(id)
+  }
+
   addImage(id: string, image: unknown): this {
     this.images.set(id, image)
     return this
@@ -139,6 +150,28 @@ export class MockMap {
 
   getCanvas(): HTMLCanvasElement {
     return document.createElement('canvas')
+  }
+}
+
+/**
+ * Stand-in for a VectorTileSource, enough of one to observe a retune: it holds
+ * the tile URLs it was given and records every `setTiles` call, so a test can
+ * tell "re-pointed once" apart from "re-pointed on every render."
+ */
+export class MockVectorSource {
+  readonly setTilesCalls: string[][] = []
+  tiles: string[]
+
+  // Assigned in the body rather than declared as a parameter property: the
+  // project builds with `erasableSyntaxOnly`, which rejects the shorthand.
+  constructor(tiles: string[]) {
+    this.tiles = tiles
+  }
+
+  setTiles(tiles: string[]): this {
+    this.setTilesCalls.push(tiles)
+    this.tiles = tiles
+    return this
   }
 }
 

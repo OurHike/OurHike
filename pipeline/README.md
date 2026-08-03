@@ -61,7 +61,7 @@ To point the script at a different Experience Builder app (e.g. if the ATC publi
 
 ## Fetching opentrail.org (water sources + resupply)
 
-`fetch_opentrail.py` pulls AT waypoints from opentrail.org's public API (`/api/getData?trail=AT`) - 1,840 features, of which 142 are tagged water sources (`w`), 72 resupply (`r`), and 103 towns (`t`), the gap ATC's own data leaves. **Licensing isn't formally confirmed** (no LICENSE file in their repo; the maintainer reportedly called it "open data" in a Reddit post - see the ROADMAP.md Phase 1 todo to follow up directly), so this deliberately excludes their user comments (personal contributions from named individuals - a separate consent question from licensing).
+`fetch_opentrail.py` pulls AT waypoints from opentrail.org's public API (`/api/getData?trail=AT`) - 1,840 features, of which 142 are tagged water sources (`w`), 72 resupply (`r`), and 103 towns (`t`), the gap ATC's own data leaves. **Licensing isn't formally confirmed** (no LICENSE file in their repo; the maintainer reportedly called it "open data" in a Reddit post - [#98](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/98) tracks following up directly), so this deliberately excludes their user comments (personal contributions from named individuals - a separate consent question from licensing).
 
 ```
 .venv/Scripts/python fetch_opentrail.py
@@ -217,4 +217,6 @@ To serve `data/processed/` locally instead - for testing the client's offline do
 
 ## Next steps
 
-See [../ROADMAP.md](../ROADMAP.md) Phase 1 for what's still open - notably the unified POI schema (joining ATC + opentrail.org + NHD into one schema) and the real Publish step (change-aware release to Cloudflare R2 so hikers don't re-download data that hasn't changed). **Chunking granularity decided 2026-07-28: whole corridor, one package** (not per-state/per-section) - see ROADMAP.md Phase 2's "Offline download flow" for why, and its new "quality/size tradeoff in settings" item for the zoom-11/12/13 choice this Export step now supports.
+Open pipeline work is tracked in [issues](https://github.com/jaimito-asuntos-gringuenos/OurHike/labels/pipeline) - notably [#99](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/99) (the unified POI schema beyond its first slice), [#96](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/96) (nothing runs the freshness check on a schedule) and [#100](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/100) (the dbt transform layer). Publish now ships as `publish.py`; the release design that supersedes it is [DATA_RELEASES.md](DATA_RELEASES.md).
+
+**Chunking granularity decided 2026-07-28: whole corridor, one package** (not per-state/per-section) - see [../ROADMAP.md](../ROADMAP.md) Phase 2 for why, and the zoom-11/12/13 detail choice this Export step supports.

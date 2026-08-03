@@ -53,6 +53,24 @@ function serve(pois: string = poiCollection([])) {
   )
 }
 
+/** Serves trail lines, then fails on the POI type named. */
+function serveUntilPoiFails(failing: string) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url: string) =>
+      Promise.resolve(
+        url.includes(`poi_${failing}`)
+          ? { ok: false, status: 503, statusText: 'Service Unavailable' }
+          : {
+              ok: true,
+              blob: () => Promise.resolve(new Blob(['{"type":"FeatureCollection"}'])),
+              text: () => Promise.resolve(poiCollection([])),
+            },
+      ),
+    ),
+  )
+}
+
 describe('trail data', () => {
   it('stores the trail lines and every POI type', async () => {
     serve()
@@ -127,6 +145,39 @@ describe('trail data', () => {
 
     expect(await loadTrailData()).toBeNull()
     expect(store.has(POIS_KEY)).toBe(false)
+  })
+
+  it('stores nothing at all when a POI fetch fails partway', async () => {
+    // The bug: the trail lines were committed the moment they arrived, so
+    // signal dropping during the POI fetches - the ordinary way this fails,
+    // not an edge case - left new trail lines behind with no POIs. That state
+    // is invisible on the next launch: the map draws its trail, and search and
+    // the legend are just empty, with the error long gone from React state.
+    serveUntilPoiFails('campsite')
+
+    await expect(downloadTrailData()).rejects.toThrow(/poi_campsite/)
+
+    expect(store.has(TRAILS_BLOB_KEY)).toBe(false)
+    expect(store.has(POIS_KEY)).toBe(false)
+  })
+
+  it('leaves a working download alone when a re-download fails partway', async () => {
+    // Worse than an empty store: someone who already had the whole set and
+    // re-downloaded got the new trail lines written over the old ones while
+    // their POIs stayed at the previous version - two halves of different
+    // downloads, with nothing saying so.
+    serve(
+      poiCollection([{ id: 'a', poi_type: 'water', name: 'Spring', lat: 39, lon: -77 }]),
+    )
+    await downloadTrailData()
+    const originalTrails = store.get(TRAILS_BLOB_KEY)
+    const originalPois = store.get(POIS_KEY)
+
+    serveUntilPoiFails('resupply')
+    await expect(downloadTrailData()).rejects.toThrow(/poi_resupply/)
+
+    expect(store.get(TRAILS_BLOB_KEY)).toBe(originalTrails)
+    expect(store.get(POIS_KEY)).toBe(originalPois)
   })
 
   // Everything below is one POI row being wrong in a file where the other rows

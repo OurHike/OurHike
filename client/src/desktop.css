@@ -21,7 +21,10 @@
  * What §6 asks for and what is here:
  *   layout            the tab bar becomes a left sidebar          done
  *   legend            a persistent panel, not a dismissable sheet done
- *   search            permanent field in the chrome               done
+ *   search            a field over the map, not a full sheet      done
+ *                     (still opened from the header - Search renders
+ *                     nothing until it is, so "permanent field in the
+ *                     chrome" is not what this is)
  *   input             hover, focus rings, relaxed touch targets   done
  *   elevation         the full interactive chart                  NOT done
  *   download UX       reframed for a machine with signal          done
@@ -126,10 +129,27 @@
 
   /* ---------- Search: a field, not a sheet ---------- */
 
+  /* Still out of flow. `position: static` here was a real bug:
+     .map-screen__canvas is `display: flex` (chrome.css), so a statically
+     positioned search stops overlaying the map and becomes a flex sibling of
+     it, taking real width. The map does not give that width back, so the
+     canvas grows past the frame and everything after it goes with it - in
+     Chromium at 1440px the document gained 327px of horizontal overflow and
+     the legend panel started at x=1462, entirely off the screen.
+
+     So only the shape changes: a field anchored over the map's top-left,
+     sized to its contents, rather than a sheet covering the whole canvas.
+     Nothing it does can move the map or the legend. */
   .search {
-    position: static;
-    max-width: 22rem;
-    box-shadow: none;
+    inset: auto;
+    top: var(--space-3, 12px);
+    left: var(--space-3, 12px);
+    width: 22rem;
+    max-width: calc(100% - 2 * var(--space-3, 12px));
+    /* The results list already scrolls (.search__results), so capping the
+       height here keeps a long list inside the canvas instead of running it
+       off the bottom. */
+    max-height: calc(100% - 2 * var(--space-3, 12px));
     border: 1px solid var(--border-1);
     border-radius: 8px;
   }

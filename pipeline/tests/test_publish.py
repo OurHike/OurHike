@@ -221,3 +221,82 @@ def test_collect_hashes_each_archive_by_content(tmp_path, monkeypatch):
     artifacts = publish.collect_artifacts()
 
     assert artifacts[light]["sha256"] == publish.sha256_file(tmp_path / light)
+
+
+# --- Build metadata that travels with a release ----------------------------
+#
+# build_state.json records the upstream freshness markers this build fetched
+# against, so the scheduled check can read it back over the public URL and
+# hold no R2 credentials. It rides along with a release rather than being one.
+
+
+@pytest.fixture
+def local_sidecars(tmp_path):
+    path = tmp_path / "build_state.json"
+    path.write_text(json.dumps({"version": 1, "atc": {}}))
+    return {"build_state.json": {"path": str(path), "sha256": publish.sha256_file(path)}}
+
+
+def test_build_state_is_uploaded_alongside_a_new_version(s3_client, local_artifacts, local_sidecars):
+    result = publish.publish(local_artifacts, sidecars=local_sidecars, s3_client=s3_client, bucket=BUCKET)
+
+    assert result["sidecars"] == ["build_state.json"]
+    body = s3_client.get_object(Bucket=BUCKET, Key="build_state.json")["Body"].read()
+    assert json.loads(body)["version"] == 1
+
+
+def test_build_state_never_causes_a_version_bump_on_its_own(s3_client, local_artifacts, tmp_path):
+    """It changes whenever an upstream is edited, including edits that alter
+    no exported byte. Counted as an artifact it would bump the version for a
+    no-op, which is the one rule this module exists to hold."""
+    publish.publish(local_artifacts, sidecars={}, s3_client=s3_client, bucket=BUCKET)
+
+    moved = tmp_path / "build_state_2.json"
+    moved.write_text(json.dumps({"version": 1, "atc": {"centerline": {"marker": "changed"}}}))
+    result = publish.publish(
+        local_artifacts,
+        sidecars={"build_state.json": {"path": str(moved), "sha256": publish.sha256_file(moved)}},
+        s3_client=s3_client,
+        bucket=BUCKET,
+    )
+
+    assert result["version_written"] is False
+    assert result["uploaded"] == []
+
+
+def test_build_state_is_not_uploaded_when_nothing_was_published(s3_client, local_artifacts, local_sidecars):
+    """The false-fresh failure this guards: a state uploaded on a no-op run
+    would describe upstreams newer than the bytes actually live in the bucket.
+    The check would then compare current markers against current markers,
+    report FRESH, and the map would go on serving old data with nothing
+    flagging it."""
+    publish.publish(local_artifacts, sidecars={}, s3_client=s3_client, bucket=BUCKET)
+
+    publish.publish(local_artifacts, sidecars=local_sidecars, s3_client=s3_client, bucket=BUCKET)
+
+    with pytest.raises(s3_client.exceptions.NoSuchKey):
+        s3_client.get_object(Bucket=BUCKET, Key="build_state.json")
+
+
+def test_build_state_is_recorded_in_the_manifest_but_not_as_an_artifact(s3_client, local_artifacts, local_sidecars):
+    """Recorded so a reader can tell whether the live state describes this
+    version's bytes; kept out of "artifacts" so nothing downstream can mistake
+    build metadata for something a hiker downloads."""
+    publish.publish(local_artifacts, sidecars=local_sidecars, s3_client=s3_client, bucket=BUCKET)
+
+    manifest = json.loads(s3_client.get_object(Bucket=BUCKET, Key=publish.MANIFEST_KEY)["Body"].read())
+    assert "build_state.json" not in manifest["artifacts"]
+    assert "build_state.json" in manifest["sidecars"]
+
+
+def test_collect_sidecars_finds_build_state_where_the_capture_writes_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    (tmp_path / "build_state.json").write_text("{}")
+
+    assert set(publish.collect_sidecars()) == {"build_state.json"}
+
+
+def test_collect_sidecars_is_empty_when_no_capture_ran(tmp_path, monkeypatch):
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+
+    assert publish.collect_sidecars() == {}

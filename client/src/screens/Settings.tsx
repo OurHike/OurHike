@@ -22,6 +22,7 @@
 
 import { syncAgeLabel } from '../lib/syncAge'
 import type { BackgroundSource, UserPreferences } from '../lib/userPreferences'
+import { backgroundOverridden } from '../lib/dataSaver'
 import { REPORTER_TYPES } from '../lib/contributionFlow'
 import type { ReportDraft } from '../lib/outbox'
 import './settings.css'
@@ -39,6 +40,15 @@ export interface SettingsProps {
   onExport: (format: 'gpx' | 'geojson') => void
   /** Injectable so the sync-age wording is testable without a live clock. */
   now?: Date
+  /**
+   * Whether the phone is asking apps to go easy on data.
+   *
+   * Passed in rather than read here, so this screen and the map are answering
+   * from one value. A row claiming the live sheet is on while the canvas draws
+   * the archive is precisely the mismatch the override is supposed to prevent,
+   * and two independent reads of the same API is how that happens.
+   */
+  dataSaver?: boolean
 }
 
 function LaterTag() {
@@ -56,6 +66,7 @@ export function Settings({
   onSync,
   onExport,
   now = new Date(),
+  dataSaver = false,
 }: SettingsProps) {
   return (
     <main className="settings">
@@ -131,6 +142,21 @@ export function Settings({
             ? 'Contours, shaded relief and streams beyond your downloaded area. Falls back to your download with no signal.'
             : 'Your downloaded corridor only — no background data is fetched.'}
         </p>
+
+        {/* The visible half of the override, and it does not ship without it.
+            Overriding a preference is defensible; overriding one while the
+            screen still claims otherwise is not, and this row is the only
+            place someone would ever go to find out why the map looks
+            different. Rendered only when the two actually disagree - saying
+            "overridden" to someone who picked the download anyway would be its
+            own small lie. */}
+        {backgroundOverridden(preferences.background_source, dataSaver) && (
+          <p className="settings__locked" role="note">
+            Data Saver is on, so the map is using your download only and fetching no
+            background tiles. Turn Data Saver off in your phone's settings to see contours
+            and shaded relief.
+          </p>
+        )}
         <label className="settings__row settings__row--later">
           <span className="settings__label">Roads &amp; walkability</span>
           <LaterTag />

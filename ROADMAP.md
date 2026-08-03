@@ -46,6 +46,8 @@ A cross-feature alignment review on 2026-07-28 moved **Authentication**, **Repor
 | [COMMUNITY_BUILDING.md](features/COMMUNITY_BUILDING.md) | Post-MVP. Tramily formation, check-ins, mentions. The project's sharpest privacy-vs-connection tension, resolved as a scoped exception rather than a loosened stance. |
 | [PRICING_MODEL.md](features/PRICING_MODEL.md) | Post-MVP, timing deliberately undecided. Thru-hike pass, regional pass, volunteer exemption, annual ceiling. |
 
+Plus [WEBSITE.md](WEBSITE.md) at the repository root — not a feature but the plan for the web surface itself, added 2026-08-03. See Phase 4.
+
 ---
 
 ## Phase 1 — Data pipeline
@@ -77,6 +79,8 @@ Feature gating was listed in this phase originally; it is Post-MVP — [#110](ht
 **Not started**, and largely gated on there being something published to test against.
 
 [#106](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/106) real-trail field testing, which several other issues wait behind · [#107](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/107) web-only payments · [#108](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/108) the inheritance guide for the next club · [#109](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/109) soft launch with NYNJTC.
+
+**The web surface, planned 2026-08-03 in [WEBSITE.md](WEBSITE.md).** `site/index.html` is the app's Downloads screen restyled at phone width, and the client has no `@media` rule anywhere — so FEATURES.md's MVP promise of the "same core experience on phone and web" is not met today. Two tracks that do not block each other: [#116](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/116) builds the site, [#117](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/117) gives the app a desktop layout. Photography sourcing starts before either, having the longest lead time. Payments depend on this too — checkout has exactly one place it is allowed to live, and the site as shipped has no page for it.
 
 ## Phase 5+ — after launch
 

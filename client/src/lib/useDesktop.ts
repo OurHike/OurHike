@@ -28,7 +28,8 @@ function matches(): boolean {
   // one, and the honest default for "cannot tell" is the phone layout: it
   // works at every width, where the desktop layout at 375px would be a
   // sidebar eating half the map.
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function')
+    return false
   return window.matchMedia(DESKTOP_MEDIA_QUERY).matches
 }
 

@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Map as MapLibreMap } from 'maplibre-gl'
 import { registerPMTilesProtocol } from './protocol'
+import { registerMapWorker } from './mapWorker'
 import { buildMapStyle } from './style'
 import { attachContourUnits, registerTerrain } from './contours'
 import type { TerrainUrls } from './terrain'
@@ -106,6 +107,11 @@ export function MapView({
     // way to render this component without its own container.
     /* v8 ignore next */
     if (container === null) return
+
+    // Before anything else: MapLibre 6 looks for its own worker next to the
+    // bundle, where no bundler ever puts it, and a map with no worker parses no
+    // tiles at all - see mapWorker.ts. Every layer below depends on this line.
+    registerMapWorker()
 
     // The style resolves pmtiles:// URLs, so the protocol has to exist first.
     registerPMTilesProtocol()

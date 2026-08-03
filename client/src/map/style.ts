@@ -18,12 +18,17 @@
 //     it is legible at a glance, which is the property that matters most.
 //
 //     WIDTH carries the hue-independent channel instead, and carries more than
-//     the rhythm did: the AT centerline is drawn markedly wider than every
-//     other trail, so the through-line of the map is findable with colour
-//     removed entirely - by glare, by greyscale (WIREFRAMES.md `9d`), or by
-//     colour vision deficiency. Width is keyed off the pipeline's own `source`
-//     attribute, in one data-driven expression, for the same reason the colour
-//     is keyed off `blaze_color` in one expression.
+//     the rhythm did: a system's through-route is drawn markedly wider than the
+//     side trails hanging off it, so the line the map is about is findable with
+//     colour removed entirely - by glare, by greyscale (WIREFRAMES.md `9d`), or
+//     by colour vision deficiency. Width is keyed off the pipeline's own
+//     `source` attribute, in one data-driven expression, for the same reason
+//     the colour is keyed off `blaze_color` in one expression.
+//
+//     Through-route is a role, not a name: today the AT holds it alone, so the
+//     widest line on the map is the AT, but the map is not promised one
+//     system (the NYNJTC maintains several). See PRIMARY_TRAIL_SOURCES for
+//     what a second one costs this channel.
 //
 //     What this gives up is real and worth naming: yellow, orange and red side
 //     trails were separable by rhythm and are now separable by hue alone, and
@@ -112,17 +117,41 @@ export function attributionFor(background: BackgroundSource): string {
   return background === 'hiking_topo_live' ? LIVE_ATTRIBUTION : ATTRIBUTION
 }
 
-/** The pipeline's own key for the AT itself (pipeline/sources.json). */
+/** The pipeline's own key for ATC's trail-centerline feed (pipeline/sources.json). */
 export const CENTERLINE_SOURCE = 'centerline'
+
+/**
+ * Trail sources drawn at the primary width: the through-route of a trail
+ * system, as against the side trails and spurs hanging off it.
+ *
+ * This is a ROLE, and deliberately a list rather than a single source. Its one
+ * member today is ATC's `centerline`, whose key reads like a proper noun
+ * because that feed is the AT - but nothing here is promised only one
+ * through-route. The NYNJTC alone maintains several trail systems, so a Long
+ * Path or Highlands Trail import joins this tier beside the AT rather than
+ * displacing it, and a `centerline` feed that itself grows past the AT needs
+ * no change here at all.
+ *
+ * What that costs is named where the claim is made (WIREFRAMES.md §3): with
+ * one through-route on the map, the widest line IS the AT. With two, width
+ * answers "through-route or spur" and stops answering "which trail is this" -
+ * still a hue-independent channel, but a coarser one.
+ */
+export const PRIMARY_TRAIL_SOURCES: readonly string[] = [CENTERLINE_SOURCE]
+
+/** The two width tiers, in CSS pixels. */
+export const PRIMARY_TRAIL_WIDTH = 4.5
+export const SIDE_TRAIL_WIDTH = 2.5
 
 /**
  * Line width in CSS pixels, per trail source.
  *
- * The AT is the subject of this map and everything else is context, so the
- * centerline is drawn close to twice the width of a side trail. That is the
+ * A through-route is the subject of this map and everything else is context,
+ * so it is drawn close to twice the width of a side trail. That is the
  * hierarchy a paper trail map has always drawn, and it is also the map's
- * hue-independent channel now that the dash rhythms are gone: the widest line
- * on screen is the AT, whatever the light is doing to the colours.
+ * hue-independent channel now that the dash rhythms are gone: the widest lines
+ * on screen are the trails the map is about, whatever the light is doing to
+ * the colours.
  *
  * Keyed off `source` - the attribute export_trails.py already publishes on
  * every feature - rather than off `blaze_color`, because this is a question
@@ -133,18 +162,22 @@ export const CENTERLINE_SOURCE = 'centerline'
  * trail.)
  */
 export const TRAIL_LINE_WIDTHS: Record<string, number> = {
-  [CENTERLINE_SOURCE]: 4.5,
-  side_trails: 2.5,
+  ...Object.fromEntries(
+    PRIMARY_TRAIL_SOURCES.map((source) => [source, PRIMARY_TRAIL_WIDTH]),
+  ),
+  side_trails: SIDE_TRAIL_WIDTH,
 }
 
 /**
  * What a source this build has never heard of is drawn at.
  *
- * The side-trail width deliberately, not the centerline's: a later import
- * should reach the map rather than be invisible, and should not outrank the AT
- * on its way there.
+ * The side-trail width deliberately, not a through-route's: a later import
+ * should reach the map rather than be invisible, and should not claim the top
+ * tier on its way there. Joining PRIMARY_TRAIL_SOURCES is how a trail becomes
+ * a through-route, and that is a decision someone makes rather than a default
+ * an unrecognised source falls into.
  */
-export const DEFAULT_TRAIL_LINE_WIDTH = 2.5
+export const DEFAULT_TRAIL_LINE_WIDTH = SIDE_TRAIL_WIDTH
 
 /** How far the dark casing shows past each side of the line it sits under. */
 export const CASING_OVERHANG = 1
@@ -153,9 +186,9 @@ export const CASING_OVERHANG = 1
  * The widest a blaze is ever drawn, and the width a closure has to stay
  * markedly clear of (lib/closureStyle.ts and its tests read this).
  *
- * Derived from the table rather than written down twice, so widening the
- * centerline cannot quietly narrow the gap that keeps a closure from reading
- * as a trail.
+ * Derived from the table rather than written down twice, so widening a
+ * through-route - or admitting a new one - cannot quietly narrow the gap that
+ * keeps a closure from reading as a trail.
  */
 export const BLAZE_LINE_WIDTH = Math.max(
   DEFAULT_TRAIL_LINE_WIDTH,
@@ -168,8 +201,8 @@ export const CASING_LINE_WIDTH = BLAZE_LINE_WIDTH + CASING_OVERHANG * 2
  *
  * One expression each, built from the one table above. The casing is the same
  * expression plus a constant overhang, which is what keeps the hairline a
- * hairline on a 2.5px side trail and on a 4.5px centerline alike - a casing
- * scaled proportionally would be twice as heavy under the AT as under
+ * hairline on a 2.5px side trail and on a 4.5px through-route alike - a casing
+ * scaled proportionally would be twice as heavy under a through-route as under
  * everything else.
  */
 function trailWidthExpression(extra: number): unknown[] {

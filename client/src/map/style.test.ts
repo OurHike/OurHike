@@ -10,7 +10,8 @@ import {
   TRAIL_CASING_LAYER_ID,
   BACKDROP_LAYER_ID,
   MAP_BACKGROUND_COLOR,
-  CENTERLINE_SOURCE,
+  PRIMARY_TRAIL_SOURCES,
+  PRIMARY_TRAIL_WIDTH,
   TRAIL_LINE_WIDTHS,
   DEFAULT_TRAIL_LINE_WIDTH,
   CASING_OVERHANG,
@@ -89,17 +90,36 @@ describe('buildMapStyle', () => {
     expect(width[1]).toEqual(['get', 'source'])
   })
 
-  it('draws the AT centerline wider than every other trail, so the map has a subject', () => {
-    // Width is what carries the hue-independent channel now. It has to be the
-    // centerline that wins it: a hiker who cannot tell colours apart - in
-    // glare, in greyscale, or at all - still needs to find the AT itself.
+  it('draws every through-route wider than every side trail, so the map has a subject', () => {
+    // Width is what carries the hue-independent channel now, and a
+    // through-route has to win it: a hiker who cannot tell colours apart - in
+    // glare, in greyscale, or at all - still needs to find the trail the map
+    // is about. Asserted over the whole primary tier rather than over the
+    // centerline alone, because the tier is where a second system lands.
     const width = layer(BLAZE_LAYER_ID).paint as Record<string, unknown>
     const others = Object.entries(TRAIL_LINE_WIDTHS)
-      .filter(([source]) => source !== CENTERLINE_SOURCE)
+      .filter(([source]) => !PRIMARY_TRAIL_SOURCES.includes(source))
       .map(([, w]) => w)
 
-    for (const other of [...others, DEFAULT_TRAIL_LINE_WIDTH]) {
-      expect(widthFor(width['line-width'], CENTERLINE_SOURCE)).toBeGreaterThan(other)
+    expect(PRIMARY_TRAIL_SOURCES.length).toBeGreaterThan(0)
+    for (const primary of PRIMARY_TRAIL_SOURCES) {
+      for (const other of [...others, DEFAULT_TRAIL_LINE_WIDTH]) {
+        expect(widthFor(width['line-width'], primary)).toBeGreaterThan(other)
+      }
+    }
+  })
+
+  it('draws every source in the primary tier at the same through-route width', () => {
+    // The tier is a role, not another name for the AT. The NYNJTC maintains
+    // several trail systems, so a second through-route is a question of when
+    // rather than if, and it should arrive by joining PRIMARY_TRAIL_SOURCES -
+    // not by adding a layer, a width or a branch. Holding the whole list to
+    // one width is what keeps that a one-line change; it also means this test
+    // covers a source that does not exist yet, the day someone adds it.
+    const paint = layer(BLAZE_LAYER_ID).paint as Record<string, unknown>
+
+    for (const source of PRIMARY_TRAIL_SOURCES) {
+      expect(widthFor(paint['line-width'], source)).toBe(PRIMARY_TRAIL_WIDTH)
     }
   })
 
@@ -118,9 +138,9 @@ describe('buildMapStyle', () => {
     expect(ids.indexOf(TRAIL_CASING_LAYER_ID)).toBeLessThan(ids.indexOf(BLAZE_LAYER_ID))
   })
 
-  it('overhangs that casing by the same hairline under a side trail as under the AT', () => {
+  it('overhangs that casing by the same hairline under a side trail as under a through-route', () => {
     // A casing scaled proportionally instead of by a constant would be twice
-    // as heavy under the centerline as under everything else, which reads as
+    // as heavy under a through-route as under everything else, which reads as
     // a second, darker line rather than as an edge on the first one.
     const casing = layer(TRAIL_CASING_LAYER_ID).paint as Record<string, unknown>
     const blaze = layer(BLAZE_LAYER_ID).paint as Record<string, unknown>

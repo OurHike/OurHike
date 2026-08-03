@@ -166,3 +166,49 @@ describe('Downloads', () => {
     ).toHaveAttribute('aria-valuenow', '0')
   })
 })
+
+// --- On a machine that is not going up a mountain --------------------------
+
+describe('downloads on a desktop', () => {
+  function atWidth(isDesktop: boolean) {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({
+        matches: isDesktop,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      })),
+    )
+  }
+
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('says what the download is actually for when the browser has signal', () => {
+    // "Once it's on your phone, the map works with no signal" is a promise
+    // aimed at a phone. On a laptop it is answering a question nobody asked.
+    atWidth(true)
+
+    render(<Downloads {...PROPS} />)
+
+    expect(screen.getByText(/phone you.ll actually be carrying/i)).toBeInTheDocument()
+  })
+
+  it('still offers the download itself', () => {
+    // A laptop is a legitimate place to look at the map, and someone may well
+    // be on a cabin connection. The reason is reframed; the capability is not
+    // taken away.
+    atWidth(true)
+
+    render(<Downloads {...PROPS} />)
+
+    expect(screen.getByRole('button', { name: /download the map/i })).toBeInTheDocument()
+  })
+
+  it('keeps the phone wording on a phone', () => {
+    atWidth(false)
+
+    render(<Downloads {...PROPS} />)
+
+    expect(screen.getByText(/works with no signal/i)).toBeInTheDocument()
+  })
+})

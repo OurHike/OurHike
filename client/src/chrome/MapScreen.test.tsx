@@ -3,7 +3,7 @@ import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { MapScreen } from './MapScreen'
-import { ATTRIBUTION } from '../map/style'
+import { ATTRIBUTION, LIVE_ATTRIBUTION } from '../map/style'
 
 // WIREFRAMES.md's map screen, top to bottom: status strip, header, elevation
 // ribbon, waypoint lanes, map canvas, tab bar - plus the legend sheet over the
@@ -85,9 +85,26 @@ describe('MapScreen', () => {
   })
 
   it('always renders the attribution - OSM credit is an ODbL condition, not a nicety', () => {
-    render(<MapScreen {...PROPS} />)
+    render(<MapScreen {...PROPS} background="usgs_topo_offline" />)
 
     expect(screen.getByText(ATTRIBUTION)).toBeInTheDocument()
+  })
+
+  it('credits the extra licences the live background brings with it', () => {
+    // The live sheet adds two more conditions of use - OpenFreeMap's terms for
+    // the hosting and AWS Terrain Tiles' attribution requirement for the
+    // elevation - so the corner has to grow when the background changes. A
+    // fixed string here would have gone quietly out of date the day the
+    // default flipped.
+    render(<MapScreen {...PROPS} background="hiking_topo_live" />)
+
+    expect(screen.getByText(LIVE_ATTRIBUTION)).toBeInTheDocument()
+  })
+
+  it('credits the live sheet by default, because that is the default background', () => {
+    render(<MapScreen {...PROPS} />)
+
+    expect(screen.getByText(LIVE_ATTRIBUTION)).toBeInTheDocument()
   })
 
   it('surfaces the offline state it was given', () => {

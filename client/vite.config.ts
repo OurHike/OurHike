@@ -1,8 +1,27 @@
-import { realpathSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+
+// maplibre-contour@0.1.0 ships a malformed `exports` map: it lists `module`,
+// `require`, `types` and `browser` conditions but no `import` and no
+// `default`, so a plain ESM `import` of it fails outright under Node's
+// resolution ("'.' is not exported under the conditions..."), which is what
+// Vitest runs. The browser build happens to survive because Vite tries the
+// `module` condition, but that is luck rather than a contract - and the
+// `browser` entry it might otherwise pick is a UMD bundle, not ESM.
+//
+// So the package is pinned to its real ESM entry point here, once, rather than
+// left to whichever condition each toolchain happens to try first. Resolved
+// through the `require` condition (the one entry that IS reachable) and then
+// walked to its sibling, so this keeps working wherever the package actually
+// gets installed rather than assuming a node_modules layout. Delete this the
+// day upstream publishes a valid exports map.
+const CONTOUR_CJS = createRequire(import.meta.url).resolve('maplibre-contour')
+const CONTOUR_ESM = join(dirname(CONTOUR_CJS), 'index.mjs')
 
 // Where the app will be served from. GitHub Pages serves a project site under
 // /<repo>/, not at the domain root, and a PWA is unusually sensitive to that:
@@ -26,6 +45,11 @@ export default defineConfig({
   // import.meta.url keeps the casing consistent regardless of how the
   // process was launched.
   root: realpathSync.native(fileURLToPath(new URL('.', import.meta.url))),
+  resolve: {
+    // Falls back to whatever `require` resolved if upstream ever drops the
+    // .mjs, so a future release can only cost the ESM build, never the app.
+    alias: existsSync(CONTOUR_ESM) ? { 'maplibre-contour': CONTOUR_ESM } : {},
+  },
   plugins: [
     react(),
     // Skipped under Vitest: vite-plugin-pwa's manifest/workbox hooks assume a

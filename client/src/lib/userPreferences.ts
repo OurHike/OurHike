@@ -13,7 +13,25 @@
 
 export type Theme = 'light' | 'dark' | 'auto'
 export type UnitSystem = 'imperial' | 'metric'
-export type BackgroundSource = 'usgs_topo_offline' | 'usgs_topo_live' | 'osm_styled_live'
+/**
+ * Which background the map draws.
+ *
+ * Two values, both implemented, rather than a list of intentions - the map
+ * screen can only offer a background that exists, and the backend's enum
+ * mirrors this exactly, so a value nothing can render is also a value nothing
+ * can sync.
+ *
+ * - `hiking_topo_live` - the live topographic sheet (map/liveTopo.ts) drawn
+ *   over the downloaded archive. Not "instead of": the archive is still in the
+ *   style underneath, so this degrades to `usgs_topo_offline` on its own the
+ *   moment there is no signal, with nothing to detect or switch.
+ * - `usgs_topo_offline` - the downloaded corridor archive alone, and no
+ *   network request for background tiles at all. The honest choice for someone
+ *   metering data or deliberately dark.
+ */
+export const BACKGROUND_SOURCES = ['hiking_topo_live', 'usgs_topo_offline'] as const
+
+export type BackgroundSource = (typeof BACKGROUND_SOURCES)[number]
 export type MaxBackgroundZoom = 11 | 12 | 13
 export type LayerDetailLevel = 'minimal' | 'standard' | 'full'
 
@@ -51,10 +69,13 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   theme: 'auto',
   unit_system: 'imperial',
 
-  // The offline topo archive is the only background that works with no
-  // signal, which is the whole premise - so it is the default, not an option
-  // someone has to find.
-  background_source: 'usgs_topo_offline',
+  // The live sheet, because it costs the offline premise nothing: it is drawn
+  // OVER the downloaded archive rather than in place of it (see
+  // map/style.ts), so with no signal this default renders exactly what
+  // `usgs_topo_offline` would. Defaulting the other way would mean someone who
+  // has not downloaded anything yet - which is everyone on first run - opens
+  // the app to blank hatched paper and has to go find a setting to see a map.
+  background_source: 'hiking_topo_live',
   max_background_zoom: 12,
   show_roads: false,
   waypoint_types_shown: [],

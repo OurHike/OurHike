@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Settings } from './Settings'
-import { DEFAULT_PREFERENCES } from '../lib/userPreferences'
+import { BACKGROUND_SOURCES, DEFAULT_PREFERENCES } from '../lib/userPreferences'
 
 // WIREFRAMES.md §10. Five groups, one canonical UserPreferences model.
 //
@@ -27,6 +27,12 @@ const PROPS = {
   lastSyncedAt: new Date('2026-07-29T09:00:00Z'),
   onSync: vi.fn(),
   onExport: vi.fn(),
+}
+
+const live = { ...DEFAULT_PREFERENCES, background_source: 'hiking_topo_live' as const }
+const offline = {
+  ...DEFAULT_PREFERENCES,
+  background_source: 'usgs_topo_offline' as const,
 }
 
 afterEach(() => {
@@ -81,16 +87,49 @@ describe('Settings', () => {
     expect(PROPS.onChange).toHaveBeenCalledWith({ wrong_way_alert_enabled: false })
   })
 
-  it('shows the offline topo basemap as the current background source', () => {
+  it('offers the background as a real control, on the canonical field name', () => {
     render(<Settings {...PROPS} />)
+    const select = screen.getByRole('combobox', { name: /background/i })
 
-    expect(screen.getByText(/USGS topo/i)).toBeInTheDocument()
+    expect(select).toHaveAttribute('name', 'background_source')
+    expect(select).toHaveValue(PROPS.preferences.background_source)
   })
 
-  it('marks the offline basemap as the only one that works without signal', () => {
+  it('offers exactly the backgrounds the map can actually draw', () => {
+    render(<Settings {...PROPS} />)
+    const values = screen
+      .getAllByRole('option')
+      .map((option) => (option as HTMLOptionElement).value)
+
+    expect(values.sort()).toEqual([...BACKGROUND_SOURCES].sort())
+  })
+
+  it('reports a background change against the canonical field name', async () => {
+    const user = userEvent.setup()
     render(<Settings {...PROPS} />)
 
-    expect(screen.getByText(/only.*offline|works with no signal/i)).toBeInTheDocument()
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: /background/i }),
+      'usgs_topo_offline',
+    )
+
+    expect(PROPS.onChange).toHaveBeenCalledWith({
+      background_source: 'usgs_topo_offline',
+    })
+  })
+
+  it('says the live background still falls back to the download with no signal', () => {
+    // The one thing someone choosing between these actually needs to know, and
+    // the one thing a provider name would not tell them.
+    render(<Settings {...PROPS} preferences={live} />)
+
+    expect(screen.getByText(/no signal/i)).toBeInTheDocument()
+  })
+
+  it('says the offline background fetches nothing, which is why anyone picks it', () => {
+    render(<Settings {...PROPS} preferences={offline} />)
+
+    expect(screen.getByText(/no background data is fetched/i)).toBeInTheDocument()
   })
 
   it('tags not-yet-built rows "Later" rather than hiding them', () => {

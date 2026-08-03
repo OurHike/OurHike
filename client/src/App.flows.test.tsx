@@ -5,7 +5,7 @@ import { get, set, del } from 'idb-keyval'
 import App from './App'
 import { PREFERENCES_KEY } from './lib/preferences'
 import { DEFAULT_PREFERENCES } from './lib/userPreferences'
-import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
+import { ELEVATION_STORE_KEY, POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 import { CORRIDOR_ARCHIVE_KEY } from './map/pmtilesSource'
 import { archiveUrl } from './lib/config'
 import { MockMap, resetMapLibreMock } from './test/mocks/maplibre-gl'
@@ -529,6 +529,143 @@ describe('resuming an interrupted download', () => {
       expect(vi.mocked(fetch).mock.calls[0][1]).toMatchObject({
         headers: expect.objectContaining({ Range: 'bytes=3-' }),
       }),
+    )
+  })
+})
+
+// WIREFRAMES.md §1.3 and §1.4. Both components were built, tested and accepted
+// by MapScreen as optional props long before anything downloaded a profile to
+// pass them, so they could never appear on any device in any state. What is
+// worth testing here is the wiring and the three conditions it is gated on -
+// not the drawing, which ElevationRibbon.test.tsx and WaypointLanes.test.tsx
+// already cover.
+describe('the elevation ribbon and the waypoint lanes', () => {
+  /** Flat to mile 8, a 1,000 ft climb to mile 10, back down by mile 12, flat
+   *  to the end of the synthetic centerline. */
+  function profileWithAClimb() {
+    const miles: number[] = []
+    const feet: number[] = []
+
+    for (let mile = 0; mile <= 40; mile += 0.1) {
+      const rounded = Number(mile.toFixed(2))
+      miles.push(rounded)
+      feet.push(
+        rounded <= 8
+          ? 1000
+          : rounded <= 10
+            ? 1000 + (rounded - 8) * 500
+            : rounded <= 12
+              ? 2000 - (rounded - 10) * 500
+              : 1000,
+      )
+    }
+
+    return {
+      distanceMi: Float32Array.from(miles),
+      elevationFt: Float32Array.from(feet),
+    }
+  }
+
+  function ribbon() {
+    return screen.queryByRole('img', { name: /elevation profile ahead/i })
+  }
+
+  it('draws the profile once there is a fix and a profile to draw', async () => {
+    hikerOnTrail()
+    store.set(ELEVATION_STORE_KEY, profileWithAClimb())
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await reportFix()
+
+    await waitFor(() => expect(ribbon()).toBeInTheDocument())
+  })
+
+  it('draws the three waypoint lanes beside it', async () => {
+    hikerOnTrail()
+    store.set(ELEVATION_STORE_KEY, profileWithAClimb())
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await reportFix()
+
+    await waitFor(() => expect(screen.getByTestId('lane-water')).toBeInTheDocument())
+    expect(screen.getByTestId('lane-sleep')).toBeInTheDocument()
+    expect(screen.getByTestId('lane-else')).toBeInTheDocument()
+  })
+
+  it('puts a POI the index can place into its lane', async () => {
+    // The shelter sits at mile 5 on the synthetic centerline, inside the window
+    // around a hiker standing at mile 5.
+    hikerOnTrail()
+    store.set(ELEVATION_STORE_KEY, profileWithAClimb())
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await reportFix()
+
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId('lane-sleep')).getByRole('button'),
+      ).toBeInTheDocument(),
+    )
+  })
+
+  it('shows nothing at all before there is a fix', async () => {
+    // Without a position there is no "ahead". An empty ribbon would read as
+    // "nothing ahead of you", which is a different and much worse claim than
+    // not drawing one.
+    hikerOnTrail()
+    store.set(ELEVATION_STORE_KEY, profileWithAClimb())
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    expect(ribbon()).not.toBeInTheDocument()
+    expect(screen.queryByTestId('lane-water')).not.toBeInTheDocument()
+  })
+
+  it('shows nothing when the release published no profile', async () => {
+    // A data release built before pipeline/export_elevation.py existed. The
+    // map still works; the ribbon and the lanes are simply absent.
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await reportFix()
+
+    await screen.findByText(/mi 5\./)
+    expect(ribbon()).not.toBeInTheDocument()
+    expect(screen.queryByTestId('lane-water')).not.toBeInTheDocument()
+  })
+
+  it('waits for the direction before captioning a climb', async () => {
+    // lib/hikeDirection.ts withholds the direction until a quarter mile of
+    // movement, and which way someone faces decides which climb is ahead.
+    hikerOnTrail()
+    store.set(ELEVATION_STORE_KEY, profileWithAClimb())
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await reportFix()
+
+    await waitFor(() => expect(ribbon()).toBeInTheDocument())
+    expect(screen.queryByTestId('climb-callout')).not.toBeInTheDocument()
+  })
+
+  it('captions the climb ahead once the direction is known', async () => {
+    hikerOnTrail()
+    store.set(ELEVATION_STORE_KEY, profileWithAClimb())
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await reportFix()
+    // A mile further north: enough movement for NOBO to be established.
+    await reportFix(39 + 6 * MILE_LAT)
+
+    // 1,000 ft between mile 8 and mile 10, and Naismith's duration for it -
+    // never an arrival clock.
+    expect(await screen.findByTestId('climb-callout')).toHaveTextContent(
+      '+1,000 ft · 2.0 mi · ≈1h 10m',
     )
   })
 })

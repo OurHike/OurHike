@@ -10,27 +10,11 @@ body, only derived/assigned server-side.
 import uuid
 from datetime import datetime, timedelta, timezone
 
-import jwt
 import pytest
 
-from app.config import settings
 from app.models.profile import Profile, Role
 from app.models.report import Report, ReporterType, ReportStatus, ReportType, Visibility
-
-TEST_SECRET = settings.supabase_jwt_secret
-
-
-def _make_token(user_id: str) -> str:
-    payload = {
-        "sub": user_id,
-        "exp": datetime.now(timezone.utc) + timedelta(hours=1),
-    }
-    return jwt.encode(payload, TEST_SECRET, algorithm="HS256")
-
-
-def _auth_headers(user_id: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {_make_token(user_id)}"}
-
+from tests.tokens import auth_headers
 
 _VALID_PAYLOAD = {
     "type": "blowdown",
@@ -55,7 +39,7 @@ def test_create_report_persists_the_authoring_timestamp_not_the_request_time(cli
     payload = dict(_VALID_PAYLOAD, timestamp="1999-01-01T00:00:00Z")
 
     before = datetime.now(timezone.utc)
-    response = client.post("/reports", json=payload, headers=_auth_headers(user_id))
+    response = client.post("/reports", json=payload, headers=auth_headers(user_id))
     after = datetime.now(timezone.utc)
 
     assert response.status_code == 201
@@ -70,7 +54,7 @@ def test_create_report_defaults_bad_hikers_type_to_internal_only_visibility(clie
     user_id = str(uuid.uuid4())
     payload = dict(_VALID_PAYLOAD, type="bad_hikers")
 
-    response = client.post("/reports", json=payload, headers=_auth_headers(user_id))
+    response = client.post("/reports", json=payload, headers=auth_headers(user_id))
 
     assert response.status_code == 201
     assert response.json()["visibility"] == "internal_only"
@@ -81,7 +65,7 @@ def test_create_report_defaults_the_other_five_types_to_public_visibility(client
     user_id = str(uuid.uuid4())
     payload = dict(_VALID_PAYLOAD, type=report_type)
 
-    response = client.post("/reports", json=payload, headers=_auth_headers(user_id))
+    response = client.post("/reports", json=payload, headers=auth_headers(user_id))
 
     assert response.status_code == 201
     assert response.json()["visibility"] == "public"
@@ -91,7 +75,7 @@ def test_create_report_ignores_a_client_supplied_severity_field(client):
     user_id = str(uuid.uuid4())
     payload = dict(_VALID_PAYLOAD, severity="serious")
 
-    response = client.post("/reports", json=payload, headers=_auth_headers(user_id))
+    response = client.post("/reports", json=payload, headers=auth_headers(user_id))
 
     assert response.status_code == 201
     assert response.json()["severity"] == "normal"
@@ -171,7 +155,7 @@ def test_reporter_can_view_their_own_internal_only_report(client, db_session):
     db_session.commit()
 
     anonymous_response = client.get(f"/reports/{internal_report.id}")
-    owner_response = client.get(f"/reports/{internal_report.id}", headers=_auth_headers(user_id))
+    owner_response = client.get(f"/reports/{internal_report.id}", headers=auth_headers(user_id))
 
     assert anonymous_response.status_code == 404
     assert owner_response.status_code == 200
@@ -207,7 +191,7 @@ def test_create_report_accepts_a_client_authored_at_for_a_report_written_offline
     authored = datetime.now(timezone.utc) - timedelta(days=3)
     payload = dict(_VALID_PAYLOAD, authored_at=authored.isoformat())
 
-    response = client.post("/reports", json=payload, headers=_auth_headers(user_id))
+    response = client.post("/reports", json=payload, headers=auth_headers(user_id))
 
     assert response.status_code == 201
     stored = datetime.fromisoformat(response.json()["timestamp"]).replace(tzinfo=timezone.utc)
@@ -218,7 +202,7 @@ def test_create_report_defaults_the_timestamp_to_now_when_authored_at_is_omitted
     user_id = str(uuid.uuid4())
     before = datetime.now(timezone.utc)
 
-    response = client.post("/reports", json=_VALID_PAYLOAD, headers=_auth_headers(user_id))
+    response = client.post("/reports", json=_VALID_PAYLOAD, headers=auth_headers(user_id))
 
     assert response.status_code == 201
     stored = datetime.fromisoformat(response.json()["timestamp"]).replace(tzinfo=timezone.utc)
@@ -231,7 +215,7 @@ def test_create_report_records_received_at_as_server_time_not_the_clients_claim(
     payload = dict(_VALID_PAYLOAD, authored_at=authored.isoformat())
     before = datetime.now(timezone.utc)
 
-    response = client.post("/reports", json=payload, headers=_auth_headers(user_id))
+    response = client.post("/reports", json=payload, headers=auth_headers(user_id))
 
     received = datetime.fromisoformat(response.json()["received_at"]).replace(tzinfo=timezone.utc)
     # Server truth, so a backdated claim can always be told apart from a
@@ -247,7 +231,7 @@ def test_create_report_rejects_an_authored_at_in_the_future(client):
         authored_at=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
     )
 
-    response = client.post("/reports", json=payload, headers=_auth_headers(user_id))
+    response = client.post("/reports", json=payload, headers=auth_headers(user_id))
 
     assert response.status_code == 422
 
@@ -260,7 +244,7 @@ def test_create_report_tolerates_small_clock_skew_on_authored_at(client):
         authored_at=(datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat(),
     )
 
-    response = client.post("/reports", json=payload, headers=_auth_headers(user_id))
+    response = client.post("/reports", json=payload, headers=auth_headers(user_id))
 
     assert response.status_code == 201
 
@@ -269,7 +253,7 @@ def test_an_outbox_flush_keeps_each_reports_own_authored_at(client):
     """TESTING.md item 13's server-side half: three reports written offline
     at different times, all synced in one burst, keep their own times."""
     user_id = str(uuid.uuid4())
-    headers = _auth_headers(user_id)
+    headers = auth_headers(user_id)
     authored = [datetime.now(timezone.utc) - timedelta(days=d) for d in (5, 3, 1)]
 
     for when in authored:
@@ -307,7 +291,7 @@ _INVASIVE = {
 
 
 def test_create_invasive_species_report(client):
-    response = client.post("/reports", json=_INVASIVE, headers=_auth_headers(str(uuid.uuid4())))
+    response = client.post("/reports", json=_INVASIVE, headers=auth_headers(str(uuid.uuid4())))
 
     assert response.status_code == 201
     assert response.json()["type"] == "invasive_species"
@@ -316,13 +300,13 @@ def test_create_invasive_species_report(client):
 def test_invasive_species_is_public_like_every_other_condition_type(client):
     """Nothing in an invasive report identifies a person, so none of the
     bad_hikers reasoning for internal_only applies."""
-    body = client.post("/reports", json=_INVASIVE, headers=_auth_headers(str(uuid.uuid4()))).json()
+    body = client.post("/reports", json=_INVASIVE, headers=auth_headers(str(uuid.uuid4()))).json()
 
     assert body["visibility"] == Visibility.public.value
 
 
 def test_invasive_species_appears_in_the_public_report_list(client):
-    client.post("/reports", json=_INVASIVE, headers=_auth_headers(str(uuid.uuid4())))
+    client.post("/reports", json=_INVASIVE, headers=auth_headers(str(uuid.uuid4())))
 
     listed = [r for r in client.get("/reports").json() if r["type"] == "invasive_species"]
 
@@ -337,11 +321,11 @@ def test_invasive_species_can_be_verified_unlike_a_thanks(client, db_session):
     db_session.add(moderator)
     db_session.commit()
 
-    created = client.post("/reports", json=_INVASIVE, headers=_auth_headers(str(uuid.uuid4()))).json()
+    created = client.post("/reports", json=_INVASIVE, headers=auth_headers(str(uuid.uuid4()))).json()
     response = client.post(
         f"/reports/{created['id']}/verify",
         json={"severity": "normal"},
-        headers=_auth_headers(moderator.id),
+        headers=auth_headers(moderator.id),
     )
 
     assert response.status_code == 200
@@ -357,7 +341,7 @@ def test_invasive_species_still_carries_a_photo_and_an_authored_time(client):
         authored_at=authored.isoformat(),
     )
 
-    body = client.post("/reports", json=payload, headers=_auth_headers(str(uuid.uuid4()))).json()
+    body = client.post("/reports", json=payload, headers=auth_headers(str(uuid.uuid4()))).json()
 
     assert body["photo_url"] == "https://example.org/knotweed.jpg"
     stored = datetime.fromisoformat(body["timestamp"]).replace(tzinfo=timezone.utc)
@@ -370,6 +354,6 @@ def test_animals_stays_a_separate_type(client):
     merged or displaced the other."""
     payload = {"type": "animals", "reporter_type": "thru", "lat": 37.9, "lon": -79.1}
 
-    body = client.post("/reports", json=payload, headers=_auth_headers(str(uuid.uuid4()))).json()
+    body = client.post("/reports", json=payload, headers=auth_headers(str(uuid.uuid4()))).json()
 
     assert body["type"] == "animals"

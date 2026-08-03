@@ -49,6 +49,12 @@ import {
   loadTrailData,
   type StoredPoi,
 } from './lib/trailData'
+import {
+  ribbonSamples,
+  ribbonWindow,
+  type ElevationProfile,
+} from './lib/elevationProfile'
+import { upcomingClimb } from './lib/upcomingClimb'
 import { startTracking, trackDirection, type DirectionTracker } from './lib/hikeDirection'
 import { beginContribution } from './lib/contributionFlow'
 import { listQueued } from './lib/outbox'
@@ -132,6 +138,7 @@ function App() {
 
   const [trailIndex, setTrailIndex] = useState<TrailIndex | null>(null)
   const [pois, setPois] = useState<StoredPoi[]>([])
+  const [elevation, setElevation] = useState<ElevationProfile | null>(null)
   const [trailsUrl, setTrailsUrl] = useState<string>(emptyTrailsUrl)
   const [dataError, setDataError] = useState<string | null>(null)
 
@@ -193,6 +200,7 @@ function App() {
 
     setTrailsUrl(URL.createObjectURL(data.trails))
     setPois(data.pois)
+    setElevation(data.elevation)
 
     // Best-effort, and separate from the POIs above on purpose. A shelter is
     // findable by name with no geometry at all, so a trails.geojson that
@@ -282,6 +290,57 @@ function App() {
     [pois],
   )
 
+  // The elevation ribbon and the waypoint lanes (WIREFRAMES.md §1.3, §1.4),
+  // which need three things at once: a published profile, a GPS fix, and that
+  // fix landing on the centerline. Any one missing and both are omitted rather
+  // than stubbed - see MapScreenProps. An empty ribbon reads as "nothing ahead
+  // of you", which is a far worse claim than not drawing one.
+  //
+  // Both share a single window, computed once here. They are one visual block
+  // in the wireframe and a hiker reads a pin as sitting under the part of the
+  // profile it belongs to, which is only true while the two agree about what
+  // stretch of trail they are showing. That also means no profile costs the
+  // lanes as well - the only way to have no profile is a data release built
+  // before pipeline/export_elevation.py existed, and a second window source for
+  // that case would be a code path nothing exercises.
+  //
+  // features/ELEVATION_PROFILE.md has the window and the climb decisions.
+  const ribbon = useMemo(() => {
+    if (elevation === null || fix === null) return undefined
+
+    const window = ribbonWindow(elevation, fix.mile, direction?.direction)
+    const samples = ribbonSamples(elevation, window)
+    // A window that is entirely DEM coverage gap. Rare, and the honest state
+    // is the same as having no profile at all.
+    if (samples.length === 0) return undefined
+
+    return {
+      window,
+      props: {
+        samples,
+        currentMile: fix.mile,
+        upcomingClimb: upcomingClimb(elevation, window, fix.mile, direction?.direction),
+      },
+    }
+  }, [elevation, fix, direction])
+
+  // Built from searchablePois rather than from `pois` again, because that memo
+  // has already paid for the locateOnTrail() call over every POI and the lanes
+  // want exactly the mile it produced. A POI the centerline index cannot place
+  // has no position on a mile axis, so it is left out of the lanes rather than
+  // guessed onto one.
+  const waypoints = useMemo(() => {
+    if (ribbon === undefined) return undefined
+
+    return {
+      points: searchablePois.flatMap((poi) =>
+        poi.mile === undefined ? [] : [{ id: poi.id, type: poi.type, mile: poi.mile }],
+      ),
+      startMile: ribbon.window.startMile,
+      endMile: ribbon.window.endMile,
+    }
+  }, [ribbon, searchablePois])
+
   const updatePreferences = useCallback((patch: Partial<UserPreferences>) => {
     setPreferences((current) => {
       const next = { ...current, ...patch }
@@ -332,6 +391,7 @@ function App() {
     await deleteTrailData()
     setPois([])
     setTrailIndex(null)
+    setElevation(null)
     setTrailsUrl(emptyTrailsUrl())
   }, [removeArchive])
 
@@ -532,6 +592,8 @@ function App() {
           setSearchOpen(false)
         }}
         bbox={bbox}
+        elevation={ribbon?.props}
+        waypoints={waypoints}
         viewportPoints={viewportPoints}
         blazeCounts={[]}
         hiddenTypes={hiddenTypes}

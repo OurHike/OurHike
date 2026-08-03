@@ -12,6 +12,7 @@ import {
   BACKDROP_LAYER_ID,
   MAP_BACKGROUND_COLOR,
 } from './style'
+import { POI_LAYER_ID, POI_SOURCE_ID } from './poiLayers'
 
 // See WIREFRAMES.md "Trail line rendering — blazes". Two rules there are
 // load-bearing rather than decorative:
@@ -140,10 +141,52 @@ describe('buildMapStyle', () => {
     expect(ATTRIBUTION).toContain('USGS US Topo')
   })
 
-  it('attaches that attribution to both data sources, so neither can ship uncredited', () => {
+  it('attaches that attribution to every data source, so none can ship uncredited', () => {
     const sources = style().sources as Record<string, Record<string, unknown>>
 
-    expect(sources[TOPO_SOURCE_ID].attribution).toBe(ATTRIBUTION)
-    expect(sources[TRAILS_SOURCE_ID].attribution).toBe(ATTRIBUTION)
+    for (const id of [TOPO_SOURCE_ID, TRAILS_SOURCE_ID, POI_SOURCE_ID]) {
+      expect(sources[id].attribution).toBe(ATTRIBUTION)
+    }
+  })
+})
+
+describe('POI pins', () => {
+  it('draws them at all, which for a long time it did not', () => {
+    // The regression this file exists to prevent from coming back: shelters,
+    // water, campsites, resupply and crossings were fetched, stored,
+    // searchable and counted in the legend, and the style had no layer that
+    // could put any of them on the map. "Which of these is closest to me" is a
+    // map question, and it could only be answered through a list.
+    expect(layer(POI_LAYER_ID).type).toBe('symbol')
+  })
+
+  it('draws every pin over the trail line, never under it', () => {
+    const ids = style().layers.map((l) => l.id)
+
+    expect(ids.indexOf(BLAZE_LAYER_ID)).toBeLessThan(ids.indexOf(POI_LAYER_ID))
+  })
+
+  it('starts the POI source empty, to be filled once the download lands', () => {
+    // POIs are read out of IndexedDB long after the map is built. Baking them
+    // into the style would mean rebuilding the style to show them, and a style
+    // rebuild takes the WebGL context down with it.
+    const source = style().sources[POI_SOURCE_ID] as Record<string, unknown>
+
+    expect(source.type).toBe('geojson')
+    expect(source.data).toEqual({ type: 'FeatureCollection', features: [] })
+  })
+
+  it('declares no glyphs URL, and so must never ask for text', () => {
+    // Fonts are fetched. There is no network on a mountain, so the style
+    // cannot have a glyphs URL - which means a `text-field` anywhere in it
+    // fails in the field and nowhere else. Asserted on the whole style rather
+    // than on the pin layer, since the rule binds every layer.
+    expect(style()).not.toHaveProperty('glyphs')
+
+    for (const l of style().layers) {
+      expect(
+        (l.layout as Record<string, unknown> | undefined)?.['text-field'],
+      ).toBeUndefined()
+    }
   })
 })

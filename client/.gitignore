@@ -20,6 +20,10 @@ coverage
 # rule TECHNICAL_ARCHITECTURE.md already applies to pipeline/data/.
 public/dev-data
 
+# PNGs written by scripts/preview-poi-pins.ts for eyeballing the generated POI
+# pins. The pins themselves are computed at runtime, so these are throwaway.
+poi-pin-preview
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

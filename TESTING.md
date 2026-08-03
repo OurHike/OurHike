@@ -86,6 +86,7 @@ The test plan below is drawn from [WIREFRAMES.md](WIREFRAMES.md) - it names the 
 **Invariants worth asserting explicitly (regression guards):**
 16. No route in the app exposes a closures toggle or a warnings toggle - assert on the settings schema, not the DOM.
 17. Serious warnings never enqueue a push; the wrong-way alert is the only push publisher in the client codebase.
+18. **Every POI category the app can name, it can draw.** The legend, search and the map all read one array, and the style's icon `match` resolves every published `POI_TYPES` entry to an image that was really registered - with an unknown type falling through to a neutral pin rather than to nothing. This is a regression guard for a real bug: POIs were fetched, stored, searchable and counted in the legend for months while the style had no layer that could put any of them on the map, so the legend's hide toggles were toggling layers that did not exist. Shape carries the category and colour only reinforces it (no two glyphs coincide, and none is a subset of another), since the accents sit within ~2:1 of each other and vanish as a channel in glare or greyscale - the same reasoning as the blaze dash rhythms in #1.
 
 **Field testing (not automatable):** thresholds for off-trail distance and wrong-direction persistence need real GPS behaviour under tree canopy, ideally with NYNJTC/ATC volunteers, before the push path ships. Sunlight-glare readability and gloved one-handed use likewise (WIREFRAMES.md's `9d` is the greyscale pass to test against).
 

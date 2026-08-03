@@ -158,6 +158,31 @@ describe('MapView', () => {
 
     expect(map.controls).toHaveLength(0)
   })
+
+  // Unmounting runs the effect cleanups in the order the effects were declared,
+  // and the map-building one is first - so `map.remove()` happens, and every
+  // cleanup after it is handed a map that no longer exists. Anything that
+  // throws there escapes React's commit phase, and with no error boundary in
+  // the tree that unmounts the whole root: the screen the hiker was switching
+  // TO never renders at all.
+  it('unmounts without throwing, even though its own cleanup removes the map first', () => {
+    const { unmount } = render(<MapView {...PROPS} />)
+
+    expect(() => unmount()).not.toThrow()
+  })
+
+  // The same teardown, on the path that does not end the screen. `background`
+  // is a dependency of the map-building effect, so switching to the offline
+  // archive removes one map and builds another - and the chrome cleanup that
+  // follows still holds the map that was just removed.
+  it('switches background without throwing on the map it just tore down', () => {
+    const { rerender } = render(<MapView {...PROPS} background="hiking_topo_live" />)
+
+    expect(() =>
+      rerender(<MapView {...PROPS} background="usgs_topo_offline" />),
+    ).not.toThrow()
+    expect(MockMap.live).toHaveLength(1)
+  })
 })
 
 describe('POI pins', () => {

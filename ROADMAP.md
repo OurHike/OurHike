@@ -20,7 +20,7 @@ The checklists this file used to carry are gone, for a reason worth recording: b
 
 ## Feature design docs
 
-Nineteen docs in [features/](features/) — eighteen features and one consolidated reference. Design is written before code here; that convention is the reason most issues can link to a doc instead of restating it.
+Twenty docs in [features/](features/) — nineteen features and one consolidated reference. Design is written before code here; that convention is the reason most issues can link to a doc instead of restating it.
 
 A cross-feature alignment review on 2026-07-28 moved **Authentication**, **Report a Problem**, Map Options' **closures**, and Hiker Safety's **warnings and wrong-way alert** into the v1 MVP — see TECHNICAL_ARCHITECTURE.md's revised Backend section. The scope column reflects that revision, not the scope each doc originally launched with.
 
@@ -42,6 +42,7 @@ A cross-feature alignment review on 2026-07-28 moved **Authentication**, **Repor
 | [SEGMENTS.md](features/SEGMENTS.md) | Post-MVP. Hierarchical Hike → Segment tree for thru-, section- and day-hikes. |
 | [TRIP_PLANNING.md](features/TRIP_PLANNING.md) | Post-MVP. Builds on Segments: waypoint planning, bulk date shifts, POI-aware assistance. |
 | [VOLUNTEERING.md](features/VOLUNTEERING.md) | Post-MVP. Club work-project management, with upcoming projects shown on the map. |
+| [SOURCE_REGISTRY.md](features/SOURCE_REGISTRY.md) | Post-MVP. How an outside organization registers its own map layers and a contact to notify. Registration is a form; the build input stays a reviewed file, so nothing self-service can change a hiker's map without a merge. |
 | [DATA_NUDGES.md](features/DATA_NUDGES.md) | Post-MVP. Non-gamified prompts to keep POI data fresh — no notifications, just map prominence for stale data, self-limiting the moment anyone contributes. |
 | [COMMUNITY_BUILDING.md](features/COMMUNITY_BUILDING.md) | Post-MVP. Tramily formation, check-ins, mentions. The project's sharpest privacy-vs-connection tension, resolved as a scoped exception rather than a loosened stance. |
 | [PRICING_MODEL.md](features/PRICING_MODEL.md) | Post-MVP, timing deliberately undecided. Thru-hike pass, regional pass, volunteer exemption, annual ceiling. |
@@ -87,6 +88,6 @@ Feature gating was listed in this phase originally; it is Post-MVP — [#110](ht
 Less a phase than a set of designs waiting for evidence. Two have a reason to be built early:
 
 - **Feature gating** ([#110](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/110)) — recommended first, because every feature built afterwards gets real evidence instead of a guess.
-- **The dbt transform layer** ([#100](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/100)) — timing-driven rather than sequence-driven. NYNJTC's own non-AT network is expected on a near-term timeline, and this is what makes onboarding it "new rows and new staging models" rather than a second parallel pipeline. Distinct from the soft launch in Phase 4, which is NYNJTC members using the AT app.
+- **The dbt transform layer** ([#100](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/100)) — timing-driven rather than sequence-driven. NYNJTC's own non-AT network is expected on a near-term timeline, and this is what makes onboarding it "new rows and new staging models" rather than a second parallel pipeline. Distinct from the soft launch in Phase 4, which is NYNJTC members using the AT app. [SOURCE_REGISTRY.md](features/SOURCE_REGISTRY.md) is where the rows come from once the organization supplying them isn't ATC.
 
 Everything else — trail magic, multi-club tooling, weather, segments, trip planning, community building, data nudges, water reliability prediction, land ownership, personalised pace, data portability — stays described in [FEATURES.md](FEATURES.md) and [features/](features/) rather than filed as tasks. It is intended state, not open work, and filing thirty vague epics would leave the tracker exactly as trustworthy as the checklists this document used to carry.

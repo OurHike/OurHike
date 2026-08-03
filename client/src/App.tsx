@@ -37,6 +37,7 @@ import { useClock } from './lib/useClock'
 import { useOnline } from './lib/useOnline'
 import { useDataSaver } from './lib/useDataSaver'
 import { effectiveBackground } from './lib/dataSaver'
+import { useFinePointer } from './lib/useFinePointer'
 import { useInstallPrompt } from './lib/useInstallPrompt'
 import { useAppUpdate } from './lib/useAppUpdate'
 import { useGeolocation } from './lib/useGeolocation'
@@ -154,6 +155,10 @@ function App() {
   // drawing the archive would be the exact mismatch this feature exists to
   // avoid.
   const saveData = useDataSaver()
+  // Decides whether the map gets zoom buttons - see lib/useFinePointer.ts.
+  // Read here rather than inside MapView so the whole map screen answers from
+  // one value.
+  const finePointer = useFinePointer()
   const install = useInstallPrompt()
   useAppUpdate()
 
@@ -515,6 +520,10 @@ function App() {
       blazeCounts={[]}
       hiddenTypes={hiddenTypes}
       onToggleType={handleToggleType}
+      // WIREFRAMES.md §1.5: zoom buttons are web-only. Nothing was passing
+      // this, so `showZoomButtons` sat on its default of false everywhere and
+      // a browser with a mouse had no visible way to zoom at all.
+      showZoomButtons={finePointer}
       // The corridor is the opening view only. Once there is a camera to put
       // back, it wins: `bounds` would otherwise re-frame the entire trail
       // every time the map screen came back from another tab.

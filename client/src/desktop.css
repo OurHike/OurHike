@@ -130,12 +130,15 @@
   /* ---------- Search: a field, not a sheet ---------- */
 
   /* Still out of flow. `position: static` here was a real bug:
-     .map-screen__canvas is `display: flex` (chrome.css), so a statically
+     .map-screen__canvas is a flex container (chrome.css), so a statically
      positioned search stops overlaying the map and becomes a flex sibling of
-     it, taking real width. The map does not give that width back, so the
-     canvas grows past the frame and everything after it goes with it - in
-     Chromium at 1440px the document gained 327px of horizontal overflow and
-     the legend panel started at x=1462, entirely off the screen.
+     it, taking real space. The map does not give that space back, so the
+     canvas grows past the frame and everything after it goes with it - back
+     when the canvas was a flex ROW, that showed up in Chromium at 1440px as
+     327px of horizontal overflow, with the legend panel starting at x=1462,
+     entirely off the screen. It is a column now (the credit line sits under
+     the map), so the same mistake would spend height instead - a different
+     symptom of the same bug.
 
      So only the shape changes: a field anchored over the map's top-left,
      sized to its contents, rather than a sheet covering the whole canvas.

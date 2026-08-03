@@ -253,9 +253,7 @@ def load_state(source: str | Path) -> dict:
 
     version = state.get("version")
     if version != STATE_VERSION:
-        raise StateUnavailable(
-            f"{source} is state version {version!r}, this pipeline reads version {STATE_VERSION}"
-        )
+        raise StateUnavailable(f"{source} is state version {version!r}, this pipeline reads version {STATE_VERSION}")
 
     return state
 

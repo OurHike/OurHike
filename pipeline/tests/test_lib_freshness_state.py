@@ -283,7 +283,7 @@ def test_a_matching_marker_is_fresh():
 
 
 def test_a_changed_marker_names_which_layer_moved():
-    """"Something changed" and "the centerline changed" are different amounts
+    """ "Something changed" and "the centerline changed" are different amounts
     of help at 6am when someone is deciding whether to rebuild."""
     recorded = {
         "atc": {
@@ -365,7 +365,7 @@ def test_every_source_gets_a_verdict_even_when_none_can_be_checked():
 
 
 def test_state_age_is_measured_from_when_it_was_captured():
-    """"Nothing changed" against a six-month-old capture is a different
+    """ "Nothing changed" against a six-month-old capture is a different
     sentence from the one a reader assumes it is."""
     from datetime import date
 

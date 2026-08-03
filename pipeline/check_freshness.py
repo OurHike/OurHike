@@ -328,9 +328,7 @@ def gather_upstream(state: dict, *, local: bool = True) -> dict:
         # Called with no arguments on the local path, exactly as it always was,
         # so that it reads the tile index itself. A published state has no local
         # index to read, so its recorded marker is handed in instead.
-        upstream["elevation"] = (
-            upstream_elevation_marker() if local else upstream_elevation_marker(state.get("elevation"))
-        )
+        upstream["elevation"] = upstream_elevation_marker() if local else upstream_elevation_marker(state.get("elevation"))
 
     return upstream
 

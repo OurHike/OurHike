@@ -11,7 +11,37 @@ Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHN
 
 ## 1. Background tile options
 
-### What's actually free, checked directly rather than assumed
+### Built 2026-08-03 - the live topographic sheet, and why the raster answer below was the wrong one
+
+**What prompted this: "the background map is really bad."** That is a fair reading of what shipped, and the cause is structural rather than a bug in `spike_raster_mosaic.py`. The corridor archive is a *picture of a map*: US Topo quads are pre-rendered at 1:24,000 in per-quad UTM zones with their labels baked into the pixels, so mosaicking them means reprojecting and resampling ink drawn for one scale, and reading them at any other zoom means looking at that ink stretched or crushed. Seams between quads of different vintages, type that cannot reflow, contours that cannot be recoloured, and nothing at all outside the 30-mile strip are not defects in the pipeline - **they are what a raster mosaic is.** No amount of pipeline work fixes them, which is why the answer is a different kind of background rather than a better-tuned version of this one.
+
+**That also invalidates this section's original recommendation.** The table below picked USGS's live tile service as the default live option, on the grounds that it is unambiguously free and already the trusted visual style. Both facts still hold - but a live *raster* service inherits every one of the problems above (it is the same pre-rendered ink, just fetched instead of downloaded) and, critically, **cannot be stylized at all.** "Free" was the only question that table asked. It should have asked "free *and* vector."
+
+**What shipped instead - three free, no-key sources composed into one sheet we style ourselves:**
+
+| Layer | Source | Terms, checked | Why this one |
+|---|---|---|---|
+| Vector base (water, woodland, protected land, roads, tracks, OSM paths, place and summit labels) | **OpenFreeMap** public instance, `https://tiles.openfreemap.org/planet`, unmodified OpenMapTiles schema | No API key, no registration, **no request cap**, explicitly free for commercial use with attribution; MIT-licensed project, donation-funded | The only OSM vector host that is free at production volume without a terms conversation - which is exactly what Stadia (below) would have needed |
+| Shaded relief + **contour lines** | **AWS Terrain Tiles** (`elevation-tiles-prod`), AWS Open Data registry, terrarium encoding | Open Data, no key, plain S3; attribution required per tilezen/joerd | Over the A.T. it is derived from **USGS 3DEP** - the same survey the elevation profile already credits. Contours are generated in the client from these tiles by `maplibre-contour`, so the interval follows the zoom and the reader's units instead of being baked at one scale |
+| Downloaded corridor | The existing PMTiles archive, unchanged | - | Still in the style, underneath. See the stacking note below |
+
+**Contours are the reason this counts as "quality over prettiness."** A hiking basemap without them is not a topographic map, and losing them is the one way this change could have been a downgrade. Generating them client-side from the same DEM the hillshade already fetches costs no extra storage, no extra download, and no pipeline run - and it means the interval can be 40ft/200ft where a USGS 7.5-minute quad uses it and coarsen as you zoom out, which a pre-rendered contour layer can never do.
+
+**The stacking decision, which is what makes this safe to default to.** The live layers are drawn **over** the corridor archive rather than in place of it, so there is no online/offline branch anywhere in the client:
+
+- **Signal, nothing downloaded** (every first run): a real topo map, worldwide. Previously: blank hatched paper.
+- **Signal, downloaded**: the vector sheet covers the corridor and keeps going past its edge.
+- **No signal, downloaded**: the live layers draw nothing, the archive shows through exactly as before, and backdrop.ts's hatch still marks where the download does not reach.
+- **No signal, nothing downloaded**: unchanged.
+
+Every state is at least as good as it was, and none of them has to be detected. That is why `background_source` now **defaults to the live sheet** rather than making it opt-in as this doc originally proposed - the offline premise costs nothing to keep, so the "additive, not a replacement" resolution below is honoured by the layer order rather than by a setting someone has to find.
+
+**Two caveats recorded honestly rather than buried:**
+
+- **OpenFreeMap is donation-funded and carries no SLA**, the same category of risk this doc already named for any live API. The mitigation is structural: it is one constant (`OPENFREEMAP_TILEJSON` in `client/src/map/liveTopo.ts`), the schema is standard OpenMapTiles, and the "self-host an extract on the R2 bucket we already publish to" answer below remains available with no cartography changes. **This is now the answer to that open question** - not "extend the Protomaps extract *instead* of a live API", but "ship the live API, keep the self-hosted extract as the drop-in replacement."
+- **The tile endpoint could not be reached from the build environment** (its network policy blocks the host), so it was confirmed from two independently published npm packages that embed it, plus OpenFreeMap's own documented quick-start. The AWS DEM endpoint *was* reached directly and returns real tiles. Worth one look at a real map before trusting the vector half completely.
+
+### What's actually free, checked directly rather than assumed (original 2026-07 survey, superseded above)
 
 | Source | Live tile API? | Real cost/terms | Verdict |
 |---|---|---|---|
@@ -52,7 +82,28 @@ The split matters for failure behaviour: the paper is in `buildMapStyle` and can
 
 ### Client setting
 
-`background_source` - a client-side, per-device preference (same no-account storage model as Segments): `usgs_topo_offline` (the existing default corridor download), `usgs_topo_live`, and later, pending the terms conversation above, an OSM-styled live option. Lives alongside the already-planned "max zoom 11/12/13" setting in ROADMAP.md Phase 2 - same settings screen, same client-side storage, not a separate mechanism.
+`background_source` - a client-side, per-device preference (same no-account storage model as Segments). Lives alongside the already-planned "max zoom 11/12/13" setting in ROADMAP.md Phase 2 - same settings screen, same client-side storage, not a separate mechanism.
+
+**As built 2026-08-03, this is two values rather than the three sketched here, and both are implemented:**
+
+- `hiking_topo_live` **(default)** - the live topographic sheet, drawn over the archive. See the build note at the top of this section for why defaulting to it costs the offline premise nothing.
+- `usgs_topo_offline` - the downloaded corridor alone, and **no background request at all**. The honest choice for someone metering data or deliberately dark, which is a real reason to keep it and the only reason it is still a setting.
+
+**Data Saver overrides the choice, and says so (2026-08-03, [#122](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/122)).** Making the live sheet the default meant every hiker with signal started pulling tiles they had not asked for - roughly 2 MB for a fresh view, measured over the AT (DEM tiles run 110-130 KB each at z11-13). That is small against the 314 MB corridor download and it costs the project nothing, since OpenFreeMap is uncapped and the AWS DEM is Open Data with sponsored egress. It is a **consent** problem rather than a cost one: the archive is a size on a button someone taps, and this was a default they inherited.
+
+So `navigator.connection.saveData` now decides the background that is actually drawn (`client/src/lib/dataSaver.ts`). Data Saver is a preference the hiker set deliberately at the OS level, which is a better signal about their plan than our default could be, so it **wins** rather than merely nudging.
+
+Two things make that defensible rather than presumptuous, and neither ships without the other:
+
+- **It only ever subtracts.** The override can turn the live sheet off; nothing can turn background requests on for someone who chose the download.
+- **Settings says it plainly**, and only when the two actually disagree. Overriding a preference is fine; overriding one while the screen still claims otherwise is the exact quiet mismatch value #4 exists to prevent - and that row is the only place someone would go to find out why the map looks different.
+
+**Known limits, both real:**
+
+- **iOS gets nothing from this.** Safari implements no part of the Network Information API, so `saveData` is always undefined there and the honest description is that this improves Android and does nothing for iPhone. `@capacitor/network`'s `connectionType` would close the gap, blocked on [#101](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/101).
+- **Someone who leaves Data Saver on permanently cannot get the live sheet** without turning it off, because nothing stored distinguishes "chose the live sheet" from "never touched the default". Giving those two different answers needs a real "this was chosen" flag on the synced preferences - there is precedent in `download_choice_made` - and that is a contract change worth deciding rather than assuming. Flagged in #122, not decided here.
+
+The two names originally sketched here, `usgs_topo_live` and `osm_styled_live`, were **removed rather than kept as placeholders.** Neither was ever built, and a value nothing can render is a settings row nobody can honour and a preference the backend would happily store and sync back as a map with no background on it. A phone that saved one before this change drops it on read and falls back to the default (`client/src/lib/preferences.ts`), which is the mirror image of the merge-over-defaults rule that file already had for *missing* keys: a key holding a value this build no longer knows is not fixed by merging, because the key is present.
 
 ## 2. Roads & sidewalk-based walkability
 
@@ -159,8 +210,9 @@ This section is a detail spec, not new scope - it's fleshing out controls for MV
 
 ## Open questions (for you, not decided here)
 
-- **Stadia Maps' (or a similar provider's) actual commercial-use terms for a nonprofit-funding, donation-soliciting app** - a real conversation to have directly with them, the same category of open question as ATC's and opentrail.org's unconfirmed redistribution terms.
-- **Whether extending the existing Protomaps self-hosted extract (more zooms, a wider region) is a better answer than any live third-party API** for "see more background than the downloaded corridor" - raised above, worth deciding once there's a real map in front of you rather than from this doc alone.
+- ~~**Stadia Maps' (or a similar provider's) actual commercial-use terms for a nonprofit-funding, donation-soliciting app.**~~ **Closed 2026-08-03 - the conversation is not needed.** OpenFreeMap is free for commercial use with attribution and no cap, stated up front, so there is no terms question to open with anyone. Worth reopening only if OpenFreeMap becomes unavailable *and* self-hosting is somehow ruled out.
+- ~~**Whether extending the existing Protomaps self-hosted extract is a better answer than any live third-party API.**~~ **Closed 2026-08-03, and the answer was "not either/or."** The live API ships now because it needs no pipeline work and covers the world; the self-hosted extract stays the drop-in replacement behind one constant. Deciding between them up front would have delayed a fix for a background that was already bad.
+- **Whether the vector sheet actually reads well on the trail** - the one thing no test here can answer. The style validates and every layer is asserted, but "does this look like a map you would navigate by, at arm's length, in glare, with the trail line still the most legible thing on it" needs a real screen. The palette, the contour intervals and the label density are the knobs, all in `client/src/map/liveTopo.ts`.
 - **Exact `no_sidewalk_high_speed` threshold** (which `highway=*` values, whether to also read `maxspeed` where tagged) - a real tuning decision once there's real OSM road data pulled for the corridor, not a question this doc can answer without it.
 - **Closure geometry precision** - whether a closure needs to reference exact start/end points along the centerline (precise, more data-entry effort for a volunteer) or a looser "this general stretch" description (faster to report, less precise) - worth deciding based on what club volunteers will actually have time to enter in the field.
 

@@ -94,6 +94,20 @@ jobs:
         if: inputs.include_elevation
         run: python export_elevation.py
 
+      # Record what every upstream said at the moment this build fetched, and
+      # publish it beside the artifacts as build_state.json. That file is the
+      # entire input to the scheduled freshness check
+      # (.github/workflows/check-upstream-freshness.yml), which reads it over
+      # the public URL and therefore needs no R2 credentials of its own.
+      #
+      # After every fetch, never before: the state has to describe the data
+      # this build actually used. It captures only the sources this run
+      # touched - a run without include_elevation records no elevation
+      # markers, and the check reports that source as unchecked rather than
+      # inventing a verdict for a leg that never ran.
+      - name: Capture upstream freshness markers
+        run: python check_freshness.py --capture data/processed/build_state.json
+
       # Runs before publish, never after. On a hosted runner there is no
       # data/quality_baseline.json from a previous run, so the drop-vs-baseline
       # check reports SKIPPED rather than comparing - the completeness and

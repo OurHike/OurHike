@@ -9,14 +9,42 @@
 // phone that saved preferences before the key existed, and an undefined
 // `wrong_way_alert_enabled` is a safety default silently turning itself off.
 
+import {
+  BACKGROUND_SOURCES,
+  DEFAULT_PREFERENCES,
+  type UserPreferences,
+} from './userPreferences'
 import { get, set } from 'idb-keyval'
-import { DEFAULT_PREFERENCES, type UserPreferences } from './userPreferences'
 
 export const PREFERENCES_KEY = 'ourhike:preferences'
 
+/**
+ * Merging over the defaults fixes a MISSING key, but not a key holding a value
+ * this build no longer knows.
+ *
+ * `background_source` has already been through one such change - it used to
+ * offer `usgs_topo_live` and `osm_styled_live`, neither of which was ever
+ * built, and both of which could be sitting in IndexedDB on a phone that ran
+ * an earlier build. Left alone, that value survives the merge (it is present,
+ * so there is nothing to fill in), reaches buildMapStyle, matches no
+ * background, and draws no background - the exact black-map class of bug
+ * MAP_OPTIONS.md spent a section on, arriving by a different road.
+ *
+ * So an unrecognised value is treated as absent rather than trusted, and the
+ * phone falls back to the default it would have had if it had never stored
+ * anything.
+ */
+function knownBackground(stored: Partial<UserPreferences>): Partial<UserPreferences> {
+  const value = stored.background_source
+  if (value === undefined || BACKGROUND_SOURCES.includes(value)) return stored
+
+  const { background_source: _dropped, ...rest } = stored
+  return rest
+}
+
 export async function loadPreferences(): Promise<UserPreferences> {
   const stored = (await get(PREFERENCES_KEY)) as Partial<UserPreferences> | undefined
-  return { ...DEFAULT_PREFERENCES, ...stored }
+  return { ...DEFAULT_PREFERENCES, ...knownBackground(stored ?? {}) }
 }
 
 export async function savePreferences(

@@ -20,6 +20,13 @@
 // out, for the same reason the blaze expression is imported: the rendering
 // rule for a category should live in one place.
 //
+// Nor the background cartography, on the same principle - liveTopo.ts owns the
+// hiking sheet's layers and terrain.ts the contour intervals. What this file
+// does own is the ORDER, which is where the map's real guarantees live and the
+// one thing no single module can enforce alone. Bottom to top: paper backdrop,
+// downloaded archive, live sheet, trail, pins. Each step of that is load-
+// bearing and commented at the layer it applies to.
+//
 // Not handled here either: blaze "Black" (code 8). WIREFRAMES.md's table describes it
 // as "wide casing, no fill — drawn by absence," but the real data has zero
 // Black features today and lib/blaze.ts has no colour for it, so it falls to
@@ -29,6 +36,14 @@
 import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec'
 import { BLAZE_MATCH_EXPRESSION } from '../lib/blaze'
 import { buildPoiLayer, buildPoiSource, POI_SOURCE_ID } from './poiLayers'
+import type { BackgroundSource } from '../lib/userPreferences'
+import {
+  LIVE_TOPO_ATTRIBUTION,
+  OPENFREEMAP_GLYPHS,
+  liveTopoLayers,
+  liveTopoSources,
+} from './liveTopo'
+import { ELEVATION_ATTRIBUTION, type ContourUnits, type TerrainUrls } from './terrain'
 
 export const TOPO_SOURCE_ID = 'usgs-topo'
 export const TRAILS_SOURCE_ID = 'trails'
@@ -59,6 +74,25 @@ export const MAP_BACKGROUND_COLOR = '#f7f3e9'
 // is required - the abbreviation does not satisfy the licence, so the full
 // form is what ships.
 export const ATTRIBUTION = 'USGS US Topo · © OpenStreetMap contributors'
+
+/**
+ * What the corner has to say once the live background is on.
+ *
+ * Every clause is a licence or terms condition rather than a courtesy - ODbL
+ * for the OSM data, OpenFreeMap's own terms for hosting it, and the AWS
+ * Terrain Tiles attribution requirement for the elevation the hillshade and
+ * contours are derived from. Composed from each module's own constant so a
+ * source cannot be added in one file and go uncredited in another.
+ */
+export const LIVE_ATTRIBUTION = [
+  ATTRIBUTION,
+  LIVE_TOPO_ATTRIBUTION,
+  ELEVATION_ATTRIBUTION,
+].join(' · ')
+
+export function attributionFor(background: BackgroundSource): string {
+  return background === 'hiking_topo_live' ? LIVE_ATTRIBUTION : ATTRIBUTION
+}
 
 export const BLAZE_LINE_WIDTH = 2
 export const CASING_LINE_WIDTH = BLAZE_LINE_WIDTH + 1.5
@@ -105,14 +139,41 @@ export interface MapStyleOptions {
   topoArchiveUrl: string
   /** Local URL of the exported trail lines. No network path. */
   trailsUrl: string
+  /**
+   * Which background to draw. Defaults to the live topographic sheet, which
+   * is what someone who has not downloaded anything yet should be looking at.
+   */
+  background?: BackgroundSource
+  /**
+   * DEM and contour URLs from `registerTerrain()`. Omitting them drops the
+   * live background even when it is asked for, which is what keeps
+   * `buildMapStyle` a pure function that tests and callers can build without
+   * registering a protocol first.
+   */
+  terrain?: TerrainUrls
+  /** Decides whether contours and summit heights are in feet or metres. */
+  units?: ContourUnits
 }
 
 export function buildMapStyle({
   topoArchiveUrl,
   trailsUrl,
+  background = 'hiking_topo_live',
+  terrain,
+  units = 'imperial',
 }: MapStyleOptions): StyleSpecification {
+  // Asked for AND buildable. A live background with no terrain URLs would be
+  // a style referencing sources that resolve to nothing, so the two are
+  // decided together, once, and every use below reads this one answer.
+  const live = background === 'hiking_topo_live' && terrain !== undefined
+  const liveOptions = live ? { terrain: terrain as TerrainUrls, units } : null
+
   return {
     version: 8,
+    // Only set when something needs glyphs; a style declaring a font endpoint
+    // it never asks for would make the offline-only map depend on a host it
+    // has no reason to contact.
+    ...(live ? { glyphs: OPENFREEMAP_GLYPHS } : {}),
     sources: {
       [TOPO_SOURCE_ID]: {
         type: 'raster',
@@ -130,6 +191,11 @@ export function buildMapStyle({
       // source with no attribution is one release away from shipping
       // uncredited.
       [POI_SOURCE_ID]: { ...buildPoiSource(), attribution: ATTRIBUTION },
+      // Each of these carries its own credit (OpenFreeMap's terms, the AWS
+      // Terrain Tiles requirement) rather than the composed line - a source
+      // should name the data IT is, and attributionFor() is what assembles the
+      // corner out of whichever ones are actually in the style.
+      ...(liveOptions === null ? {} : liveTopoSources(liveOptions)),
     },
     layers: [
       {
@@ -153,6 +219,18 @@ export function buildMapStyle({
         type: 'raster',
         source: TOPO_SOURCE_ID,
       },
+      // The live sheet goes OVER the downloaded raster, and that ordering is
+      // the whole offline story rather than a cosmetic preference.
+      //
+      // Stacked this way, the two never have to be chosen between at runtime
+      // and there is no online/offline branch anywhere: with signal, the
+      // vector sheet covers the corridor with something sharp and styled and
+      // keeps going past its edge, where there used to be nothing but hatched
+      // paper. Without signal, these layers simply draw nothing, the archive
+      // shows through underneath exactly as it always has, and the hatch still
+      // marks where the download does not reach. Every state is at least as
+      // good as it was before, and none of them needs to be detected.
+      ...(liveOptions === null ? [] : liveTopoLayers(liveOptions)),
       {
         // Hairline dark casing, drawn under every blaze so the trail stays
         // readable over busy topo contours.

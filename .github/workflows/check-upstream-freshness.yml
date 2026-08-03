@@ -1,0 +1,272 @@
+# Asks, on a schedule, whether any upstream data has moved since the last
+# publish. Flags what it finds. Publishes nothing, ever.
+#
+# Change detection was built and verified months before anything ran it:
+# fetch_all.py compares each ATC layer's editingInfo.dataLastEditDate,
+# fetch_opentrail.py uses If-None-Match/ETag, fetch_topo_quads.py uses S3
+# Last-Modified, and check_freshness.py normalises all four. Nothing called
+# any of it on a schedule, so an upstream edit was only ever noticed by
+# someone running a script by hand.
+#
+# THE SEPARATION IS THE DESIGN (pipeline/DATA_RELEASES.md). This job holds no
+# R2 credentials at all - not "chooses not to write", cannot. Its whole input
+# is one public HTTPS GET of build_state.json, the same object a hiker's
+# phone could read, so it is structurally incapable of changing anyone's map
+# even if something went badly wrong inside it.
+#
+# It also does not fail on staleness. Upstream changing is the normal state
+# between builds; a red X every run for a legitimately-edited ATC layer trains
+# people to ignore the one signal that matters. The run fails only if the
+# check itself broke.
+
+name: Check upstream freshness
+
+on:
+  schedule:
+    # 07:20 UTC daily. DATA_RELEASES.md §1 specifies a daily check against a
+    # weekly, deliberate build - the check is cheap (a few dozen metadata
+    # requests) and the build is not, so noticing early costs nothing.
+    # Off the hour because GitHub's scheduler queues everything submitted at
+    # :00 behind everyone else's cron.
+    - cron: "20 7 * * *"
+  workflow_dispatch:
+    inputs:
+      state_url:
+        description: "build_state.json to compare against. Defaults to the published one."
+        type: string
+        required: false
+
+# Read the repo, write the one tracking issue. No packages, no deployments,
+# and nothing that could reach R2.
+permissions:
+  contents: read
+  issues: write
+
+# One at a time, and never cancel a run in flight: a half-finished check that
+# got cancelled mid-way would leave the tracking issue describing a comparison
+# that never completed.
+concurrency:
+  group: check-upstream-freshness
+  cancel-in-progress: false
+
+env:
+  # The public bucket base, the same value the client is built with. A repo
+  # variable rather than a secret on purpose - it is a public URL, and making
+  # it a secret would only make this workflow harder to read.
+  DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
+  ISSUE_TITLE: "Upstream data freshness"
+  ISSUE_LABEL: data-freshness
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: pipeline
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Resolve which state to compare against
+        id: state
+        env:
+          OVERRIDE: ${{ inputs.state_url }}
+        run: |
+          if [ -n "$OVERRIDE" ]; then
+            echo "url=$OVERRIDE" >> "$GITHUB_OUTPUT"
+          elif [ -n "$DATA_BASE_URL" ]; then
+            echo "url=${DATA_BASE_URL%/}/build_state.json" >> "$GITHUB_OUTPUT"
+          else
+            echo "url=" >> "$GITHUB_OUTPUT"
+          fi
+
+      # --state is what makes this runnable here at all. check_freshness.py's
+      # recorded side reads pipeline/data/raw/*, which is gitignored, so on a
+      # fresh checkout it would report every source STALE for the trivial
+      # reason that this runner has never fetched anything.
+      #
+      # --exit-zero is what makes the remaining exit codes meaningful. It
+      # collapses "stale or unverifiable" (1) into success, because that is
+      # news rather than an error, which leaves:
+      #
+      #   0  the check ran            <- verdict is in freshness.json
+      #   2  nothing published yet    <- not a verdict at all; say so, pass
+      #   *  the check itself broke   <- a real failure, and the only one
+      #
+      # Without that collapse a crashed run and a legitimately-edited ATC
+      # layer would both exit 1, and the only way to keep the job green for
+      # the second would be to swallow the first.
+      - name: Ask every upstream what it says now
+        id: check
+        if: steps.state.outputs.url != ''
+        run: |
+          set +e
+          python check_freshness.py \
+            --state "${{ steps.state.outputs.url }}" \
+            --json freshness.json \
+            --exit-zero | tee freshness.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          case "$status" in
+            0) ;;
+            2) echo "no_state=true" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "::error::check_freshness.py exited $status, which --exit-zero reserves for a crash."
+              exit "$status"
+              ;;
+          esac
+
+      - name: Write the job summary
+        if: always()
+        run: |
+          {
+            echo "## Upstream data freshness"
+            echo
+            if [ -z "${{ steps.state.outputs.url }}" ]; then
+              echo "No \`DATA_BASE_URL\` repo variable is set, so there is nothing to compare against."
+              echo "Set it to the public bucket base and this check arms itself."
+            elif [ "${{ steps.check.outputs.no_state }}" = "true" ]; then
+              echo "No \`build_state.json\` has been published yet at ${{ steps.state.outputs.url }}."
+              echo
+              echo "This is not a verdict about the data - it is the absence of one."
+              echo "Run **Publish vector data** once with \`publish\` ticked and this check arms itself."
+            elif [ -f freshness.txt ]; then
+              echo '```'
+              cat freshness.txt
+              echo '```'
+            else
+              echo "The check did not produce a report. See the step log above."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # For the build to read if it wants a head start on what to rebuild.
+      # Short-lived: this is evidence for one run, not a data channel.
+      - name: Upload the verdict
+        if: steps.check.outputs.status != '' && steps.check.outputs.no_state != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: freshness-verdict
+          path: pipeline/freshness.json
+          retention-days: 14
+          if-no-files-found: warn
+
+      # ONE issue, updated in place - never a second issue, never a comment
+      # per run. A daily job that opened an issue a day would produce exactly
+      # the noise that makes people stop reading issues, and the thing being
+      # tracked is a single ongoing state, not a stream of events.
+      #
+      # Closed automatically when everything returns to FRESH, so the issue
+      # being open is itself the signal.
+      - name: Open, update, or close the tracking issue
+        if: steps.check.outputs.status != '' && steps.check.outputs.no_state != 'true'
+        uses: actions/github-script@v7
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const fs = require('fs')
+            const verdict = JSON.parse(fs.readFileSync('pipeline/freshness.json', 'utf8'))
+            const title = process.env.ISSUE_TITLE
+            const label = process.env.ISSUE_LABEL
+
+            const existing = (await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: label,
+              per_page: 100,
+            })).find(issue => issue.title === title)
+
+            const stale = verdict.needs_refetch ?? []
+            const unknown = verdict.unknown ?? []
+
+            if (stale.length === 0 && unknown.length === 0) {
+              if (existing) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  body: `Everything upstream is unchanged again as of ${verdict.checked_at}. Closing.\n\n---\n_Generated by [Claude Code](https://claude.ai/code)_`,
+                })
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  state: 'closed',
+                  state_reason: 'completed',
+                })
+              }
+              core.info('Everything fresh; no issue needed.')
+              return
+            }
+
+            // "First seen" survives across runs by being parsed back out of
+            // the body this job itself wrote. Without it every update would
+            // reset the clock and a source stale for three weeks would read
+            // as stale since this morning - which is the number that decides
+            // whether it is worth a rebuild.
+            const firstSeen = {}
+            if (existing) {
+              for (const [, source, since] of existing.body.matchAll(/^\| `([^`]+)` \| \S+ \| ([\d-]+) \|/gm)) {
+                firstSeen[source] = since
+              }
+            }
+
+            const row = (source, state) => {
+              const since = firstSeen[source] ?? verdict.checked_at
+              const detail = (verdict.sources ?? []).find(s => s.source === source)
+              const changed = detail?.changed?.length ? ` — ${detail.changed.join(', ')}` : ''
+              return `| \`${source}\` | ${state} | ${since} | ${detail?.detail ?? ''}${changed} |`
+            }
+
+            const age = verdict.state_age_days
+            const body = [
+              `Compared against \`build_state.json\` captured ${verdict.state_captured_at ?? 'on an unrecorded date'}` +
+                (age === null || age === undefined ? '' : ` (${age} days ago)`) + '.',
+              '',
+              '| source | state | first seen | detail |',
+              '|---|---|---|---|',
+              ...stale.map(s => row(s, 'changed upstream')),
+              ...unknown.map(s => row(s, 'could not be checked')),
+              '',
+              unknown.length
+                ? '`could not be checked` is not `fine`. A source nobody could verify is exactly how stale data survives, so it is listed rather than rounded down.'
+                : '',
+              '',
+              'Changed data is not published data — this job holds no R2 credentials. Run **Publish vector data** to rebuild.',
+              '',
+              `Last checked ${verdict.checked_at} · [run](${process.env.RUN_URL})`,
+              '',
+              '---',
+              '_Generated by [Claude Code](https://claude.ai/code)_',
+            ].join('\n')
+
+            if (existing) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body,
+              })
+              core.info(`Updated #${existing.number}.`)
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: [label],
+              })
+              core.info(`Opened #${created.data.number}.`)
+            }

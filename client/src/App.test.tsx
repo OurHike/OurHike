@@ -66,6 +66,10 @@ async function liveMap() {
   return MockMap.live[0]
 }
 
+function styleOf(map: MockMap): { sources: Record<string, unknown> } {
+  return map.options.style as { sources: Record<string, unknown> }
+}
+
 describe('App shell', () => {
   it('opens on onboarding the very first time', async () => {
     render(<App />)
@@ -466,5 +470,56 @@ describe('App shell', () => {
     // would be the one after it.
     const requested = vi.mocked(fetch).mock.calls.map((c) => String(c[0]))
     expect(requested.some((url) => url.includes('.pmtiles'))).toBe(false)
+  })
+})
+
+describe('Data Saver', () => {
+  // The end of the wire. dataSaver.ts decides, Settings explains, and this is
+  // the part that actually stops the bytes: with Data Saver on, the style the
+  // map is built with must carry no live sources at all. Asserting the setting
+  // or the copy alone would pass just as happily while the tiles kept coming.
+  function setSaveData(saveData: boolean): void {
+    Object.defineProperty(navigator, 'connection', {
+      value: { saveData },
+      configurable: true,
+      writable: true,
+    })
+  }
+
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, 'connection')
+  })
+
+  it('builds the map with no live background sources when Data Saver is on', async () => {
+    setSaveData(true)
+    returningHiker()
+    render(<App />)
+
+    const sources = Object.keys(styleOf(await liveMap()).sources)
+
+    expect(sources).not.toContain('osm')
+    expect(sources).not.toContain('dem')
+    expect(sources).not.toContain('contours')
+  })
+
+  it('still draws the downloaded archive and the trail, which is the point', async () => {
+    // Respecting Data Saver must cost the background and nothing else - a
+    // hiker who saves data has not asked to lose the map.
+    setSaveData(true)
+    returningHiker()
+    render(<App />)
+
+    const sources = Object.keys(styleOf(await liveMap()).sources)
+
+    expect(sources).toContain('usgs-topo')
+    expect(sources).toContain('trails')
+  })
+
+  it('fetches the live sheet by default when Data Saver is off', async () => {
+    setSaveData(false)
+    returningHiker()
+    render(<App />)
+
+    expect(Object.keys(styleOf(await liveMap()).sources)).toContain('osm')
   })
 })

@@ -46,7 +46,7 @@ UserPreferences   (client-side by default, IndexedDB - syncs via Authentication
   unit_system: imperial | metric                 (default: imperial)
 
   # Map display
-  background_source: usgs_topo_offline | usgs_topo_live | (osm_styled_live, pending terms)
+  background_source: hiking_topo_live | usgs_topo_offline  (default: hiking_topo_live)
   max_background_zoom: 11 | 12 | 13
   show_roads: bool                               (default: false)
   waypoint_types_shown: set of POI types         (default: all)

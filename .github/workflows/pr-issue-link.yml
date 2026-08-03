@@ -1,0 +1,143 @@
+# Fails a pull request that closes no issue.
+#
+# CONTRIBUTING.md has asked for `Closes #42` since the beginning, on the
+# grounds that a merge closing its own issue is what keeps the tracker honest
+# rather than someone remembering to tick a box. Asking was all it did. This
+# is the part that checks.
+#
+# WHAT COUNTS IS THE LINK, NOT THE WORDING. The query below reads
+# `closingIssuesReferences`, which is GitHub's own record of what this PR
+# will close - the same set the merge button acts on. That means a closing
+# keyword in the description counts, and so does an issue attached by hand
+# through the sidebar's Development panel. A bare `#42` mention does not,
+# and should not: mentioning an issue and resolving it are different claims,
+# and only the second one is a promise the merge can keep.
+#
+# One consequence worth knowing before it surprises someone: attaching an
+# issue through the sidebar fires no webhook, so this check will not notice
+# on its own. Re-run it, or put the keyword in the description - editing the
+# description does fire `edited`, and the check re-runs within seconds.
+#
+# THIS FILE ALONE BLOCKS NOTHING. A red check is a suggestion until "PR has a
+# linked issue" is a required status check on `main` (Settings -> Rules, or
+# branch protection). That switch is deliberately not in the repository -
+# nothing in `.github/` can grant itself the power to stop a merge.
+
+name: PR issue link
+
+on:
+  pull_request:
+    branches: [main]
+    # `edited` is the one that matters: it is what fires when someone adds
+    # the missing `Closes #42` to the description, and without it the check
+    # would stay red until an unrelated commit happened to shake it loose.
+    # `synchronize` is not redundant either - required checks are matched
+    # against the head commit, so every push needs its own run or the PR
+    # sits waiting on a check that already passed for an older SHA.
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+      - ready_for_review
+      - labeled
+      - unlabeled
+
+# Reads three things and writes nothing. `issues: read` is what lets the
+# query name the issue it found instead of just counting it.
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+concurrency:
+  group: pr-issue-link-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  linked:
+    name: PR has a linked issue
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      # No `if:` on this job, and there should never be one. A job skipped by
+      # a job-level condition reports no status at all, and a required check
+      # that reports no status blocks the PR forever rather than passing it -
+      # so every exemption below is decided inside the script, where it can
+      # still finish green.
+      - uses: actions/github-script@v7
+        env:
+          ESCAPE_LABEL: no-issue
+        with:
+          script: |
+            const { owner, repo } = context.repo
+            const pr = context.payload.pull_request
+            const escapeLabel = process.env.ESCAPE_LABEL
+
+            const summary = lines => core.summary.addRaw(lines.join('\n')).write()
+
+            // The escape hatch exists so the rule does not manufacture the
+            // exact thing it is meant to prevent. A typo fix, a revert, a
+            // dependency bump - without a way out, those get an issue opened
+            // for the sole purpose of closing it, and the tracker fills with
+            // paperwork nobody wrote for a reader. Label it and move on.
+            if (pr.labels.some(label => label.name === escapeLabel)) {
+              await summary([
+                '## PR issue link',
+                '',
+                `Exempt: labelled \`${escapeLabel}\`.`,
+                '',
+                'Nothing here says an issue was unnecessary — only that a human said so on purpose.',
+              ])
+              core.info(`Labelled ${escapeLabel}; not requiring a linked issue.`)
+              return
+            }
+
+            const { repository } = await github.graphql(
+              `query($owner: String!, $repo: String!, $number: Int!) {
+                 repository(owner: $owner, name: $repo) {
+                   pullRequest(number: $number) {
+                     closingIssuesReferences(first: 20) {
+                       nodes { number title url }
+                     }
+                   }
+                 }
+               }`,
+              { owner, repo, number: pr.number },
+            )
+
+            const linked = repository.pullRequest.closingIssuesReferences.nodes
+
+            if (linked.length > 0) {
+              await summary([
+                '## PR issue link',
+                '',
+                `Merging this closes ${linked.length === 1 ? 'an issue' : `${linked.length} issues`}:`,
+                '',
+                ...linked.map(issue => `- [#${issue.number}](${issue.url}) — ${issue.title}`),
+              ])
+              core.info(`Linked: ${linked.map(i => `#${i.number}`).join(', ')}`)
+              return
+            }
+
+            await summary([
+              '## PR issue link',
+              '',
+              'This pull request closes no issue.',
+              '',
+              'Add a closing keyword to the description — `Closes #42`, `Fixes #42`,',
+              '`Resolves #42` — and this check re-runs on its own within seconds.',
+              'Attaching the issue through the sidebar\'s **Development** panel works',
+              'too, but fires no event, so re-run this check by hand afterwards.',
+              '',
+              `If the change genuinely has no issue behind it, label the PR \`${escapeLabel}\`.`,
+              'That is a deliberate exemption, not a workaround — prefer it over',
+              'opening an issue whose only purpose is to be closed by this PR.',
+              '',
+              'A plain `#42` mention is not enough. Referring to an issue and',
+              'resolving it are different claims, and only the second one survives',
+              'the merge.',
+            ])
+
+            core.setFailed('No linked issue. Add `Closes #<n>` to the description, or label the PR `no-issue`.')

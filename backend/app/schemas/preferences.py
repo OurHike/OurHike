@@ -42,9 +42,22 @@ class UnitSystem(str, Enum):
 
 
 class BackgroundSource(str, Enum):
+    """Mirrors client/src/lib/userPreferences.ts `BACKGROUND_SOURCES`
+    exactly - both values are implemented backgrounds, so a value that
+    nothing can render is also a value that nothing can sync.
+
+    Two names this enum used to carry, `usgs_topo_live` and
+    `osm_styled_live`, were removed rather than kept as aliases: neither
+    was ever built, and accepting a value no client can render would mean
+    storing a preference that comes back as a map with no background on
+    it. A phone that still has one saved drops it on read (see that
+    module's `loadPreferences`) and syncs the default instead, so the 422
+    this now produces is only reachable by a client that skipped that
+    path.
+    """
+
+    hiking_topo_live = "hiking_topo_live"
     usgs_topo_offline = "usgs_topo_offline"
-    usgs_topo_live = "usgs_topo_live"
-    osm_styled_live = "osm_styled_live"
 
 
 class MaxBackgroundZoom(int, Enum):

@@ -35,6 +35,8 @@ import {
 import { useArchiveDownload } from './lib/useArchiveDownload'
 import { useClock } from './lib/useClock'
 import { useOnline } from './lib/useOnline'
+import { useDataSaver } from './lib/useDataSaver'
+import { effectiveBackground } from './lib/dataSaver'
 import { useInstallPrompt } from './lib/useInstallPrompt'
 import { useAppUpdate } from './lib/useAppUpdate'
 import { useGeolocation } from './lib/useGeolocation'
@@ -51,6 +53,10 @@ import { listQueued } from './lib/outbox'
 import type { BoundingBox, MapPoint } from './lib/legendContents'
 import type { SearchablePoi } from './lib/searchPoi'
 import './App.css'
+// Last, and entirely inside media queries - see the file header. Nothing in it
+// can match a phone, which is how the WEBSITE.md §8 constraint is kept
+// structurally rather than by review.
+import './desktop.css'
 
 const TRAIL_NAME = 'Appalachian Trail'
 
@@ -143,6 +149,11 @@ function App() {
 
   const now = useClock()
   const online = useOnline()
+  // Read here rather than inside the map, so the settings screen and the canvas
+  // are answering from the same value - a row that says "live" over a map
+  // drawing the archive would be the exact mismatch this feature exists to
+  // avoid.
+  const saveData = useDataSaver()
   const install = useInstallPrompt()
   useAppUpdate()
 
@@ -447,6 +458,7 @@ function App() {
             onSync={notYet}
             onExport={notYet}
             now={now}
+            dataSaver={saveData}
             onStartReport={() => setReporting({ step: 'pick' })}
             queuedReportCount={queuedCount}
           />
@@ -460,6 +472,7 @@ function App() {
     <MapScreen
       topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
       trailsUrl={trailsUrl}
+      background={effectiveBackground(preferences.background_source, saveData)}
       trailName={TRAIL_NAME}
       mile={fix?.mile}
       direction={direction?.direction}

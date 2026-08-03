@@ -132,10 +132,14 @@ export function buildPoiLayer(sourceId: string = POI_SOURCE_ID): LayerSpecificat
       'icon-allow-overlap': false,
       // A little air, so two pins that merely touch are treated as colliding.
       'icon-padding': 2,
-      // No `text-field` anywhere in this layer. There is no `glyphs` URL in
-      // the style, because there is no network on a mountain - MapLibre can
-      // draw icons offline but cannot render a label without a font it has to
-      // fetch. Names live in search and in the legend instead.
+      // No `text-field` anywhere in this layer, and the reason has shifted
+      // slightly rather than gone away. It used to be that the style had no
+      // `glyphs` URL at all; the live background added one (map/style.ts), so
+      // a font is now fetchable - but only with signal, and only on that
+      // background. A pin label that appears in town and vanishes on the ridge
+      // is worse than no pin label: it would be missing exactly when the map
+      // is the only thing a hiker has. Names stay in search and the legend,
+      // which work the same either way.
     },
   }
 }

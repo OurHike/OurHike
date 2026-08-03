@@ -21,7 +21,8 @@
 // deliberate.
 
 import { syncAgeLabel } from '../lib/syncAge'
-import type { UserPreferences } from '../lib/userPreferences'
+import type { BackgroundSource, UserPreferences } from '../lib/userPreferences'
+import { backgroundOverridden } from '../lib/dataSaver'
 import { REPORTER_TYPES } from '../lib/contributionFlow'
 import type { ReportDraft } from '../lib/outbox'
 import './settings.css'
@@ -39,6 +40,15 @@ export interface SettingsProps {
   onExport: (format: 'gpx' | 'geojson') => void
   /** Injectable so the sync-age wording is testable without a live clock. */
   now?: Date
+  /**
+   * Whether the phone is asking apps to go easy on data.
+   *
+   * Passed in rather than read here, so this screen and the map are answering
+   * from one value. A row claiming the live sheet is on while the canvas draws
+   * the archive is precisely the mismatch the override is supposed to prevent,
+   * and two independent reads of the same API is how that happens.
+   */
+  dataSaver?: boolean
 }
 
 function LaterTag() {
@@ -56,6 +66,7 @@ export function Settings({
   onSync,
   onExport,
   now = new Date(),
+  dataSaver = false,
 }: SettingsProps) {
   return (
     <main className="settings">
@@ -107,11 +118,45 @@ export function Settings({
 
       <section className="settings__group">
         <h2 className="settings__heading">The map</h2>
-        <p className="settings__row">
+        <label className="settings__row">
           <span className="settings__label">Background</span>
-          <span className="settings__value">USGS topo, downloaded</span>
+          <select
+            className="settings__value"
+            name="background_source"
+            value={preferences.background_source}
+            onChange={(event) =>
+              onChange({ background_source: event.target.value as BackgroundSource })
+            }
+          >
+            <option value="hiking_topo_live">Topo — live, with contours</option>
+            <option value="usgs_topo_offline">Downloaded only</option>
+          </select>
+        </label>
+        {/* Says what changes, not what it is called. The live sheet is not a
+            trade against working offline - it is drawn over the download, so
+            the download is still what shows with no signal - and someone
+            deciding between these needs to know that far more than they need
+            the name of a tile provider. */}
+        <p className="settings__note">
+          {preferences.background_source === 'hiking_topo_live'
+            ? 'Contours, shaded relief and streams beyond your downloaded area. Falls back to your download with no signal.'
+            : 'Your downloaded corridor only — no background data is fetched.'}
         </p>
-        <p className="settings__note">The only background that works with no signal.</p>
+
+        {/* The visible half of the override, and it does not ship without it.
+            Overriding a preference is defensible; overriding one while the
+            screen still claims otherwise is not, and this row is the only
+            place someone would ever go to find out why the map looks
+            different. Rendered only when the two actually disagree - saying
+            "overridden" to someone who picked the download anyway would be its
+            own small lie. */}
+        {backgroundOverridden(preferences.background_source, dataSaver) && (
+          <p className="settings__locked" role="note">
+            Data Saver is on, so the map is using your download only and fetching no
+            background tiles. Turn Data Saver off in your phone's settings to see contours
+            and shaded relief.
+          </p>
+        )}
         <label className="settings__row settings__row--later">
           <span className="settings__label">Roads &amp; walkability</span>
           <LaterTag />
@@ -190,7 +235,8 @@ export function Settings({
           </button>
         </div>
         <p className="settings__note">
-          Map data: USGS US Topo, ATC GIS, © OpenStreetMap contributors, USGS 3DEP.
+          Map data: USGS US Topo, ATC GIS, © OpenStreetMap contributors, OpenFreeMap ©
+          OpenMapTiles, USGS 3DEP via AWS Terrain Tiles.
         </p>
       </section>
     </main>

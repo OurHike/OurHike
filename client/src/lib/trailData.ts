@@ -11,10 +11,12 @@
 // twelve megabytes of coordinates.
 
 import { get, set, del } from 'idb-keyval'
-import { dataUrl, POI_TYPES, poiKey, TRAILS_KEY, type PoiType } from './config'
+import { dataUrl, POI_TYPES, poiKey, SPURS_KEY, TRAILS_KEY, type PoiType } from './config'
+import type { SpurRecord } from './spurDestination'
 
 export const TRAILS_BLOB_KEY = 'ourhike:trails'
 export const POIS_KEY = 'ourhike:pois'
+export const SPURS_STORE_KEY = 'ourhike:spurs'
 
 export interface StoredPoi {
   id: string
@@ -28,6 +30,10 @@ export interface StoredPoi {
 export interface TrailData {
   trails: Blob
   pois: StoredPoi[]
+  /** Spur detail keyed by trail id. Empty for a release built before
+   *  export_spurs.py existed - the map still draws every spur, it just cannot
+   *  say where one goes. */
+  spurs: Record<string, SpurRecord>
 }
 
 interface PoiProperties {
@@ -86,11 +92,32 @@ async function fetchOrThrow(url: string, signal?: AbortSignal): Promise<Response
   return response
 }
 
+/** Spur detail, or an empty map when this release does not publish it.
+ *
+ *  A 404 here is not a failed download. `spurs.json` did not exist before
+ *  pipeline/export_spurs.py, and a phone pointed at an older release should
+ *  still get its trails and POIs rather than an error - the map draws every
+ *  spur either way, it just cannot say where one goes. Anything other than a
+ *  missing file still throws, so a genuinely broken fetch is not swallowed
+ *  along with it. */
+async function fetchSpurs(signal?: AbortSignal): Promise<Record<string, SpurRecord>> {
+  const response = await fetch(dataUrl(SPURS_KEY), { signal })
+  if (response.status === 404) return {}
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch ${SPURS_KEY}: ${response.status} ${response.statusText}`,
+    )
+  }
+  const parsed: unknown = JSON.parse(await response.text())
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+  return parsed as Record<string, SpurRecord>
+}
+
 export async function downloadTrailData({
   onProgress,
   signal,
 }: DownloadTrailDataOptions = {}): Promise<void> {
-  const total = POI_TYPES.length + 1
+  const total = POI_TYPES.length + 2
   let completed = 0
 
   const report = (label: string) => onProgress?.({ label, completed, total })
@@ -107,6 +134,10 @@ export async function downloadTrailData({
     completed += 1
   }
 
+  report('Spur destinations')
+  const spurs = await fetchSpurs(signal)
+  completed += 1
+
   // Nothing is committed until everything has arrived. Writing the trail lines
   // as soon as they landed meant a POI fetch failing - signal dropping partway
   // is the ordinary case here, not the edge one - left a store holding new
@@ -117,6 +148,7 @@ export async function downloadTrailData({
   // download leave the phone exactly as it found it.
   await set(TRAILS_BLOB_KEY, trails)
   await set(POIS_KEY, pois)
+  await set(SPURS_STORE_KEY, spurs)
   report('Done')
 }
 
@@ -125,10 +157,13 @@ export async function loadTrailData(): Promise<TrailData | null> {
   if (!(trails instanceof Blob)) return null
 
   const pois = ((await get(POIS_KEY)) as StoredPoi[] | undefined) ?? []
-  return { trails, pois }
+  const spurs =
+    ((await get(SPURS_STORE_KEY)) as Record<string, SpurRecord> | undefined) ?? {}
+  return { trails, pois, spurs }
 }
 
 export async function deleteTrailData(): Promise<void> {
   await del(TRAILS_BLOB_KEY)
   await del(POIS_KEY)
+  await del(SPURS_STORE_KEY)
 }

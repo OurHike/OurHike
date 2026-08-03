@@ -137,6 +137,15 @@ def collect_artifacts() -> dict[str, dict]:
         manifest = json.loads(elevation_manifest.read_text())
         artifacts["elevation_profile.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
+    # Where each blue-blazed spur leads. A real artifact rather than a sidecar
+    # (unlike build_state.json): the client downloads it, and its bytes
+    # changing means the map can say something different, which is exactly
+    # what a version is for.
+    spurs_manifest = PROCESSED_DIR / "spurs_manifest.json"
+    if spurs_manifest.exists():
+        manifest = json.loads(spurs_manifest.read_text())
+        artifacts["spurs.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+
     for name in BACKGROUND_ARCHIVES.values():
         path = PROCESSED_DIR / name
         if path.exists():

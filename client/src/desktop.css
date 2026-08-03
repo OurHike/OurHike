@@ -1,0 +1,182 @@
+/* The app on a big screen.
+ *
+ * Every layout rule in this file sits inside a media query, and that is the
+ * design rather than a coincidence. WEBSITE.md §8 sets the constraint: the
+ * desktop layout must not regress the phone layout, which is the one that gets
+ * used on a mountain. A rule that can only match above 900px, or only where
+ * there is a real pointer, cannot reach the phone at all - so the guarantee is
+ * structural instead of something to re-check by hand every time this file
+ * changes.
+ *
+ * There is exactly one unguarded rule, at the bottom, and it is deliberate:
+ * focus rings. See the note there for why gating those would be a bug rather
+ * than consistency.
+ *
+ * The breakpoint is WEBSITE.md §6's 900px, and it is also in
+ * lib/useDesktop.ts. The few things CSS cannot do - the legend announcing
+ * itself as a dialog, a component that renders null when closed - are handled
+ * there, and the two numbers have to agree or there is a band of widths with a
+ * sidebar and a modal legend in it.
+ *
+ * What §6 asks for and what is here:
+ *   layout            the tab bar becomes a left sidebar          done
+ *   legend            a persistent panel, not a dismissable sheet done
+ *   search            permanent field in the chrome               done
+ *   input             hover, focus rings, relaxed touch targets   done
+ *   elevation         the full interactive chart                  NOT done
+ *   download UX       reframed for a machine with signal          done
+ *   routing           deep links, back button                     NOT done
+ *
+ * The two that are missing are named in the file that omits them, on purpose.
+ * The elevation chart is a new component rather than a restyle of an existing
+ * one, and routing is called "the largest single change in this workstream" by
+ * §6 itself - neither belongs in a layout pass.
+ */
+
+@media (min-width: 900px) {
+  /* ---------- Shell: the tab bar becomes a sidebar ---------- */
+
+  /* The bar's position at the bottom of a phone is a thumb-reach decision, and
+     a thumb is not involved here. Reordering in CSS rather than moving it in
+     the DOM keeps it last in the source, where a keyboard reaches the screen's
+     content before its navigation - the order a screen reader wants too. */
+  .app__screen,
+  .map-screen {
+    flex-direction: row;
+  }
+
+  .app__screen > .tab-bar,
+  .map-screen > .tab-bar {
+    order: -1;
+    flex-direction: column;
+    justify-content: flex-start;
+    flex: 0 0 13rem;
+    border-top: 0;
+    border-right: 1px solid var(--border-1);
+    /* The home-indicator inset is a notched-phone concern and nothing else. */
+    padding-bottom: 0;
+    padding-top: var(--space-3, 12px);
+  }
+
+  .app__screen > .tab-bar .tab-bar__tab,
+  .map-screen > .tab-bar .tab-bar__tab {
+    flex: 0 0 auto;
+    text-align: left;
+    padding: var(--space-3, 12px) var(--space-4, 16px);
+    font-size: 14px;
+    border-top: 0;
+    /* The selected marker moves to the inside edge, where the eye already is
+       for a vertical list. */
+    border-left: 3px solid transparent;
+  }
+
+  .app__screen > .tab-bar .tab-bar__tab[aria-selected='true'],
+  .map-screen > .tab-bar .tab-bar__tab[aria-selected='true'] {
+    border-top-color: transparent;
+    border-left-color: var(--brand-primary);
+    background: color-mix(in srgb, var(--brand-primary) 8%, transparent);
+  }
+
+  /* The screen's own content takes the rest of the frame. `min-width: 0` for
+     the same reason .app__screen > :first-child needs `min-height: 0` on a
+     phone: a flex item floors at its content width, and a map that cannot
+     shrink pushes the sidebar off the side instead of scrolling. */
+  .app__screen > :first-child {
+    min-width: 0;
+  }
+
+  /* ---------- Map screen: chrome down the side, map in the middle ---------- */
+
+  .map-screen__main {
+    /* Already a flex column from chrome.css; this is only the width floor,
+       which matters once it is a row item rather than a column one. */
+    min-width: 0;
+  }
+
+  /* The legend sits beside the map rather than over it - §6's "nothing that
+     covers the map should need dismissing to see the map". */
+  .map-screen__body {
+    flex-direction: row;
+  }
+
+  /* ---------- Legend: a panel, not a sheet ---------- */
+
+  .legend--persistent {
+    position: static;
+    max-height: none;
+    flex: 0 0 17rem;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    border-left: 1px solid var(--border-1);
+    box-shadow: none;
+  }
+
+  /* A panel that is always there has nothing to dismiss, and a close button
+     that reopens nothing is a trap. The component drops the control; this is
+     belt and braces for a release where the two disagree. */
+  .legend--persistent .legend__close {
+    display: none;
+  }
+
+  /* With the legend permanently visible, the button that opens it has nothing
+     to do. */
+  .map-header__button--legend {
+    display: none;
+  }
+
+  /* ---------- Search: a field, not a sheet ---------- */
+
+  .search {
+    position: static;
+    max-width: 22rem;
+    box-shadow: none;
+    border: 1px solid var(--border-1);
+    border-radius: 8px;
+  }
+}
+
+/* ---------- Input: what a mouse and a keyboard get ---------- */
+
+/* Keyed on the POINTER, not the width. A 1024px tablet is a wide touch screen
+   and still needs 44px targets; a 900px window on a laptop does not. Tying
+   these to the breakpoint would shrink the targets on exactly the device where
+   that hurts most. */
+@media (pointer: fine) {
+  :root {
+    /* WCAG 2.5.5's 44px floor is a touch-target rule. A mouse pointer is
+       precise, and the tighter spacing is what makes a desktop UI stop looking
+       like a phone app that was stretched. */
+    --min-touch-target: 32px;
+  }
+}
+
+@media (hover: hover) {
+  .tab-bar__tab:hover {
+    color: var(--fg-1);
+    background: color-mix(in srgb, var(--brand-primary) 5%, transparent);
+  }
+
+  .legend__row:hover {
+    background: color-mix(in srgb, var(--brand-primary) 5%, transparent);
+  }
+
+  .legend__toggle:hover {
+    color: var(--fg-1);
+  }
+}
+
+/* Focus rings, everywhere, with no media query around them.
+ *
+ * :focus-visible only matches when the browser judges a focus ring warranted -
+ * keyboard navigation, essentially - so it is already silent for a tap. That
+ * makes gating it on pointer or width both unnecessary and harmful: a phone
+ * with a bluetooth keyboard, or a screen-reader user driving a touch device,
+ * needs to see where focus is, and neither shows up as `pointer: fine`.
+ *
+ * This is the one thing in this file the phone layout does get, and it is
+ * deliberate. */
+:where(button, a, input, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+  border-radius: 2px;
+}

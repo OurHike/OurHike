@@ -16,6 +16,7 @@
 
 import { formatBytes } from '../lib/formatBytes'
 import type { DetailLevel } from '../lib/downloadDetail'
+import { useDesktop } from '../lib/useDesktop'
 import { DetailPicker } from './DetailPicker'
 import './downloads.css'
 
@@ -46,12 +47,29 @@ export function Downloads({
   onResume,
   onDelete,
 }: DownloadsProps) {
+  const isDesktop = useDesktop()
+
   return (
     <main className="downloads">
       <h1 className="downloads__title">Offline map</h1>
+      {/* "Download 314 MB for offline use" means something different on a
+          machine that is not going up a mountain (WEBSITE.md §6). The download
+          is still offered - a laptop is a legitimate place to look at the map,
+          and someone may well be on a cabin connection - but the reason for it
+          is stated honestly rather than borrowed from the phone. */}
       <p className="downloads__scope">
-        The whole trail, in one download. Once it&rsquo;s on your phone, the map works
-        with no signal.
+        {isDesktop ? (
+          <>
+            The whole trail, in one download. This browser has signal, so the map already
+            works without it &mdash; the download is for the phone you&rsquo;ll actually
+            be carrying.
+          </>
+        ) : (
+          <>
+            The whole trail, in one download. Once it&rsquo;s on your phone, the map works
+            with no signal.
+          </>
+        )}
       </p>
 
       {status.state === 'not-downloaded' && (

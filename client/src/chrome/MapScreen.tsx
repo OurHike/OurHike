@@ -14,6 +14,7 @@ import { Header, type HikeDirection } from './Header'
 import { TabBar } from './TabBar'
 import type { TabId } from './tabs'
 import { Legend, type BlazeCount } from './Legend'
+import { useDesktop } from '../lib/useDesktop'
 import { Search } from './Search'
 import { ElevationRibbon, type ElevationRibbonProps } from './ElevationRibbon'
 import { WaypointLanes, type WaypointLanesProps } from './WaypointLanes'
@@ -127,61 +128,81 @@ export function MapScreen({
   onViewportChange,
   onMapReady,
 }: MapScreenProps) {
+  // The one thing the stylesheet cannot do. The legend announces itself as
+  // `role="dialog" aria-modal="true"` and renders nothing when closed; as a
+  // permanent panel it is neither. No media query can change what a component
+  // tells a screen reader it is.
+  const isDesktop = useDesktop()
+
   return (
     <div className="map-screen">
-      <StatusStrip
-        time={time}
-        online={online}
-        hasGpsFix={hasGpsFix}
-        lastSyncedAt={lastSyncedAt}
-      />
-
-      <Header
-        trailName={trailName}
-        state={state}
-        mile={mile}
-        direction={direction}
-        onOpenLegend={onOpenLegend}
-        onOpenSearch={onOpenSearch}
-      />
-
-      {elevation && <ElevationRibbon {...elevation} />}
-      {waypoints && <WaypointLanes {...waypoints} />}
-
-      <div className="map-screen__canvas">
-        <MapView
-          topoArchiveUrl={topoArchiveUrl}
-          trailsUrl={trailsUrl}
-          background={background}
-          pois={viewportPoints}
-          hiddenTypes={hiddenTypes}
-          showZoomButtons={showZoomButtons}
-          units={units}
-          center={center}
-          zoom={zoom}
-          bounds={bounds}
-          onViewportChange={onViewportChange}
-          onMapReady={onMapReady}
+      {/* Everything that is not the navigation. On a phone this is a plain
+          column and changes nothing; on a desktop the tab bar becomes a
+          sidebar beside it (src/desktop.css). */}
+      <div className="map-screen__main">
+        <StatusStrip
+          time={time}
+          online={online}
+          hasGpsFix={hasGpsFix}
+          lastSyncedAt={lastSyncedAt}
         />
-        <p className="map-screen__attribution">{attributionFor(background)}</p>
 
-        <Search
-          open={searchOpen}
-          pois={searchablePois}
-          onSelect={onSelectSearchResult}
-          onClose={onCloseSearch}
+        <Header
+          trailName={trailName}
+          state={state}
+          mile={mile}
+          direction={direction}
+          onOpenLegend={onOpenLegend}
+          onOpenSearch={onOpenSearch}
         />
+
+        {elevation && <ElevationRibbon {...elevation} />}
+        {waypoints && <WaypointLanes {...waypoints} />}
+
+        {/* The map and the legend. Separated from the chrome above so the two
+            can sit side by side on a desktop, where the legend is a panel
+            rather than a sheet over the map. Deliberately NOT the positioned
+            .map-screen__canvas: the phone legend is absolute against the
+            viewport, and reparenting it under a positioned ancestor would move
+            it - the one thing WEBSITE.md §8 rules out. */}
+        <div className="map-screen__body">
+          <div className="map-screen__canvas">
+            <MapView
+              topoArchiveUrl={topoArchiveUrl}
+              trailsUrl={trailsUrl}
+              background={background}
+              pois={viewportPoints}
+              hiddenTypes={hiddenTypes}
+              showZoomButtons={showZoomButtons}
+              units={units}
+              center={center}
+              zoom={zoom}
+              bounds={bounds}
+              onViewportChange={onViewportChange}
+              onMapReady={onMapReady}
+            />
+            <p className="map-screen__attribution">{attributionFor(background)}</p>
+
+            <Search
+              open={searchOpen}
+              pois={searchablePois}
+              onSelect={onSelectSearchResult}
+              onClose={onCloseSearch}
+            />
+          </div>
+
+          <Legend
+            open={legendOpen}
+            persistent={isDesktop}
+            bbox={bbox}
+            points={viewportPoints}
+            blazeCounts={blazeCounts}
+            hiddenTypes={hiddenTypes}
+            onToggleType={onToggleType}
+            onClose={onCloseLegend}
+          />
+        </div>
       </div>
-
-      <Legend
-        open={legendOpen}
-        bbox={bbox}
-        points={viewportPoints}
-        blazeCounts={blazeCounts}
-        hiddenTypes={hiddenTypes}
-        onToggleType={onToggleType}
-        onClose={onCloseLegend}
-      />
 
       <TabBar active={activeTab} onSelect={onSelectTab} />
     </div>

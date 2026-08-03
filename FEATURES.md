@@ -123,6 +123,7 @@ Google/Apple/email sign-in, email verification, optional MFA, recommended techni
 - Org/club as a first-class data model concept — trails and POIs scoped to a club/region
 - Per-club admin roles
 - Onboarding path for the next ATC-affiliated club with no NYNJTC-specific assumptions baked in
+- **How an outside organization actually gets its data in, design drafted 2026-08-03: see [SOURCE_REGISTRY.md](features/SOURCE_REGISTRY.md)** — the A.T. alone is maintained by thirty clubs plus several agencies, and today all twelve of our layers come from one ATC-run ArcGIS org reachable only by a script that walks a public web map. An organization registers where its data lives (ArcGIS, a file at a URL, an OGC service, a Drive folder — not a database, and the doc explains what to do instead) and a role address to notify when it breaks. Registration is a form; the build input stays a reviewed file in git, so nothing self-service can change a hiker's map without a human merge.
 - **Graduates from a future-proofing principle into an actual product surface, per [PRICING_MODEL.md](features/PRICING_MODEL.md):** a regional trail pass (local/heavy users, dozens of trails beyond the AT) needs a real multi-trail data model to exist, not just an inheritable schema - this pricing tier is the concrete reason to actually build it.
 
 ### Fuller onboarding *(#1, #4)*

@@ -26,6 +26,14 @@ export interface BlazeCount {
 
 export interface LegendProps {
   open: boolean
+  /** A permanent side panel rather than a sheet over the map (WEBSITE.md §6).
+   *
+   *  Not styling. A persistent legend is always rendered, is not a dialog, is
+   *  not modal, and has nothing to close - four things a stylesheet cannot
+   *  express, which is why this is a prop and not a media query. Announcing a
+   *  panel that is always on screen as an `aria-modal` dialog would tell a
+   *  screen-reader user the rest of the app is inert when it is not. */
+  persistent?: boolean
   bbox: BoundingBox
   points: MapPoint[]
   blazeCounts: BlazeCount[]
@@ -36,6 +44,7 @@ export interface LegendProps {
 
 export function Legend({
   open,
+  persistent = false,
   bbox,
   points,
   blazeCounts,
@@ -43,19 +52,30 @@ export function Legend({
   onToggleType,
   onClose,
 }: LegendProps) {
-  if (!open) return null
+  if (!open && !persistent) return null
 
   const rows = computeLegendContents(bbox, points)
   const isEmpty = rows.length === 0 && blazeCounts.length === 0
 
   return (
-    <div className="legend" role="dialog" aria-label="Legend" aria-modal="true">
+    <div
+      className={persistent ? 'legend legend--persistent' : 'legend'}
+      // A region, not a dialog, when it is simply part of the page.
+      role={persistent ? 'region' : 'dialog'}
+      aria-label="Legend"
+      aria-modal={persistent ? undefined : true}
+    >
       <div className="legend__head">
         <h2 className="legend__title">Legend</h2>
-        <button type="button" className="legend__close" onClick={onClose}>
-          <span className="visually-hidden">Close legend</span>
-          <span aria-hidden="true">×</span>
-        </button>
+        {/* A close button on a panel that cannot be reopened is a trap: the
+            control that opens it is hidden at this width precisely because
+            the legend is always there. */}
+        {!persistent && (
+          <button type="button" className="legend__close" onClick={onClose}>
+            <span className="visually-hidden">Close legend</span>
+            <span aria-hidden="true">×</span>
+          </button>
+        )}
       </div>
 
       {isEmpty && (

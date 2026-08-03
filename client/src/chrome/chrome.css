@@ -198,24 +198,38 @@
   min-height: 0;
 }
 
-/* Positioning context for the attribution, which sits over the canvas. */
+/* The map, with the credit line in a strip beneath it. Still a positioning
+   context: the search sheet covers the whole canvas (see desktop.css). */
 .map-screen__canvas {
   position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
+  flex-direction: column;
 }
 
+/* A row of its own rather than an overlay in the corner, which is where it
+   used to sit.
+
+   MapLibre puts the scale bar at the bottom-left of the map, which is where
+   WIREFRAMES.md wants it - "scale bar above USGS US Topo · © OSM". Floating
+   the credit in that same corner put the two on top of each other, and no
+   offset fixes that honestly: the string is assembled per background
+   (attributionFor in map/style.ts), the live sheet's version names four
+   sources, and it wraps to one line on a laptop and three on a phone. Any
+   reserved gap is right at exactly one width.
+
+   So the strip is given its own space instead. It costs the map that much
+   height, which is a real cost on a phone and is worth paying here: ODbL
+   attribution is a licence condition, and a condition met only where the text
+   happens not to land under a control is not met. */
 .map-screen__attribution {
-  position: absolute;
-  left: var(--space-2, 8px);
-  bottom: var(--space-2, 8px);
+  margin: 0;
+  padding: 2px var(--space-2, 8px);
   font-size: 10px;
   color: var(--fg-2);
-  background: color-mix(in srgb, var(--bg-surface) 82%, transparent);
-  padding: 2px 6px;
-  border-radius: 4px;
-  pointer-events: none;
+  background: var(--bg-page);
+  border-top: 1px solid var(--border-1);
 }
 
 /* ---------- Elevation ribbon ---------- */

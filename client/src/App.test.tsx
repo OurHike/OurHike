@@ -3,7 +3,7 @@ import { act, render, screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { get, set } from 'idb-keyval'
 import App from './App'
-import { MockMap, resetMapLibreMock } from './test/mocks/maplibre-gl'
+import { MockMap, NavigationControl, resetMapLibreMock } from './test/mocks/maplibre-gl'
 import { PREFERENCES_KEY } from './lib/preferences'
 import { DEFAULT_PREFERENCES } from './lib/userPreferences'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
@@ -492,6 +492,58 @@ describe('App shell', () => {
     // would be the one after it.
     const requested = vi.mocked(fetch).mock.calls.map((c) => String(c[0]))
     expect(requested.some((url) => url.includes('.pmtiles'))).toBe(false)
+  })
+})
+
+describe('the map controls the shell asks for', () => {
+  // WIREFRAMES.md §1.5 makes the zoom buttons web-only: on a phone pinch
+  // already zooms and the bottom-right corner belongs to locate, which is the
+  // control that matters while walking. Nothing was passing that decision down,
+  // so `showZoomButtons` sat on its `false` default everywhere and a browser
+  // with a mouse had no visible way to zoom at all.
+
+  /** A browser whose primary pointer is, or is not, a mouse. */
+  function pointerIsFine(fine: boolean) {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({
+        matches: query.includes('pointer: fine') ? fine : false,
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      })),
+    )
+  }
+
+  /** The compass control, which is also the one carrying the zoom buttons. */
+  async function navigationControl(map: MockMap) {
+    // Chrome is attached in an effect after the map is built, so it is not
+    // there the instant liveMap() resolves.
+    await waitFor(() =>
+      expect(map.controls.some((c) => c.control instanceof NavigationControl)).toBe(true),
+    )
+    return map.controls.find((c) => c.control instanceof NavigationControl)
+      ?.control as NavigationControl
+  }
+
+  it('gives a browser driven by a mouse its zoom buttons', async () => {
+    pointerIsFine(true)
+    returningHiker()
+
+    render(<App />)
+    const nav = await navigationControl(await liveMap())
+
+    expect(nav.options?.showZoom).toBe(true)
+  })
+
+  it('keeps them off a touch screen, where they would cost the thumb zone', async () => {
+    pointerIsFine(false)
+    returningHiker()
+
+    render(<App />)
+    const nav = await navigationControl(await liveMap())
+
+    expect(nav.options?.showZoom).toBe(false)
   })
 })
 

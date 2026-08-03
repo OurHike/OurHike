@@ -114,6 +114,20 @@
 .reporting__photo {
   font-size: 13px;
 }
+
+/* Reads as explanation, not as an error: nothing has gone wrong and the hiker
+   has done nothing to correct. */
+.reporting__unavailable {
+  font-size: 12px;
+  color: var(--fg-3);
+}
+
+.reporting__photo:disabled {
+  /* The default disabled rendering is close to invisible on some platforms,
+     which would leave the control looking merely broken. */
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 .reporting__meta {
   margin: 0;
   font-family: var(--font-mono, ui-monospace, monospace);

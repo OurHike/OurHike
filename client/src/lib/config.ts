@@ -37,6 +37,18 @@ export function archiveUrl(level: DetailLevel): string {
 
 export const TRAILS_KEY = 'trails.geojson'
 
+// Where each blue-blazed spur leads, keyed by the trail id in trails.geojson.
+//
+// A separate artifact rather than properties on trails.geojson because the
+// client stores that file as an opaque Blob and hands it straight to MapLibre
+// (lib/trailData.ts) - it never reads a property off it, so enriching it would
+// put the answer somewhere the app structurally cannot look.
+//
+// Published by pipeline/export_spurs.py. Absent from data releases built
+// before that existed, which lib/trailData.ts treats as "no spur detail" - not
+// as a failed download.
+export const SPURS_KEY = 'spurs.json'
+
 // 'crossing' is published but is currently an empty FeatureCollection; it is
 // listed anyway so it starts working the day the pipeline fills it, rather
 // than needing a client release to notice.

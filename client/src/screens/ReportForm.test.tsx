@@ -138,10 +138,60 @@ describe('ReportForm', () => {
     expect(screen.getByText(/Switchback/)).toHaveTextContent(/thru/i)
   })
 
-  it('offers a photo attachment', () => {
-    render(<ReportForm {...PROPS} />)
+  // The photo field accepted a file and threw it away. There was no onChange,
+  // no ref and no state behind the input, so a hiker photographing a
+  // washed-out bridge got a control that took the photo and a report that
+  // arrived without it - with nothing indicating the loss.
+  //
+  // The backend half is finished; what does not exist is anywhere to upload
+  // to, and picking between R2 and Supabase Storage is a decision rather than
+  // a task. Until it is made, the honest control is one that does not pretend.
+  describe('the photo field', () => {
+    it('does not accept a file it has nowhere to send', () => {
+      render(<ReportForm {...PROPS} />)
 
-    expect(screen.getByLabelText(/photo/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/photo/i)).toBeDisabled()
+    })
+
+    it('says why, rather than looking broken', () => {
+      // A hiker who took a photo specifically to attach would otherwise be
+      // left wondering whether they had missed the button.
+      render(<ReportForm {...PROPS} />)
+
+      expect(screen.getByText(/can.t be attached yet/i)).toBeInTheDocument()
+    })
+
+    it('points at the note as the thing that does carry the report', () => {
+      render(<ReportForm {...PROPS} />)
+
+      expect(screen.getByText(/describe what you saw in the note/i)).toBeInTheDocument()
+    })
+
+    it('ties the explanation to the control for a screen reader', () => {
+      // A disabled input a screen reader announces with no reason attached is
+      // the same dead end as an unexplained one on screen.
+      render(<ReportForm {...PROPS} />)
+
+      expect(screen.getByLabelText(/photo/i)).toHaveAccessibleDescription(
+        /can.t be attached yet/i,
+      )
+    })
+
+    it('still submits the report the note carries', () => {
+      // The field being unavailable must not block the thing that does work.
+      // Whatever else is true, the washed-out bridge has to get reported.
+      const onSubmit = vi.fn()
+      render(<ReportForm {...PROPS} onSubmit={onSubmit} />)
+
+      return userEvent
+        .type(screen.getByRole('textbox'), 'Bridge is out at the creek')
+        .then(() =>
+          userEvent.click(screen.getByRole('button', { name: /send|submit|report/i })),
+        )
+        .then(() => {
+          expect(onSubmit).toHaveBeenCalled()
+        })
+    })
   })
 
   it('says the report is queued rather than sent, when there is no signal', () => {

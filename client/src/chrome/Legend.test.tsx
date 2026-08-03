@@ -156,3 +156,69 @@ describe('Legend', () => {
     expect(screen.getByText(/nothing on this part of the map/i)).toBeInTheDocument()
   })
 })
+
+// --- As a persistent desktop panel ----------------------------------------
+//
+// A panel that is always on screen is not a dialog, and saying it is tells a
+// screen-reader user the rest of the app is inert when it is not. That is the
+// part of this a stylesheet could not have done, so it is the part tested.
+
+describe('legend as a persistent panel', () => {
+  it('renders even when nothing opened it', () => {
+    render(<Legend {...PROPS} open={false} persistent />)
+
+    expect(screen.getByRole('region', { name: 'Legend' })).toBeInTheDocument()
+  })
+
+  it('is a region rather than a modal dialog', () => {
+    render(<Legend {...PROPS} open persistent />)
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Legend' })).not.toHaveAttribute(
+      'aria-modal',
+    )
+  })
+
+  it('has no close button, because nothing would reopen it', () => {
+    // The control that opens the legend is hidden at this width precisely
+    // because the legend is always there. A close button would be a trap.
+    render(<Legend {...PROPS} open persistent />)
+
+    expect(
+      screen.queryByRole('button', { name: /close legend/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('still hides nothing safety-relevant', () => {
+    // The rule that holds across the whole app: a safety layer has no off
+    // switch, and a different layout is not a reason to grow one.
+    render(
+      <Legend
+        {...PROPS}
+        open
+        persistent
+        points={[
+          {
+            id: 'c9',
+            type: 'closure',
+            lat: 39.5,
+            lon: -77.5,
+            confidence: 'high' as const,
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: /hide/i })).not.toBeInTheDocument()
+  })
+
+  it('is still a dismissable dialog on a phone', () => {
+    render(<Legend {...PROPS} open />)
+
+    expect(screen.getByRole('dialog', { name: 'Legend' })).toHaveAttribute(
+      'aria-modal',
+      'true',
+    )
+    expect(screen.getByRole('button', { name: /close legend/i })).toBeInTheDocument()
+  })
+})

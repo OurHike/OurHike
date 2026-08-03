@@ -53,6 +53,10 @@ import { listQueued } from './lib/outbox'
 import type { BoundingBox, MapPoint } from './lib/legendContents'
 import type { SearchablePoi } from './lib/searchPoi'
 import './App.css'
+// Last, and entirely inside media queries - see the file header. Nothing in it
+// can match a phone, which is how the WEBSITE.md §8 constraint is kept
+// structurally rather than by review.
+import './desktop.css'
 
 const TRAIL_NAME = 'Appalachian Trail'
 

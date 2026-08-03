@@ -32,5 +32,14 @@ class Settings(BaseSettings):
     supabase_url: str
     supabase_anon_key: str
 
+    # The `aud` claim every Supabase user access token carries. This one DOES
+    # have a default, unlike the credentials above, because it is not a secret
+    # and not project-specific: "authenticated" is what Supabase Auth puts in
+    # a signed-in user's token everywhere. It is a setting at all so a project
+    # configured otherwise can say so without a code change - and setting it
+    # to "" turns the audience check off, for a token shape this does not
+    # anticipate. See app/core/auth.py for why it must be passed explicitly.
+    supabase_jwt_audience: str = "authenticated"
+
 
 settings = Settings()

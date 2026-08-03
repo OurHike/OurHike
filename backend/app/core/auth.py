@@ -42,8 +42,25 @@ def verify_supabase_jwt(token: str) -> dict:
     `ExpiredSignatureError`) on a bad signature or an expired token -
     callers are expected to translate that into an HTTP 401, not to treat a
     verification failure as a 500.
+
+    The `audience` argument is load-bearing and not optional politeness.
+    PyJWT refuses a token that carries an `aud` claim when the caller named
+    no audience - `_validate_aud` raises `InvalidAudienceError` on exactly
+    that combination - and every Supabase user access token carries
+    `aud: "authenticated"`. Without this, verification succeeded only for
+    tokens Supabase does not issue: the first real signed-in request would
+    have come back 401, with the token, the secret and the signature all
+    perfectly correct.
     """
-    return jwt.decode(token, settings.supabase_jwt_secret, algorithms=["HS256"])
+    audience = settings.supabase_jwt_audience
+    return jwt.decode(
+        token,
+        settings.supabase_jwt_secret,
+        algorithms=["HS256"],
+        # An empty setting means "this project's tokens are shaped some other
+        # way" - skip the check rather than demand a claim that is not there.
+        **({"audience": audience} if audience else {"options": {"verify_aud": False}}),
+    )
 
 
 def _get_or_create_profile(db: Session, user_id: str) -> Profile:

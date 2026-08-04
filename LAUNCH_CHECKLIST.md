@@ -123,17 +123,32 @@ SUPABASE_JWT_SECRET=<Settings > API > JWT Secret>
 - **Apple** — Apple Developer Program, **$99/year**. Needs a Services ID and a signing key. If you want to defer cost, ship with Google + email and add Apple later; nothing in the code assumes all three.
 - **Email** — on by default, no setup.
 
-**4.3a Set the client's build variables.** The client signs in against Supabase directly, so it needs its own copy of the public half — these are separate from the backend's, `VITE_`-prefixed, and inlined at build time (see `client/.env.example`):
+**4.3a Set the client's build variables** in **Settings → Secrets and variables → Actions → Variables** (the Variables tab, not Secrets — see why below). `.github/workflows/pages.yml` and `pr-preview.yml` read them and pass them to the build:
 
 ```
-VITE_SUPABASE_URL=https://<ref>.supabase.co
-VITE_SUPABASE_ANON_KEY=<anon public key>
-VITE_AUTH_PROVIDERS=google,email
+SUPABASE_URL=https://<ref>.supabase.co
+SUPABASE_ANON_KEY=<anon public key>
+AUTH_PROVIDERS=google,email          # optional; defaults to google,email
 ```
 
-`VITE_AUTH_PROVIDERS` must list only providers actually configured in 4.3. A name here whose credentials do not exist is a button that reaches an error page. Leaving all three unset is safe: the app builds and runs, and the sign-in controls say the build has no project rather than offering a round trip that cannot finish.
+**Variables, not Secrets.** Neither is secret. The anon key is *designed* to be public — Vite inlines it into a JS bundle that anyone can read with view-source, so hiding it in a Secret buys nothing and costs a readable build log, exactly as the comment above `DATA_BASE_URL` in `pages.yml` explains. Both workflows accept either, and warn if you picked Secrets. What is **not** here, and must never be, is `SUPABASE_JWT_SECRET`: that one is real, it belongs only to the backend's runtime environment, and a `VITE_`-prefixed copy would be inlined into a public file.
 
-**4.3b Allow the app's own origin back** (Authentication → URL Configuration). The client redirects to the path Pages actually serves it from — `https://<user>.github.io/OurHike/app/`, not the bare origin, because a redirect to the origin lands on the project site with the code in its URL and no app there to read it. That exact URL has to be in the allowed redirect list, or every provider round trip ends in a mismatch. Add the local dev origin too (`http://localhost:5173/`) if you want sign-in to work while developing.
+Prefer the **publishable** key (`sb_publishable_…`) over the legacy `anon` JWT if the project offers both — Supabase deprecates the legacy keys at the end of 2026.
+
+`AUTH_PROVIDERS` must list only providers actually configured in 4.3. A name here whose credentials do not exist is a button that reaches an error page. Leaving all of these unset is safe: the app builds, the map works, and the sign-in controls say the build has no project rather than offering a round trip that cannot finish.
+
+**4.3b Allow the app's own URLs back** (Authentication → URL Configuration). The client redirects to the path it was served from, not the bare origin — a redirect to the origin lands on the project site with the code in its URL and no app there to read it.
+
+That means more than one path. Pages serves the app at `/OurHike/app/`, and every PR preview gets its own `/OurHike/pr-preview/pr-<n>/`. Supabase's allow-list takes glob patterns, where `**` matches across `/`, so one entry covers all of them:
+
+```
+https://<user>.github.io/OurHike/**
+http://localhost:5173/**
+```
+
+Adding an entry per PR by hand is not a plan, and without a matching entry every provider round trip from a preview ends in a redirect mismatch. Supabase recommends pinning the exact path for the production **Site URL** even so — set that to `https://<user>.github.io/OurHike/app/`.
+
+**4.3c Custom SMTP, before real traffic.** The magic-link sign-in and the account-confirmation email both go through Supabase's built-in sender, which is rate-limited to a handful of messages per hour and is explicitly not for production. Fine for testing; a hiker hitting "email me a sign-in link" and silently getting nothing is not. Configure real SMTP under Authentication → Emails when this stops being a test deployment.
 
 **4.4 Flag on the JWT verification method.** `backend/app/core/auth.py` currently verifies **HS256 using the JWT secret**. Supabase has been migrating projects toward asymmetric keys (JWKS/RS256). If your project issues RS256, that function needs changing — it was deliberately built as a single seam so this is a contained change, but it is the one thing here I could not settle without a real project to look at. **Check this before assuming auth works.**
 

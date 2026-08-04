@@ -56,6 +56,28 @@ jobs:
           URL="${FROM_VAR:-$FROM_SECRET}"
           echo "url=$URL" >> "$GITHUB_OUTPUT"
 
+      # Same Supabase project as production (see pages.yml) - a preview where
+      # signing in is the thing under review is not testable without it.
+      #
+      # Each PR previews from its own path, and the client redirects back to
+      # wherever it was served from, so the Supabase project's allowed redirect
+      # list needs a wildcard covering them - `.../OurHike/**`. Without it a
+      # provider round trip from a preview ends in a redirect mismatch, and
+      # adding one entry per PR by hand is not a plan.
+      - name: Resolve the Supabase project
+        if: github.event.action != 'closed'
+        id: supabase
+        env:
+          URL_FROM_VAR: ${{ vars.SUPABASE_URL }}
+          URL_FROM_SECRET: ${{ secrets.SUPABASE_URL }}
+          KEY_FROM_VAR: ${{ vars.SUPABASE_ANON_KEY }}
+          KEY_FROM_SECRET: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          {
+            echo "url=${URL_FROM_VAR:-$URL_FROM_SECRET}"
+            echo "key=${KEY_FROM_VAR:-$KEY_FROM_SECRET}"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build the app
         if: github.event.action != 'closed'
         working-directory: client
@@ -65,6 +87,9 @@ jobs:
           # the note on VITE_BASE_PATH in pages.yml.
           VITE_BASE_PATH: /${{ github.event.repository.name }}/pr-preview/pr-${{ github.event.number }}/
           VITE_DATA_BASE_URL: ${{ steps.data.outputs.url }}
+          VITE_SUPABASE_URL: ${{ steps.supabase.outputs.url }}
+          VITE_SUPABASE_ANON_KEY: ${{ steps.supabase.outputs.key }}
+          VITE_AUTH_PROVIDERS: ${{ vars.AUTH_PROVIDERS }}
         run: npm run build
 
       - name: Deploy preview

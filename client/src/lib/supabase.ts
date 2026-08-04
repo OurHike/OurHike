@@ -53,8 +53,22 @@ export function parseProviders(raw: string): AuthProvider[] {
 
 /** Defaults to Google and email: the two whose setup costs nothing beyond a
  *  console registration. Apple is opt-in for the membership fee. */
+const CONFIGURED_PROVIDERS: string = import.meta.env.VITE_AUTH_PROVIDERS ?? ''
+
+/**
+ * Blank counts as unset, not as "none".
+ *
+ * `??` alone is not enough: a CI job that references a repository variable
+ * nobody has created passes an empty string, not undefined, and an empty
+ * string parses to zero providers. That would build a working app whose only
+ * sign-in screen offers nothing - the same silent-empty-value failure the
+ * comment above DATA_BASE_URL in .github/workflows/pages.yml describes.
+ *
+ * Turning every provider off is still expressible, by not listing this build's
+ * credentials in the Supabase dashboard, which is where the real switch is.
+ */
 export const ENABLED_PROVIDERS = parseProviders(
-  import.meta.env.VITE_AUTH_PROVIDERS ?? 'google,email',
+  CONFIGURED_PROVIDERS.trim() === '' ? 'google,email' : CONFIGURED_PROVIDERS,
 )
 
 let client: SupabaseClient | null | undefined

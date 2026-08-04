@@ -44,6 +44,18 @@ describe('the default build', () => {
     // not (LAUNCH_CHECKLIST.md 4.3), so it is opt-in rather than assumed.
     expect(ENABLED_PROVIDERS).toEqual(['google', 'email'])
   })
+
+  it('falls back to the default when the setting is blank, not to nothing', () => {
+    // This test environment has VITE_AUTH_PROVIDERS unset, which is the same
+    // shape CI produces when it references a repository variable nobody has
+    // created: an empty string, not undefined. `??` does not catch that, and
+    // an empty string parses to zero providers - which would build a working
+    // app whose only sign-in screen offers no way in.
+    //
+    // Asserting it here rather than trusting the ?? because the failure is
+    // silent: nothing throws, nothing logs, the button is just missing.
+    expect(ENABLED_PROVIDERS.length).toBeGreaterThan(0)
+  })
 })
 
 describe('AUTH_CONFIGURED', () => {

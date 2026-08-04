@@ -1,0 +1,135 @@
+# Builds the offline vector basemap and cuts the AT package from it - the
+# proving run for pipeline/BASEMAP.md's build-once-extract-many design
+# (issues #184/#185).
+#
+# Fits the FREE runner on purpose, and the pre-clip is what makes that true:
+# osmium cuts each state extract down to the corridor shape before Planetiler
+# ever runs, so Planetiler's RAM and temp-disk needs (0.5x / 5-10x its input)
+# scale with the corridor ribbon, not with fourteen whole states. The
+# fetched state PBFs (~3-4 GB) plus intermediates land well inside the
+# ~22-29 GB a hosted runner actually has free. When coverage outgrows this
+# shape - a statewide network, a whole region - the answer is a bigger
+# machine for the build, never a rebuild per trail: see BASEMAP.md and #194.
+#
+# Nothing here publishes. The artifacts exist to be measured and looked at -
+# publishing goes through pipeline/DATA_RELEASES.md's rules once the artifact
+# shape settles, and a spike that can accidentally ship is not a spike.
+#
+# The Planetiler jar is pinned by input rather than hardcoded, because its
+# releases move and a bad pin should be fixable from the dispatch form, not a
+# commit. Its default profile emits the OpenMapTiles schema the client's
+# liveTopo.ts already renders - that schema match is the entire reason this
+# build exists (see BASEMAP.md's "why not Protomaps/Shortbread" section).
+
+name: Build vector basemap
+
+on:
+  workflow_dispatch:
+    inputs:
+      states:
+        description: "Space-separated Geofabrik state names. Empty = the 14 AT states."
+        type: string
+        default: ""
+      max_zoom:
+        description: "Tile pyramid depth (14 = OpenMapTiles convention)"
+        type: string
+        default: "14"
+      planetiler_jar_url:
+        description: "Planetiler release jar to build with"
+        type: string
+        default: "https://github.com/onthegomap/planetiler/releases/latest/download/planetiler.jar"
+
+concurrency:
+  group: build-basemap
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # Reported rather than assumed, same as build-raster.yml: free disk is
+      # the number the pre-clip design turns on, so it gets printed per run.
+      - name: Runner capacity
+        run: |
+          echo "disk:"; df -h / /mnt 2>/dev/null || df -h /
+          echo "cpus: $(nproc)"
+          echo "memory:"; free -g
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
+          osmium --version | head -1
+
+      - name: Warm the DuckDB spatial extension
+        run: python -c "import duckdb; duckdb.connect().execute('INSTALL spatial; LOAD spatial;')"
+
+      # centerline.geojson, which the corridor is built from. fetch_all.py is
+      # the only producer - same step build-raster.yml runs.
+      - name: Fetch ArcGIS sources
+        run: python fetch_all.py
+
+      - name: Fetch the Planetiler jar
+        run: |
+          curl -sSL -o planetiler.jar "${{ inputs.planetiler_jar_url }}"
+          ls -la planetiler.jar
+
+      - name: Build the basemap
+        run: |
+          python export_basemap.py --planetiler-jar planetiler.jar \
+            --max-zoom "${{ inputs.max_zoom }}" \
+            ${{ inputs.states != '' && format('--states {0}', inputs.states) || '' }}
+
+      - name: Cut the AT package from the build
+        run: |
+          python extract_package.py data/processed/basemap.pmtiles \
+            --region data/processed/basemap_region.geojson \
+            --out data/processed/at_basemap_package.pmtiles \
+            --name "OurHike AT corridor basemap"
+
+      # The whole point of the spike: real numbers where estimates were. The
+      # summary is what gets pasted back into #185.
+      - name: Measure
+        run: |
+          {
+            echo "## Basemap build"
+            echo '```'
+            python -c "
+          from pathlib import Path
+          from export_basemap import report_archive
+          report_archive(Path('data/processed/basemap.pmtiles'))
+          report_archive(Path('data/processed/at_basemap_package.pmtiles'))
+          "
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          df -h /
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: basemap-archives
+          path: |
+            pipeline/data/processed/basemap.pmtiles
+            pipeline/data/processed/at_basemap_package.pmtiles
+            pipeline/data/processed/basemap_region.geojson
+          retention-days: 7
+          if-no-files-found: error

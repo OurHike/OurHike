@@ -100,6 +100,26 @@ Not scaffolded yet (see TECHNICAL_ARCHITECTURE.md). When it exists, it would lik
 - Any report type intended to stay private (`bad_hikers` today - see [WIREFRAMES.md](WIREFRAMES.md) Known Deviations #2 for the still-open question of exactly what replaces it) has `visibility: internal-only` set on write, and public map/search API queries filter it out at the query level, not just in client rendering.
 - Browsing endpoints (map, POIs, elevation, closures, warnings) require no auth token - a signed-out client can fetch all of them.
 
+## Repository settings
+
+The one thing in this repository that its own test suites structurally cannot see. A GitHub Actions secret is write-only once set: the API will not read one back, and neither will the maintainer who set it. So nothing in a checkout - no pytest run, no vitest run, no reviewer reading the diff - can tell you whether `R2_SECRET_ACCESS_KEY` is configured. The failure that produces is the expensive kind: it surfaces at the moment some workflow needs the value, which for the R2 credentials is partway through a publish, and which for `DATA_BASE_URL` was an app that built, installed and then could not download a map.
+
+**Framework:** pytest in `.github/tests/`, with `.github/expected-settings.yml` as the manifest of what is supposed to be configured. Same ruff config as the pipeline and backend suites.
+
+Split by what can see what, not by taste:
+
+- **From a checkout** - the manifest and `.github/workflows/` still agree. Every `secrets.X`/`vars.X` a workflow reads is declared; nothing declared has outlived its last reader; nothing is read from the context it wasn't declared for (GitHub resolves the wrong one to an empty string rather than an error, so that surfaces as missing configuration somewhere far away). Runs anywhere, including on a fork's PR. This is the half with teeth on an ordinary change, because drift is what actually happens.
+
+- **From inside Actions** - the settings really exist. `settings-check.yml` resolves the `secrets` and `vars` contexts, reduces them to the *names* that came back non-empty, and passes only those to pytest. Values never enter the test process, which is what lets the failure messages be written for a human to read. It runs weekly, because a revoked R2 token is a change nobody makes to this repository, and there is otherwise nothing to notice it before the next publish does.
+
+Which workflows use a setting is derived, never written down - a hand-kept copy is the half that goes stale (CONTRIBUTING.md's one home per item). `LAUNCH_CHECKLIST.md` steps 1.3 and 2 stay the prose instructions; the manifest is the same statement in a form a test can read.
+
+Two of these guard the checker rather than the settings, and both earn their place: one asserts the live inputs are names and never values, so a change that stopped reducing the contexts fails loudly instead of quietly putting credentials in an assertion message; the other fails the live job if its environment didn't arrive, since every live test skipping is otherwise indistinguishable from all of them passing.
+
+**Warning, not failure:** a setting declared for the Variables tab that is *also* kept as a secret still works, which is exactly why it survives. What it costs is the readability the Variables tab existed to provide - GitHub masks a registered secret value everywhere it appears, so the variable's own value prints as `***` too. `pages.yml` cannot see this: it takes the variable and never looks at the secret.
+
 ## CI
 
 `.github/workflows/pipeline-tests.yml` runs `ruff check`, `ruff format --check`, and `pytest` on every push and on PRs targeting `main`. It's not (yet) a required check via branch protection - a red run doesn't currently block merging, it's just visible on the PR.
+
+`.github/workflows/settings-check.yml` runs the settings suite. Its `manifest` job runs on every PR; its `configured` job deliberately does not, because GitHub passes no secrets to a fork's PR run and the job would fail for every outside contributor for a reason none of them could fix.

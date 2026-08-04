@@ -44,6 +44,8 @@ import type {
   LayerSpecification,
   SourceSpecification,
 } from '@maplibre/maplibre-gl-style-spec'
+import type { Map as MapLibreMap } from 'maplibre-gl'
+import { whenStyleReady } from './styleReady'
 import {
   CONTOUR_ELEVATION_KEY,
   CONTOUR_LAYER,
@@ -151,6 +153,49 @@ export interface LiveTopoOptions {
   units: ContourUnits
 }
 
+/**
+ * The two text-fields that bake the unit choice into the style, extracted so
+ * the live unit switch can re-point them with `setLayoutProperty` - see
+ * attachElevationLabelUnits. One home each: an expression built here and
+ * rebuilt slightly differently there would show its drift as a wrong-unit
+ * elevation on the map.
+ */
+
+/** An index contour's label: the tile's value plus the unit's mark. The tiles
+ *  themselves are already per-unit (registerTerrain), so the value needs no
+ *  conversion - only the suffix says which system the number is in. */
+export function contourLabelTextField(units: ContourUnits): unknown {
+  return [
+    'concat',
+    ['to-string', ['get', CONTOUR_ELEVATION_KEY]],
+    units === 'imperial' ? "'" : 'm',
+  ]
+}
+
+/** A peak's label: name over surveyed height. OpenFreeMap publishes the
+ *  height in both units as separate properties, so the unit choice is which
+ *  property to read, not a conversion. */
+export function peakLabelTextField(units: ContourUnits): unknown {
+  const elevationKey = units === 'imperial' ? 'ele_ft' : 'ele'
+  // `concat` errors on a null argument and drops the feature, so the
+  // name is coalesced rather than read straight: an unnamed summit with
+  // a surveyed height is still worth putting on the map, and losing it
+  // to an expression error would be a silent hole in exactly the layer
+  // this style added terrain for.
+  return [
+    'case',
+    ['has', elevationKey],
+    [
+      'concat',
+      ['coalesce', ['get', 'name'], ''],
+      '\n',
+      ['to-string', ['get', elevationKey]],
+      units === 'imperial' ? "'" : 'm',
+    ],
+    ['coalesce', ['get', 'name'], ''],
+  ]
+}
+
 export function liveTopoSources({
   terrain,
 }: LiveTopoOptions): Record<string, SourceSpecification> {
@@ -193,8 +238,6 @@ export function liveTopoSources({
  * turning "nothing arrived" back into a confident picture of empty ground.
  */
 export function liveTopoLayers({ units }: LiveTopoOptions): LayerSpecification[] {
-  const elevationSuffix = units === 'imperial' ? "'" : 'm'
-
   return [
     {
       id: LIVE_TOPO_LAYER_IDS.wood,
@@ -336,11 +379,7 @@ export function liveTopoLayers({ units }: LiveTopoOptions): LayerSpecification[]
       minzoom: 12,
       layout: {
         'symbol-placement': 'line',
-        'text-field': [
-          'concat',
-          ['to-string', ['get', CONTOUR_ELEVATION_KEY]],
-          elevationSuffix,
-        ] as never,
+        'text-field': contourLabelTextField(units) as never,
         'text-font': FONT,
         'text-size': 10,
         'text-max-angle': 25,
@@ -450,23 +489,7 @@ export function liveTopoLayers({ units }: LiveTopoOptions): LayerSpecification[]
       filter: isClass('peak', 'volcano') as never,
       minzoom: 10,
       layout: {
-        // `concat` errors on a null argument and drops the feature, so the
-        // name is coalesced rather than read straight: an unnamed summit with
-        // a surveyed height is still worth putting on the map, and losing it
-        // to an expression error would be a silent hole in exactly the layer
-        // this style added terrain for.
-        'text-field': [
-          'case',
-          ['has', units === 'imperial' ? 'ele_ft' : 'ele'],
-          [
-            'concat',
-            ['coalesce', ['get', 'name'], ''],
-            '\n',
-            ['to-string', ['get', units === 'imperial' ? 'ele_ft' : 'ele']],
-            elevationSuffix,
-          ],
-          ['coalesce', ['get', 'name'], ''],
-        ] as never,
+        'text-field': peakLabelTextField(units) as never,
         'text-font': FONT,
         'text-size': ['interpolate', ['linear'], ['zoom'], 10, 10, 14, 13] as never,
         'text-anchor': 'top',
@@ -526,4 +549,46 @@ export function liveTopoLayers({ units }: LiveTopoOptions): LayerSpecification[]
       },
     },
   ]
+}
+
+/**
+ * The elevation labels' half of the live unit switch.
+ *
+ * attachContourUnits (contours.ts) re-points the contour SOURCE at the other
+ * unit's tiles, but the two places the unit choice is baked into the style as
+ * layout - the contour label's suffix and the peak layer's choice of `ele_ft`
+ * vs `ele` - do not move with it. Left alone they produce the worst kind of
+ * wrong map: metric tiles under imperial punctuation, a 500 m index contour
+ * reading 500'. This re-points both text-fields in place, with the same
+ * expressions the style was built from, for the same reason the source
+ * retune exists at all: `units` is deliberately kept out of the map-building
+ * effect so a settings change never tears the map down under a hiker.
+ *
+ * Waits on the contour label layer, which only a live-background style
+ * holds. On the offline background neither layer exists and there is nothing
+ * to retune - the wait simply ends at detach, exactly as attachContourUnits
+ * treats its absent source.
+ */
+export function attachElevationLabelUnits(map: MapLibreMap, units: ContourUnits): () => void {
+  return whenStyleReady(
+    map,
+    () => map.getLayer(LIVE_TOPO_LAYER_IDS.contourLabel) !== undefined,
+    () => {
+      map.setLayoutProperty(
+        LIVE_TOPO_LAYER_IDS.contourLabel,
+        'text-field',
+        contourLabelTextField(units) as never,
+      )
+      // Guarded separately: the ready() probe proves the contour label is
+      // there, not that every live-topo layer is.
+      if (map.getLayer(LIVE_TOPO_LAYER_IDS.peak) !== undefined) {
+        map.setLayoutProperty(
+          LIVE_TOPO_LAYER_IDS.peak,
+          'text-field',
+          peakLabelTextField(units) as never,
+        )
+      }
+    },
+    'Elevation label units',
+  )
 }

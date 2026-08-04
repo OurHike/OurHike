@@ -44,6 +44,7 @@ export class MockMap {
   readonly imageOptions = new Map<string, unknown>()
   /** Every paint property written, keyed `layerId/property`. */
   readonly paintProperties = new Map<string, unknown>()
+  readonly layoutProperties = new Map<string, unknown>()
   /** The latest filter set on each layer, by layer id. */
   readonly filters = new Map<string, unknown>()
   /** Data pushed into each GeoJSON source, by source id. */
@@ -188,6 +189,17 @@ export class MockMap {
 
   setPaintProperty(layerId: string, property: string, value: unknown): this {
     this.paintProperties.set(`${layerId}/${property}`, value)
+    return this
+  }
+
+  setLayoutProperty(layerId: string, property: string, value: unknown): this {
+    // Same convention as setFilter: real MapLibre does not silently accept a
+    // write to a layer that is not there, and code that forgets to check
+    // must fail here too.
+    if (this.getLayer(layerId) === undefined) {
+      throw new Error(`The layer '${layerId}' does not exist in the map's style.`)
+    }
+    this.layoutProperties.set(`${layerId}/${property}`, value)
     return this
   }
 

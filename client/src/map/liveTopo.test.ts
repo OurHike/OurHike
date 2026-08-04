@@ -248,3 +248,72 @@ describe('a live background with no terrain registered', () => {
     expect(ids(degraded)).toContain(TOPO_LAYER_ID)
   })
 })
+
+describe('attachElevationLabelUnits', () => {
+  // The other half of the live unit switch. attachContourUnits re-points the
+  // contour SOURCE at the other unit's tiles; without this, the label suffix
+  // and the peak elevation field stayed baked at style-build time, and a
+  // metric retune drew 500 m index contours labelled 500'.
+  it('re-points both elevation text-fields in place', async () => {
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const { attachElevationLabelUnits, contourLabelTextField, peakLabelTextField } =
+      await import('./liveTopo')
+    const m = new MockMap({})
+    m.layerIds = [LIVE_TOPO_LAYER_IDS.contourLabel, LIVE_TOPO_LAYER_IDS.peak]
+
+    attachElevationLabelUnits(m as never, 'metric')
+
+    expect(
+      m.layoutProperties.get(`${LIVE_TOPO_LAYER_IDS.contourLabel}/text-field`),
+    ).toEqual(contourLabelTextField('metric'))
+    expect(m.layoutProperties.get(`${LIVE_TOPO_LAYER_IDS.peak}/text-field`)).toEqual(
+      peakLabelTextField('metric'),
+    )
+  })
+
+  it('waits for the label layer when the style has not brought it yet', async () => {
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const { attachElevationLabelUnits } = await import('./liveTopo')
+    const m = new MockMap({})
+
+    attachElevationLabelUnits(m as never, 'metric')
+    expect(m.layoutProperties.size).toBe(0)
+
+    m.layerIds = [LIVE_TOPO_LAYER_IDS.contourLabel, LIVE_TOPO_LAYER_IDS.peak]
+    m.emit('styledata')
+    expect(m.layoutProperties.size).toBe(2)
+  })
+
+  it('leaves an offline-background style alone', async () => {
+    // Neither layer exists there, and that is a normal state rather than a
+    // failure - the wait simply never resolves and detach ends it.
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const { attachElevationLabelUnits } = await import('./liveTopo')
+    const m = new MockMap({})
+    m.layerIds = [TOPO_LAYER_ID]
+
+    const detach = attachElevationLabelUnits(m as never, 'metric')
+    m.emit('styledata')
+    detach()
+
+    expect(m.layoutProperties.size).toBe(0)
+  })
+
+  it('survives a live style that has contour labels but no peak layer', async () => {
+    // ready() probes the contour label only; the peak write is guarded
+    // separately because proving one layer is there proves nothing about
+    // the rest, and the mock (like real MapLibre) rejects writes to absent
+    // layers.
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const { attachElevationLabelUnits, contourLabelTextField } = await import('./liveTopo')
+    const m = new MockMap({})
+    m.layerIds = [LIVE_TOPO_LAYER_IDS.contourLabel]
+
+    attachElevationLabelUnits(m as never, 'imperial')
+
+    expect(
+      m.layoutProperties.get(`${LIVE_TOPO_LAYER_IDS.contourLabel}/text-field`),
+    ).toEqual(contourLabelTextField('imperial'))
+    expect(m.layoutProperties.size).toBe(1)
+  })
+})

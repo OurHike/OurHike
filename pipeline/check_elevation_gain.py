@@ -87,7 +87,10 @@ def load_reference(path: Path) -> dict:
     """
     if not path.exists():
         return {"whole_trail": None, "sections": []}
-    return json.loads(path.read_text())
+    try:
+        return json.loads(path.read_text())
+    except ValueError as exc:
+        raise ValueError(f"{path} is not valid JSON: {exc}") from exc
 
 
 def sweep(profile: list[dict]) -> list[tuple[float, float]]:
@@ -137,7 +140,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Cannot read the profile: {exc}", file=sys.stderr)
         return 2
 
-    reference = load_reference(args.reference)
+    try:
+        reference = load_reference(args.reference)
+    except ValueError as exc:
+        # A reference that exists but cannot be read is the profile case
+        # again: nothing has been checked, and a traceback would say less.
+        print(f"Cannot read the reference: {exc}", file=sys.stderr)
+        return 2
     elevations = [record.get("elevation_ft") for record in profile]
 
     raw = raw_cumulative_gain(elevations)
@@ -173,21 +182,38 @@ def main(argv: list[str] | None = None) -> int:
     print(f"\nper-section, at {DEFAULT_THRESHOLD_M} m (tolerance {SECTION_TOLERANCE:.0%})")
     rows = check_sections(profile, sections, DEFAULT_THRESHOLD_FT)
     failed = []
+    unvalidated = []
     for row in rows:
-        error = "     -" if row["error"] is None else f"{row['error']:+6.1%}"
+        # A null published figure is a stub awaiting its citation, not a
+        # failed comparison: it renders as "-" and stays out of the verdict,
+        # because "not validated" and "validated and wrong" are the two
+        # states this whole file exists to keep apart.
+        if row["error"] is None:
+            print(f"   -  {row['name']:<28} {row['measured_ft']:>9,.0f} vs         - ft       -   {row['source']}")
+            unvalidated.append(row["name"])
+            continue
         mark = "ok " if row["within_tolerance"] else "OFF"
         print(
-            f"  {mark} {row['name']:<28} {row['measured_ft']:>9,.0f} vs {row['published_ft']:>9,.0f} ft  {error}"
+            f"  {mark} {row['name']:<28} {row['measured_ft']:>9,.0f} vs {row['published_ft']:>9,.0f} ft  {row['error']:+6.1%}"
             f"   {row['source']}"
         )
         if not row["within_tolerance"]:
             failed.append(row["name"])
 
+    if unvalidated:
+        print(f"\n{len(unvalidated)} of {len(rows)} sections have no published figure yet: {', '.join(unvalidated)}")
+
     if failed:
         print(f"\n{len(failed)} of {len(rows)} sections outside {SECTION_TOLERANCE:.0%}: {', '.join(failed)}")
         return 1
 
-    print(f"\nAll {len(rows)} sections within {SECTION_TOLERANCE:.0%} at one threshold.")
+    checked = len(rows) - len(unvalidated)
+    if checked == 0:
+        # Same verdict as an empty section list: nothing has been validated.
+        print("\nNo section has a published figure to compare against yet.")
+        return 1
+
+    print(f"\nAll {checked} sections with published figures within {SECTION_TOLERANCE:.0%} at one threshold.")
     return 0
 
 

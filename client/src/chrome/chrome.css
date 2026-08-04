@@ -603,47 +603,141 @@
   color: var(--fg-3);
 }
 
-/* ---------- Waypoint detail sheet ---------- */
+/* ---------- Waypoint card (tapped pin) ---------- */
 
-/* Same footprint as the legend it replaces when a pin is tapped, so the sheet
-   at the bottom of the map is always the same shape whatever put it there.
-   No coloured top rule: those belong to the closure and warning sheets, where
-   the colour is the point. A shelter is not an alert. */
-.poi-sheet {
+/* Floats beside the pin it describes rather than docking at the bottom edge -
+   PoiCard.tsx positions it with an inline transform in canvas pixels, so the
+   base position is the canvas origin and nothing here may fight the
+   transform. No coloured top rule: those belong to the closure and warning
+   sheets, where the colour is the point. A shelter is not an alert. */
+.poi-card {
   position: absolute;
+  top: 0;
   left: 0;
-  right: 0;
-  bottom: 0;
   z-index: 2;
-  max-height: 60%;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2, 8px);
-  padding: var(--space-4, 16px);
+  /* Narrow enough that a phone can hold the card plus both edge margins
+     (poiCardPlacement.ts clamps against them), wide enough for a name and a
+     photo worth having. The fallback keeps it inside a viewport smaller than
+     any phone this app is designed for. */
+  width: min(264px, calc(100% - 16px));
+  overflow: hidden; /* rounds the photo's corners with the card's */
   background: var(--bg-surface);
-  border-top-left-radius: 14px;
-  border-top-right-radius: 14px;
-  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+  border-radius: 14px;
+  /* Deeper than the sheets' shadow: this element floats mid-map over live
+     cartography, and the shadow is what says "over", not "part of". */
+  box-shadow:
+    0 10px 28px rgb(0 0 0 / 18%),
+    0 2px 8px rgb(0 0 0 / 10%);
+  /* Re-transformed every frame of a pan while it rides its pin. */
+  will-change: transform;
 }
 
-.poi-sheet__type {
+.poi-card__media {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  background: var(--bg-sunken);
+}
+
+.poi-card__photo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* The empty photo slot: the category's own silhouette on a wash of its accent.
+   Honest iconography rather than a stock photo pretending to be the shelter -
+   no published source carries imagery yet (see PoiCard.tsx), so today this IS
+   the photo slot. The wash keeps the fallback background for engines without
+   color-mix. */
+.poi-card__placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: var(--bg-sunken);
+  background: color-mix(in srgb, var(--poi-accent) 14%, var(--bg-sunken));
+}
+
+/* Same silhouette the pin carries (map/poiIcons.ts), so the empty slot still
+   answers "what kind of thing is this" in the pins' own shape language. */
+.poi-card__glyph {
+  width: 56px;
+  height: 56px;
+  fill: var(--poi-accent);
+  opacity: 0.55;
+}
+
+/* Drawn at 32px over the photo's corner, hit at 44px - the same drawn/hit
+   split the header buttons use, made up with an invisible expanded area
+   rather than by inflating the visible circle. */
+.poi-card__close {
+  position: absolute;
+  top: var(--space-2, 8px);
+  right: var(--space-2, 8px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 18px;
+  color: var(--fg-2);
+  background: var(--bg-surface);
+  border: 0;
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 15%);
+  cursor: pointer;
+  /* Design-system rule: fades and colour transitions only, 120-200ms. */
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.poi-card__close::after {
+  content: '';
+  position: absolute;
+  inset: calc((32px - var(--min-touch-target)) / 2);
+}
+
+.poi-card__close:hover {
+  background: var(--bg-sunken);
+  color: var(--fg-1);
+}
+
+.poi-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  padding: var(--space-3, 12px);
+}
+
+.poi-card__name {
   margin: 0;
-  font-size: 14px;
+  font-size: 15px;
+  color: var(--fg-1);
+}
+
+.poi-card__meta {
+  display: flex;
+  gap: var(--space-1, 4px);
+  margin: 0;
+  font-size: 13px;
   color: var(--fg-2);
 }
 
 /* Mono, like every other mile on this screen - the header's, the ribbon's and
    the closure sheet's - so a hiker reads them as the same kind of number. */
-.poi-sheet__mile,
-.poi-sheet__coords {
-  margin: 0;
+.poi-card__mile,
+.poi-card__coords {
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 13px;
-  color: var(--fg-2);
 }
 
-.poi-sheet__coords {
+.poi-card__coords {
+  margin: 0;
   font-size: 12px;
   color: var(--fg-3);
 }
@@ -651,18 +745,18 @@
 /* Called out rather than set in fine print. This is the line that says the app
    cannot vouch for the pin someone just tapped, and it earns the same weight as
    the sunken block the closure sheet uses to say what it will not do. */
-.poi-sheet__unverified {
-  margin: 0;
-  padding: var(--space-3, 12px);
-  font-size: 13px;
+.poi-card__unverified {
+  margin: var(--space-1, 4px) 0;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  font-size: 12px;
   color: var(--fg-2);
   background: var(--bg-sunken);
   border-radius: 10px;
 }
 
-.poi-sheet__source {
+.poi-card__source {
   margin: 0;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--fg-3);
 }
 

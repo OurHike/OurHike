@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { resetMapLibreMock } from '../test/mocks/maplibre-gl'
+import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { MapScreen } from './MapScreen'
 import { ATTRIBUTION, LIVE_ATTRIBUTION } from '../map/style'
 
@@ -179,7 +179,7 @@ describe('MapScreen', () => {
     expect(PROPS.onOpenSearch).toHaveBeenCalledTimes(1)
   })
 
-  it('shows no waypoint sheet until a pin has been tapped', () => {
+  it('shows no waypoint card until a pin has been tapped', () => {
     render(<MapScreen {...PROPS} />)
 
     expect(screen.queryByRole('dialog', { name: /waypoint/i })).not.toBeInTheDocument()
@@ -203,5 +203,30 @@ describe('MapScreen', () => {
 
     expect(screen.getByRole('dialog', { name: /waypoint/i })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Rocky Run Shelter' })).toBeInTheDocument()
+  })
+
+  it('hands the card the live map, so it anchors to the pin it describes', () => {
+    // The shell above owns the POI data and MapView owns the canvas; this is
+    // the screen that has to introduce them. A card that never projected the
+    // POI's coordinates would render docked at the canvas origin - the exact
+    // bottom-anchored posture this card replaced.
+    render(
+      <MapScreen
+        {...PROPS}
+        selectedPoi={{
+          id: 'atc_shelters:abc',
+          name: 'Rocky Run Shelter',
+          type: 'shelter',
+          lat: 39.4,
+          lon: -77.6,
+          confidence: 'high',
+          mile: 1043.2,
+        }}
+      />,
+    )
+
+    expect(MockMap.live).toHaveLength(1)
+    expect(MockMap.live[0].projectCalls).toContainEqual([-77.6, 39.4])
+    expect(screen.getByRole('dialog', { name: /waypoint/i }).style.transform).not.toBe('')
   })
 })

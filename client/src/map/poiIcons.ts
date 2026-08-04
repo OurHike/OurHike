@@ -232,6 +232,31 @@ const GLYPHS: Record<string, Glyph> = {
   ],
 }
 
+/**
+ * The category silhouette as SVG path data in a unit box (`viewBox="0 0 1 1"`),
+ * for chrome that wants the same shape language as the pins - the waypoint
+ * card's photo placeholder is the customer. One subpath per ring, so an
+ * `evenodd` fill keeps the shelter's doorway open exactly as the rasteriser's
+ * crossing count below does.
+ *
+ * Same fallback as {@link buildPoiIcon}: a type this build has never heard of
+ * gets the diamond, not an empty path - the placeholder should show SOMETHING
+ * for a POI the map is already drawing as a neutral pin.
+ */
+export function poiGlyphPath(type: string): string {
+  const glyph = GLYPHS[type] ?? GLYPHS[UNKNOWN_POI_TYPE]
+  return glyph
+    .map(
+      (ring) =>
+        `M${ring
+          // The arcs carry full float precision, which nobody rendering a
+          // 56px glyph can see and every DOM snapshot has to carry.
+          .map(([x, y]) => `${Number(x.toFixed(4))} ${Number(y.toFixed(4))}`)
+          .join('L')}Z`,
+    )
+    .join('')
+}
+
 /** Even-odd crossing count, which is what gives the tent its doorway. */
 function insideGlyph(glyph: Glyph, x: number, y: number): boolean {
   let inside = false

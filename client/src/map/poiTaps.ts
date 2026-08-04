@@ -74,17 +74,23 @@ export function poiIdAt(
 /**
  * Wires taps on the pin layer to `onSelect`, and returns a detach function.
  *
+ * Every tap reports, including the misses: a pin's id when the touch lands on
+ * one, null for bare map. The null is load-bearing - it is how the floating
+ * waypoint card closes without hunting for its × button, the gesture every
+ * map card teaches (tap elsewhere to put it away). Dragging does not dismiss:
+ * MapLibre withholds the click event when the gesture was a pan, so riding
+ * the map around with a card open never throws the card away.
+ *
  * The pointer cursor is part of the same job rather than a separate concern:
  * on the web, something that opens when clicked has to look like it will, and
  * it is answered by the same "is there a pin here" question the tap uses.
  */
 export function attachPoiTaps(
   map: MapLibreMap,
-  onSelect: (id: string) => void,
+  onSelect: (id: string | null) => void,
 ): () => void {
   const onClick = (event: MapMouseEvent) => {
-    const id = poiIdAt(map, event.point)
-    if (id !== null) onSelect(id)
+    onSelect(poiIdAt(map, event.point))
   }
 
   // A layer-scoped `mouseenter`/`mouseleave` pair would be the usual way to do

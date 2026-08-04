@@ -1,1 +1,0 @@
-if('serviceWorker' in navigator) {window.addEventListener('load', () => {navigator.serviceWorker.register('/OurHike/pr-preview/pr-195/sw.js', { scope: '/OurHike/pr-preview/pr-195/' })})}

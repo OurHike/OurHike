@@ -74,6 +74,42 @@ settings:
       is declared the same way: a secret-only DATA_BASE_URL works, and both
       that and a redundant duplicate are worth saying out loud.
 
+  SUPABASE_URL:
+    where: variable
+    also-accepted-as-secret: true
+    required: true
+    why: >-
+      The Supabase project the client signs in against and the config check
+      reads. On the Variables tab for the same reason as DATA_BASE_URL: it is
+      a public URL, it is inlined into a JS bundle anyone can read, and a
+      secret would only mask it in the build log where it is worth checking.
+      The name carries no VITE_ prefix - the workflows add that when handing
+      it to the build, and naming the variable VITE_SUPABASE_URL is a real
+      mistake that costs an app which builds fine and cannot sign anyone in.
+
+  SUPABASE_ANON_KEY:
+    where: variable
+    also-accepted-as-secret: true
+    required: true
+    why: >-
+      The publishable key the client authenticates with. Public by design -
+      it ships inside the bundle, and what makes that safe is row-level
+      security rather than the key being hard to find (LAUNCH_CHECKLIST.md
+      5a). Not to be confused with SUPABASE_JWT_SECRET, which is a real
+      secret, belongs only to the backend's runtime environment, and is
+      deliberately absent from this file because no workflow reads it.
+
+  AUTH_PROVIDERS:
+    where: variable
+    required: false
+    why: >-
+      Which sign-in buttons a build offers. Optional because the client
+      defaults to google,email when it is unset, so a missing value is a
+      working app rather than a broken one. Worth declaring anyway: every
+      name in it must be a provider actually enabled in the Supabase
+      dashboard, and one that is not is a button reaching an error page. The
+      Supabase config check is what compares those two lists.
+
   GITHUB_TOKEN:
     where: github-provided
     required: true

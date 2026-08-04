@@ -109,6 +109,8 @@ Then a separate section, **"About people on the trail,"** with two full-width ca
 
 **Sign-in happens at the first contribution, not in onboarding.** The report is written and saved first; then Google / Apple / email, then trail name + reporter type (thru / section / day / maintainer; maintainer is club-granted and stays unverified until confirmed). A green callout states that reading the map — water, shelters, closures, warnings — never needs an account.
 
+Which of the three a given build actually offers is deployment configuration, not a screen decision — a provider whose credentials do not exist reaches an error page rather than an account, and Apple's cost more than the other two. See [features/AUTHENTICATION.md](features/AUTHENTICATION.md).
+
 **Four states, always visible to the reporter:** Waiting → Confirmed → Fixed, or Not confirmed. "Not confirmed" carries no penalty, deliberately.
 
 **Public read of a report:** trail name + reporter type + exact date + maintainer confirmation badge + note + photo. (Hiding name/date is the Post-MVP anonymity window.)

@@ -15,8 +15,10 @@ eight identical places looks like the truth.
 """
 
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 
 import jwt
+from cryptography.hazmat.primitives.asymmetric import ec
 
 from app.config import settings
 
@@ -54,3 +56,51 @@ def make_token(
 def auth_headers(user_id: str) -> dict[str, str]:
     """The Authorization header a signed-in client would send."""
     return {"Authorization": f"Bearer {make_token(user_id)}"}
+
+
+# The shape a *hosted* Supabase project actually issues: ES256, with a `kid`
+# naming the key in the project's published JWKS. Confirmed against a real
+# token - see app/core/auth.py.
+#
+# Minted here with a real generated keypair rather than a canned fixture,
+# because the thing worth testing is that a real signature verifies against a
+# real public key. A hand-written token and a stubbed verifier would agree
+# with each other and prove nothing about either.
+
+
+@lru_cache(maxsize=1)
+def es256_keypair() -> tuple[ec.EllipticCurvePrivateKey, ec.EllipticCurvePublicKey]:
+    """One P-256 keypair for the whole test session. Generating a key per test
+    is pure cost: nothing here depends on the keys differing."""
+    private = ec.generate_private_key(ec.SECP256R1())
+    return private, private.public_key()
+
+
+def other_es256_key() -> ec.EllipticCurvePrivateKey:
+    """A second, unrelated key - the one an attacker would have. Deliberately
+    not cached alongside the first, so nothing can accidentally match it."""
+    return ec.generate_private_key(ec.SECP256R1())
+
+
+def make_es256_token(
+    user_id: str,
+    *,
+    private_key: ec.EllipticCurvePrivateKey | None = None,
+    expires_delta: timedelta = timedelta(hours=1),
+    audience: str | None | object = _CONFIGURED,
+    kid: str = "0644dbc7-b08b-4eb5-ac49-d754cae66269",
+) -> str:
+    """An ES256 token carrying the claims and header a hosted project sends."""
+    payload: dict = {
+        "sub": user_id,
+        "exp": datetime.now(timezone.utc) + expires_delta,
+        "role": "authenticated",
+        "iss": f"{settings.supabase_url}/auth/v1",
+    }
+
+    resolved = settings.supabase_jwt_audience if audience is _CONFIGURED else audience
+    if resolved:
+        payload["aud"] = resolved
+
+    signing_key = private_key if private_key is not None else es256_keypair()[0]
+    return jwt.encode(payload, signing_key, algorithm="ES256", headers={"kid": kid})

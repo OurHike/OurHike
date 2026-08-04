@@ -86,6 +86,22 @@ The 45° hatch above (`client/src/map/backdrop.ts`, now deleted) was reported as
 **What ships now:** layer 1 alone - the flat `--paper-100` `background` layer in `buildMapStyle` (`style.ts`'s `BACKDROP_LAYER_ID`). It still cannot fail, still needs no coverage maths, and still keeps the one guarantee that actually matters: no combination of pan, zoom, missing download, or lost GPU context can put black on the screen. What it gives up is the second-order distinction between "no data here" and "a finished map of an empty place" - a real cost, but a smaller one than it was when this was written, because the live topographic sheet (built 2026-08-03, above) now covers the flat-paper case with a real map everywhere there is signal. The plain-paper fallback is left for the case that remains: no signal *and* off the downloaded corridor, which on a ridge is exactly when a hiker has bigger problems than a texture.
 - **A chrome banner naming the state** ("outside downloaded area"). Worth having, needs the archive's real footprint read out of the PMTiles header, and belongs with the legend work in §5 rather than in the style.
 
+### Fixed 2026-08-04 - the opening view had no background on it at all
+
+**What was reported: "the map no longer displays a background map on initial load."** That claim above - *"signal, nothing downloaded (every first run): a real topo map, worldwide"* - was not true of the view a first run actually opens on, and the reason is a gap between two decisions neither of which is wrong on its own.
+
+The app opens on the **whole trail**: `App.tsx` frames `CORRIDOR_BOUNDS`, Georgia to Maine, which lands near **z4**. Every layer in the sheet that describes terrain is keyed to **hiking** zooms - the contours interpolate to zero opacity below z9, their labels start at 12, summits at 10, tracks at 11, paths and minor roads at 12 - and OpenMapTiles itself carries no woodland below roughly z7, so the landcover fills have nothing to draw either. What is left at z4 is water, boundaries, major roads, city labels, and relief shading. Only the last of those covers the corridor, and it was drawn at `hillshade-exaggeration: 0.35` - a weight chosen for z13, where the contours carry the terrain and the shading only gives it body. Stretched across a thousand kilometres of DEM, 0.35 is invisible. The opening screen was blank paper with a scale bar on it.
+
+The hatch removal above is why this reads as a regression rather than as something that was always so: the same empty view previously carried a visible texture, so "nothing here yet" at least looked deliberate.
+
+**What ships:** the relief shading is a zoom ramp instead of one number (`HILLSHADE_EXAGGERATION_EXPRESSION` in `client/src/map/liveTopo.ts`) - full strength at and below z9, easing back to the same 0.35 by z12. Those two zooms are the contour ramps' own, not new ones: the shading is turned up over exactly the window where nothing else is drawing terrain, and hands back as the contours fade in. At hiking zooms the map is pixel-for-pixel what it was.
+
+Three properties worth recording, because they are what makes this the right size of fix:
+
+- **It costs no bytes.** The DEM tiles behind the hillshade are already fetched at every zoom - this only decides how much of what they contain reaches the screen. Data Saver's override is untouched and still subtracts the whole live sheet.
+- **It does not move the camera.** Opening on the whole trail is a deliberate choice and the fix does not quietly narrow it to a zoom where the sheet happens to look better.
+- **It changes nothing offline.** With no signal there is still no DEM, and the opening view is still the paper backdrop - the honest state, and the one the section above already accepts.
+
 ### Client setting
 
 `background_source` - a client-side, per-device preference (same no-account storage model as Segments). Lives alongside the already-planned "max zoom 11/12/13" setting in ROADMAP.md Phase 2 - same settings screen, same client-side storage, not a separate mechanism.

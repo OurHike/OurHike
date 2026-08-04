@@ -229,22 +229,22 @@ An empty array or a permission error is what you want. Rows are the failure.
 
 ## 6. Host the backend
 
-**Nothing exists for this yet** — no Dockerfile, no Procfile, no platform config. It is the largest genuinely unstarted piece.
+The host is picked and the config is written: `backend/Dockerfile` and `backend/fly.toml` target **Fly.io**, chosen over Render specifically to avoid its free tier sleeping on idle — a cold start on the first request after quiet is a worse experience for something safety-adjacent than a small ongoing cost. `fly.toml` keeps `min_machines_running = 1` for the same reason, and `primary_region = "iad"` is the closest major Fly region to the trail's own corridor.
 
-FastAPI + sync SQLAlchemy runs anywhere that runs Python. Fly.io, Render and Railway all work; Render's free tier sleeps, which is survivable for MVP but will make the first request after idle slow.
+What is left is running it, in this order:
 
-It needs:
+1. **`fly apps create`** with a real, globally-unique name. `fly.toml`'s `app = "ourhike-backend"` is a placeholder — update it to match whatever the name ends up being.
+2. **`fly secrets set`** the runtime environment. Never committed, never baked into the image:
+   ```
+   fly secrets set DATABASE_URL=postgresql://...   # the Supabase Postgres connection string
+   fly secrets set SUPABASE_URL=... SUPABASE_ANON_KEY=...
+   ```
+   `SUPABASE_JWT_SECRET` is **not** in that list for a hosted project — see 4.4. Set it only against a self-hosted Supabase.
+3. **`fly deploy`** from `backend/`.
+4. **Run the migration** (step 5) and **enable RLS** (step 5a) against the real `DATABASE_URL`. Deliberately separate from deploying: a migration should be a reviewed action, not something that fires on every container start.
+5. **Point the client at it** and add its origin to Supabase's allowed redirect URLs (4.3b).
 
-```
-DATABASE_URL=postgresql://...        # your Supabase Postgres connection string
-SUPABASE_JWT_SECRET=...
-SUPABASE_URL=...
-SUPABASE_ANON_KEY=...
-```
-
-Then point the client's API base URL at it, and add its origin to Supabase's allowed redirect URLs.
-
-I can write the Dockerfile and platform config once you pick a host — the choice affects the file.
+**None of this has been run against a real Fly.io account or Docker daemon.** The Dockerfile follows a standard FastAPI/uvicorn pattern and `fly.toml` matches Fly's documented format, but "should work" is not "confirmed working" — budget for the first real `fly deploy` to surface something no local check could. See [backend/README.md](backend/README.md) for the reasoning behind each choice.
 
 ---
 

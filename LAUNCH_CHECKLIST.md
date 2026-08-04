@@ -115,9 +115,10 @@ The backend verifies Supabase-issued JWTs. Browsing never needs an account; this
 
 ```
 SUPABASE_URL=https://<ref>.supabase.co
-SUPABASE_ANON_KEY=<anon public key>
-SUPABASE_JWT_SECRET=<Settings > API > JWT Secret>
+SUPABASE_ANON_KEY=<publishable key, sb_publishable_...>
 ```
+
+**`SUPABASE_JWT_SECRET` is not on that list, and for a hosted project there is nothing to put there.** Hosted projects sign asymmetrically and publish the public half; no shared secret exists. The backend treats it as optional for exactly that reason. Set it only when pointing at a **self-hosted** Supabase, which does sign HS256 — see 4.4.
 
 **4.3 Configure OAuth providers** (Authentication → Providers). Each needs its own developer registration, and these are the slowest items on this list because they involve external approval:
 
@@ -125,26 +126,104 @@ SUPABASE_JWT_SECRET=<Settings > API > JWT Secret>
 - **Apple** — Apple Developer Program, **$99/year**. Needs a Services ID and a signing key. If you want to defer cost, ship with Google + email and add Apple later; nothing in the code assumes all three.
 - **Email** — on by default, no setup.
 
-**4.4 Flag on the JWT verification method.** `backend/app/core/auth.py` currently verifies **HS256 using the JWT secret**. Supabase has been migrating projects toward asymmetric keys (JWKS/RS256). If your project issues RS256, that function needs changing — it was deliberately built as a single seam so this is a contained change, but it is the one thing here I could not settle without a real project to look at. **Check this before assuming auth works.**
+**4.3a Set the client's build variables** in **Settings → Secrets and variables → Actions → Variables** (the Variables tab, not Secrets — see why below). `.github/workflows/pages.yml` and `pr-preview.yml` read them and pass them to the build:
+
+```
+SUPABASE_URL=https://<ref>.supabase.co
+SUPABASE_ANON_KEY=<anon public key>
+AUTH_PROVIDERS=google,email          # optional; defaults to google,email
+```
+
+**Variables, not Secrets.** Neither is secret. The anon key is *designed* to be public — Vite inlines it into a JS bundle that anyone can read with view-source, so hiding it in a Secret buys nothing and costs a readable build log, exactly as the comment above `DATA_BASE_URL` in `pages.yml` explains. Both workflows accept either, and warn if you picked Secrets. What is **not** here, and must never be, is `SUPABASE_JWT_SECRET`: that one is real, it belongs only to the backend's runtime environment, and a `VITE_`-prefixed copy would be inlined into a public file.
+
+Prefer the **publishable** key (`sb_publishable_…`) over the legacy `anon` JWT if the project offers both — Supabase deprecates the legacy keys at the end of 2026.
+
+`AUTH_PROVIDERS` must list only providers actually configured in 4.3. A name here whose credentials do not exist is a button that reaches an error page. Leaving all of these unset is safe: the app builds, the map works, and the sign-in controls say the build has no project rather than offering a round trip that cannot finish.
+
+**4.3b Allow the app's own URLs back** (Authentication → URL Configuration). The client redirects to the path it was served from, not the bare origin — a redirect to the origin lands on the project site with the code in its URL and no app there to read it.
+
+That means more than one path. Pages serves the app at `/OurHike/app/`, and every PR preview gets its own `/OurHike/pr-preview/pr-<n>/`. Supabase's allow-list takes glob patterns, where `**` matches across `/`, so one entry covers all of them:
+
+```
+https://<user>.github.io/OurHike/**
+http://localhost:5173/**
+```
+
+Adding an entry per PR by hand is not a plan, and without a matching entry every provider round trip from a preview ends in a redirect mismatch. Supabase recommends pinning the exact path for the production **Site URL** even so — set that to `https://<user>.github.io/OurHike/app/`.
+
+**4.3c Custom SMTP, before real traffic.** The magic-link sign-in and the account-confirmation email both go through Supabase's built-in sender, which is rate-limited to a handful of messages per hour and is explicitly not for production. Fine for testing; a hiker hitting "email me a sign-in link" and silently getting nothing is not. Configure real SMTP under Authentication → Emails when this stops being a test deployment.
+
+**4.4 The JWT verification method — settled.** This was the open question here, flagged as the one thing that could not be answered without a real project. There is one now, and it answered: a token it issued carries `{"alg": "ES256", "kid": "..."}` — **asymmetric, with the public half published as a JWKS.** A backend verifying HS256 against a shared secret would have returned 401 to every signed-in hiker, with the token, the signature and the secret all perfectly correct.
+
+`backend/app/core/auth.py` now reads the algorithm off the token and verifies accordingly: ES256/RS256 against the project's published keys, HS256 against `SUPABASE_JWT_SECRET`. Both are real — a **self-hosted** Supabase signs HS256, and that is the path OurHikeValues.md leans on for inheritability. Nothing here needs configuring for a hosted project; it works out of the box.
+
+**4.5 Run the config check.** Actions → **Supabase config check** → Run workflow. It reads the live project and reports what only a live project can show:
+
+- whether `SUPABASE_URL` / `SUPABASE_ANON_KEY` are set and valid (and it names the no-`VITE_`-prefix trap, which is a real one — the prefix belongs on the build variable, not the repository variable);
+- whether the algorithm the project signs with is one the backend accepts;
+- whether every provider in `AUTH_PROVIDERS` is actually enabled in the dashboard — a mismatch there is a button that reaches an error page, and nothing else in the system compares those two lists;
+- whether the anon key is the legacy JWT rather than the publishable key.
+
+Read-only, and safe to run any time. It does **not** check the redirect allow-list — the public API does not expose it, so 4.3b stays a manual step.
 
 ---
 
 ## 5. First database migration
 
-There are no Alembic migrations — `backend/alembic/versions/` holds only `.gitkeep`. Tests create tables directly from the models, which is why this has not surfaced.
+The initial migration now exists — `backend/alembic/versions/0f79a37f9358_initial_schema.py`, generated and verified locally against DuckDB (both `upgrade head` and `downgrade base` run clean). It has never been applied to a real Postgres.
 
-Before the backend can run against a real Postgres:
+So this is one command, not two. Running `revision --autogenerate` again would produce an empty second migration on top of it:
 
 ```
 cd backend
 # with DATABASE_URL pointed at your Supabase Postgres
-.venv/Scripts/alembic revision --autogenerate -m "initial schema"
 .venv/Scripts/alembic upgrade head
 ```
 
-**Review the generated migration before applying it.** Autogenerate is good but not infallible, and several models use `Enum(..., native_enum=False)` for DuckDB/Postgres portability — worth confirming that renders as expected.
+**Read the migration before applying it**, the same way you would review any migration against real data. Several models use `Enum(..., native_enum=False)` for DuckDB/Postgres portability — worth confirming that renders as expected on Postgres, since it was verified against the other one.
 
-Tables it should create: `profiles`, `reports`, `closures`, `hikes`, `preferences`, `clubs`, `maintainer_assignments`.
+Tables it should create: `clubs`, `profiles`, `closures`, `hikes`, `maintainer_assignments`, `reports`, `user_preferences`.
+
+---
+
+## 5a. Lock the tables down before anyone can reach them
+
+**Do this in the same sitting as step 5.** Between the migration landing and RLS being on, the database is open.
+
+Supabase serves every table in the `public` schema over PostgREST, at `https://<ref>.supabase.co/rest/v1/`, to anyone holding the anon key. That key is *meant* to be public — it ships inside the client's JS bundle, and no amount of treating it as a secret changes that. What makes publishing it safe is **Row Level Security**, not the key being hard to find. Supabase's own wording: the key is safe to expose *because* RLS is enabled on the database.
+
+Alembic does not enable RLS. It creates plain tables. So the moment step 5 runs, all seven — including `reports`, `profiles` and `closures` — are readable and writable by anyone who opens the app, views source, copies the key, and calls the REST endpoint directly.
+
+**The backend's own auth does not prevent this.** `get_current_user` guards FastAPI's routes, and PostgREST is a second front door into the same database that never passes through FastAPI. Locking the front door does nothing about a second one nobody remembered was there.
+
+The backend keeps working either way: it connects with the Postgres connection string as the table owner, and RLS does not apply to it.
+
+Either fix works. Pick one:
+
+**Enable RLS with no policies**, which denies everything through PostgREST while leaving the backend untouched:
+
+```sql
+alter table public.clubs                  enable row level security;
+alter table public.profiles               enable row level security;
+alter table public.closures               enable row level security;
+alter table public.hikes                  enable row level security;
+alter table public.maintainer_assignments enable row level security;
+alter table public.reports                enable row level security;
+alter table public.user_preferences       enable row level security;
+```
+
+A table with RLS on and no policy rejects every anon request. That is the right default here: **nothing in the client talks to PostgREST.** The client uses Supabase for authentication only and reaches its data through the backend, so there is no query to keep working and nothing to grant. Add policies later if and only if something is built that genuinely needs direct table access.
+
+**Or move the schema out of `public`** — PostgREST only exposes the schemas it is configured to, so tables elsewhere are unreachable regardless. Cleaner in principle, but it means an Alembic `version_table_schema` change and a search-path decision, so it is the larger change of the two.
+
+**Then verify rather than assume.** Database → Advisors in the dashboard flags every table that has RLS off; it should list none of these seven afterwards. Or check from outside with the anon key, which is the actual threat model:
+
+```
+curl "https://<ref>.supabase.co/rest/v1/reports?select=*" \
+  -H "apikey: <anon or publishable key>"
+```
+
+An empty array or a permission error is what you want. Rows are the failure.
 
 ---
 

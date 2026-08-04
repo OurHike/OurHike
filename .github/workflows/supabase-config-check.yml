@@ -1,0 +1,46 @@
+name: Supabase config check
+
+# Manual only, and deliberately separate from the test suites - this is a
+# diagnostic for confirming a real Supabase project matches what the code
+# assumes, not something a pull request can meaningfully run. It talks to a
+# live project, so it belongs in the same category as the R2 credentials
+# check: a thing you run when a deployment misbehaves, or before trusting one.
+#
+# Read-only. It reads the project's public auth settings and its published
+# signing keys, both with the anon key that already ships in the client
+# bundle, and writes nothing.
+#
+# What it catches is the class of failure nothing else can: the repository
+# variables being absent or misnamed, the project signing tokens with an
+# algorithm the backend does not accept, and AUTH_PROVIDERS naming a provider
+# whose credentials do not exist. Each of those reaches a hiker as "cannot
+# sign in" and none of them is visible to a unit test.
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      # No install step: the script is stdlib-only on purpose, so a diagnostic
+      # you reach for when something is already broken does not first have to
+      # resolve a dependency tree.
+      - name: Check the Supabase project
+        env:
+          # Variable-or-secret, the same way pages.yml resolves these, because
+          # "Secrets and variables" is one settings page with two tabs and
+          # picking the wrong one is easy. Neither value is secret: the anon
+          # key is designed to be public and ships inside the client bundle.
+          SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
+          AUTH_PROVIDERS: ${{ vars.AUTH_PROVIDERS }}
+        run: python check_supabase_config.py

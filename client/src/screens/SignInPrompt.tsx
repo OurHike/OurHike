@@ -18,33 +18,63 @@ export type AuthProvider = 'google' | 'apple' | 'email'
 export interface SignInPromptProps {
   onSignIn: (provider: AuthProvider) => void
   onCancel: () => void
+  /**
+   * Which providers this build can actually complete. Defaults to all three,
+   * which is what WIREFRAMES.md §6 specifies and what this screen is for.
+   *
+   * It is narrowable because the three do not cost the same to switch on -
+   * Apple needs a $99/yr membership that Google and email do not - and a
+   * button for a provider whose credentials do not exist reaches an error
+   * page. Which set a given build offers is lib/supabase.ts's
+   * ENABLED_PROVIDERS; the wireframe's answer is the default here, not a
+   * decision this component makes.
+   */
+  providers?: AuthProvider[]
+  /**
+   * Whether a report is waiting in the outbox. True in the flow this screen
+   * was drawn for (WIREFRAMES.md §6), so it defaults that way.
+   *
+   * False when the same screen is reached from the account row in Settings,
+   * where there is no report - and saying one is saved would be a promise
+   * about something that does not exist.
+   */
+  reportSaved?: boolean
 }
 
-const PROVIDERS: Array<{ id: AuthProvider; label: string }> = [
-  { id: 'google', label: 'Continue with Google' },
-  { id: 'apple', label: 'Continue with Apple' },
-  { id: 'email', label: 'Continue with email' },
-]
+const LABELS: Record<AuthProvider, string> = {
+  google: 'Continue with Google',
+  apple: 'Continue with Apple',
+  email: 'Continue with email',
+}
 
-export function SignInPrompt({ onSignIn, onCancel }: SignInPromptProps) {
+const ALL: AuthProvider[] = ['google', 'apple', 'email']
+
+export function SignInPrompt({
+  onSignIn,
+  onCancel,
+  providers = ALL,
+  reportSaved = true,
+}: SignInPromptProps) {
   return (
     <main className="reporting">
-      <h1 className="reporting__title">One thing first</h1>
+      <h1 className="reporting__title">{reportSaved ? 'One thing first' : 'Sign in'}</h1>
 
-      <p className="reporting__saved" role="status">
-        Your report is already saved on your phone. Signing in is what lets it reach the
-        people who can act on it.
-      </p>
+      {reportSaved && (
+        <p className="reporting__saved" role="status">
+          Your report is already saved on your phone. Signing in is what lets it reach the
+          people who can act on it.
+        </p>
+      )}
 
       <div className="reporting__actions">
-        {PROVIDERS.map((provider) => (
+        {providers.map((provider) => (
           <button
-            key={provider.id}
+            key={provider}
             type="button"
             className="reporting__primary"
-            onClick={() => onSignIn(provider.id)}
+            onClick={() => onSignIn(provider)}
           >
-            {provider.label}
+            {LABELS[provider]}
           </button>
         ))}
         <button type="button" className="reporting__secondary" onClick={onCancel}>

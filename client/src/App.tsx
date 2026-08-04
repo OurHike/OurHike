@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapScreen } from './chrome/MapScreen'
-import type { PoiDetail } from './chrome/PoiSheet'
+import type { PoiDetail } from './chrome/PoiCard'
 import { TabBar } from './chrome/TabBar'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import type { TabId } from './chrome/tabs'
@@ -139,9 +139,9 @@ function App() {
   const [legendOpen, setLegendOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   // The tapped pin, held as an id rather than as the POI itself. Everything the
-  // sheet shows is derived below, so a POI that changes underneath - a fresh
+  // card shows is derived below, so a POI that changes underneath - a fresh
   // download, or the hiker deleting the one they had - is described correctly
-  // or closes itself, instead of the sheet going on showing a copy of data the
+  // or closes itself, instead of the card going on showing a copy of data the
   // app no longer holds.
   const [selectedPoiId, setSelectedPoiId] = useState<string | null>(null)
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set())
@@ -274,10 +274,10 @@ function App() {
     [pois, trailIndex],
   )
 
-  // What the tapped pin's sheet says. Built from both arrays on purpose: the
+  // What the tapped pin's card says. Built from both arrays on purpose: the
   // POI itself carries the geometry and the provenance, and searchablePois has
   // already paid for the locateOnTrail() call that places it on the trail, so
-  // the mile in the sheet is the same number search puts on the same POI rather
+  // the mile in the card is the same number search puts on the same POI rather
   // than a second computation that could disagree with it.
   const selectedPoi: PoiDetail | null = useMemo(() => {
     if (selectedPoiId === null) return null
@@ -423,14 +423,18 @@ function App() {
 
   const handleMapReady = useCallback((next: MapLibreMap | null) => setMap(next), [])
 
-  // One sheet at a time. The legend and the pin sheet both sit at the bottom of
-  // the map, and two of them stacked would leave the lower one unreadable and
-  // its close button unreachable - so opening either closes the other. The
-  // desktop legend is a permanent panel and does not close, but it is beside
-  // the map rather than over it, so there is nothing to collide with there.
-  const handleSelectPoi = useCallback((id: string) => {
+  // One thing open at a time. The waypoint card floats by its pin rather than
+  // at the bottom where the legend sits, but the rule survives the move: two
+  // dialogs at once means a screen-reader user in one with the other still
+  // announcing itself, and a hiker mid-walk should have one thing to dismiss,
+  // not a stack. The desktop legend is a permanent panel and does not close.
+  //
+  // Null is a tap on bare map - the card's tap-elsewhere-to-dismiss, which
+  // every map card teaches. It only clears the selection: closing the LEGEND
+  // from a stray tap on the map above it would punish a miss twice.
+  const handleSelectPoi = useCallback((id: string | null) => {
     setSelectedPoiId(id)
-    setLegendOpen(false)
+    if (id !== null) setLegendOpen(false)
   }, [])
 
   const handleOpenLegend = useCallback(() => {

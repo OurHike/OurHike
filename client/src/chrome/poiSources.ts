@@ -1,6 +1,6 @@
 // Who said this POI is there, in words a hiker can weigh.
 //
-// Kept out of PoiSheet.tsx so that file exports only a component (React Fast
+// Kept out of PoiCard.tsx so that file exports only a component (React Fast
 // Refresh breaks on modules that mix the two), same as legendLabels.ts.
 //
 // The ids are the pipeline's own `source` values (pipeline/lib/poi_schema.py's

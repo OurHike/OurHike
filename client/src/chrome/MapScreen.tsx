@@ -9,6 +9,7 @@
 // public domain; OpenStreetMap is ODbL and its credit is a licence condition,
 // so this element is not optional and is not behind a prop.
 
+import { useCallback, useState } from 'react'
 import { StatusStrip } from './StatusStrip'
 import { Header, type HikeDirection } from './Header'
 import { TabBar } from './TabBar'
@@ -18,7 +19,7 @@ import { useDesktop } from '../lib/useDesktop'
 import { Search } from './Search'
 import { ElevationRibbon, type ElevationRibbonProps } from './ElevationRibbon'
 import { WaypointLanes, type WaypointLanesProps } from './WaypointLanes'
-import { PoiSheet, type PoiDetail } from './PoiSheet'
+import { PoiCard, type PoiDetail } from './PoiCard'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapView } from '../map/MapView'
 import { attributionFor } from '../map/style'
@@ -80,8 +81,9 @@ export interface MapScreenProps {
    * from.
    */
   selectedPoi: PoiDetail | null
-  /** A pin was tapped, by POI id. Stable across renders - see MapViewProps. */
-  onSelectPoi: (id: string) => void
+  /** A pin was tapped, by POI id - null for a tap on bare map, which is how
+   *  the card is dismissed. Stable across renders - see MapViewProps. */
+  onSelectPoi: (id: string | null) => void
   onClosePoi: () => void
 
   // Both are optional and both are omitted rather than stubbed when their data
@@ -150,6 +152,19 @@ export function MapScreen({
   // tells a screen reader it is.
   const isDesktop = useDesktop()
 
+  // The live map, kept here as well as reported upward, because the waypoint
+  // card anchors to a pin by projecting its coordinates through the map - and
+  // the shell above owns the POI data, not the canvas. Tee'd rather than
+  // intercepted: the owner's `onMapReady` still sees every hand-over.
+  const [liveMap, setLiveMap] = useState<MapLibreMap | null>(null)
+  const handleMapReady = useCallback(
+    (map: MapLibreMap | null) => {
+      setLiveMap(map)
+      onMapReady?.(map)
+    },
+    [onMapReady],
+  )
+
   return (
     <div className="map-screen">
       {/* Everything that is not the navigation. On a phone this is a plain
@@ -196,15 +211,17 @@ export function MapScreen({
               zoom={zoom}
               bounds={bounds}
               onViewportChange={onViewportChange}
-              onMapReady={onMapReady}
+              onMapReady={handleMapReady}
             />
             <p className="map-screen__attribution">{attributionFor(background)}</p>
 
-            {/* Inside the canvas, so on a desktop it stays over the map
-                rather than over the legend panel beside it - and on a phone it
-                lands in the lower third, which WIREFRAMES.md §1 reserves for
-                everything touched mid-walk. */}
-            {selectedPoi !== null && <PoiSheet poi={selectedPoi} onClose={onClosePoi} />}
+            {/* Inside the canvas, and not one wrapper further out: the card
+                positions itself in canvas pixels (poiCardPlacement.ts), so it
+                must be absolute against exactly the box the canvas fills or
+                every placement would be off by the chrome above the map. */}
+            {selectedPoi !== null && (
+              <PoiCard poi={selectedPoi} map={liveMap} onClose={onClosePoi} />
+            )}
 
             <Search
               open={searchOpen}

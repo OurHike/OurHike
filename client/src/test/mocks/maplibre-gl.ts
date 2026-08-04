@@ -80,6 +80,23 @@ export class MockMap {
   /** Test-settable: real MapLibre only accepts images and paint writes once the
    *  style has loaded, and callers have to cope with both answers. */
   styleLoaded = false
+  /**
+   * Test-settable stand-in for the geographic-to-screen projection.
+   *
+   * The default is deliberately fake and deliberately legible: x IS the
+   * longitude and y IS the latitude. Real Web Mercator here would make every
+   * assertion about "where did the card land" a trigonometry exercise; an
+   * identity makes it a copy of the fixture's coordinates. A test that needs
+   * the projection to CHANGE - a pan, a zoom - assigns a new function and
+   * emits 'move', which is exactly the order real MapLibre delivers them in.
+   */
+  projection: (lngLat: [number, number]) => { x: number; y: number } = ([lng, lat]) => ({
+    x: lng,
+    y: lat,
+  })
+  /** Every projection asked for, in order - where "the card tracked the pin,
+   *  not some other point" is observable. */
+  readonly projectCalls: Array<[number, number]> = []
   private readonly listeners = new Map<string, Listener[]>()
   private canvas: HTMLCanvasElement | undefined = undefined
 
@@ -248,6 +265,20 @@ export class MockMap {
 
   getZoom(): number {
     return this.zoom
+  }
+
+  /** Real `project` takes a LngLatLike, so both spellings are accepted here -
+   *  a mock that only took the array form would quietly bless callers that
+   *  break against the object form. */
+  project(lngLat: [number, number] | { lng: number; lat: number }): {
+    x: number
+    y: number
+  } {
+    const pair: [number, number] = Array.isArray(lngLat)
+      ? [lngLat[0], lngLat[1]]
+      : [lngLat.lng, lngLat.lat]
+    this.projectCalls.push(pair)
+    return this.projection(pair)
   }
 
   getBounds() {

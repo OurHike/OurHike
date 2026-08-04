@@ -87,8 +87,8 @@ export const BLAZE_LAYER_ID = 'trail-blaze'
  *
  * `--paper-100`, the same tone as USGS topo's own paper, so uncovered ground
  * belongs to the same map as the covered parts. Named rather than inlined
- * because backdrop.ts reads it: whichever of the two is showing, the paper has
- * to be the same paper.
+ * because poiIcons.ts and chrome.css's pre-WebGL fallback read it too: every
+ * one of them has to agree on the same paper.
  *
  * Uncovered ground is not an edge case, and reaching it does not need the
  * pipeline's transparent-nodata tiles to be involved at all - the corridor
@@ -372,11 +372,11 @@ export function buildMapStyle({
       // Stacked this way, the two never have to be chosen between at runtime
       // and there is no online/offline branch anywhere: with signal, the
       // vector sheet covers the corridor with something sharp and styled and
-      // keeps going past its edge, where there used to be nothing but hatched
+      // keeps going past its edge, where there used to be nothing but blank
       // paper. Without signal, these layers simply draw nothing, the archive
-      // shows through underneath exactly as it always has, and the hatch still
-      // marks where the download does not reach. Every state is at least as
-      // good as it was before, and none of them needs to be detected.
+      // shows through underneath exactly as it always has, and the flat paper
+      // colour still marks where the download does not reach. Every state is
+      // at least as good as it was before, and none of them needs to be detected.
       ...(liveOptions === null ? [] : liveTopoLayers(liveOptions)),
       {
         // Hairline dark casing, drawn under every blaze so the trail stays

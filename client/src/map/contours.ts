@@ -107,10 +107,10 @@ export function registerTerrain(units: ContourUnits = 'imperial'): TerrainUrls {
  * A no-op when the URL has not actually changed, so mounting does not
  * immediately invalidate the tiles the style just asked for.
  *
- * Best-effort in the same way and for the same reason as backdrop.ts: it needs
- * a loaded style, which is a later and more fragile moment than construction,
- * and the cost of failing is contours at the previous interval - never a
- * broken map.
+ * Best-effort in the same way and for the same reason as poiLayers.ts's
+ * attach helpers: it needs a loaded style, which is a later and more fragile
+ * moment than construction, and the cost of failing is contours at the
+ * previous interval - never a broken map.
  */
 export function attachContourUnits(map: MapLibreMap, units: ContourUnits): () => void {
   return whenStyleReady(

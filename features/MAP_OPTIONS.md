@@ -31,7 +31,7 @@ Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHN
 
 - **Signal, nothing downloaded** (every first run): a real topo map, worldwide. Previously: blank hatched paper.
 - **Signal, downloaded**: the vector sheet covers the corridor and keeps going past its edge.
-- **No signal, downloaded**: the live layers draw nothing, the archive shows through exactly as before, and backdrop.ts's hatch still marks where the download does not reach.
+- **No signal, downloaded**: the live layers draw nothing, the archive shows through exactly as before, and the flat paper backdrop still marks where the download does not reach (the 45° hatch that used to mark this too was removed 2026-08-04 - see below).
 - **No signal, nothing downloaded**: unchanged.
 
 Every state is at least as good as it was, and none of them has to be detected. That is why `background_source` now **defaults to the live sheet** rather than making it opt-in as this doc originally proposed - the offline premise costs nothing to keep, so the "additive, not a replacement" resolution below is honoured by the layer order rather than by a setting someone has to find.
@@ -78,6 +78,12 @@ The split matters for failure behaviour: the paper is in `buildMapStyle` and can
 **Deliberately not done here, and each is a real option rather than an oversight:**
 - **Tethering the camera** (`maxBounds` around the archive footprint) so the hiker cannot pan into blank space at all. Rejected as the primary answer because it fights the web trip-planning case in the section above, which legitimately wants to look beyond the corridor - and because a hard wall is a worse explanation of "no data here" than a texture that lets you see it.
 - **Filling the blank with real data** - a wide-zoom Protomaps extract underneath, or live USGS tiles when there is signal. Both are already on this page as background-source options; the backdrop above is what shows when neither is present, which on a ridge with no signal is the normal case. They stack rather than compete.
+
+### Removed 2026-08-04 - the hatch read as distracting diagonal stripes, not as "no data here"
+
+The 45° hatch above (`client/src/map/backdrop.ts`, now deleted) was reported as visually distracting on screen - a field of diagonal strips, not a subtle "unmapped" cue. The texture-vs-warning-stripe contrast test it shipped with was tuned against a still swatch, not against a hiker's eye scanning a moving map, and in practice it read as noise rather than information.
+
+**What ships now:** layer 1 alone - the flat `--paper-100` `background` layer in `buildMapStyle` (`style.ts`'s `BACKDROP_LAYER_ID`). It still cannot fail, still needs no coverage maths, and still keeps the one guarantee that actually matters: no combination of pan, zoom, missing download, or lost GPU context can put black on the screen. What it gives up is the second-order distinction between "no data here" and "a finished map of an empty place" - a real cost, but a smaller one than it was when this was written, because the live topographic sheet (built 2026-08-03, above) now covers the flat-paper case with a real map everywhere there is signal. The plain-paper fallback is left for the case that remains: no signal *and* off the downloaded corridor, which on a ridge is exactly when a hiker has bigger problems than a texture.
 - **A chrome banner naming the state** ("outside downloaded area"). Worth having, needs the archive's real footprint read out of the PMTiles header, and belongs with the legend work in §5 rather than in the style.
 
 ### Client setting

@@ -310,6 +310,28 @@ export function buildMapStyle({
         type: 'geojson',
         data: trailsUrl,
         attribution: ATTRIBUTION,
+        // Never simplify a trail away. MapLibre tiles GeoJSON through
+        // geojson-vt, whose per-zoom simplification does two things under
+        // this one knob: it thins vertices within a line (harmless - the
+        // error is bounded sub-pixel), and it DROPS WHOLE FEATURES whose
+        // projected length falls under that same bar - ~1.4 km at z4,
+        // ~700 m at z5, ~350 m at z6 with the 0.375 px default.
+        //
+        // The centerline is not one feature. ATC surveys it as ~3,000
+        // segments averaging ~1.2 km, so at corridor zooms much of the
+        // trail is under the bar, consecutive short segments vanish
+        // TOGETHER, and the AT rendered with miles-long gaps (#160) - on
+        // this map, a false statement about where the trail is. Zero is
+        // the only value that makes the drop rule structurally impossible,
+        // for this data and for anything imported later.
+        //
+        // The cost lands only below ~z8, where the gaps were: low-zoom
+        // tiles keep every vertex the pipeline's own 1 m simplification
+        // left in (measured at this density: ~220 ms of worker time across
+        // the z4-z6 tiles, once per session). #161 is the durable answer -
+        // merge the centerline chains at export, then let this return to
+        // the default - and owns the revert.
+        tolerance: 0,
       },
       // Declared empty and filled in later - see buildPoiSource. Attributed
       // like the other two: the POIs are ATC and OpenStreetMap-derived, and a

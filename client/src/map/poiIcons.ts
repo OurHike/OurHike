@@ -10,12 +10,12 @@
 //     silhouette that survives being reduced to a black shape, and no category
 //     is distinguished from another by hue alone.
 //
-//  2. The images are COMPUTED, not shipped as assets. Same reasoning as
-//     backdrop.ts: an offline-first app should not spend a network round trip
-//     or a build step on a handful of 30px badges, and a pure function is
-//     testable in jsdom - which can neither rasterise an SVG nor run a canvas.
-//     So the glyphs are polygons and this module contains a small scanline
-//     rasteriser, which is the price of both properties.
+//  2. The images are COMPUTED, not shipped as assets. An offline-first app
+//     should not spend a network round trip or a build step on a handful of
+//     30px badges, and a pure function is testable in jsdom - which can
+//     neither rasterise an SVG nor run a canvas. So the glyphs are polygons
+//     and this module contains a small scanline rasteriser, which is the
+//     price of both properties.
 //
 //  3. RED IS NOT AVAILABLE to a POI. Red is spoken for by closures
 //     (lib/closureStyle.ts) and by the serious-warning pin, and a spring that

@@ -74,7 +74,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   // map/style.ts), so with no signal this default renders exactly what
   // `usgs_topo_offline` would. Defaulting the other way would mean someone who
   // has not downloaded anything yet - which is everyone on first run - opens
-  // the app to blank hatched paper and has to go find a setting to see a map.
+  // the app to blank paper and has to go find a setting to see a map.
   background_source: 'hiking_topo_live',
   max_background_zoom: 12,
   show_roads: false,

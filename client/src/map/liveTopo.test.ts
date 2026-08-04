@@ -98,11 +98,11 @@ describe('the live topographic background', () => {
     expect(ids(live())[0]).toBe(BACKDROP_LAYER_ID)
   })
 
-  it('adds no source-free fill of its own, so the off-archive hatch survives', () => {
-    // A land-coloured `background` layer here would paint over backdrop.ts's
-    // hatch even when no tile had loaded - turning "nothing arrived" back into
-    // a confident picture of empty ground, which is the exact lie that hatch
-    // exists to prevent.
+  it('adds no source-free fill of its own, so the off-archive paper survives', () => {
+    // A land-coloured `background` layer here would paint over the paper
+    // backdrop even when no tile had loaded - turning "nothing arrived" back
+    // into a confident picture of empty ground, which is the exact lie that
+    // backdrop exists to prevent.
     const backgrounds = live().layers.filter((layer) => layer.type === 'background')
 
     expect(backgrounds.map((layer) => layer.id)).toEqual([BACKDROP_LAYER_ID])

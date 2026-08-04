@@ -45,6 +45,7 @@ from shapely import wkt as shapely_wkt
 from shapely.ops import transform as shapely_transform
 
 from lib.arcgis import get_field_coded_domain
+from lib.feature_id import resolve_feature_id
 from lib.blaze import normalize_blaze_color
 from lib.completeness import count_problems, fail_if_incomplete
 from lib.corridor import build_corridor
@@ -84,36 +85,6 @@ def load_features(path: Path) -> list[dict]:
     return data.get("features", [])
 
 
-def _resolve_feature_id(key: str, feature: dict, properties: dict, index: int) -> str | int:
-    """A feature's stable identity - used both for the record `id`
-    build_trail_records writes and for any warning that names a feature.
-
-    Checks the RESULTING VALUE at each fallback step, not just key
-    presence: dict.get(key, default) only falls back when the key is
-    ABSENT, so a raw feature carrying an explicit `"GlobalID": null` (a real
-    shape some ArcGIS exports use) would return None directly instead of
-    falling back to the feature's own id - and two such features would then
-    collide on the literal id f"{key}:None". This mirrors lib/poi_schema.py's
-    unify_poi(), which gets this right the same way for POI sources.
-
-    If GlobalID and the feature's own top-level id are BOTH really absent,
-    substitutes a synthetic id built from `index` (the feature's position in
-    its source's feature list, so it's unique within that source) and warns
-    loudly - this file's convention is a loud warning and carrying on, never
-    raising and killing the whole batch over one bad feature (see module
-    docstring)."""
-    feature_id = properties.get("GlobalID")
-    if feature_id is None:
-        feature_id = feature.get("id")
-    if feature_id is None:
-        feature_id = f"generated-{index}"
-        print(
-            f"WARNING: {key} feature at position {index} has no GlobalID and no top-level id - "
-            f"substituting synthetic id {feature_id!r}"
-        )
-    return feature_id
-
-
 def normalize_source_features(source: dict, features: list[dict]) -> list[dict]:
     """Attach a normalized blaze_color to every feature of one line source,
     per lib/blaze.py's normalize_blaze_color contract:
@@ -136,7 +107,7 @@ def normalize_source_features(source: dict, features: list[dict]) -> list[dict]:
         raw_value = properties.get(blaze_field) if blaze_field else None
         blaze_color, decoded = normalize_blaze_color(raw_value, coded_domain, source.get("blaze_default"))
         if not decoded:
-            feature_id = _resolve_feature_id(key, feature, properties, index)
+            feature_id = resolve_feature_id(key, feature, properties, index)
             print(
                 f"WARNING: {key} feature {feature_id!r} has an undecodable blaze value "
                 f"({raw_value!r}) - falling back to {blaze_color!r}"
@@ -184,7 +155,7 @@ def build_trail_records(source: dict, normalized_features: list[dict]) -> list[d
         geometry = feature.get("geometry") or {}
         wkt = geometry_to_wkt(geometry)
         properties = feature.get("properties") or {}
-        feature_id = _resolve_feature_id(key, feature, properties, index)
+        feature_id = resolve_feature_id(key, feature, properties, index)
         if wkt is None:
             print(
                 f"WARNING: {key} feature {feature_id!r} has unsupported or missing geometry ({geometry.get('type')!r}) - skipped"

@@ -22,10 +22,8 @@
 //
 // It is worse than an empty map, because the emptiness is silent and total:
 // `map.isStyleLoaded()` stays false forever, so `load` never fires, and every
-// attach-on-ready helper in this directory (backdrop.ts's hatch, poiLayers.ts's
-// pins and data, contours.ts's interval) waits for a moment that never comes.
-// The one thing that WOULD have told a hiker the map is not real - the
-// off-archive hatch, "no data here" - is itself waiting on that event.
+// attach-on-ready helper in this directory (poiLayers.ts's pins and data,
+// contours.ts's interval) waits for a moment that never comes.
 //
 // So: `?worker&url` hands the worker to Vite, which bundles it with the shared
 // chunk it imports, emits it as a hashed asset, and gives back the URL it was

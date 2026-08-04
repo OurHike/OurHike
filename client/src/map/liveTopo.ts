@@ -234,8 +234,9 @@ export function liveTopoSources({
  * There is deliberately no land-coloured fill at the bottom. The style's paper
  * backdrop already is the sheet, exactly as on a printed quad where open
  * ground is simply unprinted paper - and adding a source-free fill here would
- * paint over the off-archive hatch (backdrop.ts) even when no tile had loaded,
- * turning "nothing arrived" back into a confident picture of empty ground.
+ * paint over that paper (style.ts's BACKDROP_LAYER_ID) even when no tile had
+ * loaded, turning "nothing arrived" back into a confident picture of empty
+ * ground.
  */
 export function liveTopoLayers({ units }: LiveTopoOptions): LayerSpecification[] {
   const elevationSuffix = units === 'imperial' ? "'" : 'm'

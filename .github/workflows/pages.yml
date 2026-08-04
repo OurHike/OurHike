@@ -86,12 +86,50 @@ jobs:
           fi
           echo "url=$URL" >> "$GITHUB_OUTPUT"
 
+      # Same variable-or-secret shape as the data source above, and for the same
+      # reason: neither of these is secret. The anon key is designed to be
+      # public and ships inside the bundle, so hiding it in a secret buys
+      # nothing and costs a readable log. What is NOT here, deliberately, is
+      # SUPABASE_JWT_SECRET - that one is real, it belongs only to the backend,
+      # and a VITE_-prefixed copy would be inlined into a public file.
+      #
+      # Absent entirely is a supported state: the app builds, the map works, and
+      # the sign-in controls say this build has no project rather than offering
+      # a round trip that cannot finish.
+      - name: Resolve the Supabase project
+        id: supabase
+        env:
+          URL_FROM_VAR: ${{ vars.SUPABASE_URL }}
+          URL_FROM_SECRET: ${{ secrets.SUPABASE_URL }}
+          KEY_FROM_VAR: ${{ vars.SUPABASE_ANON_KEY }}
+          KEY_FROM_SECRET: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          URL="${URL_FROM_VAR:-$URL_FROM_SECRET}"
+          KEY="${KEY_FROM_VAR:-$KEY_FROM_SECRET}"
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            echo "::warning::SUPABASE_URL and/or SUPABASE_ANON_KEY are not set. Building anyway; the app will say signing in is not configured."
+          elif [ -z "$URL_FROM_VAR" ] || [ -z "$KEY_FROM_VAR" ]; then
+            echo "::warning::A Supabase value is a secret. It works, but GitHub masks it in logs - move it to the Variables tab to keep it readable here."
+          else
+            echo "Supabase project: $URL"
+          fi
+          {
+            echo "url=$URL"
+            echo "key=$KEY"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build the app
         working-directory: client
         env:
           # Trailing slash matters - Vite joins this to asset paths directly.
           VITE_BASE_PATH: /${{ github.event.repository.name }}/app/
           VITE_DATA_BASE_URL: ${{ steps.data.outputs.url }}
+          VITE_SUPABASE_URL: ${{ steps.supabase.outputs.url }}
+          VITE_SUPABASE_ANON_KEY: ${{ steps.supabase.outputs.key }}
+          # Only the providers whose credentials actually exist in the Supabase
+          # dashboard. A name here without them is a button that reaches an
+          # error page. Unset means the client's own default (google,email).
+          VITE_AUTH_PROVIDERS: ${{ vars.AUTH_PROVIDERS }}
         run: npm run build
 
       # Proves what actually got inlined, rather than trusting that it did. The
@@ -117,6 +155,31 @@ jobs:
             echo "Data source is present in the built bundle."
           else
             echo "::error::DATA_BASE_URL was set but is absent from the built bundle - the app would ship unable to download anything."
+            exit 1
+          fi
+
+      # Same proof for the same reason, one step later. Setting a variable and
+      # having it reach the bundle are different claims, and the gap between
+      # them is invisible from outside: the app builds, the map works, and the
+      # only symptom is that signing in reports no project configured.
+      #
+      # Only the URL is checked. The anon key is public but there is no reason
+      # to grep for a credential and print the surrounding line on failure, and
+      # the two are set and passed together - a build with one and not the
+      # other is not a case that arises.
+      - name: Confirm the Supabase project reached the bundle
+        working-directory: client
+        env:
+          SUPABASE_PROJECT_URL: ${{ steps.supabase.outputs.url }}
+        run: |
+          if [ -z "$SUPABASE_PROJECT_URL" ]; then
+            echo "No Supabase project configured - skipping the check. Signing in will say so."
+            exit 0
+          fi
+          if grep -rqF -- "$SUPABASE_PROJECT_URL" dist/assets/*.js; then
+            echo "Supabase project is present in the built bundle."
+          else
+            echo "::error::SUPABASE_URL was set but is absent from the built bundle - the app would ship unable to sign anyone in."
             exit 1
           fi
 

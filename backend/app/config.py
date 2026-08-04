@@ -28,7 +28,14 @@ class Settings(BaseSettings):
     # they're missing, rather than the app silently running with an empty
     # credential. Tests supply test-only dummy values via
     # tests/conftest.py - see the note there.
-    supabase_jwt_secret: str
+    # The one Supabase setting with an empty default, and not for convenience.
+    # A hosted project signs with ES256 and publishes the public half as a
+    # JWKS; there is no shared secret in that arrangement, so demanding one
+    # would make a correctly configured deployment refuse to start. Self-hosted
+    # Supabase does sign with HS256, which is the case this still exists for -
+    # see app/core/auth.py for how the two are told apart, and why an HS256
+    # token arriving with this unset is refused rather than waved through.
+    supabase_jwt_secret: str = ""
     supabase_url: str
     supabase_anon_key: str
 

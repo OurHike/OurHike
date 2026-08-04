@@ -191,6 +191,21 @@
   border: 1px solid var(--border-2);
   border-radius: 10px;
 }
+/* Same column and rhythm as .reporting itself, so a form nested inside one
+   does not restart the spacing at zero. */
+.reporting__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+}
+.reporting__error {
+  margin: 0;
+  padding: var(--space-3, 12px);
+  font-size: 13px;
+  color: var(--danger);
+  background: var(--bg-sunken);
+  border-radius: 10px;
+}
 .reporting__saved {
   margin: 0;
   padding: var(--space-3, 12px);

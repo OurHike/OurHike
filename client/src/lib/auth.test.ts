@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js'
 import {
   accountFromSession,
   redirectUrl,
+  sendMagicLink,
   signInWithProvider,
   signInWithEmail,
   signUpWithEmail,
@@ -77,6 +78,7 @@ describe('with no project configured', () => {
 
   it.each([
     ['a provider sign-in', () => signInWithProvider('google')],
+    ['a magic link', () => sendMagicLink('a@b.c')],
     ['an email sign-in', () => signInWithEmail('a@b.c', 'pw')],
     ['a sign-up', () => signUpWithEmail('a@b.c', 'pw')],
     ['a sign-out', () => signOut()],
@@ -121,6 +123,39 @@ describe('signInWithProvider', () => {
     expect(await signInWithProvider('google')).toEqual({
       ok: false,
       message: 'Invalid login credentials',
+    })
+  })
+})
+
+describe('sendMagicLink', () => {
+  it('asks for the link to come back to the app, and to create the user if new', async () => {
+    const signInWithOtp = vi.fn().mockResolvedValue(NO_ERROR)
+    mockedGetClient.mockReturnValue(fakeClient({ signInWithOtp }))
+
+    await sendMagicLink('hiker@example.com')
+
+    // shouldCreateUser is what lets one path serve both a returning hiker and
+    // a new one, so it is asserted rather than left to the library default.
+    expect(signInWithOtp).toHaveBeenCalledWith({
+      email: 'hiker@example.com',
+      options: { emailRedirectTo: redirectUrl(), shouldCreateUser: true },
+    })
+  })
+
+  it('reports a refusal rather than claiming an email is on its way', async () => {
+    // Supabase rate-limits these. Saying "check your email" when nothing was
+    // sent leaves someone waiting on a message that is not coming.
+    mockedGetClient.mockReturnValue(
+      fakeClient({
+        signInWithOtp: vi
+          .fn()
+          .mockResolvedValue({ error: { message: 'Email rate limit exceeded' } }),
+      }),
+    )
+
+    expect(await sendMagicLink('hiker@example.com')).toEqual({
+      ok: false,
+      message: 'Email rate limit exceeded',
     })
   })
 })

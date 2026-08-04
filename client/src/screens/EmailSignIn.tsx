@@ -1,69 +1,109 @@
-// Email and password, the provider that needs no external registration
-// (features/AUTHENTICATION.md, "Email + password. The plain option
-// requested").
+// Signing in with an email address, the provider that needs no external
+// registration (features/AUTHENTICATION.md).
 //
 // Google and Apple need no screen at all - tapping the button leaves for the
 // provider and comes back with a session. Email is the one that has to ask
 // for something, which is why it is a screen rather than a branch inside
 // SignInPrompt.
 //
-// Creating an account does not sign anyone in. Supabase sends a confirmation
-// email and withholds the session until the link is followed, so this screen
-// has a third outcome besides success and failure: "made, now go and confirm
-// it". Collapsing that into "signed in" would leave someone waiting to send a
-// contribution that never would.
+// **A link is the default, a password is the fallback.** A link is one field
+// and nothing to remember six weeks up the trail from where it was set, and
+// following it proves the address belongs to whoever asked - so it does the
+// verification job without a second confirmation step. It also creates the
+// account when the address is new, which is why there is no "sign up or sign
+// in?" question before the form.
+//
+// The password path stays because a link has a real cost this app feels more
+// than most: it means leaving for an email client and coming back, and on a
+// ridge with one bar that round trip is the fragile part. Someone who set a
+// password can finish without ever leaving the app.
+//
+// Neither path signs anyone in from this screen alone. A link has to be
+// followed; a created account has to be confirmed. Both end here saying so,
+// because reporting either as "signed in" would leave someone waiting to send
+// a contribution that never would.
 
 import { useState, type FormEvent } from 'react'
 import type { AuthOutcome } from '../lib/auth'
 import './reporting.css'
 
 export interface EmailSignInProps {
+  onMagicLink: (email: string) => Promise<AuthOutcome>
   onSignIn: (email: string, password: string) => Promise<AuthOutcome>
   onSignUp: (email: string, password: string) => Promise<AuthOutcome>
   onCancel: () => void
 }
 
-type Mode = 'sign-in' | 'create'
+type Mode = 'link' | 'password' | 'create'
 
 type Status =
   | { kind: 'idle' }
   | { kind: 'working' }
   | { kind: 'error'; message: string }
-  | { kind: 'check-email' }
+  | { kind: 'sent' }
 
-export function EmailSignIn({ onSignIn, onSignUp, onCancel }: EmailSignInProps) {
-  const [mode, setMode] = useState<Mode>('sign-in')
+const TITLES: Record<Mode, string> = {
+  link: 'Sign in with email',
+  password: 'Sign in with a password',
+  create: 'Create an account',
+}
+
+const SUBMIT_LABELS: Record<Mode, string> = {
+  link: 'Email me a sign-in link',
+  password: 'Sign in',
+  create: 'Create account',
+}
+
+export function EmailSignIn({
+  onMagicLink,
+  onSignIn,
+  onSignUp,
+  onCancel,
+}: EmailSignInProps) {
+  const [mode, setMode] = useState<Mode>('link')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
 
-  const creating = mode === 'create'
   const working = status.kind === 'working'
+  const needsPassword = mode !== 'link'
+
+  function switchTo(next: Mode) {
+    setMode(next)
+    // Otherwise a failure from the path just abandoned reads as the new one
+    // having already failed, before it has been tried.
+    setStatus({ kind: 'idle' })
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault()
     setStatus({ kind: 'working' })
 
-    const outcome = creating
-      ? await onSignUp(email, password)
-      : await onSignIn(email, password)
+    const outcome =
+      mode === 'link'
+        ? await onMagicLink(email)
+        : mode === 'create'
+          ? await onSignUp(email, password)
+          : await onSignIn(email, password)
 
     if (!outcome.ok) {
       setStatus({ kind: 'error', message: outcome.message })
       return
     }
-    // Signing in navigates away by itself once the session lands. Creating an
-    // account does not, and saying nothing would look like it had failed.
-    setStatus(creating ? { kind: 'check-email' } : { kind: 'idle' })
+    // A password sign-in navigates away by itself once the session lands. The
+    // other two are waiting on an email, and saying nothing would look like
+    // they had failed.
+    setStatus(mode === 'password' ? { kind: 'idle' } : { kind: 'sent' })
   }
 
-  if (status.kind === 'check-email') {
+  if (status.kind === 'sent') {
     return (
       <main className="reporting">
         <h1 className="reporting__title">Check your email</h1>
         <p className="reporting__saved" role="status">
-          A confirmation link is on its way to {email}. Following it finishes the account.
-          Anything you have written is still saved on your phone in the meantime.
+          {mode === 'link'
+            ? `A sign-in link is on its way to ${email}. Following it signs you in — you can close this. Anything you have written is still saved on your phone in the meantime.`
+            : `A confirmation link is on its way to ${email}. Following it finishes the account. Anything you have written is still saved on your phone in the meantime.`}
         </p>
         <div className="reporting__actions">
           <button type="button" className="reporting__secondary" onClick={onCancel}>
@@ -76,9 +116,14 @@ export function EmailSignIn({ onSignIn, onSignUp, onCancel }: EmailSignInProps) 
 
   return (
     <main className="reporting">
-      <h1 className="reporting__title">
-        {creating ? 'Create an account' : 'Sign in with email'}
-      </h1>
+      <h1 className="reporting__title">{TITLES[mode]}</h1>
+
+      {mode === 'link' && (
+        <p className="reporting__saved" role="status">
+          No password to set or remember — we email you a link and following it signs you
+          in.
+        </p>
+      )}
 
       <form className="reporting__form" onSubmit={(event) => void submit(event)}>
         <label className="reporting__field">
@@ -93,17 +138,19 @@ export function EmailSignIn({ onSignIn, onSignUp, onCancel }: EmailSignInProps) 
           />
         </label>
 
-        <label className="reporting__field">
-          <span className="reporting__field-label">Password</span>
-          <input
-            className="reporting__input"
-            type="password"
-            autoComplete={creating ? 'new-password' : 'current-password'}
-            required
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-          />
-        </label>
+        {needsPassword && (
+          <label className="reporting__field">
+            <span className="reporting__field-label">Password</span>
+            <input
+              className="reporting__input"
+              type="password"
+              autoComplete={mode === 'create' ? 'new-password' : 'current-password'}
+              required
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </label>
+        )}
 
         {status.kind === 'error' && (
           <p className="reporting__error" role="alert">
@@ -113,18 +160,47 @@ export function EmailSignIn({ onSignIn, onSignUp, onCancel }: EmailSignInProps) 
 
         <div className="reporting__actions">
           <button type="submit" className="reporting__primary" disabled={working}>
-            {working ? 'Working…' : creating ? 'Create account' : 'Sign in'}
+            {working ? 'Working…' : SUBMIT_LABELS[mode]}
           </button>
-          <button
-            type="button"
-            className="reporting__secondary"
-            onClick={() => {
-              setMode(creating ? 'sign-in' : 'create')
-              setStatus({ kind: 'idle' })
-            }}
-          >
-            {creating ? 'I already have an account' : 'Create an account instead'}
-          </button>
+
+          {mode === 'link' ? (
+            <button
+              type="button"
+              className="reporting__secondary"
+              onClick={() => switchTo('password')}
+            >
+              Use a password instead
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="reporting__secondary"
+              onClick={() => switchTo('link')}
+            >
+              Email me a link instead
+            </button>
+          )}
+
+          {mode === 'password' && (
+            <button
+              type="button"
+              className="reporting__secondary"
+              onClick={() => switchTo('create')}
+            >
+              Create an account with a password
+            </button>
+          )}
+
+          {mode === 'create' && (
+            <button
+              type="button"
+              className="reporting__secondary"
+              onClick={() => switchTo('password')}
+            >
+              I already have an account
+            </button>
+          )}
+
           <button type="button" className="reporting__secondary" onClick={onCancel}>
             Not now
           </button>

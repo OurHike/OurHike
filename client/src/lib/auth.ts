@@ -75,6 +75,32 @@ export async function signInWithProvider(
   return error === null ? { ok: true } : { ok: false, message: error.message }
 }
 
+/**
+ * Emails a sign-in link. One call covers both a returning hiker and a new
+ * one: Supabase creates the user when the address is unknown, so there is no
+ * separate sign-up to choose between first, and no password to forget on a
+ * trail six weeks from the place it was set.
+ *
+ * `shouldCreateUser` is passed explicitly rather than left to its default,
+ * because "this also creates accounts" is the whole reason this path can
+ * replace two others and should not be something a reader has to know the
+ * library's defaults to discover.
+ *
+ * Following the link is itself the proof the address belongs to whoever
+ * asked, so this satisfies features/AUTHENTICATION.md's verification
+ * requirement directly rather than by a second confirmation step.
+ */
+export async function sendMagicLink(email: string): Promise<AuthOutcome> {
+  const client = getAuthClient()
+  if (client === null) return NOT_CONFIGURED
+
+  const { error } = await client.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: redirectUrl(), shouldCreateUser: true },
+  })
+  return error === null ? { ok: true } : { ok: false, message: error.message }
+}
+
 export async function signInWithEmail(
   email: string,
   password: string,

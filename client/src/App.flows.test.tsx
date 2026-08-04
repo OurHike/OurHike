@@ -676,7 +676,8 @@ describe('signing in from Settings', () => {
     expect(screen.queryByRole('button', { name: /continue with apple/i })).toBe(null)
   })
 
-  it('reaches the email form, which asks for a password rather than only an address', async () => {
+  it('reaches the email form, which asks only for an address', async () => {
+    // The link is the default way in: one field, and nothing to remember.
     const user = userEvent.setup()
     hikerOnTrail()
     render(<App />)
@@ -687,7 +688,23 @@ describe('signing in from Settings', () => {
     await user.click(await screen.findByRole('button', { name: /continue with email/i }))
 
     expect(await screen.findByLabelText(/email/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/password/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/password/i)).toBe(null)
+  })
+
+  it('still offers a password, for someone who would rather not leave the app', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+
+    await user.click(await screen.findByRole('button', { name: /sign in/i }))
+    await user.click(await screen.findByRole('button', { name: /continue with email/i }))
+    await user.click(
+      await screen.findByRole('button', { name: /use a password instead/i }),
+    )
+
+    expect(await screen.findByLabelText(/password/i)).toBeInTheDocument()
   })
 })
 

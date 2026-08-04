@@ -77,7 +77,13 @@ import { SignInPrompt, type AuthProvider } from './screens/SignInPrompt'
 import { EmailSignIn } from './screens/EmailSignIn'
 import { ENABLED_PROVIDERS } from './lib/supabase'
 import { useAccount } from './lib/useAuth'
-import { signInWithEmail, signInWithProvider, signOut, signUpWithEmail } from './lib/auth'
+import {
+  sendMagicLink,
+  signInWithEmail,
+  signInWithProvider,
+  signOut,
+  signUpWithEmail,
+} from './lib/auth'
 import { listQueued } from './lib/outbox'
 import type { BoundingBox, MapPoint } from './lib/legendContents'
 import type { SearchablePoi } from './lib/searchPoi'
@@ -540,6 +546,7 @@ function App() {
     if (authFlow.screen === 'email') {
       return (
         <EmailSignIn
+          onMagicLink={sendMagicLink}
           onSignIn={signInWithEmail}
           onSignUp={signUpWithEmail}
           onCancel={() => setAuthFlow(null)}

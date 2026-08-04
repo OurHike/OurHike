@@ -73,9 +73,21 @@ jobs:
           KEY_FROM_VAR: ${{ vars.SUPABASE_ANON_KEY }}
           KEY_FROM_SECRET: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
+          URL="${URL_FROM_VAR:-$URL_FROM_SECRET}"
+          KEY="${KEY_FROM_VAR:-$KEY_FROM_SECRET}"
+          # Say so in the log. Without this the only symptom is a preview that
+          # reports "no Supabase project configured" when you tap sign in, and
+          # nothing anywhere explains that the reason is an unset repository
+          # variable rather than a broken build - which is exactly the wrong
+          # way round for the one place this is meant to be testable.
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            echo "::warning::SUPABASE_URL and/or SUPABASE_ANON_KEY are not set as repository variables, so this preview cannot sign anyone in. See LAUNCH_CHECKLIST.md 4.3a."
+          else
+            echo "Supabase project: $URL"
+          fi
           {
-            echo "url=${URL_FROM_VAR:-$URL_FROM_SECRET}"
-            echo "key=${KEY_FROM_VAR:-$KEY_FROM_SECRET}"
+            echo "url=$URL"
+            echo "key=$KEY"
           } >> "$GITHUB_OUTPUT"
 
       - name: Build the app

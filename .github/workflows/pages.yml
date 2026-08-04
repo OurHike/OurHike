@@ -158,6 +158,31 @@ jobs:
             exit 1
           fi
 
+      # Same proof for the same reason, one step later. Setting a variable and
+      # having it reach the bundle are different claims, and the gap between
+      # them is invisible from outside: the app builds, the map works, and the
+      # only symptom is that signing in reports no project configured.
+      #
+      # Only the URL is checked. The anon key is public but there is no reason
+      # to grep for a credential and print the surrounding line on failure, and
+      # the two are set and passed together - a build with one and not the
+      # other is not a case that arises.
+      - name: Confirm the Supabase project reached the bundle
+        working-directory: client
+        env:
+          SUPABASE_PROJECT_URL: ${{ steps.supabase.outputs.url }}
+        run: |
+          if [ -z "$SUPABASE_PROJECT_URL" ]; then
+            echo "No Supabase project configured - skipping the check. Signing in will say so."
+            exit 0
+          fi
+          if grep -rqF -- "$SUPABASE_PROJECT_URL" dist/assets/*.js; then
+            echo "Supabase project is present in the built bundle."
+          else
+            echo "::error::SUPABASE_URL was set but is absent from the built bundle - the app would ship unable to sign anyone in."
+            exit 1
+          fi
+
       - name: Assemble the site
         run: |
           mkdir -p _site/app

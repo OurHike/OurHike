@@ -193,6 +193,53 @@ export const PLACE_SORT_KEY_EXPRESSION = [
   2,
 ]
 
+/**
+ * How hard the relief is shaded - a zoom ramp rather than one number, and the
+ * reason is what the rest of this sheet does NOT draw.
+ *
+ * The hillshade is the only layer here with something to say at every zoom.
+ * Everything else that describes terrain is keyed to hiking zooms: the
+ * contours fade in over 9-12 and are at flat zero below that, their labels
+ * start at 12, the peaks at 10, and OpenMapTiles carries no woodland to fill
+ * below roughly z7. The opening view is the whole trail - App.tsx frames
+ * CORRIDOR_BOUNDS, which on a phone lands near z4 - so on that view relief is
+ * the only thing between the hiker and blank paper.
+ *
+ * At 0.35, stretched across a thousand kilometres of DEM, it was not enough to
+ * be one: the first thing anyone saw on opening the app was an empty sheet
+ * with a scale bar on it. So the shading is carried at full strength exactly
+ * where it works alone, and hands back to its old weight as the contours
+ * arrive - over the same 9-to-12 window they fade in across, read off the same
+ * numbers rather than a second set that could drift from them.
+ *
+ * Past the handover nothing changes: at hiking zooms this is the 0.35 it has
+ * always been, which is what keeps the shading from competing with the
+ * contours for the same job and from making the trail line harder to follow
+ * across a slope. `interpolate` holds its end values outside the stops, so
+ * both ends are flat rather than extrapolating into a black hillside.
+ *
+ * It also costs nothing. The DEM tiles behind this layer are fetched at every
+ * zoom already; the ramp only decides how much of what they contain reaches
+ * the screen.
+ */
+export const HILLSHADE_EXAGGERATION = 0.35
+export const HILLSHADE_RELIEF_ONLY_EXAGGERATION = 1
+/** The first zoom at which any contour ink is drawn, and the zoom by which
+ *  both contour layers are at full strength - see the two `line-opacity`
+ *  ramps below, which these have to keep agreeing with. */
+export const HILLSHADE_HANDOVER_START_ZOOM = 9
+export const HILLSHADE_HANDOVER_END_ZOOM = 12
+
+export const HILLSHADE_EXAGGERATION_EXPRESSION = [
+  'interpolate',
+  ['linear'],
+  ['zoom'],
+  HILLSHADE_HANDOVER_START_ZOOM,
+  HILLSHADE_RELIEF_ONLY_EXAGGERATION,
+  HILLSHADE_HANDOVER_END_ZOOM,
+  HILLSHADE_EXAGGERATION,
+]
+
 export interface LiveTopoOptions {
   terrain: TerrainUrls
   units: ContourUnits
@@ -338,15 +385,15 @@ export function liveTopoLayers({ units }: LiveTopoOptions): LayerSpecification[]
         'line-dasharray': [4, 2],
       },
     },
-    // Relief shading. Low opacity on purpose: this is here to give the terrain
-    // shape, and anything stronger starts competing with the contours for the
-    // same job while making the trail line harder to follow across a slope.
+    // Relief shading, and the sheet's only terrain channel until the contours
+    // arrive - which is why its strength follows the zoom rather than sitting
+    // at one number. See HILLSHADE_EXAGGERATION_EXPRESSION.
     {
       id: LIVE_TOPO_LAYER_IDS.hillshade,
       type: 'hillshade',
       source: DEM_SOURCE_ID,
       paint: {
-        'hillshade-exaggeration': 0.35,
+        'hillshade-exaggeration': HILLSHADE_EXAGGERATION_EXPRESSION as never,
         'hillshade-shadow-color': '#6b5f4a',
         'hillshade-highlight-color': '#fffdf7',
         'hillshade-accent-color': '#8a8271',

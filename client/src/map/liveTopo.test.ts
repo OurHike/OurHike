@@ -7,6 +7,10 @@ import {
 } from '@maplibre/maplibre-gl-style-spec'
 import { buildMapStyle, ATTRIBUTION, TOPO_LAYER_ID, BACKDROP_LAYER_ID } from './style'
 import {
+  HILLSHADE_EXAGGERATION,
+  HILLSHADE_HANDOVER_END_ZOOM,
+  HILLSHADE_HANDOVER_START_ZOOM,
+  HILLSHADE_RELIEF_ONLY_EXAGGERATION,
   LIVE_TOPO_ATTRIBUTION,
   LIVE_TOPO_LAYER_IDS,
   OPENFREEMAP_GLYPHS,
@@ -204,6 +208,90 @@ describe('the live topographic background', () => {
 
   it('declares a glyph endpoint, without which every label silently vanishes', () => {
     expect(live().glyphs).toBe(OPENFREEMAP_GLYPHS)
+  })
+})
+
+describe('relief shading, by zoom', () => {
+  // The opening view is the whole trail - App.tsx frames CORRIDOR_BOUNDS,
+  // which lands near z4 - and at that zoom every other terrain layer in this
+  // sheet is switched off: both contour layers are at zero opacity, their
+  // labels start at 12, the peaks at 10, and OpenMapTiles carries no woodland
+  // to fill below roughly z7. The hillshade is the entire background there, so
+  // what is asserted is that it is actually turned up enough to be one - read
+  // through MapLibre's own expression engine, since what matters is the number
+  // that reaches the shader rather than the shape of an array.
+
+  /** A paint value as MapLibre will really compute it at a given zoom. */
+  function paintAt(layerId: string, property: string, spec: unknown, zoom: number) {
+    const layer = liveTopoLayers({ terrain: TERRAIN, units: 'imperial' }).find(
+      (candidate) => candidate.id === layerId,
+    ) as { paint?: Record<string, unknown> } | undefined
+    const compiled = createExpression(layer?.paint?.[property] as never, spec as never)
+    if (compiled.result === 'error') {
+      throw new Error(`${layerId}'s ${property} is not a valid expression`)
+    }
+    return compiled.value.evaluate({ zoom } as never) as number
+  }
+
+  const exaggerationAt = (zoom: number) =>
+    paintAt(
+      LIVE_TOPO_LAYER_IDS.hillshade,
+      'hillshade-exaggeration',
+      latest.paint_hillshade['hillshade-exaggeration'],
+      zoom,
+    )
+
+  const contourInkAt = (zoom: number) =>
+    Math.max(
+      paintAt(
+        LIVE_TOPO_LAYER_IDS.contour,
+        'line-opacity',
+        latest.paint_line['line-opacity'],
+        zoom,
+      ),
+      paintAt(
+        LIVE_TOPO_LAYER_IDS.contourIndex,
+        'line-opacity',
+        latest.paint_line['line-opacity'],
+        zoom,
+      ),
+    )
+
+  it('carries the corridor-wide opening view on its own', () => {
+    // The bug this fixes: at the old flat 0.35, stretched over a thousand
+    // kilometres of DEM, the first thing anyone saw on opening the app was
+    // blank paper with a scale bar on it.
+    expect(exaggerationAt(4)).toBe(HILLSHADE_RELIEF_ONLY_EXAGGERATION)
+    expect(exaggerationAt(HILLSHADE_HANDOVER_START_ZOOM)).toBe(
+      HILLSHADE_RELIEF_ONLY_EXAGGERATION,
+    )
+  })
+
+  it('hands back to its old weight once the contours are drawing', () => {
+    // Hiking zooms are deliberately untouched: anything stronger there starts
+    // competing with the contours for the same job and makes the trail line
+    // harder to follow across a slope.
+    expect(exaggerationAt(HILLSHADE_HANDOVER_END_ZOOM)).toBe(HILLSHADE_EXAGGERATION)
+    expect(exaggerationAt(14)).toBe(HILLSHADE_EXAGGERATION)
+  })
+
+  it('eases between the two rather than switching at a threshold', () => {
+    const midway = exaggerationAt(
+      (HILLSHADE_HANDOVER_START_ZOOM + HILLSHADE_HANDOVER_END_ZOOM) / 2,
+    )
+
+    expect(midway).toBeLessThan(HILLSHADE_RELIEF_ONLY_EXAGGERATION)
+    expect(midway).toBeGreaterThan(HILLSHADE_EXAGGERATION)
+  })
+
+  it('hands over across exactly the window the contours fade in over', () => {
+    // The handover zooms are not free numbers - they are the contour ramps'
+    // own, and the whole argument for turning the shading up is that nothing
+    // else is drawing terrain yet. Asserted against those ramps so the two
+    // cannot drift apart into a window with no terrain in it at all, or one
+    // where full-strength shading sits under full-strength contours.
+    expect(contourInkAt(HILLSHADE_HANDOVER_START_ZOOM)).toBe(0)
+    expect(contourInkAt(HILLSHADE_HANDOVER_END_ZOOM)).toBeGreaterThan(0.5)
   })
 })
 

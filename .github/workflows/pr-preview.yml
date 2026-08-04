@@ -1,0 +1,75 @@
+# Deploys a live, testable build of the app for every pull request, and posts
+# the link as a PR comment - so a reviewer can try the actual change on a
+# phone instead of reading a diff and imagining it.
+#
+# Publishes to the same `gh-pages` branch as the production site (see
+# pages.yml), under /OurHike/pr-preview/pr-<n>/, so previews and the real
+# site coexist without either clobbering the other. That means this only goes
+# live once pages.yml's one-time manual step is done - see the note there.
+#
+# rossjrw/pr-preview-action does the branch bookkeeping (add the preview on
+# open/push, remove it on close) and posts/updates the single PR comment with
+# the link, so there's no separate commenting step here.
+
+name: PR preview
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, closed]
+
+concurrency:
+  group: pr-preview-${{ github.event.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        if: github.event.action != 'closed'
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install
+        if: github.event.action != 'closed'
+        working-directory: client
+        run: npm ci
+
+      # Same data source as the production build (see pages.yml) - a preview
+      # that can't download map data isn't much of a testable version.
+      - name: Resolve the data source
+        if: github.event.action != 'closed'
+        id: data
+        env:
+          FROM_VAR: ${{ vars.DATA_BASE_URL }}
+          FROM_SECRET: ${{ secrets.DATA_BASE_URL }}
+        run: |
+          URL="${FROM_VAR:-$FROM_SECRET}"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: Build the app
+        if: github.event.action != 'closed'
+        working-directory: client
+        env:
+          # Must match exactly where rossjrw/pr-preview-action serves this
+          # preview from below (umbrella-dir pr-preview, subdir pr-<n>) - see
+          # the note on VITE_BASE_PATH in pages.yml.
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/pr-preview/pr-${{ github.event.number }}/
+          VITE_DATA_BASE_URL: ${{ steps.data.outputs.url }}
+        run: npm run build
+
+      - name: Deploy preview
+        uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: client/dist
+          preview-branch: gh-pages
+          umbrella-dir: pr-preview

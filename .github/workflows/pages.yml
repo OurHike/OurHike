@@ -17,6 +17,19 @@
 # -> Actions -> Variables) to the public R2 bucket URL. Without it the app
 # still builds and installs; its Downloads screen says the data source is not
 # configured rather than firing requests that would 404.
+#
+# Publishes by pushing to the `gh-pages` branch rather than through the native
+# Pages-via-Actions deployment (`actions/deploy-pages`), because that
+# mechanism only ever serves one live deployment and can't host anything else
+# alongside it. pr-preview.yml needs a second thing alongside it - a preview
+# per pull request, at /OurHike/pr-preview/pr-<n>/ - so both workflows publish
+# to the same gh-pages branch instead, each to their own path.
+#
+# ONE-TIME MANUAL STEP: this only takes effect once a repo admin flips
+# Settings -> Pages -> Build and deployment -> Source from "GitHub Actions" to
+# "Deploy from a branch", branch `gh-pages`, folder `/ (root)`. Until that's
+# done, Pages keeps serving whatever the old Actions-based deployment last
+# published, and this workflow's pushes to gh-pages sit there unused.
 
 name: Deploy Pages
 
@@ -27,9 +40,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 # Never let two deploys race; let a newer commit supersede an in-flight one.
 concurrency:
@@ -120,16 +131,13 @@ jobs:
           # its naming should not silently break the deploy.
           touch _site/.nojekyll
 
-      - uses: actions/upload-pages-artifact@v3
+      - name: Publish to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: _site
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: _site
+          publish_branch: gh-pages
+          # PR previews live on this same branch under pr-preview/ (see
+          # pr-preview.yml). This step only ever writes site/ and app/'s
+          # output, so keep_files stops it from deleting them on every deploy.
+          keep_files: true

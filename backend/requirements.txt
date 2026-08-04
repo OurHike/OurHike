@@ -5,5 +5,5 @@ alembic
 pydantic-settings
 duckdb-engine
 duckdb
-pyjwt
+pyjwt[crypto]
 psycopg[binary]

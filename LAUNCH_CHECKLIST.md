@@ -113,9 +113,10 @@ The backend verifies Supabase-issued JWTs. Browsing never needs an account; this
 
 ```
 SUPABASE_URL=https://<ref>.supabase.co
-SUPABASE_ANON_KEY=<anon public key>
-SUPABASE_JWT_SECRET=<Settings > API > JWT Secret>
+SUPABASE_ANON_KEY=<publishable key, sb_publishable_...>
 ```
+
+**`SUPABASE_JWT_SECRET` is not on that list, and for a hosted project there is nothing to put there.** Hosted projects sign asymmetrically and publish the public half; no shared secret exists. The backend treats it as optional for exactly that reason. Set it only when pointing at a **self-hosted** Supabase, which does sign HS256 — see 4.4.
 
 **4.3 Configure OAuth providers** (Authentication → Providers). Each needs its own developer registration, and these are the slowest items on this list because they involve external approval:
 
@@ -150,7 +151,18 @@ Adding an entry per PR by hand is not a plan, and without a matching entry every
 
 **4.3c Custom SMTP, before real traffic.** The magic-link sign-in and the account-confirmation email both go through Supabase's built-in sender, which is rate-limited to a handful of messages per hour and is explicitly not for production. Fine for testing; a hiker hitting "email me a sign-in link" and silently getting nothing is not. Configure real SMTP under Authentication → Emails when this stops being a test deployment.
 
-**4.4 Flag on the JWT verification method.** `backend/app/core/auth.py` currently verifies **HS256 using the JWT secret**. Supabase has been migrating projects toward asymmetric keys (JWKS/RS256). If your project issues RS256, that function needs changing — it was deliberately built as a single seam so this is a contained change, but it is the one thing here I could not settle without a real project to look at. **Check this before assuming auth works.**
+**4.4 The JWT verification method — settled.** This was the open question here, flagged as the one thing that could not be answered without a real project. There is one now, and it answered: a token it issued carries `{"alg": "ES256", "kid": "..."}` — **asymmetric, with the public half published as a JWKS.** A backend verifying HS256 against a shared secret would have returned 401 to every signed-in hiker, with the token, the signature and the secret all perfectly correct.
+
+`backend/app/core/auth.py` now reads the algorithm off the token and verifies accordingly: ES256/RS256 against the project's published keys, HS256 against `SUPABASE_JWT_SECRET`. Both are real — a **self-hosted** Supabase signs HS256, and that is the path OurHikeValues.md leans on for inheritability. Nothing here needs configuring for a hosted project; it works out of the box.
+
+**4.5 Run the config check.** Actions → **Supabase config check** → Run workflow. It reads the live project and reports what only a live project can show:
+
+- whether `SUPABASE_URL` / `SUPABASE_ANON_KEY` are set and valid (and it names the no-`VITE_`-prefix trap, which is a real one — the prefix belongs on the build variable, not the repository variable);
+- whether the algorithm the project signs with is one the backend accepts;
+- whether every provider in `AUTH_PROVIDERS` is actually enabled in the dashboard — a mismatch there is a button that reaches an error page, and nothing else in the system compares those two lists;
+- whether the anon key is the legacy JWT rather than the publishable key.
+
+Read-only, and safe to run any time. It does **not** check the redirect allow-list — the public API does not expose it, so 4.3b stays a manual step.
 
 ---
 

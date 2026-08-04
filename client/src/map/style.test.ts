@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { validateStyleMin } from '@maplibre/maplibre-gl-style-spec'
+import {
+  createExpression,
+  latest,
+  validateStyleMin,
+} from '@maplibre/maplibre-gl-style-spec'
 import { BLAZE_MATCH_EXPRESSION } from '../lib/blaze'
 import {
   buildMapStyle,
@@ -10,6 +14,7 @@ import {
   TRAIL_CASING_LAYER_ID,
   BACKDROP_LAYER_ID,
   MAP_BACKGROUND_COLOR,
+  CENTERLINE_SOURCE,
   PRIMARY_TRAIL_SOURCES,
   PRIMARY_TRAIL_WIDTH,
   TRAIL_LINE_WIDTHS,
@@ -18,7 +23,7 @@ import {
 } from './style'
 import { POI_LAYER_ID, POI_SOURCE_ID } from './poiLayers'
 
-// See WIREFRAMES.md "Trail line rendering — blazes". Two rules there are
+// See WIREFRAMES.md "Trail line rendering — blazes". Three rules there are
 // load-bearing rather than decorative:
 //   1. ONE `match` expression drives line-color for every trail source - no
 //      per-layer hardcoded hexes, so a new imported source inherits the rule.
@@ -28,6 +33,9 @@ import { POI_LAYER_ID, POI_SOURCE_ID } from './poiLayers'
 //      colour removed entirely. Dash rhythm used to carry that channel, and
 //      the gaps it left were what made the near-white centerline unreadable -
 //      what a hiker saw was a dotted grey-and-white thread, not a trail.
+//   3. A side trail never covers the through-route it branches from. They
+//      share geometry often enough that leaving it to export order put grey
+//      and blue stretches through the white AT.
 
 const STYLE_OPTIONS = {
   topoArchiveUrl: 'pmtiles://ourhike-corridor',
@@ -51,6 +59,36 @@ function widthFor(expression: unknown, source: string): number {
     if (rest[i] === source) return rest[i + 1] as number
   }
   return rest[rest.length - 1] as number
+}
+
+/**
+ * What one trail line's sort key comes out as, evaluated by MapLibre's own
+ * expression engine rather than by reading the array back.
+ *
+ * Draw order is the thing under test here, and it is decided at render time
+ * from a feature's properties - so the assertion has to go through the same
+ * evaluator MapLibre will, or it is checking the shape of an expression
+ * instead of the order it produces.
+ */
+function sortKeyFor(layerId: string, source: string): number {
+  const layout = layer(layerId).layout as Record<string, unknown>
+  const compiled = createExpression(
+    layout['line-sort-key'] as never,
+    latest.layout_line['line-sort-key'] as never,
+  )
+  if (compiled.result === 'error') {
+    throw new Error(`line-sort-key on "${layerId}" is not a valid expression`)
+  }
+  return compiled.value.evaluate({ zoom: 14 }, { properties: { source } } as never)
+}
+
+/** Every trail layer bound to the trail source - casing and blaze alike. */
+function trailLayerIds(): string[] {
+  return style()
+    .layers.filter(
+      (l) => l.type === 'line' && 'source' in l && l.source === TRAILS_SOURCE_ID,
+    )
+    .map((l) => l.id)
 }
 
 describe('buildMapStyle', () => {
@@ -130,6 +168,57 @@ describe('buildMapStyle', () => {
     const paint = layer(BLAZE_LAYER_ID).paint as Record<string, unknown>
 
     expect(widthFor(paint['line-width'], 'some_source_added_in_2027')).toBeGreaterThan(0)
+  })
+
+  it('never lets a side trail be drawn over the AT centerline', () => {
+    // The defect this exists to prevent, in the words a hiker would use: the
+    // white line showing grey and blue stretches. A side trail and the
+    // through-route it branches from share geometry for a stretch more often
+    // than not, they are in ONE layer, and so whichever the export happened to
+    // write last was the colour on screen. That reads as "the blaze changes
+    // here" - a false statement, at a junction, which is the one place this
+    // map cannot afford to make one.
+    expect(sortKeyFor(BLAZE_LAYER_ID, CENTERLINE_SOURCE)).toBeGreaterThan(
+      sortKeyFor(BLAZE_LAYER_ID, 'side_trails'),
+    )
+  })
+
+  it('gives every through-route that same standing over every other source', () => {
+    // Asserted over the tier rather than over the centerline alone, for the
+    // same reason the width test is: a second through-route arrives by joining
+    // PRIMARY_TRAIL_SOURCES, and it should inherit this rule on the way in.
+    // The unknown source stands for one imported after this build - it may be
+    // drawn, but not over the trail the map is about.
+    const others = [
+      ...Object.keys(TRAIL_LINE_WIDTHS).filter(
+        (source) => !PRIMARY_TRAIL_SOURCES.includes(source),
+      ),
+      'some_source_added_in_2027',
+    ]
+
+    expect(PRIMARY_TRAIL_SOURCES.length).toBeGreaterThan(0)
+    for (const primary of PRIMARY_TRAIL_SOURCES) {
+      for (const other of others) {
+        expect(sortKeyFor(BLAZE_LAYER_ID, primary)).toBeGreaterThan(
+          sortKeyFor(BLAZE_LAYER_ID, other),
+        )
+      }
+    }
+  })
+
+  it('sorts every trail layer the same way, so a casing cannot reintroduce the overlap', () => {
+    // Nothing visible turns on this while every casing is one colour - but a
+    // casing that ever stops being one colour would be the same bug again,
+    // one layer down, and the rule belongs on the layer rather than on the
+    // colour that currently makes it moot.
+    const ids = trailLayerIds()
+
+    expect(ids).toContain(TRAIL_CASING_LAYER_ID)
+    for (const id of ids) {
+      expect(sortKeyFor(id, CENTERLINE_SOURCE)).toBeGreaterThan(
+        sortKeyFor(id, 'side_trails'),
+      )
+    }
   })
 
   it('draws a casing layer underneath the blaze layer, never over it', () => {

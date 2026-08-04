@@ -37,6 +37,12 @@
 //     with every blaze now solid that band is a stronger distinction than it
 //     was, not a weaker one.
 //
+//  3. A side trail is never drawn over the through-route it hangs off. One
+//     layer means one painter's order, and where two features share geometry
+//     that order decides which colour a hiker sees - so it is decided here, by
+//     `line-sort-key`, rather than by whichever feature the export wrote last.
+//     See TRAIL_SORT_KEY_EXPRESSION.
+//
 // Not handled here: the POI pins, which are their own two modules -
 // poiLayers.ts for the source, layer and density rules, poiIcons.ts for the
 // pin images themselves. This file composes them in rather than spelling them
@@ -178,6 +184,39 @@ export const TRAIL_LINE_WIDTHS: Record<string, number> = {
  * an unrecognised source falls into.
  */
 export const DEFAULT_TRAIL_LINE_WIDTH = SIDE_TRAIL_WIDTH
+
+/**
+ * Draw order inside a trail layer: through-routes over everything else.
+ *
+ * Every trail line lives in ONE layer, so within that layer the painter's
+ * order is decided by the order the features happen to arrive in - which is
+ * export order, which is nobody's decision. Where a side trail shares geometry
+ * with the through-route it hangs off (and they share a lot of it: a spur that
+ * leaves the AT is digitized from the AT's own vertices, and ATC's side_trails
+ * often run coincident with the centerline for a stretch before branching),
+ * whichever feature is drawn last wins the pixels.
+ *
+ * What that looked like on screen is the bug this fixes: the AT, drawn white,
+ * with grey and blue stretches punched through it wherever an unblazed or
+ * blue-blazed side trail happened to be exported after the centerline. The
+ * hiker reads that as "the trail changes blaze here", which is exactly the
+ * false statement at a junction that this map exists not to make.
+ *
+ * `line-sort-key` decides it instead, off the same `source` attribute that
+ * decides width - higher sorts on top, so a through-route is painted last and
+ * a side trail can never cover it. The two tiers are all that is needed:
+ * within a tier, one line covering another is two lines of equal standing
+ * overlapping, which is honest.
+ */
+export const PRIMARY_TRAIL_SORT_KEY = 1
+export const SIDE_TRAIL_SORT_KEY = 0
+
+export const TRAIL_SORT_KEY_EXPRESSION = [
+  'case',
+  ['in', ['get', 'source'], ['literal', [...PRIMARY_TRAIL_SOURCES]]],
+  PRIMARY_TRAIL_SORT_KEY,
+  SIDE_TRAIL_SORT_KEY,
+]
 
 /** How far the dark casing shows past each side of the line it sits under. */
 export const CASING_OVERHANG = 1
@@ -327,7 +366,17 @@ export function buildMapStyle({
         id: TRAIL_CASING_LAYER_ID,
         type: 'line',
         source: TRAILS_SOURCE_ID,
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        layout: {
+          'line-cap': 'round',
+          'line-join': 'round',
+          // Sorted like the blaze layer above it, though nothing visible
+          // depends on it while every casing is the same colour. It is here so
+          // that the day one is not - a heavier casing for a through-route, the
+          // "drawn by absence" treatment WIREFRAMES.md reserves for Black - the
+          // ordering rule is already in place rather than being a second bug
+          // with the same shape as the first.
+          'line-sort-key': TRAIL_SORT_KEY_EXPRESSION as unknown as number,
+        },
         paint: {
           'line-color': '#2b2620',
           'line-width': TRAIL_CASING_WIDTH_EXPRESSION as unknown as number,
@@ -342,7 +391,15 @@ export function buildMapStyle({
         // rhythm needed to keep its measured on/off lengths honest; on a solid
         // line they only leave a nick at every joint between two segments of
         // the same trail.
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        //
+        // The sort key is what keeps a side trail off the through-route it
+        // branches from, where the two share geometry - see
+        // TRAIL_SORT_KEY_EXPRESSION.
+        layout: {
+          'line-cap': 'round',
+          'line-join': 'round',
+          'line-sort-key': TRAIL_SORT_KEY_EXPRESSION as unknown as number,
+        },
         paint: {
           'line-color': BLAZE_MATCH_EXPRESSION as unknown as string,
           'line-width': TRAIL_WIDTH_EXPRESSION as unknown as number,

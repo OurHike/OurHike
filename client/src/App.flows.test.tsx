@@ -7,6 +7,7 @@ import { PREFERENCES_KEY } from './lib/preferences'
 import { DEFAULT_PREFERENCES } from './lib/userPreferences'
 import { ELEVATION_STORE_KEY, POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 import { CORRIDOR_ARCHIVE_KEY } from './map/pmtilesSource'
+import { POI_ID_PROPERTY, POI_LAYER_ID } from './map/poiLayers'
 import { archiveUrl } from './lib/config'
 import { MockMap, resetMapLibreMock } from './test/mocks/maplibre-gl'
 
@@ -43,6 +44,7 @@ const SHELTER = {
   lat: 39 + 5 * MILE_LAT,
   lon: -77,
   confidence: 'high' as const,
+  source: 'atc_shelters',
 }
 
 let watchSuccess: ((position: GeolocationPosition) => void) | undefined
@@ -259,6 +261,125 @@ describe('the legend', () => {
     expect(
       within(legend).getAllByRole('button', { name: /hide|show/i }).length,
     ).toBeGreaterThan(0)
+  })
+})
+
+describe('tapping a pin on the map', () => {
+  /**
+   * Touch the canvas where MapLibre would report a pin.
+   *
+   * The map is real code with a mock MapLibre under it, so the pin has to be
+   * put where a rendered-feature query will find it - which is what the live
+   * map's own tile rendering does for a real one.
+   */
+  async function tapPin(properties: Record<string, unknown>) {
+    // The LIVE map, and only once it is listening. The map screen builds a new
+    // map when the trail lines land - a different object URL is a different
+    // style - so the first map constructed is routinely one that has already
+    // been torn down, and touching it would be touching nothing.
+    await waitFor(() => {
+      expect(MockMap.live).toHaveLength(1)
+      expect(MockMap.live[0].listenerCount('click')).toBeGreaterThan(0)
+    })
+    const map = MockMap.live[0]
+    map.renderedFeatures.set(POI_LAYER_ID, [{ properties }])
+    await act(async () => {
+      map.emit('click', { point: { x: 160, y: 300 } })
+    })
+  }
+
+  it('opens the waypoint’s details, which used to do nothing at all', async () => {
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await tapPin({ [POI_ID_PROPERTY]: SHELTER.id, poi_type: 'shelter' })
+
+    const sheet = await screen.findByRole('dialog', { name: /waypoint/i })
+    expect(
+      within(sheet).getByRole('heading', { name: 'Chairback Gap Lean-to' }),
+    ).toBeInTheDocument()
+    expect(within(sheet).getByText('Shelter')).toBeInTheDocument()
+  })
+
+  it('places the waypoint on the trail, at the mile search would give it', async () => {
+    // One number from one computation. A second way of working out the mile
+    // could disagree with search about the same shelter, which is exactly the
+    // kind of quiet contradiction OurHikeValues.md #4 is about.
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await tapPin({ [POI_ID_PROPERTY]: SHELTER.id, poi_type: 'shelter' })
+
+    const sheet = await screen.findByRole('dialog', { name: /waypoint/i })
+    expect(within(sheet).getByText(/^mi 5\./)).toBeInTheDocument()
+  })
+
+  it('says which source listed it', async () => {
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await tapPin({ [POI_ID_PROPERTY]: SHELTER.id, poi_type: 'shelter' })
+
+    const sheet = await screen.findByRole('dialog', { name: /waypoint/i })
+    expect(within(sheet).getByText(/Appalachian Trail Conservancy/)).toBeInTheDocument()
+  })
+
+  it('closes again', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await tapPin({ [POI_ID_PROPERTY]: SHELTER.id, poi_type: 'shelter' })
+    const sheet = await screen.findByRole('dialog', { name: /waypoint/i })
+    await user.click(within(sheet).getByRole('button', { name: /close/i }))
+
+    expect(screen.queryByRole('dialog', { name: /waypoint/i })).not.toBeInTheDocument()
+  })
+
+  it('ignores a tap on a pin the app no longer holds', async () => {
+    // A stale tile can name a POI that a re-download has since dropped. An
+    // empty sheet would be worse than no sheet.
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await tapPin({ [POI_ID_PROPERTY]: 'atc_shelters:gone', poi_type: 'shelter' })
+
+    expect(screen.queryByRole('dialog', { name: /waypoint/i })).not.toBeInTheDocument()
+  })
+
+  it('replaces the legend rather than stacking on it', async () => {
+    // Both sit at the bottom of the map. Two at once leaves the lower one
+    // unreadable and its close button unreachable.
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('button', { name: /legend/i }))
+    await screen.findByRole('dialog', { name: /legend/i })
+    await tapPin({ [POI_ID_PROPERTY]: SHELTER.id, poi_type: 'shelter' })
+
+    expect(await screen.findByRole('dialog', { name: /waypoint/i })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: /legend/i })).not.toBeInTheDocument()
+  })
+
+  it('gets out of the way when the legend is opened over it', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await tapPin({ [POI_ID_PROPERTY]: SHELTER.id, poi_type: 'shelter' })
+    await screen.findByRole('dialog', { name: /waypoint/i })
+    await user.click(screen.getByRole('button', { name: /legend/i }))
+
+    expect(await screen.findByRole('dialog', { name: /legend/i })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: /waypoint/i })).not.toBeInTheDocument()
   })
 })
 

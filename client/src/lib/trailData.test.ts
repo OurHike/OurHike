@@ -153,6 +153,37 @@ describe('trail data', () => {
     })
   })
 
+  it('keeps which source listed a POI, so the app can say where it came from', async () => {
+    serve(
+      poiCollection([
+        {
+          id: 'opentrail_at:1234',
+          poi_type: 'water',
+          name: 'Piped spring',
+          lat: 44.1,
+          lon: -70.2,
+          confidence: 'high',
+          source: 'opentrail_at',
+        },
+      ]),
+    )
+    await downloadTrailData()
+
+    const pois = store.get(POIS_KEY) as StoredPoi[]
+    expect(pois[0].source).toBe('opentrail_at')
+  })
+
+  it('leaves the source off entirely when the artifact carries none', async () => {
+    // Not stored as "unknown": the detail sheet decides whether to name a
+    // source by whether there is one, and a placeholder would be printed as
+    // though the pipeline had published it.
+    serve(poiCollection([{ id: 'x', poi_type: 'water', name: 'Spring', lat: 1, lon: 2 }]))
+    await downloadTrailData()
+
+    const pois = store.get(POIS_KEY) as StoredPoi[]
+    expect(pois[0]).not.toHaveProperty('source')
+  })
+
   it('drops a POI with no coordinates rather than carrying a broken row', async () => {
     // It cannot be drawn, found by search, or reported against - so it is not
     // a POI, it is a row that would fail somewhere further downstream.

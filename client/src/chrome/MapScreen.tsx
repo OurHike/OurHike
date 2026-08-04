@@ -18,6 +18,7 @@ import { useDesktop } from '../lib/useDesktop'
 import { Search } from './Search'
 import { ElevationRibbon, type ElevationRibbonProps } from './ElevationRibbon'
 import { WaypointLanes, type WaypointLanesProps } from './WaypointLanes'
+import { PoiSheet, type PoiDetail } from './PoiSheet'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapView } from '../map/MapView'
 import { attributionFor } from '../map/style'
@@ -71,6 +72,18 @@ export interface MapScreenProps {
   hiddenTypes: Set<string>
   onToggleType: (type: string) => void
 
+  /**
+   * The tapped pin's detail, or null when nothing is selected.
+   *
+   * The shell resolves the id the map reports into this, because the map draws
+   * pins and the app is what knows a POI's name, its mile and where it came
+   * from.
+   */
+  selectedPoi: PoiDetail | null
+  /** A pin was tapped, by POI id. Stable across renders - see MapViewProps. */
+  onSelectPoi: (id: string) => void
+  onClosePoi: () => void
+
   // Both are optional and both are omitted rather than stubbed when their data
   // isn't there. An empty ribbon or a bare set of lanes would read as "nothing
   // ahead of you," which is a different and much worse claim than "we don't
@@ -118,6 +131,9 @@ export function MapScreen({
   blazeCounts,
   hiddenTypes,
   onToggleType,
+  selectedPoi,
+  onSelectPoi,
+  onClosePoi,
   elevation,
   waypoints,
   showZoomButtons = false,
@@ -173,6 +189,7 @@ export function MapScreen({
               background={background}
               pois={viewportPoints}
               hiddenTypes={hiddenTypes}
+              onSelectPoi={onSelectPoi}
               showZoomButtons={showZoomButtons}
               units={units}
               center={center}
@@ -182,6 +199,12 @@ export function MapScreen({
               onMapReady={onMapReady}
             />
             <p className="map-screen__attribution">{attributionFor(background)}</p>
+
+            {/* Inside the canvas, so on a desktop it stays over the map
+                rather than over the legend panel beside it - and on a phone it
+                lands in the lower third, which WIREFRAMES.md §1 reserves for
+                everything touched mid-walk. */}
+            {selectedPoi !== null && <PoiSheet poi={selectedPoi} onClose={onClosePoi} />}
 
             <Search
               open={searchOpen}

@@ -603,6 +603,69 @@
   color: var(--fg-3);
 }
 
+/* ---------- Waypoint detail sheet ---------- */
+
+/* Same footprint as the legend it replaces when a pin is tapped, so the sheet
+   at the bottom of the map is always the same shape whatever put it there.
+   No coloured top rule: those belong to the closure and warning sheets, where
+   the colour is the point. A shelter is not an alert. */
+.poi-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  max-height: 60%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-4, 16px);
+  background: var(--bg-surface);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+.poi-sheet__type {
+  margin: 0;
+  font-size: 14px;
+  color: var(--fg-2);
+}
+
+/* Mono, like every other mile on this screen - the header's, the ribbon's and
+   the closure sheet's - so a hiker reads them as the same kind of number. */
+.poi-sheet__mile,
+.poi-sheet__coords {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  color: var(--fg-2);
+}
+
+.poi-sheet__coords {
+  font-size: 12px;
+  color: var(--fg-3);
+}
+
+/* Called out rather than set in fine print. This is the line that says the app
+   cannot vouch for the pin someone just tapped, and it earns the same weight as
+   the sunken block the closure sheet uses to say what it will not do. */
+.poi-sheet__unverified {
+  margin: 0;
+  padding: var(--space-3, 12px);
+  font-size: 13px;
+  color: var(--fg-2);
+  background: var(--bg-sunken);
+  border-radius: 10px;
+}
+
+.poi-sheet__source {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fg-3);
+}
+
 /* ---------- Serious warning sheet ---------- */
 
 .warning-sheet {

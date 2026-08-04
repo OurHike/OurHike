@@ -12,6 +12,7 @@ import {
   poiTypeFilter,
   POI_ICON_EXPRESSION,
   POI_ICON_SIZE_EXPRESSION,
+  POI_ID_PROPERTY,
   POI_LAYER_ID,
   POI_MIN_ZOOM,
   POI_PRIORITY,
@@ -164,7 +165,27 @@ describe('poiFeatureCollection', () => {
     const [, shelter] = poiFeatureCollection(pois).features
 
     expect(shelter.id).toBe('s1')
-    expect(shelter.properties).toEqual({ poi_type: 'shelter', confidence: 'low' })
+    expect(shelter.properties).toEqual({
+      poi_type: 'shelter',
+      confidence: 'low',
+      [POI_ID_PROPERTY]: 's1',
+    })
+  })
+
+  it('puts the POI id somewhere a tap can still read it', () => {
+    // The gotcha, and the reason the id is duplicated into the properties at
+    // all: MapLibre runs a string feature id through parseInt (FeatureWrapper,
+    // maplibre-gl 6), so every id the pipeline publishes reaches a rendered
+    // feature as NaN. A pin whose id only lived in the GeoJSON `id` field
+    // could be drawn perfectly and never be identified again.
+    const published = [
+      { id: 'atc_shelters:0f8a-4c11', type: 'shelter', lat: 44, lon: -70 },
+    ].map((poi) => ({ ...poi, confidence: 'high' as const }))
+
+    const [feature] = poiFeatureCollection(published).features
+
+    expect(Number.parseInt(feature.id, 10)).toBeNaN()
+    expect(feature.properties[POI_ID_PROPERTY]).toBe('atc_shelters:0f8a-4c11')
   })
 
   it('produces a collection every feature of which the icon expression can resolve', () => {

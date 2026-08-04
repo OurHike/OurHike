@@ -51,6 +51,10 @@ const PROPS = {
   ],
   onSelectSearchResult: vi.fn(),
 
+  selectedPoi: null,
+  onSelectPoi: vi.fn(),
+  onClosePoi: vi.fn(),
+
   elevation: {
     samples: [
       { mile: 1400, elevationFt: 1200 },
@@ -173,5 +177,31 @@ describe('MapScreen', () => {
 
     expect(PROPS.onOpenLegend).toHaveBeenCalledTimes(1)
     expect(PROPS.onOpenSearch).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows no waypoint sheet until a pin has been tapped', () => {
+    render(<MapScreen {...PROPS} />)
+
+    expect(screen.queryByRole('dialog', { name: /waypoint/i })).not.toBeInTheDocument()
+  })
+
+  it('puts the tapped pin’s detail over the map', () => {
+    render(
+      <MapScreen
+        {...PROPS}
+        selectedPoi={{
+          id: 'atc_shelters:abc',
+          name: 'Rocky Run Shelter',
+          type: 'shelter',
+          lat: 39.4,
+          lon: -77.6,
+          confidence: 'high',
+          mile: 1043.2,
+        }}
+      />,
+    )
+
+    expect(screen.getByRole('dialog', { name: /waypoint/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Rocky Run Shelter' })).toBeInTheDocument()
   })
 })

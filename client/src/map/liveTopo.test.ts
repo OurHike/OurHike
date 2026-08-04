@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { validateStyleMin } from '@maplibre/maplibre-gl-style-spec'
+import {
+  createExpression,
+  featureFilter,
+  latest,
+  validateStyleMin,
+} from '@maplibre/maplibre-gl-style-spec'
 import { buildMapStyle, ATTRIBUTION, TOPO_LAYER_ID, BACKDROP_LAYER_ID } from './style'
 import {
   LIVE_TOPO_ATTRIBUTION,
@@ -7,6 +12,8 @@ import {
   OPENFREEMAP_GLYPHS,
   OPENFREEMAP_TILEJSON,
   OSM_SOURCE_ID,
+  PLACE_TOWN_MIN_ZOOM,
+  PLACE_VILLAGE_MIN_ZOOM,
   liveTopoLayers,
 } from './liveTopo'
 import {
@@ -197,6 +204,81 @@ describe('the live topographic background', () => {
 
   it('declares a glyph endpoint, without which every label silently vanishes', () => {
     expect(live().glyphs).toBe(OPENFREEMAP_GLYPHS)
+  })
+})
+
+describe('place labels, by distance', () => {
+  // The corridor-wide view crosses the Boston-Washington seaboard. With
+  // cities, towns and villages all labelling at every zoom, that view was a
+  // wall of type the centerline had to be picked out from under (#159) - so
+  // each class waits for the zoom where its name starts meaning something,
+  // and both rules below are evaluated through MapLibre's own engines
+  // rather than read back off the arrays, since what is under test is what
+  // renders, not the shape of an expression.
+
+  function placeLayer() {
+    const found = liveTopoLayers({ terrain: TERRAIN, units: 'imperial' }).find(
+      (layer) => layer.id === LIVE_TOPO_LAYER_IDS.place,
+    )
+    if (found === undefined || found.type !== 'symbol') {
+      throw new Error('no symbol place layer in the live sheet')
+    }
+    return found
+  }
+
+  /** Whether one place class labels at one zoom, per the layer's filter. */
+  function labelled(zoom: number, placeClass: string): boolean {
+    const compiled = featureFilter(placeLayer().filter as never, 'layers[0].filter')
+    return compiled.filter(
+      { zoom } as never,
+      { type: 1, properties: { class: placeClass }, geometry: [] } as never,
+    )
+  }
+
+  /** Which of two colliding labels is placed first (lower wins the space). */
+  function sortKey(placeClass: string): number {
+    const layout = placeLayer().layout as Record<string, unknown>
+    const compiled = createExpression(
+      layout['symbol-sort-key'] as never,
+      latest.layout_symbol['symbol-sort-key'] as never,
+    )
+    if (compiled.result === 'error') {
+      throw new Error('symbol-sort-key on the place layer is not a valid expression')
+    }
+    return compiled.value.evaluate(
+      { zoom: 9 } as never,
+      { properties: { class: placeClass } } as never,
+    )
+  }
+
+  it('labels only cities on the corridor-wide view, as anchors', () => {
+    for (const zoom of [4, PLACE_TOWN_MIN_ZOOM - 1]) {
+      expect(labelled(zoom, 'city')).toBe(true)
+      expect(labelled(zoom, 'town')).toBe(false)
+      expect(labelled(zoom, 'village')).toBe(false)
+    }
+  })
+
+  it('lets towns in at section-planning zooms, and villages only close up', () => {
+    expect(labelled(PLACE_TOWN_MIN_ZOOM, 'town')).toBe(true)
+    expect(labelled(PLACE_VILLAGE_MIN_ZOOM - 1, 'village')).toBe(false)
+    expect(labelled(PLACE_VILLAGE_MIN_ZOOM, 'village')).toBe(true)
+  })
+
+  it('never labels a hamlet, at any rung of the ladder', () => {
+    // The ladder admits classes by zoom; it must not widen the class list on
+    // the way. A hamlet label every half mile is noise on a trail map.
+    for (const zoom of [4, PLACE_TOWN_MIN_ZOOM, PLACE_VILLAGE_MIN_ZOOM, 14]) {
+      expect(labelled(zoom, 'hamlet')).toBe(false)
+    }
+  })
+
+  it('hands a colliding pair to the bigger place, not to tile feature order', () => {
+    // Lower sorts place first, and earlier placement wins the space -
+    // whether Boston or a suburb survives their collision is a decision,
+    // not an accident of feature order inside the tile.
+    expect(sortKey('city')).toBeLessThan(sortKey('town'))
+    expect(sortKey('town')).toBeLessThan(sortKey('village'))
   })
 })
 

@@ -46,19 +46,30 @@ Bottom sheet from the header icon. Lists **only what's in the current viewport**
 
 One normalized `blaze_color` attribute per line feature; one MapLibre `match` expression on `line-color`. No per-layer hardcoding.
 
+**Every trail line is solid.** Colour says which blaze; **width** says whether a line is a system's through-route or a side trail hanging off it. The two channels are keyed off two different attributes — `blaze_color` for the hue, the pipeline's own `source` for the width — in one `match` expression each.
+
+**A side trail is never drawn over the through-route it branches from.** Every trail line is in one layer, so within it the painter's order is the order features arrive in — which is export order, which is nobody's decision. Side trails and the centerline share geometry often (a spur is digitized from the AT's own vertices, and ATC's side trails run coincident with the centerline for a stretch before branching), and where they do, whichever feature was written last owned the pixels. On screen that was the AT showing grey and blue stretches punched through its white — read by a hiker as "the blaze changes here", which is a false statement in the one place this map cannot afford one. `line-sort-key`, off the same `source` attribute that decides width, decides it instead: the primary tier sorts above everything else. Within a tier, one line covering another is two lines of equal standing overlapping, which is honest, and needs no further rule.
+
+**Through-route is a role, not a name for the AT.** Today the AT holds it alone, so the widest line on the map *is* the AT. That will not hold forever — the NYNJTC alone maintains several trail systems — and the tier is a list (`PRIMARY_TRAIL_SOURCES`) precisely so a Long Path or Highlands Trail import joins it beside the AT rather than displacing it, and so a `centerline` feed that itself grows past the AT needs no code change. Worth being straight about the cost: with two through-routes drawn, width answers "through-route or spur" and stops answering "which trail is this". Telling two through-routes apart falls back to hue — which is the channel this section exists because we cannot rely on. If that day arrives before a third channel does, it is a real regression to design for, not a detail.
+
 | blaze | source | line treatment |
 |---|---|---|
-| White | `centerline` (3,025 segments), flat per-source default in `sources.json` | thin dash 10px on / 6px off, hairline dark casing |
-| Blue (code 1) | 641 `side_trails` | same rhythm, blue |
-| Yellow (5) | 20 | short fast rhythm 6/5 |
-| Orange (4) | 6 | even rhythm 10/5 |
-| Red (3) | 2 | longest dash 15/5 |
-| Green (6) | 4 | 13/5 |
-| Purple (7) | 2 (+3 White, 2 Other) | standard rhythm |
-| Neutral grey | 484 `None` + 24 empty + 9 `"Unknown"` + 3 `"Gold"` | sparse dotted 4/6 |
+| White | `centerline` (3,025 segments), flat per-source default in `sources.json` | solid 4.5px, hairline dark casing overhanging 1px each side — the through-route width, shared by any source in the primary tier |
+| Blue (code 1) | 641 `side_trails` | solid 2.5px, same hairline casing |
+| Yellow (5) | 20 | as side trails |
+| Orange (4) | 6 | as side trails |
+| Red (3) | 2 | as side trails |
+| Green (6) | 4 | as side trails |
+| Purple (7) | 2 (+3 White, 2 Other) | as side trails |
+| Neutral grey | 484 `None` + 24 empty + 9 `"Unknown"` + 3 `"Gold"` | as side trails, in the neutral grey `#8a8271` |
 | Black (8) | 0 today | wide casing, no fill — drawn by absence |
+| *anything imported later* | a `source` key this build has never seen | as side trails — drawn, and never claiming the through-route tier by default |
 
-**Rules that must survive:** decode the coded domain from the FeatureServer's own field metadata (don't hardcode the table); anything that doesn't decode falls to neutral grey **with a loud pipeline warning**; dash rhythm is a second, hue-independent channel so warm hues stay separable in greyscale/glare; tapping any line opens a sheet naming the blaze and its source, and says plainly when it's unknown.
+**Rules that must survive:** decode the coded domain from the FeatureServer's own field metadata (don't hardcode the table); anything that doesn't decode falls to neutral grey **with a loud pipeline warning**; a through-route is the widest line on the map, which is what keeps the map's subject findable with hue removed by greyscale, glare or colour vision deficiency; **a through-route is also drawn last, so nothing else can cover it**; tapping any line opens a sheet naming the blaze and its source, and says plainly when it's unknown.
+
+**No dashed trail lines (decided 2026-08-03).** Not per-blaze, not as the secondary accessibility cue, not for a hue pair that turns out hard to tell apart — a dashed line over a dark casing reads as its gaps, which is the defect this section's "Superseded" note records. **Closures are the one exception**, and they earn it by not being a trail: a red barred band along closed geometry (§7), structurally unlike any blaze rather than a rhythm to be told apart from one. A second cue for the warm hues has to come from somewhere else — casing weight, or a label at high zoom.
+
+**Superseded 2026-08-03 — lines used to be dashed**, on a per-blaze rhythm (white 10/6, yellow 6/5, red 15/5, undecoded a sparse dotted 4/6), and the rhythm was the hue-independent channel. On screen that made a line alternate between its blaze colour and the casing showing through each gap, and the centerline's blaze is very nearly white — so the AT read as a dotted grey-and-white thread through the contours rather than as a trail. Solid lines with width as the second channel replace it. Two things were genuinely given up and are worth reopening if they bite: yellow/orange/red side trails were separable by rhythm and are now separable by hue alone, and an undecoded blaze no longer *reads* as uncertain from its dotted rhythm (it is still the neutral grey, and the tap sheet still says so in words).
 
 ### 4. Downloads (`10a`, `10b`, `6d`, `7a`) — ⚠ see Known Deviations, below
 
@@ -104,7 +115,7 @@ Then a separate section, **"About people on the trail,"** with two full-width ca
 
 ### 7. Closures (`15a`)
 
-A closure is a **line**, not a pin: a wide barred red band with a hard 1.5px casing along the closed trail geometry — structurally distinct from a red *blaze* (thin dash, hairline casing) so the two survive greyscale.
+A closure is a **line**, not a pin: a wide barred red band (10px) with a hard 2px casing along the closed trail geometry — structurally distinct from a red *blaze* (thinner, solid, hairline casing) so the two survive greyscale. These numbers are a ratio to the blaze widths above, not free values: the band stays more than twice the widest blaze on the map, so widening a trail line has to widen the band with it.
 
 - Header banner when one is ahead: "Trail closed 1.4 mi ahead · Storm damage · mi 1,408.6 – 1,411.0".
 - Tap sheet: reason (plain language), mile range, status (`open | closed | reroute-available`), closed-since + expected reopen, marked by (club admin, through the same moderation queue as reports), and a link to the club's reroute notice.
@@ -116,7 +127,7 @@ A closure is a **line**, not a pin: a wide barred red band with a hard 1.5px cas
 
 `severity: normal | serious` on the existing `Report` model, **set by a moderator, never self-declared**.
 
-- Pin: 34px, red, `triangle-alert`, high-contrast halo — a variant inside the same icon spec, not a new visual language.
+- Pin: 44px — one full touch target, and deliberately the biggest thing on the map — red, `triangle-alert`, high-contrast halo — a variant inside the same icon spec, not a new visual language. (Was 34px until 2026-08-03, when the POI pins went up to 38px for legibility; a warning pin the water pins had caught up with would have stopped outranking anything.)
 - Route banner on map open: "2 serious warnings on your route," with See both / Dismiss.
 - Detail: "Confirmed by club moderators" badge + date, the corroboration sentence ("several separate reports over four days…"), reporter names **withheld** for anything about a person, and an explicit "why you weren't pinged."
 - **Warnings never push.**
@@ -164,6 +175,7 @@ Confidence stays separate: a dashed pin means *never verified to exist*; stalene
 
 - **Search** takes over the header and collapses the ribbon to one line; local GeoJSON only, no network path, and says so on empty results.
 - **Legend** opens as a bottom sheet from a header icon; contents recompute per viewport.
+- **Tapping a pin** opens the POI detail sheet (`6a`–`6b`) in the same place the legend uses, and only one of the two is ever open. It names the waypoint, its category, its mile, its coordinates and which source listed it — and says in words, not only through the pin's broken rim, when nobody has confirmed the thing exists. The hit area is the pin plus enough slop to reach the 44px minimum touch target, because this is tapped with a gloved thumb.
 - **Locate** follows MapLibre `GeolocateControl` (`trackUserLocation` for continuous); **compass** is `NavigationControl`, tapping resets north-up. Scale bar is `ScaleControl`, imperial by default.
 - **Motion:** 120–200 ms ease fades/colour transitions only; buttons press to 97%. No bounce, no spring (design-system rule).
 - **Offline everywhere:** every write (report, thanks, confirmation) queues in an outbox with its authored timestamp and syncs later. Nothing blocks on network.
@@ -190,8 +202,8 @@ Meaning, not decoration — keep these regardless of restyling:
 
 - Naismith: 5 km/h + 1 h per 600 m ascent, **rounded to 5 minutes, always prefixed `≈`, never shown as an arrival clock**, no descent credit (a known weakness of the rule — don't silently "improve" it). **Superseded in part 2026-07-30 — see [features/PERSONALIZED_PACE.md](features/PERSONALIZED_PACE.md).** Descent is now in scope, but deliberately and in a *separate* estimator: plain `naismithTime()` keeps no descent term, so nothing silently improves. The rounding, the `≈` and the no-arrival-clock rule all still hold, and matter more once an estimate is personalized and therefore invites more trust.
 - Download sizes: whole-corridor archive at z11 ≈ 64 MB, z12 ≈ 314 MB (default), z13 ≈ 1.18 GB (see `pipeline/README.md`).
-- Blaze dash rhythms per hue (table above) and the neutral-grey fallback `#8a8271`.
-- Closure = barred band + hard casing; blaze = thin dash + hairline casing.
+- Trail lines are solid, with no dashes anywhere but a closure; a through-route is the widest line on the map (table above), and the neutral-grey fallback is `#8a8271`.
+- Closure = barred band + hard casing; blaze = solid line + hairline casing. The band stays more than twice the widest blaze.
 - Staleness ring semantics (green / none / grey dotted) and the ~14 day / ~60 day tier edges.
 - Control sizes: 42px map controls, 38px header buttons, ≥44px effective touch targets.
 - The four report states' exact words: Waiting, Confirmed, Fixed, Not confirmed.

@@ -6,6 +6,8 @@
 // map opens) and NEVER pushes. See lib/push.ts for where that rule is
 // enforced rather than merely intended.
 
+import { POI_PIN_SIZE } from '../map/poiIcons'
+
 export type WarningSeverity = 'normal' | 'serious'
 
 export interface WarningReport {
@@ -44,9 +46,18 @@ export function routeBannerText(count: number): string | null {
 // A variant inside the existing waypoint icon spec, not a new visual
 // language: a warning that looks like nothing else on the map is a warning
 // nobody has learned to read.
+//
+// `ordinaryPinPx` is IMPORTED rather than written down, and that is the whole
+// reason this object is worth having. Held as its own literal it went stale
+// silently - it said 17 while the pins on the map were drawn at 30, so the
+// test below was comparing a warning pin against a number nothing rendered,
+// and would have gone on passing when the pins grew past the warning itself.
+// The rule this encodes ("the warning is the biggest thing on the map") is
+// only a rule if it reads the real size.
 export const WARNING_PIN = {
-  sizePx: 34,
-  ordinaryPinPx: 17,
+  /** One full touch target, and the ceiling every other pin stays under. */
+  sizePx: 44,
+  ordinaryPinPx: POI_PIN_SIZE,
   icon: 'triangle-alert',
   color: '#b2321f',
   halo: true,

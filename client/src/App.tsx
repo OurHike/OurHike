@@ -12,9 +12,10 @@
 // exists to keep. Showing three provider buttons that cannot authenticate
 // would break it.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapScreen } from './chrome/MapScreen'
+import type { PoiDetail } from './chrome/PoiSheet'
 import { TabBar } from './chrome/TabBar'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import type { TabId } from './chrome/tabs'
@@ -49,6 +50,12 @@ import {
   loadTrailData,
   type StoredPoi,
 } from './lib/trailData'
+import {
+  ribbonSamples,
+  ribbonWindow,
+  type ElevationProfile,
+} from './lib/elevationProfile'
+import { upcomingClimb } from './lib/upcomingClimb'
 import { startTracking, trackDirection, type DirectionTracker } from './lib/hikeDirection'
 import { beginContribution } from './lib/contributionFlow'
 import { listQueued } from './lib/outbox'
@@ -78,16 +85,20 @@ const notYet = () => undefined
 // is a GPS fix the app genuinely does not know where the hiker is, and Harpers
 // Ferry - the previous default - is a confident-looking answer to that question
 // that is wrong for everyone not standing in Harpers Ferry. A view of the whole
-// trail says "somewhere on this" honestly, and the first fix zooms in.
+// trail says "somewhere on this" honestly.
+//
+// And it stays that view. The first fix used to zoom the camera to it, which
+// takes the map away from anyone reading it - planning a resupply, looking at a
+// stretch two states north - for no reason beyond the phone having worked out
+// where they are. The camera is the hiker's from the first frame; the locate
+// control (map/mapChrome.ts) is how they ask to be taken to themselves, and it
+// is a tap away in the thumb zone.
 const CORRIDOR_BOUNDS: [[number, number], [number, number]] = [
   [-84.73, 34.2],
   [-68.3, 46.34],
 ]
 
 const EMPTY_BBOX: BoundingBox = { west: 0, south: 0, east: 0, north: 0 }
-
-/** Close enough to read a shelter's surroundings, on the first GPS fix. */
-const FIX_ZOOM = 13
 
 /** Where a search result lands. Only ever zooms IN: someone already at 16
  *  looking at a spring does not want to be pulled back out to see a shelter. */
@@ -127,11 +138,18 @@ function App() {
   const [activeTab, setActiveTab] = useState<TabId>('trail')
   const [legendOpen, setLegendOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  // The tapped pin, held as an id rather than as the POI itself. Everything the
+  // sheet shows is derived below, so a POI that changes underneath - a fresh
+  // download, or the hiker deleting the one they had - is described correctly
+  // or closes itself, instead of the sheet going on showing a copy of data the
+  // app no longer holds.
+  const [selectedPoiId, setSelectedPoiId] = useState<string | null>(null)
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set())
   const [bbox, setBbox] = useState<BoundingBox>(EMPTY_BBOX)
 
   const [trailIndex, setTrailIndex] = useState<TrailIndex | null>(null)
   const [pois, setPois] = useState<StoredPoi[]>([])
+  const [elevation, setElevation] = useState<ElevationProfile | null>(null)
   const [trailsUrl, setTrailsUrl] = useState<string>(emptyTrailsUrl)
   const [dataError, setDataError] = useState<string | null>(null)
 
@@ -147,7 +165,6 @@ function App() {
   // Where the camera was left, so a rebuilt map opens where the hiker left it
   // instead of snapping back to the whole corridor.
   const [camera, setCamera] = useState<Camera | null>(null)
-  const hasJumpedToFix = useRef(false)
 
   const now = useClock()
   const online = useOnline()
@@ -193,6 +210,7 @@ function App() {
 
     setTrailsUrl(URL.createObjectURL(data.trails))
     setPois(data.pois)
+    setElevation(data.elevation)
 
     // Best-effort, and separate from the POIs above on purpose. A shelter is
     // findable by name with no geometry at all, so a trails.geojson that
@@ -224,22 +242,8 @@ function App() {
   // it stop being needed.
   useEffect(() => () => URL.revokeObjectURL(trailsUrl), [trailsUrl])
 
-  // The map is usually built long before a fix arrives, so the first one moves
-  // the camera imperatively. Only the first: after that the view belongs to
-  // whoever is panning it.
-  //
-  // `map` is a dependency because a fix that lands while another tab is
-  // showing has no map to move. Without it that fix was simply dropped - the
-  // effect had already run against a null map and would not run again - and
-  // the hiker stayed looking at the whole trail until the watch happened to
-  // report again.
-  useEffect(() => {
-    if (map === null || gps.status !== 'located' || hasJumpedToFix.current) return
-
-    map.jumpTo({ center: [gps.at.lon, gps.at.lat], zoom: FIX_ZOOM })
-    hasJumpedToFix.current = true
-  }, [map, gps])
-
+  // A fix moves no camera - see CORRIDOR_BOUNDS. It is read for everything
+  // else: the mile below, the direction of travel, the elevation ribbon.
   const fix = useMemo(() => {
     if (trailIndex === null || gps.status !== 'located') return null
     return locateOnTrail(trailIndex, gps.at)
@@ -270,6 +274,21 @@ function App() {
     [pois, trailIndex],
   )
 
+  // What the tapped pin's sheet says. Built from both arrays on purpose: the
+  // POI itself carries the geometry and the provenance, and searchablePois has
+  // already paid for the locateOnTrail() call that places it on the trail, so
+  // the mile in the sheet is the same number search puts on the same POI rather
+  // than a second computation that could disagree with it.
+  const selectedPoi: PoiDetail | null = useMemo(() => {
+    if (selectedPoiId === null) return null
+    const poi = pois.find((candidate) => candidate.id === selectedPoiId)
+    if (poi === undefined) return null
+    return {
+      ...poi,
+      mile: searchablePois.find((candidate) => candidate.id === selectedPoiId)?.mile,
+    }
+  }, [selectedPoiId, pois, searchablePois])
+
   const viewportPoints: MapPoint[] = useMemo(
     () =>
       pois.map((poi) => ({
@@ -281,6 +300,57 @@ function App() {
       })),
     [pois],
   )
+
+  // The elevation ribbon and the waypoint lanes (WIREFRAMES.md §1.3, §1.4),
+  // which need three things at once: a published profile, a GPS fix, and that
+  // fix landing on the centerline. Any one missing and both are omitted rather
+  // than stubbed - see MapScreenProps. An empty ribbon reads as "nothing ahead
+  // of you", which is a far worse claim than not drawing one.
+  //
+  // Both share a single window, computed once here. They are one visual block
+  // in the wireframe and a hiker reads a pin as sitting under the part of the
+  // profile it belongs to, which is only true while the two agree about what
+  // stretch of trail they are showing. That also means no profile costs the
+  // lanes as well - the only way to have no profile is a data release built
+  // before pipeline/export_elevation.py existed, and a second window source for
+  // that case would be a code path nothing exercises.
+  //
+  // features/ELEVATION_PROFILE.md has the window and the climb decisions.
+  const ribbon = useMemo(() => {
+    if (elevation === null || fix === null) return undefined
+
+    const window = ribbonWindow(elevation, fix.mile, direction?.direction)
+    const samples = ribbonSamples(elevation, window)
+    // A window that is entirely DEM coverage gap. Rare, and the honest state
+    // is the same as having no profile at all.
+    if (samples.length === 0) return undefined
+
+    return {
+      window,
+      props: {
+        samples,
+        currentMile: fix.mile,
+        upcomingClimb: upcomingClimb(elevation, window, fix.mile, direction?.direction),
+      },
+    }
+  }, [elevation, fix, direction])
+
+  // Built from searchablePois rather than from `pois` again, because that memo
+  // has already paid for the locateOnTrail() call over every POI and the lanes
+  // want exactly the mile it produced. A POI the centerline index cannot place
+  // has no position on a mile axis, so it is left out of the lanes rather than
+  // guessed onto one.
+  const waypoints = useMemo(() => {
+    if (ribbon === undefined) return undefined
+
+    return {
+      points: searchablePois.flatMap((poi) =>
+        poi.mile === undefined ? [] : [{ id: poi.id, type: poi.type, mile: poi.mile }],
+      ),
+      startMile: ribbon.window.startMile,
+      endMile: ribbon.window.endMile,
+    }
+  }, [ribbon, searchablePois])
 
   const updatePreferences = useCallback((patch: Partial<UserPreferences>) => {
     setPreferences((current) => {
@@ -332,6 +402,7 @@ function App() {
     await deleteTrailData()
     setPois([])
     setTrailIndex(null)
+    setElevation(null)
     setTrailsUrl(emptyTrailsUrl())
   }, [removeArchive])
 
@@ -351,6 +422,23 @@ function App() {
   )
 
   const handleMapReady = useCallback((next: MapLibreMap | null) => setMap(next), [])
+
+  // One sheet at a time. The legend and the pin sheet both sit at the bottom of
+  // the map, and two of them stacked would leave the lower one unreadable and
+  // its close button unreachable - so opening either closes the other. The
+  // desktop legend is a permanent panel and does not close, but it is beside
+  // the map rather than over it, so there is nothing to collide with there.
+  const handleSelectPoi = useCallback((id: string) => {
+    setSelectedPoiId(id)
+    setLegendOpen(false)
+  }, [])
+
+  const handleOpenLegend = useCallback(() => {
+    setLegendOpen(true)
+    setSelectedPoiId(null)
+  }, [])
+
+  const handleClosePoi = useCallback(() => setSelectedPoiId(null), [])
 
   const handleToggleType = useCallback((type: string) => {
     setHiddenTypes((current) => {
@@ -503,7 +591,7 @@ function App() {
         lastSyncedAt={lastSyncedAt}
         activeTab={activeTab}
         onSelectTab={setActiveTab}
-        onOpenLegend={() => setLegendOpen(true)}
+        onOpenLegend={handleOpenLegend}
         onOpenSearch={() => setSearchOpen(true)}
         legendOpen={legendOpen}
         onCloseLegend={() => setLegendOpen(false)}
@@ -532,10 +620,15 @@ function App() {
           setSearchOpen(false)
         }}
         bbox={bbox}
+        elevation={ribbon?.props}
+        waypoints={waypoints}
         viewportPoints={viewportPoints}
         blazeCounts={[]}
         hiddenTypes={hiddenTypes}
         onToggleType={handleToggleType}
+        selectedPoi={selectedPoi}
+        onSelectPoi={handleSelectPoi}
+        onClosePoi={handleClosePoi}
         // WIREFRAMES.md §1.5: zoom buttons are web-only. Nothing was passing
         // this, so `showZoomButtons` sat on its default of false everywhere and
         // a browser with a mouse had no visible way to zoom at all.

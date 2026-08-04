@@ -7,12 +7,41 @@
 //     source imported later inherits the rule instead of needing its own layer.
 //     That expression lives in lib/blaze.ts and is imported, never re-spelled.
 //
-//  2. Dash rhythm is a SECOND, hue-independent channel. Yellow, orange and red
-//     are nearly indistinguishable once desaturated by glare or a greyscale
-//     pass (WIREFRAMES.md `9d`), so rhythm - not hue - is what keeps them
-//     apart. MapLibre v6 types `line-dasharray` as `cross-faded-data-driven`,
-//     which means one data-driven expression covers every blaze in a single
-//     layer; this needs no per-blaze layer fan-out.
+//  2. Every trail line is SOLID and one colour end to end. It used to be
+//     dashed, on a per-blaze rhythm, and the rhythm was the map's second
+//     hue-independent channel. What that actually produced on screen was a
+//     line alternating between its blaze colour and the dark casing showing
+//     through each gap - and on the AT centerline, whose blaze is very nearly
+//     white, the gaps read as the line. A hiker looking for the trail they are
+//     standing on found a dotted grey-and-white thread through the contours.
+//     A solid line over a casing is the older, plainer cartographic answer and
+//     it is legible at a glance, which is the property that matters most.
+//
+//     WIDTH carries the hue-independent channel instead, and carries more than
+//     the rhythm did: a system's through-route is drawn markedly wider than the
+//     side trails hanging off it, so the line the map is about is findable with
+//     colour removed entirely - by glare, by greyscale (WIREFRAMES.md `9d`), or
+//     by colour vision deficiency. Width is keyed off the pipeline's own
+//     `source` attribute, in one data-driven expression, for the same reason
+//     the colour is keyed off `blaze_color` in one expression.
+//
+//     Through-route is a role, not a name: today the AT holds it alone, so the
+//     widest line on the map is the AT, but the map is not promised one
+//     system (the NYNJTC maintains several). See PRIMARY_TRAIL_SOURCES for
+//     what a second one costs this channel.
+//
+//     What this gives up is real and worth naming: yellow, orange and red side
+//     trails were separable by rhythm and are now separable by hue alone, and
+//     an undecoded blaze no longer reads as uncertain from its dotted rhythm.
+//     Closures are unaffected - lib/closureStyle.ts keeps its barred band, and
+//     with every blaze now solid that band is a stronger distinction than it
+//     was, not a weaker one.
+//
+//  3. A side trail is never drawn over the through-route it hangs off. One
+//     layer means one painter's order, and where two features share geometry
+//     that order decides which colour a hiker sees - so it is decided here, by
+//     `line-sort-key`, rather than by whichever feature the export wrote last.
+//     See TRAIL_SORT_KEY_EXPRESSION.
 //
 // Not handled here: the POI pins, which are their own two modules -
 // poiLayers.ts for the source, layer and density rules, poiIcons.ts for the
@@ -94,45 +123,141 @@ export function attributionFor(background: BackgroundSource): string {
   return background === 'hiking_topo_live' ? LIVE_ATTRIBUTION : ATTRIBUTION
 }
 
-export const BLAZE_LINE_WIDTH = 2
-export const CASING_LINE_WIDTH = BLAZE_LINE_WIDTH + 1.5
+/** The pipeline's own key for ATC's trail-centerline feed (pipeline/sources.json). */
+export const CENTERLINE_SOURCE = 'centerline'
 
 /**
- * Dash rhythms exactly as WIREFRAMES.md specifies them, in PIXELS.
+ * Trail sources drawn at the primary width: the through-route of a trail
+ * system, as against the side trails and spurs hanging off it.
  *
- * MapLibre measures `line-dasharray` in multiples of the line's own width, not
- * pixels, so these are divided by {@link BLAZE_LINE_WIDTH} on the way into the
- * style. Keeping the table in the spec's own units is what lets it be checked
- * against WIREFRAMES.md by eye.
+ * This is a ROLE, and deliberately a list rather than a single source. Its one
+ * member today is ATC's `centerline`, whose key reads like a proper noun
+ * because that feed is the AT - but nothing here is promised only one
+ * through-route. The NYNJTC alone maintains several trail systems, so a Long
+ * Path or Highlands Trail import joins this tier beside the AT rather than
+ * displacing it, and a `centerline` feed that itself grows past the AT needs
+ * no change here at all.
+ *
+ * What that costs is named where the claim is made (WIREFRAMES.md §3): with
+ * one through-route on the map, the widest line IS the AT. With two, width
+ * answers "through-route or spur" and stops answering "which trail is this" -
+ * still a hue-independent channel, but a coarser one.
  */
-export const BLAZE_DASH_RHYTHMS: Record<string, [number, number]> = {
-  White: [10, 6],
-  Blue: [10, 6],
-  Yellow: [6, 5],
-  Orange: [10, 5],
-  Red: [15, 5],
-  Green: [13, 5],
-  Purple: [10, 6],
-  // Sparse dotted: undecoded lines should read as uncertain at a glance.
-  None: [4, 6],
-  Other: [4, 6],
+export const PRIMARY_TRAIL_SOURCES: readonly string[] = [CENTERLINE_SOURCE]
+
+/** The two width tiers, in CSS pixels. */
+export const PRIMARY_TRAIL_WIDTH = 4.5
+export const SIDE_TRAIL_WIDTH = 2.5
+
+/**
+ * Line width in CSS pixels, per trail source.
+ *
+ * A through-route is the subject of this map and everything else is context,
+ * so it is drawn close to twice the width of a side trail. That is the
+ * hierarchy a paper trail map has always drawn, and it is also the map's
+ * hue-independent channel now that the dash rhythms are gone: the widest lines
+ * on screen are the trails the map is about, whatever the light is doing to
+ * the colours.
+ *
+ * Keyed off `source` - the attribute export_trails.py already publishes on
+ * every feature - rather than off `blaze_color`, because this is a question
+ * about which trail a line IS, not about how it is blazed. (Those two nearly
+ * coincide today, since the centerline is flat-defaulted to White, but only
+ * nearly: WIREFRAMES.md's own table notes centerline features carrying Purple
+ * and Other, and a White-blazed side trail should still be drawn as a side
+ * trail.)
+ */
+export const TRAIL_LINE_WIDTHS: Record<string, number> = {
+  ...Object.fromEntries(
+    PRIMARY_TRAIL_SOURCES.map((source) => [source, PRIMARY_TRAIL_WIDTH]),
+  ),
+  side_trails: SIDE_TRAIL_WIDTH,
 }
 
-const NEUTRAL_RHYTHM: [number, number] = [4, 6]
+/**
+ * What a source this build has never heard of is drawn at.
+ *
+ * The side-trail width deliberately, not a through-route's: a later import
+ * should reach the map rather than be invisible, and should not claim the top
+ * tier on its way there. Joining PRIMARY_TRAIL_SOURCES is how a trail becomes
+ * a through-route, and that is a decision someone makes rather than a default
+ * an unrecognised source falls into.
+ */
+export const DEFAULT_TRAIL_LINE_WIDTH = SIDE_TRAIL_WIDTH
 
-function toLineWidthUnits([on, off]: [number, number]): [number, number] {
-  return [on / BLAZE_LINE_WIDTH, off / BLAZE_LINE_WIDTH]
-}
+/**
+ * Draw order inside a trail layer: through-routes over everything else.
+ *
+ * Every trail line lives in ONE layer, so within that layer the painter's
+ * order is decided by the order the features happen to arrive in - which is
+ * export order, which is nobody's decision. Where a side trail shares geometry
+ * with the through-route it hangs off (and they share a lot of it: a spur that
+ * leaves the AT is digitized from the AT's own vertices, and ATC's side_trails
+ * often run coincident with the centerline for a stretch before branching),
+ * whichever feature is drawn last wins the pixels.
+ *
+ * What that looked like on screen is the bug this fixes: the AT, drawn white,
+ * with grey and blue stretches punched through it wherever an unblazed or
+ * blue-blazed side trail happened to be exported after the centerline. The
+ * hiker reads that as "the trail changes blaze here", which is exactly the
+ * false statement at a junction that this map exists not to make.
+ *
+ * `line-sort-key` decides it instead, off the same `source` attribute that
+ * decides width - higher sorts on top, so a through-route is painted last and
+ * a side trail can never cover it. The two tiers are all that is needed:
+ * within a tier, one line covering another is two lines of equal standing
+ * overlapping, which is honest.
+ */
+export const PRIMARY_TRAIL_SORT_KEY = 1
+export const SIDE_TRAIL_SORT_KEY = 0
 
-export const BLAZE_DASH_MATCH_EXPRESSION = [
-  'match',
-  ['get', 'blaze_color'],
-  ...Object.entries(BLAZE_DASH_RHYTHMS).flatMap(([blaze, rhythm]) => [
-    blaze,
-    ['literal', toLineWidthUnits(rhythm)],
-  ]),
-  ['literal', toLineWidthUnits(NEUTRAL_RHYTHM)],
+export const TRAIL_SORT_KEY_EXPRESSION = [
+  'case',
+  ['in', ['get', 'source'], ['literal', [...PRIMARY_TRAIL_SOURCES]]],
+  PRIMARY_TRAIL_SORT_KEY,
+  SIDE_TRAIL_SORT_KEY,
 ]
+
+/** How far the dark casing shows past each side of the line it sits under. */
+export const CASING_OVERHANG = 1
+
+/**
+ * The widest a blaze is ever drawn, and the width a closure has to stay
+ * markedly clear of (lib/closureStyle.ts and its tests read this).
+ *
+ * Derived from the table rather than written down twice, so widening a
+ * through-route - or admitting a new one - cannot quietly narrow the gap that
+ * keeps a closure from reading as a trail.
+ */
+export const BLAZE_LINE_WIDTH = Math.max(
+  DEFAULT_TRAIL_LINE_WIDTH,
+  ...Object.values(TRAIL_LINE_WIDTHS),
+)
+export const CASING_LINE_WIDTH = BLAZE_LINE_WIDTH + CASING_OVERHANG * 2
+
+/**
+ * `line-width` for the blaze layer, and for the casing under it.
+ *
+ * One expression each, built from the one table above. The casing is the same
+ * expression plus a constant overhang, which is what keeps the hairline a
+ * hairline on a 2.5px side trail and on a 4.5px through-route alike - a casing
+ * scaled proportionally would be twice as heavy under a through-route as under
+ * everything else.
+ */
+function trailWidthExpression(extra: number): unknown[] {
+  return [
+    'match',
+    ['get', 'source'],
+    ...Object.entries(TRAIL_LINE_WIDTHS).flatMap(([source, width]) => [
+      source,
+      width + extra,
+    ]),
+    DEFAULT_TRAIL_LINE_WIDTH + extra,
+  ]
+}
+
+export const TRAIL_WIDTH_EXPRESSION = trailWidthExpression(0)
+export const TRAIL_CASING_WIDTH_EXPRESSION = trailWidthExpression(CASING_OVERHANG * 2)
 
 export interface MapStyleOptions {
   /** `pmtiles://` URL for the downloaded topo archive. */
@@ -233,26 +358,51 @@ export function buildMapStyle({
       ...(liveOptions === null ? [] : liveTopoLayers(liveOptions)),
       {
         // Hairline dark casing, drawn under every blaze so the trail stays
-        // readable over busy topo contours.
+        // readable over busy topo contours. It is doing more work than it used
+        // to: with the line solid, the casing is the ONLY thing giving the
+        // near-white centerline an edge against near-white paper, so it is
+        // carried at a firmer opacity than when a gap in the line let it
+        // through every few pixels.
         id: TRAIL_CASING_LAYER_ID,
         type: 'line',
         source: TRAILS_SOURCE_ID,
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        layout: {
+          'line-cap': 'round',
+          'line-join': 'round',
+          // Sorted like the blaze layer above it, though nothing visible
+          // depends on it while every casing is the same colour. It is here so
+          // that the day one is not - a heavier casing for a through-route, the
+          // "drawn by absence" treatment WIREFRAMES.md reserves for Black - the
+          // ordering rule is already in place rather than being a second bug
+          // with the same shape as the first.
+          'line-sort-key': TRAIL_SORT_KEY_EXPRESSION as unknown as number,
+        },
         paint: {
           'line-color': '#2b2620',
-          'line-width': CASING_LINE_WIDTH,
-          'line-opacity': 0.55,
+          'line-width': TRAIL_CASING_WIDTH_EXPRESSION as unknown as number,
+          'line-opacity': 0.7,
         },
       },
       {
         id: BLAZE_LAYER_ID,
         type: 'line',
         source: TRAILS_SOURCE_ID,
-        layout: { 'line-cap': 'butt', 'line-join': 'round' },
+        // Round, matching the casing beneath it. Butt caps were what the dash
+        // rhythm needed to keep its measured on/off lengths honest; on a solid
+        // line they only leave a nick at every joint between two segments of
+        // the same trail.
+        //
+        // The sort key is what keeps a side trail off the through-route it
+        // branches from, where the two share geometry - see
+        // TRAIL_SORT_KEY_EXPRESSION.
+        layout: {
+          'line-cap': 'round',
+          'line-join': 'round',
+          'line-sort-key': TRAIL_SORT_KEY_EXPRESSION as unknown as number,
+        },
         paint: {
           'line-color': BLAZE_MATCH_EXPRESSION as unknown as string,
-          'line-dasharray': BLAZE_DASH_MATCH_EXPRESSION as unknown as number[],
-          'line-width': BLAZE_LINE_WIDTH,
+          'line-width': TRAIL_WIDTH_EXPRESSION as unknown as number,
         },
       },
       // Last, so a pin is never buried under the trail line it sits on. See

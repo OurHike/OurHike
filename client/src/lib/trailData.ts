@@ -11,12 +11,22 @@
 // twelve megabytes of coordinates.
 
 import { get, set, del } from 'idb-keyval'
-import { dataUrl, POI_TYPES, poiKey, SPURS_KEY, TRAILS_KEY, type PoiType } from './config'
+import {
+  dataUrl,
+  ELEVATION_KEY,
+  POI_TYPES,
+  poiKey,
+  SPURS_KEY,
+  TRAILS_KEY,
+  type PoiType,
+} from './config'
+import { parseProfile, type ElevationProfile } from './elevationProfile'
 import type { SpurRecord } from './spurDestination'
 
 export const TRAILS_BLOB_KEY = 'ourhike:trails'
 export const POIS_KEY = 'ourhike:pois'
 export const SPURS_STORE_KEY = 'ourhike:spurs'
+export const ELEVATION_STORE_KEY = 'ourhike:elevation'
 
 export interface StoredPoi {
   id: string
@@ -25,6 +35,18 @@ export interface StoredPoi {
   lat: number
   lon: number
   confidence: 'high' | 'low'
+  /**
+   * Which published source listed this POI - "atc_shelters", "opentrail_at"
+   * and the rest of pipeline/lib/poi_schema.py's ids, shown as words by
+   * chrome/poiSources.ts.
+   *
+   * Optional because a phone that downloaded before the client read this field
+   * has POIs in IndexedDB without one. Undefined then means "this copy predates
+   * the field", not "the pipeline published no source", and the difference does
+   * not matter to anything that reads it: both come out as a sheet with no
+   * provenance line rather than a wrong one.
+   */
+  source?: string
 }
 
 export interface TrailData {
@@ -34,6 +56,10 @@ export interface TrailData {
    *  export_spurs.py existed - the map still draws every spur, it just cannot
    *  say where one goes. */
   spurs: Record<string, SpurRecord>
+  /** The along-the-trail elevation profile, or null for a release that does
+   *  not publish one. Null costs the elevation ribbon and the waypoint lanes
+   *  and nothing else - App.tsx omits both rather than drawing an empty one. */
+  elevation: ElevationProfile | null
 }
 
 interface PoiProperties {
@@ -43,6 +69,7 @@ interface PoiProperties {
   lat?: unknown
   lon?: unknown
   confidence?: unknown
+  source?: unknown
 }
 
 function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
@@ -66,6 +93,12 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
       // legend shows as "Unverified". Guessing the other way would vouch for
       // a water source nobody checked.
       confidence: props.confidence === 'high' ? 'high' : 'low',
+      // Left off entirely when the artifact has none, rather than stored as a
+      // placeholder string: the detail sheet decides whether to name a source
+      // by whether there is one, and "unknown" is not a source.
+      ...(typeof props.source === 'string' && props.source !== ''
+        ? { source: props.source }
+        : {}),
     })
   }
 
@@ -113,11 +146,34 @@ async function fetchSpurs(signal?: AbortSignal): Promise<Record<string, SpurReco
   return parsed as Record<string, SpurRecord>
 }
 
+/** The elevation profile, or null when this release does not publish one.
+ *
+ *  A 404 is treated the way fetchSpurs() treats one, for the same reason:
+ *  `elevation_profile.json` did not exist before pipeline/export_elevation.py,
+ *  and a phone pointed at an older release should still get its map rather than
+ *  an error. A body that is not the array of samples this expects is also null
+ *  rather than a throw - parseProfile() has the reasoning - so a ribbon that
+ *  cannot be drawn never costs the trail lines that arrived beside it.
+ *
+ *  This is the largest of the vector downloads at 0.87 MB gzipped, and it is
+ *  fetched last so a hiker on a failing connection has the trail and the POIs
+ *  in hand before the decoration is attempted. */
+async function fetchElevation(signal?: AbortSignal): Promise<ElevationProfile | null> {
+  const response = await fetch(dataUrl(ELEVATION_KEY), { signal })
+  if (response.status === 404) return null
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch ${ELEVATION_KEY}: ${response.status} ${response.statusText}`,
+    )
+  }
+  return parseProfile(await response.text())
+}
+
 export async function downloadTrailData({
   onProgress,
   signal,
 }: DownloadTrailDataOptions = {}): Promise<void> {
-  const total = POI_TYPES.length + 2
+  const total = POI_TYPES.length + 3
   let completed = 0
 
   const report = (label: string) => onProgress?.({ label, completed, total })
@@ -138,6 +194,10 @@ export async function downloadTrailData({
   const spurs = await fetchSpurs(signal)
   completed += 1
 
+  report('Elevation profile')
+  const elevation = await fetchElevation(signal)
+  completed += 1
+
   // Nothing is committed until everything has arrived. Writing the trail lines
   // as soon as they landed meant a POI fetch failing - signal dropping partway
   // is the ordinary case here, not the edge one - left a store holding new
@@ -149,6 +209,7 @@ export async function downloadTrailData({
   await set(TRAILS_BLOB_KEY, trails)
   await set(POIS_KEY, pois)
   await set(SPURS_STORE_KEY, spurs)
+  await set(ELEVATION_STORE_KEY, elevation)
   report('Done')
 }
 
@@ -159,11 +220,17 @@ export async function loadTrailData(): Promise<TrailData | null> {
   const pois = ((await get(POIS_KEY)) as StoredPoi[] | undefined) ?? []
   const spurs =
     ((await get(SPURS_STORE_KEY)) as Record<string, SpurRecord> | undefined) ?? {}
-  return { trails, pois, spurs }
+  // Undefined and null both mean "no ribbon". They arrive from different
+  // places - nothing stored at all, versus a release that published no profile
+  // - and neither is a state the map screen has to tell apart.
+  const elevation =
+    ((await get(ELEVATION_STORE_KEY)) as ElevationProfile | undefined) ?? null
+  return { trails, pois, spurs, elevation }
 }
 
 export async function deleteTrailData(): Promise<void> {
   await del(TRAILS_BLOB_KEY)
   await del(POIS_KEY)
   await del(SPURS_STORE_KEY)
+  await del(ELEVATION_STORE_KEY)
 }

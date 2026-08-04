@@ -27,6 +27,7 @@ import { registerPMTilesProtocol } from './protocol'
 import { registerMapWorker } from './mapWorker'
 import { buildMapStyle } from './style'
 import { attachContourUnits, registerTerrain } from './contours'
+import { attachElevationLabelUnits } from './liveTopo'
 import type { TerrainUrls } from './terrain'
 import { attachMapChrome, type ScaleUnits } from './mapChrome'
 import { attachHiddenPoiTypes, attachPoiData, attachPoiIcons } from './poiLayers'
@@ -203,6 +204,14 @@ export function MapView({
   useEffect(() => {
     if (map === null) return
     return attachContourUnits(map, units)
+  }, [map, units])
+
+  // And the labels' half: the contour suffix and the peak elevation field
+  // are baked into the style as layout, so re-pointing the tiles alone
+  // leaves metric values under imperial punctuation - see liveTopo.ts.
+  useEffect(() => {
+    if (map === null) return
+    return attachElevationLabelUnits(map, units)
   }, [map, units])
 
   // Three separate effects rather than one, because they change on completely

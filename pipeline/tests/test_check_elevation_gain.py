@@ -193,3 +193,65 @@ def test_an_empty_profile_is_read_as_nothing_measured(tmp_path, reference):
     path = reference({"sections": []})
 
     assert check_elevation_gain.main(["--profile", str(empty), "--reference", str(path)]) == 2
+
+
+def test_a_stubbed_section_with_no_published_figure_prints_a_dash_and_does_not_gate(profile, reference, capsys):
+    """A null published_gain_ft is a stub awaiting its citation. It must
+    neither crash the summary (None has no float format) nor be counted as a
+    failed comparison - "not validated" and "validated and wrong" are the two
+    states this file exists to keep apart."""
+    path = reference(
+        {
+            "sections": [
+                {
+                    "name": "first climb",
+                    "start_mi": 0.0,
+                    "end_mi": 1.0,
+                    "published_gain_ft": 1000,
+                    "source": "synthetic",
+                },
+                {
+                    "name": "stubbed section",
+                    "start_mi": 1.0,
+                    "end_mi": 2.0,
+                    "published_gain_ft": None,
+                    "source": "tbd",
+                },
+            ]
+        }
+    )
+
+    assert check_elevation_gain.main(["--profile", str(profile), "--reference", str(path)]) == 0
+    out = capsys.readouterr().out
+    assert "stubbed section" in out
+    assert "no published figure yet" in out
+
+
+def test_a_reference_of_nothing_but_stubs_is_not_a_pass(profile, reference, capsys):
+    """All-stubs is the empty table wearing a different shape: nothing has
+    been validated, and reporting success would make it look validated."""
+    path = reference(
+        {
+            "sections": [
+                {
+                    "name": "stubbed section",
+                    "start_mi": 0.0,
+                    "end_mi": 1.0,
+                    "published_gain_ft": None,
+                    "source": "tbd",
+                }
+            ]
+        }
+    )
+
+    assert check_elevation_gain.main(["--profile", str(profile), "--reference", str(path)]) == 1
+
+
+def test_an_unreadable_reference_reports_rather_than_tracebacks(profile, tmp_path):
+    """The reference gets the same discipline as the profile: a truncated
+    write to published_gain.json is a named exit-2, not an anonymous
+    JSONDecodeError from inside the json module."""
+    broken = tmp_path / "published_gain.json"
+    broken.write_text("{ not json")
+
+    assert check_elevation_gain.main(["--profile", str(profile), "--reference", str(broken)]) == 2

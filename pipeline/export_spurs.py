@@ -38,6 +38,7 @@ import json
 from pathlib import Path
 
 from lib.arcgis import get_field_coded_domain
+from lib.feature_id import resolve_feature_id
 from lib.spurs import (
     SPUR_TYPE_CODE,
     build_centerline_index,
@@ -147,8 +148,13 @@ def build_spur_records(
 ) -> dict[str, dict]:
     """Every `Type=3` side trail, keyed by the id `trails.geojson` uses.
 
-    The id is built the same way export_trails.py builds it (`{key}:{id}`), so
-    the two artifacts join without either needing to know about the other.
+    The id is `{key}:{id}` with the id from lib/feature_id.py's
+    resolve_feature_id - the SAME function export_trails.py calls, not a
+    reimplementation of it. This docstring used to claim "built the same
+    way" over a local copy of the chain, and the copy had already drifted
+    (truthiness for `is None`, OBJECTID for the feature's own id), which
+    made any feature off the happy path silently fail the join this
+    artifact exists for.
     """
     centerline = build_centerline_index(centerline_features)
     destinations = build_destination_index(pois)
@@ -166,7 +172,7 @@ def build_spur_records(
         if code != SPUR_TYPE_CODE:
             continue
 
-        feature_id = properties.get("GlobalID") or properties.get("OBJECTID") or index
+        feature_id = resolve_feature_id(SIDE_TRAILS_KEY, feature, properties, index)
         geometry = feature.get("geometry") or {}
         resolved = resolve_destination(geometry.get("coordinates") or [], centerline, destinations)
 

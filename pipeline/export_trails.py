@@ -45,10 +45,10 @@ from shapely import wkt as shapely_wkt
 from shapely.ops import transform as shapely_transform
 
 from lib.arcgis import get_field_coded_domain
-from lib.feature_id import resolve_feature_id
 from lib.blaze import normalize_blaze_color
 from lib.completeness import count_problems, fail_if_incomplete
 from lib.corridor import build_corridor
+from lib.feature_id import resolve_feature_id
 
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"

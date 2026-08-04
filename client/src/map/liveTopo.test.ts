@@ -305,7 +305,8 @@ describe('attachElevationLabelUnits', () => {
     // the rest, and the mock (like real MapLibre) rejects writes to absent
     // layers.
     const { MockMap } = await import('../test/mocks/maplibre-gl')
-    const { attachElevationLabelUnits, contourLabelTextField } = await import('./liveTopo')
+    const { attachElevationLabelUnits, contourLabelTextField } =
+      await import('./liveTopo')
     const m = new MockMap({})
     m.layerIds = [LIVE_TOPO_LAYER_IDS.contourLabel]
 

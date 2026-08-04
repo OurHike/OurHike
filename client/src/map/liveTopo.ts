@@ -569,7 +569,10 @@ export function liveTopoLayers({ units }: LiveTopoOptions): LayerSpecification[]
  * to retune - the wait simply ends at detach, exactly as attachContourUnits
  * treats its absent source.
  */
-export function attachElevationLabelUnits(map: MapLibreMap, units: ContourUnits): () => void {
+export function attachElevationLabelUnits(
+  map: MapLibreMap,
+  units: ContourUnits,
+): () => void {
   return whenStyleReady(
     map,
     () => map.getLayer(LIVE_TOPO_LAYER_IDS.contourLabel) !== undefined,

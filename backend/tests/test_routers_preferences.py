@@ -129,9 +129,7 @@ def test_get_repairs_a_stored_background_the_enum_no_longer_carries(client, db_s
     legacy = _valid_preferences(background_source="usgs_topo_live")
     db_session.add(Profile(id=user_id, role=Role.hiker))
     db_session.commit()
-    db_session.add(
-        UserPreferences(profile_id=user_id, data=legacy, updated_at=datetime.now(UTC))
-    )
+    db_session.add(UserPreferences(profile_id=user_id, data=legacy, updated_at=datetime.now(UTC)))
     db_session.commit()
 
     response = client.get("/preferences/me", headers=auth_headers(user_id))

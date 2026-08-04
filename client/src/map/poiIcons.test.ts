@@ -4,6 +4,7 @@ import { CLOSURE_COLOR } from '../lib/closureStyle'
 import {
   buildPoiIcon,
   buildPoiIcons,
+  poiGlyphPath,
   poiIconId,
   POI_COLORS,
   POI_FALLBACK_COLOR,
@@ -313,5 +314,47 @@ describe('buildPoiIcons', () => {
     // biggest thing on the map. A water pin drawn larger, or merely drawn the
     // same, would outshout the one thing here that must never be outshouted.
     expect(POI_PIN_SIZE).toBeLessThan(44)
+  })
+})
+
+describe('poiGlyphPath', () => {
+  // The same silhouettes the rasteriser fills, handed to chrome as SVG - the
+  // waypoint card's photo placeholder draws them. What matters is that they
+  // stay the SAME shapes: a placeholder tent that drifted from the pin's tent
+  // would be two shape languages claiming to be one.
+
+  it.each(ALL_TYPES)('closes every ring of %s, so the fill has an inside', (type) => {
+    const path = poiGlyphPath(type)
+
+    // One M...Z subpath per ring and nothing outside them.
+    expect(path).toMatch(/^(M[^MZ]+Z)+$/)
+  })
+
+  it('keeps the shelter’s doorway as its own subpath for the even-odd fill to cut out', () => {
+    const subpaths = poiGlyphPath('shelter').match(/M[^MZ]+Z/g)
+
+    expect(subpaths).toHaveLength(2)
+  })
+
+  it('stays inside the unit box the viewBox declares', () => {
+    for (const type of ALL_TYPES) {
+      const numbers = poiGlyphPath(type)
+        .split(/[MLZ ]/)
+        .filter((token) => token !== '')
+        .map(Number)
+
+      expect(numbers.length).toBeGreaterThan(0)
+      for (const value of numbers) {
+        expect(value).toBeGreaterThanOrEqual(0)
+        expect(value).toBeLessThanOrEqual(1)
+      }
+    }
+  })
+
+  it('hands an unknown type the placeholder diamond, not an empty path', () => {
+    // Same call the rasteriser makes: a category this build has never heard
+    // of is already on the map as a neutral pin, and its card's placeholder
+    // should show the same diamond rather than a blank slot.
+    expect(poiGlyphPath('hot_springs')).toBe(poiGlyphPath(UNKNOWN_POI_TYPE))
   })
 })

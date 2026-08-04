@@ -162,15 +162,6 @@ describe('MapView', () => {
     expect(MockMap.live).toHaveLength(1)
   })
 
-  it('applies the off-archive backdrop once the style is up', () => {
-    render(<MapView {...PROPS} />)
-    const [map] = MockMap.live
-
-    map.emit('load')
-
-    expect(map.paintProperties.has('backdrop/background-pattern')).toBe(true)
-  })
-
   it('leaves no load listener behind after unmount', () => {
     const { unmount } = render(<MapView {...PROPS} />)
     const [map] = MockMap.live

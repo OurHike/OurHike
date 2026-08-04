@@ -87,8 +87,8 @@ export const BLAZE_LAYER_ID = 'trail-blaze'
  *
  * `--paper-100`, the same tone as USGS topo's own paper, so uncovered ground
  * belongs to the same map as the covered parts. Named rather than inlined
- * because backdrop.ts reads it: whichever of the two is showing, the paper has
- * to be the same paper.
+ * because poiIcons.ts and chrome.css's pre-WebGL fallback read it too: every
+ * one of them has to agree on the same paper.
  *
  * Uncovered ground is not an edge case, and reaching it does not need the
  * pipeline's transparent-nodata tiles to be involved at all - the corridor
@@ -310,6 +310,28 @@ export function buildMapStyle({
         type: 'geojson',
         data: trailsUrl,
         attribution: ATTRIBUTION,
+        // Never simplify a trail away. MapLibre tiles GeoJSON through
+        // geojson-vt, whose per-zoom simplification does two things under
+        // this one knob: it thins vertices within a line (harmless - the
+        // error is bounded sub-pixel), and it DROPS WHOLE FEATURES whose
+        // projected length falls under that same bar - ~1.4 km at z4,
+        // ~700 m at z5, ~350 m at z6 with the 0.375 px default.
+        //
+        // The centerline is not one feature. ATC surveys it as ~3,000
+        // segments averaging ~1.2 km, so at corridor zooms much of the
+        // trail is under the bar, consecutive short segments vanish
+        // TOGETHER, and the AT rendered with miles-long gaps (#160) - on
+        // this map, a false statement about where the trail is. Zero is
+        // the only value that makes the drop rule structurally impossible,
+        // for this data and for anything imported later.
+        //
+        // The cost lands only below ~z8, where the gaps were: low-zoom
+        // tiles keep every vertex the pipeline's own 1 m simplification
+        // left in (measured at this density: ~220 ms of worker time across
+        // the z4-z6 tiles, once per session). #161 is the durable answer -
+        // merge the centerline chains at export, then let this return to
+        // the default - and owns the revert.
+        tolerance: 0,
       },
       // Declared empty and filled in later - see buildPoiSource. Attributed
       // like the other two: the POIs are ATC and OpenStreetMap-derived, and a
@@ -350,11 +372,11 @@ export function buildMapStyle({
       // Stacked this way, the two never have to be chosen between at runtime
       // and there is no online/offline branch anywhere: with signal, the
       // vector sheet covers the corridor with something sharp and styled and
-      // keeps going past its edge, where there used to be nothing but hatched
+      // keeps going past its edge, where there used to be nothing but blank
       // paper. Without signal, these layers simply draw nothing, the archive
-      // shows through underneath exactly as it always has, and the hatch still
-      // marks where the download does not reach. Every state is at least as
-      // good as it was before, and none of them needs to be detected.
+      // shows through underneath exactly as it always has, and the flat paper
+      // colour still marks where the download does not reach. Every state is
+      // at least as good as it was before, and none of them needs to be detected.
       ...(liveOptions === null ? [] : liveTopoLayers(liveOptions)),
       {
         // Hairline dark casing, drawn under every blaze so the trail stays

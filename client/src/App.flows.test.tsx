@@ -340,6 +340,27 @@ describe('tapping a pin on the map', () => {
     expect(screen.queryByRole('dialog', { name: /waypoint/i })).not.toBeInTheDocument()
   })
 
+  it('goes away on a tap on bare map, without hunting for the close button', async () => {
+    // The card floats beside its pin, so it dismisses the way every floating
+    // map card does: tap anywhere else. Only a TAP - MapLibre withholds the
+    // click event when the gesture was a pan, so riding the map around with
+    // the card open keeps it.
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await tapPin({ [POI_ID_PROPERTY]: SHELTER.id, poi_type: 'shelter' })
+    await screen.findByRole('dialog', { name: /waypoint/i })
+
+    const map = MockMap.live[0]
+    map.renderedFeatures.set(POI_LAYER_ID, [])
+    await act(async () => {
+      map.emit('click', { point: { x: 40, y: 60 } })
+    })
+
+    expect(screen.queryByRole('dialog', { name: /waypoint/i })).not.toBeInTheDocument()
+  })
+
   it('ignores a tap on a pin the app no longer holds', async () => {
     // A stale tile can name a POI that a re-download has since dropped. An
     // empty sheet would be worse than no sheet.

@@ -10,7 +10,10 @@
 // this file exists to close.
 //
 // Three decisions are baked in here, and all three are choices rather than
-// defaults:
+// defaults. They are recorded in TECHNICAL_ARCHITECTURE.md's client section
+// ("What happens when a screen throws"), which is where to change them; the
+// summaries below exist so someone reading this file knows they were decided
+// rather than fallen into.
 //
 // **The tab bar stays under the fallback.** A fallback you cannot navigate out
 // of is a white screen with words on it. Whatever else has gone wrong, the map

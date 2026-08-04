@@ -27,9 +27,9 @@ import { registerPMTilesProtocol } from './protocol'
 import { registerMapWorker } from './mapWorker'
 import { buildMapStyle } from './style'
 import { attachContourUnits, registerTerrain } from './contours'
+import { attachElevationLabelUnits } from './liveTopo'
 import type { TerrainUrls } from './terrain'
 import { attachMapChrome, type ScaleUnits } from './mapChrome'
-import { attachMapBackdrop } from './backdrop'
 import { attachHiddenPoiTypes, attachPoiData, attachPoiIcons } from './poiLayers'
 import { attachPoiTaps } from './poiTaps'
 import type { BoundingBox, MapPoint } from '../lib/legendContents'
@@ -66,14 +66,15 @@ export interface MapViewProps {
    */
   bounds?: [[number, number], [number, number]]
   /**
-   * A pin was tapped, by POI id. Must be stable across renders (useCallback),
-   * like `onViewportChange` - an inline function would re-bind the map's
-   * listeners on every render of the parent.
+   * A pin was tapped, by POI id - or the bare map was, reported as null so
+   * the shell can dismiss whatever the last pin opened. Must be stable across
+   * renders (useCallback), like `onViewportChange` - an inline function would
+   * re-bind the map's listeners on every render of the parent.
    *
    * Only the id: this component knows what is drawn on the map, not what the
    * app knows about it, and looking a POI up is the shell's job.
    */
-  onSelectPoi?: (id: string) => void
+  onSelectPoi?: (id: string | null) => void
   /** Web only; touch platforms rely on pinch (see mapChrome.ts). */
   showZoomButtons?: boolean
   units?: ScaleUnits
@@ -146,11 +147,10 @@ export function MapView({
     // Someone who chose the downloaded archive to stay off the network should
     // not have a DEM protocol registered behind their back.
     //
-    // Best-effort, following backdrop.ts: contour generation needs a Web
-    // Worker and a blob URL, and if either is unavailable the honest outcome
-    // is a map without contours, not no map. A failure here costs terrain and
-    // nothing else - the archive, the trail lines and the paper are all in the
-    // style already.
+    // Best-effort: contour generation needs a Web Worker and a blob URL, and
+    // if either is unavailable the honest outcome is a map without contours,
+    // not no map. A failure here costs terrain and nothing else - the
+    // archive, the trail lines and the paper are all in the style already.
     let terrain: TerrainUrls | undefined
     if (background === 'hiking_topo_live') {
       try {
@@ -206,13 +206,13 @@ export function MapView({
     return attachContourUnits(map, units)
   }, [map, units])
 
-  // The backdrop's paper colour is in the style itself and needs nothing here.
-  // This adds only the hatch on top of it, which needs a loaded style and so
-  // cannot be expressed in buildMapStyle - see backdrop.ts.
+  // And the labels' half: the contour suffix and the peak elevation field
+  // are baked into the style as layout, so re-pointing the tiles alone
+  // leaves metric values under imperial punctuation - see liveTopo.ts.
   useEffect(() => {
     if (map === null) return
-    return attachMapBackdrop(map)
-  }, [map])
+    return attachElevationLabelUnits(map, units)
+  }, [map, units])
 
   // Three separate effects rather than one, because they change on completely
   // different clocks: the pin images are built once and never again, the POIs

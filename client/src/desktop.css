@@ -190,16 +190,22 @@
 
 /* Focus rings, everywhere, with no media query around them.
  *
- * :focus-visible only matches when the browser judges a focus ring warranted -
- * keyboard navigation, essentially - so it is already silent for a tap. That
- * makes gating it on pointer or width both unnecessary and harmful: a phone
- * with a bluetooth keyboard, or a screen-reader user driving a touch device,
- * needs to see where focus is, and neither shows up as `pointer: fine`.
+ * :focus-visible mostly matches when the browser judges a focus ring
+ * warranted - keyboard navigation, essentially - so for buttons and links it
+ * is silent for a tap. (Not for text inputs: browsers match those on ANY
+ * focus, including a tap into the search field, so this rule does fire on
+ * phones.) Gating it on pointer or width would still be both unnecessary and
+ * harmful: a phone with a bluetooth keyboard, or a screen-reader user
+ * driving a touch device, needs to see where focus is, and neither shows up
+ * as `pointer: fine`.
  *
- * This is the one thing in this file the phone layout does get, and it is
- * deliberate. */
+ * Outline ONLY - nothing here may restyle the control itself. :where()
+ * contributes zero specificity, which leaves this selector at (0,1,0), a
+ * cascade TIE with every single-class rule in the app; this file is imported
+ * last, so a tie is a win, and a border-radius here once snapped the 12px
+ * search field square under focus. The outline follows each control's own
+ * corner rounding by itself. */
 :where(button, a, input, select, [tabindex]):focus-visible {
   outline: 2px solid var(--brand-primary);
   outline-offset: 2px;
-  border-radius: 2px;
 }

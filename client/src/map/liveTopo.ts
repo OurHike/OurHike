@@ -44,6 +44,8 @@ import type {
   LayerSpecification,
   SourceSpecification,
 } from '@maplibre/maplibre-gl-style-spec'
+import type { Map as MapLibreMap } from 'maplibre-gl'
+import { whenStyleReady } from './styleReady'
 import {
   CONTOUR_ELEVATION_KEY,
   CONTOUR_LAYER,
@@ -146,9 +148,97 @@ function isClass(...values: string[]): unknown[] {
     : ['in', ['get', 'class'], ['literal', values]]
 }
 
+/**
+ * The zoom each place class starts labelling at (#159).
+ *
+ * Distance decides what deserves ink, the way it does on a paper sheet. The
+ * corridor-wide view crosses the whole Boston-Washington seaboard, and with
+ * every class labelling at every zoom, that view was a wall of type the
+ * centerline had to be picked out from under. So each class waits for the
+ * zoom where its name starts meaning something to a hiker: a city anchors
+ * the map from any distance, a town matters once a section is being planned,
+ * a village once it is about to be walked past.
+ *
+ * Cities carry no threshold - orientation is their whole job, and the
+ * corridor view without them is a line through unnamed country.
+ */
+export const PLACE_TOWN_MIN_ZOOM = 8
+export const PLACE_VILLAGE_MIN_ZOOM = 11
+
+export const PLACE_FILTER = [
+  'step',
+  ['zoom'],
+  isClass('city'),
+  PLACE_TOWN_MIN_ZOOM,
+  isClass('city', 'town'),
+  PLACE_VILLAGE_MIN_ZOOM,
+  isClass('city', 'town', 'village'),
+]
+
+/**
+ * Which label survives when two places collide: the bigger one.
+ *
+ * Lower sorts place first, and earlier placement wins the space - so without
+ * this, whether Boston or a suburb's town label survives their collision is
+ * decided by feature order inside the tile, which is nobody's decision. Same
+ * reasoning as poiLayers.ts's POI_PRIORITY, one layer over.
+ */
+export const PLACE_SORT_KEY_EXPRESSION = [
+  'match',
+  ['get', 'class'],
+  'city',
+  0,
+  'town',
+  1,
+  2,
+]
+
 export interface LiveTopoOptions {
   terrain: TerrainUrls
   units: ContourUnits
+}
+
+/**
+ * The two text-fields that bake the unit choice into the style, extracted so
+ * the live unit switch can re-point them with `setLayoutProperty` - see
+ * attachElevationLabelUnits. One home each: an expression built here and
+ * rebuilt slightly differently there would show its drift as a wrong-unit
+ * elevation on the map.
+ */
+
+/** An index contour's label: the tile's value plus the unit's mark. The tiles
+ *  themselves are already per-unit (registerTerrain), so the value needs no
+ *  conversion - only the suffix says which system the number is in. */
+export function contourLabelTextField(units: ContourUnits): unknown {
+  return [
+    'concat',
+    ['to-string', ['get', CONTOUR_ELEVATION_KEY]],
+    units === 'imperial' ? "'" : 'm',
+  ]
+}
+
+/** A peak's label: name over surveyed height. OpenFreeMap publishes the
+ *  height in both units as separate properties, so the unit choice is which
+ *  property to read, not a conversion. */
+export function peakLabelTextField(units: ContourUnits): unknown {
+  const elevationKey = units === 'imperial' ? 'ele_ft' : 'ele'
+  // `concat` errors on a null argument and drops the feature, so the
+  // name is coalesced rather than read straight: an unnamed summit with
+  // a surveyed height is still worth putting on the map, and losing it
+  // to an expression error would be a silent hole in exactly the layer
+  // this style added terrain for.
+  return [
+    'case',
+    ['has', elevationKey],
+    [
+      'concat',
+      ['coalesce', ['get', 'name'], ''],
+      '\n',
+      ['to-string', ['get', elevationKey]],
+      units === 'imperial' ? "'" : 'm',
+    ],
+    ['coalesce', ['get', 'name'], ''],
+  ]
 }
 
 export function liveTopoSources({
@@ -189,12 +279,11 @@ export function liveTopoSources({
  * There is deliberately no land-coloured fill at the bottom. The style's paper
  * backdrop already is the sheet, exactly as on a printed quad where open
  * ground is simply unprinted paper - and adding a source-free fill here would
- * paint over the off-archive hatch (backdrop.ts) even when no tile had loaded,
- * turning "nothing arrived" back into a confident picture of empty ground.
+ * paint over that paper (style.ts's BACKDROP_LAYER_ID) even when no tile had
+ * loaded, turning "nothing arrived" back into a confident picture of empty
+ * ground.
  */
 export function liveTopoLayers({ units }: LiveTopoOptions): LayerSpecification[] {
-  const elevationSuffix = units === 'imperial' ? "'" : 'm'
-
   return [
     {
       id: LIVE_TOPO_LAYER_IDS.wood,
@@ -336,11 +425,7 @@ export function liveTopoLayers({ units }: LiveTopoOptions): LayerSpecification[]
       minzoom: 12,
       layout: {
         'symbol-placement': 'line',
-        'text-field': [
-          'concat',
-          ['to-string', ['get', CONTOUR_ELEVATION_KEY]],
-          elevationSuffix,
-        ] as never,
+        'text-field': contourLabelTextField(units) as never,
         'text-font': FONT,
         'text-size': 10,
         'text-max-angle': 25,
@@ -450,23 +535,7 @@ export function liveTopoLayers({ units }: LiveTopoOptions): LayerSpecification[]
       filter: isClass('peak', 'volcano') as never,
       minzoom: 10,
       layout: {
-        // `concat` errors on a null argument and drops the feature, so the
-        // name is coalesced rather than read straight: an unnamed summit with
-        // a surveyed height is still worth putting on the map, and losing it
-        // to an expression error would be a silent hole in exactly the layer
-        // this style added terrain for.
-        'text-field': [
-          'case',
-          ['has', units === 'imperial' ? 'ele_ft' : 'ele'],
-          [
-            'concat',
-            ['coalesce', ['get', 'name'], ''],
-            '\n',
-            ['to-string', ['get', units === 'imperial' ? 'ele_ft' : 'ele']],
-            elevationSuffix,
-          ],
-          ['coalesce', ['get', 'name'], ''],
-        ] as never,
+        'text-field': peakLabelTextField(units) as never,
         'text-font': FONT,
         'text-size': ['interpolate', ['linear'], ['zoom'], 10, 10, 14, 13] as never,
         'text-anchor': 'top',
@@ -498,26 +567,34 @@ export function liveTopoLayers({ units }: LiveTopoOptions): LayerSpecification[]
       },
     },
     // Towns only, and only the ones big enough to matter for resupply - a
-    // hamlet label every half mile is noise on a trail map.
+    // hamlet label every half mile is noise on a trail map. The same rule
+    // continues up the ladder by zoom (PLACE_FILTER): zoomed out far enough,
+    // even a town is a hamlet.
     {
       id: LIVE_TOPO_LAYER_IDS.place,
       type: 'symbol',
       source: OSM_SOURCE_ID,
       'source-layer': 'place',
-      filter: isClass('city', 'town', 'village') as never,
+      filter: PLACE_FILTER as never,
       layout: {
         'text-field': ['get', 'name'] as never,
         'text-font': FONT,
+        // The low stop matters most: at the corridor-wide view a city is an
+        // orientation anchor, not a destination, and it is set smaller there
+        // so the type never outweighs the line the view is about.
         'text-size': [
           'interpolate',
           ['linear'],
           ['zoom'],
+          5,
+          ['case', isClass('city') as never, 11, 9],
           8,
           ['case', isClass('city') as never, 13, 10],
           14,
           ['case', isClass('city') as never, 18, 13],
         ] as never,
         'text-max-width': 8,
+        'symbol-sort-key': PLACE_SORT_KEY_EXPRESSION as unknown as number,
       },
       paint: {
         'text-color': TOPO_PALETTE.label,
@@ -526,4 +603,49 @@ export function liveTopoLayers({ units }: LiveTopoOptions): LayerSpecification[]
       },
     },
   ]
+}
+
+/**
+ * The elevation labels' half of the live unit switch.
+ *
+ * attachContourUnits (contours.ts) re-points the contour SOURCE at the other
+ * unit's tiles, but the two places the unit choice is baked into the style as
+ * layout - the contour label's suffix and the peak layer's choice of `ele_ft`
+ * vs `ele` - do not move with it. Left alone they produce the worst kind of
+ * wrong map: metric tiles under imperial punctuation, a 500 m index contour
+ * reading 500'. This re-points both text-fields in place, with the same
+ * expressions the style was built from, for the same reason the source
+ * retune exists at all: `units` is deliberately kept out of the map-building
+ * effect so a settings change never tears the map down under a hiker.
+ *
+ * Waits on the contour label layer, which only a live-background style
+ * holds. On the offline background neither layer exists and there is nothing
+ * to retune - the wait simply ends at detach, exactly as attachContourUnits
+ * treats its absent source.
+ */
+export function attachElevationLabelUnits(
+  map: MapLibreMap,
+  units: ContourUnits,
+): () => void {
+  return whenStyleReady(
+    map,
+    () => map.getLayer(LIVE_TOPO_LAYER_IDS.contourLabel) !== undefined,
+    () => {
+      map.setLayoutProperty(
+        LIVE_TOPO_LAYER_IDS.contourLabel,
+        'text-field',
+        contourLabelTextField(units) as never,
+      )
+      // Guarded separately: the ready() probe proves the contour label is
+      // there, not that every live-topo layer is.
+      if (map.getLayer(LIVE_TOPO_LAYER_IDS.peak) !== undefined) {
+        map.setLayoutProperty(
+          LIVE_TOPO_LAYER_IDS.peak,
+          'text-field',
+          peakLabelTextField(units) as never,
+        )
+      }
+    },
+    'Elevation label units',
+  )
 }

@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { validateStyleMin } from '@maplibre/maplibre-gl-style-spec'
+import {
+  createExpression,
+  featureFilter,
+  latest,
+  validateStyleMin,
+} from '@maplibre/maplibre-gl-style-spec'
 import { buildMapStyle, ATTRIBUTION, TOPO_LAYER_ID, BACKDROP_LAYER_ID } from './style'
 import {
   LIVE_TOPO_ATTRIBUTION,
@@ -7,6 +12,8 @@ import {
   OPENFREEMAP_GLYPHS,
   OPENFREEMAP_TILEJSON,
   OSM_SOURCE_ID,
+  PLACE_TOWN_MIN_ZOOM,
+  PLACE_VILLAGE_MIN_ZOOM,
   liveTopoLayers,
 } from './liveTopo'
 import {
@@ -91,11 +98,11 @@ describe('the live topographic background', () => {
     expect(ids(live())[0]).toBe(BACKDROP_LAYER_ID)
   })
 
-  it('adds no source-free fill of its own, so the off-archive hatch survives', () => {
-    // A land-coloured `background` layer here would paint over backdrop.ts's
-    // hatch even when no tile had loaded - turning "nothing arrived" back into
-    // a confident picture of empty ground, which is the exact lie that hatch
-    // exists to prevent.
+  it('adds no source-free fill of its own, so the off-archive paper survives', () => {
+    // A land-coloured `background` layer here would paint over the paper
+    // backdrop even when no tile had loaded - turning "nothing arrived" back
+    // into a confident picture of empty ground, which is the exact lie that
+    // backdrop exists to prevent.
     const backgrounds = live().layers.filter((layer) => layer.type === 'background')
 
     expect(backgrounds.map((layer) => layer.id)).toEqual([BACKDROP_LAYER_ID])
@@ -200,6 +207,81 @@ describe('the live topographic background', () => {
   })
 })
 
+describe('place labels, by distance', () => {
+  // The corridor-wide view crosses the Boston-Washington seaboard. With
+  // cities, towns and villages all labelling at every zoom, that view was a
+  // wall of type the centerline had to be picked out from under (#159) - so
+  // each class waits for the zoom where its name starts meaning something,
+  // and both rules below are evaluated through MapLibre's own engines
+  // rather than read back off the arrays, since what is under test is what
+  // renders, not the shape of an expression.
+
+  function placeLayer() {
+    const found = liveTopoLayers({ terrain: TERRAIN, units: 'imperial' }).find(
+      (layer) => layer.id === LIVE_TOPO_LAYER_IDS.place,
+    )
+    if (found === undefined || found.type !== 'symbol') {
+      throw new Error('no symbol place layer in the live sheet')
+    }
+    return found
+  }
+
+  /** Whether one place class labels at one zoom, per the layer's filter. */
+  function labelled(zoom: number, placeClass: string): boolean {
+    const compiled = featureFilter(placeLayer().filter as never, 'layers[0].filter')
+    return compiled.filter(
+      { zoom } as never,
+      { type: 1, properties: { class: placeClass }, geometry: [] } as never,
+    )
+  }
+
+  /** Which of two colliding labels is placed first (lower wins the space). */
+  function sortKey(placeClass: string): number {
+    const layout = placeLayer().layout as Record<string, unknown>
+    const compiled = createExpression(
+      layout['symbol-sort-key'] as never,
+      latest.layout_symbol['symbol-sort-key'] as never,
+    )
+    if (compiled.result === 'error') {
+      throw new Error('symbol-sort-key on the place layer is not a valid expression')
+    }
+    return compiled.value.evaluate(
+      { zoom: 9 } as never,
+      { properties: { class: placeClass } } as never,
+    )
+  }
+
+  it('labels only cities on the corridor-wide view, as anchors', () => {
+    for (const zoom of [4, PLACE_TOWN_MIN_ZOOM - 1]) {
+      expect(labelled(zoom, 'city')).toBe(true)
+      expect(labelled(zoom, 'town')).toBe(false)
+      expect(labelled(zoom, 'village')).toBe(false)
+    }
+  })
+
+  it('lets towns in at section-planning zooms, and villages only close up', () => {
+    expect(labelled(PLACE_TOWN_MIN_ZOOM, 'town')).toBe(true)
+    expect(labelled(PLACE_VILLAGE_MIN_ZOOM - 1, 'village')).toBe(false)
+    expect(labelled(PLACE_VILLAGE_MIN_ZOOM, 'village')).toBe(true)
+  })
+
+  it('never labels a hamlet, at any rung of the ladder', () => {
+    // The ladder admits classes by zoom; it must not widen the class list on
+    // the way. A hamlet label every half mile is noise on a trail map.
+    for (const zoom of [4, PLACE_TOWN_MIN_ZOOM, PLACE_VILLAGE_MIN_ZOOM, 14]) {
+      expect(labelled(zoom, 'hamlet')).toBe(false)
+    }
+  })
+
+  it('hands a colliding pair to the bigger place, not to tile feature order', () => {
+    // Lower sorts place first, and earlier placement wins the space -
+    // whether Boston or a suburb survives their collision is a decision,
+    // not an accident of feature order inside the tile.
+    expect(sortKey('city')).toBeLessThan(sortKey('town'))
+    expect(sortKey('town')).toBeLessThan(sortKey('village'))
+  })
+})
+
 describe('the offline-only background', () => {
   it('adds no live source, so choosing it really does stay off the network', () => {
     const style = offline()
@@ -246,5 +328,75 @@ describe('a live background with no terrain registered', () => {
     expect(validateStyleMin(degraded)).toEqual([])
     expect(ids(degraded)).not.toContain(LIVE_TOPO_LAYER_IDS.hillshade)
     expect(ids(degraded)).toContain(TOPO_LAYER_ID)
+  })
+})
+
+describe('attachElevationLabelUnits', () => {
+  // The other half of the live unit switch. attachContourUnits re-points the
+  // contour SOURCE at the other unit's tiles; without this, the label suffix
+  // and the peak elevation field stayed baked at style-build time, and a
+  // metric retune drew 500 m index contours labelled 500'.
+  it('re-points both elevation text-fields in place', async () => {
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const { attachElevationLabelUnits, contourLabelTextField, peakLabelTextField } =
+      await import('./liveTopo')
+    const m = new MockMap({})
+    m.layerIds = [LIVE_TOPO_LAYER_IDS.contourLabel, LIVE_TOPO_LAYER_IDS.peak]
+
+    attachElevationLabelUnits(m as never, 'metric')
+
+    expect(
+      m.layoutProperties.get(`${LIVE_TOPO_LAYER_IDS.contourLabel}/text-field`),
+    ).toEqual(contourLabelTextField('metric'))
+    expect(m.layoutProperties.get(`${LIVE_TOPO_LAYER_IDS.peak}/text-field`)).toEqual(
+      peakLabelTextField('metric'),
+    )
+  })
+
+  it('waits for the label layer when the style has not brought it yet', async () => {
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const { attachElevationLabelUnits } = await import('./liveTopo')
+    const m = new MockMap({})
+
+    attachElevationLabelUnits(m as never, 'metric')
+    expect(m.layoutProperties.size).toBe(0)
+
+    m.layerIds = [LIVE_TOPO_LAYER_IDS.contourLabel, LIVE_TOPO_LAYER_IDS.peak]
+    m.emit('styledata')
+    expect(m.layoutProperties.size).toBe(2)
+  })
+
+  it('leaves an offline-background style alone', async () => {
+    // Neither layer exists there, and that is a normal state rather than a
+    // failure - the wait simply never resolves and detach ends it.
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const { attachElevationLabelUnits } = await import('./liveTopo')
+    const m = new MockMap({})
+    m.layerIds = [TOPO_LAYER_ID]
+
+    const detach = attachElevationLabelUnits(m as never, 'metric')
+    m.emit('styledata')
+    detach()
+
+    expect(m.layoutProperties.size).toBe(0)
+  })
+
+  it('survives a live style that has contour labels but no peak layer', async () => {
+    // ready() probes the contour label only; the peak write is guarded
+    // separately because proving one layer is there proves nothing about
+    // the rest, and the mock (like real MapLibre) rejects writes to absent
+    // layers.
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const { attachElevationLabelUnits, contourLabelTextField } =
+      await import('./liveTopo')
+    const m = new MockMap({})
+    m.layerIds = [LIVE_TOPO_LAYER_IDS.contourLabel]
+
+    attachElevationLabelUnits(m as never, 'imperial')
+
+    expect(
+      m.layoutProperties.get(`${LIVE_TOPO_LAYER_IDS.contourLabel}/text-field`),
+    ).toEqual(contourLabelTextField('imperial'))
+    expect(m.layoutProperties.size).toBe(1)
   })
 })

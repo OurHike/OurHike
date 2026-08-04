@@ -106,13 +106,20 @@ jobs:
       # Without that collapse a crashed run and a legitimately-edited ATC
       # layer would both exit 1, and the only way to keep the job green for
       # the second would be to swallow the first.
+      # STATE_URL arrives via env, not ${{ }} inside the script: the value
+      # can come verbatim from the workflow_dispatch input, and an expression
+      # expansion is pasted into the shell as literal text before bash parses
+      # it. pages.yml documents the same rule; there is no reason for these
+      # two to differ.
       - name: Ask every upstream what it says now
         id: check
         if: steps.state.outputs.url != ''
+        env:
+          STATE_URL: ${{ steps.state.outputs.url }}
         run: |
           set +e
           python check_freshness.py \
-            --state "${{ steps.state.outputs.url }}" \
+            --state "$STATE_URL" \
             --json freshness.json \
             --exit-zero | tee freshness.txt
           status=${PIPESTATUS[0]}
@@ -129,15 +136,18 @@ jobs:
 
       - name: Write the job summary
         if: always()
+        env:
+          STATE_URL: ${{ steps.state.outputs.url }}
+          NO_STATE: ${{ steps.check.outputs.no_state }}
         run: |
           {
             echo "## Upstream data freshness"
             echo
-            if [ -z "${{ steps.state.outputs.url }}" ]; then
+            if [ -z "$STATE_URL" ]; then
               echo "No \`DATA_BASE_URL\` repo variable is set, so there is nothing to compare against."
               echo "Set it to the public bucket base and this check arms itself."
-            elif [ "${{ steps.check.outputs.no_state }}" = "true" ]; then
-              echo "No \`build_state.json\` has been published yet at ${{ steps.state.outputs.url }}."
+            elif [ "$NO_STATE" = "true" ]; then
+              echo "No \`build_state.json\` has been published yet at $STATE_URL."
               echo
               echo "This is not a verdict about the data - it is the absence of one."
               echo "Run **Publish vector data** once with \`publish\` ticked and this check arms itself."
@@ -216,18 +226,28 @@ jobs:
             // reset the clock and a source stale for three weeks would read
             // as stale since this morning - which is the number that decides
             // whether it is worth a rebuild.
+            //
+            // The state column holds multi-word phrases ("changed upstream"),
+            // so it is matched as everything-up-to-the-next-pipe, and the
+            // body is guarded because a matching issue a human opened by
+            // hand can legally have no body at all.
             const firstSeen = {}
             if (existing) {
-              for (const [, source, since] of existing.body.matchAll(/^\| `([^`]+)` \| \S+ \| ([\d-]+) \|/gm)) {
+              for (const [, source, since] of (existing.body ?? '').matchAll(/^\| `([^`]+)` \| [^|]+ \| ([\d-]+) \|/gm)) {
                 firstSeen[source] = since
               }
             }
 
+            // Upstream-derived text goes into table cells, and a stray pipe
+            // or newline in an ETag would break both the table and the
+            // first-seen parse above.
+            const cell = value => String(value).replace(/\r?\n/g, ' ').replace(/\|/g, '\\|')
+
             const row = (source, state) => {
               const since = firstSeen[source] ?? verdict.checked_at
               const detail = (verdict.sources ?? []).find(s => s.source === source)
-              const changed = detail?.changed?.length ? ` — ${detail.changed.join(', ')}` : ''
-              return `| \`${source}\` | ${state} | ${since} | ${detail?.detail ?? ''}${changed} |`
+              const changed = detail?.changed?.length ? ` — ${cell(detail.changed.join(', '))}` : ''
+              return `| \`${source}\` | ${state} | ${since} | ${detail?.detail ? cell(detail.detail) : ''}${changed} |`
             }
 
             const age = verdict.state_age_days

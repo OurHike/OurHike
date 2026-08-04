@@ -10,12 +10,12 @@
 //     silhouette that survives being reduced to a black shape, and no category
 //     is distinguished from another by hue alone.
 //
-//  2. The images are COMPUTED, not shipped as assets. Same reasoning as
-//     backdrop.ts: an offline-first app should not spend a network round trip
-//     or a build step on a handful of 30px badges, and a pure function is
-//     testable in jsdom - which can neither rasterise an SVG nor run a canvas.
-//     So the glyphs are polygons and this module contains a small scanline
-//     rasteriser, which is the price of both properties.
+//  2. The images are COMPUTED, not shipped as assets. An offline-first app
+//     should not spend a network round trip or a build step on a handful of
+//     30px badges, and a pure function is testable in jsdom - which can
+//     neither rasterise an SVG nor run a canvas. So the glyphs are polygons
+//     and this module contains a small scanline rasteriser, which is the
+//     price of both properties.
 //
 //  3. RED IS NOT AVAILABLE to a POI. Red is spoken for by closures
 //     (lib/closureStyle.ts) and by the serious-warning pin, and a spring that
@@ -230,6 +230,31 @@ const GLYPHS: Record<string, Glyph> = {
       [0.05, 0.5],
     ],
   ],
+}
+
+/**
+ * The category silhouette as SVG path data in a unit box (`viewBox="0 0 1 1"`),
+ * for chrome that wants the same shape language as the pins - the waypoint
+ * card's photo placeholder is the customer. One subpath per ring, so an
+ * `evenodd` fill keeps the shelter's doorway open exactly as the rasteriser's
+ * crossing count below does.
+ *
+ * Same fallback as {@link buildPoiIcon}: a type this build has never heard of
+ * gets the diamond, not an empty path - the placeholder should show SOMETHING
+ * for a POI the map is already drawing as a neutral pin.
+ */
+export function poiGlyphPath(type: string): string {
+  const glyph = GLYPHS[type] ?? GLYPHS[UNKNOWN_POI_TYPE]
+  return glyph
+    .map(
+      (ring) =>
+        `M${ring
+          // The arcs carry full float precision, which nobody rendering a
+          // 56px glyph can see and every DOM snapshot has to carry.
+          .map(([x, y]) => `${Number(x.toFixed(4))} ${Number(y.toFixed(4))}`)
+          .join('L')}Z`,
+    )
+    .join('')
 }
 
 /** Even-odd crossing count, which is what gives the tent its doorway. */

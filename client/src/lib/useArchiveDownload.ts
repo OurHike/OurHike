@@ -85,6 +85,13 @@ export function useArchiveDownload(archiveUrl: string) {
         completedAt: new Date(),
       })
     } catch (thrown) {
+      // An abort is this hook's own doing - remove() asking for the space
+      // back, or the screen unmounting - not news for the hiker. Surfacing
+      // it here raced remove(): its setError(null) ran first, then this
+      // catch fired during its await and put a "download failed" alert on
+      // top of a delete that succeeded.
+      if (controller.signal.aborted) return
+
       // Whatever arrived is already persisted by downloadArchive, so the
       // resumable state is still what the screen shows. But the reason is kept
       // and surfaced too - this catch used to swallow it entirely, and when the
@@ -101,8 +108,21 @@ export function useArchiveDownload(archiveUrl: string) {
 
   /** Wraps `run` so the in-flight attempt is always knowable. */
   const start = useCallback(() => {
+    // One attempt at a time. There is an async gap between the tap and
+    // `status` becoming 'downloading' (two IndexedDB reads), during which
+    // the screen still offers the button - and a second run() would
+    // overwrite abortRef and runningRef, so remove() would abort only the
+    // newest attempt while the orphan kept streaming and persisted its
+    // partial AFTER the delete: the "delete doesn't free the space" race
+    // these refs exist to prevent, reintroduced one tap deeper.
+    if (runningRef.current) return runningRef.current
+
     const attempt = run()
     runningRef.current = attempt
+    const clear = () => {
+      if (runningRef.current === attempt) runningRef.current = null
+    }
+    attempt.then(clear, clear)
     return attempt
   }, [run])
 

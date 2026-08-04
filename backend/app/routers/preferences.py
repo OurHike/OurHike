@@ -11,7 +11,7 @@ from app.core.time import utc_now
 from app.db.session import get_db
 from app.models.preferences import UserPreferences
 from app.models.profile import Profile
-from app.schemas.preferences import PreferencesIn, PreferencesOut
+from app.schemas.preferences import PreferencesIn, PreferencesOut, repair_stored_background
 
 router = APIRouter(prefix="/preferences", tags=["preferences"])
 
@@ -29,7 +29,10 @@ def get_my_preferences(
     row = db.get(UserPreferences, current_user.id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No synced preferences yet")
-    return PreferencesOut(**row.data, updated_at=row.updated_at)
+    # Repaired, not trusted: the row may predate a schema tightening (see
+    # repair_stored_background), and a GET is the one place the affected
+    # client cannot fix it first.
+    return PreferencesOut(**repair_stored_background(row.data), updated_at=row.updated_at)
 
 
 @router.put("/me", response_model=PreferencesOut)

@@ -340,6 +340,91 @@ describe('useArchiveDownload removing the archive', () => {
     expect(result.current.error).toBeNull()
   })
 
+  it('does not leave a "download failed" alert after deleting mid-transfer', async () => {
+    // The abort remove() issues rejects the in-flight attempt DURING
+    // remove()'s await - after its setError(null) has already run. The
+    // hook's catch used to surface that rejection like any other failure,
+    // so a successful delete ended with role="alert" telling the hiker
+    // their download had failed. An abort the hook itself asked for is not
+    // news.
+    vi.mocked(downloadArchive).mockImplementation(
+      (_url, options) =>
+        new Promise((_resolve, reject) =>
+          options?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('Aborted', 'AbortError')),
+          ),
+        ),
+    )
+
+    const { result } = renderHook(() => useArchiveDownload(URL_))
+    await waitFor(() => expect(result.current.status.state).toBe('not-downloaded'))
+    let attempt: Promise<void> | undefined
+    act(() => {
+      attempt = result.current.start()
+    })
+    await act(async () => {
+      await result.current.remove()
+    })
+
+    expect(result.current.error).toBeNull()
+    expect(result.current.status).toEqual({ state: 'not-downloaded' })
+    await attempt
+  })
+
+  it('ignores a second start while an attempt is already in flight', async () => {
+    // There is an async gap between the tap and status becoming
+    // 'downloading' (two IndexedDB reads) in which the screen still offers
+    // the button. A second run() would overwrite abortRef and runningRef,
+    // so remove() would abort only the newest attempt while the orphan
+    // kept streaming and persisted its partial after the delete.
+    vi.mocked(downloadArchive).mockImplementation(
+      (_url, options) =>
+        new Promise((_resolve, reject) =>
+          options?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('Aborted', 'AbortError')),
+          ),
+        ),
+    )
+
+    const { result } = renderHook(() => useArchiveDownload(URL_))
+    await waitFor(() => expect(result.current.status.state).toBe('not-downloaded'))
+    let first: Promise<void> | undefined
+    let second: Promise<void> | undefined
+    act(() => {
+      first = result.current.start()
+      second = result.current.start()
+    })
+
+    expect(second).toBe(first)
+    expect(downloadArchive).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await result.current.remove()
+    })
+  })
+
+  it('still allows a retry once the failed attempt has settled', async () => {
+    // The one-attempt guard must clear when the attempt settles, or the
+    // retry button would silently hand back the corpse of the failure it
+    // exists to retry.
+    vi.mocked(downloadArchive).mockRejectedValueOnce(new Error('Failed to fetch'))
+    vi.mocked(downloadArchive).mockResolvedValueOnce(undefined)
+
+    const { result } = renderHook(() => useArchiveDownload(URL_))
+    await waitFor(() => expect(result.current.status.state).toBe('not-downloaded'))
+    await act(async () => {
+      await result.current.start()
+    })
+    expect(result.current.error).not.toBeNull()
+
+    await act(async () => {
+      await result.current.start()
+    })
+
+    expect(downloadArchive).toHaveBeenCalledTimes(2)
+    expect(result.current.status.state).toBe('downloaded')
+  })
+
   it('aborts a transfer that is still running, rather than deleting underneath it', async () => {
     let seen: AbortSignal | undefined
     vi.mocked(downloadArchive).mockImplementation(async (_url, options) => {

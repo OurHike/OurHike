@@ -289,6 +289,19 @@ describe('buildMapStyle', () => {
     expect(source.data).toBe(STYLE_OPTIONS.trailsUrl)
   })
 
+  it('never lets the tiler simplify a whole trail segment away', () => {
+    // geojson-vt's per-zoom tolerance does not only thin vertices - it drops
+    // any whole feature shorter than the tolerance for that zoom, ~700 m at
+    // z5 under the default. The centerline is ~3,000 surveyed segments
+    // averaging ~1.2 km, so at corridor zooms runs of consecutive short
+    // segments vanished together and the AT drew with miles-long gaps that
+    // are not in the data (#160). Zero is the one tolerance under which the
+    // drop rule cannot fire, whatever shape a later import arrives in.
+    const source = style().sources[TRAILS_SOURCE_ID] as Record<string, unknown>
+
+    expect(source.tolerance).toBe(0)
+  })
+
   it('spells OpenStreetMap out in full, which is what ODbL attribution actually requires', () => {
     // WIREFRAMES.md's map-corner copy shows the "© OSM" shorthand, but its own
     // Assets section requires a visible "© OpenStreetMap" - the abbreviation

@@ -148,6 +148,51 @@ function isClass(...values: string[]): unknown[] {
     : ['in', ['get', 'class'], ['literal', values]]
 }
 
+/**
+ * The zoom each place class starts labelling at (#159).
+ *
+ * Distance decides what deserves ink, the way it does on a paper sheet. The
+ * corridor-wide view crosses the whole Boston-Washington seaboard, and with
+ * every class labelling at every zoom, that view was a wall of type the
+ * centerline had to be picked out from under. So each class waits for the
+ * zoom where its name starts meaning something to a hiker: a city anchors
+ * the map from any distance, a town matters once a section is being planned,
+ * a village once it is about to be walked past.
+ *
+ * Cities carry no threshold - orientation is their whole job, and the
+ * corridor view without them is a line through unnamed country.
+ */
+export const PLACE_TOWN_MIN_ZOOM = 8
+export const PLACE_VILLAGE_MIN_ZOOM = 11
+
+export const PLACE_FILTER = [
+  'step',
+  ['zoom'],
+  isClass('city'),
+  PLACE_TOWN_MIN_ZOOM,
+  isClass('city', 'town'),
+  PLACE_VILLAGE_MIN_ZOOM,
+  isClass('city', 'town', 'village'),
+]
+
+/**
+ * Which label survives when two places collide: the bigger one.
+ *
+ * Lower sorts place first, and earlier placement wins the space - so without
+ * this, whether Boston or a suburb's town label survives their collision is
+ * decided by feature order inside the tile, which is nobody's decision. Same
+ * reasoning as poiLayers.ts's POI_PRIORITY, one layer over.
+ */
+export const PLACE_SORT_KEY_EXPRESSION = [
+  'match',
+  ['get', 'class'],
+  'city',
+  0,
+  'town',
+  1,
+  2,
+]
+
 export interface LiveTopoOptions {
   terrain: TerrainUrls
   units: ContourUnits
@@ -521,26 +566,34 @@ export function liveTopoLayers({ units }: LiveTopoOptions): LayerSpecification[]
       },
     },
     // Towns only, and only the ones big enough to matter for resupply - a
-    // hamlet label every half mile is noise on a trail map.
+    // hamlet label every half mile is noise on a trail map. The same rule
+    // continues up the ladder by zoom (PLACE_FILTER): zoomed out far enough,
+    // even a town is a hamlet.
     {
       id: LIVE_TOPO_LAYER_IDS.place,
       type: 'symbol',
       source: OSM_SOURCE_ID,
       'source-layer': 'place',
-      filter: isClass('city', 'town', 'village') as never,
+      filter: PLACE_FILTER as never,
       layout: {
         'text-field': ['get', 'name'] as never,
         'text-font': FONT,
+        // The low stop matters most: at the corridor-wide view a city is an
+        // orientation anchor, not a destination, and it is set smaller there
+        // so the type never outweighs the line the view is about.
         'text-size': [
           'interpolate',
           ['linear'],
           ['zoom'],
+          5,
+          ['case', isClass('city') as never, 11, 9],
           8,
           ['case', isClass('city') as never, 13, 10],
           14,
           ['case', isClass('city') as never, 18, 13],
         ] as never,
         'text-max-width': 8,
+        'symbol-sort-key': PLACE_SORT_KEY_EXPRESSION as unknown as number,
       },
       paint: {
         'text-color': TOPO_PALETTE.label,

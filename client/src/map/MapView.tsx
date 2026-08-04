@@ -67,14 +67,15 @@ export interface MapViewProps {
    */
   bounds?: [[number, number], [number, number]]
   /**
-   * A pin was tapped, by POI id. Must be stable across renders (useCallback),
-   * like `onViewportChange` - an inline function would re-bind the map's
-   * listeners on every render of the parent.
+   * A pin was tapped, by POI id - or the bare map was, reported as null so
+   * the shell can dismiss whatever the last pin opened. Must be stable across
+   * renders (useCallback), like `onViewportChange` - an inline function would
+   * re-bind the map's listeners on every render of the parent.
    *
    * Only the id: this component knows what is drawn on the map, not what the
    * app knows about it, and looking a POI up is the shell's job.
    */
-  onSelectPoi?: (id: string) => void
+  onSelectPoi?: (id: string | null) => void
   /** Web only; touch platforms rely on pinch (see mapChrome.ts). */
   showZoomButtons?: boolean
   units?: ScaleUnits

@@ -56,14 +56,17 @@ describe('tapping a pin', () => {
     expect(onSelect).toHaveBeenCalledWith('opentrail_at:1234')
   })
 
-  it('says nothing when the touch lands on bare map', () => {
+  it('reports a touch on bare map as null, which is how the card is dismissed', () => {
+    // Tap-elsewhere-to-put-it-away is the gesture every floating map card
+    // teaches. Only taps say so - MapLibre withholds 'click' for a drag, so
+    // panning around with the card open never throws it away.
     const map = buildMap()
     const onSelect = vi.fn()
 
     attachPoiTaps(map as unknown as MapLibreMap, onSelect)
     map.emit('click', touchAt(400, 400))
 
-    expect(onSelect).not.toHaveBeenCalled()
+    expect(onSelect).toHaveBeenCalledWith(null)
   })
 
   it('asks only about pins, so a touch on a trail line opens nothing', () => {
@@ -74,7 +77,7 @@ describe('tapping a pin', () => {
     attachPoiTaps(map as unknown as MapLibreMap, onSelect)
     map.emit('click', touchAt(50, 50))
 
-    expect(onSelect).not.toHaveBeenCalled()
+    expect(onSelect).toHaveBeenCalledWith(null)
     expect(map.featureQueries.at(-1)?.layers).toEqual([POI_LAYER_ID])
   })
 
@@ -112,9 +115,10 @@ describe('tapping a pin', () => {
     expect(onSelect).toHaveBeenCalledWith('opentrail_at:spring')
   })
 
-  it('is silent on a map whose pin layer has not been built yet', () => {
+  it('never queries a map whose pin layer has not been built yet', () => {
     // Querying a layer the style does not hold fires an error event in real
-    // MapLibre. A touch on a map with no pins on it is not an error.
+    // MapLibre. A touch on a map with no pins on it yet is bare map - a
+    // dismissal, not an error and not a warning in the console.
     const map = buildMap()
     map.layerIds = []
     map.renderedFeatures.set(POI_LAYER_ID, [pin('atc_shelters:abc')])
@@ -123,11 +127,11 @@ describe('tapping a pin', () => {
     attachPoiTaps(map as unknown as MapLibreMap, onSelect)
     map.emit('click', touchAt(100, 100))
 
-    expect(onSelect).not.toHaveBeenCalled()
+    expect(onSelect).toHaveBeenCalledWith(null)
     expect(map.featureQueries).toHaveLength(0)
   })
 
-  it('ignores a pin carrying no id, rather than opening an empty sheet', () => {
+  it('treats a pin carrying no id as bare map, rather than opening an empty card', () => {
     const map = buildMap()
     map.renderedFeatures.set(POI_LAYER_ID, [{ properties: { poi_type: 'water' } }])
     const onSelect = vi.fn()
@@ -135,7 +139,7 @@ describe('tapping a pin', () => {
     attachPoiTaps(map as unknown as MapLibreMap, onSelect)
     map.emit('click', touchAt(100, 100))
 
-    expect(onSelect).not.toHaveBeenCalled()
+    expect(onSelect).toHaveBeenCalledWith(null)
   })
 })
 

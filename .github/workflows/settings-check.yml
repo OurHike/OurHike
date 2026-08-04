@@ -1,0 +1,120 @@
+# Asks whether Settings -> Secrets and variables -> Actions actually holds
+# what the workflows in this directory expect - the one question a checkout
+# cannot answer about itself.
+#
+# Read-only in the strongest sense available: it resolves the secrets and vars
+# contexts, immediately reduces them to the names whose values came back
+# non-empty, and passes only those names to pytest. No value reaches the test
+# process, so there is nothing for a failure message to leak.
+#
+# Two jobs because they can see different things:
+#
+#   manifest    expected-settings.yml still agrees with the workflows. Needs
+#               nothing but the checkout, so it runs on every pull request -
+#               including from a fork - and it is the half with teeth on an
+#               ordinary change, since drift is what actually happens.
+#
+#   configured  the settings are really there. Deliberately not on
+#               pull_request: GitHub passes no secrets to a fork's PR run, so
+#               this job would fail for every outside contributor, for a
+#               reason none of them could fix and that says nothing about
+#               their change.
+#
+# The weekly run is the point of the whole thing. An R2 token can be revoked
+# or expire without anyone touching this repository, and the next thing to
+# notice would otherwise be a publish failing partway through. Unlike
+# check-upstream-freshness.yml, a red X here is always a real break: a missing
+# credential is not a normal state to be in.
+
+name: Settings check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Mondays, 07:35 UTC. Off the hour for the same reason as
+    # check-upstream-freshness.yml, and a few minutes clear of it.
+    - cron: "35 7 * * 1"
+  workflow_dispatch:
+
+# Reads the repository, and resolves the settings contexts GitHub hands every
+# job. Nothing here writes anywhere.
+permissions:
+  contents: read
+
+jobs:
+  manifest:
+    name: Manifest agrees with the workflows
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .github/tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: python -m ruff check .
+
+      - name: Check formatting
+        run: python -m ruff format --check .
+
+      - name: Run tests
+        run: python -m pytest -v
+
+  configured:
+    name: Settings are configured
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .github/tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      # The whole security argument for this workflow lives in this step. The
+      # contexts arrive whole, and leave as two JSON arrays of names - `.key`
+      # only, never `.value`. Everything downstream sees names, so a test that
+      # prints its inputs prints nothing worth masking.
+      #
+      # Empty values are dropped rather than counted as present: a repository
+      # variable set to "" exists as far as the settings page is concerned and
+      # is worth exactly as much to a build as one that was never created.
+      #
+      # Through env, not interpolated into the script body - pages.yml
+      # documents the rule, and it matters more here than anywhere.
+      - name: Reduce the settings to their names
+        id: names
+        env:
+          SECRETS_JSON: ${{ toJSON(secrets) }}
+          VARS_JSON: ${{ toJSON(vars) }}
+        run: |
+          {
+            echo "secrets=$(jq -c '[to_entries[] | select(.value != "") | .key]' <<<"$SECRETS_JSON")"
+            echo "variables=$(jq -c '[to_entries[] | select(.value != "") | .key]' <<<"$VARS_JSON")"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check them against expected-settings.yml
+        env:
+          # Read by test_the_live_check_is_not_silently_skipping_where_it_is
+          # _meant_to_run, so that an empty environment fails this job instead
+          # of skipping every test in it and reporting green.
+          SETTINGS_CHECK_LIVE: "1"
+          CONFIGURED_SECRETS: ${{ steps.names.outputs.secrets }}
+          CONFIGURED_VARIABLES: ${{ steps.names.outputs.variables }}
+        run: python -m pytest -v

@@ -45,6 +45,8 @@ Use **repository** secrets, not environment-scoped ones: `r2-credentials-check.y
 
 Once the four secrets are set, dispatch the **"R2 credentials check"** workflow (Actions tab → workflow_dispatch) to confirm they're valid before attempting a real publish — it only calls `head_bucket`, so it's safe to run any time.
 
+Whether they're still *there* is checked continuously after that: `.github/expected-settings.yml` declares these four and `DATA_BASE_URL` below, and the **"Settings check"** workflow confirms weekly that each is configured — a revoked token is otherwise noticed by a publish failing partway through. Adding a repository secret or variable means adding it to that manifest too, or the check will flag the workflow reading a setting nothing vouches for.
+
 **1.4 Configure CORS — this one is easy to miss and fails confusingly.** The client reads PMTiles via HTTP **range requests**. Without CORS exposing the right headers, the map fails in a way that looks like a corrupt archive rather than a permissions problem.
 
 R2 → `your-hike` → Settings → CORS policy. The app is hosted on GitHub Pages (see step 3 — that's settled now, unlike when this list was first written), so the real origin to allow is:

@@ -1,0 +1,11 @@
+[tool.pytest.ini_options]
+testpaths = ["."]
+
+[tool.ruff]
+line-length = 130
+
+[tool.ruff.lint]
+# The same narrow set the pipeline and backend suites pin, for the same reason
+# - see the comment in pipeline/pyproject.toml. There is no argument for this
+# one directory to lint differently from the rest of the repository's Python.
+select = ["E4", "E7", "E9", "F", "I"]

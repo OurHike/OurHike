@@ -46,7 +46,7 @@ Area labels: `client`, `backend`, `pipeline`, `data`, `ops`, `docs`.
 
 ## Working on the code
 
-Three independent parts, each with its own tests. CI runs the same commands, so a green local run means a green CI run.
+Three independent parts, each with its own tests, plus a small fourth suite covering the repository's own CI configuration. CI runs the same commands, so a green local run means a green CI run.
 
 **Client** — React + TypeScript + Vite, MapLibre GL for the map.
 
@@ -79,6 +79,18 @@ python -m pytest -v
 python -m ruff check .
 python -m ruff format --check .
 ```
+
+**Repository settings** — the workflows' own configuration.
+
+```
+cd .github/tests
+pip install -r requirements-dev.txt
+python -m pytest -v
+python -m ruff check .
+python -m ruff format --check .
+```
+
+Locally this checks that [`.github/expected-settings.yml`](.github/expected-settings.yml) still agrees with the workflows: every secret and variable a workflow reads is declared, and nothing declared has outlived its last reader. Whether those settings actually *exist* is a question no checkout can answer — a secret's value is write-only once set — so the **Settings check** workflow answers it from inside Actions, weekly and on every push to `main`. Adding a workflow that reads a new secret means adding it to the manifest in the same change.
 
 The pipeline fetches large amounts of data from ATC, USGS and opentrail.org. Read [pipeline/README.md](pipeline/README.md) before running the fetch scripts — a full topo quad pull is on the order of 14 GB, and the scripts are built to skip work that has not changed upstream. Do not defeat that by clearing manifests.
 

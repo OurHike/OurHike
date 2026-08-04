@@ -48,6 +48,18 @@ export class MockMap {
   readonly filters = new Map<string, unknown>()
   /** Data pushed into each GeoJSON source, by source id. */
   readonly sourceData = new Map<string, unknown>()
+  /**
+   * Test-settable: what a rendered-feature query answers with.
+   *
+   * Keyed by layer id, because the question a tap asks is "is there a PIN
+   * here" - a mock that answered the same features for every layer could not
+   * fail for a handler that queried the whole map and opened a shelter sheet
+   * on a tap on a contour line.
+   */
+  readonly renderedFeatures = new Map<string, unknown[]>()
+  /** Every rendered-feature query, in order, with the geometry it was given -
+   *  which is where the touch tolerance around a pin is observable. */
+  readonly featureQueries: Array<{ geometry: unknown; layers: string[] }> = []
   /** Test-settable: which layers and sources the style is holding. Real
    *  MapLibre returns undefined for a layer that does not exist and throws if
    *  you write to it anyway, so callers have to cope with both - which means
@@ -69,6 +81,7 @@ export class MockMap {
    *  style has loaded, and callers have to cope with both answers. */
   styleLoaded = false
   private readonly listeners = new Map<string, Listener[]>()
+  private canvas: HTMLCanvasElement | undefined = undefined
 
   constructor(options: Record<string, unknown>) {
     this.options = options
@@ -209,6 +222,20 @@ export class MockMap {
     return { setData: (data: unknown) => this.sourceData.set(id, data) }
   }
 
+  /**
+   * Real `queryRenderedFeatures` answers from what is actually drawn, so it
+   * returns nothing for a layer the style does not hold - and fires an error
+   * event rather than throwing, which is why a caller that forgets to check
+   * gets a warning and no result rather than a crash.
+   */
+  queryRenderedFeatures(geometry?: unknown, options?: { layers?: string[] }): unknown[] {
+    const layers = options?.layers ?? [...this.renderedFeatures.keys()]
+    this.featureQueries.push({ geometry, layers })
+    return layers.flatMap((layer) =>
+      this.getLayer(layer) === undefined ? [] : (this.renderedFeatures.get(layer) ?? []),
+    )
+  }
+
   jumpTo(options: Record<string, unknown>): this {
     this.cameraMoves.push(options)
     this.applyCamera(options)
@@ -241,8 +268,17 @@ export class MockMap {
     this.removed = true
   }
 
+  /**
+   * ONE canvas for the life of the map, as MapLibre has.
+   *
+   * A fresh element per call looked harmless and quietly swallowed every write
+   * to `getCanvas().style` - which is the only way the map says "this pin is
+   * tappable", so the cursor could never have been asserted, or noticed
+   * missing.
+   */
   getCanvas(): HTMLCanvasElement {
-    return document.createElement('canvas')
+    this.canvas ??= document.createElement('canvas')
+    return this.canvas
   }
 }
 

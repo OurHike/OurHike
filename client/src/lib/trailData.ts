@@ -35,6 +35,18 @@ export interface StoredPoi {
   lat: number
   lon: number
   confidence: 'high' | 'low'
+  /**
+   * Which published source listed this POI - "atc_shelters", "opentrail_at"
+   * and the rest of pipeline/lib/poi_schema.py's ids, shown as words by
+   * chrome/poiSources.ts.
+   *
+   * Optional because a phone that downloaded before the client read this field
+   * has POIs in IndexedDB without one. Undefined then means "this copy predates
+   * the field", not "the pipeline published no source", and the difference does
+   * not matter to anything that reads it: both come out as a sheet with no
+   * provenance line rather than a wrong one.
+   */
+  source?: string
 }
 
 export interface TrailData {
@@ -57,6 +69,7 @@ interface PoiProperties {
   lat?: unknown
   lon?: unknown
   confidence?: unknown
+  source?: unknown
 }
 
 function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
@@ -80,6 +93,12 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
       // legend shows as "Unverified". Guessing the other way would vouch for
       // a water source nobody checked.
       confidence: props.confidence === 'high' ? 'high' : 'low',
+      // Left off entirely when the artifact has none, rather than stored as a
+      // placeholder string: the detail sheet decides whether to name a source
+      // by whether there is one, and "unknown" is not a source.
+      ...(typeof props.source === 'string' && props.source !== ''
+        ? { source: props.source }
+        : {}),
     })
   }
 

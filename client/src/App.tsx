@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapScreen } from './chrome/MapScreen'
+import type { PoiDetail } from './chrome/PoiSheet'
 import { TabBar } from './chrome/TabBar'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import type { TabId } from './chrome/tabs'
@@ -137,6 +138,12 @@ function App() {
   const [activeTab, setActiveTab] = useState<TabId>('trail')
   const [legendOpen, setLegendOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  // The tapped pin, held as an id rather than as the POI itself. Everything the
+  // sheet shows is derived below, so a POI that changes underneath - a fresh
+  // download, or the hiker deleting the one they had - is described correctly
+  // or closes itself, instead of the sheet going on showing a copy of data the
+  // app no longer holds.
+  const [selectedPoiId, setSelectedPoiId] = useState<string | null>(null)
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set())
   const [bbox, setBbox] = useState<BoundingBox>(EMPTY_BBOX)
 
@@ -266,6 +273,21 @@ function App() {
       })),
     [pois, trailIndex],
   )
+
+  // What the tapped pin's sheet says. Built from both arrays on purpose: the
+  // POI itself carries the geometry and the provenance, and searchablePois has
+  // already paid for the locateOnTrail() call that places it on the trail, so
+  // the mile in the sheet is the same number search puts on the same POI rather
+  // than a second computation that could disagree with it.
+  const selectedPoi: PoiDetail | null = useMemo(() => {
+    if (selectedPoiId === null) return null
+    const poi = pois.find((candidate) => candidate.id === selectedPoiId)
+    if (poi === undefined) return null
+    return {
+      ...poi,
+      mile: searchablePois.find((candidate) => candidate.id === selectedPoiId)?.mile,
+    }
+  }, [selectedPoiId, pois, searchablePois])
 
   const viewportPoints: MapPoint[] = useMemo(
     () =>
@@ -400,6 +422,23 @@ function App() {
   )
 
   const handleMapReady = useCallback((next: MapLibreMap | null) => setMap(next), [])
+
+  // One sheet at a time. The legend and the pin sheet both sit at the bottom of
+  // the map, and two of them stacked would leave the lower one unreadable and
+  // its close button unreachable - so opening either closes the other. The
+  // desktop legend is a permanent panel and does not close, but it is beside
+  // the map rather than over it, so there is nothing to collide with there.
+  const handleSelectPoi = useCallback((id: string) => {
+    setSelectedPoiId(id)
+    setLegendOpen(false)
+  }, [])
+
+  const handleOpenLegend = useCallback(() => {
+    setLegendOpen(true)
+    setSelectedPoiId(null)
+  }, [])
+
+  const handleClosePoi = useCallback(() => setSelectedPoiId(null), [])
 
   const handleToggleType = useCallback((type: string) => {
     setHiddenTypes((current) => {
@@ -552,7 +591,7 @@ function App() {
         lastSyncedAt={lastSyncedAt}
         activeTab={activeTab}
         onSelectTab={setActiveTab}
-        onOpenLegend={() => setLegendOpen(true)}
+        onOpenLegend={handleOpenLegend}
         onOpenSearch={() => setSearchOpen(true)}
         legendOpen={legendOpen}
         onCloseLegend={() => setLegendOpen(false)}
@@ -587,6 +626,9 @@ function App() {
         blazeCounts={[]}
         hiddenTypes={hiddenTypes}
         onToggleType={handleToggleType}
+        selectedPoi={selectedPoi}
+        onSelectPoi={handleSelectPoi}
+        onClosePoi={handleClosePoi}
         // WIREFRAMES.md §1.5: zoom buttons are web-only. Nothing was passing
         // this, so `showZoomButtons` sat on its default of false everywhere and
         // a browser with a mouse had no visible way to zoom at all.

@@ -31,6 +31,7 @@ import type { TerrainUrls } from './terrain'
 import { attachMapChrome, type ScaleUnits } from './mapChrome'
 import { attachMapBackdrop } from './backdrop'
 import { attachHiddenPoiTypes, attachPoiData, attachPoiIcons } from './poiLayers'
+import { attachPoiTaps } from './poiTaps'
 import type { BoundingBox, MapPoint } from '../lib/legendContents'
 import type { BackgroundSource } from '../lib/userPreferences'
 
@@ -64,6 +65,15 @@ export interface MapViewProps {
    * picking one here would frame it differently on every phone.
    */
   bounds?: [[number, number], [number, number]]
+  /**
+   * A pin was tapped, by POI id. Must be stable across renders (useCallback),
+   * like `onViewportChange` - an inline function would re-bind the map's
+   * listeners on every render of the parent.
+   *
+   * Only the id: this component knows what is drawn on the map, not what the
+   * app knows about it, and looking a POI up is the shell's job.
+   */
+  onSelectPoi?: (id: string) => void
   /** Web only; touch platforms rely on pinch (see mapChrome.ts). */
   showZoomButtons?: boolean
   units?: ScaleUnits
@@ -97,6 +107,7 @@ export function MapView({
   background = 'hiking_topo_live',
   pois = NO_POIS,
   hiddenTypes = NOTHING_HIDDEN,
+  onSelectPoi,
   center,
   zoom,
   bounds,
@@ -222,6 +233,14 @@ export function MapView({
     if (map === null) return
     return attachHiddenPoiTypes(map, hiddenTypes)
   }, [map, hiddenTypes])
+
+  // Taps are their own effect for the same reason: this one re-binds when the
+  // shell hands over a different handler, which has nothing to do with the
+  // pins themselves and must not re-push the POI source to do it.
+  useEffect(() => {
+    if (map === null || onSelectPoi === undefined) return
+    return attachPoiTaps(map, onSelectPoi)
+  }, [map, onSelectPoi])
 
   useEffect(() => {
     if (map === null || onViewportChange === undefined) return

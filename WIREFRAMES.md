@@ -173,6 +173,7 @@ Confidence stays separate: a dashed pin means *never verified to exist*; stalene
 
 - **Search** takes over the header and collapses the ribbon to one line; local GeoJSON only, no network path, and says so on empty results.
 - **Legend** opens as a bottom sheet from a header icon; contents recompute per viewport.
+- **Tapping a pin** opens the POI detail sheet (`6a`–`6b`) in the same place the legend uses, and only one of the two is ever open. It names the waypoint, its category, its mile, its coordinates and which source listed it — and says in words, not only through the pin's broken rim, when nobody has confirmed the thing exists. The hit area is the pin plus enough slop to reach the 44px minimum touch target, because this is tapped with a gloved thumb.
 - **Locate** follows MapLibre `GeolocateControl` (`trackUserLocation` for continuous); **compass** is `NavigationControl`, tapping resets north-up. Scale bar is `ScaleControl`, imperial by default.
 - **Motion:** 120–200 ms ease fades/colour transitions only; buttons press to 97%. No bounce, no spring (design-system rule).
 - **Offline everywhere:** every write (report, thanks, confirmation) queues in an outbox with its authored timestamp and syncs later. Nothing blocks on network.

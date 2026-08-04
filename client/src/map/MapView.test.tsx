@@ -7,6 +7,7 @@ import { poiIconId } from './poiIcons'
 import {
   poiFeatureCollection,
   poiTypeFilter,
+  POI_ID_PROPERTY,
   POI_LAYER_ID,
   POI_SOURCE_ID,
 } from './poiLayers'
@@ -293,6 +294,51 @@ describe('POI pins', () => {
     unmount()
 
     expect(map.listenerCount('load')).toBe(0)
+  })
+
+  it('reports which pin was tapped, so the shell can describe it', () => {
+    const onSelectPoi = vi.fn()
+    render(<MapView {...PROPS} pois={POIS} onSelectPoi={onSelectPoi} />)
+    const [map] = MockMap.live
+    loadStyle(map)
+    map.renderedFeatures.set(POI_LAYER_ID, [
+      { properties: { [POI_ID_PROPERTY]: 's1', poi_type: 'shelter' } },
+    ])
+
+    map.emit('click', { point: { x: 120, y: 240 } })
+
+    expect(onSelectPoi).toHaveBeenCalledWith('s1')
+  })
+
+  it('re-binds taps for a new handler without rebuilding the map', () => {
+    // The shell's handler identity changes for reasons that have nothing to do
+    // with the pins. Folding this into the POI-data effect would re-serialise
+    // every pin on the trail whenever it did.
+    const { rerender } = render(<MapView {...PROPS} pois={POIS} onSelectPoi={vi.fn()} />)
+    const [map] = MockMap.live
+    loadStyle(map)
+    map.renderedFeatures.set(POI_LAYER_ID, [
+      { properties: { [POI_ID_PROPERTY]: 'w1', poi_type: 'water' } },
+    ])
+    const second = vi.fn()
+
+    rerender(<MapView {...PROPS} pois={POIS} onSelectPoi={second} />)
+    map.emit('click', { point: { x: 10, y: 10 } })
+
+    expect(MockMap.instances).toHaveLength(1)
+    expect(second).toHaveBeenCalledWith('w1')
+    expect(map.listenerCount('click')).toBe(1)
+  })
+
+  it('leaves no tap listeners behind after unmount', () => {
+    const { unmount } = render(<MapView {...PROPS} pois={POIS} onSelectPoi={vi.fn()} />)
+    const [map] = MockMap.live
+    loadStyle(map)
+
+    unmount()
+
+    expect(map.listenerCount('click')).toBe(0)
+    expect(map.listenerCount('mousemove')).toBe(0)
   })
 })
 

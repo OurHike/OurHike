@@ -30,7 +30,6 @@ import { attachContourUnits, registerTerrain } from './contours'
 import { attachElevationLabelUnits } from './liveTopo'
 import type { TerrainUrls } from './terrain'
 import { attachMapChrome, type ScaleUnits } from './mapChrome'
-import { attachMapBackdrop } from './backdrop'
 import { attachHiddenPoiTypes, attachPoiData, attachPoiIcons } from './poiLayers'
 import { attachPoiTaps } from './poiTaps'
 import type { BoundingBox, MapPoint } from '../lib/legendContents'
@@ -148,11 +147,10 @@ export function MapView({
     // Someone who chose the downloaded archive to stay off the network should
     // not have a DEM protocol registered behind their back.
     //
-    // Best-effort, following backdrop.ts: contour generation needs a Web
-    // Worker and a blob URL, and if either is unavailable the honest outcome
-    // is a map without contours, not no map. A failure here costs terrain and
-    // nothing else - the archive, the trail lines and the paper are all in the
-    // style already.
+    // Best-effort: contour generation needs a Web Worker and a blob URL, and
+    // if either is unavailable the honest outcome is a map without contours,
+    // not no map. A failure here costs terrain and nothing else - the
+    // archive, the trail lines and the paper are all in the style already.
     let terrain: TerrainUrls | undefined
     if (background === 'hiking_topo_live') {
       try {
@@ -215,14 +213,6 @@ export function MapView({
     if (map === null) return
     return attachElevationLabelUnits(map, units)
   }, [map, units])
-
-  // The backdrop's paper colour is in the style itself and needs nothing here.
-  // This adds only the hatch on top of it, which needs a loaded style and so
-  // cannot be expressed in buildMapStyle - see backdrop.ts.
-  useEffect(() => {
-    if (map === null) return
-    return attachMapBackdrop(map)
-  }, [map])
 
   // Three separate effects rather than one, because they change on completely
   // different clocks: the pin images are built once and never again, the POIs

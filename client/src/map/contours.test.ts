@@ -156,8 +156,8 @@ describe('attachContourUnits', () => {
   })
 
   it('warns and leaves the previous interval when the source rejects the change', () => {
-    // Best-effort in the same way as backdrop.ts: the cost of failing is
-    // contours at the old interval, never a broken map.
+    // Best-effort in the same way as poiLayers.ts's attach helpers: the cost
+    // of failing is contours at the old interval, never a broken map.
     const m = map()
     m.styleLoaded = true
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})

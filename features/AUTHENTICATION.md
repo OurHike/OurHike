@@ -37,6 +37,21 @@ Worth offering, not worth requiring. The deciding factor is really cost-to-build
 
 **Looking further down the roadmap - external system connections (e.g. NYNJTC systems):** this is exactly why the provider choice matters now even though nothing here is being built yet. Supabase Auth supports SSO via SAML/OIDC on top of its regular auth (a paid-tier feature, not built into the free tier) - meaning if/when a real need to federate with an external club or organization's identity system shows up, there's a concrete path that doesn't require migrating auth providers first. Nothing to build today - just worth knowing the foundation has room for it.
 
+## What the client does with this
+
+The recommendation above is now built on both sides, and the split matters for reading the code: **Supabase Auth is a separate service from this project's own backend.** Signing in never needed the backend deployed - only a project to sign in to. Sending what a signed-in hiker contributes still does.
+
+- `client/src/lib/supabase.ts` - the client, behind the same build-time-config shape `lib/config.ts` uses for the data bucket. An unconfigured build gets a null client rather than one that fails at its first request, so the app runs exactly as before with the sign-in controls saying so.
+- `client/src/lib/auth.ts` - sign-in per provider, sign-out, and the session-to-account adaptation. Nothing here implements authentication; it adapts what Supabase returns.
+- `client/src/lib/useAuth.ts` - the account as React state. It subscribes rather than only asking once, because an OAuth round trip finishes by loading the page again, not by resolving a promise in the tab that left.
+- `client/src/screens/EmailSignIn.tsx` - the one provider that needs a screen. Google and Apple need no UI beyond their button.
+
+**The provider set is build configuration** (`VITE_AUTH_PROVIDERS`, defaulting to Google and email). The three do not cost the same to switch on - email needs nothing, Google needs a Cloud Console registration, Apple needs the $99/yr membership - and a button whose credentials do not exist reaches an error page rather than an account. `SignInPrompt` still defaults to all three, so the wireframe's answer stays the component's; narrowing is something a deployment does.
+
+**Creating an account is not signing in.** Supabase withholds the session until the emailed confirmation link is followed, so the email screen has a third outcome besides success and failure. Collapsing that into "signed in" would leave someone waiting to send a contribution that never would.
+
+Two things named in this doc are **not** built: MFA, and the multiple-providers-one-account linking below. Both are Supabase settings rather than client code, but neither has been turned on or exercised.
+
 ## Data model sketch
 
 ```

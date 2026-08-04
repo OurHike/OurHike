@@ -121,6 +121,18 @@ SUPABASE_JWT_SECRET=<Settings > API > JWT Secret>
 - **Apple** — Apple Developer Program, **$99/year**. Needs a Services ID and a signing key. If you want to defer cost, ship with Google + email and add Apple later; nothing in the code assumes all three.
 - **Email** — on by default, no setup.
 
+**4.3a Set the client's build variables.** The client signs in against Supabase directly, so it needs its own copy of the public half — these are separate from the backend's, `VITE_`-prefixed, and inlined at build time (see `client/.env.example`):
+
+```
+VITE_SUPABASE_URL=https://<ref>.supabase.co
+VITE_SUPABASE_ANON_KEY=<anon public key>
+VITE_AUTH_PROVIDERS=google,email
+```
+
+`VITE_AUTH_PROVIDERS` must list only providers actually configured in 4.3. A name here whose credentials do not exist is a button that reaches an error page. Leaving all three unset is safe: the app builds and runs, and the sign-in controls say the build has no project rather than offering a round trip that cannot finish.
+
+**4.3b Allow the app's own origin back** (Authentication → URL Configuration). The client redirects to the path Pages actually serves it from — `https://<user>.github.io/OurHike/app/`, not the bare origin, because a redirect to the origin lands on the project site with the code in its URL and no app there to read it. That exact URL has to be in the allowed redirect list, or every provider round trip ends in a mismatch. Add the local dev origin too (`http://localhost:5173/`) if you want sign-in to work while developing.
+
 **4.4 Flag on the JWT verification method.** `backend/app/core/auth.py` currently verifies **HS256 using the JWT secret**. Supabase has been migrating projects toward asymmetric keys (JWKS/RS256). If your project issues RS256, that function needs changing — it was deliberately built as a single seam so this is a contained change, but it is the one thing here I could not settle without a real project to look at. **Check this before assuming auth works.**
 
 ---

@@ -523,7 +523,49 @@ describe('reporting, with a fix to attach', () => {
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
     await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
 
+    // Saving now hands over to the sign-in step (lib/contributionFlow.ts's
+    // stepAfterSaving). Declining it is the path this test cares about: the
+    // count has to be the same either way, because the report was already
+    // written before anyone was asked to authenticate.
+    await user.click(await screen.findByRole('button', { name: /not now/i }))
+
     expect(await screen.findByText(/1 .*(waiting|queued|outbox)/i)).toBeInTheDocument()
+  })
+
+  it('saves the report even when sign-in is declined', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+    await user.click(await screen.findByRole('button', { name: /blow down/i }))
+    await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
+    await user.click(await screen.findByRole('button', { name: /not now/i }))
+
+    // The promise the whole flow exists to keep: someone who cannot or will
+    // not authenticate still has what they wrote.
+    await waitFor(() => {
+      expect(store.get('ourhike:outbox')).toBeDefined()
+    })
+  })
+
+  it('asks to sign in only after the report is already saved', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+    await user.click(await screen.findByRole('button', { name: /blow down/i }))
+    await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
+
+    // Ordering is the design, not a detail - the screen says the report is
+    // already saved, and it has to be true when it says it.
+    expect(await screen.findByText(/already saved/i)).toBeInTheDocument()
+    expect(store.get('ourhike:outbox')).toBeDefined()
   })
 })
 
@@ -547,11 +589,14 @@ describe('preferences from the More screen', () => {
 })
 
 describe('the placeholder actions on More', () => {
-  // Sign-in, sync and export are all wired to no-ops today: the backend they
-  // need is Phase 2 (ROADMAP.md). Rendered and clickable anyway so the shape of
-  // the screen is real, and asserted here so a wiring mistake shows up as a
-  // failing test rather than as a button that throws in someone's hand.
-  it.each([/sign in/i, /^sync$/i, /export gpx/i, /export geojson/i])(
+  // Sync and export are wired to no-ops today: the backend they need is Phase
+  // 2 (ROADMAP.md). Rendered and clickable anyway so the shape of the screen
+  // is real, and asserted here so a wiring mistake shows up as a failing test
+  // rather than as a button that throws in someone's hand.
+  //
+  // Sign in used to be in this list and is not a placeholder any more, which
+  // is what the sign-in tests below cover instead.
+  it.each([/^sync$/i, /export gpx/i, /export geojson/i])(
     'does not throw when %s is tapped',
     async (name) => {
       const user = userEvent.setup()
@@ -565,6 +610,85 @@ describe('the placeholder actions on More', () => {
       expect(await screen.findByRole('heading', { name: 'You' })).toBeInTheDocument()
     },
   )
+})
+
+describe('signing in from Settings', () => {
+  it('opens the sign-in screen', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+
+    await user.click(await screen.findByRole('button', { name: /sign in/i }))
+
+    expect(
+      await screen.findByRole('button', { name: /continue with google/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('does not claim a report is saved, because this path has no report', async () => {
+    // The same screen serves the contribution flow, where "your report is
+    // already saved" is both true and the point. Reached from Settings there
+    // is nothing saved, and saying so would be a promise about something that
+    // does not exist.
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+
+    await user.click(await screen.findByRole('button', { name: /sign in/i }))
+    await screen.findByRole('button', { name: /continue with google/i })
+
+    expect(screen.queryByText(/already saved/i)).toBe(null)
+  })
+
+  it('backs out to the screen it came from', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+
+    await user.click(await screen.findByRole('button', { name: /sign in/i }))
+    await user.click(await screen.findByRole('button', { name: /not now/i }))
+
+    expect(await screen.findByRole('heading', { name: 'You' })).toBeInTheDocument()
+  })
+
+  it('offers only the providers this build has credentials for', async () => {
+    // ENABLED_PROVIDERS defaults to Google and email. Apple needs a $99/yr
+    // membership, and a button for a provider with no credentials behind it
+    // reaches an error page rather than an account.
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+
+    await user.click(await screen.findByRole('button', { name: /sign in/i }))
+    await screen.findByRole('button', { name: /continue with google/i })
+
+    expect(
+      screen.getByRole('button', { name: /continue with email/i }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /continue with apple/i })).toBe(null)
+  })
+
+  it('reaches the email form, which asks for a password rather than only an address', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+
+    await user.click(await screen.findByRole('button', { name: /sign in/i }))
+    await user.click(await screen.findByRole('button', { name: /continue with email/i }))
+
+    expect(await screen.findByLabelText(/email/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/password/i)).toBeInTheDocument()
+  })
 })
 
 describe('when the trail data cannot be downloaded', () => {

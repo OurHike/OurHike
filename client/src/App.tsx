@@ -5,12 +5,27 @@
 // to keep in sync with the first for no gain a hiker would notice - and the
 // service worker precaches one document either way.
 //
-// Sign-in and identity are deliberately NOT in the reporting flow yet. There
-// is no deployed backend to sign in to, and stepAfterSaving() (lib/
-// contributionFlow.ts) is where they slot in the day there is. Until then a
-// report is saved to the outbox and said so - which is the promise that flow
-// exists to keep. Showing three provider buttons that cannot authenticate
-// would break it.
+// Sign-in reaches the reporting flow through stepAfterSaving() (lib/
+// contributionFlow.ts), and only ever after the report is already in the
+// outbox. That ordering is the promise the flow exists to keep: someone asked
+// to authenticate on a ridge with one bar can decline, or simply fail, and
+// still have what they wrote.
+//
+// This used to be deliberately unwired, on the grounds that provider buttons
+// which cannot authenticate would break exactly that promise. They can now -
+// there is a real Supabase project (features/AUTHENTICATION.md), and Supabase
+// Auth is what a hiker signs in to, not this project's own backend. Sending a
+// queued report still needs that backend deployed, which is why saving is
+// still what the flow guarantees and sending still is not.
+//
+// Which providers appear is a build-time answer (lib/supabase.ts's
+// ENABLED_PROVIDERS), because a button whose credentials do not exist yet
+// reaches an error page rather than an account.
+//
+// Identity - trail name and reporter type - is still not collected here.
+// stepAfterSaving() reports when it is wanted and there is no screen for it,
+// so that step ends the flow the way it already ended, with the report
+// queued.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
@@ -57,7 +72,12 @@ import {
 } from './lib/elevationProfile'
 import { upcomingClimb } from './lib/upcomingClimb'
 import { startTracking, trackDirection, type DirectionTracker } from './lib/hikeDirection'
-import { beginContribution } from './lib/contributionFlow'
+import { beginContribution, stepAfterSaving } from './lib/contributionFlow'
+import { SignInPrompt, type AuthProvider } from './screens/SignInPrompt'
+import { EmailSignIn } from './screens/EmailSignIn'
+import { ENABLED_PROVIDERS } from './lib/supabase'
+import { useAccount } from './lib/useAuth'
+import { signInWithEmail, signInWithProvider, signOut, signUpWithEmail } from './lib/auth'
 import { listQueued } from './lib/outbox'
 import type { BoundingBox, MapPoint } from './lib/legendContents'
 import type { SearchablePoi } from './lib/searchPoi'
@@ -69,12 +89,13 @@ import './desktop.css'
 
 const TRAIL_NAME = 'Appalachian Trail'
 
-// Sign in, sign out, sync and export are all rendered and all do nothing: what
-// they need is the backend, which is Phase 2 (ROADMAP.md). They share one
-// placeholder rather than getting an identical empty arrow each, because the
-// sign-out control in particular is unreachable today - Settings renders it
-// only when `account` is set, and that is hardcoded null below - and four
-// separate copies would mean carrying a function nothing can ever call.
+// Sync and export are rendered and do nothing: what they need is the backend,
+// which is Phase 2 (ROADMAP.md). They share one placeholder rather than
+// getting an identical empty arrow each.
+//
+// Sign in and sign out used to be here too. They are real now - Supabase Auth
+// is a separate service from this project's backend, so signing in never
+// needed that backend to exist, only a project to sign in to.
 const notYet = () => undefined
 
 // The whole trail, Springer to Katahdin, as the opening view. Taken from the
@@ -121,6 +142,14 @@ function emptyTrailsUrl(): string {
 
 type ReportingState = null | { step: 'pick' } | { step: 'form'; type: ReportTypeId }
 
+// Sign-in is its own flow rather than another step of the reporting one,
+// because it is reachable from two places that want different things back:
+// finishing a contribution, and the account row in Settings. Conflating them
+// would mean the Settings path inheriting the report flow's copy, which
+// promises that a report is already saved - true in one case and not the
+// other.
+type AuthFlowState = null | { screen: 'choose' | 'email'; afterReport: boolean }
+
 function App() {
   // Two pieces of state rather than one nullable, because null only ever meant
   // "not read off the phone yet" - and saying that with a boolean keeps the
@@ -154,6 +183,11 @@ function App() {
   const [dataError, setDataError] = useState<string | null>(null)
 
   const [reporting, setReporting] = useState<ReportingState>(null)
+  const [authFlow, setAuthFlow] = useState<AuthFlowState>(null)
+  // Null until a stored session is read, and null forever if nobody signs in.
+  // Signed out is the state every screen already works in, so this gates
+  // nothing.
+  const account = useAccount()
   const [queuedCount, setQueuedCount] = useState(0)
   const [lastSyncedAt] = useState<Date | null>(null)
 
@@ -451,11 +485,48 @@ function App() {
 
   const handleSubmitReport = useCallback(
     async ({ authoredAt, ...draft }: ReportFormSubmission) => {
+      // Saved first, always, and before authentication is so much as
+      // mentioned. Everything below this line can fail without costing the
+      // hiker what they just wrote.
       await beginContribution(draft, authoredAt)
       setReporting(null)
+
+      const next = stepAfterSaving({
+        hasAccount: account !== null,
+        hasIdentity: preferences.trail_name !== null,
+      })
+      // 'identity' has no screen yet, and 'send' needs a backend that is not
+      // deployed. Both end the flow exactly as it ended before, with the
+      // report queued and said so. Only the sign-in step is built.
+      if (next === 'sign-in') setAuthFlow({ screen: 'choose', afterReport: true })
     },
-    [],
+    [account, preferences.trail_name],
   )
+
+  const handleChooseProvider = useCallback((provider: AuthProvider) => {
+    if (provider === 'email') {
+      setAuthFlow((current) =>
+        current === null ? null : { screen: 'email', afterReport: current.afterReport },
+      )
+      return
+    }
+    // An OAuth round trip leaves the page. If it returns with a session,
+    // useAccount's subscription is what notices - there is nothing to await
+    // here, and no state worth setting on the way out.
+    void signInWithProvider(provider)
+  }, [])
+
+  const handleSignOut = useCallback(async () => {
+    await signOut()
+  }, [])
+
+  // Signing in ends the sign-in flow, whichever way it completed - an email
+  // form resolving in this tab, or a provider redirect landing back on a
+  // freshly loaded page. Watching the account rather than the call site is
+  // what makes those two the same event here.
+  useEffect(() => {
+    if (account !== null) setAuthFlow(null)
+  }, [account])
 
   // Nothing renders until the phone's own preferences have been read, so a
   // returning hiker never sees a flash of the first-run onboarding.
@@ -463,6 +534,27 @@ function App() {
 
   if (!preferences.onboarding_completed) {
     return <Onboarding onComplete={handleOnboardingComplete} />
+  }
+
+  if (authFlow !== null) {
+    if (authFlow.screen === 'email') {
+      return (
+        <EmailSignIn
+          onSignIn={signInWithEmail}
+          onSignUp={signUpWithEmail}
+          onCancel={() => setAuthFlow(null)}
+        />
+      )
+    }
+
+    return (
+      <SignInPrompt
+        providers={ENABLED_PROVIDERS}
+        reportSaved={authFlow.afterReport}
+        onSignIn={handleChooseProvider}
+        onCancel={() => setAuthFlow(null)}
+      />
+    )
   }
 
   if (reporting !== null) {
@@ -542,10 +634,10 @@ function App() {
       <div className="app__screen">
         <div>
           <More
-            account={null}
+            account={account}
             reporterType="thru"
-            onSignIn={notYet}
-            onSignOut={notYet}
+            onSignIn={() => setAuthFlow({ screen: 'choose', afterReport: false })}
+            onSignOut={() => void handleSignOut()}
             preferences={preferences}
             onChange={updatePreferences}
             lastSyncedAt={lastSyncedAt}

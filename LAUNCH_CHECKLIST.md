@@ -139,20 +139,60 @@ VITE_AUTH_PROVIDERS=google,email
 
 ## 5. First database migration
 
-There are no Alembic migrations — `backend/alembic/versions/` holds only `.gitkeep`. Tests create tables directly from the models, which is why this has not surfaced.
+The initial migration now exists — `backend/alembic/versions/0f79a37f9358_initial_schema.py`, generated and verified locally against DuckDB (both `upgrade head` and `downgrade base` run clean). It has never been applied to a real Postgres.
 
-Before the backend can run against a real Postgres:
+So this is one command, not two. Running `revision --autogenerate` again would produce an empty second migration on top of it:
 
 ```
 cd backend
 # with DATABASE_URL pointed at your Supabase Postgres
-.venv/Scripts/alembic revision --autogenerate -m "initial schema"
 .venv/Scripts/alembic upgrade head
 ```
 
-**Review the generated migration before applying it.** Autogenerate is good but not infallible, and several models use `Enum(..., native_enum=False)` for DuckDB/Postgres portability — worth confirming that renders as expected.
+**Read the migration before applying it**, the same way you would review any migration against real data. Several models use `Enum(..., native_enum=False)` for DuckDB/Postgres portability — worth confirming that renders as expected on Postgres, since it was verified against the other one.
 
-Tables it should create: `profiles`, `reports`, `closures`, `hikes`, `preferences`, `clubs`, `maintainer_assignments`.
+Tables it should create: `clubs`, `profiles`, `closures`, `hikes`, `maintainer_assignments`, `reports`, `user_preferences`.
+
+---
+
+## 5a. Lock the tables down before anyone can reach them
+
+**Do this in the same sitting as step 5.** Between the migration landing and RLS being on, the database is open.
+
+Supabase serves every table in the `public` schema over PostgREST, at `https://<ref>.supabase.co/rest/v1/`, to anyone holding the anon key. That key is *meant* to be public — it ships inside the client's JS bundle, and no amount of treating it as a secret changes that. What makes publishing it safe is **Row Level Security**, not the key being hard to find. Supabase's own wording: the key is safe to expose *because* RLS is enabled on the database.
+
+Alembic does not enable RLS. It creates plain tables. So the moment step 5 runs, all seven — including `reports`, `profiles` and `closures` — are readable and writable by anyone who opens the app, views source, copies the key, and calls the REST endpoint directly.
+
+**The backend's own auth does not prevent this.** `get_current_user` guards FastAPI's routes, and PostgREST is a second front door into the same database that never passes through FastAPI. Locking the front door does nothing about a second one nobody remembered was there.
+
+The backend keeps working either way: it connects with the Postgres connection string as the table owner, and RLS does not apply to it.
+
+Either fix works. Pick one:
+
+**Enable RLS with no policies**, which denies everything through PostgREST while leaving the backend untouched:
+
+```sql
+alter table public.clubs                  enable row level security;
+alter table public.profiles               enable row level security;
+alter table public.closures               enable row level security;
+alter table public.hikes                  enable row level security;
+alter table public.maintainer_assignments enable row level security;
+alter table public.reports                enable row level security;
+alter table public.user_preferences       enable row level security;
+```
+
+A table with RLS on and no policy rejects every anon request. That is the right default here: **nothing in the client talks to PostgREST.** The client uses Supabase for authentication only and reaches its data through the backend, so there is no query to keep working and nothing to grant. Add policies later if and only if something is built that genuinely needs direct table access.
+
+**Or move the schema out of `public`** — PostgREST only exposes the schemas it is configured to, so tables elsewhere are unreachable regardless. Cleaner in principle, but it means an Alembic `version_table_schema` change and a search-path decision, so it is the larger change of the two.
+
+**Then verify rather than assume.** Database → Advisors in the dashboard flags every table that has RLS off; it should list none of these seven afterwards. Or check from outside with the anon key, which is the actual threat model:
+
+```
+curl "https://<ref>.supabase.co/rest/v1/reports?select=*" \
+  -H "apikey: <anon or publishable key>"
+```
+
+An empty array or a permission error is what you want. Rows are the failure.
 
 ---
 

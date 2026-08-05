@@ -153,6 +153,30 @@
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
+/* The tabs' own box, which exists so that `role="tablist"` can own tabs and
+   nothing else - the brand mark below is a sibling of it, not a member of the
+   set (see TabBar.tsx). Filling the bar is what keeps this inert on a phone:
+   the three tabs still spread across the full width exactly as they did when
+   they were direct children of .tab-bar. */
+.tab-bar__tabs {
+  display: flex;
+  flex: 1;
+}
+
+/* Not drawn on a phone.
+ *
+ * The bar here is a horizontal strip of three thumb-sized targets across the
+ * full width, so there is no bottom-left corner going spare - anything added
+ * comes out of a tab's width or out of the map above it. The mark is revealed
+ * only in desktop.css's media query, which is what structurally guarantees the
+ * phone layout cannot regress (see the note at the top of that file).
+ *
+ * Keeping the brand on a phone without spending map pixels is a real design
+ * question rather than a CSS one, and is tracked as its own spike. */
+.tab-bar__brand {
+  display: none;
+}
+
 .tab-bar__tab {
   flex: 1;
   min-height: var(--min-touch-target);

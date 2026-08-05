@@ -63,4 +63,33 @@ describe('TabBar', () => {
 
     expect(screen.getByRole('tablist')).toBeInTheDocument()
   })
+
+  // The bar is also the sidebar on a desktop, and the mark sits at the foot of
+  // it - the bottom-left corner of the page. Whether it is VISIBLE is a CSS
+  // contract, asserted in test/desktopLayout.test.ts; what is asserted here is
+  // that the bar carries it at all, and carries it without disturbing the tabs.
+  it('carries the OurHike mark for the foot of the sidebar', () => {
+    const { container } = render(<TabBar {...PROPS} />)
+
+    expect(container.querySelector('.tab-bar__brand')).not.toBeNull()
+  })
+
+  it('shows the full lockup, wordmark included, not the bare icon', () => {
+    // The icon alone is a green-and-brown square that names nothing. In the
+    // sidebar there is room for the wordmark on a light surface, which is the
+    // one place in the app chrome where it is both legible and affordable.
+    const { container } = render(<TabBar {...PROPS} />)
+
+    expect(container.querySelector('.tab-bar__brand')).toHaveTextContent('OurHike')
+  })
+
+  it('keeps the mark out of the tablist, so it is not read as a fourth tab', () => {
+    // `role="tablist"` is required to own tabs and nothing else. With the mark
+    // inside it, a screen reader announces the brand as one more member of a
+    // set of three - which is why the tabs have their own box.
+    render(<TabBar {...PROPS} />)
+
+    expect(screen.getByRole('tablist').querySelector('.tab-bar__brand')).toBeNull()
+    expect(screen.getAllByRole('tab')).toHaveLength(TABS.length)
+  })
 })

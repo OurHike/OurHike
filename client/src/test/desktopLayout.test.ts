@@ -102,6 +102,35 @@ describe('desktop layout contract', () => {
     expect(block).not.toMatch(/position:\s*(static|relative)/)
   })
 
+  // The brand mark's whole contract is the phone/desktop split, so both halves
+  // are asserted together rather than one per stylesheet. The mark is drawn at
+  // the foot of the sidebar, which is a corner that exists only in this layout;
+  // on a phone the bar is three thumb-sized targets across the full width, and
+  // anything added there comes out of a tab or out of the map.
+  it('draws the brand mark only where there is a sidebar to put it in', () => {
+    const chrome = readFileSync(resolve(process.cwd(), 'src/chrome/chrome.css'), 'utf8')
+    const bare = chrome.replace(/\/\*[\s\S]*?\*\//g, '')
+    const start = bare.indexOf('.tab-bar__brand {')
+    expect(start, 'no .tab-bar__brand rule in chrome.css').toBeGreaterThan(-1)
+
+    // Hidden by the component's own stylesheet...
+    expect(bare.slice(start, bare.indexOf('}', start))).toMatch(/display:\s*none/)
+    // ...and turned back on only from inside the media query, which is what
+    // makes "cannot reach a phone" structural rather than a review promise.
+    expect(unguardedRules(css)).not.toMatch(/\.tab-bar__brand/)
+    expect(css).toMatch(/\.tab-bar__brand\s*\{[^}]*display:\s*flex/)
+  })
+
+  it('lets the tab list grow, which is what carries the mark to the bottom edge', () => {
+    // The mark is the last child of the sidebar column and is NOT pinned there
+    // by absolute positioning - the tab list growing is what pushes it down. A
+    // fixed height on either would let a longer tab set slide under the mark.
+    const block = declarationsOf('.map-screen > .tab-bar .tab-bar__brand')
+
+    expect(block).not.toMatch(/position:\s*absolute/)
+    expect(block).toMatch(/display:\s*flex/)
+  })
+
   it('does not hide the legend close button without the component also dropping it', () => {
     // Belt and braces, and the test says so: the CSS hides the control and the
     // component omits it. Either alone would leave a release where a panel

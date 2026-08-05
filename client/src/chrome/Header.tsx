@@ -51,23 +51,25 @@ export function Header({
 }: HeaderProps) {
   return (
     <header className="map-header">
-      <div className="map-header__read">
-        <p className="map-header__eyebrow">
-          {trailLogo !== undefined && (
-            <img
-              className="map-header__trail-logo"
-              src={trailLogo}
-              alt=""
-              aria-hidden="true"
-            />
-          )}
-          {state === undefined ? trailName : `${trailName} · ${state}`}
-        </p>
-        <p className="map-header__position">
-          {mile === undefined
-            ? 'Looking for GPS…'
-            : `mi ${formatMile(mile)}${direction === undefined ? '' : ` · ${direction}`}`}
-        </p>
+      <div className="map-header__identity">
+        {trailLogo !== undefined && (
+          <img
+            className="map-header__trail-logo"
+            src={trailLogo}
+            alt=""
+            aria-hidden="true"
+          />
+        )}
+        <div className="map-header__read">
+          <p className="map-header__eyebrow">
+            {state === undefined ? trailName : `${trailName} · ${state}`}
+          </p>
+          <p className="map-header__position">
+            {mile === undefined
+              ? 'Looking for GPS…'
+              : `mi ${formatMile(mile)}${direction === undefined ? '' : ` · ${direction}`}`}
+          </p>
+        </div>
       </div>
 
       <div className="map-header__actions">

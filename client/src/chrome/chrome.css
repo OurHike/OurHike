@@ -66,10 +66,14 @@
   border-bottom: 1px solid var(--border-1);
 }
 
-.map-header__eyebrow {
+.map-header__identity {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 10px;
+  min-width: 0;
+}
+
+.map-header__eyebrow {
   margin: 0;
   font-size: 11px;
   letter-spacing: 0.04em;
@@ -78,8 +82,8 @@
 }
 
 .map-header__trail-logo {
-  width: 14px;
-  height: 14px;
+  width: 36px;
+  height: 36px;
   flex-shrink: 0;
 }
 

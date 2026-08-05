@@ -30,3 +30,51 @@ Direction is the whole rule: `main` flows down into your branch, never the rever
 
 If a branch has drifted too far to reconcile honestly, say so in the pull request and
 leave it. Do not resolve it by pushing to `main`.
+
+## One branch per issue, unless the work is stacked
+
+**Default: a new issue gets a new branch off `main`, its own pull request, and gets closed
+out on its own.** Small and independently reviewable beats comprehensive, and a session
+that finds three things should leave three pull requests.
+
+The exception is work that sits **on top of** an open branch — it touches code that branch
+is actively rewriting, or it only makes sense with those changes present. Splitting that
+does not produce two clean reviews. It produces two pull requests that conflict with each
+other and a merge order somebody has to hold in their head. Keep it where it depends, and
+say plainly in the pull request that it closes two issues and why.
+
+**The test is dependency, not subject or size.** [#216](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/216)
+had nothing to do with [#210](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/210)
+as a problem — one was a blank background, the other was how you reach the download — but
+its fix landed in `App.tsx`, `MapScreen.tsx` and `BackgroundPicker.tsx` while #210 was
+rewriting all three. It stayed, and the pull request said so.
+
+Switching branches is nearly free. What costs is re-verifying and resolving conflicts, so
+the number worth minimising is how many times the full check suite has to run — not how
+many branches exist. Do not let "fewer branches" become the goal it is not.
+
+## Run what CI runs, before pushing
+
+Both halves of the repo, not only the half you touched:
+
+```
+cd client   && npm run typecheck && npm run lint && npm run format:check && npm test && npm run build
+cd pipeline && python -m ruff check . && python -m ruff format --check . && python -m pytest
+```
+
+A push that fails on formatting spends a full CI round trip learning something
+`ruff format --check` would have said in one second. That has happened, on a job that runs
+the formatter *before* the tests — so the pipeline suite never ran at all and the log said
+nothing about the change being made.
+
+**Tests that depend on ordering get run several times before they are pushed.** Anything
+awaiting an effect, a rebuild, or a mocked promise. Passing once on an idle machine is not
+evidence: two tests written that way passed here and failed on CI, where a map was rebuilt
+between the camera move and the assertion. A longer `findByText` window would not have
+saved them — the state was gone, not late. Wait on something observable that proves the
+sequence completed, and prove it holds by running the file three times.
+
+Where the environment cannot run a check at all — the sandbox proxy blocks DuckDB's
+`spatial` extension, so three `test_export_pmtiles.py` tests fail here for reasons that
+have nothing to do with any change — confirm that against a clean tree, then say so in the
+pull request rather than reporting a clean run you did not have.

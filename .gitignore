@@ -7,3 +7,10 @@ personal_reference/
 
 # Assembled GitHub Pages output (landing page + built app), built by CI.
 _site/
+
+# Node dependencies and tool caches, when npm or vitest is run from the repo
+# root rather than client/ (client/.gitignore only covers the client/ subtree,
+# the same way backend/.gitignore only covers its own - see .coverage above).
+# A vitest run from the root put node_modules/.vite/ under version control
+# once already.
+node_modules/

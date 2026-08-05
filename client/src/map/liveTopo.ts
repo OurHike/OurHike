@@ -23,12 +23,21 @@
 //
 // THE SOURCE
 //
-// OpenFreeMap's public instance: OpenStreetMap data on the unmodified
-// OpenMapTiles schema, no API key, no registration, no request cap, explicitly
-// free for commercial use with attribution. That last part is why it is here
-// and raw tile.openstreetmap.org is not - the OSMF tile policy warns that
-// access to that server may be withdrawn from exactly this kind of app, and
-// MAP_OPTIONS.md already ruled it out on those grounds.
+// Local bytes first, the network where they do not reach (#189). The sheet's
+// tiles come through the `basemap://` scheme below: map/basemap.ts answers
+// each request from the downloaded basemap package when the phone holds one,
+// and falls through - per tile, not per session - to OpenFreeMap's public
+// instance where the package does not answer. Both serve the same unmodified
+// OpenMapTiles schema (the package is built by our own Planetiler job,
+// pipeline/BASEMAP.md), which is what lets every layer below stay one
+// definition with no offline variant.
+//
+// OpenFreeMap is the network half for the same reasons it was the whole
+// source: OpenStreetMap data, no API key, no registration, no request cap,
+// explicitly free for commercial use with attribution. That last part is why
+// it is here and raw tile.openstreetmap.org is not - the OSMF tile policy
+// warns that access to that server may be withdrawn from exactly this kind
+// of app, and MAP_OPTIONS.md already ruled it out on those grounds.
 //
 // Attribution is a licence condition on both counts - ODbL for the data,
 // OpenFreeMap's own terms for the hosting - so LIVE_TOPO_ATTRIBUTION is
@@ -60,6 +69,25 @@ import {
 } from './terrain'
 
 export const OPENFREEMAP_TILEJSON = 'https://tiles.openfreemap.org/planet'
+
+/**
+ * The scheme the sheet's tile requests go through, and the template the osm
+ * source declares. Config only - the handler that answers it lives in
+ * basemap.ts (local package first, network fallthrough), the same
+ * config/runtime split terrain.ts and contours.ts draw, and for the same
+ * reason: building a style must cost arithmetic, not a protocol registration.
+ */
+export const BASEMAP_SCHEME = 'basemap'
+export const BASEMAP_TILES_URL = `${BASEMAP_SCHEME}://{z}/{x}/{y}`
+
+/**
+ * Declared on the source because a `tiles:` template carries no TileJSON to
+ * say it. 14 is the OpenMapTiles standard ceiling - true of OpenFreeMap's
+ * planet and of our own Planetiler build alike (pipeline/BASEMAP.md), so the
+ * local and network halves of the fallthrough agree on where overzooming
+ * starts and one constant serves both.
+ */
+export const BASEMAP_MAX_ZOOM = 14
 
 /**
  * Glyphs ship with the app, not from a font host (#188).
@@ -356,12 +384,24 @@ export function liveTopoSources({
 }: LiveTopoOptions): Record<string, SourceSpecification> {
   return {
     // Unconditional, and the reason `terrain` is optional at all: this one
-    // needs a URL and a tile schema. No Web Worker, no blob URL, no protocol
-    // registration - none of the machinery a DEM needs and therefore none of
-    // the ways that machinery can fail.
+    // needs a URL and a tile schema - none of the worker/blob-URL machinery
+    // a DEM needs and therefore none of the ways that machinery can fail.
+    // (basemap.ts's protocol registration is machinery, but of the same
+    // idempotent addProtocol kind as the pmtiles scheme - MapView registers
+    // it before any style is applied.)
+    //
+    // A `tiles` template through the basemap:// scheme rather than the
+    // OpenFreeMap TileJSON URL, and the difference is the offline story
+    // (#189): a TileJSON is a network round trip before the first tile can
+    // even be asked for, so a style built around it needs signal to learn
+    // where its own tiles live. The template needs nothing, and each tile
+    // request is then resolved locally-first by basemap.ts. The style stays
+    // a pure function - which archive answers is decided per tile at fetch
+    // time, never observed here.
     [OSM_SOURCE_ID]: {
       type: 'vector',
-      url: OPENFREEMAP_TILEJSON,
+      tiles: [BASEMAP_TILES_URL],
+      maxzoom: BASEMAP_MAX_ZOOM,
       attribution: LIVE_TOPO_ATTRIBUTION,
     },
     ...(terrain === undefined ? {} : terrainSources(terrain)),

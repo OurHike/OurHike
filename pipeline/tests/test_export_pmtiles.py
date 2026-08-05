@@ -455,9 +455,7 @@ def test_export_starts_low_enough_for_the_view_the_app_opens_at():
     language in a different half of the repo and cannot be imported here. The
     number is the contract; this test is where it is written down.
     """
-    assert export_pmtiles.MIN_ZOOM == 0, (
-        "the corridor export must reach the zoom the app opens at - see #216"
-    )
+    assert export_pmtiles.MIN_ZOOM == 0, "the corridor export must reach the zoom the app opens at - see #216"
 
 
 def test_export_covers_every_zoom_from_the_floor_up_with_no_gaps():

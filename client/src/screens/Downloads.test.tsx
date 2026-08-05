@@ -100,7 +100,46 @@ describe('Downloads', () => {
       />,
     )
 
-    expect(screen.getByText(/157 MB.*314 MB/)).toBeInTheDocument()
+    // The received figure lives in its own width-reserving span, so the line
+    // is asserted as the reader sees it: the paragraph's whole text.
+    expect(screen.getByText(/of 314 MB/)).toHaveTextContent('157 MB of 314 MB')
+  })
+
+  it('counts whole megabytes, so the ticking figure has no decimal to spin', () => {
+    // The counter re-renders on every chunk. With formatBytes it flickered:
+    // the tenths digit spun unreadably, and trimming "10.0" to "10" changed
+    // the string's width so the line jumped.
+    render(
+      <Downloads
+        {...PROPS}
+        status={{
+          state: 'downloading',
+          receivedBytes: 157_650_000,
+          totalBytes: 314_000_000,
+        }}
+      />,
+    )
+
+    expect(screen.getByText('157 MB')).toBeInTheDocument()
+    expect(screen.queryByText(/157\.\d/)).toBe(null)
+  })
+
+  it('reserves the counter its full width, sized to the total', () => {
+    // "9 MB" growing to "10 MB" must not shuffle "of 314 MB" sideways: the
+    // received figure sits right-aligned in a slot as wide as the total will
+    // ever make it - ch units, exact because the byte line is monospace.
+    render(
+      <Downloads
+        {...PROPS}
+        status={{
+          state: 'downloading',
+          receivedBytes: 9_000_000,
+          totalBytes: 314_000_000,
+        }}
+      />,
+    )
+
+    expect(screen.getByText('9 MB')).toHaveStyle({ minWidth: '6ch' })
   })
 
   it('offers to RESUME a failed download, never to restart it', async () => {

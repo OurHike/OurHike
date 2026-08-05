@@ -107,6 +107,19 @@ Output goes to `data/spike/` (`corridor.geojson`, `campsites_clipped.geojson`, `
 
 **Gotcha hit and fixed - watch for this in any future `ST_Transform` call:** EPSG:4326's *authority-defined* axis order is (lat, lon), but every geometry source we actually use (GeoJSON, GeoPandas, etc.) is (lon, lat). Without `always_xy := true`, `ST_Transform` silently swaps the axes instead of erroring - the buffer/union still "succeeds" but produces geometry transformed as if every point were on the wrong side of the globe, which only surfaced as `ST_Area` returning `nan` on the reprojected-back result. Always pass `always_xy := true` on both the forward and inverse transform.
 
+## Planning spike: can shelters carry a generated plan? (not yet run)
+
+`spike_day_planner.py` answers the one question in [../features/HIKE_PLANNING.md](../features/HIKE_PLANNING.md) that no amount of design settles: **given where the ATC actually put shelters and campsites, can a plan whose days all end at a real site hit a target day length — and how bad is the worst day when it can't?**
+
+```
+.venv/Scripts/python spike_day_planner.py
+.venv/Scripts/python spike_day_planner.py --targets 12,15,18 --cap 25
+```
+
+Reads already-fetched ATC data (`shelters`, `campsites`, `centerline`) the same way `spike_corridor.py` does — no network. It positions every site along the ordered centerline using `export_elevation.py`'s own helpers, so the miles it reports are the same measurement `elevation_profile.json` uses rather than a third one, then reports the real spacing distribution and runs a shortest-path day planner across a range of targets. If `data/processed/elevation_profile.json` exists it also plans against a *time* target rather than a distance one, which is the comparison that says whether planning by Naismith hours is worth the machinery.
+
+**It has not been run against real data yet** — the environment it was written in has no route to ATC's servers. Everything in HIKE_PLANNING.md's Finding 3 is arithmetic over the feature counts in the source table above, not a measurement, and closing that gap is the first thing to do with this script. The planner in it is deliberately throwaway: the real one runs on the phone, and what should survive is the shape rather than the code.
+
 ## Raster background: mosaic + clip at real scale (done)
 
 `spike_raster_mosaic.py` mosaics the real 1,654 downloaded US Topo quads into the actual corridor-clipped background raster - the full-scale version of the corridor-clip method proven above.

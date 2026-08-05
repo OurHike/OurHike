@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatBytes } from './formatBytes'
+import { formatBytes, formatBytesLive } from './formatBytes'
 import { DOWNLOAD_DETAIL_LEVELS } from './downloadDetail'
 
 // The three download sizes are load-bearing values (WIREFRAMES.md): they are
@@ -63,5 +63,36 @@ describe('formatBytes', () => {
     expect(formatBytes(10_000_000)).toBe('10 MB')
     expect(formatBytes(100_000_000)).toBe('100 MB')
     expect(formatBytes(10_000_000_000)).toBe('10 GB')
+  })
+})
+
+// The live variant feeds the counter under the progress bar, which re-renders
+// on every received chunk. Its one job is to hold still: no MB decimal to
+// spin, no zero-trimming to change the string's width mid-download.
+
+describe('formatBytesLive', () => {
+  it('drops the MB decimal, flooring rather than rounding', () => {
+    // Flooring, because a counter that overstates reads as a lie the moment
+    // it stalls, and because it caps the string at the total's own width.
+    expect(formatBytesLive(157_650_000)).toBe('157 MB')
+    expect(formatBytesLive(157_000_000)).toBe('157 MB')
+    expect(formatBytesLive(0)).toBe('0 MB')
+  })
+
+  it('never widens past the total by rounding 999.5 MB up to "1000 MB"', () => {
+    expect(formatBytesLive(999_999_999)).toBe('999 MB')
+    expect(formatBytesLive(1_000_000_000)).toBe('1.00 GB')
+  })
+
+  it('keeps both GB decimals pinned, never trimmed to a narrower string', () => {
+    // A hundredth of a GB ticks every 10 MB - calm enough to keep - and
+    // "1.10 GB" must hold the width "1.18 GB" needs.
+    expect(formatBytesLive(1_100_000_000)).toBe('1.10 GB')
+    expect(formatBytesLive(2_000_000_000)).toBe('2.00 GB')
+  })
+
+  it('floors GB too, so the counter never reads past the quoted total', () => {
+    // 1.179 GB rounded would show "1.18 GB of 1.18 GB" before it is true.
+    expect(formatBytesLive(1_179_000_000)).toBe('1.17 GB')
   })
 })

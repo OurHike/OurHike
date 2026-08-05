@@ -50,6 +50,21 @@ describe('Header', () => {
     expect(screen.getByText('mi 1,407.2 · SOBO')).toBeInTheDocument()
   })
 
+  it('has no trail logo when none is given', () => {
+    const { container } = render(<Header {...PROPS} />)
+
+    expect(container.querySelector('.map-header__trail-logo')).toBeNull()
+  })
+
+  it("renders the trail's own mark to the left of its name when one is given", () => {
+    const { container } = render(<Header {...PROPS} trailLogo="/at-logo.svg" />)
+
+    const logo = container.querySelector('.map-header__trail-logo')
+    expect(logo).toHaveAttribute('src', '/at-logo.svg')
+    // Decorative - the eyebrow text already names the trail in words.
+    expect(logo).toHaveAttribute('alt', '')
+  })
+
   it('offers exactly two buttons - legend, then search - and nothing else', () => {
     render(<Header {...PROPS} />)
     const buttons = screen.getAllByRole('button')

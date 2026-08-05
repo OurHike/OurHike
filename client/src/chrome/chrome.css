@@ -66,12 +66,25 @@
   border-bottom: 1px solid var(--border-1);
 }
 
+.map-header__identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
 .map-header__eyebrow {
   margin: 0;
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--fg-3);
+}
+
+.map-header__trail-logo {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
 }
 
 .map-header__position {

@@ -27,9 +27,23 @@
 import { get, set, del } from 'idb-keyval'
 import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
 
-export const ARCHIVE_PARTIAL_KEY = 'ourhike:corridor-archive:partial'
-export const ARCHIVE_PROGRESS_KEY = 'ourhike:corridor-archive:progress'
-export const ARCHIVE_SOURCE_KEY = 'ourhike:corridor-archive:source'
+/**
+ * Every function here takes the PACKAGE key - the IndexedDB key the finished
+ * archive lives under (lib/packages.ts) - and derives the download records
+ * from it. One suffix scheme for every package is what keeps "does package X
+ * have a resumable partial" answerable without a registry of record names,
+ * and it is exactly the layout the original single-archive store used, so
+ * the corridor package's records keep their historical names.
+ */
+export const partialKeyFor = (packageKey: string) => `${packageKey}:partial`
+export const progressKeyFor = (packageKey: string) => `${packageKey}:progress`
+export const sourceKeyFor = (packageKey: string) => `${packageKey}:source`
+
+/** The corridor package's record names, spelled out for the reader and for
+ *  tests that assert against the real stored layout. */
+export const ARCHIVE_PARTIAL_KEY = partialKeyFor(CORRIDOR_ARCHIVE_KEY)
+export const ARCHIVE_PROGRESS_KEY = progressKeyFor(CORRIDOR_ARCHIVE_KEY)
+export const ARCHIVE_SOURCE_KEY = sourceKeyFor(CORRIDOR_ARCHIVE_KEY)
 
 export interface DownloadProgress {
   receivedBytes: number
@@ -75,17 +89,18 @@ export class ArchiveSizeMismatchError extends Error {
 }
 
 export async function downloadArchive(
+  packageKey: string,
   url: string,
   { onProgress, signal }: DownloadOptions = {},
 ): Promise<void> {
-  const storedBlob = (await get(ARCHIVE_PARTIAL_KEY)) as Blob | undefined
-  const storedSource = (await get(ARCHIVE_SOURCE_KEY)) as PartialSource | undefined
+  const storedBlob = (await get(partialKeyFor(packageKey))) as Blob | undefined
+  const storedSource = (await get(sourceKeyFor(packageKey))) as PartialSource | undefined
 
   // Only resume onto bytes we can prove came from this same URL. An
   // unidentified partial - a different detail level, or one written by a build
   // before this record existed - is discarded rather than appended to.
   const usable = storedBlob !== undefined && storedSource?.url === url
-  if (storedBlob !== undefined && !usable) await discardPartial()
+  if (storedBlob !== undefined && !usable) await discardPartial(packageKey)
 
   const heldBlob = usable ? storedBlob : undefined
   const heldBytes = heldBlob?.size ?? 0
@@ -160,7 +175,7 @@ export async function downloadArchive(
   } catch (error) {
     // Everything received so far is kept. The next attempt picks up here
     // rather than starting again.
-    await persistPartial(accumulated, totalBytes, source)
+    await persistPartial(packageKey, accumulated, totalBytes, source)
     throw error
   }
 
@@ -168,15 +183,16 @@ export async function downloadArchive(
     // Truncation: a short PMTiles archive opens fine and then returns nothing
     // for tiles past the cut, which looks like missing map rather than a
     // failed download. Keep the bytes so a resume can finish the job.
-    await persistPartial(accumulated, totalBytes, source)
+    await persistPartial(packageKey, accumulated, totalBytes, source)
     throw new ArchiveSizeMismatchError(totalBytes, accumulated.size)
   }
 
-  await set(CORRIDOR_ARCHIVE_KEY, accumulated)
-  await discardPartial()
+  await set(packageKey, accumulated)
+  await discardPartial(packageKey)
 }
 
 async function persistPartial(
+  packageKey: string,
   blob: Blob,
   totalBytes: number,
   source: PartialSource,
@@ -185,26 +201,30 @@ async function persistPartial(
   // that produces a partial - and a partial with no source record is discarded
   // on the next attempt rather than resumed onto blindly. Writing the identity
   // last would leave the dangerous combination (bytes, no identity) reachable.
-  await set(ARCHIVE_SOURCE_KEY, source)
-  await set(ARCHIVE_PARTIAL_KEY, blob)
-  await set(ARCHIVE_PROGRESS_KEY, { receivedBytes: blob.size, totalBytes })
+  await set(sourceKeyFor(packageKey), source)
+  await set(partialKeyFor(packageKey), blob)
+  await set(progressKeyFor(packageKey), { receivedBytes: blob.size, totalBytes })
 }
 
-async function discardPartial(): Promise<void> {
-  await del(ARCHIVE_PARTIAL_KEY)
-  await del(ARCHIVE_PROGRESS_KEY)
-  await del(ARCHIVE_SOURCE_KEY)
+async function discardPartial(packageKey: string): Promise<void> {
+  await del(partialKeyFor(packageKey))
+  await del(progressKeyFor(packageKey))
+  await del(sourceKeyFor(packageKey))
 }
 
 /** What Downloads.tsx shows on load, before anything is tapped. */
-export async function readDownloadProgress(): Promise<DownloadProgress | null> {
-  return ((await get(ARCHIVE_PROGRESS_KEY)) as DownloadProgress | undefined) ?? null
+export async function readDownloadProgress(
+  packageKey: string,
+): Promise<DownloadProgress | null> {
+  return ((await get(progressKeyFor(packageKey))) as DownloadProgress | undefined) ?? null
 }
 
-/** Reclaims the space, partial bytes included - someone deleting a 1.18 GB
- *  map to free room would not expect a stalled attempt to keep holding
- *  several hundred megabytes of it. */
-export async function deleteArchive(): Promise<void> {
-  await del(CORRIDOR_ARCHIVE_KEY)
-  await discardPartial()
+/** Reclaims one package's space, partial bytes included - someone deleting a
+ *  1.18 GB map to free room would not expect a stalled attempt to keep
+ *  holding several hundred megabytes of it. Other packages' archives and
+ *  partials are untouched by construction: every record touched here derives
+ *  from this one key. */
+export async function deleteArchive(packageKey: string): Promise<void> {
+  await del(packageKey)
+  await discardPartial(packageKey)
 }

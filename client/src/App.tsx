@@ -50,6 +50,7 @@ import {
   type DetailLevel,
 } from './lib/downloadDetail'
 import { useArchiveDownload } from './lib/useArchiveDownload'
+import { CORRIDOR_BACKGROUND_PACKAGE } from './lib/packages'
 import { useClock } from './lib/useClock'
 import { useOnline } from './lib/useOnline'
 import { useDataSaver } from './lib/useDataSaver'
@@ -242,7 +243,7 @@ function App() {
     resume: resumeArchive,
     remove: removeArchive,
     error: archiveError,
-  } = useArchiveDownload(archiveUrl(detailLevel))
+  } = useArchiveDownload(CORRIDOR_BACKGROUND_PACKAGE.idbKey, archiveUrl(detailLevel))
 
   const refreshTrailData = useCallback(async () => {
     const data = await loadTrailData()

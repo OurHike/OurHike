@@ -102,6 +102,23 @@ promise carries over.
 
 ## Measured results
 
-*(Filled in from `build-basemap.yml`'s first runs — per-zoom tile counts and
-bytes for the build and the AT package, from `report_archive()`. Until then
-the honest numbers are the estimates above, whose provenance is #184.)*
+From `build-basemap.yml` run 2 (2026-08-04, all 14 states, free hosted
+runner, [logs](https://github.com/jaimito-asuntos-gringuenos/OurHike/actions/runs/30957719854)) —
+these supersede the estimates above:
+
+| Stage | Measured |
+|---|---|
+| 14 Geofabrik state PBFs | 3.44 GB fetched |
+| After osmium pre-clip | **690 MB** build input |
+| Planetiler z0–14 build | ~11 min → 535.1 MB |
+| AT package (`extract_package.py`) | 83,818 tiles in ~5 s → **532.4 MB** |
+| Whole run | **12.5 minutes**, 80 GB disk still free |
+
+Per-zoom (AT package): z14 = 62,097 tiles / 350.0 MB, z13 = 15,899 / 107.0,
+z12 = 4,172 / 44.1, z0–11 ≈ 31 MB. Tile counts land within 0.5% of the
+independent corridor enumeration from #184's research pass.
+
+Tier consequence: **z14 is 66% of the bytes**, so the natural download tiers
+are z0–13 ≈ **182 MB** (smaller than the 314 MB raster it improves on;
+MapLibre overzooms z13 vector cleanly) and z0–14 ≈ **532 MB** for full
+OpenMapTiles detail. The DEM archive (#186) prices separately, on top.

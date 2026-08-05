@@ -1,0 +1,100 @@
+# Builds the offline DEM archive - the terrain half of the offline map
+# program (pipeline/BASEMAP.md, issues #184/#186/#198), sibling to
+# build-basemap.yml and holding the same posture: measure and upload,
+# deliberately cannot publish (releases go through DATA_RELEASES.md once the
+# artifact shape settles).
+#
+# Lighter than the basemap build despite fetching ~20k tiles: there is no
+# Java and no big intermediates - tiles stream from the AWS Open Data bucket
+# through quantize+re-encode straight into the archive, so peak disk is the
+# output itself (~0.5 GB expected at z13, 1 m quantization).
+#
+# The --limit guard is load-bearing, not decorative: the tile walk is driven
+# by a region polygon, and a mis-drawn region would otherwise queue the
+# planet. The corridor at z0-13 is ~21.6k tiles; the default limit leaves
+# room above that without permitting a runaway.
+
+name: Build DEM archive
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_zoom:
+        description: "DEM pyramid depth (13 = source saturation; see export_dem.py)"
+        type: string
+        default: "13"
+      quantize_step:
+        description: "Vertical floor in meters (1.0, or 0.5 if hillshade bands)"
+        type: string
+        default: "1.0"
+      tile_limit:
+        description: "Refuse to fetch more tiles than this"
+        type: string
+        default: "30000"
+
+concurrency:
+  group: build-dem
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Runner capacity
+        run: |
+          echo "disk:"; df -h /
+          echo "cpus: $(nproc)"
+          echo "memory:"; free -g
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Warm the DuckDB spatial extension
+        run: python -c "import duckdb; duckdb.connect().execute('INSTALL spatial; LOAD spatial;')"
+
+      # centerline.geojson, which the corridor region is built from.
+      - name: Fetch ArcGIS sources
+        run: python fetch_all.py
+
+      - name: Build the DEM archive
+        run: |
+          python export_dem.py \
+            --max-zoom "${{ inputs.max_zoom }}" \
+            --quantize-step "${{ inputs.quantize_step }}" \
+            --limit "${{ inputs.tile_limit }}"
+
+      - name: Measure
+        run: |
+          {
+            echo "## DEM build (quantize ${{ inputs.quantize_step }} m, z0-${{ inputs.max_zoom }})"
+            echo '```'
+            python -c "
+          from pathlib import Path
+          from export_basemap import report_archive
+          report_archive(Path('data/processed/dem.pmtiles'))
+          "
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          df -h /
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dem-archive
+          path: pipeline/data/processed/dem.pmtiles
+          retention-days: 7
+          if-no-files-found: error

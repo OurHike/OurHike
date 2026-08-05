@@ -39,6 +39,26 @@ import type { BackgroundOverride } from '../lib/dataSaver'
  * Not "OpenFreeMap" or "PMTiles" - the live sheet is not a trade against
  * working offline (it is drawn OVER the download, so the download is still
  * what shows with no signal) and that is the one thing worth knowing here.
+ *
+ * BOTH HINTS SAY WHAT YOU GET, AND THAT IS NOT A STYLE RULE.
+ *
+ * The offline hint read "No data fetched" and was reported as a bug by
+ * somebody who had the whole corridor on their phone: under a label saying
+ * "Downloaded", three words beginning "No data" are read as a report on the
+ * phone rather than as a description of the option. It was answering "what
+ * does this cost" while its neighbour answered "what does this draw", and the
+ * asymmetry is what let it be mistaken for a status.
+ *
+ * The saving is still the reason anyone picks this, and it is still said - in
+ * DESCRIPTIONS below, as a whole sentence, where there is room for it to be
+ * unambiguously about behaviour. A hint this small cannot carry a claim that
+ * has to be read twice.
+ *
+ * "No signal needed" was tried first and is worse for a reason worth keeping:
+ * it answers "when does this work" while its neighbour answers "what does this
+ * draw", so the pair still did not line up - and it collided with the live
+ * option's own description, which already promises falling back to the
+ * download with no signal.
  */
 const OPTIONS: ReadonlyArray<{
   value: BackgroundSource
@@ -46,7 +66,7 @@ const OPTIONS: ReadonlyArray<{
   hint: string
 }> = [
   { value: 'hiking_topo_live', label: 'Live topo', hint: 'Contours & relief' },
-  { value: 'usgs_topo_offline', label: 'Downloaded', hint: 'No data fetched' },
+  { value: 'usgs_topo_offline', label: 'Downloaded', hint: 'Your download only' },
 ]
 
 /** The longer description under the group, per choice. */

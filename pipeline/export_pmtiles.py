@@ -61,7 +61,30 @@ CENTERLINE_PATH = ROOT / "data" / "raw" / "centerline.geojson"
 CELLS_DIR = ROOT / "data" / "processed" / "topo_background"
 OUT_PATH = ROOT / "data" / "processed" / "background.pmtiles"
 
-MIN_ZOOM = 6
+# Zoom 0, not 6, since 2026-08-05 (#216).
+#
+# At 6 the archive had no tiles at the zoom the app actually OPENS at. The
+# client frames the whole trail on first run - Springer to Katahdin, which fits
+# at roughly z3.8 on a phone and z4.9 on a desktop - so a hiker with a complete
+# 314 MB download and the offline background selected was shown flat paper
+# every single launch, and had to zoom in two levels to discover the map was
+# there at all. Nothing in either codebase reconciled the two numbers; they
+# were set three months apart and never compared.
+#
+# The cost is close to nothing. Tile count grows by the z0..z5 tiles that
+# intersect a 30-mile corridor - tens of tiles against the tens of thousands
+# already written - and export_dem.py has shipped MIN_ZOOM = 0 all along, so
+# this also ends a disagreement between two exports of the same corridor that
+# no comment ever defended.
+#
+# Worth knowing before the next real run: at z0 the corridor is about 0.8 px
+# wide, though still ~22 px long, so it renders as a hairline rather than
+# vanishing. The completeness gate at the foot of main() is what will say so
+# for certain - it requires every source cell to contribute a written tile at
+# EVERY tier, so an all-nodata bottom tier fails the export loudly rather than
+# shipping a hole. That check has not been run against the real 14 GB source
+# here; it needs a genuine export.
+MIN_ZOOM = 0
 MAX_ZOOM = 12
 TILE_PX = 512
 WEBP_QUALITY = 80

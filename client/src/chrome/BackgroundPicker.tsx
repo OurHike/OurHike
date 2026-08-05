@@ -90,11 +90,25 @@ const OVERRIDE_NOTES: Record<BackgroundOverride, string> = {
     'Nothing is downloaded yet, so "downloaded only" has no map to draw and the live topo sheet is being used instead. Download the map and this setting takes effect.',
 }
 
+/**
+ * What to say when the choice is being honoured and still draws nothing.
+ *
+ * Separate from OVERRIDE_NOTES, and phrased to be separable: nothing has been
+ * overridden here, the download is simply a range of scales and this view is
+ * outside it (#216). It ends with the action, because "zoom in" is the whole
+ * remedy and a hiker staring at blank paper has no way to guess it.
+ */
+const BELOW_ARCHIVE_NOTE =
+  'Your download starts closer in than this, so there is no background to draw at this zoom. Zoom in and it appears.'
+
 export interface BackgroundPickerProps {
   value: BackgroundSource
   onChange: (next: BackgroundSource) => void
   /** Why the drawn background differs from `value`, if it does. */
   override?: BackgroundOverride | null
+  /** Whether the view is zoomed out past what the download covers. Distinct
+   *  from `override` - see StatusStripProps for why they are not one field. */
+  belowArchiveZoom?: boolean
   /**
    * Distinguishes this group's radios from another instance's.
    *
@@ -109,6 +123,7 @@ export function BackgroundPicker({
   value,
   onChange,
   override = null,
+  belowArchiveZoom = false,
   idPrefix = 'background',
 }: BackgroundPickerProps) {
   return (
@@ -141,6 +156,12 @@ export function BackgroundPicker({
       {override !== null && (
         <p className="bg-picker__note" role="note">
           {OVERRIDE_NOTES[override]}
+        </p>
+      )}
+
+      {belowArchiveZoom && (
+        <p className="bg-picker__note" role="note">
+          {BELOW_ARCHIVE_NOTE}
         </p>
       )}
     </fieldset>

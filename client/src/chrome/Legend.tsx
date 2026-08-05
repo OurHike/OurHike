@@ -58,6 +58,8 @@ export interface LegendProps {
   onChangeBackground?: (next: BackgroundSource) => void
   /** Why the drawn background differs from the choice - see lib/dataSaver.ts. */
   backgroundOverride?: BackgroundOverride | null
+  /** Whether the view is zoomed out past what the download covers (#216). */
+  belowArchiveZoom?: boolean
   /** Opens the download window, from the link at the foot of the panel.
    *  Passed straight through: this panel has no opinion about downloads, it is
    *  just the piece of chrome the link ended up in. Omitted, no link is drawn
@@ -79,6 +81,7 @@ export function Legend({
   backgroundChoice,
   onChangeBackground,
   backgroundOverride = null,
+  belowArchiveZoom = false,
   onOpenDownloads,
   hasDownload = false,
 }: LegendProps) {
@@ -116,6 +119,7 @@ export function Legend({
           value={backgroundChoice}
           onChange={onChangeBackground}
           override={backgroundOverride}
+          belowArchiveZoom={belowArchiveZoom}
           idPrefix="legend"
         />
       )}

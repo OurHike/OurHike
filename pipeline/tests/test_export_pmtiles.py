@@ -439,3 +439,29 @@ def test_encode_webp_keeps_real_map_pixels_intact():
         assert decoded[:, :, 3].min() == 255
     # WEBP_QUALITY is lossy, so this is a closeness check rather than equality.
     assert abs(int(decoded[:, :, :3].mean()) - 200) < 5
+
+
+def test_export_starts_low_enough_for_the_view_the_app_opens_at():
+    """#216: the archive must have tiles at the zoom a hiker first sees.
+
+    The client frames the whole trail on first run (CORRIDOR_BOUNDS in
+    client/src/App.tsx), which fits at roughly z3.8 on a phone and z4.9 on a
+    desktop. With MIN_ZOOM at 6 the archive had nothing to draw there, so a
+    complete download on the offline background rendered as flat paper on
+    every launch.
+
+    Pinned as a number rather than as an inequality against some imported
+    constant, because the constant it has to satisfy lives in a different
+    language in a different half of the repo and cannot be imported here. The
+    number is the contract; this test is where it is written down.
+    """
+    assert export_pmtiles.MIN_ZOOM == 0, (
+        "the corridor export must reach the zoom the app opens at - see #216"
+    )
+
+
+def test_export_covers_every_zoom_from_the_floor_up_with_no_gaps():
+    """The tiers are a contiguous range, which is what lets the client treat
+    the header's min_zoom as 'anything at or above this draws'."""
+    assert export_pmtiles.MIN_ZOOM < export_pmtiles.MAX_ZOOM
+    assert list(range(export_pmtiles.MIN_ZOOM, export_pmtiles.MAX_ZOOM + 1))[0] == 0

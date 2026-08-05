@@ -35,6 +35,7 @@ import { attachHiddenPoiTypes, attachPoiData, attachPoiIcons } from './poiLayers
 import { attachPoiTaps } from './poiTaps'
 import type { BoundingBox, MapPoint } from '../lib/legendContents'
 import type { BackgroundSource } from '../lib/userPreferences'
+import { openingZoomFloor, type ArchiveZooms } from '../lib/archiveCoverage'
 
 export interface MapViewProps {
   /** `pmtiles://` URL for the downloaded topo archive. */
@@ -66,6 +67,16 @@ export interface MapViewProps {
    * picking one here would frame it differently on every phone.
    */
   bounds?: [[number, number], [number, number]]
+  /**
+   * What the downloaded archive's own header says it covers, when it is known.
+   *
+   * Used for exactly one thing: keeping the opening camera out of the zooms
+   * the archive has no tiles for, which on the offline background is the
+   * difference between a map and blank paper (#216). It never constrains what
+   * the hiker can do afterwards - zooming out past the download is allowed,
+   * and the chrome says so rather than the map refusing.
+   */
+  archiveZooms?: ArchiveZooms | null
   /**
    * A pin was tapped, by POI id - or the bare map was, reported as null so
    * the shell can dismiss whatever the last pin opened. Must be stable across
@@ -106,6 +117,10 @@ export interface MapViewProps {
 const DEFAULT_CENTER: [number, number] = [-77.1, 39.3]
 const DEFAULT_ZOOM = 12
 
+/** Breathing room around a fitted box, and the figure the opening-floor
+ *  calculation has to use too or the two disagree about what fits. */
+const FIT_PADDING = 24
+
 // Module-level, so the default is the SAME value on every render. A `= []`
 // default parameter would hand over a fresh identity each time and re-run the
 // effect that depends on it, which for the POI source means re-serialising
@@ -123,6 +138,7 @@ export function MapView({
   center,
   zoom,
   bounds,
+  archiveZooms = null,
   showZoomButtons = false,
   units = 'imperial',
   onViewportChange,
@@ -188,7 +204,7 @@ export function MapView({
       // for a box rather than a zoom number.
       ...(bounds === undefined
         ? { center: center ?? DEFAULT_CENTER, zoom: zoom ?? DEFAULT_ZOOM }
-        : { bounds, fitBoundsOptions: { padding: 24 } }),
+        : { bounds, fitBoundsOptions: { padding: FIT_PADDING } }),
       // Attribution is rendered by the app's own chrome, positioned per
       // WIREFRAMES.md, rather than by MapLibre's default control.
       attributionControl: false,
@@ -208,6 +224,34 @@ export function MapView({
     // effect below re-points the contour source in place instead.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topoArchiveUrl, trailsUrl, background])
+
+  // Keeps the OPENING camera out of the zooms the download cannot draw (#216).
+  //
+  // Its own effect rather than part of the construction above, for three
+  // reasons that all point the same way. It reads the zoom MapLibre actually
+  // settled on, so nothing here has to reimplement how a box is fitted to a
+  // screen. It re-runs when the archive's header lands, which is a tick AFTER
+  // the map is built and would otherwise be missed entirely. And it does that
+  // without the archive's coverage becoming a dependency of the construction
+  // effect, where a late-arriving header would tear down a live WebGL context
+  // and rebuild it.
+  //
+  // Only the zoom is touched. The centre stays exactly where fitBounds put it,
+  // which is what makes this defensible at all: App.tsx's opening view is
+  // built around not making a confident-looking claim about where the hiker is
+  // (Harpers Ferry was removed for precisely that), and moving the scale in
+  // without moving the centre claims nothing new.
+  //
+  // Gated on `bounds`, which the shell supplies only for the very first view -
+  // once there is a remembered camera it passes centre and zoom instead. So
+  // this cannot fight a hiker who has deliberately zoomed out to look at the
+  // whole trail; it only decides where they start.
+  useEffect(() => {
+    if (map === null || bounds === undefined || background !== 'usgs_topo_offline') return
+
+    const floor = openingZoomFloor(archiveZooms, map.getZoom())
+    if (floor !== null) map.setZoom(floor)
+  }, [map, bounds, background, archiveZooms])
 
   // Chrome lives in its own effect so that a preference which only affects the
   // controls - the scale bar's units, the zoom buttons - re-attaches three

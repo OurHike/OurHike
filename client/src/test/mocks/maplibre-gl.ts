@@ -271,6 +271,15 @@ export class MockMap {
     return this
   }
 
+  /** Recorded like any other camera move, so a test can tell a zoom the map
+   *  was TOLD to take from one it happened to start on. MapView uses this to
+   *  lift an opening view out of the zooms the download cannot draw (#216). */
+  setZoom(next: number): this {
+    this.cameraMoves.push({ zoom: next })
+    this.zoom = next
+    return this
+  }
+
   /** Records the fit rather than computing a camera from it - what a test
    *  asserts is WHICH bounds the code chose, not MapLibre's projection math. */
   fitBounds(bounds: unknown, options?: Record<string, unknown>): this {

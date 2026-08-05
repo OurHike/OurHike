@@ -60,6 +60,8 @@ import {
   type DetailLevel,
 } from './lib/downloadDetail'
 import { useArchiveDownload } from './lib/useArchiveDownload'
+import { useArchiveZooms } from './lib/useArchiveZooms'
+import { archiveCoversZoom } from './lib/archiveCoverage'
 import { CORRIDOR_BACKGROUND_PACKAGE } from './lib/packages'
 import { useClock } from './lib/useClock'
 import { useOnline } from './lib/useOnline'
@@ -268,6 +270,14 @@ function App() {
   // effectiveBackground exists to keep a hiker out of.
   const archiveDownloaded = archiveStatus.state === 'downloaded'
 
+  // What the archive on this phone actually covers, read from its own header
+  // rather than assumed from the pipeline's constants (#216). Null until a
+  // finished archive exists to ask, and null again if it is deleted.
+  const archiveZooms = useArchiveZooms(
+    CORRIDOR_BACKGROUND_PACKAGE.idbKey,
+    archiveDownloaded,
+  )
+
   /** Returns whether anything was actually on the phone to load. */
   const refreshTrailData = useCallback(async () => {
     const data = await loadTrailData()
@@ -474,6 +484,18 @@ function App() {
       endMile: ribbon.window.endMile,
     }
   }, [ribbon, searchablePois])
+
+  // Zoomed out past what the download covers (#216).
+  //
+  // Read off the DRAWN background rather than the choice: with Data Saver on,
+  // a hiker who picked the live sheet is looking at the archive too, and the
+  // gap is just as blank for them. `camera` is null until the first moveend,
+  // so nothing is claimed before the map has reported a zoom.
+  const belowArchiveZoom =
+    effectiveBackground(preferences.background_source, saveData, archiveDownloaded) ===
+      'usgs_topo_offline' &&
+    camera !== null &&
+    !archiveCoversZoom(archiveZooms, camera.zoom)
 
   const updatePreferences = useCallback((patch: Partial<UserPreferences>) => {
     setPreferences((current) => {
@@ -849,6 +871,10 @@ function App() {
           // gone - which is why it is carried, and not why it is given room.
           onOpenDownloads={openDownloads}
           hasDownload={archiveDownloaded}
+          belowArchiveZoom={belowArchiveZoom}
+          // For the opening camera only - MapView keeps it out of the zooms
+          // the download has no tiles for.
+          archiveZooms={archiveZooms}
           trailName={TRAIL_NAME}
           mile={fix?.mile}
           direction={direction?.direction}

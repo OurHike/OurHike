@@ -136,6 +136,33 @@ describe('BackgroundPicker', () => {
     expect(screen.queryByRole('button')).toBeNull()
   })
 
+  it('explains a view zoomed out past what the download covers', () => {
+    // #216. The choice is being honoured exactly and still draws nothing, so
+    // this needs its own words - and it ends with the remedy, because "zoom
+    // in" is the whole fix and blank paper gives no hint of it.
+    render(
+      <BackgroundPicker value="usgs_topo_offline" onChange={vi.fn()} belowArchiveZoom />,
+    )
+
+    expect(screen.getByText(/starts closer in than this/i)).toBeInTheDocument()
+    expect(screen.getByText(/zoom in/i)).toBeInTheDocument()
+  })
+
+  it('does not blame an override for it, since nothing was overridden', () => {
+    render(
+      <BackgroundPicker value="usgs_topo_offline" onChange={vi.fn()} belowArchiveZoom />,
+    )
+
+    expect(screen.queryByText(/data saver is on/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/nothing is downloaded yet/i)).not.toBeInTheDocument()
+  })
+
+  it('stays quiet about coverage while the download reaches the view', () => {
+    render(<BackgroundPicker value="usgs_topo_offline" onChange={vi.fn()} />)
+
+    expect(screen.queryByText(/starts closer in/i)).not.toBeInTheDocument()
+  })
+
   it('keeps showing the choice, not the background that is actually drawn', () => {
     // A picker that snapped to "downloaded" because Data Saver was on would be
     // unusable: the hiker could never see, let alone change, what they picked.

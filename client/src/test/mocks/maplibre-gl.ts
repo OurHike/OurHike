@@ -271,6 +271,23 @@ export class MockMap {
     return this
   }
 
+  /** Records the fit rather than computing a camera from it - what a test
+   *  asserts is WHICH bounds the code chose, not MapLibre's projection math. */
+  fitBounds(bounds: unknown, options?: Record<string, unknown>): this {
+    this.cameraMoves.push({ fitBounds: bounds, ...options })
+    return this
+  }
+
+  /** Every style ever set, in order, so a test can assert both the latest
+   *  composition and that a change did not rebuild the style needlessly. */
+  readonly styles: unknown[] = []
+
+  setStyle(style: unknown): this {
+    this.styles.push(style)
+    this.adoptStyleContents({ style })
+    return this
+  }
+
   getCenter() {
     return { ...this.center }
   }

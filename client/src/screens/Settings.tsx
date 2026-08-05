@@ -21,7 +21,7 @@
 // deliberate.
 
 import { syncAgeLabel } from '../lib/syncAge'
-import type { UserPreferences } from '../lib/userPreferences'
+import type { BackgroundSource, UserPreferences } from '../lib/userPreferences'
 import { backgroundOverride } from '../lib/dataSaver'
 import { BackgroundPicker } from '../chrome/BackgroundPicker'
 import { REPORTER_TYPES } from '../lib/contributionFlow'
@@ -36,6 +36,19 @@ export interface SettingsProps {
   onSignOut: () => void
   preferences: UserPreferences
   onChange: (patch: Partial<UserPreferences>) => void
+  /**
+   * The background, written through its own callback rather than `onChange`.
+   *
+   * Not because the preference is special - it is one field like any other -
+   * but because CHOOSING it can mean more than storing it: picking the
+   * downloaded corridor with nothing downloaded opens the download window
+   * (App.tsx). The shell owns that rule, so the shell has to see the choice.
+   *
+   * Omitted, the background is written straight through `onChange` like every
+   * other preference here, which is what a Settings rendered outside the shell
+   * should do.
+   */
+  onChangeBackground?: (next: BackgroundSource) => void
   lastSyncedAt: Date | null
   onSync: () => void
   onExport: (format: 'gpx' | 'geojson') => void
@@ -56,8 +69,19 @@ export interface SettingsProps {
    * Passed in for the same reason as `dataSaver`, and it feeds the same one
    * decision: with no archive, "downloaded only" has no download to draw and
    * the map falls back to the live sheet - see lib/dataSaver.ts.
+   *
+   * It also words the download link under the picker, which is the same fact
+   * asked a second way: choose a download, or change the one you have.
    */
   archiveDownloaded?: boolean
+  /**
+   * Opens the download window.
+   *
+   * There is no Downloads tab to send anyone to any more (chrome/tabs.ts), so
+   * this settings screen reaches the download exactly the way the map does -
+   * through the background picker, from one component.
+   */
+  onOpenDownloads?: () => void
 }
 
 function LaterTag() {
@@ -71,12 +95,14 @@ export function Settings({
   onSignOut,
   preferences,
   onChange,
+  onChangeBackground,
   lastSyncedAt,
   onSync,
   onExport,
   now = new Date(),
   dataSaver = false,
   archiveDownloaded = false,
+  onOpenDownloads,
 }: SettingsProps) {
   return (
     <main className="settings">
@@ -133,12 +159,16 @@ export function Settings({
             one preference and disagreeing about what it looked like. */}
         <BackgroundPicker
           value={preferences.background_source}
-          onChange={(background_source) => onChange({ background_source })}
+          onChange={
+            onChangeBackground ?? ((background_source) => onChange({ background_source }))
+          }
           override={backgroundOverride(
             preferences.background_source,
             dataSaver,
             archiveDownloaded,
           )}
+          onOpenDownloads={onOpenDownloads}
+          hasDownload={archiveDownloaded}
           idPrefix="settings"
         />
 

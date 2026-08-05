@@ -360,9 +360,9 @@ keys to pan. Touch targets can relax from 44px where the pointer is fine
 (`@media (pointer: fine)`), which tightens the whole UI visually.
 
 **Routing — the decision to revisit.** `App.tsx:1` explains the absence of a
-router: *"Every screen is reached from the three-tab bar or from a flow that
-owns its own back-out, so URLs would be a second navigation model to keep in
-sync with the first for no gain a hiker would notice."* Correct for a hiker.
+router: *"Every screen is reached from the tab bar or from a flow that owns its
+own back-out, so URLs would be a second navigation model to keep in sync with
+the first for no gain a hiker would notice."* Correct for a hiker.
 Wrong for the web, where it costs deep links, the browser back button,
 shareable views, and the ability for the site (§5.2, §5.3) to link into a
 specific shelter or mile. Adding routes is the largest single change in this

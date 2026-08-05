@@ -48,7 +48,7 @@ meant for production traffic) or a custom domain.
 
 Vite inlines `VITE_*` variables at **build** time. Changing this means
 rebuilding and redeploying — it is not read at runtime. With it unset, the
-Downloads screen says so rather than firing requests that would 404.
+download window says so rather than firing requests that would 404.
 
 ### R2 must allow cross-origin range requests
 

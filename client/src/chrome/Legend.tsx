@@ -57,6 +57,12 @@ export interface LegendProps {
   onChangeBackground?: (next: BackgroundSource) => void
   /** Why the drawn background differs from the choice - see lib/dataSaver.ts. */
   backgroundOverride?: BackgroundOverride | null
+  /** Opens the download window, from the link under the picker. Passed
+   *  straight through: this panel has no opinion about downloads, it just
+   *  happens to hold the control that mentions them. */
+  onOpenDownloads?: () => void
+  /** Whether a finished archive is on the phone, which words that link. */
+  hasDownload?: boolean
 }
 
 export function Legend({
@@ -71,6 +77,8 @@ export function Legend({
   backgroundChoice,
   onChangeBackground,
   backgroundOverride = null,
+  onOpenDownloads,
+  hasDownload = false,
 }: LegendProps) {
   if (!open && !persistent) return null
 
@@ -106,6 +114,8 @@ export function Legend({
           value={backgroundChoice}
           onChange={onChangeBackground}
           override={backgroundOverride}
+          onOpenDownloads={onOpenDownloads}
+          hasDownload={hasDownload}
           idPrefix="legend"
         />
       )}

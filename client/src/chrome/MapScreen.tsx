@@ -121,6 +121,16 @@ export interface MapScreenProps {
    */
   backgroundChoice?: BackgroundSource
   onChangeBackground?: (next: BackgroundSource) => void
+  /**
+   * Opens the download window, which the legend's picker links to.
+   *
+   * The window itself is the shell's, not this screen's: it opens over the
+   * More tab as readily as over the map, and a copy owned here would be a
+   * second one with its own idea of whether it is showing.
+   */
+  onOpenDownloads?: () => void
+  /** Whether a finished archive is on the phone, which words that link. */
+  hasDownload?: boolean
 }
 
 export function MapScreen({
@@ -165,6 +175,8 @@ export function MapScreen({
   backgroundOverride = null,
   backgroundChoice,
   onChangeBackground,
+  onOpenDownloads,
+  hasDownload = false,
 }: MapScreenProps) {
   // The one thing the stylesheet cannot do. The legend announces itself as
   // `role="dialog" aria-modal="true"` and renders nothing when closed; as a
@@ -275,6 +287,8 @@ export function MapScreen({
             backgroundChoice={backgroundChoice}
             onChangeBackground={onChangeBackground}
             backgroundOverride={backgroundOverride}
+            onOpenDownloads={onOpenDownloads}
+            hasDownload={hasDownload}
           />
         </div>
       </div>

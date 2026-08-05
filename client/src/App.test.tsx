@@ -64,6 +64,20 @@ async function completeOnboarding(user: ReturnType<typeof userEvent.setup>) {
 }
 
 /**
+ * The download window, opened the way a hiker reaches it.
+ *
+ * There is no Downloads tab any more (chrome/tabs.ts): the door is the link
+ * under the background picker, and on the map screen the picker is in the
+ * legend. Going through both is the point - a test that reached the window by
+ * some other route would pass with the only door to it painted shut.
+ */
+async function openDownloads(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole('button', { name: /legend/i }))
+  await user.click(await screen.findByRole('button', { name: /download/i }))
+  return screen.findByRole('dialog', { name: /offline map/i })
+}
+
+/**
  * The live map, once MapView's effect has actually built it.
  *
  * `findByRole('region')` resolves the moment MapView's container div lands in
@@ -98,13 +112,19 @@ describe('App shell', () => {
     expect(screen.queryByText('What OurHike is')).not.toBeInTheDocument()
   })
 
-  it('sends someone to Downloads when onboarding finishes, since there is no map yet', async () => {
+  it('opens the download when onboarding finishes, over the map rather than instead of it', async () => {
+    // The choice just made is a download that has not started, so this is
+    // still what someone leaving onboarding needs. What changed on 2026-08-05
+    // is that it no longer costs them the first sight of the map to see it.
     const user = userEvent.setup()
     render(<App />)
 
     await completeOnboarding(user)
 
-    expect(await screen.findByText('Offline map')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('dialog', { name: /offline map/i }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: /trail map/i })).toBeInTheDocument()
   })
 
   it('remembers that onboarding was completed, so a reload does not repeat it', async () => {
@@ -129,15 +149,12 @@ describe('App shell', () => {
     expect(screen.queryByText(/mi 0\.0/)).not.toBeInTheDocument()
   })
 
-  it('moves between the three tabs', async () => {
+  it('moves between the two tabs', async () => {
     const user = userEvent.setup()
     returningHiker()
     render(<App />)
 
     await screen.findByRole('region', { name: /trail map/i })
-
-    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
-    expect(await screen.findByText('Offline map')).toBeInTheDocument()
 
     await user.click(screen.getByRole('tab', { name: 'More' }))
     expect(await screen.findByRole('heading', { name: 'You' })).toBeInTheDocument()
@@ -150,23 +167,133 @@ describe('App shell', () => {
   // than that: leaving the map tore the map down, MapView's next effect cleanup
   // then removed controls that teardown had already detached, and the TypeError
   // escaping a commit-phase cleanup unmounted the entire root. A white page with
-  // no tab bar on it - reachable from either non-map tab, and on a phone as
-  // readily as on a desktop. The three-tab test above covers the same path, but
-  // reads as navigation rather than as the crash it is really guarding.
-  it.each(['Downloads', 'More'])(
-    'still renders %s after the map tab, rather than blanking the whole app',
-    async (tab) => {
-      const user = userEvent.setup()
-      returningHiker()
-      render(<App />)
-      await screen.findByRole('region', { name: /trail map/i })
+  // no tab bar on it - and on a phone as readily as on a desktop. The tab that
+  // reported it is gone; the path it broke on is not, since More still tears
+  // the map down on the way in. The two-tab test above covers the same ground
+  // but reads as navigation rather than as the crash this is really guarding.
+  it('still renders More after the map tab, rather than blanking the whole app', async () => {
+    const user = userEvent.setup()
+    returningHiker()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
 
-      await user.click(screen.getByRole('tab', { name: tab }))
+    await user.click(screen.getByRole('tab', { name: 'More' }))
 
-      expect(await screen.findByRole('tab', { name: tab, selected: true })).toBeVisible()
-      expect(screen.queryByRole('region', { name: /trail map/i })).not.toBeInTheDocument()
-    },
-  )
+    expect(await screen.findByRole('tab', { name: 'More', selected: true })).toBeVisible()
+    expect(screen.queryByRole('region', { name: /trail map/i })).not.toBeInTheDocument()
+  })
+
+  it('opens the download over the map, without taking the map away', async () => {
+    // The whole reason the tab went. Checking on a download used to cost the
+    // hiker the screen they were reading, and rebuilt the map on the way back.
+    const user = userEvent.setup()
+    returningHiker()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await openDownloads(user)
+
+    expect(screen.getByRole('region', { name: /trail map/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /download the map/i })).toBeVisible()
+  })
+
+  it('closes the download window and leaves the map exactly where it was', async () => {
+    const user = userEvent.setup()
+    returningHiker()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    const map = await liveMap()
+
+    await openDownloads(user)
+    await user.click(screen.getByRole('button', { name: /close/i }))
+
+    expect(screen.queryByRole('dialog', { name: /offline map/i })).toBeNull()
+    // The same map object, never torn down and rebuilt - which is what a trip
+    // through the old tab always cost.
+    expect(await liveMap()).toBe(map)
+  })
+
+  it('opens the download when the hiker asks for a background this phone does not have', async () => {
+    // "Downloaded only" with nothing downloaded is a request for a map that is
+    // not here. Storing that silently would answer it with a note explaining
+    // there isn't one; the window that fixes it opens instead.
+    const user = userEvent.setup()
+    returningHiker()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(await screen.findByRole('button', { name: /legend/i }))
+    await user.click(await screen.findByRole('radio', { name: /downloaded/i }))
+
+    expect(
+      await screen.findByRole('dialog', { name: /offline map/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('still saves that choice, so it takes effect the moment a download lands', async () => {
+    // The window is not a veto. lib/dataSaver.ts already draws the live sheet
+    // until there is an archive, so the preference costs nothing meanwhile -
+    // and refusing to store it would make the choice unmakeable in advance.
+    const user = userEvent.setup()
+    returningHiker()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(await screen.findByRole('button', { name: /legend/i }))
+    await user.click(await screen.findByRole('radio', { name: /downloaded/i }))
+
+    await waitFor(() => {
+      const saved = store.get(PREFERENCES_KEY) as { background_source: string }
+      expect(saved.background_source).toBe('usgs_topo_offline')
+    })
+  })
+
+  it('does not interrupt that choice on a phone that already has the download', async () => {
+    const user = userEvent.setup()
+    returningHiker()
+    withDownloadedArchive()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(await screen.findByRole('button', { name: /legend/i }))
+    await user.click(await screen.findByRole('radio', { name: /downloaded/i }))
+
+    await waitFor(() => {
+      const saved = store.get(PREFERENCES_KEY) as { background_source: string }
+      expect(saved.background_source).toBe('usgs_topo_offline')
+    })
+    expect(screen.queryByRole('dialog', { name: /offline map/i })).toBeNull()
+  })
+
+  it('closes the legend it was opened from, rather than stacking two dialogs', async () => {
+    // One thing open at a time. Both announce themselves as modal dialogs on a
+    // phone, and leaving the legend behind would put a screen-reader user
+    // inside one with the other on top of it.
+    const user = userEvent.setup()
+    returningHiker()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await openDownloads(user)
+
+    expect(screen.queryByRole('dialog', { name: /legend/i })).toBeNull()
+  })
+
+  it('reaches the download from More as well, through the same picker', async () => {
+    const user = userEvent.setup()
+    returningHiker()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(
+      await screen.findByRole('button', { name: /choose what to download/i }),
+    )
+
+    expect(
+      await screen.findByRole('dialog', { name: /offline map/i }),
+    ).toBeInTheDocument()
+  })
 
   it('comes back to the view the hiker left, not to the whole trail, after another tab', async () => {
     // The bug: the map screen unmounts whenever another tab is showing, so
@@ -174,6 +301,9 @@ describe('App shell', () => {
     // corridor bounds again. Checking the download progress threw away where
     // someone had zoomed to, every time, and the first-fix jump was a one-way
     // latch that never brought them back.
+    //
+    // The download is a window now and no longer costs a rebuild at all, but
+    // More still does, and the camera has to survive that trip the same way.
     const user = userEvent.setup()
     returningHiker()
     render(<App />)
@@ -185,8 +315,8 @@ describe('App shell', () => {
     opening.zoom = 15
     act(() => opening.emit('moveend'))
 
-    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
-    await screen.findByText('Offline map')
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await screen.findByRole('heading', { name: 'You' })
     await user.click(screen.getByRole('tab', { name: 'Trail' }))
     await screen.findByRole('region', { name: /trail map/i })
 
@@ -358,17 +488,32 @@ describe('App shell', () => {
     })
   })
 
-  it('warns on the Downloads screen when no data source was configured at build time', async () => {
+  it('warns in the download window when no data source was configured at build time', async () => {
     const user = userEvent.setup()
     returningHiker()
     render(<App />)
 
     await screen.findByRole('region', { name: /trail map/i })
-    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    await openDownloads(user)
 
     // VITE_DATA_BASE_URL is unset under test, so this is the real state - and a
     // download that would silently 404 is worth saying out loud.
     expect(await screen.findByRole('alert')).toHaveTextContent(/VITE_DATA_BASE_URL/)
+  })
+
+  it('keeps that warning inside the window rather than over the map', async () => {
+    // The notices belong to the download and travelled with it. Left on a
+    // screen, an archive that failed overnight would announce itself over the
+    // map for the rest of the walk.
+    const user = userEvent.setup()
+    returningHiker()
+    render(<App />)
+
+    await screen.findByRole('region', { name: /trail map/i })
+    await openDownloads(user)
+    await user.click(screen.getByRole('button', { name: /close/i }))
+
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   /** POIs on the phone, but a trails.geojson too damaged to index - the state
@@ -471,7 +616,7 @@ describe('App shell', () => {
 
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
-    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    await openDownloads(user)
     await user.click(await screen.findByRole('button', { name: /download the map/i }))
 
     await waitFor(() => {
@@ -494,7 +639,7 @@ describe('App shell', () => {
 
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
-    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    await openDownloads(user)
     await user.click(await screen.findByRole('button', { name: /download the map/i }))
 
     await waitFor(() => {
@@ -689,7 +834,32 @@ describe('Data Saver', () => {
     // Something is on screen, and it says which screen went.
     expect(await screen.findByRole('alert')).toHaveTextContent(/map stopped working/i)
     // And the way out is still there, which is the whole point.
-    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
-    expect(await screen.findByText('Offline map')).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    expect(await screen.findByRole('heading', { name: 'You' })).toBeInTheDocument()
+  })
+
+  it('can still reach the download when the map has fallen over', async () => {
+    // The window is outside the error boundary on purpose. A map that failed
+    // because there is nothing to draw is exactly the case where the download
+    // is the fix, and losing the door to it with the map would be circular.
+    const user = userEvent.setup()
+    returningHiker()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const MapLibre = await import('maplibre-gl')
+    vi.spyOn(MapLibre, 'Map').mockImplementation(() => {
+      throw new Error('WebGL context could not be created')
+    })
+
+    render(<App />)
+    await screen.findByRole('alert')
+
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(
+      await screen.findByRole('button', { name: /choose what to download/i }),
+    )
+
+    expect(
+      await screen.findByRole('dialog', { name: /offline map/i }),
+    ).toBeInTheDocument()
   })
 })

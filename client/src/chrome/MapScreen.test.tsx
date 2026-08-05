@@ -121,9 +121,9 @@ describe('MapScreen', () => {
     const user = userEvent.setup()
     render(<MapScreen {...PROPS} />)
 
-    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    await user.click(screen.getByRole('tab', { name: 'More' }))
 
-    expect(PROPS.onSelectTab).toHaveBeenCalledWith('downloads')
+    expect(PROPS.onSelectTab).toHaveBeenCalledWith('more')
   })
 
   it('slots the elevation ribbon and waypoint lanes above the canvas', () => {
@@ -289,6 +289,26 @@ describe('MapScreen', () => {
     await user.click(screen.getByRole('radio', { name: /live/i }))
 
     expect(onChangeBackground).toHaveBeenCalledWith('hiking_topo_live')
+  })
+
+  it('carries the way to the download, which is the only one left on this screen', async () => {
+    // The Downloads tab is gone (chrome/tabs.ts). If this link does not reach
+    // the shell, a hiker on the map has no route to the download at all.
+    const user = userEvent.setup()
+    const onOpenDownloads = vi.fn()
+    render(
+      <MapScreen
+        {...PROPS}
+        legendOpen
+        backgroundChoice="usgs_topo_offline"
+        onChangeBackground={vi.fn()}
+        onOpenDownloads={onOpenDownloads}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /choose what to download/i }))
+
+    expect(onOpenDownloads).toHaveBeenCalledTimes(1)
   })
 
   it('draws no picker when the shell has nowhere to write the choice', () => {

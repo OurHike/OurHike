@@ -339,7 +339,7 @@ describe('pushing all of it onto a live map', () => {
 
   it('does not re-register images a previous map screen already added', () => {
     // Images outlive a style reload and MapLibre throws on a duplicate id.
-    // Every trip through the Downloads tab builds a new map, so this is the
+    // Every trip through the More tab builds a new map, so this is the
     // ordinary path, not an edge case.
     map.styleLoaded = true
     attachPoiIcons(map as never)

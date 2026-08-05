@@ -123,6 +123,18 @@ async function reportFix(lat = 39 + 5 * MILE_LAT, lon = -77) {
   })
 }
 
+/**
+ * The download window, opened the way a hiker reaches it.
+ *
+ * There is no Downloads tab (chrome/tabs.ts): the door is the link under the
+ * background picker, which on the map screen lives in the legend.
+ */
+async function openDownloads(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole('button', { name: /legend/i }))
+  await user.click(await screen.findByRole('button', { name: /download/i }))
+  return screen.findByRole('dialog', { name: /offline map/i })
+}
+
 describe('once there is a GPS fix', () => {
   it('shows the mile instead of still looking for GPS', async () => {
     hikerOnTrail()
@@ -456,7 +468,7 @@ describe('downloading everything', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
 
-    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    await openDownloads(user)
     await user.click(await screen.findByRole('button', { name: /download the map/i }))
 
     await waitFor(() => expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob))
@@ -471,7 +483,7 @@ describe('downloading everything', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
 
-    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    await openDownloads(user)
     await user.click(await screen.findByRole('button', { name: /delete/i }))
 
     await waitFor(() => expect(store.has(CORRIDOR_ARCHIVE_KEY)).toBe(false))
@@ -485,7 +497,7 @@ describe('downloading everything', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
 
-    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    await openDownloads(user)
     await user.click(await screen.findByRole('radio', { name: /light/i }))
 
     await waitFor(() => {
@@ -744,7 +756,7 @@ describe('when the trail data cannot be downloaded', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
 
-    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    await openDownloads(user)
     await user.click(await screen.findByRole('button', { name: /download the map/i }))
 
     expect(await screen.findByText('Trail data failed to download.')).toBeInTheDocument()
@@ -766,7 +778,7 @@ describe('resuming an interrupted download', () => {
 
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
-    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    await openDownloads(user)
     const resume = await screen.findByRole('button', { name: /resume/i })
 
     vi.mocked(fetch).mockResolvedValue({

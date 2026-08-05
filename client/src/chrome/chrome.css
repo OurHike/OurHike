@@ -156,8 +156,8 @@
 /* The tabs' own box, which exists so that `role="tablist"` can own tabs and
    nothing else - the brand mark below is a sibling of it, not a member of the
    set (see TabBar.tsx). Filling the bar is what keeps this inert on a phone:
-   the three tabs still spread across the full width exactly as they did when
-   they were direct children of .tab-bar. */
+   the tabs still spread across the full width exactly as they did when they
+   were direct children of .tab-bar. */
 .tab-bar__tabs {
   display: flex;
   flex: 1;
@@ -167,8 +167,8 @@
  * bottom-left corner of the page, and the only corner here that is not either
  * map or a thumb target.
  *
- * It costs the three tabs about 32px of shared width. At 375px that leaves
- * them ~111px each against a 44px floor, so the targets are nowhere near
+ * It costs the tabs about 32px of shared width. At 375px that leaves the two
+ * of them ~171px each against a 44px floor, so the targets are nowhere near
  * pressed; it is still map-free real estate spent on branding, and worth
  * knowing that is the trade. How much chrome this screen should carry at all
  * is the larger question, tracked as its own spike.
@@ -1042,4 +1042,24 @@
   border-radius: 8px;
   font-size: 12px;
   color: var(--fg-2);
+}
+
+/* The way to the download window (screens/DownloadsDialog.tsx), which is the
+   only one there is now that the Downloads tab has gone.
+
+   Drawn as a link rather than as a third button: the pair above it is a
+   choice, and a button the same size and weight beside them would read as a
+   third background to pick. Left-aligned with them, and 44px tall despite
+   looking like text, because it is still a target for a cold thumb. */
+.bg-picker__downloads {
+  min-height: var(--min-touch-target, 44px);
+  margin-top: var(--space-1, 4px);
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-primary);
+  text-decoration: underline;
+  background: none;
+  border: 0;
+  cursor: pointer;
 }

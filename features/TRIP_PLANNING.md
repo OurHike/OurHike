@@ -4,6 +4,8 @@ Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHN
 
 **Scope note up front:** same as Segments - Post-MVP (Extras), a design ready to build from, not an argument to reprioritize v1.
 
+**Update 2026-08-05:** this became **v2's first feature**, and was spiked before being built - see [HIKE_PLANNING.md](HIKE_PLANNING.md) and [../ROADMAP.md](../ROADMAP.md)'s v2 section. That document extends this one rather than replacing it: everything below still stands, and what it adds is the multi-day structure this doc assumes but does not design (the timeline, zero days, resupply stops and the food carry), an auto-generated plan built from shelter positions, and a real answer to the restructuring problem the open questions below leave flagged. Two things in this document are directly superseded there and are called out where they appear: the bulk date shift is now one of three named responses to a change, and the difficulty estimate gains a time-based target rather than only a distance one.
+
 ---
 
 ## This is not a second hierarchy
@@ -17,6 +19,8 @@ A day-hiker shouldn't have to think about "hierarchy" at all. The natural entry 
 ## Bulk plan adjustment
 
 Real plans slip - a zero day, hiking further than planned, weather. The single most valuable operation: **select a Segment and shift it plus every later sibling (and their descendants) by a chosen date delta**, in one action, instead of hand-editing dozens of individual days. That covers the common case (everything after today moves back a day). Bigger restructuring - splitting one long day into two, merging two short ones - is a real need too, but a deeper editing problem worth designing separately once the basic shift operation exists; flagged in open questions rather than solved here.
+
+**Extended 2026-08-05:** the shift is now one of three named responses to a change - shift, absorb, leave - offered with their consequences spelled out rather than applied silently, and bounded by pinned segments so an automatic re-plan can never move a day someone has a hostel booked on. See [HIKE_PLANNING.md](HIKE_PLANNING.md)'s "The cascade". "Absorb" is half of the restructuring problem flagged above, and it is only tractable because a generator exists to re-run.
 
 ## Planning assistance: surfacing what's actually along the way
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, act } from '@testing-library/react'
+import { render, screen, cleanup, act, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { MapScreen } from './MapScreen'
@@ -253,5 +253,50 @@ describe('MapScreen', () => {
     render(<MapScreen {...PROPS} backgroundOverride="data-saver" />)
 
     expect(screen.getByText(/data saver/i)).toBeInTheDocument()
+  })
+
+  it('puts the background choice in the legend, one tap from the map', () => {
+    // It used to live only in Settings, three taps away behind a select. The
+    // moment someone wants to change the background is the moment the map is
+    // not showing what they expected, which is the worst moment to send them
+    // hunting through a settings screen.
+    render(
+      <MapScreen
+        {...PROPS}
+        legendOpen
+        backgroundChoice="usgs_topo_offline"
+        onChangeBackground={vi.fn()}
+      />,
+    )
+
+    const legend = screen.getByRole('dialog', { name: /legend/i })
+    expect(within(legend).getByRole('radio', { name: /live/i })).toBeInTheDocument()
+    expect(within(legend).getByRole('radio', { name: /downloaded/i })).toBeChecked()
+  })
+
+  it('reports a background change from the legend up to its owner', async () => {
+    const user = userEvent.setup()
+    const onChangeBackground = vi.fn()
+    render(
+      <MapScreen
+        {...PROPS}
+        legendOpen
+        backgroundChoice="usgs_topo_offline"
+        onChangeBackground={onChangeBackground}
+      />,
+    )
+
+    await user.click(screen.getByRole('radio', { name: /live/i }))
+
+    expect(onChangeBackground).toHaveBeenCalledWith('hiking_topo_live')
+  })
+
+  it('draws no picker when the shell has nowhere to write the choice', () => {
+    // The legend is rendered in tests and stories without a shell behind it,
+    // and a control that silently discards what it is told is worse than one
+    // that is not there.
+    render(<MapScreen {...PROPS} legendOpen />)
+
+    expect(screen.queryByRole('radio', { name: /live/i })).not.toBeInTheDocument()
   })
 })

@@ -765,6 +765,13 @@ function App() {
           saveData,
           archiveDownloaded,
         )}
+        // The CHOICE, not the outcome above: the picker in the legend shows
+        // and writes what the hiker asked for, and the override note beside it
+        // explains any gap between that and what is drawn.
+        backgroundChoice={preferences.background_source}
+        onChangeBackground={(background_source) =>
+          updatePreferences({ background_source })
+        }
         trailName={TRAIL_NAME}
         mile={fix?.mile}
         direction={direction?.direction}

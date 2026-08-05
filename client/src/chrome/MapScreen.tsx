@@ -110,6 +110,17 @@ export interface MapScreenProps {
    *  lib/dataSaver.ts. Passed down rather than computed here, so the decision
    *  keeps the single home that module's docstring insists on. */
   backgroundOverride?: BackgroundOverride | null
+  /**
+   * The stored background preference and how to change it, for the picker in
+   * the legend.
+   *
+   * Distinct from `background` above, which is what is actually DRAWN after
+   * Data Saver and the download state have had their say. The control has to
+   * show and write the choice, not the outcome - a picker that snapped back
+   * to "downloaded" because Data Saver was on would be unusable.
+   */
+  backgroundChoice?: BackgroundSource
+  onChangeBackground?: (next: BackgroundSource) => void
 }
 
 export function MapScreen({
@@ -152,6 +163,8 @@ export function MapScreen({
   onViewportChange,
   onMapReady,
   backgroundOverride = null,
+  backgroundChoice,
+  onChangeBackground,
 }: MapScreenProps) {
   // The one thing the stylesheet cannot do. The legend announces itself as
   // `role="dialog" aria-modal="true"` and renders nothing when closed; as a
@@ -259,6 +272,9 @@ export function MapScreen({
             hiddenTypes={hiddenTypes}
             onToggleType={onToggleType}
             onClose={onCloseLegend}
+            backgroundChoice={backgroundChoice}
+            onChangeBackground={onChangeBackground}
+            backgroundOverride={backgroundOverride}
           />
         </div>
       </div>

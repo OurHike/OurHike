@@ -18,6 +18,9 @@ import {
 } from '../lib/legendContents'
 import { blazePaintColor } from '../lib/blaze'
 import { typeLabel } from './legendLabels'
+import { BackgroundPicker } from './BackgroundPicker'
+import type { BackgroundSource } from '../lib/userPreferences'
+import type { BackgroundOverride } from '../lib/dataSaver'
 
 export interface BlazeCount {
   blaze: string
@@ -40,6 +43,20 @@ export interface LegendProps {
   hiddenTypes: Set<string>
   onToggleType: (type: string) => void
   onClose: () => void
+  /**
+   * The stored background preference, and how to change it.
+   *
+   * Here rather than only in Settings because this panel is one tap from the
+   * map and already answers "what am I looking at" - and the moment someone
+   * wants to change the background is the moment the map is not showing what
+   * they expected, which is the worst moment to send them hunting through a
+   * settings screen. Omitted together when the legend is rendered without a
+   * shell to write the preference back to, and then no picker is drawn.
+   */
+  backgroundChoice?: BackgroundSource
+  onChangeBackground?: (next: BackgroundSource) => void
+  /** Why the drawn background differs from the choice - see lib/dataSaver.ts. */
+  backgroundOverride?: BackgroundOverride | null
 }
 
 export function Legend({
@@ -51,6 +68,9 @@ export function Legend({
   hiddenTypes,
   onToggleType,
   onClose,
+  backgroundChoice,
+  onChangeBackground,
+  backgroundOverride = null,
 }: LegendProps) {
   if (!open && !persistent) return null
 
@@ -77,6 +97,18 @@ export function Legend({
           </button>
         )}
       </div>
+
+      {/* First, above the counts. The background is the largest thing on the
+          screen and the counts describe what is drawn on top of it, so the
+          question "what am I looking at" is answered in that order. */}
+      {backgroundChoice !== undefined && onChangeBackground !== undefined && (
+        <BackgroundPicker
+          value={backgroundChoice}
+          onChange={onChangeBackground}
+          override={backgroundOverride}
+          idPrefix="legend"
+        />
+      )}
 
       {isEmpty && (
         <p className="legend__empty">

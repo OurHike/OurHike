@@ -195,6 +195,36 @@ if (serviceWorker === undefined) {
       )
     }
   }
+
+  // The bundled glyph ranges (issue #188): all 256, present AND precached.
+  //
+  // Glyphs fail in the worst pattern this check exists for - per-range, at
+  // runtime, only when a label needs a codepoint from a range that never made
+  // it. A build missing half the ranges labels an English test session
+  // perfectly and drops labels in the field, so the count is checked exactly
+  // rather than "at least one". Checked against sw.js and not just dist/
+  // because copying the files is Vite's default behaviour while precaching
+  // them depends on a glob in vite.config.ts that nothing else exercises.
+  const GLYPH_RANGES = 256
+  const glyphsInDist = [...present].filter(
+    (p) => p.startsWith('glyphs/') && p.endsWith('.pbf'),
+  )
+  const glyphsPrecached = glyphsInDist.filter(
+    (p) => precache.includes(p) || precache.includes(encodeURI(p)),
+  )
+  if (glyphsInDist.length !== GLYPH_RANGES) {
+    problems.push(
+      `Expected ${GLYPH_RANGES} glyph range files under glyphs/, found ${glyphsInDist.length}.`,
+      '  Labels for any codepoint in a missing range silently render nothing.',
+      '  See src/map/liveTopo.ts (BUNDLED_GLYPHS) and client/public/glyphs/.',
+    )
+  } else if (glyphsPrecached.length !== GLYPH_RANGES) {
+    problems.push(
+      `Only ${glyphsPrecached.length} of ${GLYPH_RANGES} glyph ranges are in the service worker's precache.`,
+      '  A fresh install would label its map in town and lose the labels in',
+      '  airplane mode. Check workbox.globPatterns in vite.config.ts.',
+    )
+  }
 }
 
 // 4. The stylesheets that make the map usable actually shipped.

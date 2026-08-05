@@ -60,8 +60,26 @@ import {
 } from './terrain'
 
 export const OPENFREEMAP_TILEJSON = 'https://tiles.openfreemap.org/planet'
-export const OPENFREEMAP_GLYPHS =
-  'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf'
+
+/**
+ * Glyphs ship with the app, not from a font host (#188).
+ *
+ * Symbol layers fetch glyph PBFs per 256-codepoint range, and no offline
+ * plumbing intercepts those requests - the pmtiles protocol only handles tile
+ * sources. Served from a host, every label on the sheet - place names, peak
+ * elevations, contour labels - silently rendered nothing without signal. So
+ * the one fontstack the style uses is bundled under public/glyphs/ (6.24 MB,
+ * all 256 ranges of Noto Sans Regular, OFL-licensed - provenance and licence
+ * note sit next to the files) and the style points at its own origin. Being
+ * real build assets is also what gets the ranges into the service worker's
+ * precache, so a fresh install labels its map in airplane mode - the same
+ * reasoning mapWorker.ts documents for the emitted worker asset.
+ *
+ * BASE_URL rather than a bare `/`: GitHub Pages serves the app under
+ * /OurHike/app/, and a root-anchored path would resolve to the project site
+ * instead - see vite.config.ts's note on BASE.
+ */
+export const BUNDLED_GLYPHS = `${import.meta.env.BASE_URL}glyphs/{fontstack}/{range}.pbf`
 
 export const OSM_SOURCE_ID = 'osm'
 
@@ -71,10 +89,12 @@ export const LIVE_TOPO_ATTRIBUTION =
 /**
  * One font, varied by size, colour and halo rather than by weight.
  *
- * A fontstack the glyph server does not have is a label layer that silently
+ * A fontstack the glyph endpoint does not have is a label layer that silently
  * renders nothing, and "Noto Sans Regular" is the one stack every OpenMapTiles
- * glyph endpoint ships. Reaching for a second weight would double the ways
- * that can go wrong to buy a distinction that halo and size already make.
+ * glyph source ships - including the bundled one, which is why BUNDLED_GLYPHS
+ * carries exactly this stack and no other. Reaching for a second weight would
+ * double the app's 6.24 MB of glyph assets to buy a distinction that halo and
+ * size already make.
  */
 const FONT = ['Noto Sans Regular']
 

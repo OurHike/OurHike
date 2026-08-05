@@ -16,20 +16,16 @@
 //   hillshade  only when a DEM has actually been dropped, for the same
 //              reason.
 //
-// Glyphs stay on the network. The viewer is a reviewer tool that runs where
-// there is connectivity (a PR preview, a dev server); bundling glyphs for
-// offline labels is the app's own #188, not this page's problem.
+// Glyphs come from the app's own bundle (#188): the viewer rides the same
+// origin as the app, so the ranges shipped under public/glyphs/ serve this
+// page too, and its labels render from the same bytes a hiker's would.
 
 import type {
   LayerSpecification,
   StyleSpecification,
 } from '@maplibre/maplibre-gl-style-spec'
 import { MAP_BACKGROUND_COLOR } from '../map/style'
-import {
-  LIVE_TOPO_ATTRIBUTION,
-  OPENFREEMAP_GLYPHS,
-  liveTopoLayers,
-} from '../map/liveTopo'
+import { BUNDLED_GLYPHS, LIVE_TOPO_ATTRIBUTION, liveTopoLayers } from '../map/liveTopo'
 import {
   CONTOUR_SOURCE_ID,
   DEM_SOURCE_ID,
@@ -116,7 +112,7 @@ export function buildViewerStyle(
 
   return {
     version: 8,
-    ...(slots.basemap !== undefined ? { glyphs: OPENFREEMAP_GLYPHS } : {}),
+    ...(slots.basemap !== undefined ? { glyphs: BUNDLED_GLYPHS } : {}),
     sources,
     layers,
   }

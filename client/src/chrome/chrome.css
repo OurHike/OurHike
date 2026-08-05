@@ -899,3 +899,107 @@
   opacity: 0.75;
   font-size: 0.9375rem;
 }
+
+/* ---------- Background picker ---------- */
+
+/* A fieldset, reset to nothing. The element is here for the grouping it gives
+   a screen reader - two radios that belong to one question - not for the
+   border browsers put around it by default. */
+.bg-picker {
+  margin: 0 0 var(--space-4, 16px);
+  padding: 0;
+  border: 0;
+}
+
+.bg-picker__legend {
+  padding: 0;
+  margin-bottom: var(--space-2, 8px);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-3);
+}
+
+/* Segmented: one row, equal halves, sharing a border so the pair reads as one
+   control with two states rather than as two separate buttons. */
+.bg-picker__options {
+  display: flex;
+  gap: var(--space-2, 8px);
+}
+
+.bg-picker__option {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-height: var(--min-touch-target, 44px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+/* Selection is carried by the border and the label weight, not by a fill.
+   A filled segment over the map competes with the trail line for attention,
+   and this control sits directly above a legend whose whole job is colour. */
+.bg-picker__option[data-selected='true'] {
+  border-color: var(--brand-primary);
+  box-shadow: inset 0 0 0 1px var(--brand-primary);
+}
+
+/* Visually hidden, not display:none - a removed radio is unfocusable, which
+   would take the arrow-key behaviour the real input was chosen for. The
+   label is the hit target, and it is the full segment. */
+.bg-picker__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The focus ring has to come from the label, since the input it belongs to is
+   the hidden element. Without this the control is keyboard-reachable and
+   gives no sign of where the focus is. */
+.bg-picker__input:focus-visible + .bg-picker__label {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.bg-picker__label {
+  font-size: 14px;
+  color: var(--fg-1);
+}
+
+.bg-picker__option[data-selected='true'] .bg-picker__label {
+  font-weight: 700;
+}
+
+.bg-picker__hint {
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+.bg-picker__description {
+  margin: var(--space-2, 8px) 0 0;
+  font-size: 12px;
+  color: var(--fg-3);
+}
+
+.bg-picker__note {
+  margin: var(--space-2, 8px) 0 0;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  background: var(--bg-page);
+  border: 1px solid var(--border-1);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--fg-2);
+}

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import {
-  backgroundOverridden,
+  backgroundOverride,
   dataSaverConnection,
   dataSaverEnabled,
   effectiveBackground,
@@ -68,45 +68,92 @@ describe('dataSaverEnabled', () => {
   )
 })
 
-describe('effectiveBackground', () => {
+describe('effectiveBackground, with the corridor downloaded', () => {
   it('draws the download only when Data Saver is on', () => {
-    expect(effectiveBackground('hiking_topo_live', true)).toBe('usgs_topo_offline')
+    expect(effectiveBackground('hiking_topo_live', true, true)).toBe('usgs_topo_offline')
   })
 
   it('leaves the live sheet alone when it is off', () => {
-    expect(effectiveBackground('hiking_topo_live', false)).toBe('hiking_topo_live')
+    expect(effectiveBackground('hiking_topo_live', false, true)).toBe('hiking_topo_live')
   })
 
   it('never upgrades an offline choice into fetching tiles', () => {
     // The override only ever subtracts. Someone who asked for no background
     // requests must not start making them because their connection improved.
-    expect(effectiveBackground('usgs_topo_offline', false)).toBe('usgs_topo_offline')
-    expect(effectiveBackground('usgs_topo_offline', true)).toBe('usgs_topo_offline')
+    expect(effectiveBackground('usgs_topo_offline', false, true)).toBe(
+      'usgs_topo_offline',
+    )
+    expect(effectiveBackground('usgs_topo_offline', true, true)).toBe('usgs_topo_offline')
   })
 
   it('overrides the shipped default, which is the case that matters', () => {
     // The whole point: the default was our guess, and Data Saver is a better
     // signal about someone's plan than our guess.
-    expect(effectiveBackground(DEFAULT_PREFERENCES.background_source, true)).toBe(
+    expect(effectiveBackground(DEFAULT_PREFERENCES.background_source, true, true)).toBe(
       'usgs_topo_offline',
     )
   })
 })
 
-describe('backgroundOverridden', () => {
-  it('is true only when the drawn background disagrees with the chosen one', () => {
-    expect(backgroundOverridden('hiking_topo_live', true)).toBe(true)
+describe('effectiveBackground, with nothing downloaded', () => {
+  // The reported bug. "Downloaded only" with no download draws no corridor and
+  // fetches nothing, so the whole screen is the paper backdrop - which nobody
+  // chose and which no other part of the app can recover from. Both overrides
+  // wait until there is something offline to honour them with.
+  it('draws the live sheet even when the hiker picked downloaded-only', () => {
+    expect(effectiveBackground('usgs_topo_offline', false, false)).toBe(
+      'hiking_topo_live',
+    )
   })
 
-  it('is false when Data Saver merely agrees with what was already picked', () => {
+  it('draws the live sheet even when Data Saver is on', () => {
+    // The consent rule still protects everything it can: it costs a hiker
+    // roughly 2 MB they did not ask for, against an app that opens on blank
+    // paper. Once a download exists, Data Saver subtracts again - the case
+    // above proves that has not changed.
+    expect(effectiveBackground('hiking_topo_live', true, false)).toBe('hiking_topo_live')
+    expect(effectiveBackground('usgs_topo_offline', true, false)).toBe('hiking_topo_live')
+  })
+
+  it('leaves the default exactly as it was', () => {
+    expect(effectiveBackground(DEFAULT_PREFERENCES.background_source, false, false)).toBe(
+      'hiking_topo_live',
+    )
+  })
+})
+
+describe('backgroundOverride', () => {
+  it('names Data Saver when that is what changed the map', () => {
+    expect(backgroundOverride('hiking_topo_live', true, true)).toBe('data-saver')
+  })
+
+  it('is null when Data Saver merely agrees with what was already picked', () => {
     // Telling someone their preference was overridden when it was honoured is
-    // its own small lie, and this screen is where they would go to find out
-    // why the map looks different.
-    expect(backgroundOverridden('usgs_topo_offline', true)).toBe(false)
+    // its own small lie, and Settings is where they would go to find out why
+    // the map looks different.
+    expect(backgroundOverride('usgs_topo_offline', true, true)).toBeNull()
   })
 
-  it('is false when nothing is overriding anything', () => {
-    expect(backgroundOverridden('hiking_topo_live', false)).toBe(false)
-    expect(backgroundOverridden('usgs_topo_offline', false)).toBe(false)
+  it('is null when nothing is overriding anything', () => {
+    expect(backgroundOverride('hiking_topo_live', false, true)).toBeNull()
+    expect(backgroundOverride('usgs_topo_offline', false, true)).toBeNull()
+  })
+
+  it('names the missing download when that is the reason, not Data Saver', () => {
+    // The two are opposite in kind - one withholds the live sheet, the other
+    // supplies it - so a screen that reported the wrong one would tell a hiker
+    // their tiles were being saved while the app fetched them.
+    expect(backgroundOverride('usgs_topo_offline', false, false)).toBe(
+      'nothing-downloaded',
+    )
+    expect(backgroundOverride('usgs_topo_offline', true, false)).toBe(
+      'nothing-downloaded',
+    )
+  })
+
+  it('reports nothing when the live sheet was what they wanted anyway', () => {
+    // Data Saver is on and being ignored, but the drawn background is the one
+    // in settings, so there is no mismatch to explain.
+    expect(backgroundOverride('hiking_topo_live', true, false)).toBeNull()
   })
 })

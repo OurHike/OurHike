@@ -27,7 +27,7 @@
 // so that step ends the flow the way it already ended, with the report
 // queued.
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapScreen } from './chrome/MapScreen'
 import type { PoiDetail } from './chrome/PoiCard'
@@ -54,7 +54,7 @@ import { CORRIDOR_BACKGROUND_PACKAGE } from './lib/packages'
 import { useClock } from './lib/useClock'
 import { useOnline } from './lib/useOnline'
 import { useDataSaver } from './lib/useDataSaver'
-import { effectiveBackground } from './lib/dataSaver'
+import { backgroundOverride, effectiveBackground } from './lib/dataSaver'
 import { useFinePointer } from './lib/useFinePointer'
 import { useInstallPrompt } from './lib/useInstallPrompt'
 import { useAppUpdate } from './lib/useAppUpdate'
@@ -245,9 +245,17 @@ function App() {
     error: archiveError,
   } = useArchiveDownload(CORRIDOR_BACKGROUND_PACKAGE.idbKey, archiveUrl(detailLevel))
 
+  // Whether there is a corridor on this phone at all. Only a FINISHED archive
+  // counts: a partial one is bytes in IndexedDB that the PMTiles source cannot
+  // read, so treating "downloading" or "failed" as downloaded would honour an
+  // offline background against an archive that draws nothing - the exact state
+  // effectiveBackground exists to keep a hiker out of.
+  const archiveDownloaded = archiveStatus.state === 'downloaded'
+
+  /** Returns whether anything was actually on the phone to load. */
   const refreshTrailData = useCallback(async () => {
     const data = await loadTrailData()
-    if (data === null) return
+    if (data === null) return false
 
     setTrailsUrl(URL.createObjectURL(data.trails))
     setPois(data.pois)
@@ -268,11 +276,69 @@ function App() {
     } catch {
       setTrailIndex(null)
     }
+    return true
   }, [])
 
+  /**
+   * Whether a trail-data fetch is already in flight or has already succeeded,
+   * so that re-renders and connectivity flapping cannot start a second one.
+   * A ref rather than state because nothing renders from it.
+   */
+  const trailDataFetch = useRef(false)
+
+  // The trail lines load themselves, rather than waiting for someone to tap
+  // Download.
+  //
+  // They are a few megabytes against the archive's 314 MB - the download flow
+  // already treats them that way, fetching them first as the canary - and they
+  // are not decoration on the map, they ARE the map: without them the app
+  // opens on a background with no trail on it, no POIs, nothing to search and
+  // no elevation ribbon. Making the whole corridor download a precondition for
+  // seeing where the Appalachian Trail runs is the wrong trade at any
+  // connection speed, and it is the state every first run was in.
+  //
+  // Deliberately quiet about failing. This is not something the hiker asked
+  // for, so a failure is not a result they are owed a message about - it
+  // leaves exactly the empty map they would have had anyway, and the Downloads
+  // screen still reports errors for the download they DO ask for. Retried when
+  // the phone comes back online, which is the one condition likely to have
+  // changed.
+  // Reading what is already on the phone, and unconditionally. This has to
+  // stay independent of the fetch below: an unconfigured build and a phone
+  // with no signal both still have whatever was downloaded last time, and
+  // gating this on either one would leave a hiker on a ridge - the exact
+  // person the offline store exists for - looking at a map with no trail.
   useEffect(() => {
     void refreshTrailData()
   }, [refreshTrailData])
+
+  useEffect(() => {
+    if (!DATA_CONFIGURED || !online || trailDataFetch.current) return
+
+    let cancelled = false
+    trailDataFetch.current = true
+
+    void (async () => {
+      try {
+        // Asked directly rather than inferred from the effect above, which is
+        // racing this one and reports through state either way. A phone that
+        // already has the lines needs no network at all.
+        if ((await loadTrailData()) !== null) return
+        await downloadTrailData()
+        if (cancelled) return
+        await refreshTrailData()
+      } catch {
+        // Cleared rather than left set, so coming back into signal can try
+        // again. Nothing is shown and nothing is stored - downloadTrailData
+        // commits all four files or none.
+        trailDataFetch.current = false
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [refreshTrailData, online])
 
   // Revoking belongs here rather than inside the setTrailsUrl updater it used
   // to live in. A state updater has to be pure: React may run it more than
@@ -657,6 +723,7 @@ function App() {
             onExport={notYet}
             now={now}
             dataSaver={saveData}
+            archiveDownloaded={archiveDownloaded}
             onStartReport={() => setReporting({ step: 'pick' })}
             queuedReportCount={queuedCount}
           />
@@ -685,7 +752,26 @@ function App() {
       <MapScreen
         topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
         trailsUrl={trailsUrl}
-        background={effectiveBackground(preferences.background_source, saveData)}
+        background={effectiveBackground(
+          preferences.background_source,
+          saveData,
+          archiveDownloaded,
+        )}
+        // Same inputs, same module, one line apart - so the strip cannot say
+        // the background was overridden while the canvas draws the one that
+        // was chosen, which is the mismatch dataSaver.ts exists to stop.
+        backgroundOverride={backgroundOverride(
+          preferences.background_source,
+          saveData,
+          archiveDownloaded,
+        )}
+        // The CHOICE, not the outcome above: the picker in the legend shows
+        // and writes what the hiker asked for, and the override note beside it
+        // explains any gap between that and what is drawn.
+        backgroundChoice={preferences.background_source}
+        onChangeBackground={(background_source) =>
+          updatePreferences({ background_source })
+        }
         trailName={TRAIL_NAME}
         mile={fix?.mile}
         direction={direction?.direction}

@@ -37,9 +37,21 @@ import { POI_LAYER_ID, POI_SOURCE_ID } from './poiLayers'
 //      share geometry often enough that leaving it to export order put grey
 //      and blue stretches through the white AT.
 
+// The background is PINNED rather than left to the default, and that is the
+// point of the `as const`. This file is about the offline sheet - the archive
+// raster, the trail lines, the pins, the paper - and every rule it asserts is
+// a rule about that style. Left implicit, `background` defaulted to the live
+// sheet and these cases only passed because a live style with no terrain used
+// to collapse into the offline one. The day that collapse was fixed, twenty-
+// four tests silently changed subject and the glyphs case below started
+// failing for a reason that had nothing to do with POI pins.
+//
+// The live sheet has its own file (liveTopo.test.ts), which is where a live
+// style's glyphs and text-fields are asserted.
 const STYLE_OPTIONS = {
   topoArchiveUrl: 'pmtiles://ourhike-corridor',
   trailsUrl: '/data/trails.geojson',
+  background: 'usgs_topo_offline' as const,
 }
 
 function style() {

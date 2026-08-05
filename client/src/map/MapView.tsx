@@ -27,6 +27,7 @@ import { registerPMTilesProtocol } from './protocol'
 import { registerMapWorker } from './mapWorker'
 import { buildMapStyle } from './style'
 import { attachContourUnits, registerTerrain } from './contours'
+import { attachLiveSourceHealth, type LiveSourceHealth } from './liveSourceHealth'
 import { attachElevationLabelUnits } from './liveTopo'
 import type { TerrainUrls } from './terrain'
 import { attachMapChrome, type ScaleUnits } from './mapChrome'
@@ -90,6 +91,16 @@ export interface MapViewProps {
    * the opening view only, and the first GPS fix usually lands after it.
    */
   onMapReady?: (map: MapLibreMap | null) => void
+  /**
+   * Which of the live background's network sources reported an error and never
+   * drew anything - see map/liveSourceHealth.ts.
+   *
+   * Reported rather than rendered: this component draws the map, and what the
+   * hiker is told about it belongs to the chrome. Must be stable across
+   * renders (a `useState` setter already is), like `onViewportChange` - an
+   * inline function would re-attach the listeners on every parent render.
+   */
+  onLiveSourceHealth?: (health: LiveSourceHealth) => void
 }
 
 const DEFAULT_CENTER: [number, number] = [-77.1, 39.3]
@@ -116,6 +127,7 @@ export function MapView({
   units = 'imperial',
   onViewportChange,
   onMapReady,
+  onLiveSourceHealth,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [map, setMap] = useState<MapLibreMap | null>(null)
@@ -147,10 +159,18 @@ export function MapView({
     // Someone who chose the downloaded archive to stay off the network should
     // not have a DEM protocol registered behind their back.
     //
-    // Best-effort: contour generation needs a Web Worker and a blob URL, and
-    // if either is unavailable the honest outcome is a map without contours,
-    // not no map. A failure here costs terrain and nothing else - the
-    // archive, the trail lines and the paper are all in the style already.
+    // Best-effort, and narrower than it used to claim. This comment said the
+    // branch fires when "a Web Worker and a blob URL" are unavailable; neither
+    // is true. contours.ts feature-detects Worker and falls back to the main
+    // thread rather than throwing, and maplibre-contour builds its blob URL at
+    // module evaluation, which would fail the import rather than this call.
+    // What actually lands here is a Content-Security-Policy refusing a
+    // blob-backed Worker - no such policy is served today, so this is a guard
+    // against a future hardening rather than a path anyone is on.
+    //
+    // Either way the outcome is a map without contours, not no map: a failure
+    // here costs terrain and nothing else. That is now true of what gets
+    // built, too - style.ts used to drop the entire live sheet along with it.
     let terrain: TerrainUrls | undefined
     if (background === 'hiking_topo_live') {
       try {
@@ -263,6 +283,13 @@ export function MapView({
       map.off('moveend', report)
     }
   }, [map, onViewportChange])
+
+  // Its own effect, like every other attach here, so that a shell which starts
+  // caring about source health does not cost a WebGL context to wire up.
+  useEffect(() => {
+    if (map === null || onLiveSourceHealth === undefined) return
+    return attachLiveSourceHealth(map, onLiveSourceHealth)
+  }, [map, onLiveSourceHealth])
 
   useEffect(() => {
     if (onMapReady === undefined) return

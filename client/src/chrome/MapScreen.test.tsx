@@ -250,7 +250,7 @@ describe('MapScreen', () => {
   })
 
   it('says on the map screen when Data Saver is holding the live sheet back', () => {
-    render(<MapScreen {...PROPS} backgroundOverridden />)
+    render(<MapScreen {...PROPS} backgroundOverride="data-saver" />)
 
     expect(screen.getByText(/data saver/i)).toBeInTheDocument()
   })

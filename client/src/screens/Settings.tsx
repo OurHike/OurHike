@@ -22,7 +22,7 @@
 
 import { syncAgeLabel } from '../lib/syncAge'
 import type { BackgroundSource, UserPreferences } from '../lib/userPreferences'
-import { backgroundOverridden } from '../lib/dataSaver'
+import { backgroundOverride } from '../lib/dataSaver'
 import { REPORTER_TYPES } from '../lib/contributionFlow'
 import type { ReportDraft } from '../lib/outbox'
 import './settings.css'
@@ -49,6 +49,14 @@ export interface SettingsProps {
    * and two independent reads of the same API is how that happens.
    */
   dataSaver?: boolean
+  /**
+   * Whether a finished corridor archive is on this phone.
+   *
+   * Passed in for the same reason as `dataSaver`, and it feeds the same one
+   * decision: with no archive, "downloaded only" has no download to draw and
+   * the map falls back to the live sheet - see lib/dataSaver.ts.
+   */
+  archiveDownloaded?: boolean
 }
 
 function LaterTag() {
@@ -67,6 +75,7 @@ export function Settings({
   onExport,
   now = new Date(),
   dataSaver = false,
+  archiveDownloaded = false,
 }: SettingsProps) {
   return (
     <main className="settings">
@@ -150,11 +159,31 @@ export function Settings({
             different. Rendered only when the two actually disagree - saying
             "overridden" to someone who picked the download anyway would be its
             own small lie. */}
-        {backgroundOverridden(preferences.background_source, dataSaver) && (
+        {backgroundOverride(
+          preferences.background_source,
+          dataSaver,
+          archiveDownloaded,
+        ) === 'data-saver' && (
           <p className="settings__locked" role="note">
             Data Saver is on, so the map is using your download only and fetching no
             background tiles. Turn Data Saver off in your phone's settings to see contours
             and shaded relief.
+          </p>
+        )}
+        {/* The opposite direction, and it needs its own words: here the app is
+            fetching tiles someone asked it not to fetch, because the download
+            they asked it to draw instead is not on the phone yet. Saying
+            nothing would leave "no background data is fetched" above sitting
+            over a map busily fetching background data. */}
+        {backgroundOverride(
+          preferences.background_source,
+          dataSaver,
+          archiveDownloaded,
+        ) === 'nothing-downloaded' && (
+          <p className="settings__locked" role="note">
+            Nothing is downloaded yet, so "downloaded only" has no map to draw and the
+            live topo sheet is being used instead. Download the map and this setting takes
+            effect.
           </p>
         )}
         <label className="settings__row settings__row--later">

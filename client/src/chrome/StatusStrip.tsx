@@ -7,6 +7,7 @@
 // where you are" when the honest answer is "this is where you last were."
 
 import { syncAgeLabel } from '../lib/syncAge'
+import type { BackgroundOverride } from '../lib/dataSaver'
 
 export interface StatusStripProps {
   time: Date
@@ -25,15 +26,15 @@ export interface StatusStripProps {
    */
   liveBackgroundUnavailable?: boolean
   /**
-   * Data Saver is overriding the chosen background - see lib/dataSaver.ts.
+   * Why the background on screen is not the one in settings, if it isn't -
+   * see lib/dataSaver.ts.
    *
    * That module's rule is that the app "is allowed to override a preference,
    * and is not allowed to do it silently," and until now the only screen that
-   * said so was Settings. On a phone with nothing downloaded the override is
-   * the whole map: the live sheet is subtracted and the archive underneath is
-   * empty, so the hiker gets blank paper and no reason for it.
+   * said so was Settings. The map screen is where an overridden background is
+   * actually visible, so it is where the reason belongs too.
    */
-  backgroundOverridden?: boolean
+  backgroundOverride?: BackgroundOverride | null
 }
 
 export function StatusStrip({
@@ -42,7 +43,7 @@ export function StatusStrip({
   hasGpsFix,
   lastSyncedAt,
   liveBackgroundUnavailable = false,
-  backgroundOverridden = false,
+  backgroundOverride = null,
 }: StatusStripProps) {
   return (
     <div className="status-strip">
@@ -62,8 +63,15 @@ export function StatusStrip({
         {online && liveBackgroundUnavailable && (
           <span className="status-strip__flag">No live map</span>
         )}
-        {backgroundOverridden && (
+        {/* Two reasons, opposite in kind: one says the app is withholding the
+            live sheet, the other that it is supplying it against a preference
+            that has no download to honour yet. One word of the wrong one is a
+            map that lies about what it is doing with someone's data. */}
+        {backgroundOverride === 'data-saver' && (
           <span className="status-strip__flag">Data Saver: downloaded map only</span>
+        )}
+        {backgroundOverride === 'nothing-downloaded' && (
+          <span className="status-strip__flag">Live map — nothing downloaded yet</span>
         )}
       </span>
 

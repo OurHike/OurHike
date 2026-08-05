@@ -7,6 +7,7 @@ import { MockMap, NavigationControl, resetMapLibreMock } from './test/mocks/mapl
 import { PREFERENCES_KEY } from './lib/preferences'
 import { DEFAULT_PREFERENCES } from './lib/userPreferences'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
+import { CORRIDOR_BACKGROUND_PACKAGE } from './lib/packages'
 
 // The shell decides what a hiker sees, so what is worth testing here is the
 // routing between screens and the honesty of what it shows before any data
@@ -41,6 +42,18 @@ function returningHiker() {
     onboarding_completed: true,
     download_choice_made: true,
   })
+}
+
+/**
+ * A finished corridor archive on the phone.
+ *
+ * Needed by anything asserting Data Saver's override, because the override
+ * only subtracts the live sheet once there is a download to fall back on -
+ * see lib/dataSaver.ts. Without this the map draws the live sheet whatever
+ * Data Saver says, which is the whole point of that rule.
+ */
+function withDownloadedArchive() {
+  store.set(CORRIDOR_BACKGROUND_PACKAGE.idbKey, new Blob(['pmtiles']))
 }
 
 async function completeOnboarding(user: ReturnType<typeof userEvent.setup>) {
@@ -567,6 +580,7 @@ describe('Data Saver', () => {
   it('builds the map with no live background sources when Data Saver is on', async () => {
     setSaveData(true)
     returningHiker()
+    withDownloadedArchive()
     render(<App />)
 
     const sources = Object.keys(styleOf(await liveMap()).sources)
@@ -581,6 +595,7 @@ describe('Data Saver', () => {
     // hiker who saves data has not asked to lose the map.
     setSaveData(true)
     returningHiker()
+    withDownloadedArchive()
     render(<App />)
 
     const sources = Object.keys(styleOf(await liveMap()).sources)
@@ -605,10 +620,53 @@ describe('Data Saver', () => {
     // nothing, it is the entire background.
     setSaveData(true)
     returningHiker()
+    withDownloadedArchive()
     render(<App />)
     await liveMap()
 
     expect(screen.getByText(/data saver/i)).toBeInTheDocument()
+  })
+
+  it('draws the live sheet anyway when Data Saver is on and nothing is downloaded', async () => {
+    // The reported bug, at the level the hiker meets it. "Downloaded only"
+    // with no download is not a cheaper map, it is no map - the archive source
+    // resolves to nothing and the live layers were never added, so the whole
+    // screen is the paper backdrop. Both overrides wait for a download.
+    setSaveData(true)
+    returningHiker()
+    render(<App />)
+
+    expect(Object.keys(styleOf(await liveMap()).sources)).toContain('osm')
+  })
+
+  it('draws the live sheet when the hiker picked downloaded-only and has no download', async () => {
+    setSaveData(false)
+    store.set(PREFERENCES_KEY, {
+      ...DEFAULT_PREFERENCES,
+      background_source: 'usgs_topo_offline',
+      onboarding_completed: true,
+      download_choice_made: true,
+    })
+    render(<App />)
+
+    expect(Object.keys(styleOf(await liveMap()).sources)).toContain('osm')
+    expect(screen.getByText(/nothing downloaded yet/i)).toBeInTheDocument()
+  })
+
+  it('honours downloaded-only once the download is actually there', async () => {
+    // The other side of the rule, and what keeps it a fallback rather than a
+    // silent reversal of the setting.
+    setSaveData(false)
+    store.set(PREFERENCES_KEY, {
+      ...DEFAULT_PREFERENCES,
+      background_source: 'usgs_topo_offline',
+      onboarding_completed: true,
+      download_choice_made: true,
+    })
+    withDownloadedArchive()
+    render(<App />)
+
+    expect(Object.keys(styleOf(await liveMap()).sources)).not.toContain('osm')
   })
   it('keeps the tab bar reachable when the map screen throws', async () => {
     // #131 in miniature, and what #141 is about. A throw anywhere under the

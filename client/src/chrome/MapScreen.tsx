@@ -23,6 +23,7 @@ import { PoiCard, type PoiDetail } from './PoiCard'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapView } from '../map/MapView'
 import { HEALTHY, type LiveSourceHealth } from '../map/liveSourceHealth'
+import type { BackgroundOverride } from '../lib/dataSaver'
 import { attributionFor } from '../map/style'
 import type { ScaleUnits } from '../map/mapChrome'
 import type { BackgroundSource } from '../lib/userPreferences'
@@ -105,10 +106,10 @@ export interface MapScreenProps {
   bounds?: [[number, number], [number, number]]
   onViewportChange?: (bbox: BoundingBox) => void
   onMapReady?: (map: MapLibreMap | null) => void
-  /** Data Saver is overriding the chosen background - see lib/dataSaver.ts.
-   *  Passed down rather than computed here, so the decision keeps the single
-   *  home that module's docstring insists on. */
-  backgroundOverridden?: boolean
+  /** Why the drawn background is not the one in settings, if it isn't - see
+   *  lib/dataSaver.ts. Passed down rather than computed here, so the decision
+   *  keeps the single home that module's docstring insists on. */
+  backgroundOverride?: BackgroundOverride | null
 }
 
 export function MapScreen({
@@ -150,7 +151,7 @@ export function MapScreen({
   bounds,
   onViewportChange,
   onMapReady,
-  backgroundOverridden = false,
+  backgroundOverride = null,
 }: MapScreenProps) {
   // The one thing the stylesheet cannot do. The legend announces itself as
   // `role="dialog" aria-modal="true"` and renders nothing when closed; as a
@@ -192,7 +193,7 @@ export function MapScreen({
           // a sheet that still draws, which is the degradation terrain.ts
           // promises rather than something to interrupt a hiker over.
           liveBackgroundUnavailable={liveSources.basemap}
-          backgroundOverridden={backgroundOverridden}
+          backgroundOverride={backgroundOverride}
         />
 
         <Header

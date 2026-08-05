@@ -131,21 +131,42 @@ describe('Settings', () => {
     // live sheet is on would not be. This notice is the only place someone
     // would go to find out why the map suddenly looks different, so it is
     // asserted here rather than left to the map to imply.
-    render(<Settings {...PROPS} preferences={live} dataSaver />)
+    // `archiveDownloaded` because Data Saver only subtracts once there is a
+    // download to fall back on - see lib/dataSaver.ts. Without one the map
+    // draws the live sheet regardless, and this notice would be false.
+    render(<Settings {...PROPS} preferences={live} dataSaver archiveDownloaded />)
 
     expect(screen.getByText(/data saver is on/i)).toBeInTheDocument()
   })
 
   it('says how to get the live sheet back, not just that it is gone', () => {
-    render(<Settings {...PROPS} preferences={live} dataSaver />)
+    render(<Settings {...PROPS} preferences={live} dataSaver archiveDownloaded />)
 
     expect(screen.getByText(/turn data saver off/i)).toBeInTheDocument()
+  })
+
+  it('does not blame Data Saver when the real reason is an empty phone', () => {
+    // Data Saver is on and being ignored, because "downloaded only" has no
+    // download to draw. Saying "Data Saver is on, so the map is using your
+    // download only" would be false twice over: it is not, and there is none.
+    render(<Settings {...PROPS} preferences={offline} dataSaver />)
+
+    expect(screen.queryByText(/data saver is on/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/nothing is downloaded yet/i)).toBeInTheDocument()
+  })
+
+  it('explains that an offline choice waits for a download to honour it', () => {
+    render(<Settings {...PROPS} preferences={offline} />)
+
+    expect(
+      screen.getByText(/download the map and this setting takes effect/i),
+    ).toBeInTheDocument()
   })
 
   it('stays quiet when Data Saver merely agrees with what was already picked', () => {
     // Not an override - telling someone their preference was overridden when
     // it was honoured is its own small lie.
-    render(<Settings {...PROPS} preferences={offline} dataSaver />)
+    render(<Settings {...PROPS} preferences={offline} dataSaver archiveDownloaded />)
 
     expect(screen.queryByText(/data saver is on/i)).not.toBeInTheDocument()
   })

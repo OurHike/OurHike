@@ -54,7 +54,7 @@ import { CORRIDOR_BACKGROUND_PACKAGE } from './lib/packages'
 import { useClock } from './lib/useClock'
 import { useOnline } from './lib/useOnline'
 import { useDataSaver } from './lib/useDataSaver'
-import { backgroundOverridden, effectiveBackground } from './lib/dataSaver'
+import { backgroundOverride, effectiveBackground } from './lib/dataSaver'
 import { useFinePointer } from './lib/useFinePointer'
 import { useInstallPrompt } from './lib/useInstallPrompt'
 import { useAppUpdate } from './lib/useAppUpdate'
@@ -244,6 +244,13 @@ function App() {
     remove: removeArchive,
     error: archiveError,
   } = useArchiveDownload(CORRIDOR_BACKGROUND_PACKAGE.idbKey, archiveUrl(detailLevel))
+
+  // Whether there is a corridor on this phone at all. Only a FINISHED archive
+  // counts: a partial one is bytes in IndexedDB that the PMTiles source cannot
+  // read, so treating "downloading" or "failed" as downloaded would honour an
+  // offline background against an archive that draws nothing - the exact state
+  // effectiveBackground exists to keep a hiker out of.
+  const archiveDownloaded = archiveStatus.state === 'downloaded'
 
   const refreshTrailData = useCallback(async () => {
     const data = await loadTrailData()
@@ -657,6 +664,7 @@ function App() {
             onExport={notYet}
             now={now}
             dataSaver={saveData}
+            archiveDownloaded={archiveDownloaded}
             onStartReport={() => setReporting({ step: 'pick' })}
             queuedReportCount={queuedCount}
           />
@@ -685,13 +693,18 @@ function App() {
       <MapScreen
         topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
         trailsUrl={trailsUrl}
-        background={effectiveBackground(preferences.background_source, saveData)}
-        // Same two inputs, same module, one line apart - so the strip cannot
-        // say the background was overridden while the canvas draws the one
-        // that was chosen, which is the mismatch dataSaver.ts exists to stop.
-        backgroundOverridden={backgroundOverridden(
+        background={effectiveBackground(
           preferences.background_source,
           saveData,
+          archiveDownloaded,
+        )}
+        // Same inputs, same module, one line apart - so the strip cannot say
+        // the background was overridden while the canvas draws the one that
+        // was chosen, which is the mismatch dataSaver.ts exists to stop.
+        backgroundOverride={backgroundOverride(
+          preferences.background_source,
+          saveData,
+          archiveDownloaded,
         )}
         trailName={TRAIL_NAME}
         mile={fix?.mile}

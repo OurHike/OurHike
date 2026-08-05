@@ -105,9 +105,18 @@ describe('StatusStrip', () => {
     // may not do it silently. Settings said so; the map screen did not, and
     // the map screen is where the override is actually visible - as nothing
     // at all, on a phone with no download.
-    render(<StatusStrip {...PROPS} backgroundOverridden />)
+    render(<StatusStrip {...PROPS} backgroundOverride="data-saver" />)
 
     expect(screen.getByText(/data saver/i)).toBeInTheDocument()
+  })
+
+  it('says the live map is standing in for a download that is not there yet', () => {
+    // The opposite reason, and it must not borrow the Data Saver words: here
+    // the app is fetching tiles rather than withholding them.
+    render(<StatusStrip {...PROPS} backgroundOverride="nothing-downloaded" />)
+
+    expect(screen.getByText(/nothing downloaded yet/i)).toBeInTheDocument()
+    expect(screen.queryByText(/data saver/i)).not.toBeInTheDocument()
   })
 
   it('stays quiet about the background when nothing is wrong with it', () => {

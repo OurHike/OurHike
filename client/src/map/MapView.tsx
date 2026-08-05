@@ -186,11 +186,12 @@ export function MapView({
     // Best-effort, and narrower than it used to claim. This comment said the
     // branch fires when "a Web Worker and a blob URL" are unavailable; neither
     // is true. contours.ts feature-detects Worker and falls back to the main
-    // thread rather than throwing, and maplibre-contour builds its blob URL at
-    // module evaluation, which would fail the import rather than this call.
-    // What actually lands here is a Content-Security-Policy refusing a
-    // blob-backed Worker - no such policy is served today, so this is a guard
-    // against a future hardening rather than a path anyone is on.
+    // thread rather than throwing, and the worker it constructs is the app's
+    // own emitted asset (demWorker.ts, since #187) rather than the library's
+    // blob. What actually lands here is a Content-Security-Policy whose
+    // worker-src refuses that construction - no such policy is served today,
+    // so this is a guard against a future hardening rather than a path
+    // anyone is on.
     //
     // Either way the outcome is a map without contours, not no map: a failure
     // here costs terrain and nothing else. That is now true of what gets

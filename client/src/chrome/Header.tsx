@@ -10,6 +10,10 @@ export type HikeDirection = 'NOBO' | 'SOBO'
 
 export interface HeaderProps {
   trailName: string
+  /** The trail's own mark, from the TRAILS registry (lib/trails.ts).
+   *  Omitted rather than defaulted to a generic icon: a trail with no known
+   *  logo gets no logo, not a placeholder pretending to be one. */
+  trailLogo?: string
   /** Omitted until the fix is placed in a state. */
   state?: string
   /**
@@ -38,6 +42,7 @@ function formatMile(mile: number): string {
 
 export function Header({
   trailName,
+  trailLogo,
   state,
   mile,
   direction,
@@ -48,6 +53,14 @@ export function Header({
     <header className="map-header">
       <div className="map-header__read">
         <p className="map-header__eyebrow">
+          {trailLogo !== undefined && (
+            <img
+              className="map-header__trail-logo"
+              src={trailLogo}
+              alt=""
+              aria-hidden="true"
+            />
+          )}
           {state === undefined ? trailName : `${trailName} · ${state}`}
         </p>
         <p className="map-header__position">

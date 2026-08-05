@@ -67,11 +67,20 @@
 }
 
 .map-header__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   margin: 0;
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--fg-3);
+}
+
+.map-header__trail-logo {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
 }
 
 .map-header__position {

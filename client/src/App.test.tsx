@@ -908,6 +908,25 @@ describe('an archive that does not reach the view', () => {
     act(() => live.emit('moveend'))
   }
 
+  /**
+   * The map, once the archive's coverage has actually been applied to it.
+   *
+   * Three things have to land before the flag below can mean anything, and
+   * they land in an order this test does not control: the archive read says
+   * downloaded, the background flips to offline (which rebuilds the map), and
+   * the header read reports the zoom range. The clamp firing is the one
+   * observable event that proves all three - so waiting for it is the
+   * precondition, not an assertion.
+   *
+   * Without it these passed locally and failed on CI, where the ordering came
+   * out differently. A `findByText` retry window does not fix that: a rebuild
+   * lands a fresh map with no reported camera, so the moveend this test fired
+   * beforehand is simply gone.
+   */
+  async function offlineMapSettledAt(floor: number) {
+    await waitFor(() => expect(MockMap.live[0]?.getZoom()).toBe(floor))
+  }
+
   it('opens the map at the archive floor rather than on blank paper', async () => {
     returningHiker()
     store.set(PREFERENCES_KEY, {
@@ -938,6 +957,7 @@ describe('an archive that does not reach the view', () => {
 
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
+    await offlineMapSettledAt(6)
     await atZoom(4)
 
     expect(await screen.findByText(/zoomed out past your download/i)).toBeVisible()
@@ -955,6 +975,7 @@ describe('an archive that does not reach the view', () => {
 
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
+    await offlineMapSettledAt(6)
     await atZoom(4)
     await screen.findByText(/zoomed out past your download/i)
 

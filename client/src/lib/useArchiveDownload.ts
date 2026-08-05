@@ -17,10 +17,9 @@ import {
   readDownloadProgress,
   type DownloadProgress,
 } from './archiveDownload'
-import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
 import type { DownloadStatus } from '../screens/Downloads'
 
-export function useArchiveDownload(archiveUrl: string) {
+export function useArchiveDownload(packageKey: string, archiveUrl: string) {
   const [status, setStatus] = useState<DownloadStatus>({ state: 'not-downloaded' })
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -35,7 +34,7 @@ export function useArchiveDownload(archiveUrl: string) {
 
     void (async () => {
       try {
-        const finished = (await get(CORRIDOR_ARCHIVE_KEY)) as Blob | undefined
+        const finished = (await get(packageKey)) as Blob | undefined
         if (cancelled) return
         if (finished !== undefined) {
           setStatus({
@@ -46,7 +45,7 @@ export function useArchiveDownload(archiveUrl: string) {
           return
         }
 
-        const partial = await readDownloadProgress()
+        const partial = await readDownloadProgress(packageKey)
         if (cancelled || partial === null) return
         setStatus({ state: 'failed', ...partial })
       } catch {
@@ -66,7 +65,7 @@ export function useArchiveDownload(archiveUrl: string) {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [packageKey])
 
   const run = useCallback(async () => {
     setError(null)
@@ -77,8 +76,11 @@ export function useArchiveDownload(archiveUrl: string) {
       setStatus({ state: 'downloading', ...progress })
 
     try {
-      await downloadArchive(archiveUrl, { onProgress, signal: controller.signal })
-      const finished = (await get(CORRIDOR_ARCHIVE_KEY)) as Blob | undefined
+      await downloadArchive(packageKey, archiveUrl, {
+        onProgress,
+        signal: controller.signal,
+      })
+      const finished = (await get(packageKey)) as Blob | undefined
       setStatus({
         state: 'downloaded',
         totalBytes: finished?.size ?? 0,
@@ -99,12 +101,12 @@ export function useArchiveDownload(archiveUrl: string) {
       // explanation at all. "Nothing happened" is the one answer that leaves
       // someone with no idea whether to retry, wait, or check their signal.
       setError(thrown instanceof Error ? thrown.message : 'The map download failed.')
-      const partial = await readDownloadProgress()
+      const partial = await readDownloadProgress(packageKey)
       setStatus(
         partial === null ? { state: 'not-downloaded' } : { state: 'failed', ...partial },
       )
     }
-  }, [archiveUrl])
+  }, [packageKey, archiveUrl])
 
   /** Wraps `run` so the in-flight attempt is always knowable. */
   const start = useCallback(() => {
@@ -140,9 +142,9 @@ export function useArchiveDownload(archiveUrl: string) {
     await runningRef.current?.catch(() => undefined)
     runningRef.current = null
 
-    await deleteArchive()
+    await deleteArchive(packageKey)
     setStatus({ state: 'not-downloaded' })
-  }, [])
+  }, [packageKey])
 
   useEffect(() => () => abortRef.current?.abort(), [])
 

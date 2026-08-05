@@ -63,4 +63,29 @@ describe('registerPMTilesProtocol', () => {
     // The URL has to carry the same key, since that is what a lookup matches.
     expect(CORRIDOR_ARCHIVE_URL).toBe(`pmtiles://${CORRIDOR_ARCHIVE_KEY}`)
   })
+
+  // Two packages in the catalog means two archives resolvable by key - the
+  // multi-package half of issue #200. The catalog is mocked here because the
+  // real one currently has a single member; what is under test is that
+  // registration is driven by the catalog rather than hardcoded to one key.
+  it('registers every catalog package, each resolvable by its own key', async () => {
+    vi.doMock('../lib/packages', () => ({
+      MAP_PACKAGES: [
+        { id: 'a', idbKey: 'ourhike:package-a', title: 'A' },
+        { id: 'b', idbKey: 'ourhike:package-b', title: 'B' },
+      ],
+    }))
+    const { registerPMTilesProtocol, packageArchiveUrl } = await import('./protocol')
+    const { IndexedDbArchiveSource } = await import('./pmtilesSource')
+
+    const protocol = registerPMTilesProtocol()
+    const a = protocol.get('ourhike:package-a')
+    const b = protocol.get('ourhike:package-b')
+
+    expect(a?.source).toBeInstanceOf(IndexedDbArchiveSource)
+    expect(b?.source).toBeInstanceOf(IndexedDbArchiveSource)
+    expect(a).not.toBe(b)
+    expect(packageArchiveUrl('ourhike:package-b')).toBe('pmtiles://ourhike:package-b')
+    vi.doUnmock('../lib/packages')
+  })
 })

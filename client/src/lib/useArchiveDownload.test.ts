@@ -86,7 +86,7 @@ describe('useArchiveDownload', () => {
     const store = withStore()
     const streaming = mockHangingFetch()
 
-    const { result } = renderHook(() => useArchiveDownload(URL_))
+    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
 
     act(() => void result.current.start())
     await streaming
@@ -108,7 +108,7 @@ describe('useArchiveDownload', () => {
     withStore()
     const streaming = mockHangingFetch()
 
-    const { result } = renderHook(() => useArchiveDownload(URL_))
+    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
 
     act(() => void result.current.start())
     await streaming
@@ -129,7 +129,9 @@ describe('useArchiveDownload', () => {
     const store = withStore()
     const streaming = mockHangingFetch()
 
-    const { result, unmount } = renderHook(() => useArchiveDownload(URL_))
+    const { result, unmount } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_),
+    )
 
     const attempt = result.current.start()
     await streaming

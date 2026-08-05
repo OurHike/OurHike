@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { get, set, del } from 'idb-keyval'
 import {
   downloadArchive,
+  deleteArchive,
   ARCHIVE_PARTIAL_KEY,
   ARCHIVE_PROGRESS_KEY,
   ARCHIVE_SOURCE_KEY,
@@ -97,7 +98,7 @@ describe('downloadArchive — a clean first run', () => {
     const store = withStore()
     mockFetch({ chunks: [bytes(1, 2, 3), bytes(4, 5, 6)] })
 
-    await downloadArchive(URL_)
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
 
     expect(store[CORRIDOR_ARCHIVE_KEY]).toBeInstanceOf(Blob)
   })
@@ -106,7 +107,7 @@ describe('downloadArchive — a clean first run', () => {
     const store = withStore()
     mockFetch({ chunks: [bytes(1, 2, 3), bytes(4, 5, 6)] })
 
-    await downloadArchive(URL_)
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
     const stored = new Uint8Array(
       await (store[CORRIDOR_ARCHIVE_KEY] as Blob).arrayBuffer(),
     )
@@ -119,7 +120,7 @@ describe('downloadArchive — a clean first run', () => {
     mockFetch({ chunks: [bytes(1, 2, 3), bytes(4, 5, 6)] })
     const onProgress = vi.fn()
 
-    await downloadArchive(URL_, { onProgress })
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { onProgress })
 
     expect(onProgress.mock.calls.length).toBeGreaterThan(1)
     expect(onProgress).toHaveBeenLastCalledWith({ receivedBytes: 6, totalBytes: 6 })
@@ -129,7 +130,7 @@ describe('downloadArchive — a clean first run', () => {
     const store = withStore()
     mockFetch({ chunks: [bytes(1, 2, 3)] })
 
-    await downloadArchive(URL_)
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
 
     expect(store[ARCHIVE_PARTIAL_KEY]).toBeUndefined()
     expect(store[ARCHIVE_PROGRESS_KEY]).toBeUndefined()
@@ -139,7 +140,7 @@ describe('downloadArchive — a clean first run', () => {
     withStore()
     const spy = mockFetch({ chunks: [bytes(1, 2, 3)] })
 
-    await downloadArchive(URL_)
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
     const init = spy.mock.calls[0][1] as RequestInit | undefined
 
     expect(new Headers(init?.headers).get('range')).toBeNull()
@@ -162,7 +163,7 @@ describe('downloadArchive — resuming', () => {
       contentRange: 'bytes 3-5/6',
     })
 
-    await downloadArchive(URL_)
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
     const init = spy.mock.calls[0][1] as RequestInit | undefined
 
     expect(new Headers(init?.headers).get('range')).toBe('bytes=3-')
@@ -183,7 +184,7 @@ describe('downloadArchive — resuming', () => {
       contentRange: 'bytes 3-5/6',
     })
 
-    await downloadArchive(URL_)
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
     const stored = new Uint8Array(
       await (store[CORRIDOR_ARCHIVE_KEY] as Blob).arrayBuffer(),
     )
@@ -207,7 +208,7 @@ describe('downloadArchive — resuming', () => {
       contentRange: 'bytes 3-5/6',
     })
 
-    await downloadArchive(URL_, { onProgress })
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { onProgress })
 
     expect(onProgress).toHaveBeenLastCalledWith({ receivedBytes: 6, totalBytes: 6 })
   })
@@ -224,7 +225,7 @@ describe('downloadArchive — resuming', () => {
     })
     mockFetch({ chunks: [bytes(9, 9, 9, 9, 9, 9)], status: 200, totalBytes: 6 })
 
-    await downloadArchive(URL_)
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
     const stored = new Uint8Array(
       await (store[CORRIDOR_ARCHIVE_KEY] as Blob).arrayBuffer(),
     )
@@ -254,7 +255,7 @@ describe('downloadArchive — failure', () => {
       return new Response(body, { status: 200, headers })
     })
 
-    await expect(downloadArchive(URL_)).rejects.toThrow()
+    await expect(downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)).rejects.toThrow()
 
     expect(store[ARCHIVE_PARTIAL_KEY]).toBeInstanceOf(Blob)
     expect(store[ARCHIVE_PROGRESS_KEY]).toMatchObject({ receivedBytes: 3 })
@@ -265,7 +266,7 @@ describe('downloadArchive — failure', () => {
     const store = withStore({ [CORRIDOR_ARCHIVE_KEY]: good })
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('offline'))
 
-    await expect(downloadArchive(URL_)).rejects.toThrow()
+    await expect(downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)).rejects.toThrow()
 
     expect(store[CORRIDOR_ARCHIVE_KEY]).toBe(good)
   })
@@ -276,7 +277,9 @@ describe('downloadArchive — failure', () => {
     const store = withStore()
     mockFetch({ chunks: [bytes(1, 2, 3)], totalBytes: 99 })
 
-    await expect(downloadArchive(URL_)).rejects.toBeInstanceOf(ArchiveSizeMismatchError)
+    await expect(downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)).rejects.toBeInstanceOf(
+      ArchiveSizeMismatchError,
+    )
     expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
   })
 
@@ -284,7 +287,7 @@ describe('downloadArchive — failure', () => {
     const store = withStore()
     mockFetch({ chunks: [bytes(1, 2, 3)], totalBytes: 99 })
 
-    await expect(downloadArchive(URL_)).rejects.toThrow()
+    await expect(downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)).rejects.toThrow()
 
     expect(store[ARCHIVE_PARTIAL_KEY]).toBeInstanceOf(Blob)
   })
@@ -307,7 +310,9 @@ describe('downloadArchive — failure', () => {
       })
     })
 
-    await expect(downloadArchive(URL_, { signal: controller.signal })).rejects.toThrow()
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { signal: controller.signal }),
+    ).rejects.toThrow()
 
     expect(store[ARCHIVE_PARTIAL_KEY]).toBeInstanceOf(Blob)
     expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
@@ -319,7 +324,7 @@ describe('downloadArchive — failure', () => {
       new Response(null, { status: 404, statusText: 'Not Found' }),
     )
 
-    await expect(downloadArchive(URL_)).rejects.toThrow(/404/)
+    await expect(downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)).rejects.toThrow(/404/)
     expect(store[ARCHIVE_PARTIAL_KEY]).toBeUndefined()
   })
 })
@@ -341,7 +346,7 @@ describe('downloadArchive — refusing to splice two different archives', () => 
     })
     const fetchSpy = mockFetch({ chunks: [bytes(1, 2, 3)] })
 
-    await downloadArchive(URL_)
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
 
     // No Range header at all: this is a fresh start, not a resume.
     expect(fetchSpy.mock.calls[0][1]).toMatchObject({ headers: undefined })
@@ -358,7 +363,7 @@ describe('downloadArchive — refusing to splice two different archives', () => 
     })
     mockFetch({ chunks: [bytes(1, 2, 3)] })
 
-    await downloadArchive(URL_)
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
 
     expect((store[CORRIDOR_ARCHIVE_KEY] as Blob).size).toBe(3)
   })
@@ -375,7 +380,7 @@ describe('downloadArchive — refusing to splice two different archives', () => 
       etag: '"v1"',
     })
 
-    await downloadArchive(URL_)
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
 
     expect(fetchSpy.mock.calls[0][1]).toMatchObject({
       headers: { Range: 'bytes=3-', 'If-Range': '"v1"' },
@@ -394,7 +399,7 @@ describe('downloadArchive — refusing to splice two different archives', () => 
     })
     mockFetch({ chunks: [bytes(1, 2, 3, 4)], status: 200, etag: '"v2"' })
 
-    await downloadArchive(URL_)
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
 
     const stored = store[CORRIDOR_ARCHIVE_KEY] as Blob
     expect(stored.size).toBe(4)
@@ -405,7 +410,9 @@ describe('downloadArchive — refusing to splice two different archives', () => 
     const store = withStore()
     mockFetch({ chunks: [bytes(1, 2)], totalBytes: 99, etag: '"v1"' })
 
-    await expect(downloadArchive(URL_)).rejects.toThrow(ArchiveSizeMismatchError)
+    await expect(downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)).rejects.toThrow(
+      ArchiveSizeMismatchError,
+    )
 
     expect(store[ARCHIVE_SOURCE_KEY]).toEqual({ url: URL_, etag: '"v1"' })
   })
@@ -414,7 +421,9 @@ describe('downloadArchive — refusing to splice two different archives', () => 
     const store = withStore()
     mockFetch({ chunks: [bytes(1, 2)], totalBytes: 99, etag: 'W/"v1"' })
 
-    await expect(downloadArchive(URL_)).rejects.toThrow(ArchiveSizeMismatchError)
+    await expect(downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)).rejects.toThrow(
+      ArchiveSizeMismatchError,
+    )
 
     expect(store[ARCHIVE_SOURCE_KEY]).toEqual({ url: URL_, etag: undefined })
   })
@@ -429,7 +438,9 @@ describe('downloadArchive — refusing to splice two different archives', () => 
         new Response(null, { status: 200, headers: { 'content-length': '3' } }),
       )
 
-      await expect(downloadArchive(URL_)).rejects.toThrow(/no response body/)
+      await expect(downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)).rejects.toThrow(
+        /no response body/,
+      )
       expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
     })
   })
@@ -454,7 +465,7 @@ describe('downloadArchive — refusing to splice two different archives', () => 
           ),
       )
 
-      await downloadArchive(URL_)
+      await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
 
       const stored = store[CORRIDOR_ARCHIVE_KEY] as Blob
       expect(stored.size).toBe(4)
@@ -477,9 +488,78 @@ describe('downloadArchive — refusing to splice two different archives', () => 
       )
       const onProgress = vi.fn()
 
-      await downloadArchive(URL_, { onProgress })
+      await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { onProgress })
 
       expect(onProgress).toHaveBeenCalledWith({ receivedBytes: 2, totalBytes: 0 })
     })
+  })
+})
+
+describe('downloadArchive — packages are independent (issue #200)', () => {
+  // The multi-package guarantee in one sentence: every record a download
+  // touches derives from its own package key, so nothing one package does -
+  // succeed, fail mid-stream, or get deleted - can reach another package's
+  // bytes. These tests run two packages through exactly those lifecycles.
+  const OTHER_KEY = 'ourhike:test-dem'
+  const OTHER_URL = 'https://cdn.example.org/dem.pmtiles'
+
+  it("downloading one package leaves another package's archive and partial untouched", async () => {
+    const corridorPartial = new Blob(['corridor partial'])
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: corridorPartial,
+      [ARCHIVE_SOURCE_KEY]: { url: URL_ },
+      [ARCHIVE_PROGRESS_KEY]: { receivedBytes: 16, totalBytes: 100 },
+    })
+    mockFetch({ chunks: [bytes(9, 9, 9)] })
+
+    await downloadArchive(OTHER_KEY, OTHER_URL)
+
+    expect(store[OTHER_KEY]).toBeInstanceOf(Blob)
+    // The corridor package's resumable state survives, byte for byte.
+    expect(store[ARCHIVE_PARTIAL_KEY]).toBe(corridorPartial)
+    expect(store[ARCHIVE_SOURCE_KEY]).toEqual({ url: URL_ })
+    expect(store[ARCHIVE_PROGRESS_KEY]).toEqual({ receivedBytes: 16, totalBytes: 100 })
+  })
+
+  it("a failed download persists its partial under its own package, not another's", async () => {
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2)], totalBytes: 10 })
+
+    await expect(downloadArchive(OTHER_KEY, OTHER_URL)).rejects.toThrow()
+
+    expect(store[`${OTHER_KEY}:partial`]).toBeInstanceOf(Blob)
+    expect(store[ARCHIVE_PARTIAL_KEY]).toBeUndefined()
+  })
+
+  it("deleting one package keeps every other package's archive", async () => {
+    const corridorArchive = new Blob(['corridor'])
+    const store = withStore({
+      [CORRIDOR_ARCHIVE_KEY]: corridorArchive,
+      [OTHER_KEY]: new Blob(['dem']),
+      [`${OTHER_KEY}:partial`]: new Blob(['stale attempt']),
+    })
+
+    await deleteArchive(OTHER_KEY)
+
+    expect(store[OTHER_KEY]).toBeUndefined()
+    expect(store[`${OTHER_KEY}:partial`]).toBeUndefined()
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBe(corridorArchive)
+  })
+
+  it('resume identity is judged per package: the same URL on another package starts clean', async () => {
+    // A partial held by the corridor package must not be resumed onto by a
+    // different package downloading from the same URL - the records simply
+    // never meet, because the keys differ.
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob(['held']),
+      [ARCHIVE_SOURCE_KEY]: { url: URL_ },
+    })
+    const spy = mockFetch({ chunks: [bytes(5)] })
+
+    await downloadArchive(OTHER_KEY, URL_)
+
+    const init = spy.mock.calls[0][1] as RequestInit | undefined
+    expect(init?.headers).toBeUndefined()
+    expect(store[ARCHIVE_PARTIAL_KEY]).toBeInstanceOf(Blob)
   })
 })

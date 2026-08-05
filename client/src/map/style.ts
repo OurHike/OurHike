@@ -270,10 +270,13 @@ export interface MapStyleOptions {
    */
   background?: BackgroundSource
   /**
-   * DEM and contour URLs from `registerTerrain()`. Omitting them drops the
-   * live background even when it is asked for, which is what keeps
-   * `buildMapStyle` a pure function that tests and callers can build without
-   * registering a protocol first.
+   * DEM and contour URLs from `registerTerrain()`.
+   *
+   * Optional so that `buildMapStyle` stays a pure function tests and callers
+   * can build without registering a protocol first. Omitting them costs the
+   * hillshade and the contour lines and NOTHING else - the live sheet's OSM
+   * half is drawn either way. See liveTopo.ts's LiveTopoOptions for why that
+   * split is where it is.
    */
   terrain?: TerrainUrls
   /** Decides whether contours and summit heights are in feet or metres. */
@@ -287,17 +290,36 @@ export function buildMapStyle({
   terrain,
   units = 'imperial',
 }: MapStyleOptions): StyleSpecification {
-  // Asked for AND buildable. A live background with no terrain URLs would be
-  // a style referencing sources that resolve to nothing, so the two are
-  // decided together, once, and every use below reads this one answer.
-  const live = background === 'hiking_topo_live' && terrain !== undefined
-  const liveOptions = live ? { terrain: terrain as TerrainUrls, units } : null
+  // Asked for, and that is the whole question. Terrain used to be half of it -
+  // `background === 'hiking_topo_live' && terrain !== undefined` - on the
+  // reasoning that a style must not reference sources resolving to nothing.
+  // True of the DEM and the contour tiles, and liveTopo.ts now drops exactly
+  // those two sources and the four layers reading them. It was never true of
+  // the other seventeen: the OSM vector sheet needs a URL and a schema, not an
+  // elevation model.
+  //
+  // What the old spelling cost is the bug this fixes. An elevation model that
+  // would not build took the landcover, the parks, the water, the path and
+  // road network, the summits and every place name down with it, leaving the
+  // flat paper of BACKDROP_LAYER_ID - and for a hiker who has downloaded
+  // nothing, the archive underneath is empty too, so the whole screen is
+  // paper. That contradicted what terrain.ts and MapView.tsx each promise in
+  // their own words: a failure there costs a layer, never the map.
+  const live = background === 'hiking_topo_live'
+  const liveOptions = live ? { terrain, units } : null
 
   return {
     version: 8,
     // Only set when something needs glyphs; a style declaring a font endpoint
     // it never asks for would make the offline-only map depend on a host it
     // has no reason to contact.
+    //
+    // Keyed on `live` alone, deliberately, now that terrain is no longer part
+    // of it: the surviving symbol layers - summits, water names, place names -
+    // are all OSM-sourced and outlive a missing DEM. Tying this to terrain
+    // instead would leave a style whose labels have no font to render in,
+    // which MapLibre reports as a per-glyph load failure rather than anything
+    // a reader would connect back to the elevation model.
     ...(live ? { glyphs: OPENFREEMAP_GLYPHS } : {}),
     sources: {
       [TOPO_SOURCE_ID]: {
@@ -377,6 +399,12 @@ export function buildMapStyle({
       // shows through underneath exactly as it always has, and the flat paper
       // colour still marks where the download does not reach. Every state is
       // at least as good as it was before, and none of them needs to be detected.
+      //
+      // Still true, and worth keeping true: nothing observed at runtime reaches
+      // this function. map/liveSourceHealth.ts does watch whether these sources
+      // ever load, but only so the status strip can SAY so - what is composed
+      // here stays a pure function of the preference, Data Saver, and whether a
+      // DEM could be built.
       ...(liveOptions === null ? [] : liveTopoLayers(liveOptions)),
       {
         // Hairline dark casing, drawn under every blaze so the trail stays

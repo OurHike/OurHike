@@ -403,19 +403,72 @@ describe('the offline-only background', () => {
 })
 
 describe('a live background with no terrain registered', () => {
-  // registerTerrain() is best-effort in MapView - a browser with no Worker, or
-  // a blob URL a CSP refuses, leaves it undefined. The style has to survive
-  // that rather than reference sources that resolve to nothing.
+  // registerTerrain() is best-effort in MapView - today only a CSP refusing a
+  // blob-backed Worker actually gets here - and it leaves `terrain` undefined.
+  //
+  // What that used to cost is the bug this block now pins. The style dropped
+  // the ENTIRE live sheet, so a hiker with nothing downloaded had an empty
+  // archive under a paper backdrop and nothing else: a blank cream screen.
+  // Elevation is one input to this sheet, not the sheet itself - it is read by
+  // one layer of twenty-one (the hillshade) plus the three contour layers, and
+  // the OSM half needs a URL and a schema, nothing more. So the DEM and the
+  // contours go, and everything else stays.
   const degraded = buildMapStyle({
     topoArchiveUrl: 'pmtiles://ourhike-corridor',
     trailsUrl: '/data/trails.geojson',
     background: 'hiking_topo_live',
   })
 
-  it('falls all the way back to the offline map rather than a broken style', () => {
+  it('is a valid style rather than one pointing at sources it never added', () => {
+    // The guard against a half-done split: a layer left bound to a source that
+    // was dropped is precisely what validateStyleMin reports, and it is the
+    // one assertion here that cannot be satisfied by accident.
     expect(validateStyleMin(degraded)).toEqual([])
-    expect(ids(degraded)).not.toContain(LIVE_TOPO_LAYER_IDS.hillshade)
-    expect(ids(degraded)).toContain(TOPO_LAYER_ID)
+  })
+
+  it('still draws the OSM sheet, which needs no elevation model', () => {
+    expect(degraded.sources).toHaveProperty(OSM_SOURCE_ID)
+    expect((degraded.sources[OSM_SOURCE_ID] as { url?: string }).url).toBe(
+      OPENFREEMAP_TILEJSON,
+    )
+    for (const id of [
+      LIVE_TOPO_LAYER_IDS.wood,
+      LIVE_TOPO_LAYER_IDS.water,
+      LIVE_TOPO_LAYER_IDS.path,
+      LIVE_TOPO_LAYER_IDS.peak,
+      LIVE_TOPO_LAYER_IDS.place,
+    ]) {
+      expect(ids(degraded)).toContain(id)
+    }
+  })
+
+  it('keeps the glyphs URL its surviving labels need', () => {
+    // Summits, water names and place names are OSM-sourced symbol layers and
+    // outlive a missing DEM, so the font endpoint has to outlive it too.
+    // validateStyleMin does NOT catch a text-field with no glyphs URL, so this
+    // is asserted here or nowhere.
+    expect(degraded.glyphs).toBe(OPENFREEMAP_GLYPHS)
+  })
+
+  it('drops exactly the elevation sources and the layers reading them', () => {
+    expect(degraded.sources).not.toHaveProperty(DEM_SOURCE_ID)
+    expect(degraded.sources).not.toHaveProperty(CONTOUR_SOURCE_ID)
+    for (const id of [
+      LIVE_TOPO_LAYER_IDS.hillshade,
+      LIVE_TOPO_LAYER_IDS.contour,
+      LIVE_TOPO_LAYER_IDS.contourIndex,
+      LIVE_TOPO_LAYER_IDS.contourLabel,
+    ]) {
+      expect(ids(degraded)).not.toContain(id)
+    }
+  })
+
+  it('keeps the downloaded archive under the live sheet, as ever', () => {
+    const order = ids(degraded)
+    expect(order).toContain(TOPO_LAYER_ID)
+    expect(order.indexOf(TOPO_LAYER_ID)).toBeLessThan(
+      order.indexOf(LIVE_TOPO_LAYER_IDS.wood),
+    )
   })
 })
 
@@ -485,6 +538,26 @@ describe('attachElevationLabelUnits', () => {
     expect(
       m.layoutProperties.get(`${LIVE_TOPO_LAYER_IDS.contourLabel}/text-field`),
     ).toEqual(contourLabelTextField('imperial'))
+    expect(m.layoutProperties.size).toBe(1)
+  })
+
+  it('retunes the summits on a live style that has no contours', async () => {
+    // The mirror image of the case above, and newly reachable: a live sheet
+    // built without terrain keeps its OSM peak labels and has no contour
+    // layers at all. A probe that waited on the contour label alone would
+    // never fire here, so every summit would keep reading `ele_ft` after a
+    // switch to metric - a wrong number on the map, which is the exact
+    // failure this function exists to prevent.
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const { attachElevationLabelUnits, peakLabelTextField } = await import('./liveTopo')
+    const m = new MockMap({})
+    m.layerIds = [LIVE_TOPO_LAYER_IDS.peak]
+
+    attachElevationLabelUnits(m as never, 'metric')
+
+    expect(m.layoutProperties.get(`${LIVE_TOPO_LAYER_IDS.peak}/text-field`)).toEqual(
+      peakLabelTextField('metric'),
+    )
     expect(m.layoutProperties.size).toBe(1)
   })
 })

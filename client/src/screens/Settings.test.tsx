@@ -88,18 +88,25 @@ describe('Settings', () => {
   })
 
   it('offers the background as a real control, on the canonical field name', () => {
+    // A radio group since 2026-08-05, not a select - the same component the
+    // legend shows, so the two cannot drift. The canonical field name is still
+    // what the inputs are grouped by.
     render(<Settings {...PROPS} />)
-    const select = screen.getByRole('combobox', { name: /background/i })
+    const radios = screen.getAllByRole('radio')
 
-    expect(select).toHaveAttribute('name', 'background_source')
-    expect(select).toHaveValue(PROPS.preferences.background_source)
+    expect(radios.length).toBeGreaterThan(0)
+    for (const radio of radios) {
+      expect(radio).toHaveAttribute('name', 'settings-background_source')
+    }
+    const checked = radios.find((r) => (r as HTMLInputElement).checked)
+    expect((checked as HTMLInputElement).value).toBe(PROPS.preferences.background_source)
   })
 
   it('offers exactly the backgrounds the map can actually draw', () => {
     render(<Settings {...PROPS} />)
     const values = screen
-      .getAllByRole('option')
-      .map((option) => (option as HTMLOptionElement).value)
+      .getAllByRole('radio')
+      .map((radio) => (radio as HTMLInputElement).value)
 
     expect(values.sort()).toEqual([...BACKGROUND_SOURCES].sort())
   })
@@ -108,10 +115,7 @@ describe('Settings', () => {
     const user = userEvent.setup()
     render(<Settings {...PROPS} />)
 
-    await user.selectOptions(
-      screen.getByRole('combobox', { name: /background/i }),
-      'usgs_topo_offline',
-    )
+    await user.click(screen.getByRole('radio', { name: /downloaded/i }))
 
     expect(PROPS.onChange).toHaveBeenCalledWith({
       background_source: 'usgs_topo_offline',
@@ -131,21 +135,42 @@ describe('Settings', () => {
     // live sheet is on would not be. This notice is the only place someone
     // would go to find out why the map suddenly looks different, so it is
     // asserted here rather than left to the map to imply.
-    render(<Settings {...PROPS} preferences={live} dataSaver />)
+    // `archiveDownloaded` because Data Saver only subtracts once there is a
+    // download to fall back on - see lib/dataSaver.ts. Without one the map
+    // draws the live sheet regardless, and this notice would be false.
+    render(<Settings {...PROPS} preferences={live} dataSaver archiveDownloaded />)
 
     expect(screen.getByText(/data saver is on/i)).toBeInTheDocument()
   })
 
   it('says how to get the live sheet back, not just that it is gone', () => {
-    render(<Settings {...PROPS} preferences={live} dataSaver />)
+    render(<Settings {...PROPS} preferences={live} dataSaver archiveDownloaded />)
 
     expect(screen.getByText(/turn data saver off/i)).toBeInTheDocument()
+  })
+
+  it('does not blame Data Saver when the real reason is an empty phone', () => {
+    // Data Saver is on and being ignored, because "downloaded only" has no
+    // download to draw. Saying "Data Saver is on, so the map is using your
+    // download only" would be false twice over: it is not, and there is none.
+    render(<Settings {...PROPS} preferences={offline} dataSaver />)
+
+    expect(screen.queryByText(/data saver is on/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/nothing is downloaded yet/i)).toBeInTheDocument()
+  })
+
+  it('explains that an offline choice waits for a download to honour it', () => {
+    render(<Settings {...PROPS} preferences={offline} />)
+
+    expect(
+      screen.getByText(/download the map and this setting takes effect/i),
+    ).toBeInTheDocument()
   })
 
   it('stays quiet when Data Saver merely agrees with what was already picked', () => {
     // Not an override - telling someone their preference was overridden when
     // it was honoured is its own small lie.
-    render(<Settings {...PROPS} preferences={offline} dataSaver />)
+    render(<Settings {...PROPS} preferences={offline} dataSaver archiveDownloaded />)
 
     expect(screen.queryByText(/data saver is on/i)).not.toBeInTheDocument()
   })

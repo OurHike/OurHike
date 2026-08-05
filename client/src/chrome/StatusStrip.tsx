@@ -7,6 +7,7 @@
 // where you are" when the honest answer is "this is where you last were."
 
 import { syncAgeLabel } from '../lib/syncAge'
+import type { BackgroundOverride } from '../lib/dataSaver'
 
 export interface StatusStripProps {
   time: Date
@@ -14,9 +15,36 @@ export interface StatusStripProps {
   hasGpsFix: boolean
   /** When the on-device data last synced; null if it never has. */
   lastSyncedAt: Date | null
+  /**
+   * The live background's tiles reported an error and never drew - see
+   * map/liveSourceHealth.ts.
+   *
+   * Distinct from `online`, and that distinction is the point: navigator.onLine
+   * is documented as optimistic (lib/useOnline.ts), so a captive portal, a
+   * filtered network or an outage at the tile host all look like a working
+   * connection while the map draws nothing at all.
+   */
+  liveBackgroundUnavailable?: boolean
+  /**
+   * Why the background on screen is not the one in settings, if it isn't -
+   * see lib/dataSaver.ts.
+   *
+   * That module's rule is that the app "is allowed to override a preference,
+   * and is not allowed to do it silently," and until now the only screen that
+   * said so was Settings. The map screen is where an overridden background is
+   * actually visible, so it is where the reason belongs too.
+   */
+  backgroundOverride?: BackgroundOverride | null
 }
 
-export function StatusStrip({ time, online, hasGpsFix, lastSyncedAt }: StatusStripProps) {
+export function StatusStrip({
+  time,
+  online,
+  hasGpsFix,
+  lastSyncedAt,
+  liveBackgroundUnavailable = false,
+  backgroundOverride = null,
+}: StatusStripProps) {
   return (
     <div className="status-strip">
       <span className="status-strip__time">
@@ -28,6 +56,23 @@ export function StatusStrip({ time, online, hasGpsFix, lastSyncedAt }: StatusStr
       <span className="status-strip__conditions" role="status">
         {!online && <span className="status-strip__flag">Offline</span>}
         {!hasGpsFix && <span className="status-strip__flag">No GPS fix</span>}
+        {/* Suppressed while offline: "Offline" already accounts for the paper,
+            and two flags for one condition is noise on a strip this narrow.
+            What it catches is the case "Offline" cannot - a connection the
+            phone believes in and the tile host does not answer. */}
+        {online && liveBackgroundUnavailable && (
+          <span className="status-strip__flag">No live map</span>
+        )}
+        {/* Two reasons, opposite in kind: one says the app is withholding the
+            live sheet, the other that it is supplying it against a preference
+            that has no download to honour yet. One word of the wrong one is a
+            map that lies about what it is doing with someone's data. */}
+        {backgroundOverride === 'data-saver' && (
+          <span className="status-strip__flag">Data Saver: downloaded map only</span>
+        )}
+        {backgroundOverride === 'nothing-downloaded' && (
+          <span className="status-strip__flag">Live map — nothing downloaded yet</span>
+        )}
       </span>
 
       <span className="status-strip__sync">{syncAgeLabel(lastSyncedAt, time)}</span>

@@ -49,6 +49,25 @@ one for two, so the shape is:
 The corridor polygon is a *parameter* end to end. Nothing in either script
 assumes the AT; today's defaults point at it.
 
+**Low-zoom context rides in every package** (decided with #189): through z9,
+`extract_package.py` keeps the source build's *entire* footprint rather than
+only region-intersecting tiles, so panning out offline shows the ground
+around the trail instead of blank paper. How wide that context is stays the
+build's decision — corridor-shaped today (where this changes nothing, since
+the build's own `--polygon` bounds it to the same shape), statewide NY under
+#184's 2026-08-04 scope call, national under #194 — and every package's
+offline pan-out widens with it, with no extract-side change. This supersedes
+the never-wired Protomaps context extract noted in TECHNICAL_ARCHITECTURE.md:
+context travels inside each package, not as a second artifact.
+
+**Freshness honesty, for the client's framing:** the package is built on our
+cadence; OpenFreeMap (the live sheet's per-tile network fallthrough,
+`client/src/map/basemap.ts`) rebuilds weekly. Same schema, both OpenStreetMap
+— but a label edited upstream can differ between a downloaded tile and the
+live tile one screen over until the next package release. That is data
+freshness, not disagreement about where things are, and the Downloads
+screen's release date is where a hiker reads it.
+
 Overlapping trails (the AT and NYNJTC systems share ground) mean packages cut
 this way duplicate tiles on a phone holding both — measured and decided in
 [#193](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/193), not here.

@@ -19,8 +19,9 @@ import type { MapPoint } from '../lib/legendContents'
 // React StrictMode deliberately mounts -> unmounts -> remounts in development
 // precisely to expose that class of bug, so these tests run under it.
 
-const { registrationOrder, workerOrder } = vi.hoisted(() => ({
+const { registrationOrder, basemapOrder, workerOrder } = vi.hoisted(() => ({
   registrationOrder: [] as number[],
+  basemapOrder: [] as number[],
   workerOrder: [] as number[],
 }))
 
@@ -35,6 +36,18 @@ vi.mock('./protocol', async () => {
     PMTILES_SCHEME: 'pmtiles',
     registerPMTilesProtocol: vi.fn(() => {
       registrationOrder.push(Recorded.instances.length)
+    }),
+  }
+})
+
+// The basemap:// scheme has the same before-any-map requirement: the live
+// style's osm source declares a basemap:// tiles template, and a map built
+// first would ask for tiles through a scheme nothing answers.
+vi.mock('./basemap', async () => {
+  const { MockMap: Recorded } = await import('../test/mocks/maplibre-gl')
+  return {
+    registerBasemapProtocol: vi.fn(() => {
+      basemapOrder.push(Recorded.instances.length)
     }),
   }
 })
@@ -62,6 +75,7 @@ const PROPS = {
 beforeEach(() => {
   resetMapLibreMock()
   registrationOrder.length = 0
+  basemapOrder.length = 0
   workerOrder.length = 0
 })
 
@@ -116,6 +130,13 @@ describe('MapView', () => {
 
     expect(registrationOrder.length).toBeGreaterThan(0)
     expect(registrationOrder[0]).toBe(0)
+  })
+
+  it('registers the basemap protocol before constructing any map', () => {
+    render(<MapView {...PROPS} />)
+
+    expect(basemapOrder.length).toBeGreaterThan(0)
+    expect(basemapOrder[0]).toBe(0)
   })
 
   it('points MapLibre at its bundled worker before constructing any map', () => {

@@ -86,12 +86,16 @@ def test_load_region_accepts_geometry_feature_and_collection(tmp_path):
 
 
 def test_extract_keeps_exactly_the_region_tiles_byte_for_byte(tmp_path):
+    # context_zoom=None throughout the region-walk tests: the synthetic world
+    # tops out at z2, inside the default context window, so the default would
+    # keep every tile and these tests would stop exercising the region cut.
+    # Context behaviour has its own tests below.
     source = build_source(tmp_path / "source.pmtiles")
     region_path = tmp_path / "region.geojson"
     region_path.write_text(json.dumps(mapping(NE_QUADRANT_BOX)))
     out = tmp_path / "package.pmtiles"
 
-    extract(source, region_path, out, min_zoom=None, max_zoom=None, name="AT package")
+    extract(source, region_path, out, min_zoom=None, max_zoom=None, name="AT package", context_zoom=None)
 
     expected = tiles_intersecting(to_mercator(NE_QUADRANT_BOX), 0, 2)
     expected_zxy = {(z, x, y) for z, tiles in expected.items() for x, y in tiles}
@@ -110,7 +114,7 @@ def test_extract_carries_format_and_rewrites_bounds(tmp_path):
     region_path.write_text(json.dumps(mapping(NE_QUADRANT_BOX)))
     out = tmp_path / "package.pmtiles"
 
-    extract(source, region_path, out, min_zoom=None, max_zoom=None, name="AT package")
+    extract(source, region_path, out, min_zoom=None, max_zoom=None, name="AT package", context_zoom=None)
 
     with open(out, "rb") as f:
         header = deserialize_header(f.read(127))
@@ -126,7 +130,7 @@ def test_extract_respects_an_explicit_zoom_window(tmp_path):
     region_path.write_text(json.dumps(mapping(NE_QUADRANT_BOX)))
     out = tmp_path / "package.pmtiles"
 
-    extract(source, region_path, out, min_zoom=1, max_zoom=1, name="AT package")
+    extract(source, region_path, out, min_zoom=1, max_zoom=1, name="AT package", context_zoom=None)
 
     assert set(read_all(out)) == {(1, 1, 0)}
 
@@ -155,7 +159,73 @@ def test_extract_refuses_an_empty_intersection(tmp_path):
     region_path.write_text(json.dumps(mapping(box(30.0, -70.0, 80.0, -30.0))))
 
     with pytest.raises(SystemExit, match="no tiles"):
-        extract(source, region_path, tmp_path / "package.pmtiles", min_zoom=1, max_zoom=1, name="empty")
+        extract(source, region_path, tmp_path / "package.pmtiles", min_zoom=1, max_zoom=1, name="empty", context_zoom=None)
+
+
+def test_context_zoom_keeps_the_sources_whole_low_zoom_footprint(tmp_path):
+    # Issue #189's beyond-the-package ground: through the context zoom the
+    # package inherits every source tile, so panning out offline shows the
+    # build's surroundings rather than blank paper. Above it, the region
+    # still decides.
+    source = build_source(tmp_path / "source.pmtiles")
+    region_path = tmp_path / "region.geojson"
+    region_path.write_text(json.dumps(mapping(NE_QUADRANT_BOX)))
+    out = tmp_path / "package.pmtiles"
+
+    extract(source, region_path, out, min_zoom=None, max_zoom=None, name="AT package", context_zoom=1)
+
+    got = read_all(out)
+    # All of z0-z1, the region-misses included - this is the southwest tile
+    # the pure region cut proves it drops.
+    assert (1, 0, 1) in got
+    assert {(z, x, y) for (z, x, y) in got if z <= 1} == {(0, 0, 0), (1, 0, 0), (1, 1, 0), (1, 0, 1), (1, 1, 1)}
+    # z2 is still the region's: the northeast stays, the southwest is out.
+    assert (2, 2, 0) in got and (2, 0, 3) not in got
+    for (z, x, y), data in got.items():
+        assert data == payload(z, x, y), "context tiles are copied verbatim too"
+
+
+def test_context_zoom_is_clamped_to_the_archives_own_ceiling(tmp_path):
+    # The default (9) against a z2 source must not error or over-reach - the
+    # region walk simply has nothing left to answer for.
+    source = build_source(tmp_path / "source.pmtiles")
+    region_path = tmp_path / "region.geojson"
+    region_path.write_text(json.dumps(mapping(NE_QUADRANT_BOX)))
+    out = tmp_path / "package.pmtiles"
+
+    extract(source, region_path, out, min_zoom=None, max_zoom=None, name="AT package")
+
+    assert len(read_all(out)) == 1 + 4 + 16  # the whole synthetic world
+
+
+def test_context_tiles_do_not_mask_an_empty_region_intersection(tmp_path):
+    # Context tiles arrive for ANY region, so the wrong-region guard has to
+    # ask about region tiles specifically - otherwise a typo'd region file
+    # ships a low-zoom-only package that looks like a map until you zoom in.
+    # A sparse source: the world tile plus the northwest z1 tile, cut with a
+    # southeast region - context (z0) is served, the region (z1) matches
+    # nothing the source holds.
+    region_path = tmp_path / "region.geojson"
+    source = tmp_path / "sparse.pmtiles"
+    header = {
+        "tile_type": TileType.MVT,
+        "tile_compression": Compression.GZIP,
+        "min_lon_e7": 0,
+        "min_lat_e7": 0,
+        "max_lon_e7": 0,
+        "max_lat_e7": 0,
+        "center_lon_e7": 0,
+        "center_lat_e7": 0,
+        "center_zoom": 0,
+    }
+    with write(str(source)) as writer:
+        writer.write_tile(zxy_to_tileid(0, 0, 0), b"world")
+        writer.write_tile(zxy_to_tileid(1, 0, 0), b"nw")
+        writer.finalize(header, {"name": "source"})
+    region_path.write_text(json.dumps(mapping(box(30.0, -70.0, 80.0, -30.0))))
+
+    with pytest.raises(SystemExit, match="no tiles"):
+        extract(source, region_path, tmp_path / "package.pmtiles", min_zoom=0, max_zoom=1, name="empty", context_zoom=0)
 
 
 def test_main_extracts_and_reports(tmp_path, capsys):
@@ -165,8 +235,33 @@ def test_main_extracts_and_reports(tmp_path, capsys):
     out = tmp_path / "package.pmtiles"
 
     extract_package.main(
-        argparse.Namespace(source=source, region=region_path, out=out, min_zoom=None, max_zoom=None, name="AT package")
+        argparse.Namespace(
+            source=source,
+            region=region_path,
+            out=out,
+            min_zoom=None,
+            max_zoom=None,
+            name="AT package",
+            context_zoom=extract_package.DEFAULT_CONTEXT_ZOOM,
+        )
     )
 
     assert out.exists()
     assert "package.pmtiles" in capsys.readouterr().out
+
+
+def test_main_treats_a_negative_context_zoom_as_disabled(tmp_path):
+    source = build_source(tmp_path / "source.pmtiles")
+    region_path = tmp_path / "region.geojson"
+    region_path.write_text(json.dumps(mapping(NE_QUADRANT_BOX)))
+    out = tmp_path / "package.pmtiles"
+
+    extract_package.main(
+        argparse.Namespace(
+            source=source, region=region_path, out=out, min_zoom=None, max_zoom=None, name="AT package", context_zoom=-1
+        )
+    )
+
+    # Region-only: the pure cut's own test proves this set, spot-check here.
+    got = read_all(out)
+    assert (1, 1, 0) in got and (1, 0, 1) not in got

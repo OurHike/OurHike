@@ -11,9 +11,9 @@ import {
   HILLSHADE_HANDOVER_END_ZOOM,
   HILLSHADE_HANDOVER_START_ZOOM,
   HILLSHADE_RELIEF_ONLY_EXAGGERATION,
+  BUNDLED_GLYPHS,
   LIVE_TOPO_ATTRIBUTION,
   LIVE_TOPO_LAYER_IDS,
-  OPENFREEMAP_GLYPHS,
   OPENFREEMAP_TILEJSON,
   OSM_SOURCE_ID,
   PLACE_TOWN_MIN_ZOOM,
@@ -207,7 +207,21 @@ describe('the live topographic background', () => {
   })
 
   it('declares a glyph endpoint, without which every label silently vanishes', () => {
-    expect(live().glyphs).toBe(OPENFREEMAP_GLYPHS)
+    expect(live().glyphs).toBe(BUNDLED_GLYPHS)
+  })
+
+  it('serves glyphs from its own origin, so labels survive airplane mode (#188)', () => {
+    // Glyph PBFs are fetched per 256-glyph range at runtime, and nothing
+    // offline intercepts font requests - the pmtiles protocol only covers
+    // tile sources. A host in this URL is therefore every label on the sheet
+    // going blank without signal. Same-origin means the bundled ranges under
+    // public/glyphs/ answer instead, from the service worker's precache.
+    expect(BUNDLED_GLYPHS).not.toMatch(/^https?:/)
+    expect(BUNDLED_GLYPHS.startsWith('/')).toBe(true)
+    // MapLibre substitutes these two tokens itself; without them the template
+    // is a single URL every range request hits in vain.
+    expect(BUNDLED_GLYPHS).toContain('{fontstack}')
+    expect(BUNDLED_GLYPHS).toContain('{range}')
   })
 })
 
@@ -379,7 +393,9 @@ describe('the offline-only background', () => {
     expect(Object.keys(style.sources)).not.toContain(CONTOUR_SOURCE_ID)
   })
 
-  it('declares no glyph endpoint either - an unused font host is still a host', () => {
+  it('declares no glyph endpoint either, having no symbol layer to feed', () => {
+    // The endpoint is app-origin now (#188), so this is no longer about a
+    // needless host - just that a style declares what its layers actually use.
     expect(offline().glyphs).toBeUndefined()
   })
 
@@ -447,7 +463,7 @@ describe('a live background with no terrain registered', () => {
     // outlive a missing DEM, so the font endpoint has to outlive it too.
     // validateStyleMin does NOT catch a text-field with no glyphs URL, so this
     // is asserted here or nowhere.
-    expect(degraded.glyphs).toBe(OPENFREEMAP_GLYPHS)
+    expect(degraded.glyphs).toBe(BUNDLED_GLYPHS)
   })
 
   it('drops exactly the elevation sources and the layers reading them', () => {

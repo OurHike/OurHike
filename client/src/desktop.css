@@ -94,10 +94,36 @@
   .app__screen > .tab-bar .tab-bar__brand,
   .map-screen > .tab-bar .tab-bar__brand {
     display: flex;
+    /* Stacked, not side by side. At a 64px icon and a 32px wordmark the
+       horizontal lockup is about 206px wide, against 176px of usable width in
+       a 13rem sidebar - so laying it out in a row would either overflow the
+       column or force the wordmark back down to a size that reads as a
+       caption. */
+    flex-direction: column;
+    gap: var(--space-2, 8px);
     padding: var(--space-4, 16px);
     /* Aligned with the tab labels above it rather than centred in the column.
        The sidebar has one left edge and everything in it reads off that. */
-    justify-content: flex-start;
+    align-items: flex-start;
+    /* Back to DOM order. On a phone the mark is pulled ahead of the tabs to
+       reach the left end of the row; here it belongs after them, at the foot
+       of the column. */
+    order: 0;
+  }
+
+  /* Room for the real mark once the bar is a 13rem column rather than a strip
+     shared with three thumb targets. */
+  .app__screen > .tab-bar .tab-bar__brand-icon,
+  .map-screen > .tab-bar .tab-bar__brand-icon {
+    width: 64px;
+    height: 64px;
+    /* The artwork's own 20/96 at this size, as on the phone. */
+    border-radius: 13px;
+  }
+
+  .app__screen > .tab-bar .tab-bar__brand-wordmark,
+  .map-screen > .tab-bar .tab-bar__brand-wordmark {
+    display: block;
   }
 
   .app__screen > .tab-bar .tab-bar__tab[aria-selected='true'],

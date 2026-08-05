@@ -163,18 +163,58 @@
   flex: 1;
 }
 
-/* Not drawn on a phone.
+/* On a phone: the icon alone, at the left end of the bar - which is the
+ * bottom-left corner of the page, and the only corner here that is not either
+ * map or a thumb target.
  *
- * The bar here is a horizontal strip of three thumb-sized targets across the
- * full width, so there is no bottom-left corner going spare - anything added
- * comes out of a tab's width or out of the map above it. The mark is revealed
- * only in desktop.css's media query, which is what structurally guarantees the
- * phone layout cannot regress (see the note at the top of that file).
+ * It costs the three tabs about 32px of shared width. At 375px that leaves
+ * them ~111px each against a 44px floor, so the targets are nowhere near
+ * pressed; it is still map-free real estate spent on branding, and worth
+ * knowing that is the trade. How much chrome this screen should carry at all
+ * is the larger question, tracked as its own spike.
  *
- * Keeping the brand on a phone without spending map pixels is a real design
- * question rather than a CSS one, and is tracked as its own spike. */
+ * `order` rather than DOM order: the mark is last in the markup because on a
+ * desktop it is the foot of a column, and only here does it need to come
+ * first. */
 .tab-bar__brand {
+  display: flex;
+  align-items: center;
+  order: -1;
+  padding-left: var(--space-2, 8px);
+}
+
+.tab-bar__brand-icon {
+  display: block;
+  width: 24px;
+  height: 24px;
+  /* The artwork's own corner radius at this size (20/96), so the element's box
+     matches the rounded square drawn inside it. */
+  border-radius: 5px;
+}
+
+/* Mirrors the wordmark half of the design system's Logo.jsx exactly - same
+   family, weight, tracking and colour - because the sidebar composes the
+   lockup from the icon plus this rather than rendering <Logo /> whole (see
+   TabBar.tsx for why). Anything that changes there changes here, or the app
+   grows two wordmarks that are almost the same, which looks like a mistake
+   rather than a choice.
+
+   `--font-display` resolves to Bitter. That is what Logo.jsx asks for and so
+   what the onboarding lockup already renders, whatever the design system's
+   prose says about Public Sans - matching the shipped component is the point
+   of this block, and a font change belongs upstream in the design system
+   rather than in a divergence started here. */
+.tab-bar__brand-wordmark {
+  /* Desktop-only, revealed in desktop.css. A phone's bar is a 44px row with
+     three thumb targets in it; type beside them comes straight out of their
+     width, and the icon alone already says whose app this is. */
   display: none;
+  font-family: var(--font-display, 'Public Sans', sans-serif);
+  font-weight: 800;
+  font-size: 32px;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--stone-900);
 }
 
 .tab-bar__tab {

@@ -74,12 +74,15 @@ describe('TabBar', () => {
     expect(container.querySelector('.tab-bar__brand')).not.toBeNull()
   })
 
-  it('shows the full lockup, wordmark included, not the bare icon', () => {
-    // The icon alone is a green-and-brown square that names nothing. In the
-    // sidebar there is room for the wordmark on a light surface, which is the
-    // one place in the app chrome where it is both legible and affordable.
+  it('carries both pieces of the mark, leaving the layout to pick', () => {
+    // Both are always in the markup; which one is drawn is a CSS question, and
+    // is asserted in test/desktopLayout.test.ts. The sidebar shows icon over
+    // wordmark; a phone shows the icon alone beside its three tabs, because the
+    // icon on its own still says whose app this is and type there would come
+    // straight out of a thumb target's width.
     const { container } = render(<TabBar {...PROPS} />)
 
+    expect(container.querySelector('.tab-bar__brand-icon')).not.toBeNull()
     expect(container.querySelector('.tab-bar__brand')).toHaveTextContent('OurHike')
   })
 

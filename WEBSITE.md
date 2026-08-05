@@ -333,13 +333,21 @@ as a permanent field rather than a sheet. Sheets become side panels; nothing
 that covers the map should need dismissing to see the map.
 
 **Branding.** The sidebar's foot — the bottom-left corner of the page — carries
-the OurHike mark as the full lockup, wordmark included. It is chrome, not map:
+the OurHike mark, wordmark included, stacked rather than side by side. The
+design system's horizontal lockup ties the wordmark to the icon at a fixed
+ratio, and at a size where the wordmark reads as a wordmark rather than a
+caption, that lockup is wider than the sidebar; stacking is what buys the type
+its size back. The icon is the design system's own, and the wordmark mirrors
+its type styling so the two cannot drift apart. It is chrome, not map:
 a watermark over the canvas would spend terrain a hiker may be reading, and the
-sidebar's empty bottom spends nothing. This is a desktop-only element by
-construction, because a phone's tab bar is three thumb-sized targets across the
-full width with no corner to spare. Carrying the brand on a phone without
-taking map pixels for it is a real design question rather than a CSS one, and
-is tracked as its own spike rather than answered here.
+sidebar's empty bottom spends nothing.
+
+The wordmark is the desktop-only half. A phone's bar is the same element and so
+is still the page's bottom-left corner, but it is a single row shared with three
+thumb targets, so it carries the icon alone (WIREFRAMES.md §1). That is a
+deliberate floor rather than the answer: how much chrome this screen should
+carry before the map gets what is left is a real design question, and is tracked
+as its own spike rather than settled here.
 
 **The elevation profile earns the space.** `ElevationRibbon` is a thin strip
 because a phone has no room. On a desktop it can be the full interactive chart

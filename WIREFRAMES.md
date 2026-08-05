@@ -29,7 +29,7 @@ Where a wireframe *does* commit to an exact value, it's because the value carrie
 **Purpose:** know where you are, what's ahead, and whether to trust it.
 
 **Layout, top to bottom:**
-1. **Status strip** — time, GPS/offline state, sync age.
+1. **Status strip** — time, GPS/offline state, sync age. Plus the states where the map is drawing less than a hiker expects and would otherwise have to guess why: the live sheet failed to load, Data Saver is overriding the background, nothing is downloaded yet, and (2026-08-05, [#216](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/216)) the view is zoomed out past what the download covers. Each is a sentence rather than an icon, and each names its own cause — they are opposite in kind and one word of the wrong one is a map lying about what it is doing with someone's data.
 2. **Header (read-only zone).** Trail + state eyebrow — the trail's own mark (14px, from `lib/trails.ts`'s `TRAILS` registry) ahead of the name, where one is known — current mile + direction (`mi 1,407.2 · NOBO`) in mono. Right side: two 38px icon buttons, gap 7px — **legend** (list icon) then **search**. Nothing else lives here.
 3. **Elevation ribbon.** SVG profile (`viewBox="0 0 100 40"`, `preserveAspectRatio="none"`), 54px tall, left-inset 36px for lane labels. Shaded area under the line, a highlighted upcoming-climb region, a vertical "you are here" rule, min/max ft labels, and a callout: `+640 ft · 2.6 mi · ≈1h 10m`.
 4. **Three waypoint lanes**, 19px each, dashed top rules, mono 7.5px labels in the left gutter: `WATER`, `SLEEP`, `ELSE`. Pins position by percentage along the mile window; overlapping pins collapse into a count pill (category glyph + count).

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { StrictMode } from 'react'
-import { render, cleanup, screen } from '@testing-library/react'
+import { render, cleanup, screen, waitFor } from '@testing-library/react'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { MapView } from './MapView'
 import { poiIconId } from './poiIcons'
@@ -384,5 +384,91 @@ describe('opening view', () => {
       expect(options.zoom).toBeDefined()
       expect(options.bounds).toBeUndefined()
     })
+  })
+})
+
+// #216: the archive is a range of scales, not a map of everywhere. The app
+// opens on the whole trail (~z3.8 on a phone) and every archive built before
+// 2026-08-05 starts at z6, so the opening view had nothing to draw and a
+// complete 314 MB download rendered as flat paper on every launch.
+//
+// MockMap does not implement fitBounds, so a map constructed with `bounds`
+// sits at its initial zoom of 0 - which is below any floor worth testing and
+// is exactly the state the clamp exists for.
+describe('keeping the opening camera inside what the download covers', () => {
+  const CORRIDOR: [[number, number], [number, number]] = [
+    [-84.73, 34.2],
+    [-68.3, 46.34],
+  ]
+
+  it('lifts the opening view to the archive floor when it falls under it', async () => {
+    render(
+      <MapView
+        {...PROPS}
+        background="usgs_topo_offline"
+        bounds={CORRIDOR}
+        archiveZooms={{ minZoom: 6, maxZoom: 12 }}
+      />,
+    )
+
+    await waitFor(() => expect(MockMap.live[0]?.getZoom()).toBe(6))
+  })
+
+  it('leaves it alone once the archive reaches every zoom', async () => {
+    // What the pipeline builds from now on. The whole-trail opening view is a
+    // deliberate decision (App.tsx) and must survive untouched.
+    render(
+      <MapView
+        {...PROPS}
+        background="usgs_topo_offline"
+        bounds={CORRIDOR}
+        archiveZooms={{ minZoom: 0, maxZoom: 12 }}
+      />,
+    )
+
+    await waitFor(() => expect(MockMap.live.length).toBeGreaterThan(0))
+    expect(MockMap.live[0].cameraMoves).toHaveLength(0)
+  })
+
+  it('leaves the live background alone, which covers every zoom itself', async () => {
+    render(
+      <MapView
+        {...PROPS}
+        background="hiking_topo_live"
+        bounds={CORRIDOR}
+        archiveZooms={{ minZoom: 6, maxZoom: 12 }}
+      />,
+    )
+
+    await waitFor(() => expect(MockMap.live.length).toBeGreaterThan(0))
+    expect(MockMap.live[0].cameraMoves).toHaveLength(0)
+  })
+
+  it('claims nothing while the archive coverage is still unknown', async () => {
+    // Not-looked-yet must never be acted on as though the download were known
+    // to fall short - that conflation is what made #216 invisible.
+    render(<MapView {...PROPS} background="usgs_topo_offline" bounds={CORRIDOR} />)
+
+    await waitFor(() => expect(MockMap.live.length).toBeGreaterThan(0))
+    expect(MockMap.live[0].cameraMoves).toHaveLength(0)
+  })
+
+  it('does not touch a camera the hiker has already moved', async () => {
+    // The shell passes `bounds` only for the very first view; once there is a
+    // remembered camera it sends centre and zoom instead. So a hiker who
+    // deliberately zoomed out to look at the whole trail is never yanked back.
+    render(
+      <MapView
+        {...PROPS}
+        background="usgs_topo_offline"
+        center={[-77, 39]}
+        zoom={4}
+        archiveZooms={{ minZoom: 6, maxZoom: 12 }}
+      />,
+    )
+
+    await waitFor(() => expect(MockMap.live.length).toBeGreaterThan(0))
+    expect(MockMap.live[0].getZoom()).toBe(4)
+    expect(MockMap.live[0].cameraMoves).toHaveLength(0)
   })
 })

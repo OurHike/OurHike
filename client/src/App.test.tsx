@@ -8,6 +8,7 @@ import { PREFERENCES_KEY } from './lib/preferences'
 import { DEFAULT_PREFERENCES } from './lib/userPreferences'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 import { CORRIDOR_BACKGROUND_PACKAGE } from './lib/packages'
+import type { ArchiveZooms } from './lib/archiveCoverage'
 
 // The shell decides what a hiker sees, so what is worth testing here is the
 // routing between screens and the honesty of what it shows before any data
@@ -16,10 +17,24 @@ import { CORRIDOR_BACKGROUND_PACKAGE } from './lib/packages'
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
 
+/**
+ * What the archive's PMTiles header says it covers (#216).
+ *
+ * Mocked at this seam rather than at `pmtiles` itself: the real PMTiles class
+ * is also what map/protocol.ts registers the offline protocol with, and
+ * replacing it wholesale breaks map construction for every other test in this
+ * file. The header read has its own unit tests in map/archiveZooms.test.ts.
+ */
+const archiveHeader: { value: ArchiveZooms | null } = { value: null }
+vi.mock('./map/archiveZooms', () => ({
+  readArchiveZooms: () => Promise.resolve(archiveHeader.value),
+}))
+
 const store = new Map<string, unknown>()
 
 beforeEach(() => {
   store.clear()
+  archiveHeader.value = null
   resetMapLibreMock()
   vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
   vi.mocked(set).mockImplementation((key, value) => {
@@ -32,6 +47,15 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  // `clearAllMocks` empties the recorded calls and leaves the IMPLEMENTATION
+  // in place, which is not what a spy set inside one test should do to the
+  // rest of the file. The error-boundary tests below replace MapLibre's Map
+  // constructor with one that throws; without this line every test declared
+  // after them inherits a map that cannot be built, and fails looking like a
+  // bug in whatever it was actually testing. Found by adding a describe at
+  // the end of this file and watching five unrelated assertions go red while
+  // each one passed on its own.
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
 
@@ -861,5 +885,112 @@ describe('Data Saver', () => {
     expect(
       await screen.findByRole('dialog', { name: /offline map/i }),
     ).toBeInTheDocument()
+  })
+})
+
+// #216, reported from a real phone: a complete 314 MB download, the offline
+// background selected, and no background drawn at all. The archive was
+// present, complete and correctly counted - the pipeline simply exported from
+// z6 while the app opens on the whole trail at about z4, and nothing anywhere
+// compared the two numbers.
+describe('an archive that does not reach the view', () => {
+  /** A finished archive whose header declares the zooms it really holds. */
+  function archiveCovering(minZoom: number) {
+    withDownloadedArchive()
+    archiveHeader.value = { minZoom, maxZoom: 12 }
+  }
+
+  /** Report a camera position, the way a real moveend does. */
+  async function atZoom(zoom: number) {
+    const live = await liveMap()
+    live.zoom = zoom
+    live.center = { lng: -77, lat: 39 }
+    act(() => live.emit('moveend'))
+  }
+
+  it('opens the map at the archive floor rather than on blank paper', async () => {
+    returningHiker()
+    store.set(PREFERENCES_KEY, {
+      ...DEFAULT_PREFERENCES,
+      onboarding_completed: true,
+      download_choice_made: true,
+      background_source: 'usgs_topo_offline',
+    })
+    archiveCovering(6)
+
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    // MockMap does not fit bounds, so it starts at 0 - under any real floor,
+    // and the state the clamp exists for.
+    await waitFor(() => expect(MockMap.live[0]?.getZoom()).toBe(6))
+  })
+
+  it('says so when the hiker zooms out past what the download covers', async () => {
+    returningHiker()
+    store.set(PREFERENCES_KEY, {
+      ...DEFAULT_PREFERENCES,
+      onboarding_completed: true,
+      download_choice_made: true,
+      background_source: 'usgs_topo_offline',
+    })
+    archiveCovering(6)
+
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await atZoom(4)
+
+    expect(await screen.findByText(/zoomed out past your download/i)).toBeVisible()
+  })
+
+  it('stays quiet once the view is back inside the download', async () => {
+    returningHiker()
+    store.set(PREFERENCES_KEY, {
+      ...DEFAULT_PREFERENCES,
+      onboarding_completed: true,
+      download_choice_made: true,
+      background_source: 'usgs_topo_offline',
+    })
+    archiveCovering(6)
+
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await atZoom(4)
+    await screen.findByText(/zoomed out past your download/i)
+
+    await atZoom(11)
+
+    await waitFor(() =>
+      expect(screen.queryByText(/zoomed out past your download/i)).toBeNull(),
+    )
+  })
+
+  it('never says it on the live sheet, which covers every zoom', async () => {
+    returningHiker()
+    archiveCovering(6)
+
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await atZoom(3)
+
+    expect(screen.queryByText(/zoomed out past your download/i)).toBeNull()
+  })
+
+  it('claims nothing before the archive has said what it holds', async () => {
+    // No archive at all: coverage is unknown, and unknown must not render as
+    // "your download does not reach here".
+    returningHiker()
+    store.set(PREFERENCES_KEY, {
+      ...DEFAULT_PREFERENCES,
+      onboarding_completed: true,
+      download_choice_made: true,
+      background_source: 'usgs_topo_offline',
+    })
+
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await atZoom(3)
+
+    expect(screen.queryByText(/zoomed out past your download/i)).toBeNull()
   })
 })

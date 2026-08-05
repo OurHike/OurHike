@@ -113,7 +113,42 @@ def package_header(source_header: dict, region_4326, min_zoom: int) -> dict:
     }
 
 
-def extract(source_path: Path, region_path: Path, out_path: Path, min_zoom: int | None, max_zoom: int | None, name: str):
+# Through this zoom the package takes EVERY source tile, not only the ones
+# the trail region touches (issue #189's "beyond-the-package ground").
+#
+# A trail package's low zooms are otherwise a ribbon: pan out offline and
+# the ground around it is blank paper, which reads as a broken map rather
+# than an undownloaded one. The decision recorded here is that the context
+# a package carries is the SOURCE BUILD'S OWN FOOTPRINT - packages inherit
+# whatever low-zoom ground the build holds, and how wide that is stays the
+# build's decision, made once, rather than a per-package box someone tunes.
+# Against today's corridor-clipped build this changes nothing (the build's
+# --polygon bounds its tiles to the same corridor shape), and that is the
+# point: as the build grows to statewide NY (#184's 2026-08-04 scope call)
+# and toward a national archive (#194), every package's offline pan-out
+# widens with it, with no extract-side change and no second artifact.
+#
+# This supersedes the never-wired Protomaps context extract noted in
+# TECHNICAL_ARCHITECTURE.md: the context travels inside each package
+# instead of being a separate download a client would have to stitch in.
+#
+# z9 because it is the last zoom of coarse orientation - towns and the road
+# network resolve well enough to place yourself in a state - and because
+# tile counts quadruple per zoom step: a wide z10+ is real megabytes for
+# ground nobody navigates offline, while everything through z9 is bounded
+# by geometry to a sliver of any package.
+DEFAULT_CONTEXT_ZOOM = 9
+
+
+def extract(
+    source_path: Path,
+    region_path: Path,
+    out_path: Path,
+    min_zoom: int | None,
+    max_zoom: int | None,
+    name: str,
+    context_zoom: int | None = DEFAULT_CONTEXT_ZOOM,
+):
     region = load_region(region_path)
     region_merc = to_mercator(region)
 
@@ -129,9 +164,16 @@ def extract(source_path: Path, region_path: Path, out_path: Path, min_zoom: int 
 
         lo = source_header["min_zoom"] if min_zoom is None else min_zoom
         hi = source_header["max_zoom"] if max_zoom is None else max_zoom
+        # Zooms at or under this take every source tile; the region walk only
+        # has to answer for the zooms above it.
+        context = min(context_zoom, hi) if context_zoom is not None else lo - 1
 
-        print(f"Walking region tiles, zoom {lo}-{hi}...")
-        hits = tiles_intersecting(region_merc, lo, hi)
+        region_lo = max(lo, context + 1)
+        if region_lo <= hi:
+            print(f"Walking region tiles, zoom {region_lo}-{hi}...")
+            hits = tiles_intersecting(region_merc, region_lo, hi)
+        else:
+            hits = {}
         wanted = {(z, x, y) for z, tiles in hits.items() for x, y in tiles}
 
         # One streaming pass over the source rather than one Reader.get() per
@@ -141,24 +183,36 @@ def extract(source_path: Path, region_path: Path, out_path: Path, min_zoom: int 
         # order - which also keeps the output clustered for free.
         out_path.parent.mkdir(parents=True, exist_ok=True)
         written = 0
+        context_written = 0
         with write(str(out_path)) as writer:
             for (z, x, y), data in all_tiles(get_bytes):
-                if (z, x, y) in wanted:
+                is_context = lo <= z <= context
+                if is_context or (z, x, y) in wanted:
                     writer.write_tile(zxy_to_tileid(z, x, y), data)
                     written += 1
-            if written == 0:
+                    context_written += is_context
+            # The guard asks about REGION tiles, not the total: context tiles
+            # come from the source's own footprint and arrive for any region
+            # whatsoever, so a wrong region file with context on would
+            # otherwise ship a low-zoom-only package as if it were a map.
+            region_written = written - context_written
+            if written == 0 or (region_lo <= hi and region_written == 0):
                 raise SystemExit("Region intersects no tiles in the source archive - wrong region file, or wrong source?")
             writer.finalize(package_header(source_header, region, lo), {**metadata, "name": name})
 
     # A region tile absent from the source is normal, not an error: the
     # source was itself clipped (ocean, sparse low zooms), and PMTiles has no
     # empty-tile entries - so absence is reported, never failed on.
-    print(f"{written} tiles written, {len(wanted) - written} region tiles absent from source")
+    print(
+        f"{written} tiles written ({context_written} source-wide context tiles through z{context}), "
+        f"{len(wanted) - (written - context_written)} region tiles absent from source"
+    )
     print(f"Source: {source_path.stat().st_size / 1e6:.1f} MB -> package: {out_path.stat().st_size / 1e6:.1f} MB")
 
 
 def main(args: argparse.Namespace):
-    extract(args.source, args.region, args.out, args.min_zoom, args.max_zoom, args.name)
+    context_zoom = None if args.context_zoom < 0 else args.context_zoom
+    extract(args.source, args.region, args.out, args.min_zoom, args.max_zoom, args.name, context_zoom)
     report_archive(args.out)
 
 
@@ -169,5 +223,13 @@ if __name__ == "__main__":
     parser.add_argument("--out", type=Path, required=True, help="Output package .pmtiles path")
     parser.add_argument("--min-zoom", type=int, default=None, help="Default: the source archive's own min zoom")
     parser.add_argument("--max-zoom", type=int, default=None, help="Default: the source archive's own max zoom")
+    parser.add_argument(
+        "--context-zoom",
+        type=int,
+        default=DEFAULT_CONTEXT_ZOOM,
+        help="Through this zoom the package keeps every source tile, so panning out "
+        "offline shows the region's surroundings rather than blank paper. "
+        "Negative disables (region-only at every zoom). Default: %(default)s",
+    )
     parser.add_argument("--name", default="OurHike basemap package", help="Metadata name for the package")
     main(parser.parse_args())

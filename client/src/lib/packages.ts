@@ -7,7 +7,7 @@
 // registers every entry here). The offline map program (#184) ships several
 // archives to the same phone - vector basemap, DEM, the USGS raster sheet -
 // and multi-trail support means per-trail sets of each, so the store is
-// keyed even while this catalog has one member.
+// keyed per package.
 //
 // The corridor background keeps the key it has always had: an archive
 // already sitting in a tester's IndexedDB under 'ourhike:corridor-archive'
@@ -35,6 +35,26 @@ export const CORRIDOR_BACKGROUND_PACKAGE: MapPackage = {
   title: 'Offline map',
 }
 
+/**
+ * The vector basemap package - the hiking sheet's own tiles, cut by
+ * pipeline/extract_package.py from the periodic Planetiler build (#184).
+ *
+ * map/basemap.ts resolves the sheet's `basemap://` tile requests against
+ * this key first and falls through to the network where the package does
+ * not answer (#189). The download UX that puts a blob under this key
+ * follows the store rework (#192); until then the key resolves the same
+ * way every catalog entry does - an absent archive is a real, reportable
+ * state, and reads simply fall through to the live source.
+ */
+export const BASEMAP_PACKAGE: MapPackage = {
+  id: 'basemap',
+  idbKey: 'ourhike:basemap',
+  title: 'Hiking sheet',
+}
+
 /** Every package this build knows how to store and resolve. Order is the
  *  Downloads screen's display order, when it grows a list (#192). */
-export const MAP_PACKAGES: readonly MapPackage[] = [CORRIDOR_BACKGROUND_PACKAGE]
+export const MAP_PACKAGES: readonly MapPackage[] = [
+  CORRIDOR_BACKGROUND_PACKAGE,
+  BASEMAP_PACKAGE,
+]

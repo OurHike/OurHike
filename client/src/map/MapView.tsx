@@ -24,6 +24,7 @@ import { Map as MapLibreMap } from 'maplibre-gl'
 // tell that this import was forgotten rather than declined.
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { registerPMTilesProtocol } from './protocol'
+import { registerBasemapProtocol } from './basemap'
 import { registerMapWorker } from './mapWorker'
 import { buildMapStyle } from './style'
 import { attachContourUnits, registerTerrain } from './contours'
@@ -152,6 +153,13 @@ export function MapView({
 
     // The style resolves pmtiles:// URLs, so the protocol has to exist first.
     registerPMTilesProtocol()
+
+    // And basemap:// URLs - the hiking sheet's local-first tile resolution
+    // (basemap.ts). Registered unconditionally like the pmtiles scheme, and
+    // unlike the terrain protocols below: it reaches the network only as the
+    // per-tile fallthrough of a source the chosen style actually declares,
+    // so there is no behind-the-back request to guard against.
+    registerBasemapProtocol()
 
     // Same contract for the DEM and contour protocols, with one difference
     // worth being deliberate about: this one reaches the network, so it is

@@ -135,3 +135,13 @@ development, so `npm run preview` is installable too.
 - **Elevation ribbon and waypoint lanes.** Omitted rather than stubbed — an
   empty ribbon claims "nothing ahead of you," which is a different and worse
   statement than "we don't have the profile for this stretch."
+
+## Looking at built map artifacts
+
+`viewer.html` (its own entry point, not part of the app) renders `.pmtiles`
+archives from pipeline workflow runs with the real hiking cartography: drop
+any combination of a vector basemap, a DEM, or a raster sheet onto the page
+and it recognises each from the archive itself. On a PR preview it lives at
+`…/pr-preview/pr-<n>/viewer.html`; locally, `npm run dev` serves it at
+`/viewer.html`. The bytes never leave your machine — download an artifact
+from a run, unzip, drop. See issue #202.

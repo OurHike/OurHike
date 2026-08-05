@@ -33,6 +33,11 @@ const CONTOUR_ESM = join(dirname(CONTOUR_CJS), 'index.mjs')
 // Must have a trailing slash - Vite joins it to asset paths directly.
 const BASE = process.env.VITE_BASE_PATH ?? '/'
 
+// The config's own directory, realpathed once and shared by `root` and the
+// rollup inputs below - resolved differently they can disagree through a
+// symlinked checkout, and an input outside `root` fails the build.
+const ROOT = realpathSync.native(fileURLToPath(new URL('.', import.meta.url)))
+
 // https://vite.dev/config/
 export default defineConfig({
   base: BASE,
@@ -44,7 +49,19 @@ export default defineConfig({
   // https://github.com/vitest-dev/vitest/issues/5251. Resolving from
   // import.meta.url keeps the casing consistent regardless of how the
   // process was launched.
-  root: realpathSync.native(fileURLToPath(new URL('.', import.meta.url))),
+  root: ROOT,
+  build: {
+    rollupOptions: {
+      // Two pages: the app, and the artifact viewer (viewer.html, issue
+      // #202) - a reviewer tool that ships with every PR preview but is not
+      // part of the app a hiker sees (no tab, no service worker
+      // registration of its own; it rides the same origin).
+      input: {
+        main: join(ROOT, 'index.html'),
+        viewer: join(ROOT, 'viewer.html'),
+      },
+    },
+  },
   resolve: {
     // Falls back to whatever `require` resolved if upstream ever drops the
     // .mjs, so a future release can only cost the ESM build, never the app.
@@ -143,6 +160,9 @@ export default defineConfig({
         // possible test is "does React mount", covered by every render() in
         // the suite already.
         'src/main.tsx',
+        // The viewer page's bootstrap - DOM glue over viewerController.ts
+        // and viewerStyle.ts, which are tested; same reasoning as main.tsx.
+        'src/viewer/main.ts',
       ],
     },
   },

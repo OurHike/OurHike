@@ -122,6 +122,39 @@ describe('Settings', () => {
     })
   })
 
+  it('routes the background choice through the shell when it is given one', async () => {
+    // Choosing "downloaded" can mean more than storing a preference - with
+    // nothing on the phone it opens the download window (App.tsx) - and the
+    // shell can only apply that rule if the choice reaches it.
+    const user = userEvent.setup()
+    const onChangeBackground = vi.fn()
+    render(<Settings {...PROPS} onChangeBackground={onChangeBackground} />)
+
+    await user.click(screen.getByRole('radio', { name: /downloaded/i }))
+
+    expect(onChangeBackground).toHaveBeenCalledWith('usgs_topo_offline')
+    expect(PROPS.onChange).not.toHaveBeenCalled()
+  })
+
+  it('offers the way to the download, since there is no tab to send anyone to', async () => {
+    const user = userEvent.setup()
+    const onOpenDownloads = vi.fn()
+    render(<Settings {...PROPS} onOpenDownloads={onOpenDownloads} />)
+
+    await user.click(screen.getByRole('button', { name: /choose what to download/i }))
+
+    expect(onOpenDownloads).toHaveBeenCalledTimes(1)
+  })
+
+  it('puts it at the foot of the screen, below every group', async () => {
+    // A once-a-season errand, so it is findable by anyone who scrolls looking
+    // for it and out of the way of the rows that get used.
+    const { container } = render(<Settings {...PROPS} onOpenDownloads={vi.fn()} />)
+
+    const link = screen.getByRole('button', { name: /choose what to download/i })
+    expect(container.querySelector('.settings')?.lastElementChild).toBe(link)
+  })
+
   it('says the live background still falls back to the download with no signal', () => {
     // The one thing someone choosing between these actually needs to know, and
     // the one thing a provider name would not tell them.

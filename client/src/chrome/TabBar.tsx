@@ -1,11 +1,11 @@
-// Trail / Downloads / More (WIREFRAMES.md §6). The tab set itself lives in
-// tabs.ts - see the note there.
+// Trail / More (WIREFRAMES.md §6). The tab set itself lives in tabs.ts - see
+// the note there for why Downloads is no longer one of them.
 //
 // This bar is also where the OurHike mark lives, because on both layouts the
 // bar IS the bottom-left corner of the page. On a desktop it becomes the left
 // sidebar (desktop.css) and the mark sits at the foot of it, icon over
 // wordmark. On a phone it is a horizontal strip and the mark is the icon
-// alone, left of the three tabs - the wordmark has nowhere to go there without
+// alone, left of the tabs - the wordmark has nowhere to go there without
 // taking width off a thumb target.
 //
 // The mark rides here rather than on the map itself because the map is the
@@ -29,7 +29,7 @@
 //
 // The tabs sit in their own element rather than directly under the <nav>. A
 // `role="tablist"` is required to own tabs and nothing else, so hanging the
-// mark off it would make the brand a fourth member of a set of three - which is
+// mark off it would make the brand one more member of the set - which is
 // exactly what a screen reader would then announce.
 
 import { TABS, type TabId } from './tabs'
@@ -62,7 +62,7 @@ export function TabBar({ active, onSelect }: TabBarProps) {
 
       {/* Rendered on every screen, not only the map: the sidebar is one shared
           piece of chrome, and a mark that appeared under Trail and vanished
-          under Downloads would read as a bug rather than as branding.
+          under More would read as a bug rather than as branding.
 
           Hidden from assistive tech as a whole. `iconOnly` gives the icon its
           own "OurHike" label, so left alone this block announces the name

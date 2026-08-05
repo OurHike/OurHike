@@ -24,6 +24,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapView } from '../map/MapView'
 import { HEALTHY, type LiveSourceHealth } from '../map/liveSourceHealth'
 import type { BackgroundOverride } from '../lib/dataSaver'
+import type { ArchiveZooms } from '../lib/archiveCoverage'
 import { attributionFor } from '../map/style'
 import type { ScaleUnits } from '../map/mapChrome'
 import type { BackgroundSource } from '../lib/userPreferences'
@@ -122,6 +123,27 @@ export interface MapScreenProps {
    */
   backgroundChoice?: BackgroundSource
   onChangeBackground?: (next: BackgroundSource) => void
+  /**
+   * Opens the download window, which the legend's picker links to.
+   *
+   * The window itself is the shell's, not this screen's: it opens over the
+   * More tab as readily as over the map, and a copy owned here would be a
+   * second one with its own idea of whether it is showing.
+   */
+  onOpenDownloads?: () => void
+  /** Whether a finished archive is on the phone, which words that link. */
+  hasDownload?: boolean
+  /**
+   * Whether the view is zoomed out past what the download covers (#216).
+   *
+   * Reported by the shell rather than worked out here, for the same reason
+   * `backgroundOverride` is: the strip and the legend's picker both say it,
+   * and two independent readings of one condition is how they come to
+   * disagree.
+   */
+  belowArchiveZoom?: boolean
+  /** What the archive's own header says it covers, for the opening camera. */
+  archiveZooms?: ArchiveZooms | null
 }
 
 export function MapScreen({
@@ -167,6 +189,10 @@ export function MapScreen({
   backgroundOverride = null,
   backgroundChoice,
   onChangeBackground,
+  onOpenDownloads,
+  hasDownload = false,
+  belowArchiveZoom = false,
+  archiveZooms = null,
 }: MapScreenProps) {
   // The one thing the stylesheet cannot do. The legend announces itself as
   // `role="dialog" aria-modal="true"` and renders nothing when closed; as a
@@ -209,6 +235,7 @@ export function MapScreen({
           // promises rather than something to interrupt a hiker over.
           liveBackgroundUnavailable={liveSources.basemap}
           backgroundOverride={backgroundOverride}
+          belowArchiveZoom={belowArchiveZoom}
         />
 
         <Header
@@ -244,6 +271,7 @@ export function MapScreen({
               center={center}
               zoom={zoom}
               bounds={bounds}
+              archiveZooms={archiveZooms}
               onViewportChange={onViewportChange}
               onMapReady={handleMapReady}
               onLiveSourceHealth={setLiveSources}
@@ -278,6 +306,9 @@ export function MapScreen({
             backgroundChoice={backgroundChoice}
             onChangeBackground={onChangeBackground}
             backgroundOverride={backgroundOverride}
+            belowArchiveZoom={belowArchiveZoom}
+            onOpenDownloads={onOpenDownloads}
+            hasDownload={hasDownload}
           />
         </div>
       </div>

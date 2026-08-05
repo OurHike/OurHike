@@ -125,4 +125,29 @@ describe('StatusStrip', () => {
     expect(screen.queryByText(/no live map/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/data saver/i)).not.toBeInTheDocument()
   })
+
+  it('says when the view is zoomed out past what the download covers', () => {
+    // #216. Without this the app draws paper and offers no account of itself,
+    // which is exactly how a complete 314 MB download came to be reported as
+    // "no data downloaded".
+    render(<StatusStrip {...PROPS} belowArchiveZoom />)
+
+    expect(screen.getByText(/zoomed out past your download/i)).toBeInTheDocument()
+  })
+
+  it('does not call that an override, because nothing was overridden', () => {
+    // The chosen background IS what is drawn; it simply has no tiles at this
+    // scale. Borrowing either override's wording would be the quiet mismatch
+    // lib/dataSaver.ts exists to prevent, one condition further along.
+    render(<StatusStrip {...PROPS} belowArchiveZoom />)
+
+    expect(screen.queryByText(/data saver/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/nothing downloaded yet/i)).not.toBeInTheDocument()
+  })
+
+  it('stays quiet while the download does cover the view', () => {
+    render(<StatusStrip {...PROPS} />)
+
+    expect(screen.queryByText(/zoomed out past/i)).not.toBeInTheDocument()
+  })
 })

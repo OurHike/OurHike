@@ -1,15 +1,68 @@
+/* ---------- The download window (DownloadsDialog.tsx) ---------- */
+
+/* `fixed`, which also takes it out of the flex column .app__screen puts its
+   children in - the window is over the app, not one more row of it. */
+.downloads-dialog {
+  position: fixed;
+  inset: 0;
+  /* Above the legend (2) and the search sheet (3), both of which are scoped to
+     the map canvas; this one covers the whole app. */
+  z-index: 10;
+  display: flex;
+  background: rgb(0 0 0 / 35%);
+}
+
+/* Fills the phone, so the dim above is only ever seen on a desktop. There is
+   nothing behind it worth keeping in view: this is a whole decision - which
+   detail level, how many hundred megabytes - not a note about the map. The
+   panel treatment is in desktop.css, where a rule cannot reach a phone. */
+.downloads-dialog__panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-page);
+}
+
+.downloads-dialog__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3, 12px);
+  padding: var(--space-2, 8px) var(--space-2, 8px) var(--space-2, 8px)
+    var(--space-5, 20px);
+  border-bottom: 1px solid var(--border-1);
+}
+
+.downloads-dialog__title {
+  margin: 0;
+  font-size: 20px;
+  color: var(--fg-1);
+}
+
+.downloads-dialog__close {
+  min-width: var(--min-touch-target, 44px);
+  min-height: var(--min-touch-target, 44px);
+  font-size: 20px;
+  color: var(--fg-2);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+/* The scroll is here rather than on the panel, so the head stays put and the
+   way out is on screen at every scroll position. */
+.downloads-dialog__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .downloads {
   display: flex;
   flex-direction: column;
   gap: var(--space-4, 16px);
   padding: var(--space-5, 20px);
-  background: var(--bg-page);
-  min-height: 100%;
-}
-.downloads__title {
-  margin: 0;
-  font-size: 20px;
-  color: var(--fg-1);
 }
 .downloads__scope {
   margin: 0;

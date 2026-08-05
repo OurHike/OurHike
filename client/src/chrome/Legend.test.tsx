@@ -221,4 +221,23 @@ describe('legend as a persistent panel', () => {
     )
     expect(screen.getByRole('button', { name: /close legend/i })).toBeInTheDocument()
   })
+
+  it('puts the way to the download last, under everything the panel is for', () => {
+    // It is the only route to the download window, which makes it worth
+    // carrying and does not make it worth the top of a panel someone opens all
+    // day to ask what is around them. Asserted as a position rather than as
+    // presence, because presence is not the part that was got wrong.
+    const { container } = render(
+      <Legend {...PROPS} onOpenDownloads={vi.fn()} backgroundChoice={undefined} />,
+    )
+
+    const link = screen.getByRole('button', { name: /choose what to download/i })
+    expect(container.querySelector('.legend')?.lastElementChild).toBe(link)
+  })
+
+  it('draws no such link where there is no window to open', () => {
+    render(<Legend {...PROPS} />)
+
+    expect(screen.queryByRole('button', { name: /download/i })).toBeNull()
+  })
 })

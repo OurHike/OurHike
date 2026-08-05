@@ -99,7 +99,7 @@ After setting `DATA_BASE_URL` (step 2), the site needs a **redeploy** to pick it
 
 Two things to check after that redeploy:
 - The PWA installs (service worker registers, manifest loads). iOS Web Push **only** works for home-screen installs, which matters for the wrong-way alert later.
-- The Downloads screen actually fetches data instead of saying "data source not configured" (that message means `DATA_BASE_URL` didn't make it into the build).
+- The download window actually fetches data instead of saying "data source not configured" (that message means `DATA_BASE_URL` didn't make it into the build). It opens from the "Choose what to download" link at the foot of the legend, or at the foot of Settings under the More tab.
 
 **After step 3 you have a working offline map.** Steps 4–6 are only needed for contributions — reporting, closures, accounts.
 

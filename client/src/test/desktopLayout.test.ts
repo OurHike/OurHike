@@ -115,7 +115,7 @@ describe('desktop layout contract', () => {
     return bareChrome.slice(at, bareChrome.indexOf('}', at))
   }
 
-  it('keeps the wordmark off the phone, where the bar is three thumb targets', () => {
+  it('keeps the wordmark off the phone, where the bar is a row of thumb targets', () => {
     // Hidden by the component's own stylesheet...
     expect(chromeRule('.tab-bar__brand-wordmark')).toMatch(/display:\s*none/)
     // ...and turned back on only from inside the media query, which is what

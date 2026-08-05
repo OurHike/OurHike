@@ -29,17 +29,22 @@ Where a wireframe *does* commit to an exact value, it's because the value carrie
 **Purpose:** know where you are, what's ahead, and whether to trust it.
 
 **Layout, top to bottom:**
-1. **Status strip** — time, GPS/offline state, sync age.
+1. **Status strip** — time, GPS/offline state, sync age. Plus the states where the map is drawing less than a hiker expects and would otherwise have to guess why: the live sheet failed to load, Data Saver is overriding the background, nothing is downloaded yet, and (2026-08-05, [#216](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/216)) the view is zoomed out past what the download covers. Each is a sentence rather than an icon, and each names its own cause — they are opposite in kind and one word of the wrong one is a map lying about what it is doing with someone's data.
 2. **Header (read-only zone).** Trail + state eyebrow — the trail's own mark (14px, from `lib/trails.ts`'s `TRAILS` registry) ahead of the name, where one is known — current mile + direction (`mi 1,407.2 · NOBO`) in mono. Right side: two 38px icon buttons, gap 7px — **legend** (list icon) then **search**. Nothing else lives here.
 3. **Elevation ribbon.** SVG profile (`viewBox="0 0 100 40"`, `preserveAspectRatio="none"`), 54px tall, left-inset 36px for lane labels. Shaded area under the line, a highlighted upcoming-climb region, a vertical "you are here" rule, min/max ft labels, and a callout: `+640 ft · 2.6 mi · ≈1h 10m`.
 4. **Three waypoint lanes**, 19px each, dashed top rules, mono 7.5px labels in the left gutter: `WATER`, `SLEEP`, `ELSE`. Pins position by percentage along the mile window; overlapping pins collapse into a count pill (category glyph + count).
 5. **Map canvas.** Trail lines, waypoint pins, GPS dot. Bottom-left: scale bar (64px, three-sided box) above `USGS US Topo · © OSM`. Bottom-right, 10px inset: a vertical stack, gap 8px, of **compass** and **locate** (42px each). Zoom buttons are **web only** — pinch covers mobile and the thumb zone is reserved for locate.
-6. **Tab bar** — Trail / Downloads / More, with the OurHike icon (mark only, no
+6. **Tab bar** — Trail / More, with the OurHike icon (mark only, no
    wordmark) at the left end, ahead of the tabs. It is the page's bottom-left
    corner and the only one here that is neither map nor a thumb target; it costs
-   the three tabs about 32px of shared width and the map nothing. Above 900px
+   the tabs about 32px of shared width and the map nothing. Above 900px
    this same bar is the left sidebar and the mark moves to the foot of it, icon
-   over wordmark — see WEBSITE.md §6.
+   over wordmark — see WEBSITE.md §6. **Amended 2026-08-05: Downloads was the
+   middle tab and is now a window** (§4). The tab bar is the most expensive
+   space in the app and a one-off errand had a third of it; the download is
+   reached from the background picker instead, which is the control someone is
+   already looking at when they want it. It returns as a tab in v2, when there
+   is more than one package to manage.
 
 **Interaction rules:** everything tapped mid-walk sits in the lower third; everything read but not touched sits above. Locate is blue while tracking, grey when the fix is lost (`7b`).
 
@@ -79,6 +84,15 @@ One normalized `blaze_color` attribute per line feature; one MapLibre `match` ex
 ### 4. Downloads (`10a`, `10b`, `6d`, `7a`) — ⚠ see Known Deviations, below
 
 Wireframed as a per-section list with a per-section detail override. **This interaction model is superseded — see "Known deviations" below before building.** What still carries over: the Light / Standard / Fine (z11 / z12 / z13) detail choice itself, and the measured sizes.
+
+**Amended 2026-08-05 — a window, not a screen.** With the per-section model retired there is exactly one package, started once and deleted maybe never, and a permanent tab for it (§1.6) bought a screen almost nobody opens twice. It is a modal window now (`client/src/screens/DownloadsDialog.tsx`), opened over whatever is showing, with the same contents as before: the detail choice, the progress and resume states, the delete, the install prompt and the build's own "no data source configured" warning. Three things follow from the move and all three are deliberate:
+
+- **The way in is a link at the foot of the legend (§2) and at the foot of Settings (§10)**, from one component (`client/src/chrome/DownloadsLink.tsx`), worded for the phone it is on — *choose* what to download, or *change* what's downloaded. Last on both screens on purpose: it is the only route to the window, which is why it is carried, and a once-a-season errand, which is why it does not get the top of a panel someone opens all day. On a desktop the legend is full height and the link is pushed to the foot of it.
+- **Picking "Downloaded" on a phone with no download opens the window on its own**, without waiting to be asked twice, and the choice is still saved so it takes effect the moment the archive lands. That is what keeps the link above from having to be prominent: the one moment someone asks for a map this phone cannot draw is already handled where they asked (`client/src/chrome/BackgroundPicker.tsx`, §2).
+- **The map is not torn down to look at it.** A trip to the old tab unmounted the map screen and rebuilt it on the way back — the bug the camera-restore code exists to paper over. A window costs none of that.
+- **On a desktop it is a centred panel** on a dimmed page rather than a takeover of a 1440px browser (WEBSITE.md §6).
+
+Onboarding still ends on the download (§5), but over the map rather than instead of it.
 
 ### 5. Onboarding — Tier 1 (`13a` chosen, `13b` rejected, `13c` sequence)
 

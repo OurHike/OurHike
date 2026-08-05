@@ -1,9 +1,14 @@
 // Downloads (WIREFRAMES.md §4, as amended by its own Known Deviations #1).
 //
+// The body of the download window, not a screen of its own since 2026-08-05 -
+// DownloadsDialog.tsx is the window it sits in and owns the title and the way
+// out. Kept as its own component because what it renders is the download and
+// nothing else, which is what all of the tests below it are about.
+//
 // ONE whole-corridor package. The wireframe drew a per-section list with
 // override sheets, roll-up totals and mixed-detail seam messaging; ROADMAP.md
-// Phase 2 had already settled on a single package, and this screen builds to
-// the roadmap. None of the retired model appears here.
+// Phase 2 had already settled on a single package, and this builds to the
+// roadmap. None of the retired model appears here.
 //
 // A failed transfer offers RESUME, never restart (WIREFRAMES.md `7a`).
 // Re-fetching 314 MB from zero because the connection dropped at 90% is
@@ -50,8 +55,7 @@ export function Downloads({
   const isDesktop = useDesktop()
 
   return (
-    <main className="downloads">
-      <h1 className="downloads__title">Offline map</h1>
+    <div className="downloads">
       {/* "Download 314 MB for offline use" means something different on a
           machine that is not going up a mountain (WEBSITE.md §6). The download
           is still offered - a laptop is a legitimate place to look at the map,
@@ -142,6 +146,6 @@ export function Downloads({
           </button>
         </div>
       )}
-    </main>
+    </div>
   )
 }

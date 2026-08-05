@@ -1,9 +1,14 @@
 // The app shell: what screen is showing, and where its data comes from.
 //
-// There is no router. Every screen is reached from the three-tab bar or from a
-// flow that owns its own back-out, so URLs would be a second navigation model
-// to keep in sync with the first for no gain a hiker would notice - and the
+// There is no router. Every screen is reached from the tab bar or from a flow
+// that owns its own back-out, so URLs would be a second navigation model to
+// keep in sync with the first for no gain a hiker would notice - and the
 // service worker precaches one document either way.
+//
+// Two tabs, Trail and More (chrome/tabs.ts). Downloads was a third until
+// 2026-08-05 and is now a window this file opens over whichever of them is
+// showing - see screens/DownloadsDialog.tsx for why, and `downloadsWindow`
+// below for what goes in it.
 //
 // Sign-in reaches the reporting flow through stepAfterSaving() (lib/
 // contributionFlow.ts), and only ever after the report is already in the
@@ -35,6 +40,7 @@ import { TabBar } from './chrome/TabBar'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import type { TabId } from './chrome/tabs'
 import { Downloads } from './screens/Downloads'
+import { DownloadsDialog } from './screens/DownloadsDialog'
 import { More } from './screens/More'
 import { InstallPrompt } from './screens/InstallPrompt'
 import { Onboarding, type OnboardingResult } from './screens/Onboarding'
@@ -43,13 +49,19 @@ import { ReportTypePicker, type ReportTypeId } from './screens/ReportTypePicker'
 import { CORRIDOR_ARCHIVE_URL } from './map/protocol'
 import { archiveUrl, DATA_CONFIGURED } from './lib/config'
 import { loadPreferences, savePreferences } from './lib/preferences'
-import { DEFAULT_PREFERENCES, type UserPreferences } from './lib/userPreferences'
+import {
+  DEFAULT_PREFERENCES,
+  type BackgroundSource,
+  type UserPreferences,
+} from './lib/userPreferences'
 import {
   detailLevelForZoom,
   getDownloadDetail,
   type DetailLevel,
 } from './lib/downloadDetail'
 import { useArchiveDownload } from './lib/useArchiveDownload'
+import { useArchiveZooms } from './lib/useArchiveZooms'
+import { archiveCoversZoom } from './lib/archiveCoverage'
 import { CORRIDOR_BACKGROUND_PACKAGE } from './lib/packages'
 import { useClock } from './lib/useClock'
 import { useOnline } from './lib/useOnline'
@@ -176,6 +188,10 @@ function App() {
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES)
   const [preferencesLoaded, setPreferencesLoaded] = useState(false)
   const [activeTab, setActiveTab] = useState<TabId>('trail')
+  // The download window (screens/DownloadsDialog.tsx), which replaced the tab
+  // it used to be. Held here rather than on either screen because it opens
+  // over both of them, from the one background picker they share.
+  const [downloadsOpen, setDownloadsOpen] = useState(false)
   const [legendOpen, setLegendOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   // The tapped pin, held as an id rather than as the POI itself. Everything the
@@ -205,7 +221,9 @@ function App() {
   const [direction, setDirection] = useState<DirectionTracker | null>(null)
   // The live map is state rather than a ref because effects have to run when
   // it appears. It appears more than once: the map screen unmounts whenever
-  // another tab is showing, so every trip through Downloads builds a new one.
+  // another tab is showing, so every trip through More builds a new one. The
+  // download no longer costs one - that is a window over this screen, not a
+  // tab beside it.
   const [map, setMap] = useState<MapLibreMap | null>(null)
   // Where the camera was left, so a rebuilt map opens where the hiker left it
   // instead of snapping back to the whole corridor.
@@ -255,6 +273,14 @@ function App() {
   // offline background against an archive that draws nothing - the exact state
   // effectiveBackground exists to keep a hiker out of.
   const archiveDownloaded = archiveStatus.state === 'downloaded'
+
+  // What the archive on this phone actually covers, read from its own header
+  // rather than assumed from the pipeline's constants (#216). Null until a
+  // finished archive exists to ask, and null again if it is deleted.
+  const archiveZooms = useArchiveZooms(
+    CORRIDOR_BACKGROUND_PACKAGE.idbKey,
+    archiveDownloaded,
+  )
 
   /** Returns whether anything was actually on the phone to load. */
   const refreshTrailData = useCallback(async () => {
@@ -463,6 +489,18 @@ function App() {
     }
   }, [ribbon, searchablePois])
 
+  // Zoomed out past what the download covers (#216).
+  //
+  // Read off the DRAWN background rather than the choice: with Data Saver on,
+  // a hiker who picked the live sheet is looking at the archive too, and the
+  // gap is just as blank for them. `camera` is null until the first moveend,
+  // so nothing is claimed before the map has reported a zoom.
+  const belowArchiveZoom =
+    effectiveBackground(preferences.background_source, saveData, archiveDownloaded) ===
+      'usgs_topo_offline' &&
+    camera !== null &&
+    !archiveCoversZoom(archiveZooms, camera.zoom)
+
   const updatePreferences = useCallback((patch: Partial<UserPreferences>) => {
     setPreferences((current) => {
       const next = { ...current, ...patch }
@@ -470,6 +508,48 @@ function App() {
       return next
     })
   }, [])
+
+  /**
+   * Opens the download window, and clears whatever else was open over the map.
+   *
+   * One thing open at a time, the same rule the legend and the waypoint card
+   * already keep. Both of those announce themselves as modal dialogs on a
+   * phone, and so does this - leaving one behind would put a screen-reader
+   * user inside a dialog with a second one on top of it. On a desktop the
+   * legend is a permanent panel and closing it is a no-op, which is the right
+   * answer there too.
+   */
+  const openDownloads = useCallback(() => {
+    setDownloadsOpen(true)
+    setLegendOpen(false)
+    setSelectedPoiId(null)
+  }, [])
+
+  /**
+   * The background choice, and the one case where making it does something
+   * else as well.
+   *
+   * Choosing "downloaded only" with nothing downloaded is a request for a map
+   * this phone does not have. The preference is still saved - it takes effect
+   * the moment an archive lands, and lib/dataSaver.ts draws the live sheet
+   * meanwhile so nobody is left holding blank paper - but saving it silently
+   * would answer a hiker's "show me my download" with a note explaining that
+   * there isn't one. The window that fixes it opens instead.
+   *
+   * Here rather than inside BackgroundPicker because both pickers - the
+   * legend's and Settings' - are the same component, and a rule about what a
+   * choice MEANS belongs to the shell that owns the download, not to the
+   * control that reports the choice.
+   */
+  const handleChangeBackground = useCallback(
+    (background_source: BackgroundSource) => {
+      updatePreferences({ background_source })
+      if (background_source === 'usgs_topo_offline' && !archiveDownloaded) {
+        openDownloads()
+      }
+    },
+    [updatePreferences, archiveDownloaded, openDownloads],
+  )
 
   const handleOnboardingComplete = useCallback(
     ({ detailLevel: chosen, locationRequested }: OnboardingResult) => {
@@ -479,12 +559,13 @@ function App() {
         location_permission_requested: locationRequested,
         max_background_zoom: getDownloadDetail(chosen).zoom,
       })
-      // Straight to Downloads: the choice just made is a download that has not
-      // started, and a map screen with no map behind it is a worse first
-      // impression than the screen that explains why.
-      setActiveTab('downloads')
+      // The download window, over the map rather than instead of it. The
+      // choice just made is a download that has not started, so the window is
+      // still what someone leaving onboarding needs; what has changed is that
+      // it no longer costs them the first sight of the map to see it.
+      openDownloads()
     },
-    [updatePreferences],
+    [updatePreferences, openDownloads],
   )
 
   const handleDownload = useCallback(async () => {
@@ -670,70 +751,79 @@ function App() {
     )
   }
 
-  if (activeTab === 'downloads') {
-    return (
-      <div className="app__screen">
-        <div>
-          {!DATA_CONFIGURED && (
-            <p role="alert" className="app__notice">
-              No data source is configured in this build, so downloading will not work.
-              VITE_DATA_BASE_URL has to point at the published bucket.
-            </p>
-          )}
-          {dataError !== null && (
-            <p role="alert" className="app__notice">
-              {dataError}
-            </p>
-          )}
-          {archiveError !== null && (
-            <p role="alert" className="app__notice">
-              {archiveError}
-            </p>
-          )}
-          <InstallPrompt
-            platform={install.platform}
-            canPrompt={install.canPrompt}
-            onInstall={install.install}
-          />
-          <Downloads
-            status={archiveStatus}
-            detailLevel={detailLevel}
-            onChangeDetail={(level) =>
-              updatePreferences({ max_background_zoom: getDownloadDetail(level).zoom })
-            }
-            onStart={() => void handleDownload()}
-            onResume={() => void resumeArchive()}
-            onDelete={() => void handleDeleteDownload()}
-          />
-        </div>
-        <TabBar active={activeTab} onSelect={setActiveTab} />
-      </div>
-    )
-  }
+  // Rendered beside whichever screen is showing rather than instead of it -
+  // it is a window over the app, and the map or Settings behind it is still
+  // there. Built once here so the two branches below cannot drift into two
+  // slightly different downloads.
+  //
+  // The notices come with it. They are about this download and nothing else,
+  // and the tab that used to carry them is gone; leaving them on a screen
+  // would mean an archive that failed at 4 AM announcing itself over the map
+  // for the rest of the walk.
+  const downloadsWindow = downloadsOpen && (
+    <DownloadsDialog onClose={() => setDownloadsOpen(false)}>
+      {!DATA_CONFIGURED && (
+        <p role="alert" className="app__notice">
+          No data source is configured in this build, so downloading will not work.
+          VITE_DATA_BASE_URL has to point at the published bucket.
+        </p>
+      )}
+      {dataError !== null && (
+        <p role="alert" className="app__notice">
+          {dataError}
+        </p>
+      )}
+      {archiveError !== null && (
+        <p role="alert" className="app__notice">
+          {archiveError}
+        </p>
+      )}
+      <InstallPrompt
+        platform={install.platform}
+        canPrompt={install.canPrompt}
+        onInstall={install.install}
+      />
+      <Downloads
+        status={archiveStatus}
+        detailLevel={detailLevel}
+        onChangeDetail={(level) =>
+          updatePreferences({ max_background_zoom: getDownloadDetail(level).zoom })
+        }
+        onStart={() => void handleDownload()}
+        onResume={() => void resumeArchive()}
+        onDelete={() => void handleDeleteDownload()}
+      />
+    </DownloadsDialog>
+  )
 
   if (activeTab === 'more') {
     return (
-      <div className="app__screen">
-        <div>
-          <More
-            account={account}
-            reporterType="thru"
-            onSignIn={() => setAuthFlow({ screen: 'choose', afterReport: false })}
-            onSignOut={() => void handleSignOut()}
-            preferences={preferences}
-            onChange={updatePreferences}
-            lastSyncedAt={lastSyncedAt}
-            onSync={notYet}
-            onExport={notYet}
-            now={now}
-            dataSaver={saveData}
-            archiveDownloaded={archiveDownloaded}
-            onStartReport={() => setReporting({ step: 'pick' })}
-            queuedReportCount={queuedCount}
-          />
+      <>
+        <div className="app__screen">
+          <div>
+            <More
+              account={account}
+              reporterType="thru"
+              onSignIn={() => setAuthFlow({ screen: 'choose', afterReport: false })}
+              onSignOut={() => void handleSignOut()}
+              preferences={preferences}
+              onChange={updatePreferences}
+              onChangeBackground={handleChangeBackground}
+              lastSyncedAt={lastSyncedAt}
+              onSync={notYet}
+              onExport={notYet}
+              now={now}
+              dataSaver={saveData}
+              archiveDownloaded={archiveDownloaded}
+              onOpenDownloads={openDownloads}
+              onStartReport={() => setReporting({ step: 'pick' })}
+              queuedReportCount={queuedCount}
+            />
+          </div>
+          <TabBar active={activeTab} onSelect={setActiveTab} />
         </div>
-        <TabBar active={activeTab} onSelect={setActiveTab} />
-      </div>
+        {downloadsWindow}
+      </>
     )
   }
 
@@ -741,103 +831,118 @@ function App() {
   // watcher, byte-range reads against an archive that can be 1.18 GB, and a
   // pile of MapLibre attach/detach lifecycle - and the worst thing to lose,
   // since it is what someone is looking at when they do not recognise where
-  // they are. Its own boundary keeps a map failure from costing Downloads and
-  // More as well, and the tab bar below the fallback is the way back to them.
+  // they are. Its own boundary keeps a map failure from costing More as well,
+  // and the tab bar below the fallback is the way back to it.
+  //
+  // The download window is outside the boundary on purpose. It is the one
+  // thing that can put a map back on a phone that has none, so it has to
+  // survive the map falling over - and it is already open, over the failure,
+  // whenever the map threw while someone was in it.
   return (
-    <ErrorBoundary
-      resetKey={activeTab}
-      fallback={() => (
-        <div className="app__screen">
-          <ScreenFailed what="The map" />
-          <TabBar active={activeTab} onSelect={setActiveTab} />
-        </div>
-      )}
-    >
-      <MapScreen
-        topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
-        trailsUrl={trailsUrl}
-        background={effectiveBackground(
-          preferences.background_source,
-          saveData,
-          archiveDownloaded,
+    <>
+      <ErrorBoundary
+        resetKey={activeTab}
+        fallback={() => (
+          <div className="app__screen">
+            <ScreenFailed what="The map" />
+            <TabBar active={activeTab} onSelect={setActiveTab} />
+          </div>
         )}
-        // Same inputs, same module, one line apart - so the strip cannot say
-        // the background was overridden while the canvas draws the one that
-        // was chosen, which is the mismatch dataSaver.ts exists to stop.
-        backgroundOverride={backgroundOverride(
-          preferences.background_source,
-          saveData,
-          archiveDownloaded,
-        )}
-        // The CHOICE, not the outcome above: the picker in the legend shows
-        // and writes what the hiker asked for, and the override note beside it
-        // explains any gap between that and what is drawn.
-        backgroundChoice={preferences.background_source}
-        onChangeBackground={(background_source) =>
-          updatePreferences({ background_source })
-        }
-        trailName={TRAIL_NAME}
-        trailLogo={TRAIL_LOGO}
-        mile={fix?.mile}
-        direction={direction?.direction}
-        time={now}
-        online={online}
-        hasGpsFix={gps.status === 'located'}
-        lastSyncedAt={lastSyncedAt}
-        activeTab={activeTab}
-        onSelectTab={setActiveTab}
-        onOpenLegend={handleOpenLegend}
-        onOpenSearch={() => setSearchOpen(true)}
-        legendOpen={legendOpen}
-        onCloseLegend={() => setLegendOpen(false)}
-        searchOpen={searchOpen}
-        onCloseSearch={() => setSearchOpen(false)}
-        searchablePois={searchablePois}
-        onSelectSearchResult={(poi) => {
-          const found = pois.find((p) => p.id === poi.id)
-          // Centring alone left the zoom wherever it was, which from the opening
-          // view of the whole corridor meant tapping a result moved the map by a
-          // few pixels and looked like nothing happened at all.
-          // The miss is unreachable, and kept for the type checker: every result
-          // the sheet can offer was built by mapping this same `pois` array, and
-          // the sheet only exists on the map screen, so `found` is always there
-          // and `map` is never null. Ignored for coverage rather than covered -
-          // no input produces a search result pointing at a POI the app does not
-          // hold, or a tap on a sheet that is not rendered.
-          /* v8 ignore start */
-          if (found !== undefined && map !== null) {
-            map.jumpTo({
-              center: [found.lon, found.lat],
-              zoom: Math.max(map.getZoom(), SEARCH_RESULT_ZOOM),
-            })
-          }
-          /* v8 ignore stop */
-          setSearchOpen(false)
-        }}
-        bbox={bbox}
-        elevation={ribbon?.props}
-        waypoints={waypoints}
-        viewportPoints={viewportPoints}
-        blazeCounts={[]}
-        hiddenTypes={hiddenTypes}
-        onToggleType={handleToggleType}
-        selectedPoi={selectedPoi}
-        onSelectPoi={handleSelectPoi}
-        onClosePoi={handleClosePoi}
-        // WIREFRAMES.md §1.5: zoom buttons are web-only. Nothing was passing
-        // this, so `showZoomButtons` sat on its default of false everywhere and
-        // a browser with a mouse had no visible way to zoom at all.
-        showZoomButtons={finePointer}
-        // The corridor is the opening view only. Once there is a camera to put
-        // back, it wins: `bounds` would otherwise re-frame the entire trail
-        // every time the map screen came back from another tab.
-        center={camera?.center}
-        zoom={camera?.zoom}
-        bounds={camera === null ? CORRIDOR_BOUNDS : undefined}
-        onViewportChange={handleViewportChange}
-        onMapReady={handleMapReady}
-      />
-    </ErrorBoundary>
+      >
+        <MapScreen
+          topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
+          trailsUrl={trailsUrl}
+          background={effectiveBackground(
+            preferences.background_source,
+            saveData,
+            archiveDownloaded,
+          )}
+          // Same inputs, same module, one line apart - so the strip cannot say
+          // the background was overridden while the canvas draws the one that
+          // was chosen, which is the mismatch dataSaver.ts exists to stop.
+          backgroundOverride={backgroundOverride(
+            preferences.background_source,
+            saveData,
+            archiveDownloaded,
+          )}
+          // The CHOICE, not the outcome above: the picker in the legend shows
+          // and writes what the hiker asked for, and the override note beside it
+          // explains any gap between that and what is drawn.
+          backgroundChoice={preferences.background_source}
+          onChangeBackground={handleChangeBackground}
+          // The link at the foot of the legend, and the wording it gets. This
+          // is the only way to the download from the map now that the tab is
+          // gone - which is why it is carried, and not why it is given room.
+          onOpenDownloads={openDownloads}
+          hasDownload={archiveDownloaded}
+          belowArchiveZoom={belowArchiveZoom}
+          // For the opening camera only - MapView keeps it out of the zooms
+          // the download has no tiles for.
+          archiveZooms={archiveZooms}
+          trailName={TRAIL_NAME}
+          trailLogo={TRAIL_LOGO}
+          mile={fix?.mile}
+          direction={direction?.direction}
+          time={now}
+          online={online}
+          hasGpsFix={gps.status === 'located'}
+          lastSyncedAt={lastSyncedAt}
+          activeTab={activeTab}
+          onSelectTab={setActiveTab}
+          onOpenLegend={handleOpenLegend}
+          onOpenSearch={() => setSearchOpen(true)}
+          legendOpen={legendOpen}
+          onCloseLegend={() => setLegendOpen(false)}
+          searchOpen={searchOpen}
+          onCloseSearch={() => setSearchOpen(false)}
+          searchablePois={searchablePois}
+          onSelectSearchResult={(poi) => {
+            const found = pois.find((p) => p.id === poi.id)
+            // Centring alone left the zoom wherever it was, which from the opening
+            // view of the whole corridor meant tapping a result moved the map by a
+            // few pixels and looked like nothing happened at all.
+            // The miss is unreachable, and kept for the type checker: every result
+            // the sheet can offer was built by mapping this same `pois` array, and
+            // the sheet only exists on the map screen, so `found` is always there
+            // and `map` is never null. Ignored for coverage rather than covered -
+            // no input produces a search result pointing at a POI the app does not
+            // hold, or a tap on a sheet that is not rendered.
+            /* v8 ignore start */
+            if (found !== undefined && map !== null) {
+              map.jumpTo({
+                center: [found.lon, found.lat],
+                zoom: Math.max(map.getZoom(), SEARCH_RESULT_ZOOM),
+              })
+            }
+            /* v8 ignore stop */
+            setSearchOpen(false)
+          }}
+          bbox={bbox}
+          elevation={ribbon?.props}
+          waypoints={waypoints}
+          viewportPoints={viewportPoints}
+          blazeCounts={[]}
+          hiddenTypes={hiddenTypes}
+          onToggleType={handleToggleType}
+          selectedPoi={selectedPoi}
+          onSelectPoi={handleSelectPoi}
+          onClosePoi={handleClosePoi}
+          // WIREFRAMES.md §1.5: zoom buttons are web-only. Nothing was passing
+          // this, so `showZoomButtons` sat on its default of false everywhere and
+          // a browser with a mouse had no visible way to zoom at all.
+          showZoomButtons={finePointer}
+          // The corridor is the opening view only. Once there is a camera to put
+          // back, it wins: `bounds` would otherwise re-frame the entire trail
+          // every time the map screen came back from another tab.
+          center={camera?.center}
+          zoom={camera?.zoom}
+          bounds={camera === null ? CORRIDOR_BOUNDS : undefined}
+          onViewportChange={handleViewportChange}
+          onMapReady={handleMapReady}
+        />
+      </ErrorBoundary>
+      {downloadsWindow}
+    </>
   )
 }
 

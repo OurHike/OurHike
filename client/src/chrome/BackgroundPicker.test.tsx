@@ -75,6 +75,21 @@ describe('BackgroundPicker', () => {
     expect(screen.getByText(/no background data is fetched/i)).toBeInTheDocument()
   })
 
+  it('never lets an option read as a report on what is on the phone', () => {
+    // Reported as a bug by someone holding the whole corridor: the offline
+    // option's hint was "No data fetched", and under a label reading
+    // "Downloaded" that is taken as "no data downloaded" rather than as a
+    // description of what the option does. Both options are rendered here
+    // because the trap is the shape of the string, not which choice it is on -
+    // and the ONLY place either can appear is inside a label, three words
+    // under a status-shaped word.
+    render(<BackgroundPicker value="usgs_topo_offline" onChange={vi.fn()} />)
+
+    for (const radio of screen.getAllByRole('radio')) {
+      expect(radio.closest('label')?.textContent).not.toMatch(/no data|nothing/i)
+    }
+  })
+
   it('stays quiet when the choice is being honoured', () => {
     render(<BackgroundPicker value="hiking_topo_live" onChange={vi.fn()} />)
 
@@ -108,6 +123,44 @@ describe('BackgroundPicker', () => {
 
     expect(screen.getByText(/nothing is downloaded yet/i)).toBeInTheDocument()
     expect(screen.queryByText(/data saver is on/i)).not.toBeInTheDocument()
+  })
+
+  it('carries no download control of its own', () => {
+    // It briefly did, on the grounds that this is the only control that
+    // mentions the downloaded map - which put a once-a-season errand at the
+    // top of the legend. The link moved to the foot of the panel
+    // (chrome/DownloadsLink.tsx); what is left here is a background choice and
+    // nothing else.
+    render(<BackgroundPicker value="usgs_topo_offline" onChange={vi.fn()} />)
+
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('explains a view zoomed out past what the download covers', () => {
+    // #216. The choice is being honoured exactly and still draws nothing, so
+    // this needs its own words - and it ends with the remedy, because "zoom
+    // in" is the whole fix and blank paper gives no hint of it.
+    render(
+      <BackgroundPicker value="usgs_topo_offline" onChange={vi.fn()} belowArchiveZoom />,
+    )
+
+    expect(screen.getByText(/starts closer in than this/i)).toBeInTheDocument()
+    expect(screen.getByText(/zoom in/i)).toBeInTheDocument()
+  })
+
+  it('does not blame an override for it, since nothing was overridden', () => {
+    render(
+      <BackgroundPicker value="usgs_topo_offline" onChange={vi.fn()} belowArchiveZoom />,
+    )
+
+    expect(screen.queryByText(/data saver is on/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/nothing is downloaded yet/i)).not.toBeInTheDocument()
+  })
+
+  it('stays quiet about coverage while the download reaches the view', () => {
+    render(<BackgroundPicker value="usgs_topo_offline" onChange={vi.fn()} />)
+
+    expect(screen.queryByText(/starts closer in/i)).not.toBeInTheDocument()
   })
 
   it('keeps showing the choice, not the background that is actually drawn', () => {

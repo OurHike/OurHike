@@ -22,6 +22,7 @@ import { WaypointLanes, type WaypointLanesProps } from './WaypointLanes'
 import { PoiCard, type PoiDetail } from './PoiCard'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapView } from '../map/MapView'
+import { HEALTHY, type LiveSourceHealth } from '../map/liveSourceHealth'
 import { attributionFor } from '../map/style'
 import type { ScaleUnits } from '../map/mapChrome'
 import type { BackgroundSource } from '../lib/userPreferences'
@@ -104,6 +105,10 @@ export interface MapScreenProps {
   bounds?: [[number, number], [number, number]]
   onViewportChange?: (bbox: BoundingBox) => void
   onMapReady?: (map: MapLibreMap | null) => void
+  /** Data Saver is overriding the chosen background - see lib/dataSaver.ts.
+   *  Passed down rather than computed here, so the decision keeps the single
+   *  home that module's docstring insists on. */
+  backgroundOverridden?: boolean
 }
 
 export function MapScreen({
@@ -145,6 +150,7 @@ export function MapScreen({
   bounds,
   onViewportChange,
   onMapReady,
+  backgroundOverridden = false,
 }: MapScreenProps) {
   // The one thing the stylesheet cannot do. The legend announces itself as
   // `role="dialog" aria-modal="true"` and renders nothing when closed; as a
@@ -165,6 +171,12 @@ export function MapScreen({
     [onMapReady],
   )
 
+  // Held here rather than lifted to the shell: nothing above this screen acts
+  // on it, and the strip that reports it is three lines up. `setState` is
+  // stable across renders, so handing it straight to MapView satisfies that
+  // prop's stability contract without a useCallback.
+  const [liveSources, setLiveSources] = useState<LiveSourceHealth>(HEALTHY)
+
   return (
     <div className="map-screen">
       {/* Everything that is not the navigation. On a phone this is a plain
@@ -176,6 +188,11 @@ export function MapScreen({
           online={online}
           hasGpsFix={hasGpsFix}
           lastSyncedAt={lastSyncedAt}
+          // The basemap alone. A DEM outage costs relief and contour lines on
+          // a sheet that still draws, which is the degradation terrain.ts
+          // promises rather than something to interrupt a hiker over.
+          liveBackgroundUnavailable={liveSources.basemap}
+          backgroundOverridden={backgroundOverridden}
         />
 
         <Header
@@ -212,6 +229,7 @@ export function MapScreen({
               bounds={bounds}
               onViewportChange={onViewportChange}
               onMapReady={handleMapReady}
+              onLiveSourceHealth={setLiveSources}
             />
             <p className="map-screen__attribution">{attributionFor(background)}</p>
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { MapScreen } from './MapScreen'
@@ -228,5 +228,30 @@ describe('MapScreen', () => {
     expect(MockMap.live).toHaveLength(1)
     expect(MockMap.live[0].projectCalls).toContainEqual([-77.6, 39.4])
     expect(screen.getByRole('dialog', { name: /waypoint/i }).style.transform).not.toBe('')
+  })
+
+  it('carries a failed live background from the map up into the strip', () => {
+    // The whole path in one test: MapLibre reports a source error, the map
+    // view observes it, and the strip says so. PROPS is offline by default,
+    // so `online` is forced here - the point of this flag is the case where
+    // the phone believes it has a connection and the tiles never come.
+    render(<MapScreen {...PROPS} online />)
+
+    expect(screen.queryByText(/no live map/i)).not.toBeInTheDocument()
+
+    act(() => {
+      MockMap.live[0].emit('error', {
+        sourceId: 'osm',
+        error: new Error('Failed to fetch'),
+      })
+    })
+
+    expect(screen.getByText(/no live map/i)).toBeInTheDocument()
+  })
+
+  it('says on the map screen when Data Saver is holding the live sheet back', () => {
+    render(<MapScreen {...PROPS} backgroundOverridden />)
+
+    expect(screen.getByText(/data saver/i)).toBeInTheDocument()
   })
 })

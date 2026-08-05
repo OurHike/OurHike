@@ -54,7 +54,7 @@ import { CORRIDOR_BACKGROUND_PACKAGE } from './lib/packages'
 import { useClock } from './lib/useClock'
 import { useOnline } from './lib/useOnline'
 import { useDataSaver } from './lib/useDataSaver'
-import { effectiveBackground } from './lib/dataSaver'
+import { backgroundOverridden, effectiveBackground } from './lib/dataSaver'
 import { useFinePointer } from './lib/useFinePointer'
 import { useInstallPrompt } from './lib/useInstallPrompt'
 import { useAppUpdate } from './lib/useAppUpdate'
@@ -686,6 +686,13 @@ function App() {
         topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
         trailsUrl={trailsUrl}
         background={effectiveBackground(preferences.background_source, saveData)}
+        // Same two inputs, same module, one line apart - so the strip cannot
+        // say the background was overridden while the canvas draws the one
+        // that was chosen, which is the mismatch dataSaver.ts exists to stop.
+        backgroundOverridden={backgroundOverridden(
+          preferences.background_source,
+          saveData,
+        )}
         trailName={TRAIL_NAME}
         mile={fix?.mile}
         direction={direction?.direction}

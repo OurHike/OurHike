@@ -79,4 +79,41 @@ describe('StatusStrip', () => {
 
     expect(screen.getByRole('status')).toBeInTheDocument()
   })
+
+  it('says the live map never loaded, which "Offline" cannot say', () => {
+    // The gap this closes: navigator.onLine is optimistic, so a captive
+    // portal, a filtered network or an outage at the tile host all read as a
+    // working connection. For a hiker who has downloaded nothing there is no
+    // archive underneath either, so the screen is blank paper - and until
+    // this flag existed, nothing anywhere said why.
+    render(<StatusStrip {...PROPS} liveBackgroundUnavailable />)
+
+    expect(screen.getByText(/no live map/i)).toBeInTheDocument()
+  })
+
+  it('does not add a second flag for one condition when already offline', () => {
+    // "Offline" already accounts for the paper. Two flags saying one thing is
+    // noise on a strip this narrow.
+    render(<StatusStrip {...PROPS} online={false} liveBackgroundUnavailable />)
+
+    expect(screen.queryByText(/no live map/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/offline/i)).toBeInTheDocument()
+  })
+
+  it('says when Data Saver is the reason the live map is missing', () => {
+    // lib/dataSaver.ts's rule is that the app may override a preference and
+    // may not do it silently. Settings said so; the map screen did not, and
+    // the map screen is where the override is actually visible - as nothing
+    // at all, on a phone with no download.
+    render(<StatusStrip {...PROPS} backgroundOverridden />)
+
+    expect(screen.getByText(/data saver/i)).toBeInTheDocument()
+  })
+
+  it('stays quiet about the background when nothing is wrong with it', () => {
+    render(<StatusStrip {...PROPS} />)
+
+    expect(screen.queryByText(/no live map/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/data saver/i)).not.toBeInTheDocument()
+  })
 })

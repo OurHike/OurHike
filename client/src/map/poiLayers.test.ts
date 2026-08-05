@@ -130,10 +130,15 @@ describe('density', () => {
 
 describe('the pin layer', () => {
   it('asks for no text, because there is no font to render it with offline', () => {
-    // The style declares no `glyphs` URL - it cannot, there is no network on a
-    // mountain. MapLibre draws icons happily without one and cannot draw a
-    // single character of a label. A `text-field` added here would fail at the
-    // top of a hill and nowhere else.
+    // The OFFLINE style declares no `glyphs` URL - it cannot, there is no
+    // network on a mountain. MapLibre draws icons happily without one and
+    // cannot draw a single character of a label. A `text-field` added here
+    // would fail at the top of a hill and nowhere else.
+    //
+    // The live sheet does declare one, for its own OSM labels, and that is
+    // exactly why the pin layer must not lean on it: pins are drawn on both
+    // backgrounds, and a label that renders in town and vanishes on the ridge
+    // is worse than one that was never there.
     const layout = buildPoiLayer().layout as Record<string, unknown>
 
     expect(layout['text-field']).toBeUndefined()

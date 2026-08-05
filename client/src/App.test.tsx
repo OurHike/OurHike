@@ -596,6 +596,20 @@ describe('Data Saver', () => {
 
     expect(Object.keys(styleOf(await liveMap()).sources)).toContain('osm')
   })
+
+  it('tells the hiker on the map screen that Data Saver took the live sheet', async () => {
+    // The cases above prove the sources are subtracted and said nothing about
+    // whether anyone is told. lib/dataSaver.ts's rule is that the app may
+    // override a preference and may not do it silently, and the map screen is
+    // where the override is actually visible: for someone who has downloaded
+    // nothing, it is the entire background.
+    setSaveData(true)
+    returningHiker()
+    render(<App />)
+    await liveMap()
+
+    expect(screen.getByText(/data saver/i)).toBeInTheDocument()
+  })
   it('keeps the tab bar reachable when the map screen throws', async () => {
     // #131 in miniature, and what #141 is about. A throw anywhere under the
     // root - render, effect, or effect CLEANUP - unmounts the WHOLE tree by

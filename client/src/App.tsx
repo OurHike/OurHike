@@ -27,7 +27,7 @@
 // so that step ends the flow the way it already ended, with the report
 // queued.
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapScreen } from './chrome/MapScreen'
 import type { PoiDetail } from './chrome/PoiCard'
@@ -252,9 +252,10 @@ function App() {
   // effectiveBackground exists to keep a hiker out of.
   const archiveDownloaded = archiveStatus.state === 'downloaded'
 
+  /** Returns whether anything was actually on the phone to load. */
   const refreshTrailData = useCallback(async () => {
     const data = await loadTrailData()
-    if (data === null) return
+    if (data === null) return false
 
     setTrailsUrl(URL.createObjectURL(data.trails))
     setPois(data.pois)
@@ -275,11 +276,69 @@ function App() {
     } catch {
       setTrailIndex(null)
     }
+    return true
   }, [])
 
+  /**
+   * Whether a trail-data fetch is already in flight or has already succeeded,
+   * so that re-renders and connectivity flapping cannot start a second one.
+   * A ref rather than state because nothing renders from it.
+   */
+  const trailDataFetch = useRef(false)
+
+  // The trail lines load themselves, rather than waiting for someone to tap
+  // Download.
+  //
+  // They are a few megabytes against the archive's 314 MB - the download flow
+  // already treats them that way, fetching them first as the canary - and they
+  // are not decoration on the map, they ARE the map: without them the app
+  // opens on a background with no trail on it, no POIs, nothing to search and
+  // no elevation ribbon. Making the whole corridor download a precondition for
+  // seeing where the Appalachian Trail runs is the wrong trade at any
+  // connection speed, and it is the state every first run was in.
+  //
+  // Deliberately quiet about failing. This is not something the hiker asked
+  // for, so a failure is not a result they are owed a message about - it
+  // leaves exactly the empty map they would have had anyway, and the Downloads
+  // screen still reports errors for the download they DO ask for. Retried when
+  // the phone comes back online, which is the one condition likely to have
+  // changed.
+  // Reading what is already on the phone, and unconditionally. This has to
+  // stay independent of the fetch below: an unconfigured build and a phone
+  // with no signal both still have whatever was downloaded last time, and
+  // gating this on either one would leave a hiker on a ridge - the exact
+  // person the offline store exists for - looking at a map with no trail.
   useEffect(() => {
     void refreshTrailData()
   }, [refreshTrailData])
+
+  useEffect(() => {
+    if (!DATA_CONFIGURED || !online || trailDataFetch.current) return
+
+    let cancelled = false
+    trailDataFetch.current = true
+
+    void (async () => {
+      try {
+        // Asked directly rather than inferred from the effect above, which is
+        // racing this one and reports through state either way. A phone that
+        // already has the lines needs no network at all.
+        if ((await loadTrailData()) !== null) return
+        await downloadTrailData()
+        if (cancelled) return
+        await refreshTrailData()
+      } catch {
+        // Cleared rather than left set, so coming back into signal can try
+        // again. Nothing is shown and nothing is stored - downloadTrailData
+        // commits all four files or none.
+        trailDataFetch.current = false
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [refreshTrailData, online])
 
   // Revoking belongs here rather than inside the setTrailsUrl updater it used
   // to live in. A state updater has to be pure: React may run it more than

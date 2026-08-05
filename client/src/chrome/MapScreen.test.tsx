@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, act, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { MapScreen } from './MapScreen'
@@ -228,5 +228,75 @@ describe('MapScreen', () => {
     expect(MockMap.live).toHaveLength(1)
     expect(MockMap.live[0].projectCalls).toContainEqual([-77.6, 39.4])
     expect(screen.getByRole('dialog', { name: /waypoint/i }).style.transform).not.toBe('')
+  })
+
+  it('carries a failed live background from the map up into the strip', () => {
+    // The whole path in one test: MapLibre reports a source error, the map
+    // view observes it, and the strip says so. PROPS is offline by default,
+    // so `online` is forced here - the point of this flag is the case where
+    // the phone believes it has a connection and the tiles never come.
+    render(<MapScreen {...PROPS} online />)
+
+    expect(screen.queryByText(/no live map/i)).not.toBeInTheDocument()
+
+    act(() => {
+      MockMap.live[0].emit('error', {
+        sourceId: 'osm',
+        error: new Error('Failed to fetch'),
+      })
+    })
+
+    expect(screen.getByText(/no live map/i)).toBeInTheDocument()
+  })
+
+  it('says on the map screen when Data Saver is holding the live sheet back', () => {
+    render(<MapScreen {...PROPS} backgroundOverride="data-saver" />)
+
+    expect(screen.getByText(/data saver/i)).toBeInTheDocument()
+  })
+
+  it('puts the background choice in the legend, one tap from the map', () => {
+    // It used to live only in Settings, three taps away behind a select. The
+    // moment someone wants to change the background is the moment the map is
+    // not showing what they expected, which is the worst moment to send them
+    // hunting through a settings screen.
+    render(
+      <MapScreen
+        {...PROPS}
+        legendOpen
+        backgroundChoice="usgs_topo_offline"
+        onChangeBackground={vi.fn()}
+      />,
+    )
+
+    const legend = screen.getByRole('dialog', { name: /legend/i })
+    expect(within(legend).getByRole('radio', { name: /live/i })).toBeInTheDocument()
+    expect(within(legend).getByRole('radio', { name: /downloaded/i })).toBeChecked()
+  })
+
+  it('reports a background change from the legend up to its owner', async () => {
+    const user = userEvent.setup()
+    const onChangeBackground = vi.fn()
+    render(
+      <MapScreen
+        {...PROPS}
+        legendOpen
+        backgroundChoice="usgs_topo_offline"
+        onChangeBackground={onChangeBackground}
+      />,
+    )
+
+    await user.click(screen.getByRole('radio', { name: /live/i }))
+
+    expect(onChangeBackground).toHaveBeenCalledWith('hiking_topo_live')
+  })
+
+  it('draws no picker when the shell has nowhere to write the choice', () => {
+    // The legend is rendered in tests and stories without a shell behind it,
+    // and a control that silently discards what it is told is worse than one
+    // that is not there.
+    render(<MapScreen {...PROPS} legendOpen />)
+
+    expect(screen.queryByRole('radio', { name: /live/i })).not.toBeInTheDocument()
   })
 })

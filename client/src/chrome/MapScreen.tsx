@@ -22,6 +22,8 @@ import { WaypointLanes, type WaypointLanesProps } from './WaypointLanes'
 import { PoiCard, type PoiDetail } from './PoiCard'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapView } from '../map/MapView'
+import { HEALTHY, type LiveSourceHealth } from '../map/liveSourceHealth'
+import type { BackgroundOverride } from '../lib/dataSaver'
 import { attributionFor } from '../map/style'
 import type { ScaleUnits } from '../map/mapChrome'
 import type { BackgroundSource } from '../lib/userPreferences'
@@ -104,6 +106,21 @@ export interface MapScreenProps {
   bounds?: [[number, number], [number, number]]
   onViewportChange?: (bbox: BoundingBox) => void
   onMapReady?: (map: MapLibreMap | null) => void
+  /** Why the drawn background is not the one in settings, if it isn't - see
+   *  lib/dataSaver.ts. Passed down rather than computed here, so the decision
+   *  keeps the single home that module's docstring insists on. */
+  backgroundOverride?: BackgroundOverride | null
+  /**
+   * The stored background preference and how to change it, for the picker in
+   * the legend.
+   *
+   * Distinct from `background` above, which is what is actually DRAWN after
+   * Data Saver and the download state have had their say. The control has to
+   * show and write the choice, not the outcome - a picker that snapped back
+   * to "downloaded" because Data Saver was on would be unusable.
+   */
+  backgroundChoice?: BackgroundSource
+  onChangeBackground?: (next: BackgroundSource) => void
 }
 
 export function MapScreen({
@@ -145,6 +162,9 @@ export function MapScreen({
   bounds,
   onViewportChange,
   onMapReady,
+  backgroundOverride = null,
+  backgroundChoice,
+  onChangeBackground,
 }: MapScreenProps) {
   // The one thing the stylesheet cannot do. The legend announces itself as
   // `role="dialog" aria-modal="true"` and renders nothing when closed; as a
@@ -165,6 +185,12 @@ export function MapScreen({
     [onMapReady],
   )
 
+  // Held here rather than lifted to the shell: nothing above this screen acts
+  // on it, and the strip that reports it is three lines up. `setState` is
+  // stable across renders, so handing it straight to MapView satisfies that
+  // prop's stability contract without a useCallback.
+  const [liveSources, setLiveSources] = useState<LiveSourceHealth>(HEALTHY)
+
   return (
     <div className="map-screen">
       {/* Everything that is not the navigation. On a phone this is a plain
@@ -176,6 +202,11 @@ export function MapScreen({
           online={online}
           hasGpsFix={hasGpsFix}
           lastSyncedAt={lastSyncedAt}
+          // The basemap alone. A DEM outage costs relief and contour lines on
+          // a sheet that still draws, which is the degradation terrain.ts
+          // promises rather than something to interrupt a hiker over.
+          liveBackgroundUnavailable={liveSources.basemap}
+          backgroundOverride={backgroundOverride}
         />
 
         <Header
@@ -212,6 +243,7 @@ export function MapScreen({
               bounds={bounds}
               onViewportChange={onViewportChange}
               onMapReady={handleMapReady}
+              onLiveSourceHealth={setLiveSources}
             />
             <p className="map-screen__attribution">{attributionFor(background)}</p>
 
@@ -240,6 +272,9 @@ export function MapScreen({
             hiddenTypes={hiddenTypes}
             onToggleType={onToggleType}
             onClose={onCloseLegend}
+            backgroundChoice={backgroundChoice}
+            onChangeBackground={onChangeBackground}
+            backgroundOverride={backgroundOverride}
           />
         </div>
       </div>

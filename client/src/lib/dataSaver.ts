@@ -23,6 +23,12 @@
 // half ships without the other: the app is allowed to override a preference,
 // and is not allowed to do it silently.
 //
+// It wins over the CHOICE, though, not over having a map at all. See
+// effectiveBackground: with nothing downloaded, "the downloaded corridor only"
+// draws no corridor, and subtracting the live sheet on top of that leaves a
+// hiker holding blank paper. Both overrides wait until there is a download to
+// fall back on.
+//
 // Worth naming plainly: someone who leaves Data Saver on permanently and
 // genuinely wants the topo sheet has to turn Data Saver off to get it, because
 // nothing stored distinguishes "chose the live sheet" from "never touched the
@@ -71,29 +77,65 @@ export function dataSaverEnabled(): boolean {
 /**
  * The background to actually draw, which is not always the one in settings.
  *
- * Deliberately a pure function of the two inputs rather than a lookup inside
- * the map: this is a real decision about someone's money, and it should be
+ * Deliberately a pure function of its inputs rather than a lookup inside the
+ * map: this is a real decision about someone's money, and it should be
  * readable, testable, and stated in exactly one place that both the map and
  * the settings copy read - so the screen can never claim one thing while the
  * canvas draws another.
+ *
+ * NOTHING DOWNLOADED OUTRANKS BOTH OTHER INPUTS
+ *
+ * `usgs_topo_offline` means "draw the downloaded corridor and fetch nothing".
+ * With no corridor on the phone, the second half is all that is left: the
+ * archive source resolves to nothing, the live layers were never added, and
+ * what the hiker gets is the flat paper backdrop and their trail line on it.
+ * That is not a cheaper map, it is no map, and no one chose it - not the
+ * hiker who picked "downloaded only" expecting their download to show, and
+ * not the one whose phone is in Data Saver.
+ *
+ * So the offline background is only honoured once there is something offline
+ * to honour it with. Until then the live sheet is drawn, which is the only
+ * setting either of them can actually see. Once the download lands, both
+ * choices take effect exactly as before, and this rule never fires again.
+ *
+ * The cost is real and belongs in the open: a hiker in Data Saver with no
+ * download now pulls roughly 2 MB for a fresh view they did not ask for.
+ * Weighed against the alternative - an app that opens on blank paper and
+ * offers no way to understand why - that is the better failure, and it is
+ * the one the maintainer asked for. It does not weaken the consent rule
+ * anywhere it still protects something: with a download on the phone, Data
+ * Saver still subtracts the live sheet and nothing can turn it back on.
  */
 export function effectiveBackground(
   preference: BackgroundSource,
   saveData: boolean,
+  archiveDownloaded: boolean,
 ): BackgroundSource {
+  if (!archiveDownloaded) return 'hiking_topo_live'
   return saveData ? 'usgs_topo_offline' : preference
 }
 
 /**
- * Whether Data Saver is currently overriding what the hiker picked.
+ * Why the background being drawn is not the one the hiker picked, if it isn't.
  *
- * Only true when the two actually disagree - Data Saver plus an already-offline
- * choice is not an override, it is agreement, and telling someone their
- * preference was overridden when it was honoured is its own small lie.
+ * A reason rather than a boolean, because the two cases need opposite copy:
+ * Data Saver is the app withholding something, and an undownloaded archive is
+ * the app supplying something. A screen that told a hiker "Data Saver is on"
+ * while the map was busy fetching tiles would be exactly the quiet mismatch
+ * this module exists to prevent, one word further along.
+ *
+ * `null` whenever the drawn background and the preference agree - saying
+ * "overridden" to someone whose choice was honoured is its own small lie.
  */
-export function backgroundOverridden(
+export type BackgroundOverride = 'data-saver' | 'nothing-downloaded'
+
+export function backgroundOverride(
   preference: BackgroundSource,
   saveData: boolean,
-): boolean {
-  return effectiveBackground(preference, saveData) !== preference
+  archiveDownloaded: boolean,
+): BackgroundOverride | null {
+  if (effectiveBackground(preference, saveData, archiveDownloaded) === preference) {
+    return null
+  }
+  return archiveDownloaded ? 'data-saver' : 'nothing-downloaded'
 }

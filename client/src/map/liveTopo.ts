@@ -241,7 +241,23 @@ export const HILLSHADE_EXAGGERATION_EXPRESSION = [
 ]
 
 export interface LiveTopoOptions {
-  terrain: TerrainUrls
+  /**
+   * DEM and contour tile URLs, or `undefined` when they could not be built.
+   *
+   * Optional because elevation is one INPUT to this sheet rather than the
+   * sheet itself: of the layers below, exactly one reads the DEM (the
+   * hillshade) and three read the contour tiles. The other seventeen are OSM
+   * vector - landcover, parks, water, the path and road network, summits and
+   * place names - and none of them needs an elevation model to draw.
+   *
+   * So a DEM that will not build costs relief and contour lines, and leaves
+   * the rest of the sheet alone. That is what terrain.ts promises ("every
+   * failure path here is a missing layer, never a broken map") and until this
+   * was optional the promise was not kept: style.ts folded "asked for the live
+   * sheet" and "got terrain URLs" into one boolean, so a missing DEM dropped
+   * all twenty-one layers and left bare paper.
+   */
+  terrain?: TerrainUrls
   units: ContourUnits
 }
 
@@ -288,15 +304,16 @@ export function peakLabelTextField(units: ContourUnits): unknown {
   ]
 }
 
-export function liveTopoSources({
-  terrain,
-}: LiveTopoOptions): Record<string, SourceSpecification> {
+/**
+ * The elevation half of the sheet's sources, or nothing when no DEM was built.
+ *
+ * Split out rather than spread inline so the two `raster-dem`/`vector` literals
+ * keep their own declared return type. Widened into a conditional spread they
+ * lose it - `type: 'raster-dem'` infers as `string`, which is not assignable to
+ * SourceSpecification, and tsc fails at the call site rather than here.
+ */
+function terrainSources(terrain: TerrainUrls): Record<string, SourceSpecification> {
   return {
-    [OSM_SOURCE_ID]: {
-      type: 'vector',
-      url: OPENFREEMAP_TILEJSON,
-      attribution: LIVE_TOPO_ATTRIBUTION,
-    },
     [DEM_SOURCE_ID]: {
       type: 'raster-dem',
       tiles: [terrain.demUrl],
@@ -311,6 +328,23 @@ export function liveTopoSources({
       maxzoom: CONTOUR_MAX_ZOOM,
       attribution: ELEVATION_ATTRIBUTION,
     },
+  }
+}
+
+export function liveTopoSources({
+  terrain,
+}: LiveTopoOptions): Record<string, SourceSpecification> {
+  return {
+    // Unconditional, and the reason `terrain` is optional at all: this one
+    // needs a URL and a tile schema. No Web Worker, no blob URL, no protocol
+    // registration - none of the machinery a DEM needs and therefore none of
+    // the ways that machinery can fail.
+    [OSM_SOURCE_ID]: {
+      type: 'vector',
+      url: OPENFREEMAP_TILEJSON,
+      attribution: LIVE_TOPO_ATTRIBUTION,
+    },
+    ...(terrain === undefined ? {} : terrainSources(terrain)),
   }
 }
 
@@ -329,9 +363,21 @@ export function liveTopoSources({
  * paint over that paper (style.ts's BACKDROP_LAYER_ID) even when no tile had
  * loaded, turning "nothing arrived" back into a confident picture of empty
  * ground.
+ *
+ * With no `terrain`, the layers reading the DEM and the contour tiles are
+ * dropped and the rest of the stack is returned untouched. That is a filter at
+ * the end rather than a conditional at each of the four sites on purpose: the
+ * order above IS the cartography, a filter cannot reorder it, and it asks the
+ * same question the style validator asks - does this layer's source exist -
+ * so a fifth elevation layer added later is covered without joining a list
+ * someone has to remember to update. A layer left pointing at a source that
+ * was never added is not a missing contour; it is an invalid style.
  */
-export function liveTopoLayers({ units }: LiveTopoOptions): LayerSpecification[] {
-  return [
+export function liveTopoLayers({
+  terrain,
+  units,
+}: LiveTopoOptions): LayerSpecification[] {
+  const layers: LayerSpecification[] = [
     {
       id: LIVE_TOPO_LAYER_IDS.wood,
       type: 'fill',
@@ -650,6 +696,20 @@ export function liveTopoLayers({ units }: LiveTopoOptions): LayerSpecification[]
       },
     },
   ]
+
+  if (terrain !== undefined) return layers
+
+  // Keyed off the source each layer declares rather than off a list of layer
+  // ids, so this cannot drift from terrainSources() above: whatever that
+  // function does not add, this removes. A `background` layer has no `source`
+  // at all, hence the `in` check - there is none in this stack today, and a
+  // filter that would silently drop one if there were is the kind of thing
+  // that only shows up much later.
+  return layers.filter(
+    (layer) =>
+      !('source' in layer) ||
+      (layer.source !== DEM_SOURCE_ID && layer.source !== CONTOUR_SOURCE_ID),
+  )
 }
 
 /**
@@ -665,9 +725,15 @@ export function liveTopoLayers({ units }: LiveTopoOptions): LayerSpecification[]
  * retune exists at all: `units` is deliberately kept out of the map-building
  * effect so a settings change never tears the map down under a hiker.
  *
- * Waits on the contour label layer, which only a live-background style
- * holds. On the offline background neither layer exists and there is nothing
- * to retune - the wait simply ends at detach, exactly as attachContourUnits
+ * Waits on EITHER label layer, because the two no longer arrive together. The
+ * contour label comes with the DEM and the peak label comes with the OSM
+ * sheet, so a live style built without terrain has summits and no contours -
+ * and a probe that waited on the contour label alone would never fire there,
+ * leaving every summit reading `ele_ft` after a switch to metric. A wrong
+ * number on the map is the exact failure this function exists to prevent, so
+ * the probe asks for the weaker condition and each write is guarded on its
+ * own layer. On the offline background neither exists and there is nothing to
+ * retune - the wait simply ends at detach, exactly as attachContourUnits
  * treats its absent source.
  */
 export function attachElevationLabelUnits(
@@ -676,15 +742,19 @@ export function attachElevationLabelUnits(
 ): () => void {
   return whenStyleReady(
     map,
-    () => map.getLayer(LIVE_TOPO_LAYER_IDS.contourLabel) !== undefined,
+    () =>
+      map.getLayer(LIVE_TOPO_LAYER_IDS.contourLabel) !== undefined ||
+      map.getLayer(LIVE_TOPO_LAYER_IDS.peak) !== undefined,
     () => {
-      map.setLayoutProperty(
-        LIVE_TOPO_LAYER_IDS.contourLabel,
-        'text-field',
-        contourLabelTextField(units) as never,
-      )
-      // Guarded separately: the ready() probe proves the contour label is
-      // there, not that every live-topo layer is.
+      // Both guarded, since the probe now proves only that ONE of them is
+      // there. Neither is load-bearing for the other.
+      if (map.getLayer(LIVE_TOPO_LAYER_IDS.contourLabel) !== undefined) {
+        map.setLayoutProperty(
+          LIVE_TOPO_LAYER_IDS.contourLabel,
+          'text-field',
+          contourLabelTextField(units) as never,
+        )
+      }
       if (map.getLayer(LIVE_TOPO_LAYER_IDS.peak) !== undefined) {
         map.setLayoutProperty(
           LIVE_TOPO_LAYER_IDS.peak,

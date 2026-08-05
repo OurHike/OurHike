@@ -67,8 +67,8 @@ import { BLAZE_MATCH_EXPRESSION } from '../lib/blaze'
 import { buildPoiLayer, buildPoiSource, POI_SOURCE_ID } from './poiLayers'
 import type { BackgroundSource } from '../lib/userPreferences'
 import {
+  BUNDLED_GLYPHS,
   LIVE_TOPO_ATTRIBUTION,
-  OPENFREEMAP_GLYPHS,
   liveTopoLayers,
   liveTopoSources,
 } from './liveTopo'
@@ -310,9 +310,11 @@ export function buildMapStyle({
 
   return {
     version: 8,
-    // Only set when something needs glyphs; a style declaring a font endpoint
-    // it never asks for would make the offline-only map depend on a host it
-    // has no reason to contact.
+    // Only set when something needs glyphs. The endpoint is the app's own
+    // origin now (#188), so this stopped being about a needless host
+    // dependency - what survives is the plainer rule that a style declares
+    // the endpoints its layers use, and the raster background has no symbol
+    // layer to use this one.
     //
     // Keyed on `live` alone, deliberately, now that terrain is no longer part
     // of it: the surviving symbol layers - summits, water names, place names -
@@ -320,7 +322,7 @@ export function buildMapStyle({
     // instead would leave a style whose labels have no font to render in,
     // which MapLibre reports as a per-glyph load failure rather than anything
     // a reader would connect back to the elevation model.
-    ...(live ? { glyphs: OPENFREEMAP_GLYPHS } : {}),
+    ...(live ? { glyphs: BUNDLED_GLYPHS } : {}),
     sources: {
       [TOPO_SOURCE_ID]: {
         type: 'raster',

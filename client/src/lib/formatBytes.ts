@@ -26,3 +26,21 @@ export function formatBytes(bytes: number): string {
   if (bytes >= GB) return `${trimZeros((bytes / GB).toFixed(2))} GB`
   return `${trimZeros((bytes / MB).toFixed(1))} MB`
 }
+
+/** For the counter that re-renders on every received chunk. formatBytes made
+ *  it flicker, but only below a gigabyte: the MB tenths digit spins faster
+ *  than anyone can read, and trimming "10.0" to "10" changed the string's
+ *  width mid-download, so the whole line jumped. So megabytes lose their
+ *  decimal here. Gigabytes keep both of theirs - a hundredth of a GB ticks
+ *  only every 10 MB, which reads calmly, and a download that counted whole
+ *  gigabytes would look stalled for its final stretch - but pinned, never
+ *  trimmed: "1.10 GB" holds the width "1.18 GB" needs.
+ *
+ *  Everything floors rather than rounds. A counter that overstates reads as a
+ *  lie the moment it stalls ("314 MB of 314 MB" while failed), and flooring
+ *  also caps the string at the total's own width - 999 MB never becomes
+ *  "1000 MB" - which is what lets the caller reserve that width exactly. */
+export function formatBytesLive(bytes: number): string {
+  if (bytes >= GB) return `${(Math.floor((bytes / GB) * 100) / 100).toFixed(2)} GB`
+  return `${Math.floor(bytes / MB)} MB`
+}

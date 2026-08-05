@@ -89,6 +89,7 @@ import { beginContribution, stepAfterSaving } from './lib/contributionFlow'
 import { SignInPrompt, type AuthProvider } from './screens/SignInPrompt'
 import { EmailSignIn } from './screens/EmailSignIn'
 import { ENABLED_PROVIDERS } from './lib/supabase'
+import { TRAILS } from './lib/trails'
 import { useAccount } from './lib/useAuth'
 import {
   sendMagicLink,
@@ -106,7 +107,10 @@ import './App.css'
 // structurally rather than by review.
 import './desktop.css'
 
-const TRAIL_NAME = 'Appalachian Trail'
+// OurHike hikes one trail today - see lib/trails.ts for why this is a lookup
+// and not just a string.
+const TRAIL_NAME = TRAILS.AT.name
+const TRAIL_LOGO = TRAILS.AT.logo
 
 // Sync and export are rendered and do nothing: what they need is the backend,
 // which is Phase 2 (ROADMAP.md). They share one placeholder rather than
@@ -876,6 +880,7 @@ function App() {
           // the download has no tiles for.
           archiveZooms={archiveZooms}
           trailName={TRAIL_NAME}
+          trailLogo={TRAIL_LOGO}
           mile={fix?.mile}
           direction={direction?.direction}
           time={now}

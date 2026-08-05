@@ -19,7 +19,7 @@
 // what Settings' "detail for new downloads" row is for - offering the choice
 // here would imply it could be changed in place.
 
-import { formatBytes } from '../lib/formatBytes'
+import { formatBytes, formatBytesLive } from '../lib/formatBytes'
 import type { DetailLevel } from '../lib/downloadDetail'
 import { useDesktop } from '../lib/useDesktop'
 import { DetailPicker } from './DetailPicker'
@@ -100,8 +100,19 @@ export function Downloads({
               style={{ width: `${percent(status.receivedBytes, status.totalBytes)}%` }}
             />
           </div>
+          {/* The received figure changes on every chunk; formatBytesLive keeps
+              its digits calm, and the reserved slot (sized to the total, the
+              widest the counter can get, exact in ch because the font is
+              monospace) keeps "of 314 MB" from shuffling sideways as 9 MB
+              becomes 10 MB. */}
           <p className="downloads__bytes">
-            {`${formatBytes(status.receivedBytes)} of ${formatBytes(status.totalBytes)}`}
+            <span
+              className="downloads__bytes-received"
+              style={{ minWidth: `${formatBytesLive(status.totalBytes).length}ch` }}
+            >
+              {formatBytesLive(status.receivedBytes)}
+            </span>
+            {` of ${formatBytes(status.totalBytes)}`}
           </p>
         </div>
       )}
@@ -109,7 +120,7 @@ export function Downloads({
       {status.state === 'failed' && (
         <div className="downloads__failed">
           <p className="downloads__bytes">
-            {`Stopped at ${formatBytes(status.receivedBytes)} of ${formatBytes(
+            {`Stopped at ${formatBytesLive(status.receivedBytes)} of ${formatBytes(
               status.totalBytes,
             )}.`}
           </p>

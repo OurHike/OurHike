@@ -100,6 +100,16 @@ export default defineConfig({
             // Drop precaches from superseded builds rather than letting a
             // phone accumulate every app shell it has ever seen.
             cleanupOutdatedCaches: true,
+            // The first entry is workbox's own default, restated because
+            // setting globPatterns at all replaces it. The second puts the
+            // bundled glyph ranges (public/glyphs/, issue #188) into the
+            // precache: symbol layers fetch them per 256-glyph range at
+            // runtime, so leaving them out means labels render in town and
+            // vanish in airplane mode - precisely the split this app cannot
+            // ship. scripts/check-build-output.mjs verifies all 256 made it
+            // into the generated manifest, so a glob drift here fails the
+            // build rather than the hiker.
+            globPatterns: ['**/*.{js,css,html}', 'glyphs/**/*.pbf'],
           },
           includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
           manifest: {

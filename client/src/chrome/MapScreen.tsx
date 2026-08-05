@@ -40,6 +40,7 @@ export interface MapScreenProps {
   background?: BackgroundSource
 
   trailName: string
+  trailLogo?: string
   // All three are omitted until they are actually known - see HeaderProps.
   state?: string
   mile?: number
@@ -150,6 +151,7 @@ export function MapScreen({
   trailsUrl,
   background = 'hiking_topo_live',
   trailName,
+  trailLogo,
   state,
   mile,
   direction,
@@ -238,6 +240,7 @@ export function MapScreen({
 
         <Header
           trailName={trailName}
+          trailLogo={trailLogo}
           state={state}
           mile={mile}
           direction={direction}

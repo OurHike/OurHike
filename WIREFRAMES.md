@@ -30,7 +30,7 @@ Where a wireframe *does* commit to an exact value, it's because the value carrie
 
 **Layout, top to bottom:**
 1. **Status strip** — time, GPS/offline state, sync age.
-2. **Header (read-only zone).** Trail + state eyebrow, current mile + direction (`mi 1,407.2 · NOBO`) in mono. Right side: two 38px icon buttons, gap 7px — **legend** (list icon) then **search**. Nothing else lives here.
+2. **Header (read-only zone).** Trail + state eyebrow — the trail's own mark (14px, from `lib/trails.ts`'s `TRAILS` registry) ahead of the name, where one is known — current mile + direction (`mi 1,407.2 · NOBO`) in mono. Right side: two 38px icon buttons, gap 7px — **legend** (list icon) then **search**. Nothing else lives here.
 3. **Elevation ribbon.** SVG profile (`viewBox="0 0 100 40"`, `preserveAspectRatio="none"`), 54px tall, left-inset 36px for lane labels. Shaded area under the line, a highlighted upcoming-climb region, a vertical "you are here" rule, min/max ft labels, and a callout: `+640 ft · 2.6 mi · ≈1h 10m`.
 4. **Three waypoint lanes**, 19px each, dashed top rules, mono 7.5px labels in the left gutter: `WATER`, `SLEEP`, `ELSE`. Pins position by percentage along the mile window; overlapping pins collapse into a count pill (category glyph + count).
 5. **Map canvas.** Trail lines, waypoint pins, GPS dot. Bottom-left: scale bar (64px, three-sided box) above `USGS US Topo · © OSM`. Bottom-right, 10px inset: a vertical stack, gap 8px, of **compass** and **locate** (42px each). Zoom buttons are **web only** — pinch covers mobile and the thumb zone is reserved for locate.

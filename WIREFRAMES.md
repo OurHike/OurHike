@@ -34,7 +34,12 @@ Where a wireframe *does* commit to an exact value, it's because the value carrie
 3. **Elevation ribbon.** SVG profile (`viewBox="0 0 100 40"`, `preserveAspectRatio="none"`), 54px tall, left-inset 36px for lane labels. Shaded area under the line, a highlighted upcoming-climb region, a vertical "you are here" rule, min/max ft labels, and a callout: `+640 ft · 2.6 mi · ≈1h 10m`.
 4. **Three waypoint lanes**, 19px each, dashed top rules, mono 7.5px labels in the left gutter: `WATER`, `SLEEP`, `ELSE`. Pins position by percentage along the mile window; overlapping pins collapse into a count pill (category glyph + count).
 5. **Map canvas.** Trail lines, waypoint pins, GPS dot. Bottom-left: scale bar (64px, three-sided box) above `USGS US Topo · © OSM`. Bottom-right, 10px inset: a vertical stack, gap 8px, of **compass** and **locate** (42px each). Zoom buttons are **web only** — pinch covers mobile and the thumb zone is reserved for locate.
-6. **Tab bar** — Trail / Downloads / More.
+6. **Tab bar** — Trail / Downloads / More, with the OurHike icon (mark only, no
+   wordmark) at the left end, ahead of the tabs. It is the page's bottom-left
+   corner and the only one here that is neither map nor a thumb target; it costs
+   the three tabs about 32px of shared width and the map nothing. Above 900px
+   this same bar is the left sidebar and the mark moves to the foot of it, icon
+   over wordmark — see WEBSITE.md §6.
 
 **Interaction rules:** everything tapped mid-walk sits in the lower third; everything read but not touched sits above. Locate is blue while tracking, grey when the fix is lost (`7b`).
 

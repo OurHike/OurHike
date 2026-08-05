@@ -19,8 +19,10 @@
 // what Settings' "detail for new downloads" row is for - offering the choice
 // here would imply it could be changed in place.
 
+import { useEffect, useState } from 'react'
 import { formatBytes, formatBytesLive } from '../lib/formatBytes'
-import type { DetailLevel } from '../lib/downloadDetail'
+import { getDownloadDetail, type DetailLevel } from '../lib/downloadDetail'
+import { estimateAvailableBytes, type PersistenceState } from '../lib/storageHealth'
 import { useDesktop } from '../lib/useDesktop'
 import { DetailPicker } from './DetailPicker'
 import './downloads.css'
@@ -30,14 +32,46 @@ export type DownloadStatus =
   | { state: 'downloading'; receivedBytes: number; totalBytes: number }
   | { state: 'failed'; receivedBytes: number; totalBytes: number }
   | { state: 'downloaded'; totalBytes: number; completedAt: Date }
+  /** An archive finished here and its bytes are gone - evicted by the OS,
+   *  not deleted by the hiker (storageHealth.ts's marker tells the two
+   *  apart, #190). completedAt is when it finished, when that survived. */
+  | { state: 'evicted'; completedAt: Date | null }
 
 export interface DownloadsProps {
   status: DownloadStatus
   detailLevel: DetailLevel
+  /** What asking for durable storage came to - null while unanswered. Drives
+   *  wording only: best-effort storage is stated, never silently assumed
+   *  away (#190). */
+  persistence?: PersistenceState | null
   onChangeDetail: (level: DetailLevel) => void
   onStart: () => void
   onResume: () => void
   onDelete: () => void
+}
+
+/**
+ * The browser's own guess at remaining room, read when the window opens.
+ *
+ * A hook here rather than state threaded from the shell because the number
+ * is only worth anything at the moment of choosing - this component mounts
+ * when the download window opens, which is exactly that moment. Null where
+ * the browser will not say, and the warning simply does not render.
+ */
+function useAvailableBytes(): number | null {
+  const [available, setAvailable] = useState<number | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void estimateAvailableBytes().then((bytes) => {
+      if (!cancelled) setAvailable(bytes)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  return available
 }
 
 function percent(received: number, total: number): number {
@@ -47,12 +81,23 @@ function percent(received: number, total: number): number {
 export function Downloads({
   status,
   detailLevel,
+  persistence = null,
   onChangeDetail,
   onStart,
   onResume,
   onDelete,
 }: DownloadsProps) {
   const isDesktop = useDesktop()
+  const availableBytes = useAvailableBytes()
+  const chosenBytes = getDownloadDetail(detailLevel).sizeBytes
+
+  // Warned, never refused: estimate() is deliberately fuzzy (browsers round
+  // it against fingerprinting), and a hiker at a trailhead deciding to try
+  // anyway is making an informed call, which is the whole point.
+  const spaceTight =
+    (status.state === 'not-downloaded' || status.state === 'evicted') &&
+    availableBytes !== null &&
+    availableBytes < chosenBytes
 
   return (
     <div className="downloads">
@@ -79,10 +124,51 @@ export function Downloads({
       {status.state === 'not-downloaded' && (
         <>
           <DetailPicker value={detailLevel} onChange={onChangeDetail} />
+          {spaceTight && (
+            <p className="downloads__warning" role="status">
+              {`This phone reports about ${formatBytes(availableBytes ?? 0)} free for the app — the ${formatBytes(
+                chosenBytes,
+              )} download may not fit. A lighter detail level might, or free up some space first.`}
+            </p>
+          )}
           <button type="button" className="downloads__primary" onClick={onStart}>
             Download the map
           </button>
         </>
+      )}
+
+      {status.state === 'evicted' && (
+        <div className="downloads__evicted">
+          {/* The one sentence #190 exists for. "No map downloaded" here would
+              be false - one WAS downloaded, and the phone removed it - and on
+              a ridge that difference is the difference between re-downloading
+              in town and staring at blank paper wondering what you did
+              wrong. */}
+          <p>
+            {status.completedAt === null
+              ? 'The map you downloaded is no longer on this phone.'
+              : `The map you downloaded on ${status.completedAt.toLocaleDateString(
+                  'en-US',
+                  {
+                    month: 'long',
+                    day: 'numeric',
+                  },
+                )} is no longer on this phone.`}{' '}
+            The phone removed it to free up space — that can happen when storage runs low.
+            Downloading it again is the only fix, and it needs signal.
+          </p>
+          <DetailPicker value={detailLevel} onChange={onChangeDetail} />
+          {spaceTight && (
+            <p className="downloads__warning" role="status">
+              {`Space still looks tight — about ${formatBytes(availableBytes ?? 0)} free against a ${formatBytes(
+                chosenBytes,
+              )} download. Freeing up space first makes another removal less likely.`}
+            </p>
+          )}
+          <button type="button" className="downloads__primary" onClick={onStart}>
+            Download it again
+          </button>
+        </div>
       )}
 
       {status.state === 'downloading' && (
@@ -141,6 +227,20 @@ export function Downloads({
               { month: 'long', day: 'numeric' },
             )}.`}
           </p>
+          {/* Durability, stated at its honest weight. `granted` earns no
+              banner - protected is the expected state and saying so is
+              noise. A denial or an old browser gets one calm sentence,
+              because best-effort storage CAN be reclaimed by the OS and a
+              hiker planning around this download deserves to know that
+              before the trailhead, not from a blank map (#190). */}
+          {(persistence === 'denied' || persistence === 'unsupported') && (
+            <p className="downloads__note">
+              This phone treats the download as reclaimable if storage runs very low. It
+              was asked to protect it{persistence === 'denied' ? ' and declined' : ''} —
+              if the map ever disappears, this screen will say so, and downloading again
+              restores it.
+            </p>
+          )}
           <button type="button" className="downloads__secondary" onClick={onDelete}>
             Delete the map
           </button>

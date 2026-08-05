@@ -165,6 +165,20 @@
     border-top-right-radius: 0;
     border-left: 1px solid var(--border-1);
     box-shadow: none;
+    /* A column, so the download link at the end of it can be pushed to the
+       foot of the panel below. On a phone the legend is a sheet that ends
+       where its content ends and the link is already the bottom of it; here
+       the panel is full height, and left in normal flow the link would sit
+       against the pin list with a screen of empty paper under it. */
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* The rule that does the pushing. It collapses to nothing the moment the
+     content is taller than the panel, which is the right answer then too -
+     the link goes back to being the last thing you scroll to. */
+  .legend--persistent .downloads-link {
+    margin-top: auto;
   }
 
   /* A panel that is always there has nothing to dismiss, and a close button

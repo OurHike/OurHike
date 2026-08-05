@@ -17,20 +17,18 @@
 // select in one place and buttons in the other, both writing the same
 // preference and disagreeing about what it looks like.
 //
-// THIS IS ALSO THE WAY TO THE DOWNLOAD
+// CHOOSING "DOWNLOADED" WITH AN EMPTY PHONE OPENS THE DOWNLOAD
 //
-// It is the only control in the app that mentions the downloaded map, so when
-// the Downloads tab went (chrome/tabs.ts) this is where the door moved to: a
-// link under the pair, opening the download window. That is not a consolation
-// prize for the tab - it is a better place for it. Someone looking for the
-// download is looking because the map is not showing what they expected, and
-// this is the control that just told them why.
+// Not here - the shell does it (App.tsx), because a rule about what a choice
+// MEANS belongs to the thing that owns the download rather than to the control
+// that reports the choice. Worth knowing from here all the same, because it is
+// why this component does not need a download button of its own: the one
+// moment someone picks a background this phone cannot draw is already handled,
+// and the link for every other moment is at the foot of the panel
+// (chrome/DownloadsLink.tsx).
 //
-// Picking "Downloaded" with nothing on the phone opens that window on its own,
-// without waiting to be asked twice. The choice is still saved either way: it
-// takes effect the moment a download lands (lib/dataSaver.ts), and the note
-// below says so meanwhile. Which of those two the shell does is the shell's
-// call, not this component's - see App.tsx.
+// The choice is saved either way. It takes effect the moment a download lands
+// (lib/dataSaver.ts), and the note below says so meanwhile.
 
 import type { BackgroundSource } from '../lib/userPreferences'
 import type { BackgroundOverride } from '../lib/dataSaver'
@@ -72,33 +70,11 @@ const OVERRIDE_NOTES: Record<BackgroundOverride, string> = {
     'Nothing is downloaded yet, so "downloaded only" has no map to draw and the live topo sheet is being used instead. Download the map and this setting takes effect.',
 }
 
-/**
- * The link under the pair, worded for what is actually on the phone.
- *
- * Two labels rather than one because "choose what to download" is wrong for
- * someone who already has 314 MB of it, and "change your download" is a claim
- * about a phone that may have nothing on it at all.
- */
-const DOWNLOAD_LINK: Record<'yes' | 'no', string> = {
-  yes: "Change what's downloaded",
-  no: 'Choose what to download',
-}
-
 export interface BackgroundPickerProps {
   value: BackgroundSource
   onChange: (next: BackgroundSource) => void
   /** Why the drawn background differs from `value`, if it does. */
   override?: BackgroundOverride | null
-  /**
-   * Opens the download window. No link is drawn without it, which is what a
-   * picker rendered outside the shell - a preview, a test - should get.
-   */
-  onOpenDownloads?: () => void
-  /**
-   * Whether a finished corridor archive is on this phone, which is the whole
-   * difference between choosing a download and changing one.
-   */
-  hasDownload?: boolean
   /**
    * Distinguishes this group's radios from another instance's.
    *
@@ -113,8 +89,6 @@ export function BackgroundPicker({
   value,
   onChange,
   override = null,
-  onOpenDownloads,
-  hasDownload = false,
   idPrefix = 'background',
 }: BackgroundPickerProps) {
   return (
@@ -148,19 +122,6 @@ export function BackgroundPicker({
         <p className="bg-picker__note" role="note">
           {OVERRIDE_NOTES[override]}
         </p>
-      )}
-
-      {/* Last, and not inside either <label>: a button nested in one would be
-          a control that also toggles the radio it sits in, so tapping it would
-          change the background as a side effect of asking about the download.
-
-          Under the note rather than above it, because with nothing downloaded
-          the note is the problem statement - "this setting has no map to draw"
-          - and this is the sentence that fixes it. */}
-      {onOpenDownloads !== undefined && (
-        <button type="button" className="bg-picker__downloads" onClick={onOpenDownloads}>
-          {DOWNLOAD_LINK[hasDownload ? 'yes' : 'no']}
-        </button>
       )}
     </fieldset>
   )

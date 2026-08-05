@@ -24,6 +24,7 @@ import { syncAgeLabel } from '../lib/syncAge'
 import type { BackgroundSource, UserPreferences } from '../lib/userPreferences'
 import { backgroundOverride } from '../lib/dataSaver'
 import { BackgroundPicker } from '../chrome/BackgroundPicker'
+import { DownloadsLink } from '../chrome/DownloadsLink'
 import { REPORTER_TYPES } from '../lib/contributionFlow'
 import type { ReportDraft } from '../lib/outbox'
 import './settings.css'
@@ -70,16 +71,17 @@ export interface SettingsProps {
    * decision: with no archive, "downloaded only" has no download to draw and
    * the map falls back to the live sheet - see lib/dataSaver.ts.
    *
-   * It also words the download link under the picker, which is the same fact
-   * asked a second way: choose a download, or change the one you have.
+   * It also words the download link at the foot of this screen, which is the
+   * same fact asked a second way: choose a download, or change the one you
+   * have.
    */
   archiveDownloaded?: boolean
   /**
-   * Opens the download window.
+   * Opens the download window, from the link at the foot of the screen.
    *
    * There is no Downloads tab to send anyone to any more (chrome/tabs.ts), so
-   * this settings screen reaches the download exactly the way the map does -
-   * through the background picker, from one component.
+   * this screen carries the same link the legend does, from one component.
+   * Omitted, no link is drawn.
    */
   onOpenDownloads?: () => void
 }
@@ -167,8 +169,6 @@ export function Settings({
             dataSaver,
             archiveDownloaded,
           )}
-          onOpenDownloads={onOpenDownloads}
-          hasDownload={archiveDownloaded}
           idPrefix="settings"
         />
 
@@ -254,6 +254,16 @@ export function Settings({
           OpenMapTiles, USGS 3DEP via AWS Terrain Tiles.
         </p>
       </section>
+
+      {/* Below the last group rather than inside "The map" beside the
+          background it affects. It is the only way to the download
+          (chrome/DownloadsLink.tsx) and still a thing someone does once a
+          season, so it gets the foot of the screen: findable by anyone who
+          scrolls looking for it, and not in the way of the rows that get used.
+          The same component sits at the foot of the legend. */}
+      {onOpenDownloads !== undefined && (
+        <DownloadsLink onOpen={onOpenDownloads} hasDownload={archiveDownloaded} />
+      )}
     </main>
   )
 }

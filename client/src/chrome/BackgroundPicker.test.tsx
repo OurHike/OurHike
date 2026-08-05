@@ -110,65 +110,15 @@ describe('BackgroundPicker', () => {
     expect(screen.queryByText(/data saver is on/i)).not.toBeInTheDocument()
   })
 
-  it('offers the way to the download, since this is the only control that mentions one', () => {
-    // The Downloads tab went on 2026-08-05 (chrome/tabs.ts) and this link is
-    // what took its place.
-    const onOpenDownloads = vi.fn()
-    render(
-      <BackgroundPicker
-        value="usgs_topo_offline"
-        onChange={vi.fn()}
-        onOpenDownloads={onOpenDownloads}
-      />,
-    )
-
-    expect(
-      screen.getByRole('button', { name: /choose what to download/i }),
-    ).toBeInTheDocument()
-  })
-
-  it('opens the download window when that link is used', async () => {
-    const user = userEvent.setup()
-    const onOpenDownloads = vi.fn()
-    const onChange = vi.fn()
-    render(
-      <BackgroundPicker
-        value="hiking_topo_live"
-        onChange={onChange}
-        onOpenDownloads={onOpenDownloads}
-      />,
-    )
-
-    await user.click(screen.getByRole('button', { name: /download/i }))
-
-    expect(onOpenDownloads).toHaveBeenCalledTimes(1)
-    // Asking about the download is not choosing a background. The link sits
-    // outside both labels precisely so it cannot toggle the radio it is under.
-    expect(onChange).not.toHaveBeenCalled()
-  })
-
-  it('says CHANGE rather than choose once there is a download to change', () => {
-    render(
-      <BackgroundPicker
-        value="usgs_topo_offline"
-        onChange={vi.fn()}
-        onOpenDownloads={vi.fn()}
-        hasDownload
-      />,
-    )
-
-    expect(
-      screen.getByRole('button', { name: /change what's downloaded/i }),
-    ).toBeVisible()
-    expect(screen.queryByRole('button', { name: /choose what to download/i })).toBeNull()
-  })
-
-  it('draws no link at all where there is no window to open', () => {
-    // Same rule the picker already follows for a shell that cannot write the
-    // preference: a control that does nothing is worse than no control.
+  it('carries no download control of its own', () => {
+    // It briefly did, on the grounds that this is the only control that
+    // mentions the downloaded map - which put a once-a-season errand at the
+    // top of the legend. The link moved to the foot of the panel
+    // (chrome/DownloadsLink.tsx); what is left here is a background choice and
+    // nothing else.
     render(<BackgroundPicker value="usgs_topo_offline" onChange={vi.fn()} />)
 
-    expect(screen.queryByRole('button', { name: /download/i })).toBeNull()
+    expect(screen.queryByRole('button')).toBeNull()
   })
 
   it('keeps showing the choice, not the background that is actually drawn', () => {

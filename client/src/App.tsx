@@ -844,8 +844,9 @@ function App() {
           // explains any gap between that and what is drawn.
           backgroundChoice={preferences.background_source}
           onChangeBackground={handleChangeBackground}
-          // The link under that picker, and the wording it gets. This is the
-          // only way to the download from the map now that the tab is gone.
+          // The link at the foot of the legend, and the wording it gets. This
+          // is the only way to the download from the map now that the tab is
+          // gone - which is why it is carried, and not why it is given room.
           onOpenDownloads={openDownloads}
           hasDownload={archiveDownloaded}
           trailName={TRAIL_NAME}

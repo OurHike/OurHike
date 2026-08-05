@@ -19,6 +19,7 @@ import {
 import { blazePaintColor } from '../lib/blaze'
 import { typeLabel } from './legendLabels'
 import { BackgroundPicker } from './BackgroundPicker'
+import { DownloadsLink } from './DownloadsLink'
 import type { BackgroundSource } from '../lib/userPreferences'
 import type { BackgroundOverride } from '../lib/dataSaver'
 
@@ -57,9 +58,10 @@ export interface LegendProps {
   onChangeBackground?: (next: BackgroundSource) => void
   /** Why the drawn background differs from the choice - see lib/dataSaver.ts. */
   backgroundOverride?: BackgroundOverride | null
-  /** Opens the download window, from the link under the picker. Passed
-   *  straight through: this panel has no opinion about downloads, it just
-   *  happens to hold the control that mentions them. */
+  /** Opens the download window, from the link at the foot of the panel.
+   *  Passed straight through: this panel has no opinion about downloads, it is
+   *  just the piece of chrome the link ended up in. Omitted, no link is drawn
+   *  - a control that does nothing is worse than one that is not there. */
   onOpenDownloads?: () => void
   /** Whether a finished archive is on the phone, which words that link. */
   hasDownload?: boolean
@@ -114,8 +116,6 @@ export function Legend({
           value={backgroundChoice}
           onChange={onChangeBackground}
           override={backgroundOverride}
-          onOpenDownloads={onOpenDownloads}
-          hasDownload={hasDownload}
           idPrefix="legend"
         />
       )}
@@ -179,6 +179,15 @@ export function Legend({
             )
           })}
         </ul>
+      )}
+
+      {/* Last in the panel, and last on purpose. It is the only way to the
+          download (chrome/DownloadsLink.tsx), which makes it worth having
+          here and does not make it worth the top of a panel someone opens all
+          day to answer a different question. On a desktop the panel is full
+          height and this is pushed to the foot of it - see desktop.css. */}
+      {onOpenDownloads !== undefined && (
+        <DownloadsLink onOpen={onOpenDownloads} hasDownload={hasDownload} />
       )}
     </div>
   )

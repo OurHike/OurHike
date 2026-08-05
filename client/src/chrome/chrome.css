@@ -1044,22 +1044,28 @@
   color: var(--fg-2);
 }
 
-/* The way to the download window (screens/DownloadsDialog.tsx), which is the
-   only one there is now that the Downloads tab has gone.
+/* ---------- The way to the download (DownloadsLink.tsx) ---------- */
 
-   Drawn as a link rather than as a third button: the pair above it is a
-   choice, and a button the same size and weight beside them would read as a
-   third background to pick. Left-aligned with them, and 44px tall despite
-   looking like text, because it is still a target for a cold thumb. */
-.bg-picker__downloads {
+/* At the foot of the legend and at the foot of Settings, from one component.
+   It is the only route to the download window now that the Downloads tab has
+   gone, and it is still something a hiker does once a season - so it is drawn
+   as a footer link rather than as a button competing with the rows above it.
+
+   Full width with a rule over it, which is what separates "the end of this
+   panel" from "one more legend row". 44px tall despite reading as text,
+   because a cold thumb still has to hit it. */
+.downloads-link {
+  display: block;
+  width: 100%;
   min-height: var(--min-touch-target, 44px);
-  margin-top: var(--space-1, 4px);
-  padding: 0;
+  margin-top: var(--space-4, 16px);
+  padding: var(--space-3, 12px) 0 0;
+  border: 0;
+  border-top: 1px solid var(--border-1);
   font-size: 13px;
   font-weight: 600;
+  text-align: left;
   color: var(--brand-primary);
-  text-decoration: underline;
   background: none;
-  border: 0;
   cursor: pointer;
 }

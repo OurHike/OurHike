@@ -146,6 +146,15 @@ describe('Settings', () => {
     expect(onOpenDownloads).toHaveBeenCalledTimes(1)
   })
 
+  it('puts it at the foot of the screen, below every group', async () => {
+    // A once-a-season errand, so it is findable by anyone who scrolls looking
+    // for it and out of the way of the rows that get used.
+    const { container } = render(<Settings {...PROPS} onOpenDownloads={vi.fn()} />)
+
+    const link = screen.getByRole('button', { name: /choose what to download/i })
+    expect(container.querySelector('.settings')?.lastElementChild).toBe(link)
+  })
+
   it('says the live background still falls back to the download with no signal', () => {
     // The one thing someone choosing between these actually needs to know, and
     // the one thing a provider name would not tell them.

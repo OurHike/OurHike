@@ -66,10 +66,10 @@ async function completeOnboarding(user: ReturnType<typeof userEvent.setup>) {
 /**
  * The download window, opened the way a hiker reaches it.
  *
- * There is no Downloads tab any more (chrome/tabs.ts): the door is the link
- * under the background picker, and on the map screen the picker is in the
- * legend. Going through both is the point - a test that reached the window by
- * some other route would pass with the only door to it painted shut.
+ * There is no Downloads tab any more (chrome/tabs.ts): the door is the link at
+ * the foot of the legend, so getting there means opening the legend first.
+ * Going through both is the point - a test that reached the window by some
+ * other route would pass with the only door to it painted shut.
  */
 async function openDownloads(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByRole('button', { name: /legend/i }))

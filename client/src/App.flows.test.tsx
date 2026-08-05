@@ -126,8 +126,8 @@ async function reportFix(lat = 39 + 5 * MILE_LAT, lon = -77) {
 /**
  * The download window, opened the way a hiker reaches it.
  *
- * There is no Downloads tab (chrome/tabs.ts): the door is the link under the
- * background picker, which on the map screen lives in the legend.
+ * There is no Downloads tab (chrome/tabs.ts): the door is the link at the foot
+ * of the legend, which is where the map screen keeps it.
  */
 async function openDownloads(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByRole('button', { name: /legend/i }))

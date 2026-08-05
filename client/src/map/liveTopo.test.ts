@@ -11,10 +11,12 @@ import {
   HILLSHADE_HANDOVER_END_ZOOM,
   HILLSHADE_HANDOVER_START_ZOOM,
   HILLSHADE_RELIEF_ONLY_EXAGGERATION,
+  BASEMAP_MAX_ZOOM,
+  BASEMAP_SCHEME,
+  BASEMAP_TILES_URL,
   BUNDLED_GLYPHS,
   LIVE_TOPO_ATTRIBUTION,
   LIVE_TOPO_LAYER_IDS,
-  OPENFREEMAP_TILEJSON,
   OSM_SOURCE_ID,
   PLACE_TOWN_MIN_ZOOM,
   PLACE_VILLAGE_MIN_ZOOM,
@@ -82,8 +84,27 @@ describe('the live topographic background', () => {
     // would stop being true and nothing else in this file would notice.
     const source = live().sources[OSM_SOURCE_ID]
 
-    expect(source).toMatchObject({ type: 'vector', url: OPENFREEMAP_TILEJSON })
+    expect(source).toMatchObject({ type: 'vector', tiles: [BASEMAP_TILES_URL] })
     expect(ids(live()).filter((id) => id.startsWith('topo-')).length).toBeGreaterThan(10)
+  })
+
+  it('asks for its tiles through the local-first basemap scheme (#189)', () => {
+    // The template is the offline story: basemap.ts answers each request
+    // from the downloaded package and falls through to the network per
+    // tile, so the style never has to know which one a hiker holds. A
+    // network URL here - TileJSON or tile template alike - would put a
+    // round trip back in front of the first tile and make the archive
+    // unreachable, which is exactly the coupling #189 removes.
+    const source = live().sources[OSM_SOURCE_ID] as { tiles?: string[]; url?: string }
+
+    expect(source.url).toBeUndefined()
+    expect(source.tiles).toEqual([BASEMAP_TILES_URL])
+    expect(BASEMAP_TILES_URL.startsWith(`${BASEMAP_SCHEME}://`)).toBe(true)
+    expect(BASEMAP_TILES_URL).not.toMatch(/^https?:/)
+    // Without a TileJSON nothing else says where overzooming starts, and a
+    // source with no maxzoom would fetch z15+ tiles that neither the
+    // package nor OpenFreeMap has.
+    expect(source).toMatchObject({ maxzoom: BASEMAP_MAX_ZOOM })
   })
 
   it('keeps the downloaded archive in the style, underneath the live sheet', () => {
@@ -444,9 +465,9 @@ describe('a live background with no terrain registered', () => {
 
   it('still draws the OSM sheet, which needs no elevation model', () => {
     expect(degraded.sources).toHaveProperty(OSM_SOURCE_ID)
-    expect((degraded.sources[OSM_SOURCE_ID] as { url?: string }).url).toBe(
-      OPENFREEMAP_TILEJSON,
-    )
+    expect((degraded.sources[OSM_SOURCE_ID] as { tiles?: string[] }).tiles).toEqual([
+      BASEMAP_TILES_URL,
+    ])
     for (const id of [
       LIVE_TOPO_LAYER_IDS.wood,
       LIVE_TOPO_LAYER_IDS.water,

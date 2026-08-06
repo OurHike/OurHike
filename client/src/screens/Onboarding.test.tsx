@@ -61,14 +61,25 @@ describe('Onboarding', () => {
     expect(screen.getByText(/fund/i)).toHaveTextContent(/ATC|club/i)
   })
 
-  it('offers all three download sizes on the map-size step, with the real figures', async () => {
+  it('offers the hiking sheet\u2019s two levels on the map-size step, with the real figures', async () => {
+    // The download decision shown is the one a hiker will actually meet in
+    // the Downloads window (#277): the hiking sheet's Standard/Fine cuts at
+    // their whole-sheet sizes, not the optional USGS raster's tiers.
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
     await advance(user, 1)
 
-    expect(screen.getByText(/64 MB/)).toBeInTheDocument()
-    expect(screen.getByText(/314 MB/)).toBeInTheDocument()
-    expect(screen.getByText(/1\.18 GB/)).toBeInTheDocument()
+    expect(screen.getAllByRole('radio')).toHaveLength(2)
+    expect(screen.getByText('789.6 MB')).toBeInTheDocument()
+    expect(screen.getByText('1.14 GB')).toBeInTheDocument()
+  })
+
+  it('names the USGS sheet as optional rather than configuring it here', async () => {
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} />)
+    await advance(user, 1)
+
+    expect(screen.getByText(/optional second map/i)).toBeInTheDocument()
   })
 
   it('marks Standard as the recommended size', async () => {
@@ -147,17 +158,17 @@ describe('Onboarding', () => {
     expect(screen.getByText(`2 of ${ONBOARDING_STEPS.length}`)).toBeInTheDocument()
   })
 
-  it('finishes with the chosen detail level', async () => {
+  it('finishes with the chosen level', async () => {
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
 
     await advance(user, 1)
-    await user.click(screen.getByRole('radio', { name: /light/i }))
+    await user.click(screen.getByRole('radio', { name: /fine/i }))
     await advance(user, 1)
     await user.click(screen.getByRole('button', { name: /allow/i }))
 
     expect(PROPS.onComplete).toHaveBeenCalledWith(
-      expect.objectContaining({ detailLevel: 'light' }),
+      expect.objectContaining({ hikingDetailLevel: 'fine' }),
     )
   })
 
@@ -183,7 +194,7 @@ describe('Onboarding', () => {
 
     // Skipping must not leave the app with no map to download.
     expect(PROPS.onComplete).toHaveBeenCalledWith(
-      expect.objectContaining({ detailLevel: 'standard' }),
+      expect.objectContaining({ hikingDetailLevel: 'standard' }),
     )
   })
 })

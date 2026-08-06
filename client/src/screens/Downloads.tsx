@@ -42,11 +42,11 @@
 
 import { useEffect, useState } from 'react'
 import { formatBytes } from '../lib/formatBytes'
-import type { DetailLevel, DetailOption } from '../lib/downloadDetail'
 import { estimateAvailableBytes, type PersistenceState } from '../lib/storageHealth'
 import { useDesktop } from '../lib/useDesktop'
 import { facingFullDownload } from '../lib/backgroundStatus'
 import { DownloadCard, type DownloadStatus } from './DownloadCard'
+import type { DetailOption } from './DetailPicker'
 import { Tabs } from './Tabs'
 import './downloads.css'
 
@@ -61,13 +61,15 @@ export interface SheetDownload {
   sizeBytes: number
   /** Its own failure, if it has one - never a sibling sheet's. */
   error?: string | null
-  /** The chosen detail level and every level this sheet is published at - a
-   *  null size is a level it has none of, and renders greyed rather than
-   *  missing (screens/DetailPicker.tsx). */
+  /** This sheet's levels, its chosen one, and how to report a change. Every
+   *  level the app knows comes through, with a null size where this sheet
+   *  has none of it, so the picker is the same shape under every tab
+   *  (DetailPicker). */
   detail: {
-    level: DetailLevel
     options: readonly DetailOption[]
-    onChange: (level: DetailLevel) => void
+    value: string
+    onChange: (id: string) => void
+    name?: string
   }
   onStart: () => void
   onResume: () => void
@@ -145,7 +147,10 @@ export function Downloads({ sheets, persistence = null }: DownloadsProps) {
               : `This phone reports about ${formatBytes(availableBytes ?? 0)} free for the app — the ${formatBytes(
                   sheet.sizeBytes,
                 )} download may not fit. ${
-                  sheet.detail.options.some((option) => option.sizeBytes !== null)
+                  sheet.detail.options.some(
+                    (option) =>
+                      option.sizeBytes !== null && option.sizeBytes < sheet.sizeBytes,
+                  )
                     ? 'A lighter detail level might, or free up some space first.'
                     : 'Freeing up some space first would make room for it.'
                 }`}
@@ -154,7 +159,6 @@ export function Downloads({ sheets, persistence = null }: DownloadsProps) {
         <DownloadCard
           title={sheet.title}
           status={sheet.status}
-          sizeBytes={sheet.sizeBytes}
           error={sheet.error ?? null}
           detail={sheet.detail}
           persistence={persistence}

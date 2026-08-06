@@ -1,75 +1,135 @@
-// The Light / Standard / Fine choice, shared by first run's "map size" step
-// and the download window so the two can never drift apart.
+// A download-level choice, shared by the Downloads screen's cards and
+// onboarding so the two can never drift apart.
 //
-// This is the detail for ONE whole-corridor package (WIREFRAMES.md Known
-// Deviations #1 - the wireframe's per-section override sheet is retired). The
-// sizes come from lib/downloadDetail.ts's real measured figures and are
-// rendered through lib/formatBytes.ts rather than typed as copy.
+// Options-driven since #276, because there are two sheets with two different
+// level sets now: the USGS raster's Light/Standard/Fine tiers and the hiking
+// sheet's Standard/Fine cuts. The options carry their real measured sizes -
+// rendered through lib/formatBytes.ts rather than typed as copy - and the
+// builders below are the only places each sheet's options are assembled, so
+// a size shown anywhere is the same size shown everywhere.
 //
-// ALL THREE LEVELS, ALWAYS - GREYED WHERE THEY ARE NOT ON OFFER.
+// EVERY LEVEL, ALWAYS - GREYED WHERE IT IS NOT ON OFFER (#298).
 //
-// A sheet the pipeline publishes at one size used to render no picker at all
-// (#298). Under a tab that says "Hiking sheet", an absent control answers
-// nothing: a hiker comparing it against the USGS sheet's three sizes cannot
-// tell whether this map has no smaller version or whether the app forgot to
-// ask. The levels are drawn either way, disabled where there is nothing
-// behind them, and the note says what the one size is.
+// Two different level sets meant two differently-shaped pickers, and once
+// the sheets sit under tabs (screens/Tabs.tsx) that difference is what a
+// hiker actually sees when they switch: three rows become two, and the row
+// that vanished is the cheapest one. A missing row cannot say whether this
+// map has no Light version or whether the app forgot to ask. So the ladder
+// is the same under every tab and a level a sheet does not have renders
+// disabled, saying so.
 //
 // Disabled radios are deliberately still radios. A greyed row that is a
 // `<span>` looks the same and reads as nothing at all; an input with
 // `disabled` is announced as an unavailable option, which is the fact.
+//
+// The same greying carries a second, unrelated case: levels that exist but
+// cannot be chosen right now, because bytes are already on the phone or on
+// their way. `locked` is that one, and it comes with a note saying what
+// would have to happen instead - see DownloadCard.
 
-import {
-  TIERED_DETAIL_OPTIONS,
-  type DetailLevel,
-  type DetailOption,
-} from '../lib/downloadDetail'
+import { DOWNLOAD_DETAIL_LEVELS, type DetailLevel } from '../lib/downloadDetail'
+import { HIKING_DETAIL_LEVELS } from '../lib/hikingDetail'
+import { hikingSheetSizeBytes } from '../lib/packages'
 import { formatBytes } from '../lib/formatBytes'
 
-const LEVEL_LABELS: Record<DetailLevel, string> = {
-  light: 'Light',
-  standard: 'Standard',
-  fine: 'Fine',
+export interface DetailOption {
+  id: string
+  label: string
+  /** What this download costs at this level, or null where it is not
+   *  published at it - a row that renders greyed rather than not at all. */
+  sizeBytes: number | null
+  recommended: boolean
+}
+
+/**
+ * The rungs every picker shows, cheapest first.
+ *
+ * One ladder for both sheets, so switching tabs never reshuffles the rows.
+ * It is the raster's own three because that is the widest set anything
+ * offers; a sheet with fewer fills the gaps with nulls.
+ */
+const LEVEL_LADDER: ReadonlyArray<{ id: DetailLevel; label: string }> = [
+  { id: 'light', label: 'Light' },
+  { id: 'standard', label: 'Standard' },
+  { id: 'fine', label: 'Fine' },
+]
+
+/** The USGS raster's tiers, sizes from downloadDetail.ts. Published at all
+ *  three, so nothing here is greyed. */
+export function rasterDetailOptions(): DetailOption[] {
+  return LEVEL_LADDER.map(({ id, label }) => {
+    const detail = DOWNLOAD_DETAIL_LEVELS.find((level) => level.level === id)
+    return {
+      id,
+      label,
+      sizeBytes: detail?.sizeBytes ?? null,
+      recommended: detail?.recommended ?? false,
+    }
+  })
+}
+
+/**
+ * The hiking sheet's levels (#276). Each option's size is the WHOLE sheet at
+ * that level - the basemap cut plus the DEM - because that is the number a
+ * hiker weighs against their storage, not one archive's share of it.
+ *
+ * Light comes back with a null size: the pipeline cuts the basemap at z13
+ * and z14 and nothing below (lib/hikingDetail.ts), so there is no lighter
+ * hiking sheet to offer. It is still drawn, greyed, rather than left out -
+ * see the header.
+ */
+export function hikingDetailOptions(): DetailOption[] {
+  return LEVEL_LADDER.map(({ id, label }) => {
+    const detail = HIKING_DETAIL_LEVELS.find((level) => level.level === id)
+    return {
+      id,
+      label,
+      sizeBytes: detail === undefined ? null : hikingSheetSizeBytes(detail.level),
+      recommended: detail?.recommended ?? false,
+    }
+  })
+}
+
+/**
+ * The ladder with nothing behind any rung - what a sheet gets before anyone
+ * has wired it a level set.
+ *
+ * A sheet with no dial used to render no picker, which under tabs is the
+ * ambiguity this change exists to remove. Three greyed rows say "no levels
+ * published for this map" out loud, and a new sheet that reaches a screen
+ * before its options do says something true rather than nothing.
+ */
+export function noDetailOptions(): DetailOption[] {
+  return LEVEL_LADDER.map(({ id, label }) => ({
+    id,
+    label,
+    sizeBytes: null,
+    recommended: false,
+  }))
 }
 
 export interface DetailPickerProps {
-  value: DetailLevel
-  onChange: (level: DetailLevel) => void
-  /** Each level with what it costs here, or null where it is not published. */
-  options?: readonly DetailOption[]
-  /**
-   * What the whole download costs when there is no level to choose - stated
-   * in place of the choice, so a sheet without tiers still says its size.
-   * Ignored where any level is on offer, since the levels state their own.
-   */
-  singleSizeBytes?: number | null
-  /** Every level greyed because no choice can be taken right now (a download
-   *  is under way, or the map is already here), with `lockedNote` saying so. */
+  options: readonly DetailOption[]
+  value: string
+  onChange: (id: string) => void
+  /** Every level greyed because no choice can be taken here at all - bytes
+   *  already on the phone or on their way, or a screen that is showing this
+   *  sheet rather than configuring it. `lockedNote` says which. */
   locked?: boolean
   lockedNote?: string
-  /** Distinguishes the radio group when two pickers share a page. */
+  /** Distinguishes the radio group when two pickers share a page - and two
+   *  do, now that both sheets' cards carry one. */
   name?: string
 }
 
 export function DetailPicker({
+  options,
   value,
   onChange,
-  options = TIERED_DETAIL_OPTIONS,
-  singleSizeBytes = null,
   locked = false,
   lockedNote,
   name = 'map-detail',
 }: DetailPickerProps) {
-  const anyOffered = options.some((option) => option.sizeBytes !== null)
-
-  const note = !anyOffered
-    ? singleSizeBytes === null
-      ? 'This map is published at one size, so there is no detail to choose.'
-      : `This map is published at one size — ${formatBytes(singleSizeBytes)} — so there is no detail to choose.`
-    : locked
-      ? lockedNote
-      : undefined
-
   return (
     <fieldset className="detail-picker">
       <legend className="detail-picker__legend">Map detail</legend>
@@ -80,22 +140,22 @@ export function DetailPicker({
 
         return (
           <label
-            key={option.level}
+            key={option.id}
             className="detail-picker__option"
             data-disabled={disabled}
           >
             <input
               type="radio"
               name={name}
-              value={option.level}
+              value={option.id}
               // Never pre-selected where the level does not exist: a checked
-              // "Standard" on a sheet that has no tiers would state a size
+              // "Light" on a sheet that has no Light cut would state a size
               // this download is not.
-              checked={offered && value === option.level}
+              checked={offered && value === option.id}
               disabled={disabled}
-              onChange={() => onChange(option.level)}
+              onChange={() => onChange(option.id)}
             />
-            <span className="detail-picker__name">{LEVEL_LABELS[option.level]}</span>
+            <span className="detail-picker__name">{option.label}</span>
             <span className="detail-picker__size">
               {option.sizeBytes === null ? 'Not offered' : formatBytes(option.sizeBytes)}
             </span>
@@ -106,7 +166,9 @@ export function DetailPicker({
         )
       })}
 
-      {note !== undefined && <p className="detail-picker__note">{note}</p>}
+      {locked && lockedNote !== undefined && (
+        <p className="detail-picker__note">{lockedNote}</p>
+      )}
     </fieldset>
   )
 }

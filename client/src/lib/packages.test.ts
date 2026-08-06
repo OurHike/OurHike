@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   BACKGROUND_SHEETS,
+  hikingSheetSizeBytes,
   BASEMAP_PACKAGE,
   CORRIDOR_BACKGROUND_PACKAGE,
   DEM_PACKAGE,
@@ -8,10 +9,9 @@ import {
   MAP_PACKAGES,
   offeredPackages,
   offeredSheets,
+  packageArtifactKey,
   packageDownloadUrl,
   packageSizeBytes,
-  sheetDetailOptions,
-  sheetIsTiered,
   sheetSizeBytes,
   USGS_SHEET,
   type BackgroundSheet,
@@ -19,6 +19,7 @@ import {
 } from './packages'
 import { archiveUrl, dataUrl } from './config'
 import { getDownloadDetail } from './downloadDetail'
+import { getHikingDetail } from './hikingDetail'
 import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
 
 // The catalog is where a package's identity lives, so what these cover is
@@ -153,7 +154,7 @@ describe('offering only what is actually published', () => {
     // it could get wrong.
     for (const sheet of offeredSheets()) {
       for (const pkg of offeredPackages(sheet)) {
-        expect(packageSizeBytes(pkg, 'standard')).toBeGreaterThan(0)
+        expect(packageSizeBytes(pkg, 'standard', 'fine')).toBeGreaterThan(0)
       }
     }
   })
@@ -161,22 +162,49 @@ describe('offering only what is actually published', () => {
 
 describe('where a package’s bytes come from', () => {
   it('follows the detail level for a package published in tiers', () => {
-    expect(packageDownloadUrl(CORRIDOR_BACKGROUND_PACKAGE, 'light')).toBe(
+    expect(packageDownloadUrl(CORRIDOR_BACKGROUND_PACKAGE, 'light', 'standard')).toBe(
       archiveUrl('light'),
     )
-    expect(packageDownloadUrl(CORRIDOR_BACKGROUND_PACKAGE, 'fine')).toBe(
+    expect(packageDownloadUrl(CORRIDOR_BACKGROUND_PACKAGE, 'fine', 'standard')).toBe(
       archiveUrl('fine'),
     )
-    expect(packageDownloadUrl(CORRIDOR_BACKGROUND_PACKAGE, 'light')).not.toBe(
-      packageDownloadUrl(CORRIDOR_BACKGROUND_PACKAGE, 'fine'),
+    expect(packageDownloadUrl(CORRIDOR_BACKGROUND_PACKAGE, 'light', 'standard')).not.toBe(
+      packageDownloadUrl(CORRIDOR_BACKGROUND_PACKAGE, 'fine', 'standard'),
     )
   })
 
+  it('follows the hiking level for the leveled basemap package (#276)', () => {
+    // The raster detail must not move this package, and the hiking level
+    // must - the two sheets' dials are separate.
+    const standardUrl = packageDownloadUrl(
+      BASEMAP_PACKAGE as OfferedPackage,
+      'light',
+      'standard',
+    )
+    const fineUrl = packageDownloadUrl(BASEMAP_PACKAGE as OfferedPackage, 'fine', 'fine')
+
+    expect(standardUrl).toBe(dataUrl(getHikingDetail('standard').artifact))
+    expect(fineUrl).toBe(dataUrl(getHikingDetail('fine').artifact))
+    expect(standardUrl).not.toBe(fineUrl)
+    expect(packageDownloadUrl(BASEMAP_PACKAGE as OfferedPackage, 'light', 'fine')).toBe(
+      fineUrl,
+    )
+  })
+
+  it('names the artifact latest.json publishes for each hiking level', () => {
+    expect(
+      packageArtifactKey(BASEMAP_PACKAGE as OfferedPackage, 'standard', 'standard'),
+    ).toBe('at_basemap_package_z13.pmtiles')
+    expect(
+      packageArtifactKey(BASEMAP_PACKAGE as OfferedPackage, 'standard', 'fine'),
+    ).toBe('at_basemap_package.pmtiles')
+  })
+
   it('is one artifact, at any detail level, for a package with one size', () => {
-    expect(packageDownloadUrl(PUBLISHED_ELSEWHERE, 'light')).toBe(
+    expect(packageDownloadUrl(PUBLISHED_ELSEWHERE, 'light', 'standard')).toBe(
       dataUrl('example.pmtiles'),
     )
-    expect(packageDownloadUrl(PUBLISHED_ELSEWHERE, 'fine')).toBe(
+    expect(packageDownloadUrl(PUBLISHED_ELSEWHERE, 'fine', 'standard')).toBe(
       dataUrl('example.pmtiles'),
     )
   })
@@ -185,15 +213,35 @@ describe('where a package’s bytes come from', () => {
 describe('what a sheet will cost', () => {
   it('is the chosen tier’s measured size for the USGS sheet', () => {
     for (const level of ['light', 'standard', 'fine'] as const) {
-      expect(sheetSizeBytes(USGS_SHEET, level)).toBe(getDownloadDetail(level).sizeBytes)
-      expect(packageSizeBytes(CORRIDOR_BACKGROUND_PACKAGE, level)).toBe(
+      expect(sheetSizeBytes(USGS_SHEET, level, 'standard')).toBe(
+        getDownloadDetail(level).sizeBytes,
+      )
+      expect(packageSizeBytes(CORRIDOR_BACKGROUND_PACKAGE, level, 'standard')).toBe(
         getDownloadDetail(level).sizeBytes,
       )
     }
   })
 
   it('is the package’s own size where it has one', () => {
-    expect(packageSizeBytes(PUBLISHED_ELSEWHERE, 'standard')).toBe(12_345)
+    expect(packageSizeBytes(PUBLISHED_ELSEWHERE, 'standard', 'standard')).toBe(12_345)
+  })
+
+  it('follows the hiking level for the leveled basemap, exactly as published', () => {
+    for (const level of ['standard', 'fine'] as const) {
+      expect(packageSizeBytes(BASEMAP_PACKAGE as OfferedPackage, 'light', level)).toBe(
+        getHikingDetail(level).basemapSizeBytes,
+      )
+    }
+  })
+
+  it('composes the hiking sheet’s total per level (#276)', () => {
+    // What the sheet's picker shows: the level's basemap cut plus the DEM,
+    // which never changes across levels.
+    for (const level of ['standard', 'fine'] as const) {
+      expect(hikingSheetSizeBytes(level)).toBe(
+        getHikingDetail(level).basemapSizeBytes + 607_265_661,
+      )
+    }
   })
 
   it('sums every archive the sheet is made of', () => {
@@ -201,7 +249,7 @@ describe('what a sheet will cost', () => {
     // fit" has to be the whole sheet too.
     const sheet = sheetOf([CORRIDOR_BACKGROUND_PACKAGE, PUBLISHED_ELSEWHERE])
 
-    expect(sheetSizeBytes(sheet, 'standard')).toBe(
+    expect(sheetSizeBytes(sheet, 'standard', 'standard')).toBe(
       getDownloadDetail('standard').sizeBytes + 12_345,
     )
   })
@@ -209,49 +257,6 @@ describe('what a sheet will cost', () => {
   it('counts only what is offered, never an archive nobody can download', () => {
     const sheet = sheetOf([PUBLISHED_ELSEWHERE, UNPUBLISHED])
 
-    expect(sheetSizeBytes(sheet, 'standard')).toBe(12_345)
-  })
-})
-
-describe('the detail levels a sheet offers (#298)', () => {
-  it('gives the USGS sheet all three, at its own totals', () => {
-    expect(sheetDetailOptions(USGS_SHEET)).toEqual([
-      {
-        level: 'light',
-        sizeBytes: sheetSizeBytes(USGS_SHEET, 'light'),
-        recommended: false,
-      },
-      {
-        level: 'standard',
-        sizeBytes: sheetSizeBytes(USGS_SHEET, 'standard'),
-        recommended: true,
-      },
-      {
-        level: 'fine',
-        sizeBytes: sheetSizeBytes(USGS_SHEET, 'fine'),
-        recommended: false,
-      },
-    ])
-  })
-
-  it('answers all three for a sheet with none of them, with nothing behind any', () => {
-    // Nulls rather than an empty list: the screens draw the levels either
-    // way and grey out what is not published, so "this map has no smaller
-    // version" is stated where it is true instead of left to a missing
-    // control.
-    const options = sheetDetailOptions(HIKING_SHEET)
-
-    expect(options.map((option) => option.level)).toEqual(['light', 'standard', 'fine'])
-    expect(options.every((option) => option.sizeBytes === null)).toBe(true)
-    expect(sheetIsTiered(HIKING_SHEET)).toBe(false)
-  })
-
-  it('tiers a mixed sheet by exactly what the tiered archive changes', () => {
-    const sheet = sheetOf([CORRIDOR_BACKGROUND_PACKAGE, PUBLISHED_ELSEWHERE])
-    const [light, , fine] = sheetDetailOptions(sheet)
-
-    expect(sheetIsTiered(sheet)).toBe(true)
-    expect(light.sizeBytes).toBe(getDownloadDetail('light').sizeBytes + 12_345)
-    expect(fine.sizeBytes).toBe(getDownloadDetail('fine').sizeBytes + 12_345)
+    expect(sheetSizeBytes(sheet, 'standard', 'standard')).toBe(12_345)
   })
 })

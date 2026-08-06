@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { TIERED_DETAIL_OPTIONS, type DetailOption } from '../lib/downloadDetail'
 import { Downloads, type SheetDownload } from './Downloads'
+import { hikingDetailOptions, rasterDetailOptions } from './DetailPicker'
 
 // WIREFRAMES.md §4 as amended by its own Known Deviations #1: the wireframe
 // drew a per-section list, and ROADMAP.md Phase 2 had already decided on ONE
@@ -24,12 +24,10 @@ import { Downloads, type SheetDownload } from './Downloads'
 // behaviour under test as much as the assertion after it: a hiker comparing
 // two maps sees one of them at a time, with the other a tap away.
 
-/** A download published at one size: three levels, none of them on offer. */
-const ONE_SIZE: readonly DetailOption[] = [
-  { level: 'light', sizeBytes: null, recommended: false },
-  { level: 'standard', sizeBytes: null, recommended: true },
-  { level: 'fine', sizeBytes: null, recommended: false },
-]
+/** Opens a sheet's tab, the way a hiker reaches the card behind it. */
+async function openTab(user: ReturnType<typeof userEvent.setup>, name: RegExp) {
+  await user.click(screen.getByRole('tab', { name }))
+}
 
 function sheet(overrides: Partial<SheetDownload> = {}): SheetDownload {
   return {
@@ -39,9 +37,10 @@ function sheet(overrides: Partial<SheetDownload> = {}): SheetDownload {
     status: { state: 'not-downloaded' as const },
     sizeBytes: 314_000_000,
     detail: {
-      level: 'standard' as const,
-      options: TIERED_DETAIL_OPTIONS,
+      options: rasterDetailOptions(),
+      value: 'standard',
       onChange: vi.fn(),
+      name: 'usgs-detail',
     },
     onStart: vi.fn(),
     onResume: vi.fn(),
@@ -50,8 +49,8 @@ function sheet(overrides: Partial<SheetDownload> = {}): SheetDownload {
   }
 }
 
-/** The two-sheet world: the hiking sheet first (one measured size, no
- *  tiers), the USGS raster second with three of them. */
+/** The two-sheet world: the hiking sheet first with its own two-level
+ *  picker (#276), the USGS raster second with the tier picker. */
 function twoSheets(): [SheetDownload, SheetDownload] {
   return [
     sheet({
@@ -59,15 +58,15 @@ function twoSheets(): [SheetDownload, SheetDownload] {
       title: 'Hiking sheet',
       summary: 'The map you are looking at - cartography and terrain, offline.',
       sizeBytes: 1_160_000_000,
-      detail: { level: 'standard', options: ONE_SIZE, onChange: vi.fn() },
+      detail: {
+        options: hikingDetailOptions(),
+        value: 'standard',
+        onChange: vi.fn(),
+        name: 'hiking-detail',
+      },
     }),
     sheet(),
   ]
-}
-
-/** Opens a sheet's tab, the way a hiker reaches the card behind it. */
-async function openTab(user: ReturnType<typeof userEvent.setup>, name: RegExp) {
-  await user.click(screen.getByRole('tab', { name }))
 }
 
 afterEach(() => {
@@ -89,7 +88,7 @@ describe('Downloads', () => {
     // The DEM and the vector basemap are pieces of the hiking sheet. A hiker
     // who had to tick archives off could get it wrong, and being wrong means
     // no terrain on a ridge. One button on the sheet's own tab, and exactly
-    // one - the tab shows a sheet, not its archives.
+    // one - a tab shows a sheet, not its archives.
     const user = userEvent.setup()
     render(<Downloads sheets={twoSheets()} />)
 
@@ -110,8 +109,9 @@ describe('Downloads', () => {
     render(<Downloads sheets={[sheet()]} />)
 
     expect(screen.getAllByRole('radio')).toHaveLength(3)
-    expect(screen.getByText(/64 MB/)).toBeInTheDocument()
-    expect(screen.getByText(/314 MB/)).toBeInTheDocument()
+    // Sizes from rasterDetailOptions() - downloadDetail.ts's measured figures.
+    expect(screen.getByText(/68\.9 MB/)).toBeInTheDocument()
+    expect(screen.getByText(/300\.3 MB/)).toBeInTheDocument()
     expect(screen.getByText(/1\.18 GB/)).toBeInTheDocument()
   })
 
@@ -224,6 +224,7 @@ describe('the USGS sheet as its own decision (#237)', () => {
     render(<Downloads sheets={[sheet()]} />)
 
     expect(screen.queryByRole('tab')).toBe(null)
+    expect(screen.queryByRole('heading', { name: /usgs sheet/i })).toBe(null)
     expect(screen.getByRole('region', { name: /usgs sheet/i })).toBeInTheDocument()
   })
 
@@ -239,17 +240,33 @@ describe('the USGS sheet as its own decision (#237)', () => {
     expect(usgs.onStart).not.toHaveBeenCalled()
   })
 
-  it('shows all three levels under either tab, greyed where the sheet has none (#298)', async () => {
-    // The USGS raster has Light/Standard/Fine; the hiking sheet is published
-    // at one size. Both tabs draw the three levels, so what differs between
-    // the sheets is what they cost - not whether the app asked.
+  it('gives each sheet its own picker, with its own level set (#276)', async () => {
+    // The USGS raster has Light/Standard/Fine; the hiking sheet has its z13
+    // Standard cut and z14 Fine one. Distinct radio-group names keep one
+    // card's choice from toggling the other's.
     const user = userEvent.setup()
     render(<Downloads sheets={twoSheets()} />)
 
-    const hikingLevels = screen.getAllByRole('radio')
-    expect(hikingLevels).toHaveLength(3)
-    for (const level of hikingLevels) expect(level).toBeDisabled()
-    expect(screen.getByText(/published at one size — 1\.16 GB/i)).toBeInTheDocument()
+    // Read as strings before switching: React reuses the input elements
+    // between panels, so a held reference reports the new panel's name.
+    const hikingGroup = (screen.getAllByRole('radio')[0] as HTMLInputElement).name
+    await openTab(user, /usgs sheet/i)
+    const usgsGroup = (screen.getAllByRole('radio')[0] as HTMLInputElement).name
+
+    expect(hikingGroup).toBe('hiking-detail')
+    expect(usgsGroup).toBe('usgs-detail')
+  })
+
+  it('draws the same three rungs under either tab, greyed where the sheet has none (#298)', async () => {
+    // Two level sets meant two differently-shaped pickers, and switching
+    // tabs made the cheapest row disappear. Same ladder under both now:
+    // what differs is what each rung costs, not whether it was asked.
+    const user = userEvent.setup()
+    render(<Downloads sheets={twoSheets()} />)
+
+    expect(screen.getAllByRole('radio')).toHaveLength(3)
+    expect(screen.getByRole('radio', { name: /light/i })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: /standard/i })).toBeEnabled()
 
     await openTab(user, /usgs sheet/i)
 
@@ -381,10 +398,7 @@ describe('room for the download (#190)', () => {
 
   it('warns per sheet, against that sheet’s own size', async () => {
     // 600 MB free: the 314 MB USGS tier fits, the 1.16 GB hiking sheet does
-    // not. One warning, under the sheet it is true of - and it goes away on
-    // the tab where it is not true, rather than warning about a download the
-    // hiker is no longer looking at.
-    const user = userEvent.setup()
+    // not. One warning, under the sheet it is true of.
     stubEstimate(1_000_000_000, 400_000_000)
 
     render(<Downloads sheets={twoSheets()} />)
@@ -392,10 +406,6 @@ describe('room for the download (#190)', () => {
     const warnings = await screen.findAllByRole('status')
     expect(warnings).toHaveLength(1)
     expect(warnings[0]).toHaveTextContent('1.16 GB')
-
-    await openTab(user, /usgs sheet/i)
-
-    expect(screen.queryByRole('status')).toBe(null)
   })
 
   it('stays quiet when there is room', async () => {

@@ -21,19 +21,18 @@
 //     was never downloaded (#190)
 //
 // The detail picker is part of the card in every state, which is a change
-// from #192's card and the reason is the tabs above it (#298): a control that
-// comes and goes as a download progresses makes each tab a different shape,
-// and a hiker comparing two maps is then comparing two layouts. What varies
-// is whether it can be USED. Once bytes are on the phone or moving towards
-// it, changing detail means re-downloading, so the levels grey out and the
-// note says what would have to happen instead - which says more than an
-// absent control ever did.
+// from #192's card and the reason is the tabs above it (#298): a control
+// that comes and goes as a download progresses makes each tab a different
+// shape, and a hiker comparing two maps is then comparing two layouts. What
+// varies is whether it can be USED. Once bytes are on the phone or moving
+// towards it, changing detail means re-downloading, so the levels grey out
+// and the note says what would have to happen instead - which says more than
+// an absent control ever did.
 
 import { facingFullDownload } from '../lib/backgroundStatus'
 import { formatBytes, formatBytesLive } from '../lib/formatBytes'
-import type { DetailLevel, DetailOption } from '../lib/downloadDetail'
 import type { PersistenceState } from '../lib/storageHealth'
-import { DetailPicker } from './DetailPicker'
+import { DetailPicker, type DetailOption } from './DetailPicker'
 
 export type DownloadStatus =
   | { state: 'not-downloaded' }
@@ -60,24 +59,23 @@ export type DownloadStatus =
 
 export interface DownloadCardProps {
   /** What this download is called - the card's own label, so its buttons are
-   *  reachable by the thing they belong to. Never rendered as a heading: with
-   *  tabs the tab names the sheet, and with one sheet the surrounding copy
-   *  has (screens/Downloads.tsx). */
+   *  reachable by the thing they belong to. Never rendered as a heading:
+   *  with tabs the tab names the sheet, and with one sheet the surrounding
+   *  copy has (screens/Downloads.tsx). */
   title: string
   status: DownloadStatus
-  /** What the next tap would fetch, at the chosen level. Stated by the picker
-   *  where there are levels, and by its note where there is one size. */
-  sizeBytes: number
   /** This download's own failure, in its own card. A shared notice could
    *  only ever say "a download failed" without saying which one. */
   error?: string | null
-  /** The chosen level, every level this download is published at, and how to
-   *  report a change. Levels it is not published at come through as null
-   *  sizes and render greyed - see DetailPicker. */
+  /** This download's levels, its chosen one, and how to report a change.
+   *  Every level the app knows comes through, with a null size where this
+   *  download has none of it, so the picker is the same shape under every
+   *  tab (DetailPicker). `name` keeps the two cards' radio groups apart. */
   detail: {
-    level: DetailLevel
     options: readonly DetailOption[]
-    onChange: (level: DetailLevel) => void
+    value: string
+    onChange: (id: string) => void
+    name?: string
   }
   /** What asking for durable storage came to - null while unanswered. Drives
    *  wording only: best-effort storage is stated, never silently assumed
@@ -89,14 +87,6 @@ export interface DownloadCardProps {
   onDelete: () => void
 }
 
-function percent(received: number, total: number): number {
-  return total === 0 ? 0 : Math.round((received / total) * 100)
-}
-
-function formatDay(date: Date): string {
-  return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
-}
-
 /** Why the levels are greyed while bytes are here or on their way. Said in
  *  terms of what would have to happen to change it, because "you cannot" on
  *  its own leaves someone hunting for a setting that does not exist. */
@@ -106,10 +96,17 @@ function lockedNote(status: DownloadStatus): string {
     : 'A download is under way. Its detail is fixed until it finishes.'
 }
 
+function percent(received: number, total: number): number {
+  return total === 0 ? 0 : Math.round((received / total) * 100)
+}
+
+function formatDay(date: Date): string {
+  return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+}
+
 export function DownloadCard({
   title,
   status,
-  sizeBytes,
   error = null,
   detail,
   persistence = null,
@@ -119,10 +116,10 @@ export function DownloadCard({
 }: DownloadCardProps) {
   const picker = (
     <DetailPicker
-      value={detail.level}
-      onChange={detail.onChange}
       options={detail.options}
-      singleSizeBytes={sizeBytes}
+      value={detail.value}
+      onChange={detail.onChange}
+      name={detail.name}
       locked={!facingFullDownload(status)}
       lockedNote={lockedNote(status)}
     />

@@ -61,42 +61,24 @@ describe('Onboarding', () => {
     expect(screen.getByText(/fund/i)).toHaveTextContent(/ATC|club/i)
   })
 
-  it('offers all three download sizes on the map-size step, with the real figures', async () => {
-    const user = userEvent.setup()
-    render(<Onboarding {...PROPS} />)
-    await advance(user, 1)
-    await user.click(screen.getByRole('tab', { name: /usgs sheet/i }))
-
-    expect(screen.getByText(/64 MB/)).toBeInTheDocument()
-    expect(screen.getByText(/314 MB/)).toBeInTheDocument()
-    expect(screen.getByText(/1\.18 GB/)).toBeInTheDocument()
-  })
-
-  it('marks Standard as the recommended size', async () => {
-    const user = userEvent.setup()
-    render(<Onboarding {...PROPS} />)
-    await advance(user, 1)
-    await user.click(screen.getByRole('tab', { name: /usgs sheet/i }))
-
-    expect(screen.getByRole('radio', { name: /standard/i })).toBeChecked()
-  })
-
-  it('asks the map-size question in the download window’s shape (#298)', async () => {
-    // First run ends by opening the download window, so these are two
-    // consecutive views of one decision. They used to disagree about what
-    // the decision was: one detail level here, a sheet per tab there.
+  it('offers the hiking sheet\u2019s two levels on the map-size step, with the real figures', async () => {
+    // The download decision shown is the one a hiker will actually meet in
+    // the Downloads window (#277): the hiking sheet's Standard/Fine cuts at
+    // their whole-sheet sizes, not the optional USGS raster's tiers.
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
     await advance(user, 1)
 
-    expect(screen.getByRole('tab', { name: /hiking sheet/i })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /usgs sheet/i })).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /standard/i })).toBeEnabled()
+    expect(screen.getByRole('radio', { name: /fine/i })).toBeEnabled()
+    expect(screen.getByText('789.6 MB')).toBeInTheDocument()
+    expect(screen.getByText('1.14 GB')).toBeInTheDocument()
   })
 
-  it('opens on the background everyone gets, and says what it costs', async () => {
-    // The hiking sheet is published at one size, so its three levels are
-    // greyed - and the size a first run is actually committing to is stated
-    // rather than left to the window on the next screen.
+  it('asks the map-size question in the download window\u2019s shape (#298)', async () => {
+    // First run ends by opening that window, so the two are consecutive
+    // views of one decision. They looked like two: a flat list here, a sheet
+    // per tab there.
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
     await advance(user, 1)
@@ -105,8 +87,60 @@ describe('Onboarding', () => {
       'aria-selected',
       'true',
     )
-    for (const level of screen.getAllByRole('radio')) expect(level).toBeDisabled()
-    expect(screen.getByText(/published at one size — 1\.14 GB/i)).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /usgs sheet/i })).toBeInTheDocument()
+  })
+
+  it('greys the hiking sheet\u2019s missing Light rung rather than dropping it (#298)', async () => {
+    // The basemap is cut at z13 and z14 and nothing below. Under a tab
+    // beside the raster's three, a two-row picker cannot say whether this
+    // map has no Light version or whether the app forgot to ask.
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} />)
+    await advance(user, 1)
+
+    expect(screen.getAllByRole('radio')).toHaveLength(3)
+    expect(screen.getByRole('radio', { name: /light/i })).toBeDisabled()
+  })
+
+  it('names and prices the USGS sheet without configuring it here (#277)', async () => {
+    // #277 took the raster's tiers out of first run on purpose. The tab
+    // shows what the optional map would cost and points at Downloads; every
+    // level under it is greyed, so nothing about it is chosen in this flow.
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} />)
+    await advance(user, 1)
+    await user.click(screen.getByRole('tab', { name: /usgs sheet/i }))
+
+    for (const level of screen.getAllByRole('radio')) {
+      expect(level).toBeDisabled()
+      expect(level).not.toBeChecked()
+    }
+    expect(screen.getByText(/chosen in downloads/i)).toBeInTheDocument()
+  })
+
+  it('finishes with the hiking level even after a look at the USGS tab', async () => {
+    // Switching tabs is looking, not choosing: the USGS tab writes nothing,
+    // so what first run reports is still the hiking sheet's level.
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} />)
+    await advance(user, 1)
+    await user.click(screen.getByRole('radio', { name: /fine/i }))
+    await user.click(screen.getByRole('tab', { name: /usgs sheet/i }))
+    await user.click(screen.getByRole('tab', { name: /hiking sheet/i }))
+    await advance(user, 1)
+    await user.click(screen.getByRole('button', { name: /allow/i }))
+
+    expect(PROPS.onComplete).toHaveBeenCalledWith(
+      expect.objectContaining({ hikingDetailLevel: 'fine' }),
+    )
+  })
+
+  it('marks Standard as the recommended size', async () => {
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} />)
+    await advance(user, 1)
+
+    expect(screen.getByRole('radio', { name: /standard/i })).toBeChecked()
   })
 
   it('never offers to take single sections later - per-section downloads are retired', async () => {
@@ -177,18 +211,17 @@ describe('Onboarding', () => {
     expect(screen.getByText(`2 of ${ONBOARDING_STEPS.length}`)).toBeInTheDocument()
   })
 
-  it('finishes with the chosen detail level', async () => {
+  it('finishes with the chosen level', async () => {
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
 
     await advance(user, 1)
-    await user.click(screen.getByRole('tab', { name: /usgs sheet/i }))
-    await user.click(screen.getByRole('radio', { name: /light/i }))
+    await user.click(screen.getByRole('radio', { name: /fine/i }))
     await advance(user, 1)
     await user.click(screen.getByRole('button', { name: /allow/i }))
 
     expect(PROPS.onComplete).toHaveBeenCalledWith(
-      expect.objectContaining({ detailLevel: 'light' }),
+      expect.objectContaining({ hikingDetailLevel: 'fine' }),
     )
   })
 
@@ -214,7 +247,7 @@ describe('Onboarding', () => {
 
     // Skipping must not leave the app with no map to download.
     expect(PROPS.onComplete).toHaveBeenCalledWith(
-      expect.objectContaining({ detailLevel: 'standard' }),
+      expect.objectContaining({ hikingDetailLevel: 'standard' }),
     )
   })
 })

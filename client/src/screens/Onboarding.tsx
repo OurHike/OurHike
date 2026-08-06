@@ -12,41 +12,42 @@
 // The step counter comes from lib/onboardingSteps.ts, so a skipped step still
 // counts and the total cannot grow mid-flow.
 //
-// THE MAP-SIZE STEP IS THE DOWNLOAD WINDOW'S QUESTION, ASKED IN THE DOWNLOAD
+// THE MAP-SIZE STEP IS THE DOWNLOAD WINDOW'S QUESTION, IN THE DOWNLOAD
 // WINDOW'S SHAPE (#298).
 //
 // First run ends by opening the download window (App.tsx), so this step and
-// that window are two consecutive views of the same decision - and they used
-// to disagree about what the decision was. This asked for one detail level,
-// full stop; the window offers a sheet per tab, each with its own sizes, and
-// the level being chosen here only ever applied to one of them. Someone
-// picking "Light 64 MB" on this screen and meeting a 1.14 GB hiking sheet on
-// the next has been misled by us, not by the map.
+// that window are two consecutive views of one decision - and they looked
+// like two different decisions. Here, one flat list of levels; there, a
+// sheet per tab, each with its own sizes. Same tabs now, same level ladder,
+// same greying, from the same builders (screens/DetailPicker.tsx).
 //
-// So the same components render both: the same tabs (screens/Tabs.tsx), the
-// same levels, the same greyed-out where a sheet has none
-// (screens/DetailPicker.tsx), from the same catalog (lib/packages.ts). What
-// this step does NOT have is the download itself - no progress, no buttons,
-// nothing already on the phone to delete. That is the window's, one screen
-// later, and duplicating it here would mean starting a download inside a flow
+// WHAT THE USGS TAB DOES NOT DO IS CONFIGURE ANYTHING.
+//
+// #277 took the raster's tiers out of first run deliberately: offering the
+// levels of a map the newcomer is not downloading, in place of the one they
+// are, sized the wrong decision. That still holds, and the tab does not undo
+// it - the USGS sheet is named and priced here, and its levels render
+// greyed, pointing at Downloads. Showing what the optional map costs is not
+// the same as asking a newcomer to configure it.
+//
+// What this step does NOT have at all is the download itself - no progress,
+// no buttons, nothing on the phone to delete. That is the window's, one
+// screen later; duplicating it would mean starting a download inside a flow
 // whose last step has not been asked yet.
 
 import { useState } from 'react'
 import { Logo } from '../design-system/components'
 import { ONBOARDING_STEPS, buildOnboardingProgress } from '../lib/onboardingSteps'
-import type { DetailLevel } from '../lib/downloadDetail'
-import {
-  offeredSheets,
-  sheetDetailOptions,
-  sheetSizeBytes,
-  type BackgroundSheet,
-} from '../lib/packages'
-import { DetailPicker } from './DetailPicker'
+import type { HikingDetailLevel } from '../lib/userPreferences'
+import { HIKING_SHEET, USGS_SHEET } from '../lib/packages'
+import { DetailPicker, hikingDetailOptions, rasterDetailOptions } from './DetailPicker'
 import { Tabs } from './Tabs'
 import './onboarding.css'
 
 export interface OnboardingResult {
-  detailLevel: DetailLevel
+  /** The hiking sheet's level (#276/#277) - the download decision this flow
+   *  actually shows, so the preference written matches the choice made. */
+  hikingDetailLevel: HikingDetailLevel
   locationRequested: boolean
 }
 
@@ -54,20 +55,22 @@ export interface OnboardingProps {
   onComplete: (result: OnboardingResult) => void
 }
 
-/** The sheets on offer, read once - the catalog is a constant, not state. */
-const SHEETS = offeredSheets()
+/** The two sheets, in the download window's own order - the background
+ *  everyone gets first, the optional second map after it. Named from the
+ *  catalog so first run and the window cannot come to call them different
+ *  things (lib/packages.ts). */
+const SHEET_TABS = [
+  { id: HIKING_SHEET.id, label: HIKING_SHEET.title },
+  { id: USGS_SHEET.id, label: USGS_SHEET.title },
+]
 
 export function Onboarding({ onComplete }: OnboardingProps) {
   const [stepIndex, setStepIndex] = useState(0)
   // Standard is pre-selected, so skipping every step still leaves a usable
   // map to download rather than no choice at all.
-  const [detailLevel, setDetailLevel] = useState<DetailLevel>('standard')
-  // The default background's tab first, the same order the download window
-  // opens on (lib/packages.ts). Opening on the sheet with the sizes would put
-  // the optional gigabyte of government raster in front of the map everyone
-  // actually navigates by.
-  const [openSheetId, setOpenSheetId] = useState(SHEETS[0]?.id ?? '')
-  const openSheet = SHEETS.find((sheet) => sheet.id === openSheetId) ?? SHEETS[0]
+  const [hikingLevel, setHikingLevel] = useState<HikingDetailLevel>('standard')
+  // Opens on the sheet this step is actually sizing (#277).
+  const [openSheetId, setOpenSheetId] = useState(HIKING_SHEET.id)
 
   const step = ONBOARDING_STEPS[stepIndex]
   const progress = buildOnboardingProgress({
@@ -76,19 +79,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   })
 
   const finish = (locationRequested: boolean) =>
-    onComplete({ detailLevel, locationRequested })
-
-  /** One sheet's levels: its own sizes, or all three greyed with its one size
-   *  stated. The same picker the download window renders. */
-  const sheetPicker = (sheet: BackgroundSheet) => (
-    <DetailPicker
-      value={detailLevel}
-      onChange={setDetailLevel}
-      options={sheetDetailOptions(sheet)}
-      singleSizeBytes={sheetSizeBytes(sheet, detailLevel)}
-      name="onboarding-map-detail"
-    />
-  )
+    onComplete({ hikingDetailLevel: hikingLevel, locationRequested })
 
   const next = () => {
     if (stepIndex < ONBOARDING_STEPS.length - 1) setStepIndex(stepIndex + 1)
@@ -114,28 +105,48 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         </section>
       )}
 
-      {step.id === 'map-size' && openSheet !== undefined && (
+      {step.id === 'map-size' && (
         <section className="onboarding__step">
           <h1 className="onboarding__title">Map size</h1>
           <p>
-            The whole trail, in one download. Each background map has its own size &mdash;
-            pick the detail you want, and you can change this later.
+            The map you&rsquo;ll navigate by &mdash; the whole trail, in one download.
+            Pick how much detail you want; you can change this later.
           </p>
 
-          {SHEETS.length > 1 ? (
-            <Tabs
-              label="Background maps"
-              tabs={SHEETS.map((sheet) => ({ id: sheet.id, label: sheet.title }))}
-              activeId={openSheet.id}
-              onSelect={setOpenSheetId}
-              idPrefix="onboarding-sheet"
-            >
-              <p className="onboarding__sheet-summary">{openSheet.summary}</p>
-              {sheetPicker(openSheet)}
-            </Tabs>
-          ) : (
-            sheetPicker(openSheet)
-          )}
+          <Tabs
+            label="Background maps"
+            tabs={SHEET_TABS}
+            activeId={openSheetId}
+            onSelect={setOpenSheetId}
+            idPrefix="onboarding-sheet"
+          >
+            {openSheetId === HIKING_SHEET.id ? (
+              <>
+                <p className="onboarding__sheet-summary">{HIKING_SHEET.summary}</p>
+                <DetailPicker
+                  options={hikingDetailOptions()}
+                  value={hikingLevel}
+                  onChange={(level) => setHikingLevel(level as HikingDetailLevel)}
+                  name="onboarding-detail"
+                />
+              </>
+            ) : (
+              <>
+                <p className="onboarding__sheet-summary">{USGS_SHEET.summary}</p>
+                {/* Named and priced, not configured (#277). Locked rather
+                    than absent so the newcomer can see what the optional map
+                    would cost before deciding they want it at all. */}
+                <DetailPicker
+                  options={rasterDetailOptions()}
+                  value=""
+                  onChange={() => undefined}
+                  name="onboarding-usgs-detail"
+                  locked
+                  lockedNote="Chosen in Downloads, any time. This step is sizing the map you navigate by."
+                />
+              </>
+            )}
+          </Tabs>
         </section>
       )}
 

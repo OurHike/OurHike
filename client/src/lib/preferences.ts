@@ -12,6 +12,7 @@
 import {
   BACKGROUND_SOURCES,
   DEFAULT_PREFERENCES,
+  HIKING_DETAIL_LEVEL_VALUES,
   type UserPreferences,
 } from './userPreferences'
 import { get, set } from 'idb-keyval'
@@ -42,9 +43,21 @@ function knownBackground(stored: Partial<UserPreferences>): Partial<UserPreferen
   return rest
 }
 
+/** The same treatment for the hiking sheet's level (#276): a value this
+ *  build does not know would otherwise survive the merge, reach the level
+ *  lookup, and throw where a hiker can see it. Absent, it falls back to
+ *  Standard like a phone that never stored anything. */
+function knownHikingDetail(stored: Partial<UserPreferences>): Partial<UserPreferences> {
+  const value = stored.hiking_detail_level
+  if (value === undefined || HIKING_DETAIL_LEVEL_VALUES.includes(value)) return stored
+
+  const { hiking_detail_level: _dropped, ...rest } = stored
+  return rest
+}
+
 export async function loadPreferences(): Promise<UserPreferences> {
   const stored = (await get(PREFERENCES_KEY)) as Partial<UserPreferences> | undefined
-  return { ...DEFAULT_PREFERENCES, ...knownBackground(stored ?? {}) }
+  return { ...DEFAULT_PREFERENCES, ...knownHikingDetail(knownBackground(stored ?? {})) }
 }
 
 export async function savePreferences(

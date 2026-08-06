@@ -15,33 +15,10 @@ export interface DownloadDetail {
 }
 
 export const DOWNLOAD_DETAIL_LEVELS: DownloadDetail[] = [
-  { level: 'light', zoom: 11, sizeBytes: 64_000_000, recommended: false },
-  { level: 'standard', zoom: 12, sizeBytes: 314_000_000, recommended: true },
-  { level: 'fine', zoom: 13, sizeBytes: 1_180_000_000, recommended: false },
+  { level: 'light', zoom: 11, sizeBytes: 68_900_000, recommended: false },
+  { level: 'standard', zoom: 12, sizeBytes: 300_300_000, recommended: true },
+  { level: 'fine', zoom: 13, sizeBytes: 1_179_200_000, recommended: false },
 ]
-
-/**
- * One level as a picker shows it: what it costs for the thing being chosen,
- * or `null` where that thing is not published at this level.
- *
- * Nullable rather than absent, because the three levels are shown for every
- * download whether or not it has them (screens/DetailPicker.tsx). A sheet
- * published at one size renders Light, Standard and Fine greyed out and says
- * so - which answers "does this map come smaller?" where leaving the levels
- * out only answers it by silence.
- */
-export interface DetailOption {
-  level: DetailLevel
-  /** This download's size at this level, or null where it has no such level. */
-  sizeBytes: number | null
-  recommended: boolean
-}
-
-/** The levels of a download published at every one of them - the whole-
- *  corridor raster, and what a picker shows when nothing says otherwise. */
-export const TIERED_DETAIL_OPTIONS: readonly DetailOption[] = DOWNLOAD_DETAIL_LEVELS.map(
-  ({ level, sizeBytes, recommended }) => ({ level, sizeBytes, recommended }),
-)
 
 export function getDownloadDetail(level: DetailLevel): DownloadDetail {
   const found = DOWNLOAD_DETAIL_LEVELS.find((d) => d.level === level)

@@ -2,25 +2,21 @@
 
 Each test gets a clean-schema engine, plus a FastAPI TestClient wired to use
 that same engine via a dependency override. Nothing here talks to a real
-network. Which database engine that is follows DATABASE_URL (app.config.settings)
-exactly like the real app does, not something hardcoded here:
+network - a local Postgres is not the network, and is the only thing these
+fixtures connect to.
 
-- **Local default: DuckDB**, a fresh temp-file database per test (see the
-  docstring below for why a temp file, not `:memory:`).
-- **CI's Postgres job: real Postgres**, via `DATABASE_URL` pointed at the
-  `postgres:16` service container (see ../.github/workflows/backend-tests.yml).
-  That's a single shared database across the whole test run, so isolation
-  instead comes from dropping every table the test created before the next
-  test starts (see `_reset_postgres_schema` below).
+That database is Postgres everywhere: locally (via
+`backend/scripts/local-postgres.sh`) and in CI (a `postgres:16` service
+container, see ../.github/workflows/backend-tests.yml). The engine the suite
+runs against is the engine production runs on, so a passing run means
+something about Supabase's Postgres rather than about a local stand-in.
 
-This split matters: it's what makes "DuckDB locally, real Postgres in CI"
-(see backend/README.md) an actual correctness gate rather than CI quietly
-re-testing DuckDB under a different job name.
+It is one shared database across the whole test run rather than a fresh one
+per test, so isolation comes from dropping every table the test created
+before the next test starts (see `_reset_schema` below).
 """
 
 import os
-import uuid
-from pathlib import Path
 
 # app.config.Settings requires SUPABASE_JWT_SECRET/SUPABASE_URL/SUPABASE_ANON_KEY
 # (no default - see app/config.py) so a missing real credential fails loudly
@@ -34,6 +30,13 @@ os.environ.setdefault("SUPABASE_JWT_SECRET", "test-only-placeholder-secret")
 os.environ.setdefault("SUPABASE_URL", "https://test-only-placeholder.supabase.co")
 os.environ.setdefault("SUPABASE_ANON_KEY", "test-only-placeholder-anon-key")
 
+# The suite gets its own database, never the dev one app/config.py defaults
+# to: `_reset_schema` below drops every table it finds, and pointing that at a
+# database someone was working in would be a nasty way to find that out. Same
+# setdefault posture as above - CI exports DATABASE_URL for its service
+# container and that always wins.
+os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://ourhike:ourhike@localhost:5432/ourhike_test")
+
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import MetaData, create_engine  # noqa: E402
@@ -45,12 +48,12 @@ from app.db.session import get_db  # noqa: E402
 from app.main import app  # noqa: E402
 
 
-def _reset_postgres_schema(engine) -> None:
+def _reset_schema(engine) -> None:
     """Drop every table currently in the database.
 
-    Covers both app.db.base's Base.metadata (currently empty) and any
-    throwaway tables a test defined directly on its own declarative base
-    (see tests/test_db_session.py) - reflecting the live schema rather than
+    Covers both app.db.base's Base.metadata and any throwaway tables a test
+    defined directly on its own declarative base (see
+    tests/test_db_session.py) - reflecting the live schema rather than
     trusting a fixed metadata object catches both.
     """
     live_metadata = MetaData()
@@ -59,33 +62,30 @@ def _reset_postgres_schema(engine) -> None:
 
 
 @pytest.fixture()
-def db_engine(tmp_path: Path):
-    """A fresh, clean-schema engine per test, per DATABASE_URL.
+def db_engine():
+    """A clean-schema engine per test, against DATABASE_URL's Postgres.
 
-    DuckDB's SQLAlchemy dialect (duckdb-engine) supports a `:memory:` file
-    too, but each new connection to `duckdb:///:memory:` gets its *own*
-    separate in-memory database - there's no way to share one in-memory
-    database across the multiple connections a connection-pooled engine (and
-    FastAPI's request-scoped `get_db`) will open. A per-test temp file
-    sidesteps that entirely and is still fast/isolated: unique per test via
-    `tmp_path`, deleted with the rest of the test's temp directory afterward.
+    Built up and torn down around every test rather than shared, because the
+    database itself is shared: one local (or CI) Postgres serves the whole
+    run, so a test that left tables behind would be the next test's starting
+    state. The teardown drops what the setup created, in both directions of
+    that trade.
+
+    A connection failure here is almost always "no local Postgres running" -
+    `backend/scripts/local-postgres.sh` is the fix, and README.md's Setup
+    section says so.
     """
-    if settings.database_url.startswith("duckdb"):
-        db_path = tmp_path / f"test_{uuid.uuid4().hex}.duckdb"
-        engine = create_engine(f"duckdb:///{db_path}")
-        Base.metadata.create_all(engine)
-        try:
-            yield engine
-        finally:
-            engine.dispose()
-    else:
-        engine = create_engine(settings.database_url)
-        Base.metadata.create_all(engine)
-        try:
-            yield engine
-        finally:
-            _reset_postgres_schema(engine)
-            engine.dispose()
+    engine = create_engine(settings.database_url)
+    # Ahead of create_all rather than only afterward: a previous run that died
+    # mid-test (or a Ctrl-C) leaves tables behind, and create_all would then
+    # quietly reuse a schema this test never built.
+    _reset_schema(engine)
+    Base.metadata.create_all(engine)
+    try:
+        yield engine
+    finally:
+        _reset_schema(engine)
+        engine.dispose()
 
 
 @pytest.fixture()

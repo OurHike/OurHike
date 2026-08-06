@@ -95,6 +95,11 @@ BACKGROUND_ARCHIVES = {
 # joined by a sibling and abandoned.
 OFFLINE_SHEET_ARCHIVES = {
     "basemap": "at_basemap_package.pmtiles",
+    # The same corridor cut capped at z13 - the hiking sheet's Standard level
+    # (#276). Its own artifact rather than a truncation the client performs,
+    # because a download must be exactly the bytes its advertised size and
+    # published hash describe.
+    "basemap_z13": "at_basemap_package_z13.pmtiles",
     "dem": "dem.pmtiles",
 }
 

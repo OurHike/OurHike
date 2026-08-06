@@ -55,6 +55,8 @@ import type {
 } from '@maplibre/maplibre-gl-style-spec'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { whenStyleReady } from './styleReady'
+import { OPENFREEMAP_CREDIT, OSM_CREDIT } from './credits'
+import type { ResolvedTheme } from '../lib/theme'
 import {
   CONTOUR_ELEVATION_KEY,
   CONTOUR_LAYER,
@@ -111,8 +113,16 @@ export const BUNDLED_GLYPHS = `${import.meta.env.BASE_URL}glyphs/{fontstack}/{ra
 
 export const OSM_SOURCE_ID = 'osm'
 
-export const LIVE_TOPO_ATTRIBUTION =
-  'OpenFreeMap © OpenMapTiles · © OpenStreetMap contributors'
+/**
+ * What the vector source declares: OpenFreeMap's terms for the hosting and
+ * ODbL for the data underneath it, both of which this one source brings.
+ *
+ * Composed from credits.ts's atoms rather than spelled out, because the corner
+ * shows those atoms one per line and a second spelling of either would be a
+ * credit the deduping could not see - which is how "© OpenStreetMap
+ * contributors" came to be printed twice in the first place.
+ */
+export const LIVE_TOPO_ATTRIBUTION = `${OPENFREEMAP_CREDIT} · ${OSM_CREDIT}`
 
 /**
  * One font, varied by size, colour and halo rather than by weight.
@@ -163,7 +173,76 @@ export const TOPO_PALETTE = {
   boundary: '#9c8f78',
   label: '#4a4234',
   labelHalo: '#f7f3e9',
+  waterLabel: '#3d6b81',
+  /** Relief shading. Here rather than inline at the layer for the same reason
+   *  as everything else in this object: it is a colour, so it is a colour the
+   *  theme can change. */
+  hillshadeShadow: '#6b5f4a',
+  hillshadeHighlight: '#fffdf7',
+  hillshadeAccent: '#8a8271',
 } as const
+
+/** The shape both palettes share, so a key added to one has to be added to the
+ *  other rather than silently keeping the light value under the dark theme. */
+export type TopoPalette = Record<keyof typeof TOPO_PALETTE, string>
+
+/**
+ * The same sheet at night.
+ *
+ * Not the light palette inverted. An inverted topo sheet puts white contours
+ * and pale roads over dark ground, which is the wrong way round twice over:
+ * contours and roads are the quiet layers here (see above - everything is
+ * chosen to sit BEHIND the trail), and inversion makes them the loudest thing
+ * on the screen while turning the blaze colours, which are not inverted
+ * because they mean something, into the quietest.
+ *
+ * So it is re-drawn to the same brief instead. Ground goes to ink; woodland
+ * stays a slightly-greener overprint of it, a few percent lighter rather than
+ * a dark green block; contours keep their USGS brown at a lightness that reads
+ * on ink without shouting; and the only things allowed to be genuinely bright
+ * are the labels, because a place name you cannot read is a place name that is
+ * not there.
+ *
+ * Kept dark on purpose, and darker than a desktop dark theme would be. The
+ * reason this is in MVP at all is a phone out on a trail after sunset
+ * (features/UX_CUSTOMIZATION.md), where the screen is the brightest object for
+ * a mile and a "dark" map that settles at mid-grey still costs the night
+ * vision it was meant to protect.
+ */
+export const TOPO_PALETTE_DARK: TopoPalette = {
+  wood: '#1a2417',
+  scrub: '#1f2519',
+  wetland: '#182420',
+  rock: '#231f18',
+  park: '#1c2a19',
+  parkEdge: '#4e6b48',
+  water: '#152e3b',
+  waterEdge: '#2f6c88',
+  waterway: '#3f8caa',
+  contour: '#6a5539',
+  contourIndex: '#94764c',
+  contourLabel: '#c3a67a',
+  roadMajor: '#4c4535',
+  roadMajorEdge: '#2c2820',
+  roadMinor: '#3a352a',
+  track: '#6d6049',
+  path: '#7f7259',
+  boundary: '#6b6253',
+  label: '#dfd9c9',
+  labelHalo: '#100f0c',
+  waterLabel: '#8fc4da',
+  /* Relief inverts more honestly than ink does: a shadow on dark ground is
+     near-black, and a lit slope is a dim warm grey rather than paper. */
+  hillshadeShadow: '#04060a',
+  hillshadeHighlight: '#40392c',
+  hillshadeAccent: '#272319',
+}
+
+/** The sheet's palette for a theme. One function so nothing else has to know
+ *  that there are exactly two of them. */
+export function topoPalette(theme: ResolvedTheme): TopoPalette {
+  return theme === 'dark' ? TOPO_PALETTE_DARK : TOPO_PALETTE
+}
 
 export const LIVE_TOPO_LAYER_IDS = {
   wood: 'topo-wood',
@@ -188,6 +267,66 @@ export const LIVE_TOPO_LAYER_IDS = {
   waterLabel: 'topo-water-label',
   place: 'topo-place',
 } as const
+
+/**
+ * Every paint property on the sheet whose value is a colour, and which colour
+ * it is - in one table.
+ *
+ * It is read twice, which is the whole reason it is a table rather than
+ * literals at each layer. liveTopoLayers() builds the style out of it, and
+ * attachSheetTheme() replays it onto a LIVE map when the hiker changes theme.
+ * Written out in both places instead, the two would drift, and what drift
+ * looks like here is one layer that did not follow the theme - a road still
+ * drawn in paper-brown over an ink sheet, which reads as a rendering bug
+ * rather than as a missing line in a list.
+ *
+ * Colours only. Widths, dash patterns and opacities stay at their layers,
+ * because they do not change with the theme and hoisting them here would put
+ * half of each layer's paint in a different part of the file for no gain.
+ */
+export const SHEET_COLOURS: ReadonlyArray<
+  readonly [layer: string, property: string, colour: keyof TopoPalette]
+> = [
+  [LIVE_TOPO_LAYER_IDS.wood, 'fill-color', 'wood'],
+  [LIVE_TOPO_LAYER_IDS.scrub, 'fill-color', 'scrub'],
+  [LIVE_TOPO_LAYER_IDS.wetland, 'fill-color', 'wetland'],
+  [LIVE_TOPO_LAYER_IDS.rock, 'fill-color', 'rock'],
+  [LIVE_TOPO_LAYER_IDS.parkFill, 'fill-color', 'park'],
+  [LIVE_TOPO_LAYER_IDS.parkEdge, 'line-color', 'parkEdge'],
+  [LIVE_TOPO_LAYER_IDS.hillshade, 'hillshade-shadow-color', 'hillshadeShadow'],
+  [LIVE_TOPO_LAYER_IDS.hillshade, 'hillshade-highlight-color', 'hillshadeHighlight'],
+  [LIVE_TOPO_LAYER_IDS.hillshade, 'hillshade-accent-color', 'hillshadeAccent'],
+  [LIVE_TOPO_LAYER_IDS.water, 'fill-color', 'water'],
+  [LIVE_TOPO_LAYER_IDS.water, 'fill-outline-color', 'waterEdge'],
+  [LIVE_TOPO_LAYER_IDS.waterway, 'line-color', 'waterway'],
+  [LIVE_TOPO_LAYER_IDS.contour, 'line-color', 'contour'],
+  [LIVE_TOPO_LAYER_IDS.contourIndex, 'line-color', 'contourIndex'],
+  [LIVE_TOPO_LAYER_IDS.contourLabel, 'text-color', 'contourLabel'],
+  [LIVE_TOPO_LAYER_IDS.contourLabel, 'text-halo-color', 'labelHalo'],
+  [LIVE_TOPO_LAYER_IDS.roadMinor, 'line-color', 'roadMinor'],
+  [LIVE_TOPO_LAYER_IDS.roadMajorCasing, 'line-color', 'roadMajorEdge'],
+  [LIVE_TOPO_LAYER_IDS.roadMajor, 'line-color', 'roadMajor'],
+  [LIVE_TOPO_LAYER_IDS.track, 'line-color', 'track'],
+  [LIVE_TOPO_LAYER_IDS.path, 'line-color', 'path'],
+  [LIVE_TOPO_LAYER_IDS.boundary, 'line-color', 'boundary'],
+  [LIVE_TOPO_LAYER_IDS.peak, 'text-color', 'label'],
+  [LIVE_TOPO_LAYER_IDS.peak, 'text-halo-color', 'labelHalo'],
+  [LIVE_TOPO_LAYER_IDS.waterLabel, 'text-color', 'waterLabel'],
+  [LIVE_TOPO_LAYER_IDS.waterLabel, 'text-halo-color', 'labelHalo'],
+  [LIVE_TOPO_LAYER_IDS.place, 'text-color', 'label'],
+  [LIVE_TOPO_LAYER_IDS.place, 'text-halo-color', 'labelHalo'],
+]
+
+/** One layer's colour paint properties, resolved against a palette. Spread
+ *  into the layer's own `paint` alongside whatever is not a colour. */
+function sheetColours(layer: string, palette: TopoPalette): Record<string, string> {
+  return Object.fromEntries(
+    SHEET_COLOURS.filter(([id]) => id === layer).map(([, property, colour]) => [
+      property,
+      palette[colour],
+    ]),
+  )
+}
 
 /** Shorthand for the OpenMapTiles `class` attribute test, used a dozen times. */
 function isClass(...values: string[]): unknown[] {
@@ -307,6 +446,21 @@ export interface LiveTopoOptions {
    */
   terrain?: TerrainUrls
   units: ContourUnits
+  /**
+   * Which palette the sheet is drawn in - see TOPO_PALETTE_DARK.
+   *
+   * Optional and light by default so that every caller who does not care
+   * about the theme, tests included, keeps building the sheet it always
+   * built. Only the shell resolves a theme (lib/useTheme.ts), and only
+   * because it is the one place that knows the hiker's preference.
+   *
+   * The style is built with the right palette AND the map can be repainted in
+   * place afterwards (attachSheetTheme), which is not redundant: the first is
+   * so a cold start under the dark theme never paints a white frame, the
+   * second is so a hiker changing theme does not cost the WebGL context, its
+   * GPS watcher and every tile in flight.
+   */
+  theme?: ResolvedTheme
 }
 
 /**
@@ -436,7 +590,10 @@ export function liveTopoSources({
 export function liveTopoLayers({
   terrain,
   units,
+  theme = 'light',
 }: LiveTopoOptions): LayerSpecification[] {
+  const palette = topoPalette(theme)
+
   const layers: LayerSpecification[] = [
     {
       id: LIVE_TOPO_LAYER_IDS.wood,
@@ -444,7 +601,7 @@ export function liveTopoLayers({
       source: OSM_SOURCE_ID,
       'source-layer': 'landcover',
       filter: isClass('wood') as never,
-      paint: { 'fill-color': TOPO_PALETTE.wood },
+      paint: sheetColours(LIVE_TOPO_LAYER_IDS.wood, palette),
     },
     {
       id: LIVE_TOPO_LAYER_IDS.scrub,
@@ -452,7 +609,7 @@ export function liveTopoLayers({
       source: OSM_SOURCE_ID,
       'source-layer': 'landcover',
       filter: isClass('grass') as never,
-      paint: { 'fill-color': TOPO_PALETTE.scrub },
+      paint: sheetColours(LIVE_TOPO_LAYER_IDS.scrub, palette),
     },
     {
       id: LIVE_TOPO_LAYER_IDS.wetland,
@@ -460,7 +617,7 @@ export function liveTopoLayers({
       source: OSM_SOURCE_ID,
       'source-layer': 'landcover',
       filter: isClass('wetland') as never,
-      paint: { 'fill-color': TOPO_PALETTE.wetland },
+      paint: sheetColours(LIVE_TOPO_LAYER_IDS.wetland, palette),
     },
     {
       id: LIVE_TOPO_LAYER_IDS.rock,
@@ -468,7 +625,7 @@ export function liveTopoLayers({
       source: OSM_SOURCE_ID,
       'source-layer': 'landcover',
       filter: isClass('rock', 'sand') as never,
-      paint: { 'fill-color': TOPO_PALETTE.rock },
+      paint: sheetColours(LIVE_TOPO_LAYER_IDS.rock, palette),
     },
     // Protected land is context a hiker plans with (where camping is allowed,
     // whose rules apply), so it gets an edge as well as a tint - a tint alone
@@ -478,7 +635,10 @@ export function liveTopoLayers({
       type: 'fill',
       source: OSM_SOURCE_ID,
       'source-layer': 'park',
-      paint: { 'fill-color': TOPO_PALETTE.park, 'fill-opacity': 0.45 },
+      paint: {
+        ...sheetColours(LIVE_TOPO_LAYER_IDS.parkFill, palette),
+        'fill-opacity': 0.45,
+      },
     },
     {
       id: LIVE_TOPO_LAYER_IDS.parkEdge,
@@ -486,7 +646,7 @@ export function liveTopoLayers({
       source: OSM_SOURCE_ID,
       'source-layer': 'park',
       paint: {
-        'line-color': TOPO_PALETTE.parkEdge,
+        ...sheetColours(LIVE_TOPO_LAYER_IDS.parkEdge, palette),
         'line-width': 1,
         'line-dasharray': [4, 2],
       },
@@ -500,9 +660,7 @@ export function liveTopoLayers({
       source: DEM_SOURCE_ID,
       paint: {
         'hillshade-exaggeration': HILLSHADE_EXAGGERATION_EXPRESSION as never,
-        'hillshade-shadow-color': '#6b5f4a',
-        'hillshade-highlight-color': '#fffdf7',
-        'hillshade-accent-color': '#8a8271',
+        ...sheetColours(LIVE_TOPO_LAYER_IDS.hillshade, palette),
       },
     },
     {
@@ -512,10 +670,7 @@ export function liveTopoLayers({
       'source-layer': 'water',
       // Swimming pools are in this layer too and are not a water source.
       filter: ['!=', ['get', 'class'], 'swimming_pool'] as never,
-      paint: {
-        'fill-color': TOPO_PALETTE.water,
-        'fill-outline-color': TOPO_PALETTE.waterEdge,
-      },
+      paint: sheetColours(LIVE_TOPO_LAYER_IDS.water, palette),
     },
     // Streams matter more to a hiker than lakes do - they are the refill
     // points - so they are drawn wide enough to follow, and intermittent ones
@@ -527,7 +682,7 @@ export function liveTopoLayers({
       source: OSM_SOURCE_ID,
       'source-layer': 'waterway',
       paint: {
-        'line-color': TOPO_PALETTE.waterway,
+        ...sheetColours(LIVE_TOPO_LAYER_IDS.waterway, palette),
         'line-width': [
           'interpolate',
           ['linear'],
@@ -547,7 +702,7 @@ export function liveTopoLayers({
       'source-layer': CONTOUR_LAYER,
       filter: ['==', ['get', CONTOUR_LEVEL_KEY], 0] as never,
       paint: {
-        'line-color': TOPO_PALETTE.contour,
+        ...sheetColours(LIVE_TOPO_LAYER_IDS.contour, palette),
         'line-width': 0.6,
         // Faded out where they would otherwise mat together into a solid
         // hillside, rather than switched off at a hard zoom threshold.
@@ -561,7 +716,7 @@ export function liveTopoLayers({
       'source-layer': CONTOUR_LAYER,
       filter: ['>', ['get', CONTOUR_LEVEL_KEY], 0] as never,
       paint: {
-        'line-color': TOPO_PALETTE.contourIndex,
+        ...sheetColours(LIVE_TOPO_LAYER_IDS.contourIndex, palette),
         'line-width': 1.2,
         'line-opacity': ['interpolate', ['linear'], ['zoom'], 9, 0, 11, 0.9] as never,
       },
@@ -588,8 +743,7 @@ export function liveTopoLayers({
         'symbol-spacing': 320,
       },
       paint: {
-        'text-color': TOPO_PALETTE.contourLabel,
-        'text-halo-color': TOPO_PALETTE.labelHalo,
+        ...sheetColours(LIVE_TOPO_LAYER_IDS.contourLabel, palette),
         'text-halo-width': 1.4,
       },
     },
@@ -601,7 +755,7 @@ export function liveTopoLayers({
       filter: isClass('minor', 'service') as never,
       minzoom: 12,
       paint: {
-        'line-color': TOPO_PALETTE.roadMinor,
+        ...sheetColours(LIVE_TOPO_LAYER_IDS.roadMinor, palette),
         'line-width': ['interpolate', ['linear'], ['zoom'], 12, 0.8, 16, 3] as never,
       },
     },
@@ -613,7 +767,7 @@ export function liveTopoLayers({
       filter: isClass('motorway', 'trunk', 'primary', 'secondary', 'tertiary') as never,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
-        'line-color': TOPO_PALETTE.roadMajorEdge,
+        ...sheetColours(LIVE_TOPO_LAYER_IDS.roadMajorCasing, palette),
         'line-width': ['interpolate', ['linear'], ['zoom'], 8, 1.6, 16, 7] as never,
       },
     },
@@ -625,7 +779,7 @@ export function liveTopoLayers({
       filter: isClass('motorway', 'trunk', 'primary', 'secondary', 'tertiary') as never,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
-        'line-color': TOPO_PALETTE.roadMajor,
+        ...sheetColours(LIVE_TOPO_LAYER_IDS.roadMajor, palette),
         'line-width': ['interpolate', ['linear'], ['zoom'], 8, 0.8, 16, 5] as never,
       },
     },
@@ -640,7 +794,7 @@ export function liveTopoLayers({
       filter: isClass('track') as never,
       minzoom: 11,
       paint: {
-        'line-color': TOPO_PALETTE.track,
+        ...sheetColours(LIVE_TOPO_LAYER_IDS.track, palette),
         'line-width': ['interpolate', ['linear'], ['zoom'], 11, 0.6, 16, 1.8] as never,
         'line-dasharray': [6, 3],
       },
@@ -658,7 +812,7 @@ export function liveTopoLayers({
       filter: isClass('path') as never,
       minzoom: 12,
       paint: {
-        'line-color': TOPO_PALETTE.path,
+        ...sheetColours(LIVE_TOPO_LAYER_IDS.path, palette),
         'line-width': 1,
         'line-dasharray': [2, 2],
         'line-opacity': 0.8,
@@ -671,7 +825,7 @@ export function liveTopoLayers({
       'source-layer': 'boundary',
       filter: ['<=', ['get', 'admin_level'], 4] as never,
       paint: {
-        'line-color': TOPO_PALETTE.boundary,
+        ...sheetColours(LIVE_TOPO_LAYER_IDS.boundary, palette),
         'line-width': 1,
         'line-dasharray': [3, 2, 1, 2],
         'line-opacity': 0.7,
@@ -696,8 +850,7 @@ export function liveTopoLayers({
         'text-max-width': 8,
       },
       paint: {
-        'text-color': TOPO_PALETTE.label,
-        'text-halo-color': TOPO_PALETTE.labelHalo,
+        ...sheetColours(LIVE_TOPO_LAYER_IDS.peak, palette),
         'text-halo-width': 1.6,
       },
     },
@@ -714,8 +867,7 @@ export function liveTopoLayers({
         'text-max-width': 8,
       },
       paint: {
-        'text-color': '#3d6b81',
-        'text-halo-color': TOPO_PALETTE.labelHalo,
+        ...sheetColours(LIVE_TOPO_LAYER_IDS.waterLabel, palette),
         'text-halo-width': 1.4,
       },
     },
@@ -750,8 +902,7 @@ export function liveTopoLayers({
         'symbol-sort-key': PLACE_SORT_KEY_EXPRESSION as unknown as number,
       },
       paint: {
-        'text-color': TOPO_PALETTE.label,
-        'text-halo-color': TOPO_PALETTE.labelHalo,
+        ...sheetColours(LIVE_TOPO_LAYER_IDS.place, palette),
         'text-halo-width': 1.6,
       },
     },
@@ -824,5 +975,48 @@ export function attachElevationLabelUnits(
       }
     },
     'Elevation label units',
+  )
+}
+
+/**
+ * The sheet's half of a live theme change.
+ *
+ * Repaints every colour in SHEET_COLOURS onto a map that is already built,
+ * rather than rebuilding the style. That is not an optimisation, it is the
+ * same rule MapView.tsx keeps for the scale bar's units and contours.ts keeps
+ * for the contour interval: a preference change must not cost a WebGL context.
+ * Swapping the style out drops the context, and with it the POI source pushed
+ * in from IndexedDB, every tile in flight from the archive, and the camera -
+ * so a hiker who taps "Dark" while walking would watch the map they were
+ * reading disappear and rebuild.
+ *
+ * Waits on the wood layer and not on any of the others, deliberately. It is
+ * the first layer this module declares and it reads the plain OSM source, so
+ * it is present whenever the live sheet is present at all - including on a
+ * style built without terrain, where the four DEM/contour layers were filtered
+ * out. Every write below is still guarded on its own layer: the probe proves
+ * the style is parsed and takes writes, not that any particular layer survived
+ * that filter.
+ *
+ * On the downloaded background none of these layers exists, and there is
+ * nothing here to repaint - the wait simply ends at detach, exactly as
+ * attachContourUnits treats its absent source. The archive's own dimming and
+ * the backdrop are not this function's job; map/style.ts owns those, and its
+ * attachMapTheme is what calls this - the parts of the canvas that are drawn
+ * whatever the background is belong to the file that declares them.
+ */
+export function attachSheetTheme(map: MapLibreMap, theme: ResolvedTheme): () => void {
+  const palette = topoPalette(theme)
+
+  return whenStyleReady(
+    map,
+    () => map.getLayer(LIVE_TOPO_LAYER_IDS.wood) !== undefined,
+    () => {
+      for (const [layer, property, colour] of SHEET_COLOURS) {
+        if (map.getLayer(layer) === undefined) continue
+        map.setPaintProperty(layer, property as never, palette[colour] as never)
+      }
+    },
+    'Sheet theme',
   )
 }

@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import rasterio
+import requests
 from rasterio.transform import from_bounds
 
 import fetch_topo_quads
@@ -262,3 +263,58 @@ def test_an_unknown_flag_is_rejected_rather_than_silently_ignored(monkeypatch):
 
     with pytest.raises(SystemExit):
         fetch_topo_quads.run(["--metadata-onlyy"])
+
+
+def _no_sleep(monkeypatch):
+    """Record backoff pauses instead of taking them."""
+    naps = []
+    monkeypatch.setattr(fetch_topo_quads.time, "sleep", naps.append)
+    return naps
+
+
+def test_fetch_one_quad_retries_a_connection_reset_mid_download(tmp_path, monkeypatch, requests_mock):
+    # The exact failure that killed one render job in each of
+    # build-raster.yml runs 6 and 7: the HEAD succeeds, then the body
+    # transfer dies with a connection reset partway through. One more
+    # attempt cures it; the result must be indistinguishable from a fetch
+    # that never flaked.
+    naps = _no_sleep(monkeypatch)
+    valid_bytes = _write_tiny_geotiff(tmp_path / "src.tif")
+    requests_mock.head(TIF_URL, headers={"Last-Modified": "Tue, 01 Jul 2025 00:00:00 GMT"})
+    requests_mock.get(
+        TIF_URL,
+        [{"exc": requests.exceptions.ConnectionError}, {"content": valid_bytes}],
+    )
+
+    manifest = {}
+    result = fetch_one_quad("CT_Ansonia.pdf", STATE_INDEX, tmp_path / "out", manifest)
+
+    assert result["status"] == "downloaded"
+    assert TIF_URL in manifest
+    assert naps == [fetch_topo_quads.RETRY_BACKOFF_SECONDS[0]]
+
+
+def test_request_with_retry_raises_after_the_backoff_is_spent(monkeypatch, requests_mock):
+    naps = _no_sleep(monkeypatch)
+    requests_mock.get(TIF_URL, exc=requests.exceptions.ConnectionError)
+
+    with pytest.raises(requests.exceptions.ConnectionError):
+        fetch_topo_quads.request_with_retry("get", TIF_URL, timeout=1)
+
+    # Every backoff pause was taken - the raise happened on the attempt
+    # after the last pause, not before it.
+    assert naps == list(fetch_topo_quads.RETRY_BACKOFF_SECONDS)
+
+
+def test_request_with_retry_never_retries_an_http_error_status(monkeypatch, requests_mock):
+    # S3 answering "no" is an answer: a 500 comes back to the caller on the
+    # first attempt (whose raise_for_status decides what to do), rather
+    # than burning 35 seconds of backoff on a response that already arrived.
+    naps = _no_sleep(monkeypatch)
+    requests_mock.get(TIF_URL, status_code=500)
+
+    resp = fetch_topo_quads.request_with_retry("get", TIF_URL, timeout=1)
+
+    assert resp.status_code == 500
+    assert requests_mock.call_count == 1
+    assert naps == []

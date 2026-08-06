@@ -26,12 +26,13 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { registerPMTilesProtocol } from './protocol'
 import { registerBasemapProtocol } from './basemap'
 import { registerMapWorker } from './mapWorker'
-import { buildMapStyle } from './style'
+import { attachMapTheme, buildMapStyle } from './style'
 import { attachContourUnits, registerTerrain } from './contours'
 import { attachLiveSourceHealth, type LiveSourceHealth } from './liveSourceHealth'
 import { attachElevationLabelUnits } from './liveTopo'
 import type { TerrainUrls } from './terrain'
 import { attachMapChrome, type ScaleUnits } from './mapChrome'
+import type { ResolvedTheme } from '../lib/theme'
 import { attachHiddenPoiTypes, attachPoiData, attachPoiIcons } from './poiLayers'
 import { attachMapTaps } from './taps'
 import { attachClosureData } from './closureLayers'
@@ -112,6 +113,16 @@ export interface MapViewProps {
   showZoomButtons?: boolean
   units?: ScaleUnits
   /**
+   * Which theme the canvas is drawn in - see map/style.ts's MAP_BACKDROP.
+   *
+   * Resolved by the shell (lib/useTheme.ts) rather than read here, for the
+   * reason `units` is: this component draws the map, and a hiker's preference
+   * is the shell's to know. It also has to be the same answer the chrome
+   * around the canvas is using, and two independent reads of one media query
+   * is how a dark app ends up around a light map.
+   */
+  theme?: ResolvedTheme
+  /**
    * What is on screen now, so the legend can describe it. Must be stable
    * across renders (useCallback) - an inline function would re-subscribe on
    * every render of the parent.
@@ -169,6 +180,7 @@ export function MapView({
   archiveZooms = null,
   showZoomButtons = false,
   units = 'imperial',
+  theme = 'light',
   onViewportChange,
   onMapReady,
   onLiveSourceHealth,
@@ -234,7 +246,14 @@ export function MapView({
 
     const created = new MapLibreMap({
       container,
-      style: buildMapStyle({ topoArchiveUrl, trailsUrl, background, terrain, units }),
+      style: buildMapStyle({
+        topoArchiveUrl,
+        trailsUrl,
+        background,
+        terrain,
+        units,
+        theme,
+      }),
       // `bounds` wins where it is given: MapLibre works out the zoom that fits
       // the box on this particular screen, which is the whole point of asking
       // for a box rather than a zoom number.
@@ -258,6 +277,12 @@ export function MapView({
     // `units` is omitted for the same reason, even though it seeds the contour
     // interval: switching to metric must not cost a WebGL context. The units
     // effect below re-points the contour source in place instead.
+    //
+    // `theme` is omitted on exactly that pattern. It seeds the backdrop, the
+    // archive's dimming and the sheet's palette so a cold start under the dark
+    // theme is dark in its first frame, and the theme effect below repaints all
+    // three in place for every change after that. A hiker tapping "Dark" while
+    // walking must not lose the map they were reading.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topoArchiveUrl, trailsUrl, background])
 
@@ -297,6 +322,14 @@ export function MapView({
     if (map === null) return
     return attachMapChrome(map, { showZoomButtons, units })
   }, [map, showZoomButtons, units])
+
+  // The theme's half of the same promise, and the widest one: it repaints the
+  // backdrop, the archive's dimming and every colour on the live sheet - see
+  // map/style.ts's attachMapTheme.
+  useEffect(() => {
+    if (map === null) return
+    return attachMapTheme(map, theme)
+  }, [map, theme])
 
   // The contours' half of that same promise. The scale bar can just be
   // re-created with new units; the contour source has to be re-pointed at a

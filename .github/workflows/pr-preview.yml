@@ -263,11 +263,27 @@ jobs:
             backend on purpose, so reports queue in the outbox rather than landing in
             the moderation queue a club works from.
 
-      # Nothing is torn down on close. A Cloudflare preview deployment is not a
-      # file on a branch somebody else has to work around - it is its own
-      # deployment, the free plan does not limit how many a project keeps, and
-      # leaving it is what lets a closed pull request still be looked at while
-      # someone works out why it was closed. The comment stops advertising it.
+      # Cloudflare does not expire preview deployments, so without this a
+      # closed pull request's build stays reachable forever - built against the
+      # real Supabase project, and vouched for by nothing. See the action.
+      #
+      # continue-on-error so that the comment below still gets posted when this
+      # fails. A failed cleanup and a silent one are very different things: the
+      # first leaves previews up and says so, the second leaves them up while
+      # the pull request claims they are gone. The job is failed afterwards, on
+      # the step's own outputs, so neither the log nor the comment can be the
+      # only place it shows.
+      - name: Remove the previews
+        id: teardown
+        if: steps.can.outputs.deploy == 'true' && github.event.action == 'closed'
+        continue-on-error: true
+        uses: ./.github/actions/delete-pages-previews
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          project: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
+          alias: ${{ steps.preview.outputs.alias }}
+
       - name: Say the pull request is closed
         if: steps.can.outputs.deploy == 'true' && github.event.action == 'closed'
         uses: marocchino/sticky-pull-request-comment@67d0dec7b07ed060a405f9b2a64b8ab319fdd7db # v2.9.2
@@ -276,5 +292,25 @@ jobs:
           message: |
             ### Preview
 
-            This pull request is closed. [The last preview built for it](${{ steps.preview.outputs.url }})
-            is still up, and is not updated any more.
+            This pull request is closed, and its preview deployments have been removed
+            (${{ steps.teardown.outputs.deleted || 0 }} of ${{ steps.teardown.outputs.found || 0 }}).
+            `${{ steps.preview.outputs.url }}` no longer serves anything.
+
+            ${{ steps.teardown.outputs.failed != '0' && steps.teardown.outputs.failed != '' && '**Some could not be removed and are still reachable** - see the run log for which, and why.' || '' }}
+
+      # Last, so that the comment above is already posted when it runs. A red
+      # check on a closed pull request is not something anyone goes looking at,
+      # which is why the outcome is on the pull request too - but it still has
+      # to be red, or a cleanup that stopped working would look exactly like
+      # one that never had anything to do.
+      - name: Fail if any preview outlived its pull request
+        if: steps.can.outputs.deploy == 'true' && github.event.action == 'closed'
+        env:
+          FAILED: ${{ steps.teardown.outputs.failed }}
+          OUTCOME: ${{ steps.teardown.outcome }}
+        run: |
+          if [ "$OUTCOME" != "success" ] || { [ -n "$FAILED" ] && [ "$FAILED" != "0" ]; }; then
+            echo "::error::Removing this pull request's previews did not complete. They are still reachable."
+            exit 1
+          fi
+          echo "Every preview for this pull request has been removed."

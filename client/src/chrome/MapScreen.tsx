@@ -8,6 +8,11 @@
 // WIREFRAMES.md positions it bottom-left beneath the scale bar. USGS topo is
 // public domain; OpenStreetMap is ODbL and its credit is a licence condition,
 // so this element is not optional and is not behind a prop.
+//
+// What it names is map/credits.ts's decision and how it is laid out is
+// MapAttribution's; this screen only supplies the two facts neither of them
+// can see - which background is drawn, and whether the raster archive it may
+// be drawn over is actually on the phone.
 
 import { useCallback, useState } from 'react'
 import { StatusStrip } from './StatusStrip'
@@ -30,8 +35,10 @@ import type { TrailIndex } from '../lib/trailPosition'
 import { HEALTHY, type LiveSourceHealth } from '../map/liveSourceHealth'
 import type { BackgroundOverride } from '../lib/dataSaver'
 import type { ArchiveZooms } from '../lib/archiveCoverage'
-import { attributionFor } from '../map/style'
+import { mapCredits } from '../map/credits'
+import { MapAttribution } from './MapAttribution'
 import type { ScaleUnits } from '../map/mapChrome'
+import type { ResolvedTheme } from '../lib/theme'
 import type { BackgroundSource } from '../lib/userPreferences'
 import type { BoundingBox, MapPoint } from '../lib/legendContents'
 import type { SearchablePoi } from '../lib/searchPoi'
@@ -144,6 +151,9 @@ export interface MapScreenProps {
 
   showZoomButtons?: boolean
   units?: ScaleUnits
+  /** Which theme the canvas is drawn in. Passed down rather than read here so
+   *  the chrome and the map answer from one value - see MapViewProps. */
+  theme?: ResolvedTheme
 
   /** Opening camera only; later moves are the hiker's. */
   center?: [number, number]
@@ -178,6 +188,16 @@ export interface MapScreenProps {
   onOpenDownloads?: () => void
   /** Whether a finished archive is on the phone, which words that link. */
   hasDownload?: boolean
+  /**
+   * Whether the corridor RASTER archive specifically is finished and on this
+   * phone, which decides whether the corner credits USGS at all.
+   *
+   * Narrower than `hasDownload` above, and it has to be: that one is true when
+   * any sheet has landed, and the hiking sheet downloading without the USGS
+   * raster has been a normal phone since #237. Credit follows the tiles that
+   * are actually drawing, not the fact that some download happened.
+   */
+  hasRasterArchive?: boolean
   /**
    * Whether the view is zoomed out past what the download covers (#216).
    *
@@ -238,6 +258,7 @@ export function MapScreen({
   waypoints,
   showZoomButtons = false,
   units = 'imperial',
+  theme = 'light',
   center,
   zoom,
   bounds,
@@ -248,6 +269,7 @@ export function MapScreen({
   onChangeBackground,
   onOpenDownloads,
   hasDownload = false,
+  hasRasterArchive = false,
   belowArchiveZoom = false,
   archiveZooms = null,
 }: MapScreenProps) {
@@ -362,6 +384,7 @@ export function MapScreen({
               onSelectWarning={onSelectWarning}
               showZoomButtons={showZoomButtons}
               units={units}
+              theme={theme}
               center={center}
               zoom={zoom}
               bounds={bounds}
@@ -370,7 +393,13 @@ export function MapScreen({
               onMapReady={handleMapReady}
               onLiveSourceHealth={setLiveSources}
             />
-            <p className="map-screen__attribution">{attributionFor(background)}</p>
+            {/* Inline above the desktop breakpoint, where the whole list fits
+                on one line - the same `isDesktop` the legend uses, so the two
+                cannot disagree about how much room this layout has. */}
+            <MapAttribution
+              credits={mapCredits({ background, hasRasterArchive })}
+              inline={isDesktop}
+            />
 
             {/* Inside the canvas, and not one wrapper further out: the card
                 positions itself in canvas pixels (poiCardPlacement.ts), so it

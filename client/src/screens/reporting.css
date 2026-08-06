@@ -60,8 +60,8 @@
 }
 .reporting__card--unsafe {
   color: var(--fg-1);
-  background: color-mix(in srgb, var(--blaze-yellow) 14%, var(--bg-surface));
-  border: 1px solid color-mix(in srgb, var(--blaze-yellow) 55%, transparent);
+  background: color-mix(in srgb, var(--warning) 14%, var(--bg-surface));
+  border: 1px solid color-mix(in srgb, var(--warning) 55%, transparent);
 }
 .reporting__card-title {
   font-size: 15px;
@@ -85,8 +85,8 @@
   padding: var(--space-3, 12px);
   font-size: 13px;
   color: var(--brand-primary);
-  background: color-mix(in srgb, var(--forest-600) 8%, transparent);
-  border: 1px solid color-mix(in srgb, var(--forest-600) 30%, transparent);
+  background: color-mix(in srgb, var(--brand-primary) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 30%, transparent);
   border-radius: 10px;
 }
 .reporting__field {
@@ -139,8 +139,8 @@
   padding: var(--space-3, 12px);
   font-size: 13px;
   color: var(--brand-primary);
-  background: color-mix(in srgb, var(--forest-600) 8%, transparent);
-  border: 1px solid color-mix(in srgb, var(--forest-600) 30%, transparent);
+  background: color-mix(in srgb, var(--brand-primary) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 30%, transparent);
   border-radius: 10px;
 }
 .reporting__queued {
@@ -160,7 +160,7 @@
   min-height: var(--min-touch-target, 44px);
   font-size: 15px;
   font-weight: 600;
-  color: var(--fg-on-dark);
+  color: var(--fg-on-brand);
   background: var(--brand-primary);
   border: 0;
   border-radius: 10px;
@@ -178,8 +178,8 @@
 }
 .reporting__card--thanks {
   color: var(--fg-1);
-  background: color-mix(in srgb, var(--forest-600) 10%, var(--bg-surface));
-  border: 1px solid color-mix(in srgb, var(--forest-600) 45%, transparent);
+  background: color-mix(in srgb, var(--brand-primary) 10%, var(--bg-surface));
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 45%, transparent);
 }
 .reporting__input {
   min-height: var(--min-touch-target, 44px);

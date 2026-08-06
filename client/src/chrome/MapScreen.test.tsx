@@ -3,7 +3,12 @@ import { render, screen, cleanup, act, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { MapScreen } from './MapScreen'
-import { ATTRIBUTION, LIVE_ATTRIBUTION } from '../map/style'
+import {
+  mapCredits,
+  OPENFREEMAP_CREDIT,
+  OSM_CREDIT,
+  USGS_TOPO_CREDIT,
+} from '../map/credits'
 
 // WIREFRAMES.md's map screen, top to bottom: status strip, header, elevation
 // ribbon, waypoint lanes, map canvas, tab bar - plus the legend sheet over the
@@ -91,7 +96,7 @@ describe('MapScreen', () => {
   it('always renders the attribution - OSM credit is an ODbL condition, not a nicety', () => {
     render(<MapScreen {...PROPS} background="usgs_topo_offline" />)
 
-    expect(screen.getByText(ATTRIBUTION)).toBeInTheDocument()
+    expect(screen.getByText(OSM_CREDIT, { exact: false })).toBeInTheDocument()
   })
 
   it('credits the extra licences the live background brings with it', () => {
@@ -102,13 +107,39 @@ describe('MapScreen', () => {
     // default flipped.
     render(<MapScreen {...PROPS} background="hiking_topo_live" />)
 
-    expect(screen.getByText(LIVE_ATTRIBUTION)).toBeInTheDocument()
+    for (const credit of mapCredits({ background: 'hiking_topo_live' })) {
+      expect(screen.getByText(credit, { exact: false })).toBeInTheDocument()
+    }
   })
 
   it('credits the live sheet by default, because that is the default background', () => {
     render(<MapScreen {...PROPS} />)
 
-    expect(screen.getByText(LIVE_ATTRIBUTION)).toBeInTheDocument()
+    expect(screen.getByText(OPENFREEMAP_CREDIT, { exact: false })).toBeInTheDocument()
+  })
+
+  it('does not credit the USGS survey on a phone that has none of it', () => {
+    // The corner used to name USGS US Topo unconditionally, because the string
+    // was composed from what the app CAN draw. On a fresh install that is a
+    // credit for a 314 MB archive nobody has downloaded, printed over a map
+    // drawn entirely from other people's tiles.
+    render(<MapScreen {...PROPS} hasRasterArchive={false} />)
+
+    expect(screen.queryByText(USGS_TOPO_CREDIT, { exact: false })).not.toBeInTheDocument()
+  })
+
+  it('credits the USGS survey once the corridor raster is on the phone', () => {
+    render(<MapScreen {...PROPS} hasRasterArchive />)
+
+    expect(screen.getByText(USGS_TOPO_CREDIT, { exact: false })).toBeInTheDocument()
+  })
+
+  it('never says one credit twice, however the background and the download line up', () => {
+    // The bug in its most visible form: two composed strings each correctly
+    // named OpenStreetMap, so the live corner printed it twice.
+    render(<MapScreen {...PROPS} background="hiking_topo_live" hasRasterArchive />)
+
+    expect(screen.getAllByText(OSM_CREDIT, { exact: false })).toHaveLength(1)
   })
 
   it('surfaces the offline state it was given', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Settings } from './Settings'
 import { BACKGROUND_SOURCES, DEFAULT_PREFERENCES } from '../lib/userPreferences'
@@ -87,12 +87,19 @@ describe('Settings', () => {
     expect(PROPS.onChange).toHaveBeenCalledWith({ wrong_way_alert_enabled: false })
   })
 
+  // Scoped to the Background group rather than to every radio on the screen.
+  // There is a second group now - Light / Dark / Auto (ThemePicker.tsx) - and
+  // an unscoped getAllByRole('radio') collected both, which is how a test
+  // about backgrounds started asserting that "auto" is one.
+  const backgroundRadios = () =>
+    within(screen.getByRole('group', { name: /background/i })).getAllByRole('radio')
+
   it('offers the background as a real control, on the canonical field name', () => {
     // A radio group since 2026-08-05, not a select - the same component the
     // legend shows, so the two cannot drift. The canonical field name is still
     // what the inputs are grouped by.
     render(<Settings {...PROPS} />)
-    const radios = screen.getAllByRole('radio')
+    const radios = backgroundRadios()
 
     expect(radios.length).toBeGreaterThan(0)
     for (const radio of radios) {
@@ -104,9 +111,7 @@ describe('Settings', () => {
 
   it('offers exactly the backgrounds the map can actually draw', () => {
     render(<Settings {...PROPS} />)
-    const values = screen
-      .getAllByRole('radio')
-      .map((radio) => (radio as HTMLInputElement).value)
+    const values = backgroundRadios().map((radio) => (radio as HTMLInputElement).value)
 
     expect(values.sort()).toEqual([...BACKGROUND_SOURCES].sort())
   })

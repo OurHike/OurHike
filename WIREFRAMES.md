@@ -33,7 +33,11 @@ Where a wireframe *does* commit to an exact value, it's because the value carrie
 2. **Header (read-only zone).** Trail + state eyebrow — the trail's own mark (14px, from `lib/trails.ts`'s `TRAILS` registry) ahead of the name, where one is known — current mile + direction (`mi 1,407.2 · NOBO`) in mono. Right side: two 38px icon buttons, gap 7px — **legend** (list icon) then **search**. Nothing else lives here.
 3. **Elevation ribbon.** SVG profile (`viewBox="0 0 100 40"`, `preserveAspectRatio="none"`), 54px tall, left-inset 36px for lane labels. Shaded area under the line, a highlighted upcoming-climb region, a vertical "you are here" rule, min/max ft labels, and a callout: `+640 ft · 2.6 mi · ≈1h 10m`.
 4. **Three waypoint lanes**, 19px each, dashed top rules, mono 7.5px labels in the left gutter: `WATER`, `SLEEP`, `ELSE`. Pins position by percentage along the mile window; overlapping pins collapse into a count pill (category glyph + count).
-5. **Map canvas.** Trail lines, waypoint pins, GPS dot. Bottom-left: scale bar (64px, three-sided box) above `USGS US Topo · © OSM`. Bottom-right, 10px inset: a vertical stack, gap 8px, of **compass** and **locate** (42px each). Zoom buttons are **web only** — pinch covers mobile and the thumb zone is reserved for locate.
+5. **Map canvas.** Trail lines, waypoint pins, GPS dot. Bottom-left: scale bar (64px, three-sided box) above the credit strip. Bottom-right, 10px inset: a vertical stack, gap 8px, of **compass** and **locate** (42px each). Zoom buttons are **web only** — pinch covers mobile and the thumb zone is reserved for locate.
+
+   **The credit strip, as built 2026-08-06 — one line, and only the maps on screen.** This mockup's `USGS US Topo · © OSM` was never what shipped: the shorthand does not satisfy ODbL (see Assets below), and the string that replaced it was composed from every source the app *can* draw rather than the ones it is drawing. With the live sheet on — the default — that read `USGS US Topo · © OpenStreetMap contributors · OpenFreeMap © OpenMapTiles · © OpenStreetMap contributors · Elevation: USGS 3DEP via AWS Terrain Tiles`: five clauses, OpenStreetMap printed twice, and USGS credited on a phone holding none of its tiles. Two to three wrapped lines of small type, permanently, in a strip that costs the map its own height.
+
+   It is now assembled per screen from one atom per source (`client/src/map/credits.ts`) and laid out by `chrome/MapAttribution.tsx`: below the 900px breakpoint it collapses to the OpenStreetMap credit — the one licence here demanding prominence, shown in full, never truncated — plus a count of what a tap reveals; at desktop widths the whole list fits on one line and nothing is hidden. What the strip names moves with the phone: no corridor archive, no USGS credit; the downloaded background, no OpenFreeMap or elevation credit.
 6. **Tab bar** — Trail / More, with the OurHike icon (mark only, no
    wordmark) at the left end, ahead of the tabs. It is the page's bottom-left
    corner and the only one here that is neither map nor a thumb target; it costs
@@ -98,17 +102,23 @@ Wireframed as a per-section list with a per-section detail override. **This inte
 
 **The background data is shared between trails; the trail's own data is not.** The DEM and the raster cover ground that the AT and NYNJTC's network both stand on, so they are keyed by what they are and never by which trail wanted them — adding a second trail must not re-download them ([#193](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/193)). What *is* per-trail is the corridor sheet: the centerline, the spurs, the POIs and the elevation profile. Those are small, they are what makes this an app rather than a map viewer, and they are downloaded by default wherever they are missing — so they never appear in this window as something to choose, and deleting the map no longer takes them with it.
 
-Onboarding still ends on the download (§5), but over the map rather than instead of it.
+**Amended 2026-08-06 — one sheet at a time, under tabs ([#298](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/298)).** Stacking the sheets was right while there was one and nearly right with two; the sheets are expected to keep coming, and a stack reads as a list of things to work through rather than as alternatives to choose between. The window draws a tab per sheet (`client/src/screens/Tabs.tsx`), built from whatever the catalog offers, so the sheet after the USGS raster needs no change here. One panel is rendered — not three hidden with CSS — so a hidden sheet's buttons, radios and space warnings are not in the tab order or being announced. With one sheet there is no strip.
+
+**Every sheet shows the same Light / Standard / Fine ladder, greyed where it has none.** Since [#276](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/276) the two sheets have two different level sets — the raster's three tiers, the hiking sheet's z13 Standard and z14 Fine — and under tabs that difference is what a hiker sees when they switch: three rows become two, and the row that vanished is the cheapest one. A missing row cannot say whether this map has no Light version or whether the app forgot to ask. So the ladder is the same under every tab and a rung a sheet does not have renders disabled, reading "Not offered". The same greying carries a second case: rungs that exist but cannot be chosen right now, because bytes are already here or on their way — changing detail then means downloading again, and a note says so rather than the control vanishing.
+
+Onboarding still ends on the download (§5), but over the map rather than instead of it — and asks its map-size question in this window's shape.
 
 ### 5. Onboarding — Tier 1 (`13a` chosen, `13b` rejected, `13c` sequence)
 
 Three screens, each skippable, each with a step counter:
 
 1. **What OurHike is** — the real logo mark (see `.claude/OurHike Design System/` → `components/core/Logo.jsx`, chosen 2026-07-28 — supersedes this turn's original type-only wordmark), a small map vignette, two short paragraphs: what it does offline, and that paid memberships fund the ATC and volunteer clubs. "No account. Nothing to sign up for."
-2. **Map size** — the whole corridor at Light 64 MB / **Standard 314 MB** (recommended) / Fine 1.18 GB. ⚠ The wireframe copy adds "...or take single sections later, in Downloads" — **drop that clause**, see Known Deviations.
+2. **Map size** — the whole corridor at Light 64 MB / **Standard 314 MB** (recommended) / Fine 1.18 GB. ⚠ The wireframe copy adds "...or take single sections later, in Downloads" — **drop that clause**, see Known Deviations. **Amended 2026-08-06 ([#277](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/277)/[#298](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/298)):** the sizes above are the USGS raster's, which is not the download this step is sizing — #277 moved it to the hiking sheet's own Standard / Fine levels, the map a newcomer actually leaves first run with. #298 then gave it the download window's shape: the same tab strip, the same level ladder, the same greying (§4), because this step and that window are two consecutive views of one decision and looked like two different ones. The USGS tab is named and priced here and configures nothing — every rung under it is greyed, pointing at Downloads — which keeps #277's rule while letting a newcomer see what the optional map would cost. What this step does *not* carry at all is the download itself: no progress, no buttons, nothing on the phone to delete. That belongs to the window, one screen later.
 3. **Location permission** — asked as an overlay **on top of the already-downloading map**, so the reason is visible. Copy: works with no signal, position never leaves the phone.
 
 **Never asked here:** notifications (belongs to the wrong-way alert, at hike start) and **accounts** (asked at first contribution — see Reporting below). The step counter is derived from the live step list, and a skipped step still counts so the total never grows mid-flow.
+
+**Amended 2026-08-06 — over the map, all three of them.** Step 3 was always specified as an overlay on the map so the reason for asking was visible; the same argument holds for the other two, and they were an opaque full-page screen. So the map is behind all three now (`client/src/App.tsx`'s onboarding branch): the corridor view the map screen itself opens on, drawn under a card anchored to the bottom of the screen and capped short of filling it. The "small map vignette" in step 1 is that map rather than a picture of one. What is behind the steps is the canvas and **nothing else** — no header, no tab bar, no legend — and it is `inert`, which is not only about stray taps: MapLibre's locate control would otherwise raise the OS location prompt before the step whose whole job is to explain why we are asking. The credit line the live sheet's licences require is rendered over the map's top-left corner, since the bottom corners are where the card is.
 
 ### 6. Reporting (`14a`–`14d`) — supersedes turn `8` — ⚠ see Known Deviations
 
@@ -174,7 +184,7 @@ Four groups, one canonical `UserPreferences` model:
 
 - **You** — trail name (Linked / on-this-device), reporter type, account.
 - **The map** — background source (USGS topo downloaded is the default and the only offline-capable one), detail for new downloads, roads & walkability *(Later)*.
-- **Display** — theme (Auto), units *(Later; mile markers stay miles either way)*.
+- **Display** — theme (Light / Dark / Auto, a segmented control like the background picker above it; Auto is last, after the two concrete choices, so the group reads as a spectrum ending in "let the phone decide"), units *(Later; mile markers stay miles either way)*.
 - **Safety & privacy** — wrong-way alert toggle, "hide my name on reports for…" *(Later)*, and a red locked callout: **closures and serious warnings are always shown; there is no switch, here or anywhere.**
 - **Your data** — export reports/routes (GPX, GeoJSON), last synced + Sync, sources & attribution.
 
@@ -323,7 +333,7 @@ The source handoff's own "not yet wireframed" checklist listed several screens t
 - Volunteering work-project pins (Post-MVP).
 - Roads/walkability overlay (Post-MVP, MAP_OPTIONS.md).
 - Auto-rotate (Post-MVP, UX_CUSTOMIZATION.md).
-- Theme override, metric units, persistent waypoint/layer prefs (Post-MVP, UX_CUSTOMIZATION.md).
+- Metric units, persistent waypoint/layer prefs (Post-MVP, UX_CUSTOMIZATION.md). *Theme override was here until 2026-08-06 and is now MVP — see that doc for why the split was wrong.*
 - Community Building — Tramily, check-ins, mentions (Post-MVP).
 - Pricing tiers / paywall UI (Post-MVP, PRICING_MODEL.md).
 - Trail names as a distinct onboarding tier (Post-MVP, ONBOARDING.md).

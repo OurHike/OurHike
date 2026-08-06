@@ -18,6 +18,16 @@ import { hikingDetailOptions, rasterDetailOptions } from './DetailPicker'
 // before they reach this screen (lib/backgroundStatus.ts).
 //
 // The card's own states live in DownloadCard.test.tsx.
+//
+// Since #298 the sheets are TABBED rather than stacked, so most of what
+// follows names the sheet it is about and opens that tab first. That is the
+// behaviour under test as much as the assertion after it: a hiker comparing
+// two maps sees one of them at a time, with the other a tap away.
+
+/** Opens a sheet's tab, the way a hiker reaches the card behind it. */
+async function openTab(user: ReturnType<typeof userEvent.setup>, name: RegExp) {
+  await user.click(screen.getByRole('tab', { name }))
+}
 
 function sheet(overrides: Partial<SheetDownload> = {}): SheetDownload {
   return {
@@ -74,13 +84,19 @@ describe('Downloads', () => {
     expect(screen.queryByText(/section/i)).not.toBeInTheDocument()
   })
 
-  it('offers one button per sheet, never one per archive underneath', () => {
+  it('offers one button per sheet, never one per archive underneath', async () => {
     // The DEM and the vector basemap are pieces of the hiking sheet. A hiker
     // who had to tick archives off could get it wrong, and being wrong means
-    // no terrain on a ridge.
+    // no terrain on a ridge. One button on the sheet's own tab, and exactly
+    // one - a tab shows a sheet, not its archives.
+    const user = userEvent.setup()
     render(<Downloads sheets={twoSheets()} />)
 
-    expect(screen.getAllByRole('button', { name: /download/i })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: /download the map/i })).toHaveLength(1)
+
+    await openTab(user, /usgs sheet/i)
+
+    expect(screen.getAllByRole('button', { name: /download the map/i })).toHaveLength(1)
   })
 
   it('never shows roll-up totals or mixed-detail seam messaging', () => {
@@ -171,19 +187,45 @@ describe('Downloads', () => {
 // --- Two sheets, two decisions (#237) --------------------------------------
 
 describe('the USGS sheet as its own decision (#237)', () => {
-  it('names each sheet when there are two, so the buttons say which map', () => {
+  it('names every sheet on the strip, so the choice is visible before it is made', () => {
     render(<Downloads sheets={twoSheets()} />)
 
-    expect(screen.getByRole('region', { name: /hiking sheet/i })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: /usgs sheet/i })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /hiking sheet/i })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /usgs sheet/i })).toBeInTheDocument()
   })
 
-  it('drops the headings when one sheet is all there is to talk about', () => {
-    // The scope paragraph has already named the download; with one card a
-    // heading would only say it a second time.
+  it('opens on the default background, not on the optional gigabyte', () => {
+    // BACKGROUND_SHEETS is ordered default-first (lib/packages.ts). Opening
+    // on the USGS raster would put the map nobody has to take in front of
+    // the one everybody navigates by.
+    render(<Downloads sheets={twoSheets()} />)
+
+    expect(screen.getByRole('tab', { name: /hiking sheet/i })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(screen.getByRole('region', { name: /hiking sheet/i })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: /usgs sheet/i })).toBe(null)
+  })
+
+  it('shows the sheet whose tab was tapped, and only that one', async () => {
+    const user = userEvent.setup()
+    render(<Downloads sheets={twoSheets()} />)
+
+    await openTab(user, /usgs sheet/i)
+
+    expect(screen.getByRole('region', { name: /usgs sheet/i })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: /hiking sheet/i })).toBe(null)
+  })
+
+  it('draws no tab strip when one sheet is all there is to choose between', () => {
+    // A strip of one is a heading pretending to be a control, and the scope
+    // paragraph has already named the download.
     render(<Downloads sheets={[sheet()]} />)
 
+    expect(screen.queryByRole('tab')).toBe(null)
     expect(screen.queryByRole('heading', { name: /usgs sheet/i })).toBe(null)
+    expect(screen.getByRole('region', { name: /usgs sheet/i })).toBeInTheDocument()
   })
 
   it('gives each sheet its own buttons, wired to its own handlers', async () => {
@@ -198,25 +240,43 @@ describe('the USGS sheet as its own decision (#237)', () => {
     expect(usgs.onStart).not.toHaveBeenCalled()
   })
 
-  it('gives each sheet its own picker, with its own level set (#276)', () => {
+  it('gives each sheet its own picker, with its own level set (#276)', async () => {
     // The USGS raster has Light/Standard/Fine; the hiking sheet has its z13
     // Standard cut and z14 Fine one. Distinct radio-group names keep one
     // card's choice from toggling the other's.
+    const user = userEvent.setup()
     render(<Downloads sheets={twoSheets()} />)
 
-    const hikingCard = screen.getByRole('region', { name: /hiking sheet/i })
-    const usgsCard = screen.getByRole('region', { name: /usgs sheet/i })
-    const hikingRadios = within(hikingCard).getAllByRole('radio')
-    const usgsRadios = within(usgsCard).getAllByRole('radio')
+    // Read as strings before switching: React reuses the input elements
+    // between panels, so a held reference reports the new panel's name.
+    const hikingGroup = (screen.getAllByRole('radio')[0] as HTMLInputElement).name
+    await openTab(user, /usgs sheet/i)
+    const usgsGroup = (screen.getAllByRole('radio')[0] as HTMLInputElement).name
 
-    expect(hikingRadios).toHaveLength(2)
-    expect(usgsRadios).toHaveLength(3)
-    expect((hikingRadios[0] as HTMLInputElement).name).not.toBe(
-      (usgsRadios[0] as HTMLInputElement).name,
-    )
+    expect(hikingGroup).toBe('hiking-detail')
+    expect(usgsGroup).toBe('usgs-detail')
   })
 
-  it('keeps one sheet’s failure off the other’s card', () => {
+  it('draws the same three rungs under either tab, greyed where the sheet has none (#298)', async () => {
+    // Two level sets meant two differently-shaped pickers, and switching
+    // tabs made the cheapest row disappear. Same ladder under both now:
+    // what differs is what each rung costs, not whether it was asked.
+    const user = userEvent.setup()
+    render(<Downloads sheets={twoSheets()} />)
+
+    expect(screen.getAllByRole('radio')).toHaveLength(3)
+    expect(screen.getByRole('radio', { name: /light/i })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: /standard/i })).toBeEnabled()
+
+    await openTab(user, /usgs sheet/i)
+
+    const usgsLevels = screen.getAllByRole('radio')
+    expect(usgsLevels).toHaveLength(3)
+    for (const level of usgsLevels) expect(level).toBeEnabled()
+  })
+
+  it('keeps one sheet’s failure off the other’s card', async () => {
+    const user = userEvent.setup()
     const [hiking, usgs] = twoSheets()
     render(
       <Downloads
@@ -224,11 +284,11 @@ describe('the USGS sheet as its own decision (#237)', () => {
       />,
     )
 
-    const hikingCard = screen.getByRole('region', { name: /hiking sheet/i })
-    const usgsCard = screen.getByRole('region', { name: /usgs sheet/i })
+    expect(screen.queryByRole('alert')).toBe(null)
 
-    expect(within(usgsCard).getByRole('alert')).toHaveTextContent('404')
-    expect(within(hikingCard).queryByRole('alert')).toBe(null)
+    await openTab(user, /usgs sheet/i)
+
+    expect(screen.getByRole('alert')).toHaveTextContent('404')
   })
 
   it('deleting one sheet never touches the other', async () => {
@@ -245,6 +305,7 @@ describe('the USGS sheet as its own decision (#237)', () => {
       },
     }
     render(<Downloads sheets={[hiking, downloadedUsgs]} />)
+    await openTab(user, /usgs sheet/i)
 
     const usgsCard = screen.getByRole('region', { name: /usgs sheet/i })
     await user.click(within(usgsCard).getByRole('button', { name: /delete/i }))

@@ -1,0 +1,71 @@
+# Deletes a closed pull request's Cloudflare Pages preview deployments.
+#
+# Cloudflare does not expire them. There is no documented retention period,
+# and the free plan's only stated limit is that a project may hold an
+# unlimited number of preview deployments at once - so left alone, every
+# preview ever built stays reachable, one per push rather than one per pull
+# request.
+#
+# That is not a storage problem; none of it is billed. It is that the URL
+# outlives the change it was built to show. A rejected experiment stays online
+# at `pr-<n>.<project>.pages.dev`, built against the real Supabase project, and
+# the only record that it should not be trusted is a closed pull request
+# nobody is reading. The previews this replaced were deleted on close, so
+# moving to Cloudflare traded that away for the contention fix; this is the
+# half that gets it back.
+#
+# Deleting is the one thing here that cannot be undone, so the safety is in
+# the filter rather than in caution at the point of deletion: the alias must
+# look like `pr-<number>` before anything is listed, and a deployment is
+# selected only on an exact match against that alias. `pr-28` never selects
+# `pr-281`. Nothing about "which deployments" is inferred from position,
+# recency, or count.
+
+name: Delete Pages previews
+description: Delete every Cloudflare Pages deployment for one pull request's preview alias.
+
+inputs:
+  api-token:
+    description: Cloudflare API token with "Cloudflare Pages: Edit".
+    required: true
+  account-id:
+    description: Cloudflare account the project belongs to.
+    required: true
+  project:
+    description: Pages project holding the deployments.
+    required: true
+  alias:
+    description: >-
+      The pull request's preview alias, `pr-<number>`. Rejected if it is
+      anything else, because this is the whole of what stops the deletion
+      reaching something that matters.
+    required: true
+
+outputs:
+  found:
+    description: How many deployments matched the alias.
+    value: ${{ steps.delete.outputs.found }}
+  deleted:
+    description: How many were deleted.
+    value: ${{ steps.delete.outputs.deleted }}
+  failed:
+    description: >-
+      How many could not be deleted, and so are still reachable. Non-zero fails
+      the step - a cleanup that quietly half-worked leaves previews up while
+      reporting that it removed them, which is worse than not having run.
+    value: ${{ steps.delete.outputs.failed }}
+
+runs:
+  using: composite
+  steps:
+    - id: delete
+      shell: bash
+      env:
+        API_TOKEN: ${{ inputs.api-token }}
+        ACCOUNT_ID: ${{ inputs.account-id }}
+        PROJECT: ${{ inputs.project }}
+        ALIAS: ${{ inputs.alias }}
+      # Through `bash <path>` rather than executing it directly, so the script
+      # runs the same way whether or not its executable bit survived however
+      # this repository was checked out.
+      run: bash "$GITHUB_ACTION_PATH/delete.sh"

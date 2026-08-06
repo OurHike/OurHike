@@ -74,17 +74,54 @@ this way duplicate tiles on a phone holding both — measured and decided in
 
 ## Where the build runs, and what it costs
 
+The runner capacity all of this turns on is **measured, not assumed** —
+`build-basemap.yml` prints it every run, which is the entire reason that step
+exists. On this public repository a free hosted runner is **4 vCPU, 16 GB
+RAM, and 88 GB free** of a 145 GB volume (run 2, 2026-08-04). Earlier drafts
+here and in #194 assumed ~22–29 GB free, needing a cleanup action to reach
+~50–60 GB. That has not been true for some time, and the gap is what makes
+the plan below work without paying anyone.
+
 - **AT scale (now):** `build-basemap.yml`, free hosted runner, manual
-  dispatch. State PBFs ~3–4 GB, clipped input a fraction of that, well inside
-  the ~22–29 GB a runner has free. Output *estimate*: 100–380 MB at z14.
-- **Regional/continental scale (#194):** North America's extract is
-  ~14–15 GB → ~8 GB RAM, 70–150 GB temp disk, 1–2 h on 8–16 cores. Options,
-  ranked by boringness-per-dollar: GitHub larger runners (needs Team plan —
-  check GitHub for Nonprofits; ≈ $2–6/month at a monthly cadence), an
-  ephemeral self-hosted VM (≈ $1–3/build), or a volunteer's machine with a
-  runbook. R2 keeps the rest flat: tens of GB stored ≈ $1–2/month, and
-  **egress is $0** no matter how many hikers download — which is why hiker
-  downloads never enter the cost math at all.
+  dispatch. State PBFs 3.44 GB, clipped to a 690 MB build input, 12.5 minutes
+  end to end with 80 GB still free — measured below.
+- **Continental scale (#194):** North America's Geofabrik extract is
+  **17.9 GB**, not the ~14–15 GB first estimated. Planetiler wants temp disk
+  on top: its own preflight asked ~5× the input on the AT run, while its
+  planet guidance says 10×, so 5× is a floor rather than a promise. A single
+  whole-NA build therefore needs ~130 GB at 5× and ~220 GB at 10×, against
+  88 GB free. **Disk is the only thing that fails** — the compute is ~8
+  CPU-hours, about 2.5 h wall clock at the 3.3× parallelism this runner
+  actually achieves, inside the 6 h job limit.
+
+**So the continental build shards instead of buying a bigger machine.** Every
+Geofabrik sub-region fits a free runner under *either* disk multiplier — the
+largest, `canada` at 6.0 GB, needs ~44 GB of the 88 at 5× and ~74 GB at 10× —
+and a matrix of them runs in parallel for $0, because standard runners have
+unlimited free minutes on a public repository. Larger runners are always
+billed, public repos included, so the sharded free build is not a compromise
+against the paid one; it is cheaper *and* faster in wall clock.
+
+The split that lets shards be cut apart is the one `extract_package.py`
+already draws at z9 — low zooms are shared context, high zooms are local:
+
+| | Built | Why it splits there |
+|---|---|---|
+| z0–9 | once, whole-NA, from the full 17.9 GB PBF | Cross-shard by nature: a z4 tile spans regions, so no shard can produce it alone. Cheap regardless — tile counts quadruple per zoom, so everything through z9 is a rounding error against z14 (31 MB of the AT build's 532). Reads the big PBF, writes almost nothing, fits. |
+| z10–14 | per sub-region, in parallel | Tile content at z10+ is local. Give each shard a padded input and an exact `--polygon` — what `lib/poly.py` already does for the corridor — and the shards are disjoint, so combining them is concatenation, not reconciliation. |
+
+PMTiles orders tile IDs zoom-major, so a national z0–9 archive followed by a
+regional z10–14 one is *already* in write order. Packages can be cut from the
+pair without ever materialising a ~23 GB national file.
+
+What this has not proved: whether any OpenMapTiles layer ranks features from
+a global view rather than a local one. If one does, it shows at shard seams,
+and that — not the disk arithmetic — is the thing to check on the first real
+sharded run.
+
+R2 keeps the rest flat: tens of GB stored ≈ $1–2/month at $0.015/GB-month
+after a 10 GB free tier, and **egress is $0** no matter how many hikers
+download — which is why hiker downloads never enter the cost math at all.
 
 ## External tools
 

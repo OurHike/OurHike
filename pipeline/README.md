@@ -154,52 +154,46 @@ Needs `cells.json` first - the corridor's cell grid plus each cell's quad list (
 
 Roughly 22.9% of corridor quads (378 of 1,654) bbox-overlap more than one 1-degree cell, so a quad near a cell boundary gets fetched once per owning cell rather than shared - about 3.6GB of deliberate, bounded redundancy across the whole corridor, accepted rather than adding a cross-job quad cache (which would reintroduce the disk/coordination problem this per-cell split exists to avoid).
 
-## Exporting the background as PMTiles (done)
+## Exporting the background as PMTiles (rebuilt from native resolution, #191)
 
-`export_pmtiles.py` packages the 51 corridor-clipped cells above into a single **PMTiles** archive - a Web Mercator XYZ tile pyramid MapLibre GL JS reads directly in-browser, no tile server required (see `TECHNICAL_ARCHITECTURE.md`'s "Export" pipeline step).
+Superseded on 2026-08-06: `export_pmtiles.py` and its 11 m intermediate are
+gone. The measured diagnosis in [#191](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/191)
+found the old chain shipped ~1/88th of the source's pixels - US Topo
+GeoTIFFs are 2.032 m/px natively, and the mosaic step downsampled them to
+11.13 m/px with bilinear before the tile export resampled them again.
 
-```
-.venv/Scripts/python export_pmtiles.py
-```
+The rebuild renders every tile in ONE warp from the native quads
+(`lib/raster_tiles.py`), with the kernel matched to the zoom: `average`
+where the zoom decimates (z<=13), `cubic` near native (z14). It runs as the
+same 51-cell fan-out (`render_cell_tiles.py`, one CI job per cell - each
+renders the z11-14 tiles it *owns* by tile centre, fetching every quad an
+owned tile touches so cell borders cannot seam, plus a 24 m overview), and
+`assemble_raster.py` reconverges the cells: verifies the ownership receipts
+tile the corridor exactly, renders z0-10 from the overviews, and writes the
+tier archives:
 
-Optional flags override the defaults below: `--min-zoom`, `--max-zoom`, `--out`. All three download tiers are built this way - see "All three download tiers are built" below for the exact commands and measured sizes.
+| tier | zooms | archive |
+|---|---|---|
+| Light | 0-11 | `background_z11.pmtiles` |
+| Standard | 0-12 | `background.pmtiles` |
+| Fine | 0-13 | `background_z13.pmtiles` |
+| Quad sheet | 0-14 | `quad_sheet_z14.pmtiles` (z14 within 5 mi of the trail) |
 
-**Format choices, backed by real measurements on this project's own data, not defaults:**
-- **512x512px tiles, WebP quality 80.** WebP came out ~7-8x smaller than PNG on real sample tiles with no visible quality loss for a background/context basemap (the safety-relevant POI data is separate vector GeoJSON, untouched by this lossy step). 512px tiles (via MapLibre's `tileSize: 512` raster option) compress better per unit ground area than 256px - a 512px tile at zoom *z* covers the same ground area as four 256px tiles at zoom *z+1*, so it's the same effective resolution with 4x fewer files and less per-file header overhead.
-- **Zoom levels 6 through 12 by default** in this 512px scheme - equivalent in ground resolution to 256px zoom 7-13. Corridor-vs-tile intersection uses shapely in a plain Python loop, not one DuckDB query per candidate tile (an earlier attempt at the latter was killed after 2 minutes with zero output - loading the corridor polygon once and testing intersections directly finishes in seconds).
+The client declares the source `tileSize: 256` (the @2x convention), so a
+512px tile maps 1:1 to a DPR-2 phone's device pixels instead of being
+upscaled 2x - the free half of #191's fix, and the reason
+`lib/archiveCoverage.ts` carries a camera-vs-tile zoom offset.
 
-**Real output at the default max zoom (12):** 5,816 tiles, 0 empty/skipped, **314MB** for the entire 2,190-mile trail's background map.
-
-**Why 12, not 13 (changed 2026-07-28):** the first real run went to zoom 13 (matching the source's native ~11m/pixel resolution exactly) and came to 1.18GB. Measuring the real per-zoom breakdown of that archive found zoom 13 *alone* was 73% of every byte in it:
-
-| zoom | tiles | size | % of total |
-|---|---|---|---|
-| 6-10 | 501 | 12.3 MB | 1.0% |
-| 11 | 1,139 | 52.0 MB | 4.4% |
-| 12 | 4,176 | 249.6 MB | 21.1% |
-| 13 | 15,932 | 868.0 MB | 73.4% |
-
-For a background/context layer (not the precise trail line or POI locations, which are separate vector data), that last zoom level's detail gain wasn't worth 73% of the download - so 12 is now the default, cutting the whole-corridor package by ~73% for a still-detailed ~19m/pixel result. **The zoom-13 archive isn't gone, just not the default** - it's kept as `data/processed/background_z13.pmtiles` (rebuilt via `--max-zoom=13 --out=...`) for [ROADMAP.md](../ROADMAP.md)'s planned per-user zoom-choice setting (Phase 2) - hikers with more data/storage headroom will eventually be able to opt into more detail.
-
-### All three download tiers are built (2026-07-29)
-
-The per-user zoom choice above is no longer a plan - the app ships it. `client/src/lib/downloadDetail.ts` offers Light / Standard / Fine, `publish.py`'s `BACKGROUND_ARCHIVES` maps each tier to its archive, and all three now exist:
-
-| tier | zooms | build | tiles | measured | app advertises | drift |
-|---|---|---|---|---|---|---|
-| Light | 6-11 | `--max-zoom=11 --out=data/processed/background_z11.pmtiles` | 1,640 | **64,403,146 B** (64.4 MB) | 64 MB | +0.6% |
-| Standard | 6-12 | *(default)* | 5,816 | **313,987,530 B** (314 MB) | 314 MB | -0.0% |
-| Fine | 6-13 | `--max-zoom=13 --out=data/processed/background_z13.pmtiles` | 21,747 | **1,182,024,009 B** (1.18 GB) | 1.18 GB | +0.2% |
-
-All three land within 0.6% of the figure the app shows before someone commits to a download - which matters because that figure is weighed against remaining phone storage at a trailhead, not read as an approximation. Worth re-measuring whenever the source rasters are refreshed; a tier drifting far from its advertised size is a real problem, not a rounding detail.
-
-Light came out almost exactly on the estimate implied by the per-zoom table above (52.0 MB for z11 plus 12.3 MB for z6-10 = 64.3 MB), which is a useful confirmation that the breakdown is trustworthy for predicting future tiers.
-
-A completeness check at the end (mirroring the pattern in `spike_raster_mosaic.py`) confirms every one of the 51 source cells contributed to at least one tile at max zoom, failing loudly rather than silently shipping a coverage gap.
+**Measured sizes for the rebuilt tiers land here after the first real
+`build-raster.yml` run**, and `downloadDetail.ts`'s advertised figures are
+updated with them - the +/-0.6% honesty bar from the previous build (64.4 MB
+/ 314 MB / 1.18 GB, measured 2026-07-29 against the 11 m chain) carries
+over. Until that run, the client keeps advertising the old measured sizes,
+which remain the sizes of the archives actually published.
 
 ## Checking output quality before publish (done)
 
-`check_output_quality.py` is the gate between Export and Publish. It runs after `export_trails.py`, `export_poi.py`, `export_elevation.py`, and `export_pmtiles.py` have all produced their output, and before `publish.py` ships any of it to R2:
+`check_output_quality.py` is the gate between Export and Publish. It runs after `export_trails.py`, `export_poi.py`, `export_elevation.py`, and the raster assemble (`assemble_raster.py`) have all produced their output, and before `publish.py` ships any of it to R2:
 
 ```
 .venv/Scripts/python check_output_quality.py

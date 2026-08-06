@@ -68,10 +68,11 @@ export function buildViewerStyle(
     sources['viewer-raster'] = {
       type: 'raster',
       url: slots.raster,
-      // The shipped archives are 512px tiles and the app declares them the
-      // same way (style.ts) - the viewer must show today's rendering, blur
-      // included, or it cannot be used to judge #191's fixes against it.
-      tileSize: 512,
+      // Mirrors the app's declaration (style.ts, the @2x convention since
+      // #191): the viewer's whole point is showing what would ship, so its
+      // presentation must move with the app's - a dropped archive judged
+      // here at 512 would look blurrier than the same bytes in the app.
+      tileSize: 256,
       attribution: 'USGS US Topo',
     }
     layers.push({ id: VIEWER_RASTER_LAYER_ID, type: 'raster', source: 'viewer-raster' })

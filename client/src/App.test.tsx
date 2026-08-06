@@ -941,8 +941,9 @@ describe('an archive that does not reach the view', () => {
     await screen.findByRole('region', { name: /trail map/i })
 
     // MockMap does not fit bounds, so it starts at 0 - under any real floor,
-    // and the state the clamp exists for.
-    await waitFor(() => expect(MockMap.live[0]?.getZoom()).toBe(6))
+    // and the state the clamp exists for. 5, not the header's 6: under the
+    // @2x tileSize declaration (#191) camera z5 already draws z6 tiles.
+    await waitFor(() => expect(MockMap.live[0]?.getZoom()).toBe(5))
   })
 
   it('says so when the hiker zooms out past what the download covers', async () => {
@@ -957,8 +958,8 @@ describe('an archive that does not reach the view', () => {
 
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
-    await offlineMapSettledAt(6)
-    await atZoom(4)
+    await offlineMapSettledAt(5)
+    await atZoom(3)
 
     expect(await screen.findByText(/zoomed out past your download/i)).toBeVisible()
   })
@@ -975,8 +976,8 @@ describe('an archive that does not reach the view', () => {
 
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
-    await offlineMapSettledAt(6)
-    await atZoom(4)
+    await offlineMapSettledAt(5)
+    await atZoom(3)
     await screen.findByText(/zoomed out past your download/i)
 
     await atZoom(11)

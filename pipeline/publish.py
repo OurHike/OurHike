@@ -6,7 +6,7 @@ section flags is already resolved (ROADMAP.md Phase 2: "whole corridor, one
 package") - this module doesn't need to revisit it, just diff whatever
 per-artifact manifests Export already produces (export_trails.py's
 trails_manifest.json, export_poi.py's poi/manifest.json, export_elevation.py's
-elevation_manifest.json) plus export_pmtiles.py's per-tier background
+elevation_manifest.json) plus assemble_raster.py's per-tier background
 archives (see BACKGROUND_ARCHIVES), which don't get their own manifest - this
 module hashes those directly rather than silently skipping the two largest
 artifacts in the whole pipeline.
@@ -15,7 +15,7 @@ Core rule: only upload an artifact whose hash actually changed, and never
 write a new `latest.json` version if nothing changed - not even a no-op
 bump. One SHA256 per artifact, never one combined hash for everything (per
 TECHNICAL_ARCHITECTURE.md's explicit "per-artifact, not one hash for
-everything" - the same reasoning `export_pmtiles.py`/`export_trails.py`/
+everything" - the same reasoning `assemble_raster.py`/`export_trails.py`/
 `export_poi.py` already apply per-artifact rather than per-run).
 
 R2 credentials/endpoint are read from the environment only (R2_ENDPOINT_URL,
@@ -53,22 +53,29 @@ def sha256_file(path: Path) -> str:
 # One background raster archive per download tier the client offers.
 #
 # The Downloads screen (client/src/lib/downloadDetail.ts) lets a hiker pick
-# Light / Standard / Fine, and each is a separate PMTiles archive built at a
-# different max zoom by export_pmtiles.py:
+# Light / Standard / Fine, and each is a separate PMTiles archive - since
+# #191, rendered warp-once from the quads' native resolution by the
+# render_cell_tiles.py fan-out and assembled into tiers by
+# assemble_raster.py:
 #
-#     light     z6-11    ~64 MB    export_pmtiles.py --max-zoom 11 --out ...
-#     standard  z6-12    ~314 MB   export_pmtiles.py                (default)
-#     fine      z6-13    ~1.18 GB  export_pmtiles.py --max-zoom 13 --out ...
+#     light       z0-11   background_z11.pmtiles
+#     standard    z0-12   background.pmtiles
+#     fine        z0-13   background_z13.pmtiles
+#     quad_sheet  z0-14   quad_sheet_z14.pmtiles  (z14 within 5 mi of the
+#                          trail - the optional USGS sheet of #184's
+#                          vector-first plan)
 #
-# Written as a named mapping rather than a hardcoded tuple of filenames so
-# that a tier the app offers but the pipeline cannot produce is a failing
-# test rather than a download that 404s on a mountain. That was a real gap:
-# background_z11.pmtiles did not exist while the app was already offering
-# Light.
+# Sizes are recorded by the first real build's job summary, not restated
+# here to drift. Written as a named mapping rather than a hardcoded tuple of
+# filenames so that a tier the app offers but the pipeline cannot produce is
+# a failing test rather than a download that 404s on a mountain. That was a
+# real gap: background_z11.pmtiles did not exist while the app was already
+# offering Light.
 BACKGROUND_ARCHIVES = {
     "light": "background_z11.pmtiles",
     "standard": "background.pmtiles",
     "fine": "background_z13.pmtiles",
+    "quad_sheet": "quad_sheet_z14.pmtiles",
 }
 
 
@@ -110,7 +117,7 @@ def collect_artifacts() -> dict[str, dict]:
     """Gather every publishable artifact into one flat {name: {path, sha256}}
     dict, reading whichever of Export's manifests actually exist (a fresh
     checkout that's only run some export scripts still publishes what it
-    has) plus the raster background, hashed directly since export_pmtiles.py
+    has) plus the raster background, hashed directly since assemble_raster.py
     doesn't write its own manifest."""
     artifacts: dict[str, dict] = {}
 

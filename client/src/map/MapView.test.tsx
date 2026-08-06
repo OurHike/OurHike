@@ -432,7 +432,9 @@ describe('keeping the opening camera inside what the download covers', () => {
       />,
     )
 
-    await waitFor(() => expect(MockMap.live[0]?.getZoom()).toBe(6))
+    // 5, not the header's 6: the @2x tileSize declaration (#191) means
+    // camera z5 already draws the archive's z6 tiles.
+    await waitFor(() => expect(MockMap.live[0]?.getZoom()).toBe(5))
   })
 
   it('leaves it alone once the archive reaches every zoom', async () => {

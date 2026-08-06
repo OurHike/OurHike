@@ -11,7 +11,7 @@ never another build.
 Implemented over the pmtiles package this pipeline already depends on rather
 than the go-pmtiles CLI: no external binary to install or pin, and the
 region-intersection walk reuses lib/tiling.py exactly the way
-export_pmtiles.py's raster tiling does. go-pmtiles remains the right tool for
+the raster tiling does. go-pmtiles remains the right tool for
 extracting from a REMOTE archive (it does clustered range requests); this
 operates on the build output sitting beside it on disk, where plain reads
 win on simplicity. Tile bytes are copied verbatim - Reader.get returns
@@ -98,7 +98,7 @@ def package_header(source_header: dict, region_4326, min_zoom: int) -> dict:
     """The package's header: the source's format facts (tile type and
     compression - the bytes are copied verbatim, so these MUST carry over),
     the region's own bounds rather than the source's, and the same
-    center-on-min-zoom convention export_pmtiles.py uses."""
+    center-on-min-zoom convention assemble_raster.py uses."""
     min_lon, min_lat, max_lon, max_lat = region_4326.bounds
     return {
         "tile_type": source_header["tile_type"],

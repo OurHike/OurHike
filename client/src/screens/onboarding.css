@@ -1,11 +1,81 @@
+/* First run, as a card over the map (screens/Onboarding.tsx).
+ *
+ * The rule this file exists to keep: the map behind the steps stays visible.
+ * That is not decoration - every one of the three steps is a claim about the
+ * map, and the shell pays for a whole extra MapLibre build to have it there
+ * (App.tsx), which a stylesheet that covered it would waste in silence.
+ *
+ * So there is no page background here, and the card is capped short of the
+ * viewport rather than sized by its contents. Both are asserted in
+ * test/entryLayout.test.ts, because jsdom does no layout and "you can still
+ * see the map" is exactly the kind of property that decays under a later
+ * well-meaning `min-height: 100svh`.
+ */
+
 .onboarding {
+  position: relative;
+  /* Over the backdrop .app__entry-map, which is absolute in the same frame. */
+  z-index: 1;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  min-height: 100svh;
-  padding: var(--space-5, 20px);
-  background: var(--bg-page);
-  gap: var(--space-4, 16px);
+  /* The card sits at the bottom - the thumb end of a phone, and the end of
+     the screen a map is least often read from. */
+  justify-content: flex-end;
+  /* Deliberately no background. See the file header. */
 }
+
+/* The steps themselves.
+ *
+ * `max-height` is the load-bearing line: it is what guarantees the map is
+ * visible above the card on a short screen as well as a tall one. The card
+ * scrolls its own contents past that point rather than growing, so the way
+ * forward is never pushed off the bottom of the screen. */
+.onboarding__card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+  max-height: 78%;
+  overflow-y: auto;
+  padding: var(--space-5, 20px);
+  padding-bottom: max(var(--space-5, 20px), env(safe-area-inset-bottom, 0));
+  background: var(--bg-page);
+  /* A sheet over the map, shaped like the one this app already has: the same
+     14px top corners and the same upward shadow as the legend (chrome.css),
+     which is the other thing that rises over this map from the bottom edge.
+     No scrim over the map behind it, for the same reason the legend has none -
+     dimming the map to introduce the map is a strange way to introduce it. */
+  border-radius: var(--radius-l, 14px) var(--radius-l, 14px) 0 0;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+  animation: onboarding-rise var(--duration-slow, 320ms) var(--ease-out, ease-out) both;
+}
+
+/* Emergent rather than instant: the card lifts into place over the map, and
+   each step lifts again as it replaces the last (the element is keyed by step
+   in Onboarding.tsx, so React remounts it and the animation re-runs).
+   Transform and opacity only - both are compositor properties, so this costs
+   no layout on a phone that is also building a map. */
+@keyframes onboarding-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Motion is the part of this that is optional, and the only part. Someone who
+   has asked their phone for less of it still gets the card, the map behind it
+   and every step in the same place - it simply arrives rather than rises. */
+@media (prefers-reduced-motion: reduce) {
+  .onboarding__card {
+    animation: none;
+  }
+}
+
 .onboarding__progress {
   margin: 0;
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -13,7 +83,6 @@
   color: var(--fg-3);
 }
 .onboarding__step {
-  flex: 1;
   display: flex;
   flex-direction: column;
   gap: var(--space-3, 12px);
@@ -22,6 +91,13 @@
   margin: 0;
   font-size: 24px;
   color: var(--fg-1);
+}
+/* One line on the sheet whose tab is open, in the same voice the download
+   window uses under its own tabs (downloads.css .downloads__item-summary). */
+.onboarding__sheet-summary {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: 13px;
 }
 .onboarding__reassurance {
   font-weight: 600;
@@ -46,7 +122,7 @@
     color 160ms ease;
 }
 .onboarding__primary {
-  color: var(--fg-on-dark);
+  color: var(--fg-on-brand);
   background: var(--brand-primary);
   border: 0;
 }

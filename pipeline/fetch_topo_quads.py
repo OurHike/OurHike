@@ -36,6 +36,7 @@ import io
 import json
 import re
 import sys
+import time
 import zipfile
 from pathlib import Path
 from xml.etree import ElementTree
@@ -60,13 +61,39 @@ S3_NS = "{http://s3.amazonaws.com/doc/2006-03-01/}"
 
 DATED_SUFFIX_RE = re.compile(r"_\d{8}_TM_geo$")
 
+# S3 drops a long-lived connection now and then: two of build-raster.yml's
+# first ~100 fan-out jobs died to a single mid-transfer ConnectionResetError
+# (runs 6 and 7, 2026-08-06), each turning a finished 20-minute render into a
+# manual re-run-failed-jobs round. Connection faults and timeouts get another
+# try with a pause first; an HTTP error status never retries - S3 answering
+# "no" is an answer, not a flake.
+RETRY_BACKOFF_SECONDS = (5, 30)
+
+
+def request_with_retry(method: str, url: str, **kwargs) -> requests.Response:
+    """requests.request, retried over RETRY_BACKOFF_SECONDS on connection
+    faults. Mirrors requests.head()'s no-redirect default so HEAD callers
+    behave exactly as before the retry wrapper existed."""
+    if method.lower() == "head":
+        kwargs.setdefault("allow_redirects", False)
+    for attempt, delay in enumerate((*RETRY_BACKOFF_SECONDS, None)):
+        try:
+            return requests.request(method, url, **kwargs)
+        except (requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError, requests.exceptions.Timeout) as e:
+            if delay is None:
+                raise
+            attempts = len(RETRY_BACKOFF_SECONDS) + 1
+            print(f"  {url}: {type(e).__name__} on attempt {attempt + 1}/{attempts}, retrying in {delay}s")
+            time.sleep(delay)
+    raise AssertionError("unreachable")
+
 
 def fetch_metadata_csv() -> Path:
     csv_path = METADATA_DIR / "ustopo_current.csv"
     METADATA_DIR.mkdir(parents=True, exist_ok=True)
 
     state = json.loads(METADATA_STATE_PATH.read_text()) if METADATA_STATE_PATH.exists() else {}
-    head = requests.head(METADATA_URL, timeout=30)
+    head = request_with_retry("head", METADATA_URL, timeout=30)
     head.raise_for_status()
     remote_last_modified = head.headers.get("Last-Modified")
     if remote_last_modified and state.get("last_modified") == remote_last_modified and csv_path.exists():
@@ -74,7 +101,7 @@ def fetch_metadata_csv() -> Path:
         return csv_path
 
     print(f"Fetching quad metadata inventory from {METADATA_URL} ...")
-    resp = requests.get(METADATA_URL, timeout=120)
+    resp = request_with_retry("get", METADATA_URL, timeout=120)
     resp.raise_for_status()
     with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
         z.extract("ustopo_current.csv", METADATA_DIR)
@@ -98,7 +125,7 @@ def list_state_geotiffs(state: str) -> dict:
         params = {"prefix": f"{GEOTIFF_PREFIX}/{state}/", "max-keys": 1000}
         if marker:
             params["marker"] = marker
-        resp = requests.get(BUCKET_URL, params=params, timeout=60)
+        resp = request_with_retry("get", BUCKET_URL, params=params, timeout=60)
         resp.raise_for_status()
         root = ElementTree.fromstring(resp.content)
         contents = root.findall(f"{S3_NS}Contents")
@@ -169,7 +196,7 @@ def fetch_one_quad(product_filename: str, state_index: dict, out_dir: Path, mani
     tif_url = f"{BUCKET_URL}/{GEOTIFF_PREFIX}/{state}/{filename}"
     local_path = out_dir / state / filename
 
-    head = requests.head(tif_url, timeout=30)
+    head = request_with_retry("head", tif_url, timeout=30)
     if head.status_code != 200:
         return {"status": "unmatched", "reason": "head_failed", "tif_url": tif_url}
 
@@ -179,7 +206,7 @@ def fetch_one_quad(product_filename: str, state_index: dict, out_dir: Path, mani
         return {"status": "skipped", "state": state, "filename": filename, "path": local_path}
 
     local_path.parent.mkdir(parents=True, exist_ok=True)
-    resp = requests.get(tif_url, timeout=180)
+    resp = request_with_retry("get", tif_url, timeout=180)
     resp.raise_for_status()
     local_path.write_bytes(resp.content)
 

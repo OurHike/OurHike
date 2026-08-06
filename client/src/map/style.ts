@@ -68,11 +68,15 @@ import { buildPoiLayer, buildPoiSource, POI_SOURCE_ID } from './poiLayers'
 import type { BackgroundSource } from '../lib/userPreferences'
 import {
   BUNDLED_GLYPHS,
-  LIVE_TOPO_ATTRIBUTION,
+  attachSheetTheme,
   liveTopoLayers,
   liveTopoSources,
 } from './liveTopo'
-import { ELEVATION_ATTRIBUTION, type ContourUnits, type TerrainUrls } from './terrain'
+import { OSM_CREDIT, USGS_TOPO_CREDIT } from './credits'
+import { whenStyleReady } from './styleReady'
+import type { Map as MapLibreMap } from 'maplibre-gl'
+import type { ResolvedTheme } from '../lib/theme'
+import type { ContourUnits, TerrainUrls } from './terrain'
 
 export const TOPO_SOURCE_ID = 'usgs-topo'
 export const TRAILS_SOURCE_ID = 'trails'
@@ -98,29 +102,128 @@ export const BLAZE_LAYER_ID = 'trail-blaze'
  */
 export const MAP_BACKGROUND_COLOR = '#f7f3e9'
 
-// ODbL requires a visible "© OpenStreetMap". WIREFRAMES.md's map-corner mockup
-// shows the shorthand "© OSM", but its own Assets section states the full form
-// is required - the abbreviation does not satisfy the licence, so the full
-// form is what ships.
-export const ATTRIBUTION = 'USGS US Topo · © OpenStreetMap contributors'
+/*
+ * THE CANVAS'S HALF OF LIGHT/DARK MODE
+ *
+ * Everything in the chrome follows `data-theme` through the design tokens
+ * (design-system/tokens/colors.css). The map cannot: it is WebGL, its colours
+ * are paint properties on a style specification, and a style has never heard
+ * of a CSS variable. So the resolved theme comes down as a value
+ * (lib/useTheme.ts -> App -> MapScreen -> MapView) and the three constants
+ * below are what it means once it gets there.
+ *
+ * Two of the three layers it touches are this file's own - the backdrop and
+ * the downloaded archive - which is why this lives here rather than in a
+ * module of its own: a fourth file holding a table of two layer ids owned by
+ * this one is indirection, not separation. The live sheet's twenty-one layers
+ * are handled where their palette is (liveTopo.ts's attachSheetTheme), the
+ * same way liveTopo.ts already owns the unit switch for its own labels.
+ *
+ * THE ARCHIVE CANNOT GO DARK, AND IS DIMMED INSTEAD
+ *
+ * TECHNICAL_ARCHITECTURE.md recorded this trade-off when the corridor
+ * background was chosen: US Topo quads are pre-rendered raster, their ink is
+ * pixels, and no semantic swap is available - there is no "draw the contours
+ * brown-on-ink instead", because nothing here knows which pixels are contours.
+ * That note named canvas-level filters as the fallback, and this is that
+ * fallback taken one step better: MapLibre's own raster paint properties dim
+ * the archive LAYER, on the GPU, leaving the trail lines, the pins and the
+ * chrome over it at full strength. A CSS filter on the canvas would have
+ * dimmed those too - which would make the one safety-critical thing on the
+ * screen the thing dark mode faded out.
+ *
+ * So under the dark theme the archive is a dimmed paper map rather than a dark
+ * one, and that limitation is not hidden: a hiker on the downloaded background
+ * gets a quieter version of the same sheet, a hiker on the live background
+ * gets a genuinely dark one.
+ */
 
 /**
- * What the corner has to say once the live background is on.
+ * The backdrop, per theme.
  *
- * Every clause is a licence or terms condition rather than a courtesy - ODbL
- * for the OSM data, OpenFreeMap's own terms for hosting it, and the AWS
- * Terrain Tiles attribution requirement for the elevation the hillshade and
- * contours are derived from. Composed from each module's own constant so a
- * source cannot be added in one file and go uncredited in another.
+ * `--bg-page` in each, and that identity is load-bearing rather than tidy:
+ * chrome.css paints `.map-view` with the same token as its pre-WebGL fallback,
+ * so the handover from the DOM's background to the style's backdrop layer has
+ * to be invisible in BOTH themes, not only the one these were picked in.
  */
-export const LIVE_ATTRIBUTION = [
-  ATTRIBUTION,
-  LIVE_TOPO_ATTRIBUTION,
-  ELEVATION_ATTRIBUTION,
-].join(' · ')
+export const MAP_BACKDROP: Record<ResolvedTheme, string> = {
+  light: MAP_BACKGROUND_COLOR,
+  dark: '#15140f',
+}
 
-export function attributionFor(background: BackgroundSource): string {
-  return background === 'hiking_topo_live' ? LIVE_ATTRIBUTION : ATTRIBUTION
+/**
+ * How far the downloaded archive is turned down, per theme.
+ *
+ * Light is the spec's own defaults, written out rather than left implicit,
+ * because these get applied to a LIVE map: switching back out of dark has to
+ * restore the property, and "restore" needs a value to restore to.
+ *
+ * The dark numbers are a judgement, and the judgement is that legibility wins.
+ * 0.62 takes the quads' white paper to about the lightness of a slate roof -
+ * clearly no longer a lamp, still clearly a map. Pushing it to 0.3 makes a
+ * handsome screenshot and a sheet whose 1:24,000 contour labels cannot be
+ * read, which is the wrong trade on the one screen a hiker uses to decide
+ * where to walk. The desaturation stops the water layers' blue glowing out of
+ * the dimmed sheet, and the contrast nudge puts back some of the separation
+ * the dimming costs.
+ */
+export const ARCHIVE_RASTER_PAINT: Record<
+  ResolvedTheme,
+  Readonly<Record<string, number>>
+> = {
+  light: {
+    'raster-brightness-max': 1,
+    'raster-saturation': 0,
+    'raster-contrast': 0,
+  },
+  dark: {
+    'raster-brightness-max': 0.62,
+    'raster-saturation': -0.2,
+    'raster-contrast': 0.08,
+  },
+}
+
+/**
+ * Applies a theme to a map that is already built, and hands back a detach.
+ *
+ * Repaints rather than rebuilds, which is not an optimisation but the same
+ * rule MapView.tsx keeps for the scale bar's units and contours.ts keeps for
+ * the contour interval: a preference change must not cost a WebGL context.
+ * Swapping the style out drops that context and takes with it the POI source
+ * pushed in from IndexedDB, every archive tile in flight, and the camera - so
+ * a hiker who taps "Dark" while walking would watch the map they were reading
+ * disappear and rebuild itself.
+ *
+ * Two waits, not one. The backdrop is in the style from the first frame; the
+ * sheet's layers are absent entirely on the downloaded background, and one
+ * shared probe would leave the backdrop waiting on a layer that is never
+ * coming.
+ */
+export function attachMapTheme(map: MapLibreMap, theme: ResolvedTheme): () => void {
+  const detachBase = whenStyleReady(
+    map,
+    () => map.getLayer(BACKDROP_LAYER_ID) !== undefined,
+    () => {
+      map.setPaintProperty(BACKDROP_LAYER_ID, 'background-color', MAP_BACKDROP[theme])
+
+      // Guarded on its own: the backdrop proves the style is parsed and takes
+      // writes, not that this particular layer is in it. It always is today -
+      // both backgrounds stack over the archive - and a guard that costs
+      // nothing is cheaper than finding out the day one of them does not.
+      if (map.getLayer(TOPO_LAYER_ID) === undefined) return
+      for (const [property, value] of Object.entries(ARCHIVE_RASTER_PAINT[theme])) {
+        map.setPaintProperty(TOPO_LAYER_ID, property as never, value as never)
+      }
+    },
+    'Map theme',
+  )
+
+  const detachSheet = attachSheetTheme(map, theme)
+
+  return () => {
+    detachBase()
+    detachSheet()
+  }
 }
 
 /** The pipeline's own key for ATC's trail-centerline feed (pipeline/sources.json). */
@@ -281,6 +384,16 @@ export interface MapStyleOptions {
   terrain?: TerrainUrls
   /** Decides whether contours and summit heights are in feet or metres. */
   units?: ContourUnits
+  /**
+   * Which theme the canvas is drawn in - see MAP_BACKDROP above.
+   *
+   * Optional and light by default, so every caller that has no opinion builds
+   * exactly the style it always built. Present at all so that a cold start
+   * under the dark theme is dark in its FIRST frame: attachMapTheme can repaint
+   * a live map, but it necessarily runs after the map exists, and a white flash
+   * on a phone at night is the thing the theme was chosen to avoid.
+   */
+  theme?: ResolvedTheme
 }
 
 export function buildMapStyle({
@@ -289,6 +402,7 @@ export function buildMapStyle({
   background = 'hiking_topo_live',
   terrain,
   units = 'imperial',
+  theme = 'light',
 }: MapStyleOptions): StyleSpecification {
   // Asked for, and that is the whole question. Terrain used to be half of it -
   // `background === 'hiking_topo_live' && terrain !== undefined` - on the
@@ -306,7 +420,7 @@ export function buildMapStyle({
   // paper. That contradicted what terrain.ts and MapView.tsx each promise in
   // their own words: a failure there costs a layer, never the map.
   const live = background === 'hiking_topo_live'
-  const liveOptions = live ? { terrain, units } : null
+  const liveOptions = live ? { terrain, units, theme } : null
 
   return {
     version: 8,
@@ -337,12 +451,28 @@ export function buildMapStyle({
         // CAMERA_ZOOM_TILE_OFFSET. Old archives already on phones gain the
         // same sharpness: the declaration is the client's, not the file's.
         tileSize: 256,
-        attribution: ATTRIBUTION,
+        // This source alone is the USGS survey. It used to carry the composed
+        // "USGS US Topo · © OpenStreetMap contributors" that every other
+        // source carried too, which made the corner's job impossible: three
+        // sources declaring one string cannot say which of them is drawing.
+        attribution: USGS_TOPO_CREDIT,
       },
       [TRAILS_SOURCE_ID]: {
         type: 'geojson',
         data: trailsUrl,
-        attribution: ATTRIBUTION,
+        // What is dropped here is the "USGS US Topo" half of that string: no
+        // USGS survey is in this source, and a credit that says otherwise is
+        // the thing this change exists to stop.
+        //
+        // What is NOT added is an ATC credit, and that gap is deliberate
+        // rather than an oversight. The trail geometry is ATC's, and ATC's
+        // redistribution and attribution terms are one of the two unresolved
+        // data-terms questions this project already carries (#98,
+        // features/SOURCE_REGISTRY.md) - there is no agreed attribution string
+        // to render, and inventing one would be a claim about a permission
+        // nobody has confirmed. It is a real hole, it predates this file, and
+        // it is not closed by guessing.
+        attribution: OSM_CREDIT,
         // Never simplify a trail away. MapLibre tiles GeoJSON through
         // geojson-vt, whose per-zoom simplification does two things under
         // this one knob: it thins vertices within a line (harmless - the
@@ -367,14 +497,15 @@ export function buildMapStyle({
         tolerance: 0,
       },
       // Declared empty and filled in later - see buildPoiSource. Attributed
-      // like the other two: the POIs are ATC and OpenStreetMap-derived, and a
-      // source with no attribution is one release away from shipping
-      // uncredited.
-      [POI_SOURCE_ID]: { ...buildPoiSource(), attribution: ATTRIBUTION },
+      // like the trails, and for the same reasons: the POIs are ATC and
+      // OpenStreetMap-derived, only one of those two has a settled credit to
+      // render, and a source with no attribution at all is one release away
+      // from shipping uncredited.
+      [POI_SOURCE_ID]: { ...buildPoiSource(), attribution: OSM_CREDIT },
       // Each of these carries its own credit (OpenFreeMap's terms, the AWS
-      // Terrain Tiles requirement) rather than the composed line - a source
-      // should name the data IT is, and attributionFor() is what assembles the
-      // corner out of whichever ones are actually in the style.
+      // Terrain Tiles requirement), like the three above - a source names the
+      // data IT is, and map/credits.ts assembles the corner out of whichever
+      // of them are actually on screen.
       ...(liveOptions === null ? {} : liveTopoSources(liveOptions)),
     },
     layers: [
@@ -392,12 +523,17 @@ export function buildMapStyle({
         // off-corridor pan as well as the transparent ground it was added for.
         id: BACKDROP_LAYER_ID,
         type: 'background',
-        paint: { 'background-color': MAP_BACKGROUND_COLOR },
+        paint: { 'background-color': MAP_BACKDROP[theme] },
       },
       {
         id: TOPO_LAYER_ID,
         type: 'raster',
         source: TOPO_SOURCE_ID,
+        // The archive is pre-rendered paper and cannot be restyled, so under
+        // the dark theme it is dimmed rather than redrawn - see
+        // ARCHIVE_RASTER_PAINT above, including why this is a layer property
+        // and not a filter over the canvas.
+        paint: { ...ARCHIVE_RASTER_PAINT[theme] },
       },
       // The live sheet goes OVER the downloaded raster, and that ordering is
       // the whole offline story rather than a cosmetic preference.

@@ -26,6 +26,7 @@ import { backgroundOverride } from '../lib/dataSaver'
 import { BackgroundPicker } from '../chrome/BackgroundPicker'
 import { DownloadsLink } from '../chrome/DownloadsLink'
 import { REPORTER_TYPES } from '../lib/contributionFlow'
+import { ThemePicker } from './ThemePicker'
 import type { ReportDraft } from '../lib/outbox'
 import './settings.css'
 
@@ -186,10 +187,10 @@ export function Settings({
 
       <section className="settings__group">
         <h2 className="settings__heading">Display</h2>
-        <p className="settings__row">
-          <span className="settings__label">Theme</span>
-          <span className="settings__value">Auto</span>
-        </p>
+        <ThemePicker
+          value={preferences.theme}
+          onChange={(theme) => onChange({ theme })}
+        />
         <label className="settings__row settings__row--later">
           <span className="settings__label">Units</span>
           <LaterTag />

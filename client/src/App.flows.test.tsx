@@ -10,6 +10,17 @@ import { CORRIDOR_ARCHIVE_KEY } from './map/pmtilesSource'
 import { POI_ID_PROPERTY, POI_LAYER_ID } from './map/poiLayers'
 import { archiveUrl } from './lib/config'
 import { MockMap, resetMapLibreMock } from './test/mocks/maplibre-gl'
+import { THEME_ATTRIBUTE } from './lib/theme'
+import { BACKDROP_LAYER_ID, MAP_BACKDROP } from './map/style'
+
+/** The colour the backdrop layer was BUILT with, off the style the mock map
+ *  was constructed from - which is the only half of the theme a screen that
+ *  unmounts the canvas can be asked about. */
+function backdropOf(map: MockMap): unknown {
+  const style = map.options.style as { layers: Array<Record<string, never>> }
+  const backdrop = style.layers.find((l) => l.id === (BACKDROP_LAYER_ID as never))
+  return (backdrop?.paint as Record<string, unknown> | undefined)?.['background-color']
+}
 
 // App.test.tsx covers the shell: which screen you land on and what it says
 // before any data exists. This covers what happens once data and a GPS fix DO
@@ -133,6 +144,17 @@ async function openDownloads(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByRole('button', { name: /legend/i }))
   await user.click(await screen.findByRole('button', { name: /download/i }))
   return screen.findByRole('dialog', { name: /offline map/i })
+}
+
+/**
+ * The USGS sheet's card, behind its own tab in the download window (#298).
+ *
+ * The sheets are tabs rather than a stack, so the card a test wants is not on
+ * screen until its tab is chosen - which is exactly what a hiker does.
+ */
+async function usgsSheetCard(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole('tab', { name: /usgs sheet/i }))
+  return screen.findByRole('region', { name: /usgs sheet/i })
 }
 
 describe('once there is a GPS fix', () => {
@@ -498,7 +520,7 @@ describe('downloading everything', () => {
 
     await openDownloads(user)
     // The USGS card, named: two sheets each have a download button now (#237).
-    const usgsCard = await screen.findByRole('region', { name: /usgs sheet/i })
+    const usgsCard = await usgsSheetCard(user)
     await user.click(within(usgsCard).getByRole('button', { name: /download the map/i }))
 
     await waitFor(() => expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob))
@@ -519,7 +541,8 @@ describe('downloading everything', () => {
     await screen.findByRole('region', { name: /trail map/i })
 
     await openDownloads(user)
-    await user.click(await screen.findByRole('button', { name: /delete/i }))
+    const usgsCard = await usgsSheetCard(user)
+    await user.click(within(usgsCard).getByRole('button', { name: /delete/i }))
 
     await waitFor(() => expect(store.has(CORRIDOR_ARCHIVE_KEY)).toBe(false))
     expect(store.has(TRAILS_BLOB_KEY)).toBe(true)
@@ -533,6 +556,10 @@ describe('downloading everything', () => {
     await screen.findByRole('region', { name: /trail map/i })
 
     await openDownloads(user)
+    // The levels live on the sheet that has them - the USGS raster. One
+    // stored level all the same: max_background_zoom is what the next
+    // download is fetched at.
+    await usgsSheetCard(user)
     await user.click(await screen.findByRole('radio', { name: /light/i }))
 
     await waitFor(() => {
@@ -652,6 +679,45 @@ describe('preferences from the More screen', () => {
     await waitFor(() => {
       const saved = store.get(PREFERENCES_KEY) as { wrong_way_alert_enabled: boolean }
       expect(saved.wrong_way_alert_enabled).toBe(true)
+    })
+  })
+
+  it('takes the whole app dark from the theme control, map included', async () => {
+    // The end-to-end shape of the feature: one tap writes the preference, the
+    // chrome follows the attribute the design tokens key their dark block off,
+    // and the canvas - which is WebGL and cannot read a CSS variable - is
+    // built in the same theme rather than staying paper-white inside a dark
+    // app.
+    //
+    // The map is unmounted while More is showing (it is a different screen,
+    // not a hidden one), so what this can observe on the way back is the style
+    // the canvas was built with. That a theme change on a LIVE map repaints in
+    // place instead of rebuilding is map/style.test.ts's attachMapTheme block.
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    expect(document.documentElement.getAttribute(THEME_ATTRIBUTE)).toBe('light')
+    expect(backdropOf(MockMap.live[0])).toBe(MAP_BACKDROP.light)
+
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('radio', { name: /dark/i }))
+
+    await waitFor(() => {
+      const saved = store.get(PREFERENCES_KEY) as { theme: string }
+      expect(saved.theme).toBe('dark')
+    })
+    expect(document.documentElement.getAttribute(THEME_ATTRIBUTE)).toBe('dark')
+
+    await user.click(screen.getByRole('tab', { name: 'Trail' }))
+    await screen.findByRole('region', { name: /trail map/i })
+
+    // Waited on the built style rather than on a tick: the map is constructed
+    // inside an effect, so what proves the sequence completed is a live map
+    // carrying the dark backdrop, not time passing.
+    await waitFor(() => {
+      expect(backdropOf(MockMap.live[0])).toBe(MAP_BACKDROP.dark)
     })
   })
 })
@@ -792,7 +858,7 @@ describe('when the trail data cannot be downloaded', () => {
     await screen.findByRole('region', { name: /trail map/i })
 
     await openDownloads(user)
-    const usgsCard = await screen.findByRole('region', { name: /usgs sheet/i })
+    const usgsCard = await usgsSheetCard(user)
     await user.click(within(usgsCard).getByRole('button', { name: /download the map/i }))
 
     expect(await screen.findByText('Trail data failed to download.')).toBeInTheDocument()
@@ -815,7 +881,8 @@ describe('resuming an interrupted download', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
     await openDownloads(user)
-    const resume = await screen.findByRole('button', { name: /resume/i })
+    const usgsCard = await usgsSheetCard(user)
+    const resume = within(usgsCard).getByRole('button', { name: /resume/i })
 
     vi.mocked(fetch).mockResolvedValue({
       ok: true,

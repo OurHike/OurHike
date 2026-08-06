@@ -3,7 +3,12 @@ import { render, screen, cleanup, act, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { MapScreen } from './MapScreen'
-import { ATTRIBUTION, LIVE_ATTRIBUTION } from '../map/style'
+import {
+  mapCredits,
+  OPENFREEMAP_CREDIT,
+  OSM_CREDIT,
+  USGS_TOPO_CREDIT,
+} from '../map/credits'
 
 // WIREFRAMES.md's map screen, top to bottom: status strip, header, elevation
 // ribbon, waypoint lanes, map canvas, tab bar - plus the legend sheet over the
@@ -91,7 +96,7 @@ describe('MapScreen', () => {
   it('always renders the attribution - OSM credit is an ODbL condition, not a nicety', () => {
     render(<MapScreen {...PROPS} background="usgs_topo_offline" />)
 
-    expect(screen.getByText(ATTRIBUTION)).toBeInTheDocument()
+    expect(screen.getByText(OSM_CREDIT, { exact: false })).toBeInTheDocument()
   })
 
   it('credits the extra licences the live background brings with it', () => {
@@ -102,13 +107,39 @@ describe('MapScreen', () => {
     // default flipped.
     render(<MapScreen {...PROPS} background="hiking_topo_live" />)
 
-    expect(screen.getByText(LIVE_ATTRIBUTION)).toBeInTheDocument()
+    for (const credit of mapCredits({ background: 'hiking_topo_live' })) {
+      expect(screen.getByText(credit, { exact: false })).toBeInTheDocument()
+    }
   })
 
   it('credits the live sheet by default, because that is the default background', () => {
     render(<MapScreen {...PROPS} />)
 
-    expect(screen.getByText(LIVE_ATTRIBUTION)).toBeInTheDocument()
+    expect(screen.getByText(OPENFREEMAP_CREDIT, { exact: false })).toBeInTheDocument()
+  })
+
+  it('does not credit the USGS survey on a phone that has none of it', () => {
+    // The corner used to name USGS US Topo unconditionally, because the string
+    // was composed from what the app CAN draw. On a fresh install that is a
+    // credit for a 314 MB archive nobody has downloaded, printed over a map
+    // drawn entirely from other people's tiles.
+    render(<MapScreen {...PROPS} hasRasterArchive={false} />)
+
+    expect(screen.queryByText(USGS_TOPO_CREDIT, { exact: false })).not.toBeInTheDocument()
+  })
+
+  it('credits the USGS survey once the corridor raster is on the phone', () => {
+    render(<MapScreen {...PROPS} hasRasterArchive />)
+
+    expect(screen.getByText(USGS_TOPO_CREDIT, { exact: false })).toBeInTheDocument()
+  })
+
+  it('never says one credit twice, however the background and the download line up', () => {
+    // The bug in its most visible form: two composed strings each correctly
+    // named OpenStreetMap, so the live corner printed it twice.
+    render(<MapScreen {...PROPS} background="hiking_topo_live" hasRasterArchive />)
+
+    expect(screen.getAllByText(OSM_CREDIT, { exact: false })).toHaveLength(1)
   })
 
   it('surfaces the offline state it was given', () => {
@@ -318,5 +349,66 @@ describe('MapScreen', () => {
     render(<MapScreen {...PROPS} legendOpen />)
 
     expect(screen.queryByRole('radio', { name: /live/i })).not.toBeInTheDocument()
+  })
+})
+
+// --- The safety alert strip (#232) ---------------------------------------
+//
+// Above the map, because a hiker who is walking has not opened anything: a
+// closure that only appears on tapping a red band is a closure they walk
+// into.
+
+describe('MapScreen safety alerts', () => {
+  it('says nothing when there is nothing to say', () => {
+    render(<MapScreen {...PROPS} />)
+
+    expect(screen.queryByRole('alert')).toBe(null)
+  })
+
+  it('shows a closure ahead', () => {
+    render(
+      <MapScreen {...PROPS} closureAhead="Trail closed 5.0 mi ahead · Storm damage" />,
+    )
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Trail closed 5.0 mi ahead')
+  })
+
+  it('shows serious warnings on the route', () => {
+    render(<MapScreen {...PROPS} warningsAhead="2 serious warnings on your route" />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      '2 serious warnings on your route',
+    )
+  })
+
+  it('shows both at once rather than picking one', () => {
+    // A closure and a bear are different problems, and neither substitutes
+    // for the other.
+    render(
+      <MapScreen
+        {...PROPS}
+        closureAhead="Trail closed 5.0 mi ahead · Storm damage"
+        warningsAhead="1 serious warning on your route"
+      />,
+    )
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent('Trail closed 5.0 mi ahead')
+    expect(alert).toHaveTextContent('1 serious warning on your route')
+  })
+
+  it('keeps the status strip above it, because the two are read together', () => {
+    // The strip's sync age is the only thing separating "the way ahead is
+    // clear" from "we could not check" - an alert area that appeared above
+    // it would be a claim with no freshness attached.
+    const { container } = render(
+      <MapScreen {...PROPS} closureAhead="Trail closed 5.0 mi ahead · Storm damage" />,
+    )
+
+    const strip = container.querySelector('.status-strip')
+    const alerts = container.querySelector('.map-screen__alerts')
+    expect(strip).not.toBeNull()
+    expect(alerts).not.toBeNull()
+    expect(strip!.compareDocumentPosition(alerts!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
   })
 })

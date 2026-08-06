@@ -69,6 +69,27 @@ function returningHiker() {
 }
 
 /**
+ * A viewport wide enough for the desktop layout (lib/useDesktop.ts).
+ *
+ * Matched on the query rather than answering `true` to everything, because
+ * `matchMedia` is asked several other questions in this shell - whether the
+ * app is running standalone (lib/useInstallPrompt.ts), whether the pointer is
+ * fine (lib/useFinePointer.ts) - and a stub that says yes to all of them is
+ * testing a browser that does not exist.
+ */
+function onADesktop() {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn((query: string) => ({
+      matches: query.includes('min-width: 900px'),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })),
+  )
+}
+
+/**
  * A finished corridor archive on the phone.
  *
  * Needed by anything asserting Data Saver's override, because the override
@@ -102,6 +123,17 @@ async function openDownloads(user: ReturnType<typeof userEvent.setup>) {
 }
 
 /**
+ * The USGS sheet's card, behind its own tab in the download window (#298).
+ *
+ * The sheets are tabs rather than a stack, so the card a test wants is not on
+ * screen until its tab is chosen - which is exactly what a hiker does.
+ */
+async function usgsSheetCard(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole('tab', { name: /usgs sheet/i }))
+  return screen.findByRole('region', { name: /usgs sheet/i })
+}
+
+/**
  * The live map, once MapView's effect has actually built it.
  *
  * `findByRole('region')` resolves the moment MapView's container div lands in
@@ -128,6 +160,57 @@ describe('App shell', () => {
     expect(await screen.findByText('What OurHike is')).toBeInTheDocument()
   })
 
+  it('draws the map behind the first-run steps, rather than describing one', async () => {
+    render(<App />)
+
+    await screen.findByText('What OurHike is')
+
+    // Every step is a claim about the map. It is behind them from the first
+    // frame, so the claims are shown rather than only asserted.
+    await waitFor(() => expect(MockMap.live.length).toBe(1))
+  })
+
+  it('opens that map on the whole corridor, the same view the map screen opens on', async () => {
+    render(<App />)
+
+    await screen.findByText('What OurHike is')
+    const map = await liveMap()
+
+    expect(map.options.bounds).toEqual([
+      [-84.73, 34.2],
+      [-68.3, 46.34],
+    ])
+  })
+
+  it('keeps the first-run map inert, so nothing behind the steps can be reached', async () => {
+    render(<App />)
+
+    await screen.findByText('What OurHike is')
+    await liveMap()
+
+    // Not only about stray taps. MapView attaches a locate control, and
+    // reaching it would raise the OS location prompt before the step whose
+    // whole job is to explain why we are asking. `inert` also keeps the canvas
+    // out of the tab order and its region out of the accessibility tree.
+    const backdrop = document.querySelector('.app__entry-map')
+    expect(backdrop).not.toBe(null)
+    expect(backdrop).toHaveAttribute('inert')
+    expect(backdrop).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.queryByRole('region', { name: /trail map/i })).toBe(null)
+  })
+
+  it('hands the map over cleanly when the steps finish - one map, not two', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await completeOnboarding(user)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    // The backdrop is torn down as the map screen builds its own. Two live
+    // maps would be two WebGL contexts and two sets of tile reads.
+    await waitFor(() => expect(MockMap.live).toHaveLength(1))
+  })
+
   it('does not show onboarding again once it has been completed', async () => {
     returningHiker()
     render(<App />)
@@ -149,6 +232,50 @@ describe('App shell', () => {
       await screen.findByRole('dialog', { name: /offline map/i }),
     ).toBeInTheDocument()
     expect(screen.getByRole('region', { name: /trail map/i })).toBeInTheDocument()
+  })
+
+  it('leaves a desktop on the map instead, where the download buys nothing yet', async () => {
+    // WEBSITE.md §6: a laptop has signal, and the live sheet is the default
+    // background, so this browser already draws the whole trail. Opening a
+    // 314 MB decision over it is asking someone to spend a phone's worth of
+    // storage on a machine that is not going up a mountain.
+    onADesktop()
+    const user = userEvent.setup()
+    render(<App />)
+
+    await completeOnboarding(user)
+
+    // Waiting on the preference write rather than on the absence of a dialog:
+    // it is the observable half of the same callback that would have opened
+    // the window, and it lands after it. A bare `queryByRole` here would pass
+    // just as readily against a window that was about to open.
+    await waitFor(() => {
+      const saved = store.get(PREFERENCES_KEY) as
+        { onboarding_completed: boolean } | undefined
+      expect(saved?.onboarding_completed).toBe(true)
+    })
+
+    expect(await screen.findByRole('region', { name: /trail map/i })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: /offline map/i })).not.toBeInTheDocument()
+  })
+
+  it('still offers a desktop the download, on screen and one click away', async () => {
+    // Withheld, not removed. Above 900px the legend is a permanent panel, so
+    // the link into the download window is visible without opening anything -
+    // which is more exposure than the phone gives it, not less.
+    onADesktop()
+    const user = userEvent.setup()
+    render(<App />)
+
+    await completeOnboarding(user)
+
+    await user.click(
+      await screen.findByRole('button', { name: /choose what to download/i }),
+    )
+
+    expect(
+      await screen.findByRole('dialog', { name: /offline map/i }),
+    ).toBeInTheDocument()
   })
 
   it('remembers that onboarding was completed, so a reload does not repeat it', async () => {
@@ -218,9 +345,11 @@ describe('App shell', () => {
     await openDownloads(user)
 
     expect(screen.getByRole('region', { name: /trail map/i })).toBeInTheDocument()
-    // Two sheets, two cards, each with its own button (#237).
-    const buttons = await screen.findAllByRole('button', { name: /download the map/i })
-    expect(buttons).toHaveLength(2)
+    // Two sheets, one tab each, and the open one's button (#237, #298).
+    expect(await screen.findByRole('tab', { name: /hiking sheet/i })).toBeVisible()
+    expect(screen.getByRole('tab', { name: /usgs sheet/i })).toBeVisible()
+    const buttons = screen.getAllByRole('button', { name: /download the map/i })
+    expect(buttons).toHaveLength(1)
     expect(buttons[0]).toBeVisible()
   })
 
@@ -650,7 +779,7 @@ describe('App shell', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
     await openDownloads(user)
-    const usgsCard = await screen.findByRole('region', { name: /usgs sheet/i })
+    const usgsCard = await usgsSheetCard(user)
     await user.click(within(usgsCard).getByRole('button', { name: /download the map/i }))
 
     await waitFor(() => {
@@ -674,7 +803,7 @@ describe('App shell', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
     await openDownloads(user)
-    const usgsCard = await screen.findByRole('region', { name: /usgs sheet/i })
+    const usgsCard = await usgsSheetCard(user)
     await user.click(within(usgsCard).getByRole('button', { name: /download the map/i }))
 
     await waitFor(() => {

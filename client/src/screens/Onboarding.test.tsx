@@ -69,17 +69,70 @@ describe('Onboarding', () => {
     render(<Onboarding {...PROPS} />)
     await advance(user, 1)
 
-    expect(screen.getAllByRole('radio')).toHaveLength(2)
+    expect(screen.getByRole('radio', { name: /standard/i })).toBeEnabled()
+    expect(screen.getByRole('radio', { name: /fine/i })).toBeEnabled()
     expect(screen.getByText('789.6 MB')).toBeInTheDocument()
     expect(screen.getByText('1.14 GB')).toBeInTheDocument()
   })
 
-  it('names the USGS sheet as optional rather than configuring it here', async () => {
+  it('asks the map-size question in the download window\u2019s shape (#298)', async () => {
+    // First run ends by opening that window, so the two are consecutive
+    // views of one decision. They looked like two: a flat list here, a sheet
+    // per tab there.
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
     await advance(user, 1)
 
-    expect(screen.getByText(/optional second map/i)).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /hiking sheet/i })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(screen.getByRole('tab', { name: /usgs sheet/i })).toBeInTheDocument()
+  })
+
+  it('greys the hiking sheet\u2019s missing Light rung rather than dropping it (#298)', async () => {
+    // The basemap is cut at z13 and z14 and nothing below. Under a tab
+    // beside the raster's three, a two-row picker cannot say whether this
+    // map has no Light version or whether the app forgot to ask.
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} />)
+    await advance(user, 1)
+
+    expect(screen.getAllByRole('radio')).toHaveLength(3)
+    expect(screen.getByRole('radio', { name: /light/i })).toBeDisabled()
+  })
+
+  it('names and prices the USGS sheet without configuring it here (#277)', async () => {
+    // #277 took the raster's tiers out of first run on purpose. The tab
+    // shows what the optional map would cost and points at Downloads; every
+    // level under it is greyed, so nothing about it is chosen in this flow.
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} />)
+    await advance(user, 1)
+    await user.click(screen.getByRole('tab', { name: /usgs sheet/i }))
+
+    for (const level of screen.getAllByRole('radio')) {
+      expect(level).toBeDisabled()
+      expect(level).not.toBeChecked()
+    }
+    expect(screen.getByText(/chosen in downloads/i)).toBeInTheDocument()
+  })
+
+  it('finishes with the hiking level even after a look at the USGS tab', async () => {
+    // Switching tabs is looking, not choosing: the USGS tab writes nothing,
+    // so what first run reports is still the hiking sheet's level.
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} />)
+    await advance(user, 1)
+    await user.click(screen.getByRole('radio', { name: /fine/i }))
+    await user.click(screen.getByRole('tab', { name: /usgs sheet/i }))
+    await user.click(screen.getByRole('tab', { name: /hiking sheet/i }))
+    await advance(user, 1)
+    await user.click(screen.getByRole('button', { name: /allow/i }))
+
+    expect(PROPS.onComplete).toHaveBeenCalledWith(
+      expect.objectContaining({ hikingDetailLevel: 'fine' }),
+    )
   })
 
   it('marks Standard as the recommended size', async () => {

@@ -75,11 +75,6 @@
   flex-direction: column;
   gap: var(--space-2, 8px);
 }
-.downloads__item-title {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-}
 .downloads__item-summary {
   margin: 0;
   color: var(--fg-2);
@@ -92,7 +87,7 @@
   margin: 0;
   padding: var(--space-2, 8px) var(--space-3, 12px);
   border-radius: 8px;
-  background: var(--warning-100, #fdf1d6);
+  background: var(--surface-warning);
   color: var(--fg-1);
   font-size: 13px;
 }
@@ -105,7 +100,7 @@
   font-weight: 600;
 }
 .downloads__primary {
-  color: var(--fg-on-dark);
+  color: var(--fg-on-brand);
   background: var(--brand-primary);
   border: 0;
 }
@@ -135,7 +130,7 @@
   border-radius: 8px;
   /* The same tint App.css's offline banner reads from, one shade of the
      design system's --warning (blaze yellow) family. */
-  background: var(--warning-100, #fdf1d6);
+  background: var(--surface-warning);
   color: var(--fg-1);
   font-size: 13px;
 }
@@ -193,6 +188,26 @@
   border: 1px solid var(--border-1);
   border-radius: 10px;
   cursor: pointer;
+}
+/* A level this download is not published at, or one that cannot be changed
+   while bytes are on their way. Greyed rather than removed: the three levels
+   keep their places, so tabbing between sheets does not reshuffle the panel,
+   and "this map has no smaller version" is visible instead of implied. Not
+   `opacity` alone - the note under the group says why. */
+.detail-picker__option[data-disabled='true'] {
+  background: var(--bg-sunken);
+  border-color: transparent;
+  color: var(--fg-3);
+  cursor: default;
+}
+.detail-picker__option[data-disabled='true'] .detail-picker__name,
+.detail-picker__option[data-disabled='true'] .detail-picker__size {
+  color: var(--fg-3);
+}
+.detail-picker__note {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: 13px;
 }
 .detail-picker__name {
   flex: 1;

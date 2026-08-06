@@ -16,7 +16,16 @@ class ReportCreate(BaseModel):
     are silently ignored if a client sends them anyway (pydantic's default
     "ignore unknown fields" behavior), rather than being accepted and then
     overridden after the fact. Likewise no `timestamp`, `status`,
-    `received_at`, `reporter_id`, or `id` - all server-assigned.
+    `received_at` or `reporter_id` - all server-assigned.
+
+    `id` is the second sanctioned exception, and it is an idempotency key
+    rather than a convenience (#243). On trail-side signal the classic
+    failure is a request that commits here and whose 201 never arrives: the
+    client's send throws, the item stays in its outbox, and the next flush
+    files the same report again. The outbox already mints a UUID per item
+    and documents it as "stable across retries, so a resend is recognisably
+    the same report" - it just had nowhere to send it. Accepting it here is
+    what makes that sentence true.
 
     `authored_at` is the one sanctioned exception, and it exists because
     OurHike is offline-first: a report written on the trail and synced days
@@ -30,6 +39,13 @@ class ReportCreate(BaseModel):
     past is deliberately NOT bounded - being off-grid for two weeks is
     ordinary on a thru hike, not suspicious.
     """
+
+    # Optional, and falls back to a server-generated UUID exactly the way
+    # `authored_at` falls back to the server clock - the same pattern, for
+    # the same reason: a field the server can supply itself should not be a
+    # 422 waiting to happen for a caller that omits it. The outbox always
+    # sends one, which is what gives the retry path its guarantee.
+    id: str | None = None
 
     type: ReportType
     poi_id: str | None = None

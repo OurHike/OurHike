@@ -4,6 +4,8 @@ import {
   apiFetch,
   sendReport,
   accessToken,
+  permanentFailureReason,
+  ApiError,
   ApiNotConfiguredError,
   NotSignedInError,
   API_CONFIGURED,
@@ -207,5 +209,87 @@ describe('accessToken', () => {
     withSession(null)
 
     expect(await accessToken()).toBeNull()
+  })
+})
+
+// --- Telling a hiker their report will never send (#243) ------------------
+//
+// flushOutbox treated every failure the same, so a report the server would
+// never accept sat in the queue saying "waiting to send" indefinitely -
+// indistinguishable from one simply waiting for signal. The classifier is
+// what makes those two different states.
+
+describe('permanentFailureReason', () => {
+  const apiError = (status: number) => new ApiError(status, `failed: ${status}`)
+
+  it('names the clock, because that is the likeliest cause of a 422', async () => {
+    // The server refuses an authored time more than five minutes ahead, so a
+    // phone running fast has EVERY report refused - and that is fixable by
+    // the person holding it, if anyone tells them.
+    const reason = permanentFailureReason(apiError(422))
+
+    expect(reason).toContain('date and time')
+  })
+
+  it('reads as a sentence, not a status code', async () => {
+    // It is rendered verbatim on the More screen.
+    for (const status of [422, 409, 403, 413]) {
+      const reason = permanentFailureReason(apiError(status))
+      expect(reason).toMatch(/^[A-Z].*[.]$/s)
+    }
+  })
+
+  it('still says something useful for a 4xx it has never seen', async () => {
+    expect(permanentFailureReason(apiError(418))).toContain('418')
+  })
+
+  it.each([500, 502, 503])('retries a %d - the server may recover', async (status) => {
+    expect(permanentFailureReason(apiError(status))).toBeNull()
+  })
+
+  it.each([
+    [401, 'the token may refresh'],
+    [408, 'a network symptom wearing a 4xx'],
+    [429, 'explicitly later'],
+  ])('retries a %d, because %s', async (status) => {
+    expect(permanentFailureReason(apiError(status))).toBeNull()
+  })
+
+  it('retries a network failure, which is the normal case out here', async () => {
+    expect(permanentFailureReason(new TypeError('Failed to fetch'))).toBeNull()
+  })
+
+  it('retries anything it does not recognise', async () => {
+    // Keeping a report that might yet go is cheaper than stranding one that
+    // would have.
+    expect(permanentFailureReason('a string, somehow')).toBeNull()
+    expect(permanentFailureReason(undefined)).toBeNull()
+  })
+})
+
+describe('sendReport idempotency', () => {
+  async function configuredApi() {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.org')
+    vi.resetModules()
+    return import('./api')
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
+  it('sends the outbox id, so a lost response cannot duplicate the report', async () => {
+    // The classic trail failure: the request commits, the connection drops
+    // before the 201 arrives, the send throws, the item stays queued, and
+    // the next flush files it again. The server keys off this to return the
+    // stored report instead.
+    const api = await configuredApi()
+    const spy = mockFetch()
+
+    await api.sendReport(ITEM)
+
+    const body = JSON.parse(String((spy.mock.calls[0][1] as RequestInit).body))
+    expect(body.id).toBe('outbox-1')
   })
 })

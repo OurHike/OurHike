@@ -45,7 +45,7 @@ import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import type { TabId } from './chrome/tabs'
 import { Downloads } from './screens/Downloads'
 import { DownloadsDialog } from './screens/DownloadsDialog'
-import { More } from './screens/More'
+import { More, type StuckReport } from './screens/More'
 import { InstallPrompt } from './screens/InstallPrompt'
 import { Onboarding, type OnboardingResult } from './screens/Onboarding'
 import { ReportForm, type ReportFormSubmission } from './screens/ReportForm'
@@ -106,7 +106,7 @@ import {
   signOut,
   signUpWithEmail,
 } from './lib/auth'
-import { listQueued, type FlushResult } from './lib/outbox'
+import { listQueued, removeQueued, retryQueued, type FlushResult } from './lib/outbox'
 import { useOutboxSync } from './lib/outboxSync'
 import type { BoundingBox, MapPoint } from './lib/legendContents'
 import type { SearchablePoi } from './lib/searchPoi'
@@ -225,6 +225,7 @@ function App() {
   // nothing.
   const account = useAccount()
   const [queuedCount, setQueuedCount] = useState(0)
+  const [stuckReports, setStuckReports] = useState<StuckReport[]>([])
   // Was a state with no setter until #231 - nothing ever synced, so the status
   // strip said "never synced" on every device forever, which was true and
   // looked like a bug in the strip rather than a missing feature.
@@ -262,9 +263,22 @@ function App() {
     })
   }, [])
 
+  // Two facts, not one number. A report waiting for signal resolves itself;
+  // a report the server refused never will, and showing them as one count is
+  // what let a phone with a wrong clock say "waiting to send" forever (#243).
+  const refreshOutbox = useCallback(async () => {
+    const queue = await listQueued()
+    setQueuedCount(queue.filter((item) => item.failure === undefined).length)
+    setStuckReports(
+      queue
+        .filter((item) => item.failure !== undefined)
+        .map((item) => ({ id: item.id, reason: item.failure!.reason })),
+    )
+  }, [])
+
   useEffect(() => {
-    void listQueued().then((queue) => setQueuedCount(queue.length))
-  }, [reporting])
+    void refreshOutbox()
+  }, [reporting, refreshOutbox])
 
   // Sending is the one thing that waits for signal. Everything else a hiker
   // does - writing the report, reading the map - already happened offline.
@@ -274,16 +288,37 @@ function App() {
   // afterwards (lib/contributionFlow.ts), so the queue can hold reports that
   // no token could have sent yet. Signing in later is a second, equally valid
   // moment to try.
-  const handleSynced = useCallback(({ sent }: FlushResult) => {
-    if (sent === 0) return
-    // Only on a real delivery. Stamping the clock after a flush that sent
-    // nothing would make "synced just now" mean "we had signal", which is the
-    // opposite of what the strip is for (lib/syncAge.ts).
-    setLastSyncedAt(new Date())
-    void listQueued().then((queue) => setQueuedCount(queue.length))
-  }, [])
+  const handleSynced = useCallback(
+    ({ sent, stuck }: FlushResult) => {
+      // Only on a real delivery. Stamping the clock after a flush that sent
+      // nothing would make "synced just now" mean "we had signal", which is
+      // the opposite of what the strip is for (lib/syncAge.ts).
+      if (sent > 0) setLastSyncedAt(new Date())
+      // Refreshed even when nothing was sent, because a flush that only
+      // discovered a refusal still changed what the hiker needs to see -
+      // that is the whole point of the stuck state.
+      if (sent > 0 || stuck > 0) void refreshOutbox()
+    },
+    [refreshOutbox],
+  )
 
   useOutboxSync(online && account !== null, handleSynced)
+
+  /** Clears the refusal and lets the next flush try again - the escape hatch
+   *  for the fixable cause, a phone whose clock was wrong. */
+  const handleRetryReport = useCallback(
+    (id: string) => {
+      void retryQueued(id).then(refreshOutbox)
+    },
+    [refreshOutbox],
+  )
+
+  const handleDiscardReport = useCallback(
+    (id: string) => {
+      void removeQueued(id).then(refreshOutbox)
+    },
+    [refreshOutbox],
+  )
 
   const locationAllowed = preferences.location_permission_requested
   const gps = useGeolocation(locationAllowed)
@@ -917,6 +952,9 @@ function App() {
               onOpenDownloads={openDownloads}
               onStartReport={() => setReporting({ step: 'pick' })}
               queuedReportCount={queuedCount}
+              stuckReports={stuckReports}
+              onRetryReport={handleRetryReport}
+              onDiscardReport={handleDiscardReport}
             />
           </div>
           <TabBar active={activeTab} onSelect={setActiveTab} />

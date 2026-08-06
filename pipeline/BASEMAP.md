@@ -282,7 +282,7 @@ z12 = 4,172 / 44.1, z0–11 ≈ 31 MB. Tile counts land within 0.5% of the
 independent corridor enumeration from #184's research pass.
 
 Tier consequence: **z14 is 66% of the bytes**, so the natural download tiers
-are z0–13 ≈ **182 MB** (smaller than the 314 MB raster it improves on;
+are z0–13 ≈ **182 MB** (smaller than the 300.3 MB raster it improves on;
 MapLibre overzooms z13 vector cleanly) and z0–14 ≈ **532 MB** for full
 OpenMapTiles detail. Both cuts are published now: the z13 extract stopped
 being a future decision when #276 made it the hiking sheet's Standard

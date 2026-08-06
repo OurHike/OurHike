@@ -2,14 +2,28 @@
 # the link as a PR comment - so a reviewer can try the actual change on a
 # phone instead of reading a diff and imagining it.
 #
-# Publishes to the same `gh-pages` branch as the production site (see
-# pages.yml), under /OurHike/pr-preview/pr-<n>/, so previews and the real
-# site coexist without either clobbering the other. That means this only goes
-# live once pages.yml's one-time manual step is done - see the note there.
+# Previews go to Cloudflare Pages, not to the `gh-pages` branch the production
+# site lives on. They used to, under /OurHike/pr-preview/pr-<n>/, and the
+# reason they moved is that five to ten pull requests are open and building at
+# once here as a matter of course. Every one of those previews was a write to
+# the same git ref, git admits one writer per push, and the action doing the
+# pushing retried three times with no backoff before giving up - so previews
+# failed for no reason other than each other being busy.
 #
-# rossjrw/pr-preview-action does the branch bookkeeping (add the preview on
-# open/push, remove it on close) and posts/updates the single PR comment with
-# the link, so there's no separate commenting step here.
+# Cloudflare Pages does not have that shape of problem. A preview is an upload
+# to its own deployment rather than a commit on a shared branch, there is no
+# ordering between two of them, and the free plan places no limit on how many
+# preview deployments a project has. Ten at once is not a busy day, it is ten
+# uploads.
+#
+# The build still happens here rather than on Cloudflare's builders. That is
+# what keeps the free plan's build quota (500 a month, one at a time) out of
+# the picture entirely: `wrangler pages deploy` uploads an already-built
+# directory, so nothing queues behind anyone else's build.
+#
+# SETUP: needs a Pages project and an API token - LAUNCH_CHECKLIST.md 3a.
+# Until those exist this workflow says so and skips, rather than failing every
+# pull request with a wrangler error.
 
 name: PR preview
 
@@ -18,36 +32,94 @@ on:
     branches: [main]
     types: [opened, reopened, synchronize, closed]
 
+# Per pull request, and cancelling: only the newest commit's preview is worth
+# having, so superseding an in-flight build is right. Deliberately NOT a group
+# shared across pull requests - GitHub holds one pending run per group and
+# cancels the rest, so a shared group would drop most of ten queued previews
+# rather than taking turns.
 concurrency:
   group: pr-preview-${{ github.event.number }}
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: write
 
 jobs:
   preview:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
+      # A pull request from a fork gets no secrets, so there is no token to
+      # deploy with and nothing this job could do but fail. Deciding that here,
+      # once, keeps every step below from having to be written as though its
+      # inputs might be empty.
+      - name: Check whether this run can deploy
+        id: can
+        env:
+          API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
+          # Through env, not interpolated into the script body, for the reason
+          # spelled out in pages.yml: `${{ }}` is substituted as literal text
+          # before bash sees the line, so a value carrying a quote would be
+          # parsed as script rather than as data.
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          THIS_REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$API_TOKEN" ] || [ -z "$ACCOUNT_ID" ] || [ -z "$PROJECT" ]; then
+            if [ "$HEAD_REPO" != "$THIS_REPO" ]; then
+              echo "::notice::A pull request from a fork gets no secrets, so no preview is deployed for one. The change still gets its full test run."
+            else
+              echo "::warning::No Cloudflare Pages project is configured, so this pull request gets no preview. See LAUNCH_CHECKLIST.md 3a."
+            fi
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The alias that gives this pull request a stable preview URL across
+      # every push to it. Cloudflare builds the hostname from it, so it has to
+      # survive being a DNS label: `pr-<n>` is short, lower case and cannot
+      # collide with another pull request's.
+      #
+      # The URL here is worked out rather than observed, so it is the second
+      # choice of the two the comment below picks between: a deploy reports the
+      # alias URL it actually created, and that is the one to link to when it
+      # exists, because it cannot disagree with where the upload went. This one
+      # is what remains when there was no deploy in this run at all - the
+      # comment posted when a pull request closes - and it assumes the project
+      # subdomain matches the project name, which is how Pages names them.
+      - name: Name this preview
+        id: preview
+        env:
+          NUMBER: ${{ github.event.number }}
+          PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
+        run: |
+          {
+            echo "alias=pr-$NUMBER"
+            echo "url=https://pr-$NUMBER.$PROJECT.pages.dev"
+          } >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v4
+        if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
 
       - uses: actions/setup-node@v4
-        if: github.event.action != 'closed'
+        if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: client/package-lock.json
 
       - name: Install
-        if: github.event.action != 'closed'
+        if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
         working-directory: client
         run: npm ci
 
       # Same data source as the production build (see pages.yml) - a preview
       # that can't download map data isn't much of a testable version.
       - name: Resolve the data source
-        if: github.event.action != 'closed'
+        if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
         id: data
         env:
           FROM_VAR: ${{ vars.DATA_BASE_URL }}
@@ -59,13 +131,14 @@ jobs:
       # Same Supabase project as production (see pages.yml) - a preview where
       # signing in is the thing under review is not testable without it.
       #
-      # Each PR previews from its own path, and the client redirects back to
-      # wherever it was served from, so the Supabase project's allowed redirect
-      # list needs a wildcard covering them - `.../OurHike/**`. Without it a
-      # provider round trip from a preview ends in a redirect mismatch, and
-      # adding one entry per PR by hand is not a plan.
+      # Each pull request previews from its own hostname, and the client
+      # redirects back to wherever it was served from, so the Supabase
+      # project's allowed redirect list needs a wildcard covering them -
+      # `https://*.<project>.pages.dev/**`. Without it a provider round trip
+      # from a preview ends in a redirect mismatch, and adding one entry per
+      # pull request by hand is not a plan. See LAUNCH_CHECKLIST.md 4.3b.
       - name: Resolve the Supabase project
-        if: github.event.action != 'closed'
+        if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
         id: supabase
         env:
           URL_FROM_VAR: ${{ vars.SUPABASE_URL }}
@@ -91,13 +164,15 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Build the app
-        if: github.event.action != 'closed'
+        if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
         working-directory: client
         env:
-          # Must match exactly where rossjrw/pr-preview-action serves this
-          # preview from below (umbrella-dir pr-preview, subdir pr-<n>) - see
-          # the note on VITE_BASE_PATH in pages.yml.
-          VITE_BASE_PATH: /${{ github.event.repository.name }}/pr-preview/pr-${{ github.event.number }}/
+          # The root, because a Cloudflare preview gets a hostname to itself
+          # rather than a subdirectory of the production site. That also means
+          # the installed PWA's scope is the whole origin here, which is closer
+          # to how the real app is served than the old /OurHike/pr-preview/...
+          # path ever was - see the note on VITE_BASE_PATH in pages.yml.
+          VITE_BASE_PATH: /
           VITE_DATA_BASE_URL: ${{ steps.data.outputs.url }}
           VITE_SUPABASE_URL: ${{ steps.supabase.outputs.url }}
           VITE_SUPABASE_ANON_KEY: ${{ steps.supabase.outputs.key }}
@@ -110,9 +185,96 @@ jobs:
           # is the behaviour worth previewing anyway.
         run: npm run build
 
-      - name: Deploy preview
-        uses: rossjrw/pr-preview-action@v1
+      - name: Publish the preview
+        id: deploy
+        if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
+        uses: cloudflare/wrangler-action@v3
         with:
-          source-dir: client/dist
-          preview-branch: gh-pages
-          umbrella-dir: pr-preview
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # `--branch` is what Cloudflare turns into the preview's stable
+          # hostname. It is not a git branch as far as this upload is
+          # concerned, and deliberately not named after one: a git branch name
+          # can be long, mixed case, and full of slashes, none of which survive
+          # being a DNS label intact.
+          command: >-
+            pages deploy client/dist
+            --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }}
+            --branch=${{ steps.preview.outputs.alias }}
+            --commit-dirty=true
+
+      # Cloudflare mints the `pr-<n>` alias the first time a pull request
+      # deploys, and its edge answers 522 for a short while before that alias
+      # routes anywhere. Uploading and being reachable are not the same event,
+      # and the gap lands exactly where it does the most damage: the comment
+      # would arrive the moment the upload finished, so the first person to
+      # click the link is the most likely to get the error.
+      #
+      # Waiting here is what makes the link worth trusting - if the comment
+      # exists, the URL in it answered. The bound matters as much as the wait:
+      # a preview that never comes up must still be reported, with the
+      # immutable deployment URL alongside it, rather than silently costing a
+      # reviewer their link because a step sat there until the job timed out.
+      - name: Wait for the preview to answer
+        id: wait
+        if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
+        env:
+          URL: ${{ steps.deploy.outputs.pages-deployment-alias-url || steps.preview.outputs.url }}
+          IMMUTABLE: ${{ steps.deploy.outputs.deployment-url }}
+        run: |
+          attempts=30
+          note=""
+          for attempt in $(seq 1 "$attempts"); do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$URL" || echo 000)"
+            if [ "$code" = "200" ]; then
+              echo "The preview answered 200 on attempt $attempt."
+              break
+            fi
+            if [ "$attempt" -eq "$attempts" ]; then
+              echo "::warning::The preview alias still answers $code after $attempts attempts. Posting the link anyway - it usually routes shortly - with the immutable deployment URL alongside it."
+              note="The alias above is still being routed and may return a Cloudflare 522 for a few more minutes. This exact build is already live at <$IMMUTABLE>."
+              break
+            fi
+            echo "Attempt $attempt: $code. Waiting for the alias to route."
+            sleep 5
+          done
+          {
+            echo "note<<PREVIEW_NOTE_EOF"
+            echo "$note"
+            echo "PREVIEW_NOTE_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Say where the preview is
+        if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
+        uses: marocchino/sticky-pull-request-comment@67d0dec7b07ed060a405f9b2a64b8ab319fdd7db # v2.9.2
+        with:
+          header: pr-preview
+          message: |
+            ### Preview
+
+            **[Open this change in the app](${{ steps.deploy.outputs.pages-deployment-alias-url || steps.preview.outputs.url }})**
+
+            Built from ${{ github.event.pull_request.head.sha }}. The link stays the
+            same as you push - it always serves the latest build of this pull request.
+
+            ${{ steps.wait.outputs.note }}
+
+            Signing in works. Sending a report does not: a preview is built with no
+            backend on purpose, so reports queue in the outbox rather than landing in
+            the moderation queue a club works from.
+
+      # Nothing is torn down on close. A Cloudflare preview deployment is not a
+      # file on a branch somebody else has to work around - it is its own
+      # deployment, the free plan does not limit how many a project keeps, and
+      # leaving it is what lets a closed pull request still be looked at while
+      # someone works out why it was closed. The comment stops advertising it.
+      - name: Say the pull request is closed
+        if: steps.can.outputs.deploy == 'true' && github.event.action == 'closed'
+        uses: marocchino/sticky-pull-request-comment@67d0dec7b07ed060a405f9b2a64b8ab319fdd7db # v2.9.2
+        with:
+          header: pr-preview
+          message: |
+            ### Preview
+
+            This pull request is closed. [The last preview built for it](${{ steps.preview.outputs.url }})
+            is still up, and is not updated any more.

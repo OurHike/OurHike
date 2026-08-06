@@ -223,12 +223,23 @@ The client declares the source `tileSize: 256` (the @2x convention), so a
 upscaled 2x - the free half of #191's fix, and the reason
 `lib/archiveCoverage.ts` carries a camera-vs-tile zoom offset.
 
-**Measured sizes for the rebuilt tiers land here after the first real
-`build-raster.yml` run**, and `downloadDetail.ts`'s advertised figures are
-updated with them - the +/-0.6% honesty bar from the previous build (64.4 MB
-/ 314 MB / 1.18 GB, measured 2026-07-29 against the 11 m chain) carries
-over. Until that run, the client keeps advertising the old measured sizes,
-which remain the sizes of the archives actually published.
+**Measured sizes** from the first successful full-corridor run
+([run 31100130798](https://github.com/jaimito-asuntos-gringuenos/OurHike/actions/runs/31100130798),
+2026-08-06, all 51 cells, receipts verified) - these are what
+`downloadDetail.ts` advertises, under the same +/-0.6% honesty bar the
+previous build held (its 11 m-chain figures were 64.4 MB / 314 MB /
+1.18 GB, measured 2026-07-29):
+
+| tier | tiles | measured |
+|---|---|---|
+| Light `background_z11.pmtiles` | 1,650 | 68.9 MB |
+| Standard `background.pmtiles` | 5,826 | 300.3 MB |
+| Fine `background_z13.pmtiles` | 21,758 | 1,179.2 MB |
+| Quad sheet `quad_sheet_z14.pmtiles` | 31,987 | 1,698.1 MB |
+
+The quad sheet is not yet in the client's detail catalog - whether it ships
+as a fourth choice there or as its own optional package is #193's shape
+decision, and its size waits in this table either way.
 
 ## Checking output quality before publish (done)
 

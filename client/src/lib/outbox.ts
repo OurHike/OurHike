@@ -146,11 +146,20 @@ export async function removeQueued(id: string): Promise<void> {
   )
 }
 
-/** Clears a permanent failure so the next flush tries the item again.
+/** Clears a permanent failure so the item is eligible to be sent again.
  *
- *  The escape hatch for the cause that is fixable from the hiker's side: a
- *  phone whose clock was wrong has every report refused, and once the clock
- *  is right there is nothing wrong with the reports. */
+ *  Clearing the flag is all this does - App.tsx's handler is what actually
+ *  flushes afterwards, and it has to, because nothing else will on a steady
+ *  connection (#266).
+ *
+ *  Worth being exact about what a retry can achieve for the commonest cause.
+ *  A wrong phone clock bakes a future `authoredAt` into the stored item, and
+ *  that value is deliberately never re-derived - a report written Monday has
+ *  to still read as Monday when it flushes on Thursday, so restamping it
+ *  would make a three-day-old blowdown look fresh to a maintainer. Fixing the
+ *  clock therefore does not repair an already-queued report; it stops the
+ *  NEXT one being wrong, and this one becomes acceptable once real time
+ *  passes the timestamp it is carrying. */
 export async function retryQueued(id: string): Promise<void> {
   const queue = await readQueue()
   await set(

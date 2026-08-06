@@ -108,16 +108,56 @@ already draws at z9 — low zooms are shared context, high zooms are local:
 | | Built | Why it splits there |
 |---|---|---|
 | z0–9 | once, whole-NA, from the full 17.9 GB PBF | Cross-shard by nature: a z4 tile spans regions, so no shard can produce it alone. Cheap regardless — tile counts quadruple per zoom, so everything through z9 is a rounding error against z14 (31 MB of the AT build's 532). Reads the big PBF, writes almost nothing, fits. |
-| z10–14 | per sub-region, in parallel | Tile content at z10+ is local. Give each shard a padded input and an exact `--polygon` — what `lib/poly.py` already does for the corridor — and the shards are disjoint, so combining them is concatenation, not reconciliation. |
+| z10–14 | per sub-region, in parallel | Tile content at z10+ is *mostly* local — see the measured exceptions below. Give each shard a padded input and an exact `--polygon`, as `lib/poly.py` already does for the corridor. |
 
 PMTiles orders tile IDs zoom-major, so a national z0–9 archive followed by a
 regional z10–14 one is *already* in write order. Packages can be cut from the
 pair without ever materialising a ~23 GB national file.
 
-What this has not proved: whether any OpenMapTiles layer ranks features from
-a global view rather than a local one. If one does, it shows at shard seams,
-and that — not the disk arithmetic — is the thing to check on the first real
-sharded run.
+### Measured: sharding is not lossless
+
+[#225](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/225) built
+Vermont and New Hampshire three ways — whole as a control, then as two shards
+that saw *all* the data and differed only in `--polygon` (arm A), then as two
+shards that saw only their own state (arm B). This section previously said the
+shards were disjoint and the ranking question was unproved. Both claims were
+wrong, and in the same direction.
+
+**The shards are not tile-disjoint.** 593 of 21,910 tiles were produced by
+more than one shard — every zoom from z0 up through the seam. Low zooms cannot
+be otherwise (a z4 tile spans both states), which the z0–9 split above already
+handles. What it does not handle is that combining shards therefore needs a
+rule for tiles two shards both wrote; "concatenation" is not one.
+
+**Some differences are not the seam's fault.** Arm A is the decisive arm: no
+data was missing from either shard, so nothing there can be a clipping
+artifact. It still produced 16 differing tiles that exactly one shard built,
+and **6 of them sit more than 8 tiles inside a shard**, far from any cut. The
+layers are `place`, `water_name` and `water` — label-bearing layers, which is
+where OpenMapTiles decides what is important enough to draw. Padding cannot
+fix a difference caused by the extent of what a build was *asked to output*.
+
+Arm B, the realistic arrangement, shows the padding requirement on top: 375
+single-shard differences, **288 of them exactly one tile from the cut** — a
+tidy padding signature — with a 72-tile tail deeper than 2 tiles that padding
+does not explain either. Its layers add `transportation` and
+`transportation_name`.
+
+The magnitudes are small (16 tiles in 21,910 for arm A, 375 for arm B) and the
+affected layers are labels rather than geometry, so this is a fidelity
+question, not a broken-map one. But it is real, it is the thing this section
+used to call unproved, and a national build that ignores it ships seams. What
+it costs to fix — a seam-tile merge rule, a wider padding, or accepting label
+drift at shard boundaries — is #194's to decide.
+
+**Still unresolved: the temp-disk multiplier.** The spike measured a constant
+0.85 GB of real (allocated, not apparent) peak temp disk across all five
+builds, against inputs from 0.05 to 0.12 GB — a fixed cost dominating small
+inputs, not a multiplier. The 5×/10× question needs an input that dwarfs it.
+The apparent-size figure is worse than useless: Planetiler's node map is a
+sparse file sized by the node-ID space, so `ls -l`, `du --apparent-size` and
+any naive walk report ~2.25 GB regardless of input, and the "19.5×" that falls
+out of it is fiction.
 
 R2 keeps the rest flat: tens of GB stored ≈ $1–2/month at $0.015/GB-month
 after a 10 GB free tier, and **egress is $0** no matter how many hikers

@@ -104,8 +104,14 @@ jobs:
           curl -sSL -o planetiler.jar "${{ inputs.planetiler_jar_url || 'https://github.com/onthegomap/planetiler/releases/latest/download/planetiler.jar' }}"
           ls -la planetiler.jar
 
+      # pipefail on every step that pipes into tee. Without it bash reports
+      # the exit status of tee, which always succeeds - so the first run of
+      # this spike went green while both comparisons died on a missing file
+      # and the summary read "(did not run)". A spike that can fail silently
+      # is worse than no spike, because it produces a result-shaped absence.
       - name: Build the control and both arms
         run: |
+          set -o pipefail
           python spike_shard_seam.py \
             --planetiler-jar planetiler.jar \
             --max-zoom "${{ inputs.max_zoom || '14' }}" \
@@ -116,6 +122,7 @@ jobs:
       # design. Arm B's differences are only interpretable against it.
       - name: Compare - arm A (polygon-only, isolates the ranking question)
         run: |
+          set -o pipefail
           python compare_shards.py \
             --control data/shard-spike/control \
             $(for d in data/shard-spike/arm-a-*; do printf ' --shard %s' "$d"; done) \
@@ -123,6 +130,7 @@ jobs:
 
       - name: Compare - arm B (realistic, adds the padding variable)
         run: |
+          set -o pipefail
           python compare_shards.py \
             --control data/shard-spike/control \
             $(for d in data/shard-spike/arm-b-*; do printf ' --shard %s' "$d"; done) \

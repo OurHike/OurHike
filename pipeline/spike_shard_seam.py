@@ -82,21 +82,56 @@ class BuildResult:
     input_bytes: int
     output_bytes: int
     peak_tmp_bytes: int
+    peak_apparent_bytes: int
     seconds: float
 
     @property
     def disk_multiplier(self) -> float:
         return self.peak_tmp_bytes / self.input_bytes if self.input_bytes else 0.0
 
+    @property
+    def apparent_multiplier(self) -> float:
+        return self.peak_apparent_bytes / self.input_bytes if self.input_bytes else 0.0
+
+
+# Two numbers because the first run of this spike reported the wrong one and
+# it looked plausible. Planetiler's node map is a SPARSE file: it is created
+# at the size of the node-ID space and only the pages it touches are ever
+# allocated. st_size therefore reads the same ~2 GB for every build no matter
+# how big its input is - which is exactly what happened, and 19.5x, 19.5x,
+# 19.5x, 49.2x, 31.7x across five different inputs is the shape of a constant
+# being divided by five different denominators, not a measurement.
+#
+# st_blocks is what the runner's free space actually loses. Apparent size is
+# kept alongside it because the gap between them IS the finding: anyone
+# sizing a machine off `ls -l` or a naive walk will over-provision wildly.
+
 
 def directory_bytes(path: Path) -> int:
-    """Total size of everything under `path`, 0 if it does not exist yet.
+    """Disk actually consumed under `path` - allocated blocks, not apparent
+    size - and 0 if it does not exist yet.
 
-    Walked in Python rather than shelling to `du` so the sampler cannot be
-    the thing that fails a build on a machine with a different du."""
+    st_blocks is in 512-byte units by POSIX definition regardless of the
+    filesystem's own block size. Walked in Python rather than shelling to
+    `du` so the sampler cannot be the thing that fails a build."""
+    if not path.exists():
+        return 0
+    return sum(f.stat().st_blocks * 512 for f in path.rglob("*") if f.is_file())
+
+
+def directory_apparent_bytes(path: Path) -> int:
+    """What a naive walk (or `ls -l`, or `du --apparent-size`) would report.
+
+    Kept only to print beside the real number, so the sparse-file gap is
+    visible in the output rather than something the next person rediscovers."""
     if not path.exists():
         return 0
     return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+
+
+def measure_both(path: Path) -> tuple[int, int]:
+    """(allocated, apparent) in one walk."""
+    return directory_bytes(path), directory_apparent_bytes(path)
 
 
 class PeakDiskSampler:
@@ -106,8 +141,9 @@ class PeakDiskSampler:
     is a subprocess we block on, and the peak has to be taken from another
     thread or it is only ever the size after the process exits."""
 
-    def __init__(self, path: Path, interval: float = DISK_POLL_SECONDS, measure=directory_bytes):
-        self.path, self.interval, self.peak = path, interval, 0
+    def __init__(self, path: Path, interval: float = DISK_POLL_SECONDS, measure=measure_both):
+        self.path, self.interval = path, interval
+        self.peak, self.peak_apparent = 0, 0
         # Injectable so the peak-keeping logic can be tested by driving
         # sample() directly, instead of by racing a real thread against a
         # directory and hoping the poll lands where the test needs it.
@@ -116,8 +152,14 @@ class PeakDiskSampler:
         self._thread = threading.Thread(target=self._run, daemon=True)
 
     def sample(self) -> int:
-        """Take one measurement and fold it into the peak."""
-        self.peak = max(self.peak, self._measure(self.path))
+        """Take one measurement and fold both peaks in.
+
+        The two are tracked independently rather than as one reading: they
+        need not peak at the same instant, and taking the apparent size from
+        whichever moment the allocated size peaked would understate it."""
+        allocated, apparent = self._measure(self.path)
+        self.peak = max(self.peak, allocated)
+        self.peak_apparent = max(self.peak_apparent, apparent)
         return self.peak
 
     def _run(self):
@@ -185,7 +227,7 @@ def run_build(name: str, work: Path, jar: Path, osm_pbf: Path, poly_path: Path |
     out_dir = work / name
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path, tmp_dir = out_dir / "build.pmtiles", out_dir / "tmp"
-    cmd = planetiler_cmd(jar, osm_pbf, out_path, max_zoom, poly_path, tmp_dir)
+    cmd = planetiler_cmd(jar, osm_pbf, out_path, max_zoom, poly_path, tmp_dir, layer_stats=True)
     print(f"\n=== {name} ===\n  {' '.join(str(c) for c in cmd)}")
 
     started = time.monotonic()
@@ -193,10 +235,17 @@ def run_build(name: str, work: Path, jar: Path, osm_pbf: Path, poly_path: Path |
         subprocess.run(cmd, check=True)
     elapsed = time.monotonic() - started
 
-    result = BuildResult(name, out_dir, osm_pbf.stat().st_size, out_path.stat().st_size, sampler.peak, elapsed)
+    stats_path = out_path.with_name(out_path.name + ".layerstats.tsv.gz")
+    if not stats_path.exists():
+        raise SystemExit(f"{name}: Planetiler wrote no layer stats at {stats_path} - the comparison has nothing to read.")
+
+    result = BuildResult(
+        name, out_dir, osm_pbf.stat().st_size, out_path.stat().st_size, sampler.peak, sampler.peak_apparent, elapsed
+    )
     print(
         f"  {name}: input {result.input_bytes / 1e9:.2f} GB -> output {result.output_bytes / 1e9:.2f} GB "
-        f"in {elapsed / 60:.1f} min, peak temp {result.peak_tmp_bytes / 1e9:.2f} GB ({result.disk_multiplier:.1f}x input)"
+        f"in {elapsed / 60:.1f} min, peak temp {result.peak_tmp_bytes / 1e9:.2f} GB ({result.disk_multiplier:.1f}x input); "
+        f"apparent {result.peak_apparent_bytes / 1e9:.2f} GB ({result.apparent_multiplier:.1f}x)"
     )
     return result
 
@@ -244,14 +293,20 @@ def main(args: argparse.Namespace) -> None:
         results.append(run_build(f"arm-b-{state}", work, args.planetiler_jar, pbf, poly, args.max_zoom))
 
     print("\n\n=== Temp disk, measured rather than assumed ===")
-    print(f"{'build':22s} {'input':>10s} {'peak temp':>12s} {'multiplier':>11s} {'minutes':>8s}")
+    print(f"{'build':22s} {'input':>10s} {'peak (real)':>12s} {'x':>7s} {'apparent':>10s} {'x':>7s} {'minutes':>8s}")
     for r in results:
         print(
-            f"{r.name:22s} {r.input_bytes / 1e9:9.2f}G {r.peak_tmp_bytes / 1e9:11.2f}G {r.disk_multiplier:10.1f}x {r.seconds / 60:8.1f}"
+            f"{r.name:22s} {r.input_bytes / 1e9:9.2f}G {r.peak_tmp_bytes / 1e9:11.2f}G {r.disk_multiplier:6.1f}x "
+            f"{r.peak_apparent_bytes / 1e9:9.2f}G {r.apparent_multiplier:6.1f}x {r.seconds / 60:8.1f}"
         )
     print(
         f"\nBASEMAP.md's table assumes 5x and treats Planetiler's 10x planet guidance as the pessimistic bound. "
-        f"The control build here measured {results[0].disk_multiplier:.1f}x."
+        f"The control build here measured {results[0].disk_multiplier:.1f}x of real disk."
+    )
+    print(
+        "The apparent column is what a naive walk reports. Planetiler's node map is a sparse file sized by the\n"
+        "node-ID space, so apparent size barely moves with the input and any multiplier taken from it is fiction -\n"
+        "which is what the first run of this spike reported before st_blocks replaced st_size."
     )
     print("\nNow compare. Arm A isolates the ranking question; arm B adds padding:\n")
     for arm in ("a", "b"):

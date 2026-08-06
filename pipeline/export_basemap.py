@@ -121,11 +121,19 @@ def osmium_merge_cmd(inputs: list[Path], out_pbf: Path) -> list[str]:
     return ["osmium", "merge", "--overwrite", "-o", str(out_pbf), *[str(p) for p in inputs]]
 
 
-def planetiler_cmd(jar: Path, osm_pbf: Path, out_path: Path, max_zoom: int, poly_path: Path | None, tmp_dir: Path) -> list[str]:
+def planetiler_cmd(
+    jar: Path, osm_pbf: Path, out_path: Path, max_zoom: int, poly_path: Path | None, tmp_dir: Path, layer_stats: bool = False
+) -> list[str]:
     """The Planetiler invocation. --download fetches the profile's non-OSM
     sources (Natural Earth, water polygons) on first run; --polygon bounds the
     output tiles to the clip shape (omitted under --no-clip, where the input
-    PBF's own extent is the bound)."""
+    PBF's own extent is the bound).
+
+    layer_stats asks for the per-(tile, layer) TSV that compare_shards.py
+    reads. Off by default and opt-in rather than always on: Planetiler names
+    the file whether or not it writes one - the `layer_stats` argument it
+    logs is a path, not a promise - and a build that pays for statistics
+    nobody reads is a build paying for nothing. The spike turns it on."""
     return [
         "java",
         "-jar",
@@ -135,6 +143,7 @@ def planetiler_cmd(jar: Path, osm_pbf: Path, out_path: Path, max_zoom: int, poly
         f"--maxzoom={max_zoom}",
         f"--tmpdir={tmp_dir}",
         *([] if poly_path is None else [f"--polygon={poly_path}"]),
+        *(["--output-layerstats"] if layer_stats else []),
         "--download",
         "--force",
     ]

@@ -15,7 +15,7 @@ class of bug the sampler exists to avoid.
 import pytest
 from shapely.geometry import box
 
-from spike_shard_seam import BuildResult, PeakDiskSampler, directory_bytes, seam_between
+from spike_shard_seam import BuildResult, PeakDiskSampler, directory_apparent_bytes, directory_bytes, seam_between
 
 
 def test_the_seam_is_where_two_shards_touch():
@@ -54,12 +54,38 @@ def test_regions_that_do_not_touch_are_refused_rather_than_measured_against_noth
         seam_between([box(0, 0, 1, 1), box(50, 50, 51, 51)])
 
 
-def test_directory_bytes_totals_everything_underneath(tmp_path):
+def test_apparent_bytes_totals_everything_underneath(tmp_path):
     (tmp_path / "nested").mkdir()
     (tmp_path / "a.bin").write_bytes(b"x" * 100)
     (tmp_path / "nested" / "b.bin").write_bytes(b"y" * 50)
 
-    assert directory_bytes(tmp_path) == 150
+    assert directory_apparent_bytes(tmp_path) == 150
+
+
+def test_a_sparse_file_costs_the_disk_almost_nothing_however_big_it_claims_to_be(tmp_path):
+    """The bug that made the first run of this spike report a number it had
+    not measured. Planetiler's node map is created at the size of the node-ID
+    space and only the pages it touches are allocated, so apparent size is
+    near-constant across builds - and dividing one constant by five different
+    inputs produced five different 'multipliers' that were all fiction.
+
+    st_blocks is what the runner's free space actually loses."""
+    sparse = tmp_path / "node.db"
+    with open(sparse, "wb") as f:
+        f.truncate(2_000_000_000)
+        f.write(b"x" * 4096)
+
+    assert directory_apparent_bytes(tmp_path) == 2_000_000_000
+    assert directory_bytes(tmp_path) < 1_000_000
+
+
+def test_allocated_bytes_rounds_up_to_whole_blocks(tmp_path):
+    """A 100-byte file does not cost 100 bytes of disk. Allocated is always
+    at least a block, which is why this number is never below apparent for
+    small dense files and wildly below it for sparse ones."""
+    (tmp_path / "small.bin").write_bytes(b"x" * 100)
+
+    assert directory_bytes(tmp_path) >= 512
 
 
 def test_a_directory_planetiler_has_not_created_yet_measures_zero(tmp_path):
@@ -71,7 +97,7 @@ def test_the_peak_survives_the_directory_shrinking_again():
     phases end, so the final size understates what the build needed - and
     understating it is what would make a sub-region look like it fits a free
     runner when it does not."""
-    readings = iter([10, 400, 90, 20])
+    readings = iter([(10, 10), (400, 400), (90, 90), (20, 20)])
     sampler = PeakDiskSampler(path=None, measure=lambda _: next(readings))
 
     for _ in range(4):
@@ -81,7 +107,7 @@ def test_the_peak_survives_the_directory_shrinking_again():
 
 
 def test_the_peak_ignores_the_order_the_readings_arrive_in():
-    for readings in ([5, 100], [100, 5]):
+    for readings in ([(5, 5), (100, 100)], [(100, 100), (5, 5)]):
         sampler = PeakDiskSampler(path=None, measure=lambda _, r=iter(readings): next(r))
         sampler.sample()
         sampler.sample()
@@ -97,17 +123,35 @@ def test_a_build_shorter_than_one_poll_is_still_measured(tmp_path):
     with PeakDiskSampler(tmp_path, interval=3600) as sampler:
         pass
 
-    assert sampler.peak == 4096
+    assert sampler.peak >= 4096
 
 
 def test_the_multiplier_is_peak_temp_over_input():
     """The number BASEMAP.md's fits-a-free-runner table is built on."""
-    result = BuildResult("control", None, input_bytes=2_000_000_000, output_bytes=0, peak_tmp_bytes=9_000_000_000, seconds=0)
+    result = BuildResult(
+        "control", None, input_bytes=2_000_000_000, output_bytes=0, peak_tmp_bytes=9_000_000_000, peak_apparent_bytes=0, seconds=0
+    )
 
     assert result.disk_multiplier == pytest.approx(4.5)
 
 
 def test_an_empty_input_reports_no_multiplier_rather_than_dividing_by_zero():
-    result = BuildResult("control", None, input_bytes=0, output_bytes=0, peak_tmp_bytes=100, seconds=0)
+    result = BuildResult("control", None, input_bytes=0, output_bytes=0, peak_tmp_bytes=100, peak_apparent_bytes=100, seconds=0)
 
     assert result.disk_multiplier == 0.0
+    assert result.apparent_multiplier == 0.0
+
+
+def test_both_peaks_are_tracked_independently():
+    """They need not peak together: the node map inflates apparent size early
+    and the feature file fills real disk later. Taking the apparent figure
+    from whichever moment allocated peaked would understate it, and the gap
+    between the two is the whole point of printing both."""
+    readings = iter([(10, 900), (500, 100)])
+    sampler = PeakDiskSampler(path=None, measure=lambda _: next(readings))
+
+    sampler.sample()
+    sampler.sample()
+
+    assert sampler.peak == 500
+    assert sampler.peak_apparent == 900

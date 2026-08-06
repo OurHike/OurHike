@@ -49,17 +49,25 @@ Whether they're still *there* is checked continuously after that: `.github/expec
 
 **1.4 Configure CORS — this one is easy to miss and fails confusingly.** The client reads PMTiles via HTTP **range requests**. Without CORS exposing the right headers, the map fails in a way that looks like a corrupt archive rather than a permissions problem.
 
-R2 → `your-hike` → Settings → CORS policy. The app is hosted on GitHub Pages (see step 3 — that's settled now, unlike when this list was first written), so the real origin to allow is:
+R2 → `your-hike` → Settings → CORS policy. The app is hosted on GitHub Pages (see step 3 — that's settled now, unlike when this list was first written), and its previews on Cloudflare Pages (3a), so there are **two** origins to allow plus local dev:
 
 ```json
 [{
-  "AllowedOrigins": ["https://jaimito-asuntos-gringuenos.github.io", "http://localhost:5173"],
+  "AllowedOrigins": [
+    "https://jaimito-asuntos-gringuenos.github.io",
+    "https://*.ourhike-preview.pages.dev",
+    "http://localhost:5173"
+  ],
   "AllowedMethods": ["GET", "HEAD"],
   "AllowedHeaders": ["range", "if-match", "content-type"],
   "ExposeHeaders": ["content-length", "content-range", "etag", "accept-ranges"],
   "MaxAgeSeconds": 3600
 }]
 ```
+
+**The `pages.dev` wildcard is not optional, and its absence is easy to misread.** Every pull request previews from a hostname of its own, so each one is a distinct origin as far as a browser is concerned — a wildcard is the only entry that can cover a pull request that does not exist yet. Without it the preview renders but the download fails with `NetworkError when attempting to fetch resource`, which looks like R2 being down rather than R2 declining to answer this particular origin.
+
+This was missed when previews moved off GitHub Pages, and the reason is worth keeping: previews used to be served from `jaimito-asuntos-gringuenos.github.io`, the *same* origin as production, so the one entry covered both and there was nothing here that looked origin-specific. Moving previews to their own hostnames split one origin into many. Supabase's redirect allow-list (4.3b) needed the identical change for the identical reason — if one of these two lists is ever updated for a new origin, the other one needs it too.
 
 `ExposeHeaders` matters as much as `AllowedHeaders`: the resumable download reads `content-range` to know whether the server honoured a range request, and treats a missing/200 response as "start over" rather than corrupting the file.
 
@@ -116,6 +124,9 @@ CLOUDFLARE_PAGES_PROJECT=<project>     # Variables tab — it is in every previe
 ```
 
 4. **Allow the preview URLs back** in Supabase — see 4.3b, which covers this and the production URL together. Without it, signing in from a preview ends in a redirect mismatch.
+5. **Allow the preview origin on the R2 bucket** — see 1.4. Without it the preview loads but the map download fails with `NetworkError when attempting to fetch resource`.
+
+Steps 4 and 5 are the same mistake waiting to happen twice: both are origin allow-lists that previously needed only one entry, because previews used to share production's origin. A preview hostname that is not in **both** is a preview that either cannot sign in or cannot download.
 
 A pull request from a fork gets no secrets and so gets no preview; the workflow notices and says so rather than failing.
 

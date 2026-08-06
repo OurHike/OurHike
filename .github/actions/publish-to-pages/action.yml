@@ -1,0 +1,100 @@
+# Publishes a directory to a branch with a push that can lose a race and
+# recover, which `git push` on its own cannot.
+#
+# This replaced peaceiris/actions-gh-pages in pages.yml, which pushes exactly
+# once: a rejected push failed the deploy outright, having built everything
+# correctly, and the only way to get the site out was to re-run the job by
+# hand. That was routine when pull request previews shared this branch - every
+# open pull request was another writer of the same git ref, and git admits one
+# writer per push. Previews now deploy to Cloudflare Pages instead
+# (pr-preview.yml), so `gh-pages` has a single writer again and losing a race
+# is rare rather than normal.
+#
+# Rare is not never, which is why this stayed:
+#
+#   * `workflow_dispatch` exists on pages.yml precisely so the site can be
+#     republished by hand, and nothing stops someone doing that in the same
+#     minute a pull request merges.
+#   * `cancel-in-progress` cancels the older run, but not instantly. A run
+#     already inside its push is not stopped by having been cancelled.
+#
+# Neither is worth a failed production deploy, and neither is worth thinking
+# about again once the push can simply wait its turn.
+#
+# A note for anyone reintroducing a second writer to this branch: the fix is
+# not a shared `concurrency:` group. GitHub holds at most one *pending* run per
+# group and a third arrival cancels the one already waiting, so a group shared
+# across pull requests does not take turns - it discards. Concurrency groups
+# coalesce, they do not queue.
+
+name: Publish to Pages
+description: Publish a directory to a branch, retrying a push that lost a race.
+
+inputs:
+  source-dir:
+    description: >-
+      Directory whose contents become the whole branch. Anything on the branch
+      and not in here is deleted, so the caller must own the branch outright.
+    required: true
+  branch:
+    description: Branch to publish to.
+    required: false
+    default: gh-pages
+  commit-message:
+    description: Commit message for the published commit.
+    required: true
+  token:
+    description: Token to push with.
+    required: false
+    default: ${{ github.token }}
+  max-attempts:
+    description: >-
+      How many times to rebuild-and-push before giving up. Each round of pushes
+      has exactly one winner, so this is really a headcount of how many writers
+      might be contending at once.
+    required: false
+    default: '20'
+  backoff-base-seconds:
+    description: Starting point for the exponential backoff ceiling.
+    required: false
+    default: '2'
+  backoff-cap-seconds:
+    description: >-
+      Ceiling the backoff stops doubling at. A push here takes a second or two,
+      so waiting much longer than this adds latency without reducing collisions
+      any further.
+    required: false
+    default: '15'
+
+outputs:
+  pushed:
+    description: >-
+      "true" if a commit was pushed, "false" if the branch already matched this
+      build and there was nothing to do.
+    value: ${{ steps.publish.outputs.pushed }}
+  attempts:
+    description: How many attempts it took. Above 1 means this deploy hit contention.
+    value: ${{ steps.publish.outputs.attempts }}
+
+runs:
+  using: composite
+  steps:
+    - id: publish
+      shell: bash
+      env:
+        SOURCE_DIR: ${{ inputs.source-dir }}
+        BRANCH: ${{ inputs.branch }}
+        COMMIT_MESSAGE: ${{ inputs.commit-message }}
+        MAX_ATTEMPTS: ${{ inputs.max-attempts }}
+        BACKOFF_BASE_SECONDS: ${{ inputs.backoff-base-seconds }}
+        BACKOFF_CAP_SECONDS: ${{ inputs.backoff-cap-seconds }}
+        # The token is in the URL because that is what git wants, and it is safe
+        # here for the same reason it is in every other action that does this:
+        # Actions masks the token's value everywhere it appears in a log,
+        # including inside the "To https://..." line git prints on a failed
+        # push. Nothing below ever echoes this variable itself.
+        REMOTE_URL: https://x-access-token:${{ inputs.token }}@github.com/${{ github.repository }}.git
+      # Through `bash <path>` rather than executing it directly, so the script
+      # runs the same way whether or not its executable bit survived however
+      # this repository was checked out.
+      run: bash "$GITHUB_ACTION_PATH/publish.sh"

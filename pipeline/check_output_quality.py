@@ -13,9 +13,9 @@ normalizer, an interrupted write, a script whose own gate got bypassed) -
 that failure mode is what this module exists to catch, one step before
 publish.py would otherwise ship it to R2.
 
-Runs after export_trails.py, export_poi.py, export_elevation.py, and
-export_pmtiles.py, and before publish.py, per the documented pipeline run
-order (see README.md).
+Runs after export_trails.py, export_poi.py, export_elevation.py, and the
+raster assemble (assemble_raster.py), and before publish.py, per the
+documented pipeline run order (see README.md).
 
     .venv/Scripts/python check_output_quality.py
 
@@ -47,8 +47,8 @@ FOUR CHECKS, IN PRIORITY ORDER
    output, dated 2026-07-24) while data/raw/centerline.geojson had already
    moved on (re-fetched 2026-07-25). lib/corridor.py's build_corridor() was
    extracted specifically so nothing in the real pipeline reads that stale
-   file any more - export_poi.py, export_trails.py, and export_pmtiles.py
-   all call build_corridor() fresh, from centerline.geojson, on every run
+   file any more - export_poi.py, export_trails.py and the raster build's
+   compute-cells step all build the corridor fresh, from centerline.geojson
    (see lib/corridor.py's own docstring). So the exact bug this check was
    first imagined to catch is now structurally impossible: there is no
    longer a stale committed corridor file left in the pipeline for anything
@@ -573,8 +573,8 @@ def topo_quads_verdict(manifest_path: Path | None = None, sample_size: int | Non
     ran) is reported SKIPPED, not PROBLEM - unlike trails/poi/elevation,
     this module's documented position in the pipeline (after the four
     EXPORT scripts) does not guarantee a fetch-stage manifest exists by the
-    time this runs, and export_pmtiles.py's real input is the already-
-    mosaicked data/processed/topo_background/ cells, not this manifest
+    time this runs, and the raster archives' real inputs are the rendered
+    per-cell artifacts (render_cell_tiles.py), not this manifest
     directly."""
     if manifest_path is None:
         manifest_path = TOPO_QUADS_MANIFEST

@@ -166,7 +166,7 @@ def planetiler_cmd(
 
 def load_corridor_4326():
     """The corridor as a shapely geometry in EPSG:4326, built fresh from the
-    centerline exactly as export_pmtiles.py does (and never from the stale
+    centerline exactly as the raster pipeline does (and never from the stale
     spike output - see lib/corridor.py)."""
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
@@ -254,7 +254,7 @@ def main(args: argparse.Namespace):
 
 
 if __name__ == "__main__":
-    # Parsed outside main() for the same reason export_pmtiles.py does it:
+    # Parsed outside main() for the same reason fetch_elevation.py does it:
     # tests call main() directly with module state patched, and argparse with
     # no argv would read pytest's own command line.
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)

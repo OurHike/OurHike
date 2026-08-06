@@ -95,16 +95,19 @@ jobs:
       - name: Verify the archive is shippable
         run: python check_dem_archive.py --max-zoom "${{ inputs.max_zoom }}"
 
+      # To the log AND the summary: a number that exists only in a rendered
+      # summary cannot be quoted by anything reading the logs later.
       - name: Measure
         run: |
-          {
-            echo "## DEM build (quantize ${{ inputs.quantize_step }} m, z0-${{ inputs.max_zoom }})"
-            echo '```'
-            python -c "
+          python -c "
           from pathlib import Path
           from export_basemap import report_archive
           report_archive(Path('data/processed/dem.pmtiles'))
-          "
+          " | tee measure.txt
+          {
+            echo "## DEM build (quantize ${{ inputs.quantize_step }} m, z0-${{ inputs.max_zoom }})"
+            echo '```'
+            cat measure.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           df -h /

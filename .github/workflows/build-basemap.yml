@@ -120,19 +120,21 @@ jobs:
             --out data/processed/at_basemap_package.pmtiles \
             --name "OurHike AT corridor basemap"
 
-      # The whole point of the spike: real numbers where estimates were. The
-      # summary is what gets pasted back into #185.
+      # The whole point of the spike: real numbers where estimates were. To
+      # the log AND the summary - a number that exists only in a rendered
+      # summary cannot be quoted by anything reading the logs later.
       - name: Measure
         run: |
-          {
-            echo "## Basemap build"
-            echo '```'
-            python -c "
+          python -c "
           from pathlib import Path
           from export_basemap import report_archive
           report_archive(Path('data/processed/basemap.pmtiles'))
           report_archive(Path('data/processed/at_basemap_package.pmtiles'))
-          "
+          " | tee measure.txt
+          {
+            echo "## Basemap build"
+            echo '```'
+            cat measure.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           df -h /

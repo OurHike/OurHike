@@ -1,0 +1,65 @@
+# Measures how many of the AT package's bytes a second, overlapping package
+# would duplicate on one phone - the number #193's packaging decision rests
+# on (spike_package_overlap.py). Sibling to shard-seam-spike.yml: a spike
+# with a workflow, because the measurement needs the corridor (ArcGIS), a
+# Geofabrik .poly and the published archives, none of which a sandbox or a
+# laptop necessarily reaches.
+#
+# Reads the public bucket over the same URL a hiker's phone uses, so it holds
+# no credentials and cannot write anything anywhere.
+
+name: Package overlap spike
+
+on:
+  workflow_dispatch:
+    inputs:
+      poly_url:
+        description: "Osmosis .poly of the second package's region"
+        type: string
+        default: "https://download.geofabrik.de/north-america/us/new-york.poly"
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Warm the DuckDB spatial extension
+        run: python -c "import duckdb; duckdb.connect().execute('INSTALL spatial; LOAD spatial;')"
+
+      # centerline.geojson, which the corridor region is built from.
+      - name: Fetch ArcGIS sources
+        run: python fetch_all.py
+
+      # To the log AND the summary: a number that exists only in a rendered
+      # summary cannot be quoted by anything reading the logs later, which
+      # is how the DEM build's own per-zoom table nearly went unrecorded.
+      - name: Measure the overlap
+        env:
+          DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
+        run: |
+          python spike_package_overlap.py \
+            --poly "${{ inputs.poly_url }}" \
+            --fetch-from "$DATA_BASE_URL" | tee overlap.txt
+          {
+            echo "## Package overlap (${{ inputs.poly_url }})"
+            echo '```'
+            cat overlap.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

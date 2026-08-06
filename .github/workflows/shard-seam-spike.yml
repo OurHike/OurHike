@@ -112,7 +112,11 @@ jobs:
       - name: Build the control and both arms
         run: |
           set -o pipefail
-          python spike_shard_seam.py \
+          # -u because Planetiler writes straight to the inherited stdout while
+          # Python block-buffers when piped into tee. Without it the spike's own
+          # narration all flushes at exit and lands AFTER the Java stack trace it
+          # was supposed to be explaining, which is how the last failure read.
+          python -u spike_shard_seam.py \
             --planetiler-jar planetiler.jar \
             --max-zoom "${{ inputs.max_zoom || '14' }}" \
             ${{ inputs.states != '' && format('--states {0}', inputs.states) || '' }} \

@@ -217,6 +217,32 @@ def seam_between(shapes: list) -> object:
     return seam
 
 
+def run_planetiler(cmd: list[str], attempts: int = 3, sleep=time.sleep, run=subprocess.run) -> int:
+    """Run Planetiler, retrying a failed attempt. Returns the attempt that
+    worked; re-raises if none did.
+
+    Here because a run died on `Error getting size of
+    water-polygons-split-3857.zip ... TimeoutException` - Planetiler fetching
+    a 928 MB shapefile from a third party that had served it fine ten minutes
+    earlier. That is weather, not a result, and a spike that reports failure
+    when osmdata.openstreetmap.de is slow teaches nothing about sharding.
+
+    Retrying is cheap and safe: downloaded sources are cached under
+    data/sources so a second attempt skips what already arrived, and --force
+    means a half-written output is overwritten rather than appended to."""
+    for attempt in range(1, attempts + 1):
+        try:
+            run(cmd, check=True)
+            return attempt
+        except subprocess.CalledProcessError:
+            if attempt == attempts:
+                raise
+            delay = 15 * attempt
+            print(f"  attempt {attempt}/{attempts} failed; retrying in {delay}s", flush=True)
+            sleep(delay)
+    raise AssertionError("unreachable")
+
+
 def run_build(name: str, work: Path, jar: Path, osm_pbf: Path, poly_path: Path | None, max_zoom: int) -> BuildResult:
     """One Planetiler build into its own directory, with the temp directory
     watched throughout.
@@ -232,7 +258,7 @@ def run_build(name: str, work: Path, jar: Path, osm_pbf: Path, poly_path: Path |
 
     started = time.monotonic()
     with PeakDiskSampler(tmp_dir) as sampler:
-        subprocess.run(cmd, check=True)
+        run_planetiler(cmd)
     elapsed = time.monotonic() - started
 
     stats_path = out_path.with_name(out_path.name + ".layerstats.tsv.gz")

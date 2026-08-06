@@ -12,10 +12,19 @@ the peak would pass or fail on where the poll landed - which is the same
 class of bug the sampler exists to avoid.
 """
 
+import subprocess
+
 import pytest
 from shapely.geometry import box
 
-from spike_shard_seam import BuildResult, PeakDiskSampler, directory_apparent_bytes, directory_bytes, seam_between
+from spike_shard_seam import (
+    BuildResult,
+    PeakDiskSampler,
+    directory_apparent_bytes,
+    directory_bytes,
+    run_planetiler,
+    seam_between,
+)
 
 
 def test_the_seam_is_where_two_shards_touch():
@@ -155,3 +164,60 @@ def test_both_peaks_are_tracked_independently():
 
     assert sampler.peak == 500
     assert sampler.peak_apparent == 900
+
+
+# Planetiler downloads ~1.4 GB of profile sources from three third parties
+# before it builds anything, and one run died on a TimeoutException fetching
+# water polygons from a host that had served them fine minutes earlier. That
+# is weather. These cover the retry that stops weather being mistaken for a
+# result about sharding.
+
+
+def test_a_build_that_works_first_time_is_not_retried():
+    calls = []
+
+    attempt = run_planetiler(["java"], run=lambda cmd, check: calls.append(cmd), sleep=lambda _: None)
+
+    assert attempt == 1
+    assert len(calls) == 1
+
+
+def test_a_transient_failure_is_retried_and_the_result_kept():
+    calls = []
+
+    def flaky(cmd, check):
+        calls.append(cmd)
+        if len(calls) < 3:
+            raise subprocess.CalledProcessError(1, cmd)
+
+    attempt = run_planetiler(["java"], attempts=3, run=flaky, sleep=lambda _: None)
+
+    assert attempt == 3
+    assert len(calls) == 3
+
+
+def test_a_build_that_never_succeeds_still_fails_the_spike():
+    """Retrying must not turn a real, repeatable breakage into a green run -
+    the point is to absorb weather, not to hide a broken command line."""
+    calls = []
+
+    def always_fails(cmd, check):
+        calls.append(cmd)
+        raise subprocess.CalledProcessError(1, cmd)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        run_planetiler(["java"], attempts=3, run=always_fails, sleep=lambda _: None)
+
+    assert len(calls) == 3
+
+
+def test_the_retry_backs_off_rather_than_hammering_a_struggling_host():
+    delays = []
+
+    def always_fails(cmd, check):
+        raise subprocess.CalledProcessError(1, cmd)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        run_planetiler(["java"], attempts=3, run=always_fails, sleep=delays.append)
+
+    assert delays == sorted(delays) and delays[0] < delays[-1]

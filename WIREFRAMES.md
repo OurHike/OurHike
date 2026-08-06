@@ -92,6 +92,8 @@ Wireframed as a per-section list with a per-section detail override. **This inte
 - **The map is not torn down to look at it.** A trip to the old tab unmounted the map screen and rebuilt it on the way back — the bug the camera-restore code exists to paper over. A window costs none of that.
 - **On a desktop it is a centred panel** on a dimmed page rather than a takeover of a 1440px browser (WEBSITE.md §6).
 
+**Amended 2026-08-06 — a list of packages, not of sections ([#192](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/192)).** The window's body is now one card per package the trail is made of (`client/src/screens/PackageCard.tsx`), with its own progress, its own failure and its own delete. This is not the per-section list returning: sections were a choice a hiker had to get right mile by mile, and packages are a manifest (`client/src/lib/packages.ts`) that one tap takes all of — the fan-out button appears only when there is more than one to take. The offline map program ([#184](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/184)) is what makes several: a raster sheet, a vector basemap and a DEM on the same phone. Today's build lists exactly one card, because the raster sheet is the only one of the three the pipeline publishes ([#185](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/185), [#186](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/186)) and a package with nothing behind it is catalogued but never offered.
+
 Onboarding still ends on the download (§5), but over the map rather than instead of it.
 
 ### 5. Onboarding — Tier 1 (`13a` chosen, `13b` rejected, `13c` sequence)

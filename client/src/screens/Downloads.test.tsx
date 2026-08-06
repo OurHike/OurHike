@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Downloads } from './Downloads'
+import { Downloads, type PackageDownload } from './Downloads'
+import {
+  BASEMAP_PACKAGE,
+  CORRIDOR_BACKGROUND_PACKAGE,
+  DEM_PACKAGE,
+} from '../lib/packages'
 
 // WIREFRAMES.md §4 as amended by its own Known Deviations #1: the wireframe
 // drew a per-section list, and ROADMAP.md Phase 2 had already decided on ONE
@@ -10,17 +15,25 @@ import { Downloads } from './Downloads'
 // overrides, roll-up totals, mixed-detail seams. Absence tests are the only
 // way a superseded design stays superseded.
 //
-// WIREFRAMES.md `7a` also requires a failed download to RESUME rather than
-// restart: re-fetching 314 MB from the start because a transfer dropped at
-// 90% is exactly the failure someone on trailhead wifi cannot afford.
+// What the screen DOES list since #192 is packages: the pieces one trail's
+// map is made of (raster sheet, vector basemap, DEM). That is a different
+// axis from sections, and the difference is why it is allowed to be a list -
+// sections were a choice a hiker had to get right mile by mile, packages are
+// a manifest one tap takes all of.
+//
+// Each card's own states live in PackageCard.test.tsx.
 
-const PROPS = {
-  status: { state: 'not-downloaded' as const },
-  detailLevel: 'standard' as const,
-  onChangeDetail: vi.fn(),
-  onStart: vi.fn(),
-  onResume: vi.fn(),
-  onDelete: vi.fn(),
+function entry(overrides: Partial<PackageDownload> = {}): PackageDownload {
+  return {
+    pkg: CORRIDOR_BACKGROUND_PACKAGE,
+    status: { state: 'not-downloaded' },
+    sizeBytes: 314_000_000,
+    detail: { level: 'standard', onChange: vi.fn() },
+    onStart: vi.fn(),
+    onResume: vi.fn(),
+    onDelete: vi.fn(),
+    ...overrides,
+  }
 }
 
 afterEach(() => {
@@ -29,8 +42,8 @@ afterEach(() => {
 })
 
 describe('Downloads', () => {
-  it('offers a single whole-corridor package, not a list of sections', () => {
-    render(<Downloads {...PROPS} />)
+  it('offers whole-trail packages, not a list of sections', () => {
+    render(<Downloads packages={[entry()]} />)
 
     expect(
       screen.getByText(/whole trail|entire trail|whole corridor/i),
@@ -38,171 +51,150 @@ describe('Downloads', () => {
     expect(screen.queryByText(/section/i)).not.toBeInTheDocument()
   })
 
-  it('offers exactly the three detail levels with their real measured sizes', () => {
-    render(<Downloads {...PROPS} />)
-
-    expect(screen.getAllByRole('radio')).toHaveLength(3)
-    expect(screen.getByText(/64 MB/)).toBeInTheDocument()
-    expect(screen.getByText(/314 MB/)).toBeInTheDocument()
-    expect(screen.getByText(/1\.18 GB/)).toBeInTheDocument()
-  })
-
-  it('marks Standard as recommended', () => {
-    render(<Downloads {...PROPS} />)
-
-    expect(screen.getByRole('radio', { name: /standard/i })).toBeChecked()
-    expect(screen.getByText(/recommended/i)).toBeInTheDocument()
-  })
-
-  it('reports a detail change rather than silently re-downloading', async () => {
-    const user = userEvent.setup()
-    render(<Downloads {...PROPS} />)
-
-    await user.click(screen.getByRole('radio', { name: /fine/i }))
-
-    expect(PROPS.onChangeDetail).toHaveBeenCalledWith('fine')
-    expect(PROPS.onStart).not.toHaveBeenCalled()
-  })
-
-  it('starts the download when asked', async () => {
-    const user = userEvent.setup()
-    render(<Downloads {...PROPS} />)
-
-    await user.click(screen.getByRole('button', { name: /download/i }))
-
-    expect(PROPS.onStart).toHaveBeenCalledTimes(1)
-  })
-
-  it('shows how far along a download is', () => {
-    render(
-      <Downloads
-        {...PROPS}
-        status={{
-          state: 'downloading',
-          receivedBytes: 157_000_000,
-          totalBytes: 314_000_000,
-        }}
-      />,
-    )
-
-    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50')
-  })
-
-  it('states progress in bytes too, so the number means something concrete', () => {
-    render(
-      <Downloads
-        {...PROPS}
-        status={{
-          state: 'downloading',
-          receivedBytes: 157_000_000,
-          totalBytes: 314_000_000,
-        }}
-      />,
-    )
-
-    // The received figure lives in its own width-reserving span, so the line
-    // is asserted as the reader sees it: the paragraph's whole text.
-    expect(screen.getByText(/of 314 MB/)).toHaveTextContent('157 MB of 314 MB')
-  })
-
-  it('counts whole megabytes, so the ticking figure has no decimal to spin', () => {
-    // The counter re-renders on every chunk. With formatBytes it flickered:
-    // the tenths digit spun unreadably, and trimming "10.0" to "10" changed
-    // the string's width so the line jumped.
-    render(
-      <Downloads
-        {...PROPS}
-        status={{
-          state: 'downloading',
-          receivedBytes: 157_650_000,
-          totalBytes: 314_000_000,
-        }}
-      />,
-    )
-
-    expect(screen.getByText('157 MB')).toBeInTheDocument()
-    expect(screen.queryByText(/157\.\d/)).toBe(null)
-  })
-
-  it('reserves the counter its full width, sized to the total', () => {
-    // "9 MB" growing to "10 MB" must not shuffle "of 314 MB" sideways: the
-    // received figure sits right-aligned in a slot as wide as the total will
-    // ever make it - ch units, exact because the byte line is monospace.
-    render(
-      <Downloads
-        {...PROPS}
-        status={{
-          state: 'downloading',
-          receivedBytes: 9_000_000,
-          totalBytes: 314_000_000,
-        }}
-      />,
-    )
-
-    expect(screen.getByText('9 MB')).toHaveStyle({ minWidth: '6ch' })
-  })
-
-  it('offers to RESUME a failed download, never to restart it', async () => {
-    const user = userEvent.setup()
-    render(
-      <Downloads
-        {...PROPS}
-        status={{ state: 'failed', receivedBytes: 280_000_000, totalBytes: 314_000_000 }}
-      />,
-    )
-
-    expect(screen.queryByRole('button', { name: /restart|start over/i })).toBe(null)
-    await user.click(screen.getByRole('button', { name: /resume/i }))
-
-    expect(PROPS.onResume).toHaveBeenCalledTimes(1)
-  })
-
-  it('says how much is already on the phone when a download failed partway', () => {
-    render(
-      <Downloads
-        {...PROPS}
-        status={{ state: 'failed', receivedBytes: 280_000_000, totalBytes: 314_000_000 }}
-      />,
-    )
-
-    expect(screen.getByText(/280 MB/)).toBeInTheDocument()
-  })
-
-  it('shows the downloaded state with what is stored and when', () => {
-    render(
-      <Downloads
-        {...PROPS}
-        status={{
-          state: 'downloaded',
-          totalBytes: 314_000_000,
-          completedAt: new Date('2026-07-26T12:00:00Z'),
-        }}
-      />,
-    )
-
-    expect(screen.getByText(/314 MB/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /delete/i })).toBeInTheDocument()
-  })
-
   it('never shows roll-up totals or mixed-detail seam messaging', () => {
-    render(<Downloads {...PROPS} />)
+    render(<Downloads packages={[entry()]} />)
 
     expect(screen.queryByText(/remaining|seam|mixed detail/i)).toBe(null)
   })
 
-  it('shows 0% rather than NaN% before the total size is known', () => {
-    // The first progress callback can land before content-length has been
-    // read, and "NaN%" on a progress bar reads as a broken app.
+  it('starts the download when asked', async () => {
+    const user = userEvent.setup()
+    const only = entry()
+    render(<Downloads packages={[only]} />)
+
+    await user.click(screen.getByRole('button', { name: /download/i }))
+
+    expect(only.onStart).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders the detail picker of the package that has tiers', () => {
+    render(<Downloads packages={[entry()]} />)
+
+    expect(screen.getAllByRole('radio')).toHaveLength(3)
+  })
+})
+
+// --- Several packages, reported independently (#192) ------------------------
+
+describe('a trail made of several packages', () => {
+  const THREE: PackageDownload[] = [
+    entry(),
+    entry({
+      pkg: BASEMAP_PACKAGE,
+      detail: undefined,
+      sizeBytes: 200_000_000,
+      status: {
+        state: 'downloaded',
+        totalBytes: 200_000_000,
+        completedAt: new Date('2026-08-01T08:00:00Z'),
+      },
+    }),
+    entry({
+      pkg: DEM_PACKAGE,
+      detail: undefined,
+      sizeBytes: 480_000_000,
+      status: { state: 'failed', receivedBytes: 100_000_000, totalBytes: 480_000_000 },
+    }),
+  ]
+
+  it('lists every package the trail is made of', () => {
+    render(<Downloads packages={THREE} />)
+
+    for (const { pkg } of THREE) {
+      expect(screen.getByRole('region', { name: pkg.title })).toBeInTheDocument()
+    }
+  })
+
+  it('reports each package’s own state, not one state for all of them', () => {
+    render(<Downloads packages={THREE} />)
+
+    const sheet = within(screen.getByRole('region', { name: BASEMAP_PACKAGE.title }))
+    const terrain = within(screen.getByRole('region', { name: DEM_PACKAGE.title }))
+
+    // Downloaded: what is stored, and the way to reclaim it.
+    expect(sheet.getByRole('button', { name: /delete/i })).toBeInTheDocument()
+    // Interrupted: how far it got, and resume rather than restart.
+    expect(terrain.getByText(/Stopped at 100 MB of 480 MB/)).toBeInTheDocument()
+    expect(terrain.getByRole('button', { name: /resume/i })).toBeInTheDocument()
+  })
+
+  it('acts on the package whose button was pressed', async () => {
+    const user = userEvent.setup()
+    render(<Downloads packages={THREE} />)
+
+    await user.click(
+      within(screen.getByRole('region', { name: DEM_PACKAGE.title })).getByRole(
+        'button',
+        { name: /resume/i },
+      ),
+    )
+
+    expect(THREE[2].onResume).toHaveBeenCalledTimes(1)
+    expect(THREE[0].onStart).not.toHaveBeenCalled()
+    expect(THREE[1].onDelete).not.toHaveBeenCalled()
+  })
+
+  it('reports a failure against the package it happened to', () => {
     render(
       <Downloads
-        {...PROPS}
-        status={{ state: 'downloading', receivedBytes: 0, totalBytes: 0 }}
+        packages={[
+          entry(),
+          entry({
+            pkg: DEM_PACKAGE,
+            detail: undefined,
+            error: 'Archive download failed: 404 Not Found',
+          }),
+        ]}
       />,
     )
 
-    expect(
-      screen.getByRole('progressbar', { name: /download progress/i }),
-    ).toHaveAttribute('aria-valuenow', '0')
+    const terrain = within(screen.getByRole('region', { name: DEM_PACKAGE.title }))
+    const sheet = within(
+      screen.getByRole('region', { name: CORRIDOR_BACKGROUND_PACKAGE.title }),
+    )
+
+    expect(terrain.getByRole('alert')).toHaveTextContent('404 Not Found')
+    expect(sheet.queryByRole('alert')).toBe(null)
+  })
+
+  it('offers one tap for everything that is missing', async () => {
+    const user = userEvent.setup()
+    const onStartAll = vi.fn()
+    render(<Downloads packages={THREE} onStartAll={onStartAll} />)
+
+    await user.click(screen.getByRole('button', { name: /download everything/i }))
+
+    expect(onStartAll).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not offer a whole-trail tap when there is only one package', () => {
+    // It would be a second button doing exactly what the card's own button
+    // does, one line above it.
+    render(<Downloads packages={[entry()]} onStartAll={vi.fn()} />)
+
+    expect(screen.queryByRole('button', { name: /download everything/i })).toBe(null)
+  })
+
+  it('does not offer it when everything is already on the phone', () => {
+    const downloaded = (pkg: PackageDownload['pkg']): PackageDownload =>
+      entry({
+        pkg,
+        detail: undefined,
+        status: {
+          state: 'downloaded',
+          totalBytes: 1,
+          completedAt: new Date('2026-08-01T08:00:00Z'),
+        },
+      })
+
+    render(
+      <Downloads
+        packages={[downloaded(CORRIDOR_BACKGROUND_PACKAGE), downloaded(DEM_PACKAGE)]}
+        onStartAll={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: /download everything/i })).toBe(null)
   })
 })
 
@@ -227,7 +219,7 @@ describe('downloads on a desktop', () => {
     // aimed at a phone. On a laptop it is answering a question nobody asked.
     atWidth(true)
 
-    render(<Downloads {...PROPS} />)
+    render(<Downloads packages={[entry()]} />)
 
     expect(screen.getByText(/phone you.ll actually be carrying/i)).toBeInTheDocument()
   })
@@ -238,7 +230,7 @@ describe('downloads on a desktop', () => {
     // taken away.
     atWidth(true)
 
-    render(<Downloads {...PROPS} />)
+    render(<Downloads packages={[entry()]} />)
 
     expect(screen.getByRole('button', { name: /download the map/i })).toBeInTheDocument()
   })
@@ -246,73 +238,9 @@ describe('downloads on a desktop', () => {
   it('keeps the phone wording on a phone', () => {
     atWidth(false)
 
-    render(<Downloads {...PROPS} />)
+    render(<Downloads packages={[entry()]} />)
 
     expect(screen.getByText(/works with no signal/i)).toBeInTheDocument()
-  })
-})
-
-describe('eviction, said plainly (#190)', () => {
-  it('says the map was removed by the phone, never "not downloaded"', () => {
-    render(
-      <Downloads
-        {...PROPS}
-        status={{ state: 'evicted', completedAt: new Date('2026-07-20T08:00:00Z') }}
-      />,
-    )
-
-    expect(screen.getByText(/no longer on this phone/i)).toBeInTheDocument()
-    expect(screen.getByText(/removed it to free up space/i)).toBeInTheDocument()
-    expect(screen.getByText(/July 20/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /download it again/i })).toBeInTheDocument()
-  })
-
-  it('still reads honestly when the completion date did not survive', () => {
-    render(<Downloads {...PROPS} status={{ state: 'evicted', completedAt: null }} />)
-
-    expect(screen.getByText(/no longer on this phone/i)).toBeInTheDocument()
-  })
-
-  it('starts a fresh download from the eviction message', async () => {
-    render(<Downloads {...PROPS} status={{ state: 'evicted', completedAt: null }} />)
-
-    await userEvent.click(screen.getByRole('button', { name: /download it again/i }))
-
-    expect(PROPS.onStart).toHaveBeenCalled()
-  })
-})
-
-describe('durability, at its honest weight (#190)', () => {
-  const DOWNLOADED = {
-    state: 'downloaded' as const,
-    totalBytes: 314_000_000,
-    completedAt: new Date('2026-08-01T08:00:00Z'),
-  }
-
-  it('says nothing extra when persistence was granted - protected is the expected state', () => {
-    render(<Downloads {...PROPS} status={DOWNLOADED} persistence="granted" />)
-
-    expect(screen.queryByText(/reclaimable/i)).not.toBeInTheDocument()
-  })
-
-  it('states best-effort storage when the browser declined to protect it', () => {
-    render(<Downloads {...PROPS} status={DOWNLOADED} persistence="denied" />)
-
-    expect(screen.getByText(/reclaimable if storage runs very low/i)).toBeInTheDocument()
-    expect(screen.getByText(/declined/i)).toBeInTheDocument()
-  })
-
-  it('states best-effort storage where the API does not exist, without claiming a denial', () => {
-    render(<Downloads {...PROPS} status={DOWNLOADED} persistence="unsupported" />)
-
-    expect(screen.getByText(/reclaimable if storage runs very low/i)).toBeInTheDocument()
-    expect(screen.queryByText(/declined/i)).not.toBeInTheDocument()
-  })
-
-  it('keeps quiet while the answer has not arrived', () => {
-    render(<Downloads {...PROPS} status={DOWNLOADED} persistence={null} />)
-
-    expect(screen.queryByText(/reclaimable/i)).not.toBeInTheDocument()
   })
 })
 
@@ -332,7 +260,7 @@ describe('room for the download (#190)', () => {
     // Standard is 314 MB; leave ~100 MB free.
     stubEstimate(1_000_000_000, 900_000_000)
 
-    render(<Downloads {...PROPS} />)
+    render(<Downloads packages={[entry()]} />)
 
     expect(await screen.findByRole('status')).toHaveTextContent(/may not fit/i)
     // Warned, never refused: the button is still there.
@@ -342,7 +270,7 @@ describe('room for the download (#190)', () => {
   it('stays quiet when there is room', async () => {
     stubEstimate(10_000_000_000, 1_000_000_000)
 
-    render(<Downloads {...PROPS} />)
+    render(<Downloads packages={[entry()]} />)
 
     // The estimate resolves async; give it a beat before asserting absence.
     await new Promise((resolve) => setTimeout(resolve, 20))
@@ -350,8 +278,86 @@ describe('room for the download (#190)', () => {
   })
 
   it('stays quiet where the browser will not say', () => {
-    render(<Downloads {...PROPS} />)
+    render(<Downloads packages={[entry()]} />)
 
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('counts every package still to come, not just the first', async () => {
+    // 314 MB + 480 MB against 600 MB free: neither package alone would trip
+    // the warning, and a hiker who taps "download everything" would run out
+    // of room partway with nothing having said so.
+    stubEstimate(1_000_000_000, 400_000_000)
+
+    render(
+      <Downloads
+        packages={[
+          entry(),
+          entry({ pkg: DEM_PACKAGE, detail: undefined, sizeBytes: 480_000_000 }),
+        ]}
+      />,
+    )
+
+    expect(await screen.findByRole('status')).toHaveTextContent('794 MB')
+  })
+
+  it('leaves out what is already on the phone', async () => {
+    // 600 MB free, and the 480 MB package is already stored: only the 314 MB
+    // one is still to come, and it fits.
+    stubEstimate(1_000_000_000, 400_000_000)
+
+    render(
+      <Downloads
+        packages={[
+          entry(),
+          entry({
+            pkg: DEM_PACKAGE,
+            detail: undefined,
+            sizeBytes: 480_000_000,
+            status: {
+              state: 'downloaded',
+              totalBytes: 480_000_000,
+              completedAt: new Date('2026-08-01T08:00:00Z'),
+            },
+          }),
+        ]}
+      />,
+    )
+
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('leaves out a package whose size nobody has measured', async () => {
+    // A null size is not a zero and not a guess. The sizes shown before a
+    // download are held to ±0.6% against measured artifacts; an estimate
+    // folded into this total would carry the same weight as a measurement.
+    stubEstimate(1_000_000_000, 400_000_000)
+
+    render(
+      <Downloads
+        packages={[
+          entry(),
+          entry({ pkg: DEM_PACKAGE, detail: undefined, sizeBytes: null }),
+        ]}
+      />,
+    )
+
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('says the eviction wording when what is missing was removed by the phone', async () => {
+    stubEstimate(1_000_000_000, 900_000_000)
+
+    render(
+      <Downloads
+        packages={[entry({ status: { state: 'evicted', completedAt: null } })]}
+      />,
+    )
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      /space still looks tight/i,
+    )
   })
 })

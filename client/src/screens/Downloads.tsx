@@ -5,49 +5,60 @@
 // out. Kept as its own component because what it renders is the download and
 // nothing else, which is what all of the tests below it are about.
 //
-// ONE whole-corridor package. The wireframe drew a per-section list with
-// override sheets, roll-up totals and mixed-detail seam messaging; ROADMAP.md
-// Phase 2 had already settled on a single package, and this builds to the
-// roadmap. None of the retired model appears here.
+// ONE TRAIL, several packages, since #192. The wireframe drew a per-section
+// list with override sheets, roll-up totals and mixed-detail seam messaging;
+// ROADMAP.md Phase 2 had already settled on a single whole-corridor package,
+// and none of that retired model appears here. What changed is a different
+// axis entirely: the offline map program (#184) ships a raster sheet, a
+// vector basemap and a DEM to the same phone, so the screen lists the
+// PACKAGES a trail is made of - never geographic sections of one.
 //
-// A failed transfer offers RESUME, never restart (WIREFRAMES.md `7a`).
-// Re-fetching 314 MB from zero because the connection dropped at 90% is
-// precisely the failure someone on trailhead wifi cannot afford.
+// The distinction is the whole point of the fan-out button below. Sections
+// were a choice a hiker had to get right, mile by mile, with a wrong answer
+// costing them map where they were walking. Packages are not a choice: the
+// trail's manifest (lib/packages.ts) says what its map is made of, and one
+// tap takes all of it. The list exists so that progress, failures and
+// deletion are reportable per package - not so that anyone has to plan.
 //
-// The detail picker only appears when there is a download to start. Once the
-// package is on the phone, changing detail means re-downloading it, which is
-// what Settings' "detail for new downloads" row is for - offering the choice
-// here would imply it could be changed in place.
+// Each package's own card - and every honesty property it carries - is
+// PackageCard.tsx.
 
 import { useEffect, useState } from 'react'
-import { formatBytes, formatBytesLive } from '../lib/formatBytes'
-import { getDownloadDetail, type DetailLevel } from '../lib/downloadDetail'
+import { formatBytes } from '../lib/formatBytes'
+import type { DetailLevel } from '../lib/downloadDetail'
+import type { MapPackage } from '../lib/packages'
 import { estimateAvailableBytes, type PersistenceState } from '../lib/storageHealth'
 import { useDesktop } from '../lib/useDesktop'
-import { DetailPicker } from './DetailPicker'
+import { PackageCard, type DownloadStatus } from './PackageCard'
 import './downloads.css'
 
-export type DownloadStatus =
-  | { state: 'not-downloaded' }
-  | { state: 'downloading'; receivedBytes: number; totalBytes: number }
-  | { state: 'failed'; receivedBytes: number; totalBytes: number }
-  | { state: 'downloaded'; totalBytes: number; completedAt: Date }
-  /** An archive finished here and its bytes are gone - evicted by the OS,
-   *  not deleted by the hiker (storageHealth.ts's marker tells the two
-   *  apart, #190). completedAt is when it finished, when that survived. */
-  | { state: 'evicted'; completedAt: Date | null }
-
-export interface DownloadsProps {
+/** One package, as the screen needs it: what it is, where its download has
+ *  got to, and what tapping does. Built by the shell, which is where the
+ *  store and the catalog meet (App.tsx). */
+export interface PackageDownload {
+  pkg: MapPackage
   status: DownloadStatus
-  detailLevel: DetailLevel
-  /** What asking for durable storage came to - null while unanswered. Drives
-   *  wording only: best-effort storage is stated, never silently assumed
-   *  away (#190). */
-  persistence?: PersistenceState | null
-  onChangeDetail: (level: DetailLevel) => void
+  error?: string | null
+  /** What this package will take, where that is knowable before the transfer
+   *  starts. Null for a package whose published size is not yet measured -
+   *  the room warning then simply leaves it out rather than guessing. */
+  sizeBytes: number | null
+  detail?: { level: DetailLevel; onChange: (level: DetailLevel) => void }
   onStart: () => void
   onResume: () => void
   onDelete: () => void
+}
+
+export interface DownloadsProps {
+  /** The trail's packages, in display order. Never empty in the shipped app;
+   *  a build with no data source configured says so above this. */
+  packages: readonly PackageDownload[]
+  /** What asking for durable storage came to - null while unanswered. */
+  persistence?: PersistenceState | null
+  /** Start every package that is not already on the phone. Offered only when
+   *  there is more than one, since with one package it would be a second
+   *  button doing what the card's own button does. */
+  onStartAll?: () => void
 }
 
 /**
@@ -74,30 +85,34 @@ function useAvailableBytes(): number | null {
   return available
 }
 
-function percent(received: number, total: number): number {
-  return total === 0 ? 0 : Math.round((received / total) * 100)
+/** Packages whose bytes are not on the phone - what a download would add. A
+ *  failed one is left out: some of it is already stored, so counting its full
+ *  size would overstate what is still to come. */
+function isAbsent(entry: PackageDownload): boolean {
+  return entry.status.state === 'not-downloaded' || entry.status.state === 'evicted'
 }
 
-export function Downloads({
-  status,
-  detailLevel,
-  persistence = null,
-  onChangeDetail,
-  onStart,
-  onResume,
-  onDelete,
-}: DownloadsProps) {
+export function Downloads({ packages, persistence = null, onStartAll }: DownloadsProps) {
   const isDesktop = useDesktop()
   const availableBytes = useAvailableBytes()
-  const chosenBytes = getDownloadDetail(detailLevel).sizeBytes
+
+  const absent = packages.filter(isAbsent)
+  const pendingBytes = absent.reduce((total, entry) => total + (entry.sizeBytes ?? 0), 0)
 
   // Warned, never refused: estimate() is deliberately fuzzy (browsers round
   // it against fingerprinting), and a hiker at a trailhead deciding to try
   // anyway is making an informed call, which is the whole point.
   const spaceTight =
-    (status.state === 'not-downloaded' || status.state === 'evicted') &&
-    availableBytes !== null &&
-    availableBytes < chosenBytes
+    pendingBytes > 0 && availableBytes !== null && availableBytes < pendingBytes
+
+  const everythingEvicted =
+    absent.length > 0 && absent.every((entry) => entry.status.state === 'evicted')
+
+  // One tap for the trail's whole manifest. Withheld for a single package
+  // because it would then be a duplicate of that card's own button, and
+  // withheld when nothing is missing because there would be nothing to do.
+  const showStartAll =
+    onStartAll !== undefined && packages.length > 1 && absent.length > 0
 
   return (
     <div className="downloads">
@@ -121,131 +136,43 @@ export function Downloads({
         )}
       </p>
 
-      {status.state === 'not-downloaded' && (
-        <>
-          <DetailPicker value={detailLevel} onChange={onChangeDetail} />
-          {spaceTight && (
-            <p className="downloads__warning" role="status">
-              {`This phone reports about ${formatBytes(availableBytes ?? 0)} free for the app — the ${formatBytes(
-                chosenBytes,
+      {spaceTight && (
+        <p className="downloads__warning" role="status">
+          {everythingEvicted
+            ? `Space still looks tight — about ${formatBytes(availableBytes ?? 0)} free against a ${formatBytes(
+                pendingBytes,
+              )} download. Freeing up space first makes another removal less likely.`
+            : `This phone reports about ${formatBytes(availableBytes ?? 0)} free for the app — the ${formatBytes(
+                pendingBytes,
               )} download may not fit. A lighter detail level might, or free up some space first.`}
-            </p>
-          )}
-          <button type="button" className="downloads__primary" onClick={onStart}>
-            Download the map
-          </button>
-        </>
+        </p>
       )}
 
-      {status.state === 'evicted' && (
-        <div className="downloads__evicted">
-          {/* The one sentence #190 exists for. "No map downloaded" here would
-              be false - one WAS downloaded, and the phone removed it - and on
-              a ridge that difference is the difference between re-downloading
-              in town and staring at blank paper wondering what you did
-              wrong. */}
-          <p>
-            {status.completedAt === null
-              ? 'The map you downloaded is no longer on this phone.'
-              : `The map you downloaded on ${status.completedAt.toLocaleDateString(
-                  'en-US',
-                  {
-                    month: 'long',
-                    day: 'numeric',
-                  },
-                )} is no longer on this phone.`}{' '}
-            The phone removed it to free up space — that can happen when storage runs low.
-            Downloading it again is the only fix, and it needs signal.
-          </p>
-          <DetailPicker value={detailLevel} onChange={onChangeDetail} />
-          {spaceTight && (
-            <p className="downloads__warning" role="status">
-              {`Space still looks tight — about ${formatBytes(availableBytes ?? 0)} free against a ${formatBytes(
-                chosenBytes,
-              )} download. Freeing up space first makes another removal less likely.`}
-            </p>
-          )}
-          <button type="button" className="downloads__primary" onClick={onStart}>
-            Download it again
-          </button>
-        </div>
+      {showStartAll && (
+        <button type="button" className="downloads__primary" onClick={onStartAll}>
+          Download everything the map needs
+        </button>
       )}
 
-      {status.state === 'downloading' && (
-        <div className="downloads__progress">
-          <div
-            role="progressbar"
-            aria-label="Download progress"
-            aria-valuenow={percent(status.receivedBytes, status.totalBytes)}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            className="downloads__bar"
-          >
-            <span
-              className="downloads__bar-fill"
-              style={{ width: `${percent(status.receivedBytes, status.totalBytes)}%` }}
+      <ul className="downloads__packages">
+        {packages.map((entry) => (
+          <li key={entry.pkg.id}>
+            <PackageCard
+              pkg={entry.pkg}
+              status={entry.status}
+              error={entry.error}
+              detail={entry.detail}
+              persistence={persistence}
+              // With one package the paragraph above has already named what
+              // is being downloaded, and a heading would only say it twice.
+              showHeading={packages.length > 1}
+              onStart={entry.onStart}
+              onResume={entry.onResume}
+              onDelete={entry.onDelete}
             />
-          </div>
-          {/* The received figure changes on every chunk; formatBytesLive keeps
-              its digits calm, and the reserved slot (sized to the total, the
-              widest the counter can get, exact in ch because the font is
-              monospace) keeps "of 314 MB" from shuffling sideways as 9 MB
-              becomes 10 MB. */}
-          <p className="downloads__bytes">
-            <span
-              className="downloads__bytes-received"
-              style={{ minWidth: `${formatBytesLive(status.totalBytes).length}ch` }}
-            >
-              {formatBytesLive(status.receivedBytes)}
-            </span>
-            {` of ${formatBytes(status.totalBytes)}`}
-          </p>
-        </div>
-      )}
-
-      {status.state === 'failed' && (
-        <div className="downloads__failed">
-          <p className="downloads__bytes">
-            {`Stopped at ${formatBytesLive(status.receivedBytes)} of ${formatBytes(
-              status.totalBytes,
-            )}.`}
-          </p>
-          <p>
-            What you already have is kept — picking this up again carries on from there.
-          </p>
-          <button type="button" className="downloads__primary" onClick={onResume}>
-            Resume
-          </button>
-        </div>
-      )}
-
-      {status.state === 'downloaded' && (
-        <div className="downloads__done">
-          <p className="downloads__bytes">
-            {`${formatBytes(status.totalBytes)} on this phone, finished ${status.completedAt.toLocaleDateString(
-              'en-US',
-              { month: 'long', day: 'numeric' },
-            )}.`}
-          </p>
-          {/* Durability, stated at its honest weight. `granted` earns no
-              banner - protected is the expected state and saying so is
-              noise. A denial or an old browser gets one calm sentence,
-              because best-effort storage CAN be reclaimed by the OS and a
-              hiker planning around this download deserves to know that
-              before the trailhead, not from a blank map (#190). */}
-          {(persistence === 'denied' || persistence === 'unsupported') && (
-            <p className="downloads__note">
-              This phone treats the download as reclaimable if storage runs very low. It
-              was asked to protect it{persistence === 'denied' ? ' and declined' : ''} —
-              if the map ever disappears, this screen will say so, and downloading again
-              restores it.
-            </p>
-          )}
-          <button type="button" className="downloads__secondary" onClick={onDelete}>
-            Delete the map
-          </button>
-        </div>
-      )}
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

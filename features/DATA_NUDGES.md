@@ -47,9 +47,21 @@ A "water's flowing fine" or "shelter was fine" check-in is a **confirmation**, n
 
 FEATURES.md's Water Reliability Prediction section already names its needed input: "historical hiker reports (frequency/recency of 'dry' vs 'flowing' reports at a source)" - but nothing before this doc actually designed how that data would get collected. This feature is that collection mechanism. Worth having front of mind when that feature is eventually built: it doesn't need its own data-gathering design, this is already it.
 
+## The opt-in mode — added 2026-08-06, when this became v2's Phase A
+
+[VOLUNTEERING.md](VOLUNTEERING.md) scopes this doc as the first phase of the Volunteer tab, which adds a `contribute_conditions` toggle to [IDENTITY_AND_PRIVACY.md](IDENTITY_AND_PRIVACY.md)'s `UserPreferences` (default off). Everything above is what a hiker who has *not* opted in sees, and it stays exactly as designed — passive prominence, nothing else. Three things change for a hiker who has:
+
+- **A photo becomes the default rather than the escalation.** The one-tap rule above exists because the passive version interrupts someone who never asked. Someone who opted in has consented to the longer version, and a photo of a dry spring is worth more to the next hiker than the word "dry." Still skippable, never required — the escalation path just runs in the other direction.
+- **Two more surfaces, both places the hiker already looks.** A stale water source in the next ten miles carries the same tier styling in the waypoint lanes beside the elevation ribbon (`client/src/chrome/WaypointLanes.tsx`) — the most-looked-at strip in the app, and it costs a `match` expression because the lane is already drawn. And a "places you passed today" list in the Volunteer tab, for logging from memory at camp.
+- **Water first, then shelters and campsites, then everything else** — an explicit priority order rather than treating the three scoped types as equal. A spring with no data is a hiker carrying the wrong amount of water.
+
+**The "places you passed today" list has a trap in it**, and it is the one thing in this addition that could undo the section below: a list of missed opportunities is a guilt mechanic wearing a helpful hat. The rule that keeps it honest is that **it never counts, and never mentions what was skipped**. If it cannot be built without a number on it, it should not be built.
+
+None of this adds a notification. The opt-in is consent to be *asked more thoroughly when you are already looking*, not consent to be interrupted — so the rule this doc opens with is unchanged, and [HIKER_SAFETY.md](HIKER_SAFETY.md)'s wrong-way alert stays the only notification the app ever sends.
+
 ## The anti-gamification guardrail - a pattern this project keeps needing, worth naming as one
 
-This is the third feature that has had to say this explicitly: Segments ("deliberately simple, not gamified"), Volunteering ("no leaderboard of volunteer hours... no public volunteer profile"), and now this one. **No streaks, no per-hiker contribution counts shown anywhere, no leaderboard, no "you haven't contributed lately" messaging, no visible count of how many other hikers already passed without updating.** The entire mechanism is passive map styling - nothing gamified layered on top of it, ever.
+This is the third feature that has had to say this explicitly: Segments ("deliberately simple, not gamified"), Volunteering ("no leaderboard of volunteer hours... no public volunteer profile"), and now this one. **Where its boundary actually falls was settled 2026-08-06 in [VOLUNTEERING.md](VOLUNTEERING.md)**, when a personal impact record ran straight into the sentence below: the guardrail targets *comparison and pressure*, not *memory*, and that doc carries the four rules keeping the distinction real. Read it before concluding this paragraph forbids something. **No streaks, no per-hiker contribution counts shown anywhere, no leaderboard, no "you haven't contributed lately" messaging, no visible count of how many other hikers already passed without updating.** The entire mechanism is passive map styling - nothing gamified layered on top of it, ever.
 
 ## Architecture fit
 

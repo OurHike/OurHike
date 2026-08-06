@@ -228,6 +228,58 @@ def test_collect_hashes_each_archive_by_content(tmp_path, monkeypatch):
     assert artifacts[light]["sha256"] == publish.sha256_file(tmp_path / light)
 
 
+# --- The hiking sheet's offline archives (#184/#186) -----------------------
+#
+# The vector basemap package and the DEM are the default background sheet's
+# two downloads - distinct packages a hiker takes both of, not detail tiers
+# of one sheet, which is why they live in their own mapping rather than in
+# BACKGROUND_ARCHIVES.
+
+
+def test_offline_sheet_archives_are_the_basemap_cuts_and_the_dem():
+    """The names are pinned, not just the set: they are the flat R2 keys the
+    client requests (packages.ts sources, dataManifest hash lookups), and
+    publish()'s additive-only manifest merge means a renamed key is a new
+    key forever - the old one can never be removed by this module."""
+    assert publish.OFFLINE_SHEET_ARCHIVES == {
+        "basemap": "at_basemap_package.pmtiles",
+        "basemap_z13": "at_basemap_package_z13.pmtiles",
+        "dem": "dem.pmtiles",
+    }
+
+
+def test_offline_sheet_archives_do_not_collide_with_the_raster_tiers():
+    tier_names = set(publish.BACKGROUND_ARCHIVES.values())
+    sheet_names = set(publish.OFFLINE_SHEET_ARCHIVES.values())
+
+    assert tier_names.isdisjoint(sheet_names)
+
+
+def test_collect_gathers_offline_sheet_archives_that_exist(tmp_path, monkeypatch):
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    for name in publish.OFFLINE_SHEET_ARCHIVES.values():
+        (tmp_path / name).write_bytes(b"fake pmtiles bytes for " + name.encode())
+
+    artifacts = publish.collect_artifacts()
+
+    for name in publish.OFFLINE_SHEET_ARCHIVES.values():
+        assert name in artifacts
+        assert artifacts[name]["sha256"] == publish.sha256_file(tmp_path / name)
+
+
+def test_collect_skips_an_offline_sheet_archive_not_built_this_run(tmp_path, monkeypatch):
+    """The DEM workflow's runner holds only dem.pmtiles; the basemap
+    workflow's only its package. Each publishes what it has, and the
+    manifest merge keeps the other's live entry untouched."""
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    (tmp_path / publish.OFFLINE_SHEET_ARCHIVES["dem"]).write_bytes(b"only the dem")
+
+    artifacts = publish.collect_artifacts()
+
+    assert publish.OFFLINE_SHEET_ARCHIVES["dem"] in artifacts
+    assert publish.OFFLINE_SHEET_ARCHIVES["basemap"] not in artifacts
+
+
 # --- Build metadata that travels with a release ----------------------------
 #
 # build_state.json records the upstream freshness markers this build fetched

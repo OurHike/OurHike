@@ -83,7 +83,10 @@ large block of the pipeline suite on a clean tree (measured 2026-08-06: 515 pass
 27 failed, 36 errors, every one tracing back to `Failed to download extension "spatial"`)
 — is handled now: `.claude/hooks/session-start.sh` seeds the extension from PyPI when a
 web session starts. A run that still shows that signature means the hook did not run; run
-it by hand rather than reporting those failures as environmental. What genuinely cannot
-run here is backend's Postgres job — the sandbox has no Postgres service, so
-`python -m pytest` in `backend/` exercises only the DuckDB engine, and a pull request
-that changes backend behavior should say so.
+it by hand rather than reporting those failures as environmental. Backend's Postgres job
+used to be the other standing example — "the sandbox has no Postgres service, so
+`python -m pytest` in `backend/` exercises only the DuckDB engine." That was wrong: the
+container ships Postgres 16 with its cluster stopped. `backend/scripts/local-postgres.sh`
+starts it (the session-start hook now does too), and the backend suite runs against the
+same engine CI and production use. A connection-refused failure in `backend/` means that
+script has not been run, not that the check cannot run here.

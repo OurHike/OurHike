@@ -154,6 +154,45 @@ Needs `cells.json` first - the corridor's cell grid plus each cell's quad list (
 
 Roughly 22.9% of corridor quads (378 of 1,654) bbox-overlap more than one 1-degree cell, so a quad near a cell boundary gets fetched once per owning cell rather than shared - about 3.6GB of deliberate, bounded redundancy across the whole corridor, accepted rather than adding a cross-job quad cache (which would reintroduce the disk/coordination problem this per-cell split exists to avoid).
 
+## The hiking sheet's offline archives (vector basemap + DEM, #184/#185/#186)
+
+The vector-first offline program — design, trade-offs and build numbers in
+[BASEMAP.md](BASEMAP.md), which is their one home. The scripts, indexed:
+
+- `export_basemap.py` — the periodic Planetiler build (Geofabrik state
+  extracts, osmium pre-clip to the corridor shape, OpenMapTiles schema).
+- `extract_package.py` — cuts a trail's download package from that build;
+  keeps every source tile through z9 so packages carry their own context.
+- `export_dem.py` — the corridor DEM: terrarium tiles fetched, blue channel
+  floored to 0.5 m, lossless WebP, PMTiles.
+- `check_dem_archive.py` — the DEM's publish gate: complete regional
+  coverage, every tile decodes, header and metadata say what they must.
+- `spike_dem_banding.py` — the rendered evidence behind the 0.5 m step.
+- `spike_package_overlap.py` — what two overlapping packages would store
+  twice on one phone (#193), measured against the published archives.
+
+`build-basemap.yml` and `build-dem.yml` run the builds and, behind their
+twice-guarded `publish` inputs, upload the archives; `package-overlap-spike.yml`
+runs the overlap measurement. First published 2026-08-06.
+
+Measured per-zoom, `dem.pmtiles` as published (z0–13, 0.5 m quantize,
+21,758 tiles, none absent — 607,265,661 bytes total):
+
+| zoom | tiles | MB |
+|---|---|---|
+| 0–10 | 511 | 21.2 |
+| 11 | 1,139 | 49.3 |
+| 12 | 4,176 | 138.9 |
+| 13 | 15,932 | 397.6 |
+
+`at_basemap_package.pmtiles` as published: 83,818 tiles, 532,459,439 bytes —
+per-zoom in [BASEMAP.md](BASEMAP.md)'s measured results. Its z13-capped
+sibling `at_basemap_package_z13.pmtiles` (21,721 tiles, 182,286,799 bytes)
+is the hiking sheet's Standard level (#276). With the DEM the sheet is
+≈ 790 MB at Standard and ≈ 1.14 GB at Fine (`client/src/lib/packages.ts`
+composing `lib/hikingDetail.ts`, sizes exact to the byte against these
+artifacts).
+
 ## Exporting the background as PMTiles (rebuilt from native resolution, #191)
 
 Superseded on 2026-08-06: `export_pmtiles.py` and its 11 m intermediate are
@@ -184,12 +223,23 @@ The client declares the source `tileSize: 256` (the @2x convention), so a
 upscaled 2x - the free half of #191's fix, and the reason
 `lib/archiveCoverage.ts` carries a camera-vs-tile zoom offset.
 
-**Measured sizes for the rebuilt tiers land here after the first real
-`build-raster.yml` run**, and `downloadDetail.ts`'s advertised figures are
-updated with them - the +/-0.6% honesty bar from the previous build (64.4 MB
-/ 314 MB / 1.18 GB, measured 2026-07-29 against the 11 m chain) carries
-over. Until that run, the client keeps advertising the old measured sizes,
-which remain the sizes of the archives actually published.
+**Measured sizes** from the first successful full-corridor run
+([run 31100130798](https://github.com/OurHike/OurHike/actions/runs/31100130798),
+2026-08-06, all 51 cells, receipts verified) - these are what
+`downloadDetail.ts` advertises, under the same +/-0.6% honesty bar the
+previous build held (its 11 m-chain figures were 64.4 MB / 314 MB /
+1.18 GB, measured 2026-07-29):
+
+| tier | tiles | measured |
+|---|---|---|
+| Light `background_z11.pmtiles` | 1,650 | 68.9 MB |
+| Standard `background.pmtiles` | 5,826 | 300.3 MB |
+| Fine `background_z13.pmtiles` | 21,758 | 1,179.2 MB |
+| Quad sheet `quad_sheet_z14.pmtiles` | 31,987 | 1,698.1 MB |
+
+The quad sheet is not yet in the client's detail catalog - whether it ships
+as a fourth choice there or as its own optional package is #193's shape
+decision, and its size waits in this table either way.
 
 ## Checking output quality before publish (done)
 

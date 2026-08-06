@@ -248,11 +248,20 @@ TECHNICAL_ARCHITECTURE.md and #196) — nothing new to clear.
 Geofabrik state extracts refresh daily; trail data changes on the order of
 seasons. A monthly or pre-season rebuild is the cadence, and an unchanged
 build must not republish — the same skip-if-unchanged principle the fetch
-scripts hold. Publishing (not wired yet, on purpose — the spike measures, it
-does not ship) goes through [DATA_RELEASES.md](DATA_RELEASES.md)'s immutable
-dated releases exactly like every other artifact; the packages join the
-per-artifact hash manifest so the client's "only re-download what changed"
-promise carries over.
+scripts hold.
+
+Publishing was wired on 2026-08-06 (#186 closed the loop): both build
+workflows carry a `publish` input defaulting to false, only the publish job
+holds R2 credentials, a non-canonical build (a states-subset shakedown, a
+shallow pyramid, a spike quantization) is refused loudly rather than
+skipped, and the DEM passes `check_dem_archive.py`'s coverage-and-decode
+gate before anything uploads. This is today's flat-key mechanism
+(`publish.py` + `latest.json`), the same one the raster tiers use;
+[DATA_RELEASES.md](DATA_RELEASES.md)'s immutable dated releases remain the
+destination for all of it once that machinery exists. One caveat the flat
+keys inherit: a rebuild is not byte-identical, so republishing an unchanged
+region still re-uploads and version-bumps — the dispatch-only cadence is
+what keeps that honest until immutable releases land.
 
 ## Measured results
 
@@ -273,6 +282,32 @@ z12 = 4,172 / 44.1, z0–11 ≈ 31 MB. Tile counts land within 0.5% of the
 independent corridor enumeration from #184's research pass.
 
 Tier consequence: **z14 is 66% of the bytes**, so the natural download tiers
-are z0–13 ≈ **182 MB** (smaller than the 314 MB raster it improves on;
+are z0–13 ≈ **182 MB** (smaller than the 300.3 MB raster it improves on;
 MapLibre overzooms z13 vector cleanly) and z0–14 ≈ **532 MB** for full
-OpenMapTiles detail. The DEM archive (#186) prices separately, on top.
+OpenMapTiles detail. Both cuts are published now: the z13 extract stopped
+being a future decision when #276 made it the hiking sheet's Standard
+level, cut by the same `extract_package.py` run with `--max-zoom 13`.
+
+### Published archives (2026-08-06)
+
+The first publish runs, from this repository's `build-basemap.yml` and
+`build-dem.yml` with `publish` ticked — the exact artifacts `latest.json`
+now names, and the sizes `client/src/lib/packages.ts` advertises:
+
+| Artifact | Bytes | Notes |
+|---|---|---|
+| `at_basemap_package.pmtiles` | **532,459,439** | z0–14, 83,818 tiles; the rebuild reproduced run 2's package within 0.06 MB |
+| `at_basemap_package_z13.pmtiles` | **182,286,799** | z0–13, 21,721 tiles (the package minus its 62,097 z14 tiles); the hiking sheet's Standard level (#276), published 2026-08-06 from a rebuild whose z14 package came out hash-identical to the row above |
+| `dem.pmtiles` | **607,265,661** | z0–13, 21,758 tiles, 0 absent, **0.5 m quantize** |
+
+The DEM's per-zoom table lives beside the raster tiers in
+[README.md](README.md). The quantize step was settled at 0.5 m by
+`spike_dem_banding.py` (2026-08-06): 1 m is clean at native z12–13 but
+etches visible staircases once the client overzooms the z13 DEM toward z15,
+where 0.5 m stays indistinguishable from unquantized at ~1.53× the bytes —
+the measured 397.6 MB at 1 m became 607.3 MB.
+
+Together the hiking sheet — the default background since #237 — is
+**789,552,460 bytes ≈ 790 MB** on a phone at its Standard level (the z13
+cut plus the DEM, #276) and **1,139,725,100 bytes ≈ 1.14 GB** at Fine,
+plus ~6 MB of bundled glyphs (`client/public/glyphs/README.md`).

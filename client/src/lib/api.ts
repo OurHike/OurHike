@@ -146,26 +146,41 @@ export async function sendReport(item: OutboxItem): Promise<void> {
   })
 }
 
-// Statuses that say "not now" rather than "not ever". Everything else in the
-// 4xx range is the server declining this exact report, and no amount of
-// signal changes that.
+// An ALLOWLIST, and that is the whole design (#266).
 //
-//   401  the token was rejected; Supabase refreshes in the background, so
-//        the next attempt may well carry a good one.
-//   408  the server timed out waiting - a network symptom wearing a 4xx.
+// This began as "every 4xx except 401/408/429 is permanent", which stranded a
+// report on any status nothing in this stack produces - a captive portal, a
+// WAF or a proxy answering 400/451/494 would mark the entire queue
+// unsendable, in exactly the network conditions this app exists for. It also
+// contradicted the rule written directly below it.
+//
+// So only the two statuses THIS backend actually returns and means are here.
+// Everything else - including 4xx codes that sound final - is somebody else's
+// infrastructure talking, and gets retried:
+//
+//   401  the token was rejected; Supabase refreshes in the background.
+//   403  create_report has no role gate, so this is never ours.
+//   408  a network symptom wearing a 4xx.
+//   413  no size limit is enforced yet; revisit when photos land (#234).
 //   429  explicitly "later".
-const RETRYABLE_STATUSES = new Set([401, 408, 429])
-
-// Written for a hiker reading a phone on a ridge, not for a log. Each one
-// says what happened and, where there is one, what they could do about it.
+//
+// Written for a hiker reading a phone on a ridge, not for a log: each says
+// what happened and, where there is one, what they can do about it.
 const PERMANENT_REASONS: Record<number, string> = {
-  // The single most likely cause, and it is fixable from their side: the
-  // server refuses an authored time more than five minutes in the future,
-  // so a phone whose clock runs fast has every report refused.
-  422: 'The server would not accept it. Check that your phone’s date and time are correct, then try again.',
+  // The likeliest of the two, and partly fixable from their side: the server
+  // refuses an authored time more than five minutes ahead, so a phone whose
+  // clock runs fast has every report refused.
+  //
+  // Careful about what this promises. `authored_at` is stamped once when the
+  // report is written and is deliberately never re-derived - a report written
+  // Monday must still read as Monday when it flushes on Thursday. So fixing
+  // the clock does NOT rewrite an already-queued item: it becomes acceptable
+  // when real time catches up to the timestamp it is carrying. For a phone
+  // seven minutes fast that is a couple of minutes; for one set a day ahead
+  // it is a day. Saying "then try again" flatly was a promise this cannot
+  // keep.
+  422: 'Its date is in the future, so the server would not take it. Check your phone’s clock — if it was far out, this one may not send until that time has passed.',
   409: 'The server already has a different report filed under this one’s id.',
-  403: 'This account is not allowed to file that report.',
-  413: 'It is too large to send.',
 }
 
 /**
@@ -180,11 +195,6 @@ const PERMANENT_REASONS: Record<number, string> = {
  */
 export function permanentFailureReason(error: unknown): string | null {
   if (!(error instanceof ApiError)) return null
-  if (error.status < 400 || error.status >= 500) return null
-  if (RETRYABLE_STATUSES.has(error.status)) return null
 
-  return (
-    PERMANENT_REASONS[error.status] ??
-    `The server would not accept it (error ${error.status}).`
-  )
+  return PERMANENT_REASONS[error.status] ?? null
 }

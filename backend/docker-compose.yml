@@ -1,0 +1,34 @@
+# A local Postgres for the backend, for machines with Docker but no Postgres
+# installed. `scripts/local-postgres.sh` uses this automatically when it can't
+# find a native server; there is nothing wrong with running it directly either:
+#
+#   docker compose -f backend/docker-compose.yml up -d
+#
+# The image tag matches what CI's service container and Supabase both run, so
+# "works locally" means the same major version as "works in production".
+services:
+  postgres:
+    image: postgres:16
+    container_name: ourhike-postgres
+    environment:
+      # These defaults are the ones app/config.py and tests/conftest.py fall
+      # back to. They are local-only credentials for a database holding
+      # throwaway data - production's come from the environment and are never
+      # written down anywhere in this repository.
+      POSTGRES_USER: ${OURHIKE_PG_USER:-ourhike}
+      POSTGRES_PASSWORD: ${OURHIKE_PG_PASSWORD:-ourhike}
+      POSTGRES_DB: ${OURHIKE_PG_DEV_DB:-ourhike_dev}
+    ports:
+      - "${OURHIKE_PG_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${OURHIKE_PG_USER:-ourhike}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      # Named, so a `docker compose down` (without -v) keeps whatever you were
+      # working on. `docker compose down -v` is the reset button.
+      - ourhike-pgdata:/var/lib/postgresql/data
+
+volumes:
+  ourhike-pgdata:

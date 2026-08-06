@@ -60,11 +60,14 @@ npm run format:check
 npm run dev
 ```
 
-**Backend** — FastAPI + SQLAlchemy + Postgres.
+**Backend** — FastAPI + SQLAlchemy + Postgres. The suite talks to a real local
+Postgres (the same engine Supabase runs), so start one first; the script is
+idempotent and safe to re-run.
 
 ```
 cd backend
 pip install -r requirements-dev.txt
+bash scripts/local-postgres.sh   # starts Postgres, creates ourhike_dev/ourhike_test
 python -m pytest -v
 python -m ruff check .
 python -m ruff format --check .

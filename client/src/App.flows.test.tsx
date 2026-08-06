@@ -424,6 +424,34 @@ describe('downloading everything', () => {
         status: 200,
         statusText: 'OK',
         blob: () => Promise.resolve(new Blob([TRAILS_GEOJSON])),
+        // The vector artifacts are hashed before they are stored (#197), so
+        // the double has to answer with bytes as well as with text.
+        arrayBuffer: () =>
+          Promise.resolve(
+            new TextEncoder().encode(
+              String(url).includes('poi_shelter')
+                ? JSON.stringify({
+                    type: 'FeatureCollection',
+                    features: [
+                      {
+                        type: 'Feature',
+                        properties: {
+                          id: SHELTER.id,
+                          name: SHELTER.name,
+                          confidence: 'high',
+                        },
+                        geometry: {
+                          type: 'Point',
+                          coordinates: [SHELTER.lon, SHELTER.lat],
+                        },
+                      },
+                    ],
+                  })
+                : String(url).includes('trails')
+                  ? TRAILS_GEOJSON
+                  : JSON.stringify({ type: 'FeatureCollection', features: [] }),
+            ).buffer,
+          ),
         text: () =>
           Promise.resolve(
             String(url).includes('poi_shelter')
@@ -475,8 +503,13 @@ describe('downloading everything', () => {
     await waitFor(() => expect(store.get(CORRIDOR_ARCHIVE_KEY)).toBeInstanceOf(Blob))
   })
 
-  it('deletes the map, the trail data and the POIs together', async () => {
-    // Someone reclaiming space expects all of it back, not the raster alone.
+  it('deletes the background and keeps the trail (#192)', async () => {
+    // Someone reclaiming space is reclaiming the BACKGROUND - that is what
+    // the hundreds of megabytes are, and what they chose. The centerline and
+    // the POIs are a rounding error beside it, they are what makes this an
+    // app rather than a map viewer, and they are downloaded by default
+    // wherever they are missing - so taking them would blank the trail line
+    // until the next launch with signal fetched them straight back.
     const user = userEvent.setup()
     hikerOnTrail()
     store.set(CORRIDOR_ARCHIVE_KEY, new Blob(['archive']))
@@ -487,8 +520,8 @@ describe('downloading everything', () => {
     await user.click(await screen.findByRole('button', { name: /delete/i }))
 
     await waitFor(() => expect(store.has(CORRIDOR_ARCHIVE_KEY)).toBe(false))
-    expect(store.has(TRAILS_BLOB_KEY)).toBe(false)
-    expect(store.has(POIS_KEY)).toBe(false)
+    expect(store.has(TRAILS_BLOB_KEY)).toBe(true)
+    expect(store.has(POIS_KEY)).toBe(true)
   })
 
   it('records a new detail level as a max background zoom', async () => {

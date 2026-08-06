@@ -1,4 +1,5 @@
-"""Moderation-queue actions: verify/dismiss for both Report and Closure.
+"""The moderation queue: reading what is waiting, and verifying/dismissing
+it - for both Report and Closure.
 
 See ../../../features/REPORT_A_PROBLEM.md's "Architecture fit" section and
 ../../../features/HIKER_SAFETY.md §1. Both resources reuse this one
@@ -26,10 +27,57 @@ from app.models.closure import Closure, ModerationStatus
 from app.models.profile import Profile
 from app.models.report import Report, ReportStatus, ReportType
 from app.schemas.closure import ClosureOut
-from app.schemas.moderation import ReportVerifyRequest
+from app.schemas.moderation import ModerationQueue, ReportVerifyRequest
 from app.schemas.report import ReportOut
 
 router = APIRouter(tags=["moderation"])
+
+
+@router.get("/moderation/queue", response_model=ModerationQueue)
+def read_moderation_queue(
+    current_user: Profile = Depends(require_role("maintainer", "club_admin")),
+    db: Session = Depends(get_db),
+) -> ModerationQueue:
+    """Everything waiting on a moderator: submitted reports and submitted
+    closures.
+
+    Until this existed the queue could be acted on but not read. Every
+    endpoint below takes an id, and the only two list endpoints are scoped to
+    the public - `/reports` to what has already been moderated, `/closures`
+    to `moderation_status == verified`, i.e. precisely the ones already done.
+    Nothing returned the ids of the items waiting.
+
+    **The sharp end of that was `bad_hikers`.** Those are forced to
+    `visibility = internal_only` on create (app/routers/reports.py), and
+    `internal_only` appeared in exactly one query in this codebase - the
+    public list, which excludes it. So a report about being followed on trail
+    could be filed and then read by nobody but its own author.
+    REPORT_A_PROBLEM.md chose that visibility to mean "route it privately to
+    club maintainers/moderators as an incident note"; half of that was built
+    (it is not a public pin) and the half that delivers it was not. Hence no
+    visibility filter here: this endpoint is the audience `internal_only`
+    always named.
+
+    `thanks` is excluded because `verify_report` below refuses it outright -
+    gratitude has nothing to verify (SAYING_THANKS.md), and listing it here
+    would put items in the queue whose only available action is a 409, in the
+    queue closures and serious warnings share.
+
+    **Not answered here, and both are real:** REPORT_A_PROBLEM.md's own open
+    questions ask whether a `bad_hikers` report should route to the nearest
+    club, a general inbox, or both, and HIKER_SAFETY.md §1 leaves the
+    corroboration bar for escalating a dangerous-person report as "real
+    moderation policy, not a data-model question". This lists everything
+    pending to any maintainer, which is enough for one club and is not
+    enough to ship to thirty.
+    """
+    reports = db.query(Report).filter(Report.status == ReportStatus.submitted, Report.type != ReportType.thanks).all()
+    closures = db.query(Closure).filter(Closure.moderation_status == ModerationStatus.submitted).all()
+
+    return ModerationQueue(
+        reports=[ReportOut.model_validate(report) for report in reports],
+        closures=[ClosureOut.model_validate(closure) for closure in closures],
+    )
 
 
 @router.post("/reports/{report_id}/verify", response_model=ReportOut)

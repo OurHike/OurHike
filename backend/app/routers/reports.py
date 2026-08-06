@@ -10,6 +10,7 @@ from datetime import timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.core.auth import bearer_scheme, get_current_user
@@ -27,6 +28,25 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 # section routes it privately to maintainers/moderators instead of a
 # public map pin; every other type defaults to public.
 _INTERNAL_ONLY_TYPES = {ReportType.bad_hikers}
+
+# The statuses at which a report has been through moderation, and so may be
+# shown to hikers who are not its author.
+#
+# REPORT_A_PROBLEM.md's "Architecture fit" section is the rule this encodes:
+# reports are "submitted-by-many-people data that needs moderation before
+# anything becomes visible to other hikers" - the stated reason a live
+# backend is in v1 MVP at all. Listing by `status != dismissed` let a
+# `submitted` report straight through, which made verification a label on
+# something already public rather than the gate it is described as.
+#
+# `resolved` stays public deliberately: it was verified once, and it reads as
+# "Fixed" (client/src/lib/reportStatus.ts). A blowdown someone has since
+# cleared is information, not noise.
+#
+# Closures have always gated their own list this way (app/routers/closures.py
+# filters on `moderation_status == verified`); this is reports catching up to
+# the queue both features are documented as sharing.
+_MODERATED_STATUSES = (ReportStatus.verified, ReportStatus.resolved)
 
 
 def _visibility_for(report_type: ReportType) -> Visibility:
@@ -59,12 +79,19 @@ def _visible_to(report: Report, viewer: Profile | None) -> bool:
     """Whether `viewer` (possibly anonymous) may see `report`.
 
     The reporter can always see their own report, regardless of visibility
-    or status. Everyone else only sees reports that are public and not
-    dismissed - matching the list endpoint's filter exactly.
+    or status - that is what gives "Waiting" something to appear on while a
+    moderator has not looked at it yet. Everyone else only sees reports that
+    are public and moderated.
+
+    Kept in step with the list endpoint's filter by construction: both read
+    `_MODERATED_STATUSES`, and `list_reports` composes the same two rules in
+    SQL. They disagreed once - the detail endpoint would hand out a
+    `submitted` report by id - and a shared constant is what stops that
+    being two separate things to remember.
     """
     if viewer is not None and report.reporter_id == viewer.id:
         return True
-    return report.visibility == Visibility.public and report.status != ReportStatus.dismissed
+    return report.visibility == Visibility.public and report.status in _MODERATED_STATUSES
 
 
 @router.post("", response_model=ReportOut, status_code=status.HTTP_201_CREATED)
@@ -109,10 +136,24 @@ def create_report(
 
 
 @router.get("", response_model=list[ReportOut])
-def list_reports(db: Session = Depends(get_db)) -> list[Report]:
-    """List reports visible to an anonymous/non-owning caller: public and
-    not dismissed. No auth required - browsing needs no account."""
-    return db.query(Report).filter(Report.visibility == Visibility.public, Report.status != ReportStatus.dismissed).all()
+def list_reports(
+    db: Session = Depends(get_db),
+    current_user: Profile | None = Depends(_get_current_user_optional),
+) -> list[Report]:
+    """List reports the caller may see: public and moderated, plus their own
+    at any status.
+
+    No auth required - browsing needs no account, and an anonymous caller
+    gets the public set. A token is read when one is sent, which is what
+    lets a reporter see their own report waiting in the queue rather than it
+    vanishing from the app between submitting and being verified.
+    """
+    moderated = and_(Report.visibility == Visibility.public, Report.status.in_(_MODERATED_STATUSES))
+
+    if current_user is None:
+        return db.query(Report).filter(moderated).all()
+
+    return db.query(Report).filter(or_(moderated, Report.reporter_id == current_user.id)).all()
 
 
 @router.get("/{report_id}", response_model=ReportOut)

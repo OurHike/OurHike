@@ -9,6 +9,16 @@
 // Trail lines are stored as the raw downloaded Blob rather than as parsed
 // objects, so the object URL handed to MapLibre costs no re-serialisation of
 // twelve megabytes of coordinates.
+//
+// Every artifact here is held to the SHA-256 `latest.json` publishes for it
+// (#197), the same check the raster archive gets. These are smaller and are
+// fetched whole rather than resumed, so the splice that check was built for
+// cannot happen to them - but "smaller" is not "less important": trails.geojson
+// IS the trail line, and a corrupted POI file is a water source in the wrong
+// place, which is the kind of wrong this app cannot be. A JSON file that is
+// damaged rather than truncated parses perfectly well, so the parse is not the
+// check people assume it is. Hashing whole bytes is cheap here because they are
+// already whole in memory.
 
 import { get, set, del } from 'idb-keyval'
 import {
@@ -22,6 +32,8 @@ import {
 } from './config'
 import { parseProfile, type ElevationProfile } from './elevationProfile'
 import type { SpurRecord } from './spurDestination'
+import { publishedHash } from './dataManifest'
+import { sha256Hex } from './sha256'
 
 export const TRAILS_BLOB_KEY = 'ourhike:trails'
 export const POIS_KEY = 'ourhike:pois'
@@ -117,13 +129,83 @@ export interface DownloadTrailDataOptions {
   signal?: AbortSignal
 }
 
-async function fetchOrThrow(url: string, signal?: AbortSignal): Promise<Response> {
-  const response = await fetch(url, { signal })
-  if (!response.ok) {
-    throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`)
+/**
+ * An artifact could not be what the bucket says it should be.
+ *
+ * Its own type rather than a bare Error because nothing partial is committed
+ * when this is thrown: the phone keeps whatever trail data it already had,
+ * which is a materially different situation from a fetch that failed halfway.
+ */
+export class TrailDataHashMismatchError extends Error {
+  readonly artifactKey: string
+
+  constructor(artifactKey: string) {
+    super(
+      `The trail data that arrived is not what was published (${artifactKey}), ` +
+        `so none of it was saved. Any map already on this phone is untouched.`,
+    )
+    this.name = 'TrailDataHashMismatchError'
+    this.artifactKey = artifactKey
   }
-  return response
 }
+
+/**
+ * One artifact's bytes, held to its published hash.
+ *
+ * Where the manifest names no hash for the key (an older release, a field-test
+ * server, no bucket configured), there is no expectation and the bytes are
+ * returned unchecked - the same downgrade lib/archiveDownload.ts makes, for
+ * the same reason: absence of a check must never become a failure.
+ */
+interface FetchedArtifact {
+  /** The verified bytes themselves - what a Blob is rebuilt from, so what is
+   *  stored is what was checked rather than a second read of the response. */
+  buffer: ArrayBuffer
+  bytes: Uint8Array
+  contentType: string
+}
+
+async function readChecked(
+  artifactKey: string,
+  response: Response,
+  signal?: AbortSignal,
+): Promise<FetchedArtifact> {
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch ${artifactKey}: ${response.status} ${response.statusText}`,
+    )
+  }
+
+  const buffer = await response.arrayBuffer()
+  const bytes = new Uint8Array(buffer)
+  const expected = await publishedHash(artifactKey, { signal })
+  if (expected !== null && sha256Hex(bytes) !== expected) {
+    throw new TrailDataHashMismatchError(artifactKey)
+  }
+
+  return { buffer, bytes, contentType: response.headers.get('content-type') ?? '' }
+}
+
+/** An artifact this release must have. */
+async function fetchArtifact(
+  artifactKey: string,
+  signal?: AbortSignal,
+): Promise<FetchedArtifact> {
+  return readChecked(artifactKey, await fetch(dataUrl(artifactKey), { signal }), signal)
+}
+
+/** An artifact a release may predate - spurs.json and elevation_profile.json -
+ *  where a 404 means "this release has no such file" rather than a failure. */
+async function fetchOptionalArtifact(
+  artifactKey: string,
+  signal?: AbortSignal,
+): Promise<FetchedArtifact | null> {
+  const response = await fetch(dataUrl(artifactKey), { signal })
+  if (response.status === 404) return null
+  return readChecked(artifactKey, response, signal)
+}
+
+const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes)
 
 /** Spur detail, or an empty map when this release does not publish it.
  *
@@ -134,14 +216,9 @@ async function fetchOrThrow(url: string, signal?: AbortSignal): Promise<Response
  *  missing file still throws, so a genuinely broken fetch is not swallowed
  *  along with it. */
 async function fetchSpurs(signal?: AbortSignal): Promise<Record<string, SpurRecord>> {
-  const response = await fetch(dataUrl(SPURS_KEY), { signal })
-  if (response.status === 404) return {}
-  if (!response.ok) {
-    throw new Error(
-      `Failed to fetch ${SPURS_KEY}: ${response.status} ${response.statusText}`,
-    )
-  }
-  const parsed: unknown = JSON.parse(await response.text())
+  const fetched = await fetchOptionalArtifact(SPURS_KEY, signal)
+  if (fetched === null) return {}
+  const parsed: unknown = JSON.parse(decode(fetched.bytes))
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
   return parsed as Record<string, SpurRecord>
 }
@@ -159,14 +236,9 @@ async function fetchSpurs(signal?: AbortSignal): Promise<Record<string, SpurReco
  *  fetched last so a hiker on a failing connection has the trail and the POIs
  *  in hand before the decoration is attempted. */
 async function fetchElevation(signal?: AbortSignal): Promise<ElevationProfile | null> {
-  const response = await fetch(dataUrl(ELEVATION_KEY), { signal })
-  if (response.status === 404) return null
-  if (!response.ok) {
-    throw new Error(
-      `Failed to fetch ${ELEVATION_KEY}: ${response.status} ${response.statusText}`,
-    )
-  }
-  return parseProfile(await response.text())
+  const fetched = await fetchOptionalArtifact(ELEVATION_KEY, signal)
+  if (fetched === null) return null
+  return parseProfile(decode(fetched.bytes))
 }
 
 export async function downloadTrailData({
@@ -179,14 +251,18 @@ export async function downloadTrailData({
   const report = (label: string) => onProgress?.({ label, completed, total })
 
   report('Trail lines')
-  const trails = await (await fetchOrThrow(dataUrl(TRAILS_KEY), signal)).blob()
+  const fetchedTrails = await fetchArtifact(TRAILS_KEY, signal)
+  // Rebuilt from the verified bytes, keeping the served content type: what
+  // MapLibre is handed has to be the bytes that were checked, not a second
+  // read of the response.
+  const trails = new Blob([fetchedTrails.buffer], { type: fetchedTrails.contentType })
   completed += 1
 
   const pois: StoredPoi[] = []
   for (const type of POI_TYPES) {
     report(type)
-    const text = await (await fetchOrThrow(dataUrl(poiKey(type)), signal)).text()
-    pois.push(...readPois(text, type))
+    const fetched = await fetchArtifact(poiKey(type), signal)
+    pois.push(...readPois(decode(fetched.bytes), type))
     completed += 1
   }
 
@@ -228,6 +304,18 @@ export async function loadTrailData(): Promise<TrailData | null> {
   return { trails, pois, spurs, elevation }
 }
 
+/**
+ * Removes the trail's own data.
+ *
+ * Deliberately NOT part of "delete the map" since #192: the background is
+ * what a hiker chooses, downloads and reclaims, and this is what the trail
+ * is. Taking these few megabytes along with several hundred would strip the
+ * trail line off the screen until the next launch with signal fetched it
+ * straight back - the app downloads it by default wherever it is missing.
+ *
+ * Kept because the store owns the operation and switching trails will want
+ * it. Nothing in the app calls it today.
+ */
 export async function deleteTrailData(): Promise<void> {
   await del(TRAILS_BLOB_KEY)
   await del(POIS_KEY)

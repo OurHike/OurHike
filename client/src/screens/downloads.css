@@ -69,6 +69,33 @@
   color: var(--fg-2);
   font-size: 14px;
 }
+/* One downloadable thing (#192). */
+.downloads__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+.downloads__item-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.downloads__item-summary {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: 13px;
+}
+/* A download's own failure, in its own card. Same tint as the space warning -
+   it is information that changes what to do next, not an error dialog
+   standing between a hiker and the button. */
+.downloads__error {
+  margin: 0;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border-radius: 8px;
+  background: var(--warning-100, #fdf1d6);
+  color: var(--fg-1);
+  font-size: 13px;
+}
 .downloads__primary,
 .downloads__secondary {
   min-height: var(--min-touch-target, 44px);

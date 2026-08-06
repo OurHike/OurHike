@@ -161,3 +161,92 @@ def test_severity_data_default_is_normal(db_session):
     db_session.commit()
 
     assert report.severity == Severity.normal
+
+
+# --- Reading the queue ---------------------------------------------------
+#
+# Everything above acts on an id. Nothing above returns one. Until
+# GET /moderation/queue existed, the two list endpoints were both scoped to
+# the public - /reports to what had already been moderated, /closures to
+# `moderation_status == verified`, i.e. exactly the items already dealt with
+# - so the queue could be acted on but not read.
+
+
+def _make_closure(db_session, reporter_id, moderation_status=ModerationStatus.submitted):
+    closure = Closure(
+        reported_by=reporter_id,
+        reason_type="storm_damage",
+        start_mile_marker=1.0,
+        end_mile_marker=2.0,
+        moderation_status=moderation_status,
+    )
+    db_session.add(closure)
+    db_session.commit()
+    return closure
+
+
+def test_moderation_queue_requires_a_moderator_role(client, db_session):
+    _reporter, _report = _make_reporter_and_report(db_session)
+
+    anonymous = client.get("/moderation/queue")
+    hiker = client.get("/moderation/queue", headers=auth_headers(str(uuid.uuid4())))
+
+    assert anonymous.status_code == 401
+    assert hiker.status_code == 403
+
+
+def test_moderation_queue_lists_submitted_reports_and_closures(client, db_session):
+    reporter, report = _make_reporter_and_report(db_session)
+    closure = _make_closure(db_session, reporter.id)
+    maintainer_id = _make_maintainer(db_session)
+
+    body = client.get("/moderation/queue", headers=auth_headers(maintainer_id)).json()
+
+    assert [r["id"] for r in body["reports"]] == [report.id]
+    assert [c["id"] for c in body["closures"]] == [closure.id]
+
+
+def test_moderation_queue_shows_a_bad_hikers_report(client, db_session):
+    """The whole point. `internal_only` appeared in exactly one query before
+    this endpoint - the public list, which excludes it - so a report about
+    being followed on trail could be filed and then read by nobody but its
+    own author. REPORT_A_PROBLEM.md chose that visibility to mean "route it
+    privately to club maintainers/moderators", and this is the route."""
+    _reporter, report = _make_reporter_and_report(db_session, report_type=ReportType.bad_hikers)
+    maintainer_id = _make_maintainer(db_session)
+
+    body = client.get("/moderation/queue", headers=auth_headers(maintainer_id)).json()
+
+    assert report.visibility == Visibility.internal_only
+    assert [r["id"] for r in body["reports"]] == [report.id]
+
+
+def test_moderation_queue_omits_a_thanks(client, db_session):
+    """verify_report refuses a thanks with a 409 - gratitude has nothing to
+    verify - so listing one here would put an item in the queue whose only
+    available action is an error, in the queue closures and serious warnings
+    share."""
+    _reporter, thanks = _make_reporter_and_report(db_session, report_type=ReportType.thanks)
+    maintainer_id = _make_maintainer(db_session)
+
+    body = client.get("/moderation/queue", headers=auth_headers(maintainer_id)).json()
+
+    assert thanks.id not in [r["id"] for r in body["reports"]]
+
+
+def test_moderation_queue_drops_an_item_once_it_is_actioned(client, db_session):
+    """A queue that still lists what was just verified is a queue nobody can
+    work through."""
+    _reporter, report = _make_reporter_and_report(db_session)
+    closure = _make_closure(db_session, _reporter.id)
+    maintainer_id = _make_maintainer(db_session)
+    headers = auth_headers(maintainer_id)
+
+    assert len(client.get("/moderation/queue", headers=headers).json()["reports"]) == 1
+
+    client.post(f"/reports/{report.id}/verify", json={}, headers=headers)
+    client.post(f"/closures/{closure.id}/dismiss", headers=headers)
+
+    body = client.get("/moderation/queue", headers=headers).json()
+    assert body["reports"] == []
+    assert body["closures"] == []

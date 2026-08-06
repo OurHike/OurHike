@@ -291,22 +291,51 @@
    MapLibre puts the scale bar at the bottom-left of the map, which is where
    WIREFRAMES.md wants it - "scale bar above USGS US Topo · © OSM". Floating
    the credit in that same corner put the two on top of each other, and no
-   offset fixes that honestly: the string is assembled per background
-   (attributionFor in map/style.ts), the live sheet's version names four
-   sources, and it wraps to one line on a laptop and three on a phone. Any
-   reserved gap is right at exactly one width.
+   offset fixes that honestly: the list is assembled per screen
+   (map/credits.ts), it grows and shrinks with the background and the download,
+   and it wraps to one line on a laptop and three on a phone. Any reserved gap
+   is right at exactly one width.
 
    So the strip is given its own space instead. It costs the map that much
    height, which is a real cost on a phone and is worth paying here: ODbL
    attribution is a licence condition, and a condition met only where the text
-   happens not to land under a control is not met. */
-.map-screen__attribution {
+   happens not to land under a control is not met.
+
+   How MUCH height it costs is chrome/MapAttribution.tsx's problem, and the
+   answer there is one line: collapsed, this is the OSM credit and a count. */
+.map-attribution {
   margin: 0;
   padding: 2px var(--space-2, 8px);
   font-size: 10px;
   color: var(--fg-2);
   background: var(--bg-page);
   border-top: 1px solid var(--border-1);
+}
+
+/* The one line that is always on screen. `list-item` display keeps the native
+   disclosure triangle, which is what says this opens - Safari and Chrome both
+   drop the marker the moment a summary is given any other display value, and a
+   credit line that expands with nothing to suggest it does is a control nobody
+   finds. */
+.map-attribution__summary {
+  display: list-item;
+  cursor: pointer;
+}
+
+/* The count is a promise that something is behind the summary. Once it is
+   open, the list below is that something, said properly. */
+.map-attribution[open] .map-attribution__more {
+  display: none;
+}
+
+/* Indented to start under the summary's TEXT rather than under its disclosure
+   triangle, so the credits read as one list with the line above them instead
+   of as a second block that happens to sit below it. In em, because the marker
+   it is clearing is sized by the same font as the text. */
+.map-attribution__list {
+  margin: 0;
+  padding: 0 0 0 1.4em;
+  list-style: none;
 }
 
 /* ---------- Elevation ribbon ---------- */

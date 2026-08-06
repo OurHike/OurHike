@@ -108,16 +108,113 @@ already draws at z9 — low zooms are shared context, high zooms are local:
 | | Built | Why it splits there |
 |---|---|---|
 | z0–9 | once, whole-NA, from the full 17.9 GB PBF | Cross-shard by nature: a z4 tile spans regions, so no shard can produce it alone. Cheap regardless — tile counts quadruple per zoom, so everything through z9 is a rounding error against z14 (31 MB of the AT build's 532). Reads the big PBF, writes almost nothing, fits. |
-| z10–14 | per sub-region, in parallel | Tile content at z10+ is local. Give each shard a padded input and an exact `--polygon` — what `lib/poly.py` already does for the corridor — and the shards are disjoint, so combining them is concatenation, not reconciliation. |
+| z10–14 | per sub-region, in parallel | Tile content at z10+ is *mostly* local — see the measured exceptions below. Give each shard a padded input and an exact `--polygon`, as `lib/poly.py` already does for the corridor. |
 
 PMTiles orders tile IDs zoom-major, so a national z0–9 archive followed by a
 regional z10–14 one is *already* in write order. Packages can be cut from the
 pair without ever materialising a ~23 GB national file.
 
-What this has not proved: whether any OpenMapTiles layer ranks features from
-a global view rather than a local one. If one does, it shows at shard seams,
-and that — not the disk arithmetic — is the thing to check on the first real
-sharded run.
+### Measured: sharding is not lossless
+
+[#225](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/225) built
+a region three ways — whole as a control, then as two shards that saw *all*
+the data and differed only in `--polygon` (arm A), then as two shards that saw
+only their own state (arm B) — for a sparse pair (Vermont/New Hampshire) and a
+dense one (New York/New Jersey), plus a control that builds one input twice to
+establish what "no difference" looks like. This section previously said the
+shards were disjoint and the ranking question was unproved. Both claims were
+wrong, and in the same direction.
+
+**The shards are not tile-disjoint.** 593 of 21,910 tiles were produced by
+more than one shard — every zoom from z0 up through the seam. Low zooms cannot
+be otherwise (a z4 tile spans both states), which the z0–9 split above already
+handles. What it does not handle is that combining shards therefore needs a
+rule for tiles two shards both wrote; "concatenation" is not one.
+
+**Two builds of identical input are byte-identical.** New Jersey built twice
+with identical flags: 15,239 tiles, zero layer-stat differences, zero byte
+differences. Planetiler is deterministic, so every difference below is a real
+difference and not the encoder disagreeing with itself. This control should
+have been the first thing measured; without it none of the numbers here mean
+anything, and a run that reports thousands of differing tiles cannot be told
+apart from a tool that never repeats itself.
+
+**Some differences are not the seam's fault.** Arm A is the decisive arm: no
+data was missing from either shard, so nothing there can be a clipping
+artifact. Vermont/New Hampshire produced 16 differing tiles that exactly one
+shard built, 6 of them more than 8 tiles inside a shard. New York and New
+Jersey — the same experiment across the Hudson, chosen because density is
+where label ranking has the most to disagree about — produced 5,420, with
+4,962 deeper than 8 tiles. Padding cannot fix a difference caused by the
+extent of what a build was *asked to output*.
+
+**But almost all of that is reordering, not content.** Of the dense arm's
+5,442 differing tiles, only **136 differ in any layer statistic** — feature
+count, geometry count, per-layer bytes, attribute bytes, attribute values.
+The other ~5,300 carry identical values for all five metrics and differ only
+in their serialised bytes. Planetiler sorts rendered features by tile ID and
+the order within a tile follows the whole feature file, so a shard bounded to
+a smaller polygon writes the same features in a different sequence.
+
+That distinction is the difference between a fidelity question and a broken
+map, and it is worth stating what is inference and what is measurement. The
+measurement is that five independent metrics agree on ~5,300 tiles whose
+bytes differ. The inference is that ordering explains it. Proving it needs a
+semantic tile comparison — decode, sort, diff — which this spike does not
+have. Note also that order is not purely cosmetic: MapLibre breaks label
+collisions by feature order, so a reordered tile can place a label
+differently, which lands in the same drift class rather than outside it.
+
+**Content drift does not scale with density.** 136 tiles in 71,931 for dense
+New York/New Jersey is 0.19%; 35 in 21,910 for sparse Vermont/New Hampshire
+is 0.16%. The alarming raw counts grow with region size and tile count; the
+rate does not. That is the number the decision below rests on.
+
+Arm B, the realistic arrangement, shows the padding requirement on top: 299
+of its single-shard differences sit exactly one tile from the cut — a tidy
+padding signature — over a much larger reordering background.
+
+**Decided (2026-08-06): the drift is accepted for v1.** A place name that
+differs across a shard boundary is the same class of thing this file already
+warns about under "freshness honesty" — a label disagreeing between a
+downloaded tile and a live one — and hikers are already told that. Content
+drift runs at roughly 0.2% of tiles and does not grow with density, which is
+what makes the call safe to make on two regions rather than fifty.
+
+The three alternatives each cost more than the defect does: wider padding
+fixes the differences one tile from the cut and provably not the interior
+ones, a seam-tile merge rule addresses the multi-shard population but not the
+interior drift either, and building North America whole on a paid larger
+runner spends the money #194 exists to avoid.
+
+Revisit if a club reports it, or if the semantic tile comparison this spike
+lacks shows the reordering inference to be wrong.
+
+**Measured: the temp-disk multiplier is ~5×, as assumed.** Two builds sized
+to dwarf Planetiler's fixed overhead: `us-northeast` (1.79 GB → 8.20 GB peak,
+4.6×, 12 min) and `us-south` (4.10 GB → 20.34 GB peak, 5.0×, 34 min). Fitted
+across both, peak temp is **5.3× the input with no meaningful fixed term**.
+BASEMAP.md's 5× assumption holds; Planetiler's 10× planet guidance is
+conservative for a regional build. Extrapolated against the 88 GB free:
+
+| Input | Temp at 5.3× | + input + output | Verdict |
+|---|---|---|---|
+| `us-south` 4.1 GB | 20 GB | ~30 GB | fits easily |
+| `canada` 6.0 GB | 30 GB | ~44 GB | fits |
+| whole US 11.2 GB | 58 GB | ~84 GB | marginal |
+| North America 17.9 GB | 93 GB | ~134 GB | **does not fit** |
+
+So the sub-region table above is confirmed by measurement rather than
+inherited from documentation, and the reason to shard is confirmed with it.
+
+An earlier attempt to measure this at Vermont/New Hampshire scale reported
+7.4× and 18.6× and both were artefacts: those inputs (0.05–0.12 GB) are
+smaller than Planetiler's fixed overhead, so every ratio was one constant
+over a small denominator. Apparent file size is worse still — Planetiler's
+node map is a sparse file sized by the node-ID space, so `ls -l`,
+`du --apparent-size` and any naive walk report ~2.25 GB regardless of input,
+and the 19.5× that falls out of it is fiction. Measure allocated blocks, at a
+size that dwarfs the overhead, or do not quote a multiplier.
 
 R2 keeps the rest flat: tens of GB stored ≈ $1–2/month at $0.015/GB-month
 after a 10 GB free tier, and **egress is $0** no matter how many hikers
@@ -143,7 +240,8 @@ already renders it (`client/src/map/style.ts` — do not remove). The
 OpenMapTiles schema itself is CC-BY, satisfied by the "© OpenMapTiles" credit
 already shipped. This repository's open pipeline satisfies ODbL's
 share-alike-or-method obligation with no extra work. Same terms as the
-already-shipped Protomaps context extract — nothing new to clear.
+Protomaps context extract measured in July (which was never built — see
+TECHNICAL_ARCHITECTURE.md and #196) — nothing new to clear.
 
 ## Updates and publishing
 

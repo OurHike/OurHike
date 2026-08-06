@@ -190,28 +190,51 @@ def to_mercator(geom_4326):
     return transform(transformer.transform, geom_4326)
 
 
-def seam_line(geom):
-    """The cut as a line, whether it arrived as one or as the shard it bounds.
+def seam_geometry(geom):
+    """The cut, validated rather than converted.
 
-    Both spellings are useful and neither is wrong: the exact cut between two
-    shards is a line (the shared border), while a shard's own polygon is what
-    is usually lying around. Taking the boundary of a polygon is a superset -
-    it includes the shard's outer edges, which are the region's edge rather
-    than a cut - so a line is the sharper input where one exists."""
-    return geom if geom.geom_type in ("LineString", "MultiLineString", "LinearRing") else geom.boundary
+    Taken as given, whatever its type: a line where shards abut, a polygon
+    where they overlap - Geofabrik's .poly shapes carry a margin, so the band
+    both shards were asked to produce is an area, not a line. Converting a
+    polygon to its boundary here (an earlier version did) turns that band
+    into its outline and quietly measures the wrong thing.
+
+    The empty check is not defensive padding. An empty geometry's bounds are
+    (nan, nan, nan, nan), which reaches the tile arithmetic and fails as
+    `cannot convert float NaN to integer` - a stack trace three frames from
+    anything that names the seam."""
+    if geom.is_empty:
+        raise SystemExit("The seam geometry is empty - the shards may not touch, or the wrong file was passed.")
+    return geom
 
 
 def seam_tiles(seam_merc, zoom: int) -> set[tuple[int, int]]:
-    """Tiles at `zoom` that the seam passes through.
+    """Tiles at `zoom` that the seam touches.
 
-    The seam is the shard boundary as a LINE, not the shard as an area: a
-    tile "at the seam" is one the cut runs through, and the boundary of a
-    polygon is what that means geometrically."""
+    Works for a line or an area: a tile is at the seam if the cut passes
+    through it, and for an overlap band that means any tile the band covers -
+    which is exactly the set both shards were asked to produce."""
     prepared = prep(seam_merc)
     x0, x1, y0, y1 = tile_range_for_bounds(seam_merc.bounds, zoom)
     return {
         (x, y) for x in range(x0, x1 + 1) for y in range(y0, y1 + 1) if prepared.intersects(box(*tile_bounds_merc(zoom, x, y)))
     }
+
+
+def attribute(differing_tiles: list[Tile], overlaps: set[Tile]) -> tuple[list[Tile], list[Tile]]:
+    """Split differing tiles by whether one shard produced them or two.
+
+    This is what makes the difference count readable. A tile two shards both
+    produced is one where THE MERGE RULE chose what survived - each shard saw
+    only its own side of it, so of course the kept copy differs from the
+    control. That says nothing about whether Planetiler ranks features
+    globally; it says the shards are not tile-disjoint, which is a separate
+    (and expected, at low zoom) finding.
+
+    Only the tiles exactly one shard produced can indict the build itself."""
+    single = [t for t in differing_tiles if t not in overlaps]
+    shared = [t for t in differing_tiles if t in overlaps]
+    return single, shared
 
 
 def distance_to_seam(tile: Tile, seam_at_zoom: set[tuple[int, int]], max_distance: int = MAX_SEAM_DISTANCE) -> int | None:
@@ -286,16 +309,26 @@ def report(control_dir: Path, shard_dirs: list[Path], seam_path: Path | None, pa
     print(f"\nTiles whose bytes differ: {len(byte_differs)}")
 
     differing_tiles = sorted({d.tile for d in differences} | set(byte_differs))
+    print("\nDiffering tiles by zoom:")
+    for zoom, count in sorted(Counter(t[0] for t in differing_tiles).items()):
+        print(f"   z{zoom:<3} {count}")
+
+    # The attribution that makes the count above mean something.
+    single, shared = attribute(differing_tiles, overlaps)
+    print(f"\n{len(shared)} of {len(differing_tiles)} differing tile(s) were produced by MORE THAN ONE shard.")
+    print("   Those are the merge rule's doing, not the build's: each shard saw one side, and first-wins kept one of them.")
+    print(f"{len(single)} differ on a tile exactly ONE shard produced.")
+    print("   Only these can indict the build - they are what the verdict below is computed on.")
+
     if seam_path is None:
         print("\nNo --seam given, so no distance histogram - that is the reading that matters; pass one.")
         return len(differing_tiles)
 
-    seam_merc = to_mercator(seam_line(shape(_geometry_of(seam_path))))
-    zooms = {t[0] for t in differing_tiles}
-    seam_by_zoom = {z: seam_tiles(seam_merc, z) for z in zooms}
-    histogram = seam_distance_histogram(differing_tiles, seam_by_zoom)
+    seam_merc = to_mercator(seam_geometry(shape(_geometry_of(seam_path))))
+    seam_by_zoom = {z: seam_tiles(seam_merc, z) for z in {t[0] for t in single}}
+    histogram = seam_distance_histogram(single, seam_by_zoom)
 
-    print("\nDistance from the cut, in tiles:")
+    print("\nDistance from the cut, in tiles (single-shard differences only):")
     for distance in sorted(histogram, key=lambda d: (d is None, d)):
         label = f">{MAX_SEAM_DISTANCE}" if distance is None else str(distance)
         print(f"   {label:>3} tile(s) away: {histogram[distance]}")

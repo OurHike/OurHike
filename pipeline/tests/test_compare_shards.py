@@ -14,17 +14,19 @@ a captured blob would only assert that today's output equals today's output.
 import gzip
 
 import pytest
-from shapely.geometry import LineString
+from shapely.geometry import GeometryCollection, LineString, box
 
 from compare_shards import (
     MAX_SEAM_DISTANCE,
     Difference,
+    attribute,
     compare_hashes,
     compare_stats,
     distance_to_seam,
     merge_shard_stats,
     read_layer_stats,
     seam_distance_histogram,
+    seam_geometry,
     seam_tiles,
     verdict,
 )
@@ -248,3 +250,55 @@ def test_a_difference_knows_which_side_it_came_from():
     assert Difference((14, 1, 1), "place", "layer_features", 3, 2).kind == "value"
     assert Difference((14, 1, 1), None, None, 1, None).kind == "missing-from-shards"
     assert Difference((14, 1, 1), None, None, None, 1).kind == "extra-in-shards"
+
+
+# Geofabrik's .poly shapes carry a margin so features near a state line
+# arrive whole in both extracts, which means neighbouring shards OVERLAP
+# rather than abut. The first run that got far enough to compare died on
+# that: two overlapping polygons share no boundary line, their outlines meet
+# at points, and a point-set's boundary is empty - whose bounds are NaN.
+
+
+def test_an_overlap_band_is_used_as_an_area_not_reduced_to_its_outline():
+    """Converting the band to its boundary would measure the wrong thing:
+    the tiles at the cut are the ones the band COVERS, since those are the
+    tiles both shards were asked to produce."""
+    band = box(0, 0, 1, 10)
+
+    assert seam_geometry(band).equals(band)
+
+
+def test_a_line_seam_is_passed_through_unchanged():
+    line = LineString([(5, 0), (5, 10)])
+
+    assert seam_geometry(line).equals(line)
+
+
+def test_an_empty_seam_is_refused_where_it_can_still_be_named():
+    """An empty geometry's bounds are NaN, which otherwise surfaces three
+    frames away as `cannot convert float NaN to integer` - a stack trace that
+    mentions neither the seam nor the file it came from."""
+    with pytest.raises(SystemExit, match="seam geometry is empty"):
+        seam_geometry(GeometryCollection())
+
+
+def test_differences_on_tiles_two_shards_both_produced_are_kept_separate():
+    """A tile both shards wrote is one where first-wins picked the survivor,
+    so it differs from the control by construction. Counting it against the
+    build would indict Planetiler for the merge rule's choice."""
+    differing = [(4, 1, 1), (14, 100, 200), (14, 100, 201)]
+    overlaps = {(4, 1, 1)}
+
+    single, shared = attribute(differing, overlaps)
+
+    assert shared == [(4, 1, 1)]
+    assert single == [(14, 100, 200), (14, 100, 201)]
+
+
+def test_with_no_overlaps_every_difference_is_the_builds_own():
+    differing = [(14, 1, 1), (14, 2, 2)]
+
+    single, shared = attribute(differing, set())
+
+    assert shared == []
+    assert single == differing

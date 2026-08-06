@@ -201,19 +201,37 @@ def fetch(url: str, dest: Path) -> Path:
 
 
 def seam_between(shapes: list) -> object:
-    """The cut: where the shard shapes touch each other.
+    """The cut: where the shard shapes meet each other.
 
-    Their shared border, not the outline of either - a shard's outer edge is
-    the region's edge, where the control build is cut the same way and no
-    difference can be attributed to sharding."""
-    seam = None
+    Never the outline of either shard - a shard's outer edge is the region's
+    edge, cut identically in the control, so no difference there can be
+    blamed on sharding.
+
+    Geofabrik's published .poly shapes OVERLAP rather than abut. Each is the
+    state boundary with a margin, so features near the line arrive whole in
+    both extracts. Two overlapping polygons share no boundary LINE - their
+    outlines cross at a handful of points - which is why the first run that
+    got this far died on `cannot convert float NaN to integer`: the
+    point-set intersection has an empty boundary and empty bounds are NaN.
+
+    So the overlap zone IS the seam where one exists, and it is a truer one
+    than a line would be: every tile in that band is a tile both shards were
+    asked to produce. The shared-border line is the fallback for shapes that
+    genuinely abut."""
+    overlap, border = None, None
     for i, a in enumerate(shapes):
         for b in shapes[i + 1 :]:
+            shared_area = a.intersection(b)
+            if not shared_area.is_empty and shared_area.area > 0:
+                overlap = shared_area if overlap is None else overlap.union(shared_area)
+                continue
             touching = a.boundary.intersection(b.boundary)
             if not touching.is_empty:
-                seam = touching if seam is None else seam.union(touching)
+                border = touching if border is None else border.union(touching)
+
+    seam = overlap if overlap is not None else border
     if seam is None or seam.is_empty:
-        raise SystemExit("The chosen regions do not share a border - there is no seam to measure.")
+        raise SystemExit("The chosen regions neither overlap nor share a border - there is no seam to measure.")
     return seam
 
 

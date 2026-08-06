@@ -62,7 +62,7 @@ def test_regions_that_do_not_touch_are_refused_rather_than_measured_against_noth
     """Without a shared border every difference would report as 'far from the
     seam', which is the NOT-SEAM-LOCAL verdict - the alarming one - arrived
     at by measuring against a seam that does not exist."""
-    with pytest.raises(SystemExit, match="do not share a border"):
+    with pytest.raises(SystemExit, match="neither overlap nor share a border"):
         seam_between([box(0, 0, 1, 1), box(50, 50, 51, 51)])
 
 
@@ -247,3 +247,26 @@ def test_the_download_step_waits_far_longer_than_planetilers_default():
 
     assert f"--http-timeout={HTTP_TIMEOUT_SECONDS}s" in cmd
     assert HTTP_TIMEOUT_SECONDS > 30
+
+
+def test_shards_that_overlap_report_the_overlapping_band_as_the_seam():
+    """Geofabrik's .poly shapes carry a margin, so real neighbours overlap
+    rather than abut. Their outlines then meet only at points, and a
+    point-set has an empty boundary whose bounds are NaN - which is exactly
+    how the first run that got this far died. The band both shards cover is
+    the truer seam anyway: every tile in it is one both were asked to build."""
+    west, east = box(0, 0, 6, 10), box(4, 0, 10, 10)
+
+    seam = seam_between([west, east])
+
+    assert seam.area > 0
+    assert seam.bounds == (4.0, 0.0, 6.0, 10.0)
+
+
+def test_shards_that_merely_abut_still_report_their_shared_border():
+    west, east = box(0, 0, 5, 10), box(5, 0, 10, 10)
+
+    seam = seam_between([west, east])
+
+    assert seam.area == 0
+    assert seam.length == pytest.approx(10.0)

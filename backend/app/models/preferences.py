@@ -28,10 +28,9 @@ outright - it is deliberately not part of `UserPreferences` at all (Map
 Options: closures are always shown, never hideable).
 
 `updated_at` follows the same naive-UTC pattern as `Profile.created_at`
-(see app/models/profile.py's comment) - duckdb-engine can't marshal a
-`TIMESTAMPTZ` back out without the optional `pytz` package, so a tz-aware
-`datetime` is stored with its tzinfo stripped, which is safe because every
-value going in is already UTC by construction.
+(see app/models/profile.py's comment): a tz-aware `datetime` is stored with
+its tzinfo stripped, which is safe because every value going in is already
+UTC by construction, and the designator is stamped back on at the wire.
 """
 
 from sqlalchemy import JSON, Column, DateTime, ForeignKey, String

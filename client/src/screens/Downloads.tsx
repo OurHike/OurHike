@@ -30,10 +30,10 @@
 
 import { useEffect, useState } from 'react'
 import { formatBytes } from '../lib/formatBytes'
-import type { DetailLevel } from '../lib/downloadDetail'
 import { estimateAvailableBytes, type PersistenceState } from '../lib/storageHealth'
 import { useDesktop } from '../lib/useDesktop'
 import { DownloadCard, type DownloadStatus } from './DownloadCard'
+import type { DetailOption } from './DetailPicker'
 import './downloads.css'
 
 /** One sheet, ready to render: its combined state across every archive it is
@@ -47,9 +47,15 @@ export interface SheetDownload {
   sizeBytes: number
   /** Its own failure, if it has one - never a sibling sheet's. */
   error?: string | null
-  /** Present where the sheet has detail levels to choose between - the USGS
-   *  raster does (downloadDetail.ts). Absent renders no picker. */
-  detail?: { level: DetailLevel; onChange: (level: DetailLevel) => void }
+  /** Present where the sheet has levels to choose between - both sheets do
+   *  now, with their own level sets (DetailPicker's builders). Absent
+   *  renders no picker. */
+  detail?: {
+    options: readonly DetailOption[]
+    value: string
+    onChange: (id: string) => void
+    name?: string
+  }
   onStart: () => void
   onResume: () => void
   onDelete: () => void

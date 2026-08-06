@@ -36,9 +36,19 @@ pip install -q -r pipeline/requirements-dev.txt cffi \
   "duckdb==${DUCKDB_PIN}" "duckdb-extension-spatial==${DUCKDB_PIN}"
 
 echo "[session-start] backend deps"
-# After the pipeline install, so backend's unpinned duckdb requirement is
-# already satisfied by the pin instead of pulling a newer one.
 pip install -q -r backend/requirements-dev.txt
+
+echo "[session-start] local postgres for the backend"
+# The backend's database is Supabase's Postgres, so its tests run against a
+# real Postgres - not an embedded stand-in. The web container ships Postgres 16
+# with the cluster stopped, which is one command away from usable; the script
+# starts it and creates the role and the dev/test databases. Without this, the
+# whole backend suite fails on connection refused.
+#
+# Not fatal if it can't: every other suite in this repository runs without a
+# database, and a hook that aborts here would take them down too.
+bash backend/scripts/local-postgres.sh || \
+  echo "[session-start] WARNING: no local postgres - backend tests will not run"
 
 echo "[session-start] repository-settings test deps"
 pip install -q -r .github/tests/requirements-dev.txt

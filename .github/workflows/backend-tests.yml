@@ -28,23 +28,50 @@ permissions:
   pull-requests: read
 
 jobs:
-  pytest-duckdb:
+  # One job, one database engine. There used to be a second job running the
+  # same suite against DuckDB, back when local dev ran on DuckDB and the pair
+  # existed to prove the two agreed. Local dev runs on a real Postgres now
+  # (backend/scripts/local-postgres.sh), so the DuckDB job was testing an
+  # engine nothing uses - and a green result there said nothing about the
+  # database this backend writes to. DuckDB stays where it earns its keep, in
+  # the analytics pipeline (pipeline/), which has its own workflow.
+  pytest-postgres:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: backend
+    # Worth knowing before it looks like a bug: a service container starts
+    # with the job, before any step runs, so this Postgres still boots on a
+    # run that turns out to have nothing to test. Only a job-level `if:` could
+    # avoid that, and that is the one thing this file will not do (see the
+    # note on the trigger above - the steps carry the condition instead, so a
+    # PR touching nothing under backend/ still reports success having done
+    # nothing). A few seconds of an idle container is the price of a check
+    # that always reports.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ourhike
+          POSTGRES_PASSWORD: ourhike
+          POSTGRES_DB: ourhike_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # The same URL shape tests/conftest.py falls back to locally, pointed at
+      # the service container above instead of a developer's own Postgres.
+      # Nothing else differs between a local run and this one - which is the
+      # point: the correctness gate and the loop you develop in are the same
+      # engine, differing only in where it runs. See backend/README.md.
+      DATABASE_URL: postgresql+psycopg://ourhike:ourhike@localhost:5432/ourhike_test
     steps:
-      # No `if:` on this job, and there should never be one - see the note on
-      # the trigger above. The steps carry the condition instead, so a PR that
-      # touches nothing under backend/ still reports success having done
-      # nothing, and this can be made a required check without that becoming a
-      # trap.
-      #
       # Checkout is unconditional because the scope action lives in this
-      # repository and has to be on disk before it can decide anything. The
-      # two jobs each scope themselves rather than sharing one upstream job:
-      # the decision is a few seconds of API call, and making both wait on a
-      # third job to hear it would cost more than it saves.
+      # repository and has to be on disk before it can decide anything.
       - uses: actions/checkout@v4
 
       - id: scope
@@ -73,57 +100,6 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: python -m ruff format --check .
 
-      - name: Run tests (DuckDB - fast, local-dev-equivalent)
-        if: steps.scope.outputs.run == 'true'
-        run: python -m pytest -v
-
-  pytest-postgres:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
-    # Worth knowing before it looks like a bug: a service container starts
-    # with the job, before any step runs, so this Postgres still boots on a
-    # run that turns out to have nothing to test. Only a job-level `if:` could
-    # avoid that, and that is the one thing this file will not do. A few
-    # seconds of an idle container is the price of a check that always
-    # reports.
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: ourhike
-          POSTGRES_PASSWORD: ourhike
-          POSTGRES_DB: ourhike_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      # The real correctness gate: same test suite as the DuckDB job above,
-      # against the real production database engine (Postgres) instead of
-      # the local-dev DuckDB convenience layer. See backend/README.md.
-      DATABASE_URL: postgresql+psycopg://ourhike:ourhike@localhost:5432/ourhike_test
-    steps:
-      - uses: actions/checkout@v4
-
-      - id: scope
-        uses: ./.github/actions/changed-paths
-        with:
-          paths: backend/ .github/workflows/backend-tests.yml .github/actions/changed-paths/
-
-      - uses: actions/setup-python@v5
-        if: steps.scope.outputs.run == 'true'
-        with:
-          python-version: "3.14"
-
-      - name: Install dependencies
-        if: steps.scope.outputs.run == 'true'
-        run: pip install -r requirements-dev.txt
-
-      - name: Run tests (Postgres)
+      - name: Run tests
         if: steps.scope.outputs.run == 'true'
         run: python -m pytest -v

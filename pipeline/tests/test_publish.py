@@ -186,9 +186,7 @@ def test_background_archives_cover_every_tier_the_client_offers():
     multi-package store (#192), and until then publishing it is what makes
     it testable at all."""
     assert {"light", "standard", "fine"} <= set(publish.BACKGROUND_ARCHIVES)
-    assert set(publish.BACKGROUND_ARCHIVES) - {"light", "standard", "fine"} == {
-        "quad_sheet"
-    }
+    assert set(publish.BACKGROUND_ARCHIVES) - {"light", "standard", "fine"} == {"quad_sheet"}
 
 
 def test_each_tier_maps_to_a_distinct_archive():

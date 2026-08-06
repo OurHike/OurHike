@@ -39,7 +39,7 @@ import type { PoiDetail } from './chrome/PoiCard'
 import { TabBar } from './chrome/TabBar'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import type { TabId } from './chrome/tabs'
-import { Downloads, type PackageDownload } from './screens/Downloads'
+import { Downloads } from './screens/Downloads'
 import { DownloadsDialog } from './screens/DownloadsDialog'
 import { More } from './screens/More'
 import { InstallPrompt } from './screens/InstallPrompt'
@@ -63,12 +63,14 @@ import { useArchiveDownloads } from './lib/useArchiveDownload'
 import { useArchiveZooms } from './lib/useArchiveZooms'
 import { archiveCoversZoom } from './lib/archiveCoverage'
 import {
-  anyPackageRemains,
+  BACKGROUND_DATA,
+  backgroundSizeBytes,
   CORRIDOR_BACKGROUND_PACKAGE,
   offeredPackages,
   packageDownloadUrl,
   packageSizeBytes,
 } from './lib/packages'
+import { combineBackgroundStatus } from './lib/backgroundStatus'
 import { useClock } from './lib/useClock'
 import { useOnline } from './lib/useOnline'
 import { useDataSaver } from './lib/useDataSaver'
@@ -78,12 +80,7 @@ import { useInstallPrompt } from './lib/useInstallPrompt'
 import { useAppUpdate } from './lib/useAppUpdate'
 import { useGeolocation } from './lib/useGeolocation'
 import { buildTrailIndex, locateOnTrail, type TrailIndex } from './lib/trailPosition'
-import {
-  deleteTrailData,
-  downloadTrailData,
-  loadTrailData,
-  type StoredPoi,
-} from './lib/trailData'
+import { downloadTrailData, loadTrailData, type StoredPoi } from './lib/trailData'
 import {
   ribbonSamples,
   ribbonWindow,
@@ -265,22 +262,16 @@ function App() {
 
   const detailLevel: DetailLevel = detailLevelForZoom(preferences.max_background_zoom)
 
-  // Every package the trail's manifest offers, held together (#192). The
-  // corridor sheet is one of them - it is simply the one the shell asks
-  // about below, because whether an offline background can be honoured is a
-  // question about that archive and no other.
-  const packages = useMemo(() => offeredPackages(), [])
+  // The archives the background is currently made of (#192). Several pieces
+  // in the store, one thing on the screen - see lib/packages.ts.
+  const backgroundPackages = useMemo(() => offeredPackages(), [])
   const downloadRequests = useMemo(
     () =>
-      packages.flatMap((pkg) => {
-        const url = packageDownloadUrl(pkg, detailLevel)
-        // Never reached - offeredPackages() is exactly the packages that
-        // have a source to build a URL from - and dropped rather than
-        // stood in for, because a placeholder URL would fetch this page
-        // and store the HTML as somebody's map.
-        return url === null ? [] : [{ packageKey: pkg.idbKey, url }]
-      }),
-    [packages, detailLevel],
+      backgroundPackages.map((pkg) => ({
+        packageKey: pkg.idbKey,
+        url: packageDownloadUrl(pkg, detailLevel),
+      })),
+    [backgroundPackages, detailLevel],
   )
   const {
     statusFor: archiveStatusFor,
@@ -291,6 +282,24 @@ function App() {
     persistence: archivePersistence,
   } = useArchiveDownloads(downloadRequests)
 
+  /** The background as one state, however many archives are behind it. */
+  const backgroundStatus = combineBackgroundStatus(
+    backgroundPackages.map((pkg) => ({
+      status: archiveStatusFor(pkg.idbKey),
+      sizeBytes: packageSizeBytes(pkg, detailLevel),
+    })),
+  )
+
+  /** The first archive with something to report. One card, so one message -
+   *  and the archives are not something a hiker was told about, so naming
+   *  which of them failed would explain nothing. */
+  const backgroundError =
+    backgroundPackages.map((pkg) => archiveErrorFor(pkg.idbKey)).find(Boolean) ?? null
+
+  // Whether the corridor raster specifically is on the phone. Asked about
+  // that archive rather than about the background as a whole, because it is
+  // the archive the offline background is DRAWN from - archiveZooms reads its
+  // header, and effectiveBackground decides against its presence.
   const archiveStatus = archiveStatusFor(CORRIDOR_BACKGROUND_PACKAGE.idbKey)
 
   // Whether there is a corridor on this phone at all. Only a FINISHED archive
@@ -594,17 +603,25 @@ function App() {
     [updatePreferences, openDownloads],
   )
 
-  /** Trail lines and POIs, before any package. They are a fraction of an
-   *  archive's size, and getting them early means a failed archive download
-   *  still leaves a usable trail line rather than nothing at all.
+  /** The trail's own data - centerline, spurs, POIs, elevation profile - on
+   *  the phone, fetching it only if it is not already here.
    *
-   *  Returns whether to go on. These few megabytes are the canary: whatever
-   *  stopped them - no signal, a missing key, a misconfigured bucket - will
-   *  stop the next several hundred too, and finding that out costs a hiker
-   *  their data allowance to learn nothing. */
+   *  Not a choice anyone is offered: it is a few megabytes against a
+   *  background measured in hundreds, and it is what makes the app an app
+   *  rather than a map viewer, so it is downloaded by default wherever it is
+   *  missing (the effect above does the same on launch). Called before the
+   *  background too, where it doubles as the canary: whatever stopped these
+   *  few megabytes - no signal, a missing key, a misconfigured bucket - will
+   *  stop the next several hundred, and finding that out costs a hiker their
+   *  data allowance to learn nothing.
+   *
+   *  Returns whether to go on. */
   const ensureTrailData = useCallback(async () => {
     setDataError(null)
     try {
+      // Already here is already done. Re-fetching on every tap spent signal
+      // on bytes the phone was holding.
+      if ((await loadTrailData()) !== null) return true
       await downloadTrailData()
       await refreshTrailData()
       return true
@@ -616,47 +633,38 @@ function App() {
     }
   }, [refreshTrailData])
 
-  const handleDownload = useCallback(
-    async (packageKey: string) => {
-      if (!(await ensureTrailData())) return
-      await startPackage(packageKey)
-    },
-    [ensureTrailData, startPackage],
-  )
-
-  /** One tap for the trail's whole manifest (#192). Packages already on the
-   *  phone are left alone rather than re-fetched. */
-  const handleDownloadAll = useCallback(async () => {
-    const missing = packages
+  /** The background: every archive it is made of, in one tap. Archives
+   *  already on the phone are left alone rather than re-fetched. */
+  const handleDownload = useCallback(async () => {
+    const missing = backgroundPackages
       .map((pkg) => pkg.idbKey)
       .filter((key) => archiveStatusFor(key).state !== 'downloaded')
     if (missing.length === 0) return
     if (!(await ensureTrailData())) return
     await startPackages(missing)
-  }, [packages, archiveStatusFor, ensureTrailData, startPackages])
+  }, [backgroundPackages, archiveStatusFor, ensureTrailData, startPackages])
 
-  const handleDeleteDownload = useCallback(
-    async (packageKey: string) => {
-      await removePackage(packageKey)
+  /** Resume, which skips the trail-data step: those bytes are already here,
+   *  and the point of resuming is not to spend signal twice. */
+  const handleResumeDownload = useCallback(async () => {
+    await Promise.all(
+      backgroundPackages
+        .filter((pkg) => archiveStatusFor(pkg.idbKey).state !== 'downloaded')
+        .map((pkg) => startPackage(pkg.idbKey)),
+    )
+  }, [backgroundPackages, archiveStatusFor, startPackage])
 
-      // Trail lines, POIs and the elevation profile belong to the TRAIL, not
-      // to any one package, so they go only when nothing of the trail is
-      // left on the phone (anyPackageRemains, lib/packages.ts).
-      const stillHere = anyPackageRemains(
-        packages,
-        packageKey,
-        (idbKey) => archiveStatusFor(idbKey).state === 'downloaded',
-      )
-      if (stillHere) return
-
-      await deleteTrailData()
-      setPois([])
-      setTrailIndex(null)
-      setElevation(null)
-      setTrailsUrl(emptyTrailsUrl())
-    },
-    [removePackage, packages, archiveStatusFor],
-  )
+  /** Deleting the background deletes the background: every archive behind
+   *  it, and nothing else.
+   *
+   *  The trail's own data deliberately stays. It belongs to the trail rather
+   *  than to the map under it, it is a rounding error against what is being
+   *  reclaimed, and it is downloaded by default anyway - so taking it would
+   *  strip the trail line off the screen only for the next launch with signal
+   *  to fetch it again. */
+  const handleDeleteDownload = useCallback(async () => {
+    await Promise.all(backgroundPackages.map((pkg) => removePackage(pkg.idbKey)))
+  }, [backgroundPackages, removePackage])
 
   // Every move is also where the camera would have to be put back, so this is
   // the one place that remembers it. Reading the map rather than deriving a
@@ -820,34 +828,6 @@ function App() {
   // and the tab that used to carry them is gone; leaving them on a screen
   // would mean an archive that failed at 4 AM announcing itself over the map
   // for the rest of the walk.
-  // What the Downloads window renders: one entry per offered package, each
-  // carrying its own state and its own buttons. A package's failure travels
-  // with it rather than as one notice over the window - with several
-  // packages, "the download failed" cannot say which.
-  const packageDownloads: PackageDownload[] = packages.map((pkg) => ({
-    pkg,
-    status: archiveStatusFor(pkg.idbKey),
-    error: archiveErrorFor(pkg.idbKey),
-    sizeBytes: packageSizeBytes(pkg, detailLevel),
-    // The detail picker belongs to the package that HAS tiers, and the
-    // choice is stored where it means something - the background zoom
-    // ceiling IS what Light/Standard/Fine means (downloadDetail.ts).
-    detail:
-      pkg.source?.kind === 'tiered'
-        ? {
-            level: detailLevel,
-            onChange: (level: DetailLevel) =>
-              updatePreferences({ max_background_zoom: getDownloadDetail(level).zoom }),
-          }
-        : undefined,
-    onStart: () => void handleDownload(pkg.idbKey),
-    // Resume skips the trail-data step a fresh download runs: those bytes
-    // are already here, and re-fetching them would spend a hiker's signal
-    // on data they downloaded the first time round.
-    onResume: () => void startPackage(pkg.idbKey),
-    onDelete: () => void handleDeleteDownload(pkg.idbKey),
-  }))
-
   const downloadsWindow = downloadsOpen && (
     <DownloadsDialog onClose={() => setDownloadsOpen(false)}>
       {!DATA_CONFIGURED && (
@@ -867,9 +847,19 @@ function App() {
         onInstall={install.install}
       />
       <Downloads
-        packages={packageDownloads}
+        status={backgroundStatus}
+        title={BACKGROUND_DATA.title}
+        summary={BACKGROUND_DATA.summary}
+        sizeBytes={backgroundSizeBytes(detailLevel)}
+        detailLevel={detailLevel}
+        error={backgroundError}
         persistence={archivePersistence}
-        onStartAll={() => void handleDownloadAll()}
+        onChangeDetail={(level) =>
+          updatePreferences({ max_background_zoom: getDownloadDetail(level).zoom })
+        }
+        onStart={() => void handleDownload()}
+        onResume={() => void handleResumeDownload()}
+        onDelete={() => void handleDeleteDownload()}
       />
     </DownloadsDialog>
   )

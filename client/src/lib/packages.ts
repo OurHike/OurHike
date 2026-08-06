@@ -6,8 +6,12 @@
 // the key - see archiveDownload.ts), and its own pmtiles:// URL (protocol.ts
 // registers every entry here). The offline map program (#184) ships several
 // archives to the same phone - vector basemap, DEM, the USGS raster sheet -
-// and multi-trail support means per-trail sets of each, so the store is
-// keyed per package.
+// so the store is keyed per package.
+//
+// Several archives, but ONE thing to a hiker: they are the background data
+// (BACKGROUND_DATA below), chosen and downloaded together, never presented as
+// a checklist of archives to assemble. They are also shared between trails
+// rather than owned by one - see that comment for why both of those matter.
 //
 // The corridor background keeps the key it has always had: an archive
 // already sitting in a tester's IndexedDB under 'ourhike:corridor-archive'
@@ -41,7 +45,7 @@ export type PackageSource =
   | { kind: 'artifact'; artifact: string; sizeBytes: number }
 
 export interface MapPackage {
-  /** Stable identity in code and in trail manifests. */
+  /** Stable identity in code and in the published catalog. */
   id: string
   /** IndexedDB key of the completed archive; download records derive from it. */
   idbKey: string
@@ -53,11 +57,27 @@ export interface MapPackage {
   source: PackageSource | null
 }
 
-export const CORRIDOR_BACKGROUND_PACKAGE: MapPackage = {
+/**
+ * A package with something published behind it.
+ *
+ * A distinct type rather than a runtime check, because it is what makes a
+ * missing size unrepresentable: every `PackageSource` carries a size (a tier
+ * table for the raster sheet, a measured number for everything else), so a
+ * package that can be downloaded always has one, and nothing downstream needs
+ * a null branch it could get wrong. `offeredPackages()` is the only way to
+ * obtain one, and it is the same filter that keeps unpublished packages off
+ * the screen.
+ */
+export type OfferedPackage = MapPackage & { source: PackageSource }
+
+/** Typed as offered, not merely catalogued: it is the one piece of the
+ *  background the pipeline publishes today, so its size and URL are always
+ *  answerable and callers need no null branch for it. */
+export const CORRIDOR_BACKGROUND_PACKAGE: OfferedPackage = {
   id: 'corridor-background',
   idbKey: CORRIDOR_ARCHIVE_KEY,
-  title: 'Offline map',
-  summary: 'The whole trail as a map you can read with no signal.',
+  title: 'USGS sheet',
+  summary: 'The whole corridor as a topographic picture.',
   source: { kind: 'tiered' },
 }
 
@@ -100,8 +120,8 @@ export const DEM_PACKAGE: MapPackage = {
   source: null,
 }
 
-/** Every package this build knows how to store and resolve. Order is the
- *  Downloads screen's display order. */
+/** Every package this build knows how to store and resolve, in the order
+ *  they matter to a hiker. */
 export const MAP_PACKAGES: readonly MapPackage[] = [
   CORRIDOR_BACKGROUND_PACKAGE,
   BASEMAP_PACKAGE,
@@ -109,61 +129,76 @@ export const MAP_PACKAGES: readonly MapPackage[] = [
 ]
 
 /**
- * What one trail's hikers download.
+ * The background data: the map drawn UNDER the trail, and one thing to a
+ * hiker rather than a set of archives to assemble.
  *
- * The manifest exists so "download the AT" stays ONE tap that fans out to
- * however many archives the trail currently needs - which is what keeps the
- * Downloads screen from becoming a checklist somebody has to get right at a
- * trailhead, with a missing tick costing them the terrain on a ridge.
- * Multi-trail (#100, #193) adds manifests beside this one; the packages
- * themselves are shared, which is why they are referenced here rather than
- * redefined.
+ * SHARED ACROSS TRAILS, WHICH IS THE POINT OF GROUPING IT AT ALL.
+ *
+ * A hiker who has the AT's background and then adds NYNJTC's network must not
+ * re-download the ground both of them stand on. So these packages are keyed
+ * by what they ARE - `ourhike:dem`, `ourhike:corridor-archive` - and never by
+ * which trail wanted them. Nothing in this file is trail-scoped, and nothing
+ * downstream may make it so: a per-trail key would silently duplicate several
+ * hundred megabytes of identical tiles on one phone, which is the failure
+ * #193 exists to prevent.
+ *
+ * What IS per-trail is the trail data - the centerline, the spurs, the POIs,
+ * the elevation profile (lib/trailData.ts). That is the corridor sheet, it is
+ * small, and it is downloaded by default whenever it is missing rather than
+ * being something to choose. Keeping the two apart is what lets the heavy
+ * half be shared and the trail-shaped half be per-trail.
+ *
+ * Honest about today: `background.pmtiles` is still built corridor-shaped,
+ * by buffering the AT centerline. So it is shared in the way this client
+ * treats it - one key, one download, reusable by any trail it covers - and
+ * not yet in the way it is BUILT. The regional build-once-extract-many that
+ * makes it genuinely shared is #185.
  *
  * Versioning deliberately does not live here. Which bytes are current is
  * `latest.json`'s per-artifact hashes (pipeline/DATA_RELEASES.md), and a
  * second scheme in the client would be a second answer to the same question.
  */
-export interface TrailPackages {
-  /** Matches the trail ids the pipeline publishes under. */
-  trailId: string
+export interface BackgroundData {
+  id: string
+  /** What the Downloads screen calls the whole thing. */
   title: string
-  /** Everything this trail's map is made of, in display order. */
+  summary: string
+  /** Every archive the background is made of, in the order they matter. */
   packages: readonly MapPackage[]
 }
 
-export const AT_PACKAGES: TrailPackages = {
-  trailId: 'at',
-  title: 'Appalachian Trail',
+export const BACKGROUND_DATA: BackgroundData = {
+  id: 'background',
+  title: 'Offline map',
+  summary: 'The whole corridor as a map you can read with no signal.',
   packages: MAP_PACKAGES,
 }
 
 /**
- * The packages a hiker can be offered right now: catalogued, and with
- * something published behind them.
+ * The background archives a hiker can be offered right now: catalogued, and
+ * with something published behind them.
  *
  * Note what this does NOT filter on - whether the archive is already on the
- * phone. A downloaded package stays listed so it can be deleted, and an
- * evicted one stays listed so the screen can say so (#190).
+ * phone. A downloaded package stays included so it can be deleted, and an
+ * evicted one stays included so the screen can say so (#190).
  */
-export function offeredPackages(trail: TrailPackages = AT_PACKAGES): MapPackage[] {
-  return trail.packages.filter((pkg) => pkg.source !== null)
+export function offeredPackages(
+  background: BackgroundData = BACKGROUND_DATA,
+): OfferedPackage[] {
+  return background.packages.filter((pkg): pkg is OfferedPackage => pkg.source !== null)
 }
 
-/**
- * Whether any of the trail is still on the phone once `removedKey` is gone.
- *
- * This is what decides the fate of the data that belongs to the TRAIL rather
- * than to any one package - the centerline, the POIs, the elevation profile.
- * Deleting those alongside whichever package a hiker happened to remove
- * first would strip the trail line off a map whose other packages they
- * deliberately kept.
- */
-export function anyPackageRemains(
-  packages: readonly MapPackage[],
-  removedKey: string,
-  isDownloaded: (idbKey: string) => boolean,
-): boolean {
-  return packages.some((pkg) => pkg.idbKey !== removedKey && isDownloaded(pkg.idbKey))
+/** What the background will cost in total: every archive that is actually
+ *  offered, at the chosen detail. Every one of them has a measured size, so
+ *  this is a sum of measurements and never carries an estimate. */
+export function backgroundSizeBytes(
+  detail: DetailLevel,
+  background: BackgroundData = BACKGROUND_DATA,
+): number {
+  return offeredPackages(background).reduce(
+    (total, pkg) => total + packageSizeBytes(pkg, detail),
+    0,
+  )
 }
 
 /**
@@ -172,27 +207,20 @@ export function anyPackageRemains(
  * The detail level is an argument rather than a lookup because it is the
  * hiker's live choice: a tap has to fetch the tier selected at the moment of
  * tapping, not the one selected when a callback was built.
- *
- * Null for a package with no source - which callers reach only by asking
- * about a package `offeredPackages()` filtered out.
  */
-export function packageDownloadUrl(pkg: MapPackage, detail: DetailLevel): string | null {
-  if (pkg.source === null) return null
+export function packageDownloadUrl(pkg: OfferedPackage, detail: DetailLevel): string {
   return pkg.source.kind === 'tiered' ? archiveUrl(detail) : dataUrl(pkg.source.artifact)
 }
 
 /**
- * What this package will cost in bytes, or null where nothing has measured
- * it yet.
+ * What this package will cost in bytes.
  *
- * Null rather than a guess, and the room warning leaves a null out of its
- * sum: the sizes shown before a download are held to ±0.6% against measured
- * artifacts (pipeline/README.md), and an estimate quietly folded into that
- * total would be a number nobody measured presented at the same weight as
- * numbers somebody did.
+ * Always a real number, and always a measured one: the sizes shown before a
+ * download are held to ±0.6% against measured artifacts (pipeline/README.md),
+ * and `OfferedPackage` exists so that a package with no measurement behind it
+ * cannot reach this function at all.
  */
-export function packageSizeBytes(pkg: MapPackage, detail: DetailLevel): number | null {
-  if (pkg.source === null) return null
+export function packageSizeBytes(pkg: OfferedPackage, detail: DetailLevel): number {
   return pkg.source.kind === 'tiered'
     ? getDownloadDetail(detail).sizeBytes
     : pkg.source.sizeBytes

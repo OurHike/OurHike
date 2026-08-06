@@ -5,60 +5,50 @@
 // out. Kept as its own component because what it renders is the download and
 // nothing else, which is what all of the tests below it are about.
 //
-// ONE TRAIL, several packages, since #192. The wireframe drew a per-section
-// list with override sheets, roll-up totals and mixed-detail seam messaging;
-// ROADMAP.md Phase 2 had already settled on a single whole-corridor package,
-// and none of that retired model appears here. What changed is a different
-// axis entirely: the offline map program (#184) ships a raster sheet, a
-// vector basemap and a DEM to the same phone, so the screen lists the
-// PACKAGES a trail is made of - never geographic sections of one.
+// ONE DOWNLOAD, CHOSEN - NOT A LIST OF PIECES TO ASSEMBLE.
 //
-// The distinction is the whole point of the fan-out button below. Sections
-// were a choice a hiker had to get right, mile by mile, with a wrong answer
-// costing them map where they were walking. Packages are not a choice: the
-// trail's manifest (lib/packages.ts) says what its map is made of, and one
-// tap takes all of it. The list exists so that progress, failures and
-// deletion are reportable per package - not so that anyone has to plan.
+// The wireframe drew a per-section list with override sheets, roll-up totals
+// and mixed-detail seam messaging; ROADMAP.md Phase 2 retired that in favour
+// of one whole-corridor package, and none of it appears here. Since #192 the
+// map's background is several archives underneath - a raster sheet, and
+// (#185/#186) a vector basemap and a DEM - but that is a fact about storage,
+// not a choice to hand a hiker. What they choose is what the background IS:
+// its detail level here, and which sheet is drawn from it in the background
+// picker. The archives follow from the choice.
 //
-// Each package's own card - and every honesty property it carries - is
-// PackageCard.tsx.
+// So this screen holds one card per downloadable THING, and today there is
+// exactly one: the background (lib/packages.ts). The trail's own data - the
+// centerline, the spurs, the POIs, the elevation profile - is deliberately
+// not here at all. It is small, it is what makes the app an app rather than a
+// map viewer, and it is fetched by default whenever it is missing
+// (lib/trailData.ts, App.tsx), so presenting it as a decision would be
+// offering someone a choice they have already been given.
 
 import { useEffect, useState } from 'react'
 import { formatBytes } from '../lib/formatBytes'
 import type { DetailLevel } from '../lib/downloadDetail'
-import type { MapPackage } from '../lib/packages'
 import { estimateAvailableBytes, type PersistenceState } from '../lib/storageHealth'
 import { useDesktop } from '../lib/useDesktop'
-import { PackageCard, type DownloadStatus } from './PackageCard'
+import { DownloadCard, type DownloadStatus } from './DownloadCard'
 import './downloads.css'
 
-/** One package, as the screen needs it: what it is, where its download has
- *  got to, and what tapping does. Built by the shell, which is where the
- *  store and the catalog meet (App.tsx). */
-export interface PackageDownload {
-  pkg: MapPackage
+export interface DownloadsProps {
+  /** The background, as one thing: its combined state across every archive it
+   *  is made of (lib/backgroundStatus.ts). */
   status: DownloadStatus
+  title: string
+  summary: string
+  /** What the whole background will take, at the chosen detail. */
+  sizeBytes: number
+  detailLevel: DetailLevel
+  /** Its own failure, if it has one. */
   error?: string | null
-  /** What this package will take, where that is knowable before the transfer
-   *  starts. Null for a package whose published size is not yet measured -
-   *  the room warning then simply leaves it out rather than guessing. */
-  sizeBytes: number | null
-  detail?: { level: DetailLevel; onChange: (level: DetailLevel) => void }
+  /** What asking for durable storage came to - null while unanswered. */
+  persistence?: PersistenceState | null
+  onChangeDetail: (level: DetailLevel) => void
   onStart: () => void
   onResume: () => void
   onDelete: () => void
-}
-
-export interface DownloadsProps {
-  /** The trail's packages, in display order. Never empty in the shipped app;
-   *  a build with no data source configured says so above this. */
-  packages: readonly PackageDownload[]
-  /** What asking for durable storage came to - null while unanswered. */
-  persistence?: PersistenceState | null
-  /** Start every package that is not already on the phone. Offered only when
-   *  there is more than one, since with one package it would be a second
-   *  button doing what the card's own button does. */
-  onStartAll?: () => void
 }
 
 /**
@@ -85,34 +75,32 @@ function useAvailableBytes(): number | null {
   return available
 }
 
-/** Packages whose bytes are not on the phone - what a download would add. A
- *  failed one is left out: some of it is already stored, so counting its full
- *  size would overstate what is still to come. */
-function isAbsent(entry: PackageDownload): boolean {
-  return entry.status.state === 'not-downloaded' || entry.status.state === 'evicted'
-}
-
-export function Downloads({ packages, persistence = null, onStartAll }: DownloadsProps) {
+export function Downloads({
+  status,
+  title,
+  summary,
+  sizeBytes,
+  detailLevel,
+  error = null,
+  persistence = null,
+  onChangeDetail,
+  onStart,
+  onResume,
+  onDelete,
+}: DownloadsProps) {
   const isDesktop = useDesktop()
   const availableBytes = useAvailableBytes()
-
-  const absent = packages.filter(isAbsent)
-  const pendingBytes = absent.reduce((total, entry) => total + (entry.sizeBytes ?? 0), 0)
 
   // Warned, never refused: estimate() is deliberately fuzzy (browsers round
   // it against fingerprinting), and a hiker at a trailhead deciding to try
   // anyway is making an informed call, which is the whole point.
+  //
+  // Against the size of the WHOLE background, since that is what one tap now
+  // brings down - not the size of whichever archive happens to be first.
   const spaceTight =
-    pendingBytes > 0 && availableBytes !== null && availableBytes < pendingBytes
-
-  const everythingEvicted =
-    absent.length > 0 && absent.every((entry) => entry.status.state === 'evicted')
-
-  // One tap for the trail's whole manifest. Withheld for a single package
-  // because it would then be a duplicate of that card's own button, and
-  // withheld when nothing is missing because there would be nothing to do.
-  const showStartAll =
-    onStartAll !== undefined && packages.length > 1 && absent.length > 0
+    (status.state === 'not-downloaded' || status.state === 'evicted') &&
+    availableBytes !== null &&
+    availableBytes < sizeBytes
 
   return (
     <div className="downloads">
@@ -138,41 +126,30 @@ export function Downloads({ packages, persistence = null, onStartAll }: Download
 
       {spaceTight && (
         <p className="downloads__warning" role="status">
-          {everythingEvicted
+          {status.state === 'evicted'
             ? `Space still looks tight — about ${formatBytes(availableBytes ?? 0)} free against a ${formatBytes(
-                pendingBytes,
+                sizeBytes,
               )} download. Freeing up space first makes another removal less likely.`
             : `This phone reports about ${formatBytes(availableBytes ?? 0)} free for the app — the ${formatBytes(
-                pendingBytes,
+                sizeBytes,
               )} download may not fit. A lighter detail level might, or free up some space first.`}
         </p>
       )}
 
-      {showStartAll && (
-        <button type="button" className="downloads__primary" onClick={onStartAll}>
-          Download everything the map needs
-        </button>
-      )}
-
-      <ul className="downloads__packages">
-        {packages.map((entry) => (
-          <li key={entry.pkg.id}>
-            <PackageCard
-              pkg={entry.pkg}
-              status={entry.status}
-              error={entry.error}
-              detail={entry.detail}
-              persistence={persistence}
-              // With one package the paragraph above has already named what
-              // is being downloaded, and a heading would only say it twice.
-              showHeading={packages.length > 1}
-              onStart={entry.onStart}
-              onResume={entry.onResume}
-              onDelete={entry.onDelete}
-            />
-          </li>
-        ))}
-      </ul>
+      <DownloadCard
+        title={title}
+        summary={summary}
+        status={status}
+        error={error}
+        detail={{ level: detailLevel, onChange: onChangeDetail }}
+        persistence={persistence}
+        // The paragraph above has already named what is being downloaded, and
+        // with one card a heading would only say it a second time.
+        showHeading={false}
+        onStart={onStart}
+        onResume={onResume}
+        onDelete={onDelete}
+      />
     </div>
   )
 }

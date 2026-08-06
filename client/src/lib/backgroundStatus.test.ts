@@ -1,0 +1,149 @@
+import { describe, it, expect } from 'vitest'
+import { combineBackgroundStatus, type ArchiveState } from './backgroundStatus'
+
+// The background is one thing to a hiker and several archives in the store
+// (#192), and this is where the two meet. What matters in every case below is
+// that the sentence the screen ends up showing is TRUE of the whole
+// background - not of whichever archive happened to be first.
+
+const MB = 1_000_000
+
+const absent = (sizeBytes: number): ArchiveState => ({
+  status: { state: 'not-downloaded' },
+  sizeBytes,
+})
+
+const done = (sizeBytes: number, completedAt = new Date('2026-08-01T08:00:00Z')) => ({
+  status: { state: 'downloaded' as const, totalBytes: sizeBytes, completedAt },
+  sizeBytes,
+})
+
+const transferring = (received: number, sizeBytes: number): ArchiveState => ({
+  status: { state: 'downloading', receivedBytes: received, totalBytes: sizeBytes },
+  sizeBytes,
+})
+
+const stopped = (received: number, sizeBytes: number): ArchiveState => ({
+  status: { state: 'failed', receivedBytes: received, totalBytes: sizeBytes },
+  sizeBytes,
+})
+
+const evicted = (
+  sizeBytes: number,
+  completedAt: Date | null = new Date('2026-07-20T08:00:00Z'),
+): ArchiveState => ({
+  status: { state: 'evicted', completedAt },
+  sizeBytes,
+})
+
+describe('one archive', () => {
+  it('is handed straight back, which is every case the shipped app has', () => {
+    // Only the raster sheet is published today (#185/#186 are the other two),
+    // so the app always combines exactly one status.
+    const only = stopped(100 * MB, 314 * MB)
+
+    expect(combineBackgroundStatus([only])).toEqual(only.status)
+  })
+
+  it('says nothing is downloaded when there is nothing to combine', () => {
+    expect(combineBackgroundStatus([])).toEqual({ state: 'not-downloaded' })
+  })
+})
+
+describe('several archives, one answer', () => {
+  it('adds up a transfer across all of them', () => {
+    const combined = combineBackgroundStatus([
+      transferring(100 * MB, 314 * MB),
+      absent(480 * MB),
+    ])
+
+    // The untouched archive contributes its published size to the total, so
+    // the figure does not grow as each piece begins - a download that keeps
+    // getting bigger reads as one that will never end.
+    expect(combined).toEqual({
+      state: 'downloading',
+      receivedBytes: 100 * MB,
+      totalBytes: 794 * MB,
+    })
+  })
+
+  it('is downloaded only when every archive is', () => {
+    const combined = combineBackgroundStatus([done(314 * MB), done(480 * MB)])
+
+    expect(combined).toEqual({
+      state: 'downloaded',
+      totalBytes: 794 * MB,
+      completedAt: new Date('2026-08-01T08:00:00Z'),
+    })
+  })
+
+  it('dates a finished background by the last piece to land', () => {
+    const combined = combineBackgroundStatus([
+      done(314 * MB, new Date('2026-07-01T08:00:00Z')),
+      done(480 * MB, new Date('2026-08-01T08:00:00Z')),
+    ])
+
+    expect(combined).toMatchObject({ completedAt: new Date('2026-08-01T08:00:00Z') })
+  })
+
+  it('offers to carry on when one archive finished and another never started', () => {
+    // Not "downloaded" - that would promise terrain a hiker does not have -
+    // and not "not downloaded", which would offer to re-fetch bytes already
+    // on the phone. Partly here, and resumable, is the true answer.
+    const combined = combineBackgroundStatus([done(314 * MB), absent(480 * MB)])
+
+    expect(combined).toEqual({
+      state: 'failed',
+      receivedBytes: 314 * MB,
+      totalBytes: 794 * MB,
+    })
+  })
+
+  it('counts what is really here when one archive stopped partway', () => {
+    const combined = combineBackgroundStatus([
+      done(314 * MB),
+      stopped(100 * MB, 480 * MB),
+    ])
+
+    expect(combined).toEqual({
+      state: 'failed',
+      receivedBytes: 414 * MB,
+      totalBytes: 794 * MB,
+    })
+  })
+
+  it('is not downloaded when none of it is here', () => {
+    expect(combineBackgroundStatus([absent(314 * MB), absent(480 * MB)])).toEqual({
+      state: 'not-downloaded',
+    })
+  })
+})
+
+describe('precedence, ordered by what a hiker needs to know', () => {
+  it('reports a live transfer over everything else', () => {
+    const combined = combineBackgroundStatus([
+      evicted(314 * MB),
+      transferring(50 * MB, 480 * MB),
+    ])
+
+    expect(combined.state).toBe('downloading')
+  })
+
+  it('says the phone removed part of the map before saying part is missing', () => {
+    // #190's sentence explains WHY something is gone, and "some of it is
+    // missing" does not. A hiker who is told only the second re-downloads
+    // and watches it vanish again.
+    const combined = combineBackgroundStatus([evicted(314 * MB), done(480 * MB)])
+
+    expect(combined).toEqual({
+      state: 'evicted',
+      completedAt: new Date('2026-08-01T08:00:00Z'),
+    })
+  })
+
+  it('still says it when the completion date did not survive', () => {
+    const combined = combineBackgroundStatus([evicted(314 * MB, null), absent(480 * MB)])
+
+    expect(combined).toEqual({ state: 'evicted', completedAt: null })
+  })
+})

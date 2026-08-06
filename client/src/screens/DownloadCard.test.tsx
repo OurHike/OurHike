@@ -1,11 +1,10 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { PackageCard } from './PackageCard'
-import { CORRIDOR_BACKGROUND_PACKAGE, DEM_PACKAGE } from '../lib/packages'
+import { DownloadCard } from './DownloadCard'
 
-// One package's card, in every state it can be in. These were the Downloads
-// screen's own tests until #192 split the screen into a list of cards; the
+// One download's card, in every state it can be in. These were the Downloads
+// screen's own tests until #192 lifted the body into a card of its own; the
 // states, and the reasons each is asserted, are unchanged.
 //
 // WIREFRAMES.md `7a` requires a failed download to RESUME rather than
@@ -13,7 +12,8 @@ import { CORRIDOR_BACKGROUND_PACKAGE, DEM_PACKAGE } from '../lib/packages'
 // 90% is exactly the failure someone on trailhead wifi cannot afford.
 
 const PROPS = {
-  pkg: CORRIDOR_BACKGROUND_PACKAGE,
+  title: 'Offline map',
+  summary: 'The whole corridor as a map you can read with no signal.',
   status: { state: 'not-downloaded' as const },
   detail: { level: 'standard' as const, onChange: vi.fn() },
   onStart: vi.fn(),
@@ -26,9 +26,9 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-describe('PackageCard', () => {
+describe('DownloadCard', () => {
   it('offers exactly the three detail levels with their real measured sizes', () => {
-    render(<PackageCard {...PROPS} />)
+    render(<DownloadCard {...PROPS} />)
 
     expect(screen.getAllByRole('radio')).toHaveLength(3)
     expect(screen.getByText(/64 MB/)).toBeInTheDocument()
@@ -37,7 +37,7 @@ describe('PackageCard', () => {
   })
 
   it('marks Standard as recommended', () => {
-    render(<PackageCard {...PROPS} />)
+    render(<DownloadCard {...PROPS} />)
 
     expect(screen.getByRole('radio', { name: /standard/i })).toBeChecked()
     expect(screen.getByText(/recommended/i)).toBeInTheDocument()
@@ -45,7 +45,7 @@ describe('PackageCard', () => {
 
   it('reports a detail change rather than silently re-downloading', async () => {
     const user = userEvent.setup()
-    render(<PackageCard {...PROPS} />)
+    render(<DownloadCard {...PROPS} />)
 
     await user.click(screen.getByRole('radio', { name: /fine/i }))
 
@@ -53,10 +53,17 @@ describe('PackageCard', () => {
     expect(PROPS.onStart).not.toHaveBeenCalled()
   })
 
-  it('shows no detail picker for a package that does not have tiers', () => {
-    // Only the raster sheet is published Light/Standard/Fine. A picker over a
-    // package with one size would offer a choice that does not exist.
-    render(<PackageCard {...PROPS} pkg={DEM_PACKAGE} detail={undefined} />)
+  it('shows no detail picker where there are no levels to pick', () => {
+    // The background has tiers; a download with one size does not, and a
+    // picker over it would offer a choice that does not exist.
+    render(
+      <DownloadCard
+        {...PROPS}
+        title="Terrain"
+        summary="Hillshade and contours."
+        detail={undefined}
+      />,
+    )
 
     expect(screen.queryByRole('radio')).toBe(null)
     expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument()
@@ -64,7 +71,7 @@ describe('PackageCard', () => {
 
   it('starts the download when asked', async () => {
     const user = userEvent.setup()
-    render(<PackageCard {...PROPS} />)
+    render(<DownloadCard {...PROPS} />)
 
     await user.click(screen.getByRole('button', { name: /download/i }))
 
@@ -73,7 +80,7 @@ describe('PackageCard', () => {
 
   it('shows how far along a download is', () => {
     render(
-      <PackageCard
+      <DownloadCard
         {...PROPS}
         status={{
           state: 'downloading',
@@ -88,7 +95,7 @@ describe('PackageCard', () => {
 
   it('states progress in bytes too, so the number means something concrete', () => {
     render(
-      <PackageCard
+      <DownloadCard
         {...PROPS}
         status={{
           state: 'downloading',
@@ -108,7 +115,7 @@ describe('PackageCard', () => {
     // the tenths digit spun unreadably, and trimming "10.0" to "10" changed
     // the string's width so the line jumped.
     render(
-      <PackageCard
+      <DownloadCard
         {...PROPS}
         status={{
           state: 'downloading',
@@ -127,7 +134,7 @@ describe('PackageCard', () => {
     // received figure sits right-aligned in a slot as wide as the total will
     // ever make it - ch units, exact because the byte line is monospace.
     render(
-      <PackageCard
+      <DownloadCard
         {...PROPS}
         status={{
           state: 'downloading',
@@ -143,7 +150,7 @@ describe('PackageCard', () => {
   it('offers to RESUME a failed download, never to restart it', async () => {
     const user = userEvent.setup()
     render(
-      <PackageCard
+      <DownloadCard
         {...PROPS}
         status={{ state: 'failed', receivedBytes: 280_000_000, totalBytes: 314_000_000 }}
       />,
@@ -157,7 +164,7 @@ describe('PackageCard', () => {
 
   it('says how much is already on the phone when a download failed partway', () => {
     render(
-      <PackageCard
+      <DownloadCard
         {...PROPS}
         status={{ state: 'failed', receivedBytes: 280_000_000, totalBytes: 314_000_000 }}
       />,
@@ -168,7 +175,7 @@ describe('PackageCard', () => {
 
   it('shows the downloaded state with what is stored and when', () => {
     render(
-      <PackageCard
+      <DownloadCard
         {...PROPS}
         status={{
           state: 'downloaded',
@@ -186,7 +193,7 @@ describe('PackageCard', () => {
     // The first progress callback can land before content-length has been
     // read, and "NaN%" on a progress bar reads as a broken app.
     render(
-      <PackageCard
+      <DownloadCard
         {...PROPS}
         status={{ state: 'downloading', receivedBytes: 0, totalBytes: 0 }}
       />,
@@ -198,33 +205,47 @@ describe('PackageCard', () => {
   })
 })
 
-describe('naming the package a card is about (#192)', () => {
-  it('is reachable by the package it belongs to, so two cards are never confused', () => {
-    render(<PackageCard {...PROPS} pkg={DEM_PACKAGE} detail={undefined} />)
+describe('naming what a card is about (#192)', () => {
+  it('is reachable by the thing it belongs to, so two cards are never confused', () => {
+    render(
+      <DownloadCard
+        {...PROPS}
+        title="Terrain"
+        summary="Hillshade and contours."
+        detail={undefined}
+      />,
+    )
 
-    expect(screen.getByRole('region', { name: DEM_PACKAGE.title })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Terrain' })).toBeInTheDocument()
   })
 
-  it('names and describes the package when it is one of several', () => {
-    render(<PackageCard {...PROPS} pkg={DEM_PACKAGE} detail={undefined} showHeading />)
+  it('names and describes it when it is one of several', () => {
+    render(
+      <DownloadCard
+        {...PROPS}
+        title="Terrain"
+        summary="Hillshade and contours."
+        detail={undefined}
+        showHeading
+      />,
+    )
 
-    expect(screen.getByRole('heading', { name: DEM_PACKAGE.title })).toBeInTheDocument()
-    expect(screen.getByText(DEM_PACKAGE.summary)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Terrain' })).toBeInTheDocument()
+    expect(screen.getByText('Hillshade and contours.')).toBeInTheDocument()
   })
 
   it('says it once when it is the only card, since the screen has already said it', () => {
-    render(<PackageCard {...PROPS} showHeading={false} />)
+    render(<DownloadCard {...PROPS} showHeading={false} />)
 
     expect(screen.queryByRole('heading')).toBe(null)
   })
 })
 
-describe('a failure belongs to the package it happened to (#192)', () => {
-  it('reports this package’s error in this package’s card', () => {
+describe('a failure belongs to the download it happened to (#192)', () => {
+  it('reports this download’s error in its own card', () => {
     render(
-      <PackageCard
+      <DownloadCard
         {...PROPS}
-        pkg={DEM_PACKAGE}
         detail={undefined}
         error="Archive download failed: 404 Not Found"
       />,
@@ -234,7 +255,7 @@ describe('a failure belongs to the package it happened to (#192)', () => {
   })
 
   it('stays quiet when nothing has failed', () => {
-    render(<PackageCard {...PROPS} />)
+    render(<DownloadCard {...PROPS} />)
 
     expect(screen.queryByRole('alert')).toBe(null)
   })
@@ -242,7 +263,7 @@ describe('a failure belongs to the package it happened to (#192)', () => {
   it('keeps offering the button the failure was about', () => {
     // "Nothing happened" is the one answer that leaves someone with no idea
     // whether to retry: the reason is stated, and retrying stays one tap.
-    render(<PackageCard {...PROPS} error="Archive download failed: 404 Not Found" />)
+    render(<DownloadCard {...PROPS} error="Archive download failed: 404 Not Found" />)
 
     expect(screen.getByRole('button', { name: /download the map/i })).toBeInTheDocument()
   })
@@ -251,7 +272,7 @@ describe('a failure belongs to the package it happened to (#192)', () => {
 describe('eviction, said plainly (#190)', () => {
   it('says the map was removed by the phone, never "not downloaded"', () => {
     render(
-      <PackageCard
+      <DownloadCard
         {...PROPS}
         status={{ state: 'evicted', completedAt: new Date('2026-07-20T08:00:00Z') }}
       />,
@@ -264,13 +285,13 @@ describe('eviction, said plainly (#190)', () => {
   })
 
   it('still reads honestly when the completion date did not survive', () => {
-    render(<PackageCard {...PROPS} status={{ state: 'evicted', completedAt: null }} />)
+    render(<DownloadCard {...PROPS} status={{ state: 'evicted', completedAt: null }} />)
 
     expect(screen.getByText(/no longer on this phone/i)).toBeInTheDocument()
   })
 
   it('starts a fresh download from the eviction message', async () => {
-    render(<PackageCard {...PROPS} status={{ state: 'evicted', completedAt: null }} />)
+    render(<DownloadCard {...PROPS} status={{ state: 'evicted', completedAt: null }} />)
 
     await userEvent.click(screen.getByRole('button', { name: /download it again/i }))
 
@@ -286,27 +307,27 @@ describe('durability, at its honest weight (#190)', () => {
   }
 
   it('says nothing extra when persistence was granted - protected is the expected state', () => {
-    render(<PackageCard {...PROPS} status={DOWNLOADED} persistence="granted" />)
+    render(<DownloadCard {...PROPS} status={DOWNLOADED} persistence="granted" />)
 
     expect(screen.queryByText(/reclaimable/i)).not.toBeInTheDocument()
   })
 
   it('states best-effort storage when the browser declined to protect it', () => {
-    render(<PackageCard {...PROPS} status={DOWNLOADED} persistence="denied" />)
+    render(<DownloadCard {...PROPS} status={DOWNLOADED} persistence="denied" />)
 
     expect(screen.getByText(/reclaimable if storage runs very low/i)).toBeInTheDocument()
     expect(screen.getByText(/declined/i)).toBeInTheDocument()
   })
 
   it('states best-effort storage where the API does not exist, without claiming a denial', () => {
-    render(<PackageCard {...PROPS} status={DOWNLOADED} persistence="unsupported" />)
+    render(<DownloadCard {...PROPS} status={DOWNLOADED} persistence="unsupported" />)
 
     expect(screen.getByText(/reclaimable if storage runs very low/i)).toBeInTheDocument()
     expect(screen.queryByText(/declined/i)).not.toBeInTheDocument()
   })
 
   it('keeps quiet while the answer has not arrived', () => {
-    render(<PackageCard {...PROPS} status={DOWNLOADED} persistence={null} />)
+    render(<DownloadCard {...PROPS} status={DOWNLOADED} persistence={null} />)
 
     expect(screen.queryByText(/reclaimable/i)).not.toBeInTheDocument()
   })

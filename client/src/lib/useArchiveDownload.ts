@@ -34,7 +34,7 @@ import {
   requestPersistence,
   type PersistenceState,
 } from './storageHealth'
-import type { DownloadStatus } from '../screens/PackageCard'
+import type { DownloadStatus } from '../screens/DownloadCard'
 
 /** The status when the blob is gone: evicted if a completed archive was ever
  *  recorded here, plainly not-downloaded otherwise. The one distinction #190

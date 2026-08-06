@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  anyPackageRemains,
-  AT_PACKAGES,
+  BACKGROUND_DATA,
+  backgroundSizeBytes,
   BASEMAP_PACKAGE,
   CORRIDOR_BACKGROUND_PACKAGE,
   DEM_PACKAGE,
@@ -9,7 +9,7 @@ import {
   offeredPackages,
   packageDownloadUrl,
   packageSizeBytes,
-  type MapPackage,
+  type OfferedPackage,
 } from './packages'
 import { archiveUrl, dataUrl } from './config'
 import { getDownloadDetail } from './downloadDetail'
@@ -17,11 +17,11 @@ import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
 
 // The catalog is where a package's identity lives, so what these cover is
 // mostly identity: keys that must not change under a phone that already holds
-// an archive, keys that must not collide, and the one rule that keeps the
-// Downloads screen honest - a package with nothing published behind it is
-// never offered.
+// an archive, keys that must not collide, keys that are never trail-scoped,
+// and the one rule that keeps the Downloads screen honest - a package with
+// nothing published behind it is never offered.
 
-const PUBLISHED_ELSEWHERE: MapPackage = {
+const PUBLISHED_ELSEWHERE: OfferedPackage = {
   id: 'example',
   idbKey: 'ourhike:example',
   title: 'Example',
@@ -48,27 +48,36 @@ describe('the package catalog', () => {
     expect(new Set(keys).size).toBe(keys.length)
   })
 
-  it('says what every package is, in words a hiker chooses by', () => {
+  it('names no trail in any key, so two trails share one copy', () => {
+    // The background is shared: a hiker who has the AT's and then adds
+    // NYNJTC's must not re-download the ground both stand on. A trail-scoped
+    // key would put two identical copies on one phone (#193).
     for (const pkg of MAP_PACKAGES) {
-      expect(pkg.title.length).toBeGreaterThan(0)
-      expect(pkg.summary.length).toBeGreaterThan(0)
+      expect(pkg.idbKey).not.toMatch(/\b(at|nynjtc|trail)[-:]/i)
     }
   })
 })
 
-describe('what the trail is made of', () => {
-  it('names the packages the AT needs, so one tap can fan out to all of them', () => {
-    expect(AT_PACKAGES.packages).toEqual(MAP_PACKAGES)
-    expect(AT_PACKAGES.packages).toContain(CORRIDOR_BACKGROUND_PACKAGE)
-    expect(AT_PACKAGES.packages).toContain(BASEMAP_PACKAGE)
-    expect(AT_PACKAGES.packages).toContain(DEM_PACKAGE)
+describe('the background, as one thing', () => {
+  it('is made of every background archive this build knows', () => {
+    expect(BACKGROUND_DATA.packages).toEqual(MAP_PACKAGES)
+  })
+
+  it('carries the trail’s own data nowhere in it', () => {
+    // The centerline, spurs, POIs and elevation profile are per-trail and
+    // downloaded by default (lib/trailData.ts). Putting them in here would
+    // make the shared half trail-shaped and the always-on half a choice.
+    const ids = BACKGROUND_DATA.packages.map((pkg) => pkg.id)
+
+    expect(ids).not.toContain('trails')
+    expect(ids).not.toContain('poi')
   })
 
   it('carries no version of its own', () => {
     // Which bytes are current is latest.json's per-artifact hashes
     // (pipeline/DATA_RELEASES.md). A second scheme here would be a second
     // answer to the same question.
-    expect(AT_PACKAGES).not.toHaveProperty('version')
+    expect(BACKGROUND_DATA).not.toHaveProperty('version')
   })
 })
 
@@ -85,8 +94,9 @@ describe('offering only what is actually published', () => {
 
   it('offers a package the moment it has a source', () => {
     const offered = offeredPackages({
-      trailId: 'example',
+      id: 'example',
       title: 'Example',
+      summary: 'Example background.',
       packages: [BASEMAP_PACKAGE, PUBLISHED_ELSEWHERE],
     })
 
@@ -98,53 +108,14 @@ describe('offering only what is actually published', () => {
     // delete it, and the only place an eviction can be reported (#190).
     expect(offeredPackages()).toContain(CORRIDOR_BACKGROUND_PACKAGE)
   })
-})
 
-describe('what a deletion takes with it', () => {
-  const downloaded = (...keys: string[]) => {
-    const held = new Set(keys)
-    return (idbKey: string) => held.has(idbKey)
-  }
-
-  it('keeps the trail’s own data while another package is still here', () => {
-    // Someone reclaiming the raster sheet's gigabyte and keeping the terrain
-    // must not lose the trail line off the map they kept.
-    expect(
-      anyPackageRemains(
-        MAP_PACKAGES,
-        CORRIDOR_BACKGROUND_PACKAGE.idbKey,
-        downloaded(CORRIDOR_BACKGROUND_PACKAGE.idbKey, DEM_PACKAGE.idbKey),
-      ),
-    ).toBe(true)
-  })
-
-  it('lets it go when the package being removed was the last one', () => {
-    expect(
-      anyPackageRemains(
-        MAP_PACKAGES,
-        CORRIDOR_BACKGROUND_PACKAGE.idbKey,
-        downloaded(CORRIDOR_BACKGROUND_PACKAGE.idbKey),
-      ),
-    ).toBe(false)
-  })
-
-  it('does not count the package being removed as a reason to keep it', () => {
-    // The status map is read before the deletion settles, so the removed
-    // package can still read as downloaded. Counting it would keep the trail
-    // data on a phone holding no map at all.
-    expect(
-      anyPackageRemains(
-        [CORRIDOR_BACKGROUND_PACKAGE],
-        CORRIDOR_BACKGROUND_PACKAGE.idbKey,
-        downloaded(CORRIDOR_BACKGROUND_PACKAGE.idbKey),
-      ),
-    ).toBe(false)
-  })
-
-  it('ignores packages that are merely offered, not downloaded', () => {
-    expect(
-      anyPackageRemains(MAP_PACKAGES, CORRIDOR_BACKGROUND_PACKAGE.idbKey, downloaded()),
-    ).toBe(false)
+  it('gives every offered package a size, with no null to branch on', () => {
+    // The point of OfferedPackage: a package that can be downloaded always
+    // has a measured size, so nothing downstream needs a "size unknown" path
+    // it could get wrong.
+    for (const pkg of offeredPackages()) {
+      expect(packageSizeBytes(pkg, 'standard')).toBeGreaterThan(0)
+    }
   })
 })
 
@@ -169,15 +140,12 @@ describe('where a package’s bytes come from', () => {
       dataUrl('example.pmtiles'),
     )
   })
-
-  it('has no URL at all where nothing is published', () => {
-    expect(packageDownloadUrl(DEM_PACKAGE, 'standard')).toBeNull()
-  })
 })
 
-describe('what a package will cost', () => {
-  it('is the chosen tier’s measured size for the raster sheet', () => {
+describe('what the background will cost', () => {
+  it('is the chosen tier’s measured size while the raster sheet is all of it', () => {
     for (const level of ['light', 'standard', 'fine'] as const) {
+      expect(backgroundSizeBytes(level)).toBe(getDownloadDetail(level).sizeBytes)
       expect(packageSizeBytes(CORRIDOR_BACKGROUND_PACKAGE, level)).toBe(
         getDownloadDetail(level).sizeBytes,
       )
@@ -188,10 +156,29 @@ describe('what a package will cost', () => {
     expect(packageSizeBytes(PUBLISHED_ELSEWHERE, 'standard')).toBe(12_345)
   })
 
-  it('is null - never a guess - where nobody has measured it', () => {
-    // The sizes shown before a download are held to ±0.6% against measured
-    // artifacts (pipeline/README.md). An estimate returned here would be
-    // shown at the same weight as a measurement.
-    expect(packageSizeBytes(BASEMAP_PACKAGE, 'standard')).toBeNull()
+  it('sums every archive the background is made of', () => {
+    // One tap brings all of them, so the figure shown beside "may not fit"
+    // has to be all of them too.
+    const background = {
+      id: 'example',
+      title: 'Example',
+      summary: 'Example background.',
+      packages: [CORRIDOR_BACKGROUND_PACKAGE, PUBLISHED_ELSEWHERE],
+    }
+
+    expect(backgroundSizeBytes('standard', background)).toBe(
+      getDownloadDetail('standard').sizeBytes + 12_345,
+    )
+  })
+
+  it('counts only what is offered, never an archive nobody can download', () => {
+    const background = {
+      id: 'example',
+      title: 'Example',
+      summary: 'Example background.',
+      packages: [PUBLISHED_ELSEWHERE, BASEMAP_PACKAGE, DEM_PACKAGE],
+    }
+
+    expect(backgroundSizeBytes('standard', background)).toBe(12_345)
   })
 })

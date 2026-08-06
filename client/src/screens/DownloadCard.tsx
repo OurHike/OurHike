@@ -1,10 +1,13 @@
-// One package's row on the Downloads screen (#192).
+// One downloadable thing on the Downloads screen, in every state it can be
+// in (#192).
 //
 // This is today's whole-screen download body, lifted out unchanged in
-// behaviour so that N of them can sit in a list: the offline map program
-// (#184) puts a raster sheet, a vector basemap and a DEM on the same phone,
-// and each has its own bytes, its own progress and its own failures. What a
-// hiker must never see is one card's trouble reported as another's.
+// behaviour and given a name and a summary, so the screen can hold more than
+// one of them. What it renders is a THING A HIKER CHOSE - today the
+// background (lib/packages.ts), which is several archives underneath and one
+// download here. It deliberately knows nothing about archives: how N of them
+// combine into the status handed in is lib/backgroundStatus.ts's job, and a
+// card that knew would be a second place for that rule to be got wrong.
 //
 // Every honesty property the single-card screen had is a property of this
 // card, and they are the reason it stays a pure render of the status it is
@@ -18,14 +21,13 @@
 //     was never downloaded (#190)
 //
 // The detail picker only appears when there is a download to start, and only
-// for the package that HAS detail levels. Once the package is on the phone,
-// changing detail means re-downloading it, which is what Settings' "detail
-// for new downloads" row is for - offering the choice here would imply it
-// could be changed in place.
+// where there are levels to pick. Once it is on the phone, changing detail
+// means re-downloading, which is what Settings' "detail for new downloads"
+// row is for - offering the choice here would imply it could be changed in
+// place.
 
 import { formatBytes, formatBytesLive } from '../lib/formatBytes'
 import type { DetailLevel } from '../lib/downloadDetail'
-import type { MapPackage } from '../lib/packages'
 import type { PersistenceState } from '../lib/storageHealth'
 import { DetailPicker } from './DetailPicker'
 
@@ -39,14 +41,16 @@ export type DownloadStatus =
    *  apart, #190). completedAt is when it finished, when that survived. */
   | { state: 'evicted'; completedAt: Date | null }
 
-export interface PackageCardProps {
-  pkg: MapPackage
+export interface DownloadCardProps {
+  /** What this download is called, and one line on what the bytes buy. */
+  title: string
+  summary: string
   status: DownloadStatus
-  /** This package's own failure, in its own card. A shared notice could only
-   *  ever say "a download failed" without saying which one. */
+  /** This download's own failure, in its own card. A shared notice could
+   *  only ever say "a download failed" without saying which one. */
   error?: string | null
-  /** Present only for a package published in detail tiers - the raster sheet
-   *  (downloadDetail.ts). Other packages simply render no picker. */
+  /** Present where the download has detail levels to choose between - the
+   *  background does (downloadDetail.ts). Absent renders no picker. */
   detail?: { level: DetailLevel; onChange: (level: DetailLevel) => void }
   /** What asking for durable storage came to - null while unanswered. Drives
    *  wording only: best-effort storage is stated, never silently assumed
@@ -69,8 +73,9 @@ function formatDay(date: Date): string {
   return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
 }
 
-export function PackageCard({
-  pkg,
+export function DownloadCard({
+  title,
+  summary,
   status,
   error = null,
   detail,
@@ -79,16 +84,16 @@ export function PackageCard({
   onStart,
   onResume,
   onDelete,
-}: PackageCardProps) {
+}: DownloadCardProps) {
   return (
-    // Labelled as a region so each package's buttons are reachable by the
-    // package they belong to - "Delete the map" says which map only because
-    // of what it sits inside, for a screen reader and for a test alike.
-    <section className="downloads__package" aria-label={pkg.title} data-package={pkg.id}>
+    // Labelled as a region so a card's buttons are reachable by the thing
+    // they belong to - "Delete the map" says which map only because of what
+    // it sits inside, for a screen reader and for a test alike.
+    <section className="downloads__item" aria-label={title}>
       {showHeading && (
         <>
-          <h3 className="downloads__package-title">{pkg.title}</h3>
-          <p className="downloads__package-summary">{pkg.summary}</p>
+          <h3 className="downloads__item-title">{title}</h3>
+          <p className="downloads__item-summary">{summary}</p>
         </>
       )}
 

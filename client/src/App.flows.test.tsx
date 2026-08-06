@@ -475,8 +475,13 @@ describe('downloading everything', () => {
     await waitFor(() => expect(store.get(CORRIDOR_ARCHIVE_KEY)).toBeInstanceOf(Blob))
   })
 
-  it('deletes the map, the trail data and the POIs together', async () => {
-    // Someone reclaiming space expects all of it back, not the raster alone.
+  it('deletes the background and keeps the trail (#192)', async () => {
+    // Someone reclaiming space is reclaiming the BACKGROUND - that is what
+    // the hundreds of megabytes are, and what they chose. The centerline and
+    // the POIs are a rounding error beside it, they are what makes this an
+    // app rather than a map viewer, and they are downloaded by default
+    // wherever they are missing - so taking them would blank the trail line
+    // until the next launch with signal fetched them straight back.
     const user = userEvent.setup()
     hikerOnTrail()
     store.set(CORRIDOR_ARCHIVE_KEY, new Blob(['archive']))
@@ -487,8 +492,8 @@ describe('downloading everything', () => {
     await user.click(await screen.findByRole('button', { name: /delete/i }))
 
     await waitFor(() => expect(store.has(CORRIDOR_ARCHIVE_KEY)).toBe(false))
-    expect(store.has(TRAILS_BLOB_KEY)).toBe(false)
-    expect(store.has(POIS_KEY)).toBe(false)
+    expect(store.has(TRAILS_BLOB_KEY)).toBe(true)
+    expect(store.has(POIS_KEY)).toBe(true)
   })
 
   it('records a new detail level as a max background zoom', async () => {

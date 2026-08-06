@@ -55,6 +55,9 @@ beforeEach(() => {
       Promise.resolve({
         ok: true,
         status: 200,
+        headers: new Headers(),
+        // Bytes, because trail data is hashed before it is stored (#197).
+        arrayBuffer: () => Promise.resolve(new TextEncoder().encode(TRAILS).buffer),
         blob: () => Promise.resolve(new Blob([TRAILS])),
         text: () => Promise.resolve(TRAILS),
         json: () => Promise.resolve(JSON.parse(TRAILS)),

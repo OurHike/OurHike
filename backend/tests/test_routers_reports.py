@@ -86,17 +86,23 @@ def test_public_list_reports_excludes_internal_only_reports(client, db_session):
     db_session.add(reporter)
     db_session.commit()
 
+    # Both verified, so the only thing separating them in the result is
+    # visibility - which is what this test is about. Before the moderation
+    # gate existed these were left at the default `submitted` and still
+    # appeared, so the test passed while proving less than it looked like.
     public_report = Report(
         reporter_id=reporter.id,
         type=ReportType.trash,
         reporter_type=ReporterType.day,
         visibility=Visibility.public,
+        status=ReportStatus.verified,
     )
     internal_report = Report(
         reporter_id=reporter.id,
         type=ReportType.bad_hikers,
         reporter_type=ReporterType.day,
         visibility=Visibility.internal_only,
+        status=ReportStatus.verified,
     )
     db_session.add_all([public_report, internal_report])
     db_session.commit()
@@ -119,7 +125,7 @@ def test_public_list_reports_excludes_dismissed_reports(client, db_session):
         type=ReportType.flooding,
         reporter_type=ReporterType.section,
         visibility=Visibility.public,
-        status=ReportStatus.submitted,
+        status=ReportStatus.verified,
     )
     dismissed_report = Report(
         reporter_id=reporter.id,
@@ -264,7 +270,11 @@ def test_an_outbox_flush_keeps_each_reports_own_authored_at(client):
         )
         assert response.status_code == 201
 
-    listed = client.get("/reports").json()
+    # Read back as the reporter. A just-flushed report is `submitted` and so
+    # is not public yet, but its own author sees it - which is the case this
+    # test needs anyway: an outbox flush is followed by the reporter looking
+    # at what they just sent, not by a stranger doing so.
+    listed = client.get("/reports", headers=headers).json()
     stored = sorted(datetime.fromisoformat(r["timestamp"]).replace(tzinfo=timezone.utc) for r in listed)
 
     assert len(stored) == 3
@@ -305,11 +315,20 @@ def test_invasive_species_is_public_like_every_other_condition_type(client):
     assert body["visibility"] == Visibility.public.value
 
 
-def test_invasive_species_appears_in_the_public_report_list(client):
-    client.post("/reports", json=_INVASIVE, headers=auth_headers(str(uuid.uuid4())))
+def test_invasive_species_appears_in_the_public_report_list_once_verified(client, db_session):
+    """Public like every other condition type - but public still means
+    moderated first, which is the one thing it does inherit from them."""
+    moderator = Profile(id=str(uuid.uuid4()), role=Role.club_admin, display_name="Mod")
+    db_session.add(moderator)
+    db_session.commit()
+
+    created = client.post("/reports", json=_INVASIVE, headers=auth_headers(str(uuid.uuid4()))).json()
+
+    assert [r for r in client.get("/reports").json() if r["type"] == "invasive_species"] == []
+
+    client.post(f"/reports/{created['id']}/verify", json={}, headers=auth_headers(moderator.id))
 
     listed = [r for r in client.get("/reports").json() if r["type"] == "invasive_species"]
-
     assert len(listed) == 1
 
 
@@ -357,3 +376,99 @@ def test_animals_stays_a_separate_type(client):
     body = client.post("/reports", json=payload, headers=auth_headers(str(uuid.uuid4()))).json()
 
     assert body["type"] == "animals"
+
+
+# --- The moderation gate -------------------------------------------------
+#
+# REPORT_A_PROBLEM.md's "Architecture fit": reports are "submitted-by-many-
+# people data that needs moderation before anything becomes visible to other
+# hikers". That sentence is the stated reason a live backend is in v1 MVP at
+# all, and until these tests existed nothing held the router to it - the
+# filter was `status != dismissed`, which let every unmoderated report
+# straight through to anyone.
+
+
+def _verified_and_submitted_reports(db_session):
+    """One report either side of the gate, from the same reporter."""
+    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
+    db_session.add(reporter)
+    db_session.commit()
+
+    submitted = Report(
+        reporter_id=reporter.id,
+        type=ReportType.blowdown,
+        reporter_type=ReporterType.thru,
+        visibility=Visibility.public,
+        status=ReportStatus.submitted,
+    )
+    verified = Report(
+        reporter_id=reporter.id,
+        type=ReportType.blowdown,
+        reporter_type=ReporterType.thru,
+        visibility=Visibility.public,
+        status=ReportStatus.verified,
+    )
+    db_session.add_all([submitted, verified])
+    db_session.commit()
+    return reporter, submitted, verified
+
+
+def test_public_list_hides_a_report_no_one_has_moderated_yet(client, db_session):
+    _reporter, submitted, verified = _verified_and_submitted_reports(db_session)
+
+    ids = [r["id"] for r in client.get("/reports").json()]
+
+    assert verified.id in ids
+    assert submitted.id not in ids
+
+
+def test_getting_an_unmoderated_report_by_id_is_a_404_for_a_stranger(client, db_session):
+    """The detail endpoint had the same hole as the list, which is why both
+    now read the same constant: knowing the id was enough to read a report
+    nobody had looked at."""
+    _reporter, submitted, _verified = _verified_and_submitted_reports(db_session)
+
+    response = client.get(f"/reports/{submitted.id}", headers=auth_headers(str(uuid.uuid4())))
+
+    assert response.status_code == 404
+
+
+def test_a_reporter_still_sees_their_own_report_while_it_waits(client, db_session):
+    """Otherwise "Waiting" (client/src/lib/reportStatus.ts) has nothing to
+    appear on, and a report would vanish from the app between being
+    submitted and being verified."""
+    reporter, submitted, _verified = _verified_and_submitted_reports(db_session)
+
+    ids = [r["id"] for r in client.get("/reports", headers=auth_headers(reporter.id)).json()]
+
+    assert submitted.id in ids
+
+
+def test_a_resolved_report_stays_public(client, db_session):
+    """It was verified once and reads as "Fixed" - a blowdown someone has
+    since cleared is information, not noise."""
+    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
+    db_session.add(reporter)
+    db_session.commit()
+    resolved = Report(
+        reporter_id=reporter.id,
+        type=ReportType.blowdown,
+        reporter_type=ReporterType.thru,
+        visibility=Visibility.public,
+        status=ReportStatus.resolved,
+    )
+    db_session.add(resolved)
+    db_session.commit()
+
+    assert resolved.id in [r["id"] for r in client.get("/reports").json()]
+
+
+def test_a_signed_in_stranger_sees_no_more_than_an_anonymous_one(client, db_session):
+    """Sending a token must widen the result only by the caller's OWN
+    reports - not by anything belonging to anyone else."""
+    _reporter, submitted, verified = _verified_and_submitted_reports(db_session)
+
+    ids = [r["id"] for r in client.get("/reports", headers=auth_headers(str(uuid.uuid4()))).json()]
+
+    assert ids == [verified.id]
+    assert submitted.id not in ids

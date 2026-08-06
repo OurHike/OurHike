@@ -147,3 +147,55 @@ describe('precedence, ordered by what a hiker needs to know', () => {
     expect(combined).toEqual({ state: 'evicted', completedAt: null })
   })
 })
+
+describe('checking bytes already held (#197)', () => {
+  const checking = (checkedBytes: number, totalBytes: number): ArchiveState => ({
+    status: { state: 'checking', checkedBytes, totalBytes },
+    sizeBytes: totalBytes,
+  })
+
+  it('reports the check when that is what the phone is doing', () => {
+    const combined = combineBackgroundStatus([checking(40 * MB, 100 * MB)])
+
+    expect(combined).toEqual({
+      state: 'checking',
+      checkedBytes: 40 * MB,
+      totalBytes: 100 * MB,
+    })
+  })
+
+  it('adds up only the archives actually being checked', () => {
+    const combined = combineBackgroundStatus([
+      checking(40 * MB, 100 * MB),
+      checking(10 * MB, 50 * MB),
+      absent(200 * MB),
+    ])
+
+    expect(combined).toEqual({
+      state: 'checking',
+      checkedBytes: 50 * MB,
+      totalBytes: 150 * MB,
+    })
+  })
+
+  it('yields to a live transfer, which is the more informative figure', () => {
+    const combined = combineBackgroundStatus([
+      checking(40 * MB, 100 * MB),
+      transferring(10 * MB, 200 * MB),
+    ])
+
+    expect(combined.state).toBe('downloading')
+  })
+
+  it('outranks a resting state - the phone is already busy doing the thing', () => {
+    // Offering "Resume" underneath a check invites a second tap on work
+    // that is already under way.
+    expect(
+      combineBackgroundStatus([checking(1 * MB, 10 * MB), stopped(5 * MB, 50 * MB)])
+        .state,
+    ).toBe('checking')
+    expect(
+      combineBackgroundStatus([checking(1 * MB, 10 * MB), evicted(50 * MB)]).state,
+    ).toBe('checking')
+  })
+})

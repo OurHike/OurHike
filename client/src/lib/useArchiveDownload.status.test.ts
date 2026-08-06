@@ -39,6 +39,7 @@ vi.mock('./archiveDownload', async (importOriginal) => {
 })
 
 const URL_ = 'https://cdn.example.org/background_z12.pmtiles'
+const ARTIFACT = 'background_z12.pmtiles'
 
 beforeEach(() => {
   vi.mocked(get).mockResolvedValue(undefined)
@@ -75,7 +76,9 @@ async function rejectionsWhile(body: () => Promise<void>): Promise<unknown[]> {
 
 describe('useArchiveDownload on mount', () => {
   it('starts at not-downloaded when the phone holds nothing', async () => {
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
 
     await waitFor(() =>
       expect(result.current.status).toEqual({ state: 'not-downloaded' }),
@@ -85,7 +88,9 @@ describe('useArchiveDownload on mount', () => {
   it('reflects an archive already on the phone', async () => {
     vi.mocked(get).mockResolvedValue(new Blob(['x'.repeat(120)]))
 
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
 
     await waitFor(() => {
       expect(result.current.status).toMatchObject({
@@ -103,7 +108,9 @@ describe('useArchiveDownload on mount', () => {
       totalBytes: 100,
     })
 
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
 
     await waitFor(() => {
       expect(result.current.status).toEqual({
@@ -127,7 +134,7 @@ describe('useArchiveDownload on mount', () => {
     >
     const rejections = await rejectionsWhile(async () => {
       await act(async () => {
-        hook = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+        hook = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT))
       })
     })
 
@@ -143,7 +150,7 @@ describe('useArchiveDownload on mount', () => {
     >
     const rejections = await rejectionsWhile(async () => {
       await act(async () => {
-        hook = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+        hook = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT))
       })
     })
 
@@ -161,7 +168,9 @@ describe('useArchiveDownload on mount', () => {
       }),
     )
 
-    const { unmount } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { unmount } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
     unmount()
     await act(async () => {
       release(undefined)
@@ -177,7 +186,9 @@ describe('useArchiveDownload running a download', () => {
       options?.onProgress?.({ receivedBytes: 50, totalBytes: 200 })
     })
 
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
     await waitFor(() => expect(result.current.status.state).toBe('not-downloaded'))
     await act(async () => {
       await result.current.start()
@@ -187,7 +198,9 @@ describe('useArchiveDownload running a download', () => {
   })
 
   it('ends at downloaded, carrying the finished size', async () => {
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
     await waitFor(() => expect(result.current.status.state).toBe('not-downloaded'))
 
     vi.mocked(get).mockImplementation((key) =>
@@ -204,7 +217,9 @@ describe('useArchiveDownload running a download', () => {
   })
 
   it('reports zero bytes rather than crashing if the finished archive cannot be read back', async () => {
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
     await waitFor(() => expect(result.current.status.state).toBe('not-downloaded'))
 
     await act(async () => {
@@ -215,7 +230,9 @@ describe('useArchiveDownload running a download', () => {
   })
 
   it('resumes through the same path as a fresh start', async () => {
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
     await waitFor(() => expect(result.current.status.state).toBe('not-downloaded'))
 
     await act(async () => {
@@ -236,7 +253,9 @@ describe('useArchiveDownload when the download fails', () => {
       new Error('Archive download failed: 404 Not Found'),
     )
 
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
     await waitFor(() => expect(result.current.status.state).toBe('not-downloaded'))
     await act(async () => {
       await result.current.start()
@@ -248,7 +267,9 @@ describe('useArchiveDownload when the download fails', () => {
   it('still has something to say when what was thrown was not an Error', async () => {
     vi.mocked(downloadArchive).mockRejectedValue('a bare string')
 
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
     await waitFor(() => expect(result.current.status.state).toBe('not-downloaded'))
     await act(async () => {
       await result.current.start()
@@ -263,7 +284,9 @@ describe('useArchiveDownload when the download fails', () => {
       .mockResolvedValueOnce(null) // the mount read
       .mockResolvedValue({ receivedBytes: 60, totalBytes: 100 })
 
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
     await waitFor(() => expect(result.current.status.state).toBe('not-downloaded'))
     await act(async () => {
       await result.current.start()
@@ -279,7 +302,9 @@ describe('useArchiveDownload when the download fails', () => {
   it('falls back to not-downloaded when nothing at all was kept', async () => {
     vi.mocked(downloadArchive).mockRejectedValue(new Error('Failed to fetch'))
 
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
     await waitFor(() => expect(result.current.status.state).toBe('not-downloaded'))
     await act(async () => {
       await result.current.start()
@@ -293,7 +318,9 @@ describe('useArchiveDownload when the download fails', () => {
       new Error('Archive download failed: 404'),
     )
 
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
     await waitFor(() => expect(result.current.status.state).toBe('not-downloaded'))
     await act(async () => {
       await result.current.start()
@@ -312,7 +339,9 @@ describe('useArchiveDownload removing the archive', () => {
   it('deletes it and returns to not-downloaded', async () => {
     vi.mocked(get).mockResolvedValue(new Blob(['z']))
 
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
     await waitFor(() => expect(result.current.status.state).toBe('downloaded'))
     await act(async () => {
       await result.current.remove()
@@ -327,7 +356,9 @@ describe('useArchiveDownload removing the archive', () => {
       new Error('Archive download failed: 404'),
     )
 
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
     await waitFor(() => expect(result.current.status.state).toBe('not-downloaded'))
     await act(async () => {
       await result.current.start()
@@ -357,7 +388,9 @@ describe('useArchiveDownload removing the archive', () => {
         ),
     )
 
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
     await waitFor(() => expect(result.current.status.state).toBe('not-downloaded'))
     let attempt: Promise<void> | undefined
     act(() => {
@@ -387,7 +420,9 @@ describe('useArchiveDownload removing the archive', () => {
         ),
     )
 
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
     await waitFor(() => expect(result.current.status.state).toBe('not-downloaded'))
     let first: Promise<void> | undefined
     let second: Promise<void> | undefined
@@ -411,7 +446,9 @@ describe('useArchiveDownload removing the archive', () => {
     vi.mocked(downloadArchive).mockRejectedValueOnce(new Error('Failed to fetch'))
     vi.mocked(downloadArchive).mockResolvedValueOnce(undefined)
 
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
     await waitFor(() => expect(result.current.status.state).toBe('not-downloaded'))
     await act(async () => {
       await result.current.start()
@@ -433,7 +470,9 @@ describe('useArchiveDownload removing the archive', () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
 
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
     await waitFor(() => expect(result.current.status.state).toBe('not-downloaded'))
     await act(async () => {
       await result.current.start()
@@ -454,7 +493,7 @@ describe('useArchiveDownload on unmount', () => {
     })
 
     const { result, unmount } = renderHook(() =>
-      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_),
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
     )
     await waitFor(() => expect(result.current.status.state).toBe('not-downloaded'))
     await act(async () => {
@@ -476,7 +515,9 @@ describe('useArchiveDownload on unmount', () => {
       vi.mocked(downloadArchive).mockRejectedValue(new Error('Failed to fetch'))
       vi.mocked(readDownloadProgress).mockRejectedValue(new Error('IndexedDB is gone'))
 
-      const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+      const { result } = renderHook(() =>
+        useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+      )
 
       await act(async () => {
         await result.current.start().catch(() => undefined)
@@ -509,7 +550,9 @@ describe('eviction, told apart from absence (#190)', () => {
     const finished = new Date('2026-08-01T09:00:00Z')
     recordCompleted(CORRIDOR_ARCHIVE_KEY, finished)
 
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
 
     await waitFor(() => {
       expect(result.current.status).toMatchObject({ state: 'evicted' })
@@ -526,7 +569,9 @@ describe('eviction, told apart from absence (#190)', () => {
     vi.mocked(get).mockRejectedValue(new Error('database is broken'))
     recordCompleted(CORRIDOR_ARCHIVE_KEY)
 
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
 
     await waitFor(() => {
       expect(result.current.status).toMatchObject({ state: 'evicted' })
@@ -540,7 +585,9 @@ describe('eviction, told apart from absence (#190)', () => {
       totalBytes: 100,
     })
 
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
 
     await waitFor(() => {
       expect(result.current.status).toMatchObject({ state: 'failed' })
@@ -551,7 +598,9 @@ describe('eviction, told apart from absence (#190)', () => {
     recordCompleted(CORRIDOR_ARCHIVE_KEY)
     vi.mocked(get).mockResolvedValue(new Blob(['x']))
 
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
 
     await waitFor(() => {
       expect(result.current.status).toMatchObject({ state: 'downloaded' })
@@ -562,7 +611,9 @@ describe('eviction, told apart from absence (#190)', () => {
     recordCompleted(CORRIDOR_ARCHIVE_KEY)
     vi.mocked(downloadArchive).mockRejectedValue(new Error('HTTP 503'))
 
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
     await waitFor(() => {
       expect(result.current.status).toMatchObject({ state: 'evicted' })
     })
@@ -581,7 +632,9 @@ describe('durable storage (#190)', () => {
     const persist = vi.fn().mockResolvedValue(true)
     vi.stubGlobal('navigator', { ...globalThis.navigator, storage: { persist } })
 
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
     await act(async () => {
       await result.current.start()
     })
@@ -599,7 +652,9 @@ describe('durable storage (#190)', () => {
       storage: { persist, persisted },
     })
 
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
 
     await waitFor(() => expect(result.current.persistence).toBe('granted'))
     expect(persist).not.toHaveBeenCalled()

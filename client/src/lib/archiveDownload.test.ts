@@ -6,8 +6,10 @@ import {
   ARCHIVE_PARTIAL_KEY,
   ARCHIVE_PROGRESS_KEY,
   ARCHIVE_SOURCE_KEY,
+  ARCHIVE_VERSION_KEY,
   ArchiveSizeMismatchError,
   ArchiveHashMismatchError,
+  readArchiveVersion,
 } from './archiveDownload'
 import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
 import { completedMarker, recordCompleted } from './storageHealth'
@@ -895,15 +897,150 @@ describe('verification against the published hash (#197)', () => {
     expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
   })
 
-  it('says plainly that nothing was kept', async () => {
-    // The hiker's next move is a clean re-download, and the message has to
-    // be enough to know that without guessing.
+  it('says plainly what happened, in words a hiker can act on', async () => {
+    // The next move is a clean re-download, and the sentence has to be enough
+    // to know that without guessing - and without hex, which helps nobody
+    // standing on a trail. The hashes stay on the error for a field report.
     withStore()
     mockFetch({ chunks: [bytes(1, 2, 3)] })
     mockedPublishedHash.mockResolvedValue(sha256Hex(bytes(9)))
 
-    await expect(downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)).rejects.toThrow(
-      /was not kept - please download it again/,
+    const thrown = await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_).catch((e) => e)
+
+    expect(thrown).toBeInstanceOf(ArchiveHashMismatchError)
+    expect(thrown.message).toBe(
+      'The map that arrived is not the one the server published, so it was not saved. ' +
+        'Any map already on this phone is untouched. Try the download again.',
     )
+    expect(thrown.message).not.toMatch(/[0-9a-f]{12}/)
+    expect(thrown.expected).toBe(sha256Hex(bytes(9)))
+    expect(thrown.actual).toBe(sha256Hex(bytes(1, 2, 3)))
+  })
+
+  it('keeps a whole archive the bucket republished mid-download', async () => {
+    // The innocent cause of a mismatch: the manifest was read at the start of
+    // the attempt, the bucket was republished before the last byte landed,
+    // and what arrived is a complete, correct, NEWER archive. Throwing away a
+    // gigabyte of good map over that would be its own failure, so the
+    // manifest is read once more and bytes matching what is published now
+    // are kept.
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash
+      .mockResolvedValueOnce(sha256Hex(bytes(7, 7, 7)))
+      .mockResolvedValueOnce(sha256Hex(bytes(1, 2, 3)))
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeInstanceOf(Blob)
+    // Recorded as the build it actually is, not the one the attempt began by
+    // asking about.
+    expect(store[ARCHIVE_VERSION_KEY]).toBe(sha256Hex(bytes(1, 2, 3)))
+  })
+
+  it('still refuses bytes that match no published build, old or new', async () => {
+    // The re-read is a rescue for a republish, not a second chance for a
+    // splice: spliced bytes match nothing the bucket ever published.
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash
+      .mockResolvedValueOnce(sha256Hex(bytes(7, 7, 7)))
+      .mockResolvedValueOnce(sha256Hex(bytes(8, 8, 8)))
+
+    await expect(downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)).rejects.toThrow(
+      ArchiveHashMismatchError,
+    )
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
+    expect(store[ARCHIVE_VERSION_KEY]).toBeUndefined()
+  })
+
+  it('refuses when the second manifest read has no answer either', async () => {
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash
+      .mockResolvedValueOnce(sha256Hex(bytes(7, 7, 7)))
+      .mockResolvedValueOnce(null)
+
+    await expect(downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)).rejects.toThrow(
+      ArchiveHashMismatchError,
+    )
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
+  })
+})
+
+describe('which build is on this phone', () => {
+  // DATA_RELEASES.md consequence #2: "a completed archive is stored with no
+  // hash, no ETag and no version, so a republish is invisible to a device
+  // that already downloaded". The verification above computes exactly that
+  // answer and used to throw it away.
+
+  it('keeps the verified hash beside the archive it describes', async () => {
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash.mockResolvedValue(sha256Hex(bytes(1, 2, 3)))
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
+
+    expect(store[ARCHIVE_VERSION_KEY]).toBe(sha256Hex(bytes(1, 2, 3)))
+    expect(await readArchiveVersion(CORRIDOR_ARCHIVE_KEY)).toBe(sha256Hex(bytes(1, 2, 3)))
+  })
+
+  it('claims nothing for an archive that could not be verified', async () => {
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash.mockResolvedValue(null)
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
+
+    expect(store[ARCHIVE_VERSION_KEY]).toBeUndefined()
+    expect(await readArchiveVersion(CORRIDOR_ARCHIVE_KEY)).toBeNull()
+  })
+
+  it('clears an older claim when the replacement cannot be verified', async () => {
+    // The dangerous combination is a hash from the previous archive sitting
+    // beside bytes nobody checked - a wrong answer stated with more
+    // confidence than no answer at all.
+    const store = withStore({ [ARCHIVE_VERSION_KEY]: sha256Hex(bytes(9)) })
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash.mockResolvedValue(null)
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
+
+    expect(store[ARCHIVE_VERSION_KEY]).toBeUndefined()
+  })
+
+  it('records nothing for an archive that failed verification', async () => {
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash.mockResolvedValue(sha256Hex(bytes(9, 9, 9)))
+
+    await expect(downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)).rejects.toThrow(
+      ArchiveHashMismatchError,
+    )
+
+    expect(store[ARCHIVE_VERSION_KEY]).toBeUndefined()
+  })
+
+  it('lets the record go with the archive the hiker deleted', async () => {
+    const store = withStore({
+      [CORRIDOR_ARCHIVE_KEY]: new Blob(['x']),
+      [ARCHIVE_VERSION_KEY]: sha256Hex(bytes(1)),
+    })
+
+    await deleteArchive(CORRIDOR_ARCHIVE_KEY)
+
+    expect(store[ARCHIVE_VERSION_KEY]).toBeUndefined()
+  })
+
+  it('is per package, like every other record here', async () => {
+    const store = withStore({ 'ourhike:test-dem:version': sha256Hex(bytes(7)) })
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash.mockResolvedValue(sha256Hex(bytes(1, 2, 3)))
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
+
+    expect(store['ourhike:test-dem:version']).toBe(sha256Hex(bytes(7)))
   })
 })

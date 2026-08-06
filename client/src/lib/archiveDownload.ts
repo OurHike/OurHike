@@ -36,6 +36,9 @@
 // A published hash is not always available - an older release, a field-test
 // server, no bucket configured - and its absence downgrades the download to
 // the checks that came before rather than failing it.
+//
+// A verified hash is also kept beside the archive (`readArchiveVersion`), so
+// which build a phone holds is a question the app can now answer at all.
 
 import { get, set, del } from 'idb-keyval'
 import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
@@ -54,12 +57,14 @@ import { Sha256, type Sha256State } from './sha256'
 export const partialKeyFor = (packageKey: string) => `${packageKey}:partial`
 export const progressKeyFor = (packageKey: string) => `${packageKey}:progress`
 export const sourceKeyFor = (packageKey: string) => `${packageKey}:source`
+export const versionKeyFor = (packageKey: string) => `${packageKey}:version`
 
 /** The corridor package's record names, spelled out for the reader and for
  *  tests that assert against the real stored layout. */
 export const ARCHIVE_PARTIAL_KEY = partialKeyFor(CORRIDOR_ARCHIVE_KEY)
 export const ARCHIVE_PROGRESS_KEY = progressKeyFor(CORRIDOR_ARCHIVE_KEY)
 export const ARCHIVE_SOURCE_KEY = sourceKeyFor(CORRIDOR_ARCHIVE_KEY)
+export const ARCHIVE_VERSION_KEY = versionKeyFor(CORRIDOR_ARCHIVE_KEY)
 
 export interface DownloadProgress {
   receivedBytes: number
@@ -134,13 +139,20 @@ export class ArchiveSizeMismatchError extends Error {
  * from spliced bytes is the failure this whole check exists to prevent.
  */
 export class ArchiveHashMismatchError extends Error {
+  /** The hashes, for a field report or a log - deliberately kept out of the
+   *  sentence a hiker reads, which is not improved by hex. */
+  readonly expected: string
+  readonly actual: string
+
   constructor(expected: string, actual: string) {
     super(
-      `The downloaded map does not match what was published ` +
-        `(expected ${expected.slice(0, 12)}, got ${actual.slice(0, 12)}). ` +
-        `It was not kept - please download it again.`,
+      `The map that arrived is not the one the server published, so it was ` +
+        `not saved. Any map already on this phone is untouched. Try the ` +
+        `download again.`,
     )
     this.name = 'ArchiveHashMismatchError'
+    this.expected = expected
+    this.actual = actual
   }
 }
 
@@ -191,6 +203,17 @@ export async function downloadArchive(
   // attempt rather than cached, so a republish moves the expectation instead
   // of leaving every retry checking against bytes that are no longer served
   // (dataManifest.ts). Null where there is no published answer at all.
+  //
+  // **Unfinished, and needed for v1 (#192/#223).** Deriving the artifact name
+  // from the URL is a stopgap taken because #192's multi-package store was
+  // being written at the same time as this, and an explicit argument would
+  // have put the two changes in the same files. Once the package catalog is
+  // the place a package's identity lives, the expected hash belongs there and
+  // should be passed in - a package that knows its own key should not have
+  // that key re-guessed from a string. This is not optional polish: leaving
+  // it means the one artifact whose URL does not read like its manifest key
+  // silently downloads unverified, which is the failure mode this whole file
+  // now exists to prevent.
   const publishedSha256 = await publishedHash(url, { signal })
 
   // Only resume onto bytes we can prove came from this same URL. An
@@ -312,20 +335,47 @@ export async function downloadArchive(
     throw new ArchiveSizeMismatchError(totalBytes, accumulated.size)
   }
 
+  // What these bytes were finally verified as, which is not always what the
+  // attempt set out to match - see the republish case below.
+  let verified = expected
+
   if (expected !== null && hash !== null) {
     const actual = hash.digest()
     if (actual !== expected) {
-      // Nothing is stored and nothing is kept: these bytes are the right
-      // length and the wrong file, so a resume onto them would only rebuild
-      // the same wrong archive. Any previously-completed archive under the
-      // package key is untouched - a hiker with a working map who tried to
-      // update it still has the working map.
-      await discardPartial(packageKey)
-      throw new ArchiveHashMismatchError(expected, actual)
+      // Before throwing anything away: a mismatch has an innocent cause. The
+      // bucket can be republished between the manifest read at the start of
+      // this attempt and the last byte arriving, in which case what arrived
+      // is a WHOLE, correct, newer archive that simply is not the build we
+      // asked about. Discarding a gigabyte of good map over that would be a
+      // real loss on a trailhead connection, so the manifest gets one more
+      // read, and bytes that match what the bucket publishes NOW are kept.
+      //
+      // This does not soften the splice defence: a spliced file matches no
+      // published hash at all, so it still ends up in the branch below.
+      const republished = await publishedHash(url, { signal })
+      if (republished !== null && republished === actual) {
+        verified = actual
+      } else {
+        // Nothing is stored and nothing is kept: these bytes are the right
+        // length and the wrong file, so a resume onto them would only rebuild
+        // the same wrong archive. What is discarded is an unusable download,
+        // never a map anyone is navigating by - any previously-completed
+        // archive under the package key is left exactly where it was, so a
+        // hiker with a working map who tried to update it still has it.
+        await discardPartial(packageKey)
+        throw new ArchiveHashMismatchError(expected, actual)
+      }
     }
   }
 
   await set(packageKey, accumulated)
+  // Which build is on this phone. Written after the blob, never before: a
+  // version record for bytes that failed to store would be a claim about an
+  // archive nobody has. Cleared rather than left standing when the archive
+  // could not be verified, because a stale hash beside unverified bytes says
+  // something false with more confidence than saying nothing.
+  if (verified !== null) await set(versionKeyFor(packageKey), verified)
+  else await del(versionKeyFor(packageKey))
   // After the blob is really stored, and in a different storage mechanism on
   // purpose: this is what later distinguishes "the archive was evicted" from
   // "no archive was ever downloaded" (storageHealth.ts, #190).
@@ -354,6 +404,27 @@ async function discardPartial(packageKey: string): Promise<void> {
   await del(sourceKeyFor(packageKey))
 }
 
+/**
+ * Which published build the archive under `packageKey` actually is - its
+ * verified SHA-256 - or null where the archive was stored without a hash to
+ * check it against.
+ *
+ * This is the record `DATA_RELEASES.md` consequence #2 says does not exist:
+ * "a completed archive is stored with no hash, no ETag and no version, so a
+ * republish is invisible to a device that already downloaded". It exists now.
+ * Nothing in the app reads it yet - a staleness signal ("your map is from an
+ * older release") is that issue's work, not this one's - but the fact is
+ * recorded at the only moment it is knowable for free, which is the moment
+ * the digest was compared.
+ *
+ * It describes the archive under the key and is cleared with it. An archive
+ * evicted by the browser can leave this behind; callers answer "what is on
+ * this phone" from the blob first, as they already must.
+ */
+export async function readArchiveVersion(packageKey: string): Promise<string | null> {
+  return ((await get(versionKeyFor(packageKey))) as string | undefined) ?? null
+}
+
 /** What Downloads.tsx shows on load, before anything is tapped. */
 export async function readDownloadProgress(
   packageKey: string,
@@ -373,5 +444,9 @@ export async function deleteArchive(packageKey: string): Promise<void> {
   // phone removed your map" about a deletion they performed is exactly the
   // kind of false statement the marker exists to prevent.
   clearCompleted(packageKey)
+  // The version record describes bytes that are now gone, so it goes with
+  // them - otherwise the next unverifiable download under this key would
+  // inherit a build number belonging to an archive nobody has any more.
+  await del(versionKeyFor(packageKey))
   await discardPartial(packageKey)
 }

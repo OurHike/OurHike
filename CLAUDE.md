@@ -78,10 +78,12 @@ sequence completed, and prove it holds by running the file three times.
 
 Where the environment cannot run a check at all, confirm that against a clean tree, then
 say so in the pull request rather than reporting a clean run you did not have. The old
-standing example — the sandbox proxy 403s DuckDB's extension downloads, which failed every
-spatial-dependent pipeline test — is handled now: `.claude/hooks/session-start.sh` seeds
-the extension from PyPI when a web session starts. If spatial tests still fail on an
-HTTP 403, the hook did not run; run it by hand rather than reporting those failures as
-environmental. What genuinely cannot run here is backend's Postgres job — the sandbox has
-no Postgres service, so `python -m pytest` in `backend/` exercises only the DuckDB engine,
-and a pull request that changes backend behavior should say so.
+standing example — the sandbox proxy 403s DuckDB's extension downloads, which failed a
+large block of the pipeline suite on a clean tree (measured 2026-08-06: 515 passed,
+27 failed, 36 errors, every one tracing back to `Failed to download extension "spatial"`)
+— is handled now: `.claude/hooks/session-start.sh` seeds the extension from PyPI when a
+web session starts. A run that still shows that signature means the hook did not run; run
+it by hand rather than reporting those failures as environmental. What genuinely cannot
+run here is backend's Postgres job — the sandbox has no Postgres service, so
+`python -m pytest` in `backend/` exercises only the DuckDB engine, and a pull request
+that changes backend behavior should say so.

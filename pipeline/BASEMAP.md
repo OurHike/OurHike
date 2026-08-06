@@ -240,7 +240,8 @@ already renders it (`client/src/map/style.ts` — do not remove). The
 OpenMapTiles schema itself is CC-BY, satisfied by the "© OpenMapTiles" credit
 already shipped. This repository's open pipeline satisfies ODbL's
 share-alike-or-method obligation with no extra work. Same terms as the
-already-shipped Protomaps context extract — nothing new to clear.
+Protomaps context extract measured in July (which was never built — see
+TECHNICAL_ARCHITECTURE.md and #196) — nothing new to clear.
 
 ## Updates and publishing
 

@@ -1,6 +1,6 @@
 """Every datetime this API serializes carries a UTC designator.
 
-Storage is naive-UTC throughout (a duckdb-engine workaround documented in
+Storage is naive-UTC throughout (the convention documented in
 app/models/profile.py), and the gap this file pins shut is at the
 serialization boundary: `2026-08-06T12:00:00` with no `Z` is *local* time to
 `new Date()`, so an unstamped wire value silently shifts by the reader's UTC

@@ -120,6 +120,18 @@ jobs:
             --out data/processed/at_basemap_package.pmtiles \
             --name "OurHike AT corridor basemap"
 
+      # The Standard level (#276): the same cut capped at z13, its own
+      # artifact so its advertised size and published hash describe exactly
+      # the bytes a hiker gets. z14 is 66% of the full package's bytes, so
+      # this is the ~180 MB option.
+      - name: Cut the z13 package from the build
+        run: |
+          python extract_package.py data/processed/basemap.pmtiles \
+            --region data/processed/basemap_region.geojson \
+            --max-zoom 13 \
+            --out data/processed/at_basemap_package_z13.pmtiles \
+            --name "OurHike AT corridor basemap (z13)"
+
       # The whole point of the spike: real numbers where estimates were. To
       # the log AND the summary - a number that exists only in a rendered
       # summary cannot be quoted by anything reading the logs later.
@@ -130,6 +142,7 @@ jobs:
           from export_basemap import report_archive
           report_archive(Path('data/processed/basemap.pmtiles'))
           report_archive(Path('data/processed/at_basemap_package.pmtiles'))
+          report_archive(Path('data/processed/at_basemap_package_z13.pmtiles'))
           " | tee measure.txt
           {
             echo "## Basemap build"
@@ -148,12 +161,14 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-      # The package rides separately so the publish job downloads the ~0.5 GB
+      # The packages ride separately so the publish job downloads the ~0.7 GB
       # it ships and not the source build beside it.
       - uses: actions/upload-artifact@v4
         with:
           name: basemap-package
-          path: pipeline/data/processed/at_basemap_package.pmtiles
+          path: |
+            pipeline/data/processed/at_basemap_package.pmtiles
+            pipeline/data/processed/at_basemap_package_z13.pmtiles
           retention-days: 7
           if-no-files-found: error
 

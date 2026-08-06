@@ -34,6 +34,16 @@ export const BACKGROUND_SOURCES = ['hiking_topo_live', 'usgs_topo_offline'] as c
 export type BackgroundSource = (typeof BACKGROUND_SOURCES)[number]
 export type MaxBackgroundZoom = 11 | 12 | 13
 export type LayerDetailLevel = 'minimal' | 'standard' | 'full'
+/**
+ * The hiking sheet's download level (#276): which basemap cut the default
+ * background fetches - the z13 Standard package or the full z14 Fine one.
+ * Its own key rather than an overload of `max_background_zoom`, which is the
+ * USGS raster's tier choice with its own zoom range; the two sheets'
+ * decisions must not share one dial. The backend's `HikingDetailLevel`
+ * mirrors this exactly.
+ */
+export const HIKING_DETAIL_LEVEL_VALUES = ['standard', 'fine'] as const
+export type HikingDetailLevel = (typeof HIKING_DETAIL_LEVEL_VALUES)[number]
 
 export interface UserPreferences {
   // Identity
@@ -46,6 +56,7 @@ export interface UserPreferences {
   // Map display
   background_source: BackgroundSource
   max_background_zoom: MaxBackgroundZoom
+  hiking_detail_level: HikingDetailLevel
   show_roads: boolean
   waypoint_types_shown: string[]
   layer_detail_level: LayerDetailLevel
@@ -77,6 +88,10 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   // the app to blank paper and has to go find a setting to see a map.
   background_source: 'hiking_topo_live',
   max_background_zoom: 12,
+  // Standard: the recommended level, and the safe one - a hiker who never
+  // made the choice gets the sheet that fits the storage envelope, not the
+  // 1.1 GB one.
+  hiking_detail_level: 'standard',
   show_roads: false,
   waypoint_types_shown: [],
   layer_detail_level: 'standard',

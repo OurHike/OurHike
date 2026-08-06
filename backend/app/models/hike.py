@@ -33,11 +33,10 @@ class Hike(Base):
     __tablename__ = "hikes"
 
     # An app-generated UUID string primary key, not a DB-generated
-    # autoincrement integer - sidesteps the same duckdb-engine "SERIAL does
-    # not exist" gap backend/README.md documents (SQLAlchemy's default
-    # "auto" autoincrement on an Integer primary key renders Postgres-only
-    # `SERIAL` DDL that DuckDB's compiler doesn't support), and is portable
-    # to Postgres too since the value is generated in Python either way.
+    # autoincrement integer - one id shape across every table here (see
+    # app/models/report.py, and profile.py where the id comes from Supabase
+    # rather than from this database at all), and one a client can hold
+    # before the row is written.
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
 
     user_id = Column(String, ForeignKey("profiles.id"), nullable=False)
@@ -54,7 +53,6 @@ class Hike(Base):
 
     planned_start_date = Column(Date, nullable=True)
 
-    # Naive UTC, matching app/models/profile.py's exact pattern - see that
-    # module's docstring for why (duckdb-engine can't marshal TIMESTAMPTZ
-    # back out without the optional pytz package).
+    # Naive UTC, matching app/models/profile.py's exact pattern - see the
+    # comment there for the convention and the open question about it.
     created_at = Column(DateTime, nullable=False, default=utc_now)

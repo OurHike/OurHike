@@ -106,6 +106,22 @@ class LayerDetailLevel(str, Enum):
     full = "full"
 
 
+class HikingDetailLevel(str, Enum):
+    """The hiking sheet's download level (#276) - which basemap cut the
+    default background fetches: the z13 Standard package or the full z14
+    Fine one. Mirrors client/src/lib/userPreferences.ts
+    `HIKING_DETAIL_LEVELS` exactly, like every enum in this module.
+
+    Defaulted, unlike `max_background_zoom`, because Standard has a
+    documented recommendation behind it: it is the level a hiker who never
+    made the choice should get - the sheet that fits the storage envelope -
+    and it is what pre-#276 blobs, which have no such key, must read back
+    as."""
+
+    standard = "standard"
+    fine = "fine"
+
+
 class PreferencesIn(BaseModel):
     """What a client PUTs to `/preferences/me` - a full replace of the
     synced blob, not a partial patch (see the router's upsert docstring)."""
@@ -122,6 +138,7 @@ class PreferencesIn(BaseModel):
     # Map display
     background_source: BackgroundSource
     max_background_zoom: MaxBackgroundZoom
+    hiking_detail_level: HikingDetailLevel = HikingDetailLevel.standard
     show_roads: bool = False
     waypoint_types_shown: list[str] = []
     layer_detail_level: LayerDetailLevel

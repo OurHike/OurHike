@@ -55,6 +55,7 @@ describe('UserPreferences schema', () => {
         'auto_rotate_enabled',
         'background_source',
         'download_choice_made',
+        'hiking_detail_level',
         'layer_detail_level',
         'location_permission_requested',
         'max_background_zoom',
@@ -102,5 +103,11 @@ describe('UserPreferences schema', () => {
     expect(fresh.onboarding_completed).toBe(false)
     expect(fresh.download_choice_made).toBe(false)
     expect(fresh.location_permission_requested).toBe(false)
+  })
+})
+
+describe('the hiking sheet level (#276)', () => {
+  it('defaults to Standard, the recommended and envelope-sized cut', () => {
+    expect(DEFAULT_PREFERENCES.hiking_detail_level).toBe('standard')
   })
 })

@@ -75,6 +75,9 @@ saved them — the state was gone, not late. Wait on something observable that p
 sequence completed, and prove it holds by running the file three times.
 
 Where the environment cannot run a check at all — the sandbox proxy blocks DuckDB's
-`spatial` extension, so three `test_export_pmtiles.py` tests fail here for reasons that
-have nothing to do with any change — confirm that against a clean tree, then say so in the
+`spatial` extension, so a large block of the pipeline suite fails here for reasons that
+have nothing to do with any change (measured 2026-08-06 on a clean tree: 515 passed,
+27 failed, 36 errors, every one of them tracing back to `Failed to download extension
+"spatial"`; `test_export_pmtiles.py` no longer exists, so a run that names it is quoting
+this file rather than its own output) — confirm that against a clean tree, then say so in the
 pull request rather than reporting a clean run you did not have.

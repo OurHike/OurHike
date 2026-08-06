@@ -1129,6 +1129,10 @@ function App() {
           // gone - which is why it is carried, and not why it is given room.
           onOpenDownloads={openDownloads}
           hasDownload={anySheetDownloaded}
+          // Narrower than the line above on purpose: the credit corner names
+          // the USGS survey only while there are USGS tiles on the phone to
+          // draw, and a hiking-sheet-only download has none.
+          hasRasterArchive={archiveDownloaded}
           belowArchiveZoom={belowArchiveZoom}
           // For the opening camera only - MapView keeps it out of the zooms
           // the download has no tiles for.

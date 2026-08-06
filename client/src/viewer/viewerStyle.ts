@@ -35,6 +35,7 @@ import {
   type ContourUnits,
 } from '../map/terrain'
 import { OSM_SOURCE_ID } from '../map/liveTopo'
+import { USGS_TOPO_CREDIT } from '../map/credits'
 
 export interface ViewerSlots {
   /** pmtiles:// URLs per dropped archive kind - see viewerArchives.ts. */
@@ -73,7 +74,7 @@ export function buildViewerStyle(
       // presentation must move with the app's - a dropped archive judged
       // here at 512 would look blurrier than the same bytes in the app.
       tileSize: 256,
-      attribution: 'USGS US Topo',
+      attribution: USGS_TOPO_CREDIT,
     }
     layers.push({ id: VIEWER_RASTER_LAYER_ID, type: 'raster', source: 'viewer-raster' })
   }

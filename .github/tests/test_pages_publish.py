@@ -461,4 +461,9 @@ class TestTheDeployWorkflows:
             if "sticky-pull-request-comment" in step.get("uses", "") and step.get("if", "").strip().endswith("!= 'closed'")
         )
         assert "steps.preview.outputs.alias" in deploy["with"]["command"]
-        assert "steps.preview.outputs.url" in comment["with"]["message"]
+        # The alias URL the deploy reported, preferred over the one this
+        # workflow works out for itself. Both should name the same host, but
+        # only one of them is evidence rather than inference - and a comment
+        # linking somewhere the upload did not go is a reviewer looking at a
+        # 404, or at someone else's change, and believing it.
+        assert "steps.deploy.outputs.pages-deployment-alias-url" in comment["with"]["message"]

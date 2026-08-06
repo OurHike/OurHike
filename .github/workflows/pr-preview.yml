@@ -82,6 +82,14 @@ jobs:
       # every push to it. Cloudflare builds the hostname from it, so it has to
       # survive being a DNS label: `pr-<n>` is short, lower case and cannot
       # collide with another pull request's.
+      #
+      # The URL here is worked out rather than observed, so it is the second
+      # choice of the two the comment below picks between: a deploy reports the
+      # alias URL it actually created, and that is the one to link to when it
+      # exists, because it cannot disagree with where the upload went. This one
+      # is what remains when there was no deploy in this run at all - the
+      # comment posted when a pull request closes - and it assumes the project
+      # subdomain matches the project name, which is how Pages names them.
       - name: Name this preview
         id: preview
         env:
@@ -178,6 +186,7 @@ jobs:
         run: npm run build
 
       - name: Publish the preview
+        id: deploy
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
         uses: cloudflare/wrangler-action@v3
         with:
@@ -202,7 +211,7 @@ jobs:
           message: |
             ### Preview
 
-            **[Open this change in the app](${{ steps.preview.outputs.url }})**
+            **[Open this change in the app](${{ steps.deploy.outputs.pages-deployment-alias-url || steps.preview.outputs.url }})**
 
             Built from ${{ github.event.pull_request.head.sha }}. The link stays the
             same as you push - it always serves the latest build of this pull request.

@@ -58,20 +58,19 @@ def test_postgres_gets_a_statement_for_every_table(rls_migration):
         assert f"ALTER TABLE public.{table} ENABLE ROW LEVEL SECURITY" in statements
 
 
-def test_duckdb_gets_nothing(rls_migration):
-    """The local dev path app/config.py defaults to. env.py hands DuckDB
-    Alembic's PostgresqlImpl, so an unguarded statement would be emitted
-    verbatim against a database that has no such syntax - breaking every
-    local migration run to protect a file with no PostgREST in front of
-    it."""
-    assert rls_migration.rls_statements("duckdb", enable=True) == []
-    assert rls_migration.rls_statements("duckdb", enable=False) == []
+@pytest.mark.parametrize("dialect", ["sqlite", "mysql", "duckdb"])
+def test_a_non_postgres_dialect_gets_nothing(rls_migration, dialect):
+    """The guard is an allow-list ('postgresql only'), not a deny-list.
 
-
-def test_sqlite_gets_nothing_either(rls_migration):
-    """The guard is 'postgresql only', not 'not duckdb' - so a third
-    dialect is skipped rather than sent DDL it cannot parse."""
-    assert rls_migration.rls_statements("sqlite", enable=True) == []
+    Every database this backend runs against is Postgres now - local dev
+    included, see backend/scripts/local-postgres.sh - so nothing currently
+    takes this branch. It is asserted anyway because `rls_statements` builds
+    raw DDL for `op.execute`, which passes strings through to whichever
+    dialect Alembic is pointed at: an allow-list fails safe on a dialect
+    nobody anticipated, and this is the test that says so is deliberate.
+    """
+    assert rls_migration.rls_statements(dialect, enable=True) == []
+    assert rls_migration.rls_statements(dialect, enable=False) == []
 
 
 def test_downgrade_disables_what_upgrade_enabled(rls_migration):

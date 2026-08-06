@@ -44,6 +44,7 @@ import { TabBar } from './chrome/TabBar'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import type { TabId } from './chrome/tabs'
 import { Downloads } from './screens/Downloads'
+import { hikingDetailOptions, rasterDetailOptions } from './screens/DetailPicker'
 import { DownloadsDialog } from './screens/DownloadsDialog'
 import { More, type StuckReport } from './screens/More'
 import { InstallPrompt } from './screens/InstallPrompt'
@@ -56,6 +57,7 @@ import { loadPreferences, savePreferences } from './lib/preferences'
 import {
   DEFAULT_PREFERENCES,
   type BackgroundSource,
+  type HikingDetailLevel,
   type UserPreferences,
 } from './lib/userPreferences'
 import {
@@ -68,6 +70,7 @@ import { useArchiveZooms } from './lib/useArchiveZooms'
 import { archiveCoversZoom } from './lib/archiveCoverage'
 import {
   CORRIDOR_BACKGROUND_PACKAGE,
+  HIKING_SHEET,
   offeredPackages,
   offeredSheets,
   packageArtifactKey,
@@ -369,6 +372,9 @@ function App() {
   const gps = useGeolocation(locationAllowed)
 
   const detailLevel: DetailLevel = detailLevelForZoom(preferences.max_background_zoom)
+  // The hiking sheet's own level (#276) - a separate dial from the USGS
+  // raster's tier above, because the two sheets' choices must never share one.
+  const hikingLevel = preferences.hiking_detail_level
 
   // The background sheets a hiker can choose between (#237), and every
   // archive behind them (#192). One flat download store underneath - the
@@ -381,10 +387,10 @@ function App() {
         .flatMap((sheet) => offeredPackages(sheet))
         .map((pkg) => ({
           packageKey: pkg.idbKey,
-          url: packageDownloadUrl(pkg, detailLevel),
-          artifactKey: packageArtifactKey(pkg, detailLevel),
+          url: packageDownloadUrl(pkg, detailLevel, hikingLevel),
+          artifactKey: packageArtifactKey(pkg, detailLevel, hikingLevel),
         })),
-    [backgroundSheets, detailLevel],
+    [backgroundSheets, detailLevel, hikingLevel],
   )
   const {
     statusFor: archiveStatusFor,
@@ -401,10 +407,10 @@ function App() {
       combineBackgroundStatus(
         offeredPackages(sheet).map((pkg) => ({
           status: archiveStatusFor(pkg.idbKey),
-          sizeBytes: packageSizeBytes(pkg, detailLevel),
+          sizeBytes: packageSizeBytes(pkg, detailLevel, hikingLevel),
         })),
       ),
-    [archiveStatusFor, detailLevel],
+    [archiveStatusFor, detailLevel, hikingLevel],
   )
 
   /** The first of this sheet's archives with something to report. One card
@@ -720,12 +726,16 @@ function App() {
   )
 
   const handleOnboardingComplete = useCallback(
-    ({ detailLevel: chosen, locationRequested }: OnboardingResult) => {
+    ({ hikingDetailLevel, locationRequested }: OnboardingResult) => {
+      // The choice made is the choice written (#277): onboarding's download
+      // step speaks the hiking sheet now, so the hiking sheet's preference
+      // is what it sets. The USGS raster's tier keeps its default until its
+      // own card is used.
       updatePreferences({
         onboarding_completed: true,
         download_choice_made: true,
         location_permission_requested: locationRequested,
-        max_background_zoom: getDownloadDetail(chosen).zoom,
+        hiking_detail_level: hikingDetailLevel,
       })
       // The download window, over the map rather than instead of it. The
       // choice just made is a download that has not started, so the window is
@@ -1009,22 +1019,34 @@ function App() {
           title: sheet.title,
           summary: sheet.summary,
           status: sheetStatus(sheet),
-          sizeBytes: sheetSizeBytes(sheet, detailLevel),
+          sizeBytes: sheetSizeBytes(sheet, detailLevel, hikingLevel),
           error: sheetError(sheet),
-          // The detail choice belongs to the sheet whose artifacts are
-          // tiered - the USGS raster (downloadDetail.ts). The hiking sheet
-          // has one measured size and gets no picker over a choice that
-          // does not exist.
+          // Each sheet's picker carries its own level set and writes its own
+          // preference (#276) - the USGS raster's tiers and the hiking
+          // sheet's cuts are separate dials. The `as` casts are safe because
+          // DetailPicker only ever emits ids from the options handed to it.
           detail:
             sheet.id === USGS_SHEET.id
               ? {
-                  level: detailLevel,
-                  onChange: (level: DetailLevel) =>
+                  options: rasterDetailOptions(),
+                  value: detailLevel,
+                  name: 'usgs-detail',
+                  onChange: (level: string) =>
                     updatePreferences({
-                      max_background_zoom: getDownloadDetail(level).zoom,
+                      max_background_zoom: getDownloadDetail(level as DetailLevel).zoom,
                     }),
                 }
-              : undefined,
+              : sheet.id === HIKING_SHEET.id
+                ? {
+                    options: hikingDetailOptions(),
+                    value: hikingLevel,
+                    name: 'hiking-detail',
+                    onChange: (level: string) =>
+                      updatePreferences({
+                        hiking_detail_level: level as HikingDetailLevel,
+                      }),
+                  }
+                : undefined,
           onStart: () => void handleDownloadSheet(sheet),
           onResume: () => void handleResumeSheet(sheet),
           onDelete: () => void handleDeleteSheet(sheet),

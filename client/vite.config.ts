@@ -173,6 +173,10 @@ export default defineConfig({
         // The viewer page's bootstrap - DOM glue over viewerController.ts
         // and viewerStyle.ts, which are tested; same reasoning as main.tsx.
         'src/viewer/main.ts',
+        // The DEM worker's entry - worker glue over demRpc.ts and
+        // demTiles.ts, which are tested; jsdom cannot run a worker at all,
+        // so covering the three lines of wiring would mean pretending to.
+        'src/map/demWorker.ts',
       ],
     },
   },

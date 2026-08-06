@@ -8,10 +8,12 @@
 // verbatim output with two subtractions, each an absence of input rather
 // than a restyle:
 //
-//   contours   client-side contour generation from a local DEM is #187's
-//              plumbing (maplibre-contour's worker-import route). Until it
-//              lands, contour layers would reference a source that does not
-//              exist, which MapLibre treats as a style error - so they are
+//   contours   the app generates these from the DEM the offline store
+//              holds (contours.ts + demWorker.ts, #187) - a pipeline this
+//              page deliberately does not run, because its DEM is whatever
+//              file was just dropped, not the store's package. Contour
+//              layers would therefore reference a source nothing fills,
+//              which MapLibre treats as a style error - so they are
 //              filtered out, not hidden.
 //   hillshade  only when a DEM has actually been dropped, for the same
 //              reason.

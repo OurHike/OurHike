@@ -52,9 +52,24 @@ export const BASEMAP_PACKAGE: MapPackage = {
   title: 'Hiking sheet',
 }
 
+/**
+ * The corridor DEM package - quantized terrarium WebP tiles, z0-13, built by
+ * pipeline/export_dem.py (#186). map/demTiles.ts resolves the hillshade's
+ * and the contour generator's elevation reads against this key first and
+ * falls through to AWS Terrain Tiles where it does not answer (#187) - the
+ * same local-first shape basemap.ts gives the vector sheet, and the same
+ * story for the download UX (follows #192).
+ */
+export const DEM_PACKAGE: MapPackage = {
+  id: 'dem',
+  idbKey: 'ourhike:dem',
+  title: 'Terrain',
+}
+
 /** Every package this build knows how to store and resolve. Order is the
  *  Downloads screen's display order, when it grows a list (#192). */
 export const MAP_PACKAGES: readonly MapPackage[] = [
   CORRIDOR_BACKGROUND_PACKAGE,
   BASEMAP_PACKAGE,
+  DEM_PACKAGE,
 ]

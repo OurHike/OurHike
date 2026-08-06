@@ -56,7 +56,8 @@ R2 → `your-hike` → Settings → CORS policy. The app is hosted on GitHub Pag
   "AllowedOrigins": [
     "https://jaimito-asuntos-gringuenos.github.io",
     "https://*.ourhike-preview.pages.dev",
-    "http://localhost:5173"
+    "http://localhost:5173",
+    "http://localhost:4173"
   ],
   "AllowedMethods": ["GET", "HEAD"],
   "AllowedHeaders": ["range", "if-match", "content-type"],
@@ -185,7 +186,10 @@ That means more than one origin. GitHub Pages serves the app at `/OurHike/app/`,
 https://<user>.github.io/OurHike/**
 https://*.<project>.pages.dev/**
 http://localhost:5173/**
+http://localhost:4173/**
 ```
+
+Both local ports, because they are different servers: `npm run dev` is Vite on **5173**, and `npm run preview` serves the *built* bundle on **4173**. The second is the one you reach for to check something behaves the same after a production build, which makes it exactly the wrong one to have working differently from the others.
 
 Adding an entry per PR by hand is not a plan, and without a matching entry every provider round trip from a preview ends in a redirect mismatch. Supabase recommends pinning the exact path for the production **Site URL** even so — set that to `https://<user>.github.io/OurHike/app/`.
 

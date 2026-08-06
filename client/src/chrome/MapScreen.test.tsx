@@ -351,3 +351,64 @@ describe('MapScreen', () => {
     expect(screen.queryByRole('radio', { name: /live/i })).not.toBeInTheDocument()
   })
 })
+
+// --- The safety alert strip (#232) ---------------------------------------
+//
+// Above the map, because a hiker who is walking has not opened anything: a
+// closure that only appears on tapping a red band is a closure they walk
+// into.
+
+describe('MapScreen safety alerts', () => {
+  it('says nothing when there is nothing to say', () => {
+    render(<MapScreen {...PROPS} />)
+
+    expect(screen.queryByRole('alert')).toBe(null)
+  })
+
+  it('shows a closure ahead', () => {
+    render(
+      <MapScreen {...PROPS} closureAhead="Trail closed 5.0 mi ahead · Storm damage" />,
+    )
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Trail closed 5.0 mi ahead')
+  })
+
+  it('shows serious warnings on the route', () => {
+    render(<MapScreen {...PROPS} warningsAhead="2 serious warnings on your route" />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      '2 serious warnings on your route',
+    )
+  })
+
+  it('shows both at once rather than picking one', () => {
+    // A closure and a bear are different problems, and neither substitutes
+    // for the other.
+    render(
+      <MapScreen
+        {...PROPS}
+        closureAhead="Trail closed 5.0 mi ahead · Storm damage"
+        warningsAhead="1 serious warning on your route"
+      />,
+    )
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent('Trail closed 5.0 mi ahead')
+    expect(alert).toHaveTextContent('1 serious warning on your route')
+  })
+
+  it('keeps the status strip above it, because the two are read together', () => {
+    // The strip's sync age is the only thing separating "the way ahead is
+    // clear" from "we could not check" - an alert area that appeared above
+    // it would be a claim with no freshness attached.
+    const { container } = render(
+      <MapScreen {...PROPS} closureAhead="Trail closed 5.0 mi ahead · Storm damage" />,
+    )
+
+    const strip = container.querySelector('.status-strip')
+    const alerts = container.querySelector('.map-screen__alerts')
+    expect(strip).not.toBeNull()
+    expect(alerts).not.toBeNull()
+    expect(strip!.compareDocumentPosition(alerts!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+  })
+})

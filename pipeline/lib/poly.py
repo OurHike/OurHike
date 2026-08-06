@@ -21,6 +21,7 @@ bounds what the build considers, never what ships.
 
 from shapely.geometry import MultiPolygon, Polygon
 from shapely.geometry.base import BaseGeometry
+from shapely.ops import unary_union
 
 
 def clip_shape(geom: BaseGeometry, tolerance_deg: float = 0.01) -> BaseGeometry:
@@ -30,6 +31,53 @@ def clip_shape(geom: BaseGeometry, tolerance_deg: float = 0.01) -> BaseGeometry:
     N-S - noise against a 30-mile corridor buffer, decisive against paying
     full corridor vertex count per clipped OSM object."""
     return geom.simplify(tolerance_deg).buffer(tolerance_deg)
+
+
+def from_poly(text: str) -> BaseGeometry:
+    """Parse Osmosis .poly text back into a Polygon or MultiPolygon.
+
+    The inverse of to_poly(), and here because Geofabrik publishes a .poly
+    beside every extract - the exact shape it cut that extract with. Reading
+    it is how a shard's own boundary becomes a geometry we can intersect
+    against its neighbour's to get the seam between them, which is the line
+    compare_shards.py measures differences against.
+
+    Sections are rings; a leading `!` marks a hole, matching to_poly()'s
+    spelling. Ring names are otherwise ignored - the format allows any label
+    and only the `!` carries meaning."""
+    outers: list[list[tuple[float, float]]] = []
+    holes: list[list[tuple[float, float]]] = []
+    ring: list[tuple[float, float]] | None = None
+    is_hole = False
+
+    # The first line is the polygon's name, never a section header.
+    for line in text.splitlines()[1:]:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped == "END":
+            if ring is None:
+                break  # The file-level END, after the last section.
+            (holes if is_hole else outers).append(ring)
+            ring = None
+            continue
+        if ring is None:
+            is_hole = stripped.startswith("!")
+            ring = []
+            continue
+        x, y = stripped.split()[:2]
+        ring.append((float(x), float(y)))
+
+    if not outers:
+        raise ValueError("No rings in .poly text")
+    # Holes are matched to whichever outer ring contains them rather than by
+    # file order: the format does not promise a hole follows its own outer,
+    # and difference() over the union is indifferent to which one it was.
+    return (
+        unary_union([Polygon(r) for r in outers]).difference(unary_union([Polygon(r) for r in holes]))
+        if holes
+        else unary_union([Polygon(r) for r in outers])
+    )
 
 
 def to_poly(geom: BaseGeometry, name: str = "area") -> str:

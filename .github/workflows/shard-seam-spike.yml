@@ -7,12 +7,14 @@
 # that the thing to check is whether any OpenMapTiles layer ranks features
 # from a global view rather than a local one. This is that check.
 #
-# Two scenarios run as a matrix. seam-dense re-asks the seam question across
+# Three scenarios run as a matrix. seam-dense re-asks the seam question across
 # the Hudson, where density gives label ranking the most to disagree about;
 # disk-scale answers the temp-disk question at a size where it can be
 # answered, since the first attempt used inputs SMALLER than Planetiler's own
 # fixed overhead and every multiplier it produced was that overhead in
-# disguise.
+# disguise. determinism builds one input twice and compares the two, which is
+# the noise floor every other number here rests on and should have been the
+# first thing measured.
 #
 # Three builds of the same two states, because two would not settle it:
 # a whole-region CONTROL, an ARM A whose shards see all the data and differ
@@ -63,9 +65,14 @@ on:
       - "pipeline/lib/poly.py"
       - ".github/workflows/shard-seam-spike.yml"
 
+# cancel-in-progress is OFF on purpose. These legs run for tens of minutes,
+# and the disk probe was killed 29 minutes in when the pull request was
+# toggled ready-for-review and back - a state change with nothing to say
+# about the measurement it destroyed. A superseding run should queue behind
+# this one, not shoot it.
 concurrency:
   group: shard-seam-spike-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -87,6 +94,16 @@ jobs:
             mode: seam
             base: https://download.geofabrik.de/north-america/us
             regions: new-york new-jersey
+          # The noise floor, and the control this experiment should have had
+          # from the start. New York/New Jersey reported 329 layer-stat
+          # differences across 136 tiles while 5,438 tiles differed in BYTES.
+          # Content that really moved would move its layer stats too, so that
+          # gap is more likely Planetiler disagreeing with itself than
+          # anything about sharding. Building one input twice says which.
+          - scenario: determinism
+            mode: determinism
+            base: https://download.geofabrik.de/north-america/us
+            regions: new-jersey
           # The disk question, asked at a size where it can be answered. VT/NH
           # inputs were SMALLER than Planetiler's fixed overhead, so every
           # multiplier taken from them was that overhead in disguise. These are
@@ -184,6 +201,14 @@ jobs:
 
       # Arm A first and on its own: it is the one whose answer decides the
       # design. Arm B's differences are only interpretable against it.
+      - name: Compare - the noise floor (same input, built twice)
+        if: matrix.mode == 'determinism'
+        run: |
+          set -o pipefail
+          python compare_shards.py \
+            --control data/shard-spike/determinism-a \
+            --shard data/shard-spike/determinism-b | tee arm-a.txt
+
       - name: Compare - arm A (polygon-only, isolates the ranking question)
         if: matrix.mode == 'seam'
         run: |

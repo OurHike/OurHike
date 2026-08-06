@@ -353,6 +353,44 @@ def run_build(name: str, work: Path, jar: Path, osm_pbf: Path, poly_path: Path |
     return result
 
 
+def run_determinism_probe(args: argparse.Namespace, raw: Path) -> None:
+    """Build the SAME input twice, identically, and compare the results.
+
+    The noise floor, and the control this experiment should have had from the
+    start. Without it, "5,438 tiles differ between control and shards" cannot
+    be told apart from "5,438 tiles differ between any two Planetiler runs" -
+    and the dense New York/New Jersey run made that ambiguity impossible to
+    ignore: it reported 329 layer-stat differences across 136 tiles while
+    5,438 tiles differed in BYTES. Content that really changed would move its
+    layer stats. Bytes moving on their own, at forty times the rate, is the
+    signature of encoding order rather than of sharding.
+
+    Vermont and New Hampshire hid this because their two counts agreed (35
+    and 35). Density is what separated them, which fits: more features per
+    tile, more parallel work per tile, more chance that two runs serialise
+    the same features in a different order.
+
+    Whatever this probe reports is the floor beneath every other number the
+    spike produces. If it is not zero, the byte comparison is measuring
+    Planetiler's thread scheduling and the layer stats are the only evidence
+    worth reading."""
+    name = args.states[0]
+    print(f"Determinism probe: building {name} twice, identically.\n", flush=True)
+    pbf = fetch(f"{args.geofabrik_base}/{name}-latest.osm.pbf", raw / f"{name}.osm.pbf")
+
+    print("\nDownloading Planetiler's profile sources (once, before any timing)...", flush=True)
+    run_planetiler(download_sources_cmd(args.planetiler_jar, pbf, args.work_dir / "download-tmp"))
+
+    for run in ("determinism-a", "determinism-b"):
+        run_build(run, args.work_dir, args.planetiler_jar, pbf, None, args.max_zoom)
+
+    print(
+        "\n\nTwo builds of identical input with identical flags. Every difference the comparison\n"
+        "below reports is noise - Planetiler disagreeing with itself - and is the floor beneath\n"
+        "every seam number this spike has produced."
+    )
+
+
 def run_disk_probe(args: argparse.Namespace, raw: Path) -> None:
     """Build each named region ALONE, at increasing input size, and fit the
     line through the results.
@@ -407,6 +445,8 @@ def main(args: argparse.Namespace) -> None:
 
     if args.mode == "disk":
         return run_disk_probe(args, raw)
+    if args.mode == "determinism":
+        return run_determinism_probe(args, raw)
 
     print(f"Fetching {len(args.states)} extracts and their .poly shapes...")
     pbfs, shapes = [], []
@@ -479,9 +519,10 @@ if __name__ == "__main__":
     parser.add_argument("--planetiler-jar", type=Path, required=True, help="Path to planetiler.jar")
     parser.add_argument(
         "--mode",
-        choices=("seam", "disk"),
+        choices=("seam", "disk", "determinism"),
         default="seam",
-        help="seam: control + both arms + comparison. disk: one build per region, fitted, no shards. Default: %(default)s",
+        help="seam: control + both arms. disk: one build per region, fitted. determinism: the same input built twice, "
+        "which is the noise floor every other number rests on. Default: %(default)s",
     )
     parser.add_argument(
         "--geofabrik-base",

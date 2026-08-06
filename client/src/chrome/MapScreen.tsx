@@ -51,6 +51,19 @@ export interface MapScreenProps {
   hasGpsFix: boolean
   lastSyncedAt: Date | null
 
+  /**
+   * The closure a hiker is about to walk into, already rendered to one line
+   * (lib/closureBanner.ts), or null when the way ahead is clear.
+   *
+   * Null also covers "we could not check" — the shell cannot tell those apart
+   * from here and must not pretend to. What separates them is the status
+   * strip's sync age directly above, which is why this sits under it rather
+   * than anywhere else on the screen.
+   */
+  closureAhead?: string | null
+  /** "N serious warnings on your route", or null (lib/seriousWarnings.ts). */
+  warningsAhead?: string | null
+
   activeTab: TabId
   onSelectTab: (id: TabId) => void
   onOpenLegend: () => void
@@ -159,6 +172,8 @@ export function MapScreen({
   online,
   hasGpsFix,
   lastSyncedAt,
+  closureAhead = null,
+  warningsAhead = null,
   activeTab,
   onSelectTab,
   onOpenLegend,
@@ -237,6 +252,33 @@ export function MapScreen({
           backgroundOverride={backgroundOverride}
           belowArchiveZoom={belowArchiveZoom}
         />
+
+        {/* Between the status strip and the header, and that placement is the
+            decision rather than a layout accident (#232).
+
+            Above the map because a hiker who is walking has not opened
+            anything - a closure that only appears on tapping a red band is a
+            closure they walk into. Below the sync age because these two are
+            read together: the age is what says whether this line is current,
+            and an empty space here means "clear" only as far as that age.
+
+            role="alert" for the same reason More.tsx's stuck reports use it -
+            this is not ambient status, it is a thing that changes what
+            someone does next. */}
+        {(closureAhead !== null || warningsAhead !== null) && (
+          <div className="map-screen__alerts" role="alert">
+            {closureAhead !== null && (
+              <p className="map-screen__alert map-screen__alert--closure">
+                {closureAhead}
+              </p>
+            )}
+            {warningsAhead !== null && (
+              <p className="map-screen__alert map-screen__alert--warning">
+                {warningsAhead}
+              </p>
+            )}
+          </div>
+        )}
 
         <Header
           trailName={trailName}

@@ -1082,3 +1082,27 @@
   background: none;
   cursor: pointer;
 }
+
+/* The safety alert strip (#232), between the status strip and the header.
+ *
+ * Two rows at most, and both are one line each: this sits above the map on a
+ * phone, so every pixel it takes is map a hiker cannot see. A closure and a
+ * warning count are worth that; a third thing would not be.
+ *
+ * Same --danger treatment as .settings__locked and .more__stuck, for the same
+ * reason - a second visual language for "this changes what you do next" is a
+ * second thing to learn. */
+.map-screen__alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+}
+.map-screen__alert {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--danger);
+}

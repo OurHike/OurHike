@@ -23,6 +23,13 @@
   font-size: 24px;
   color: var(--fg-1);
 }
+/* One line on the sheet whose tab is open, in the same voice the download
+   window uses under its own tabs (downloads.css .downloads__item-summary). */
+.onboarding__sheet-summary {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: 13px;
+}
 .onboarding__reassurance {
   font-weight: 600;
   color: var(--brand-primary);

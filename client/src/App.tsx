@@ -44,7 +44,11 @@ import { TabBar } from './chrome/TabBar'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import type { TabId } from './chrome/tabs'
 import { Downloads } from './screens/Downloads'
-import { hikingDetailOptions, rasterDetailOptions } from './screens/DetailPicker'
+import {
+  hikingDetailOptions,
+  noDetailOptions,
+  rasterDetailOptions,
+} from './screens/DetailPicker'
 import { DownloadsDialog } from './screens/DownloadsDialog'
 import { More, type StuckReport } from './screens/More'
 import { InstallPrompt } from './screens/InstallPrompt'
@@ -1151,7 +1155,14 @@ function App() {
                         hiking_detail_level: level as HikingDetailLevel,
                       }),
                   }
-                : undefined,
+                : // A sheet nobody has wired a dial for yet: the ladder,
+                  // greyed, rather than a card shaped unlike its neighbours
+                  // (#298).
+                  {
+                    options: noDetailOptions(),
+                    value: '',
+                    onChange: () => undefined,
+                  },
           onStart: () => void handleDownloadSheet(sheet),
           onResume: () => void handleResumeSheet(sheet),
           onDelete: () => void handleDeleteSheet(sheet),

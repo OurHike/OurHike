@@ -41,6 +41,24 @@
 
 import type { DownloadStatus } from '../screens/DownloadCard'
 
+/**
+ * Whether this sheet's next tap fetches its whole size from zero.
+ *
+ * Two questions turn on the same answer, which is why they share one
+ * function: whether a too-small disk is worth warning about before the tap
+ * (screens/Downloads.tsx), and whether the detail level is still a live
+ * choice (screens/DownloadCard.tsx). Both are asking "is a whole download
+ * about to start from here" - and a second copy of the state list would be
+ * a second place for the answer to drift.
+ */
+export function facingFullDownload(status: DownloadStatus): boolean {
+  return (
+    status.state === 'not-downloaded' ||
+    status.state === 'evicted' ||
+    status.state === 'hash-mismatch'
+  )
+}
+
 /** One archive's contribution to the whole. */
 export interface ArchiveState {
   status: DownloadStatus

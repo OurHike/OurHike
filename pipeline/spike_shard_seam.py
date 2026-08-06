@@ -291,6 +291,33 @@ def run_planetiler(cmd: list[str], attempts: int = 3, sleep=time.sleep, run=subp
     raise AssertionError("unreachable")
 
 
+def fit_fixed_and_marginal(points: list[tuple[int, int]]) -> tuple[float, float]:
+    """Least-squares (fixed_bytes, marginal_multiplier) for peak = fixed + k*input.
+
+    The whole reason the first disk answer was wrong. Planetiler pays a cost
+    that does not scale with the input - profile-derived intermediates, the
+    node map's floor - and at VT/NH scale that cost WAS the measurement: five
+    builds all peaked at 0.85 GB, so "7.4x" and "18.6x" were one constant over
+    five denominators.
+
+    BASEMAP.md's fits-a-free-runner table needs the MARGINAL rate, because
+    that is what grows when the region does. Two points separate it from the
+    fixed cost; three make the line worth believing."""
+    if len(points) < 2:
+        raise ValueError("Need at least two builds of different sizes to separate fixed cost from marginal rate")
+    n = len(points)
+    sx = sum(x for x, _ in points)
+    sy = sum(y for _, y in points)
+    sxx = sum(x * x for x, _ in points)
+    sxy = sum(x * y for x, y in points)
+    denominator = n * sxx - sx * sx
+    if denominator == 0:
+        raise ValueError("All builds had the same input size - that cannot separate fixed cost from marginal rate")
+    marginal = (n * sxy - sx * sy) / denominator
+    fixed = (sy - marginal * sx) / n
+    return fixed, marginal
+
+
 def run_build(name: str, work: Path, jar: Path, osm_pbf: Path, poly_path: Path | None, max_zoom: int) -> BuildResult:
     """One Planetiler build into its own directory, with the temp directory
     watched throughout.
@@ -326,16 +353,66 @@ def run_build(name: str, work: Path, jar: Path, osm_pbf: Path, poly_path: Path |
     return result
 
 
+def run_disk_probe(args: argparse.Namespace, raw: Path) -> None:
+    """Build each named region ALONE, at increasing input size, and fit the
+    line through the results.
+
+    No shards, no arms, no comparison - this answers only the temp-disk
+    question, and it answers it the way the seam experiment could not. VT/NH
+    inputs (0.05-0.12 GB) are smaller than Planetiler's own fixed overhead, so
+    every multiplier taken from them was that overhead in disguise. Regions
+    big enough to dwarf it make the marginal rate visible.
+
+    Bounded by the input PBF's own extent rather than a --polygon: the input
+    IS the region here, which is exactly what a real sharded build does."""
+    print(f"Disk probe over {len(args.states)} region(s), smallest first.\n", flush=True)
+    pbfs = [fetch(f"{args.geofabrik_base}/{name}-latest.osm.pbf", raw / f"{name}.osm.pbf") for name in args.states]
+
+    print("\nDownloading Planetiler's profile sources (once, before any timing)...", flush=True)
+    run_planetiler(download_sources_cmd(args.planetiler_jar, pbfs[0], args.work_dir / "download-tmp"))
+
+    results = [
+        run_build(f"disk-{name}", args.work_dir, args.planetiler_jar, pbf, None, args.max_zoom)
+        for name, pbf in zip(args.states, pbfs)
+    ]
+
+    print("\n\n=== Temp disk against input size ===")
+    print(f"{'build':24s} {'input':>10s} {'peak (real)':>12s} {'ratio':>8s} {'minutes':>8s}")
+    for r in results:
+        print(
+            f"{r.name:24s} {r.input_bytes / 1e9:9.2f}G {r.peak_tmp_bytes / 1e9:11.2f}G "
+            f"{r.disk_multiplier:7.1f}x {r.seconds / 60:8.1f}"
+        )
+
+    points = [(r.input_bytes, r.peak_tmp_bytes) for r in results]
+    if len({x for x, _ in points}) < 2:
+        print("\nOnly one input size - cannot separate fixed cost from marginal rate.")
+        return
+    fixed, marginal = fit_fixed_and_marginal(points)
+    print(f"\nFitted: peak temp = {fixed / 1e9:.2f} GB fixed + {marginal:.1f}x input")
+    print(
+        "The multiplier that matters for sizing a machine is the MARGINAL one - the fixed part does not\n"
+        "grow when the region does. BASEMAP.md assumes 5x and treats Planetiler's 10x planet guidance as\n"
+        f"the pessimistic bound; this run puts the marginal rate at {marginal:.1f}x."
+    )
+    for gb in (11.2, 17.9):
+        need = (fixed + marginal * gb * 1e9) / 1e9
+        print(f"  Extrapolated for a {gb:.1f} GB input: {need:.0f} GB of temp disk (+ input + output) against 88 GB free")
+
+
 def main(args: argparse.Namespace) -> None:
     work = args.work_dir
     raw = work / "raw"
     work.mkdir(parents=True, exist_ok=True)
 
-    print(f"Fetching {len(args.states)} state extracts and their .poly shapes...")
+    if args.mode == "disk":
+        return run_disk_probe(args, raw)
+
+    print(f"Fetching {len(args.states)} extracts and their .poly shapes...")
     pbfs, shapes = [], []
     for state in args.states:
-        pbfs.append(fetch(f"{GEOFABRIK_BASE}/{state}-latest.osm.pbf", raw / f"{state}.osm.pbf"))
-        poly = fetch(f"{GEOFABRIK_BASE}/{state}.poly", raw / f"{state}.poly")
+        pbfs.append(fetch(f"{args.geofabrik_base}/{state}-latest.osm.pbf", raw / f"{state}.osm.pbf"))
+        poly = fetch(f"{args.geofabrik_base}/{state}.poly", raw / f"{state}.poly")
         shapes.append(from_poly(poly.read_text()))
 
     # Each shard's own shape, and the union that bounds the control. The
@@ -400,6 +477,17 @@ if __name__ == "__main__":
         "--states", nargs="+", default=list(DEFAULT_STATES), help="Adjacent Geofabrik state names (default: %(default)s)"
     )
     parser.add_argument("--planetiler-jar", type=Path, required=True, help="Path to planetiler.jar")
+    parser.add_argument(
+        "--mode",
+        choices=("seam", "disk"),
+        default="seam",
+        help="seam: control + both arms + comparison. disk: one build per region, fitted, no shards. Default: %(default)s",
+    )
+    parser.add_argument(
+        "--geofabrik-base",
+        default=GEOFABRIK_BASE,
+        help="Where the extracts live. States sit under .../north-america/us; regions like us-northeast one level up.",
+    )
     parser.add_argument("--max-zoom", type=int, default=14, help="Tile pyramid depth (default: %(default)s)")
     parser.add_argument("--work-dir", type=Path, default=WORK_DIR, help="Where builds land (default: %(default)s)")
     main(parser.parse_args())

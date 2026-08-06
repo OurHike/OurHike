@@ -145,10 +145,17 @@ does not explain either. Its layers add `transportation` and
 
 The magnitudes are small (16 tiles in 21,910 for arm A, 375 for arm B) and the
 affected layers are labels rather than geometry, so this is a fidelity
-question, not a broken-map one. But it is real, it is the thing this section
-used to call unproved, and a national build that ignores it ships seams. What
-it costs to fix — a seam-tile merge rule, a wider padding, or accepting label
-drift at shard boundaries — is #194's to decide.
+question, not a broken-map one.
+
+**Decided (2026-08-06): the drift is accepted for v1.** A place name that
+differs across a shard boundary is the same class of thing this file already
+warns about under "freshness honesty" — a label disagreeing between a
+downloaded tile and a live one — and hikers are already told that. The three
+alternatives each cost more than the defect does: wider padding fixes the
+288 differences one tile from the cut and provably not the ~78 interior ones,
+a seam-tile merge rule addresses the multi-shard population but not the
+interior drift either, and building North America whole on a paid larger
+runner spends the money #194 exists to avoid. Revisit if a club reports it.
 
 **Still unresolved: the temp-disk multiplier.** The spike measured a constant
 0.85 GB of real (allocated, not apparent) peak temp disk across all five

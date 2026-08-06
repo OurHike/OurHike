@@ -7,6 +7,13 @@
 # that the thing to check is whether any OpenMapTiles layer ranks features
 # from a global view rather than a local one. This is that check.
 #
+# Two scenarios run as a matrix. seam-dense re-asks the seam question across
+# the Hudson, where density gives label ranking the most to disagree about;
+# disk-scale answers the temp-disk question at a size where it can be
+# answered, since the first attempt used inputs SMALLER than Planetiler's own
+# fixed overhead and every multiplier it produced was that overhead in
+# disguise.
+#
 # Three builds of the same two states, because two would not settle it:
 # a whole-region CONTROL, an ARM A whose shards see all the data and differ
 # only in --polygon, and an ARM B whose shards see only their own state the
@@ -66,7 +73,30 @@ permissions:
 jobs:
   spike:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The seam question, re-asked where it should hurt most. Vermont and
+          # New Hampshire answered it but they are sparse; New York and New
+          # Jersey meet across the Hudson through the densest ground in the
+          # country, which is where label ranking has the most to disagree
+          # about. If interior drift scales with density it shows here.
+          - scenario: seam-dense
+            mode: seam
+            base: https://download.geofabrik.de/north-america/us
+            regions: new-york new-jersey
+          # The disk question, asked at a size where it can be answered. VT/NH
+          # inputs were SMALLER than Planetiler's fixed overhead, so every
+          # multiplier taken from them was that overhead in disguise. These are
+          # the actual shards a continental build would use, and two sizes are
+          # what separates the fixed cost from the marginal rate.
+          - scenario: disk-scale
+            mode: disk
+            base: https://download.geofabrik.de/north-america
+            regions: us-northeast us-south
+    name: spike (${{ matrix.scenario }})
     defaults:
       run:
         working-directory: pipeline
@@ -125,7 +155,7 @@ jobs:
       # this spike went green while both comparisons died on a missing file
       # and the summary read "(did not run)". A spike that can fail silently
       # is worse than no spike, because it produces a result-shaped absence.
-      - name: Build the control and both arms
+      - name: Build (control and both arms, or the disk probe)
         run: |
           set -o pipefail
           # -u because Planetiler writes straight to the inherited stdout while
@@ -135,11 +165,18 @@ jobs:
           python -u spike_shard_seam.py \
             --planetiler-jar planetiler.jar \
             --max-zoom "${{ inputs.max_zoom || '14' }}" \
-            ${{ inputs.states != '' && format('--states {0}', inputs.states) || '' }} \
+            --mode "${{ matrix.mode }}" \
+            --geofabrik-base "${{ matrix.base }}" \
+            --states ${{ inputs.states != '' && inputs.states || matrix.regions }} \
             | tee build.log
 
+      # continue-on-error because the matrix legs race: both may miss the
+      # cache, and whichever saves second hits "key already exists". That is a
+      # duplicate, not a problem, and it must not fail a leg that has already
+      # done its measuring.
       - name: Save Planetiler's profile sources
         if: always() && steps.sources.outputs.cache-hit != 'true'
+        continue-on-error: true
         uses: actions/cache/save@v4
         with:
           path: pipeline/data/sources
@@ -148,6 +185,7 @@ jobs:
       # Arm A first and on its own: it is the one whose answer decides the
       # design. Arm B's differences are only interpretable against it.
       - name: Compare - arm A (polygon-only, isolates the ranking question)
+        if: matrix.mode == 'seam'
         run: |
           set -o pipefail
           python compare_shards.py \
@@ -156,6 +194,7 @@ jobs:
             --seam data/shard-spike/seam.geojson | tee arm-a.txt
 
       - name: Compare - arm B (realistic, adds the padding variable)
+        if: matrix.mode == 'seam'
         run: |
           set -o pipefail
           python compare_shards.py \
@@ -170,11 +209,13 @@ jobs:
         if: always()
         run: |
           {
-            echo "## Shard seam spike"
+            echo "## Shard seam spike - ${{ matrix.scenario }}"
             echo
             echo "### Temp disk, measured"
             echo '```'
             sed -n '/=== Temp disk/,/^$/p' build.log || true
+            sed -n '/=== Temp disk against input/,/^$/p' build.log || true
+            grep -A4 '^Fitted:' build.log || true
             echo '```'
             echo "### Arm A - shards saw ALL the data, only --polygon differed"
             echo "A difference here cannot be missing data."
@@ -192,7 +233,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: shard-seam-spike
+          name: shard-seam-spike-${{ matrix.scenario }}
           path: |
             pipeline/build.log
             pipeline/arm-a.txt

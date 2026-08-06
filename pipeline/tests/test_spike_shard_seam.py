@@ -25,6 +25,7 @@ from spike_shard_seam import (
     directory_apparent_bytes,
     directory_bytes,
     download_sources_cmd,
+    fit_fixed_and_marginal,
     run_planetiler,
     seam_between,
 )
@@ -270,3 +271,44 @@ def test_shards_that_merely_abut_still_report_their_shared_border():
 
     assert seam.area == 0
     assert seam.length == pytest.approx(10.0)
+
+
+# The disk probe. VT/NH could not answer the multiplier question because
+# Planetiler's fixed overhead was larger than the inputs: five builds all
+# peaked at 0.85 GB, and dividing one constant by five denominators produced
+# five "multipliers" that were all the same number in disguise. Separating
+# fixed from marginal is what makes a bigger run mean something.
+
+
+def test_the_fit_recovers_a_fixed_cost_and_a_marginal_rate():
+    """peak = 1 GB fixed + 5x input, sampled at three sizes."""
+    points = [(1_000_000_000, 6_000_000_000), (2_000_000_000, 11_000_000_000), (4_000_000_000, 21_000_000_000)]
+
+    fixed, marginal = fit_fixed_and_marginal(points)
+
+    assert fixed == pytest.approx(1_000_000_000)
+    assert marginal == pytest.approx(5.0)
+
+
+def test_a_dominant_fixed_cost_is_reported_as_fixed_rather_than_as_a_huge_multiplier():
+    """The VT/NH shape of failure: a large constant and tiny inputs. The
+    naive ratio says 17x and 8.5x; the fit says the marginal rate is 1x and
+    the rest is overhead - which is the number that predicts a big build."""
+    points = [(50_000_000, 850_000_000), (100_000_000, 900_000_000)]
+
+    fixed, marginal = fit_fixed_and_marginal(points)
+
+    assert fixed == pytest.approx(800_000_000)
+    assert marginal == pytest.approx(1.0)
+
+
+def test_one_build_cannot_separate_the_two():
+    with pytest.raises(ValueError, match="at least two builds"):
+        fit_fixed_and_marginal([(1_000, 2_000)])
+
+
+def test_builds_of_identical_size_cannot_separate_the_two_either():
+    """Two points on the same vertical line have no slope to solve for, and
+    silently returning one would be worse than refusing."""
+    with pytest.raises(ValueError, match="same input size"):
+        fit_fixed_and_marginal([(1_000, 2_000), (1_000, 3_000)])

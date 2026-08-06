@@ -1,0 +1,275 @@
+# Measures whether BASEMAP.md's sharded continental build is lossless, and
+# what Planetiler's temp disk actually costs (#194).
+#
+# BASEMAP.md claims a continental build can be split across free runners -
+# one Geofabrik sub-region each, shards never reconciled because they are
+# disjoint. It also says, in as many words, that this has not been proved and
+# that the thing to check is whether any OpenMapTiles layer ranks features
+# from a global view rather than a local one. This is that check.
+#
+# Three scenarios run as a matrix. seam-dense re-asks the seam question across
+# the Hudson, where density gives label ranking the most to disagree about;
+# disk-scale answers the temp-disk question at a size where it can be
+# answered, since the first attempt used inputs SMALLER than Planetiler's own
+# fixed overhead and every multiplier it produced was that overhead in
+# disguise. determinism builds one input twice and compares the two, which is
+# the noise floor every other number here rests on and should have been the
+# first thing measured.
+#
+# Three builds of the same two states, because two would not settle it:
+# a whole-region CONTROL, an ARM A whose shards see all the data and differ
+# only in --polygon, and an ARM B whose shards see only their own state the
+# way a real sharded build would. A difference in arm A cannot be missing
+# data, so it is the ranking failure padding cannot fix; a difference only in
+# arm B is the padding requirement, and the seam-distance histogram sizes it.
+# See spike_shard_seam.py's docstring for the full argument.
+#
+# It also answers the cheaper question in passing: BASEMAP.md's
+# "every sub-region fits a free runner" table assumes Planetiler wants ~5x
+# its input as temp disk and treats its 10x planet guidance as the
+# pessimistic bound. Nobody has watched the directory. This does, at two
+# second intervals, and reports the peak - which is the number that matters,
+# since Planetiler frees intermediates as phases end and the size at exit
+# understates what the build actually needed.
+#
+# Runs on pull requests that touch it, not only on dispatch. workflow_dispatch
+# is unavailable until a workflow reaches the default branch, and a spike
+# whose results cannot be seen until after it merges is a spike reviewed
+# blind. The paths filter keeps it off every unrelated pull request.
+#
+# Nothing here publishes. Same rule as build-basemap.yml: the artifacts exist
+# to be measured and looked at, and a spike that can accidentally ship is not
+# a spike.
+
+name: Shard seam spike
+
+on:
+  workflow_dispatch:
+    inputs:
+      states:
+        description: "Two or more ADJACENT Geofabrik state names. Empty = vermont new-hampshire."
+        type: string
+        default: ""
+      max_zoom:
+        description: "Tile pyramid depth (14 = what a real build ships)"
+        type: string
+        default: "14"
+      planetiler_jar_url:
+        description: "Planetiler release jar to build with"
+        type: string
+        default: "https://github.com/onthegomap/planetiler/releases/latest/download/planetiler.jar"
+  pull_request:
+    paths:
+      - "pipeline/spike_shard_seam.py"
+      - "pipeline/compare_shards.py"
+      - "pipeline/lib/poly.py"
+      - ".github/workflows/shard-seam-spike.yml"
+
+# cancel-in-progress is OFF on purpose. These legs run for tens of minutes,
+# and the disk probe was killed 29 minutes into a 60-minute measurement when
+# a merge of main landed on the branch - a push that touched none of the
+# files this workflow measures and had nothing to say about its result.
+#
+# The trade is real and chosen deliberately: a superseding run now QUEUES
+# behind a running one rather than replacing it, so an unrelated push cannot
+# destroy an hour of measurement, at the cost of the queue occasionally
+# holding a newer run behind an older one. For a spike whose output is the
+# whole point, losing the measurement is the worse failure. Cancel the stale
+# run by hand when the queue order is wrong.
+concurrency:
+  group: shard-seam-spike-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  spike:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The seam question, re-asked where it should hurt most. Vermont and
+          # New Hampshire answered it but they are sparse; New York and New
+          # Jersey meet across the Hudson through the densest ground in the
+          # country, which is where label ranking has the most to disagree
+          # about. If interior drift scales with density it shows here.
+          - scenario: seam-dense
+            mode: seam
+            base: https://download.geofabrik.de/north-america/us
+            regions: new-york new-jersey
+          # The noise floor, and the control this experiment should have had
+          # from the start. New York/New Jersey reported 329 layer-stat
+          # differences across 136 tiles while 5,438 tiles differed in BYTES.
+          # Content that really moved would move its layer stats too, so that
+          # gap is more likely Planetiler disagreeing with itself than
+          # anything about sharding. Building one input twice says which.
+          - scenario: determinism
+            mode: determinism
+            base: https://download.geofabrik.de/north-america/us
+            regions: new-jersey
+          # The disk question, asked at a size where it can be answered. VT/NH
+          # inputs were SMALLER than Planetiler's fixed overhead, so every
+          # multiplier taken from them was that overhead in disguise. These are
+          # the actual shards a continental build would use, and two sizes are
+          # what separates the fixed cost from the marginal rate.
+          - scenario: disk-scale
+            mode: disk
+            base: https://download.geofabrik.de/north-america
+            regions: us-northeast us-south
+    name: spike (${{ matrix.scenario }})
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # Reported rather than assumed, same as build-basemap.yml - and here
+      # it is half the point: the disk number this prints is what the
+      # multiplier below gets compared against.
+      - name: Runner capacity
+        run: |
+          echo "disk:"; df -h /
+          echo "cpus: $(nproc)"
+          echo "memory:"; free -g
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
+          osmium --version | head -1
+
+      - name: Fetch the Planetiler jar
+        run: |
+          curl -sSL -o planetiler.jar "${{ inputs.planetiler_jar_url || 'https://github.com/onthegomap/planetiler/releases/latest/download/planetiler.jar' }}"
+          ls -la planetiler.jar
+
+      # Planetiler's profile pulls ~1.4 GB from three third parties before it
+      # builds anything, and osmdata.openstreetmap.de timed out two runs in a
+      # row on the water polygons - a failure with nothing to say about
+      # sharding that stops the spike anyway. Caching them means one good
+      # download serves every later run.
+      #
+      # restore/save rather than plain `cache` so a partially-successful fetch
+      # is still kept: the save runs even when a later step fails, which is
+      # precisely the run where having the bytes next time matters most.
+      - name: Restore Planetiler's profile sources
+        id: sources
+        uses: actions/cache/restore@v4
+        with:
+          path: pipeline/data/sources
+          key: planetiler-profile-sources-v1
+
+      # pipefail on every step that pipes into tee. Without it bash reports
+      # the exit status of tee, which always succeeds - so the first run of
+      # this spike went green while both comparisons died on a missing file
+      # and the summary read "(did not run)". A spike that can fail silently
+      # is worse than no spike, because it produces a result-shaped absence.
+      - name: Build (control and both arms, or the disk probe)
+        run: |
+          set -o pipefail
+          # -u because Planetiler writes straight to the inherited stdout while
+          # Python block-buffers when piped into tee. Without it the spike's own
+          # narration all flushes at exit and lands AFTER the Java stack trace it
+          # was supposed to be explaining, which is how the last failure read.
+          python -u spike_shard_seam.py \
+            --planetiler-jar planetiler.jar \
+            --max-zoom "${{ inputs.max_zoom || '14' }}" \
+            --mode "${{ matrix.mode }}" \
+            --geofabrik-base "${{ matrix.base }}" \
+            --states ${{ inputs.states != '' && inputs.states || matrix.regions }} \
+            | tee build.log
+
+      # continue-on-error because the matrix legs race: both may miss the
+      # cache, and whichever saves second hits "key already exists". That is a
+      # duplicate, not a problem, and it must not fail a leg that has already
+      # done its measuring.
+      - name: Save Planetiler's profile sources
+        if: always() && steps.sources.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: pipeline/data/sources
+          key: planetiler-profile-sources-v1
+
+      # Arm A first and on its own: it is the one whose answer decides the
+      # design. Arm B's differences are only interpretable against it.
+      - name: Compare - the noise floor (same input, built twice)
+        if: matrix.mode == 'determinism'
+        run: |
+          set -o pipefail
+          python compare_shards.py \
+            --control data/shard-spike/determinism-a \
+            --shard data/shard-spike/determinism-b | tee arm-a.txt
+
+      - name: Compare - arm A (polygon-only, isolates the ranking question)
+        if: matrix.mode == 'seam'
+        run: |
+          set -o pipefail
+          python compare_shards.py \
+            --control data/shard-spike/control \
+            $(for d in data/shard-spike/arm-a-*; do printf ' --shard %s' "$d"; done) \
+            --seam data/shard-spike/seam.geojson | tee arm-a.txt
+
+      - name: Compare - arm B (realistic, adds the padding variable)
+        if: matrix.mode == 'seam'
+        run: |
+          set -o pipefail
+          python compare_shards.py \
+            --control data/shard-spike/control \
+            $(for d in data/shard-spike/arm-b-*; do printf ' --shard %s' "$d"; done) \
+            --seam data/shard-spike/seam.geojson | tee arm-b.txt
+
+      # The summary is what gets read and pasted back into #194, so it
+      # carries the verdicts and the measured multiplier rather than a link
+      # to a log somebody has to go and open.
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "## Shard seam spike - ${{ matrix.scenario }}"
+            echo
+            echo "### Temp disk, measured"
+            echo '```'
+            sed -n '/=== Temp disk/,/^$/p' build.log || true
+            sed -n '/=== Temp disk against input/,/^$/p' build.log || true
+            grep -A4 '^Fitted:' build.log || true
+            echo '```'
+            echo "### Arm A - shards saw ALL the data, only --polygon differed"
+            echo "A difference here cannot be missing data."
+            echo '```'
+            cat arm-a.txt 2>/dev/null || echo "(did not run)"
+            echo '```'
+            echo "### Arm B - shards saw only their own state"
+            echo "Differences beyond arm A are the padding requirement."
+            echo '```'
+            cat arm-b.txt 2>/dev/null || echo "(did not run)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          df -h /
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shard-seam-spike-${{ matrix.scenario }}
+          path: |
+            pipeline/build.log
+            pipeline/arm-a.txt
+            pipeline/arm-b.txt
+            pipeline/data/shard-spike/seam.geojson
+            pipeline/data/shard-spike/*/build.pmtiles.layerstats.tsv.gz
+          retention-days: 7
+          if-no-files-found: warn

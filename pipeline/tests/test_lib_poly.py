@@ -11,7 +11,7 @@ import subprocess
 import pytest
 from shapely.geometry import MultiPolygon, Point, Polygon, box
 
-from lib.poly import clip_shape, to_poly
+from lib.poly import clip_shape, from_poly, to_poly
 
 
 def parse_poly(text: str):
@@ -117,3 +117,59 @@ def test_osmium_accepts_the_generated_poly_and_clips_with_it(tmp_path):
     kept = subprocess.run(["osmium", "cat", str(out), "-f", "osm"], check=True, capture_output=True, text=True).stdout
     assert 'id="1"' in kept and 'id="2"' in kept, "nodes inside the shape must survive the clip"
     assert 'id="3"' not in kept, "a node far outside the shape must be clipped away"
+
+
+# from_poly() exists to read the .poly Geofabrik publishes beside every
+# extract - the exact shape that extract was cut with. Round-tripping is the
+# honest test: the format's meaning is the geometry, so what matters is that
+# a shape survives the trip, not that the text matches byte for byte.
+
+
+def test_a_polygon_survives_the_round_trip():
+    original = box(-74.1, 41.0, -73.9, 41.2)
+
+    assert from_poly(to_poly(original)).equals(original)
+
+
+def test_a_multipolygon_round_trips_as_all_of_its_parts():
+    original = MultiPolygon([box(0, 0, 1, 1), box(5, 5, 6, 6)])
+
+    restored = from_poly(to_poly(original))
+
+    assert restored.equals(original)
+
+
+def test_a_hole_survives_the_round_trip():
+    """`!` is how the format spells subtraction, and a ring read as an outer
+    would turn a donut into a disc - silently, and only visible as extra
+    data clipped in."""
+    original = Polygon(shell=box(0, 0, 10, 10).exterior.coords, holes=[box(4, 4, 6, 6).exterior.coords])
+
+    restored = from_poly(to_poly(original))
+
+    assert restored.equals(original)
+    assert not restored.contains(Point(5, 5))
+
+
+def test_ring_labels_are_ignored_because_only_the_bang_carries_meaning():
+    text = "somename\nfirst-ring\n   0.0   0.0\n   1.0   0.0\n   1.0   1.0\n   0.0   0.0\nEND\nEND\n"
+
+    assert from_poly(text).equals(Polygon([(0, 0), (1, 0), (1, 1)]))
+
+
+def test_text_with_no_rings_is_an_error_rather_than_an_empty_shape():
+    """An empty geometry would clip everything away and read downstream as
+    'the region is empty' rather than 'the file was wrong'."""
+    with pytest.raises(ValueError, match="No rings"):
+        from_poly("justaname\nEND\n")
+
+
+def test_the_seam_between_two_neighbours_is_their_shared_border():
+    """What the sharded-build comparison measures against: two shards cut
+    from adjacent .poly shapes meet along a line, and that line is the cut."""
+    west = from_poly(to_poly(box(0, 0, 5, 10)))
+    east = from_poly(to_poly(box(5, 0, 10, 10)))
+
+    seam = west.boundary.intersection(east.boundary)
+
+    assert seam.length == pytest.approx(10.0)

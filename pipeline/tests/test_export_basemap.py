@@ -64,6 +64,18 @@ def test_planetiler_command_carries_the_clip_polygon_only_when_given():
     assert not any(arg.startswith("--polygon") for arg in unclipped)
 
 
+def test_layer_stats_are_asked_for_only_when_wanted():
+    """Planetiler logs a `layer_stats` path whether or not it writes one, so
+    the file's absence is the only way to find out it was never requested -
+    which is exactly how the first shard-seam run failed. The flag is what
+    actually produces it."""
+    default = planetiler_cmd(Path("p.jar"), Path("in.pbf"), Path("out.pmtiles"), 14, None, Path("tmp"))
+    assert "--output-layerstats" not in default
+
+    asked = planetiler_cmd(Path("p.jar"), Path("in.pbf"), Path("out.pmtiles"), 14, None, Path("tmp"), layer_stats=True)
+    assert "--output-layerstats" in asked
+
+
 def test_fetch_states_skips_files_already_present(tmp_path, requests_mock):
     (tmp_path / "georgia-latest.osm.pbf").write_bytes(b"already here")
     requests_mock.get(
@@ -168,3 +180,14 @@ def test_main_clips_and_merges_a_synthetic_state_end_to_end(tmp_path, monkeypatc
     kept = subprocess.run(["osmium", "cat", str(merged), "-f", "osm"], check=True, capture_output=True, text=True).stdout
     assert 'id="1"' in kept, "the node inside the corridor must survive"
     assert 'id="2"' not in kept, "the node outside the corridor must be clipped"
+
+
+def test_the_http_timeout_is_only_sent_when_raised():
+    """Planetiler's own default is 30s and that is usually right; the spike
+    raises it because the profile's 1.4 GB of third-party sources timed out
+    twice mid-measurement."""
+    default = planetiler_cmd(Path("p.jar"), Path("in.pbf"), Path("out.pmtiles"), 14, None, Path("tmp"))
+    assert not any(arg.startswith("--http-timeout") for arg in default)
+
+    patient = planetiler_cmd(Path("p.jar"), Path("in.pbf"), Path("out.pmtiles"), 14, None, Path("tmp"), http_timeout_seconds=300)
+    assert "--http-timeout=300s" in patient

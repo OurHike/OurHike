@@ -121,11 +121,33 @@ def osmium_merge_cmd(inputs: list[Path], out_pbf: Path) -> list[str]:
     return ["osmium", "merge", "--overwrite", "-o", str(out_pbf), *[str(p) for p in inputs]]
 
 
-def planetiler_cmd(jar: Path, osm_pbf: Path, out_path: Path, max_zoom: int, poly_path: Path | None, tmp_dir: Path) -> list[str]:
+def planetiler_cmd(
+    jar: Path,
+    osm_pbf: Path,
+    out_path: Path,
+    max_zoom: int,
+    poly_path: Path | None,
+    tmp_dir: Path,
+    layer_stats: bool = False,
+    http_timeout_seconds: int | None = None,
+) -> list[str]:
     """The Planetiler invocation. --download fetches the profile's non-OSM
     sources (Natural Earth, water polygons) on first run; --polygon bounds the
     output tiles to the clip shape (omitted under --no-clip, where the input
-    PBF's own extent is the bound)."""
+    PBF's own extent is the bound).
+
+    layer_stats asks for the per-(tile, layer) TSV that compare_shards.py
+    reads. Off by default and opt-in rather than always on: Planetiler names
+    the file whether or not it writes one - the `layer_stats` argument it
+    logs is a path, not a promise - and a build that pays for statistics
+    nobody reads is a build paying for nothing. The spike turns it on.
+
+    http_timeout_seconds raises Planetiler's own 30s default. The profile
+    pulls ~1.4 GB from three third parties before it builds anything, and
+    `Error getting size of water-polygons-split-3857.zip ... TimeoutException`
+    is that 30s expiring on a slow host - a failure that says nothing about
+    the data and stops the build regardless. None leaves Planetiler's
+    default alone."""
     return [
         "java",
         "-jar",
@@ -135,6 +157,8 @@ def planetiler_cmd(jar: Path, osm_pbf: Path, out_path: Path, max_zoom: int, poly
         f"--maxzoom={max_zoom}",
         f"--tmpdir={tmp_dir}",
         *([] if poly_path is None else [f"--polygon={poly_path}"]),
+        *(["--output-layerstats"] if layer_stats else []),
+        *([] if http_timeout_seconds is None else [f"--http-timeout={http_timeout_seconds}s"]),
         "--download",
         "--force",
     ]

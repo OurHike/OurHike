@@ -2,7 +2,7 @@
 
 Companion to [OurHikeValues.md](OurHikeValues.md), [FEATURES.md](FEATURES.md), and [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md).
 
-**This document describes the phases and what each one means. It does not track open work.** Open work lives in [Issues](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues), because a task with a state and an owner belongs somewhere that state changes when a pull request merges, rather than somewhere someone has to remember to tick a box. See [CONTRIBUTING.md](CONTRIBUTING.md#where-things-are-written-down) for the split between the two.
+**This document describes the phases and what each one means. It does not track open work.** Open work lives in [Issues](https://github.com/OurHike/OurHike/issues), because a task with a state and an owner belongs somewhere that state changes when a pull request merges, rather than somewhere someone has to remember to tick a box. See [CONTRIBUTING.md](CONTRIBUTING.md#where-things-are-written-down) for the split between the two.
 
 The checklists this file used to carry are gone, for a reason worth recording: by the end of July 2026 this roadmap still showed the entire client and backend as unbuilt, while both were built, tested and passing CI. It also carried an index that omitted four feature docs and listed a fifth twice, and pointed at a resolved question as still open. Nothing was wrong with the plan — the plan just was never the thing being updated.
 
@@ -11,9 +11,9 @@ The checklists this file used to carry are gone, for a reason worth recording: b
 | Where to look | For |
 |---|---|
 | [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) | The ordered steps to get v1 deployed |
-| [`v1-mvp`](https://github.com/jaimito-asuntos-gringuenos/OurHike/labels/v1-mvp) | What still blocks launch |
-| [`post-mvp`](https://github.com/jaimito-asuntos-gringuenos/OurHike/labels/post-mvp) | Designed, deliberately not started |
-| [`good first issue`](https://github.com/jaimito-asuntos-gringuenos/OurHike/labels/good%20first%20issue) | Somewhere to start |
+| [`v1-mvp`](https://github.com/OurHike/OurHike/labels/v1-mvp) | What still blocks launch |
+| [`post-mvp`](https://github.com/OurHike/OurHike/labels/post-mvp) | Designed, deliberately not started |
+| [`good first issue`](https://github.com/OurHike/OurHike/labels/good%20first%20issue) | Somewhere to start |
 | [FEATURES.md](FEATURES.md) + [features/](features/) | Everything else, as design rather than as tasks |
 
 ---
@@ -35,7 +35,7 @@ A cross-feature alignment review on 2026-07-28 moved **Authentication**, **Repor
 | [ONBOARDING.md](features/ONBOARDING.md) | **Split.** The minimal first-run flow is v1 MVP; trail names, settings mention and tips wait on Authentication and UX Customization. |
 | [UX_CUSTOMIZATION.md](features/UX_CUSTOMIZATION.md) | **Split.** Most is MVP detail or light settings polish; auto-rotate is real Post-MVP work given the platform constraints. |
 | [ELEVATION_PROFILE.md](features/ELEVATION_PROFILE.md) | **v1 MVP.** The phone's elevation ribbon and waypoint lanes: the ten-mile window, why it is asymmetric, and what counts as the climb ahead. Was missing from this table until 2026-08-05 — it shipped without ever being indexed here. |
-| [SPUR_TRAILS.md](features/SPUR_TRAILS.md) | **Scope call.** The rendering half already ships; linking a spur to its destination is a contained pipeline addition — [#111](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/111). |
+| [SPUR_TRAILS.md](features/SPUR_TRAILS.md) | **Scope call.** The rendering half already ships; linking a spur to its destination is a contained pipeline addition — [#111](https://github.com/OurHike/OurHike/issues/111). |
 | [IDENTITY_AND_PRIVACY.md](features/IDENTITY_AND_PRIVACY.md) | **Reference, not a feature.** Ties together identity/privacy design scattered across five docs, and replaces five small settings models with one canonical `UserPreferences`. |
 | [FEATURE_GATING.md](features/FEATURE_GATING.md) | **Post-MVP, recommended first.** Per-chapter flags and experiments via self-hosted GrowthBook, always evaluated locally so the app never depends on the flag service being reachable. |
 | [LAND_OWNERSHIP.md](features/LAND_OWNERSHIP.md) | Post-MVP (a scope call). What kind of land surrounds the corridor, so that stepping off protected land is a visible act rather than an accident. |
@@ -61,7 +61,7 @@ Plus [WEBSITE.md](WEBSITE.md) at the repository root — not a feature but the p
 
 The design and the findings behind all of it live in [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md)'s Data pipeline section and [pipeline/README.md](pipeline/README.md). The release process this grew into is specified in [pipeline/DATA_RELEASES.md](pipeline/DATA_RELEASES.md), which supersedes the original change-aware publish plan.
 
-**Still open:** [#96](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/96) nothing runs the freshness check on a schedule · [#97](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/97) NHD stream-crossings as a water source · [#98](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/98) opentrail.org licensing · [#99](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/99) POI schema beyond its first slice · [#100](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/100) the dbt transform layer · [#111](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/111) spur destinations.
+**Still open:** [#96](https://github.com/OurHike/OurHike/issues/96) nothing runs the freshness check on a schedule · [#97](https://github.com/OurHike/OurHike/issues/97) NHD stream-crossings as a water source · [#98](https://github.com/OurHike/OurHike/issues/98) opentrail.org licensing · [#99](https://github.com/OurHike/OurHike/issues/99) POI schema beyond its first slice · [#100](https://github.com/OurHike/OurHike/issues/100) the dbt transform layer · [#111](https://github.com/OurHike/OurHike/issues/111) spur destinations.
 
 ## Phase 2 — Client app & backend
 
@@ -69,30 +69,30 @@ The design and the findings behind all of it live in [TECHNICAL_ARCHITECTURE.md]
 
 Browsing stays account-free. Only the contribution paths need a live backend — see TECHNICAL_ARCHITECTURE.md's Backend section for why the line falls where it does.
 
-**Still open:** [#89](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/89) photo picker discards photos · [#90](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/90) POIs are never drawn on the map · [#91](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/91) cumulative ascent over-counts · [#93](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/93) wrong-way thresholds are placeholders · [#105](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/105) outdoor usability pass. Verification gaps: [#92](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/92) real OAuth · [#94](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/94) end-to-end against published artifacts · [#95](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/95) real Postgres.
+**Still open:** [#89](https://github.com/OurHike/OurHike/issues/89) photo picker discards photos · [#90](https://github.com/OurHike/OurHike/issues/90) POIs are never drawn on the map · [#91](https://github.com/OurHike/OurHike/issues/91) cumulative ascent over-counts · [#93](https://github.com/OurHike/OurHike/issues/93) wrong-way thresholds are placeholders · [#105](https://github.com/OurHike/OurHike/issues/105) outdoor usability pass. Verification gaps: [#92](https://github.com/OurHike/OurHike/issues/92) real OAuth · [#94](https://github.com/OurHike/OurHike/issues/94) end-to-end against published artifacts · [#95](https://github.com/OurHike/OurHike/issues/95) real Postgres.
 
-Feature gating was listed in this phase originally; it is Post-MVP — [#110](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/110).
+Feature gating was listed in this phase originally; it is Post-MVP — [#110](https://github.com/OurHike/OurHike/issues/110).
 
 ## Phase 3 — App store packaging
 
 **Not started.** The PWA is the product; these wrap the same build rather than reimplementing it.
 
-[#101](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/101) Capacitor · [#102](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/102) iOS and TestFlight · [#103](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/103) Android · [#104](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/104) listing assets and privacy policy.
+[#101](https://github.com/OurHike/OurHike/issues/101) Capacitor · [#102](https://github.com/OurHike/OurHike/issues/102) iOS and TestFlight · [#103](https://github.com/OurHike/OurHike/issues/103) Android · [#104](https://github.com/OurHike/OurHike/issues/104) listing assets and privacy policy.
 
 ## Phase 4 — Launch readiness
 
 **Not started**, and largely gated on there being something published to test against.
 
-[#106](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/106) real-trail field testing, which several other issues wait behind · [#107](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/107) web-only payments · [#108](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/108) the inheritance guide for the next club · [#109](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/109) soft launch with NYNJTC.
+[#106](https://github.com/OurHike/OurHike/issues/106) real-trail field testing, which several other issues wait behind · [#107](https://github.com/OurHike/OurHike/issues/107) web-only payments · [#108](https://github.com/OurHike/OurHike/issues/108) the inheritance guide for the next club · [#109](https://github.com/OurHike/OurHike/issues/109) soft launch with NYNJTC.
 
-**The web surface, planned 2026-08-03 in [WEBSITE.md](WEBSITE.md).** `site/index.html` is the app's Downloads screen restyled at phone width, and the client has no `@media` rule anywhere — so FEATURES.md's MVP promise of the "same core experience on phone and web" is not met today. Two tracks that do not block each other: [#116](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/116) builds the site, [#117](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/117) gives the app a desktop layout. Photography sourcing starts before either, having the longest lead time. Payments depend on this too — checkout has exactly one place it is allowed to live, and the site as shipped has no page for it.
+**The web surface, planned 2026-08-03 in [WEBSITE.md](WEBSITE.md).** `site/index.html` is the app's Downloads screen restyled at phone width, and the client has no `@media` rule anywhere — so FEATURES.md's MVP promise of the "same core experience on phone and web" is not met today. Two tracks that do not block each other: [#116](https://github.com/OurHike/OurHike/issues/116) builds the site, [#117](https://github.com/OurHike/OurHike/issues/117) gives the app a desktop layout. Photography sourcing starts before either, having the longest lead time. Payments depend on this too — checkout has exactly one place it is allowed to live, and the site as shipped has no page for it.
 
 ## Phase 5+ — after launch
 
 Less a phase than a set of designs waiting for evidence. Two have a reason to be built early:
 
-- **Feature gating** ([#110](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/110)) — recommended first, because every feature built afterwards gets real evidence instead of a guess.
-- **The dbt transform layer** ([#100](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/100)) — timing-driven rather than sequence-driven. NYNJTC's own non-AT network is expected on a near-term timeline, and this is what makes onboarding it "new rows and new staging models" rather than a second parallel pipeline. Distinct from the soft launch in Phase 4, which is NYNJTC members using the AT app. [SOURCE_REGISTRY.md](features/SOURCE_REGISTRY.md) is where the rows come from once the organization supplying them isn't ATC.
+- **Feature gating** ([#110](https://github.com/OurHike/OurHike/issues/110)) — recommended first, because every feature built afterwards gets real evidence instead of a guess.
+- **The dbt transform layer** ([#100](https://github.com/OurHike/OurHike/issues/100)) — timing-driven rather than sequence-driven. NYNJTC's own non-AT network is expected on a near-term timeline, and this is what makes onboarding it "new rows and new staging models" rather than a second parallel pipeline. Distinct from the soft launch in Phase 4, which is NYNJTC members using the AT app. [SOURCE_REGISTRY.md](features/SOURCE_REGISTRY.md) is where the rows come from once the organization supplying them isn't ATC.
 
 Everything else — trail magic, multi-club tooling, weather, segments, trip planning, community building, data nudges, water reliability prediction, land ownership, personalised pace, data portability — stays described in [FEATURES.md](FEATURES.md) and [features/](features/) rather than filed as tasks. It is intended state, not open work, and filing thirty vague epics would leave the tracker exactly as trustworthy as the checklists this document used to carry.
 

@@ -11,7 +11,7 @@ An offline-first map for the Appalachian Trail — topo background, water source
 | | |
 |---|---|
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to report something, run the code, and open a pull request |
-| [Issues](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues) | Open work — [`good first issue`](https://github.com/jaimito-asuntos-gringuenos/OurHike/labels/good%20first%20issue) if you want somewhere to begin |
+| [Issues](https://github.com/OurHike/OurHike/issues) | Open work — [`good first issue`](https://github.com/OurHike/OurHike/labels/good%20first%20issue) if you want somewhere to begin |
 | [OurHikeValues.md](OurHikeValues.md) | The nine values every design decision here is argued against |
 | [FEATURES.md](FEATURES.md) | What the product is |
 | [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md) | How it is built, and why those choices |

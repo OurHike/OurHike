@@ -43,8 +43,8 @@ does not produce two clean reviews. It produces two pull requests that conflict 
 other and a merge order somebody has to hold in their head. Keep it where it depends, and
 say plainly in the pull request that it closes two issues and why.
 
-**The test is dependency, not subject or size.** [#216](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/216)
-had nothing to do with [#210](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/210)
+**The test is dependency, not subject or size.** [#216](https://github.com/OurHike/OurHike/issues/216)
+had nothing to do with [#210](https://github.com/OurHike/OurHike/issues/210)
 as a problem — one was a blank background, the other was how you reach the download — but
 its fix landed in `App.tsx`, `MapScreen.tsx` and `BackgroundPicker.tsx` while #210 was
 rewriting all three. It stayed, and the pull request said so.

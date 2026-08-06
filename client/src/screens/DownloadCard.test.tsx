@@ -332,3 +332,41 @@ describe('durability, at its honest weight (#190)', () => {
     expect(screen.queryByText(/reclaimable/i)).not.toBeInTheDocument()
   })
 })
+
+describe('checking what is already here (#197)', () => {
+  const CHECKING = {
+    state: 'checking' as const,
+    checkedBytes: 120_000_000,
+    totalBytes: 314_000_000,
+  }
+
+  it('says the phone is checking the part it already has', () => {
+    render(<DownloadCard {...PROPS} status={CHECKING} />)
+
+    expect(
+      screen.getByText(/checking the part already on this phone/i),
+    ).toBeInTheDocument()
+  })
+
+  it('says plainly that this part needs no signal', () => {
+    // The whole reason this state exists: local work that is slow looks
+    // exactly like a stalled transfer, and the two ask for opposite
+    // responses from someone standing in a dead spot.
+    render(<DownloadCard {...PROPS} status={CHECKING} />)
+
+    expect(screen.getByText(/needs no signal/i)).toBeInTheDocument()
+  })
+
+  it('shows how far through it is, under its own label', () => {
+    render(<DownloadCard {...PROPS} status={CHECKING} />)
+    const bar = screen.getByRole('progressbar', { name: /checking downloaded data/i })
+
+    expect(bar).toHaveAttribute('aria-valuenow', '38')
+  })
+
+  it('offers no button - there is nothing for the hiker to do yet', () => {
+    render(<DownloadCard {...PROPS} status={CHECKING} />)
+
+    expect(screen.queryByRole('button', { name: /download|resume|delete/i })).toBeNull()
+  })
+})

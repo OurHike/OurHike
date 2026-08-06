@@ -34,6 +34,12 @@ import { DetailPicker } from './DetailPicker'
 export type DownloadStatus =
   | { state: 'not-downloaded' }
   | { state: 'downloading'; receivedBytes: number; totalBytes: number }
+  /** Reading back the bytes already on the phone, to check them against what
+   *  was published, before asking the network for the rest. Its own state
+   *  because it is local work that looks exactly like a stalled transfer -
+   *  and someone in a dead spot needs to know which of the two it is
+   *  (#197). */
+  | { state: 'checking'; checkedBytes: number; totalBytes: number }
   | { state: 'failed'; receivedBytes: number; totalBytes: number }
   | { state: 'downloaded'; totalBytes: number; completedAt: Date }
   /** An archive finished here and its bytes are gone - evicted by the OS,
@@ -137,6 +143,34 @@ export function DownloadCard({
           <button type="button" className="downloads__primary" onClick={onStart}>
             Download it again
           </button>
+        </div>
+      )}
+
+      {status.state === 'checking' && (
+        <div className="downloads__progress">
+          <p>Checking the part already on this phone.</p>
+          <div
+            role="progressbar"
+            aria-label="Checking downloaded data"
+            aria-valuenow={percent(status.checkedBytes, status.totalBytes)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            className="downloads__bar"
+          >
+            <span
+              className="downloads__bar-fill"
+              style={{ width: `${percent(status.checkedBytes, status.totalBytes)}%` }}
+            />
+          </div>
+          {/* Said plainly because the whole point of this state is telling a
+              stalled phone from a stalled connection: someone on one bar who
+              thinks this is the network will walk somewhere else for nothing,
+              and someone who thinks a dead connection is this will stand
+              still waiting for a download that is not happening. */}
+          <p className="downloads__note">
+            This part happens on the phone and needs no signal. The download carries on
+            from where it stopped once it is done.
+          </p>
         </div>
       )}
 

@@ -217,6 +217,36 @@ def seam_between(shapes: list) -> object:
     return seam
 
 
+# Planetiler's own default is 30s, and that is what expired. Its internal
+# --http-retries=5 did not outlast the host either, so the outer retry here
+# is a third belt rather than a duplicate: Planetiler retries the request,
+# this retries the whole invocation minutes later.
+HTTP_TIMEOUT_SECONDS = 300
+
+
+def download_sources_cmd(jar: Path, osm_pbf: Path, tmp_dir: Path) -> list[str]:
+    """Fetch the profile's non-OSM sources and stop, without building.
+
+    A step of its own because those ~1.4 GB come from three third parties and
+    have now failed a run twice, in the middle of a measurement they have
+    nothing to do with. Pulling them first means the flaky part happens once,
+    before any timing starts, where CI can cache the result and where a
+    failure is unambiguously about the network rather than about sharding.
+
+    --only-download is Planetiler's own flag for this (`download source data
+    then exit`); the output path is required but never written."""
+    return [
+        "java",
+        "-jar",
+        str(jar),
+        f"--osm-path={osm_pbf}",
+        f"--tmpdir={tmp_dir}",
+        f"--http-timeout={HTTP_TIMEOUT_SECONDS}s",
+        "--only-download",
+        "--download",
+    ]
+
+
 def run_planetiler(cmd: list[str], attempts: int = 3, sleep=time.sleep, run=subprocess.run) -> int:
     """Run Planetiler, retrying a failed attempt. Returns the attempt that
     worked; re-raises if none did.
@@ -253,7 +283,9 @@ def run_build(name: str, work: Path, jar: Path, osm_pbf: Path, poly_path: Path |
     out_dir = work / name
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path, tmp_dir = out_dir / "build.pmtiles", out_dir / "tmp"
-    cmd = planetiler_cmd(jar, osm_pbf, out_path, max_zoom, poly_path, tmp_dir, layer_stats=True)
+    cmd = planetiler_cmd(
+        jar, osm_pbf, out_path, max_zoom, poly_path, tmp_dir, layer_stats=True, http_timeout_seconds=HTTP_TIMEOUT_SECONDS
+    )
     print(f"\n=== {name} ===\n  {' '.join(str(c) for c in cmd)}")
 
     started = time.monotonic()
@@ -311,6 +343,10 @@ def main(args: argparse.Namespace) -> None:
         print("Merging the state extracts into one control input...")
         subprocess.run(osmium_merge_cmd(pbfs, merged), check=True)
     print(f"Control input: {merged.stat().st_size / 1e6:.0f} MB")
+
+    # Before anything is timed: get the third-party sources on disk once.
+    print("\nDownloading Planetiler's profile sources (once, before any timing)...", flush=True)
+    run_planetiler(download_sources_cmd(args.planetiler_jar, merged, work / "download-tmp"))
 
     results = [run_build("control", work, args.planetiler_jar, merged, union_poly, args.max_zoom)]
     for state, poly in zip(args.states, shard_polys):

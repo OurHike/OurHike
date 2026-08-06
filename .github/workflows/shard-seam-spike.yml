@@ -104,6 +104,22 @@ jobs:
           curl -sSL -o planetiler.jar "${{ inputs.planetiler_jar_url || 'https://github.com/onthegomap/planetiler/releases/latest/download/planetiler.jar' }}"
           ls -la planetiler.jar
 
+      # Planetiler's profile pulls ~1.4 GB from three third parties before it
+      # builds anything, and osmdata.openstreetmap.de timed out two runs in a
+      # row on the water polygons - a failure with nothing to say about
+      # sharding that stops the spike anyway. Caching them means one good
+      # download serves every later run.
+      #
+      # restore/save rather than plain `cache` so a partially-successful fetch
+      # is still kept: the save runs even when a later step fails, which is
+      # precisely the run where having the bytes next time matters most.
+      - name: Restore Planetiler's profile sources
+        id: sources
+        uses: actions/cache/restore@v4
+        with:
+          path: pipeline/data/sources
+          key: planetiler-profile-sources-v1
+
       # pipefail on every step that pipes into tee. Without it bash reports
       # the exit status of tee, which always succeeds - so the first run of
       # this spike went green while both comparisons died on a missing file
@@ -121,6 +137,13 @@ jobs:
             --max-zoom "${{ inputs.max_zoom || '14' }}" \
             ${{ inputs.states != '' && format('--states {0}', inputs.states) || '' }} \
             | tee build.log
+
+      - name: Save Planetiler's profile sources
+        if: always() && steps.sources.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: pipeline/data/sources
+          key: planetiler-profile-sources-v1
 
       # Arm A first and on its own: it is the one whose answer decides the
       # design. Arm B's differences are only interpretable against it.

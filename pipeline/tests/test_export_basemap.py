@@ -180,3 +180,14 @@ def test_main_clips_and_merges_a_synthetic_state_end_to_end(tmp_path, monkeypatc
     kept = subprocess.run(["osmium", "cat", str(merged), "-f", "osm"], check=True, capture_output=True, text=True).stdout
     assert 'id="1"' in kept, "the node inside the corridor must survive"
     assert 'id="2"' not in kept, "the node outside the corridor must be clipped"
+
+
+def test_the_http_timeout_is_only_sent_when_raised():
+    """Planetiler's own default is 30s and that is usually right; the spike
+    raises it because the profile's 1.4 GB of third-party sources timed out
+    twice mid-measurement."""
+    default = planetiler_cmd(Path("p.jar"), Path("in.pbf"), Path("out.pmtiles"), 14, None, Path("tmp"))
+    assert not any(arg.startswith("--http-timeout") for arg in default)
+
+    patient = planetiler_cmd(Path("p.jar"), Path("in.pbf"), Path("out.pmtiles"), 14, None, Path("tmp"), http_timeout_seconds=300)
+    assert "--http-timeout=300s" in patient

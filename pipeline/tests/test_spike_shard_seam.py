@@ -13,15 +13,18 @@ class of bug the sampler exists to avoid.
 """
 
 import subprocess
+from pathlib import Path
 
 import pytest
 from shapely.geometry import box
 
 from spike_shard_seam import (
+    HTTP_TIMEOUT_SECONDS,
     BuildResult,
     PeakDiskSampler,
     directory_apparent_bytes,
     directory_bytes,
+    download_sources_cmd,
     run_planetiler,
     seam_between,
 )
@@ -221,3 +224,26 @@ def test_the_retry_backs_off_rather_than_hammering_a_struggling_host():
         run_planetiler(["java"], attempts=3, run=always_fails, sleep=delays.append)
 
     assert delays == sorted(delays) and delays[0] < delays[-1]
+
+
+def test_the_sources_are_fetched_by_a_step_that_builds_nothing():
+    """--only-download is Planetiler's own 'download source data then exit'.
+    Pulling the third-party sources before any timing starts means the flaky
+    part happens once, where CI can cache it and where a failure is
+    unambiguously about the network rather than about sharding."""
+    cmd = download_sources_cmd(Path("p.jar"), Path("in.pbf"), Path("tmp"))
+
+    assert "--only-download" in cmd
+    assert "--download" in cmd
+    assert not any(arg.startswith("--output=") for arg in cmd)
+    assert not any(arg.startswith("--maxzoom") for arg in cmd)
+
+
+def test_the_download_step_waits_far_longer_than_planetilers_default():
+    """The failure was `Error getting size of ... TimeoutException` - the 30s
+    default expiring on a slow host, twice, on a file that had served fine
+    minutes earlier."""
+    cmd = download_sources_cmd(Path("p.jar"), Path("in.pbf"), Path("tmp"))
+
+    assert f"--http-timeout={HTTP_TIMEOUT_SECONDS}s" in cmd
+    assert HTTP_TIMEOUT_SECONDS > 30

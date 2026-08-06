@@ -50,6 +50,27 @@ Vite inlines `VITE_*` variables at **build** time. Changing this means
 rebuilding and redeploying — it is not read at runtime. With it unset, the
 download window says so rather than firing requests that would 404.
 
+## Pointing it at the backend
+
+Reports queue in an offline outbox and are sent when there is both a connection
+and an account. `VITE_API_BASE_URL` is where they are sent:
+
+```bash
+VITE_API_BASE_URL=http://localhost:8000 npm run build
+```
+
+That is `backend/`'s own FastAPI service — not the R2 bucket above, and not
+Supabase. The three are separate on purpose: the bucket is static data a hiker
+downloads once and reads offline forever, Supabase is where they sign in, and
+this is the only one that receives anything.
+
+**Unset is a supported state, and is what every deploy currently builds**, since
+the backend is not deployed anywhere yet
+([#95](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/95)). The map,
+downloads and reporting flow all work; a written report stays queued with its
+authored timestamp instead of being sent, and nothing is lost. Sending starts
+working when a build has somewhere to send to — no code change.
+
 ### R2 must allow cross-origin range requests
 
 The client is served from one origin and the data from another, and PMTiles

@@ -97,7 +97,9 @@ Set it as a **repository variable** (not a secret — it's a public URL): Settin
 
 ### 3a. Preview deployments (Cloudflare Pages)
 
-⬜ **Not yet set up.** `.github/workflows/pr-preview.yml` builds every pull request and deploys it to its own URL — `https://pr-<n>.<project>.pages.dev`, linked from a comment on the PR — so a change can be tried on a phone instead of read as a diff. Until the two settings below exist the workflow says so in the run log and skips; pull requests still get their full test run, just no preview.
+✅ **Done 2026-08-06** — project `ourhike-preview`, verified by a real deploy on PR #281: 274 files uploaded in 2.1 s. `.github/workflows/pr-preview.yml` builds every pull request and deploys it to its own URL — `https://pr-<n>.ourhike-preview.pages.dev`, linked from a comment on the PR — so a change can be tried on a phone instead of read as a diff. If the three settings below ever go missing the workflow says so in the run log and skips; pull requests still get their full test run, just no preview.
+
+**Learned on that first deploy, and worth knowing before it looks like a broken deploy:** Cloudflare mints the `pr-<n>` alias when a pull request first deploys, and its edge answers **522** for a minute or two before that alias routes anywhere. Uploading and being reachable are not the same event. The workflow now waits for the URL to answer 200 before posting the comment, so the link is trustworthy by the time anyone sees it — but a 522 on a freshly-created alias is propagation, not misconfiguration. Every deploy also gets an immutable `https://<hash>.ourhike-preview.pages.dev` that is live the moment the upload finishes, and the workflow falls back to advertising that if the alias never comes up.
 
 Previews used to live on the `gh-pages` branch alongside the production site. They moved because five to ten pull requests are open at once here as a matter of course, and every preview was a competing write to that one git ref — so previews failed for no reason other than each other being busy. A Cloudflare preview is its own deployment rather than a commit on a shared branch, so there is no ordering between two of them.
 

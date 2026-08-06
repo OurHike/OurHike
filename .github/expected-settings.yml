@@ -127,35 +127,40 @@ settings:
 
   CLOUDFLARE_API_TOKEN:
     where: secret
-    required: false
+    required: true
     why: >-
       Lets pr-preview.yml upload a preview build to Cloudflare Pages. Needs the
       "Cloudflare Pages: Edit" permission and nothing else - it is not the R2
       token above and should not be made one, because a token that can publish
-      previews has no business overwriting the live map data. Optional in the
-      same sense API_BASE_URL is: absent is where this repository starts, and
-      the workflow says so and skips rather than failing every pull request.
-      What is lost while it is absent is the preview, not the tests.
+      previews has no business overwriting the live map data. Required for the
+      same reason the R2 credentials are: this one is configured now, and a
+      token can be revoked or expire without anyone touching this repository.
+      The workflow still degrades politely if it goes missing, which is exactly
+      why nothing else would notice - the next sign would be someone wondering
+      why a pull request had no preview.
 
   CLOUDFLARE_ACCOUNT_ID:
     where: secret
-    required: false
+    required: true
     why: >-
       Which Cloudflare account the preview is uploaded to. On the Secrets tab
       for the same reason R2_ENDPOINT_URL is - an account id is not secret in
       the way a token is, but it is not something to hand out either, and these
-      two name the same account.
+      two name the same account. A repository secret rather than an
+      environment-scoped one, like the R2 four: the settings check resolves
+      these with no `environment:` set, so a scoped copy would be invisible to
+      the job whose whole purpose is noticing it had gone.
 
   CLOUDFLARE_PAGES_PROJECT:
     where: variable
-    required: false
+    required: true
     why: >-
       The Pages project previews are uploaded to, and the middle of every
       preview hostname - `https://pr-<n>.<project>.pages.dev`. A variable
       rather than a secret because it is public by construction: it is in the
-      URL posted to every pull request. Worth declaring even though it is only
-      a name, because it has to match a project that already exists - wrangler
-      does not create one, and a typo here is a deploy that fails saying the
+      URL posted to every pull request. Declared even though it is only a name,
+      because it has to match a project that already exists - wrangler does not
+      create one from CI, and a typo here is a deploy that fails saying the
       project was not found.
 
   GITHUB_TOKEN:

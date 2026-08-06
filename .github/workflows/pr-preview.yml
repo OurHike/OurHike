@@ -203,6 +203,47 @@ jobs:
             --branch=${{ steps.preview.outputs.alias }}
             --commit-dirty=true
 
+      # Cloudflare mints the `pr-<n>` alias the first time a pull request
+      # deploys, and its edge answers 522 for a short while before that alias
+      # routes anywhere. Uploading and being reachable are not the same event,
+      # and the gap lands exactly where it does the most damage: the comment
+      # would arrive the moment the upload finished, so the first person to
+      # click the link is the most likely to get the error.
+      #
+      # Waiting here is what makes the link worth trusting - if the comment
+      # exists, the URL in it answered. The bound matters as much as the wait:
+      # a preview that never comes up must still be reported, with the
+      # immutable deployment URL alongside it, rather than silently costing a
+      # reviewer their link because a step sat there until the job timed out.
+      - name: Wait for the preview to answer
+        id: wait
+        if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
+        env:
+          URL: ${{ steps.deploy.outputs.pages-deployment-alias-url || steps.preview.outputs.url }}
+          IMMUTABLE: ${{ steps.deploy.outputs.deployment-url }}
+        run: |
+          attempts=30
+          note=""
+          for attempt in $(seq 1 "$attempts"); do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$URL" || echo 000)"
+            if [ "$code" = "200" ]; then
+              echo "The preview answered 200 on attempt $attempt."
+              break
+            fi
+            if [ "$attempt" -eq "$attempts" ]; then
+              echo "::warning::The preview alias still answers $code after $attempts attempts. Posting the link anyway - it usually routes shortly - with the immutable deployment URL alongside it."
+              note="The alias above is still being routed and may return a Cloudflare 522 for a few more minutes. This exact build is already live at <$IMMUTABLE>."
+              break
+            fi
+            echo "Attempt $attempt: $code. Waiting for the alias to route."
+            sleep 5
+          done
+          {
+            echo "note<<PREVIEW_NOTE_EOF"
+            echo "$note"
+            echo "PREVIEW_NOTE_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Say where the preview is
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
         uses: marocchino/sticky-pull-request-comment@67d0dec7b07ed060a405f9b2a64b8ab319fdd7db # v2.9.2
@@ -215,6 +256,8 @@ jobs:
 
             Built from ${{ github.event.pull_request.head.sha }}. The link stays the
             same as you push - it always serves the latest build of this pull request.
+
+            ${{ steps.wait.outputs.note }}
 
             Signing in works. Sending a report does not: a preview is built with no
             backend on purpose, so reports queue in the outbox rather than landing in

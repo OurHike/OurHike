@@ -13,8 +13,8 @@ def utc_now() -> datetime:
 def _stamp_utc(value: datetime) -> str:
     """Render a stored datetime with the UTC designator it was always meant to carry.
 
-    Everything is stored naive-UTC (see app/models/profile.py for why - a
-    duckdb-engine gap, not a style choice), which is unambiguous right up
+    Everything is stored naive-UTC (see app/models/profile.py for the
+    convention and its history), which is unambiguous right up
     until it leaves the server. `2026-08-06T12:00:00` with no `Z` and no
     offset is, per ECMAScript, *local* time to `new Date()` - so every
     timestamp would shift by the viewer's UTC offset, four to five hours
@@ -24,7 +24,7 @@ def _stamp_utc(value: datetime) -> str:
     an east-coast reader.
 
     Stamping happens here, on the way out, so storage stays naive exactly as
-    the workaround requires. An already-aware value is converted rather than
+    the convention requires. An already-aware value is converted rather than
     assumed, so a value that somehow arrives with an offset still leaves as
     the same instant in UTC.
     """

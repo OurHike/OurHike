@@ -15,12 +15,14 @@
 import { useState } from 'react'
 import { Logo } from '../design-system/components'
 import { ONBOARDING_STEPS, buildOnboardingProgress } from '../lib/onboardingSteps'
-import type { DetailLevel } from '../lib/downloadDetail'
-import { DetailPicker } from './DetailPicker'
+import type { HikingDetailLevel } from '../lib/userPreferences'
+import { DetailPicker, hikingDetailOptions } from './DetailPicker'
 import './onboarding.css'
 
 export interface OnboardingResult {
-  detailLevel: DetailLevel
+  /** The hiking sheet's level (#276/#277) - the download decision this flow
+   *  actually shows, so the preference written matches the choice made. */
+  hikingDetailLevel: HikingDetailLevel
   locationRequested: boolean
 }
 
@@ -32,7 +34,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   const [stepIndex, setStepIndex] = useState(0)
   // Standard is pre-selected, so skipping every step still leaves a usable
   // map to download rather than no choice at all.
-  const [detailLevel, setDetailLevel] = useState<DetailLevel>('standard')
+  const [hikingLevel, setHikingLevel] = useState<HikingDetailLevel>('standard')
 
   const step = ONBOARDING_STEPS[stepIndex]
   const progress = buildOnboardingProgress({
@@ -41,7 +43,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   })
 
   const finish = (locationRequested: boolean) =>
-    onComplete({ detailLevel, locationRequested })
+    onComplete({ hikingDetailLevel: hikingLevel, locationRequested })
 
   const next = () => {
     if (stepIndex < ONBOARDING_STEPS.length - 1) setStepIndex(stepIndex + 1)
@@ -71,10 +73,21 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         <section className="onboarding__step">
           <h1 className="onboarding__title">Map size</h1>
           <p>
-            The whole trail, in one download. Pick how much detail you want &mdash; you
-            can change this later.
+            The map you&rsquo;ll navigate by &mdash; the whole trail, in one download.
+            Pick how much detail you want; you can change this later.
           </p>
-          <DetailPicker value={detailLevel} onChange={setDetailLevel} />
+          <DetailPicker
+            options={hikingDetailOptions()}
+            value={hikingLevel}
+            onChange={(level) => setHikingLevel(level as HikingDetailLevel)}
+            name="onboarding-detail"
+          />
+          {/* The optional second map is named, not configured: its tier
+              picker lives on its own card in Downloads (#237/#277). */}
+          <p className="onboarding__reassurance">
+            The official USGS topo is also available as an optional second map, any time,
+            from Downloads.
+          </p>
         </section>
       )}
 

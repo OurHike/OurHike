@@ -1,8 +1,9 @@
 """App configuration, entirely env-driven.
 
 The only setting with a real default is DATABASE_URL, and that default
-points at a local DuckDB file - a fast, install-free path for local dev
-(see backend/README.md for the full DuckDB-local/Postgres-CI rationale).
+points at a local Postgres - the same engine Supabase runs in production
+(see backend/README.md, and backend/scripts/local-postgres.sh for the one
+command that stands it up).
 Every Supabase-related setting has no default: there is no world where a
 hardcoded real secret belongs in this file, and failing loudly (a missing
 required setting raises on startup) is better than silently running with
@@ -15,10 +16,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    # Local dev default only - DuckDB, file-backed so it survives across a
-    # single dev session. CI overrides this to a real Postgres service URL;
-    # production points at Supabase's hosted Postgres. See backend/README.md.
-    database_url: str = "duckdb:///./dev.duckdb"
+    # Local dev default only, and deliberately a real Postgres rather than an
+    # embedded stand-in: everything this backend writes ends up in Supabase's
+    # hosted Postgres, so the local database is the same engine, differing
+    # only in where it runs. `backend/scripts/local-postgres.sh` creates
+    # exactly this role/database (and the ourhike_test one the suite uses).
+    # CI overrides this to point at its own Postgres service container;
+    # production points at Supabase. See backend/README.md.
+    #
+    # The credentials here are local-only, for a database holding throwaway
+    # data on a developer's own machine - unlike everything below, which is
+    # why they can sit in the file at all.
+    database_url: str = "postgresql+psycopg://ourhike:ourhike@localhost:5432/ourhike_dev"
 
     # No defaults below - these are real credentials/identifiers for the
     # Supabase project this backend talks to, and must come from the

@@ -8,10 +8,12 @@
 // archives to the same phone - vector basemap, DEM, the USGS raster sheet -
 // so the store is keyed per package.
 //
-// Several archives, but ONE thing to a hiker: they are the background data
-// (BACKGROUND_DATA below), chosen and downloaded together, never presented as
-// a checklist of archives to assemble. They are also shared between trails
-// rather than owned by one - see that comment for why both of those matter.
+// Several archives, but never a checklist to a hiker: they group into
+// background SHEETS (BACKGROUND_SHEETS below) - the hiking sheet everyone
+// gets, and the USGS raster as an optional second one (#237). Each sheet is
+// chosen and downloaded as one decision. The archives are also shared
+// between trails rather than owned by one - see the sheet comment for why
+// both of those matter.
 //
 // The corridor background keeps the key it has always had: an archive
 // already sitting in a tester's IndexedDB under 'ourhike:corridor-archive'
@@ -89,17 +91,21 @@ export const CORRIDOR_BACKGROUND_PACKAGE: OfferedPackage = {
  * this key first and falls through to the network where the package does
  * not answer (#189).
  *
- * `source: null` until #185 publishes the artifact: the key is live and an
- * archive stored under it renders, but the Downloads screen does not offer
- * bytes nobody has uploaded. Filling this in is then the whole client-side
- * change that turns the vector sheet into a download.
+ * The artifact name is publish.py's OFFLINE_SHEET_ARCHIVES key, and the
+ * size is the published artifact's exact bytes (build-basemap.yml run of
+ * 2026-08-06: 14-state corridor build, z0-14 cut, 83,818 tiles) - measured,
+ * per the honesty bar packageSizeBytes documents.
  */
 export const BASEMAP_PACKAGE: MapPackage = {
   id: 'basemap',
   idbKey: 'ourhike:basemap',
   title: 'Hiking sheet',
   summary: 'The styled topographic sheet, so the good map works offline too.',
-  source: null,
+  source: {
+    kind: 'artifact',
+    artifact: 'at_basemap_package.pmtiles',
+    sizeBytes: 532_459_439,
+  },
 }
 
 /**
@@ -109,15 +115,17 @@ export const BASEMAP_PACKAGE: MapPackage = {
  * falls through to AWS Terrain Tiles where it does not answer (#187) - the
  * same local-first shape basemap.ts gives the vector sheet.
  *
- * `source: null` for the same reason as the basemap: #186 ends at a
- * published artifact, and this is offered the day there is one.
+ * The artifact name is publish.py's OFFLINE_SHEET_ARCHIVES key, and the
+ * size is the published artifact's exact bytes (build-dem.yml run of
+ * 2026-08-06: 21,758 corridor tiles z0-13, 0 absent, 0.5 m quantize per
+ * #186's banding check) - measured, never an estimate.
  */
 export const DEM_PACKAGE: MapPackage = {
   id: 'dem',
   idbKey: 'ourhike:dem',
   title: 'Terrain',
   summary: 'Hillshade and contours, drawn on the phone from downloaded elevation.',
-  source: null,
+  source: { kind: 'artifact', artifact: 'dem.pmtiles', sizeBytes: 607_265_661 },
 }
 
 /** Every package this build knows how to store and resolve, in the order
@@ -129,10 +137,19 @@ export const MAP_PACKAGES: readonly MapPackage[] = [
 ]
 
 /**
- * The background data: the map drawn UNDER the trail, and one thing to a
- * hiker rather than a set of archives to assemble.
+ * One background SHEET: a map drawn under the trail, downloaded as one
+ * decision, made of one or more archives underneath.
  *
- * SHARED ACROSS TRAILS, WHICH IS THE POINT OF GROUPING IT AT ALL.
+ * Plural since #237 (decided 2026-08-06): the hiking sheet - vector basemap
+ * plus DEM, the exact cartography the app already draws - is the background
+ * a hiker gets by default, and the USGS raster is an OPTIONAL SECOND SHEET
+ * they opt into. Bundling both would hand every hiker over a gigabyte of
+ * government scan they did not ask for, on top of the sheet that replaced
+ * it; a checklist of raw archives would make them assemble a map out of
+ * plumbing. A sheet is the honest middle: hikers choose sheets, never
+ * archive schemas.
+ *
+ * SHARED ACROSS TRAILS, WHICH IS THE POINT OF GROUPING SHEETS AT ALL.
  *
  * A hiker who has the AT's background and then adds NYNJTC's network must not
  * re-download the ground both of them stand on. So these packages are keyed
@@ -143,75 +160,83 @@ export const MAP_PACKAGES: readonly MapPackage[] = [
  * #193 exists to prevent.
  *
  * What IS per-trail is the trail data - the centerline, the spurs, the POIs,
- * the elevation profile (lib/trailData.ts). That is the corridor sheet, it is
- * small, and it is downloaded by default whenever it is missing rather than
- * being something to choose. Keeping the two apart is what lets the heavy
- * half be shared and the trail-shaped half be per-trail.
- *
- * Honest about today: `background.pmtiles` is still built corridor-shaped,
- * by buffering the AT centerline. So it is shared in the way this client
- * treats it - one key, one download, reusable by any trail it covers - and
- * not yet in the way it is BUILT. The regional build-once-extract-many that
- * makes it genuinely shared is #185.
+ * the elevation profile (lib/trailData.ts). That is small, it is downloaded
+ * by default whenever it is missing rather than being something to choose,
+ * and it is deliberately not a sheet here.
  *
  * Versioning deliberately does not live here. Which bytes are current is
  * `latest.json`'s per-artifact hashes (pipeline/DATA_RELEASES.md), and a
  * second scheme in the client would be a second answer to the same question.
  */
-export interface BackgroundData {
+export interface BackgroundSheet {
   id: string
-  /** What the Downloads screen calls the whole thing. */
+  /** What the Downloads screen calls this sheet. */
   title: string
   summary: string
-  /** Every archive the background is made of, in the order they matter. */
+  /** Every archive the sheet is made of, in the order they matter. */
   packages: readonly MapPackage[]
 }
 
 /**
- * The background as it is TODAY: every archive that is published, which is
- * the raster sheet alone.
- *
- * Right for now, and knowingly not the end state. Decided 2026-08-06: the
- * USGS raster is an OPTIONAL SECOND SHEET a hiker opts into, not part of the
- * background everyone gets (#237). While it is the only published piece it
- * is also the whole background by default, because there is nothing else to
- * be - but the moment #185 and #186 publish the vector basemap and the DEM,
- * bundling all three would hand every hiker several hundred megabytes of
- * raster they did not ask for, on top of the vector sheet that replaced it.
- *
- * So this stays one bundle only until there is a second sheet to choose
- * BETWEEN. #237 is where that turns into a choice; nothing here should be
- * read as a decision that it will not.
+ * The default background: the hiking sheet's own tiles and terrain, so the
+ * map the app draws every day is the one that works with no signal. What
+ * `background_source: 'hiking_topo_live'` draws - live over the network,
+ * local-first from these packages once they are on the phone (#187/#189).
  */
-export const BACKGROUND_DATA: BackgroundData = {
-  id: 'background',
-  title: 'Offline map',
-  summary: 'The whole corridor as a map you can read with no signal.',
-  packages: MAP_PACKAGES,
+export const HIKING_SHEET: BackgroundSheet = {
+  id: 'hiking-sheet',
+  title: 'Hiking sheet',
+  summary: 'The map you are looking at - cartography and terrain, offline.',
+  packages: [BASEMAP_PACKAGE, DEM_PACKAGE],
 }
 
 /**
- * The background archives a hiker can be offered right now: catalogued, and
+ * The opt-in second sheet: the USGS quads as a topographic picture, for
+ * hikers who want the authoritative government map beside the drawn one.
+ * What `background_source: 'usgs_topo_offline'` draws. Never bundled into
+ * anyone's download unasked (#237) - it has its own card, its own size, and
+ * deleting it never touches the sheet a hiker navigates by.
+ */
+export const USGS_SHEET: BackgroundSheet = {
+  id: 'usgs-sheet',
+  title: 'USGS sheet',
+  summary: 'The official government topo, as an optional second map.',
+  packages: [CORRIDOR_BACKGROUND_PACKAGE],
+}
+
+/** Every sheet, default first. */
+export const BACKGROUND_SHEETS: readonly BackgroundSheet[] = [HIKING_SHEET, USGS_SHEET]
+
+/**
+ * One sheet's archives a hiker can be offered right now: catalogued, and
  * with something published behind them.
  *
  * Note what this does NOT filter on - whether the archive is already on the
  * phone. A downloaded package stays included so it can be deleted, and an
  * evicted one stays included so the screen can say so (#190).
  */
-export function offeredPackages(
-  background: BackgroundData = BACKGROUND_DATA,
-): OfferedPackage[] {
-  return background.packages.filter((pkg): pkg is OfferedPackage => pkg.source !== null)
+export function offeredPackages(sheet: BackgroundSheet): OfferedPackage[] {
+  return sheet.packages.filter((pkg): pkg is OfferedPackage => pkg.source !== null)
 }
 
-/** What the background will cost in total: every archive that is actually
+/**
+ * The sheets worth a card at all: those with at least one published archive.
+ *
+ * A sheet whose every package is `source: null` is not a decision anyone can
+ * act on - rendering it would offer a download that 404s on a mountain, the
+ * exact thing the null source exists to prevent. While the raster was the
+ * only published artifact this returned the USGS sheet alone, which is why
+ * the old single-bundle screen was right by accident (#237).
+ */
+export function offeredSheets(): BackgroundSheet[] {
+  return BACKGROUND_SHEETS.filter((sheet) => offeredPackages(sheet).length > 0)
+}
+
+/** What one sheet will cost in total: every archive of it that is actually
  *  offered, at the chosen detail. Every one of them has a measured size, so
  *  this is a sum of measurements and never carries an estimate. */
-export function backgroundSizeBytes(
-  detail: DetailLevel,
-  background: BackgroundData = BACKGROUND_DATA,
-): number {
-  return offeredPackages(background).reduce(
+export function sheetSizeBytes(sheet: BackgroundSheet, detail: DetailLevel): number {
+  return offeredPackages(sheet).reduce(
     (total, pkg) => total + packageSizeBytes(pkg, detail),
     0,
   )

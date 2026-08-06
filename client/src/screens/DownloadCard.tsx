@@ -41,6 +41,13 @@ export type DownloadStatus =
    *  (#197). */
   | { state: 'checking'; checkedBytes: number; totalBytes: number }
   | { state: 'failed'; receivedBytes: number; totalBytes: number }
+  /** The download finished and its bytes matched no published build, so
+   *  NOTHING was kept - resuming onto right-length-wrong-content bytes could
+   *  only rebuild the same wrong archive (#238). Its own state because it is
+   *  the one failure whose remedy is starting over, and it must never sit
+   *  behind a Resume button. Session-only by design: a mismatch persists no
+   *  record, so a reload lawfully returns to not-downloaded or evicted. */
+  | { state: 'hash-mismatch' }
   | { state: 'downloaded'; totalBytes: number; completedAt: Date }
   /** An archive finished here and its bytes are gone - evicted by the OS,
    *  not deleted by the hiker (storageHealth.ts's marker tells the two
@@ -218,6 +225,27 @@ export function DownloadCard({
           </p>
           <button type="button" className="downloads__primary" onClick={onResume}>
             Resume
+          </button>
+        </div>
+      )}
+
+      {status.state === 'hash-mismatch' && (
+        <div className="downloads__mismatch">
+          {/* Every other failure on this card keeps what arrived; this one
+              kept nothing, on purpose - the bytes were the right length and
+              the wrong map. Saying so without hex, and offering a button that
+              reads as a fresh start: a Resume here would promise to carry on
+              from bytes that no longer exist. */}
+          <p>
+            The map that arrived is not the one the server published, so none of it was
+            saved. Any map already on this phone is untouched. Downloading again fetches a
+            fresh copy from the start.
+          </p>
+          {detail !== undefined && (
+            <DetailPicker value={detail.level} onChange={detail.onChange} />
+          )}
+          <button type="button" className="downloads__primary" onClick={onStart}>
+            Start the download over
           </button>
         </div>
       )}

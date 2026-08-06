@@ -210,6 +210,39 @@ def owns_tile(cell_bounds_4326, tile_bounds_4326) -> bool:
     return west <= cx < east and south <= cy < north
 
 
+def owner_index(cell_bboxes, tile_bounds_4326) -> int:
+    """Which cell in the grid writes this tile: the one whose half-open bbox
+    contains the tile's centre (`owns_tile`), or - when the centre falls
+    inside no cell - the nearest cell, lowest index breaking ties.
+
+    The fallback is what makes ownership TOTAL over the corridor's tile
+    enumeration. The cell grid is clipped to the corridor's bounding box, so
+    a tile can intersect the corridor while its centre hangs just past the
+    grid's outer edge - and a tile straddling an interior cell border can
+    centre in a neighbouring 1-degree square the corridor never enters, which
+    the grid therefore does not contain. Under centre-only ownership no cell
+    would write either kind, and assemble's does-it-tile-the-corridor gate
+    refuses the whole build (as it did: 24 unowned edge tiles on the first
+    real 51-cell run). Nearest-cell is a pure function of the shared
+    cells.json, so every fan-out job assigns identically without seeing
+    another job's output."""
+    for i, cell in enumerate(cell_bboxes):
+        if owns_tile(cell, tile_bounds_4326):
+            return i
+
+    t_west, t_south, t_east, t_north = tile_bounds_4326
+    cx = (t_west + t_east) / 2
+    cy = (t_south + t_north) / 2
+
+    def gap_sq(cell):
+        west, south, east, north = cell
+        dx = max(west - cx, cx - east, 0.0)
+        dy = max(south - cy, cy - north, 0.0)
+        return dx * dx + dy * dy
+
+    return min(range(len(cell_bboxes)), key=lambda i: (gap_sq(cell_bboxes[i]), i))
+
+
 # The per-cell overview resolution, and the last zoom rendered from it.
 #
 # Overviews exist so assemble can draw the far-out zooms without every cell

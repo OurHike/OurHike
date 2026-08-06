@@ -199,3 +199,60 @@ describe('checking bytes already held (#197)', () => {
     ).toBe('checking')
   })
 })
+
+describe('a refused archive, kept out of the Resume slot (#238)', () => {
+  const refused = (sizeBytes: number): ArchiveState => ({
+    status: { state: 'hash-mismatch' },
+    sizeBytes,
+  })
+
+  const checking = (checkedBytes: number, totalBytes: number): ArchiveState => ({
+    status: { state: 'checking', checkedBytes, totalBytes },
+    sizeBytes: totalBytes,
+  })
+
+  it('is handed straight back alone', () => {
+    expect(combineBackgroundStatus([refused(314 * MB)])).toEqual({
+      state: 'hash-mismatch',
+    })
+  })
+
+  it('outranks a downloaded sibling - "Stopped at X of Y" would be false of it', () => {
+    // Before this state existed, a mismatched archive read as absent and the
+    // combine offered Resume beside finished siblings: a promise to carry on
+    // from bytes that were deliberately not kept.
+    const combined = combineBackgroundStatus([refused(480 * MB), done(314 * MB)])
+
+    expect(combined).toEqual({ state: 'hash-mismatch' })
+  })
+
+  it('outranks an eviction, which explains an older loss than this one', () => {
+    expect(combineBackgroundStatus([refused(480 * MB), evicted(314 * MB)]).state).toBe(
+      'hash-mismatch',
+    )
+  })
+
+  it('yields to a live transfer and to checking - work in progress wins', () => {
+    expect(
+      combineBackgroundStatus([refused(480 * MB), transferring(10 * MB, 314 * MB)]).state,
+    ).toBe('downloading')
+    expect(
+      combineBackgroundStatus([refused(480 * MB), checking(1 * MB, 314 * MB)]).state,
+    ).toBe('checking')
+  })
+
+  it('owes its whole published size to a combined transfer total', () => {
+    // Nothing was kept, so its contribution is an absent archive's: zero
+    // received, full size still to come.
+    const combined = combineBackgroundStatus([
+      transferring(100 * MB, 314 * MB),
+      refused(480 * MB),
+    ])
+
+    expect(combined).toEqual({
+      state: 'downloading',
+      receivedBytes: 100 * MB,
+      totalBytes: 794 * MB,
+    })
+  })
+})

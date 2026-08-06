@@ -7,7 +7,7 @@
 // mocking config there would quietly change the subject of every test in it.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import { get, set } from 'idb-keyval'
 import { MockMap, resetMapLibreMock } from './test/mocks/maplibre-gl'
 import { PREFERENCES_KEY } from './lib/preferences'
@@ -169,6 +169,57 @@ describe('trail data on a phone that has downloaded nothing', () => {
       expect(requested().some((url) => url.includes('trails'))).toBe(true)
     })
     expect(screen.queryByText(/404|not found|failed/i)).not.toBeInTheDocument()
+    expect(store.get(TRAILS_BLOB_KEY)).toBeUndefined()
+  })
+})
+
+describe('a refused trail-data download, told apart by type (#238)', () => {
+  // The one failure whose remedy is not "retry what stopped": the bytes
+  // arrived whole, matched no published build, and were deliberately not
+  // saved. This file is where the real path can run - it needs a configured
+  // bucket, a published hash to disagree with, and the genuine
+  // downloadTrailData underneath - so the notice is driven by the actual
+  // TrailDataHashMismatchError, never by matching on a sentence.
+
+  it('says nothing was saved and that downloading again fetches a fresh copy', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('latest.json')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              version: 'v1',
+              // A published hash the served bytes cannot match.
+              artifacts: { 'trails.geojson': { sha256: '00'.repeat(32) } },
+            }),
+        } as unknown as Response)
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        arrayBuffer: () => Promise.resolve(new TextEncoder().encode(TRAILS).buffer),
+        blob: () => Promise.resolve(new Blob([TRAILS])),
+        text: () => Promise.resolve(TRAILS),
+        json: () => Promise.resolve(JSON.parse(TRAILS)),
+      } as unknown as Response)
+    })
+
+    await renderApp()
+    await user.click(await screen.findByRole('button', { name: /legend/i }))
+    await user.click(await screen.findByRole('button', { name: /download/i }))
+    await screen.findByRole('dialog', { name: /offline map/i })
+    const usgsCard = await screen.findByRole('region', { name: /usgs sheet/i })
+    await user.click(within(usgsCard).getByRole('button', { name: /download the map/i }))
+
+    const notice = await screen.findByText(/none of it was saved/i)
+    expect(notice).toHaveTextContent(/untouched/i)
+    expect(notice).toHaveTextContent(/fresh copy from the start/i)
+    // Nothing was stored, exactly as the sentence claims.
     expect(store.get(TRAILS_BLOB_KEY)).toBeUndefined()
   })
 })

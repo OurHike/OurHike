@@ -8,6 +8,7 @@ import {
   downloadArchive,
   readDownloadProgress,
   ArchiveSizeMismatchError,
+  ArchiveHashMismatchError,
 } from './archiveDownload'
 import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
 
@@ -659,5 +660,116 @@ describe('durable storage (#190)', () => {
     await waitFor(() => expect(result.current.persistence).toBe('granted'))
     expect(persist).not.toHaveBeenCalled()
     vi.unstubAllGlobals()
+  })
+})
+
+describe('a hash mismatch becomes its own state, not an error string (#238)', () => {
+  // downloadArchive discards everything before throwing this, so the generic
+  // catch path would land on absentStatus - "not downloaded", or "evicted"
+  // with the marker set - and the card would say nothing about WHY a download
+  // that visibly ran produced no map. The type is caught at the one moment it
+  // still exists and becomes the state the card renders its own copy from.
+  //
+  // Every case waits for the mount read to settle before starting: the mount
+  // effect's IndexedDB reads resolve on their own clock, and a start()
+  // racing them can have its verdict overwritten by the mount's stale answer
+  // - which is a fact about test timing, not about a hiker's phone, where
+  // the tap comes seconds after launch.
+
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  afterEach(() => {
+    localStorage.clear()
+  })
+
+  it('reports hash-mismatch after a refused download, with no error string beside it', async () => {
+    vi.mocked(downloadArchive).mockRejectedValue(
+      new ArchiveHashMismatchError('aa'.repeat(32), 'bb'.repeat(32)),
+    )
+
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
+    await waitFor(() => {
+      expect(result.current.status).toEqual({ state: 'not-downloaded' })
+    })
+    await act(async () => {
+      await result.current.start()
+    })
+
+    expect(result.current.status).toEqual({ state: 'hash-mismatch' })
+    // The card's own state copy is the message now; an error alert on top of
+    // it would tell the same story twice in two registers.
+    expect(result.current.error).toBe(null)
+  })
+
+  it('outranks the eviction marker - this refusal is newer news', async () => {
+    recordCompleted(CORRIDOR_ARCHIVE_KEY)
+    vi.mocked(downloadArchive).mockRejectedValue(
+      new ArchiveHashMismatchError('aa'.repeat(32), 'bb'.repeat(32)),
+    )
+
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
+    await waitFor(() => {
+      expect(result.current.status).toMatchObject({ state: 'evicted' })
+    })
+
+    await act(async () => {
+      await result.current.start()
+    })
+
+    expect(result.current.status).toEqual({ state: 'hash-mismatch' })
+  })
+
+  it('is session-only: a fresh mount reads the store, which holds nothing', async () => {
+    // Nothing about a mismatch is persisted - that is the point of the
+    // discard - so a reload lawfully reports the store's truth instead.
+    vi.mocked(downloadArchive).mockRejectedValue(
+      new ArchiveHashMismatchError('aa'.repeat(32), 'bb'.repeat(32)),
+    )
+
+    const first = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
+    await waitFor(() => {
+      expect(first.result.current.status).toEqual({ state: 'not-downloaded' })
+    })
+    await act(async () => {
+      await first.result.current.start()
+    })
+    expect(first.result.current.status).toEqual({ state: 'hash-mismatch' })
+    first.unmount()
+
+    const second = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
+    await waitFor(() => {
+      expect(second.result.current.status).toEqual({ state: 'not-downloaded' })
+    })
+  })
+
+  it('a deliberate delete afterwards still lands on not-downloaded', async () => {
+    vi.mocked(downloadArchive).mockRejectedValue(
+      new ArchiveHashMismatchError('aa'.repeat(32), 'bb'.repeat(32)),
+    )
+
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
+    await waitFor(() => {
+      expect(result.current.status).toEqual({ state: 'not-downloaded' })
+    })
+    await act(async () => {
+      await result.current.start()
+    })
+    await act(async () => {
+      await result.current.remove()
+    })
+
+    expect(result.current.status).toEqual({ state: 'not-downloaded' })
   })
 })

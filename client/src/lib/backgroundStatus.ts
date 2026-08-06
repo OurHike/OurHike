@@ -15,6 +15,12 @@
 //   1b. Something is being CHECKED   - the phone reading back bytes it holds
 //                                     (#197). Work in progress, so it outranks
 //                                     every resting state below.
+//   1c. Something was REFUSED        - a finished archive matched no published
+//                                     build and was not kept (#238). Above
+//                                     eviction because it just happened, in
+//                                     this session, to the thing the hiker is
+//                                     watching - and its remedy (start over)
+//                                     contradicts every offer below it.
 //   2. Something was EVICTED        - "the phone removed your map" is the one
 //                                     sentence #190 exists for, and it is
 //                                     more urgent than "some is missing",
@@ -64,6 +70,9 @@ function bytesOf({ status, sizeBytes }: ArchiveState): {
       return { received: status.totalBytes, total: status.totalBytes }
     case 'not-downloaded':
     case 'evicted':
+    // A refused archive kept nothing, so its contribution is exactly an
+    // absent one's: zero here, its published size still owed (#238).
+    case 'hash-mismatch':
     // An archive being checked holds partial bytes, but how many is not what
     // `checkedBytes` counts - that is progress through the re-read. Its
     // published size is the honest expectation until the transfer resumes and
@@ -126,6 +135,14 @@ export function combineBackgroundStatus(
         0,
       ),
     }
+  }
+
+  // Above eviction and every resting state: the refusal happened in this
+  // session, to a download the hiker is watching, and the card's start-over
+  // offer must not be displaced by a sibling's Resume - "Stopped at X of Y"
+  // would be false of an archive that kept nothing (#238).
+  if (states.includes('hash-mismatch')) {
+    return { state: 'hash-mismatch' }
   }
 
   if (states.includes('evicted')) {

@@ -79,6 +79,26 @@ BACKGROUND_ARCHIVES = {
 }
 
 
+# The hiking sheet's own offline archives - the primary download of #184's
+# vector-first plan: the AT corridor package cut from the OpenMapTiles
+# basemap (build-basemap.yml / extract_package.py) and the quantized
+# terrarium DEM behind its hillshade and contours (build-dem.yml /
+# export_dem.py, #186).
+#
+# A separate mapping from BACKGROUND_ARCHIVES on purpose: those are detail
+# tiers of ONE raster sheet, chosen between by download size, where these
+# are the distinct packages of the default background sheet
+# (client/src/lib/packages.ts BASEMAP_PACKAGE / DEM_PACKAGE) and a hiker
+# takes both. The names are load-bearing twice over: they are the flat R2
+# keys the client requests, and publish()'s manifest merge is additive-only,
+# so a name once published cannot be renamed by this module - it can only be
+# joined by a sibling and abandoned.
+OFFLINE_SHEET_ARCHIVES = {
+    "basemap": "at_basemap_package.pmtiles",
+    "dem": "dem.pmtiles",
+}
+
+
 # Build metadata that travels with a release but is not part of it.
 #
 # build_state.json records every upstream freshness marker as of the fetch
@@ -153,7 +173,7 @@ def collect_artifacts() -> dict[str, dict]:
         manifest = json.loads(spurs_manifest.read_text())
         artifacts["spurs.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
-    for name in BACKGROUND_ARCHIVES.values():
+    for name in (*BACKGROUND_ARCHIVES.values(), *OFFLINE_SHEET_ARCHIVES.values()):
         path = PROCESSED_DIR / name
         if path.exists():
             artifacts[name] = {"path": str(path), "sha256": sha256_file(path)}

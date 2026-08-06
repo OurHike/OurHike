@@ -31,11 +31,17 @@ to_merc = Transformer.from_crs(GEO, MERC, always_xy=True)
 # completeness gate legitimately fails a corridor that vanishes at world
 # zooms, and the real 30-mile ribbon does not (export_pmtiles.py measured
 # 0.8 x 22 px at z0).
+#
+# The cell bboxes are CLIPPED to the corridor's bounding box, the way
+# lib/corridor_grid.compute_cells actually cuts them - which puts edge
+# tiles' centres outside every cell and leans on owner_index's nearest-cell
+# fallback. Cells with room to spare would pass under the centre rule alone
+# and miss the bug that refused the first real 51-cell assemble.
 CORRIDOR_BOX = box(-77.9, 39.2, -76.1, 39.7)
 CENTERLINE = LineString([(-77.85, 39.45), (-76.15, 39.45)])
 CELLS = [
-    {"index": 0, "bbox": [-78.0, 39.0, -77.0, 40.0], "quads": ["a.tif"]},
-    {"index": 1, "bbox": [-77.0, 39.0, -76.0, 40.0], "quads": ["b.tif"]},
+    {"index": 0, "bbox": [-77.9, 39.2, -77.0, 39.7], "quads": ["a.tif"]},
+    {"index": 1, "bbox": [-77.0, 39.2, -76.1, 39.7], "quads": ["b.tif"]},
 ]
 
 
@@ -75,8 +81,9 @@ def write_inputs(tmp_path):
     cells_dir = tmp_path / "raster_cells"
     cells_dir.mkdir()
     per_cell_owned = {}
+    cell_bboxes = [tuple(c["bbox"]) for c in CELLS]
     for cell in CELLS:
-        owned = owned_tiles(tuple(cell["bbox"]), corridor_merc, band_merc)
+        owned = owned_tiles(cell["index"], cell_bboxes, corridor_merc, band_merc)
         per_cell_owned[cell["index"]] = owned
         tiles_name = None
         if owned:

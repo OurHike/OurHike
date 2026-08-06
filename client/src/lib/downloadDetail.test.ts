@@ -16,17 +16,17 @@ describe('downloadDetail', () => {
     expect(getDownloadDetail('light')).toMatchObject({
       level: 'light',
       zoom: 11,
-      sizeBytes: 64_000_000,
+      sizeBytes: 68_900_000,
     })
     expect(getDownloadDetail('standard')).toMatchObject({
       level: 'standard',
       zoom: 12,
-      sizeBytes: 314_000_000,
+      sizeBytes: 300_300_000,
     })
     expect(getDownloadDetail('fine')).toMatchObject({
       level: 'fine',
       zoom: 13,
-      sizeBytes: 1_180_000_000,
+      sizeBytes: 1_179_200_000,
     })
   })
 

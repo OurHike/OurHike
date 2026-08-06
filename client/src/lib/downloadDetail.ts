@@ -15,9 +15,9 @@ export interface DownloadDetail {
 }
 
 export const DOWNLOAD_DETAIL_LEVELS: DownloadDetail[] = [
-  { level: 'light', zoom: 11, sizeBytes: 64_000_000, recommended: false },
-  { level: 'standard', zoom: 12, sizeBytes: 314_000_000, recommended: true },
-  { level: 'fine', zoom: 13, sizeBytes: 1_180_000_000, recommended: false },
+  { level: 'light', zoom: 11, sizeBytes: 68_900_000, recommended: false },
+  { level: 'standard', zoom: 12, sizeBytes: 300_300_000, recommended: true },
+  { level: 'fine', zoom: 13, sizeBytes: 1_179_200_000, recommended: false },
 ]
 
 export function getDownloadDetail(level: DetailLevel): DownloadDetail {

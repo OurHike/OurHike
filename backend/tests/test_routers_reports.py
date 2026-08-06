@@ -549,3 +549,111 @@ def test_two_reports_without_ids_are_still_two_reports(client):
 
     assert first.json()["id"] != second.json()["id"]
     assert len(client.get("/reports", headers=headers).json()) == 2
+
+
+# --- The idempotency key is a trust boundary (#265) -----------------------
+#
+# `id` becomes the row's PRIMARY KEY, and moderation addresses a report by
+# URL path segment (`POST /reports/{report_id}/verify`). An unconstrained
+# string let a caller choose an id no route could ever match, and with no
+# delete endpoint anywhere the row was unreachable forever - so anyone with
+# an account could park un-clearable `bad_hikers` notes about named people
+# in the queue that closures and serious warnings share.
+
+
+@pytest.mark.parametrize(
+    "bad_id",
+    [
+        "a/b",  # extra path segment: verify and dismiss both 404
+        "",  # empty segment: same
+        "..",  # traversal-shaped: same
+        "x?y",  # query separator: 405
+        "#frag",  # fragment: 422 at the routing layer
+        "A" * 300,  # unbounded length
+        "not-a-uuid",
+        "12345",
+    ],
+)
+def test_an_id_that_is_not_a_uuid_is_refused(client, bad_id):
+    payload = dict(_VALID_PAYLOAD, id=bad_id)
+
+    response = client.post("/reports", json=payload, headers=auth_headers(str(uuid.uuid4())))
+
+    assert response.status_code == 422
+
+
+def test_a_refused_id_files_nothing(client):
+    """The point is not the status code, it is that nothing reaches the
+    database - an unreachable row cannot be cleaned up afterwards."""
+    headers = auth_headers(str(uuid.uuid4()))
+
+    client.post("/reports", json=dict(_VALID_PAYLOAD, id="a/b"), headers=headers)
+
+    assert client.get("/reports", headers=headers).json() == []
+
+
+def test_a_moderator_can_always_reach_a_report_that_was_accepted(client, db_session):
+    """The property the validation exists to protect, asserted end to end
+    rather than inferred from the 422s above."""
+    moderator = Profile(id=str(uuid.uuid4()), role=Role.club_admin, display_name="Mod")
+    db_session.add(moderator)
+    db_session.commit()
+    created = client.post(
+        "/reports",
+        json=dict(_VALID_PAYLOAD, type="bad_hikers", id=str(uuid.uuid4())),
+        headers=auth_headers(str(uuid.uuid4())),
+    ).json()
+
+    dismissed = client.post(f"/reports/{created['id']}/dismiss", headers=auth_headers(moderator.id))
+
+    assert dismissed.status_code == 200
+
+
+def test_the_same_uuid_in_a_different_case_is_the_same_report(client):
+    """The column is a String, so `{ID}` and `{id}` would otherwise be two
+    primary keys - and a retry that re-cased the id would file a duplicate,
+    defeating the whole point."""
+    headers = auth_headers(str(uuid.uuid4()))
+    report_id = str(uuid.uuid4())
+
+    first = client.post("/reports", json=dict(_VALID_PAYLOAD, id=report_id), headers=headers)
+    second = client.post("/reports", json=dict(_VALID_PAYLOAD, id=report_id.upper()), headers=headers)
+
+    assert first.status_code == 201
+    assert second.status_code == 200
+    assert first.json()["id"] == second.json()["id"]
+    assert len(client.get("/reports", headers=headers).json()) == 1
+
+
+def test_losing_the_insert_race_returns_the_stored_report_not_a_500(client, monkeypatch):
+    """Two concurrent sends of the same id both see "not filed yet" and both
+    insert. That is not a rare interleaving - it is exactly what the retry
+    path produces - and losing it used to surface as a 500 from the one
+    endpoint whose entire promise is that sending twice is safe.
+
+    Simulated by making the pre-check miss once, which is precisely what the
+    losing request observes."""
+    from app.routers import reports as reports_router
+
+    headers = auth_headers(str(uuid.uuid4()))
+    report_id = str(uuid.uuid4())
+    first = client.post("/reports", json=dict(_VALID_PAYLOAD, id=report_id), headers=headers)
+    assert first.status_code == 201
+
+    real = reports_router._already_filed
+    calls = {"n": 0}
+
+    def blind_once(db, rid, user):
+        calls["n"] += 1
+        # The pre-check runs first and sees nothing; the post-IntegrityError
+        # recovery uses the real lookup.
+        return None if calls["n"] == 1 else real(db, rid, user)
+
+    monkeypatch.setattr(reports_router, "_already_filed", blind_once)
+
+    second = client.post("/reports", json=dict(_VALID_PAYLOAD, id=report_id), headers=headers)
+
+    assert second.status_code == 200
+    assert second.json()["id"] == report_id
+    assert calls["n"] == 2
+    assert len(client.get("/reports", headers=headers).json()) == 1

@@ -43,7 +43,7 @@ A cross-feature alignment review on 2026-07-28 moved **Authentication**, **Repor
 | [SEGMENTS.md](features/SEGMENTS.md) | Post-MVP. Hierarchical Hike → Segment tree for thru-, section- and day-hikes. |
 | [TRIP_PLANNING.md](features/TRIP_PLANNING.md) | Post-MVP. Builds on Segments: waypoint planning, bulk date shifts, POI-aware assistance. |
 | [HIKE_PLANNING.md](features/HIKE_PLANNING.md) | **v2, first feature — a spike, not yet a build.** The route builder, multi-day plans, the day/section/trail roll-up, zero days and resupply, the timeline and its food carry, the auto-generated plan, and what happens to the rest of the plan when today changes. Draws Segments and Trip Planning together rather than restating either. |
-| [VOLUNTEERING.md](features/VOLUNTEERING.md) | Post-MVP. Club work-project management, with upcoming projects shown on the map. |
+| [VOLUNTEERING.md](features/VOLUNTEERING.md) | **v2, second feature.** The Volunteer tab: contributing conditions, a fourteen-day map of work projects with in-app signup, Ridge Runner At-Large, logged hours, and a private impact record. Club work-project management is now the last of six pieces rather than the whole doc. |
 | [SOURCE_REGISTRY.md](features/SOURCE_REGISTRY.md) | Post-MVP. How an outside organization registers its own map layers and a contact to notify. Registration is a form; the build input stays a reviewed file, so nothing self-service can change a hiker's map without a merge. |
 | [DATA_NUDGES.md](features/DATA_NUDGES.md) | Post-MVP. Non-gamified prompts to keep POI data fresh — no notifications, just map prominence for stale data, self-limiting the moment anyone contributes. |
 | [COMMUNITY_BUILDING.md](features/COMMUNITY_BUILDING.md) | Post-MVP. Tramily formation, check-ins, mentions. The project's sharpest privacy-vs-connection tension, resolved as a scoped exception rather than a loosened stance. |
@@ -110,3 +110,15 @@ Two things it turned up that are worth knowing even if the feature never gets bu
 - **The auto-planner needs no backend.** Choosing day boundaries out of 512 shelters and campsites is a shortest path over roughly 3,000 edges — less arithmetic than one frame of the map — so the only architectural question it could have raised is answered before it is asked.
 
 v2's shape beyond this feature is deliberately not sketched here. One feature designed properly is worth more than a list, and this one is big enough to teach us what the rest should be.
+
+## v2 — volunteering
+
+**Scoped 2026-08-06 as v2's second feature: [features/VOLUNTEERING.md](features/VOLUNTEERING.md).** Where planning a hike is the app doing something *with* the trail, this is the app doing something *for* it — the gap between hiking a trail and maintaining one, which is the reason this project exists at all rather than a feature it happens to want.
+
+Six pieces behind a third tab: opting in to contribute conditions, a fourteen-day map of work projects a hiker can sign up for, the Ridge Runner At-Large commitment, logged hours, a private record of what someone has contributed, and the club-side module that confirms it. The doc argues the tab name rather than assuming it, and lands on `Volunteer`.
+
+Three things it settled that reach beyond it:
+
+- **The anti-gamification guardrail now has a stated boundary.** Four docs had said "no per-hiker contribution counts shown anywhere" and a personal impact record is, on its face, exactly that. The resolution — the guardrail targets *comparison and pressure*, not *memory* — is written down with the four rules that keep it honest, so the next feature to hit this does not have to relitigate it.
+- **[PRICING_MODEL.md](features/PRICING_MODEL.md)'s volunteer exemption is unblocked**, and now has a named phase to wait for rather than an open dependency on a design that did not exist.
+- **[DATA_NUDGES.md](features/DATA_NUDGES.md), designed in July and never built, is Phase A.** It is the piece that touches every hiker rather than the few who attend a workday, and it is worth building whether or not the rest follows.

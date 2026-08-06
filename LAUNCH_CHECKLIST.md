@@ -213,7 +213,11 @@ curl "https://<ref>.supabase.co/rest/v1/reports?select=*" \
 
 An empty array or a permission error is what you want. Rows are the failure.
 
-**While you are in Advisors:** it currently also flags **leaked password protection as disabled**. That is a dashboard toggle rather than anything in this repo (Authentication → Providers → Email), it costs nothing, and it matters here because email/password is an enabled sign-in path — `VITE_AUTH_PROVIDERS` defaults to `google,email`. Supabase checks new passwords against HaveIBeenPwned: [docs](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
+**While you are in Advisors:** it also flags **leaked password protection as disabled**, and will keep flagging it. That check — Supabase's [HaveIBeenPwned integration](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection) — is **a paid-plan feature, confirmed 2026-08-06 against this project's own dashboard**. It is not a free toggle somebody forgot, so treat that advisor line as known and unactionable rather than as an outstanding task. An earlier version of this section said to go and switch it on; that was wrong, and re-discovering it costs somebody the same trip to the dashboard every time.
+
+It matters at all because email/password is a real sign-in path here — `VITE_AUTH_PROVIDERS` defaults to `google,email`, and `screens/EmailSignIn.tsx` offers a password as the fallback behind its magic-link default. Without the check, an account secured by a password reused from a breached site is exactly as reachable as that password, and these accounts can file `bad_hikers` reports about named people.
+
+**The mitigation that costs nothing is to have no passwords**, not to buy the check: magic-link email plus Google covers every case the password path does. See [#279](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/279) for the argument and what it would remove. Until that is decided, this is a known accepted risk rather than a gap nobody noticed.
 
 ---
 

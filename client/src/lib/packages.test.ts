@@ -10,6 +10,8 @@ import {
   offeredSheets,
   packageDownloadUrl,
   packageSizeBytes,
+  sheetDetailOptions,
+  sheetIsTiered,
   sheetSizeBytes,
   USGS_SHEET,
   type BackgroundSheet,
@@ -208,5 +210,48 @@ describe('what a sheet will cost', () => {
     const sheet = sheetOf([PUBLISHED_ELSEWHERE, UNPUBLISHED])
 
     expect(sheetSizeBytes(sheet, 'standard')).toBe(12_345)
+  })
+})
+
+describe('the detail levels a sheet offers (#298)', () => {
+  it('gives the USGS sheet all three, at its own totals', () => {
+    expect(sheetDetailOptions(USGS_SHEET)).toEqual([
+      {
+        level: 'light',
+        sizeBytes: sheetSizeBytes(USGS_SHEET, 'light'),
+        recommended: false,
+      },
+      {
+        level: 'standard',
+        sizeBytes: sheetSizeBytes(USGS_SHEET, 'standard'),
+        recommended: true,
+      },
+      {
+        level: 'fine',
+        sizeBytes: sheetSizeBytes(USGS_SHEET, 'fine'),
+        recommended: false,
+      },
+    ])
+  })
+
+  it('answers all three for a sheet with none of them, with nothing behind any', () => {
+    // Nulls rather than an empty list: the screens draw the levels either
+    // way and grey out what is not published, so "this map has no smaller
+    // version" is stated where it is true instead of left to a missing
+    // control.
+    const options = sheetDetailOptions(HIKING_SHEET)
+
+    expect(options.map((option) => option.level)).toEqual(['light', 'standard', 'fine'])
+    expect(options.every((option) => option.sizeBytes === null)).toBe(true)
+    expect(sheetIsTiered(HIKING_SHEET)).toBe(false)
+  })
+
+  it('tiers a mixed sheet by exactly what the tiered archive changes', () => {
+    const sheet = sheetOf([CORRIDOR_BACKGROUND_PACKAGE, PUBLISHED_ELSEWHERE])
+    const [light, , fine] = sheetDetailOptions(sheet)
+
+    expect(sheetIsTiered(sheet)).toBe(true)
+    expect(light.sizeBytes).toBe(getDownloadDetail('light').sizeBytes + 12_345)
+    expect(fine.sizeBytes).toBe(getDownloadDetail('fine').sizeBytes + 12_345)
   })
 })

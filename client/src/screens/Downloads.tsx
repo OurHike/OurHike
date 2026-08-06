@@ -27,13 +27,27 @@
 // the app an app rather than a map viewer, and it is fetched by default
 // whenever it is missing (lib/trailData.ts, App.tsx), so presenting it as a
 // decision would be offering someone a choice they have already been given.
+//
+// ONE SHEET AT A TIME, UNDER TABS (#298).
+//
+// The sheets were stacked when there were two of them, which read as a list
+// of things to work through rather than as alternatives to choose between -
+// and the list is expected to grow. Tabs say what stacking could not: these
+// are the SAME kind of thing, you are looking at one of them, and the others
+// are one tap away with their own sizes. The strip is built from whatever
+// sheets are handed in, so the sheet after the USGS raster needs nothing here.
+//
+// With one sheet there is no strip: a single tab is a heading pretending to
+// be a control.
 
 import { useEffect, useState } from 'react'
 import { formatBytes } from '../lib/formatBytes'
-import type { DetailLevel } from '../lib/downloadDetail'
+import type { DetailLevel, DetailOption } from '../lib/downloadDetail'
 import { estimateAvailableBytes, type PersistenceState } from '../lib/storageHealth'
 import { useDesktop } from '../lib/useDesktop'
+import { facingFullDownload } from '../lib/backgroundStatus'
 import { DownloadCard, type DownloadStatus } from './DownloadCard'
+import { Tabs } from './Tabs'
 import './downloads.css'
 
 /** One sheet, ready to render: its combined state across every archive it is
@@ -47,9 +61,14 @@ export interface SheetDownload {
   sizeBytes: number
   /** Its own failure, if it has one - never a sibling sheet's. */
   error?: string | null
-  /** Present where the sheet has detail levels to choose between - the USGS
-   *  raster does (downloadDetail.ts). Absent renders no picker. */
-  detail?: { level: DetailLevel; onChange: (level: DetailLevel) => void }
+  /** The chosen detail level and every level this sheet is published at - a
+   *  null size is a level it has none of, and renders greyed rather than
+   *  missing (screens/DetailPicker.tsx). */
+  detail: {
+    level: DetailLevel
+    options: readonly DetailOption[]
+    onChange: (level: DetailLevel) => void
+  }
   onStart: () => void
   onResume: () => void
   onDelete: () => void
@@ -87,19 +106,65 @@ function useAvailableBytes(): number | null {
   return available
 }
 
-/** The states in which this sheet's next tap fetches its whole size - where
- *  a too-small disk is worth a warning before the tap, not after. */
-function facingFullDownload(status: DownloadStatus): boolean {
-  return (
-    status.state === 'not-downloaded' ||
-    status.state === 'evicted' ||
-    status.state === 'hash-mismatch'
-  )
-}
-
 export function Downloads({ sheets, persistence = null }: DownloadsProps) {
   const isDesktop = useDesktop()
   const availableBytes = useAvailableBytes()
+  const [openSheetId, setOpenSheetId] = useState(sheets[0]?.id ?? '')
+
+  // The default sheet, whenever the id in state names none of the ones being
+  // offered - a build that publishes a different set, or a first render.
+  // Falling back rather than storing the sheet itself keeps this a window
+  // over data owned elsewhere: sheets arrive rebuilt on every status change.
+  const openSheet = sheets.find((sheet) => sheet.id === openSheetId) ?? sheets[0]
+  if (openSheet === undefined) return null
+
+  /** One sheet, with the space warning that belongs to it. */
+  const panel = (sheet: SheetDownload) => {
+    // Warned, never refused: estimate() is deliberately fuzzy (browsers
+    // round it against fingerprinting), and a hiker at a trailhead deciding
+    // to try anyway is making an informed call, which is the whole point.
+    // Against this sheet's whole size, since that is what its one tap brings.
+    const spaceTight =
+      facingFullDownload(sheet.status) &&
+      availableBytes !== null &&
+      availableBytes < sheet.sizeBytes
+
+    return (
+      <>
+        {/* What this sheet is, under the tab that names it. The card no
+            longer carries a heading of its own - two of them under one tab
+            would say the same words twice. */}
+        <p className="downloads__item-summary">{sheet.summary}</p>
+
+        {spaceTight && (
+          <p className="downloads__warning" role="status">
+            {sheet.status.state === 'evicted'
+              ? `Space still looks tight — about ${formatBytes(availableBytes ?? 0)} free against a ${formatBytes(
+                  sheet.sizeBytes,
+                )} download. Freeing up space first makes another removal less likely.`
+              : `This phone reports about ${formatBytes(availableBytes ?? 0)} free for the app — the ${formatBytes(
+                  sheet.sizeBytes,
+                )} download may not fit. ${
+                  sheet.detail.options.some((option) => option.sizeBytes !== null)
+                    ? 'A lighter detail level might, or free up some space first.'
+                    : 'Freeing up some space first would make room for it.'
+                }`}
+          </p>
+        )}
+        <DownloadCard
+          title={sheet.title}
+          status={sheet.status}
+          sizeBytes={sheet.sizeBytes}
+          error={sheet.error ?? null}
+          detail={sheet.detail}
+          persistence={persistence}
+          onStart={sheet.onStart}
+          onResume={sheet.onResume}
+          onDelete={sheet.onDelete}
+        />
+      </>
+    )
+  }
 
   return (
     <div className="downloads">
@@ -123,52 +188,19 @@ export function Downloads({ sheets, persistence = null }: DownloadsProps) {
         )}
       </p>
 
-      {sheets.map((sheet) => {
-        // Warned, never refused: estimate() is deliberately fuzzy (browsers
-        // round it against fingerprinting), and a hiker at a trailhead
-        // deciding to try anyway is making an informed call, which is the
-        // whole point. Against this sheet's whole size, since that is what
-        // its one tap brings down.
-        const spaceTight =
-          facingFullDownload(sheet.status) &&
-          availableBytes !== null &&
-          availableBytes < sheet.sizeBytes
-
-        return (
-          <div key={sheet.id}>
-            {spaceTight && (
-              <p className="downloads__warning" role="status">
-                {sheet.status.state === 'evicted'
-                  ? `Space still looks tight — about ${formatBytes(availableBytes ?? 0)} free against a ${formatBytes(
-                      sheet.sizeBytes,
-                    )} download. Freeing up space first makes another removal less likely.`
-                  : `This phone reports about ${formatBytes(availableBytes ?? 0)} free for the app — the ${formatBytes(
-                      sheet.sizeBytes,
-                    )} download may not fit. ${
-                      sheet.detail !== undefined
-                        ? 'A lighter detail level might, or free up some space first.'
-                        : 'Freeing up some space first would make room for it.'
-                    }`}
-              </p>
-            )}
-            <DownloadCard
-              title={sheet.title}
-              summary={sheet.summary}
-              status={sheet.status}
-              error={sheet.error ?? null}
-              detail={sheet.detail}
-              persistence={persistence}
-              // With one sheet the paragraph above has already named what is
-              // being downloaded; with two, each card must say which map it
-              // is about - #192's naming rule, live for the first time.
-              showHeading={sheets.length > 1}
-              onStart={sheet.onStart}
-              onResume={sheet.onResume}
-              onDelete={sheet.onDelete}
-            />
-          </div>
-        )
-      })}
+      {sheets.length > 1 ? (
+        <Tabs
+          label="Background maps"
+          tabs={sheets.map((sheet) => ({ id: sheet.id, label: sheet.title }))}
+          activeId={openSheet.id}
+          onSelect={setOpenSheetId}
+          idPrefix="downloads-sheet"
+        >
+          {panel(openSheet)}
+        </Tabs>
+      ) : (
+        panel(openSheet)
+      )}
     </div>
   )
 }

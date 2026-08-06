@@ -65,6 +65,7 @@ describe('Onboarding', () => {
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
     await advance(user, 1)
+    await user.click(screen.getByRole('tab', { name: /usgs sheet/i }))
 
     expect(screen.getByText(/64 MB/)).toBeInTheDocument()
     expect(screen.getByText(/314 MB/)).toBeInTheDocument()
@@ -75,8 +76,37 @@ describe('Onboarding', () => {
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
     await advance(user, 1)
+    await user.click(screen.getByRole('tab', { name: /usgs sheet/i }))
 
     expect(screen.getByRole('radio', { name: /standard/i })).toBeChecked()
+  })
+
+  it('asks the map-size question in the download window’s shape (#298)', async () => {
+    // First run ends by opening the download window, so these are two
+    // consecutive views of one decision. They used to disagree about what
+    // the decision was: one detail level here, a sheet per tab there.
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} />)
+    await advance(user, 1)
+
+    expect(screen.getByRole('tab', { name: /hiking sheet/i })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /usgs sheet/i })).toBeInTheDocument()
+  })
+
+  it('opens on the background everyone gets, and says what it costs', async () => {
+    // The hiking sheet is published at one size, so its three levels are
+    // greyed - and the size a first run is actually committing to is stated
+    // rather than left to the window on the next screen.
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} />)
+    await advance(user, 1)
+
+    expect(screen.getByRole('tab', { name: /hiking sheet/i })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    for (const level of screen.getAllByRole('radio')) expect(level).toBeDisabled()
+    expect(screen.getByText(/published at one size — 1\.14 GB/i)).toBeInTheDocument()
   })
 
   it('never offers to take single sections later - per-section downloads are retired', async () => {
@@ -152,6 +182,7 @@ describe('Onboarding', () => {
     render(<Onboarding {...PROPS} />)
 
     await advance(user, 1)
+    await user.click(screen.getByRole('tab', { name: /usgs sheet/i }))
     await user.click(screen.getByRole('radio', { name: /light/i }))
     await advance(user, 1)
     await user.click(screen.getByRole('button', { name: /allow/i }))

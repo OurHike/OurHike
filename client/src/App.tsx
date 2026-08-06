@@ -73,8 +73,8 @@ import {
   packageArtifactKey,
   packageDownloadUrl,
   packageSizeBytes,
+  sheetDetailOptions,
   sheetSizeBytes,
-  USGS_SHEET,
   type BackgroundSheet,
 } from './lib/packages'
 import { combineBackgroundStatus } from './lib/backgroundStatus'
@@ -1001,20 +1001,22 @@ function App() {
           status: sheetStatus(sheet),
           sizeBytes: sheetSizeBytes(sheet, detailLevel),
           error: sheetError(sheet),
-          // The detail choice belongs to the sheet whose artifacts are
-          // tiered - the USGS raster (downloadDetail.ts). The hiking sheet
-          // has one measured size and gets no picker over a choice that
-          // does not exist.
-          detail:
-            sheet.id === USGS_SHEET.id
-              ? {
-                  level: detailLevel,
-                  onChange: (level: DetailLevel) =>
-                    updatePreferences({
-                      max_background_zoom: getDownloadDetail(level).zoom,
-                    }),
-                }
-              : undefined,
+          // Every sheet answers all three levels, at its own sizes or with
+          // nulls where it has none (lib/packages.ts) - the picker shows
+          // them either way and greys out what is not published, rather
+          // than a sheet without tiers rendering no picker at all (#298).
+          //
+          // One stored level for all of them, which is what
+          // max_background_zoom has always been: it is the detail the next
+          // download is fetched at, and only the tiered sheet can honour it.
+          detail: {
+            level: detailLevel,
+            options: sheetDetailOptions(sheet),
+            onChange: (level: DetailLevel) =>
+              updatePreferences({
+                max_background_zoom: getDownloadDetail(level).zoom,
+              }),
+          },
           onStart: () => void handleDownloadSheet(sheet),
           onResume: () => void handleResumeSheet(sheet),
           onDelete: () => void handleDeleteSheet(sheet),

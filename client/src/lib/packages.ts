@@ -21,7 +21,12 @@
 
 import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
 import { archiveKey, archiveUrl, dataUrl } from './config'
-import { getDownloadDetail, type DetailLevel } from './downloadDetail'
+import {
+  DOWNLOAD_DETAIL_LEVELS,
+  getDownloadDetail,
+  type DetailLevel,
+  type DetailOption,
+} from './downloadDetail'
 
 /**
  * Where a package's bytes are fetched from, or `null` while nothing
@@ -240,6 +245,35 @@ export function sheetSizeBytes(sheet: BackgroundSheet, detail: DetailLevel): num
     (total, pkg) => total + packageSizeBytes(pkg, detail),
     0,
   )
+}
+
+/** Whether any archive of this sheet is published per detail level - which is
+ *  the same question as whether Light/Standard/Fine mean anything for it. */
+export function sheetIsTiered(sheet: BackgroundSheet): boolean {
+  return offeredPackages(sheet).some((pkg) => pkg.source.kind === 'tiered')
+}
+
+/**
+ * The three detail levels as this sheet offers them: its own total at each,
+ * or null throughout where the sheet is published at one size.
+ *
+ * Every sheet answers all three, rather than tiered sheets answering and the
+ * rest declining to. The screens show the levels either way and grey out what
+ * is not on offer, so "this map has no smaller version" is stated where it is
+ * true instead of being left to a missing control.
+ *
+ * A sheet with a tiered archive AND fixed ones is handled by construction:
+ * sheetSizeBytes sums the tiered piece at the level asked for and the fixed
+ * pieces at their one size, so the levels differ by exactly what the tier
+ * changes.
+ */
+export function sheetDetailOptions(sheet: BackgroundSheet): DetailOption[] {
+  const tiered = sheetIsTiered(sheet)
+  return DOWNLOAD_DETAIL_LEVELS.map(({ level, recommended }) => ({
+    level,
+    recommended,
+    sizeBytes: tiered ? sheetSizeBytes(sheet, level) : null,
+  }))
 }
 
 /**

@@ -135,6 +135,17 @@ async function openDownloads(user: ReturnType<typeof userEvent.setup>) {
   return screen.findByRole('dialog', { name: /offline map/i })
 }
 
+/**
+ * The USGS sheet's card, behind its own tab in the download window (#298).
+ *
+ * The sheets are tabs rather than a stack, so the card a test wants is not on
+ * screen until its tab is chosen - which is exactly what a hiker does.
+ */
+async function usgsSheetCard(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole('tab', { name: /usgs sheet/i }))
+  return screen.findByRole('region', { name: /usgs sheet/i })
+}
+
 describe('once there is a GPS fix', () => {
   it('shows the mile instead of still looking for GPS', async () => {
     hikerOnTrail()
@@ -498,7 +509,7 @@ describe('downloading everything', () => {
 
     await openDownloads(user)
     // The USGS card, named: two sheets each have a download button now (#237).
-    const usgsCard = await screen.findByRole('region', { name: /usgs sheet/i })
+    const usgsCard = await usgsSheetCard(user)
     await user.click(within(usgsCard).getByRole('button', { name: /download the map/i }))
 
     await waitFor(() => expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob))
@@ -519,7 +530,8 @@ describe('downloading everything', () => {
     await screen.findByRole('region', { name: /trail map/i })
 
     await openDownloads(user)
-    await user.click(await screen.findByRole('button', { name: /delete/i }))
+    const usgsCard = await usgsSheetCard(user)
+    await user.click(within(usgsCard).getByRole('button', { name: /delete/i }))
 
     await waitFor(() => expect(store.has(CORRIDOR_ARCHIVE_KEY)).toBe(false))
     expect(store.has(TRAILS_BLOB_KEY)).toBe(true)
@@ -533,6 +545,10 @@ describe('downloading everything', () => {
     await screen.findByRole('region', { name: /trail map/i })
 
     await openDownloads(user)
+    // The levels live on the sheet that has them - the USGS raster. One
+    // stored level all the same: max_background_zoom is what the next
+    // download is fetched at.
+    await usgsSheetCard(user)
     await user.click(await screen.findByRole('radio', { name: /light/i }))
 
     await waitFor(() => {
@@ -792,7 +808,7 @@ describe('when the trail data cannot be downloaded', () => {
     await screen.findByRole('region', { name: /trail map/i })
 
     await openDownloads(user)
-    const usgsCard = await screen.findByRole('region', { name: /usgs sheet/i })
+    const usgsCard = await usgsSheetCard(user)
     await user.click(within(usgsCard).getByRole('button', { name: /download the map/i }))
 
     expect(await screen.findByText('Trail data failed to download.')).toBeInTheDocument()
@@ -815,7 +831,8 @@ describe('resuming an interrupted download', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
     await openDownloads(user)
-    const resume = await screen.findByRole('button', { name: /resume/i })
+    const usgsCard = await usgsSheetCard(user)
+    const resume = within(usgsCard).getByRole('button', { name: /resume/i })
 
     vi.mocked(fetch).mockResolvedValue({
       ok: true,

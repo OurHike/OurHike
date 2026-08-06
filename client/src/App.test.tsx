@@ -102,6 +102,17 @@ async function openDownloads(user: ReturnType<typeof userEvent.setup>) {
 }
 
 /**
+ * The USGS sheet's card, behind its own tab in the download window (#298).
+ *
+ * The sheets are tabs rather than a stack, so the card a test wants is not on
+ * screen until its tab is chosen - which is exactly what a hiker does.
+ */
+async function usgsSheetCard(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole('tab', { name: /usgs sheet/i }))
+  return screen.findByRole('region', { name: /usgs sheet/i })
+}
+
+/**
  * The live map, once MapView's effect has actually built it.
  *
  * `findByRole('region')` resolves the moment MapView's container div lands in
@@ -218,9 +229,11 @@ describe('App shell', () => {
     await openDownloads(user)
 
     expect(screen.getByRole('region', { name: /trail map/i })).toBeInTheDocument()
-    // Two sheets, two cards, each with its own button (#237).
-    const buttons = await screen.findAllByRole('button', { name: /download the map/i })
-    expect(buttons).toHaveLength(2)
+    // Two sheets, one tab each, and the open one's button (#237, #298).
+    expect(await screen.findByRole('tab', { name: /hiking sheet/i })).toBeVisible()
+    expect(screen.getByRole('tab', { name: /usgs sheet/i })).toBeVisible()
+    const buttons = screen.getAllByRole('button', { name: /download the map/i })
+    expect(buttons).toHaveLength(1)
     expect(buttons[0]).toBeVisible()
   })
 
@@ -650,7 +663,7 @@ describe('App shell', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
     await openDownloads(user)
-    const usgsCard = await screen.findByRole('region', { name: /usgs sheet/i })
+    const usgsCard = await usgsSheetCard(user)
     await user.click(within(usgsCard).getByRole('button', { name: /download the map/i }))
 
     await waitFor(() => {
@@ -674,7 +687,7 @@ describe('App shell', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
     await openDownloads(user)
-    const usgsCard = await screen.findByRole('region', { name: /usgs sheet/i })
+    const usgsCard = await usgsSheetCard(user)
     await user.click(within(usgsCard).getByRole('button', { name: /download the map/i }))
 
     await waitFor(() => {

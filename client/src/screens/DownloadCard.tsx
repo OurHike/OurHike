@@ -20,14 +20,18 @@
 //   - an archive the OS reclaimed says so, rather than reading as one that
 //     was never downloaded (#190)
 //
-// The detail picker only appears when there is a download to start, and only
-// where there are levels to pick. Once it is on the phone, changing detail
-// means re-downloading, which is what Settings' "detail for new downloads"
-// row is for - offering the choice here would imply it could be changed in
-// place.
+// The detail picker is part of the card in every state, which is a change
+// from #192's card and the reason is the tabs above it (#298): a control that
+// comes and goes as a download progresses makes each tab a different shape,
+// and a hiker comparing two maps is then comparing two layouts. What varies
+// is whether it can be USED. Once bytes are on the phone or moving towards
+// it, changing detail means re-downloading, so the levels grey out and the
+// note says what would have to happen instead - which says more than an
+// absent control ever did.
 
+import { facingFullDownload } from '../lib/backgroundStatus'
 import { formatBytes, formatBytesLive } from '../lib/formatBytes'
-import type { DetailLevel } from '../lib/downloadDetail'
+import type { DetailLevel, DetailOption } from '../lib/downloadDetail'
 import type { PersistenceState } from '../lib/storageHealth'
 import { DetailPicker } from './DetailPicker'
 
@@ -55,24 +59,31 @@ export type DownloadStatus =
   | { state: 'evicted'; completedAt: Date | null }
 
 export interface DownloadCardProps {
-  /** What this download is called, and one line on what the bytes buy. */
+  /** What this download is called - the card's own label, so its buttons are
+   *  reachable by the thing they belong to. Never rendered as a heading: with
+   *  tabs the tab names the sheet, and with one sheet the surrounding copy
+   *  has (screens/Downloads.tsx). */
   title: string
-  summary: string
   status: DownloadStatus
+  /** What the next tap would fetch, at the chosen level. Stated by the picker
+   *  where there are levels, and by its note where there is one size. */
+  sizeBytes: number
   /** This download's own failure, in its own card. A shared notice could
    *  only ever say "a download failed" without saying which one. */
   error?: string | null
-  /** Present where the download has detail levels to choose between - the
-   *  background does (downloadDetail.ts). Absent renders no picker. */
-  detail?: { level: DetailLevel; onChange: (level: DetailLevel) => void }
+  /** The chosen level, every level this download is published at, and how to
+   *  report a change. Levels it is not published at come through as null
+   *  sizes and render greyed - see DetailPicker. */
+  detail: {
+    level: DetailLevel
+    options: readonly DetailOption[]
+    onChange: (level: DetailLevel) => void
+  }
   /** What asking for durable storage came to - null while unanswered. Drives
    *  wording only: best-effort storage is stated, never silently assumed
    *  away (#190). One answer for the origin, shown against each package that
    *  is actually holding bytes. */
   persistence?: PersistenceState | null
-  /** False when this card is the only one on the screen and the surrounding
-   *  copy has already named what is being downloaded. */
-  showHeading?: boolean
   onStart: () => void
   onResume: () => void
   onDelete: () => void
@@ -86,30 +97,42 @@ function formatDay(date: Date): string {
   return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
 }
 
+/** Why the levels are greyed while bytes are here or on their way. Said in
+ *  terms of what would have to happen to change it, because "you cannot" on
+ *  its own leaves someone hunting for a setting that does not exist. */
+function lockedNote(status: DownloadStatus): string {
+  return status.state === 'downloaded'
+    ? 'This map is on the phone. Deleting it and downloading again is how to change the detail.'
+    : 'A download is under way. Its detail is fixed until it finishes.'
+}
+
 export function DownloadCard({
   title,
-  summary,
   status,
+  sizeBytes,
   error = null,
   detail,
   persistence = null,
-  showHeading = true,
   onStart,
   onResume,
   onDelete,
 }: DownloadCardProps) {
+  const picker = (
+    <DetailPicker
+      value={detail.level}
+      onChange={detail.onChange}
+      options={detail.options}
+      singleSizeBytes={sizeBytes}
+      locked={!facingFullDownload(status)}
+      lockedNote={lockedNote(status)}
+    />
+  )
+
   return (
     // Labelled as a region so a card's buttons are reachable by the thing
     // they belong to - "Delete the map" says which map only because of what
     // it sits inside, for a screen reader and for a test alike.
     <section className="downloads__item" aria-label={title}>
-      {showHeading && (
-        <>
-          <h3 className="downloads__item-title">{title}</h3>
-          <p className="downloads__item-summary">{summary}</p>
-        </>
-      )}
-
       {/* The failure that belongs to THIS package, beside this package's
           button. Which download failed is half of what the sentence has to
           say once there is more than one. */}
@@ -121,9 +144,7 @@ export function DownloadCard({
 
       {status.state === 'not-downloaded' && (
         <>
-          {detail !== undefined && (
-            <DetailPicker value={detail.level} onChange={detail.onChange} />
-          )}
+          {picker}
           <button type="button" className="downloads__primary" onClick={onStart}>
             Download the map
           </button>
@@ -144,9 +165,7 @@ export function DownloadCard({
             The phone removed it to free up space — that can happen when storage runs low.
             Downloading it again is the only fix, and it needs signal.
           </p>
-          {detail !== undefined && (
-            <DetailPicker value={detail.level} onChange={detail.onChange} />
-          )}
+          {picker}
           <button type="button" className="downloads__primary" onClick={onStart}>
             Download it again
           </button>
@@ -178,6 +197,7 @@ export function DownloadCard({
             This part happens on the phone and needs no signal. The download carries on
             from where it stopped once it is done.
           </p>
+          {picker}
         </div>
       )}
 
@@ -210,6 +230,7 @@ export function DownloadCard({
             </span>
             {` of ${formatBytes(status.totalBytes)}`}
           </p>
+          {picker}
         </div>
       )}
 
@@ -223,6 +244,7 @@ export function DownloadCard({
           <p>
             What you already have is kept — picking this up again carries on from there.
           </p>
+          {picker}
           <button type="button" className="downloads__primary" onClick={onResume}>
             Resume
           </button>
@@ -241,9 +263,7 @@ export function DownloadCard({
             saved. Any map already on this phone is untouched. Downloading again fetches a
             fresh copy from the start.
           </p>
-          {detail !== undefined && (
-            <DetailPicker value={detail.level} onChange={detail.onChange} />
-          )}
+          {picker}
           <button type="button" className="downloads__primary" onClick={onStart}>
             Start the download over
           </button>
@@ -271,6 +291,7 @@ export function DownloadCard({
               restores it.
             </p>
           )}
+          {picker}
           <button type="button" className="downloads__secondary" onClick={onDelete}>
             Delete the map
           </button>

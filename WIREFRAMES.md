@@ -174,7 +174,7 @@ Four groups, one canonical `UserPreferences` model:
 
 - **You** — trail name (Linked / on-this-device), reporter type, account.
 - **The map** — background source (USGS topo downloaded is the default and the only offline-capable one), detail for new downloads, roads & walkability *(Later)*.
-- **Display** — theme (Auto), units *(Later; mile markers stay miles either way)*.
+- **Display** — theme (Light / Dark / Auto, a segmented control like the background picker above it; Auto is last, after the two concrete choices, so the group reads as a spectrum ending in "let the phone decide"), units *(Later; mile markers stay miles either way)*.
 - **Safety & privacy** — wrong-way alert toggle, "hide my name on reports for…" *(Later)*, and a red locked callout: **closures and serious warnings are always shown; there is no switch, here or anywhere.**
 - **Your data** — export reports/routes (GPX, GeoJSON), last synced + Sync, sources & attribution.
 
@@ -323,7 +323,7 @@ The source handoff's own "not yet wireframed" checklist listed several screens t
 - Volunteering work-project pins (Post-MVP).
 - Roads/walkability overlay (Post-MVP, MAP_OPTIONS.md).
 - Auto-rotate (Post-MVP, UX_CUSTOMIZATION.md).
-- Theme override, metric units, persistent waypoint/layer prefs (Post-MVP, UX_CUSTOMIZATION.md).
+- Metric units, persistent waypoint/layer prefs (Post-MVP, UX_CUSTOMIZATION.md). *Theme override was here until 2026-08-06 and is now MVP — see that doc for why the split was wrong.*
 - Community Building — Tramily, check-ins, mentions (Post-MVP).
 - Pricing tiers / paywall UI (Post-MVP, PRICING_MODEL.md).
 - Trail names as a distinct onboarding tier (Post-MVP, ONBOARDING.md).

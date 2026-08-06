@@ -27,6 +27,7 @@ import type { BackgroundOverride } from '../lib/dataSaver'
 import type { ArchiveZooms } from '../lib/archiveCoverage'
 import { attributionFor } from '../map/style'
 import type { ScaleUnits } from '../map/mapChrome'
+import type { ResolvedTheme } from '../lib/theme'
 import type { BackgroundSource } from '../lib/userPreferences'
 import type { BoundingBox, MapPoint } from '../lib/legendContents'
 import type { SearchablePoi } from '../lib/searchPoi'
@@ -99,6 +100,9 @@ export interface MapScreenProps {
 
   showZoomButtons?: boolean
   units?: ScaleUnits
+  /** Which theme the canvas is drawn in. Passed down rather than read here so
+   *  the chrome and the map answer from one value - see MapViewProps. */
+  theme?: ResolvedTheme
 
   /** Opening camera only; later moves are the hiker's. */
   center?: [number, number]
@@ -181,6 +185,7 @@ export function MapScreen({
   waypoints,
   showZoomButtons = false,
   units = 'imperial',
+  theme = 'light',
   center,
   zoom,
   bounds,
@@ -268,6 +273,7 @@ export function MapScreen({
               onSelectPoi={onSelectPoi}
               showZoomButtons={showZoomButtons}
               units={units}
+              theme={theme}
               center={center}
               zoom={zoom}
               bounds={bounds}

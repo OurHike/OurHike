@@ -92,7 +92,7 @@
   margin: 0;
   padding: var(--space-2, 8px) var(--space-3, 12px);
   border-radius: 8px;
-  background: var(--warning-100, #fdf1d6);
+  background: var(--surface-warning);
   color: var(--fg-1);
   font-size: 13px;
 }
@@ -105,7 +105,7 @@
   font-weight: 600;
 }
 .downloads__primary {
-  color: var(--fg-on-dark);
+  color: var(--fg-on-brand);
   background: var(--brand-primary);
   border: 0;
 }
@@ -135,7 +135,7 @@
   border-radius: 8px;
   /* The same tint App.css's offline banner reads from, one shade of the
      design system's --warning (blaze yellow) family. */
-  background: var(--warning-100, #fdf1d6);
+  background: var(--surface-warning);
   color: var(--fg-1);
   font-size: 13px;
 }

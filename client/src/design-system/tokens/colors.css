@@ -7,6 +7,7 @@
 --forest-500:#47784b;
 --moss-400:#6b9463;
 --moss-300:#96b98c;
+--moss-200:#b7d3ad;
 --sage-200:#c7dabd;
 --sage-100:#e3ecda;
 --stone-900:#2b2620;
@@ -18,13 +19,46 @@
 --paper-0:#fffdf7;
 --blaze-orange:#c1611a;
 --blaze-orange-dark:#994e15;
+--blaze-orange-light:#e0813c;
 --blaze-yellow:#d69a2d;
 --blaze-blue:#1c6ea4;
+--blaze-blue-light:#4ea3d8;
 --blaze-white:#fdfaf2;
 --white:#ffffff;
 --black:#14130f;
 
-/* Semantic aliases */
+/* The dark side of the same palette. Warm ink rather than grey, because the
+   light side is warm paper and a neutral-grey dark mode reads as a different
+   product rather than the same map at night. Deep enough to be worth having
+   on a trail after dark - a "dark" theme that settles at #333 lights a face
+   up just as well as a white one does. */
+--ink-950:#0e0d0a;
+--ink-900:#15140f;
+--ink-850:#1c1a15;
+--ink-800:#24211a;
+--ink-700:#332f26;
+--ink-600:#454033;
+--bone-100:#ece7db;
+--bone-300:#b9b2a2;
+--bone-500:#8b8474;
+
+/* Two reds, one meaning. `--alert-red` is the serious-warning red the map
+   chrome used to spell as a bare #b2321f in four places; the light one is
+   what that hue has to become to stay readable on ink. */
+--alert-red:#b2321f;
+--alert-red-light:#ef7f68;
+
+/* The tint behind a caution notice. Named at last: App.css and downloads.css
+   each asked for a `--warning-100` that no file has ever defined, and got
+   their hardcoded fallback every time - so the notice was the one surface in
+   the app that could not follow a theme even in principle. */
+--amber-100:#fdf1d6;
+--amber-900:#3a2f14;
+
+/* Semantic aliases. Everything outside this file reads THESE, which is what
+   makes the dark block below a re-point rather than a second stylesheet. */
+color-scheme:light;
+
 --bg-page:var(--paper-100);
 --bg-canvas:var(--paper-0);
 --bg-surface:var(--white);
@@ -32,12 +66,18 @@
 --bg-inverse:var(--pine-900);
 --surface-card:var(--white);
 --surface-card-alt:var(--paper-0);
+--surface-warning:var(--amber-100);
 
 --fg-1:var(--stone-900);
 --fg-2:var(--stone-700);
 --fg-3:var(--stone-500);
+/* Text over a dark surface - stays light in both themes, because the surface
+   it names is dark in both. Distinct from `--fg-on-brand`, which flips: a
+   filled brand button is dark green under the light theme and pale moss under
+   the dark one, so what is legible on it is not the same colour. */
 --fg-on-dark:var(--paper-0);
 --fg-on-dark-muted:var(--sage-200);
+--fg-on-brand:var(--paper-0);
 
 --border-1:var(--stone-150);
 --border-2:var(--stone-300);
@@ -59,5 +99,65 @@
 --success:var(--forest-500);
 --warning:var(--blaze-yellow);
 --danger:var(--blaze-orange-dark);
+--danger-strong:var(--alert-red);
 --info:var(--blaze-blue);
+}
+
+/*
+ * The dark theme.
+ *
+ * Keyed on an attribute rather than on `prefers-color-scheme` directly,
+ * because "auto" is only one of three answers a hiker can give
+ * (lib/userPreferences.ts). lib/theme.ts is what resolves the preference and
+ * the OS query into this one attribute, and main.tsx stamps it on before the
+ * first render so nothing paints light and then flips.
+ *
+ * Semantic aliases only. Nothing here redefines a base palette entry: a token
+ * named for a colour has to keep meaning that colour, or `--forest-600` in a
+ * stylesheet somewhere quietly stops being green. What changes is which of
+ * them each semantic name points at.
+ *
+ * The brand and status hues are re-pointed rather than reused. `--forest-600`
+ * on ink is a 1.9:1 button nobody can read, and `--blaze-orange-dark` as
+ * `--danger` is worse - the whole point of the danger colour is that it
+ * carries at a glance. Every value below was picked against `--bg-surface`
+ * (#1c1a15) at 4.5:1 or better.
+ */
+:root[data-theme='dark']{
+color-scheme:dark;
+
+--bg-page:var(--ink-900);
+--bg-canvas:var(--ink-850);
+--bg-surface:var(--ink-850);
+--bg-sunken:var(--ink-950);
+--bg-inverse:var(--bone-100);
+--surface-card:var(--ink-850);
+--surface-card-alt:var(--ink-800);
+--surface-warning:var(--amber-900);
+
+--fg-1:var(--bone-100);
+--fg-2:var(--bone-300);
+--fg-3:var(--bone-500);
+--fg-on-brand:var(--ink-950);
+
+--border-1:var(--ink-700);
+--border-2:var(--ink-600);
+--border-strong:var(--moss-400);
+
+--brand-primary:var(--moss-400);
+--brand-primary-hover:var(--moss-300);
+--brand-primary-press:var(--moss-200);
+--brand-secondary:var(--blaze-orange-light);
+--brand-secondary-hover:var(--blaze-yellow);
+
+--accent-blaze-orange:var(--blaze-orange-light);
+--accent-blaze-blue:var(--blaze-blue-light);
+
+--link:var(--moss-300);
+--link-hover:var(--moss-200);
+
+--success:var(--moss-400);
+--danger:var(--blaze-orange-light);
+--danger-strong:var(--alert-red-light);
+--info:var(--blaze-blue-light);
 }

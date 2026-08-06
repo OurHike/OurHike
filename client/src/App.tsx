@@ -83,6 +83,7 @@ import { useOnline } from './lib/useOnline'
 import { useDataSaver } from './lib/useDataSaver'
 import { backgroundOverride, effectiveBackground } from './lib/dataSaver'
 import { useFinePointer } from './lib/useFinePointer'
+import { useTheme } from './lib/useTheme'
 import { useInstallPrompt } from './lib/useInstallPrompt'
 import { useAppUpdate } from './lib/useAppUpdate'
 import { useGeolocation } from './lib/useGeolocation'
@@ -268,6 +269,15 @@ function App() {
   // Read here rather than inside MapView so the whole map screen answers from
   // one value.
   const finePointer = useFinePointer()
+  // Resolves 'auto' against the OS, writes `data-theme` for the stylesheets,
+  // and hands back what actually got drawn - which the map needs as a prop,
+  // because a WebGL canvas cannot read a CSS variable (map/style.ts's attachMapTheme).
+  //
+  // Called above the `preferencesLoaded` gate below, like every other hook
+  // here: it runs on DEFAULT_PREFERENCES for the tick before the phone's own
+  // answer lands, and that default is 'auto' - the same thing main.tsx already
+  // stamped on the document before React started.
+  const resolvedTheme = useTheme(preferences.theme)
   const install = useInstallPrompt()
   useAppUpdate()
 
@@ -1163,6 +1173,10 @@ function App() {
           // this, so `showZoomButtons` sat on its default of false everywhere and
           // a browser with a mouse had no visible way to zoom at all.
           showZoomButtons={finePointer}
+          // The canvas is WebGL and cannot read the `data-theme` attribute the
+          // rest of the app follows, so the resolved answer goes down as a prop
+          // - see map/style.ts's attachMapTheme.
+          theme={resolvedTheme}
           // The corridor is the opening view only. Once there is a camera to put
           // back, it wins: `bounds` would otherwise re-frame the entire trail
           // every time the map screen came back from another tab.

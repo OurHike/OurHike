@@ -12,7 +12,7 @@
   height: 100svh;
   display: flex;
   flex-direction: column;
-  background: var(--paper-100);
+  background: var(--bg-page);
 }
 
 .app__screen > :first-child {
@@ -26,8 +26,8 @@
 .app__notice {
   margin: 0;
   padding: var(--space-3, 12px) var(--space-4, 16px);
-  background: var(--warning-100, #fdf1d6);
-  color: var(--ink-900, #2b2620);
+  background: var(--surface-warning);
+  color: var(--fg-1);
   font-size: 0.875rem;
 }
 

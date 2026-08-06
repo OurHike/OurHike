@@ -44,7 +44,7 @@ def test_create_report_persists_the_authoring_timestamp_not_the_request_time(cli
 
     assert response.status_code == 201
     body = response.json()
-    stored_timestamp = datetime.fromisoformat(body["timestamp"]).replace(tzinfo=timezone.utc)
+    stored_timestamp = datetime.fromisoformat(body["timestamp"])
 
     assert stored_timestamp.year != 1999
     assert before - timedelta(seconds=5) <= stored_timestamp <= after + timedelta(seconds=5)
@@ -200,7 +200,7 @@ def test_create_report_accepts_a_client_authored_at_for_a_report_written_offline
     response = client.post("/reports", json=payload, headers=auth_headers(user_id))
 
     assert response.status_code == 201
-    stored = datetime.fromisoformat(response.json()["timestamp"]).replace(tzinfo=timezone.utc)
+    stored = datetime.fromisoformat(response.json()["timestamp"])
     assert abs((stored - authored).total_seconds()) < 5
 
 
@@ -211,7 +211,7 @@ def test_create_report_defaults_the_timestamp_to_now_when_authored_at_is_omitted
     response = client.post("/reports", json=_VALID_PAYLOAD, headers=auth_headers(user_id))
 
     assert response.status_code == 201
-    stored = datetime.fromisoformat(response.json()["timestamp"]).replace(tzinfo=timezone.utc)
+    stored = datetime.fromisoformat(response.json()["timestamp"])
     assert stored >= before - timedelta(seconds=5)
 
 
@@ -223,7 +223,7 @@ def test_create_report_records_received_at_as_server_time_not_the_clients_claim(
 
     response = client.post("/reports", json=payload, headers=auth_headers(user_id))
 
-    received = datetime.fromisoformat(response.json()["received_at"]).replace(tzinfo=timezone.utc)
+    received = datetime.fromisoformat(response.json()["received_at"])
     # Server truth, so a backdated claim can always be told apart from a
     # report that really was filed three days ago.
     assert received >= before - timedelta(seconds=5)
@@ -275,7 +275,7 @@ def test_an_outbox_flush_keeps_each_reports_own_authored_at(client):
     # test needs anyway: an outbox flush is followed by the reporter looking
     # at what they just sent, not by a stranger doing so.
     listed = client.get("/reports", headers=headers).json()
-    stored = sorted(datetime.fromisoformat(r["timestamp"]).replace(tzinfo=timezone.utc) for r in listed)
+    stored = sorted(datetime.fromisoformat(r["timestamp"]) for r in listed)
 
     assert len(stored) == 3
     for actual, expected in zip(stored, sorted(authored)):
@@ -363,7 +363,7 @@ def test_invasive_species_still_carries_a_photo_and_an_authored_time(client):
     body = client.post("/reports", json=payload, headers=auth_headers(str(uuid.uuid4()))).json()
 
     assert body["photo_url"] == "https://example.org/knotweed.jpg"
-    stored = datetime.fromisoformat(body["timestamp"]).replace(tzinfo=timezone.utc)
+    stored = datetime.fromisoformat(body["timestamp"])
     assert abs((stored - authored).total_seconds()) < 5
 
 

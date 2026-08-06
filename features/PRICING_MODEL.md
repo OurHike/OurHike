@@ -47,7 +47,11 @@ Everything in the free tier is already enough for a day-hiker - keeping it that 
 
 ### Volunteers - free ride, offered not assumed
 
-**The 40-hours-a-year threshold is a real, quantifiable rule, not a vague gesture** - but it needs something that doesn't exist yet to actually work. [VOLUNTEERING.md](VOLUNTEERING.md)'s current design is explicitly "contact details or an external signup link for v1... an in-app RSVP/capacity system is a natural v2" - there's no hour-tracking today. **This is a real, direct dependency worth naming plainly: the volunteer exemption can't ship until Volunteering's v2 attendance/hours tracking does.** Not designed further here - flagged as the actual blocker, not glossed over.
+**The 40-hours-a-year threshold is a real, quantifiable rule, not a vague gesture** - but it needs something that doesn't exist yet to actually work. **This is a real, direct dependency worth naming plainly: the volunteer exemption can't ship until Volunteering's attendance/hours tracking does.**
+
+**Unblocked as a design 2026-08-06, though not yet as a build.** [VOLUNTEERING.md](VOLUNTEERING.md) is now v2's second feature and fills in the `VolunteerHoursRecord` sketched at the foot of this doc — `claimed` when the volunteer logs it, `confirmed` when a club admin says so, and attaching to a standalone Tuesday afternoon's work as readily as to an organised workday, since most trail maintenance is the former. **The exemption waits on that doc's Phase D specifically** (in-app signup and club confirmation), which is a named phase rather than the open-ended dependency this paragraph used to carry.
+
+Two things from that doc are worth knowing here. **Hours are claimed, not computed** — GPS would be wrong constantly, and the person knows. And the number has a consumer beyond our own pricing: clubs report volunteer hours to ATC and to land-managing agencies, where they carry weight in real funding decisions. That is the reason confirmation is a club admin's job and not a formality.
 
 **Grant, don't self-report.** Hours get confirmed by a club admin (the same permission tier [AUTHENTICATION.md](AUTHENTICATION.md) already designs for club-admin access), not self-declared by the volunteer - the same "don't let users unlock value by asserting it themselves" reasoning [Hiker Safety's severity tier](HIKER_SAFETY.md) already applied to serious warnings.
 

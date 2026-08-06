@@ -424,6 +424,34 @@ describe('downloading everything', () => {
         status: 200,
         statusText: 'OK',
         blob: () => Promise.resolve(new Blob([TRAILS_GEOJSON])),
+        // The vector artifacts are hashed before they are stored (#197), so
+        // the double has to answer with bytes as well as with text.
+        arrayBuffer: () =>
+          Promise.resolve(
+            new TextEncoder().encode(
+              String(url).includes('poi_shelter')
+                ? JSON.stringify({
+                    type: 'FeatureCollection',
+                    features: [
+                      {
+                        type: 'Feature',
+                        properties: {
+                          id: SHELTER.id,
+                          name: SHELTER.name,
+                          confidence: 'high',
+                        },
+                        geometry: {
+                          type: 'Point',
+                          coordinates: [SHELTER.lon, SHELTER.lat],
+                        },
+                      },
+                    ],
+                  })
+                : String(url).includes('trails')
+                  ? TRAILS_GEOJSON
+                  : JSON.stringify({ type: 'FeatureCollection', features: [] }),
+            ).buffer,
+          ),
         text: () =>
           Promise.resolve(
             String(url).includes('poi_shelter')

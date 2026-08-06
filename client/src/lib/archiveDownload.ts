@@ -114,8 +114,41 @@ interface PartialSource {
   hash?: Sha256State
 }
 
+/** How far through re-reading the bytes already held this attempt has got. */
+export interface CheckProgress {
+  checkedBytes: number
+  totalBytes: number
+}
+
 export interface DownloadOptions {
+  /**
+   * Which artifact this is, as `latest.json` names it - the flat bucket key
+   * `publish.py` uploaded, e.g. `background_z13.pmtiles`.
+   *
+   * Required, and required for a reason. This used to be derived from the
+   * URL's last segment, which worked only for as long as every artifact's URL
+   * happened to read like its manifest key; the first one that did not would
+   * have found no manifest entry, and "no published hash" means the download
+   * proceeds UNVERIFIED. A silent downgrade of the check this module exists
+   * for is not something a caller should be able to cause by omission, so the
+   * catalog that knows a package's identity states it (lib/packages.ts) and
+   * the type will not let it be forgotten.
+   */
+  artifactKey: string
   onProgress?: (progress: DownloadProgress) => void
+  /**
+   * Called while the bytes already on the phone are read back to catch their
+   * hash up - a partial written before this file recorded hash state, or by
+   * an attempt that found no published hash to check against.
+   *
+   * It exists because that work is invisible and slow in the same way a dead
+   * connection is: several seconds of nothing for a gigabyte, on a phone,
+   * before the transfer even starts. Someone resuming on one bar has no way
+   * to tell a stalled network from a busy phone, and the two ask for
+   * completely different responses - wait, or walk somewhere else. This is
+   * what lets the screen say which is happening.
+   */
+  onChecking?: (progress: CheckProgress) => void
   signal?: AbortSignal
 }
 
@@ -161,11 +194,22 @@ export class ArchiveHashMismatchError extends Error {
  *  enough that it is never one gigabyte-sized ArrayBuffer. */
 const HASH_READ_BYTES = 4 * 1024 * 1024
 
-/** Brings `hash` up to the end of `blob`, reading in windows. */
-async function hashBlobFrom(hash: Sha256, blob: Blob, from: number): Promise<void> {
+/** Brings `hash` up to the end of `blob`, reading in windows, reporting as it
+ *  goes so a phone doing seconds of local work does not look like a dead
+ *  connection. Reports nothing when there is nothing to catch up on. */
+async function hashBlobFrom(
+  hash: Sha256,
+  blob: Blob,
+  from: number,
+  onChecking?: (progress: CheckProgress) => void,
+): Promise<void> {
+  if (from >= blob.size) return
+
+  onChecking?.({ checkedBytes: from, totalBytes: blob.size })
   for (let at = from; at < blob.size; at += HASH_READ_BYTES) {
     const window = blob.slice(at, Math.min(at + HASH_READ_BYTES, blob.size))
     hash.update(new Uint8Array(await window.arrayBuffer()))
+    onChecking?.({ checkedBytes: hash.bytesHashed, totalBytes: blob.size })
   }
 }
 
@@ -181,20 +225,21 @@ async function hashBlobFrom(hash: Sha256, blob: Blob, from: number): Promise<voi
 async function resumeHash(
   held: Blob | undefined,
   state: Sha256State | undefined,
+  onChecking?: (progress: CheckProgress) => void,
 ): Promise<Sha256> {
   if (held === undefined) return new Sha256()
   const hash =
     state !== undefined && state.byteLength <= held.size
       ? Sha256.fromState(state)
       : new Sha256()
-  await hashBlobFrom(hash, held, hash.bytesHashed)
+  await hashBlobFrom(hash, held, hash.bytesHashed, onChecking)
   return hash
 }
 
 export async function downloadArchive(
   packageKey: string,
   url: string,
-  { onProgress, signal }: DownloadOptions = {},
+  { artifactKey, onProgress, onChecking, signal }: DownloadOptions,
 ): Promise<void> {
   const storedBlob = (await get(partialKeyFor(packageKey))) as Blob | undefined
   const storedSource = (await get(sourceKeyFor(packageKey))) as PartialSource | undefined
@@ -214,7 +259,7 @@ export async function downloadArchive(
   // it means the one artifact whose URL does not read like its manifest key
   // silently downloads unverified, which is the failure mode this whole file
   // now exists to prevent.
-  const publishedSha256 = await publishedHash(url, { signal })
+  const publishedSha256 = await publishedHash(artifactKey, { signal })
 
   // Only resume onto bytes we can prove came from this same URL. An
   // unidentified partial - a different detail level, or one written by a build
@@ -294,7 +339,7 @@ export async function downloadArchive(
   const hash =
     expected === null
       ? null
-      : await resumeHash(resumed ? heldBlob : undefined, storedSource?.hash)
+      : await resumeHash(resumed ? heldBlob : undefined, storedSource?.hash, onChecking)
 
   const sourceRecord = (): PartialSource => ({
     url,
@@ -352,7 +397,7 @@ export async function downloadArchive(
       //
       // This does not soften the splice defence: a spliced file matches no
       // published hash at all, so it still ends up in the branch below.
-      const republished = await publishedHash(url, { signal })
+      const republished = await publishedHash(artifactKey, { signal })
       if (republished !== null && republished === actual) {
         verified = actual
       } else {

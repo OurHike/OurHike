@@ -36,43 +36,13 @@ interface DataManifest {
   artifacts?: Record<string, { sha256?: unknown } | undefined>
 }
 
-/**
- * The artifact key `url` addresses, or null when it addresses something
- * outside the published bucket.
- *
- * Keys are flat at the bucket root (config.ts, DATA_RELEASES.md §Migration),
- * so the key is the last path segment - but only for URLs actually under the
- * configured base. A viewer pointed at a one-off file, or a build with no
- * bucket configured at all, has no manifest entry to look up, and guessing
- * from the filename alone would invite a same-named file elsewhere to be
- * checked against this bucket's hash.
- */
-export function artifactKeyFor(url: string): string | null {
-  if (DATA_BASE_URL === '') return null
-  const prefix = `${DATA_BASE_URL}/`
-  if (!url.startsWith(prefix)) return null
-  const key = url.slice(prefix.length)
-  // A nested key is still one key - `releases/2026-08-07/background.pmtiles`
-  // is what DATA_RELEASES.md's versioned layout will address - so the whole
-  // remainder is the name, not just its last segment. A query string is not
-  // part of it.
-  return key === '' ? null : key.split(/[?#]/)[0]
-}
-
-/**
- * The published SHA-256 for `url`, or null when there is no published answer:
- * no bucket configured, no manifest, no entry for this artifact, or a
- * manifest that could not be fetched or parsed.
- *
- * Null means "unverifiable", never "verified". Callers must treat it as the
- * absence of a check rather than as a passing one.
- */
 export async function publishedHash(
-  url: string,
+  artifactKey: string,
   { signal }: { signal?: AbortSignal } = {},
 ): Promise<string | null> {
-  const key = artifactKeyFor(url)
-  if (key === null) return null
+  // Nothing to fetch, and nothing that could answer: a build with no bucket
+  // configured has no manifest to read.
+  if (DATA_BASE_URL === '' || artifactKey === '') return null
 
   let manifest: DataManifest
   try {
@@ -92,7 +62,7 @@ export async function publishedHash(
     return null
   }
 
-  const entry = manifest?.artifacts?.[key]
+  const entry = manifest?.artifacts?.[artifactKey]
   const hash = entry?.sha256
   // Lowercased because hashlib writes lowercase hex and so does sha256.ts,
   // but a hand-edited manifest is a plausible field-test artifact and a

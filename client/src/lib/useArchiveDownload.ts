@@ -26,6 +26,7 @@ import {
   deleteArchive,
   downloadArchive,
   readDownloadProgress,
+  type CheckProgress,
   type DownloadProgress,
 } from './archiveDownload'
 import {
@@ -54,6 +55,9 @@ const NOT_DOWNLOADED: DownloadStatus = { state: 'not-downloaded' }
 export interface ArchiveDownloadRequest {
   packageKey: string
   url: string
+  /** What `latest.json` calls this artifact, so the download can be held to
+   *  its published hash (lib/packages.ts, `packageArtifactKey`). */
+  artifactKey: string
 }
 
 export function useArchiveDownloads(requests: readonly ArchiveDownloadRequest[]) {
@@ -189,9 +193,18 @@ export function useArchiveDownloads(requests: readonly ArchiveDownloadRequest[])
       const onProgress = (progress: DownloadProgress) =>
         setStatus(packageKey, { state: 'downloading', ...progress })
 
+      // Bytes already here, being read back to catch their hash up. Its own
+      // state because on a phone it takes seconds and looks exactly like a
+      // stalled transfer - and the two ask for opposite responses from
+      // someone standing in a dead spot.
+      const onChecking = (progress: CheckProgress) =>
+        setStatus(packageKey, { state: 'checking', ...progress })
+
       try {
         await downloadArchive(packageKey, request.url, {
+          artifactKey: request.artifactKey,
           onProgress,
+          onChecking,
           signal: controller.signal,
         })
         const finished = (await get(packageKey)) as Blob | undefined
@@ -317,10 +330,14 @@ export function useArchiveDownloads(requests: readonly ArchiveDownloadRequest[])
  * the shell's corridor-background wiring, and every test written against it.
  * Identical semantics to the plural hook; the package key is simply bound.
  */
-export function useArchiveDownload(packageKey: string, archiveUrl: string) {
+export function useArchiveDownload(
+  packageKey: string,
+  archiveUrl: string,
+  artifactKey: string,
+) {
   const requests = useMemo(
-    () => [{ packageKey, url: archiveUrl }],
-    [packageKey, archiveUrl],
+    () => [{ packageKey, url: archiveUrl, artifactKey }],
+    [packageKey, archiveUrl, artifactKey],
   )
   const {
     statusFor,

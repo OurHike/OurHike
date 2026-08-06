@@ -12,6 +12,9 @@
 // what is most common:
 //
 //   1. Something is transferring    - a live figure outranks everything.
+//   1b. Something is being CHECKED   - the phone reading back bytes it holds
+//                                     (#197). Work in progress, so it outranks
+//                                     every resting state below.
 //   2. Something was EVICTED        - "the phone removed your map" is the one
 //                                     sentence #190 exists for, and it is
 //                                     more urgent than "some is missing",
@@ -61,6 +64,11 @@ function bytesOf({ status, sizeBytes }: ArchiveState): {
       return { received: status.totalBytes, total: status.totalBytes }
     case 'not-downloaded':
     case 'evicted':
+    // An archive being checked holds partial bytes, but how many is not what
+    // `checkedBytes` counts - that is progress through the re-read. Its
+    // published size is the honest expectation until the transfer resumes and
+    // starts reporting real figures.
+    case 'checking':
       return { received: 0, total: sizeBytes }
   }
 }
@@ -100,6 +108,24 @@ export function combineBackgroundStatus(
 
   if (states.includes('downloading')) {
     return { state: 'downloading', receivedBytes: received, totalBytes: total }
+  }
+
+  // Below a live transfer and above everything else: it is work in progress,
+  // so offering "Resume" or announcing an eviction underneath it would be
+  // describing a phone that is already busy doing the thing.
+  if (states.includes('checking')) {
+    const checking = archives.filter(({ status }) => status.state === 'checking')
+    return {
+      state: 'checking',
+      checkedBytes: checking.reduce(
+        (n, { status }) => n + (status.state === 'checking' ? status.checkedBytes : 0),
+        0,
+      ),
+      totalBytes: checking.reduce(
+        (n, { status }) => n + (status.state === 'checking' ? status.totalBytes : 0),
+        0,
+      ),
+    }
   }
 
   if (states.includes('evicted')) {

@@ -67,6 +67,7 @@ import {
   backgroundSizeBytes,
   CORRIDOR_BACKGROUND_PACKAGE,
   offeredPackages,
+  packageArtifactKey,
   packageDownloadUrl,
   packageSizeBytes,
 } from './lib/packages'
@@ -270,6 +271,7 @@ function App() {
       backgroundPackages.map((pkg) => ({
         packageKey: pkg.idbKey,
         url: packageDownloadUrl(pkg, detailLevel),
+        artifactKey: packageArtifactKey(pkg, detailLevel),
       })),
     [backgroundPackages, detailLevel],
   )

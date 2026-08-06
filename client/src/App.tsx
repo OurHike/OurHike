@@ -19,9 +19,13 @@
 // This used to be deliberately unwired, on the grounds that provider buttons
 // which cannot authenticate would break exactly that promise. They can now -
 // there is a real Supabase project (features/AUTHENTICATION.md), and Supabase
-// Auth is what a hiker signs in to, not this project's own backend. Sending a
-// queued report still needs that backend deployed, which is why saving is
-// still what the flow guarantees and sending still is not.
+// Auth is what a hiker signs in to, not this project's own backend.
+//
+// Queued reports now send too (#231): useOutboxSync below flushes the outbox
+// once there is both a connection and an account. Saving is still what the
+// flow GUARANTEES, and that ordering has not moved - sending is what happens
+// afterwards, if it can, and a build with no VITE_API_BASE_URL simply never
+// gets that far.
 //
 // Which providers appear is a build-time answer (lib/supabase.ts's
 // ENABLED_PROVIDERS), because a button whose credentials do not exist yet
@@ -41,7 +45,7 @@ import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import type { TabId } from './chrome/tabs'
 import { Downloads } from './screens/Downloads'
 import { DownloadsDialog } from './screens/DownloadsDialog'
-import { More } from './screens/More'
+import { More, type StuckReport } from './screens/More'
 import { InstallPrompt } from './screens/InstallPrompt'
 import { Onboarding, type OnboardingResult } from './screens/Onboarding'
 import { ReportForm, type ReportFormSubmission } from './screens/ReportForm'
@@ -109,7 +113,8 @@ import {
   signOut,
   signUpWithEmail,
 } from './lib/auth'
-import { listQueued } from './lib/outbox'
+import { listQueued, removeQueued, retryQueued, type FlushResult } from './lib/outbox'
+import { useOutboxSync } from './lib/outboxSync'
 import type { BoundingBox, MapPoint } from './lib/legendContents'
 import type { SearchablePoi } from './lib/searchPoi'
 import './App.css'
@@ -235,7 +240,11 @@ function App() {
   // nothing.
   const account = useAccount()
   const [queuedCount, setQueuedCount] = useState(0)
-  const [lastSyncedAt] = useState<Date | null>(null)
+  const [stuckReports, setStuckReports] = useState<StuckReport[]>([])
+  // Was a state with no setter until #231 - nothing ever synced, so the status
+  // strip said "never synced" on every device forever, which was true and
+  // looked like a bug in the strip rather than a missing feature.
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
 
   const [direction, setDirection] = useState<DirectionTracker | null>(null)
   // The live map is state rather than a ref because effects have to run when
@@ -269,9 +278,62 @@ function App() {
     })
   }, [])
 
+  // Two facts, not one number. A report waiting for signal resolves itself;
+  // a report the server refused never will, and showing them as one count is
+  // what let a phone with a wrong clock say "waiting to send" forever (#243).
+  const refreshOutbox = useCallback(async () => {
+    const queue = await listQueued()
+    setQueuedCount(queue.filter((item) => item.failure === undefined).length)
+    setStuckReports(
+      queue
+        .filter((item) => item.failure !== undefined)
+        .map((item) => ({ id: item.id, reason: item.failure!.reason })),
+    )
+  }, [])
+
   useEffect(() => {
-    void listQueued().then((queue) => setQueuedCount(queue.length))
-  }, [reporting])
+    void refreshOutbox()
+  }, [reporting, refreshOutbox])
+
+  // Sending is the one thing that waits for signal. Everything else a hiker
+  // does - writing the report, reading the map - already happened offline.
+  //
+  // Keyed on having an account as well as a connection because a report can be
+  // written before signing in: the flow saves first and asks about identity
+  // afterwards (lib/contributionFlow.ts), so the queue can hold reports that
+  // no token could have sent yet. Signing in later is a second, equally valid
+  // moment to try.
+  const handleSynced = useCallback(
+    ({ sent, stuck }: FlushResult) => {
+      // Only on a real delivery. Stamping the clock after a flush that sent
+      // nothing would make "synced just now" mean "we had signal", which is
+      // the opposite of what the strip is for (lib/syncAge.ts).
+      if (sent > 0) setLastSyncedAt(new Date())
+      // Refreshed even when nothing was sent, because a flush that only
+      // discovered a refusal still changed what the hiker needs to see -
+      // that is the whole point of the stuck state.
+      if (sent > 0 || stuck > 0) void refreshOutbox()
+    },
+    [refreshOutbox],
+  )
+
+  useOutboxSync(online && account !== null, handleSynced)
+
+  /** Clears the refusal and lets the next flush try again - the escape hatch
+   *  for the fixable cause, a phone whose clock was wrong. */
+  const handleRetryReport = useCallback(
+    (id: string) => {
+      void retryQueued(id).then(refreshOutbox)
+    },
+    [refreshOutbox],
+  )
+
+  const handleDiscardReport = useCallback(
+    (id: string) => {
+      void removeQueued(id).then(refreshOutbox)
+    },
+    [refreshOutbox],
+  )
 
   const locationAllowed = preferences.location_permission_requested
   const gps = useGeolocation(locationAllowed)
@@ -783,9 +845,11 @@ function App() {
         hasAccount: account !== null,
         hasIdentity: preferences.trail_name !== null,
       })
-      // 'identity' has no screen yet, and 'send' needs a backend that is not
-      // deployed. Both end the flow exactly as it ended before, with the
-      // report queued and said so. Only the sign-in step is built.
+      // 'identity' still has no screen (#233). 'send' needs no step here:
+      // useOutboxSync above is already watching, and a report queued by a
+      // signed-in hiker with signal goes on its own. Nothing is awaited for
+      // it, because a send that blocked this callback would be a network round
+      // trip standing between someone and the map they were reading.
       if (next === 'sign-in') setAuthFlow({ screen: 'choose', afterReport: true })
     },
     [account, preferences.trail_name],
@@ -963,6 +1027,9 @@ function App() {
               onOpenDownloads={openDownloads}
               onStartReport={() => setReporting({ step: 'pick' })}
               queuedReportCount={queuedCount}
+              stuckReports={stuckReports}
+              onRetryReport={handleRetryReport}
+              onDiscardReport={handleDiscardReport}
             />
           </div>
           <TabBar active={activeTab} onSelect={setActiveTab} />

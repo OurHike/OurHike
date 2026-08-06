@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { get, set } from 'idb-keyval'
-import { enqueue, listQueued, removeQueued, flushOutbox, OUTBOX_KEY } from './outbox'
+import {
+  enqueue,
+  listQueued,
+  removeQueued,
+  retryQueued,
+  flushOutbox,
+  OUTBOX_KEY,
+} from './outbox'
 
 // TESTING.md item 13, and WIREFRAMES.md's rule that "every write (report,
 // thanks, confirmation) queues in an outbox with its authored timestamp and
@@ -173,5 +180,140 @@ describe('flushOutbox', () => {
 
     expect(await flushOutbox(send)).toMatchObject({ sent: 0, failed: 0 })
     expect(send).not.toHaveBeenCalled()
+  })
+})
+
+// --- Delivery guarantees (#243) -----------------------------------------
+//
+// The header promises "a flush that half-succeeds neither loses the
+// successes nor drops the failures - and flushing twice cannot file the
+// same report twice." These are the three ways that was not true.
+
+describe('a report written while a flush is running', () => {
+  it('is not overwritten by the flush finishing', async () => {
+    // The bug: flushOutbox read the queue, awaited every send, then wrote
+    // the whole key back from its own stale snapshot. Anything enqueued in
+    // between was appended to the key and then erased by that final write -
+    // gone from IndexedDB without ever being sent, which is the one thing an
+    // outbox exists to prevent.
+    const read = withStoredQueue([
+      {
+        id: 'first',
+        authoredAt: '2026-06-01T00:00:00.000Z',
+        payload: { type: 'blowdown' },
+      },
+    ])
+
+    await flushOutbox(async () => {
+      // Mid-flight, exactly like a hiker writing a second report while the
+      // first is uploading.
+      await enqueue({ type: 'trash', reporter_type: 'day' })
+    })
+
+    expect(
+      read().map((item) => (item as { payload: { type: string } }).payload.type),
+    ).toEqual(['trash'])
+  })
+})
+
+describe('a permanently refused report', () => {
+  const REFUSED = [
+    {
+      id: 'doomed',
+      authoredAt: '2026-06-01T00:00:00.000Z',
+      payload: { type: 'blowdown' },
+    },
+  ]
+
+  it('is kept, marked, and reported as stuck', async () => {
+    const read = withStoredQueue([...REFUSED])
+
+    const result = await flushOutbox(
+      async () => {
+        throw new Error('422')
+      },
+      () => 'The server would not accept it.',
+    )
+
+    expect(result).toEqual({ sent: 0, failed: 1, stuck: 1 })
+    const stored = read()[0] as { failure?: { reason: string } }
+    // Kept, not deleted: it is still the only copy of what someone wrote.
+    expect(stored.failure?.reason).toBe('The server would not accept it.')
+  })
+
+  it('is not retried on the next flush', async () => {
+    withStoredQueue([...REFUSED])
+    const classify = () => 'nope'
+    await flushOutbox(async () => {
+      throw new Error('422')
+    }, classify)
+
+    const send = vi.fn()
+    const second = await flushOutbox(send, classify)
+
+    // Retrying would spend signal to be refused again, and would keep
+    // resetting a failure the hiker is currently being shown.
+    expect(send).not.toHaveBeenCalled()
+    expect(second).toEqual({ sent: 0, failed: 1, stuck: 1 })
+  })
+
+  it('goes again once its failure is cleared', async () => {
+    // The escape hatch for the cause a hiker can fix: a wrong phone clock
+    // has every report refused, and once it is right nothing is wrong with
+    // them.
+    withStoredQueue([...REFUSED])
+    await flushOutbox(
+      async () => {
+        throw new Error('422')
+      },
+      () => 'nope',
+    )
+
+    await retryQueued('doomed')
+    const send = vi.fn()
+    await flushOutbox(send)
+
+    expect(send).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('a transient failure', () => {
+  it('is left alone, with no failure recorded', async () => {
+    const read = withStoredQueue([
+      {
+        id: 'waiting',
+        authoredAt: '2026-06-01T00:00:00.000Z',
+        payload: { type: 'blowdown' },
+      },
+    ])
+
+    const result = await flushOutbox(
+      async () => {
+        throw new Error('offline')
+      },
+      // The classifier's "retry this" answer.
+      () => null,
+    )
+
+    expect(result).toEqual({ sent: 0, failed: 1, stuck: 0 })
+    expect((read()[0] as { failure?: unknown }).failure).toBeUndefined()
+  })
+
+  it('is the default when no classifier is given', async () => {
+    // A caller with no opinion must not accidentally strand a report.
+    const read = withStoredQueue([
+      {
+        id: 'waiting',
+        authoredAt: '2026-06-01T00:00:00.000Z',
+        payload: { type: 'blowdown' },
+      },
+    ])
+
+    const result = await flushOutbox(async () => {
+      throw new Error('anything at all')
+    })
+
+    expect(result.stuck).toBe(0)
+    expect((read()[0] as { failure?: unknown }).failure).toBeUndefined()
   })
 })

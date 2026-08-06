@@ -186,37 +186,25 @@ Tables it should create: `clubs`, `profiles`, `closures`, `hikes`, `maintainer_a
 
 ---
 
-## 5a. Lock the tables down before anyone can reach them
+## 5a. Confirm the tables are locked down
 
-**Do this in the same sitting as step 5.** Between the migration landing and RLS being on, the database is open.
+**This is now part of step 5, not a step after it.** Migration `b3d1c7a94e02` enables Row Level Security on all seven tables in the same transaction that creates them, so there is no window between the schema existing and being locked. Nothing to run by hand; what follows is why, and how to check it really happened.
 
 Supabase serves every table in the `public` schema over PostgREST, at `https://<ref>.supabase.co/rest/v1/`, to anyone holding the anon key. That key is *meant* to be public — it ships inside the client's JS bundle, and no amount of treating it as a secret changes that. What makes publishing it safe is **Row Level Security**, not the key being hard to find. Supabase's own wording: the key is safe to expose *because* RLS is enabled on the database.
 
-Alembic does not enable RLS. It creates plain tables. So the moment step 5 runs, all seven — including `reports`, `profiles` and `closures` — are readable and writable by anyone who opens the app, views source, copies the key, and calls the REST endpoint directly.
+Alembic does not enable RLS on its own. It creates plain tables — which is exactly why the revision above exists. Without it, all seven, including `reports`, `profiles` and `closures`, would be readable and writable by anyone who opens the app, views source, copies the key and calls the REST endpoint directly.
 
 **The backend's own auth does not prevent this.** `get_current_user` guards FastAPI's routes, and PostgREST is a second front door into the same database that never passes through FastAPI. Locking the front door does nothing about a second one nobody remembered was there.
 
-The backend keeps working either way: it connects with the Postgres connection string as the table owner, and RLS does not apply to it.
+The backend keeps working regardless: it connects with the Postgres connection string as the table owner, and RLS does not apply to an owner. **That is also why `force row level security` must never be added** — it applies RLS to the owner too, and would take every endpoint down at once while looking like a tightening.
 
-Either fix works. Pick one:
+The tables get RLS with **no policies**, which rejects every anon request. That is the right default here: nothing in the client talks to PostgREST. The client uses Supabase for authentication only and reaches its data through the backend, so there is no query to keep working and nothing to grant. Add policies later if and only if something is built that genuinely needs direct table access.
 
-**Enable RLS with no policies**, which denies everything through PostgREST while leaving the backend untouched:
+**A new table is not covered automatically.** Alembic will keep creating plain ones, so a model added later needs its own revision enabling RLS on it. `backend/tests/test_migration_rls.py` fails until it has one — that test is what stops this section from quietly becoming untrue.
 
-```sql
-alter table public.clubs                  enable row level security;
-alter table public.profiles               enable row level security;
-alter table public.closures               enable row level security;
-alter table public.hikes                  enable row level security;
-alter table public.maintainer_assignments enable row level security;
-alter table public.reports                enable row level security;
-alter table public.user_preferences       enable row level security;
-```
+**The alternative not taken:** moving the schema out of `public`, since PostgREST only exposes schemas it is configured for. Structurally immune rather than maintained, but it means an Alembic `version_table_schema` change and a search-path decision, so it stays the larger change.
 
-A table with RLS on and no policy rejects every anon request. That is the right default here: **nothing in the client talks to PostgREST.** The client uses Supabase for authentication only and reaches its data through the backend, so there is no query to keep working and nothing to grant. Add policies later if and only if something is built that genuinely needs direct table access.
-
-**Or move the schema out of `public`** — PostgREST only exposes the schemas it is configured to, so tables elsewhere are unreachable regardless. Cleaner in principle, but it means an Alembic `version_table_schema` change and a search-path decision, so it is the larger change of the two.
-
-**Then verify rather than assume.** Database → Advisors in the dashboard flags every table that has RLS off; it should list none of these seven afterwards. Or check from outside with the anon key, which is the actual threat model:
+**Verify rather than assume.** Database → Advisors in the dashboard flags every table that has RLS off; it should list none of these seven. Or check from outside with the anon key, which is the actual threat model:
 
 ```
 curl "https://<ref>.supabase.co/rest/v1/reports?select=*" \
@@ -224,6 +212,8 @@ curl "https://<ref>.supabase.co/rest/v1/reports?select=*" \
 ```
 
 An empty array or a permission error is what you want. Rows are the failure.
+
+**While you are in Advisors:** it currently also flags **leaked password protection as disabled**. That is a dashboard toggle rather than anything in this repo (Authentication → Providers → Email), it costs nothing, and it matters here because email/password is an enabled sign-in path — `VITE_AUTH_PROVIDERS` defaults to `google,email`. Supabase checks new passwords against HaveIBeenPwned: [docs](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
 
 ---
 
@@ -241,7 +231,7 @@ What is left is running it, in this order:
    ```
    `SUPABASE_JWT_SECRET` is **not** in that list for a hosted project — see 4.4. Set it only against a self-hosted Supabase.
 3. **`fly deploy`** from `backend/`.
-4. **Run the migration** (step 5) and **enable RLS** (step 5a) against the real `DATABASE_URL`. Deliberately separate from deploying: a migration should be a reviewed action, not something that fires on every container start.
+4. **Run the migration** (step 5) against the real `DATABASE_URL`, then **confirm RLS is on** (step 5a — the migration does it, but check rather than assume). Deliberately separate from deploying: a migration should be a reviewed action, not something that fires on every container start.
 5. **Point the client at it** and add its origin to Supabase's allowed redirect URLs (4.3b).
 
 **None of this has been run against a real Fly.io account or Docker daemon.** The Dockerfile follows a standard FastAPI/uvicorn pattern and `fly.toml` matches Fly's documented format, but "should work" is not "confirmed working" — budget for the first real `fly deploy` to surface something no local check could. See [backend/README.md](backend/README.md) for the reasoning behind each choice.

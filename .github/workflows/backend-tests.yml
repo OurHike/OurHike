@@ -12,8 +12,20 @@ on:
   # merge).
   push:
     branches: [main]
+  # Deliberately NOT narrowed with `paths:`, even though that is the obvious
+  # way to stop a docs-only PR standing up a Postgres container. A workflow
+  # skipped by a path filter reports no status at all, and a required check
+  # that reports no status blocks the PR forever rather than passing it - the
+  # same trap pr-issue-link.yml documents for job-level `if:`. The scoping
+  # happens inside each job instead, where it can still finish green.
   pull_request:
     branches: [main]
+
+# Narrower than the default token. `pull-requests: read` is what lets the
+# scope step ask which files the pull request touches.
+permissions:
+  contents: read
+  pull-requests: read
 
 jobs:
   pytest-duckdb:
@@ -22,22 +34,47 @@ jobs:
       run:
         working-directory: backend
     steps:
+      # No `if:` on this job, and there should never be one - see the note on
+      # the trigger above. The steps carry the condition instead, so a PR that
+      # touches nothing under backend/ still reports success having done
+      # nothing, and this can be made a required check without that becoming a
+      # trap.
+      #
+      # Checkout is unconditional because the scope action lives in this
+      # repository and has to be on disk before it can decide anything. The
+      # two jobs each scope themselves rather than sharing one upstream job:
+      # the decision is a few seconds of API call, and making both wait on a
+      # third job to hear it would cost more than it saves.
       - uses: actions/checkout@v4
 
+      - id: scope
+        uses: ./.github/actions/changed-paths
+        with:
+          # backend/ carries its own requirements and pyproject, and nothing
+          # outside it is imported by the backend - checked, not assumed. The
+          # workflow and the action are in the list so a change to the gate
+          # itself still proves the suite it gates.
+          paths: backend/ .github/workflows/backend-tests.yml .github/actions/changed-paths/
+
       - uses: actions/setup-python@v5
+        if: steps.scope.outputs.run == 'true'
         with:
           python-version: "3.14"
 
       - name: Install dependencies
+        if: steps.scope.outputs.run == 'true'
         run: pip install -r requirements-dev.txt
 
       - name: Lint
+        if: steps.scope.outputs.run == 'true'
         run: python -m ruff check .
 
       - name: Check formatting
+        if: steps.scope.outputs.run == 'true'
         run: python -m ruff format --check .
 
       - name: Run tests (DuckDB - fast, local-dev-equivalent)
+        if: steps.scope.outputs.run == 'true'
         run: python -m pytest -v
 
   pytest-postgres:
@@ -45,6 +82,12 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # Worth knowing before it looks like a bug: a service container starts
+    # with the job, before any step runs, so this Postgres still boots on a
+    # run that turns out to have nothing to test. Only a job-level `if:` could
+    # avoid that, and that is the one thing this file will not do. A few
+    # seconds of an idle container is the price of a check that always
+    # reports.
     services:
       postgres:
         image: postgres:16
@@ -67,12 +110,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - id: scope
+        uses: ./.github/actions/changed-paths
+        with:
+          paths: backend/ .github/workflows/backend-tests.yml .github/actions/changed-paths/
+
       - uses: actions/setup-python@v5
+        if: steps.scope.outputs.run == 'true'
         with:
           python-version: "3.14"
 
       - name: Install dependencies
+        if: steps.scope.outputs.run == 'true'
         run: pip install -r requirements-dev.txt
 
       - name: Run tests (Postgres)
+        if: steps.scope.outputs.run == 'true'
         run: python -m pytest -v

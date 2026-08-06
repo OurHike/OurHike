@@ -5,10 +5,12 @@ the per-cell half of #191's rebuild, replacing fetch_and_mosaic_cell.py's
 WHAT ONE JOB PRODUCES
 
   cell_tiles_<i>.pmtiles   every z11-z14 tile this cell OWNS (tile centre
-                           inside the cell's bbox - the fan-out's dedup
-                           rule), rendered by lib/raster_tiles.py's
-                           warp-once path. z14 only within the five-mile
-                           near-trail band (issue #191's tiered shape).
+                           inside the cell's bbox, nearest cell when the
+                           centre escapes the grid - lib/raster_tiles.py's
+                           owner_index, the fan-out's dedup rule), rendered
+                           by the same module's warp-once path. z14 only
+                           within the five-mile near-trail band (issue
+                           #191's tiered shape).
   overview_<i>.tif         the cell's assigned quads averaged from native
                            onto a 24 m mercator grid - what assemble
                            renders z0-z10 from, so the far-out zooms never
@@ -54,7 +56,7 @@ from lib.raster_tiles import (
     encode_webp,
     mask_outside,
     neatline_box_merc,
-    owns_tile,
+    owner_index,
     render_overview,
     render_tile_from_quads,
     tiles_intersecting_geom,
@@ -97,16 +99,18 @@ def load_geom_merc(path: Path):
     return shp_transform(to_merc.transform, geom)
 
 
-def owned_tiles(cell_bbox_4326, corridor_merc, band_merc):
+def owned_tiles(cell_index, cell_bboxes, corridor_merc, band_merc):
     """Every (z, x, y) this cell writes: corridor-intersecting below
-    BAND_ZOOM, band-intersecting at it - filtered to tiles whose centre the
-    cell owns."""
+    BAND_ZOOM, band-intersecting at it - filtered to tiles owner_index
+    assigns to this cell. Needs the WHOLE grid, not just this cell's bbox:
+    a tile whose centre falls inside no cell goes to the nearest one, and
+    "nearest" is only answerable with every cell in hand."""
     owned = []
     for z in range(NATIVE_MIN_ZOOM, MAX_ZOOM + 1):
         region = band_merc if z >= BAND_ZOOM else corridor_merc
         for x, y in tiles_intersecting_geom(region, z):
             t_bounds = transform_bounds(MERC_CRS, GEO_CRS, *tile_bounds_merc(z, x, y))
-            if owns_tile(cell_bbox_4326, t_bounds):
+            if owner_index(cell_bboxes, t_bounds) == cell_index:
                 owned.append((z, x, y))
     return owned
 
@@ -167,11 +171,18 @@ def render_cell(
 ):
     cell = load_cell(cells_json, cell_index)
     cell_bbox = tuple(cell["bbox"])
+    # owner_index positions cells by list index; build_cells_manifest.py
+    # numbers them the same way, and this refuses a manifest where that has
+    # stopped being true rather than silently mis-assigning every tile.
+    cells = json.loads(cells_json.read_text())["cells"]
+    if [c["index"] for c in cells] != list(range(len(cells))):
+        raise SystemExit(f"{cells_json} cell indices are not 0..n-1 in order - ownership would be misassigned.")
+    cell_bboxes = [tuple(c["bbox"]) for c in cells]
 
     corridor_merc = load_geom_merc(corridor_path)
     band_merc = load_geom_merc(centerline_path).buffer(BAND_METERS)
 
-    owned = owned_tiles(cell_bbox, corridor_merc, band_merc)
+    owned = owned_tiles(cell_index, cell_bboxes, corridor_merc, band_merc)
     print(f"cell {cell_index}: owns {len(owned)} tiles (z{NATIVE_MIN_ZOOM}-{MAX_ZOOM})")
 
     quad_bounds = load_quad_bounds(corridor_path, metadata_csv)

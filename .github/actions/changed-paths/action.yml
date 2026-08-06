@@ -1,0 +1,113 @@
+# Answers one question for the three test workflows: does this run have
+# anything to test?
+#
+# It exists as an action rather than as three copies of the same script
+# because the interesting part is not the path list - it is the handful of
+# ways this can be wrong in a direction that skips a suite which should have
+# run. Those are fixed once here, not three times.
+#
+# The contract is deliberately lopsided. Every uncertain case answers "run":
+# a push, a PR too large to list, an API that did not cooperate. Running a
+# suite that did not need to run costs a minute. Skipping one that did costs
+# a merge, and does it silently.
+
+name: Changed paths
+description: Decide whether a suite has anything to test in this run.
+
+inputs:
+  paths:
+    description: >-
+      Space-separated path prefixes the suite depends on. A change to any of
+      them means the suite runs.
+    required: true
+
+outputs:
+  run:
+    description: >-
+      "true" if the suite should run, "false" if nothing it covers changed.
+      Compare against the string - a step-level `if:` sees the output, not a
+      boolean.
+    value: ${{ steps.scope.outputs.run }}
+
+runs:
+  using: composite
+  steps:
+    - id: scope
+      uses: actions/github-script@v7
+      env:
+        PATHS: ${{ inputs.paths }}
+      with:
+        script: |
+          // A push to main runs everything. Post-merge validation against the
+          // real merge commit is the whole reason that trigger was kept - it
+          // is what caught the flaky staleness boundary test in #32, green on
+          // the PR and red on the merge - so narrowing it here would give
+          // back exactly what it exists to catch.
+          if (context.eventName !== 'pull_request') {
+            core.setOutput('run', 'true')
+            core.info(`${context.eventName} is not a pull request - running the full suite.`)
+            return
+          }
+
+          const prefixes = process.env.PATHS.split(' ').filter(Boolean)
+          if (prefixes.length === 0) {
+            core.setOutput('run', 'true')
+            core.warning('No paths configured - running the full suite rather than skipping everything.')
+            return
+          }
+
+          let files
+          try {
+            files = await github.paginate(github.rest.pulls.listFiles, {
+              ...context.repo,
+              pull_number: context.payload.pull_request.number,
+              per_page: 100,
+            })
+          } catch (error) {
+            // Whatever went wrong here, it is not evidence that the suite is
+            // unnecessary.
+            core.setOutput('run', 'true')
+            core.warning(`Could not list the changed files (${error.message}) - running the full suite.`)
+            return
+          }
+
+          // The files API stops at 3000. A PR that large is not one this
+          // filter should be quietly deciding for, so an answer that might be
+          // truncated is treated as no answer at all.
+          if (files.length >= 3000) {
+            core.setOutput('run', 'true')
+            core.warning(
+              `${files.length} files changed, at or past what the API will list - running the full suite rather than guessing.`,
+            )
+            return
+          }
+
+          // A rename counts under its old path too. Moving a file out of
+          // client/ changes the client just as much as editing it in place,
+          // and `filename` alone only reports where it landed.
+          const touched = files
+            .flatMap(file => [file.filename, file.previous_filename])
+            .filter(Boolean)
+            .filter(name => prefixes.some(prefix => name.startsWith(prefix)))
+
+          if (touched.length > 0) {
+            core.setOutput('run', 'true')
+            core.info(`Changed under ${prefixes.join(', ')}: ${[...new Set(touched)].join(', ')}`)
+            return
+          }
+
+          core.setOutput('run', 'false')
+          core.info(`None of the ${files.length} changed files are under ${prefixes.join(', ')} - skipping.`)
+          await core.summary
+            .addRaw(
+              [
+                `## Skipped: nothing under \`${prefixes.join('`, `')}\` changed`,
+                '',
+                `This run is green because there was nothing to test, not because the tests passed.`,
+                '',
+                `All ${files.length} files this pull request changes are outside the suite's reach, so`,
+                'running it could only have confirmed what the last run on `main` already did.',
+                'The full suite still runs on `main` after the merge.',
+              ].join('\n'),
+            )
+            .write()

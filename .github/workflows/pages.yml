@@ -130,6 +130,12 @@ jobs:
           # dashboard. A name here without them is a button that reaches an
           # error page. Unset means the client's own default (google,email).
           VITE_AUTH_PROVIDERS: ${{ vars.AUTH_PROVIDERS }}
+          # Where queued reports are sent. Empty until the backend is deployed
+          # anywhere (#95), which is a supported state: reports stay in the
+          # outbox with their authored timestamps rather than being lost, and
+          # sending begins the day this variable has a value. Wired now so that
+          # day is a Variables-tab edit and not a code change.
+          VITE_API_BASE_URL: ${{ vars.API_BASE_URL }}
         run: npm run build
 
       # Proves what actually got inlined, rather than trusting that it did. The

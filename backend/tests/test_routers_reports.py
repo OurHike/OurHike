@@ -472,3 +472,80 @@ def test_a_signed_in_stranger_sees_no_more_than_an_anonymous_one(client, db_sess
 
     assert ids == [verified.id]
     assert submitted.id not in ids
+
+
+# --- Idempotency (#243) --------------------------------------------------
+#
+# The failure this exists for is not exotic: the request commits here, the
+# connection drops before the 201 gets back to a phone with one bar, the
+# client's send throws, the item stays in the outbox, and the next flush
+# files the same blowdown again. The outbox has always minted a stable UUID
+# per item and documented it as "stable across retries, so a resend is
+# recognisably the same report" - it just had nowhere to send it.
+
+
+def test_a_resent_report_does_not_file_a_second_copy(client):
+    user_id = str(uuid.uuid4())
+    headers = auth_headers(user_id)
+    report_id = str(uuid.uuid4())
+    payload = dict(_VALID_PAYLOAD, id=report_id)
+
+    first = client.post("/reports", json=payload, headers=headers)
+    second = client.post("/reports", json=payload, headers=headers)
+
+    assert first.status_code == 201
+    assert second.status_code == 200
+    assert first.json()["id"] == second.json()["id"] == report_id
+    assert len(client.get("/reports", headers=headers).json()) == 1
+
+
+def test_a_resend_returns_the_stored_report_not_the_resent_one(client):
+    """A retry carries the same body, but the stored row is what counts -
+    a moderator may already have verified it between the two attempts."""
+    user_id = str(uuid.uuid4())
+    headers = auth_headers(user_id)
+    report_id = str(uuid.uuid4())
+
+    client.post("/reports", json=dict(_VALID_PAYLOAD, id=report_id), headers=headers)
+    resent = client.post(
+        "/reports",
+        json=dict(_VALID_PAYLOAD, id=report_id, note="a different note"),
+        headers=headers,
+    )
+
+    assert resent.status_code == 200
+    assert resent.json()["note"] == _VALID_PAYLOAD["note"]
+
+
+def test_an_id_belonging_to_someone_else_is_refused(client):
+    """Refused rather than returned. Handing back another person's report
+    would make a guessed UUID a way to read one - and for `bad_hikers`, a
+    way to read an incident note about a named individual."""
+    report_id = str(uuid.uuid4())
+    payload = dict(_VALID_PAYLOAD, id=report_id)
+    client.post("/reports", json=payload, headers=auth_headers(str(uuid.uuid4())))
+
+    response = client.post("/reports", json=payload, headers=auth_headers(str(uuid.uuid4())))
+
+    assert response.status_code == 409
+
+
+def test_an_omitted_id_still_works_and_is_server_assigned(client):
+    """The same fallback `authored_at` gets from the server clock. A field
+    the server can supply itself should not be a 422 waiting to happen."""
+    response = client.post("/reports", json=_VALID_PAYLOAD, headers=auth_headers(str(uuid.uuid4())))
+
+    assert response.status_code == 201
+    assert response.json()["id"]
+
+
+def test_two_reports_without_ids_are_still_two_reports(client):
+    """Idempotency keys off a supplied id, and must not accidentally
+    deduplicate a hiker who really did report two blowdowns."""
+    headers = auth_headers(str(uuid.uuid4()))
+
+    first = client.post("/reports", json=_VALID_PAYLOAD, headers=headers)
+    second = client.post("/reports", json=_VALID_PAYLOAD, headers=headers)
+
+    assert first.json()["id"] != second.json()["id"]
+    assert len(client.get("/reports", headers=headers).json()) == 2

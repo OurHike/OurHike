@@ -1,0 +1,168 @@
+# Measures whether BASEMAP.md's sharded continental build is lossless, and
+# what Planetiler's temp disk actually costs (#194).
+#
+# BASEMAP.md claims a continental build can be split across free runners -
+# one Geofabrik sub-region each, shards never reconciled because they are
+# disjoint. It also says, in as many words, that this has not been proved and
+# that the thing to check is whether any OpenMapTiles layer ranks features
+# from a global view rather than a local one. This is that check.
+#
+# Three builds of the same two states, because two would not settle it:
+# a whole-region CONTROL, an ARM A whose shards see all the data and differ
+# only in --polygon, and an ARM B whose shards see only their own state the
+# way a real sharded build would. A difference in arm A cannot be missing
+# data, so it is the ranking failure padding cannot fix; a difference only in
+# arm B is the padding requirement, and the seam-distance histogram sizes it.
+# See spike_shard_seam.py's docstring for the full argument.
+#
+# It also answers the cheaper question in passing: BASEMAP.md's
+# "every sub-region fits a free runner" table assumes Planetiler wants ~5x
+# its input as temp disk and treats its 10x planet guidance as the
+# pessimistic bound. Nobody has watched the directory. This does, at two
+# second intervals, and reports the peak - which is the number that matters,
+# since Planetiler frees intermediates as phases end and the size at exit
+# understates what the build actually needed.
+#
+# Runs on pull requests that touch it, not only on dispatch. workflow_dispatch
+# is unavailable until a workflow reaches the default branch, and a spike
+# whose results cannot be seen until after it merges is a spike reviewed
+# blind. The paths filter keeps it off every unrelated pull request.
+#
+# Nothing here publishes. Same rule as build-basemap.yml: the artifacts exist
+# to be measured and looked at, and a spike that can accidentally ship is not
+# a spike.
+
+name: Shard seam spike
+
+on:
+  workflow_dispatch:
+    inputs:
+      states:
+        description: "Two or more ADJACENT Geofabrik state names. Empty = vermont new-hampshire."
+        type: string
+        default: ""
+      max_zoom:
+        description: "Tile pyramid depth (14 = what a real build ships)"
+        type: string
+        default: "14"
+      planetiler_jar_url:
+        description: "Planetiler release jar to build with"
+        type: string
+        default: "https://github.com/onthegomap/planetiler/releases/latest/download/planetiler.jar"
+  pull_request:
+    paths:
+      - "pipeline/spike_shard_seam.py"
+      - "pipeline/compare_shards.py"
+      - "pipeline/lib/poly.py"
+      - ".github/workflows/shard-seam-spike.yml"
+
+concurrency:
+  group: shard-seam-spike-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  spike:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # Reported rather than assumed, same as build-basemap.yml - and here
+      # it is half the point: the disk number this prints is what the
+      # multiplier below gets compared against.
+      - name: Runner capacity
+        run: |
+          echo "disk:"; df -h /
+          echo "cpus: $(nproc)"
+          echo "memory:"; free -g
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
+          osmium --version | head -1
+
+      - name: Fetch the Planetiler jar
+        run: |
+          curl -sSL -o planetiler.jar "${{ inputs.planetiler_jar_url || 'https://github.com/onthegomap/planetiler/releases/latest/download/planetiler.jar' }}"
+          ls -la planetiler.jar
+
+      - name: Build the control and both arms
+        run: |
+          python spike_shard_seam.py \
+            --planetiler-jar planetiler.jar \
+            --max-zoom "${{ inputs.max_zoom || '14' }}" \
+            ${{ inputs.states != '' && format('--states {0}', inputs.states) || '' }} \
+            | tee build.log
+
+      # Arm A first and on its own: it is the one whose answer decides the
+      # design. Arm B's differences are only interpretable against it.
+      - name: Compare - arm A (polygon-only, isolates the ranking question)
+        run: |
+          python compare_shards.py \
+            --control data/shard-spike/control \
+            $(for d in data/shard-spike/arm-a-*; do printf ' --shard %s' "$d"; done) \
+            --seam data/shard-spike/seam.geojson | tee arm-a.txt
+
+      - name: Compare - arm B (realistic, adds the padding variable)
+        run: |
+          python compare_shards.py \
+            --control data/shard-spike/control \
+            $(for d in data/shard-spike/arm-b-*; do printf ' --shard %s' "$d"; done) \
+            --seam data/shard-spike/seam.geojson | tee arm-b.txt
+
+      # The summary is what gets read and pasted back into #194, so it
+      # carries the verdicts and the measured multiplier rather than a link
+      # to a log somebody has to go and open.
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "## Shard seam spike"
+            echo
+            echo "### Temp disk, measured"
+            echo '```'
+            sed -n '/=== Temp disk/,/^$/p' build.log || true
+            echo '```'
+            echo "### Arm A - shards saw ALL the data, only --polygon differed"
+            echo "A difference here cannot be missing data."
+            echo '```'
+            cat arm-a.txt 2>/dev/null || echo "(did not run)"
+            echo '```'
+            echo "### Arm B - shards saw only their own state"
+            echo "Differences beyond arm A are the padding requirement."
+            echo '```'
+            cat arm-b.txt 2>/dev/null || echo "(did not run)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          df -h /
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shard-seam-spike
+          path: |
+            pipeline/build.log
+            pipeline/arm-a.txt
+            pipeline/arm-b.txt
+            pipeline/data/shard-spike/seam.geojson
+            pipeline/data/shard-spike/*/build.pmtiles.layerstats.tsv.gz
+          retention-days: 7
+          if-no-files-found: warn

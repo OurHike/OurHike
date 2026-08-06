@@ -93,7 +93,31 @@ Set it as a **repository variable** (not a secret — it's a public URL): Settin
 
 ✅ **Already done, mostly automatic** — `.github/workflows/pages.yml` builds and deploys the client to GitHub Pages on every push to `main`: the beta landing page at `https://jaimito-asuntos-gringuenos.github.io/OurHike/` and the installable app at `.../OurHike/app/`. Cloudflare Pages was the original plan when this list was written, but GitHub Pages is what actually got wired up (it's what gives the PWA the HTTPS a browser requires before offering "Install app").
 
-**One manual step, once:** Settings → Pages → Build and deployment → Source must be **"Deploy from a branch"**, branch `gh-pages`, folder `/ (root)`. The workflow pushes to that branch itself; nothing publishes until the source is pointed at it. This is what lets `pr-preview.yml` also publish a testable preview per pull request (`.../OurHike/pr-preview/pr-<n>/`, linked from a comment on the PR) alongside the production site, on the same branch.
+**One manual step, once:** Settings → Pages → Build and deployment → Source must be **"Deploy from a branch"**, branch `gh-pages`, folder `/ (root)`. The workflow pushes to that branch itself; nothing publishes until the source is pointed at it.
+
+### 3a. Preview deployments (Cloudflare Pages)
+
+⬜ **Not yet set up.** `.github/workflows/pr-preview.yml` builds every pull request and deploys it to its own URL — `https://pr-<n>.<project>.pages.dev`, linked from a comment on the PR — so a change can be tried on a phone instead of read as a diff. Until the two settings below exist the workflow says so in the run log and skips; pull requests still get their full test run, just no preview.
+
+Previews used to live on the `gh-pages` branch alongside the production site. They moved because five to ten pull requests are open at once here as a matter of course, and every preview was a competing write to that one git ref — so previews failed for no reason other than each other being busy. A Cloudflare preview is its own deployment rather than a commit on a shared branch, so there is no ordering between two of them.
+
+**Cost: none at this size.** The free plan places no limit on how many preview deployments a project keeps, and static requests and bandwidth are not metered. The limit that *would* bite — 500 builds a month, one at a time — applies only to Cloudflare's own builders, and this workflow does not use them: it builds in Actions and uploads the finished directory, so nothing queues behind anyone else's build.
+
+1. **Create the project.** Cloudflare dashboard → Workers & Pages → Create → Pages → **Use direct upload**. Name it; that name goes in the middle of every preview URL. Nothing needs to be uploaded by hand — the first pull request does it.
+2. **Mint an API token** (My Profile → API Tokens → Create Token) with the **Cloudflare Pages: Edit** permission and nothing else. It should not be the R2 token from step 1.2: a token that publishes previews has no business overwriting the live map data.
+3. **Set the three settings**, in Settings → Secrets and variables → Actions:
+
+```
+CLOUDFLARE_API_TOKEN=<the token>       # Secrets tab
+CLOUDFLARE_ACCOUNT_ID=<account id>     # Secrets tab
+CLOUDFLARE_PAGES_PROJECT=<project>     # Variables tab — it is in every preview URL
+```
+
+4. **Allow the preview URLs back** in Supabase — see 4.3b, which covers this and the production URL together. Without it, signing in from a preview ends in a redirect mismatch.
+
+A pull request from a fork gets no secrets and so gets no preview; the workflow notices and says so rather than failing.
+
+Cloudflare now steers new projects toward **Workers static assets** rather than Pages, and that would work here too. Pages was chosen because a preview needs nothing but a directory uploaded to a URL, and Pages does that without a `wrangler.jsonc`, a `main` entry point or a compatibility date to keep current. Worth revisiting if the app ever grows a server-side part.
 
 After setting `DATA_BASE_URL` (step 2), the site needs a **redeploy** to pick it up, since it's baked in at build time. Either push any commit to `main`, or dispatch **"Deploy Pages"** manually (Actions tab → workflow_dispatch) to redeploy with no code change.
 
@@ -142,10 +166,11 @@ Prefer the **publishable** key (`sb_publishable_…`) over the legacy `anon` JWT
 
 **4.3b Allow the app's own URLs back** (Authentication → URL Configuration). The client redirects to the path it was served from, not the bare origin — a redirect to the origin lands on the project site with the code in its URL and no app there to read it.
 
-That means more than one path. Pages serves the app at `/OurHike/app/`, and every PR preview gets its own `/OurHike/pr-preview/pr-<n>/`. Supabase's allow-list takes glob patterns, where `**` matches across `/`, so one entry covers all of them:
+That means more than one origin. GitHub Pages serves the app at `/OurHike/app/`, and every PR preview gets a hostname of its own on Cloudflare (3a). Supabase's allow-list takes glob patterns, where `**` matches across `/` and `*` matches a subdomain, so three entries cover everything:
 
 ```
 https://<user>.github.io/OurHike/**
+https://*.<project>.pages.dev/**
 http://localhost:5173/**
 ```
 

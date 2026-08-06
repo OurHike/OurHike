@@ -105,8 +105,9 @@ against it would prove nothing about production.
 
 `.github/workflows/pages.yml` publishes to GitHub Pages on every push to
 `main` — the beta landing page (`site/`) at `/OurHike/` and this app at
-`/OurHike/app/`. Enable it once under Settings → Pages → Source →
-**GitHub Actions**, and set `DATA_BASE_URL` as a repository _variable_ (not a
+`/OurHike/app/`. Enable it once under Settings → Pages → Build and deployment →
+Source → **Deploy from a branch**, branch `gh-pages`, folder `/ (root)`, and
+set `DATA_BASE_URL` as a repository _variable_ (not a
 secret — it is public either way, and secrets are unavailable to the build in
 the form Vite needs).
 

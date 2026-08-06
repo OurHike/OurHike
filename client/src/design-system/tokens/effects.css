@@ -19,3 +19,23 @@
 --border-w-1:1px;
 --border-w-2:2px;
 }
+
+/*
+ * Shadows under the dark theme.
+ *
+ * A 6%-black shadow on ink is not a subtle shadow, it is no shadow: the thing
+ * a card is meant to lift away from is already darker than the shadow itself.
+ * So the drops go to near-opaque black - which does read on ink - and each
+ * one gains a hairline top highlight, which is what actually separates two
+ * dark surfaces from each other.
+ *
+ * The focus ring is re-hued for the same reason `--brand-primary` is
+ * (tokens/colors.css): forest green at 35% disappears against the page it is
+ * supposed to be marking a control on.
+ */
+:root[data-theme='dark']{
+--shadow-card:0 1px 2px rgba(0,0,0,0.5),0 4px 12px rgba(0,0,0,0.45),inset 0 1px 0 rgba(236,231,219,0.04);
+--shadow-raised:0 2px 6px rgba(0,0,0,0.55),0 14px 32px rgba(0,0,0,0.5),inset 0 1px 0 rgba(236,231,219,0.06);
+--shadow-inset:inset 0 1px 3px rgba(0,0,0,0.55);
+--shadow-focus:0 0 0 3px rgba(150,185,140,0.45);
+}

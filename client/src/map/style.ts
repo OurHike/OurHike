@@ -66,8 +66,16 @@ import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec'
 import { BLAZE_MATCH_EXPRESSION } from '../lib/blaze'
 import { buildPoiLayer, buildPoiSource, POI_SOURCE_ID } from './poiLayers'
 import type { BackgroundSource } from '../lib/userPreferences'
-import { BUNDLED_GLYPHS, liveTopoLayers, liveTopoSources } from './liveTopo'
+import {
+  BUNDLED_GLYPHS,
+  attachSheetTheme,
+  liveTopoLayers,
+  liveTopoSources,
+} from './liveTopo'
 import { OSM_CREDIT, USGS_TOPO_CREDIT } from './credits'
+import { whenStyleReady } from './styleReady'
+import type { Map as MapLibreMap } from 'maplibre-gl'
+import type { ResolvedTheme } from '../lib/theme'
 import type { ContourUnits, TerrainUrls } from './terrain'
 
 export const TOPO_SOURCE_ID = 'usgs-topo'
@@ -93,6 +101,130 @@ export const BLAZE_LAYER_ID = 'trail-blaze'
  * simply moving faster than tiles decode each leave a hole too.
  */
 export const MAP_BACKGROUND_COLOR = '#f7f3e9'
+
+/*
+ * THE CANVAS'S HALF OF LIGHT/DARK MODE
+ *
+ * Everything in the chrome follows `data-theme` through the design tokens
+ * (design-system/tokens/colors.css). The map cannot: it is WebGL, its colours
+ * are paint properties on a style specification, and a style has never heard
+ * of a CSS variable. So the resolved theme comes down as a value
+ * (lib/useTheme.ts -> App -> MapScreen -> MapView) and the three constants
+ * below are what it means once it gets there.
+ *
+ * Two of the three layers it touches are this file's own - the backdrop and
+ * the downloaded archive - which is why this lives here rather than in a
+ * module of its own: a fourth file holding a table of two layer ids owned by
+ * this one is indirection, not separation. The live sheet's twenty-one layers
+ * are handled where their palette is (liveTopo.ts's attachSheetTheme), the
+ * same way liveTopo.ts already owns the unit switch for its own labels.
+ *
+ * THE ARCHIVE CANNOT GO DARK, AND IS DIMMED INSTEAD
+ *
+ * TECHNICAL_ARCHITECTURE.md recorded this trade-off when the corridor
+ * background was chosen: US Topo quads are pre-rendered raster, their ink is
+ * pixels, and no semantic swap is available - there is no "draw the contours
+ * brown-on-ink instead", because nothing here knows which pixels are contours.
+ * That note named canvas-level filters as the fallback, and this is that
+ * fallback taken one step better: MapLibre's own raster paint properties dim
+ * the archive LAYER, on the GPU, leaving the trail lines, the pins and the
+ * chrome over it at full strength. A CSS filter on the canvas would have
+ * dimmed those too - which would make the one safety-critical thing on the
+ * screen the thing dark mode faded out.
+ *
+ * So under the dark theme the archive is a dimmed paper map rather than a dark
+ * one, and that limitation is not hidden: a hiker on the downloaded background
+ * gets a quieter version of the same sheet, a hiker on the live background
+ * gets a genuinely dark one.
+ */
+
+/**
+ * The backdrop, per theme.
+ *
+ * `--bg-page` in each, and that identity is load-bearing rather than tidy:
+ * chrome.css paints `.map-view` with the same token as its pre-WebGL fallback,
+ * so the handover from the DOM's background to the style's backdrop layer has
+ * to be invisible in BOTH themes, not only the one these were picked in.
+ */
+export const MAP_BACKDROP: Record<ResolvedTheme, string> = {
+  light: MAP_BACKGROUND_COLOR,
+  dark: '#15140f',
+}
+
+/**
+ * How far the downloaded archive is turned down, per theme.
+ *
+ * Light is the spec's own defaults, written out rather than left implicit,
+ * because these get applied to a LIVE map: switching back out of dark has to
+ * restore the property, and "restore" needs a value to restore to.
+ *
+ * The dark numbers are a judgement, and the judgement is that legibility wins.
+ * 0.62 takes the quads' white paper to about the lightness of a slate roof -
+ * clearly no longer a lamp, still clearly a map. Pushing it to 0.3 makes a
+ * handsome screenshot and a sheet whose 1:24,000 contour labels cannot be
+ * read, which is the wrong trade on the one screen a hiker uses to decide
+ * where to walk. The desaturation stops the water layers' blue glowing out of
+ * the dimmed sheet, and the contrast nudge puts back some of the separation
+ * the dimming costs.
+ */
+export const ARCHIVE_RASTER_PAINT: Record<
+  ResolvedTheme,
+  Readonly<Record<string, number>>
+> = {
+  light: {
+    'raster-brightness-max': 1,
+    'raster-saturation': 0,
+    'raster-contrast': 0,
+  },
+  dark: {
+    'raster-brightness-max': 0.62,
+    'raster-saturation': -0.2,
+    'raster-contrast': 0.08,
+  },
+}
+
+/**
+ * Applies a theme to a map that is already built, and hands back a detach.
+ *
+ * Repaints rather than rebuilds, which is not an optimisation but the same
+ * rule MapView.tsx keeps for the scale bar's units and contours.ts keeps for
+ * the contour interval: a preference change must not cost a WebGL context.
+ * Swapping the style out drops that context and takes with it the POI source
+ * pushed in from IndexedDB, every archive tile in flight, and the camera - so
+ * a hiker who taps "Dark" while walking would watch the map they were reading
+ * disappear and rebuild itself.
+ *
+ * Two waits, not one. The backdrop is in the style from the first frame; the
+ * sheet's layers are absent entirely on the downloaded background, and one
+ * shared probe would leave the backdrop waiting on a layer that is never
+ * coming.
+ */
+export function attachMapTheme(map: MapLibreMap, theme: ResolvedTheme): () => void {
+  const detachBase = whenStyleReady(
+    map,
+    () => map.getLayer(BACKDROP_LAYER_ID) !== undefined,
+    () => {
+      map.setPaintProperty(BACKDROP_LAYER_ID, 'background-color', MAP_BACKDROP[theme])
+
+      // Guarded on its own: the backdrop proves the style is parsed and takes
+      // writes, not that this particular layer is in it. It always is today -
+      // both backgrounds stack over the archive - and a guard that costs
+      // nothing is cheaper than finding out the day one of them does not.
+      if (map.getLayer(TOPO_LAYER_ID) === undefined) return
+      for (const [property, value] of Object.entries(ARCHIVE_RASTER_PAINT[theme])) {
+        map.setPaintProperty(TOPO_LAYER_ID, property as never, value as never)
+      }
+    },
+    'Map theme',
+  )
+
+  const detachSheet = attachSheetTheme(map, theme)
+
+  return () => {
+    detachBase()
+    detachSheet()
+  }
+}
 
 /** The pipeline's own key for ATC's trail-centerline feed (pipeline/sources.json). */
 export const CENTERLINE_SOURCE = 'centerline'
@@ -252,6 +384,16 @@ export interface MapStyleOptions {
   terrain?: TerrainUrls
   /** Decides whether contours and summit heights are in feet or metres. */
   units?: ContourUnits
+  /**
+   * Which theme the canvas is drawn in - see MAP_BACKDROP above.
+   *
+   * Optional and light by default, so every caller that has no opinion builds
+   * exactly the style it always built. Present at all so that a cold start
+   * under the dark theme is dark in its FIRST frame: attachMapTheme can repaint
+   * a live map, but it necessarily runs after the map exists, and a white flash
+   * on a phone at night is the thing the theme was chosen to avoid.
+   */
+  theme?: ResolvedTheme
 }
 
 export function buildMapStyle({
@@ -260,6 +402,7 @@ export function buildMapStyle({
   background = 'hiking_topo_live',
   terrain,
   units = 'imperial',
+  theme = 'light',
 }: MapStyleOptions): StyleSpecification {
   // Asked for, and that is the whole question. Terrain used to be half of it -
   // `background === 'hiking_topo_live' && terrain !== undefined` - on the
@@ -277,7 +420,7 @@ export function buildMapStyle({
   // paper. That contradicted what terrain.ts and MapView.tsx each promise in
   // their own words: a failure there costs a layer, never the map.
   const live = background === 'hiking_topo_live'
-  const liveOptions = live ? { terrain, units } : null
+  const liveOptions = live ? { terrain, units, theme } : null
 
   return {
     version: 8,
@@ -380,12 +523,17 @@ export function buildMapStyle({
         // off-corridor pan as well as the transparent ground it was added for.
         id: BACKDROP_LAYER_ID,
         type: 'background',
-        paint: { 'background-color': MAP_BACKGROUND_COLOR },
+        paint: { 'background-color': MAP_BACKDROP[theme] },
       },
       {
         id: TOPO_LAYER_ID,
         type: 'raster',
         source: TOPO_SOURCE_ID,
+        // The archive is pre-rendered paper and cannot be restyled, so under
+        // the dark theme it is dimmed rather than redrawn - see
+        // ARCHIVE_RASTER_PAINT above, including why this is a layer property
+        // and not a filter over the canvas.
+        paint: { ...ARCHIVE_RASTER_PAINT[theme] },
       },
       // The live sheet goes OVER the downloaded raster, and that ordering is
       // the whole offline story rather than a cosmetic preference.

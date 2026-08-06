@@ -53,7 +53,7 @@
     color 160ms ease;
 }
 .onboarding__primary {
-  color: var(--fg-on-dark);
+  color: var(--fg-on-brand);
   background: var(--brand-primary);
   border: 0;
 }

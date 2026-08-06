@@ -55,11 +55,13 @@ many branches exist. Do not let "fewer branches" become the goal it is not.
 
 ## Run what CI runs, before pushing
 
-Both halves of the repo, not only the half you touched:
+Every suite CI runs, not only the one you touched:
 
 ```
-cd client   && npm run typecheck && npm run lint && npm run format:check && npm test && npm run build
-cd pipeline && python -m ruff check . && python -m ruff format --check . && python -m pytest
+cd client        && npm run typecheck && npm run lint && npm run format:check && npm test && npm run build
+cd pipeline      && python -m ruff check . && python -m ruff format --check . && python -m pytest
+cd backend       && python -m ruff check . && python -m ruff format --check . && python -m pytest
+cd .github/tests && python -m ruff check . && python -m ruff format --check . && python -m pytest
 ```
 
 A push that fails on formatting spends a full CI round trip learning something
@@ -74,7 +76,12 @@ between the camera move and the assertion. A longer `findByText` window would no
 saved them — the state was gone, not late. Wait on something observable that proves the
 sequence completed, and prove it holds by running the file three times.
 
-Where the environment cannot run a check at all — the sandbox proxy blocks DuckDB's
-`spatial` extension, so three `test_export_pmtiles.py` tests fail here for reasons that
-have nothing to do with any change — confirm that against a clean tree, then say so in the
-pull request rather than reporting a clean run you did not have.
+Where the environment cannot run a check at all, confirm that against a clean tree, then
+say so in the pull request rather than reporting a clean run you did not have. The old
+standing example — the sandbox proxy 403s DuckDB's extension downloads, which failed every
+spatial-dependent pipeline test — is handled now: `.claude/hooks/session-start.sh` seeds
+the extension from PyPI when a web session starts. If spatial tests still fail on an
+HTTP 403, the hook did not run; run it by hand rather than reporting those failures as
+environmental. What genuinely cannot run here is backend's Postgres job — the sandbox has
+no Postgres service, so `python -m pytest` in `backend/` exercises only the DuckDB engine,
+and a pull request that changes backend behavior should say so.

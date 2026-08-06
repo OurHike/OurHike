@@ -65,10 +65,15 @@
   display: none;
 }
 
-/* The licence credit for what is being drawn (map/style.ts).
-   Top-left rather than the map screen's bottom-left, because the bottom of
-   this screen is where the card is - so the corner that is guaranteed to be
-   map is the one at the top.
+/* Where the licence credit sits on this screen. WHAT it says is
+   map/credits.ts's decision and HOW MUCH ROOM it takes is
+   chrome/MapAttribution.tsx's - the same pair the map screen uses, so first run
+   cannot credit a different set of sources from the screen after it. Only the
+   placement is decided here.
+
+   Top-left, rather than the strip under the canvas the map screen gets: this
+   screen has no chrome to put a strip in, and its bottom is where the card is,
+   so the corner guaranteed to be map is the one at the top.
 
    Above the steps in the stack (z-index 2 against their 1), which on a desktop
    is what keeps it out from under the dim behind the centred card
@@ -79,13 +84,18 @@
   top: max(var(--space-2, 8px), env(safe-area-inset-top, 0));
   left: var(--space-2, 8px);
   z-index: 2;
-  margin: 0;
-  padding: 2px var(--space-2, 8px);
   max-width: calc(100% - 2 * var(--space-2, 8px));
-  font-size: 10px;
-  color: var(--fg-2);
   background: color-mix(in srgb, var(--bg-page) 92%, transparent);
   border-radius: var(--radius-s, 4px);
+}
+
+/* The strip's own treatment is for a full-width row beneath the canvas
+   (chrome.css). Floating over the map it needs neither the rule that separated
+   it from the canvas nor a second opaque background over the translucent one
+   above. The text sizing and colour stay exactly as the map screen's. */
+.app__entry-attribution .map-attribution {
+  background: none;
+  border-top: 0;
 }
 
 .app__notice {

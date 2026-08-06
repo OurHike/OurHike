@@ -5,7 +5,8 @@ import {
   latest,
   validateStyleMin,
 } from '@maplibre/maplibre-gl-style-spec'
-import { buildMapStyle, ATTRIBUTION, TOPO_LAYER_ID, BACKDROP_LAYER_ID } from './style'
+import { buildMapStyle, TOPO_LAYER_ID, BACKDROP_LAYER_ID } from './style'
+import { OSM_CREDIT } from './credits'
 import {
   HILLSHADE_EXAGGERATION,
   HILLSHADE_HANDOVER_END_ZOOM,
@@ -421,7 +422,7 @@ describe('the offline-only background', () => {
   })
 
   it('credits only what it actually draws', () => {
-    expect(offline().sources.trails).toHaveProperty('attribution', ATTRIBUTION)
+    expect(offline().sources.trails).toHaveProperty('attribution', OSM_CREDIT)
   })
 
   it('still draws the archive, the trail and the pins, which is the whole map', () => {

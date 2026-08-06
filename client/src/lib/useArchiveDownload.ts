@@ -23,6 +23,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { get } from 'idb-keyval'
 import {
+  ArchiveHashMismatchError,
   deleteArchive,
   downloadArchive,
   readDownloadProgress,
@@ -220,6 +221,19 @@ export function useArchiveDownloads(requests: readonly ArchiveDownloadRequest[])
         // catch fired during its await and put a "download failed" alert on
         // top of a delete that succeeded.
         if (controller.signal.aborted) return
+
+        // A refused archive is its own state, not an error string (#238):
+        // downloadArchive discarded everything before throwing, so there is
+        // no partial to resume and the generic failed/absent path below
+        // would say either "Resume" over bytes that no longer exist or
+        // nothing at all. Keyed off the type here because this catch is the
+        // last place the type still exists. The status is session-only on
+        // purpose - nothing about a mismatch is persisted, so a reload
+        // falls back to absentStatus, which is then also true.
+        if (thrown instanceof ArchiveHashMismatchError) {
+          setStatus(packageKey, { state: 'hash-mismatch' })
+          return
+        }
 
         // Whatever arrived is already persisted by downloadArchive, so the
         // resumable state is still what the screen shows. But the reason is

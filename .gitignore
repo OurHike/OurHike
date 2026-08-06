@@ -1,5 +1,10 @@
 personal_reference/
-.claude/settings.json
+
+# Machine-local Claude Code settings. The shared .claude/settings.json is
+# tracked now - it registers the hook that sets up web session containers -
+# so anything personal belongs in settings.local.json, the file Claude Code
+# reserves for exactly that.
+.claude/settings.local.json
 
 # Coverage data, when pytest is run from the repo root rather than backend/
 # (backend/.gitignore only covers the backend/ subtree).

@@ -167,6 +167,22 @@ export interface BackgroundData {
   packages: readonly MapPackage[]
 }
 
+/**
+ * The background as it is TODAY: every archive that is published, which is
+ * the raster sheet alone.
+ *
+ * Right for now, and knowingly not the end state. Decided 2026-08-06: the
+ * USGS raster is an OPTIONAL SECOND SHEET a hiker opts into, not part of the
+ * background everyone gets (#237). While it is the only published piece it
+ * is also the whole background by default, because there is nothing else to
+ * be - but the moment #185 and #186 publish the vector basemap and the DEM,
+ * bundling all three would hand every hiker several hundred megabytes of
+ * raster they did not ask for, on top of the vector sheet that replaced it.
+ *
+ * So this stays one bundle only until there is a second sheet to choose
+ * BETWEEN. #237 is where that turns into a choice; nothing here should be
+ * read as a decision that it will not.
+ */
 export const BACKGROUND_DATA: BackgroundData = {
   id: 'background',
   title: 'Offline map',

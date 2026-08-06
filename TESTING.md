@@ -102,4 +102,25 @@ Not scaffolded yet (see TECHNICAL_ARCHITECTURE.md). When it exists, it would lik
 
 ## CI
 
-`.github/workflows/pipeline-tests.yml` runs `ruff check`, `ruff format --check`, and `pytest` on every push and on PRs targeting `main`. It's not (yet) a required check via branch protection - a red run doesn't currently block merging, it's just visible on the PR.
+Three workflows, one per part: `.github/workflows/pipeline-tests.yml`, `backend-tests.yml` and `client-tests.yml`. Each runs that part's linter, formatter check and test suite - the same commands [CONTRIBUTING.md](CONTRIBUTING.md) gives for running them locally, so a green local run means a green CI run.
+
+None of them is (yet) a required check via branch protection - a red run doesn't currently block merging, it's just visible on the PR.
+
+### Why a PR only runs some of them
+
+A pull request runs the suites for the parts it actually touches. Editing `ROADMAP.md` used to run all four jobs, including standing up a Postgres container, to prove that a paragraph of prose had not broken the trail exporter. Now it runs none of them, and each check still reports green with a summary saying why it had nothing to do.
+
+The mapping is per-part and nothing finer: anything under `client/` runs the client suite, `backend/` the backend, `pipeline/` the pipeline. The three are genuinely independent - each carries its own dependency manifest, and none imports from another - so a per-part split is a fact about the repository rather than a guess about it. Each list also includes its own workflow file and `.github/actions/changed-paths/`, so a change to the gate re-runs the suite it gates.
+
+Two deliberate limits:
+
+- **`main` is never scoped.** A push to `main` runs everything, always. That trigger exists for post-merge validation against the real merge commit - it is what caught the flaky staleness boundary test in #32, green on the PR and red on the merge - and narrowing it would give back the thing it was kept for.
+- **No test-level selection.** Nothing tries to work out that changing `export_trails.py` only needs `test_export_trails.py`. Tools for that exist and they infer the dependency graph, which means they can be wrong in the direction of not running a test that would have failed. At suites of about a minute there is nothing to win.
+
+### How the scoping avoids blocking a PR
+
+The obvious implementation is a `paths:` filter on the trigger, and it is a trap. A workflow skipped by a path filter reports no status at all, and a required status check that reports no status leaves the PR pending forever rather than passing it - so the day someone ticks "require Client tests", every docs-only PR becomes unmergeable for a reason that points nowhere near the cause. `pr-issue-link.yml` documents the same hazard for job-level `if:`.
+
+So the triggers stay unfiltered and the decision moves inside the job, which always runs and always finishes green. `.github/actions/changed-paths` asks the API which files the PR touches and returns `run`; every step after it carries `if: steps.scope.outputs.run == 'true'`. The suites can be made required checks whenever the maintainer wants, with nothing else to change.
+
+The action answers "run" for every case it is unsure about - a push, a PR too large for the files API to list, an API call that failed, an empty path list. Running a suite that did not need to run costs a minute; skipping one that did costs a merge, and does it quietly.

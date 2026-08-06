@@ -247,6 +247,41 @@
     overflow: hidden;
     box-shadow: 0 12px 40px rgb(0 0 0 / 24%);
   }
+
+  /* ---------- First run: a card on the map, not a band across it ---------- */
+
+  /* On a phone the entry card is anchored to the bottom edge, where the thumb
+     is. A 1440px browser has no thumb and no bottom edge worth reaching, and a
+     full-width strip of it there would bury the map under a band of paper for
+     three paragraphs of text. Centred instead, the same shape the download
+     window takes on this screen - so the map is visible all the way round the
+     steps rather than only above them. */
+  .onboarding {
+    justify-content: center;
+    align-items: center;
+    padding: var(--space-5, 20px);
+  }
+
+  .onboarding__card {
+    width: min(28rem, 100%);
+    max-height: 100%;
+    border-radius: 14px;
+    box-shadow: 0 12px 40px rgb(0 0 0 / 24%);
+  }
+
+  /* The dim a floating card needs and a bottom sheet does not. On a phone the
+     card is attached to the bottom edge and reads as part of the frame, the
+     way the legend sheet does; here it is over the middle of a wide map, and
+     without something behind it the page reads as a card that has come loose.
+     Lighter than the download window's 35% (.downloads-dialog): that one is a
+     decision the map is no part of, and this one is about the map. */
+  .onboarding::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: rgb(0 0 0 / 22%);
+  }
 }
 
 /* ---------- Input: what a mouse and a keyboard get ---------- */

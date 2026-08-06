@@ -23,6 +23,71 @@
   overflow-y: auto;
 }
 
+/* ---------- First run (App.tsx's onboarding branch) ---------- */
+
+/* The frame the entry steps sit in: the map filling it, the steps over it.
+   `height`, not `min-height`, for the same reason .app__screen has one - the
+   steps size themselves against this box, and a box that can grow past the
+   viewport takes the map's share of the screen with it. */
+.app__entry {
+  position: relative;
+  height: 100svh;
+  overflow: hidden;
+  background: var(--bg-page);
+}
+
+/* The map behind them. Absolute rather than a flex row above the steps,
+   because it is a backdrop and not a band: the steps overlap it, and how much
+   of it is left showing is decided by the card's own height (onboarding.css)
+   rather than by splitting the screen here.
+
+   `pointer-events: none` alongside the `inert` App.tsx sets - inert is what
+   the semantics rest on, and this is the belt to that pair of braces on a
+   browser that has the attribute unimplemented, where a stray tap would
+   otherwise reach a live MapLibre canvas underneath the steps.
+
+   `display: flex` because .map-view is `flex: 1` (chrome.css) and fills its
+   parent rather than sizing itself. */
+.app__entry-map {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  pointer-events: none;
+}
+
+/* MapLibre's own controls - compass, locate, scale bar - are not drawn here.
+   They are attached to every map this app builds (map/mapChrome.ts), and on
+   this one they are inert: a picture of a button that cannot be pressed is a
+   worse thing to show someone than no button at all, and these ones stack in
+   the bottom corners, which is exactly where the entry card is. The map screen
+   the steps hand over to has all three, in the thumb zone, seconds later. */
+.app__entry-map .maplibregl-ctrl {
+  display: none;
+}
+
+/* The licence credit for what is being drawn (map/style.ts).
+   Top-left rather than the map screen's bottom-left, because the bottom of
+   this screen is where the card is - so the corner that is guaranteed to be
+   map is the one at the top.
+
+   Above the steps in the stack (z-index 2 against their 1), which on a desktop
+   is what keeps it out from under the dim behind the centred card
+   (src/desktop.css). A credit a licence requires is not something to show at
+   78% of itself. */
+.app__entry-attribution {
+  position: absolute;
+  top: max(var(--space-2, 8px), env(safe-area-inset-top, 0));
+  left: var(--space-2, 8px);
+  z-index: 2;
+  margin: 0;
+  padding: 2px var(--space-2, 8px);
+  max-width: calc(100% - 2 * var(--space-2, 8px));
+  font-size: 10px;
+  color: var(--fg-2);
+  background: color-mix(in srgb, var(--bg-page) 92%, transparent);
+  border-radius: var(--radius-s, 4px);
+}
+
 .app__notice {
   margin: 0;
   padding: var(--space-3, 12px) var(--space-4, 16px);

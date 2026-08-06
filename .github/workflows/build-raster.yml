@@ -12,21 +12,27 @@
 #
 #   compute-cells   builds the corridor fresh and splits it into 1x1-degree
 #                   cells, emitting cells.json
-#   mosaic          one job per cell, fetching only that cell's quads
-#   assemble        every cell back on one runner, then three PMTiles tiers
+#   render          one job per cell, fetching the quads its OWNED tiles
+#                   need and rendering them warp-once from native 2 m pixels
+#                   (#191, render_cell_tiles.py): z11-14 tiles plus a 24 m
+#                   overview per cell
+#   assemble        every cell's tiles and overview back on one runner;
+#                   assemble_raster.py verifies the receipts tile the
+#                   corridor exactly, renders z0-10 from the overviews, and
+#                   writes the four tier archives
 #   publish         upload, on a runner that never held the intermediates
 #
 # The fan-out is not an optimisation. A hosted runner cannot hold the whole
-# corridor's raw quads, so per-cell is the only way this runs here at all -
-# and fetch_topo_quads.py's whole-corridor path additionally reads
-# data/spike/corridor.geojson, a stale artifact no fresh checkout has and which
-# lib/corridor.py forbids trusting. Only its --metadata-only flag is CI-safe.
+# corridor's raw quads plus a working set, so per-cell is the only way this
+# runs here at all - and fetch_topo_quads.py's whole-corridor path
+# additionally reads data/spike/corridor.geojson, a stale artifact no fresh
+# checkout has and which lib/corridor.py forbids trusting. Only its
+# --metadata-only flag is CI-safe.
 #
-# assemble cannot be sharded: export_pmtiles.py hardcodes its cells directory
-# and its completeness gate requires every discovered cell to contribute at
-# every zoom. So all 51 tiles genuinely must reconverge, which is what makes
-# the DEFLATE compression in mosaic_one_cell() load-bearing rather than tidy -
-# uncompressed they are 14.59 GB.
+# Ownership is what lets the render shard where the old mosaic could not
+# seam-free: every tile is written by exactly one cell (the one holding its
+# centre), and that cell fetches every quad the tile's footprint touches -
+# including the neighbour's - so cell borders cannot show.
 #
 # Start with max_cells set low. A first run at 51 cells costs an hour to find
 # out something trivial was wrong.
@@ -139,10 +145,12 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  mosaic:
+  render:
     needs: compute-cells
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # Native rendering is heavier per cell than the old 11 m mosaic was: the
+    # same fetch, then thousands of per-tile warps instead of one merge.
+    timeout-minutes: 150
     defaults:
       run:
         working-directory: pipeline
@@ -176,28 +184,27 @@ jobs:
       - name: Fetch the quad metadata inventory
         run: python fetch_topo_quads.py --metadata-only
 
-      - name: Mosaic cell ${{ matrix.cell }}
-        run: python fetch_and_mosaic_cell.py --cell-index ${{ matrix.cell }}
+      - name: Render cell ${{ matrix.cell }} from native quads
+        run: python render_cell_tiles.py --cell-index ${{ matrix.cell }}
 
       - name: Report what this cell cost
         if: always()
         run: |
           echo "disk after:"; df -h /
           du -sh data/raw/topo_quads_cell_* 2>/dev/null || true
-          ls -la data/processed/topo_background/ 2>/dev/null || true
+          ls -la data/processed/raster_cells/ 2>/dev/null || true
 
-      # Each tile is its own artifact so assemble can pull them with one
-      # pattern. Retention is minimal: these are intermediates that exist only
-      # to cross between runners.
+      # Each cell's tiles+overview+receipt cross to assemble as one artifact.
+      # Retention is minimal: intermediates that exist only to cross runners.
       - uses: actions/upload-artifact@v4
         with:
-          name: topo-tile-${{ matrix.cell }}
-          path: pipeline/data/processed/topo_background/
+          name: raster-cell-${{ matrix.cell }}
+          path: pipeline/data/processed/raster_cells/
           retention-days: 1
           if-no-files-found: error
 
   assemble:
-    needs: [compute-cells, mosaic]
+    needs: [compute-cells, render]
     # A partial corridor must never become a PMTiles archive - it would look
     # like a complete map with holes in it, which is worse than no map.
     if: needs.compute-cells.outputs.partial == 'false'
@@ -226,13 +233,12 @@ jobs:
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL || true
           df -h /
 
-      # export_pmtiles.py builds the corridor fresh from centerline.geojson
-      # (export_pmtiles.py:81) to decide which tiles fall inside it, so this job
-      # needs the raw inputs as well as the mosaicked cells. Carried from
-      # compute-cells rather than re-fetched: it is the same corridor the 51
-      # cells were cut against, and re-running fetch_all.py here could pick up
-      # an ArcGIS update mid-run and clip against a centerline the tiles never
-      # saw.
+      # assemble_raster.py re-enumerates the corridor's tiles to verify the
+      # receipts tile it exactly, so this job needs the raw inputs as well as
+      # the rendered cells. Carried from compute-cells rather than re-fetched:
+      # it is the same corridor the 51 cells were cut against, and re-running
+      # fetch_all.py here could pick up an ArcGIS update mid-run and verify
+      # against a centerline the tiles never saw.
       - uses: actions/download-artifact@v4
         with:
           name: corridor-inputs
@@ -240,28 +246,15 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          pattern: topo-tile-*
+          pattern: raster-cell-*
           merge-multiple: true
-          path: pipeline/data/processed/topo_background/
+          path: pipeline/data/processed/raster_cells/
 
-      - name: Confirm every cell arrived
-        run: |
-          found=$(ls data/processed/topo_background/*.tif 2>/dev/null | wc -l)
-          echo "$found of ${{ needs.compute-cells.outputs.total }} tiles present"
-          du -sh data/processed/topo_background/
-          if [ "$found" -ne "${{ needs.compute-cells.outputs.total }}" ]; then
-            echo "::error::Missing tiles. fail-fast is off, so a failed cell gets here as an absence rather than a stopped run - and export_pmtiles.py would happily build an archive with a hole in it."
-            exit 1
-          fi
-
-      - name: Build Light (z6-11)
-        run: python export_pmtiles.py --max-zoom 11 --out data/processed/background_z11.pmtiles
-
-      - name: Build Standard (z6-12)
-        run: python export_pmtiles.py
-
-      - name: Build Fine (z6-13)
-        run: python export_pmtiles.py --max-zoom 13 --out data/processed/background_z13.pmtiles
+      # Receipt/archive presence, overlap, and exact corridor coverage are
+      # all verified inside assemble_raster.py - a lost render job fails here
+      # loudly rather than shipping an archive with a hole.
+      - name: Assemble the tier archives
+        run: python assemble_raster.py
 
       - name: What was built
         run: ls -la data/processed/*.pmtiles && df -h /

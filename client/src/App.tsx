@@ -47,7 +47,7 @@ import { Onboarding, type OnboardingResult } from './screens/Onboarding'
 import { ReportForm, type ReportFormSubmission } from './screens/ReportForm'
 import { ReportTypePicker, type ReportTypeId } from './screens/ReportTypePicker'
 import { CORRIDOR_ARCHIVE_URL } from './map/protocol'
-import { archiveUrl, DATA_CONFIGURED } from './lib/config'
+import { DATA_CONFIGURED } from './lib/config'
 import { loadPreferences, savePreferences } from './lib/preferences'
 import {
   DEFAULT_PREFERENCES,
@@ -59,10 +59,18 @@ import {
   getDownloadDetail,
   type DetailLevel,
 } from './lib/downloadDetail'
-import { useArchiveDownload } from './lib/useArchiveDownload'
+import { useArchiveDownloads } from './lib/useArchiveDownload'
 import { useArchiveZooms } from './lib/useArchiveZooms'
 import { archiveCoversZoom } from './lib/archiveCoverage'
-import { CORRIDOR_BACKGROUND_PACKAGE } from './lib/packages'
+import {
+  BACKGROUND_DATA,
+  backgroundSizeBytes,
+  CORRIDOR_BACKGROUND_PACKAGE,
+  offeredPackages,
+  packageDownloadUrl,
+  packageSizeBytes,
+} from './lib/packages'
+import { combineBackgroundStatus } from './lib/backgroundStatus'
 import { useClock } from './lib/useClock'
 import { useOnline } from './lib/useOnline'
 import { useDataSaver } from './lib/useDataSaver'
@@ -72,12 +80,7 @@ import { useInstallPrompt } from './lib/useInstallPrompt'
 import { useAppUpdate } from './lib/useAppUpdate'
 import { useGeolocation } from './lib/useGeolocation'
 import { buildTrailIndex, locateOnTrail, type TrailIndex } from './lib/trailPosition'
-import {
-  deleteTrailData,
-  downloadTrailData,
-  loadTrailData,
-  type StoredPoi,
-} from './lib/trailData'
+import { downloadTrailData, loadTrailData, type StoredPoi } from './lib/trailData'
 import {
   ribbonSamples,
   ribbonWindow,
@@ -259,14 +262,45 @@ function App() {
 
   const detailLevel: DetailLevel = detailLevelForZoom(preferences.max_background_zoom)
 
+  // The archives the background is currently made of (#192). Several pieces
+  // in the store, one thing on the screen - see lib/packages.ts.
+  const backgroundPackages = useMemo(() => offeredPackages(), [])
+  const downloadRequests = useMemo(
+    () =>
+      backgroundPackages.map((pkg) => ({
+        packageKey: pkg.idbKey,
+        url: packageDownloadUrl(pkg, detailLevel),
+      })),
+    [backgroundPackages, detailLevel],
+  )
   const {
-    status: archiveStatus,
-    start: startArchive,
-    resume: resumeArchive,
-    remove: removeArchive,
-    error: archiveError,
+    statusFor: archiveStatusFor,
+    errorFor: archiveErrorFor,
+    start: startPackage,
+    startAll: startPackages,
+    remove: removePackage,
     persistence: archivePersistence,
-  } = useArchiveDownload(CORRIDOR_BACKGROUND_PACKAGE.idbKey, archiveUrl(detailLevel))
+  } = useArchiveDownloads(downloadRequests)
+
+  /** The background as one state, however many archives are behind it. */
+  const backgroundStatus = combineBackgroundStatus(
+    backgroundPackages.map((pkg) => ({
+      status: archiveStatusFor(pkg.idbKey),
+      sizeBytes: packageSizeBytes(pkg, detailLevel),
+    })),
+  )
+
+  /** The first archive with something to report. One card, so one message -
+   *  and the archives are not something a hiker was told about, so naming
+   *  which of them failed would explain nothing. */
+  const backgroundError =
+    backgroundPackages.map((pkg) => archiveErrorFor(pkg.idbKey)).find(Boolean) ?? null
+
+  // Whether the corridor raster specifically is on the phone. Asked about
+  // that archive rather than about the background as a whole, because it is
+  // the archive the offline background is DRAWN from - archiveZooms reads its
+  // header, and effectiveBackground decides against its presence.
+  const archiveStatus = archiveStatusFor(CORRIDOR_BACKGROUND_PACKAGE.idbKey)
 
   // Whether there is a corridor on this phone at all. Only a FINISHED archive
   // counts: a partial one is bytes in IndexedDB that the PMTiles source cannot
@@ -569,35 +603,68 @@ function App() {
     [updatePreferences, openDownloads],
   )
 
-  const handleDownload = useCallback(async () => {
+  /** The trail's own data - centerline, spurs, POIs, elevation profile - on
+   *  the phone, fetching it only if it is not already here.
+   *
+   *  Not a choice anyone is offered: it is a few megabytes against a
+   *  background measured in hundreds, and it is what makes the app an app
+   *  rather than a map viewer, so it is downloaded by default wherever it is
+   *  missing (the effect above does the same on launch). Called before the
+   *  background too, where it doubles as the canary: whatever stopped these
+   *  few megabytes - no signal, a missing key, a misconfigured bucket - will
+   *  stop the next several hundred, and finding that out costs a hiker their
+   *  data allowance to learn nothing.
+   *
+   *  Returns whether to go on. */
+  const ensureTrailData = useCallback(async () => {
     setDataError(null)
-    // Trail lines and POIs first. They are a fraction of the archive's size,
-    // and getting them early means a failed raster download still leaves a
-    // usable trail line rather than nothing at all.
     try {
+      // Already here is already done. Re-fetching on every tap spent signal
+      // on bytes the phone was holding.
+      if ((await loadTrailData()) !== null) return true
       await downloadTrailData()
       await refreshTrailData()
+      return true
     } catch (error) {
       setDataError(
         error instanceof Error ? error.message : 'Trail data failed to download.',
       )
-      // Stop here rather than starting the archive anyway. These few megabytes
-      // are the canary: whatever stopped them - no signal, a missing key, a
-      // misconfigured bucket - will stop the next several hundred too, and
-      // finding that out costs a hiker their data allowance to learn nothing.
-      return
+      return false
     }
-    await startArchive()
-  }, [refreshTrailData, startArchive])
+  }, [refreshTrailData])
 
+  /** The background: every archive it is made of, in one tap. Archives
+   *  already on the phone are left alone rather than re-fetched. */
+  const handleDownload = useCallback(async () => {
+    const missing = backgroundPackages
+      .map((pkg) => pkg.idbKey)
+      .filter((key) => archiveStatusFor(key).state !== 'downloaded')
+    if (missing.length === 0) return
+    if (!(await ensureTrailData())) return
+    await startPackages(missing)
+  }, [backgroundPackages, archiveStatusFor, ensureTrailData, startPackages])
+
+  /** Resume, which skips the trail-data step: those bytes are already here,
+   *  and the point of resuming is not to spend signal twice. */
+  const handleResumeDownload = useCallback(async () => {
+    await Promise.all(
+      backgroundPackages
+        .filter((pkg) => archiveStatusFor(pkg.idbKey).state !== 'downloaded')
+        .map((pkg) => startPackage(pkg.idbKey)),
+    )
+  }, [backgroundPackages, archiveStatusFor, startPackage])
+
+  /** Deleting the background deletes the background: every archive behind
+   *  it, and nothing else.
+   *
+   *  The trail's own data deliberately stays. It belongs to the trail rather
+   *  than to the map under it, it is a rounding error against what is being
+   *  reclaimed, and it is downloaded by default anyway - so taking it would
+   *  strip the trail line off the screen only for the next launch with signal
+   *  to fetch it again. */
   const handleDeleteDownload = useCallback(async () => {
-    await removeArchive()
-    await deleteTrailData()
-    setPois([])
-    setTrailIndex(null)
-    setElevation(null)
-    setTrailsUrl(emptyTrailsUrl())
-  }, [removeArchive])
+    await Promise.all(backgroundPackages.map((pkg) => removePackage(pkg.idbKey)))
+  }, [backgroundPackages, removePackage])
 
   // Every move is also where the camera would have to be put back, so this is
   // the one place that remembers it. Reading the map rather than deriving a
@@ -774,25 +841,24 @@ function App() {
           {dataError}
         </p>
       )}
-      {archiveError !== null && (
-        <p role="alert" className="app__notice">
-          {archiveError}
-        </p>
-      )}
       <InstallPrompt
         platform={install.platform}
         canPrompt={install.canPrompt}
         onInstall={install.install}
       />
       <Downloads
-        status={archiveStatus}
+        status={backgroundStatus}
+        title={BACKGROUND_DATA.title}
+        summary={BACKGROUND_DATA.summary}
+        sizeBytes={backgroundSizeBytes(detailLevel)}
         detailLevel={detailLevel}
+        error={backgroundError}
         persistence={archivePersistence}
         onChangeDetail={(level) =>
           updatePreferences({ max_background_zoom: getDownloadDetail(level).zoom })
         }
         onStart={() => void handleDownload()}
-        onResume={() => void resumeArchive()}
+        onResume={() => void handleResumeDownload()}
         onDelete={() => void handleDeleteDownload()}
       />
     </DownloadsDialog>

@@ -1,5 +1,10 @@
 :root {
-  color-scheme: light;
+  /* `color-scheme` is set with the palette, in design-system/tokens/colors.css:
+     the same attribute selector that re-points the semantic aliases is what
+     tells the browser which scrollbars, form controls and default canvas to
+     draw, and splitting the two across files is how they end up disagreeing.
+     It was `color-scheme: light` here, unconditionally, which under the dark
+     theme left white scrollbars down the side of an ink-coloured screen. */
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -10,4 +15,9 @@ body {
   margin: 0;
   font-family: var(--font-body);
   color: var(--fg-1, #1f1d1a);
+  /* The canvas behind every screen. Without it the page is the browser's own
+     white wherever a screen does not reach - the overscroll rubber-band at the
+     top and bottom of a phone scroll being the one everybody sees, and a white
+     flash at the edge of a dark app being exactly what it looks like. */
+  background: var(--bg-page);
 }

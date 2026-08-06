@@ -4,6 +4,21 @@ import './design-system/styles.css'
 import './index.css'
 import App from './App.tsx'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
+import { applyTheme, systemPrefersDark } from './lib/theme'
+
+// Before anything renders, and deliberately not inside a component.
+//
+// The stored preference is in IndexedDB, which cannot be read synchronously,
+// so App only learns it a tick or two in. Painting light for those ticks and
+// then flipping is the flash every theme implementation is judged by - and on
+// a phone at night it is a bright white frame in the dark, which is worse than
+// a cosmetic complaint.
+//
+// So the OS query answers for the first paint. For everyone on the default
+// ('auto', lib/userPreferences.ts) that IS the stored answer and nothing
+// changes afterwards; only someone who has overridden their OS sees a
+// correction, and only on a cold start.
+applyTheme(systemPrefersDark() ? 'dark' : 'light', document)
 
 // The outer net. App has its own boundary around the map, which is where a
 // throw is most likely and where losing the other tabs would hurt most - this

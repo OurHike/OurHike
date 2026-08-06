@@ -1,5 +1,19 @@
 // First run (WIREFRAMES.md §5). Three steps, each skippable.
 //
+// A card over the live map, not a page instead of it. The shell puts the map
+// behind these steps (App.tsx's onboarding branch) and this file is the half
+// of that which leaves room to see it: the card is anchored to the bottom of
+// the screen, capped well short of filling it, and scrolls its own contents if
+// they outgrow that - so the map is visible above the steps on every screen
+// size rather than only on tall ones.
+//
+// Every step says something about a thing that is now on screen. "The whole
+// trail's topo map lives on your phone" is drawn behind that sentence; "pick
+// how much detail" is a choice about the map being looked at; and the location
+// step was always specified as an overlay over the map (§5), so the reason for
+// asking is visible. Showing the claim is the argument here - a screenshot of
+// a map, or a page of prose about one, is the thing this replaces.
+//
 // What is NOT here matters as much as what is:
 //
 //  - No notification prompt. OurHike sends exactly one kind of push - the
@@ -88,103 +102,111 @@ export function Onboarding({ onComplete }: OnboardingProps) {
 
   return (
     <main className="onboarding">
-      <p className="onboarding__progress">{progress.label}</p>
+      {/* Keyed by step, so React rebuilds this subtree when the step changes
+          and the card's entry animation runs again for each one (onboarding.css
+          reduces it to nothing under prefers-reduced-motion). The steps rise
+          over the map one at a time rather than the copy inside a static panel
+          being swapped out underneath the reader. */}
+      <div key={step.id} className="onboarding__card">
+        <p className="onboarding__progress">{progress.label}</p>
 
-      {step.id === 'what-ourhike-is' && (
-        <section className="onboarding__step">
-          <Logo />
-          <h1 className="onboarding__title">What OurHike is</h1>
-          <p>
-            The whole trail&rsquo;s topo map lives on your phone. It works with no bars
-            and no data plan &mdash; the way the trail actually is.
-          </p>
-          <p>
-            Paid memberships fund the ATC and the volunteer clubs who keep the trail open.
-          </p>
-          <p className="onboarding__reassurance">No account. Nothing to sign up for.</p>
-        </section>
-      )}
-
-      {step.id === 'map-size' && (
-        <section className="onboarding__step">
-          <h1 className="onboarding__title">Map size</h1>
-          <p>
-            The map you&rsquo;ll navigate by &mdash; the whole trail, in one download.
-            Pick how much detail you want; you can change this later.
-          </p>
-
-          <Tabs
-            label="Background maps"
-            tabs={SHEET_TABS}
-            activeId={openSheetId}
-            onSelect={setOpenSheetId}
-            idPrefix="onboarding-sheet"
-          >
-            {openSheetId === HIKING_SHEET.id ? (
-              <>
-                <p className="onboarding__sheet-summary">{HIKING_SHEET.summary}</p>
-                <DetailPicker
-                  options={hikingDetailOptions()}
-                  value={hikingLevel}
-                  onChange={(level) => setHikingLevel(level as HikingDetailLevel)}
-                  name="onboarding-detail"
-                />
-              </>
-            ) : (
-              <>
-                <p className="onboarding__sheet-summary">{USGS_SHEET.summary}</p>
-                {/* Named and priced, not configured (#277). Locked rather
-                    than absent so the newcomer can see what the optional map
-                    would cost before deciding they want it at all. */}
-                <DetailPicker
-                  options={rasterDetailOptions()}
-                  value=""
-                  onChange={() => undefined}
-                  name="onboarding-usgs-detail"
-                  locked
-                  lockedNote="Chosen in Downloads, any time. This step is sizing the map you navigate by."
-                />
-              </>
-            )}
-          </Tabs>
-        </section>
-      )}
-
-      {step.id === 'location-permission' && (
-        <section className="onboarding__step">
-          <h1 className="onboarding__title">Your location</h1>
-          <p>
-            OurHike works with no signal at all. Your position never leaves your phone
-            &mdash; nothing about where you are is sent anywhere.
-          </p>
-          <div className="onboarding__actions">
-            <button
-              type="button"
-              className="onboarding__primary"
-              onClick={() => finish(true)}
-            >
-              Allow location
-            </button>
-            <button
-              type="button"
-              className="onboarding__secondary"
-              onClick={() => finish(false)}
-            >
-              Not now
-            </button>
-          </div>
-        </section>
-      )}
-
-      <div className="onboarding__nav">
-        {step.id !== 'location-permission' && (
-          <button type="button" className="onboarding__primary" onClick={next}>
-            Continue
-          </button>
+        {step.id === 'what-ourhike-is' && (
+          <section className="onboarding__step">
+            <Logo />
+            <h1 className="onboarding__title">What OurHike is</h1>
+            <p>
+              The whole trail&rsquo;s topo map lives on your phone. It works with no bars
+              and no data plan &mdash; the way the trail actually is.
+            </p>
+            <p>
+              Paid memberships fund the ATC and the volunteer clubs who keep the trail
+              open.
+            </p>
+            <p className="onboarding__reassurance">No account. Nothing to sign up for.</p>
+          </section>
         )}
-        <button type="button" className="onboarding__skip" onClick={next}>
-          Skip
-        </button>
+
+        {step.id === 'map-size' && (
+          <section className="onboarding__step">
+            <h1 className="onboarding__title">Map size</h1>
+            <p>
+              The map you&rsquo;ll navigate by &mdash; the whole trail, in one download.
+              Pick how much detail you want; you can change this later.
+            </p>
+
+            <Tabs
+              label="Background maps"
+              tabs={SHEET_TABS}
+              activeId={openSheetId}
+              onSelect={setOpenSheetId}
+              idPrefix="onboarding-sheet"
+            >
+              {openSheetId === HIKING_SHEET.id ? (
+                <>
+                  <p className="onboarding__sheet-summary">{HIKING_SHEET.summary}</p>
+                  <DetailPicker
+                    options={hikingDetailOptions()}
+                    value={hikingLevel}
+                    onChange={(level) => setHikingLevel(level as HikingDetailLevel)}
+                    name="onboarding-detail"
+                  />
+                </>
+              ) : (
+                <>
+                  <p className="onboarding__sheet-summary">{USGS_SHEET.summary}</p>
+                  {/* Named and priced, not configured (#277). Locked rather
+                      than absent so the newcomer can see what the optional map
+                      would cost before deciding they want it at all. */}
+                  <DetailPicker
+                    options={rasterDetailOptions()}
+                    value=""
+                    onChange={() => undefined}
+                    name="onboarding-usgs-detail"
+                    locked
+                    lockedNote="Chosen in Downloads, any time. This step is sizing the map you navigate by."
+                  />
+                </>
+              )}
+            </Tabs>
+          </section>
+        )}
+
+        {step.id === 'location-permission' && (
+          <section className="onboarding__step">
+            <h1 className="onboarding__title">Your location</h1>
+            <p>
+              OurHike works with no signal at all. Your position never leaves your phone
+              &mdash; nothing about where you are is sent anywhere.
+            </p>
+            <div className="onboarding__actions">
+              <button
+                type="button"
+                className="onboarding__primary"
+                onClick={() => finish(true)}
+              >
+                Allow location
+              </button>
+              <button
+                type="button"
+                className="onboarding__secondary"
+                onClick={() => finish(false)}
+              >
+                Not now
+              </button>
+            </div>
+          </section>
+        )}
+
+        <div className="onboarding__nav">
+          {step.id !== 'location-permission' && (
+            <button type="button" className="onboarding__primary" onClick={next}>
+              Continue
+            </button>
+          )}
+          <button type="button" className="onboarding__skip" onClick={next}>
+            Skip
+          </button>
+        </div>
       </div>
     </main>
   )

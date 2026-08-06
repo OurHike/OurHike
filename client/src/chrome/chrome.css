@@ -156,6 +156,40 @@
   height: var(--map-control-size);
 }
 
+/* The same controls under the dark theme.
+ *
+ * maplibre-gl.css hardcodes a white group with dark glyphs, and nothing in it
+ * asks about the theme - so on an ink map the locate and zoom buttons are the
+ * brightest thing on the screen by a wide margin, which at night is the one
+ * place brightness costs something real. Overridden here rather than forked
+ * out of the library stylesheet, which is imported wholesale by MapView.tsx
+ * for reasons that have nothing to do with colour.
+ *
+ * The glyphs are background-image data URIs, so they are inverted rather than
+ * recoloured: there is no property to reach into them with. `hue-rotate(180)`
+ * undoes the hue flip `invert` brings with it, which matters for the one
+ * control that is not monochrome - the geolocate button turns blue when it has
+ * a fix, and without this it would turn orange. */
+:root[data-theme='dark'] .map-view .maplibregl-ctrl-group {
+  background: var(--bg-surface);
+}
+:root[data-theme='dark'] .map-view .maplibregl-ctrl-group button + button {
+  border-top-color: var(--border-1);
+}
+:root[data-theme='dark'] .map-view .maplibregl-ctrl-group button:hover {
+  background: var(--surface-card-alt);
+}
+:root[data-theme='dark'] .map-view .maplibregl-ctrl-icon {
+  filter: invert(1) hue-rotate(180deg);
+}
+/* The scale bar is drawn as a bordered box over the canvas, so it needs the
+   canvas's own colours rather than an inversion. */
+:root[data-theme='dark'] .map-view .maplibregl-ctrl-scale {
+  color: var(--fg-1);
+  background: color-mix(in srgb, var(--bg-page) 70%, transparent);
+  border-color: var(--border-2);
+}
+
 /* ---------- Tab bar ---------- */
 
 .tab-bar {
@@ -227,7 +261,7 @@
   font-size: 32px;
   letter-spacing: -0.02em;
   line-height: 1;
-  color: var(--stone-900);
+  color: var(--fg-1);
 }
 
 .tab-bar__tab {
@@ -357,21 +391,21 @@
 }
 
 .elevation-ribbon__area {
-  fill: color-mix(in srgb, var(--forest-600) 22%, transparent);
+  fill: color-mix(in srgb, var(--brand-primary) 22%, transparent);
 }
 
 .elevation-ribbon__line {
-  stroke: var(--forest-600);
+  stroke: var(--brand-primary);
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
 }
 
 .elevation-ribbon__climb {
-  fill: color-mix(in srgb, var(--blaze-orange) 16%, transparent);
+  fill: color-mix(in srgb, var(--accent-blaze-orange) 16%, transparent);
 }
 
 .elevation-ribbon__here {
-  stroke: var(--stone-900);
+  stroke: var(--fg-1);
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
 }
@@ -657,7 +691,7 @@
   gap: var(--space-2, 8px);
   padding: var(--space-4, 16px);
   background: var(--bg-surface);
-  border-top: 3px solid #b2321f;
+  border-top: 3px solid var(--danger-strong);
   border-top-left-radius: 14px;
   border-top-right-radius: 14px;
   box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
@@ -667,7 +701,7 @@
   margin: 0;
   font-size: 14px;
   font-weight: 700;
-  color: #b2321f;
+  color: var(--danger-strong);
 }
 
 .closure-sheet__range {
@@ -777,6 +811,16 @@
   opacity: 0.55;
 }
 
+/* On ink, an accent chosen to carry a white glyph on a pin - pine-700 for a
+   shelter - is barely lighter than the wash it is sitting on, and the
+   silhouette disappears. Lifted toward the foreground here rather than by
+   re-picking the five accents, which are correct where they actually have to
+   be: on the pins, over the map (map/poiIcons.ts). */
+:root[data-theme='dark'] .poi-card__glyph {
+  fill: color-mix(in srgb, var(--poi-accent) 45%, var(--fg-1));
+  opacity: 0.7;
+}
+
 /* Drawn at 32px over the photo's corner, hit at 44px - the same drawn/hit
    split the header buttons use, made up with an invisible expanded area
    rather than by inflating the visible circle. */
@@ -881,7 +925,7 @@
   gap: var(--space-2, 8px);
   padding: var(--space-4, 16px);
   background: var(--bg-surface);
-  border-top: 3px solid #b2321f;
+  border-top: 3px solid var(--danger-strong);
   border-top-left-radius: 14px;
   border-top-right-radius: 14px;
   box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
@@ -891,7 +935,7 @@
   margin: 0;
   font-size: 12px;
   font-weight: 700;
-  color: #b2321f;
+  color: var(--danger-strong);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
@@ -915,7 +959,7 @@
   gap: var(--space-2, 8px);
   padding: var(--space-4, 16px);
   background: var(--bg-surface);
-  border: 2px solid var(--blaze-orange);
+  border: 2px solid var(--accent-blaze-orange);
   border-radius: 12px;
   box-shadow: 0 4px 20px rgb(0 0 0 / 18%);
 }
@@ -942,7 +986,7 @@
 }
 
 .wrong-way-cue__primary {
-  color: var(--fg-on-dark);
+  color: var(--fg-on-brand);
   background: var(--brand-secondary);
   border: 0;
 }

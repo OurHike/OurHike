@@ -118,6 +118,8 @@ Three screens, each skippable, each with a step counter:
 
 **Never asked here:** notifications (belongs to the wrong-way alert, at hike start) and **accounts** (asked at first contribution — see Reporting below). The step counter is derived from the live step list, and a skipped step still counts so the total never grows mid-flow.
 
+**Amended 2026-08-06 — over the map, all three of them.** Step 3 was always specified as an overlay on the map so the reason for asking was visible; the same argument holds for the other two, and they were an opaque full-page screen. So the map is behind all three now (`client/src/App.tsx`'s onboarding branch): the corridor view the map screen itself opens on, drawn under a card anchored to the bottom of the screen and capped short of filling it. The "small map vignette" in step 1 is that map rather than a picture of one. What is behind the steps is the canvas and **nothing else** — no header, no tab bar, no legend — and it is `inert`, which is not only about stray taps: MapLibre's locate control would otherwise raise the OS location prompt before the step whose whole job is to explain why we are asking. The credit line the live sheet's licences require is rendered over the map's top-left corner, since the bottom corners are where the card is.
+
 ### 6. Reporting (`14a`–`14d`) — supersedes turn `8` — ⚠ see Known Deviations
 
 Six condition types in a 2-col grid (`14a`, updated 2026-07-30 to add invasive species):
@@ -182,7 +184,7 @@ Four groups, one canonical `UserPreferences` model:
 
 - **You** — trail name (Linked / on-this-device), reporter type, account.
 - **The map** — background source (USGS topo downloaded is the default and the only offline-capable one), detail for new downloads, roads & walkability *(Later)*.
-- **Display** — theme (Auto), units *(Later; mile markers stay miles either way)*.
+- **Display** — theme (Light / Dark / Auto, a segmented control like the background picker above it; Auto is last, after the two concrete choices, so the group reads as a spectrum ending in "let the phone decide"), units *(Later; mile markers stay miles either way)*.
 - **Safety & privacy** — wrong-way alert toggle, "hide my name on reports for…" *(Later)*, and a red locked callout: **closures and serious warnings are always shown; there is no switch, here or anywhere.**
 - **Your data** — export reports/routes (GPX, GeoJSON), last synced + Sync, sources & attribution.
 
@@ -331,7 +333,7 @@ The source handoff's own "not yet wireframed" checklist listed several screens t
 - Volunteering work-project pins (Post-MVP).
 - Roads/walkability overlay (Post-MVP, MAP_OPTIONS.md).
 - Auto-rotate (Post-MVP, UX_CUSTOMIZATION.md).
-- Theme override, metric units, persistent waypoint/layer prefs (Post-MVP, UX_CUSTOMIZATION.md).
+- Metric units, persistent waypoint/layer prefs (Post-MVP, UX_CUSTOMIZATION.md). *Theme override was here until 2026-08-06 and is now MVP — see that doc for why the split was wrong.*
 - Community Building — Tramily, check-ins, mentions (Post-MVP).
 - Pricing tiers / paywall UI (Post-MVP, PRICING_MODEL.md).
 - Trail names as a distinct onboarding tier (Post-MVP, ONBOARDING.md).

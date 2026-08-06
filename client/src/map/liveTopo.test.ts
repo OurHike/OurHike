@@ -21,8 +21,13 @@ import {
   OSM_SOURCE_ID,
   PLACE_TOWN_MIN_ZOOM,
   PLACE_VILLAGE_MIN_ZOOM,
+  SHEET_COLOURS,
+  TOPO_PALETTE,
+  TOPO_PALETTE_DARK,
+  attachSheetTheme,
   liveTopoLayers,
 } from './liveTopo'
+import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec'
 import {
   CONTOUR_LEVEL_KEY,
   CONTOUR_SOURCE_ID,
@@ -44,6 +49,16 @@ import { CLOSURE_CASING_LAYER_ID, CLOSURE_LAYER_ID } from '../lib/closureStyle'
 const TERRAIN = {
   demUrl: 'dem://shared/{z}/{x}/{y}',
   contourTilesUrl: 'contour://40ft/{z}/{x}/{y}',
+}
+
+/** A `#rrggbb` split into its three channels, for the couple of assertions
+ *  below that are about lightness rather than about an exact value. */
+function hexChannels(hex: string): [number, number, number] {
+  return [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16)) as [
+    number,
+    number,
+    number,
+  ]
 }
 
 function live(units: 'imperial' | 'metric' = 'imperial') {
@@ -611,5 +626,132 @@ describe('attachElevationLabelUnits', () => {
       peakLabelTextField('metric'),
     )
     expect(m.layoutProperties.size).toBe(1)
+  })
+})
+
+describe('the sheet under light and dark', () => {
+  // The palette is the whole cartography here (see the file header), so a
+  // second one is a second sheet rather than a filter over the first. What
+  // these guard is the wiring: that no colour is left behind, and that the
+  // table which drives both the build and the live repaint stays complete.
+  const layersFor = (theme: 'light' | 'dark') =>
+    liveTopoLayers({ terrain: TERRAIN, units: 'imperial', theme })
+
+  const colourProperties = (layer: LayerSpecification) =>
+    Object.entries((layer.paint ?? {}) as Record<string, unknown>).filter(
+      ([, value]) => typeof value === 'string' && value.startsWith('#'),
+    )
+
+  it('lists every colour the sheet paints, so none can miss the theme', () => {
+    // The failure this prevents is not a crash. It is one layer still drawn in
+    // paper-brown over an ink sheet, which reads as a rendering bug rather
+    // than as a line somebody forgot to add to a list - so the list is checked
+    // against what the style actually paints rather than trusted.
+    const declared = new Set(
+      SHEET_COLOURS.map(([layer, property]) => `${layer}/${property}`),
+    )
+
+    for (const layer of layersFor('light')) {
+      for (const [property] of colourProperties(layer)) {
+        expect(declared).toContain(`${layer.id}/${property}`)
+      }
+    }
+  })
+
+  it('repoints every one of them under the dark theme', () => {
+    const light = layersFor('light')
+    const dark = layersFor('dark')
+
+    for (const [index, layer] of light.entries()) {
+      for (const [property, value] of colourProperties(layer)) {
+        const darkValue = (dark[index].paint as Record<string, unknown>)[property]
+        expect(darkValue, `${layer.id}/${property}`).not.toBe(value)
+      }
+    }
+  })
+
+  it('keys both palettes the same, so a new colour cannot stay light', () => {
+    expect(Object.keys(TOPO_PALETTE_DARK).sort()).toEqual(
+      Object.keys(TOPO_PALETTE).sort(),
+    )
+  })
+
+  it('keeps the dark sheet genuinely dark rather than mid-grey', () => {
+    // The reason this is in MVP at all is a phone on a trail after sunset
+    // (features/UX_CUSTOMIZATION.md). A "dark" ground that settles at #333
+    // still lights a face up, and still costs the night vision the theme was
+    // meant to protect. Checked on the ground layers only - labels are
+    // supposed to be bright, which is the point of them.
+    for (const key of ['wood', 'scrub', 'wetland', 'rock', 'park'] as const) {
+      const [r, g, b] = hexChannels(TOPO_PALETTE_DARK[key])
+      expect((r + g + b) / 3, key).toBeLessThan(60)
+    }
+  })
+
+  it('keeps the labels the brightest thing on the dark sheet', () => {
+    // A place name you cannot read is a place name that is not there.
+    const [lr, lg, lb] = hexChannels(TOPO_PALETTE_DARK.label)
+    const [gr, gg, gb] = hexChannels(TOPO_PALETTE_DARK.wood)
+
+    expect((lr + lg + lb) / 3).toBeGreaterThan((gr + gg + gb) / 3 + 100)
+  })
+
+  it('defaults to the light sheet for a caller with no opinion', () => {
+    const wood = liveTopoLayers({ terrain: TERRAIN, units: 'imperial' }).find(
+      (l) => l.id === LIVE_TOPO_LAYER_IDS.wood,
+    )
+    if (wood === undefined) throw new Error('no wood layer in the light sheet')
+
+    expect((wood.paint as Record<string, unknown>)['fill-color']).toBe(TOPO_PALETTE.wood)
+  })
+})
+
+describe('attachSheetTheme', () => {
+  it('repaints every colour on a live map, without rebuilding the style', async () => {
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const m = new MockMap({})
+    m.layerIds = [...new Set(SHEET_COLOURS.map(([layer]) => layer))]
+
+    attachSheetTheme(m as never, 'dark')
+
+    for (const [layer, property, colour] of SHEET_COLOURS) {
+      expect(m.paintProperties.get(`${layer}/${property}`)).toBe(
+        TOPO_PALETTE_DARK[colour],
+      )
+    }
+    expect(m.styles).toEqual([])
+  })
+
+  it('leaves an offline-background style alone', async () => {
+    // None of the sheet's layers is in it, which is a normal state rather than
+    // a failure - the wait simply never resolves and detach ends it.
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const m = new MockMap({})
+    m.layerIds = [TOPO_LAYER_ID, BACKDROP_LAYER_ID]
+
+    const detach = attachSheetTheme(m as never, 'dark')
+    m.emit('styledata')
+    detach()
+
+    expect(m.paintProperties.size).toBe(0)
+  })
+
+  it('skips the terrain layers a style built without a DEM does not have', async () => {
+    // The probe is the wood layer, which is always there when the sheet is.
+    // Proving it exists proves nothing about the four DEM/contour layers that
+    // liveTopoLayers filters out when terrain could not be built, and the mock
+    // rejects a write to an absent layer exactly as MapLibre does.
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const m = new MockMap({})
+    m.layerIds = [LIVE_TOPO_LAYER_IDS.wood, LIVE_TOPO_LAYER_IDS.place]
+
+    attachSheetTheme(m as never, 'dark')
+
+    expect(m.paintProperties.get(`${LIVE_TOPO_LAYER_IDS.wood}/fill-color`)).toBe(
+      TOPO_PALETTE_DARK.wood,
+    )
+    expect(
+      m.paintProperties.get(`${LIVE_TOPO_LAYER_IDS.hillshade}/hillshade-shadow-color`),
+    ).toBeUndefined()
   })
 })

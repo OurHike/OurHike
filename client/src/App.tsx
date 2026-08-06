@@ -55,6 +55,9 @@ import { InstallPrompt } from './screens/InstallPrompt'
 import { Onboarding, type OnboardingResult } from './screens/Onboarding'
 import { ReportForm, type ReportFormSubmission } from './screens/ReportForm'
 import { ReportTypePicker, type ReportTypeId } from './screens/ReportTypePicker'
+import { MapView } from './map/MapView'
+import { mapCredits } from './map/credits'
+import { MapAttribution } from './chrome/MapAttribution'
 import { CORRIDOR_ARCHIVE_URL } from './map/protocol'
 import { DATA_CONFIGURED } from './lib/config'
 import { loadPreferences, savePreferences } from './lib/preferences'
@@ -90,6 +93,7 @@ import { useOnline } from './lib/useOnline'
 import { useDataSaver } from './lib/useDataSaver'
 import { backgroundOverride, effectiveBackground } from './lib/dataSaver'
 import { useFinePointer } from './lib/useFinePointer'
+import { useTheme } from './lib/useTheme'
 import { useDesktop } from './lib/useDesktop'
 import { useInstallPrompt } from './lib/useInstallPrompt'
 import { useAppUpdate } from './lib/useAppUpdate'
@@ -293,6 +297,16 @@ function App() {
   // Read here rather than inside MapView so the whole map screen answers from
   // one value.
   const finePointer = useFinePointer()
+  // Resolves 'auto' against the OS, writes `data-theme` for the stylesheets,
+  // and hands back what actually got drawn - which the map needs as a prop,
+  // because a WebGL canvas cannot read a CSS variable (map/style.ts's
+  // attachMapTheme).
+  //
+  // Called above the `preferencesLoaded` gate below, like every other hook
+  // here: it runs on DEFAULT_PREFERENCES for the tick before the phone's own
+  // answer lands, and that default is 'auto' - the same thing main.tsx already
+  // stamped on the document before React started.
+  const resolvedTheme = useTheme(preferences.theme)
   // Whether this is the big-screen layout - and, for the download, whether the
   // machine is one that goes up a mountain. See handleOnboardingComplete.
   const isDesktop = useDesktop()
@@ -1088,8 +1102,81 @@ function App() {
   // returning hiker never sees a flash of the first-run onboarding.
   if (!preferencesLoaded) return null
 
+  // First run, over the map rather than in front of a blank page.
+  //
+  // The three entry steps used to be an opaque screen, so the first thing
+  // OurHike showed anyone was a page about a map instead of the map. Every
+  // sentence on those steps - the whole trail lives on your phone, pick how
+  // much detail, here is why we want your location - is a claim about a thing
+  // that is right there and was being described rather than shown.
+  // WIREFRAMES.md §5 already asked for this on the location step ("an overlay
+  // on top of the already-downloading map, so the reason is visible"); it is
+  // the same argument on all three, so the map is behind all three.
+  //
+  // Deliberately NOT the map SCREEN. What is behind the steps is the canvas
+  // and nothing else - no header, no tab bar, no legend - because chrome
+  // behind a modal is either a trap or a way to skip the flow sideways, and
+  // neither is the first thing to hand someone.
+  //
+  // `inert` (with pointer-events: none in App.css behind it) is what makes
+  // that safe, and it is not only about stray taps. MapView attaches a locate
+  // control (map/mapChrome.ts), and a tap on it would put the OS location
+  // prompt on screen before the step whose entire job is to explain why we
+  // are asking - spending the one permission this app cares about at the exact
+  // moment it has earned the least trust. Inert also keeps the canvas out of
+  // the tab order and its region out of the accessibility tree, so a keyboard
+  // or screen-reader user is in the steps and only the steps.
+  //
+  // It costs one extra map build - this one is torn down when the steps
+  // finish and the map screen builds its own - which is the same price a trip
+  // through the More tab already pays, and buys the entire first run.
   if (!preferences.onboarding_completed) {
-    return <Onboarding onComplete={handleOnboardingComplete} />
+    // The same call the map screen makes below. With nothing downloaded yet -
+    // which is every first run - it answers the live sheet whatever the stored
+    // preference or Data Saver says, so this draws exactly what the map screen
+    // would have drawn seconds later and spends no bytes that were not already
+    // going to be spent.
+    const entryBackground = effectiveBackground(
+      preferences.background_source,
+      saveData,
+      archiveDownloaded,
+    )
+
+    return (
+      <div className="app__entry">
+        <div className="app__entry-map" aria-hidden="true" inert>
+          <MapView
+            topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
+            trailsUrl={trailsUrl}
+            background={entryBackground}
+            pois={viewportPoints}
+            archiveZooms={archiveZooms}
+            bounds={CORRIDOR_BOUNDS}
+          />
+        </div>
+        {/* Outside the inert backdrop, and not optional. The live sheet's OSM
+            data is ODbL and its credit is a licence condition, so a map that
+            is drawn has to be credited whether or not anyone is meant to touch
+            it - the map screen renders this same line for the same reason
+            (chrome/MapScreen.tsx). Kept out of the inert subtree so it is
+            readable rather than merely present.
+
+            Same pair as the map screen - what it names is map/credits.ts's
+            decision, how much room it takes is MapAttribution's - so first run
+            cannot end up crediting a different set of sources from the screen
+            it hands over to a moment later. */}
+        <div className="app__entry-attribution">
+          <MapAttribution
+            credits={mapCredits({
+              background: entryBackground,
+              hasRasterArchive: archiveDownloaded,
+            })}
+            inline={isDesktop}
+          />
+        </div>
+        <Onboarding onComplete={handleOnboardingComplete} />
+      </div>
+    )
   }
 
   if (authFlow !== null) {
@@ -1374,6 +1461,10 @@ function App() {
           // this, so `showZoomButtons` sat on its default of false everywhere and
           // a browser with a mouse had no visible way to zoom at all.
           showZoomButtons={finePointer}
+          // The canvas is WebGL and cannot read the `data-theme` attribute the
+          // rest of the app follows, so the resolved answer goes down as a prop
+          // - see map/style.ts's attachMapTheme.
+          theme={resolvedTheme}
           // The corridor is the opening view only. Once there is a camera to put
           // back, it wins: `bounds` would otherwise re-frame the entire trail
           // every time the map screen came back from another tab.

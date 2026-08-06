@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { syncOutbox, useOutboxSync } from './outboxSync'
 import { flushOutbox } from './outbox'
-import { accessToken, sendReport } from './api'
+import { accessToken, sendReport, permanentFailureReason } from './api'
 
 // #231's other half: the outbox had queued correctly since it was written and
 // nothing had ever emptied it.
@@ -17,6 +17,7 @@ vi.mock('./outbox', () => ({ flushOutbox: vi.fn() }))
 vi.mock('./api', () => ({
   accessToken: vi.fn(),
   sendReport: vi.fn(),
+  permanentFailureReason: vi.fn(),
   API_CONFIGURED: true,
 }))
 
@@ -25,7 +26,7 @@ const mockedToken = vi.mocked(accessToken)
 
 beforeEach(() => {
   mockedToken.mockResolvedValue('a-real-token')
-  mockedFlush.mockResolvedValue({ sent: 1, failed: 0 })
+  mockedFlush.mockResolvedValue({ sent: 1, failed: 0, stuck: 0 })
 })
 
 afterEach(() => {
@@ -33,10 +34,13 @@ afterEach(() => {
 })
 
 describe('syncOutbox', () => {
-  it('flushes with the real sender', async () => {
+  it('flushes with the real sender, and the real failure classifier', async () => {
+    // Both arguments matter. Without the classifier every failure looks
+    // retryable, which is the state #243 is about: a report the server will
+    // never accept sitting in the queue saying "waiting to send" forever.
     await syncOutbox()
 
-    expect(mockedFlush).toHaveBeenCalledWith(sendReport)
+    expect(mockedFlush).toHaveBeenCalledWith(sendReport, permanentFailureReason)
   })
 
   it('does not try when signed out - the queue waits for an account', async () => {
@@ -47,9 +51,9 @@ describe('syncOutbox', () => {
   })
 
   it('reports a flush that ran, so a caller can record a real sync time', async () => {
-    mockedFlush.mockResolvedValue({ sent: 2, failed: 1 })
+    mockedFlush.mockResolvedValue({ sent: 2, failed: 1, stuck: 0 })
 
-    expect(await syncOutbox()).toEqual({ sent: 2, failed: 1 })
+    expect(await syncOutbox()).toEqual({ sent: 2, failed: 1, stuck: 0 })
   })
 
   it('never rejects, even when the flush itself throws', async () => {
@@ -61,7 +65,11 @@ describe('syncOutbox', () => {
   })
 
   it('does not overlap two flushes, which would file every report twice', async () => {
-    let release: (value: { sent: number; failed: number }) => void = () => {}
+    let release: (value: {
+      sent: number
+      failed: number
+      stuck: number
+    }) => void = () => {}
     mockedFlush.mockReturnValue(
       new Promise((resolve) => {
         release = resolve
@@ -72,7 +80,7 @@ describe('syncOutbox', () => {
     // for, not two calls one after another.
     const first = syncOutbox()
     const second = syncOutbox()
-    release({ sent: 1, failed: 0 })
+    release({ sent: 1, failed: 0, stuck: 0 })
     await Promise.all([first, second])
 
     expect(mockedFlush).toHaveBeenCalledTimes(1)
@@ -112,11 +120,13 @@ describe('useOutboxSync', () => {
 
   it('reports the result back', async () => {
     const onSynced = vi.fn()
-    mockedFlush.mockResolvedValue({ sent: 3, failed: 0 })
+    mockedFlush.mockResolvedValue({ sent: 3, failed: 0, stuck: 0 })
 
     renderHook(() => useOutboxSync(true, onSynced))
 
-    await waitFor(() => expect(onSynced).toHaveBeenCalledWith({ sent: 3, failed: 0 }))
+    await waitFor(() =>
+      expect(onSynced).toHaveBeenCalledWith({ sent: 3, failed: 0, stuck: 0 }),
+    )
   })
 
   it('flushes when signal arrives, not only when it was there all along', async () => {
@@ -158,6 +168,7 @@ describe('a build with no backend configured', () => {
     vi.doMock('./api', () => ({
       accessToken: mockedToken,
       sendReport,
+      permanentFailureReason,
       API_CONFIGURED: false,
     }))
     const { syncOutbox: unconfiguredSync } = await import('./outboxSync')

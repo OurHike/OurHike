@@ -137,6 +137,54 @@ async function authedFetch(path: string, init: RequestInit = {}): Promise<Respon
 export async function sendReport(item: OutboxItem): Promise<void> {
   await authedFetch('/reports', {
     method: 'POST',
-    body: JSON.stringify({ ...item.payload, authored_at: item.authoredAt }),
+    // `id` is an idempotency key, not decoration (#243). The server returns
+    // the stored report instead of filing a second one, which is what makes
+    // the outbox's "a resend is recognisably the same report" true rather
+    // than aspirational - the classic trail failure is a request that
+    // commits and whose response never arrives.
+    body: JSON.stringify({ ...item.payload, id: item.id, authored_at: item.authoredAt }),
   })
+}
+
+// Statuses that say "not now" rather than "not ever". Everything else in the
+// 4xx range is the server declining this exact report, and no amount of
+// signal changes that.
+//
+//   401  the token was rejected; Supabase refreshes in the background, so
+//        the next attempt may well carry a good one.
+//   408  the server timed out waiting - a network symptom wearing a 4xx.
+//   429  explicitly "later".
+const RETRYABLE_STATUSES = new Set([401, 408, 429])
+
+// Written for a hiker reading a phone on a ridge, not for a log. Each one
+// says what happened and, where there is one, what they could do about it.
+const PERMANENT_REASONS: Record<number, string> = {
+  // The single most likely cause, and it is fixable from their side: the
+  // server refuses an authored time more than five minutes in the future,
+  // so a phone whose clock runs fast has every report refused.
+  422: 'The server would not accept it. Check that your phone’s date and time are correct, then try again.',
+  409: 'The server already has a different report filed under this one’s id.',
+  403: 'This account is not allowed to file that report.',
+  413: 'It is too large to send.',
+}
+
+/**
+ * Whether a failed send is worth retrying: a sentence to show the hiker if
+ * it is not, or null if it is.
+ *
+ * The distinction exists because `flushOutbox` treated every failure the
+ * same, so a report the server would never accept sat in the queue saying
+ * "waiting to send" forever, indistinguishable from one waiting for signal
+ * (#243). Anything unrecognised is treated as retryable: keeping a report
+ * that might yet go is cheaper than stranding one that would have.
+ */
+export function permanentFailureReason(error: unknown): string | null {
+  if (!(error instanceof ApiError)) return null
+  if (error.status < 400 || error.status >= 500) return null
+  if (RETRYABLE_STATUSES.has(error.status)) return null
+
+  return (
+    PERMANENT_REASONS[error.status] ??
+    `The server would not accept it (error ${error.status}).`
+  )
 }

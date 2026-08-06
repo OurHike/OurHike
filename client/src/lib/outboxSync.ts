@@ -7,7 +7,7 @@
 
 import { useEffect } from 'react'
 import { flushOutbox, type FlushResult } from './outbox'
-import { accessToken, sendReport, API_CONFIGURED } from './api'
+import { accessToken, sendReport, permanentFailureReason, API_CONFIGURED } from './api'
 
 /**
  * The in-flight flush, if one is running.
@@ -36,7 +36,10 @@ async function run(): Promise<FlushResult | null> {
   // lost, and goes the moment one exists.
   if ((await accessToken()) === null) return null
 
-  return flushOutbox(sendReport)
+  // The one place transport knowledge (which HTTP statuses are hopeless)
+  // meets storage (what to do with a report that will never be accepted).
+  // Neither module imports the other; this introduces them.
+  return flushOutbox(sendReport, permanentFailureReason)
 }
 
 /**

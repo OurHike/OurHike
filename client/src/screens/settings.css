@@ -79,3 +79,51 @@
   display: flex;
   gap: var(--space-2, 8px);
 }
+
+/* A report the server refused for good (#243).
+ *
+ * Deliberately the same danger treatment as .settings__locked rather than a
+ * new one: both say "this will not resolve itself", and a second visual
+ * language for the same class of news is a second thing to learn. Louder
+ * than .settings__note, which is where "waiting to send" lives - the whole
+ * point is that these two are not the same news. */
+.more__stuck {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-3, 12px);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: 10px;
+}
+.more__stuck-heading {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--danger);
+}
+.more__stuck-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.more__stuck-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+.more__stuck-reason {
+  font-size: 13px;
+  color: var(--fg-1);
+}
+/* Wraps rather than shrinking: both buttons keep the 44px touch target,
+ * because this is read and tapped with a gloved thumb like everything else
+ * out here. */
+.more__stuck-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+}

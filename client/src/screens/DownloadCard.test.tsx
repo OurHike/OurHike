@@ -370,3 +370,41 @@ describe('checking what is already here (#197)', () => {
     expect(screen.queryByRole('button', { name: /download|resume|delete/i })).toBeNull()
   })
 })
+
+describe('a refused download, said plainly (#238)', () => {
+  // Unlike every failure above, nothing was kept: the bytes were the right
+  // length and the wrong map, so they were discarded before this card ever
+  // rendered. The one thing the button must not say is Resume.
+
+  it('says nothing was saved and the existing map is untouched, without hex', () => {
+    render(<DownloadCard {...PROPS} status={{ state: 'hash-mismatch' }} />)
+
+    expect(screen.getByText(/none of it was saved/i)).toBeInTheDocument()
+    expect(screen.getByText(/already on this phone is untouched/i)).toBeInTheDocument()
+    expect(screen.queryByText(/[0-9a-f]{8}/)).toBe(null)
+  })
+
+  it('offers to start over, never to resume', async () => {
+    const user = userEvent.setup()
+    render(<DownloadCard {...PROPS} status={{ state: 'hash-mismatch' }} />)
+
+    expect(screen.queryByRole('button', { name: /resume/i })).toBe(null)
+    await user.click(screen.getByRole('button', { name: /start the download over/i }))
+
+    expect(PROPS.onStart).toHaveBeenCalledTimes(1)
+    expect(PROPS.onResume).not.toHaveBeenCalled()
+  })
+
+  it('keeps the detail picker, since starting over is a fresh choice', () => {
+    render(<DownloadCard {...PROPS} status={{ state: 'hash-mismatch' }} />)
+
+    expect(screen.getAllByRole('radio')).toHaveLength(3)
+  })
+
+  it('renders no progress figures - there is no partial to describe', () => {
+    render(<DownloadCard {...PROPS} status={{ state: 'hash-mismatch' }} />)
+
+    expect(screen.queryByText(/stopped at/i)).toBe(null)
+    expect(screen.queryByRole('progressbar')).toBe(null)
+  })
+})

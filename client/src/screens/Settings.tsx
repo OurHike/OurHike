@@ -65,17 +65,21 @@ export interface SettingsProps {
    */
   dataSaver?: boolean
   /**
-   * Whether a finished corridor archive is on this phone.
+   * Whether a finished USGS raster archive is on this phone.
    *
-   * Passed in for the same reason as `dataSaver`, and it feeds the same one
-   * decision: with no archive, "downloaded only" has no download to draw and
-   * the map falls back to the live sheet - see lib/dataSaver.ts.
-   *
-   * It also words the download link at the foot of this screen, which is the
-   * same fact asked a second way: choose a download, or change the one you
-   * have.
+   * Passed in for the same reason as `dataSaver`, and it feeds one decision:
+   * with no archive, "downloaded only" has no download to draw and the map
+   * falls back to the live sheet - see lib/dataSaver.ts.
    */
   archiveDownloaded?: boolean
+  /**
+   * Whether ANY background sheet is on this phone, which words the download
+   * link at the foot of the screen: choose a download, or change the one you
+   * have. A different fact from `archiveDownloaded` since #237 - a hiker
+   * with the hiking sheet downloaded and no USGS raster has a download to
+   * change, and a link telling them to choose one would be wrong.
+   */
+  hasDownload?: boolean
   /**
    * Opens the download window, from the link at the foot of the screen.
    *
@@ -104,6 +108,7 @@ export function Settings({
   now = new Date(),
   dataSaver = false,
   archiveDownloaded = false,
+  hasDownload = false,
   onOpenDownloads,
 }: SettingsProps) {
   return (
@@ -262,7 +267,7 @@ export function Settings({
           scrolls looking for it, and not in the way of the rows that get used.
           The same component sits at the foot of the legend. */}
       {onOpenDownloads !== undefined && (
-        <DownloadsLink onOpen={onOpenDownloads} hasDownload={archiveDownloaded} />
+        <DownloadsLink onOpen={onOpenDownloads} hasDownload={hasDownload} />
       )}
     </main>
   )

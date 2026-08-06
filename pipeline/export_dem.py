@@ -17,11 +17,19 @@ repackages them smaller:
               MapLibre's raster-dem and maplibre-contour both decode via
               the browser's image decoder, which speaks WebP.
 
-Measured on real corridor tiles (2026-08-04, #184's research pass): the two
-together took z12/z13 tiles from ~120 KB to ~22-25 KB - a z0-13 corridor
-archive at ~450-500 MB where stock PNG packaging would be ~2.45 GB. The
-quantization step is a flag because 1 m steps can band hillshade on
-near-flat slopes; 0.5 m is the documented fallback, costing some savings.
+Measured at full scale (build-dem.yml run 1, 2026-08-05): the z0-13 corridor
+archive at 1 m quantization is 397.6 MB where stock PNG packaging would be
+~2.45 GB - 6.2x smaller.
+
+The quantization step defaults to 0.5 m, decided from evidence rather than
+caution (#186's banding check, 2026-08-06, spike_dem_banding.py): at 1 m,
+hillshade rendered from the tiles at their native z12-13 shows only diffuse
+sub-threshold speckle, but the client OVERZOOMS this DEM - terrain.ts caps
+it at z13 and displays it to z15 - and under 4x bilinear magnification the
+1 m staircase etches visibly across exactly the gentle valley floors the AT
+crosses (Cumberland Valley PA, Harlem Valley NY: 7.6% of hillshade pixels
+shifted >8/255). At 0.5 m the overzoomed render is indistinguishable from
+unquantized, at ~1.6x the bytes of 1 m.
 
 Quantization is FLOOR, not round: rounding blue up can carry past 255 into
 the green channel, and a carry bug here is a silently wrong elevation. A
@@ -61,7 +69,7 @@ MIN_ZOOM = 0
 # already overzooms its DEM (terrain.ts DEM_MAX_ZOOM=13, contours to 15).
 MAX_ZOOM = 13
 
-QUANTIZE_STEP_M = 1.0
+QUANTIZE_STEP_M = 0.5
 FETCH_WORKERS = 16
 FETCH_ATTEMPTS = 3
 
@@ -79,16 +87,23 @@ def quantize_unit(step_m: float) -> int:
     return unit
 
 
-def encode_tile(png_bytes: bytes, unit: int) -> bytes:
-    """One tile: decode terrarium PNG, floor blue to `unit`, lossless WebP.
+def floor_blue(rgb: np.ndarray, unit: int) -> np.ndarray:
+    """Floor the blue channel to `unit`, in place, and return the array.
 
     Only blue is touched - red and green carry whole meters and pass through
-    bit-exact, which is what keeps this step's error bound provable."""
-    rgb = np.asarray(Image.open(io.BytesIO(png_bytes)).convert("RGB")).copy()
+    bit-exact, which is what keeps this step's error bound provable. Shared
+    with spike_dem_banding.py so the spike measures the exact transform this
+    exporter ships, not a reimplementation of it."""
     if unit >= 256:
         rgb[:, :, 2] = 0
     else:
         rgb[:, :, 2] = (rgb[:, :, 2] // unit) * unit
+    return rgb
+
+
+def encode_tile(png_bytes: bytes, unit: int) -> bytes:
+    """One tile: decode terrarium PNG, floor blue to `unit`, lossless WebP."""
+    rgb = floor_blue(np.asarray(Image.open(io.BytesIO(png_bytes)).convert("RGB")).copy(), unit)
     buf = io.BytesIO()
     Image.fromarray(rgb).save(buf, format="WEBP", lossless=True)
     return buf.getvalue()

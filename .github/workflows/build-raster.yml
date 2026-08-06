@@ -271,6 +271,13 @@ jobs:
     if: inputs.publish && needs.compute-cells.outputs.partial == 'false'
     runs-on: ubuntu-latest
     environment: production
+    # Every writer of latest.json shares this group (publish-vector-data.yml,
+    # build-dem.yml, build-basemap.yml): publish() does a read-modify-write
+    # of the manifest, and two concurrent publishes could interleave and
+    # clobber each other's entries.
+    concurrency:
+      group: publish-data
+      cancel-in-progress: false
     timeout-minutes: 60
     defaults:
       run:

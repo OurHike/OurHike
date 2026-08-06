@@ -2,27 +2,31 @@
 //
 // The body of the download window, not a screen of its own since 2026-08-05 -
 // DownloadsDialog.tsx is the window it sits in and owns the title and the way
-// out. Kept as its own component because what it renders is the download and
+// out. Kept as its own component because what it renders is the downloads and
 // nothing else, which is what all of the tests below it are about.
 //
-// ONE DOWNLOAD, CHOSEN - NOT A LIST OF PIECES TO ASSEMBLE.
+// ONE CARD PER SHEET, CHOSEN - NOT A LIST OF ARCHIVES TO ASSEMBLE.
 //
 // The wireframe drew a per-section list with override sheets, roll-up totals
 // and mixed-detail seam messaging; ROADMAP.md Phase 2 retired that in favour
-// of one whole-corridor package, and none of it appears here. Since #192 the
-// map's background is several archives underneath - a raster sheet, and
-// (#185/#186) a vector basemap and a DEM - but that is a fact about storage,
-// not a choice to hand a hiker. What they choose is what the background IS:
-// its detail level here, and which sheet is drawn from it in the background
-// picker. The archives follow from the choice.
+// of one whole-corridor package. Since #192 a sheet is several archives
+// underneath - the hiking sheet is a vector basemap plus a DEM - but that is
+// a fact about storage, not a choice to hand a hiker: one tap takes a whole
+// sheet, and lib/backgroundStatus.ts folds its archives into the one status
+// its card shows.
 //
-// So this screen holds one card per downloadable THING, and today there is
-// exactly one: the background (lib/packages.ts). The trail's own data - the
-// centerline, the spurs, the POIs, the elevation profile - is deliberately
-// not here at all. It is small, it is what makes the app an app rather than a
-// map viewer, and it is fetched by default whenever it is missing
-// (lib/trailData.ts, App.tsx), so presenting it as a decision would be
-// offering someone a choice they have already been given.
+// What became plural in #237 is the SHEET, because that is a real choice:
+// the hiking sheet is the map this app draws and the download everyone gets,
+// and the USGS raster is the authoritative government picture some hikers
+// want beside it - at over a gigabyte, exactly the thing to never bundle
+// into a download nobody asked to grow. Each sheet is its own card, its own
+// size, its own delete; taking or dropping one never touches the other.
+//
+// The trail's own data - the centerline, the spurs, the POIs, the elevation
+// profile - is deliberately not here at all. It is small, it is what makes
+// the app an app rather than a map viewer, and it is fetched by default
+// whenever it is missing (lib/trailData.ts, App.tsx), so presenting it as a
+// decision would be offering someone a choice they have already been given.
 
 import { useEffect, useState } from 'react'
 import { formatBytes } from '../lib/formatBytes'
@@ -32,23 +36,31 @@ import { useDesktop } from '../lib/useDesktop'
 import { DownloadCard, type DownloadStatus } from './DownloadCard'
 import './downloads.css'
 
-export interface DownloadsProps {
-  /** The background, as one thing: its combined state across every archive it
-   *  is made of (lib/backgroundStatus.ts). */
-  status: DownloadStatus
+/** One sheet, ready to render: its combined state across every archive it is
+ *  made of (lib/backgroundStatus.ts), its whole cost, and its own buttons. */
+export interface SheetDownload {
+  id: string
   title: string
   summary: string
-  /** What the whole background will take, at the chosen detail. */
+  status: DownloadStatus
+  /** What the whole sheet will take, at the chosen detail. */
   sizeBytes: number
-  detailLevel: DetailLevel
-  /** Its own failure, if it has one. */
+  /** Its own failure, if it has one - never a sibling sheet's. */
   error?: string | null
-  /** What asking for durable storage came to - null while unanswered. */
-  persistence?: PersistenceState | null
-  onChangeDetail: (level: DetailLevel) => void
+  /** Present where the sheet has detail levels to choose between - the USGS
+   *  raster does (downloadDetail.ts). Absent renders no picker. */
+  detail?: { level: DetailLevel; onChange: (level: DetailLevel) => void }
   onStart: () => void
   onResume: () => void
   onDelete: () => void
+}
+
+export interface DownloadsProps {
+  /** Every sheet on offer, default first. */
+  sheets: readonly SheetDownload[]
+  /** What asking for durable storage came to - null while unanswered. One
+   *  answer for the origin, shown against each sheet holding bytes. */
+  persistence?: PersistenceState | null
 }
 
 /**
@@ -75,81 +87,88 @@ function useAvailableBytes(): number | null {
   return available
 }
 
-export function Downloads({
-  status,
-  title,
-  summary,
-  sizeBytes,
-  detailLevel,
-  error = null,
-  persistence = null,
-  onChangeDetail,
-  onStart,
-  onResume,
-  onDelete,
-}: DownloadsProps) {
+/** The states in which this sheet's next tap fetches its whole size - where
+ *  a too-small disk is worth a warning before the tap, not after. */
+function facingFullDownload(status: DownloadStatus): boolean {
+  return (
+    status.state === 'not-downloaded' ||
+    status.state === 'evicted' ||
+    status.state === 'hash-mismatch'
+  )
+}
+
+export function Downloads({ sheets, persistence = null }: DownloadsProps) {
   const isDesktop = useDesktop()
   const availableBytes = useAvailableBytes()
 
-  // Warned, never refused: estimate() is deliberately fuzzy (browsers round
-  // it against fingerprinting), and a hiker at a trailhead deciding to try
-  // anyway is making an informed call, which is the whole point.
-  //
-  // Against the size of the WHOLE background, since that is what one tap now
-  // brings down - not the size of whichever archive happens to be first.
-  const spaceTight =
-    (status.state === 'not-downloaded' || status.state === 'evicted') &&
-    availableBytes !== null &&
-    availableBytes < sizeBytes
-
   return (
     <div className="downloads">
-      {/* "Download 314 MB for offline use" means something different on a
-          machine that is not going up a mountain (WEBSITE.md §6). The download
-          is still offered - a laptop is a legitimate place to look at the map,
-          and someone may well be on a cabin connection - but the reason for it
-          is stated honestly rather than borrowed from the phone. */}
+      {/* "Download for offline use" means something different on a machine
+          that is not going up a mountain (WEBSITE.md §6). The download is
+          still offered - a laptop is a legitimate place to look at the map,
+          and someone may well be on a cabin connection - but the reason for
+          it is stated honestly rather than borrowed from the phone. */}
       <p className="downloads__scope">
         {isDesktop ? (
           <>
-            The whole trail, in one download. This browser has signal, so the map already
-            works without it &mdash; the download is for the phone you&rsquo;ll actually
-            be carrying.
+            The whole trail, downloaded. This browser has signal, so the map already works
+            without it &mdash; the download is for the phone you&rsquo;ll actually be
+            carrying.
           </>
         ) : (
           <>
-            The whole trail, in one download. Once it&rsquo;s on your phone, the map works
-            with no signal.
+            The whole trail, downloaded. Once it&rsquo;s on your phone, the map works with
+            no signal.
           </>
         )}
       </p>
 
-      {spaceTight && (
-        <p className="downloads__warning" role="status">
-          {status.state === 'evicted'
-            ? `Space still looks tight — about ${formatBytes(availableBytes ?? 0)} free against a ${formatBytes(
-                sizeBytes,
-              )} download. Freeing up space first makes another removal less likely.`
-            : `This phone reports about ${formatBytes(availableBytes ?? 0)} free for the app — the ${formatBytes(
-                sizeBytes,
-              )} download may not fit. A lighter detail level might, or free up some space first.`}
-        </p>
-      )}
+      {sheets.map((sheet) => {
+        // Warned, never refused: estimate() is deliberately fuzzy (browsers
+        // round it against fingerprinting), and a hiker at a trailhead
+        // deciding to try anyway is making an informed call, which is the
+        // whole point. Against this sheet's whole size, since that is what
+        // its one tap brings down.
+        const spaceTight =
+          facingFullDownload(sheet.status) &&
+          availableBytes !== null &&
+          availableBytes < sheet.sizeBytes
 
-      <DownloadCard
-        title={title}
-        summary={summary}
-        status={status}
-        error={error}
-        detail={{ level: detailLevel, onChange: onChangeDetail }}
-        persistence={persistence}
-        // The paragraph above has already named what is being downloaded, and
-        // with one card a heading would only say it a second time.
-        showHeading={false}
-        onStart={onStart}
-        onResume={onResume}
-        onDelete={onDelete}
-      />
+        return (
+          <div key={sheet.id}>
+            {spaceTight && (
+              <p className="downloads__warning" role="status">
+                {sheet.status.state === 'evicted'
+                  ? `Space still looks tight — about ${formatBytes(availableBytes ?? 0)} free against a ${formatBytes(
+                      sheet.sizeBytes,
+                    )} download. Freeing up space first makes another removal less likely.`
+                  : `This phone reports about ${formatBytes(availableBytes ?? 0)} free for the app — the ${formatBytes(
+                      sheet.sizeBytes,
+                    )} download may not fit. ${
+                      sheet.detail !== undefined
+                        ? 'A lighter detail level might, or free up some space first.'
+                        : 'Freeing up some space first would make room for it.'
+                    }`}
+              </p>
+            )}
+            <DownloadCard
+              title={sheet.title}
+              summary={sheet.summary}
+              status={sheet.status}
+              error={sheet.error ?? null}
+              detail={sheet.detail}
+              persistence={persistence}
+              // With one sheet the paragraph above has already named what is
+              // being downloaded; with two, each card must say which map it
+              // is about - #192's naming rule, live for the first time.
+              showHeading={sheets.length > 1}
+              onStart={sheet.onStart}
+              onResume={sheet.onResume}
+              onDelete={sheet.onDelete}
+            />
+          </div>
+        )
+      })}
     </div>
   )
 }

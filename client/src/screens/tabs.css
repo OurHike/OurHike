@@ -1,0 +1,63 @@
+/* ---------- Tab strip (Tabs.tsx) ---------- */
+
+.tabs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+}
+
+/* Scrolls sideways rather than wrapping. A wrapped strip changes height as
+   sheets are added, which moves the panel underneath it - and the number of
+   sheets is expected to grow. */
+.tabs__strip {
+  display: flex;
+  gap: var(--space-1, 4px);
+  padding: var(--space-1, 4px);
+  background: var(--bg-sunken);
+  border-radius: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tabs__strip::-webkit-scrollbar {
+  display: none;
+}
+
+.tabs__tab {
+  flex: 1 0 auto;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-3, 12px);
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--fg-2);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* The selected tab is a raised surface rather than only a coloured word:
+   colour alone would be the sole signal of which map is being talked about,
+   and this window is read in sunlight. */
+.tabs__tab[aria-selected='true'] {
+  background: var(--bg-surface);
+  color: var(--fg-1);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 12%);
+}
+
+.tabs__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+}
+
+/* The panel is focusable so a keyboard can reach content that holds nothing
+   focusable; it should not draw a focus ring when a click is what put focus
+   there. */
+.tabs__panel:focus {
+  outline: none;
+}
+.tabs__panel:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 4px;
+}

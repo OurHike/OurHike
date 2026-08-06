@@ -8,6 +8,11 @@
 // WIREFRAMES.md positions it bottom-left beneath the scale bar. USGS topo is
 // public domain; OpenStreetMap is ODbL and its credit is a licence condition,
 // so this element is not optional and is not behind a prop.
+//
+// What it names is map/credits.ts's decision and how it is laid out is
+// MapAttribution's; this screen only supplies the two facts neither of them
+// can see - which background is drawn, and whether the raster archive it may
+// be drawn over is actually on the phone.
 
 import { useCallback, useState } from 'react'
 import { StatusStrip } from './StatusStrip'
@@ -25,7 +30,8 @@ import { MapView } from '../map/MapView'
 import { HEALTHY, type LiveSourceHealth } from '../map/liveSourceHealth'
 import type { BackgroundOverride } from '../lib/dataSaver'
 import type { ArchiveZooms } from '../lib/archiveCoverage'
-import { attributionFor } from '../map/style'
+import { mapCredits } from '../map/credits'
+import { MapAttribution } from './MapAttribution'
 import type { ScaleUnits } from '../map/mapChrome'
 import type { ResolvedTheme } from '../lib/theme'
 import type { BackgroundSource } from '../lib/userPreferences'
@@ -51,6 +57,19 @@ export interface MapScreenProps {
   online: boolean
   hasGpsFix: boolean
   lastSyncedAt: Date | null
+
+  /**
+   * The closure a hiker is about to walk into, already rendered to one line
+   * (lib/closureBanner.ts), or null when the way ahead is clear.
+   *
+   * Null also covers "we could not check" — the shell cannot tell those apart
+   * from here and must not pretend to. What separates them is the status
+   * strip's sync age directly above, which is why this sits under it rather
+   * than anywhere else on the screen.
+   */
+  closureAhead?: string | null
+  /** "N serious warnings on your route", or null (lib/seriousWarnings.ts). */
+  warningsAhead?: string | null
 
   activeTab: TabId
   onSelectTab: (id: TabId) => void
@@ -138,6 +157,16 @@ export interface MapScreenProps {
   /** Whether a finished archive is on the phone, which words that link. */
   hasDownload?: boolean
   /**
+   * Whether the corridor RASTER archive specifically is finished and on this
+   * phone, which decides whether the corner credits USGS at all.
+   *
+   * Narrower than `hasDownload` above, and it has to be: that one is true when
+   * any sheet has landed, and the hiking sheet downloading without the USGS
+   * raster has been a normal phone since #237. Credit follows the tiles that
+   * are actually drawing, not the fact that some download happened.
+   */
+  hasRasterArchive?: boolean
+  /**
    * Whether the view is zoomed out past what the download covers (#216).
    *
    * Reported by the shell rather than worked out here, for the same reason
@@ -163,6 +192,8 @@ export function MapScreen({
   online,
   hasGpsFix,
   lastSyncedAt,
+  closureAhead = null,
+  warningsAhead = null,
   activeTab,
   onSelectTab,
   onOpenLegend,
@@ -196,6 +227,7 @@ export function MapScreen({
   onChangeBackground,
   onOpenDownloads,
   hasDownload = false,
+  hasRasterArchive = false,
   belowArchiveZoom = false,
   archiveZooms = null,
 }: MapScreenProps) {
@@ -243,6 +275,33 @@ export function MapScreen({
           belowArchiveZoom={belowArchiveZoom}
         />
 
+        {/* Between the status strip and the header, and that placement is the
+            decision rather than a layout accident (#232).
+
+            Above the map because a hiker who is walking has not opened
+            anything - a closure that only appears on tapping a red band is a
+            closure they walk into. Below the sync age because these two are
+            read together: the age is what says whether this line is current,
+            and an empty space here means "clear" only as far as that age.
+
+            role="alert" for the same reason More.tsx's stuck reports use it -
+            this is not ambient status, it is a thing that changes what
+            someone does next. */}
+        {(closureAhead !== null || warningsAhead !== null) && (
+          <div className="map-screen__alerts" role="alert">
+            {closureAhead !== null && (
+              <p className="map-screen__alert map-screen__alert--closure">
+                {closureAhead}
+              </p>
+            )}
+            {warningsAhead !== null && (
+              <p className="map-screen__alert map-screen__alert--warning">
+                {warningsAhead}
+              </p>
+            )}
+          </div>
+        )}
+
         <Header
           trailName={trailName}
           trailLogo={trailLogo}
@@ -282,7 +341,13 @@ export function MapScreen({
               onMapReady={handleMapReady}
               onLiveSourceHealth={setLiveSources}
             />
-            <p className="map-screen__attribution">{attributionFor(background)}</p>
+            {/* Inline above the desktop breakpoint, where the whole list fits
+                on one line - the same `isDesktop` the legend uses, so the two
+                cannot disagree about how much room this layout has. */}
+            <MapAttribution
+              credits={mapCredits({ background, hasRasterArchive })}
+              inline={isDesktop}
+            />
 
             {/* Inside the canvas, and not one wrapper further out: the card
                 positions itself in canvas pixels (poiCardPlacement.ts), so it

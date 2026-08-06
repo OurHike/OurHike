@@ -86,6 +86,17 @@ function requested() {
   return vi.mocked(fetch).mock.calls.map((c) => String(c[0]))
 }
 
+/**
+ * The USGS sheet's card, behind its own tab in the download window (#298).
+ *
+ * The sheets are tabs rather than a stack, so the card a test wants is not on
+ * screen until its tab is chosen - which is exactly what a hiker does.
+ */
+async function usgsSheetCard(user: { click: (element: Element) => Promise<void> }) {
+  await user.click(await screen.findByRole('tab', { name: /usgs sheet/i }))
+  return screen.findByRole('region', { name: /usgs sheet/i })
+}
+
 describe('trail data on a phone that has downloaded nothing', () => {
   it('fetches the trail lines without waiting for anyone to tap Download', async () => {
     // The reported gap: the centerline only appeared after the corridor
@@ -213,7 +224,7 @@ describe('a refused trail-data download, told apart by type (#238)', () => {
     await user.click(await screen.findByRole('button', { name: /legend/i }))
     await user.click(await screen.findByRole('button', { name: /download/i }))
     await screen.findByRole('dialog', { name: /offline map/i })
-    const usgsCard = await screen.findByRole('region', { name: /usgs sheet/i })
+    const usgsCard = await usgsSheetCard(user)
     await user.click(within(usgsCard).getByRole('button', { name: /download the map/i }))
 
     const notice = await screen.findByText(/none of it was saved/i)

@@ -68,15 +68,15 @@ import { buildPoiLayer, buildPoiSource, POI_SOURCE_ID } from './poiLayers'
 import type { BackgroundSource } from '../lib/userPreferences'
 import {
   BUNDLED_GLYPHS,
-  LIVE_TOPO_ATTRIBUTION,
+  attachSheetTheme,
   liveTopoLayers,
   liveTopoSources,
-  attachSheetTheme,
 } from './liveTopo'
+import { OSM_CREDIT, USGS_TOPO_CREDIT } from './credits'
 import { whenStyleReady } from './styleReady'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import type { ResolvedTheme } from '../lib/theme'
-import { ELEVATION_ATTRIBUTION, type ContourUnits, type TerrainUrls } from './terrain'
+import type { ContourUnits, TerrainUrls } from './terrain'
 
 export const TOPO_SOURCE_ID = 'usgs-topo'
 export const TRAILS_SOURCE_ID = 'trails'
@@ -224,31 +224,6 @@ export function attachMapTheme(map: MapLibreMap, theme: ResolvedTheme): () => vo
     detachBase()
     detachSheet()
   }
-}
-
-// ODbL requires a visible "© OpenStreetMap". WIREFRAMES.md's map-corner mockup
-// shows the shorthand "© OSM", but its own Assets section states the full form
-// is required - the abbreviation does not satisfy the licence, so the full
-// form is what ships.
-export const ATTRIBUTION = 'USGS US Topo · © OpenStreetMap contributors'
-
-/**
- * What the corner has to say once the live background is on.
- *
- * Every clause is a licence or terms condition rather than a courtesy - ODbL
- * for the OSM data, OpenFreeMap's own terms for hosting it, and the AWS
- * Terrain Tiles attribution requirement for the elevation the hillshade and
- * contours are derived from. Composed from each module's own constant so a
- * source cannot be added in one file and go uncredited in another.
- */
-export const LIVE_ATTRIBUTION = [
-  ATTRIBUTION,
-  LIVE_TOPO_ATTRIBUTION,
-  ELEVATION_ATTRIBUTION,
-].join(' · ')
-
-export function attributionFor(background: BackgroundSource): string {
-  return background === 'hiking_topo_live' ? LIVE_ATTRIBUTION : ATTRIBUTION
 }
 
 /** The pipeline's own key for ATC's trail-centerline feed (pipeline/sources.json). */
@@ -476,12 +451,28 @@ export function buildMapStyle({
         // CAMERA_ZOOM_TILE_OFFSET. Old archives already on phones gain the
         // same sharpness: the declaration is the client's, not the file's.
         tileSize: 256,
-        attribution: ATTRIBUTION,
+        // This source alone is the USGS survey. It used to carry the composed
+        // "USGS US Topo · © OpenStreetMap contributors" that every other
+        // source carried too, which made the corner's job impossible: three
+        // sources declaring one string cannot say which of them is drawing.
+        attribution: USGS_TOPO_CREDIT,
       },
       [TRAILS_SOURCE_ID]: {
         type: 'geojson',
         data: trailsUrl,
-        attribution: ATTRIBUTION,
+        // What is dropped here is the "USGS US Topo" half of that string: no
+        // USGS survey is in this source, and a credit that says otherwise is
+        // the thing this change exists to stop.
+        //
+        // What is NOT added is an ATC credit, and that gap is deliberate
+        // rather than an oversight. The trail geometry is ATC's, and ATC's
+        // redistribution and attribution terms are one of the two unresolved
+        // data-terms questions this project already carries (#98,
+        // features/SOURCE_REGISTRY.md) - there is no agreed attribution string
+        // to render, and inventing one would be a claim about a permission
+        // nobody has confirmed. It is a real hole, it predates this file, and
+        // it is not closed by guessing.
+        attribution: OSM_CREDIT,
         // Never simplify a trail away. MapLibre tiles GeoJSON through
         // geojson-vt, whose per-zoom simplification does two things under
         // this one knob: it thins vertices within a line (harmless - the
@@ -506,14 +497,15 @@ export function buildMapStyle({
         tolerance: 0,
       },
       // Declared empty and filled in later - see buildPoiSource. Attributed
-      // like the other two: the POIs are ATC and OpenStreetMap-derived, and a
-      // source with no attribution is one release away from shipping
-      // uncredited.
-      [POI_SOURCE_ID]: { ...buildPoiSource(), attribution: ATTRIBUTION },
+      // like the trails, and for the same reasons: the POIs are ATC and
+      // OpenStreetMap-derived, only one of those two has a settled credit to
+      // render, and a source with no attribution at all is one release away
+      // from shipping uncredited.
+      [POI_SOURCE_ID]: { ...buildPoiSource(), attribution: OSM_CREDIT },
       // Each of these carries its own credit (OpenFreeMap's terms, the AWS
-      // Terrain Tiles requirement) rather than the composed line - a source
-      // should name the data IT is, and attributionFor() is what assembles the
-      // corner out of whichever ones are actually in the style.
+      // Terrain Tiles requirement), like the three above - a source names the
+      // data IT is, and map/credits.ts assembles the corner out of whichever
+      // of them are actually on screen.
       ...(liveOptions === null ? {} : liveTopoSources(liveOptions)),
     },
     layers: [

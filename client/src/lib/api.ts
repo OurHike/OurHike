@@ -18,6 +18,8 @@
 
 import { getAuthClient } from './supabase'
 import type { OutboxItem } from './outbox'
+import type { BackendReportStatus } from './reportStatus'
+import type { ClosureReason, ClosureStatus } from './closureBanner'
 
 const RAW_BASE: string = import.meta.env.VITE_API_BASE_URL ?? ''
 
@@ -120,6 +122,91 @@ async function authedFetch(path: string, init: RequestInit = {}): Promise<Respon
       Authorization: `Bearer ${token}`,
     },
   })
+}
+
+/**
+ * Like `apiFetch`, but attaches the token only if there happens to be one.
+ *
+ * A third stance, and the reason reads could not just borrow `authedFetch`
+ * (#286). That one refuses without a token, which is right for a write the
+ * server would refuse anyway. A read must not: browsing has never needed an
+ * account in this app, and `list_reports` is built to answer an anonymous
+ * caller with the public set.
+ *
+ * But the token still goes when it exists, and that is not a nicety - it is
+ * what lets a reporter see their own unmoderated report. Without it someone's
+ * own report vanishes from the app between submitting it and a moderator
+ * reaching it, which is precisely what "Waiting" on the More screen is
+ * describing.
+ */
+async function readFetch(path: string): Promise<Response> {
+  const token = await accessToken()
+
+  return apiFetch(path, {
+    headers: token === null ? {} : { Authorization: `Bearer ${token}` },
+  })
+}
+
+/**
+ * What `GET /reports` returns, limited to the fields this app reads.
+ *
+ * The backend sends more (`received_at`, `follow_up`, `club_id` and the rest
+ * of `ReportOut`); declaring only what is consumed keeps this honest about
+ * what the client actually depends on rather than mirroring a schema it does
+ * not use.
+ *
+ * `mile` is deliberately absent, because the backend does not send one - see
+ * #244. Anything wanting to place a report along the trail has to derive it.
+ */
+export interface ReportSummary {
+  id: string
+  type: string
+  reporter_type: string
+  status: BackendReportStatus
+  severity: 'normal' | 'serious'
+  lat: number | null
+  lon: number | null
+  poi_id: string | null
+  note: string | null
+  /** ISO 8601, UTC-designated - the server stamps the `Z` on the way out. */
+  timestamp: string
+}
+
+/**
+ * Reports visible to this caller: public and moderated, plus their own at any
+ * status when a token went with the request.
+ *
+ * **Throws rather than returning `[]` on failure, and that is the point.** An
+ * empty list and a failed fetch draw the same map and mean opposite things on
+ * the ground - the wrong one of those tells a hiker a closed stretch of trail
+ * is open. The caller has to be able to say it does not know.
+ */
+export async function fetchReports(): Promise<ReportSummary[]> {
+  const response = await readFetch('/reports')
+  return (await response.json()) as ReportSummary[]
+}
+
+/** What `GET /closures` returns, limited to the fields this app reads. */
+export interface ClosureSummary {
+  id: string
+  reason_type: ClosureReason
+  note: string | null
+  status: ClosureStatus
+  start_mile_marker: number
+  end_mile_marker: number
+  /** ISO 8601, UTC-designated. */
+  reported_at: string
+  verified_at: string | null
+}
+
+/**
+ * Verified closures. Same throw-on-failure rule as `fetchReports`, and it
+ * matters more here: a closure is the one thing on this map whose absence a
+ * hiker would act on by walking into it.
+ */
+export async function fetchClosures(): Promise<ClosureSummary[]> {
+  const response = await readFetch('/closures')
+  return (await response.json()) as ClosureSummary[]
 }
 
 /**

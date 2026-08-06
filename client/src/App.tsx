@@ -44,7 +44,11 @@ import { TabBar } from './chrome/TabBar'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import type { TabId } from './chrome/tabs'
 import { Downloads } from './screens/Downloads'
-import { hikingDetailOptions, rasterDetailOptions } from './screens/DetailPicker'
+import {
+  hikingDetailOptions,
+  noDetailOptions,
+  rasterDetailOptions,
+} from './screens/DetailPicker'
 import { DownloadsDialog } from './screens/DownloadsDialog'
 import { More, type StuckReport } from './screens/More'
 import { InstallPrompt } from './screens/InstallPrompt'
@@ -87,6 +91,7 @@ import { useDataSaver } from './lib/useDataSaver'
 import { backgroundOverride, effectiveBackground } from './lib/dataSaver'
 import { useFinePointer } from './lib/useFinePointer'
 import { useTheme } from './lib/useTheme'
+import { useDesktop } from './lib/useDesktop'
 import { useInstallPrompt } from './lib/useInstallPrompt'
 import { useAppUpdate } from './lib/useAppUpdate'
 import { useGeolocation } from './lib/useGeolocation'
@@ -119,6 +124,15 @@ import {
 } from './lib/auth'
 import { listQueued, removeQueued, retryQueued, type FlushResult } from './lib/outbox'
 import { useOutboxSync, syncOutbox } from './lib/outboxSync'
+import {
+  API_CONFIGURED,
+  fetchClosures,
+  fetchReports,
+  type ClosureSummary,
+  type ReportSummary,
+} from './lib/api'
+import { nearestClosureBanner } from './lib/closureBanner'
+import { routeBannerText, warningsOnRoute } from './lib/seriousWarnings'
 import type { BoundingBox, MapPoint } from './lib/legendContents'
 import type { SearchablePoi } from './lib/searchPoi'
 import './App.css'
@@ -245,6 +259,13 @@ function App() {
   const account = useAccount()
   const [queuedCount, setQueuedCount] = useState(0)
   const [stuckReports, setStuckReports] = useState<StuckReport[]>([])
+  // Null means "we have not managed to ask", not "there are none" - the two
+  // draw the same map and mean opposite things on the ground (#286). Nothing
+  // renders a reassuring absence from either: a clear header is what a hiker
+  // sees when the way ahead is clear AND when we could not check, and the
+  // status strip's sync age is what tells those apart (lib/syncAge.ts).
+  const [closures, setClosures] = useState<ClosureSummary[] | null>(null)
+  const [reports, setReports] = useState<ReportSummary[] | null>(null)
   // Was a state with no setter until #231 - nothing ever synced, so the status
   // strip said "never synced" on every device forever, which was true and
   // looked like a bug in the strip rather than a missing feature.
@@ -274,13 +295,17 @@ function App() {
   const finePointer = useFinePointer()
   // Resolves 'auto' against the OS, writes `data-theme` for the stylesheets,
   // and hands back what actually got drawn - which the map needs as a prop,
-  // because a WebGL canvas cannot read a CSS variable (map/style.ts's attachMapTheme).
+  // because a WebGL canvas cannot read a CSS variable (map/style.ts's
+  // attachMapTheme).
   //
   // Called above the `preferencesLoaded` gate below, like every other hook
   // here: it runs on DEFAULT_PREFERENCES for the tick before the phone's own
   // answer lands, and that default is 'auto' - the same thing main.tsx already
   // stamped on the document before React started.
   const resolvedTheme = useTheme(preferences.theme)
+  // Whether this is the big-screen layout - and, for the download, whether the
+  // machine is one that goes up a mountain. See handleOnboardingComplete.
+  const isDesktop = useDesktop()
   const install = useInstallPrompt()
   useAppUpdate()
 
@@ -331,6 +356,48 @@ function App() {
   )
 
   useOutboxSync(online && account !== null, handleSynced)
+
+  // The map's own reads (#232), separate from the outbox flush above and
+  // deliberately not gated on an account: browsing has never needed one, and
+  // the reads send a token only if there is one (lib/api.ts).
+  //
+  // Both settle independently. A closures read that succeeds while reports
+  // fails should still warn about the closure - pairing them would mean one
+  // failure silencing both, and closures are the half a hiker walks into.
+  useEffect(() => {
+    if (!online || !API_CONFIGURED) return
+
+    let cancelled = false
+    // A read reaching the server IS a sync, and the status strip's age is the
+    // only thing distinguishing "nothing reported here" from "we could not
+    // ask" - so it has to move when the map data does, not only when a
+    // report goes out.
+    const markSynced = () => {
+      if (!cancelled) setLastSyncedAt(new Date())
+    }
+
+    // A read that throws leaves its state null and says nothing else. Being
+    // unable to reach the backend is the ordinary condition out here, not an
+    // error to interrupt someone over - and null is already the honest record
+    // of it, which the sync age above turns into something a hiker can read.
+    const leaveUnknown = () => undefined
+
+    void fetchClosures().then((next) => {
+      if (cancelled) return
+      setClosures(next)
+      markSynced()
+    }, leaveUnknown)
+
+    void fetchReports().then((next) => {
+      if (cancelled) return
+      setReports(next)
+      markSynced()
+    }, leaveUnknown)
+
+    return () => {
+      cancelled = true
+    }
+  }, [online])
 
   /**
    * Clears the refusal and sends, now - the escape hatch for a cause the
@@ -567,6 +634,63 @@ function App() {
     )
   }, [fix])
 
+  /**
+   * The closure a hiker is about to walk into, in one line, or null.
+   *
+   * Needs all three of a mile, a direction and a closure list, and says
+   * nothing without them - "ahead" is meaningless before the app knows which
+   * way someone is walking, and a NOBO/SOBO mix-up would stay silent about
+   * exactly the closure being walked into (lib/closureBanner.ts).
+   */
+  const closureAhead = useMemo(() => {
+    // `direction.direction` stays undefined until enough movement has happened
+    // to be sure (lib/hikeDirection.ts), and that is the case this guard is
+    // really for: a guess would put a NOBO hiker's closure behind them and say
+    // nothing about the one they are walking into.
+    const heading = direction?.direction
+    if (closures === null || fix === null || heading === undefined) return null
+    return nearestClosureBanner(closures, fix.mile, heading)
+  }, [closures, fix, direction])
+
+  /**
+   * Serious warnings between here and the end of the trail, counted.
+   *
+   * The mile comes from `locateOnTrail`, not the server - a report carries
+   * lat/lon and no mile (#244), and this is the same derivation
+   * `searchablePois` below already does for POIs.
+   *
+   * `severity` filtering is `warningsOnRoute`'s job, so a report that a
+   * moderator has not escalated cannot reach this line.
+   */
+  const warningsAhead = useMemo(() => {
+    const heading = direction?.direction
+    if (
+      reports === null ||
+      trailIndex === null ||
+      fix === null ||
+      heading === undefined
+    ) {
+      return null
+    }
+
+    const placed = reports.flatMap((report) => {
+      if (report.lat === null || report.lon === null) return []
+      const at = locateOnTrail(trailIndex, { lon: report.lon, lat: report.lat })
+      if (at === null) return []
+      return [
+        { id: report.id, type: report.type, severity: report.severity, mile: at.mile },
+      ]
+    })
+
+    // To the end of the trail in the direction of travel: a warning behind
+    // someone is not on their route, and the terminus is as far as "ahead"
+    // can go.
+    const routeEnd = heading === 'NOBO' ? trailIndex.totalMiles : 0
+    return routeBannerText(
+      warningsOnRoute(placed, { fromMile: fix.mile, toMile: routeEnd }).length,
+    )
+  }, [reports, trailIndex, fix, direction])
+
   // Built from the POIs alone. The mile is added where the centerline index
   // exists and simply omitted where it does not - searching for a shelter by
   // name needs no geometry, and gating the whole list on the index meant a
@@ -741,9 +865,24 @@ function App() {
       // choice just made is a download that has not started, so the window is
       // still what someone leaving onboarding needs; what has changed is that
       // it no longer costs them the first sight of the map to see it.
-      openDownloads()
+      //
+      // NOT ON A DESKTOP (WEBSITE.md §6, "Download UX"). A laptop has signal,
+      // and the assumption worth making about it is the one it is almost
+      // always right about: this connection is not being metered by the mile.
+      // The live sheet is already the default background, so a browser that
+      // never opens this window still gets the whole trail drawn - the
+      // download buys it nothing it does not already have, and 314 MB is a
+      // real cost to put in front of someone before they have seen the map.
+      //
+      // It is withheld, not removed, and that distinction is the whole of the
+      // rule. The legend is a permanent panel above 900px, and DownloadsLink
+      // sits in it, so "Choose what to download" is on screen the entire time
+      // - more visible than the phone's, where the legend has to be opened
+      // first. Someone setting up a cabin machine, or a laptop that is coming
+      // along, is one click away and was never told no.
+      if (!isDesktop) openDownloads()
     },
-    [updatePreferences, openDownloads],
+    [updatePreferences, openDownloads, isDesktop],
   )
 
   /** The trail's own data - centerline, spurs, POIs, elevation profile - on
@@ -1046,7 +1185,14 @@ function App() {
                         hiking_detail_level: level as HikingDetailLevel,
                       }),
                   }
-                : undefined,
+                : // A sheet nobody has wired a dial for yet: the ladder,
+                  // greyed, rather than a card shaped unlike its neighbours
+                  // (#298).
+                  {
+                    options: noDetailOptions(),
+                    value: '',
+                    onChange: () => undefined,
+                  },
           onStart: () => void handleDownloadSheet(sheet),
           onResume: () => void handleResumeSheet(sheet),
           onDelete: () => void handleDeleteSheet(sheet),
@@ -1139,6 +1285,10 @@ function App() {
           // gone - which is why it is carried, and not why it is given room.
           onOpenDownloads={openDownloads}
           hasDownload={anySheetDownloaded}
+          // Narrower than the line above on purpose: the credit corner names
+          // the USGS survey only while there are USGS tiles on the phone to
+          // draw, and a hiking-sheet-only download has none.
+          hasRasterArchive={archiveDownloaded}
           belowArchiveZoom={belowArchiveZoom}
           // For the opening camera only - MapView keeps it out of the zooms
           // the download has no tiles for.
@@ -1147,6 +1297,8 @@ function App() {
           trailLogo={TRAIL_LOGO}
           mile={fix?.mile}
           direction={direction?.direction}
+          closureAhead={closureAhead}
+          warningsAhead={warningsAhead}
           time={now}
           online={online}
           hasGpsFix={gps.status === 'located'}

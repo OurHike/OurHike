@@ -55,6 +55,7 @@ import type {
 } from '@maplibre/maplibre-gl-style-spec'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { whenStyleReady } from './styleReady'
+import { OPENFREEMAP_CREDIT, OSM_CREDIT } from './credits'
 import type { ResolvedTheme } from '../lib/theme'
 import {
   CONTOUR_ELEVATION_KEY,
@@ -112,8 +113,16 @@ export const BUNDLED_GLYPHS = `${import.meta.env.BASE_URL}glyphs/{fontstack}/{ra
 
 export const OSM_SOURCE_ID = 'osm'
 
-export const LIVE_TOPO_ATTRIBUTION =
-  'OpenFreeMap © OpenMapTiles · © OpenStreetMap contributors'
+/**
+ * What the vector source declares: OpenFreeMap's terms for the hosting and
+ * ODbL for the data underneath it, both of which this one source brings.
+ *
+ * Composed from credits.ts's atoms rather than spelled out, because the corner
+ * shows those atoms one per line and a second spelling of either would be a
+ * credit the deduping could not see - which is how "© OpenStreetMap
+ * contributors" came to be printed twice in the first place.
+ */
+export const LIVE_TOPO_ATTRIBUTION = `${OPENFREEMAP_CREDIT} · ${OSM_CREDIT}`
 
 /**
  * One font, varied by size, colour and halo rather than by weight.

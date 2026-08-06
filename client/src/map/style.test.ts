@@ -5,9 +5,9 @@ import {
   validateStyleMin,
 } from '@maplibre/maplibre-gl-style-spec'
 import { BLAZE_MATCH_EXPRESSION } from '../lib/blaze'
+import { OSM_CREDIT, USGS_TOPO_CREDIT } from './credits'
 import {
   buildMapStyle,
-  ATTRIBUTION,
   TOPO_SOURCE_ID,
   TRAILS_SOURCE_ID,
   BLAZE_LAYER_ID,
@@ -324,16 +324,28 @@ describe('buildMapStyle', () => {
     // WIREFRAMES.md's map-corner copy shows the "© OSM" shorthand, but its own
     // Assets section requires a visible "© OpenStreetMap" - the abbreviation
     // does not satisfy the licence. Full form wins.
-    expect(ATTRIBUTION).toContain('© OpenStreetMap')
-    expect(ATTRIBUTION).toContain('USGS US Topo')
+    expect(OSM_CREDIT).toContain('© OpenStreetMap')
   })
 
-  it('attaches that attribution to every data source, so none can ship uncredited', () => {
+  it('gives every data source an attribution, so none can ship uncredited', () => {
     const sources = style().sources as Record<string, Record<string, unknown>>
 
     for (const id of [TOPO_SOURCE_ID, TRAILS_SOURCE_ID, POI_SOURCE_ID]) {
-      expect(sources[id].attribution).toBe(ATTRIBUTION)
+      expect(sources[id].attribution).toBeTruthy()
     }
+  })
+
+  it('credits each source for the data IT is, not for the whole app', () => {
+    // All three used to carry one composed "USGS US Topo · © OpenStreetMap
+    // contributors", which made the corner's job impossible: three sources
+    // declaring one string cannot say which of them is drawing, so the corner
+    // had to guess and guessed wrong (map/credits.ts). The raster IS the USGS
+    // survey; the trail lines and the pins contain none of it.
+    const sources = style().sources as Record<string, Record<string, unknown>>
+
+    expect(sources[TOPO_SOURCE_ID].attribution).toBe(USGS_TOPO_CREDIT)
+    expect(sources[TRAILS_SOURCE_ID].attribution).not.toContain(USGS_TOPO_CREDIT)
+    expect(sources[POI_SOURCE_ID].attribution).not.toContain(USGS_TOPO_CREDIT)
   })
 })
 

@@ -259,7 +259,9 @@ An empty array or a permission error is what you want. Rows are the failure.
 
 It matters at all because email/password is a real sign-in path here — `VITE_AUTH_PROVIDERS` defaults to `google,email`, and `screens/EmailSignIn.tsx` offers a password as the fallback behind its magic-link default. Without the check, an account secured by a password reused from a breached site is exactly as reachable as that password, and these accounts can file `bad_hikers` reports about named people.
 
-**The mitigation that costs nothing is to have no passwords**, not to buy the check: magic-link email plus Google covers every case the password path does. See [#279](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/279) for the argument and what it would remove. Until that is decided, this is a known accepted risk rather than a gap nobody noticed.
+**The mitigation that costs nothing is to have no passwords**, not to buy the check — and specifically an emailed **6-digit code**, not the magic link already sent. `EmailSignIn.tsx` keeps the password because a link "means leaving for an email client and coming back, and on a ridge with one bar that round trip is the fragile part"; that is an argument against links, not for passwords. A typed code has the one property the password was kept for — finishing without leaving the app — with nothing to remember, leak or reuse. It also sidesteps a real PWA mechanic: a link tapped in a mail client opens the browser, which on iOS may not share storage with the installed app, so the session can land where the app cannot see it.
+
+See [#279](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/279) — `verifyOtp` is already in the installed SDK, so this is an email-template change plus one field, and it deletes more code than it adds. Until it is decided, the paywalled check is a known accepted risk rather than a gap nobody noticed.
 
 ---
 

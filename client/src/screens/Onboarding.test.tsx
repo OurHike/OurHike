@@ -66,8 +66,8 @@ describe('Onboarding', () => {
     render(<Onboarding {...PROPS} />)
     await advance(user, 1)
 
-    expect(screen.getByText(/64 MB/)).toBeInTheDocument()
-    expect(screen.getByText(/314 MB/)).toBeInTheDocument()
+    expect(screen.getByText(/68\.9 MB/)).toBeInTheDocument()
+    expect(screen.getByText(/300\.3 MB/)).toBeInTheDocument()
     expect(screen.getByText(/1\.18 GB/)).toBeInTheDocument()
   })
 

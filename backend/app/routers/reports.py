@@ -160,8 +160,8 @@ def create_report(
     now = utc_now()
     authored = payload.authored_at
     if authored is not None and authored.tzinfo is not None:
-        # Stored naive-UTC throughout; duckdb-engine cannot marshal
-        # TIMESTAMPTZ without pytz (see app/models/profile.py).
+        # Stored naive-UTC throughout (see app/models/profile.py), so an
+        # aware value is converted to UTC rather than stored as it arrived.
         authored = authored.astimezone(timezone.utc).replace(tzinfo=None)
 
     report = Report(

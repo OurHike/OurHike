@@ -228,6 +228,18 @@ export async function loadTrailData(): Promise<TrailData | null> {
   return { trails, pois, spurs, elevation }
 }
 
+/**
+ * Removes the trail's own data.
+ *
+ * Deliberately NOT part of "delete the map" since #192: the background is
+ * what a hiker chooses, downloads and reclaims, and this is what the trail
+ * is. Taking these few megabytes along with several hundred would strip the
+ * trail line off the screen until the next launch with signal fetched it
+ * straight back - the app downloads it by default wherever it is missing.
+ *
+ * Kept because the store owns the operation and switching trails will want
+ * it. Nothing in the app calls it today.
+ */
 export async function deleteTrailData(): Promise<void> {
   await del(TRAILS_BLOB_KEY)
   await del(POIS_KEY)

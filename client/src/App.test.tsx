@@ -160,6 +160,57 @@ describe('App shell', () => {
     expect(await screen.findByText('What OurHike is')).toBeInTheDocument()
   })
 
+  it('draws the map behind the first-run steps, rather than describing one', async () => {
+    render(<App />)
+
+    await screen.findByText('What OurHike is')
+
+    // Every step is a claim about the map. It is behind them from the first
+    // frame, so the claims are shown rather than only asserted.
+    await waitFor(() => expect(MockMap.live.length).toBe(1))
+  })
+
+  it('opens that map on the whole corridor, the same view the map screen opens on', async () => {
+    render(<App />)
+
+    await screen.findByText('What OurHike is')
+    const map = await liveMap()
+
+    expect(map.options.bounds).toEqual([
+      [-84.73, 34.2],
+      [-68.3, 46.34],
+    ])
+  })
+
+  it('keeps the first-run map inert, so nothing behind the steps can be reached', async () => {
+    render(<App />)
+
+    await screen.findByText('What OurHike is')
+    await liveMap()
+
+    // Not only about stray taps. MapView attaches a locate control, and
+    // reaching it would raise the OS location prompt before the step whose
+    // whole job is to explain why we are asking. `inert` also keeps the canvas
+    // out of the tab order and its region out of the accessibility tree.
+    const backdrop = document.querySelector('.app__entry-map')
+    expect(backdrop).not.toBe(null)
+    expect(backdrop).toHaveAttribute('inert')
+    expect(backdrop).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.queryByRole('region', { name: /trail map/i })).toBe(null)
+  })
+
+  it('hands the map over cleanly when the steps finish - one map, not two', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await completeOnboarding(user)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    // The backdrop is torn down as the map screen builds its own. Two live
+    // maps would be two WebGL contexts and two sets of tile reads.
+    await waitFor(() => expect(MockMap.live).toHaveLength(1))
+  })
+
   it('does not show onboarding again once it has been completed', async () => {
     returningHiker()
     render(<App />)

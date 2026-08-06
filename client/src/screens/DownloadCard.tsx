@@ -27,9 +27,8 @@
 // place.
 
 import { formatBytes, formatBytesLive } from '../lib/formatBytes'
-import type { DetailLevel } from '../lib/downloadDetail'
 import type { PersistenceState } from '../lib/storageHealth'
-import { DetailPicker } from './DetailPicker'
+import { DetailPicker, type DetailOption } from './DetailPicker'
 
 export type DownloadStatus =
   | { state: 'not-downloaded' }
@@ -62,9 +61,15 @@ export interface DownloadCardProps {
   /** This download's own failure, in its own card. A shared notice could
    *  only ever say "a download failed" without saying which one. */
   error?: string | null
-  /** Present where the download has detail levels to choose between - the
-   *  background does (downloadDetail.ts). Absent renders no picker. */
-  detail?: { level: DetailLevel; onChange: (level: DetailLevel) => void }
+  /** Present where the download has levels to choose between - both sheets
+   *  do now, with different level sets (DetailPicker's builders). Absent
+   *  renders no picker. `name` keeps the two cards' radio groups apart. */
+  detail?: {
+    options: readonly DetailOption[]
+    value: string
+    onChange: (id: string) => void
+    name?: string
+  }
   /** What asking for durable storage came to - null while unanswered. Drives
    *  wording only: best-effort storage is stated, never silently assumed
    *  away (#190). One answer for the origin, shown against each package that
@@ -122,7 +127,12 @@ export function DownloadCard({
       {status.state === 'not-downloaded' && (
         <>
           {detail !== undefined && (
-            <DetailPicker value={detail.level} onChange={detail.onChange} />
+            <DetailPicker
+              options={detail.options}
+              value={detail.value}
+              onChange={detail.onChange}
+              name={detail.name}
+            />
           )}
           <button type="button" className="downloads__primary" onClick={onStart}>
             Download the map
@@ -145,7 +155,12 @@ export function DownloadCard({
             Downloading it again is the only fix, and it needs signal.
           </p>
           {detail !== undefined && (
-            <DetailPicker value={detail.level} onChange={detail.onChange} />
+            <DetailPicker
+              options={detail.options}
+              value={detail.value}
+              onChange={detail.onChange}
+              name={detail.name}
+            />
           )}
           <button type="button" className="downloads__primary" onClick={onStart}>
             Download it again
@@ -242,7 +257,12 @@ export function DownloadCard({
             fresh copy from the start.
           </p>
           {detail !== undefined && (
-            <DetailPicker value={detail.level} onChange={detail.onChange} />
+            <DetailPicker
+              options={detail.options}
+              value={detail.value}
+              onChange={detail.onChange}
+              name={detail.name}
+            />
           )}
           <button type="button" className="downloads__primary" onClick={onStart}>
             Start the download over

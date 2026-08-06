@@ -186,9 +186,12 @@ Measured per-zoom, `dem.pmtiles` as published (z0–13, 0.5 m quantize,
 | 13 | 15,932 | 397.6 |
 
 `at_basemap_package.pmtiles` as published: 83,818 tiles, 532,459,439 bytes —
-per-zoom in [BASEMAP.md](BASEMAP.md)'s measured results. The two together
-are the hiking sheet's ≈ 1.14 GB download (`client/src/lib/packages.ts`,
-sizes exact to the byte against these artifacts).
+per-zoom in [BASEMAP.md](BASEMAP.md)'s measured results. Its z13-capped
+sibling `at_basemap_package_z13.pmtiles` (21,721 tiles, 182,286,799 bytes)
+is the hiking sheet's Standard level (#276). With the DEM the sheet is
+≈ 790 MB at Standard and ≈ 1.14 GB at Fine (`client/src/lib/packages.ts`
+composing `lib/hikingDetail.ts`, sizes exact to the byte against these
+artifacts).
 
 ## Exporting the background as PMTiles (rebuilt from native resolution, #191)
 

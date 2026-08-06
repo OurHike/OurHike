@@ -1,9 +1,8 @@
 """Pydantic request/response models for the `/closures` router."""
 
-from datetime import datetime
-
 from pydantic import BaseModel, ConfigDict
 
+from app.core.time import UtcDatetime
 from app.models.closure import ClosureStatus, ModerationStatus, ReasonType
 
 
@@ -38,7 +37,7 @@ class ClosureOut(BaseModel):
 
     id: str
     reported_by: str
-    reported_at: datetime
+    reported_at: UtcDatetime
     trail_id: str
     start_mile_marker: float
     end_mile_marker: float
@@ -47,4 +46,4 @@ class ClosureOut(BaseModel):
     status: ClosureStatus
     moderation_status: ModerationStatus
     verified_by: str | None
-    verified_at: datetime | None
+    verified_at: UtcDatetime | None

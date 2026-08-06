@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from app.core.time import UtcDatetime
 from app.models.report import ReporterType, ReportStatus, ReportType, Severity, Visibility
 
 
@@ -86,11 +87,11 @@ class ReportOut(BaseModel):
     lat: float | None
     lon: float | None
     reporter_type: ReporterType
-    timestamp: datetime
+    timestamp: UtcDatetime
     note: str | None
     photo_url: str | None
     follow_up: Any | None
-    received_at: datetime
+    received_at: UtcDatetime
     maintainer_id: str | None
     club_id: str | None
     status: ReportStatus

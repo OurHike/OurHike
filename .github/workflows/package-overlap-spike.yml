@@ -17,12 +17,6 @@ on:
         description: "Osmosis .poly of the second package's region"
         type: string
         default: "https://download.geofabrik.de/north-america/us/new-york.poly"
-  # TEMPORARY, removed before this branch merges: a dispatch-only workflow is
-  # not dispatchable until it exists on the default branch, and #193 wants
-  # its numbers before then. Scoped to this one branch so it costs nothing
-  # anywhere else.
-  push:
-    branches: [claude/issue-184-sub-issues-sid7af]
 
 permissions:
   contents: read

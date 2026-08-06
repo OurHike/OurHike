@@ -1,8 +1,10 @@
 """Pydantic schemas for the `/hikes` router."""
 
-from datetime import date, datetime
+from datetime import date
 
 from pydantic import BaseModel, ConfigDict
+
+from app.core.time import UtcDatetime
 
 
 class HikeCreate(BaseModel):
@@ -35,7 +37,7 @@ class HikeOut(BaseModel):
     overall_start_reference: float
     overall_end_reference: float
     planned_start_date: date | None
-    created_at: datetime
+    created_at: UtcDatetime
 
 
 class HikeDirectionOut(BaseModel):

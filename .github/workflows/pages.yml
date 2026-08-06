@@ -43,6 +43,9 @@ permissions:
   contents: write
 
 # Never let two deploys race; let a newer commit supersede an in-flight one.
+# This is most of what keeps the branch to one writer at a time, but not all of
+# it: cancellation is not instant, and workflow_dispatch can start a run
+# whenever someone asks for one. The retry in the publish step covers the rest.
 concurrency:
   group: pages
   cancel-in-progress: true
@@ -50,6 +53,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Room for a build plus a publish waiting its turn behind several previews,
+    # without letting a wedged job bill all day.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -200,13 +206,25 @@ jobs:
           # its naming should not silently break the deploy.
           touch _site/.nojekyll
 
+      # Through the local action rather than peaceiris/actions-gh-pages, which
+      # pushes exactly once and fails the whole deploy on a rejected push. See
+      # the action for when that can still happen now that this workflow is the
+      # only thing writing this branch.
+      #
+      # This deploy owns `gh-pages` outright: everything on the branch and not
+      # in _site is deleted. That is new - previews used to live under
+      # pr-preview/ on this same branch and had to be worked around here - and
+      # it is what clears out the last of them, since they are served from
+      # Cloudflare Pages now (pr-preview.yml).
       - name: Publish to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
+        uses: ./.github/actions/publish-to-pages
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: _site
-          publish_branch: gh-pages
-          # PR previews live on this same branch under pr-preview/ (see
-          # pr-preview.yml). This step only ever writes site/ and app/'s
-          # output, so keep_files stops it from deleting them on every deploy.
-          keep_files: true
+          source-dir: _site
+          commit-message: "Deploy the site from ${{ github.sha }}"
+          # Passed rather than left to the action's default of `github.token`,
+          # which resolves to the same thing. Both are the run's own token, but
+          # only this spelling is visible to the settings manifest, whose test
+          # reads `secrets.` references out of this directory - and a deploy
+          # that pushes without appearing to need a token to push with is the
+          # kind of quiet that the manifest exists to prevent.
+          token: ${{ secrets.GITHUB_TOKEN }}

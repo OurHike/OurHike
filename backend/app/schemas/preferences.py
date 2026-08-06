@@ -24,10 +24,11 @@ visible error) rather than the field being silently dropped and the rest of
 the request quietly succeeding.
 """
 
-from datetime import datetime
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict
+
+from app.core.time import UtcDatetime
 
 
 class Theme(str, Enum):
@@ -138,4 +139,4 @@ class PreferencesIn(BaseModel):
 class PreferencesOut(PreferencesIn):
     """`PreferencesIn` plus the server-assigned sync timestamp."""
 
-    updated_at: datetime
+    updated_at: UtcDatetime

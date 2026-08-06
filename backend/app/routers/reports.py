@@ -11,6 +11,7 @@ from datetime import timezone
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import and_, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import bearer_scheme, get_current_user
@@ -75,6 +76,26 @@ def _get_current_user_optional(
         return None
 
 
+def _already_filed(db: Session, report_id: str, current_user: Profile) -> Report | None:
+    """The caller's own report under this id, if it is already stored.
+
+    None means "go ahead and file it". A row belonging to somebody else is
+    neither, and raises: returning it would make a guessed id a way to read
+    another person's report, and for `bad_hikers` a way to read an incident
+    note about a named individual.
+    """
+    existing = db.get(Report, report_id)
+    if existing is None:
+        return None
+
+    if existing.reporter_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="That report id belongs to someone else.",
+        )
+    return existing
+
+
 def _visible_to(report: Report, viewer: Profile | None) -> bool:
     """Whether `viewer` (possibly anonymous) may see `report`.
 
@@ -124,16 +145,17 @@ def create_report(
     read one - and for `bad_hikers`, into a way to read an incident note
     about a named individual.
     """
-    if payload.id is not None:
-        existing = db.get(Report, payload.id)
-        if existing is not None:
-            if existing.reporter_id != current_user.id:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="That report id belongs to someone else.",
-                )
+    # A UUID on the way in (app/schemas/report.py); the column is a String,
+    # so it is stored in the one canonical spelling `uuid.UUID` renders -
+    # lowercase, hyphenated. Without this, `{ID}` and `{id}` of the same
+    # UUID would be two different primary keys and two different reports.
+    report_id = str(payload.id) if payload.id is not None else None
+
+    if report_id is not None:
+        settled = _already_filed(db, report_id, current_user)
+        if settled is not None:
             response.status_code = status.HTTP_200_OK
-            return existing
+            return settled
 
     now = utc_now()
     authored = payload.authored_at
@@ -145,7 +167,7 @@ def create_report(
     report = Report(
         # None lets the model's own default mint one - the same fallback
         # `authored_at` gets from the server clock just below.
-        **({"id": payload.id} if payload.id is not None else {}),
+        **({"id": report_id} if report_id is not None else {}),
         reporter_id=current_user.id,
         type=payload.type,
         poi_id=payload.poi_id,
@@ -161,7 +183,22 @@ def create_report(
         received_at=now,
     )
     db.add(report)
-    return commit_and_refresh(db, report)
+    try:
+        return commit_and_refresh(db, report)
+    except IntegrityError:
+        # The check above and this insert are two statements, so two
+        # concurrent sends of the same id both see "not filed yet" and both
+        # insert. That is not a rare interleaving to shrug at - it is
+        # precisely what the retry path exists to produce, and losing the
+        # race used to surface as a 500 from the one endpoint whose whole
+        # promise is that sending twice is safe (#265).
+        db.rollback()
+        settled = _already_filed(db, report_id, current_user) if report_id is not None else None
+        if settled is None:
+            # The conflict was not the id, so it is not ours to interpret.
+            raise
+        response.status_code = status.HTTP_200_OK
+        return settled
 
 
 @router.get("", response_model=list[ReportOut])

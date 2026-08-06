@@ -49,17 +49,26 @@ Whether they're still *there* is checked continuously after that: `.github/expec
 
 **1.4 Configure CORS — this one is easy to miss and fails confusingly.** The client reads PMTiles via HTTP **range requests**. Without CORS exposing the right headers, the map fails in a way that looks like a corrupt archive rather than a permissions problem.
 
-R2 → `your-hike` → Settings → CORS policy. The app is hosted on GitHub Pages (see step 3 — that's settled now, unlike when this list was first written), so the real origin to allow is:
+R2 → `your-hike` → Settings → CORS policy. The app is hosted on GitHub Pages (see step 3 — that's settled now, unlike when this list was first written), and its previews on Cloudflare Pages (3a), so there are **two** origins to allow plus local dev:
 
 ```json
 [{
-  "AllowedOrigins": ["https://jaimito-asuntos-gringuenos.github.io", "http://localhost:5173"],
+  "AllowedOrigins": [
+    "https://jaimito-asuntos-gringuenos.github.io",
+    "https://*.ourhike-preview.pages.dev",
+    "http://localhost:5173",
+    "http://localhost:4173"
+  ],
   "AllowedMethods": ["GET", "HEAD"],
   "AllowedHeaders": ["range", "if-match", "content-type"],
   "ExposeHeaders": ["content-length", "content-range", "etag", "accept-ranges"],
   "MaxAgeSeconds": 3600
 }]
 ```
+
+**The `pages.dev` wildcard is not optional, and its absence is easy to misread.** Every pull request previews from a hostname of its own, so each one is a distinct origin as far as a browser is concerned — a wildcard is the only entry that can cover a pull request that does not exist yet. Without it the preview renders but the download fails with `NetworkError when attempting to fetch resource`, which looks like R2 being down rather than R2 declining to answer this particular origin.
+
+This was missed when previews moved off GitHub Pages, and the reason is worth keeping: previews used to be served from `jaimito-asuntos-gringuenos.github.io`, the *same* origin as production, so the one entry covered both and there was nothing here that looked origin-specific. Moving previews to their own hostnames split one origin into many. Supabase's redirect allow-list (4.3b) needed the identical change for the identical reason — if one of these two lists is ever updated for a new origin, the other one needs it too.
 
 `ExposeHeaders` matters as much as `AllowedHeaders`: the resumable download reads `content-range` to know whether the server honoured a range request, and treats a missing/200 response as "start over" rather than corrupting the file.
 
@@ -93,7 +102,36 @@ Set it as a **repository variable** (not a secret — it's a public URL): Settin
 
 ✅ **Already done, mostly automatic** — `.github/workflows/pages.yml` builds and deploys the client to GitHub Pages on every push to `main`: the beta landing page at `https://jaimito-asuntos-gringuenos.github.io/OurHike/` and the installable app at `.../OurHike/app/`. Cloudflare Pages was the original plan when this list was written, but GitHub Pages is what actually got wired up (it's what gives the PWA the HTTPS a browser requires before offering "Install app").
 
-**One manual step, once:** Settings → Pages → Build and deployment → Source must be **"Deploy from a branch"**, branch `gh-pages`, folder `/ (root)`. The workflow pushes to that branch itself; nothing publishes until the source is pointed at it. This is what lets `pr-preview.yml` also publish a testable preview per pull request (`.../OurHike/pr-preview/pr-<n>/`, linked from a comment on the PR) alongside the production site, on the same branch.
+**One manual step, once:** Settings → Pages → Build and deployment → Source must be **"Deploy from a branch"**, branch `gh-pages`, folder `/ (root)`. The workflow pushes to that branch itself; nothing publishes until the source is pointed at it.
+
+### 3a. Preview deployments (Cloudflare Pages)
+
+✅ **Done 2026-08-06** — project `ourhike-preview`, verified by a real deploy on PR #281: 274 files uploaded in 2.1 s. `.github/workflows/pr-preview.yml` builds every pull request and deploys it to its own URL — `https://pr-<n>.ourhike-preview.pages.dev`, linked from a comment on the PR — so a change can be tried on a phone instead of read as a diff. If the three settings below ever go missing the workflow says so in the run log and skips; pull requests still get their full test run, just no preview.
+
+**Learned on that first deploy, and worth knowing before it looks like a broken deploy:** Cloudflare mints the `pr-<n>` alias when a pull request first deploys, and its edge answers **522** for a minute or two before that alias routes anywhere. Uploading and being reachable are not the same event. The workflow now waits for the URL to answer 200 before posting the comment, so the link is trustworthy by the time anyone sees it — but a 522 on a freshly-created alias is propagation, not misconfiguration. Every deploy also gets an immutable `https://<hash>.ourhike-preview.pages.dev` that is live the moment the upload finishes, and the workflow falls back to advertising that if the alias never comes up.
+
+Previews used to live on the `gh-pages` branch alongside the production site. They moved because five to ten pull requests are open at once here as a matter of course, and every preview was a competing write to that one git ref — so previews failed for no reason other than each other being busy. A Cloudflare preview is its own deployment rather than a commit on a shared branch, so there is no ordering between two of them.
+
+**Cost: none at this size.** The free plan places no limit on how many preview deployments a project keeps, and static requests and bandwidth are not metered. The limit that *would* bite — 500 builds a month, one at a time — applies only to Cloudflare's own builders, and this workflow does not use them: it builds in Actions and uploads the finished directory, so nothing queues behind anyone else's build.
+
+1. **Create the project.** Cloudflare dashboard → Workers & Pages → Create → Pages → **Use direct upload**. Name it; that name goes in the middle of every preview URL. Nothing needs to be uploaded by hand — the first pull request does it.
+2. **Mint an API token** (My Profile → API Tokens → Create Token) with the **Cloudflare Pages: Edit** permission and nothing else. It should not be the R2 token from step 1.2: a token that publishes previews has no business overwriting the live map data.
+3. **Set the three settings**, in Settings → Secrets and variables → Actions:
+
+```
+CLOUDFLARE_API_TOKEN=<the token>       # Secrets tab
+CLOUDFLARE_ACCOUNT_ID=<account id>     # Secrets tab
+CLOUDFLARE_PAGES_PROJECT=<project>     # Variables tab — it is in every preview URL
+```
+
+4. **Allow the preview URLs back** in Supabase — see 4.3b, which covers this and the production URL together. Without it, signing in from a preview ends in a redirect mismatch.
+5. **Allow the preview origin on the R2 bucket** — see 1.4. Without it the preview loads but the map download fails with `NetworkError when attempting to fetch resource`.
+
+Steps 4 and 5 are the same mistake waiting to happen twice: both are origin allow-lists that previously needed only one entry, because previews used to share production's origin. A preview hostname that is not in **both** is a preview that either cannot sign in or cannot download.
+
+A pull request from a fork gets no secrets and so gets no preview; the workflow notices and says so rather than failing.
+
+Cloudflare now steers new projects toward **Workers static assets** rather than Pages, and that would work here too. Pages was chosen because a preview needs nothing but a directory uploaded to a URL, and Pages does that without a `wrangler.jsonc`, a `main` entry point or a compatibility date to keep current. Worth revisiting if the app ever grows a server-side part.
 
 After setting `DATA_BASE_URL` (step 2), the site needs a **redeploy** to pick it up, since it's baked in at build time. Either push any commit to `main`, or dispatch **"Deploy Pages"** manually (Actions tab → workflow_dispatch) to redeploy with no code change.
 
@@ -142,12 +180,16 @@ Prefer the **publishable** key (`sb_publishable_…`) over the legacy `anon` JWT
 
 **4.3b Allow the app's own URLs back** (Authentication → URL Configuration). The client redirects to the path it was served from, not the bare origin — a redirect to the origin lands on the project site with the code in its URL and no app there to read it.
 
-That means more than one path. Pages serves the app at `/OurHike/app/`, and every PR preview gets its own `/OurHike/pr-preview/pr-<n>/`. Supabase's allow-list takes glob patterns, where `**` matches across `/`, so one entry covers all of them:
+That means more than one origin. GitHub Pages serves the app at `/OurHike/app/`, and every PR preview gets a hostname of its own on Cloudflare (3a). Supabase's allow-list takes glob patterns, where `**` matches across `/` and `*` matches a subdomain, so three entries cover everything:
 
 ```
 https://<user>.github.io/OurHike/**
+https://*.<project>.pages.dev/**
 http://localhost:5173/**
+http://localhost:4173/**
 ```
+
+Both local ports, because they are different servers: `npm run dev` is Vite on **5173**, and `npm run preview` serves the *built* bundle on **4173**. The second is the one you reach for to check something behaves the same after a production build, which makes it exactly the wrong one to have working differently from the others.
 
 Adding an entry per PR by hand is not a plan, and without a matching entry every provider round trip from a preview ends in a redirect mismatch. Supabase recommends pinning the exact path for the production **Site URL** even so — set that to `https://<user>.github.io/OurHike/app/`.
 

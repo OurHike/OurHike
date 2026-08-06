@@ -28,7 +28,21 @@ export interface ArchiveZooms {
 }
 
 /**
- * Whether the archive has tiles to draw at this zoom.
+ * How far the CAMERA zoom sits from the TILE zoom for the raster source.
+ *
+ * map/style.ts declares the archive `tileSize: 256` (the @2x convention,
+ * #191): MapLibre then requests tiles one level deeper than the camera, so
+ * a camera at z5 is drawing z6 tiles - and an archive whose header floor is
+ * 6 covers it. The header speaks in tile zooms, every caller here speaks in
+ * camera zooms, and this constant is the one place the difference lives. If
+ * the tileSize declaration ever changes, this must change with it - the
+ * style test that asserts the pairing is what makes that a build failure
+ * rather than an off-by-one nobody can see.
+ */
+export const CAMERA_ZOOM_TILE_OFFSET = 1
+
+/**
+ * Whether the archive has tiles to draw at this camera zoom.
  *
  * Only the floor is asked about, and that asymmetry is real rather than an
  * oversight. Above `maxZoom` MapLibre overzooms a raster - the top tier's
@@ -42,7 +56,7 @@ export interface ArchiveZooms {
  * first place.
  */
 export function archiveCoversZoom(zooms: ArchiveZooms | null, zoom: number): boolean {
-  return zooms === null || zoom >= zooms.minZoom
+  return zooms === null || zoom + CAMERA_ZOOM_TILE_OFFSET >= zooms.minZoom
 }
 
 /**
@@ -63,5 +77,7 @@ export function openingZoomFloor(
   fittedZoom: number,
 ): number | null {
   if (zooms === null || archiveCoversZoom(zooms, fittedZoom)) return null
-  return zooms.minZoom
+  // The shallowest CAMERA zoom with tiles behind it, not the header's own
+  // number - see CAMERA_ZOOM_TILE_OFFSET.
+  return zooms.minZoom - CAMERA_ZOOM_TILE_OFFSET
 }

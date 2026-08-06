@@ -79,6 +79,6 @@ describe('buildViewerStyle', () => {
     )
     // 512px declared, matching style.ts today - the viewer must show the
     // current rendering, blur included, or #191 cannot be judged against it.
-    expect(style.sources['viewer-raster']).toMatchObject({ tileSize: 512 })
+    expect(style.sources['viewer-raster']).toMatchObject({ tileSize: 256 })
   })
 })

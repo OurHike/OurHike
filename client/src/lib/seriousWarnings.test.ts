@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { warningsOnRoute, routeBannerText, WARNING_PIN } from './seriousWarnings'
+import {
+  isSeriousWarning,
+  warningsOnRoute,
+  routeBannerText,
+  WARNING_PIN,
+} from './seriousWarnings'
 import { POI_PIN_SIZE } from '../map/poiIcons'
 
 // WIREFRAMES.md §8. `severity: serious` is set by a moderator, never
@@ -47,6 +52,27 @@ describe('warningsOnRoute', () => {
 
   it('returns nothing for a clear route', () => {
     expect(warningsOnRoute([WARNING], { fromMile: 1200, toMile: 1300 })).toEqual([])
+  })
+})
+
+describe('isSeriousWarning', () => {
+  it('is the same rule warningsOnRoute filters by, not a second one', () => {
+    // The map draws these as pins and the banner counts them along a route.
+    // Two spellings of "=== serious" is how a map full of pins ends up beside
+    // a banner counting none of them, so the predicate is shared and this is
+    // what says so.
+    const mixed = [WARNING, { ...WARNING, id: 'w2', severity: 'normal' as const }]
+
+    expect(mixed.filter(isSeriousWarning)).toEqual(
+      warningsOnRoute(mixed, { fromMile: 0, toMile: 2200 }),
+    )
+  })
+
+  it('needs no mile, which is why the pin can use it', () => {
+    // A report carries lat/lon and no mile (#244). The pin goes where the
+    // report was written; only the banner needs a position along the trail.
+    expect(isSeriousWarning({ severity: 'serious' })).toBe(true)
+    expect(isSeriousWarning({ severity: 'normal' })).toBe(false)
   })
 })
 

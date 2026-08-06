@@ -27,6 +27,8 @@ import { WaypointLanes, type WaypointLanesProps } from './WaypointLanes'
 import { PoiCard, type PoiDetail } from './PoiCard'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapView } from '../map/MapView'
+import type { ClosureBand } from '../map/closureLayers'
+import type { WarningPoint } from '../map/warningLayers'
 import { HEALTHY, type LiveSourceHealth } from '../map/liveSourceHealth'
 import type { BackgroundOverride } from '../lib/dataSaver'
 import type { ArchiveZooms } from '../lib/archiveCoverage'
@@ -70,6 +72,20 @@ export interface MapScreenProps {
   closureAhead?: string | null
   /** "N serious warnings on your route", or null (lib/seriousWarnings.ts). */
   warningsAhead?: string | null
+
+  /**
+   * The same two facts on the canvas: closed stretches as bands along the
+   * trail, serious warnings as pins. Passed straight through to MapView.
+   *
+   * Deliberately NOT derived from the two banners above, which is why they are
+   * four props rather than two. A banner says what is AHEAD of a hiker walking
+   * a known direction; the canvas draws what is THERE, in both directions and
+   * before the app knows which way anyone is going. Tying them together would
+   * mean a map that draws no closure until the direction tracker has made up
+   * its mind.
+   */
+  closures?: readonly ClosureBand[]
+  warnings?: readonly WarningPoint[]
 
   activeTab: TabId
   onSelectTab: (id: TabId) => void
@@ -194,6 +210,8 @@ export function MapScreen({
   lastSyncedAt,
   closureAhead = null,
   warningsAhead = null,
+  closures,
+  warnings,
   activeTab,
   onSelectTab,
   onOpenLegend,
@@ -329,6 +347,8 @@ export function MapScreen({
               background={background}
               pois={viewportPoints}
               hiddenTypes={hiddenTypes}
+              closures={closures}
+              warnings={warnings}
               onSelectPoi={onSelectPoi}
               showZoomButtons={showZoomButtons}
               units={units}

@@ -72,6 +72,20 @@ export interface TrailIndex {
   miles: Float64Array
   buckets: Map<number, Bucket>
   totalMiles: number
+  /**
+   * Where each centerline piece begins in the flat arrays, ascending.
+   *
+   * The flat arrays concatenate pieces the source data never joined, so two
+   * neighbouring entries can be miles apart on the ground. Anything reading a
+   * RUN of coordinates has to break at these indices - see {@link trailSlice},
+   * which would otherwise draw a straight line across the gap between two
+   * pieces and put a closure band where there is no trail.
+   *
+   * Nothing else needs them: `locateOnTrail` asks about single vertices, and
+   * the mile total already excludes the gaps (see the note in
+   * {@link buildTrailIndex}).
+   */
+  partStarts: readonly number[]
 }
 
 function axisProjection(lon: number, lat: number): number {
@@ -182,7 +196,70 @@ export function buildTrailIndex(collection: FeatureCollection): TrailIndex {
     miles,
     buckets,
     totalMiles: count === 0 ? 0 : miles[count - 1],
+    partStarts: [...partStarts].sort((a, b) => a - b),
   }
+}
+
+/**
+ * The trail's own coordinates between two mile markers, as one or more runs.
+ *
+ * Several runs rather than one, because `partStarts` exists: the flat arrays
+ * concatenate centerline pieces that the source data never joined, and joining
+ * them here would draw a straight line across a gap that is not trail. A
+ * caller gets what it can honestly draw - a MultiLineString's worth of pieces
+ * - rather than a single line through country nobody surveyed.
+ *
+ * Direction-agnostic. `fromMile` and `toMile` are normalised, so a SOBO
+ * caller reading a closure's `end_mile_marker` first gets the same band.
+ */
+export function trailSlice(
+  index: TrailIndex,
+  fromMile: number,
+  toMile: number,
+): Array<Array<[number, number]>> {
+  const low = Math.min(fromMile, toMile)
+  const high = Math.max(fromMile, toMile)
+  const count = index.lons.length
+  if (count === 0) return []
+
+  const runs: Array<Array<[number, number]>> = []
+
+  for (let p = 0; p < index.partStarts.length; p += 1) {
+    const start = index.partStarts[p]
+    const end = (index.partStarts[p + 1] ?? count) - 1
+
+    // Miles rise monotonically inside a piece (the gaps between pieces are the
+    // only places they do not), so the piece's own span is its two ends and
+    // the matching indices below are contiguous.
+    if (index.miles[end] < low || index.miles[start] > high) continue
+
+    let first = start
+    while (first <= end && index.miles[first] < low) first += 1
+    let last = end
+    while (last >= start && index.miles[last] > high) last -= 1
+
+    // Fewer than two vertices in range is not "no closure here" - it is a
+    // range shorter than the survey's own vertex spacing, or one that happens
+    // to fall between two of them. Widening to the neighbours draws a band a
+    // few dozen feet longer than the report; dropping it draws nothing at all,
+    // which on this map is a closed stretch of trail rendered as open.
+    if (last < first) {
+      // Nothing in range, so the two searches crossed: `last` is the vertex
+      // just before it and `first` the one just after, which is exactly the
+      // pair that brackets it.
+      ;[first, last] = [last, first]
+    } else if (last === first) {
+      first = Math.max(start, first - 1)
+      last = Math.min(end, last + 1)
+    }
+    if (last <= first) continue
+
+    const run: Array<[number, number]> = []
+    for (let i = first; i <= last; i += 1) run.push([index.lons[i], index.lats[i]])
+    runs.push(run)
+  }
+
+  return runs
 }
 
 /**

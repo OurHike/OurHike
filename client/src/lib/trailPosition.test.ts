@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import type { Feature, FeatureCollection } from 'geojson'
-import { buildTrailIndex, locateOnTrail, MAX_OFF_TRAIL_MILES } from './trailPosition'
+import {
+  buildTrailIndex,
+  locateOnTrail,
+  trailSlice,
+  MAX_OFF_TRAIL_MILES,
+} from './trailPosition'
 
 // Synthetic geometry throughout, in the shape the real trails.geojson uses:
 // LineString features carrying a `source` of 'centerline' or something else.
@@ -286,5 +291,99 @@ describe('locateOnTrail', () => {
 
     expect(broken.lons).toHaveLength(2)
     expect(locateOnTrail(broken, { lon: -77, lat: 39 })).toBeNull()
+  })
+})
+
+describe('trailSlice', () => {
+  // A ten-mile piece with a vertex every mile, so a mile marker and an index
+  // are the same number and the assertions can say what they mean.
+  function tenMiles(startLat = 39): Array<[number, number]> {
+    return Array.from({ length: 11 }, (_, i): [number, number] => [
+      -77,
+      startLat + i * MILE_IN_DEGREES_LAT,
+    ])
+  }
+
+  const index = buildTrailIndex(collection([line(tenMiles())]))
+
+  /** Miles of the returned vertices, which is what a band's extent means. */
+  function milesOf(runs: Array<Array<[number, number]>>): number[][] {
+    return runs.map((run) =>
+      run.map(([, lat]) => Math.round((lat - 39) / MILE_IN_DEGREES_LAT)),
+    )
+  }
+
+  it('returns the trail between two mile markers', () => {
+    // Half-mile slack at each end rather than 3 and 6 exactly: a vertex placed
+    // a mile apart in latitude lands at 1.00006 miles, so an endpoint written
+    // as a whole number falls a fraction short of the vertex that shares its
+    // name. Real mile markers come off a report and never coincide with a
+    // survey vertex either.
+    expect(milesOf(trailSlice(index, 2.5, 6.5))).toEqual([[3, 4, 5, 6]])
+  })
+
+  it('normalises a range written backwards, as a SOBO caller would read it', () => {
+    // closureBanner.ts reads the far edge first for a southbound hiker, so a
+    // caller handing over (6, 3) is not a bug to reject - it is the same
+    // closure.
+    expect(trailSlice(index, 6, 3)).toEqual(trailSlice(index, 3, 6))
+  })
+
+  it('says nothing about a range the trail does not reach', () => {
+    expect(trailSlice(index, 40, 45)).toEqual([])
+  })
+
+  it('clips a range that runs off the end rather than dropping it', () => {
+    // A closure reported to the terminus is a real closure. Returning nothing
+    // because its end mile is past the last vertex would draw an open trail.
+    expect(milesOf(trailSlice(index, 8, 40))).toEqual([[8, 9, 10]])
+  })
+
+  it('never joins two pieces the survey left apart', () => {
+    // The flat arrays concatenate pieces that are miles apart on the ground.
+    // One run through both would be a straight line across country nobody
+    // walked - and drawn as a closure band, a statement that the trail is shut
+    // somewhere it does not go.
+    const split = buildTrailIndex(collection([line(tenMiles()), line(tenMiles(41))]))
+
+    const runs = trailSlice(split, 0, 100)
+
+    expect(runs).toHaveLength(2)
+    for (const run of runs) {
+      for (const [, lat] of run) {
+        expect(lat < 40 || lat > 40.9).toBe(true)
+      }
+    }
+  })
+
+  it('still draws a band for a closure shorter than the vertex spacing', () => {
+    // Between mile 3 and mile 4 there is no vertex at all in this geometry, so
+    // the honest slice is empty - and an empty slice is a closed stretch of
+    // trail rendered as open. It widens to the two vertices bracketing the
+    // range instead, which overstates the closure by a few dozen feet on real
+    // survey data.
+    const runs = trailSlice(index, 3.2, 3.6)
+
+    expect(milesOf(runs)).toEqual([[3, 4]])
+  })
+
+  it('widens around a range holding exactly one vertex, so there is a line to draw', () => {
+    const runs = trailSlice(index, 2.5, 3.5)
+
+    expect(runs[0].length).toBeGreaterThanOrEqual(2)
+    expect(milesOf(runs)[0]).toContain(3)
+  })
+
+  it('has nothing to say about an empty index', () => {
+    expect(trailSlice(buildTrailIndex(collection([])), 0, 10)).toEqual([])
+  })
+
+  it('reports the pieces it found, so partStarts is not a private detail', () => {
+    // The slice above depends on knowing where a piece ends; this is the field
+    // that carries it, and it is on the index rather than recomputed because
+    // buildTrailIndex is the only place that ever knows.
+    const split = buildTrailIndex(collection([line(tenMiles()), line(tenMiles(41))]))
+
+    expect(split.partStarts).toEqual([0, 11])
   })
 })

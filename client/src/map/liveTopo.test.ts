@@ -35,6 +35,8 @@ import {
   ELEVATION_ATTRIBUTION,
 } from './terrain'
 import { POI_LAYER_ID } from './poiLayers'
+import { WARNING_LAYER_ID } from './warningLayers'
+import { CLOSURE_CASING_LAYER_ID, CLOSURE_LAYER_ID } from '../lib/closureStyle'
 
 // The live background exists because a raster mosaic of pre-rendered US Topo
 // quads cannot be restyled, cannot be read at a zoom it was not drawn for, and
@@ -206,7 +208,7 @@ describe('the live topographic background', () => {
     expect(lastBackground).toBeLessThan(order.indexOf(POI_LAYER_ID))
   })
 
-  it('keeps the POI pins last of all, so they win collisions against our labels', () => {
+  it('keeps our own pins last of all, so they win collisions against our labels', () => {
     // Not only about what draws on top. The live sheet added four SYMBOL
     // layers (peak, place, water and contour labels) to a style that had none,
     // and MapLibre declutters symbols across the whole style, not per layer -
@@ -219,11 +221,18 @@ describe('the live topographic background', () => {
     // never suppress a water source - which is the way round it has to be,
     // since water is the most safety-relevant thing on this map.
     //
-    // Move this layer and that guarantee is silently gone, which is why it is
-    // asserted rather than left to the ordering in buildMapStyle.
+    // The serious-warning pins sit above the waypoints, which is the same rule
+    // applied one level further in: the only symbol on this map a moderator had
+    // to escalate by hand outranks the ones the pipeline published. It does not
+    // NEED the ordering - map/warningLayers.ts sets `icon-allow-overlap`, so it
+    // is never dropped whatever it competes with - but a warning drawn
+    // underneath a shelter pin is as unread as one that was decluttered away.
+    //
+    // Move either layer and both guarantees are silently gone, which is why
+    // this is asserted rather than left to the ordering in buildMapStyle.
     const order = ids(live())
 
-    expect(order[order.length - 1]).toBe(POI_LAYER_ID)
+    expect(order.slice(-2)).toEqual([POI_LAYER_ID, WARNING_LAYER_ID])
   })
 
   it('credits every licence the live sheet pulls in', () => {
@@ -440,17 +449,22 @@ describe('the offline-only background', () => {
     expect(offline().sources.trails).toHaveProperty('attribution', OSM_CREDIT)
   })
 
-  it('still draws the archive, the trail and the pins, which is the whole map', () => {
+  it('still draws the archive, the trail, the closures and the pins', () => {
     // Exhaustive on purpose: the point of this one is that choosing the
     // offline background subtracts the live layers and NOTHING else. An
     // `toContain` here would pass just as happily if the trail or the pins
-    // went missing with them.
+    // went missing with them - and the safety layers below are exactly the
+    // ones that must survive it, since a hiker on the offline background is a
+    // hiker with no signal, which is where a closure matters most.
     expect(ids(offline())).toEqual([
       BACKDROP_LAYER_ID,
       TOPO_LAYER_ID,
       'trail-casing',
       'trail-blaze',
+      CLOSURE_CASING_LAYER_ID,
+      CLOSURE_LAYER_ID,
       POI_LAYER_ID,
+      WARNING_LAYER_ID,
     ])
   })
 })

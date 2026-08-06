@@ -22,6 +22,20 @@ export interface RouteRange {
   toMile: number
 }
 
+/**
+ * Whether a report is a serious warning at all.
+ *
+ * One line, and worth exporting anyway: the map draws these as pins and the
+ * banner counts them along a route, and those two callers must never disagree
+ * about which reports are warnings. The pin needs no mile - a report carries
+ * lat/lon (#244) - so it cannot go through `warningsOnRoute` to inherit the
+ * rule, and a second `=== 'serious'` written out at the call site is exactly
+ * how a map full of pins ends up beside a banner that counts none of them.
+ */
+export function isSeriousWarning(report: { severity: WarningSeverity }): boolean {
+  return report.severity === 'serious'
+}
+
 export function warningsOnRoute(
   reports: WarningReport[],
   { fromMile, toMile }: RouteRange,
@@ -32,8 +46,7 @@ export function warningsOnRoute(
   const high = Math.max(fromMile, toMile)
 
   return reports.filter(
-    (report) =>
-      report.severity === 'serious' && report.mile >= low && report.mile <= high,
+    (report) => isSeriousWarning(report) && report.mile >= low && report.mile <= high,
   )
 }
 

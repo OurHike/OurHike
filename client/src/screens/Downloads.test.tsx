@@ -10,12 +10,19 @@ import { Downloads } from './Downloads'
 // overrides, roll-up totals, mixed-detail seams. Absence tests are the only
 // way a superseded design stays superseded.
 //
-// WIREFRAMES.md `7a` also requires a failed download to RESUME rather than
-// restart: re-fetching 314 MB from the start because a transfer dropped at
-// 90% is exactly the failure someone on trailhead wifi cannot afford.
+// #192 made the background several archives underneath, and the tests below
+// assert that this changed NOTHING here: the background is one download with
+// one state and one button. Which archives it takes is storage, not a choice
+// (lib/packages.ts), and the archives are combined before they reach this
+// screen (lib/backgroundStatus.ts).
+//
+// The card's own states live in DownloadCard.test.tsx.
 
 const PROPS = {
   status: { state: 'not-downloaded' as const },
+  title: 'Offline map',
+  summary: 'The whole corridor as a map you can read with no signal.',
+  sizeBytes: 314_000_000,
   detailLevel: 'standard' as const,
   onChangeDetail: vi.fn(),
   onStart: vi.fn(),
@@ -29,13 +36,28 @@ afterEach(() => {
 })
 
 describe('Downloads', () => {
-  it('offers a single whole-corridor package, not a list of sections', () => {
+  it('offers a single whole-corridor download, not a list of sections', () => {
     render(<Downloads {...PROPS} />)
 
     expect(
       screen.getByText(/whole trail|entire trail|whole corridor/i),
     ).toBeInTheDocument()
     expect(screen.queryByText(/section/i)).not.toBeInTheDocument()
+  })
+
+  it('offers one button, not one per archive the background is made of', () => {
+    // The DEM, the raster sheet and the vector basemap are pieces of one
+    // thing. A hiker who had to tick them off could get it wrong, and being
+    // wrong means no terrain on a ridge.
+    render(<Downloads {...PROPS} />)
+
+    expect(screen.getAllByRole('button', { name: /download/i })).toHaveLength(1)
+  })
+
+  it('never shows roll-up totals or mixed-detail seam messaging', () => {
+    render(<Downloads {...PROPS} />)
+
+    expect(screen.queryByText(/remaining|seam|mixed detail/i)).toBe(null)
   })
 
   it('offers exactly the three detail levels with their real measured sizes', () => {
@@ -45,13 +67,6 @@ describe('Downloads', () => {
     expect(screen.getByText(/64 MB/)).toBeInTheDocument()
     expect(screen.getByText(/314 MB/)).toBeInTheDocument()
     expect(screen.getByText(/1\.18 GB/)).toBeInTheDocument()
-  })
-
-  it('marks Standard as recommended', () => {
-    render(<Downloads {...PROPS} />)
-
-    expect(screen.getByRole('radio', { name: /standard/i })).toBeChecked()
-    expect(screen.getByText(/recommended/i)).toBeInTheDocument()
   })
 
   it('reports a detail change rather than silently re-downloading', async () => {
@@ -73,76 +88,7 @@ describe('Downloads', () => {
     expect(PROPS.onStart).toHaveBeenCalledTimes(1)
   })
 
-  it('shows how far along a download is', () => {
-    render(
-      <Downloads
-        {...PROPS}
-        status={{
-          state: 'downloading',
-          receivedBytes: 157_000_000,
-          totalBytes: 314_000_000,
-        }}
-      />,
-    )
-
-    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50')
-  })
-
-  it('states progress in bytes too, so the number means something concrete', () => {
-    render(
-      <Downloads
-        {...PROPS}
-        status={{
-          state: 'downloading',
-          receivedBytes: 157_000_000,
-          totalBytes: 314_000_000,
-        }}
-      />,
-    )
-
-    // The received figure lives in its own width-reserving span, so the line
-    // is asserted as the reader sees it: the paragraph's whole text.
-    expect(screen.getByText(/of 314 MB/)).toHaveTextContent('157 MB of 314 MB')
-  })
-
-  it('counts whole megabytes, so the ticking figure has no decimal to spin', () => {
-    // The counter re-renders on every chunk. With formatBytes it flickered:
-    // the tenths digit spun unreadably, and trimming "10.0" to "10" changed
-    // the string's width so the line jumped.
-    render(
-      <Downloads
-        {...PROPS}
-        status={{
-          state: 'downloading',
-          receivedBytes: 157_650_000,
-          totalBytes: 314_000_000,
-        }}
-      />,
-    )
-
-    expect(screen.getByText('157 MB')).toBeInTheDocument()
-    expect(screen.queryByText(/157\.\d/)).toBe(null)
-  })
-
-  it('reserves the counter its full width, sized to the total', () => {
-    // "9 MB" growing to "10 MB" must not shuffle "of 314 MB" sideways: the
-    // received figure sits right-aligned in a slot as wide as the total will
-    // ever make it - ch units, exact because the byte line is monospace.
-    render(
-      <Downloads
-        {...PROPS}
-        status={{
-          state: 'downloading',
-          receivedBytes: 9_000_000,
-          totalBytes: 314_000_000,
-        }}
-      />,
-    )
-
-    expect(screen.getByText('9 MB')).toHaveStyle({ minWidth: '6ch' })
-  })
-
-  it('offers to RESUME a failed download, never to restart it', async () => {
+  it('resumes rather than restarts when part of it is already here', async () => {
     const user = userEvent.setup()
     render(
       <Downloads
@@ -157,18 +103,8 @@ describe('Downloads', () => {
     expect(PROPS.onResume).toHaveBeenCalledTimes(1)
   })
 
-  it('says how much is already on the phone when a download failed partway', () => {
-    render(
-      <Downloads
-        {...PROPS}
-        status={{ state: 'failed', receivedBytes: 280_000_000, totalBytes: 314_000_000 }}
-      />,
-    )
-
-    expect(screen.getByText(/280 MB/)).toBeInTheDocument()
-  })
-
-  it('shows the downloaded state with what is stored and when', () => {
+  it('deletes the whole background from one button', async () => {
+    const user = userEvent.setup()
     render(
       <Downloads
         {...PROPS}
@@ -180,29 +116,25 @@ describe('Downloads', () => {
       />,
     )
 
-    expect(screen.getByText(/314 MB/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /delete/i })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /delete/i }))
+
+    expect(PROPS.onDelete).toHaveBeenCalledTimes(1)
   })
 
-  it('never shows roll-up totals or mixed-detail seam messaging', () => {
+  it('reports the background’s failure', () => {
+    render(<Downloads {...PROPS} error="Archive download failed: 404 Not Found" />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent('404 Not Found')
+  })
+
+  it('does not list the trail’s own data as something to download', () => {
+    // The centerline, spurs, POIs and elevation profile are fetched by
+    // default wherever they are missing (lib/trailData.ts). Offering them
+    // here would present a decision that has already been made, and imply
+    // the map could be had without them.
     render(<Downloads {...PROPS} />)
 
-    expect(screen.queryByText(/remaining|seam|mixed detail/i)).toBe(null)
-  })
-
-  it('shows 0% rather than NaN% before the total size is known', () => {
-    // The first progress callback can land before content-length has been
-    // read, and "NaN%" on a progress bar reads as a broken app.
-    render(
-      <Downloads
-        {...PROPS}
-        status={{ state: 'downloading', receivedBytes: 0, totalBytes: 0 }}
-      />,
-    )
-
-    expect(
-      screen.getByRole('progressbar', { name: /download progress/i }),
-    ).toHaveAttribute('aria-valuenow', '0')
+    expect(screen.queryByText(/centerline|points of interest|trail data/i)).toBe(null)
   })
 })
 
@@ -252,70 +184,6 @@ describe('downloads on a desktop', () => {
   })
 })
 
-describe('eviction, said plainly (#190)', () => {
-  it('says the map was removed by the phone, never "not downloaded"', () => {
-    render(
-      <Downloads
-        {...PROPS}
-        status={{ state: 'evicted', completedAt: new Date('2026-07-20T08:00:00Z') }}
-      />,
-    )
-
-    expect(screen.getByText(/no longer on this phone/i)).toBeInTheDocument()
-    expect(screen.getByText(/removed it to free up space/i)).toBeInTheDocument()
-    expect(screen.getByText(/July 20/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /download it again/i })).toBeInTheDocument()
-  })
-
-  it('still reads honestly when the completion date did not survive', () => {
-    render(<Downloads {...PROPS} status={{ state: 'evicted', completedAt: null }} />)
-
-    expect(screen.getByText(/no longer on this phone/i)).toBeInTheDocument()
-  })
-
-  it('starts a fresh download from the eviction message', async () => {
-    render(<Downloads {...PROPS} status={{ state: 'evicted', completedAt: null }} />)
-
-    await userEvent.click(screen.getByRole('button', { name: /download it again/i }))
-
-    expect(PROPS.onStart).toHaveBeenCalled()
-  })
-})
-
-describe('durability, at its honest weight (#190)', () => {
-  const DOWNLOADED = {
-    state: 'downloaded' as const,
-    totalBytes: 314_000_000,
-    completedAt: new Date('2026-08-01T08:00:00Z'),
-  }
-
-  it('says nothing extra when persistence was granted - protected is the expected state', () => {
-    render(<Downloads {...PROPS} status={DOWNLOADED} persistence="granted" />)
-
-    expect(screen.queryByText(/reclaimable/i)).not.toBeInTheDocument()
-  })
-
-  it('states best-effort storage when the browser declined to protect it', () => {
-    render(<Downloads {...PROPS} status={DOWNLOADED} persistence="denied" />)
-
-    expect(screen.getByText(/reclaimable if storage runs very low/i)).toBeInTheDocument()
-    expect(screen.getByText(/declined/i)).toBeInTheDocument()
-  })
-
-  it('states best-effort storage where the API does not exist, without claiming a denial', () => {
-    render(<Downloads {...PROPS} status={DOWNLOADED} persistence="unsupported" />)
-
-    expect(screen.getByText(/reclaimable if storage runs very low/i)).toBeInTheDocument()
-    expect(screen.queryByText(/declined/i)).not.toBeInTheDocument()
-  })
-
-  it('keeps quiet while the answer has not arrived', () => {
-    render(<Downloads {...PROPS} status={DOWNLOADED} persistence={null} />)
-
-    expect(screen.queryByText(/reclaimable/i)).not.toBeInTheDocument()
-  })
-})
-
 describe('room for the download (#190)', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -339,6 +207,18 @@ describe('room for the download (#190)', () => {
     expect(screen.getByRole('button', { name: /download the map/i })).toBeInTheDocument()
   })
 
+  it('measures the room against the WHOLE background, not one archive of it', async () => {
+    // 600 MB free against a background whose archives come to 794 MB. Each
+    // piece would fit on its own, and one tap brings all of them - so a
+    // warning weighed against a single archive would never fire, and the
+    // download would run out of room partway with nothing having said so.
+    stubEstimate(1_000_000_000, 400_000_000)
+
+    render(<Downloads {...PROPS} sizeBytes={794_000_000} />)
+
+    expect(await screen.findByRole('status')).toHaveTextContent('794 MB')
+  })
+
   it('stays quiet when there is room', async () => {
     stubEstimate(10_000_000_000, 1_000_000_000)
 
@@ -352,6 +232,34 @@ describe('room for the download (#190)', () => {
   it('stays quiet where the browser will not say', () => {
     render(<Downloads {...PROPS} />)
 
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('says the eviction wording when the phone was the one that removed it', async () => {
+    stubEstimate(1_000_000_000, 900_000_000)
+
+    render(<Downloads {...PROPS} status={{ state: 'evicted', completedAt: null }} />)
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      /space still looks tight/i,
+    )
+  })
+
+  it('stays quiet once it is on the phone', async () => {
+    stubEstimate(1_000_000_000, 900_000_000)
+
+    render(
+      <Downloads
+        {...PROPS}
+        status={{
+          state: 'downloaded',
+          totalBytes: 314_000_000,
+          completedAt: new Date('2026-08-01T08:00:00Z'),
+        }}
+      />,
+    )
+
+    await new Promise((resolve) => setTimeout(resolve, 20))
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 })

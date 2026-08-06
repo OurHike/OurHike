@@ -18,7 +18,7 @@
 // stays readable after this change, rather than silently re-downloading.
 
 import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
-import { archiveUrl, dataUrl } from './config'
+import { archiveKey, archiveUrl, dataUrl } from './config'
 import { getDownloadDetail, type DetailLevel } from './downloadDetail'
 
 /**
@@ -226,6 +226,19 @@ export function backgroundSizeBytes(
  */
 export function packageDownloadUrl(pkg: OfferedPackage, detail: DetailLevel): string {
   return pkg.source.kind === 'tiered' ? archiveUrl(detail) : dataUrl(pkg.source.artifact)
+}
+
+/**
+ * Which artifact this package is, as `latest.json` names it.
+ *
+ * The same choice `packageDownloadUrl` makes, expressed as the manifest's own
+ * key rather than as a URL - and it is the catalog's answer to give. Reading
+ * it back off the URL worked only while every artifact's URL happened to end
+ * in its manifest key, and the cost of the first one that did not would have
+ * been a download that quietly skipped verification (lib/archiveDownload.ts).
+ */
+export function packageArtifactKey(pkg: OfferedPackage, detail: DetailLevel): string {
+  return pkg.source.kind === 'tiered' ? archiveKey(detail) : pkg.source.artifact
 }
 
 /**

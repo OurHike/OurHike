@@ -632,6 +632,12 @@ describe('App shell', () => {
         ? Promise.resolve({ ok: false, status: 404, statusText: 'Not Found' } as Response)
         : Promise.resolve({
             ok: true,
+            headers: new Headers(),
+            arrayBuffer: () =>
+              Promise.resolve(
+                new TextEncoder().encode('{"type":"FeatureCollection","features":[]}')
+                  .buffer,
+              ),
             blob: () =>
               Promise.resolve(new Blob(['{"type":"FeatureCollection","features":[]}'])),
             text: () => Promise.resolve('{"features":[]}'),

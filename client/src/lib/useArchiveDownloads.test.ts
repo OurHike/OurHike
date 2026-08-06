@@ -19,8 +19,13 @@ vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
 const SHEET = {
   packageKey: 'ourhike:sheet',
   url: 'https://cdn.example.org/sheet.pmtiles',
+  artifactKey: 'sheet.pmtiles',
 }
-const TERRAIN = { packageKey: 'ourhike:dem', url: 'https://cdn.example.org/dem.pmtiles' }
+const TERRAIN = {
+  packageKey: 'ourhike:dem',
+  url: 'https://cdn.example.org/dem.pmtiles',
+  artifactKey: 'dem.pmtiles',
+}
 const BOTH = [SHEET, TERRAIN]
 
 function withStore(initial: Record<string, unknown> = {}) {

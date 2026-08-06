@@ -35,6 +35,12 @@ export function archiveUrl(level: DetailLevel): string {
   return dataUrl(BACKGROUND_ARCHIVES[level])
 }
 
+/** The same tier as `latest.json` names it - the flat key publish.py uploaded,
+ *  which is what a published hash is looked up by (lib/dataManifest.ts). */
+export function archiveKey(level: DetailLevel): string {
+  return BACKGROUND_ARCHIVES[level]
+}
+
 export const TRAILS_KEY = 'trails.geojson'
 
 // Where each blue-blazed spur leads, keyed by the trail id in trails.geojson.

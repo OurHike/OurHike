@@ -21,6 +21,7 @@ import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
 vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
 
 const URL_ = 'https://cdn.example.org/background.pmtiles'
+const ARTIFACT = 'background.pmtiles'
 
 function withStore(initial: Record<string, unknown> = {}) {
   const store: Record<string, unknown> = { ...initial }
@@ -86,7 +87,9 @@ describe('useArchiveDownload', () => {
     const store = withStore()
     const streaming = mockHangingFetch()
 
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
 
     act(() => void result.current.start())
     await streaming
@@ -108,7 +111,9 @@ describe('useArchiveDownload', () => {
     withStore()
     const streaming = mockHangingFetch()
 
-    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
 
     act(() => void result.current.start())
     await streaming
@@ -130,7 +135,7 @@ describe('useArchiveDownload', () => {
     const streaming = mockHangingFetch()
 
     const { result, unmount } = renderHook(() =>
-      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_),
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
     )
 
     const attempt = result.current.start()

@@ -396,6 +396,16 @@ describe('reading reports and closures', () => {
       await expect(api[fn]()).rejects.toBeInstanceOf(api.ApiError)
     },
   )
+
+  it('passes an abort signal through, so a screen leaving can drop its read', async () => {
+    const api = await configuredApi()
+    const spy = mockJson([])
+    const controller = new AbortController()
+
+    await api.fetchReports(controller.signal)
+
+    expect((spy.mock.calls[0][1] as RequestInit).signal).toBe(controller.signal)
+  })
 })
 
 describe('reading from a build with no backend', () => {

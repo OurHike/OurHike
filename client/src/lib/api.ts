@@ -139,10 +139,11 @@ async function authedFetch(path: string, init: RequestInit = {}): Promise<Respon
  * reaching it, which is precisely what "Waiting" on the More screen is
  * describing.
  */
-async function readFetch(path: string): Promise<Response> {
+async function readFetch(path: string, signal?: AbortSignal): Promise<Response> {
   const token = await accessToken()
 
   return apiFetch(path, {
+    signal,
     headers: token === null ? {} : { Authorization: `Bearer ${token}` },
   })
 }
@@ -181,8 +182,8 @@ export interface ReportSummary {
  * the ground - the wrong one of those tells a hiker a closed stretch of trail
  * is open. The caller has to be able to say it does not know.
  */
-export async function fetchReports(): Promise<ReportSummary[]> {
-  const response = await readFetch('/reports')
+export async function fetchReports(signal?: AbortSignal): Promise<ReportSummary[]> {
+  const response = await readFetch('/reports', signal)
   return (await response.json()) as ReportSummary[]
 }
 
@@ -204,8 +205,8 @@ export interface ClosureSummary {
  * matters more here: a closure is the one thing on this map whose absence a
  * hiker would act on by walking into it.
  */
-export async function fetchClosures(): Promise<ClosureSummary[]> {
-  const response = await readFetch('/closures')
+export async function fetchClosures(signal?: AbortSignal): Promise<ClosureSummary[]> {
+  const response = await readFetch('/closures', signal)
   return (await response.json()) as ClosureSummary[]
 }
 

@@ -9,6 +9,8 @@ import {
   OSM_CREDIT,
   USGS_TOPO_CREDIT,
 } from '../map/credits'
+import { closureFeatureCollection, CLOSURE_SOURCE_ID } from '../map/closureLayers'
+import { warningFeatureCollection, WARNING_SOURCE_ID } from '../map/warningLayers'
 
 // WIREFRAMES.md's map screen, top to bottom: status strip, header, elevation
 // ribbon, waypoint lanes, map canvas, tab bar - plus the legend sheet over the
@@ -410,5 +412,59 @@ describe('MapScreen safety alerts', () => {
     expect(strip).not.toBeNull()
     expect(alerts).not.toBeNull()
     expect(strip!.compareDocumentPosition(alerts!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+  })
+})
+
+// --- The same two facts on the canvas -------------------------------------
+//
+// Four props rather than two, and the reason is in MapScreenProps: a banner
+// says what is AHEAD of a hiker walking a known direction, and the canvas
+// draws what is THERE. Tying them together would leave the map blank until
+// the direction tracker had made up its mind.
+
+describe('MapScreen safety overlays', () => {
+  function loadStyle(map: MockMap): void {
+    map.sourceIds = [CLOSURE_SOURCE_ID, WARNING_SOURCE_ID]
+    map.emit('load')
+  }
+
+  it('hands the closure bands to the canvas', () => {
+    const closures = [{ id: 'c1', lines: [[[-77.1, 39.3] as [number, number]]] }]
+
+    render(<MapScreen {...PROPS} closures={closures} />)
+    const [map] = MockMap.live
+    loadStyle(map)
+
+    expect(map.sourceData.get(CLOSURE_SOURCE_ID)).toEqual(
+      closureFeatureCollection(closures),
+    )
+  })
+
+  it('hands the warning pins to the canvas', () => {
+    const warnings = [{ id: 'r1', lon: -77.2, lat: 39.4 }]
+
+    render(<MapScreen {...PROPS} warnings={warnings} />)
+    const [map] = MockMap.live
+    loadStyle(map)
+
+    expect(map.sourceData.get(WARNING_SOURCE_ID)).toEqual(
+      warningFeatureCollection(warnings),
+    )
+  })
+
+  it('draws a closure the banner is silent about', () => {
+    // The case the four props exist for. `closureAhead` is null before the
+    // direction tracker settles - and before then the band is the only thing
+    // telling a hiker the trail is shut.
+    const closures = [{ id: 'c1', lines: [[[-77.1, 39.3] as [number, number]]] }]
+
+    render(<MapScreen {...PROPS} closures={closures} closureAhead={null} />)
+    const [map] = MockMap.live
+    loadStyle(map)
+
+    expect(screen.queryByRole('alert')).toBe(null)
+    expect(
+      (map.sourceData.get(CLOSURE_SOURCE_ID) as { features: unknown[] }).features,
+    ).toHaveLength(1)
   })
 })

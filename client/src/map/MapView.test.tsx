@@ -11,6 +11,18 @@ import {
   POI_LAYER_ID,
   POI_SOURCE_ID,
 } from './poiLayers'
+import {
+  closureFeatureCollection,
+  CLOSURE_SOURCE_ID,
+  type ClosureBand,
+} from './closureLayers'
+import {
+  warningFeatureCollection,
+  WARNING_LAYER_ID,
+  WARNING_SOURCE_ID,
+  type WarningPoint,
+} from './warningLayers'
+import { WARNING_ICON_ID } from './warningPin'
 import type { MapPoint } from '../lib/legendContents'
 
 // Lifecycle is the whole risk surface here. A map that gets built twice means
@@ -71,6 +83,22 @@ const PROPS = {
   topoArchiveUrl: 'pmtiles://ourhike-corridor',
   trailsUrl: '/data/trails.geojson',
 }
+
+// Already in map coordinates, which is the contract: turning a mile marker
+// into a line needs the centerline index, and that is the shell's job.
+const CLOSURES: readonly ClosureBand[] = [
+  {
+    id: 'c1',
+    lines: [
+      [
+        [-77.1, 39.3],
+        [-77.1, 39.32],
+      ],
+    ],
+  },
+]
+
+const WARNINGS: readonly WarningPoint[] = [{ id: 'r1', lon: -77.2, lat: 39.4 }]
 
 beforeEach(() => {
   resetMapLibreMock()
@@ -235,8 +263,8 @@ describe('POI pins', () => {
 
   /** Real MapLibre has its layers and sources by the time `load` fires. */
   function loadStyle(map: MockMap): void {
-    map.layerIds = [POI_LAYER_ID]
-    map.sourceIds = [POI_SOURCE_ID]
+    map.layerIds = [POI_LAYER_ID, WARNING_LAYER_ID]
+    map.sourceIds = [POI_SOURCE_ID, CLOSURE_SOURCE_ID, WARNING_SOURCE_ID]
     map.emit('load')
   }
 
@@ -297,6 +325,61 @@ describe('POI pins', () => {
 
     expect(MockMap.instances).toHaveLength(1)
     expect(map.sourceData.get(POI_SOURCE_ID)).toEqual(poiFeatureCollection(POIS))
+  })
+
+  it('draws the closures it was given as bands along the trail', () => {
+    render(<MapView {...PROPS} closures={CLOSURES} />)
+    const [map] = MockMap.live
+
+    loadStyle(map)
+
+    expect(map.sourceData.get(CLOSURE_SOURCE_ID)).toEqual(
+      closureFeatureCollection(CLOSURES),
+    )
+  })
+
+  it('draws the serious warnings it was given as pins', () => {
+    render(<MapView {...PROPS} warnings={WARNINGS} />)
+    const [map] = MockMap.live
+
+    loadStyle(map)
+
+    expect(map.images.has(WARNING_ICON_ID)).toBe(true)
+    expect(map.sourceData.get(WARNING_SOURCE_ID)).toEqual(
+      warningFeatureCollection(WARNINGS),
+    )
+  })
+
+  it('takes closures and warnings arriving long after the map was built', () => {
+    // The normal case, and more so than for the POIs: these come over the
+    // network from a backend that is unreachable on most of the trail, so the
+    // first render is empty and the data lands whenever signal does.
+    const { rerender } = render(<MapView {...PROPS} />)
+    const [map] = MockMap.live
+    loadStyle(map)
+
+    rerender(<MapView {...PROPS} closures={CLOSURES} warnings={WARNINGS} />)
+
+    expect(MockMap.instances).toHaveLength(1)
+    expect(map.sourceData.get(CLOSURE_SOURCE_ID)).toEqual(
+      closureFeatureCollection(CLOSURES),
+    )
+    expect(map.sourceData.get(WARNING_SOURCE_ID)).toEqual(
+      warningFeatureCollection(WARNINGS),
+    )
+  })
+
+  it('does not rebuild the map when a closure clears', () => {
+    // A closure being lifted is a data change like any other. Rebuilding for
+    // it would drop the WebGL context and re-read tiles off a 1.18 GB archive.
+    const { rerender } = render(<MapView {...PROPS} closures={CLOSURES} />)
+    const [map] = MockMap.live
+    loadStyle(map)
+
+    rerender(<MapView {...PROPS} closures={[]} />)
+
+    expect(MockMap.instances).toHaveLength(1)
+    expect(map.sourceData.get(CLOSURE_SOURCE_ID)).toEqual(closureFeatureCollection([]))
   })
 
   it('leaves no load listeners behind after unmount', () => {

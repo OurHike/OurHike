@@ -22,6 +22,9 @@ import {
   CASING_OVERHANG,
 } from './style'
 import { POI_LAYER_ID, POI_SOURCE_ID } from './poiLayers'
+import { CLOSURE_SOURCE_ID } from './closureLayers'
+import { WARNING_LAYER_ID, WARNING_SOURCE_ID } from './warningLayers'
+import { CLOSURE_CASING_LAYER_ID, CLOSURE_LAYER_ID } from '../lib/closureStyle'
 import { CAMERA_ZOOM_TILE_OFFSET } from '../lib/archiveCoverage'
 
 // See WIREFRAMES.md "Trail line rendering — blazes". Three rules there are
@@ -322,11 +325,29 @@ describe('buildMapStyle', () => {
     expect(OSM_CREDIT).toContain('© OpenStreetMap')
   })
 
-  it('gives every data source an attribution, so none can ship uncredited', () => {
+  it('gives every third-party data source an attribution, so none ships uncredited', () => {
     const sources = style().sources as Record<string, Record<string, unknown>>
 
     for (const id of [TOPO_SOURCE_ID, TRAILS_SOURCE_ID, POI_SOURCE_ID]) {
       expect(sources[id].attribution).toBeTruthy()
+    }
+  })
+
+  it('credits nobody for the reports, because there is nobody to credit', () => {
+    // The closures and the serious warnings are hikers' own observations,
+    // moderated by the clubs that maintain the trail. They contain no
+    // third-party data at all, so an attribution here would not be a
+    // formality - map/credits.ts assembles the corner out of whichever
+    // sources are actually on screen, and a "© OpenStreetMap" over a closure
+    // somebody walked up to and photographed is a false statement about where
+    // it came from.
+    //
+    // Enumerated rather than skipped so the absence is a decision on the
+    // record, and so the test above cannot be read as covering these too.
+    const sources = style().sources as Record<string, Record<string, unknown>>
+
+    for (const id of [CLOSURE_SOURCE_ID, WARNING_SOURCE_ID]) {
+      expect(sources[id].attribution).toBeUndefined()
     }
   })
 
@@ -394,6 +415,57 @@ describe('POI pins', () => {
       expect(
         (l.layout as Record<string, unknown> | undefined)?.['text-field'],
       ).toBeUndefined()
+    }
+  })
+})
+
+describe('the safety overlays', () => {
+  it('draws the closure band over the blaze, not under it', () => {
+    // The entire job of the band. Under the trail line it would be a closure
+    // the trail is drawn straight through, which is a picture of an open
+    // trail - and lib/closureStyle.ts's careful width, rhythm and casing
+    // differences would all be spent on something nobody can see.
+    const ids = style().layers.map((l) => l.id)
+
+    expect(ids.indexOf(BLAZE_LAYER_ID)).toBeLessThan(ids.indexOf(CLOSURE_LAYER_ID))
+    expect(ids.indexOf(CLOSURE_CASING_LAYER_ID)).toBeLessThan(
+      ids.indexOf(CLOSURE_LAYER_ID),
+    )
+  })
+
+  it('draws a serious warning over every waypoint pin', () => {
+    // Belt and braces with warningLayers.ts's `icon-allow-overlap`: that keeps
+    // the pin from being dropped, this keeps it from being covered. A warning
+    // underneath a shelter pin is as unread as one that was decluttered away.
+    const ids = style().layers.map((l) => l.id)
+
+    expect(ids.indexOf(POI_LAYER_ID)).toBeLessThan(ids.indexOf(WARNING_LAYER_ID))
+  })
+
+  it('binds each overlay to its own source, never to the trail source', () => {
+    // A closure drawn from TRAILS_SOURCE_ID would need a filter to pick out
+    // the closed features, and there are none in that file - the geometry is
+    // sliced client-side from mile markers (map/closureLayers.ts).
+    const bySource = Object.fromEntries(
+      style()
+        .layers.filter((l) => 'source' in l)
+        .map((l) => [l.id, (l as { source: string }).source]),
+    )
+
+    expect(bySource[CLOSURE_LAYER_ID]).toBe(CLOSURE_SOURCE_ID)
+    expect(bySource[CLOSURE_CASING_LAYER_ID]).toBe(CLOSURE_SOURCE_ID)
+    expect(bySource[WARNING_LAYER_ID]).toBe(WARNING_SOURCE_ID)
+  })
+
+  it('starts both sources empty, because both arrive over the network', () => {
+    // And very often never arrive at all - this is an offline-first app whose
+    // backend is reachable only with signal. Empty is the honest opening
+    // state, and App.tsx keeps "empty" and "could not ask" apart above it.
+    for (const id of [CLOSURE_SOURCE_ID, WARNING_SOURCE_ID]) {
+      const source = style().sources[id] as Record<string, unknown>
+
+      expect(source.type).toBe('geojson')
+      expect(source.data).toEqual({ type: 'FeatureCollection', features: [] })
     }
   })
 })

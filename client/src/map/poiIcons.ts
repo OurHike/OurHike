@@ -50,8 +50,6 @@ export const POI_PIN_SIZE = 38
 /** Drawn at 2x so the pins stay crisp on a phone. */
 export const POI_PIN_PIXEL_RATIO = 2
 
-const PIXELS = POI_PIN_SIZE * POI_PIN_PIXEL_RATIO
-
 /**
  * One accent per category, each at least 4.5:1 against the glyph on top of it
  * (FEATURES.md's waypoint icon spec asks for WCAG AA, and poiIcons.test.ts
@@ -98,27 +96,44 @@ export function poiIconId(type: string, confidence: PoiConfidence): string {
   return `poi-${type}-${confidence === 'high' ? 'verified' : 'unverified'}`
 }
 
-// Geometry, in image pixels from the centre outwards.
-//
-// Every one of these is a FRACTION of the pin rather than a fixed pixel count,
-// which is what makes {@link POI_PIN_SIZE} a single knob. Written as constants
-// they held their look at exactly one size: drawn bigger, the rim thinned out
-// and the glyph shrank inside a disc that grew around it, so a pin asked to be
-// larger came back not just larger but differently proportioned.
-const CENTER = PIXELS / 2
-const R_OUTER = CENTER
-const EDGE_WIDTH = R_OUTER / 15
-const HALO_WIDTH = R_OUTER / 6
-const R_DISC = R_OUTER - EDGE_WIDTH - HALO_WIDTH
 /**
- * Side of the centred box the glyph is drawn in.
+ * Geometry, in image pixels from the centre outwards.
  *
- * Its half-diagonal must stay inside {@link R_DISC} or the corners of a glyph
- * would spill onto the halo - so it is derived from that bound rather than
- * checked against it. The largest box that fits has side `R_DISC * √2`; 86% of
- * it leaves the corners some air.
+ * Every one of these is a FRACTION of the pin rather than a fixed pixel count,
+ * which is what makes the size a single knob. Written as constants they held
+ * their look at exactly one size: drawn bigger, the rim thinned out and the
+ * glyph shrank inside a disc that grew around it, so a pin asked to be larger
+ * came back not just larger but differently proportioned.
+ *
+ * A function of the size rather than a set of module constants,
+ * because there is now a second pin at a second size - the serious-warning pin
+ * at 44px (map/warningPin.ts). Sharing this is the whole reason that pin is a
+ * variant of the waypoint spec rather than a visual language of its own.
  */
-const GLYPH_BOX = R_DISC * Math.SQRT2 * 0.86
+function pinGeometry(pixels: number) {
+  const center = pixels / 2
+  const rOuter = center
+  const edgeWidth = rOuter / 15
+  const haloWidth = rOuter / 6
+  const rDisc = rOuter - edgeWidth - haloWidth
+
+  return {
+    pixels,
+    center,
+    rOuter,
+    edgeWidth,
+    rDisc,
+    /**
+     * Side of the centred box the glyph is drawn in.
+     *
+     * Its half-diagonal must stay inside `rDisc` or the corners of a glyph
+     * would spill onto the halo - so it is derived from that bound rather than
+     * checked against it. The largest box that fits has side `rDisc * √2`; 86%
+     * of it leaves the corners some air.
+     */
+    glyphBox: rDisc * Math.SQRT2 * 0.86,
+  }
+}
 
 /** Dash count around the rim of an unverified pin. Even, so the pattern closes
  *  cleanly where the last gap meets the first dash. */
@@ -128,10 +143,10 @@ const RIM_DASHES = 8
  *  circle without making icon generation something to think about. */
 const SUPERSAMPLE = 3
 
-type Point = readonly [number, number]
+export type Point = readonly [number, number]
 /** Rings in a normalised glyph box, filled even-odd so a ring inside another
  *  ring - the tent's doorway - cuts a hole instead of filling it. */
-type Glyph = readonly (readonly Point[])[]
+export type Glyph = readonly (readonly Point[])[]
 
 function arc(
   cx: number,
@@ -294,6 +309,20 @@ export interface PoiIconImage {
   data: Uint8ClampedArray
 }
 
+export interface PinSpec {
+  /** Rendered size in CSS pixels - {@link POI_PIN_SIZE} for a waypoint. */
+  sizePx: number
+  /** Drawn at this multiple of `sizePx`, and declared to MapLibre alongside
+   *  the image so it lands at the right size on a phone. */
+  pixelRatio: number
+  /** The silhouette, in a 0-1 box with y running down the screen. */
+  glyph: Glyph
+  /** Fill behind the glyph. */
+  color: string
+  /** Solid rim, or the broken one that means "nobody has verified this". */
+  confidence: PoiConfidence
+}
+
 /**
  * One pin, as raw RGBA pixels.
  *
@@ -301,21 +330,31 @@ export interface PoiIconImage {
  * raw channels instead would fringe the whole outer edge with a ring of
  * half-transparent dark pixels, because the transparent samples outside the
  * circle carry a colour of their own into the mean.
+ *
+ * Exported so the serious-warning pin (map/warningPin.ts) is drawn by THIS
+ * rasteriser at a different size and colour, rather than by a second one that
+ * would drift from it. Every proportion it uses comes from
+ * {@link pinGeometry}, so the two are the same pin at two sizes.
  */
-export function buildPoiIcon(type: string, confidence: PoiConfidence): PoiIconImage {
-  const disc = parseHex(
-    type in POI_COLORS ? POI_COLORS[type as PoiType] : POI_FALLBACK_COLOR,
-  )
+export function buildPinImage({
+  sizePx,
+  pixelRatio,
+  glyph,
+  color,
+  confidence,
+}: PinSpec): PoiIconImage {
+  const geometry = pinGeometry(sizePx * pixelRatio)
+  const disc = parseHex(color)
   const halo = parseHex(PIN_HALO_COLOR)
   const edge = parseHex(PIN_EDGE_COLOR)
-  const glyph = GLYPHS[type] ?? GLYPHS[UNKNOWN_POI_TYPE]
 
-  const data = new Uint8ClampedArray(PIXELS * PIXELS * 4)
+  const { pixels, center, rOuter, rDisc, edgeWidth, glyphBox } = geometry
+  const data = new Uint8ClampedArray(pixels * pixels * 4)
   const step = 1 / SUPERSAMPLE
   const samples = SUPERSAMPLE * SUPERSAMPLE
 
-  for (let py = 0; py < PIXELS; py += 1) {
-    for (let px = 0; px < PIXELS; px += 1) {
+  for (let py = 0; py < pixels; py += 1) {
+    for (let px = 0; px < pixels; px += 1) {
       let r = 0
       let g = 0
       let b = 0
@@ -325,18 +364,18 @@ export function buildPoiIcon(type: string, confidence: PoiConfidence): PoiIconIm
         for (let sx = 0; sx < SUPERSAMPLE; sx += 1) {
           const x = px + (sx + 0.5) * step
           const y = py + (sy + 0.5) * step
-          const dx = x - CENTER
-          const dy = y - CENTER
+          const dx = x - center
+          const dy = y - center
           const distance = Math.hypot(dx, dy)
 
           let ink: readonly [number, number, number] | null = null
 
-          if (distance <= R_DISC) {
-            const gx = (x - (CENTER - GLYPH_BOX / 2)) / GLYPH_BOX
-            const gy = (y - (CENTER - GLYPH_BOX / 2)) / GLYPH_BOX
+          if (distance <= rDisc) {
+            const gx = (x - (center - glyphBox / 2)) / glyphBox
+            const gy = (y - (center - glyphBox / 2)) / glyphBox
             ink = insideGlyph(glyph, gx, gy) ? halo : disc
-          } else if (distance <= R_OUTER && rimHasInk(dx, dy, confidence)) {
-            ink = distance <= R_OUTER - EDGE_WIDTH ? halo : edge
+          } else if (distance <= rOuter && rimHasInk(dx, dy, confidence)) {
+            ink = distance <= rOuter - edgeWidth ? halo : edge
           }
 
           if (ink !== null) {
@@ -348,7 +387,7 @@ export function buildPoiIcon(type: string, confidence: PoiConfidence): PoiIconIm
         }
       }
 
-      const at = (py * PIXELS + px) * 4
+      const at = (py * pixels + px) * 4
       // Divided by `hits`, not by `samples`: the colour is the mean of the
       // samples that HAD colour, and coverage is carried by alpha alone.
       if (hits > 0) {
@@ -360,7 +399,18 @@ export function buildPoiIcon(type: string, confidence: PoiConfidence): PoiIconIm
     }
   }
 
-  return { width: PIXELS, height: PIXELS, data }
+  return { width: pixels, height: pixels, data }
+}
+
+/** One waypoint pin, at the one size and palette every waypoint uses. */
+export function buildPoiIcon(type: string, confidence: PoiConfidence): PoiIconImage {
+  return buildPinImage({
+    sizePx: POI_PIN_SIZE,
+    pixelRatio: POI_PIN_PIXEL_RATIO,
+    glyph: GLYPHS[type] ?? GLYPHS[UNKNOWN_POI_TYPE],
+    color: type in POI_COLORS ? POI_COLORS[type as PoiType] : POI_FALLBACK_COLOR,
+    confidence,
+  })
 }
 
 export interface RegisteredPoiIcon {

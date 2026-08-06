@@ -64,7 +64,10 @@
 
 import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec'
 import { BLAZE_MATCH_EXPRESSION } from '../lib/blaze'
+import { buildClosureLayers } from '../lib/closureStyle'
+import { buildClosureSource, CLOSURE_SOURCE_ID } from './closureLayers'
 import { buildPoiLayer, buildPoiSource, POI_SOURCE_ID } from './poiLayers'
+import { buildWarningLayer, buildWarningSource, WARNING_SOURCE_ID } from './warningLayers'
 import type { BackgroundSource } from '../lib/userPreferences'
 import { BUNDLED_GLYPHS, liveTopoLayers, liveTopoSources } from './liveTopo'
 import { OSM_CREDIT, USGS_TOPO_CREDIT } from './credits'
@@ -359,6 +362,18 @@ export function buildMapStyle({
       // render, and a source with no attribution at all is one release away
       // from shipping uncredited.
       [POI_SOURCE_ID]: { ...buildPoiSource(), attribution: OSM_CREDIT },
+      // Also empty until the shell fills them, and for a sharper reason than
+      // the POIs have: these two arrive over the network from OurHike's own
+      // backend (lib/api.ts), so on the trail they very often never arrive at
+      // all. An empty source is the honest opening state.
+      //
+      // No `attribution`, and that is not an oversight. What these draw is
+      // hikers' own reports, moderated by the clubs that maintain the trail -
+      // there is no third party to credit, and a corner reading "© OpenStreetMap"
+      // over a closure somebody walked up to and photographed would be a false
+      // statement about where it came from.
+      [CLOSURE_SOURCE_ID]: buildClosureSource(),
+      [WARNING_SOURCE_ID]: buildWarningSource(),
       // Each of these carries its own credit (OpenFreeMap's terms, the AWS
       // Terrain Tiles requirement), like the three above - a source names the
       // data IT is, and map/credits.ts assembles the corner out of whichever
@@ -454,9 +469,21 @@ export function buildMapStyle({
           'line-width': TRAIL_WIDTH_EXPRESSION as unknown as number,
         },
       },
-      // Last, so a pin is never buried under the trail line it sits on. See
-      // poiLayers.ts for why this is one layer rather than one per category.
+      // Over the blaze, and that ordering is the closure's entire job. A
+      // barred red band UNDER the trail line would be a closure the trail is
+      // drawn straight through - which is a picture of an open trail. See
+      // lib/closureStyle.ts for why the band differs from a blaze in width,
+      // rhythm and casing weight rather than only in colour.
+      ...buildClosureLayers(CLOSURE_SOURCE_ID),
+      // Then the pins, so one is never buried under the trail line it sits on.
+      // See poiLayers.ts for why this is one layer rather than one per
+      // category.
       buildPoiLayer(),
+      // And the serious-warning pins last of all, over every waypoint. The
+      // collision engine already keeps them from being dropped
+      // (warningLayers.ts); this keeps them from being covered, which is the
+      // same guarantee by the other mechanism.
+      buildWarningLayer(),
     ],
   }
 }

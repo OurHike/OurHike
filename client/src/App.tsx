@@ -131,7 +131,8 @@ import {
   type ReportSummary,
 } from './lib/api'
 import { nearestClosureBanner } from './lib/closureBanner'
-import { routeBannerText, warningsOnRoute } from './lib/seriousWarnings'
+import { closureBands } from './map/closureLayers'
+import { isSeriousWarning, routeBannerText, warningsOnRoute } from './lib/seriousWarnings'
 import type { BoundingBox, MapPoint } from './lib/legendContents'
 import type { SearchablePoi } from './lib/searchPoi'
 import './App.css'
@@ -679,6 +680,41 @@ function App() {
       warningsOnRoute(placed, { fromMile: fix.mile, toMile: routeEnd }).length,
     )
   }, [reports, trailIndex, fix, direction])
+
+  /**
+   * The same closures on the canvas: a barred red band along each closed
+   * stretch (lib/closureStyle.ts).
+   *
+   * Needs the centerline index and nothing else - no GPS fix, no direction.
+   * That is the difference from `closureAhead` above and the reason they are
+   * two memos rather than one: "ahead" is a claim about a hiker, and drawing
+   * a closed stretch of trail is a claim about the trail. A closure should be
+   * on the map from the moment it is known, including for someone who has not
+   * started walking and has no direction yet.
+   */
+  const closureBandsOnMap = useMemo(() => {
+    if (closures === null || trailIndex === null) return []
+    return closureBands(closures, trailIndex)
+  }, [closures, trailIndex])
+
+  /**
+   * Serious warnings as points, straight from the report's own lat/lon.
+   *
+   * No `locateOnTrail` here, unlike `warningsAhead`, which needs a mile to
+   * decide what is on the route. A pin goes where the report was written -
+   * including the ones a few hundred feet off trail, which `locateOnTrail`
+   * still places and which a hiker is better off seeing at their real
+   * position than snapped onto the centerline.
+   */
+  const warningPins = useMemo(() => {
+    if (reports === null) return []
+    return reports.flatMap((report) => {
+      if (!isSeriousWarning(report) || report.lat === null || report.lon === null) {
+        return []
+      }
+      return [{ id: report.id, lon: report.lon, lat: report.lat }]
+    })
+  }, [reports])
 
   // Built from the POIs alone. The mile is added where the centerline index
   // exists and simply omitted where it does not - searching for a shelter by
@@ -1288,6 +1324,8 @@ function App() {
           direction={direction?.direction}
           closureAhead={closureAhead}
           warningsAhead={warningsAhead}
+          closures={closureBandsOnMap}
+          warnings={warningPins}
           time={now}
           online={online}
           hasGpsFix={gps.status === 'located'}

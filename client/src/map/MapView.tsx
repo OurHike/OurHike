@@ -33,6 +33,8 @@ import { attachElevationLabelUnits } from './liveTopo'
 import type { TerrainUrls } from './terrain'
 import { attachMapChrome, type ScaleUnits } from './mapChrome'
 import { attachHiddenPoiTypes, attachPoiData, attachPoiIcons } from './poiLayers'
+import { attachClosureData, type ClosureBand } from './closureLayers'
+import { attachWarningData, attachWarningIcon, type WarningPoint } from './warningLayers'
 import { attachPoiTaps } from './poiTaps'
 import type { BoundingBox, MapPoint } from '../lib/legendContents'
 import type { BackgroundSource } from '../lib/userPreferences'
@@ -57,6 +59,21 @@ export interface MapViewProps {
    * on the pin layer, so hiding a category costs a filter, not a rebuild.
    */
   hiddenTypes?: ReadonlySet<string>
+  /**
+   * Closed stretches of trail, already in map coordinates.
+   *
+   * Coordinates rather than mile markers, deliberately. Turning "mile 1,408.2
+   * to 1,408.6" into a line needs the centerline index, which the shell holds
+   * and this component has no business asking for - the same division that
+   * keeps `pois` a list of points rather than a POI database. See
+   * closureLayers.ts's `closureBands`.
+   */
+  closures?: readonly ClosureBand[]
+  /**
+   * Moderator-escalated warnings, as points. NEVER a notification - see the
+   * header of warningLayers.ts.
+   */
+  warnings?: readonly WarningPoint[]
   /** Initial centre only - later camera moves go through the map imperatively. */
   center?: [number, number]
   /** Initial zoom only. */
@@ -128,6 +145,8 @@ const FIT_PADDING = 24
 // every pin on the trail on every render of the map screen.
 const NO_POIS: readonly MapPoint[] = []
 const NOTHING_HIDDEN: ReadonlySet<string> = new Set()
+const NO_CLOSURES: readonly ClosureBand[] = []
+const NO_WARNINGS: readonly WarningPoint[] = []
 
 export function MapView({
   topoArchiveUrl,
@@ -135,6 +154,8 @@ export function MapView({
   background = 'hiking_topo_live',
   pois = NO_POIS,
   hiddenTypes = NOTHING_HIDDEN,
+  closures = NO_CLOSURES,
+  warnings = NO_WARNINGS,
   onSelectPoi,
   center,
   zoom,
@@ -306,6 +327,26 @@ export function MapView({
     if (map === null) return
     return attachHiddenPoiTypes(map, hiddenTypes)
   }, [map, hiddenTypes])
+
+  // The safety overlays, on the same three-clocks reasoning as the POIs above:
+  // the warning pin image is built once, and the two datasets arrive from the
+  // network on their own schedules and refuse independently (App.tsx). Folding
+  // them together would mean a closures read that came back re-rasterising a
+  // 88px pin, and either read failing would hold the other off the map.
+  useEffect(() => {
+    if (map === null) return
+    return attachWarningIcon(map)
+  }, [map])
+
+  useEffect(() => {
+    if (map === null) return
+    return attachClosureData(map, closures)
+  }, [map, closures])
+
+  useEffect(() => {
+    if (map === null) return
+    return attachWarningData(map, warnings)
+  }, [map, warnings])
 
   // Taps are their own effect for the same reason: this one re-binds when the
   // shell hands over a different handler, which has nothing to do with the

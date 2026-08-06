@@ -1,17 +1,24 @@
 # Builds the offline DEM archive - the terrain half of the offline map
 # program (pipeline/BASEMAP.md, issues #184/#186/#198), sibling to
-# build-basemap.yml and holding the same posture: measure and upload,
-# deliberately cannot publish (releases go through DATA_RELEASES.md once the
-# artifact shape settles).
+# build-basemap.yml.
 #
 # Lighter than the basemap build despite fetching ~20k tiles: there is no
 # Java and no big intermediates - tiles stream from the AWS Open Data bucket
 # through quantize+re-encode straight into the archive, so peak disk is the
-# output itself (~0.5 GB expected at z13, 1 m quantization).
+# output itself (measured 397.6 MB at z13, 1 m quantization; ~1.6x that at
+# the 0.5 m default, per #186's banding check).
+#
+# Publishing is opt-in and twice-guarded, the same posture as
+# publish-vector-data.yml and build-raster.yml: the `publish` input defaults
+# to false, only the publish job holds R2 credentials, and it refuses any
+# run that is not the canonical archive shape. This is today's flat-key
+# publish mechanism (publish.py + latest.json) - DATA_RELEASES.md's
+# immutable release folders remain the destination once that machinery
+# exists, exactly as for every other artifact.
 #
 # The --limit guard is load-bearing, not decorative: the tile walk is driven
 # by a region polygon, and a mis-drawn region would otherwise queue the
-# planet. The corridor at z0-13 is ~21.6k tiles; the default limit leaves
+# planet. The corridor at z0-13 is ~21.8k tiles; the default limit leaves
 # room above that without permitting a runaway.
 
 name: Build DEM archive
@@ -24,13 +31,17 @@ on:
         type: string
         default: "13"
       quantize_step:
-        description: "Vertical floor in meters (1.0, or 0.5 if hillshade bands)"
+        description: "Vertical floor in meters (0.5 per #186's banding check; 1.0 bands under overzoom)"
         type: string
-        default: "1.0"
+        default: "0.5"
       tile_limit:
         description: "Refuse to fetch more tiles than this"
         type: string
         default: "30000"
+      publish:
+        description: "Upload to R2. Only canonical builds (z0-13, 0.5 m) are allowed through."
+        type: boolean
+        default: false
 
 concurrency:
   group: build-dem
@@ -78,6 +89,12 @@ jobs:
             --quantize-step "${{ inputs.quantize_step }}" \
             --limit "${{ inputs.tile_limit }}"
 
+      # The exporter tolerates a tile the source bucket lacks; shipping must
+      # not. Runs on every build, not only publishing ones, so a measure run
+      # that would have been refused says so while it is cheap to rerun.
+      - name: Verify the archive is shippable
+        run: python check_dem_archive.py --max-zoom "${{ inputs.max_zoom }}"
+
       - name: Measure
         run: |
           {
@@ -98,3 +115,66 @@ jobs:
           path: pipeline/data/processed/dem.pmtiles
           retention-days: 7
           if-no-files-found: error
+
+  publish:
+    needs: build
+    if: inputs.publish
+    runs-on: ubuntu-latest
+    environment: production
+    # Every writer of latest.json shares this group: publish() does a
+    # read-modify-write of the manifest, and two concurrent publishes could
+    # interleave and clobber each other's entries.
+    concurrency:
+      group: publish-data
+      cancel-in-progress: false
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      # The client's DEM package declares one shape (z0-13, 0.5 m quantize,
+      # measured size). Publishing any other build would silently hand every
+      # hiker a different archive than the one those numbers describe - a
+      # spike stays a spike, so a non-canonical publish fails loudly rather
+      # than being quietly skipped.
+      - name: Refuse a non-canonical shape
+        if: inputs.max_zoom != '13' || inputs.quantize_step != '0.5'
+        working-directory: .
+        run: |
+          echo "::error::publish is only for the canonical DEM (z0-13, 0.5 m quantize); this run built z0-${{ inputs.max_zoom }} at ${{ inputs.quantize_step }} m"
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # A separate job from build on purpose, mirroring build-raster.yml:
+      # publish.py hashes archives from PROCESSED_DIR at publish time rather
+      # than reading a baked manifest, so nothing depends on this being the
+      # runner that produced them - and the build job never holds a secret.
+      - uses: actions/download-artifact@v4
+        with:
+          name: dem-archive
+          path: pipeline/data/processed/
+
+      - name: What will be published
+        run: ls -la data/processed/
+
+      - name: Publish to R2
+        env:
+          # The gate publish.py checks. Set only on this step, so every other
+          # step in this workflow is structurally incapable of writing to the
+          # bucket - see publish.py's writes_enabled().
+          R2_WRITE_ENABLED: "true"
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: python publish.py

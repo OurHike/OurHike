@@ -86,6 +86,7 @@ import { useOnline } from './lib/useOnline'
 import { useDataSaver } from './lib/useDataSaver'
 import { backgroundOverride, effectiveBackground } from './lib/dataSaver'
 import { useFinePointer } from './lib/useFinePointer'
+import { useDesktop } from './lib/useDesktop'
 import { useInstallPrompt } from './lib/useInstallPrompt'
 import { useAppUpdate } from './lib/useAppUpdate'
 import { useGeolocation } from './lib/useGeolocation'
@@ -271,6 +272,9 @@ function App() {
   // Read here rather than inside MapView so the whole map screen answers from
   // one value.
   const finePointer = useFinePointer()
+  // Whether this is the big-screen layout - and, for the download, whether the
+  // machine is one that goes up a mountain. See handleOnboardingComplete.
+  const isDesktop = useDesktop()
   const install = useInstallPrompt()
   useAppUpdate()
 
@@ -731,9 +735,24 @@ function App() {
       // choice just made is a download that has not started, so the window is
       // still what someone leaving onboarding needs; what has changed is that
       // it no longer costs them the first sight of the map to see it.
-      openDownloads()
+      //
+      // NOT ON A DESKTOP (WEBSITE.md §6, "Download UX"). A laptop has signal,
+      // and the assumption worth making about it is the one it is almost
+      // always right about: this connection is not being metered by the mile.
+      // The live sheet is already the default background, so a browser that
+      // never opens this window still gets the whole trail drawn - the
+      // download buys it nothing it does not already have, and 314 MB is a
+      // real cost to put in front of someone before they have seen the map.
+      //
+      // It is withheld, not removed, and that distinction is the whole of the
+      // rule. The legend is a permanent panel above 900px, and DownloadsLink
+      // sits in it, so "Choose what to download" is on screen the entire time
+      // - more visible than the phone's, where the legend has to be opened
+      // first. Someone setting up a cabin machine, or a laptop that is coming
+      // along, is one click away and was never told no.
+      if (!isDesktop) openDownloads()
     },
-    [updatePreferences, openDownloads],
+    [updatePreferences, openDownloads, isDesktop],
   )
 
   /** The trail's own data - centerline, spurs, POIs, elevation profile - on

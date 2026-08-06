@@ -5,6 +5,7 @@ import {
   sendReport,
   accessToken,
   permanentFailureReason,
+  fetchClosures,
   ApiError,
   ApiNotConfiguredError,
   NotSignedInError,
@@ -311,5 +312,107 @@ describe('sendReport idempotency', () => {
 
     const body = JSON.parse(String((spy.mock.calls[0][1] as RequestInit).body))
     expect(body.id).toBe('outbox-1')
+  })
+})
+
+// The read side (#232 needs it; it was item 4 of #231 and did not land with
+// the rest). Two properties matter here, and neither is about the happy path.
+//
+//  1. A read must work signed OUT. Browsing has never needed an account in
+//     this app, and `list_reports` answers an anonymous caller with the
+//     public set - so refusing without a token, the way a write correctly
+//     does, would make closures invisible to anyone who has not signed in.
+//  2. A failed read must THROW, not return []. An empty array and "the fetch
+//     failed" draw the same map and mean opposite things on the ground.
+describe('the reads', () => {
+  async function configured() {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.org')
+    vi.resetModules()
+    return import('./api')
+  }
+
+  /** Like mockFetch, but answers with a list the way the routers do. */
+  function mockList(body: unknown, status = 200) {
+    return vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => body,
+    } as Response)
+  }
+
+  function headersOf(spy: ReturnType<typeof mockList>) {
+    return (spy.mock.calls[0][1] as RequestInit).headers as Record<string, string>
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
+  it('refuses before spending a request when no backend is configured', async () => {
+    const spy = mockList([])
+
+    await expect(fetchClosures()).rejects.toBeInstanceOf(ApiNotConfiguredError)
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('reads reports from /reports', async () => {
+    const api = await configured()
+    const spy = mockList([{ id: 'report-1' }])
+
+    expect(await api.fetchReports()).toHaveLength(1)
+    expect(spy.mock.calls[0][0]).toBe('https://api.example.org/reports')
+  })
+
+  it('reads closures from /closures', async () => {
+    const api = await configured()
+    const spy = mockList([{ id: 'closure-1', moderation_status: 'verified' }])
+
+    expect(await api.fetchClosures()).toHaveLength(1)
+    expect(spy.mock.calls[0][0]).toBe('https://api.example.org/closures')
+  })
+
+  it('works signed out, because browsing has never needed an account', async () => {
+    withSession(null)
+    const api = await configured()
+    const spy = mockList([])
+
+    await expect(api.fetchClosures()).resolves.toEqual([])
+    expect(headersOf(spy)).not.toHaveProperty('Authorization')
+  })
+
+  it('sends the token when there is one, so a reporter sees their own waiting report', async () => {
+    // Without it their own report vanishes from the app between submitting it
+    // and a moderator getting to it - which is what "Waiting" describes.
+    const api = await configured()
+    const spy = mockList([])
+
+    await api.fetchReports()
+
+    expect(headersOf(spy).Authorization).toBe('Bearer a-real-token')
+  })
+
+  it('throws on a 500 rather than reporting an empty trail', async () => {
+    const api = await configured()
+    mockList(null, 500)
+
+    await expect(api.fetchClosures()).rejects.toBeInstanceOf(api.ApiError)
+  })
+
+  it('carries the status through', async () => {
+    const api = await configured()
+    mockList(null, 503)
+
+    await expect(api.fetchReports()).rejects.toMatchObject({ status: 503 })
+  })
+
+  it('passes an abort signal, so a screen leaving can drop its read', async () => {
+    const api = await configured()
+    const spy = mockList([])
+    const controller = new AbortController()
+
+    await api.fetchReports(controller.signal)
+
+    expect((spy.mock.calls[0][1] as RequestInit).signal).toBe(controller.signal)
   })
 })

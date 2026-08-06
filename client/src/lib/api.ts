@@ -17,7 +17,7 @@
 // (backend/app/core/auth.py). The token is borrowed from there and sent here.
 
 import { getAuthClient } from './supabase'
-import type { OutboxItem } from './outbox'
+import type { OutboxItem, ReportDraft } from './outbox'
 
 const RAW_BASE: string = import.meta.env.VITE_API_BASE_URL ?? ''
 
@@ -104,6 +104,33 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
   return response
 }
 
+/**
+ * A read, with the token attached only if there happens to be one.
+ *
+ * The third of three auth stances, and the distinction is the backend's, not
+ * a convenience here. `authedFetch` refuses without a token because the write
+ * would be refused anyway; this one must NOT, because browsing has never
+ * needed an account in this app and `list_reports` is explicitly built to
+ * answer an anonymous caller with the public set.
+ *
+ * Sending the token when there is one still matters: it is what lets a
+ * reporter see their own report sitting unmoderated, which is the thing
+ * "Waiting" on the More screen is describing. Without it their own report
+ * disappears from the app between submitting it and a moderator looking at
+ * it.
+ */
+async function browseFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const token = await accessToken()
+
+  return apiFetch(path, {
+    ...init,
+    headers: {
+      ...init.headers,
+      ...(token === null ? {} : { Authorization: `Bearer ${token}` }),
+    },
+  })
+}
+
 /** Like `apiFetch`, but refuses before spending a request when signed out. */
 async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const token = await accessToken()
@@ -144,6 +171,83 @@ export async function sendReport(item: OutboxItem): Promise<void> {
     // commits and whose response never arrives.
     body: JSON.stringify({ ...item.payload, id: item.id, authored_at: item.authoredAt }),
   })
+}
+
+// The read side. Mirrors backend/app/schemas/report.py's ReportOut and
+// closure.py's ClosureOut.
+//
+// Written out rather than generated: there are two, and FastAPI already
+// serves an OpenAPI schema, so the day this becomes a burden the answer is to
+// generate from that rather than to keep growing a hand-written copy.
+//
+// Dates arrive as ISO strings, not Dates - JSON has no date type, and
+// converting here would put a parse in the transport layer that every caller
+// would have to know about anyway.
+
+export interface ApiReport {
+  id: string
+  reporter_id: string
+  type: ReportDraft['type']
+  poi_id: string | null
+  lat: number | null
+  lon: number | null
+  reporter_type: ReportDraft['reporter_type']
+  /**
+   * When the report was WRITTEN - the `authored_at` a flush sent, which for
+   * an offline report is days before it arrived. `received_at` is the
+   * arrival. Anything showing a hiker how old a condition is wants this one.
+   */
+  timestamp: string
+  note: string | null
+  photo_url: string | null
+  received_at: string
+  maintainer_id: string | null
+  club_id: string | null
+  status: 'submitted' | 'verified' | 'resolved' | 'dismissed'
+  visibility: 'public' | 'club_only' | 'internal_only'
+  severity: 'normal' | 'serious'
+}
+
+export interface ApiClosure {
+  id: string
+  reported_by: string
+  reported_at: string
+  trail_id: string
+  start_mile_marker: number
+  end_mile_marker: number
+  reason_type: 'storm_damage' | 'flooding' | 'maintenance' | 'relocation' | 'other'
+  note: string | null
+  status: 'open' | 'closed' | 'reroute_available'
+  moderation_status: 'submitted' | 'verified' | 'dismissed'
+  verified_by: string | null
+  verified_at: string | null
+}
+
+/**
+ * The reports this caller may see: public and moderated, plus their own at
+ * any status when a token goes along.
+ *
+ * The moderation filter is the server's and stays there - a client-side
+ * version would be a second copy of a rule whose whole purpose is that
+ * nothing unmoderated reaches other hikers.
+ */
+export async function fetchReports(signal?: AbortSignal): Promise<ApiReport[]> {
+  const response = await browseFetch('/reports', { signal })
+  return (await response.json()) as ApiReport[]
+}
+
+/**
+ * Verified closures. `list_closures` filters to `verified` itself, so
+ * everything here is already showable.
+ *
+ * Note what a failure must NOT become: an empty array. A closure the app
+ * fails to fetch and a stretch of trail with no closure on it are the same
+ * picture on a map and opposite facts on the ground, so this throws and lets
+ * the caller say it does not know (#232).
+ */
+export async function fetchClosures(signal?: AbortSignal): Promise<ApiClosure[]> {
+  const response = await browseFetch('/closures', { signal })
+  return (await response.json()) as ApiClosure[]
 }
 
 // An ALLOWLIST, and that is the whole design (#266).

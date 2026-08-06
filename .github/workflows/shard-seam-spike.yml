@@ -66,10 +66,16 @@ on:
       - ".github/workflows/shard-seam-spike.yml"
 
 # cancel-in-progress is OFF on purpose. These legs run for tens of minutes,
-# and the disk probe was killed 29 minutes in when the pull request was
-# toggled ready-for-review and back - a state change with nothing to say
-# about the measurement it destroyed. A superseding run should queue behind
-# this one, not shoot it.
+# and the disk probe was killed 29 minutes into a 60-minute measurement when
+# a merge of main landed on the branch - a push that touched none of the
+# files this workflow measures and had nothing to say about its result.
+#
+# The trade is real and chosen deliberately: a superseding run now QUEUES
+# behind a running one rather than replacing it, so an unrelated push cannot
+# destroy an hour of measurement, at the cost of the queue occasionally
+# holding a newer run behind an older one. For a spike whose output is the
+# whole point, losing the measurement is the worse failure. Cancel the stale
+# run by hand when the queue order is wrong.
 concurrency:
   group: shard-seam-spike-${{ github.ref }}
   cancel-in-progress: false

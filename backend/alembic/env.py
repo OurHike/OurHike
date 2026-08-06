@@ -11,19 +11,6 @@ from alembic import context
 # below resolves the same way it does for the app and the test suite.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-# --- DuckDB/Alembic dialect gap, worth flagging explicitly -----------------
-# duckdb-engine registers a real SQLAlchemy *dialect* ("duckdb"), but ships
-# no Alembic DDL *implementation* for it. Without this, Alembic's
-# `DefaultImpl.get_by_dialect()` raises `KeyError: 'duckdb'` immediately on
-# any local migration run - not a modeling difference, a missing piece of
-# integration glue. The fix below registers one by reusing PostgreSQL's
-# impl, since duckdb-engine's own compiler is itself PostgreSQL-derived
-# (see the SERIAL-vs-DuckDB note in tests/test_db_session.py for the same
-# lineage causing a real, worked-around incompatibility elsewhere). This
-# only affects the local DuckDB dev path - CI/production run migrations
-# against real Postgres, which already has Alembic's native impl.
-from alembic.ddl.postgresql import PostgresqlImpl  # noqa: E402
-
 # --- Empty-metadata gap, worth flagging explicitly --------------------------
 # `import app.models` below is a side-effect import: it's what registers
 # every model onto Base.metadata. Without it, target_metadata is
@@ -39,11 +26,6 @@ from alembic.ddl.postgresql import PostgresqlImpl  # noqa: E402
 import app.models  # noqa: E402,F401
 from app.config import settings  # noqa: E402
 from app.db.base import Base  # noqa: E402
-
-
-class DuckDBImpl(PostgresqlImpl):
-    __dialect__ = "duckdb"
-
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

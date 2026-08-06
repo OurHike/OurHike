@@ -37,13 +37,15 @@ SECURITY` must never be added here: it applies RLS to the owner too, and
 would break every endpoint at once. tests/test_migration_rls.py asserts
 the word does not appear.
 
-**Postgres only, and that guard is load-bearing.** alembic/env.py
-registers a `DuckDBImpl` that reuses Alembic's `PostgresqlImpl`, so
-Postgres DDL is emitted verbatim against DuckDB - which has no
-`ALTER TABLE ... ENABLE ROW LEVEL SECURITY` at all. Unguarded, this
-revision would break the local DuckDB path app/config.py defaults to.
-Nothing is lost by skipping it there: a local dev file has no PostgREST
-in front of it, which is the entire threat this addresses.
+**Postgres only, and the guard stays even though every database this
+backend now runs against is Postgres.** These are raw
+`ALTER TABLE ... ROW LEVEL SECURITY` strings handed to `op.execute`, so
+they reach whatever dialect Alembic is pointed at, verbatim and
+unchecked. When this was written, that included an embedded local
+database with no such syntax; that path is gone (local dev is a real
+Postgres now - see backend/scripts/local-postgres.sh), which makes the
+guard cheap insurance rather than a live requirement. Deleting it would
+trade nothing for a revision that hard-fails on anything unexpected.
 """
 
 from typing import Sequence, Union

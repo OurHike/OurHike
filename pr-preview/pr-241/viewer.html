@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <!-- The artifact viewer (issue #202): drop a built .pmtiles archive from a
+       pipeline workflow run onto this page and see it rendered with the real
+       hiking cartography. Ships with every PR preview at /viewer.html, so
+       "does this look like a map you would navigate by" - the question
+       features/MAP_OPTIONS.md says only a real screen can answer - is one
+       artifact download away from any PR. Not part of the app a hiker sees:
+       its own entry point, no service worker registration, no tab bar. -->
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OurHike — map artifact viewer</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        font-family: system-ui, sans-serif;
+      }
+      #viewer {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+      }
+      #viewer-bar {
+        padding: 0.5rem 0.75rem;
+        background: #355c3a;
+        color: #f7f3e9;
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      #viewer-bar strong {
+        font-size: 0.95rem;
+      }
+      #viewer-status {
+        font-size: 0.85rem;
+        opacity: 0.95;
+      }
+      #viewer-map {
+        flex: 1;
+      }
+    </style>
+    <script type="module" crossorigin src="/OurHike/pr-preview/pr-241/assets/viewer-BuIi73Yb.js"></script>
+    <link rel="modulepreload" crossorigin href="/OurHike/pr-preview/pr-241/assets/style-Df5cQZIT.js">
+  <link rel="manifest" href="/OurHike/pr-preview/pr-241/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/OurHike/pr-preview/pr-241/registerSW.js"></script></head>
+  <body>
+    <div id="viewer">
+      <header id="viewer-bar">
+        <strong>OurHike artifact viewer</strong>
+        <input id="viewer-files" type="file" accept=".pmtiles" multiple />
+        <span id="viewer-status">
+          Drop .pmtiles archives here — basemap, DEM, and raster sheets are recognised
+          automatically.
+        </span>
+      </header>
+      <div id="viewer-map"></div>
+    </div>
+  </body>
+</html>

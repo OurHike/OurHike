@@ -118,6 +118,12 @@ import {
 } from './lib/auth'
 import { listQueued, removeQueued, retryQueued, type FlushResult } from './lib/outbox'
 import { useOutboxSync, syncOutbox } from './lib/outboxSync'
+import { useSafetyData } from './lib/useSafetyData'
+import { closureBanner } from './lib/closureBanner'
+import { routeBannerText, warningsOnRoute } from './lib/seriousWarnings'
+import type { ClosureDetail } from './chrome/ClosureSheet'
+import type { SeriousWarning } from './chrome/SeriousWarningSheet'
+import type { WarningPoint } from './map/warningLayers'
 import type { BoundingBox, MapPoint } from './lib/legendContents'
 import type { SearchablePoi } from './lib/searchPoi'
 import './App.css'
@@ -219,6 +225,14 @@ function App() {
   // or closes itself, instead of the card going on showing a copy of data the
   // app no longer holds.
   const [selectedPoiId, setSelectedPoiId] = useState<string | null>(null)
+  // The tapped closure band and warning pin, held as ids for the same
+  // stays-honest-under-fresh-data reason as the POI above.
+  const [selectedClosureId, setSelectedClosureId] = useState<string | null>(null)
+  const [selectedWarningId, setSelectedWarningId] = useState<string | null>(null)
+  // The route banner's dismissal. Cleared whenever the set of on-route
+  // warnings changes, so dismissing today's two does not swallow tomorrow's
+  // third - see the effect below.
+  const [warningNoticeDismissed, setWarningNoticeDismissed] = useState(false)
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set())
   const [bbox, setBbox] = useState<BoundingBox>(EMPTY_BBOX)
 
@@ -557,6 +571,67 @@ function App() {
     )
   }, [fix])
 
+  // The community safety data (#286): closures and reports, re-read when the
+  // connection or the account changes. Everything the map draws from it is
+  // derived below rather than stored, so a fresh fetch cannot leave a band,
+  // a pin, a banner and a sheet describing four different copies.
+  const safety = useSafetyData(online, account?.email ?? null)
+
+  // The reports that render as warning pins: escalated by a moderator AND
+  // still standing. `resolved` is deliberately out - it reads as "Fixed"
+  // (lib/reportStatus.ts), and drawing the map's biggest pin over a hazard
+  // somebody has since dealt with is the false alarm HIKER_SAFETY.md's trust
+  // budget cannot afford. Normal resolved reports stay information; a
+  // resolved WARNING is just a report again.
+  const seriousWarnings = useMemo(
+    () =>
+      safety.reports.filter(
+        (report) => report.severity === 'serious' && report.status === 'verified',
+      ),
+    [safety.reports],
+  )
+
+  // Each warning placed on the map: its own coordinates, or its POI's when
+  // the report referenced a place instead of dropping a pin. A report with
+  // neither cannot be drawn or counted against a route, and is left out
+  // rather than guessed onto the trail - the sheet is still reachable the
+  // day it gets a position, and a warning pin in the wrong place is worse
+  // than the gap.
+  //
+  // The mile is looked up per warning (#244's consumer half): the backend
+  // sends no trail mile, and the same centerline index that puts the hiker's
+  // own mile in the header places each warning on the same axis - so "on
+  // your route" and "you are here" are measurements from one ruler.
+  const placedWarnings = useMemo(
+    () =>
+      seriousWarnings.flatMap((report) => {
+        const at =
+          report.lat !== null && report.lon !== null
+            ? { lat: report.lat, lon: report.lon }
+            : (() => {
+                const poi = pois.find((candidate) => candidate.id === report.poi_id)
+                return poi === undefined ? null : { lat: poi.lat, lon: poi.lon }
+              })()
+        if (at === null) return []
+
+        return [
+          {
+            report,
+            lon: at.lon,
+            lat: at.lat,
+            mile:
+              trailIndex === null ? null : (locateOnTrail(trailIndex, at)?.mile ?? null),
+          },
+        ]
+      }),
+    [seriousWarnings, pois, trailIndex],
+  )
+
+  const warningPoints: WarningPoint[] = useMemo(
+    () => placedWarnings.map(({ report, lon, lat }) => ({ id: report.id, lon, lat })),
+    [placedWarnings],
+  )
+
   // Built from the POIs alone. The mile is added where the centerline index
   // exists and simply omitted where it does not - searching for a shelter by
   // name needs no geometry, and gating the whole list on the index meant a
@@ -653,6 +728,66 @@ function App() {
     }
   }, [ribbon, searchablePois])
 
+  // The warnings on this hiker's route (WIREFRAMES.md §8): from where they
+  // stand to the end of the trail in the direction they are walking. Both a
+  // fix and a direction are required - "your route" is a claim about where
+  // someone is going, and before the tracker has watched a quarter mile of
+  // movement the app honestly does not know. No banner is the truthful state
+  // until then; the pins are on the map either way.
+  const routeWarnings = useMemo(() => {
+    const heading = direction?.direction
+    if (fix === null || heading === undefined || trailIndex === null) {
+      return []
+    }
+    const range =
+      heading === 'NOBO'
+        ? { fromMile: fix.mile, toMile: trailIndex.totalMiles }
+        : { fromMile: fix.mile, toMile: 0 }
+
+    return warningsOnRoute(
+      placedWarnings.flatMap(({ report, mile }) =>
+        mile === null
+          ? []
+          : [{ id: report.id, type: report.type, severity: 'serious' as const, mile }],
+      ),
+      range,
+    )
+  }, [fix, direction, trailIndex, placedWarnings])
+
+  // Dismissal holds for THIS set of warnings, not forever: a new warning on
+  // the route brings the banner back, keyed on the ids so a re-fetch of the
+  // same set does not.
+  const routeWarningIds = routeWarnings
+    .map((warning) => warning.id)
+    .sort()
+    .join('|')
+  useEffect(() => {
+    setWarningNoticeDismissed(false)
+  }, [routeWarningIds])
+
+  // The nearest closure ahead, as the header banner (WIREFRAMES.md §7).
+  // Nearest, when several qualify: the one somebody is about to walk into is
+  // the one worth the banner, and the bands and sheets carry the rest.
+  const closureNotice = useMemo(() => {
+    const heading = direction?.direction
+    if (fix === null || heading === undefined) return null
+
+    const ahead = safety.closures
+      .map((closure) => {
+        const text = closureBanner(closure, fix.mile, heading)
+        const nearEdge =
+          heading === 'NOBO'
+            ? Math.min(closure.start_mile_marker, closure.end_mile_marker)
+            : Math.max(closure.start_mile_marker, closure.end_mile_marker)
+        const distance = heading === 'NOBO' ? nearEdge - fix.mile : fix.mile - nearEdge
+        return { text, distance: Math.max(distance, 0) }
+      })
+      .filter((candidate) => candidate.text !== null)
+      .sort((a, b) => a.distance - b.distance)
+
+    return ahead[0]?.text ?? null
+  }, [safety.closures, fix, direction])
+
   // Zoomed out past what the download covers (#216).
   //
   // Read off the DRAWN background rather than the choice: with Data Saver on,
@@ -687,6 +822,8 @@ function App() {
     setDownloadsOpen(true)
     setLegendOpen(false)
     setSelectedPoiId(null)
+    setSelectedClosureId(null)
+    setSelectedWarningId(null)
   }, [])
 
   /**
@@ -847,12 +984,110 @@ function App() {
     if (id !== null) setLegendOpen(false)
   }, [])
 
+  // The band and the pin follow the card's rule. Every tap reports to all
+  // three handlers with one winner and the rest null (map/taps.ts), so the
+  // nulls here are what dismiss whatever the tap did not land on - one thing
+  // open at a time falls out of the dispatch rather than being re-derived.
+  const handleSelectClosure = useCallback((id: string | null) => {
+    setSelectedClosureId(id)
+    if (id !== null) setLegendOpen(false)
+  }, [])
+
+  const handleSelectWarning = useCallback((id: string | null) => {
+    setSelectedWarningId(id)
+    if (id !== null) setLegendOpen(false)
+  }, [])
+
   const handleOpenLegend = useCallback(() => {
     setLegendOpen(true)
     setSelectedPoiId(null)
+    setSelectedClosureId(null)
+    setSelectedWarningId(null)
   }, [])
 
   const handleClosePoi = useCallback(() => setSelectedPoiId(null), [])
+  const handleCloseClosure = useCallback(() => setSelectedClosureId(null), [])
+  const handleCloseWarning = useCallback(() => setSelectedWarningId(null), [])
+
+  /**
+   * The tapped closure, resolved fresh from the fetched list like the POI
+   * card is - a closure re-fetched mid-look is described from the new copy
+   * or closes itself, never from data the app no longer holds.
+   *
+   * The four nulls are #245's honest settlement, same as the warning
+   * sheet's: the backend carries no closed-since, no expected reopen, no
+   * display name for who marked it and no reroute link, and the sheet omits
+   * what it is not given rather than guessing. Non-null values light those
+   * lines back up with no change here.
+   */
+  const selectedClosure: ClosureDetail | null = useMemo(() => {
+    if (selectedClosureId === null) return null
+    const closure = safety.closures.find(
+      (candidate) => candidate.id === selectedClosureId,
+    )
+    if (closure === undefined) return null
+    return {
+      ...closure,
+      closed_since: null,
+      expected_reopen: null,
+      marked_by: null,
+      reroute_url: null,
+    }
+  }, [selectedClosureId, safety.closures])
+
+  /** The tapped warning, resolved the same way. Confirmation date,
+   *  corroboration and reporter name are #292's nulls - not supplied by the
+   *  backend, omitted by the sheet. */
+  const selectedWarning: SeriousWarning | null = useMemo(() => {
+    if (selectedWarningId === null) return null
+    const placed = placedWarnings.find(
+      (candidate) => candidate.report.id === selectedWarningId,
+    )
+    if (placed === undefined) return null
+    return {
+      id: placed.report.id,
+      type: placed.report.type,
+      note: placed.report.note,
+      mile: placed.mile,
+      confirmedAt: null,
+      corroboration: null,
+      // Defensive: `bad_hikers` is internal-only and should never reach this
+      // list, but if one ever does, the name-withheld treatment is the side
+      // to fail on.
+      aboutAPerson: placed.report.type === 'bad_hikers',
+      reporterName: null,
+    }
+  }, [selectedWarningId, placedWarnings])
+
+  /**
+   * "N serious warnings on your route", with See / Dismiss (WIREFRAMES.md
+   * §8). See jumps to the nearest warning ahead - pointing, not routing, the
+   * same stance every sheet takes.
+   */
+  const warningNotice = useMemo(() => {
+    if (warningNoticeDismissed || fix === null) return null
+    const text = routeBannerText(routeWarnings.length)
+    if (text === null) return null
+
+    const nearest = [...routeWarnings].sort(
+      (a, b) => Math.abs(a.mile - fix.mile) - Math.abs(b.mile - fix.mile),
+    )[0]
+    const at = placedWarnings.find((candidate) => candidate.report.id === nearest.id)
+
+    return {
+      text,
+      onSee:
+        at === undefined || map === null
+          ? undefined
+          : () => {
+              map.jumpTo({
+                center: [at.lon, at.lat],
+                zoom: Math.max(map.getZoom(), SEARCH_RESULT_ZOOM),
+              })
+            },
+      onDismiss: () => setWarningNoticeDismissed(true),
+    }
+  }, [warningNoticeDismissed, fix, routeWarnings, placedWarnings, map])
 
   const handleToggleType = useCallback((type: string) => {
     setHiddenTypes((current) => {
@@ -1181,6 +1416,18 @@ function App() {
           selectedPoi={selectedPoi}
           onSelectPoi={handleSelectPoi}
           onClosePoi={handleClosePoi}
+          closures={safety.closures}
+          trailIndex={trailIndex}
+          warnings={warningPoints}
+          onSelectClosure={handleSelectClosure}
+          onSelectWarning={handleSelectWarning}
+          selectedClosure={selectedClosure}
+          onCloseClosure={handleCloseClosure}
+          closuresSyncedAt={safety.closuresSyncedAt}
+          selectedWarning={selectedWarning}
+          onCloseWarning={handleCloseWarning}
+          closureNotice={closureNotice}
+          warningNotice={warningNotice}
           // WIREFRAMES.md §1.5: zoom buttons are web-only. Nothing was passing
           // this, so `showZoomButtons` sat on its default of false everywhere and
           // a browser with a mouse had no visible way to zoom at all.

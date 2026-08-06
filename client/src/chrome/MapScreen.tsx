@@ -20,8 +20,13 @@ import { Search } from './Search'
 import { ElevationRibbon, type ElevationRibbonProps } from './ElevationRibbon'
 import { WaypointLanes, type WaypointLanesProps } from './WaypointLanes'
 import { PoiCard, type PoiDetail } from './PoiCard'
+import { ClosureSheet, type ClosureDetail } from './ClosureSheet'
+import { SeriousWarningSheet, type SeriousWarning } from './SeriousWarningSheet'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapView } from '../map/MapView'
+import type { WarningPoint } from '../map/warningLayers'
+import type { Closure } from '../lib/closureBanner'
+import type { TrailIndex } from '../lib/trailPosition'
 import { HEALTHY, type LiveSourceHealth } from '../map/liveSourceHealth'
 import type { BackgroundOverride } from '../lib/dataSaver'
 import type { ArchiveZooms } from '../lib/archiveCoverage'
@@ -89,6 +94,46 @@ export interface MapScreenProps {
    *  the card is dismissed. Stable across renders - see MapViewProps. */
   onSelectPoi: (id: string | null) => void
   onClosePoi: () => void
+
+  // The community safety layers (#232): closures as barred bands, serious
+  // warnings as the map's biggest pin. All optional the same way `elevation`
+  // is - a shell with no backend simply never passes them, and the map draws
+  // exactly what it drew before they existed.
+  closures?: readonly Closure[]
+  /** What places a mile range on the map - see MapViewProps. */
+  trailIndex?: TrailIndex | null
+  warnings?: readonly WarningPoint[]
+  /** A closure band was tapped, by id - or null. Stable across renders. */
+  onSelectClosure?: (id: string | null) => void
+  /** A warning pin was tapped, by report id - or null. Stable across renders. */
+  onSelectWarning?: (id: string | null) => void
+
+  /** The tapped closure resolved to what its sheet shows, like `selectedPoi`. */
+  selectedClosure?: ClosureDetail | null
+  onCloseClosure?: () => void
+  /**
+   * When the closures on this phone were fetched, for the sheet's "your copy
+   * of this closure is N old" line. Deliberately NOT `lastSyncedAt`, which is
+   * the outbox flush the status strip reports - a report sent five minutes
+   * ago says nothing about how old the closure copy is.
+   */
+  closuresSyncedAt?: Date | null
+  /** The tapped warning resolved to what its sheet shows. */
+  selectedWarning?: SeriousWarning | null
+  onCloseWarning?: () => void
+
+  /**
+   * The closure-ahead banner (WIREFRAMES.md §7), already worded by the shell
+   * (lib/closureBanner.ts) - this screen only says it. Null for no banner,
+   * which is the ordinary state of the trail.
+   */
+  closureNotice?: string | null
+  /**
+   * The serious-warnings route banner (WIREFRAMES.md §8): the sentence, a
+   * "See" that takes the hiker to the nearest warning ahead, and a dismissal
+   * that holds until the warnings themselves change.
+   */
+  warningNotice?: { text: string; onSee?: () => void; onDismiss: () => void } | null
 
   // Both are optional and both are omitted rather than stubbed when their data
   // isn't there. An empty ribbon or a bare set of lanes would read as "nothing
@@ -177,6 +222,18 @@ export function MapScreen({
   selectedPoi,
   onSelectPoi,
   onClosePoi,
+  closures,
+  trailIndex = null,
+  warnings,
+  onSelectClosure,
+  onSelectWarning,
+  selectedClosure = null,
+  onCloseClosure,
+  closuresSyncedAt = null,
+  selectedWarning = null,
+  onCloseWarning,
+  closureNotice = null,
+  warningNotice = null,
   elevation,
   waypoints,
   showZoomButtons = false,
@@ -248,6 +305,38 @@ export function MapScreen({
           onOpenSearch={onOpenSearch}
         />
 
+        {/* The safety banners (WIREFRAMES.md §7, §8), directly under the
+            header so they read as part of the trail status rather than part
+            of the map. role="status" not role="alert": both describe ground
+            miles ahead, and interrupting a screen reader mid-sentence is the
+            urgency of the wrong-way cue, not of these. */}
+        {closureNotice !== null && (
+          <p className="map-screen__closure-notice" role="status">
+            {closureNotice}
+          </p>
+        )}
+        {warningNotice !== null && (
+          <div className="map-screen__warning-notice" role="status">
+            <span className="map-screen__warning-notice-text">{warningNotice.text}</span>
+            {warningNotice.onSee !== undefined && (
+              <button
+                type="button"
+                className="map-screen__warning-notice-see"
+                onClick={warningNotice.onSee}
+              >
+                See
+              </button>
+            )}
+            <button
+              type="button"
+              className="map-screen__warning-notice-dismiss"
+              onClick={warningNotice.onDismiss}
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {elevation && <ElevationRibbon {...elevation} />}
         {waypoints && <WaypointLanes {...waypoints} />}
 
@@ -266,6 +355,11 @@ export function MapScreen({
               pois={viewportPoints}
               hiddenTypes={hiddenTypes}
               onSelectPoi={onSelectPoi}
+              closures={closures}
+              trailIndex={trailIndex}
+              warnings={warnings}
+              onSelectClosure={onSelectClosure}
+              onSelectWarning={onSelectWarning}
               showZoomButtons={showZoomButtons}
               units={units}
               center={center}
@@ -284,6 +378,21 @@ export function MapScreen({
                 every placement would be off by the chrome above the map. */}
             {selectedPoi !== null && (
               <PoiCard poi={selectedPoi} map={liveMap} onClose={onClosePoi} />
+            )}
+
+            {/* Bottom sheets, absolute against the same canvas box for the
+                same reason as the card. At most one is ever non-null - the
+                shell keeps one-thing-open, like the legend and the card. */}
+            {selectedClosure !== null && onCloseClosure !== undefined && (
+              <ClosureSheet
+                closure={selectedClosure}
+                lastSyncedAt={closuresSyncedAt}
+                onClose={onCloseClosure}
+                now={time}
+              />
+            )}
+            {selectedWarning !== null && onCloseWarning !== undefined && (
+              <SeriousWarningSheet warning={selectedWarning} onClose={onCloseWarning} />
             )}
 
             <Search

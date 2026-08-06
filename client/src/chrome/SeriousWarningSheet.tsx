@@ -17,13 +17,20 @@
 // notifications are broken - worse than the silence. Saying it plainly makes
 // the one-notification policy legible instead of something to infer.
 
+// The nullable fields below are #292's honest settlement: the backend's
+// ReportOut carries no confirmation date, no corroboration sentence and no
+// reporter display name, so the sheet takes each as "known or absent" and
+// OMITS what is absent rather than rendering a guess - the same rule
+// ClosureSheet already keeps ("expected reopen: unknown" reads as a promise
+// nobody made). When the backend learns to supply them, non-null values
+// light the lines back up with no change here.
 export interface SeriousWarning {
   id: string
   type: string
-  note: string
-  mile: number
-  confirmedAt: Date
-  corroboration: string
+  note: string | null
+  mile: number | null
+  confirmedAt: Date | null
+  corroboration: string | null
   aboutAPerson: boolean
   reporterName: string | null
 }
@@ -44,27 +51,36 @@ export function SeriousWarningSheet({ warning, onClose }: SeriousWarningSheetPro
         </button>
       </div>
 
+      {/* The badge itself is always true - a warning is only on the map
+          because a moderator escalated it - but the date is only shown when
+          it is actually known. */}
       <p className="warning-sheet__badge">
-        {`Confirmed by club moderators · ${warning.confirmedAt.toLocaleDateString(
-          'en-US',
-          {
-            month: 'long',
-            day: 'numeric',
-            timeZone: 'UTC',
-          },
-        )}`}
+        {warning.confirmedAt === null
+          ? 'Confirmed by club moderators'
+          : `Confirmed by club moderators · ${warning.confirmedAt.toLocaleDateString(
+              'en-US',
+              {
+                month: 'long',
+                day: 'numeric',
+                timeZone: 'UTC',
+              },
+            )}`}
       </p>
 
-      <p className="closure-sheet__range">
-        {`mi ${warning.mile.toLocaleString('en-US', {
-          minimumFractionDigits: 1,
-          maximumFractionDigits: 1,
-        })}`}
-      </p>
+      {warning.mile !== null && (
+        <p className="closure-sheet__range">
+          {`mi ${warning.mile.toLocaleString('en-US', {
+            minimumFractionDigits: 1,
+            maximumFractionDigits: 1,
+          })}`}
+        </p>
+      )}
 
-      <p className="warning-sheet__note">{warning.note}</p>
+      {warning.note !== null && <p className="warning-sheet__note">{warning.note}</p>}
 
-      <p className="closure-sheet__meta">{warning.corroboration}</p>
+      {warning.corroboration !== null && (
+        <p className="closure-sheet__meta">{warning.corroboration}</p>
+      )}
 
       <p className="closure-sheet__meta">
         {warning.aboutAPerson

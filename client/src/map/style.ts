@@ -65,6 +65,9 @@
 import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec'
 import { BLAZE_MATCH_EXPRESSION } from '../lib/blaze'
 import { buildPoiLayer, buildPoiSource, POI_SOURCE_ID } from './poiLayers'
+import { buildClosureSource, CLOSURE_SOURCE_ID } from './closureLayers'
+import { buildWarningSource, buildWarningLayer, WARNING_SOURCE_ID } from './warningLayers'
+import { buildClosureLayers } from '../lib/closureStyle'
 import type { BackgroundSource } from '../lib/userPreferences'
 import {
   BUNDLED_GLYPHS,
@@ -371,6 +374,13 @@ export function buildMapStyle({
       // source with no attribution is one release away from shipping
       // uncredited.
       [POI_SOURCE_ID]: { ...buildPoiSource(), attribution: ATTRIBUTION },
+      // Community data, declared empty and filled from the backend once the
+      // reads land (map/closureLayers.ts, map/warningLayers.ts). No
+      // attribution: closures and warnings are OurHike's own reports, not a
+      // licensed source owed a credit line - and the corner already credits
+      // more than is on the screen (#295).
+      [CLOSURE_SOURCE_ID]: buildClosureSource(),
+      [WARNING_SOURCE_ID]: buildWarningSource(),
       // Each of these carries its own credit (OpenFreeMap's terms, the AWS
       // Terrain Tiles requirement) rather than the composed line - a source
       // should name the data IT is, and attributionFor() is what assembles the
@@ -466,9 +476,19 @@ export function buildMapStyle({
           'line-width': TRAIL_WIDTH_EXPRESSION as unknown as number,
         },
       },
-      // Last, so a pin is never buried under the trail line it sits on. See
-      // poiLayers.ts for why this is one layer rather than one per category.
+      // Over the trail lines: a closure bars the trail, so it must cover the
+      // blaze it closes. Under the pins - a shelter beside a closed stretch
+      // is still somewhere to sleep, and the band is wide enough to survive
+      // being crossed by a pin. The drawing itself (widths, colour, the
+      // barred rhythm and why each is load-bearing) is lib/closureStyle.ts.
+      ...buildClosureLayers(CLOSURE_SOURCE_ID),
+      // Last-but-one, so a pin is never buried under the trail line it sits
+      // on. See poiLayers.ts for why this is one layer rather than one per
+      // category.
       buildPoiLayer(),
+      // Last, on top of everything: the serious-warning pin is deliberately
+      // the biggest thing on the map, and nothing may cover it.
+      buildWarningLayer(),
     ],
   }
 }

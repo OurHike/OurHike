@@ -29,6 +29,8 @@ import {
   ELEVATION_ATTRIBUTION,
 } from './terrain'
 import { POI_LAYER_ID } from './poiLayers'
+import { WARNING_LAYER_ID } from './warningLayers'
+import { CLOSURE_CASING_LAYER_ID, CLOSURE_LAYER_ID } from '../lib/closureStyle'
 
 // The live background exists because a raster mosaic of pre-rendered US Topo
 // quads cannot be restyled, cannot be read at a zoom it was not drawn for, and
@@ -190,7 +192,7 @@ describe('the live topographic background', () => {
     expect(lastBackground).toBeLessThan(order.indexOf(POI_LAYER_ID))
   })
 
-  it('keeps the POI pins last of all, so they win collisions against our labels', () => {
+  it('keeps the POI pins above every label, so labels cannot suppress a water source', () => {
     // Not only about what draws on top. The live sheet added four SYMBOL
     // layers (peak, place, water and contour labels) to a style that had none,
     // and MapLibre declutters symbols across the whole style, not per layer -
@@ -198,16 +200,34 @@ describe('the live topographic background', () => {
     //
     // Which one loses is decided by layer order, and in a direction worth
     // checking rather than assuming: PauseablePlacement starts at
-    // `order.length - 1` and decrements, so placement runs TOP-DOWN and the
-    // last layer has priority. Pins last therefore means a contour label can
-    // never suppress a water source - which is the way round it has to be,
-    // since water is the most safety-relevant thing on this map.
+    // `order.length - 1` and decrements, so placement runs TOP-DOWN and later
+    // layers have priority. Pins above every label therefore means a contour
+    // label can never suppress a water source - which is the way round it has
+    // to be, since water is the most safety-relevant thing on this map.
     //
     // Move this layer and that guarantee is silently gone, which is why it is
     // asserted rather than left to the ordering in buildMapStyle.
+    const style = live()
+    const order = ids(style)
+    const pinAt = order.indexOf(POI_LAYER_ID)
+
+    // The one symbol layer allowed above the pins is the warning pin, which
+    // outranks them on purpose - every label sits below.
+    const symbolsAbovePins = style.layers
+      .filter((layer) => layer.type === 'symbol' && order.indexOf(layer.id) > pinAt)
+      .map((layer) => layer.id)
+
+    expect(symbolsAbovePins).toEqual([WARNING_LAYER_ID])
+  })
+
+  it('keeps the serious-warning pins last of all, outranking even the POI pins', () => {
+    // WIREFRAMES.md §8: the warning pin is deliberately the biggest thing on
+    // the map, and the same top-down placement rule above means last is what
+    // makes it also the thing nothing can suppress.
     const order = ids(live())
 
-    expect(order[order.length - 1]).toBe(POI_LAYER_ID)
+    expect(order[order.length - 1]).toBe(WARNING_LAYER_ID)
+    expect(order[order.length - 2]).toBe(POI_LAYER_ID)
   })
 
   it('credits every licence the live sheet pulls in', () => {
@@ -424,17 +444,22 @@ describe('the offline-only background', () => {
     expect(offline().sources.trails).toHaveProperty('attribution', ATTRIBUTION)
   })
 
-  it('still draws the archive, the trail and the pins, which is the whole map', () => {
+  it('still draws the archive, the trail, the pins and the safety layers - the whole map', () => {
     // Exhaustive on purpose: the point of this one is that choosing the
     // offline background subtracts the live layers and NOTHING else. An
     // `toContain` here would pass just as happily if the trail or the pins
-    // went missing with them.
+    // went missing with them. The closure band and the warning pins are
+    // notably NOT subtracted: a hiker who chose the offline background to
+    // stay off the network still gets every closure the app has a copy of.
     expect(ids(offline())).toEqual([
       BACKDROP_LAYER_ID,
       TOPO_LAYER_ID,
       'trail-casing',
       'trail-blaze',
+      CLOSURE_CASING_LAYER_ID,
+      CLOSURE_LAYER_ID,
       POI_LAYER_ID,
+      WARNING_LAYER_ID,
     ])
   })
 })

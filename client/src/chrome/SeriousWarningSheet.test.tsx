@@ -113,3 +113,30 @@ describe('SeriousWarningSheet', () => {
     expect(screen.getByText(/reported by a hiker/i)).toBeInTheDocument()
   })
 })
+
+describe('what the backend cannot yet supply (#292)', () => {
+  // GET /reports carries no confirmation date, no corroboration sentence and
+  // no reporter display name. The sheet's rule for each is omit, not guess -
+  // the same rule ClosureSheet keeps for "expected reopen".
+
+  it('keeps the badge but drops the date when the confirmation date is unknown', () => {
+    render(<SeriousWarningSheet {...PROPS} warning={{ ...WARNING, confirmedAt: null }} />)
+
+    expect(screen.getByText(/confirmed by club moderators/i)).toBeInTheDocument()
+    expect(screen.queryByText(/July 24/)).toBe(null)
+  })
+
+  it('omits the corroboration line rather than asserting corroboration it has not seen', () => {
+    render(
+      <SeriousWarningSheet {...PROPS} warning={{ ...WARNING, corroboration: null }} />,
+    )
+
+    expect(screen.queryByText(/several separate reports over four days/i)).toBe(null)
+  })
+
+  it('omits the mile when the report could not be placed on the centerline', () => {
+    render(<SeriousWarningSheet {...PROPS} warning={{ ...WARNING, mile: null }} />)
+
+    expect(screen.queryByText(/mi /)).toBe(null)
+  })
+})

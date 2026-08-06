@@ -41,7 +41,7 @@ export const POI_LAYER_ID = 'poi-pins'
 
 /**
  * Where a pin carries its POI id, so a tap on it can be turned back into the
- * POI the app holds (poiTaps.ts).
+ * POI the app holds (taps.ts).
  *
  * A property rather than the GeoJSON feature id, which is where an id belongs
  * and which cannot hold this one: MapLibre runs a string feature id through

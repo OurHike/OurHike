@@ -309,6 +309,51 @@
   border-top: 1px solid var(--border-1);
 }
 
+/* ---------- Safety notices (WIREFRAMES.md §7, §8) ---------- */
+
+/* Strips under the header, not overlays on the map: both describe the trail
+   ahead, and the map underneath must stay fully usable while they show.
+   Closure red is the same #b2321f the band and the pin carry - one colour,
+   one meaning. */
+.map-screen__closure-notice,
+.map-screen__warning-notice {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-on-dark, #fffdf7);
+  background: #b2321f;
+}
+
+.map-screen__warning-notice-text {
+  flex: 1;
+}
+
+.map-screen__warning-notice-see,
+.map-screen__warning-notice-dismiss {
+  min-height: 32px;
+  padding: 0 var(--space-3, 12px);
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.map-screen__warning-notice-see {
+  color: #b2321f;
+  background: var(--fg-on-dark, #fffdf7);
+  border: 0;
+}
+
+.map-screen__warning-notice-dismiss {
+  color: var(--fg-on-dark, #fffdf7);
+  background: transparent;
+  border: 1px solid rgb(255 253 247 / 55%);
+}
+
 /* ---------- Elevation ribbon ---------- */
 
 /* WIREFRAMES.md: 54px tall, 36px left inset for the lane labels below, which

@@ -18,6 +18,7 @@
 
 import { getAuthClient } from './supabase'
 import type { OutboxItem } from './outbox'
+import type { Closure } from './closureBanner'
 
 const RAW_BASE: string = import.meta.env.VITE_API_BASE_URL ?? ''
 
@@ -144,6 +145,100 @@ export async function sendReport(item: OutboxItem): Promise<void> {
     // commits and whose response never arrives.
     body: JSON.stringify({ ...item.payload, id: item.id, authored_at: item.authoredAt }),
   })
+}
+
+/**
+ * Like `apiFetch`, but with the token attached when there is one and never
+ * required - the third auth stance this module needed (#286).
+ *
+ * `authedFetch` refuses without a token, which is right for a write the
+ * server would refuse anyway. A read must not: browsing has never needed an
+ * account in this app, and `list_reports` explicitly answers an anonymous
+ * caller with the public set. But the token still has to be SENT when
+ * present, because that is what lets a reporter see their own unmoderated
+ * report - the thing "Waiting" on the More screen describes. Without it,
+ * someone's report would vanish from the app between submitting it and a
+ * moderator getting to it.
+ */
+async function browseFetch(path: string): Promise<Response> {
+  const token = await accessToken()
+  return apiFetch(
+    path,
+    token === null ? {} : { headers: { Authorization: `Bearer ${token}` } },
+  )
+}
+
+/**
+ * One list read, parsed and checked to actually be a list.
+ *
+ * Never `[]` on failure, and that is the one real rule of the read path: an
+ * empty list and a failed fetch draw the same map and mean opposite things
+ * on the ground, and the wrong one tells a hiker a closed stretch of trail
+ * is open. `apiFetch` already throws on a non-2xx; this adds the throw for a
+ * 200 that is not JSON or not an array - a captive portal's cheerful HTML
+ * page, mostly - so every caller can treat "resolved" as "this is the data".
+ */
+async function fetchList<T>(path: string): Promise<T[]> {
+  const response = await browseFetch(path)
+  const body: unknown = await response.json()
+  if (!Array.isArray(body)) {
+    throw new ApiError(response.status, `GET ${path} returned something not a list`)
+  }
+  return body as T[]
+}
+
+/**
+ * A report as `GET /reports` returns it (backend/app/schemas/report.py's
+ * ReportOut). Wire shape, so dates are ISO strings, not `Date`s.
+ *
+ * `severity` is the field the map reads first: `serious` is set by a
+ * moderator, never self-declared, and is what makes a report a warning pin
+ * rather than data (lib/seriousWarnings.ts).
+ */
+export interface RemoteReport {
+  id: string
+  reporter_id: string
+  type: string
+  poi_id: string | null
+  lat: number | null
+  lon: number | null
+  reporter_type: string
+  timestamp: string
+  note: string | null
+  photo_url: string | null
+  received_at: string
+  status: 'submitted' | 'verified' | 'resolved' | 'dismissed'
+  visibility: 'public' | 'internal_only' | 'club_only'
+  severity: 'normal' | 'serious'
+}
+
+/**
+ * A closure as `GET /closures` returns it (backend/app/schemas/closure.py's
+ * ClosureOut). Extends the domain shape the banner and the sheet already
+ * read (lib/closureBanner.ts) rather than redeclaring it, so the wire type
+ * cannot drift from what the UI renders.
+ */
+export interface RemoteClosure extends Closure {
+  reported_by: string
+  reported_at: string
+  trail_id: string
+  moderation_status: 'submitted' | 'verified' | 'dismissed'
+  verified_by: string | null
+  verified_at: string | null
+}
+
+/**
+ * The reports the caller may see: public and moderated, plus their own at
+ * any status when signed in. The map's half of #231's item 4 - the client
+ * could post a report and never see one back, its own included.
+ */
+export async function fetchReports(): Promise<RemoteReport[]> {
+  return fetchList<RemoteReport>('/reports')
+}
+
+/** Every verified closure. The other half of the map's read path (#286). */
+export async function fetchClosures(): Promise<RemoteClosure[]> {
+  return fetchList<RemoteClosure>('/closures')
 }
 
 // An ALLOWLIST, and that is the whole design (#266).

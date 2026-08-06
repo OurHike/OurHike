@@ -30,6 +30,10 @@ vi.mock('./lib/api', () => ({
   accessToken: vi.fn(async () => 'a-real-token'),
   sendReport: vi.fn(async () => undefined),
   permanentFailureReason: vi.fn(() => null),
+  // The map's reads (#286). Empty answers, not errors: this suite is about
+  // the outbox, and a rejecting read would only add noise to it.
+  fetchReports: vi.fn(async () => []),
+  fetchClosures: vi.fn(async () => []),
 }))
 vi.mock('./lib/auth', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./lib/auth')>()),

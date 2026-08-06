@@ -320,3 +320,110 @@ describe('MapScreen', () => {
     expect(screen.queryByRole('radio', { name: /live/i })).not.toBeInTheDocument()
   })
 })
+
+describe('the safety layers (#232)', () => {
+  // WIREFRAMES.md §7 and §8: the banners under the header, and the sheets a
+  // tap opens. The bands and pins themselves are map layers, tested with the
+  // style and the attach modules - what this screen owns is saying the
+  // notices and mounting the sheets.
+
+  const CLOSURE_DETAIL = {
+    id: 'c1',
+    reason_type: 'storm_damage' as const,
+    note: null,
+    status: 'closed' as const,
+    start_mile_marker: 1408.6,
+    end_mile_marker: 1411.0,
+    closed_since: null,
+    expected_reopen: null,
+    marked_by: null,
+    reroute_url: null,
+  }
+
+  const WARNING_DETAIL = {
+    id: 'r1',
+    type: 'animals',
+    note: 'A bear has been taking hung food bags overnight.',
+    mile: 1045.2,
+    confirmedAt: null,
+    corroboration: null,
+    aboutAPerson: false,
+    reporterName: null,
+  }
+
+  it('says the closure-ahead banner it was worded', () => {
+    render(
+      <MapScreen
+        {...PROPS}
+        closureNotice="Trail closed 1.4 mi ahead · Storm damage · mi 1,408.6 – 1,411.0"
+      />,
+    )
+
+    expect(screen.getByText(/trail closed 1\.4 mi ahead/i)).toBeInTheDocument()
+  })
+
+  it('shows no banner strip at all on a trail with nothing to say', () => {
+    render(<MapScreen {...PROPS} />)
+
+    expect(screen.queryByText(/trail closed/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/on your route/i)).not.toBeInTheDocument()
+  })
+
+  it('offers See and Dismiss on the route-warnings banner', async () => {
+    const user = userEvent.setup()
+    const onSee = vi.fn()
+    const onDismiss = vi.fn()
+    render(
+      <MapScreen
+        {...PROPS}
+        warningNotice={{
+          text: '2 serious warnings on your route',
+          onSee,
+          onDismiss,
+        }}
+      />,
+    )
+
+    expect(screen.getByText(/2 serious warnings on your route/i)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /see/i }))
+    await user.click(screen.getByRole('button', { name: /dismiss/i }))
+
+    expect(onSee).toHaveBeenCalled()
+    expect(onDismiss).toHaveBeenCalled()
+  })
+
+  it('mounts the closure sheet for the tapped band', () => {
+    render(
+      <MapScreen
+        {...PROPS}
+        selectedClosure={CLOSURE_DETAIL}
+        onCloseClosure={vi.fn()}
+        closuresSyncedAt={new Date('2026-07-26T12:00:00')}
+      />,
+    )
+
+    const sheet = screen.getByRole('dialog', { name: /trail closure/i })
+    expect(within(sheet).getByText(/storm damage/i)).toBeInTheDocument()
+    // The sync age is the closures fetch, not the outbox flush - three days
+    // against PROPS.time, not the three hours lastSyncedAt would say.
+    expect(within(sheet).getByText(/3d ago/)).toBeInTheDocument()
+  })
+
+  it('mounts the warning sheet for the tapped pin', () => {
+    render(
+      <MapScreen {...PROPS} selectedWarning={WARNING_DETAIL} onCloseWarning={vi.fn()} />,
+    )
+
+    const sheet = screen.getByRole('dialog', { name: /serious warning/i })
+    expect(within(sheet).getByText(/bear/i)).toBeInTheDocument()
+  })
+
+  it('mounts no sheet until something is tapped', () => {
+    render(<MapScreen {...PROPS} />)
+
+    expect(screen.queryByRole('dialog', { name: /closure/i })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('dialog', { name: /serious warning/i }),
+    ).not.toBeInTheDocument()
+  })
+})

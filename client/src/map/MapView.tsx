@@ -33,7 +33,11 @@ import { attachElevationLabelUnits } from './liveTopo'
 import type { TerrainUrls } from './terrain'
 import { attachMapChrome, type ScaleUnits } from './mapChrome'
 import { attachHiddenPoiTypes, attachPoiData, attachPoiIcons } from './poiLayers'
-import { attachPoiTaps } from './poiTaps'
+import { attachMapTaps } from './taps'
+import { attachClosureData } from './closureLayers'
+import { attachWarningData, attachWarningIcon, type WarningPoint } from './warningLayers'
+import type { Closure } from '../lib/closureBanner'
+import type { TrailIndex } from '../lib/trailPosition'
 import type { BoundingBox, MapPoint } from '../lib/legendContents'
 import type { BackgroundSource } from '../lib/userPreferences'
 import { openingZoomFloor, type ArchiveZooms } from '../lib/archiveCoverage'
@@ -88,6 +92,22 @@ export interface MapViewProps {
    * app knows about it, and looking a POI up is the shell's job.
    */
   onSelectPoi?: (id: string | null) => void
+  /**
+   * The closures to draw as barred bands, placed along `trailIndex` - the
+   * same centerline index that puts the hiker's own mile in the header, so
+   * the band and the "you are here" agree about where a mile is. With no
+   * index yet there is nothing to place a mile range on, and nothing draws.
+   */
+  closures?: readonly Closure[]
+  trailIndex?: TrailIndex | null
+  /** A closure band was tapped, by id - null for a tap elsewhere. Stable
+   *  across renders, like `onSelectPoi`. */
+  onSelectClosure?: (id: string | null) => void
+  /** The serious warnings to draw, each already resolved to a position. */
+  warnings?: readonly WarningPoint[]
+  /** A warning pin was tapped, by report id - or null. Stable across
+   *  renders, like `onSelectPoi`. */
+  onSelectWarning?: (id: string | null) => void
   /** Web only; touch platforms rely on pinch (see mapChrome.ts). */
   showZoomButtons?: boolean
   units?: ScaleUnits
@@ -128,6 +148,8 @@ const FIT_PADDING = 24
 // every pin on the trail on every render of the map screen.
 const NO_POIS: readonly MapPoint[] = []
 const NOTHING_HIDDEN: ReadonlySet<string> = new Set()
+const NO_CLOSURES: readonly Closure[] = []
+const NO_WARNINGS: readonly WarningPoint[] = []
 
 export function MapView({
   topoArchiveUrl,
@@ -136,6 +158,11 @@ export function MapView({
   pois = NO_POIS,
   hiddenTypes = NOTHING_HIDDEN,
   onSelectPoi,
+  closures = NO_CLOSURES,
+  trailIndex = null,
+  onSelectClosure,
+  warnings = NO_WARNINGS,
+  onSelectWarning,
   center,
   zoom,
   bounds,
@@ -307,13 +334,40 @@ export function MapView({
     return attachHiddenPoiTypes(map, hiddenTypes)
   }, [map, hiddenTypes])
 
+  // The community-data layers change on their own clocks too: closures and
+  // warnings land when the backend answers, which has nothing to do with the
+  // POIs arriving from IndexedDB.
+  useEffect(() => {
+    if (map === null) return
+    return attachClosureData(map, closures, trailIndex)
+  }, [map, closures, trailIndex])
+
+  useEffect(() => {
+    if (map === null) return
+    return attachWarningIcon(map)
+  }, [map])
+
+  useEffect(() => {
+    if (map === null) return
+    return attachWarningData(map, warnings)
+  }, [map, warnings])
+
   // Taps are their own effect for the same reason: this one re-binds when the
   // shell hands over a different handler, which has nothing to do with the
-  // pins themselves and must not re-push the POI source to do it.
+  // pins themselves and must not re-push the POI source to do it. One
+  // dispatcher for all three tappable layers, so a single touch can never
+  // open two sheets - see map/taps.ts.
   useEffect(() => {
-    if (map === null || onSelectPoi === undefined) return
-    return attachPoiTaps(map, onSelectPoi)
-  }, [map, onSelectPoi])
+    if (
+      map === null ||
+      (onSelectPoi === undefined &&
+        onSelectWarning === undefined &&
+        onSelectClosure === undefined)
+    ) {
+      return
+    }
+    return attachMapTaps(map, { onSelectPoi, onSelectWarning, onSelectClosure })
+  }, [map, onSelectPoi, onSelectWarning, onSelectClosure])
 
   useEffect(() => {
     if (map === null || onViewportChange === undefined) return

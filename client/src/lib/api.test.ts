@@ -3,6 +3,8 @@ import {
   apiUrl,
   apiFetch,
   sendReport,
+  fetchReports,
+  fetchClosures,
   accessToken,
   permanentFailureReason,
   ApiError,
@@ -311,5 +313,118 @@ describe('sendReport idempotency', () => {
 
     const body = JSON.parse(String((spy.mock.calls[0][1] as RequestInit).body))
     expect(body.id).toBe('outbox-1')
+  })
+})
+
+// #286: the reads. The two properties worth their own tests are the third
+// auth stance (token sent when present, never required) and the throw on
+// anything that is not the data - a read that quietly answered [] would draw
+// an open trail over a closed one.
+describe('fetchReports and fetchClosures', () => {
+  async function configuredApi() {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.org')
+    vi.resetModules()
+    return import('./api')
+  }
+
+  function mockJsonFetch(body: unknown, status = 200) {
+    return vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => body,
+    } as Response)
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
+  it('refuses when this build has no backend, before spending a request', async () => {
+    const spy = mockJsonFetch([])
+
+    await expect(fetchReports()).rejects.toBeInstanceOf(ApiNotConfiguredError)
+    await expect(fetchClosures()).rejects.toBeInstanceOf(ApiNotConfiguredError)
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('reads without an account - browsing has never needed one', async () => {
+    // The write path refuses when signed out; the read path must not, or the
+    // map would be blank for exactly the majority of people using it.
+    withSession(null)
+    const api = await configuredApi()
+    const spy = mockJsonFetch([])
+
+    await expect(api.fetchReports()).resolves.toEqual([])
+
+    const init = spy.mock.calls[0][1] as RequestInit | undefined
+    const headers = (init?.headers ?? {}) as Record<string, string>
+    expect(headers.Authorization).toBeUndefined()
+  })
+
+  it('sends the token when there is one, so a reporter sees their own queue', async () => {
+    // "Waiting" on the More screen describes a report only its author may
+    // see. The server decides that from this header; without it the report
+    // vanishes from the app between submitting and a moderator's verify.
+    const api = await configuredApi()
+    const spy = mockJsonFetch([])
+
+    await api.fetchClosures()
+
+    const headers = (spy.mock.calls[0][1] as RequestInit).headers as Record<
+      string,
+      string
+    >
+    expect(headers.Authorization).toBe('Bearer a-real-token')
+  })
+
+  it('asks the endpoints the backend actually serves', async () => {
+    const api = await configuredApi()
+    const spy = mockJsonFetch([])
+
+    await api.fetchReports()
+    await api.fetchClosures()
+
+    expect(spy.mock.calls.map(([url]) => url)).toEqual([
+      'https://api.example.org/reports',
+      'https://api.example.org/closures',
+    ])
+  })
+
+  it('returns what the server sent, as data', async () => {
+    const api = await configuredApi()
+    mockJsonFetch([{ id: 'c-1', status: 'closed' }])
+
+    await expect(api.fetchClosures()).resolves.toEqual([{ id: 'c-1', status: 'closed' }])
+  })
+
+  it('throws on a server error rather than answering with an empty map', async () => {
+    // An empty list and a failed fetch draw the same map and mean opposite
+    // things on the ground. The wrong one tells a hiker a closed stretch of
+    // trail is open, so a failure has to stay a failure.
+    const api = await configuredApi()
+    mockJsonFetch({ detail: 'boom' }, 500)
+
+    await expect(api.fetchReports()).rejects.toBeInstanceOf(api.ApiError)
+  })
+
+  it('throws on a 200 whose body is not a list - a captive portal, mostly', async () => {
+    const api = await configuredApi()
+    mockJsonFetch({ hello: 'please sign in to lodge wifi' })
+
+    await expect(api.fetchReports()).rejects.toBeInstanceOf(api.ApiError)
+  })
+
+  it('throws on a 200 whose body is not JSON at all', async () => {
+    const api = await configuredApi()
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new SyntaxError('Unexpected token < in JSON')
+      },
+    } as unknown as Response)
+
+    await expect(api.fetchClosures()).rejects.toBeInstanceOf(SyntaxError)
   })
 })

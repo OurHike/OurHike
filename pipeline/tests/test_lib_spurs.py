@@ -200,6 +200,59 @@ def test_a_line_touching_the_trail_at_neither_end_has_no_destination():
     assert orient(detached, centerline()) is None
 
 
+def test_a_spur_shorter_than_the_junction_radius_still_orients():
+    """The regression that motivated ON_TRAIL_M. A spur shorter than
+    JUNCTION_MAX_M has both ends within the junction radius by construction
+    - at the p50 length of 385 ft both ends clear 100 m - so treating "both
+    ends within the radius" as the alternate-route signature refused the
+    most common spurs there are. Every fixture spur used to be 300 m, which
+    is how this survived: nothing at or below the median length was tested."""
+    ends = ((TRAIL_LAT, TRAIL_LON), (north(80), TRAIL_LON))
+
+    junction, far = orient(ends, centerline())
+
+    assert junction == (TRAIL_LAT, TRAIL_LON)
+    assert far == (north(80), TRAIL_LON)
+
+
+def test_a_spur_at_the_first_quartile_length_orients():
+    """49 m is the p25 spur (features/SPUR_TRAILS.md): above the ON_TRAIL_M
+    bound, so it must resolve - a quarter of all spurs are at or below it."""
+    ends = ((TRAIL_LAT, TRAIL_LON), (north(49), TRAIL_LON))
+
+    junction, far = orient(ends, centerline())
+
+    assert junction == (TRAIL_LAT, TRAIL_LON)
+    assert far == (north(49), TRAIL_LON)
+
+
+def test_a_stub_shorter_than_the_on_trail_bound_refuses_rather_than_guesses():
+    """Below ON_TRAIL_M, "rejoins the trail" and "ends beside it" are inside
+    digitisation noise of each other, so refusing is the honest answer - the
+    accepted residual of keeping alternate routes out."""
+    ends = ((TRAIL_LAT, TRAIL_LON), (north(20), TRAIL_LON))
+
+    assert orient(ends, centerline()) is None
+
+
+def test_two_ends_at_the_same_distance_refuse_rather_than_coin_flip():
+    ends = ((north(60), TRAIL_LON), (north(60), TRAIL_LON + 0.0019))
+
+    assert orient(ends, centerline()) is None
+
+
+def test_a_short_spur_ending_on_a_shelter_names_it():
+    """The reproduced end-to-end case: an 80 m spur ending exactly on a
+    shelter used to publish destination_poi_id: None."""
+    line = spur_line([TRAIL_LON, TRAIL_LAT], [TRAIL_LON, north(80)])
+    pois = destinations([{"id": "shelter:close", "lat": north(80), "lon": TRAIL_LON}])
+
+    result = resolve_destination(line, centerline(), pois)
+
+    assert result["destination_poi_id"] == "shelter:close"
+    assert result["destination_distance_m"] == 0
+
+
 # --- Destination resolution ------------------------------------------------
 
 

@@ -35,6 +35,12 @@ export function archiveUrl(level: DetailLevel): string {
   return dataUrl(BACKGROUND_ARCHIVES[level])
 }
 
+/** The same tier as `latest.json` names it - the flat key publish.py uploaded,
+ *  which is what a published hash is looked up by (lib/dataManifest.ts). */
+export function archiveKey(level: DetailLevel): string {
+  return BACKGROUND_ARCHIVES[level]
+}
+
 export const TRAILS_KEY = 'trails.geojson'
 
 // Where each blue-blazed spur leads, keyed by the trail id in trails.geojson.
@@ -48,6 +54,18 @@ export const TRAILS_KEY = 'trails.geojson'
 // before that existed, which lib/trailData.ts treats as "no spur detail" - not
 // as a failed download.
 export const SPURS_KEY = 'spurs.json'
+
+// The along-the-trail elevation profile, published by
+// pipeline/export_elevation.py: ~141,000 {distance_mi, elevation_ft} samples at
+// 25 m spacing along the real centerline. 6.5 MB of JSON that gzips to 0.87 MB
+// - under 7% of what trails.geojson alone already costs, which is why it is
+// fetched whole rather than windowed. Windowing it would also defeat the point:
+// the ribbon has to work in a dead zone fifty miles from where it downloaded.
+//
+// Absent from data releases built before export_elevation.py existed, which
+// lib/trailData.ts treats as "no profile" rather than a failed download - the
+// same way spurs.json is treated.
+export const ELEVATION_KEY = 'elevation_profile.json'
 
 // 'crossing' is published but is currently an empty FeatureCollection; it is
 // listed anyway so it starts working the day the pipeline fills it, rather

@@ -28,6 +28,8 @@ import {
   type ContourUnits,
   type TerrainUrls,
 } from './terrain'
+import { demGetTile } from './demTiles'
+import { WorkerDemManager } from './demRpc'
 import { whenStyleReady } from './styleReady'
 
 /**
@@ -51,12 +53,39 @@ let source: InstanceType<typeof mlcontour.DemSource> | null = null
 function demSource(): InstanceType<typeof mlcontour.DemSource> {
   if (source !== null) return source
 
+  // `worker: false` even where a Worker exists, because the manager the
+  // DemSource would build for `worker: true` is the one thing in this stack
+  // that cannot be taught to read the downloaded DEM package (#187): its
+  // worker fetches with a plain fetch(url), and the getTile replacement the
+  // library exposes is a function, which cannot cross into a worker the
+  // library constructed. So the DemSource is built with the main-thread
+  // manager and the manager is then swapped by capability:
+  //
+  //   Worker exists    the app's own DEM worker (demWorker.ts) - the same
+  //                    exported LocalDemManager machinery, constructed
+  //                    worker-side WITH demTiles.ts's local-first getTile.
+  //                    Fetch, decode and isoline generation all stay off
+  //                    the UI thread, exactly as with the stock worker.
+  //   no Worker        the DemSource's own LocalDemManager, its getTile
+  //                    replaced in place (a public, typed field). Same
+  //                    resolution, main thread - jsdom, mostly.
+  //
+  // Either way every elevation read - the hillshade's and the contour
+  // generator's, through the one shared cache - goes archive-first.
   const created = new mlcontour.DemSource({
     url: DEM_TILE_URL,
     encoding: 'terrarium',
     maxzoom: DEM_MAX_ZOOM,
-    worker: workerAvailable(),
+    worker: false,
   })
+  if (workerAvailable()) {
+    created.manager = new WorkerDemManager(
+      new Worker(new URL('./demWorker.ts', import.meta.url), { type: 'module' }),
+    )
+  } else {
+    ;(created.manager as InstanceType<typeof mlcontour.LocalDemManager>).getTile =
+      demGetTile
+  }
   created.setupMaplibre({ addProtocol } as Parameters<typeof created.setupMaplibre>[0])
   source = created
 
@@ -107,10 +136,10 @@ export function registerTerrain(units: ContourUnits = 'imperial'): TerrainUrls {
  * A no-op when the URL has not actually changed, so mounting does not
  * immediately invalidate the tiles the style just asked for.
  *
- * Best-effort in the same way and for the same reason as backdrop.ts: it needs
- * a loaded style, which is a later and more fragile moment than construction,
- * and the cost of failing is contours at the previous interval - never a
- * broken map.
+ * Best-effort in the same way and for the same reason as poiLayers.ts's
+ * attach helpers: it needs a loaded style, which is a later and more fragile
+ * moment than construction, and the cost of failing is contours at the
+ * previous interval - never a broken map.
  */
 export function attachContourUnits(map: MapLibreMap, units: ContourUnits): () => void {
   return whenStyleReady(

@@ -102,6 +102,56 @@ describe('desktop layout contract', () => {
     expect(block).not.toMatch(/position:\s*(static|relative)/)
   })
 
+  // The brand mark differs by layout rather than existing in only one, so both
+  // halves are asserted together rather than one per stylesheet. A phone gets
+  // the icon at the left end of the bar; a desktop gets icon over wordmark at
+  // the foot of the sidebar.
+  const chromeCss = readFileSync(resolve(process.cwd(), 'src/chrome/chrome.css'), 'utf8')
+  const bareChrome = chromeCss.replace(/\/\*[\s\S]*?\*\//g, '')
+
+  function chromeRule(selector: string): string {
+    const at = bareChrome.indexOf(`${selector} {`)
+    expect(at, `no ${selector} rule in chrome.css`).toBeGreaterThan(-1)
+    return bareChrome.slice(at, bareChrome.indexOf('}', at))
+  }
+
+  it('keeps the wordmark off the phone, where the bar is a row of thumb targets', () => {
+    // Hidden by the component's own stylesheet...
+    expect(chromeRule('.tab-bar__brand-wordmark')).toMatch(/display:\s*none/)
+    // ...and turned back on only from inside the media query, which is what
+    // makes "cannot reach a phone" structural rather than a review promise.
+    expect(unguardedRules(css)).not.toMatch(/\.tab-bar__brand-wordmark/)
+    expect(css).toMatch(/\.tab-bar__brand-wordmark\s*\{[^}]*display:\s*block/)
+  })
+
+  it('pulls the mark ahead of the tabs on a phone and back after them on a desktop', () => {
+    // The mark is last in the DOM because on a desktop it is the foot of a
+    // column. Only the phone needs it first, and the desktop has to put that
+    // back - otherwise the sidebar grows a logo above its own navigation.
+    expect(chromeRule('.tab-bar__brand')).toMatch(/order:\s*-1/)
+    expect(declarationsOf('.map-screen > .tab-bar .tab-bar__brand')).toMatch(/order:\s*0/)
+  })
+
+  it('sizes the mark for the layout it is in, not once for both', () => {
+    // 24px beside three thumb targets, 64px in a 13rem column. The element is
+    // an <img> precisely so CSS can say that; <Logo />'s inline width and
+    // border-radius would need !important at one of the two sizes.
+    expect(chromeRule('.tab-bar__brand-icon')).toMatch(/width:\s*24px/)
+    expect(declarationsOf('.map-screen > .tab-bar .tab-bar__brand-icon')).toMatch(
+      /width:\s*64px/,
+    )
+  })
+
+  it('lets the tab list grow, which is what carries the mark to the bottom edge', () => {
+    // The mark is the last child of the sidebar column and is NOT pinned there
+    // by absolute positioning - the tab list growing is what pushes it down. A
+    // fixed height on either would let a longer tab set slide under the mark.
+    const block = declarationsOf('.map-screen > .tab-bar .tab-bar__brand')
+
+    expect(block).not.toMatch(/position:\s*absolute/)
+    expect(block).toMatch(/display:\s*flex/)
+  })
+
   it('does not hide the legend close button without the component also dropping it', () => {
     // Belt and braces, and the test says so: the CSS hides the control and the
     // component omits it. Either alone would leave a release where a panel

@@ -40,6 +40,19 @@ export const POI_SOURCE_ID = 'pois'
 export const POI_LAYER_ID = 'poi-pins'
 
 /**
+ * Where a pin carries its POI id, so a tap on it can be turned back into the
+ * POI the app holds (poiTaps.ts).
+ *
+ * A property rather than the GeoJSON feature id, which is where an id belongs
+ * and which cannot hold this one: MapLibre runs a string feature id through
+ * `parseInt` (FeatureWrapper, maplibre-gl 6), and every id the pipeline
+ * publishes - "atc_shelters:<guid>", "opentrail_at:1234" - comes back NaN. The
+ * feature id below is still set, because it is the honest place for it and
+ * because a numeric-id release would then work; nothing reads it.
+ */
+export const POI_ID_PROPERTY = 'poi_id'
+
+/**
  * Below this, no pins at all.
  *
  * The opening view is the whole 2,197-mile corridor. Eight hundred POIs on it
@@ -166,13 +179,14 @@ export interface PoiFeatureCollection {
     type: 'Feature'
     id: string
     geometry: { type: 'Point'; coordinates: [number, number] }
-    properties: { poi_type: string; confidence: string }
+    properties: { poi_type: string; confidence: string; [POI_ID_PROPERTY]: string }
   }>
 }
 
 /**
- * Carries only what the style reads: the two attributes the expressions above
- * match on, and the id to find the rest by. Names are not here because nothing
+ * Carries what the style reads - the two attributes the expressions above
+ * match on - and the id to find the rest by, which rides in the properties for
+ * the reason {@link POI_ID_PROPERTY} gives. Names are not here because nothing
  * draws them - see the note about `glyphs` in {@link buildPoiLayer}.
  */
 export function poiFeatureCollection(pois: readonly MapPoint[]): PoiFeatureCollection {
@@ -182,7 +196,11 @@ export function poiFeatureCollection(pois: readonly MapPoint[]): PoiFeatureColle
       type: 'Feature',
       id: poi.id,
       geometry: { type: 'Point', coordinates: [poi.lon, poi.lat] },
-      properties: { poi_type: poi.type, confidence: poi.confidence },
+      properties: {
+        poi_type: poi.type,
+        confidence: poi.confidence,
+        [POI_ID_PROPERTY]: poi.id,
+      },
     })),
   }
 }

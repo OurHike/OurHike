@@ -1,22 +1,31 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { MockMap, MockVectorSource, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { CONTOUR_SOURCE_ID, CONTOUR_THRESHOLDS, DEM_MAX_ZOOM } from './terrain'
+import { demGetTile } from './demTiles'
+import { WorkerDemManager } from './demRpc'
 
 vi.mock('maplibre-gl', () => import('../test/mocks/maplibre-gl'))
 
 // maplibre-contour is stubbed rather than run: the real DemSource opens a Web
-// Worker from a blob URL, which jsdom has neither of, and what is worth
-// asserting here is not its isoline maths but OUR wiring - that one source is
-// shared, that the interval follows the unit, and that switching units
-// re-points the existing source instead of rebuilding the map.
+// Worker, which jsdom does not have, and what is worth asserting here is not
+// its isoline maths but OUR wiring - that one source is shared, that its
+// elevation reads go through the local-first seam, that the interval follows
+// the unit, and that switching units re-points the existing source instead
+// of rebuilding the map.
 const constructed: Array<Record<string, unknown>> = []
+const instances: Array<{ manager: unknown }> = []
 const contourOptions: Array<Record<string, unknown>> = []
 
 vi.mock('maplibre-contour', () => {
   class FakeDemSource {
     sharedDemProtocolUrl = 'dem://shared/{z}/{x}/{y}'
+    // The manager the real DemSource would build with `worker: false` - the
+    // field contours.ts either swaps out (Worker available) or reaches into
+    // to replace `getTile` (no Worker).
+    manager: Record<string, unknown> = {}
     constructor(options: Record<string, unknown>) {
       constructed.push(options)
+      instances.push(this)
     }
     setupMaplibre() {}
     contourProtocolUrl(options: Record<string, unknown>) {
@@ -24,7 +33,7 @@ vi.mock('maplibre-contour', () => {
       return `contour://${JSON.stringify(options.multiplier)}/{z}/{x}/{y}`
     }
   }
-  return { default: { DemSource: FakeDemSource } }
+  return { default: { DemSource: FakeDemSource, LocalDemManager: class {} } }
 })
 
 const { attachContourUnits, registerTerrain, resetTerrainForTests } =
@@ -32,6 +41,7 @@ const { attachContourUnits, registerTerrain, resetTerrainForTests } =
 
 beforeEach(() => {
   constructed.length = 0
+  instances.length = 0
   contourOptions.length = 0
   resetTerrainForTests()
   resetMapLibreMock()
@@ -39,6 +49,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 function map(): MockMap {
@@ -88,6 +99,51 @@ describe('registerTerrain', () => {
     registerTerrain('imperial')
 
     expect(contourOptions[0].thresholds).toBe(CONTOUR_THRESHOLDS.imperial)
+  })
+})
+
+describe('the local-first elevation seam (#187)', () => {
+  it('never lets the DemSource build its own worker - the manager is decided here', () => {
+    // `worker: false` even where a Worker exists: the library's worker
+    // fetches with a plain fetch and cannot be handed the local-first
+    // getTile, so contours.ts owns the manager decision on both paths.
+    registerTerrain()
+
+    expect(constructed[0]).toMatchObject({ worker: false })
+  })
+
+  it('replaces the tile fetch with the local-first one where no Worker exists', () => {
+    // jsdom's own state - and the real fallback path. The manager the
+    // DemSource built stays, so decode and isolines run where they always
+    // did; only the fetch seam changes, to archive-first.
+    registerTerrain()
+
+    expect(instances[0].manager).toMatchObject({ getTile: demGetTile })
+  })
+
+  it('routes through the app’s own DEM worker when Workers exist', () => {
+    const workers: unknown[] = []
+    vi.stubGlobal(
+      'Worker',
+      class {
+        listeners: unknown[] = []
+        constructor(url: unknown) {
+          workers.push(url)
+        }
+        postMessage() {}
+        addEventListener(_type: string, listener: unknown) {
+          this.listeners.push(listener)
+        }
+      },
+    )
+
+    registerTerrain()
+
+    // One worker for the page, running the app's demWorker entry - the
+    // module that constructs LocalDemManager WITH the local-first getTile.
+    expect(workers).toHaveLength(1)
+    expect(String(workers[0])).toContain('demWorker')
+    expect(instances[0].manager).toBeInstanceOf(WorkerDemManager)
   })
 })
 
@@ -156,8 +212,8 @@ describe('attachContourUnits', () => {
   })
 
   it('warns and leaves the previous interval when the source rejects the change', () => {
-    // Best-effort in the same way as backdrop.ts: the cost of failing is
-    // contours at the old interval, never a broken map.
+    // Best-effort in the same way as poiLayers.ts's attach helpers: the cost
+    // of failing is contours at the old interval, never a broken map.
     const m = map()
     m.styleLoaded = true
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})

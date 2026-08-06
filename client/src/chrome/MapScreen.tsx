@@ -9,6 +9,7 @@
 // public domain; OpenStreetMap is ODbL and its credit is a licence condition,
 // so this element is not optional and is not behind a prop.
 
+import { useCallback, useState } from 'react'
 import { StatusStrip } from './StatusStrip'
 import { Header, type HikeDirection } from './Header'
 import { TabBar } from './TabBar'
@@ -18,8 +19,12 @@ import { useDesktop } from '../lib/useDesktop'
 import { Search } from './Search'
 import { ElevationRibbon, type ElevationRibbonProps } from './ElevationRibbon'
 import { WaypointLanes, type WaypointLanesProps } from './WaypointLanes'
+import { PoiCard, type PoiDetail } from './PoiCard'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapView } from '../map/MapView'
+import { HEALTHY, type LiveSourceHealth } from '../map/liveSourceHealth'
+import type { BackgroundOverride } from '../lib/dataSaver'
+import type { ArchiveZooms } from '../lib/archiveCoverage'
 import { attributionFor } from '../map/style'
 import type { ScaleUnits } from '../map/mapChrome'
 import type { BackgroundSource } from '../lib/userPreferences'
@@ -35,6 +40,7 @@ export interface MapScreenProps {
   background?: BackgroundSource
 
   trailName: string
+  trailLogo?: string
   // All three are omitted until they are actually known - see HeaderProps.
   state?: string
   mile?: number
@@ -71,6 +77,19 @@ export interface MapScreenProps {
   hiddenTypes: Set<string>
   onToggleType: (type: string) => void
 
+  /**
+   * The tapped pin's detail, or null when nothing is selected.
+   *
+   * The shell resolves the id the map reports into this, because the map draws
+   * pins and the app is what knows a POI's name, its mile and where it came
+   * from.
+   */
+  selectedPoi: PoiDetail | null
+  /** A pin was tapped, by POI id - null for a tap on bare map, which is how
+   *  the card is dismissed. Stable across renders - see MapViewProps. */
+  onSelectPoi: (id: string | null) => void
+  onClosePoi: () => void
+
   // Both are optional and both are omitted rather than stubbed when their data
   // isn't there. An empty ribbon or a bare set of lanes would read as "nothing
   // ahead of you," which is a different and much worse claim than "we don't
@@ -89,6 +108,42 @@ export interface MapScreenProps {
   bounds?: [[number, number], [number, number]]
   onViewportChange?: (bbox: BoundingBox) => void
   onMapReady?: (map: MapLibreMap | null) => void
+  /** Why the drawn background is not the one in settings, if it isn't - see
+   *  lib/dataSaver.ts. Passed down rather than computed here, so the decision
+   *  keeps the single home that module's docstring insists on. */
+  backgroundOverride?: BackgroundOverride | null
+  /**
+   * The stored background preference and how to change it, for the picker in
+   * the legend.
+   *
+   * Distinct from `background` above, which is what is actually DRAWN after
+   * Data Saver and the download state have had their say. The control has to
+   * show and write the choice, not the outcome - a picker that snapped back
+   * to "downloaded" because Data Saver was on would be unusable.
+   */
+  backgroundChoice?: BackgroundSource
+  onChangeBackground?: (next: BackgroundSource) => void
+  /**
+   * Opens the download window, which the legend's picker links to.
+   *
+   * The window itself is the shell's, not this screen's: it opens over the
+   * More tab as readily as over the map, and a copy owned here would be a
+   * second one with its own idea of whether it is showing.
+   */
+  onOpenDownloads?: () => void
+  /** Whether a finished archive is on the phone, which words that link. */
+  hasDownload?: boolean
+  /**
+   * Whether the view is zoomed out past what the download covers (#216).
+   *
+   * Reported by the shell rather than worked out here, for the same reason
+   * `backgroundOverride` is: the strip and the legend's picker both say it,
+   * and two independent readings of one condition is how they come to
+   * disagree.
+   */
+  belowArchiveZoom?: boolean
+  /** What the archive's own header says it covers, for the opening camera. */
+  archiveZooms?: ArchiveZooms | null
 }
 
 export function MapScreen({
@@ -96,6 +151,7 @@ export function MapScreen({
   trailsUrl,
   background = 'hiking_topo_live',
   trailName,
+  trailLogo,
   state,
   mile,
   direction,
@@ -118,6 +174,9 @@ export function MapScreen({
   blazeCounts,
   hiddenTypes,
   onToggleType,
+  selectedPoi,
+  onSelectPoi,
+  onClosePoi,
   elevation,
   waypoints,
   showZoomButtons = false,
@@ -127,12 +186,38 @@ export function MapScreen({
   bounds,
   onViewportChange,
   onMapReady,
+  backgroundOverride = null,
+  backgroundChoice,
+  onChangeBackground,
+  onOpenDownloads,
+  hasDownload = false,
+  belowArchiveZoom = false,
+  archiveZooms = null,
 }: MapScreenProps) {
   // The one thing the stylesheet cannot do. The legend announces itself as
   // `role="dialog" aria-modal="true"` and renders nothing when closed; as a
   // permanent panel it is neither. No media query can change what a component
   // tells a screen reader it is.
   const isDesktop = useDesktop()
+
+  // The live map, kept here as well as reported upward, because the waypoint
+  // card anchors to a pin by projecting its coordinates through the map - and
+  // the shell above owns the POI data, not the canvas. Tee'd rather than
+  // intercepted: the owner's `onMapReady` still sees every hand-over.
+  const [liveMap, setLiveMap] = useState<MapLibreMap | null>(null)
+  const handleMapReady = useCallback(
+    (map: MapLibreMap | null) => {
+      setLiveMap(map)
+      onMapReady?.(map)
+    },
+    [onMapReady],
+  )
+
+  // Held here rather than lifted to the shell: nothing above this screen acts
+  // on it, and the strip that reports it is three lines up. `setState` is
+  // stable across renders, so handing it straight to MapView satisfies that
+  // prop's stability contract without a useCallback.
+  const [liveSources, setLiveSources] = useState<LiveSourceHealth>(HEALTHY)
 
   return (
     <div className="map-screen">
@@ -145,10 +230,17 @@ export function MapScreen({
           online={online}
           hasGpsFix={hasGpsFix}
           lastSyncedAt={lastSyncedAt}
+          // The basemap alone. A DEM outage costs relief and contour lines on
+          // a sheet that still draws, which is the degradation terrain.ts
+          // promises rather than something to interrupt a hiker over.
+          liveBackgroundUnavailable={liveSources.basemap}
+          backgroundOverride={backgroundOverride}
+          belowArchiveZoom={belowArchiveZoom}
         />
 
         <Header
           trailName={trailName}
+          trailLogo={trailLogo}
           state={state}
           mile={mile}
           direction={direction}
@@ -173,15 +265,26 @@ export function MapScreen({
               background={background}
               pois={viewportPoints}
               hiddenTypes={hiddenTypes}
+              onSelectPoi={onSelectPoi}
               showZoomButtons={showZoomButtons}
               units={units}
               center={center}
               zoom={zoom}
               bounds={bounds}
+              archiveZooms={archiveZooms}
               onViewportChange={onViewportChange}
-              onMapReady={onMapReady}
+              onMapReady={handleMapReady}
+              onLiveSourceHealth={setLiveSources}
             />
             <p className="map-screen__attribution">{attributionFor(background)}</p>
+
+            {/* Inside the canvas, and not one wrapper further out: the card
+                positions itself in canvas pixels (poiCardPlacement.ts), so it
+                must be absolute against exactly the box the canvas fills or
+                every placement would be off by the chrome above the map. */}
+            {selectedPoi !== null && (
+              <PoiCard poi={selectedPoi} map={liveMap} onClose={onClosePoi} />
+            )}
 
             <Search
               open={searchOpen}
@@ -200,6 +303,12 @@ export function MapScreen({
             hiddenTypes={hiddenTypes}
             onToggleType={onToggleType}
             onClose={onCloseLegend}
+            backgroundChoice={backgroundChoice}
+            onChangeBackground={onChangeBackground}
+            backgroundOverride={backgroundOverride}
+            belowArchiveZoom={belowArchiveZoom}
+            onOpenDownloads={onOpenDownloads}
+            hasDownload={hasDownload}
           />
         </div>
       </div>

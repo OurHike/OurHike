@@ -19,6 +19,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.0",
     "idb-keyval": "^6.3.0",
     "maplibre-contour": "^0.1.0",
     "maplibre-gl": "^6.0.0",

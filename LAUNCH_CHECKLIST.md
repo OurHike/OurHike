@@ -45,6 +45,8 @@ Use **repository** secrets, not environment-scoped ones: `r2-credentials-check.y
 
 Once the four secrets are set, dispatch the **"R2 credentials check"** workflow (Actions tab → workflow_dispatch) to confirm they're valid before attempting a real publish — it only calls `head_bucket`, so it's safe to run any time.
 
+Whether they're still *there* is checked continuously after that: `.github/expected-settings.yml` declares these four and `DATA_BASE_URL` below, and the **"Settings check"** workflow confirms weekly that each is configured — a revoked token is otherwise noticed by a publish failing partway through. Adding a repository secret or variable means adding it to that manifest too, or the check will flag the workflow reading a setting nothing vouches for.
+
 **1.4 Configure CORS — this one is easy to miss and fails confusingly.** The client reads PMTiles via HTTP **range requests**. Without CORS exposing the right headers, the map fails in a way that looks like a corrupt archive rather than a permissions problem.
 
 R2 → `your-hike` → Settings → CORS policy. The app is hosted on GitHub Pages (see step 3 — that's settled now, unlike when this list was first written), so the real origin to allow is:
@@ -89,13 +91,15 @@ Set it as a **repository variable** (not a secret — it's a public URL): Settin
 
 ## 3. Host the client
 
-✅ **Already done, and automatic** — `.github/workflows/pages.yml` builds and deploys the client to GitHub Pages on every push to `main`: the beta landing page at `https://jaimito-asuntos-gringuenos.github.io/OurHike/` and the installable app at `.../OurHike/app/`. Cloudflare Pages was the original plan when this list was written, but GitHub Pages is what actually got wired up (it's what gives the PWA the HTTPS a browser requires before offering "Install app").
+✅ **Already done, mostly automatic** — `.github/workflows/pages.yml` builds and deploys the client to GitHub Pages on every push to `main`: the beta landing page at `https://jaimito-asuntos-gringuenos.github.io/OurHike/` and the installable app at `.../OurHike/app/`. Cloudflare Pages was the original plan when this list was written, but GitHub Pages is what actually got wired up (it's what gives the PWA the HTTPS a browser requires before offering "Install app").
 
-Nothing to configure — but after setting `DATA_BASE_URL` (step 2), the site needs a **redeploy** to pick it up, since it's baked in at build time. Either push any commit to `main`, or dispatch **"Deploy Pages"** manually (Actions tab → workflow_dispatch) to redeploy with no code change.
+**One manual step, once:** Settings → Pages → Build and deployment → Source must be **"Deploy from a branch"**, branch `gh-pages`, folder `/ (root)`. The workflow pushes to that branch itself; nothing publishes until the source is pointed at it. This is what lets `pr-preview.yml` also publish a testable preview per pull request (`.../OurHike/pr-preview/pr-<n>/`, linked from a comment on the PR) alongside the production site, on the same branch.
+
+After setting `DATA_BASE_URL` (step 2), the site needs a **redeploy** to pick it up, since it's baked in at build time. Either push any commit to `main`, or dispatch **"Deploy Pages"** manually (Actions tab → workflow_dispatch) to redeploy with no code change.
 
 Two things to check after that redeploy:
 - The PWA installs (service worker registers, manifest loads). iOS Web Push **only** works for home-screen installs, which matters for the wrong-way alert later.
-- The Downloads screen actually fetches data instead of saying "data source not configured" (that message means `DATA_BASE_URL` didn't make it into the build).
+- The download window actually fetches data instead of saying "data source not configured" (that message means `DATA_BASE_URL` didn't make it into the build). It opens from the "Choose what to download" link at the foot of the legend, or at the foot of Settings under the More tab.
 
 **After step 3 you have a working offline map.** Steps 4–6 are only needed for contributions — reporting, closures, accounts.
 
@@ -111,9 +115,10 @@ The backend verifies Supabase-issued JWTs. Browsing never needs an account; this
 
 ```
 SUPABASE_URL=https://<ref>.supabase.co
-SUPABASE_ANON_KEY=<anon public key>
-SUPABASE_JWT_SECRET=<Settings > API > JWT Secret>
+SUPABASE_ANON_KEY=<publishable key, sb_publishable_...>
 ```
+
+**`SUPABASE_JWT_SECRET` is not on that list, and for a hosted project there is nothing to put there.** Hosted projects sign asymmetrically and publish the public half; no shared secret exists. The backend treats it as optional for exactly that reason. Set it only when pointing at a **self-hosted** Supabase, which does sign HS256 — see 4.4.
 
 **4.3 Configure OAuth providers** (Authentication → Providers). Each needs its own developer registration, and these are the slowest items on this list because they involve external approval:
 
@@ -121,47 +126,115 @@ SUPABASE_JWT_SECRET=<Settings > API > JWT Secret>
 - **Apple** — Apple Developer Program, **$99/year**. Needs a Services ID and a signing key. If you want to defer cost, ship with Google + email and add Apple later; nothing in the code assumes all three.
 - **Email** — on by default, no setup.
 
-**4.4 Flag on the JWT verification method.** `backend/app/core/auth.py` currently verifies **HS256 using the JWT secret**. Supabase has been migrating projects toward asymmetric keys (JWKS/RS256). If your project issues RS256, that function needs changing — it was deliberately built as a single seam so this is a contained change, but it is the one thing here I could not settle without a real project to look at. **Check this before assuming auth works.**
+**4.3a Set the client's build variables** in **Settings → Secrets and variables → Actions → Variables** (the Variables tab, not Secrets — see why below). `.github/workflows/pages.yml` and `pr-preview.yml` read them and pass them to the build:
+
+```
+SUPABASE_URL=https://<ref>.supabase.co
+SUPABASE_ANON_KEY=<anon public key>
+AUTH_PROVIDERS=google,email          # optional; defaults to google,email
+```
+
+**Variables, not Secrets.** Neither is secret. The anon key is *designed* to be public — Vite inlines it into a JS bundle that anyone can read with view-source, so hiding it in a Secret buys nothing and costs a readable build log, exactly as the comment above `DATA_BASE_URL` in `pages.yml` explains. Both workflows accept either, and warn if you picked Secrets. What is **not** here, and must never be, is `SUPABASE_JWT_SECRET`: that one is real, it belongs only to the backend's runtime environment, and a `VITE_`-prefixed copy would be inlined into a public file.
+
+Prefer the **publishable** key (`sb_publishable_…`) over the legacy `anon` JWT if the project offers both — Supabase deprecates the legacy keys at the end of 2026.
+
+`AUTH_PROVIDERS` must list only providers actually configured in 4.3. A name here whose credentials do not exist is a button that reaches an error page. Leaving all of these unset is safe: the app builds, the map works, and the sign-in controls say the build has no project rather than offering a round trip that cannot finish.
+
+**4.3b Allow the app's own URLs back** (Authentication → URL Configuration). The client redirects to the path it was served from, not the bare origin — a redirect to the origin lands on the project site with the code in its URL and no app there to read it.
+
+That means more than one path. Pages serves the app at `/OurHike/app/`, and every PR preview gets its own `/OurHike/pr-preview/pr-<n>/`. Supabase's allow-list takes glob patterns, where `**` matches across `/`, so one entry covers all of them:
+
+```
+https://<user>.github.io/OurHike/**
+http://localhost:5173/**
+```
+
+Adding an entry per PR by hand is not a plan, and without a matching entry every provider round trip from a preview ends in a redirect mismatch. Supabase recommends pinning the exact path for the production **Site URL** even so — set that to `https://<user>.github.io/OurHike/app/`.
+
+**4.3c Custom SMTP, before real traffic.** The magic-link sign-in and the account-confirmation email both go through Supabase's built-in sender, which is rate-limited to a handful of messages per hour and is explicitly not for production. Fine for testing; a hiker hitting "email me a sign-in link" and silently getting nothing is not. Configure real SMTP under Authentication → Emails when this stops being a test deployment.
+
+**4.4 The JWT verification method — settled.** This was the open question here, flagged as the one thing that could not be answered without a real project. There is one now, and it answered: a token it issued carries `{"alg": "ES256", "kid": "..."}` — **asymmetric, with the public half published as a JWKS.** A backend verifying HS256 against a shared secret would have returned 401 to every signed-in hiker, with the token, the signature and the secret all perfectly correct.
+
+`backend/app/core/auth.py` now reads the algorithm off the token and verifies accordingly: ES256/RS256 against the project's published keys, HS256 against `SUPABASE_JWT_SECRET`. Both are real — a **self-hosted** Supabase signs HS256, and that is the path OurHikeValues.md leans on for inheritability. Nothing here needs configuring for a hosted project; it works out of the box.
+
+**4.5 Run the config check.** Actions → **Supabase config check** → Run workflow. It reads the live project and reports what only a live project can show:
+
+- whether `SUPABASE_URL` / `SUPABASE_ANON_KEY` are set and valid (and it names the no-`VITE_`-prefix trap, which is a real one — the prefix belongs on the build variable, not the repository variable);
+- whether the algorithm the project signs with is one the backend accepts;
+- whether every provider in `AUTH_PROVIDERS` is actually enabled in the dashboard — a mismatch there is a button that reaches an error page, and nothing else in the system compares those two lists;
+- whether the anon key is the legacy JWT rather than the publishable key.
+
+Read-only, and safe to run any time. It does **not** check the redirect allow-list — the public API does not expose it, so 4.3b stays a manual step.
 
 ---
 
 ## 5. First database migration
 
-There are no Alembic migrations — `backend/alembic/versions/` holds only `.gitkeep`. Tests create tables directly from the models, which is why this has not surfaced.
+The initial migration now exists — `backend/alembic/versions/0f79a37f9358_initial_schema.py`, generated and verified locally against DuckDB (both `upgrade head` and `downgrade base` run clean). It has never been applied to a real Postgres.
 
-Before the backend can run against a real Postgres:
+So this is one command, not two. Running `revision --autogenerate` again would produce an empty second migration on top of it:
 
 ```
 cd backend
 # with DATABASE_URL pointed at your Supabase Postgres
-.venv/Scripts/alembic revision --autogenerate -m "initial schema"
 .venv/Scripts/alembic upgrade head
 ```
 
-**Review the generated migration before applying it.** Autogenerate is good but not infallible, and several models use `Enum(..., native_enum=False)` for DuckDB/Postgres portability — worth confirming that renders as expected.
+**Read the migration before applying it**, the same way you would review any migration against real data. Several models use `Enum(..., native_enum=False)` for DuckDB/Postgres portability — worth confirming that renders as expected on Postgres, since it was verified against the other one.
 
-Tables it should create: `profiles`, `reports`, `closures`, `hikes`, `preferences`, `clubs`, `maintainer_assignments`.
+Tables it should create: `clubs`, `profiles`, `closures`, `hikes`, `maintainer_assignments`, `reports`, `user_preferences`.
+
+---
+
+## 5a. Confirm the tables are locked down
+
+**This is now part of step 5, not a step after it.** Migration `b3d1c7a94e02` enables Row Level Security on all seven tables in the same transaction that creates them, so there is no window between the schema existing and being locked. Nothing to run by hand; what follows is why, and how to check it really happened.
+
+Supabase serves every table in the `public` schema over PostgREST, at `https://<ref>.supabase.co/rest/v1/`, to anyone holding the anon key. That key is *meant* to be public — it ships inside the client's JS bundle, and no amount of treating it as a secret changes that. What makes publishing it safe is **Row Level Security**, not the key being hard to find. Supabase's own wording: the key is safe to expose *because* RLS is enabled on the database.
+
+Alembic does not enable RLS on its own. It creates plain tables — which is exactly why the revision above exists. Without it, all seven, including `reports`, `profiles` and `closures`, would be readable and writable by anyone who opens the app, views source, copies the key and calls the REST endpoint directly.
+
+**The backend's own auth does not prevent this.** `get_current_user` guards FastAPI's routes, and PostgREST is a second front door into the same database that never passes through FastAPI. Locking the front door does nothing about a second one nobody remembered was there.
+
+The backend keeps working regardless: it connects with the Postgres connection string as the table owner, and RLS does not apply to an owner. **That is also why `force row level security` must never be added** — it applies RLS to the owner too, and would take every endpoint down at once while looking like a tightening.
+
+The tables get RLS with **no policies**, which rejects every anon request. That is the right default here: nothing in the client talks to PostgREST. The client uses Supabase for authentication only and reaches its data through the backend, so there is no query to keep working and nothing to grant. Add policies later if and only if something is built that genuinely needs direct table access.
+
+**A new table is not covered automatically.** Alembic will keep creating plain ones, so a model added later needs its own revision enabling RLS on it. `backend/tests/test_migration_rls.py` fails until it has one — that test is what stops this section from quietly becoming untrue.
+
+**The alternative not taken:** moving the schema out of `public`, since PostgREST only exposes schemas it is configured for. Structurally immune rather than maintained, but it means an Alembic `version_table_schema` change and a search-path decision, so it stays the larger change.
+
+**Verify rather than assume.** Database → Advisors in the dashboard flags every table that has RLS off; it should list none of these seven. Or check from outside with the anon key, which is the actual threat model:
+
+```
+curl "https://<ref>.supabase.co/rest/v1/reports?select=*" \
+  -H "apikey: <anon or publishable key>"
+```
+
+An empty array or a permission error is what you want. Rows are the failure.
+
+**While you are in Advisors:** it currently also flags **leaked password protection as disabled**. That is a dashboard toggle rather than anything in this repo (Authentication → Providers → Email), it costs nothing, and it matters here because email/password is an enabled sign-in path — `VITE_AUTH_PROVIDERS` defaults to `google,email`. Supabase checks new passwords against HaveIBeenPwned: [docs](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
 
 ---
 
 ## 6. Host the backend
 
-**Nothing exists for this yet** — no Dockerfile, no Procfile, no platform config. It is the largest genuinely unstarted piece.
+The host is picked and the config is written: `backend/Dockerfile` and `backend/fly.toml` target **Fly.io**, chosen over Render specifically to avoid its free tier sleeping on idle — a cold start on the first request after quiet is a worse experience for something safety-adjacent than a small ongoing cost. `fly.toml` keeps `min_machines_running = 1` for the same reason, and `primary_region = "iad"` is the closest major Fly region to the trail's own corridor.
 
-FastAPI + sync SQLAlchemy runs anywhere that runs Python. Fly.io, Render and Railway all work; Render's free tier sleeps, which is survivable for MVP but will make the first request after idle slow.
+What is left is running it, in this order:
 
-It needs:
+1. **`fly apps create`** with a real, globally-unique name. `fly.toml`'s `app = "ourhike-backend"` is a placeholder — update it to match whatever the name ends up being.
+2. **`fly secrets set`** the runtime environment. Never committed, never baked into the image:
+   ```
+   fly secrets set DATABASE_URL=postgresql://...   # the Supabase Postgres connection string
+   fly secrets set SUPABASE_URL=... SUPABASE_ANON_KEY=...
+   ```
+   `SUPABASE_JWT_SECRET` is **not** in that list for a hosted project — see 4.4. Set it only against a self-hosted Supabase.
+3. **`fly deploy`** from `backend/`.
+4. **Run the migration** (step 5) against the real `DATABASE_URL`, then **confirm RLS is on** (step 5a — the migration does it, but check rather than assume). Deliberately separate from deploying: a migration should be a reviewed action, not something that fires on every container start.
+5. **Point the client at it** and add its origin to Supabase's allowed redirect URLs (4.3b).
 
-```
-DATABASE_URL=postgresql://...        # your Supabase Postgres connection string
-SUPABASE_JWT_SECRET=...
-SUPABASE_URL=...
-SUPABASE_ANON_KEY=...
-```
-
-Then point the client's API base URL at it, and add its origin to Supabase's allowed redirect URLs.
-
-I can write the Dockerfile and platform config once you pick a host — the choice affects the file.
+**None of this has been run against a real Fly.io account or Docker daemon.** The Dockerfile follows a standard FastAPI/uvicorn pattern and `fly.toml` matches Fly's documented format, but "should work" is not "confirmed working" — budget for the first real `fly deploy` to surface something no local check could. See [backend/README.md](backend/README.md) for the reasoning behind each choice.
 
 ---
 

@@ -24,15 +24,19 @@ import { Map as MapLibreMap } from 'maplibre-gl'
 // tell that this import was forgotten rather than declined.
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { registerPMTilesProtocol } from './protocol'
+import { registerBasemapProtocol } from './basemap'
 import { registerMapWorker } from './mapWorker'
 import { buildMapStyle } from './style'
 import { attachContourUnits, registerTerrain } from './contours'
+import { attachLiveSourceHealth, type LiveSourceHealth } from './liveSourceHealth'
+import { attachElevationLabelUnits } from './liveTopo'
 import type { TerrainUrls } from './terrain'
 import { attachMapChrome, type ScaleUnits } from './mapChrome'
-import { attachMapBackdrop } from './backdrop'
 import { attachHiddenPoiTypes, attachPoiData, attachPoiIcons } from './poiLayers'
+import { attachPoiTaps } from './poiTaps'
 import type { BoundingBox, MapPoint } from '../lib/legendContents'
 import type { BackgroundSource } from '../lib/userPreferences'
+import { openingZoomFloor, type ArchiveZooms } from '../lib/archiveCoverage'
 
 export interface MapViewProps {
   /** `pmtiles://` URL for the downloaded topo archive. */
@@ -64,6 +68,26 @@ export interface MapViewProps {
    * picking one here would frame it differently on every phone.
    */
   bounds?: [[number, number], [number, number]]
+  /**
+   * What the downloaded archive's own header says it covers, when it is known.
+   *
+   * Used for exactly one thing: keeping the opening camera out of the zooms
+   * the archive has no tiles for, which on the offline background is the
+   * difference between a map and blank paper (#216). It never constrains what
+   * the hiker can do afterwards - zooming out past the download is allowed,
+   * and the chrome says so rather than the map refusing.
+   */
+  archiveZooms?: ArchiveZooms | null
+  /**
+   * A pin was tapped, by POI id - or the bare map was, reported as null so
+   * the shell can dismiss whatever the last pin opened. Must be stable across
+   * renders (useCallback), like `onViewportChange` - an inline function would
+   * re-bind the map's listeners on every render of the parent.
+   *
+   * Only the id: this component knows what is drawn on the map, not what the
+   * app knows about it, and looking a POI up is the shell's job.
+   */
+  onSelectPoi?: (id: string | null) => void
   /** Web only; touch platforms rely on pinch (see mapChrome.ts). */
   showZoomButtons?: boolean
   units?: ScaleUnits
@@ -79,10 +103,24 @@ export interface MapViewProps {
    * the opening view only, and the first GPS fix usually lands after it.
    */
   onMapReady?: (map: MapLibreMap | null) => void
+  /**
+   * Which of the live background's network sources reported an error and never
+   * drew anything - see map/liveSourceHealth.ts.
+   *
+   * Reported rather than rendered: this component draws the map, and what the
+   * hiker is told about it belongs to the chrome. Must be stable across
+   * renders (a `useState` setter already is), like `onViewportChange` - an
+   * inline function would re-attach the listeners on every parent render.
+   */
+  onLiveSourceHealth?: (health: LiveSourceHealth) => void
 }
 
 const DEFAULT_CENTER: [number, number] = [-77.1, 39.3]
 const DEFAULT_ZOOM = 12
+
+/** Breathing room around a fitted box, and the figure the opening-floor
+ *  calculation has to use too or the two disagree about what fits. */
+const FIT_PADDING = 24
 
 // Module-level, so the default is the SAME value on every render. A `= []`
 // default parameter would hand over a fresh identity each time and re-run the
@@ -97,13 +135,16 @@ export function MapView({
   background = 'hiking_topo_live',
   pois = NO_POIS,
   hiddenTypes = NOTHING_HIDDEN,
+  onSelectPoi,
   center,
   zoom,
   bounds,
+  archiveZooms = null,
   showZoomButtons = false,
   units = 'imperial',
   onViewportChange,
   onMapReady,
+  onLiveSourceHealth,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [map, setMap] = useState<MapLibreMap | null>(null)
@@ -129,17 +170,32 @@ export function MapView({
     // The style resolves pmtiles:// URLs, so the protocol has to exist first.
     registerPMTilesProtocol()
 
+    // And basemap:// URLs - the hiking sheet's local-first tile resolution
+    // (basemap.ts). Registered unconditionally like the pmtiles scheme, and
+    // unlike the terrain protocols below: it reaches the network only as the
+    // per-tile fallthrough of a source the chosen style actually declares,
+    // so there is no behind-the-back request to guard against.
+    registerBasemapProtocol()
+
     // Same contract for the DEM and contour protocols, with one difference
     // worth being deliberate about: this one reaches the network, so it is
     // only set up when a background that uses it was actually asked for.
     // Someone who chose the downloaded archive to stay off the network should
     // not have a DEM protocol registered behind their back.
     //
-    // Best-effort, following backdrop.ts: contour generation needs a Web
-    // Worker and a blob URL, and if either is unavailable the honest outcome
-    // is a map without contours, not no map. A failure here costs terrain and
-    // nothing else - the archive, the trail lines and the paper are all in the
-    // style already.
+    // Best-effort, and narrower than it used to claim. This comment said the
+    // branch fires when "a Web Worker and a blob URL" are unavailable; neither
+    // is true. contours.ts feature-detects Worker and falls back to the main
+    // thread rather than throwing, and the worker it constructs is the app's
+    // own emitted asset (demWorker.ts, since #187) rather than the library's
+    // blob. What actually lands here is a Content-Security-Policy whose
+    // worker-src refuses that construction - no such policy is served today,
+    // so this is a guard against a future hardening rather than a path
+    // anyone is on.
+    //
+    // Either way the outcome is a map without contours, not no map: a failure
+    // here costs terrain and nothing else. That is now true of what gets
+    // built, too - style.ts used to drop the entire live sheet along with it.
     let terrain: TerrainUrls | undefined
     if (background === 'hiking_topo_live') {
       try {
@@ -157,7 +213,7 @@ export function MapView({
       // for a box rather than a zoom number.
       ...(bounds === undefined
         ? { center: center ?? DEFAULT_CENTER, zoom: zoom ?? DEFAULT_ZOOM }
-        : { bounds, fitBoundsOptions: { padding: 24 } }),
+        : { bounds, fitBoundsOptions: { padding: FIT_PADDING } }),
       // Attribution is rendered by the app's own chrome, positioned per
       // WIREFRAMES.md, rather than by MapLibre's default control.
       attributionControl: false,
@@ -178,6 +234,34 @@ export function MapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topoArchiveUrl, trailsUrl, background])
 
+  // Keeps the OPENING camera out of the zooms the download cannot draw (#216).
+  //
+  // Its own effect rather than part of the construction above, for three
+  // reasons that all point the same way. It reads the zoom MapLibre actually
+  // settled on, so nothing here has to reimplement how a box is fitted to a
+  // screen. It re-runs when the archive's header lands, which is a tick AFTER
+  // the map is built and would otherwise be missed entirely. And it does that
+  // without the archive's coverage becoming a dependency of the construction
+  // effect, where a late-arriving header would tear down a live WebGL context
+  // and rebuild it.
+  //
+  // Only the zoom is touched. The centre stays exactly where fitBounds put it,
+  // which is what makes this defensible at all: App.tsx's opening view is
+  // built around not making a confident-looking claim about where the hiker is
+  // (Harpers Ferry was removed for precisely that), and moving the scale in
+  // without moving the centre claims nothing new.
+  //
+  // Gated on `bounds`, which the shell supplies only for the very first view -
+  // once there is a remembered camera it passes centre and zoom instead. So
+  // this cannot fight a hiker who has deliberately zoomed out to look at the
+  // whole trail; it only decides where they start.
+  useEffect(() => {
+    if (map === null || bounds === undefined || background !== 'usgs_topo_offline') return
+
+    const floor = openingZoomFloor(archiveZooms, map.getZoom())
+    if (floor !== null) map.setZoom(floor)
+  }, [map, bounds, background, archiveZooms])
+
   // Chrome lives in its own effect so that a preference which only affects the
   // controls - the scale bar's units, the zoom buttons - re-attaches three
   // controls instead of tearing down and rebuilding the entire map underneath
@@ -195,13 +279,13 @@ export function MapView({
     return attachContourUnits(map, units)
   }, [map, units])
 
-  // The backdrop's paper colour is in the style itself and needs nothing here.
-  // This adds only the hatch on top of it, which needs a loaded style and so
-  // cannot be expressed in buildMapStyle - see backdrop.ts.
+  // And the labels' half: the contour suffix and the peak elevation field
+  // are baked into the style as layout, so re-pointing the tiles alone
+  // leaves metric values under imperial punctuation - see liveTopo.ts.
   useEffect(() => {
     if (map === null) return
-    return attachMapBackdrop(map)
-  }, [map])
+    return attachElevationLabelUnits(map, units)
+  }, [map, units])
 
   // Three separate effects rather than one, because they change on completely
   // different clocks: the pin images are built once and never again, the POIs
@@ -222,6 +306,14 @@ export function MapView({
     if (map === null) return
     return attachHiddenPoiTypes(map, hiddenTypes)
   }, [map, hiddenTypes])
+
+  // Taps are their own effect for the same reason: this one re-binds when the
+  // shell hands over a different handler, which has nothing to do with the
+  // pins themselves and must not re-push the POI source to do it.
+  useEffect(() => {
+    if (map === null || onSelectPoi === undefined) return
+    return attachPoiTaps(map, onSelectPoi)
+  }, [map, onSelectPoi])
 
   useEffect(() => {
     if (map === null || onViewportChange === undefined) return
@@ -244,6 +336,13 @@ export function MapView({
       map.off('moveend', report)
     }
   }, [map, onViewportChange])
+
+  // Its own effect, like every other attach here, so that a shell which starts
+  // caring about source health does not cost a WebGL context to wire up.
+  useEffect(() => {
+    if (map === null || onLiveSourceHealth === undefined) return
+    return attachLiveSourceHealth(map, onLiveSourceHealth)
+  }, [map, onLiveSourceHealth])
 
   useEffect(() => {
     if (onMapReady === undefined) return

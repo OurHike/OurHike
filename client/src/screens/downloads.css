@@ -1,20 +1,100 @@
+/* ---------- The download window (DownloadsDialog.tsx) ---------- */
+
+/* `fixed`, which also takes it out of the flex column .app__screen puts its
+   children in - the window is over the app, not one more row of it. */
+.downloads-dialog {
+  position: fixed;
+  inset: 0;
+  /* Above the legend (2) and the search sheet (3), both of which are scoped to
+     the map canvas; this one covers the whole app. */
+  z-index: 10;
+  display: flex;
+  background: rgb(0 0 0 / 35%);
+}
+
+/* Fills the phone, so the dim above is only ever seen on a desktop. There is
+   nothing behind it worth keeping in view: this is a whole decision - which
+   detail level, how many hundred megabytes - not a note about the map. The
+   panel treatment is in desktop.css, where a rule cannot reach a phone. */
+.downloads-dialog__panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-page);
+}
+
+.downloads-dialog__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3, 12px);
+  padding: var(--space-2, 8px) var(--space-2, 8px) var(--space-2, 8px)
+    var(--space-5, 20px);
+  border-bottom: 1px solid var(--border-1);
+}
+
+.downloads-dialog__title {
+  margin: 0;
+  font-size: 20px;
+  color: var(--fg-1);
+}
+
+.downloads-dialog__close {
+  min-width: var(--min-touch-target, 44px);
+  min-height: var(--min-touch-target, 44px);
+  font-size: 20px;
+  color: var(--fg-2);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+/* The scroll is here rather than on the panel, so the head stays put and the
+   way out is on screen at every scroll position. */
+.downloads-dialog__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .downloads {
   display: flex;
   flex-direction: column;
   gap: var(--space-4, 16px);
   padding: var(--space-5, 20px);
-  background: var(--bg-page);
-  min-height: 100%;
-}
-.downloads__title {
-  margin: 0;
-  font-size: 20px;
-  color: var(--fg-1);
 }
 .downloads__scope {
   margin: 0;
   color: var(--fg-2);
   font-size: 14px;
+}
+/* One downloadable thing (#192). */
+.downloads__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+.downloads__item-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.downloads__item-summary {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: 13px;
+}
+/* A download's own failure, in its own card. Same tint as the space warning -
+   it is information that changes what to do next, not an error dialog
+   standing between a hiker and the button. */
+.downloads__error {
+  margin: 0;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border-radius: 8px;
+  background: var(--warning-100, #fdf1d6);
+  color: var(--fg-1);
+  font-size: 13px;
 }
 .downloads__primary,
 .downloads__secondary {
@@ -36,10 +116,33 @@
 }
 .downloads__progress,
 .downloads__failed,
-.downloads__done {
+.downloads__done,
+.downloads__evicted {
   display: flex;
   flex-direction: column;
   gap: var(--space-2, 8px);
+}
+.downloads__evicted > p:first-child {
+  margin: 0;
+  font-size: 14px;
+}
+/* Space and durability caveats: quiet but not invisible - the warning tint
+   the design system already uses, at body-copy size, never a modal. The
+   information changes a decision, not the ability to proceed. */
+.downloads__warning {
+  margin: 0;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border-radius: 8px;
+  /* The same tint App.css's offline banner reads from, one shade of the
+     design system's --warning (blaze yellow) family. */
+  background: var(--warning-100, #fdf1d6);
+  color: var(--fg-1);
+  font-size: 13px;
+}
+.downloads__note {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: 13px;
 }
 .downloads__bar {
   height: 8px;
@@ -57,6 +160,12 @@
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 12px;
   color: var(--fg-2);
+}
+/* Right-aligned inside a slot the component sizes to the total, so the tail
+   of the line never moves while the counter's digit count grows. */
+.downloads__bytes-received {
+  display: inline-block;
+  text-align: right;
 }
 .detail-picker {
   display: flex;

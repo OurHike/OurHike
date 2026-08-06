@@ -4,9 +4,10 @@ import userEvent from '@testing-library/user-event'
 import { TabBar } from './TabBar'
 import { TABS } from './tabs'
 
-// WIREFRAMES.md, map screen §6: Trail / Downloads / More. Three tabs, no more -
-// v1's whole surface fits in them, and the tab bar sits in the thumb zone where
-// every extra target costs accuracy mid-walk.
+// WIREFRAMES.md, map screen §6: Trail / More. Downloads was the third of these
+// and went on 2026-08-05 - one whole-corridor package does not need a permanent
+// target in the thumb zone, where every tab costs the others accuracy mid-walk.
+// The download opens as a window from the background picker instead.
 
 const PROPS = { active: 'trail' as const, onSelect: vi.fn() }
 
@@ -16,14 +17,21 @@ afterEach(() => {
 })
 
 describe('TabBar', () => {
-  it('has exactly the three MVP tabs, in order', () => {
+  it('has exactly the two MVP tabs, in order', () => {
     render(<TabBar {...PROPS} />)
 
     expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
       'Trail',
-      'Downloads',
       'More',
     ])
+  })
+
+  it('no longer offers Downloads, which is a window now rather than a place', () => {
+    // An absence test, because the tab is coming back in v2 (chrome/tabs.ts)
+    // and "it was easy to re-add" is exactly how it gets re-added by accident.
+    render(<TabBar {...PROPS} />)
+
+    expect(screen.queryByRole('tab', { name: /download/i })).toBeNull()
   })
 
   it('derives its tabs from the shared list rather than hardcoding them in markup', () => {
@@ -33,11 +41,11 @@ describe('TabBar', () => {
   })
 
   it('marks the active tab as selected, and only that one', () => {
-    render(<TabBar {...PROPS} active="downloads" />)
+    render(<TabBar {...PROPS} active="more" />)
     const selected = screen.getAllByRole('tab', { selected: true })
 
     expect(selected).toHaveLength(1)
-    expect(selected[0]).toHaveTextContent('Downloads')
+    expect(selected[0]).toHaveTextContent('More')
   })
 
   it('reports which tab was chosen', async () => {
@@ -62,5 +70,37 @@ describe('TabBar', () => {
     render(<TabBar {...PROPS} />)
 
     expect(screen.getByRole('tablist')).toBeInTheDocument()
+  })
+
+  // The bar is also the sidebar on a desktop, and the mark sits at the foot of
+  // it - the bottom-left corner of the page. Whether it is VISIBLE is a CSS
+  // contract, asserted in test/desktopLayout.test.ts; what is asserted here is
+  // that the bar carries it at all, and carries it without disturbing the tabs.
+  it('carries the OurHike mark for the foot of the sidebar', () => {
+    const { container } = render(<TabBar {...PROPS} />)
+
+    expect(container.querySelector('.tab-bar__brand')).not.toBeNull()
+  })
+
+  it('carries both pieces of the mark, leaving the layout to pick', () => {
+    // Both are always in the markup; which one is drawn is a CSS question, and
+    // is asserted in test/desktopLayout.test.ts. The sidebar shows icon over
+    // wordmark; a phone shows the icon alone beside the tabs, because the icon
+    // on its own still says whose app this is and type there would come
+    // straight out of a thumb target's width.
+    const { container } = render(<TabBar {...PROPS} />)
+
+    expect(container.querySelector('.tab-bar__brand-icon')).not.toBeNull()
+    expect(container.querySelector('.tab-bar__brand')).toHaveTextContent('OurHike')
+  })
+
+  it('keeps the mark out of the tablist, so it is not read as one more tab', () => {
+    // `role="tablist"` is required to own tabs and nothing else. With the mark
+    // inside it, a screen reader announces the brand as one more member of the
+    // set - which is why the tabs have their own box.
+    render(<TabBar {...PROPS} />)
+
+    expect(screen.getByRole('tablist').querySelector('.tab-bar__brand')).toBeNull()
+    expect(screen.getAllByRole('tab')).toHaveLength(TABS.length)
   })
 })

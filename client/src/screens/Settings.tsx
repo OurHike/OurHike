@@ -22,7 +22,9 @@
 
 import { syncAgeLabel } from '../lib/syncAge'
 import type { BackgroundSource, UserPreferences } from '../lib/userPreferences'
-import { backgroundOverridden } from '../lib/dataSaver'
+import { backgroundOverride } from '../lib/dataSaver'
+import { BackgroundPicker } from '../chrome/BackgroundPicker'
+import { DownloadsLink } from '../chrome/DownloadsLink'
 import { REPORTER_TYPES } from '../lib/contributionFlow'
 import type { ReportDraft } from '../lib/outbox'
 import './settings.css'
@@ -35,6 +37,19 @@ export interface SettingsProps {
   onSignOut: () => void
   preferences: UserPreferences
   onChange: (patch: Partial<UserPreferences>) => void
+  /**
+   * The background, written through its own callback rather than `onChange`.
+   *
+   * Not because the preference is special - it is one field like any other -
+   * but because CHOOSING it can mean more than storing it: picking the
+   * downloaded corridor with nothing downloaded opens the download window
+   * (App.tsx). The shell owns that rule, so the shell has to see the choice.
+   *
+   * Omitted, the background is written straight through `onChange` like every
+   * other preference here, which is what a Settings rendered outside the shell
+   * should do.
+   */
+  onChangeBackground?: (next: BackgroundSource) => void
   lastSyncedAt: Date | null
   onSync: () => void
   onExport: (format: 'gpx' | 'geojson') => void
@@ -49,6 +64,26 @@ export interface SettingsProps {
    * and two independent reads of the same API is how that happens.
    */
   dataSaver?: boolean
+  /**
+   * Whether a finished corridor archive is on this phone.
+   *
+   * Passed in for the same reason as `dataSaver`, and it feeds the same one
+   * decision: with no archive, "downloaded only" has no download to draw and
+   * the map falls back to the live sheet - see lib/dataSaver.ts.
+   *
+   * It also words the download link at the foot of this screen, which is the
+   * same fact asked a second way: choose a download, or change the one you
+   * have.
+   */
+  archiveDownloaded?: boolean
+  /**
+   * Opens the download window, from the link at the foot of the screen.
+   *
+   * There is no Downloads tab to send anyone to any more (chrome/tabs.ts), so
+   * this screen carries the same link the legend does, from one component.
+   * Omitted, no link is drawn.
+   */
+  onOpenDownloads?: () => void
 }
 
 function LaterTag() {
@@ -62,11 +97,14 @@ export function Settings({
   onSignOut,
   preferences,
   onChange,
+  onChangeBackground,
   lastSyncedAt,
   onSync,
   onExport,
   now = new Date(),
   dataSaver = false,
+  archiveDownloaded = false,
+  onOpenDownloads,
 }: SettingsProps) {
   return (
     <main className="settings">
@@ -118,45 +156,22 @@ export function Settings({
 
       <section className="settings__group">
         <h2 className="settings__heading">The map</h2>
-        <label className="settings__row">
-          <span className="settings__label">Background</span>
-          <select
-            className="settings__value"
-            name="background_source"
-            value={preferences.background_source}
-            onChange={(event) =>
-              onChange({ background_source: event.target.value as BackgroundSource })
-            }
-          >
-            <option value="hiking_topo_live">Topo — live, with contours</option>
-            <option value="usgs_topo_offline">Downloaded only</option>
-          </select>
-        </label>
-        {/* Says what changes, not what it is called. The live sheet is not a
-            trade against working offline - it is drawn over the download, so
-            the download is still what shows with no signal - and someone
-            deciding between these needs to know that far more than they need
-            the name of a tile provider. */}
-        <p className="settings__note">
-          {preferences.background_source === 'hiking_topo_live'
-            ? 'Contours, shaded relief and streams beyond your downloaded area. Falls back to your download with no signal.'
-            : 'Your downloaded corridor only — no background data is fetched.'}
-        </p>
+        {/* The same control the legend shows, from one component. This used
+            to be a select with its own copy, which meant two places writing
+            one preference and disagreeing about what it looked like. */}
+        <BackgroundPicker
+          value={preferences.background_source}
+          onChange={
+            onChangeBackground ?? ((background_source) => onChange({ background_source }))
+          }
+          override={backgroundOverride(
+            preferences.background_source,
+            dataSaver,
+            archiveDownloaded,
+          )}
+          idPrefix="settings"
+        />
 
-        {/* The visible half of the override, and it does not ship without it.
-            Overriding a preference is defensible; overriding one while the
-            screen still claims otherwise is not, and this row is the only
-            place someone would ever go to find out why the map looks
-            different. Rendered only when the two actually disagree - saying
-            "overridden" to someone who picked the download anyway would be its
-            own small lie. */}
-        {backgroundOverridden(preferences.background_source, dataSaver) && (
-          <p className="settings__locked" role="note">
-            Data Saver is on, so the map is using your download only and fetching no
-            background tiles. Turn Data Saver off in your phone's settings to see contours
-            and shaded relief.
-          </p>
-        )}
         <label className="settings__row settings__row--later">
           <span className="settings__label">Roads &amp; walkability</span>
           <LaterTag />
@@ -239,6 +254,16 @@ export function Settings({
           OpenMapTiles, USGS 3DEP via AWS Terrain Tiles.
         </p>
       </section>
+
+      {/* Below the last group rather than inside "The map" beside the
+          background it affects. It is the only way to the download
+          (chrome/DownloadsLink.tsx) and still a thing someone does once a
+          season, so it gets the foot of the screen: findable by anyone who
+          scrolls looking for it, and not in the way of the rows that get used.
+          The same component sits at the foot of the legend. */}
+      {onOpenDownloads !== undefined && (
+        <DownloadsLink onOpen={onOpenDownloads} hasDownload={archiveDownloaded} />
+      )}
     </main>
   )
 }

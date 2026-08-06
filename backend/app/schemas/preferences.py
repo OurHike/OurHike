@@ -54,10 +54,40 @@ class BackgroundSource(str, Enum):
     module's `loadPreferences`) and syncs the default instead, so the 422
     this now produces is only reachable by a client that skipped that
     path.
+
+    Rows in `user_preferences` were written while those names were valid,
+    though, and a stored blob is not a client that can be asked to re-sync
+    first - GET /preferences/me reads it straight into PreferencesOut. So
+    the read side repairs rather than trusts, the same move
+    `loadPreferences` makes: see `repair_stored_background`.
     """
 
     hiking_topo_live = "hiking_topo_live"
     usgs_topo_offline = "usgs_topo_offline"
+
+
+# The client's DEFAULT_PREFERENCES choice (userPreferences.ts documents why:
+# the live sheet draws OVER the downloaded archive, so it costs the offline
+# premise nothing) - what a phone that had stored a removed value would have
+# ended up syncing anyway.
+DEFAULT_BACKGROUND_SOURCE = BackgroundSource.hiking_topo_live
+
+
+def repair_stored_background(data: dict) -> dict:
+    """A stored preferences blob with its `background_source` made current.
+
+    A row written while the enum still carried `usgs_topo_live` or
+    `osm_styled_live` holds a value that was valid at write time and is a
+    ValidationError now - and surfacing that as a 500 from a GET punishes
+    the one client that cannot do anything about it (its own repair runs on
+    PUT, which it may not have reached yet). Unknown values become the
+    default, exactly what the client's `knownBackground` does with the same
+    blob on the phone.
+    """
+    known = {source.value for source in BackgroundSource}
+    if data.get("background_source") in known:
+        return data
+    return {**data, "background_source": DEFAULT_BACKGROUND_SOURCE}
 
 
 class MaxBackgroundZoom(int, Enum):

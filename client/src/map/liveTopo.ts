@@ -23,12 +23,21 @@
 //
 // THE SOURCE
 //
-// OpenFreeMap's public instance: OpenStreetMap data on the unmodified
-// OpenMapTiles schema, no API key, no registration, no request cap, explicitly
-// free for commercial use with attribution. That last part is why it is here
-// and raw tile.openstreetmap.org is not - the OSMF tile policy warns that
-// access to that server may be withdrawn from exactly this kind of app, and
-// MAP_OPTIONS.md already ruled it out on those grounds.
+// Local bytes first, the network where they do not reach (#189). The sheet's
+// tiles come through the `basemap://` scheme below: map/basemap.ts answers
+// each request from the downloaded basemap package when the phone holds one,
+// and falls through - per tile, not per session - to OpenFreeMap's public
+// instance where the package does not answer. Both serve the same unmodified
+// OpenMapTiles schema (the package is built by our own Planetiler job,
+// pipeline/BASEMAP.md), which is what lets every layer below stay one
+// definition with no offline variant.
+//
+// OpenFreeMap is the network half for the same reasons it was the whole
+// source: OpenStreetMap data, no API key, no registration, no request cap,
+// explicitly free for commercial use with attribution. That last part is why
+// it is here and raw tile.openstreetmap.org is not - the OSMF tile policy
+// warns that access to that server may be withdrawn from exactly this kind
+// of app, and MAP_OPTIONS.md already ruled it out on those grounds.
 //
 // Attribution is a licence condition on both counts - ODbL for the data,
 // OpenFreeMap's own terms for the hosting - so LIVE_TOPO_ATTRIBUTION is
@@ -44,6 +53,8 @@ import type {
   LayerSpecification,
   SourceSpecification,
 } from '@maplibre/maplibre-gl-style-spec'
+import type { Map as MapLibreMap } from 'maplibre-gl'
+import { whenStyleReady } from './styleReady'
 import {
   CONTOUR_ELEVATION_KEY,
   CONTOUR_LAYER,
@@ -58,8 +69,45 @@ import {
 } from './terrain'
 
 export const OPENFREEMAP_TILEJSON = 'https://tiles.openfreemap.org/planet'
-export const OPENFREEMAP_GLYPHS =
-  'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf'
+
+/**
+ * The scheme the sheet's tile requests go through, and the template the osm
+ * source declares. Config only - the handler that answers it lives in
+ * basemap.ts (local package first, network fallthrough), the same
+ * config/runtime split terrain.ts and contours.ts draw, and for the same
+ * reason: building a style must cost arithmetic, not a protocol registration.
+ */
+export const BASEMAP_SCHEME = 'basemap'
+export const BASEMAP_TILES_URL = `${BASEMAP_SCHEME}://{z}/{x}/{y}`
+
+/**
+ * Declared on the source because a `tiles:` template carries no TileJSON to
+ * say it. 14 is the OpenMapTiles standard ceiling - true of OpenFreeMap's
+ * planet and of our own Planetiler build alike (pipeline/BASEMAP.md), so the
+ * local and network halves of the fallthrough agree on where overzooming
+ * starts and one constant serves both.
+ */
+export const BASEMAP_MAX_ZOOM = 14
+
+/**
+ * Glyphs ship with the app, not from a font host (#188).
+ *
+ * Symbol layers fetch glyph PBFs per 256-codepoint range, and no offline
+ * plumbing intercepts those requests - the pmtiles protocol only handles tile
+ * sources. Served from a host, every label on the sheet - place names, peak
+ * elevations, contour labels - silently rendered nothing without signal. So
+ * the one fontstack the style uses is bundled under public/glyphs/ (6.24 MB,
+ * all 256 ranges of Noto Sans Regular, OFL-licensed - provenance and licence
+ * note sit next to the files) and the style points at its own origin. Being
+ * real build assets is also what gets the ranges into the service worker's
+ * precache, so a fresh install labels its map in airplane mode - the same
+ * reasoning mapWorker.ts documents for the emitted worker asset.
+ *
+ * BASE_URL rather than a bare `/`: GitHub Pages serves the app under
+ * /OurHike/app/, and a root-anchored path would resolve to the project site
+ * instead - see vite.config.ts's note on BASE.
+ */
+export const BUNDLED_GLYPHS = `${import.meta.env.BASE_URL}glyphs/{fontstack}/{range}.pbf`
 
 export const OSM_SOURCE_ID = 'osm'
 
@@ -69,10 +117,12 @@ export const LIVE_TOPO_ATTRIBUTION =
 /**
  * One font, varied by size, colour and halo rather than by weight.
  *
- * A fontstack the glyph server does not have is a label layer that silently
+ * A fontstack the glyph endpoint does not have is a label layer that silently
  * renders nothing, and "Noto Sans Regular" is the one stack every OpenMapTiles
- * glyph endpoint ships. Reaching for a second weight would double the ways
- * that can go wrong to buy a distinction that halo and size already make.
+ * glyph source ships - including the bundled one, which is why BUNDLED_GLYPHS
+ * carries exactly this stack and no other. Reaching for a second weight would
+ * double the app's 6.24 MB of glyph assets to buy a distinction that halo and
+ * size already make.
  */
 const FONT = ['Noto Sans Regular']
 
@@ -146,20 +196,172 @@ function isClass(...values: string[]): unknown[] {
     : ['in', ['get', 'class'], ['literal', values]]
 }
 
+/**
+ * The zoom each place class starts labelling at (#159).
+ *
+ * Distance decides what deserves ink, the way it does on a paper sheet. The
+ * corridor-wide view crosses the whole Boston-Washington seaboard, and with
+ * every class labelling at every zoom, that view was a wall of type the
+ * centerline had to be picked out from under. So each class waits for the
+ * zoom where its name starts meaning something to a hiker: a city anchors
+ * the map from any distance, a town matters once a section is being planned,
+ * a village once it is about to be walked past.
+ *
+ * Cities carry no threshold - orientation is their whole job, and the
+ * corridor view without them is a line through unnamed country.
+ */
+export const PLACE_TOWN_MIN_ZOOM = 8
+export const PLACE_VILLAGE_MIN_ZOOM = 11
+
+export const PLACE_FILTER = [
+  'step',
+  ['zoom'],
+  isClass('city'),
+  PLACE_TOWN_MIN_ZOOM,
+  isClass('city', 'town'),
+  PLACE_VILLAGE_MIN_ZOOM,
+  isClass('city', 'town', 'village'),
+]
+
+/**
+ * Which label survives when two places collide: the bigger one.
+ *
+ * Lower sorts place first, and earlier placement wins the space - so without
+ * this, whether Boston or a suburb's town label survives their collision is
+ * decided by feature order inside the tile, which is nobody's decision. Same
+ * reasoning as poiLayers.ts's POI_PRIORITY, one layer over.
+ */
+export const PLACE_SORT_KEY_EXPRESSION = [
+  'match',
+  ['get', 'class'],
+  'city',
+  0,
+  'town',
+  1,
+  2,
+]
+
+/**
+ * How hard the relief is shaded - a zoom ramp rather than one number, and the
+ * reason is what the rest of this sheet does NOT draw.
+ *
+ * The hillshade is the only layer here with something to say at every zoom.
+ * Everything else that describes terrain is keyed to hiking zooms: the
+ * contours fade in over 9-12 and are at flat zero below that, their labels
+ * start at 12, the peaks at 10, and OpenMapTiles carries no woodland to fill
+ * below roughly z7. The opening view is the whole trail - App.tsx frames
+ * CORRIDOR_BOUNDS, which on a phone lands near z4 - so on that view relief is
+ * the only thing between the hiker and blank paper.
+ *
+ * At 0.35, stretched across a thousand kilometres of DEM, it was not enough to
+ * be one: the first thing anyone saw on opening the app was an empty sheet
+ * with a scale bar on it. So the shading is carried at full strength exactly
+ * where it works alone, and hands back to its old weight as the contours
+ * arrive - over the same 9-to-12 window they fade in across, read off the same
+ * numbers rather than a second set that could drift from them.
+ *
+ * Past the handover nothing changes: at hiking zooms this is the 0.35 it has
+ * always been, which is what keeps the shading from competing with the
+ * contours for the same job and from making the trail line harder to follow
+ * across a slope. `interpolate` holds its end values outside the stops, so
+ * both ends are flat rather than extrapolating into a black hillside.
+ *
+ * It also costs nothing. The DEM tiles behind this layer are fetched at every
+ * zoom already; the ramp only decides how much of what they contain reaches
+ * the screen.
+ */
+export const HILLSHADE_EXAGGERATION = 0.35
+export const HILLSHADE_RELIEF_ONLY_EXAGGERATION = 1
+/** The first zoom at which any contour ink is drawn, and the zoom by which
+ *  both contour layers are at full strength - see the two `line-opacity`
+ *  ramps below, which these have to keep agreeing with. */
+export const HILLSHADE_HANDOVER_START_ZOOM = 9
+export const HILLSHADE_HANDOVER_END_ZOOM = 12
+
+export const HILLSHADE_EXAGGERATION_EXPRESSION = [
+  'interpolate',
+  ['linear'],
+  ['zoom'],
+  HILLSHADE_HANDOVER_START_ZOOM,
+  HILLSHADE_RELIEF_ONLY_EXAGGERATION,
+  HILLSHADE_HANDOVER_END_ZOOM,
+  HILLSHADE_EXAGGERATION,
+]
+
 export interface LiveTopoOptions {
-  terrain: TerrainUrls
+  /**
+   * DEM and contour tile URLs, or `undefined` when they could not be built.
+   *
+   * Optional because elevation is one INPUT to this sheet rather than the
+   * sheet itself: of the layers below, exactly one reads the DEM (the
+   * hillshade) and three read the contour tiles. The other seventeen are OSM
+   * vector - landcover, parks, water, the path and road network, summits and
+   * place names - and none of them needs an elevation model to draw.
+   *
+   * So a DEM that will not build costs relief and contour lines, and leaves
+   * the rest of the sheet alone. That is what terrain.ts promises ("every
+   * failure path here is a missing layer, never a broken map") and until this
+   * was optional the promise was not kept: style.ts folded "asked for the live
+   * sheet" and "got terrain URLs" into one boolean, so a missing DEM dropped
+   * all twenty-one layers and left bare paper.
+   */
+  terrain?: TerrainUrls
   units: ContourUnits
 }
 
-export function liveTopoSources({
-  terrain,
-}: LiveTopoOptions): Record<string, SourceSpecification> {
+/**
+ * The two text-fields that bake the unit choice into the style, extracted so
+ * the live unit switch can re-point them with `setLayoutProperty` - see
+ * attachElevationLabelUnits. One home each: an expression built here and
+ * rebuilt slightly differently there would show its drift as a wrong-unit
+ * elevation on the map.
+ */
+
+/** An index contour's label: the tile's value plus the unit's mark. The tiles
+ *  themselves are already per-unit (registerTerrain), so the value needs no
+ *  conversion - only the suffix says which system the number is in. */
+export function contourLabelTextField(units: ContourUnits): unknown {
+  return [
+    'concat',
+    ['to-string', ['get', CONTOUR_ELEVATION_KEY]],
+    units === 'imperial' ? "'" : 'm',
+  ]
+}
+
+/** A peak's label: name over surveyed height. OpenFreeMap publishes the
+ *  height in both units as separate properties, so the unit choice is which
+ *  property to read, not a conversion. */
+export function peakLabelTextField(units: ContourUnits): unknown {
+  const elevationKey = units === 'imperial' ? 'ele_ft' : 'ele'
+  // `concat` errors on a null argument and drops the feature, so the
+  // name is coalesced rather than read straight: an unnamed summit with
+  // a surveyed height is still worth putting on the map, and losing it
+  // to an expression error would be a silent hole in exactly the layer
+  // this style added terrain for.
+  return [
+    'case',
+    ['has', elevationKey],
+    [
+      'concat',
+      ['coalesce', ['get', 'name'], ''],
+      '\n',
+      ['to-string', ['get', elevationKey]],
+      units === 'imperial' ? "'" : 'm',
+    ],
+    ['coalesce', ['get', 'name'], ''],
+  ]
+}
+
+/**
+ * The elevation half of the sheet's sources, or nothing when no DEM was built.
+ *
+ * Split out rather than spread inline so the two `raster-dem`/`vector` literals
+ * keep their own declared return type. Widened into a conditional spread they
+ * lose it - `type: 'raster-dem'` infers as `string`, which is not assignable to
+ * SourceSpecification, and tsc fails at the call site rather than here.
+ */
+function terrainSources(terrain: TerrainUrls): Record<string, SourceSpecification> {
   return {
-    [OSM_SOURCE_ID]: {
-      type: 'vector',
-      url: OPENFREEMAP_TILEJSON,
-      attribution: LIVE_TOPO_ATTRIBUTION,
-    },
     [DEM_SOURCE_ID]: {
       type: 'raster-dem',
       tiles: [terrain.demUrl],
@@ -177,6 +379,35 @@ export function liveTopoSources({
   }
 }
 
+export function liveTopoSources({
+  terrain,
+}: LiveTopoOptions): Record<string, SourceSpecification> {
+  return {
+    // Unconditional, and the reason `terrain` is optional at all: this one
+    // needs a URL and a tile schema - none of the worker/blob-URL machinery
+    // a DEM needs and therefore none of the ways that machinery can fail.
+    // (basemap.ts's protocol registration is machinery, but of the same
+    // idempotent addProtocol kind as the pmtiles scheme - MapView registers
+    // it before any style is applied.)
+    //
+    // A `tiles` template through the basemap:// scheme rather than the
+    // OpenFreeMap TileJSON URL, and the difference is the offline story
+    // (#189): a TileJSON is a network round trip before the first tile can
+    // even be asked for, so a style built around it needs signal to learn
+    // where its own tiles live. The template needs nothing, and each tile
+    // request is then resolved locally-first by basemap.ts. The style stays
+    // a pure function - which archive answers is decided per tile at fetch
+    // time, never observed here.
+    [OSM_SOURCE_ID]: {
+      type: 'vector',
+      tiles: [BASEMAP_TILES_URL],
+      maxzoom: BASEMAP_MAX_ZOOM,
+      attribution: LIVE_TOPO_ATTRIBUTION,
+    },
+    ...(terrain === undefined ? {} : terrainSources(terrain)),
+  }
+}
+
 /**
  * The layer stack, bottom to top.
  *
@@ -189,13 +420,24 @@ export function liveTopoSources({
  * There is deliberately no land-coloured fill at the bottom. The style's paper
  * backdrop already is the sheet, exactly as on a printed quad where open
  * ground is simply unprinted paper - and adding a source-free fill here would
- * paint over the off-archive hatch (backdrop.ts) even when no tile had loaded,
- * turning "nothing arrived" back into a confident picture of empty ground.
+ * paint over that paper (style.ts's BACKDROP_LAYER_ID) even when no tile had
+ * loaded, turning "nothing arrived" back into a confident picture of empty
+ * ground.
+ *
+ * With no `terrain`, the layers reading the DEM and the contour tiles are
+ * dropped and the rest of the stack is returned untouched. That is a filter at
+ * the end rather than a conditional at each of the four sites on purpose: the
+ * order above IS the cartography, a filter cannot reorder it, and it asks the
+ * same question the style validator asks - does this layer's source exist -
+ * so a fifth elevation layer added later is covered without joining a list
+ * someone has to remember to update. A layer left pointing at a source that
+ * was never added is not a missing contour; it is an invalid style.
  */
-export function liveTopoLayers({ units }: LiveTopoOptions): LayerSpecification[] {
-  const elevationSuffix = units === 'imperial' ? "'" : 'm'
-
-  return [
+export function liveTopoLayers({
+  terrain,
+  units,
+}: LiveTopoOptions): LayerSpecification[] {
+  const layers: LayerSpecification[] = [
     {
       id: LIVE_TOPO_LAYER_IDS.wood,
       type: 'fill',
@@ -249,15 +491,15 @@ export function liveTopoLayers({ units }: LiveTopoOptions): LayerSpecification[]
         'line-dasharray': [4, 2],
       },
     },
-    // Relief shading. Low opacity on purpose: this is here to give the terrain
-    // shape, and anything stronger starts competing with the contours for the
-    // same job while making the trail line harder to follow across a slope.
+    // Relief shading, and the sheet's only terrain channel until the contours
+    // arrive - which is why its strength follows the zoom rather than sitting
+    // at one number. See HILLSHADE_EXAGGERATION_EXPRESSION.
     {
       id: LIVE_TOPO_LAYER_IDS.hillshade,
       type: 'hillshade',
       source: DEM_SOURCE_ID,
       paint: {
-        'hillshade-exaggeration': 0.35,
+        'hillshade-exaggeration': HILLSHADE_EXAGGERATION_EXPRESSION as never,
         'hillshade-shadow-color': '#6b5f4a',
         'hillshade-highlight-color': '#fffdf7',
         'hillshade-accent-color': '#8a8271',
@@ -336,11 +578,7 @@ export function liveTopoLayers({ units }: LiveTopoOptions): LayerSpecification[]
       minzoom: 12,
       layout: {
         'symbol-placement': 'line',
-        'text-field': [
-          'concat',
-          ['to-string', ['get', CONTOUR_ELEVATION_KEY]],
-          elevationSuffix,
-        ] as never,
+        'text-field': contourLabelTextField(units) as never,
         'text-font': FONT,
         'text-size': 10,
         'text-max-angle': 25,
@@ -450,23 +688,7 @@ export function liveTopoLayers({ units }: LiveTopoOptions): LayerSpecification[]
       filter: isClass('peak', 'volcano') as never,
       minzoom: 10,
       layout: {
-        // `concat` errors on a null argument and drops the feature, so the
-        // name is coalesced rather than read straight: an unnamed summit with
-        // a surveyed height is still worth putting on the map, and losing it
-        // to an expression error would be a silent hole in exactly the layer
-        // this style added terrain for.
-        'text-field': [
-          'case',
-          ['has', units === 'imperial' ? 'ele_ft' : 'ele'],
-          [
-            'concat',
-            ['coalesce', ['get', 'name'], ''],
-            '\n',
-            ['to-string', ['get', units === 'imperial' ? 'ele_ft' : 'ele']],
-            elevationSuffix,
-          ],
-          ['coalesce', ['get', 'name'], ''],
-        ] as never,
+        'text-field': peakLabelTextField(units) as never,
         'text-font': FONT,
         'text-size': ['interpolate', ['linear'], ['zoom'], 10, 10, 14, 13] as never,
         'text-anchor': 'top',
@@ -498,26 +720,34 @@ export function liveTopoLayers({ units }: LiveTopoOptions): LayerSpecification[]
       },
     },
     // Towns only, and only the ones big enough to matter for resupply - a
-    // hamlet label every half mile is noise on a trail map.
+    // hamlet label every half mile is noise on a trail map. The same rule
+    // continues up the ladder by zoom (PLACE_FILTER): zoomed out far enough,
+    // even a town is a hamlet.
     {
       id: LIVE_TOPO_LAYER_IDS.place,
       type: 'symbol',
       source: OSM_SOURCE_ID,
       'source-layer': 'place',
-      filter: isClass('city', 'town', 'village') as never,
+      filter: PLACE_FILTER as never,
       layout: {
         'text-field': ['get', 'name'] as never,
         'text-font': FONT,
+        // The low stop matters most: at the corridor-wide view a city is an
+        // orientation anchor, not a destination, and it is set smaller there
+        // so the type never outweighs the line the view is about.
         'text-size': [
           'interpolate',
           ['linear'],
           ['zoom'],
+          5,
+          ['case', isClass('city') as never, 11, 9],
           8,
           ['case', isClass('city') as never, 13, 10],
           14,
           ['case', isClass('city') as never, 18, 13],
         ] as never,
         'text-max-width': 8,
+        'symbol-sort-key': PLACE_SORT_KEY_EXPRESSION as unknown as number,
       },
       paint: {
         'text-color': TOPO_PALETTE.label,
@@ -526,4 +756,73 @@ export function liveTopoLayers({ units }: LiveTopoOptions): LayerSpecification[]
       },
     },
   ]
+
+  if (terrain !== undefined) return layers
+
+  // Keyed off the source each layer declares rather than off a list of layer
+  // ids, so this cannot drift from terrainSources() above: whatever that
+  // function does not add, this removes. A `background` layer has no `source`
+  // at all, hence the `in` check - there is none in this stack today, and a
+  // filter that would silently drop one if there were is the kind of thing
+  // that only shows up much later.
+  return layers.filter(
+    (layer) =>
+      !('source' in layer) ||
+      (layer.source !== DEM_SOURCE_ID && layer.source !== CONTOUR_SOURCE_ID),
+  )
+}
+
+/**
+ * The elevation labels' half of the live unit switch.
+ *
+ * attachContourUnits (contours.ts) re-points the contour SOURCE at the other
+ * unit's tiles, but the two places the unit choice is baked into the style as
+ * layout - the contour label's suffix and the peak layer's choice of `ele_ft`
+ * vs `ele` - do not move with it. Left alone they produce the worst kind of
+ * wrong map: metric tiles under imperial punctuation, a 500 m index contour
+ * reading 500'. This re-points both text-fields in place, with the same
+ * expressions the style was built from, for the same reason the source
+ * retune exists at all: `units` is deliberately kept out of the map-building
+ * effect so a settings change never tears the map down under a hiker.
+ *
+ * Waits on EITHER label layer, because the two no longer arrive together. The
+ * contour label comes with the DEM and the peak label comes with the OSM
+ * sheet, so a live style built without terrain has summits and no contours -
+ * and a probe that waited on the contour label alone would never fire there,
+ * leaving every summit reading `ele_ft` after a switch to metric. A wrong
+ * number on the map is the exact failure this function exists to prevent, so
+ * the probe asks for the weaker condition and each write is guarded on its
+ * own layer. On the offline background neither exists and there is nothing to
+ * retune - the wait simply ends at detach, exactly as attachContourUnits
+ * treats its absent source.
+ */
+export function attachElevationLabelUnits(
+  map: MapLibreMap,
+  units: ContourUnits,
+): () => void {
+  return whenStyleReady(
+    map,
+    () =>
+      map.getLayer(LIVE_TOPO_LAYER_IDS.contourLabel) !== undefined ||
+      map.getLayer(LIVE_TOPO_LAYER_IDS.peak) !== undefined,
+    () => {
+      // Both guarded, since the probe now proves only that ONE of them is
+      // there. Neither is load-bearing for the other.
+      if (map.getLayer(LIVE_TOPO_LAYER_IDS.contourLabel) !== undefined) {
+        map.setLayoutProperty(
+          LIVE_TOPO_LAYER_IDS.contourLabel,
+          'text-field',
+          contourLabelTextField(units) as never,
+        )
+      }
+      if (map.getLayer(LIVE_TOPO_LAYER_IDS.peak) !== undefined) {
+        map.setLayoutProperty(
+          LIVE_TOPO_LAYER_IDS.peak,
+          'text-field',
+          peakLabelTextField(units) as never,
+        )
+      }
+    },
+    'Elevation label units',
+  )
 }

@@ -1,0 +1,120 @@
+# Every GitHub Actions secret and variable this repository's workflows read,
+# and which tab each one is supposed to live on.
+#
+# The page this describes is Settings -> Secrets and variables -> Actions.
+# Nothing in a checkout can see it: a secret's value is write-only once set,
+# so neither the API nor the maintainer who set it can read one back. The
+# consequence is that a name set on the wrong tab, or never set at all, stays
+# invisible until some workflow needs it - which for the R2 credentials means
+# halfway through a publish, and for DATA_BASE_URL meant an app that built and
+# installed cleanly and then could not download a map.
+#
+# This file and .github/tests/test_repository_settings.py close that gap
+# between them: this says what is supposed to be there, and the tests say
+# whether it is - the live half from inside Actions, which is the only place
+# that can see.
+#
+# One home per item (CONTRIBUTING.md): no entry here lists which workflows use
+# it. The tests derive that from .github/workflows/, and a hand-kept copy is
+# exactly the half that would go stale. LAUNCH_CHECKLIST.md steps 1.3 and 2
+# stay the prose instructions for setting these up; this is the same statement
+# in a form a test can read, not a second copy to keep in sync.
+#
+# where:
+#   secret           the Secrets tab - a value nobody outside CI should read.
+#   variable         the Variables tab - public enough to appear in a build
+#                    log, and worth keeping readable there.
+#   github-provided  minted per run by GitHub, never configured by hand. The
+#                    live check does not look for these in the settings.
+#
+# required:  whether a workflow genuinely cannot do its job without it.
+# why:       what breaks when it is missing, not what the name already says.
+
+settings:
+  R2_ENDPOINT_URL:
+    where: secret
+    required: true
+    why: >-
+      The account-scoped S3 endpoint every R2 call is addressed to. Without it
+      publish.py has nowhere to send an upload, and the account id in it is
+      not something to hand out.
+
+  R2_BUCKET:
+    where: secret
+    required: true
+    why: >-
+      Which bucket a publish overwrites. A publish is a PutObject over live
+      keys (pipeline/DATA_RELEASES.md), so this naming the wrong bucket is
+      worse than it naming none.
+
+  R2_ACCESS_KEY_ID:
+    where: secret
+    required: true
+    why: >-
+      Half of the Object Read & Write token pair from LAUNCH_CHECKLIST.md 1.2.
+
+  R2_SECRET_ACCESS_KEY:
+    where: secret
+    required: true
+    why: >-
+      The other half, and the one shown exactly once at creation. If this is
+      missing it cannot be looked up anywhere - the token has to be reminted.
+
+  DATA_BASE_URL:
+    where: variable
+    also-accepted-as-secret: true
+    required: true
+    why: >-
+      The public bucket base the client is built against and the freshness
+      check reads build_state.json from. It belongs on the Variables tab
+      because it is a public URL and a variable is the only form whose value
+      survives into a build log where it can be checked - keeping a copy on
+      the Secrets tab masks it as *** everywhere it would have been readable.
+      pages.yml accepts either rather than failing on the wrong tab, so this
+      is declared the same way: a secret-only DATA_BASE_URL works, and both
+      that and a redundant duplicate are worth saying out loud.
+
+  SUPABASE_URL:
+    where: variable
+    also-accepted-as-secret: true
+    required: true
+    why: >-
+      The Supabase project the client signs in against and the config check
+      reads. On the Variables tab for the same reason as DATA_BASE_URL: it is
+      a public URL, it is inlined into a JS bundle anyone can read, and a
+      secret would only mask it in the build log where it is worth checking.
+      The name carries no VITE_ prefix - the workflows add that when handing
+      it to the build, and naming the variable VITE_SUPABASE_URL is a real
+      mistake that costs an app which builds fine and cannot sign anyone in.
+
+  SUPABASE_ANON_KEY:
+    where: variable
+    also-accepted-as-secret: true
+    required: true
+    why: >-
+      The publishable key the client authenticates with. Public by design -
+      it ships inside the bundle, and what makes that safe is row-level
+      security rather than the key being hard to find (LAUNCH_CHECKLIST.md
+      5a). Not to be confused with SUPABASE_JWT_SECRET, which is a real
+      secret, belongs only to the backend's runtime environment, and is
+      deliberately absent from this file because no workflow reads it.
+
+  AUTH_PROVIDERS:
+    where: variable
+    required: false
+    why: >-
+      Which sign-in buttons a build offers. Optional because the client
+      defaults to google,email when it is unset, so a missing value is a
+      working app rather than a broken one. Worth declaring anyway: every
+      name in it must be a provider actually enabled in the Supabase
+      dashboard, and one that is not is a button reaching an error page. The
+      Supabase config check is what compares those two lists.
+
+  GITHUB_TOKEN:
+    where: github-provided
+    required: true
+    why: >-
+      Minted per run, never configured. Listed only so that a workflow reading
+      it does not look like a reference to a setting somebody forgot to
+      create. What it may do is set per workflow in a permissions: block, not
+      here.

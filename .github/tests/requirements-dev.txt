@@ -1,0 +1,5 @@
+# No requirements.txt alongside this one: nothing here ships or runs outside
+# the test suite, so there is no runtime half to separate out.
+pytest
+PyYAML
+ruff

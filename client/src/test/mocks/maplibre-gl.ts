@@ -25,8 +25,9 @@ export class MockMap {
 
   readonly options: Record<string, unknown>
   readonly controls: Array<{ control: AttachableControl; position?: string }> = []
-  /** Every imperative camera move, in order - so a test can assert the map
-   *  was actually moved to the first GPS fix. */
+  /** Every imperative camera move, in order - so a test can assert both the
+   *  moves the shell does make (a search result) and the ones it does not (a
+   *  GPS fix, which leaves the view alone). */
   readonly cameraMoves: Array<Record<string, unknown>> = []
   removed = false
   /** Test-settable, since the shell derives the legend from it. */
@@ -43,10 +44,23 @@ export class MockMap {
   readonly imageOptions = new Map<string, unknown>()
   /** Every paint property written, keyed `layerId/property`. */
   readonly paintProperties = new Map<string, unknown>()
+  readonly layoutProperties = new Map<string, unknown>()
   /** The latest filter set on each layer, by layer id. */
   readonly filters = new Map<string, unknown>()
   /** Data pushed into each GeoJSON source, by source id. */
   readonly sourceData = new Map<string, unknown>()
+  /**
+   * Test-settable: what a rendered-feature query answers with.
+   *
+   * Keyed by layer id, because the question a tap asks is "is there a PIN
+   * here" - a mock that answered the same features for every layer could not
+   * fail for a handler that queried the whole map and opened a shelter sheet
+   * on a tap on a contour line.
+   */
+  readonly renderedFeatures = new Map<string, unknown[]>()
+  /** Every rendered-feature query, in order, with the geometry it was given -
+   *  which is where the touch tolerance around a pin is observable. */
+  readonly featureQueries: Array<{ geometry: unknown; layers: string[] }> = []
   /** Test-settable: which layers and sources the style is holding. Real
    *  MapLibre returns undefined for a layer that does not exist and throws if
    *  you write to it anyway, so callers have to cope with both - which means
@@ -67,7 +81,25 @@ export class MockMap {
   /** Test-settable: real MapLibre only accepts images and paint writes once the
    *  style has loaded, and callers have to cope with both answers. */
   styleLoaded = false
+  /**
+   * Test-settable stand-in for the geographic-to-screen projection.
+   *
+   * The default is deliberately fake and deliberately legible: x IS the
+   * longitude and y IS the latitude. Real Web Mercator here would make every
+   * assertion about "where did the card land" a trigonometry exercise; an
+   * identity makes it a copy of the fixture's coordinates. A test that needs
+   * the projection to CHANGE - a pan, a zoom - assigns a new function and
+   * emits 'move', which is exactly the order real MapLibre delivers them in.
+   */
+  projection: (lngLat: [number, number]) => { x: number; y: number } = ([lng, lat]) => ({
+    x: lng,
+    y: lat,
+  })
+  /** Every projection asked for, in order - where "the card tracked the pin,
+   *  not some other point" is observable. */
+  readonly projectCalls: Array<[number, number]> = []
   private readonly listeners = new Map<string, Listener[]>()
+  private canvas: HTMLCanvasElement | undefined = undefined
 
   constructor(options: Record<string, unknown>) {
     this.options = options
@@ -177,6 +209,17 @@ export class MockMap {
     return this
   }
 
+  setLayoutProperty(layerId: string, property: string, value: unknown): this {
+    // Same convention as setFilter: real MapLibre does not silently accept a
+    // write to a layer that is not there, and code that forgets to check
+    // must fail here too.
+    if (this.getLayer(layerId) === undefined) {
+      throw new Error(`The layer '${layerId}' does not exist in the map's style.`)
+    }
+    this.layoutProperties.set(`${layerId}/${property}`, value)
+    return this
+  }
+
   getLayer(id: string): { id: string } | undefined {
     return this.layerIds.includes(id) ? { id } : undefined
   }
@@ -208,9 +251,49 @@ export class MockMap {
     return { setData: (data: unknown) => this.sourceData.set(id, data) }
   }
 
+  /**
+   * Real `queryRenderedFeatures` answers from what is actually drawn, so it
+   * returns nothing for a layer the style does not hold - and fires an error
+   * event rather than throwing, which is why a caller that forgets to check
+   * gets a warning and no result rather than a crash.
+   */
+  queryRenderedFeatures(geometry?: unknown, options?: { layers?: string[] }): unknown[] {
+    const layers = options?.layers ?? [...this.renderedFeatures.keys()]
+    this.featureQueries.push({ geometry, layers })
+    return layers.flatMap((layer) =>
+      this.getLayer(layer) === undefined ? [] : (this.renderedFeatures.get(layer) ?? []),
+    )
+  }
+
   jumpTo(options: Record<string, unknown>): this {
     this.cameraMoves.push(options)
     this.applyCamera(options)
+    return this
+  }
+
+  /** Recorded like any other camera move, so a test can tell a zoom the map
+   *  was TOLD to take from one it happened to start on. MapView uses this to
+   *  lift an opening view out of the zooms the download cannot draw (#216). */
+  setZoom(next: number): this {
+    this.cameraMoves.push({ zoom: next })
+    this.zoom = next
+    return this
+  }
+
+  /** Records the fit rather than computing a camera from it - what a test
+   *  asserts is WHICH bounds the code chose, not MapLibre's projection math. */
+  fitBounds(bounds: unknown, options?: Record<string, unknown>): this {
+    this.cameraMoves.push({ fitBounds: bounds, ...options })
+    return this
+  }
+
+  /** Every style ever set, in order, so a test can assert both the latest
+   *  composition and that a change did not rebuild the style needlessly. */
+  readonly styles: unknown[] = []
+
+  setStyle(style: unknown): this {
+    this.styles.push(style)
+    this.adoptStyleContents({ style })
     return this
   }
 
@@ -220,6 +303,20 @@ export class MockMap {
 
   getZoom(): number {
     return this.zoom
+  }
+
+  /** Real `project` takes a LngLatLike, so both spellings are accepted here -
+   *  a mock that only took the array form would quietly bless callers that
+   *  break against the object form. */
+  project(lngLat: [number, number] | { lng: number; lat: number }): {
+    x: number
+    y: number
+  } {
+    const pair: [number, number] = Array.isArray(lngLat)
+      ? [lngLat[0], lngLat[1]]
+      : [lngLat.lng, lngLat.lat]
+    this.projectCalls.push(pair)
+    return this.projection(pair)
   }
 
   getBounds() {
@@ -240,8 +337,17 @@ export class MockMap {
     this.removed = true
   }
 
+  /**
+   * ONE canvas for the life of the map, as MapLibre has.
+   *
+   * A fresh element per call looked harmless and quietly swallowed every write
+   * to `getCanvas().style` - which is the only way the map says "this pin is
+   * tappable", so the cursor could never have been asserted, or noticed
+   * missing.
+   */
   getCanvas(): HTMLCanvasElement {
-    return document.createElement('canvas')
+    this.canvas ??= document.createElement('canvas')
+    return this.canvas
   }
 }
 

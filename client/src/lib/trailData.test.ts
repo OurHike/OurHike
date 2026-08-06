@@ -4,14 +4,26 @@ import {
   downloadTrailData,
   loadTrailData,
   deleteTrailData,
+  ELEVATION_STORE_KEY,
   POIS_KEY,
   SPURS_STORE_KEY,
   TRAILS_BLOB_KEY,
+  TrailDataHashMismatchError,
   type StoredPoi,
 } from './trailData'
-import { POI_TYPES, SPURS_KEY } from './config'
+import { ELEVATION_KEY, POI_TYPES, SPURS_KEY, TRAILS_KEY } from './config'
+import type { ElevationProfile } from './elevationProfile'
+import { publishedHash } from './dataManifest'
+import { sha256Hex } from './sha256'
 
 vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
+
+// The published-hash lookup, mocked the same way archiveDownload.test.ts
+// mocks it: what latest.json says is dataManifest.ts's own subject, and what
+// matters here is only whether these artifacts are held to it.
+vi.mock('./dataManifest', () => ({ publishedHash: vi.fn() }))
+
+const mockedPublishedHash = vi.mocked(publishedHash)
 
 const store = new Map<string, unknown>()
 
@@ -24,6 +36,10 @@ function poiCollection(features: Array<Record<string, unknown>>) {
 
 beforeEach(() => {
   store.clear()
+  // No published answer by default, which is what an older release or a
+  // field-test server gives - and must leave these downloads behaving
+  // exactly as they did before #197.
+  mockedPublishedHash.mockResolvedValue(null)
   vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
   vi.mocked(set).mockImplementation((key, value) => {
     store.set(key as string, value)
@@ -40,24 +56,83 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-/** Serves trail lines for any trails URL, the given POIs for poi_* and the
- *  given spur detail for spurs.json. */
-function serve(pois: string = poiCollection([]), spurs: string = '{}') {
+/** Serves trail lines for any trails URL, the given POIs for poi_*, the given
+ *  spur detail for spurs.json and the given samples for
+ *  elevation_profile.json. The elevation default is an empty array, which is
+ *  "this release publishes no usable profile" - the tests that care about one
+ *  pass their own. */
+function serve(
+  pois: string = poiCollection([]),
+  spurs: string = '{}',
+  elevation: string = '[]',
+) {
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string) =>
       Promise.resolve({
         ok: true,
         status: 200,
+        headers: new Headers(),
+        arrayBuffer: () =>
+          Promise.resolve(
+            bytesOf(
+              url.includes('poi_')
+                ? pois
+                : url.includes(SPURS_KEY)
+                  ? spurs
+                  : url.includes(ELEVATION_KEY)
+                    ? elevation
+                    : '{"type":"FeatureCollection"}',
+            ),
+          ),
         blob: () => Promise.resolve(new Blob(['{"type":"FeatureCollection"}'])),
         text: () =>
           Promise.resolve(
-            url.includes('poi_') ? pois : url.includes(SPURS_KEY) ? spurs : '{}',
+            url.includes('poi_')
+              ? pois
+              : url.includes(SPURS_KEY)
+                ? spurs
+                : url.includes(ELEVATION_KEY)
+                  ? elevation
+                  : '{}',
           ),
       }),
     ),
   )
 }
+
+/** Serves everything but elevation_profile.json, which gets the given failure. */
+function serveUntilElevationFails(status: number, statusText: string) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url: string) =>
+      Promise.resolve(
+        url.includes(ELEVATION_KEY)
+          ? { ok: false, status, statusText }
+          : {
+              ok: true,
+              status: 200,
+              headers: new Headers(),
+              arrayBuffer: () => Promise.resolve(bytesOf(poiCollection([]))),
+              blob: () => Promise.resolve(new Blob(['{"type":"FeatureCollection"}'])),
+              text: () => Promise.resolve(poiCollection([])),
+            },
+      ),
+    ),
+  )
+}
+
+/** A response body as bytes, which is what every fetch here now yields: the
+ *  artifacts are hashed before anything is stored (#197), so the doubles have
+ *  to hand over bytes rather than only the decoded forms. */
+function bytesOf(text: string): ArrayBuffer {
+  return new TextEncoder().encode(text).buffer as ArrayBuffer
+}
+
+const TWO_SAMPLES = JSON.stringify([
+  { distance_mi: 0, elevation_ft: 3782.2 },
+  { distance_mi: 1, elevation_ft: 3000 },
+])
 
 /** Serves trail lines, then fails on the POI type named. */
 function serveUntilPoiFails(failing: string) {
@@ -69,6 +144,8 @@ function serveUntilPoiFails(failing: string) {
           ? { ok: false, status: 503, statusText: 'Service Unavailable' }
           : {
               ok: true,
+              headers: new Headers(),
+              arrayBuffer: () => Promise.resolve(bytesOf(poiCollection([]))),
               blob: () => Promise.resolve(new Blob(['{"type":"FeatureCollection"}'])),
               text: () => Promise.resolve(poiCollection([])),
             },
@@ -83,8 +160,9 @@ describe('trail data', () => {
     await downloadTrailData()
 
     expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
-    // Every POI type, plus the trail lines, plus the spur detail.
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(POI_TYPES.length + 2)
+    // Every POI type, plus the trail lines, plus the spur detail, plus the
+    // elevation profile.
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(POI_TYPES.length + 3)
   })
 
   it('reads POIs into the shape the map and search both use', async () => {
@@ -111,6 +189,37 @@ describe('trail data', () => {
       lon: -69.26,
       confidence: 'high',
     })
+  })
+
+  it('keeps which source listed a POI, so the app can say where it came from', async () => {
+    serve(
+      poiCollection([
+        {
+          id: 'opentrail_at:1234',
+          poi_type: 'water',
+          name: 'Piped spring',
+          lat: 44.1,
+          lon: -70.2,
+          confidence: 'high',
+          source: 'opentrail_at',
+        },
+      ]),
+    )
+    await downloadTrailData()
+
+    const pois = store.get(POIS_KEY) as StoredPoi[]
+    expect(pois[0].source).toBe('opentrail_at')
+  })
+
+  it('leaves the source off entirely when the artifact carries none', async () => {
+    // Not stored as "unknown": the detail sheet decides whether to name a
+    // source by whether there is one, and a placeholder would be printed as
+    // though the pipeline had published it.
+    serve(poiCollection([{ id: 'x', poi_type: 'water', name: 'Spring', lat: 1, lon: 2 }]))
+    await downloadTrailData()
+
+    const pois = store.get(POIS_KEY) as StoredPoi[]
+    expect(pois[0]).not.toHaveProperty('source')
   })
 
   it('drops a POI with no coordinates rather than carrying a broken row', async () => {
@@ -306,6 +415,8 @@ describe('spur detail', () => {
             : {
                 ok: true,
                 status: 200,
+                headers: new Headers(),
+                arrayBuffer: () => Promise.resolve(bytesOf(poiCollection([]))),
                 blob: () => Promise.resolve(new Blob(['{"type":"FeatureCollection"}'])),
                 text: () => Promise.resolve(poiCollection([])),
               },
@@ -331,6 +442,8 @@ describe('spur detail', () => {
             : {
                 ok: true,
                 status: 200,
+                headers: new Headers(),
+                arrayBuffer: () => Promise.resolve(bytesOf(poiCollection([]))),
                 blob: () => Promise.resolve(new Blob(['{"type":"FeatureCollection"}'])),
                 text: () => Promise.resolve(poiCollection([])),
               },
@@ -370,5 +483,158 @@ describe('spur detail', () => {
     await deleteTrailData()
 
     expect(store.has(SPURS_STORE_KEY)).toBe(false)
+  })
+})
+
+describe('the elevation profile', () => {
+  it('stores the published samples', async () => {
+    serve(poiCollection([]), '{}', TWO_SAMPLES)
+
+    await downloadTrailData()
+
+    const profile = store.get(ELEVATION_STORE_KEY) as ElevationProfile
+    expect(Array.from(profile.distanceMi)).toEqual([0, 1])
+    expect(profile.elevationFt[0]).toBeCloseTo(3782.2, 3)
+  })
+
+  it('treats a release with no elevation_profile.json as no profile, not a failure', async () => {
+    // It did not exist before export_elevation.py. A phone pointed at an older
+    // release must still get its trails and POIs; it just has no ribbon.
+    serveUntilElevationFails(404, 'Not Found')
+
+    await downloadTrailData()
+
+    expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
+    expect(store.get(ELEVATION_STORE_KEY)).toBeNull()
+  })
+
+  it('still fails on a broken elevation fetch that is not a 404', async () => {
+    // Only "this release predates the feature" is excused. A 503 is a failed
+    // download and must not be swallowed along with it.
+    serveUntilElevationFails(503, 'Service Unavailable')
+
+    await expect(downloadTrailData()).rejects.toThrow(/503/)
+    // Nothing committed, the same rule the POI failure already follows.
+    expect(store.get(TRAILS_BLOB_KEY)).toBeUndefined()
+  })
+
+  it('costs the ribbon and not the map when the profile arrives malformed', async () => {
+    // A truncated download of the largest vector artifact. The ribbon is a
+    // decoration on a screen whose job is showing a hiker where they are, so it
+    // gives itself up rather than taking the trail lines down with it.
+    serve(poiCollection([]), '{}', '[{"distance_mi":0,')
+
+    await downloadTrailData()
+
+    expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
+    expect(store.get(ELEVATION_STORE_KEY)).toBeNull()
+  })
+
+  it('loads the profile back with the rest of the trail data', async () => {
+    serve(poiCollection([]), '{}', TWO_SAMPLES)
+    await downloadTrailData()
+
+    const loaded = await loadTrailData()
+
+    expect(loaded?.elevation?.distanceMi.length).toBe(2)
+  })
+
+  it('reads a release whose profile was never stored as no profile', async () => {
+    // Data downloaded by a build before this feature: the blob and POIs are in
+    // IndexedDB, the elevation key is not. That must load, not throw.
+    store.set(TRAILS_BLOB_KEY, new Blob(['{}']))
+    store.set(POIS_KEY, [])
+
+    const loaded = await loadTrailData()
+
+    expect(loaded?.elevation).toBeNull()
+  })
+
+  it('forgets the profile when the download is deleted', async () => {
+    serve(poiCollection([]), '{}', TWO_SAMPLES)
+    await downloadTrailData()
+
+    await deleteTrailData()
+
+    expect(store.has(ELEVATION_STORE_KEY)).toBe(false)
+  })
+})
+
+describe('holding the trail data to its published hash (#197)', () => {
+  // These files are small and are never resumed, so the splice the archive
+  // check exists for cannot happen to them. They are still worth checking:
+  // trails.geojson IS the trail line, a corrupted POI file is a water source
+  // in the wrong place, and a JSON file damaged rather than truncated parses
+  // perfectly well - so the parse is not the check it looks like.
+
+  it('stores the trail data when every artifact matches what was published', async () => {
+    serve(poiCollection([]))
+    mockedPublishedHash.mockImplementation(async (key) =>
+      key === TRAILS_KEY
+        ? sha256Hex(new TextEncoder().encode('{"type":"FeatureCollection"}'))
+        : null,
+    )
+
+    await downloadTrailData()
+
+    expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
+  })
+
+  it('keeps none of it when the trail lines are not what was published', async () => {
+    // Nothing is committed until everything has arrived, so a mismatch
+    // anywhere leaves the phone exactly as it was - including the trail data
+    // it was already using.
+    store.set(TRAILS_BLOB_KEY, new Blob(['the lines that already work']))
+    serve(poiCollection([]))
+    mockedPublishedHash.mockImplementation(async (key) =>
+      key === TRAILS_KEY
+        ? sha256Hex(new TextEncoder().encode('a different build'))
+        : null,
+    )
+
+    await expect(downloadTrailData()).rejects.toThrow(TrailDataHashMismatchError)
+
+    expect(await (store.get(TRAILS_BLOB_KEY) as Blob).text()).toBe(
+      'the lines that already work',
+    )
+    expect(store.get(POIS_KEY)).toBeUndefined()
+  })
+
+  it('names the artifact that did not match', async () => {
+    // Which file it was is the difference between a useful field report and
+    // "the download failed".
+    serve(poiCollection([]))
+    mockedPublishedHash.mockImplementation(async (key) =>
+      key === 'poi_water.geojson'
+        ? sha256Hex(new TextEncoder().encode('not what arrived'))
+        : null,
+    )
+
+    const thrown = await downloadTrailData().catch((error: unknown) => error)
+
+    expect(thrown).toBeInstanceOf(TrailDataHashMismatchError)
+    expect((thrown as TrailDataHashMismatchError).artifactKey).toBe('poi_water.geojson')
+  })
+
+  it('checks the optional artifacts too, where a release publishes them', async () => {
+    serve(poiCollection([]), '{"at-1":{"destination":"Somewhere"}}')
+    mockedPublishedHash.mockImplementation(async (key) =>
+      key === SPURS_KEY
+        ? sha256Hex(new TextEncoder().encode('an older spurs.json'))
+        : null,
+    )
+
+    await expect(downloadTrailData()).rejects.toThrow(TrailDataHashMismatchError)
+  })
+
+  it('stores what arrived when nothing published a hash for it', async () => {
+    // Absence of a check is not a failed check - the same downgrade the
+    // archive download makes, for the same reason.
+    serve(poiCollection([]))
+    mockedPublishedHash.mockResolvedValue(null)
+
+    await downloadTrailData()
+
+    expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
   })
 })

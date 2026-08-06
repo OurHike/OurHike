@@ -2,12 +2,19 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { get, set, del } from 'idb-keyval'
 import {
   downloadArchive,
+  deleteArchive,
   ARCHIVE_PARTIAL_KEY,
   ARCHIVE_PROGRESS_KEY,
   ARCHIVE_SOURCE_KEY,
+  ARCHIVE_VERSION_KEY,
   ArchiveSizeMismatchError,
+  ArchiveHashMismatchError,
+  readArchiveVersion,
 } from './archiveDownload'
 import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
+import { completedMarker, recordCompleted } from './storageHealth'
+import { publishedHash } from './dataManifest'
+import { Sha256, sha256Hex, type Sha256State } from './sha256'
 
 // The download behind Downloads.tsx's buttons. WIREFRAMES.md `7a` requires a
 // failed transfer to RESUME rather than restart, and that promise is the
@@ -30,11 +37,21 @@ import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
 
 vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
 
+// The published-hash lookup is mocked rather than served through the fetch
+// stub above: what it reads (latest.json under VITE_DATA_BASE_URL, which is
+// unset under test) is dataManifest.ts's own subject, tested there. Here the
+// interesting variable is only what the bucket claims - a hash, a different
+// hash, or no answer at all.
+vi.mock('./dataManifest', () => ({ publishedHash: vi.fn() }))
+
 const mockedGet = vi.mocked(get)
 const mockedSet = vi.mocked(set)
 const mockedDel = vi.mocked(del)
+const mockedPublishedHash = vi.mocked(publishedHash)
 
 const URL_ = 'https://cdn.example.org/background.pmtiles'
+/** What latest.json calls it - passed explicitly now, never guessed. */
+const ARTIFACT = 'background.pmtiles'
 
 /** In-memory stand-in for IndexedDB. */
 function withStore(initial: Record<string, unknown> = {}) {
@@ -86,6 +103,10 @@ function mockFetch({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // The default for every test that is not about verification: no published
+  // answer, which is what a field-test server or an older release gives, and
+  // which must leave the download behaving exactly as it did before #197.
+  mockedPublishedHash.mockResolvedValue(null)
 })
 
 afterEach(() => {
@@ -97,7 +118,7 @@ describe('downloadArchive — a clean first run', () => {
     const store = withStore()
     mockFetch({ chunks: [bytes(1, 2, 3), bytes(4, 5, 6)] })
 
-    await downloadArchive(URL_)
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
 
     expect(store[CORRIDOR_ARCHIVE_KEY]).toBeInstanceOf(Blob)
   })
@@ -106,7 +127,7 @@ describe('downloadArchive — a clean first run', () => {
     const store = withStore()
     mockFetch({ chunks: [bytes(1, 2, 3), bytes(4, 5, 6)] })
 
-    await downloadArchive(URL_)
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
     const stored = new Uint8Array(
       await (store[CORRIDOR_ARCHIVE_KEY] as Blob).arrayBuffer(),
     )
@@ -119,7 +140,10 @@ describe('downloadArchive — a clean first run', () => {
     mockFetch({ chunks: [bytes(1, 2, 3), bytes(4, 5, 6)] })
     const onProgress = vi.fn()
 
-    await downloadArchive(URL_, { onProgress })
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, {
+      artifactKey: ARTIFACT,
+      onProgress,
+    })
 
     expect(onProgress.mock.calls.length).toBeGreaterThan(1)
     expect(onProgress).toHaveBeenLastCalledWith({ receivedBytes: 6, totalBytes: 6 })
@@ -129,7 +153,7 @@ describe('downloadArchive — a clean first run', () => {
     const store = withStore()
     mockFetch({ chunks: [bytes(1, 2, 3)] })
 
-    await downloadArchive(URL_)
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
 
     expect(store[ARCHIVE_PARTIAL_KEY]).toBeUndefined()
     expect(store[ARCHIVE_PROGRESS_KEY]).toBeUndefined()
@@ -139,7 +163,7 @@ describe('downloadArchive — a clean first run', () => {
     withStore()
     const spy = mockFetch({ chunks: [bytes(1, 2, 3)] })
 
-    await downloadArchive(URL_)
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
     const init = spy.mock.calls[0][1] as RequestInit | undefined
 
     expect(new Headers(init?.headers).get('range')).toBeNull()
@@ -162,7 +186,7 @@ describe('downloadArchive — resuming', () => {
       contentRange: 'bytes 3-5/6',
     })
 
-    await downloadArchive(URL_)
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
     const init = spy.mock.calls[0][1] as RequestInit | undefined
 
     expect(new Headers(init?.headers).get('range')).toBe('bytes=3-')
@@ -183,7 +207,7 @@ describe('downloadArchive — resuming', () => {
       contentRange: 'bytes 3-5/6',
     })
 
-    await downloadArchive(URL_)
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
     const stored = new Uint8Array(
       await (store[CORRIDOR_ARCHIVE_KEY] as Blob).arrayBuffer(),
     )
@@ -207,7 +231,10 @@ describe('downloadArchive — resuming', () => {
       contentRange: 'bytes 3-5/6',
     })
 
-    await downloadArchive(URL_, { onProgress })
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, {
+      artifactKey: ARTIFACT,
+      onProgress,
+    })
 
     expect(onProgress).toHaveBeenLastCalledWith({ receivedBytes: 6, totalBytes: 6 })
   })
@@ -224,7 +251,7 @@ describe('downloadArchive — resuming', () => {
     })
     mockFetch({ chunks: [bytes(9, 9, 9, 9, 9, 9)], status: 200, totalBytes: 6 })
 
-    await downloadArchive(URL_)
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
     const stored = new Uint8Array(
       await (store[CORRIDOR_ARCHIVE_KEY] as Blob).arrayBuffer(),
     )
@@ -254,7 +281,9 @@ describe('downloadArchive — failure', () => {
       return new Response(body, { status: 200, headers })
     })
 
-    await expect(downloadArchive(URL_)).rejects.toThrow()
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow()
 
     expect(store[ARCHIVE_PARTIAL_KEY]).toBeInstanceOf(Blob)
     expect(store[ARCHIVE_PROGRESS_KEY]).toMatchObject({ receivedBytes: 3 })
@@ -265,7 +294,9 @@ describe('downloadArchive — failure', () => {
     const store = withStore({ [CORRIDOR_ARCHIVE_KEY]: good })
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('offline'))
 
-    await expect(downloadArchive(URL_)).rejects.toThrow()
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow()
 
     expect(store[CORRIDOR_ARCHIVE_KEY]).toBe(good)
   })
@@ -276,7 +307,9 @@ describe('downloadArchive — failure', () => {
     const store = withStore()
     mockFetch({ chunks: [bytes(1, 2, 3)], totalBytes: 99 })
 
-    await expect(downloadArchive(URL_)).rejects.toBeInstanceOf(ArchiveSizeMismatchError)
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toBeInstanceOf(ArchiveSizeMismatchError)
     expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
   })
 
@@ -284,7 +317,9 @@ describe('downloadArchive — failure', () => {
     const store = withStore()
     mockFetch({ chunks: [bytes(1, 2, 3)], totalBytes: 99 })
 
-    await expect(downloadArchive(URL_)).rejects.toThrow()
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow()
 
     expect(store[ARCHIVE_PARTIAL_KEY]).toBeInstanceOf(Blob)
   })
@@ -307,7 +342,12 @@ describe('downloadArchive — failure', () => {
       })
     })
 
-    await expect(downloadArchive(URL_, { signal: controller.signal })).rejects.toThrow()
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, {
+        artifactKey: ARTIFACT,
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow()
 
     expect(store[ARCHIVE_PARTIAL_KEY]).toBeInstanceOf(Blob)
     expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
@@ -319,7 +359,9 @@ describe('downloadArchive — failure', () => {
       new Response(null, { status: 404, statusText: 'Not Found' }),
     )
 
-    await expect(downloadArchive(URL_)).rejects.toThrow(/404/)
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow(/404/)
     expect(store[ARCHIVE_PARTIAL_KEY]).toBeUndefined()
   })
 })
@@ -341,7 +383,7 @@ describe('downloadArchive — refusing to splice two different archives', () => 
     })
     const fetchSpy = mockFetch({ chunks: [bytes(1, 2, 3)] })
 
-    await downloadArchive(URL_)
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
 
     // No Range header at all: this is a fresh start, not a resume.
     expect(fetchSpy.mock.calls[0][1]).toMatchObject({ headers: undefined })
@@ -358,7 +400,7 @@ describe('downloadArchive — refusing to splice two different archives', () => 
     })
     mockFetch({ chunks: [bytes(1, 2, 3)] })
 
-    await downloadArchive(URL_)
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
 
     expect((store[CORRIDOR_ARCHIVE_KEY] as Blob).size).toBe(3)
   })
@@ -375,7 +417,7 @@ describe('downloadArchive — refusing to splice two different archives', () => 
       etag: '"v1"',
     })
 
-    await downloadArchive(URL_)
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
 
     expect(fetchSpy.mock.calls[0][1]).toMatchObject({
       headers: { Range: 'bytes=3-', 'If-Range': '"v1"' },
@@ -394,7 +436,7 @@ describe('downloadArchive — refusing to splice two different archives', () => 
     })
     mockFetch({ chunks: [bytes(1, 2, 3, 4)], status: 200, etag: '"v2"' })
 
-    await downloadArchive(URL_)
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
 
     const stored = store[CORRIDOR_ARCHIVE_KEY] as Blob
     expect(stored.size).toBe(4)
@@ -405,7 +447,9 @@ describe('downloadArchive — refusing to splice two different archives', () => 
     const store = withStore()
     mockFetch({ chunks: [bytes(1, 2)], totalBytes: 99, etag: '"v1"' })
 
-    await expect(downloadArchive(URL_)).rejects.toThrow(ArchiveSizeMismatchError)
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow(ArchiveSizeMismatchError)
 
     expect(store[ARCHIVE_SOURCE_KEY]).toEqual({ url: URL_, etag: '"v1"' })
   })
@@ -414,7 +458,9 @@ describe('downloadArchive — refusing to splice two different archives', () => 
     const store = withStore()
     mockFetch({ chunks: [bytes(1, 2)], totalBytes: 99, etag: 'W/"v1"' })
 
-    await expect(downloadArchive(URL_)).rejects.toThrow(ArchiveSizeMismatchError)
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow(ArchiveSizeMismatchError)
 
     expect(store[ARCHIVE_SOURCE_KEY]).toEqual({ url: URL_, etag: undefined })
   })
@@ -429,7 +475,9 @@ describe('downloadArchive — refusing to splice two different archives', () => 
         new Response(null, { status: 200, headers: { 'content-length': '3' } }),
       )
 
-      await expect(downloadArchive(URL_)).rejects.toThrow(/no response body/)
+      await expect(
+        downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+      ).rejects.toThrow(/no response body/)
       expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
     })
   })
@@ -454,7 +502,7 @@ describe('downloadArchive — refusing to splice two different archives', () => 
           ),
       )
 
-      await downloadArchive(URL_)
+      await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
 
       const stored = store[CORRIDOR_ARCHIVE_KEY] as Blob
       expect(stored.size).toBe(4)
@@ -477,9 +525,661 @@ describe('downloadArchive — refusing to splice two different archives', () => 
       )
       const onProgress = vi.fn()
 
-      await downloadArchive(URL_, { onProgress })
+      await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, {
+        artifactKey: ARTIFACT,
+        onProgress,
+      })
 
       expect(onProgress).toHaveBeenCalledWith({ receivedBytes: 2, totalBytes: 0 })
+    })
+  })
+})
+
+describe('downloadArchive — packages are independent (issue #200)', () => {
+  // The multi-package guarantee in one sentence: every record a download
+  // touches derives from its own package key, so nothing one package does -
+  // succeed, fail mid-stream, or get deleted - can reach another package's
+  // bytes. These tests run two packages through exactly those lifecycles.
+  const OTHER_KEY = 'ourhike:test-dem'
+  const OTHER_URL = 'https://cdn.example.org/dem.pmtiles'
+
+  it("downloading one package leaves another package's archive and partial untouched", async () => {
+    const corridorPartial = new Blob(['corridor partial'])
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: corridorPartial,
+      [ARCHIVE_SOURCE_KEY]: { url: URL_ },
+      [ARCHIVE_PROGRESS_KEY]: { receivedBytes: 16, totalBytes: 100 },
+    })
+    mockFetch({ chunks: [bytes(9, 9, 9)] })
+
+    await downloadArchive(OTHER_KEY, OTHER_URL, { artifactKey: 'dem.pmtiles' })
+
+    expect(store[OTHER_KEY]).toBeInstanceOf(Blob)
+    // The corridor package's resumable state survives, byte for byte.
+    expect(store[ARCHIVE_PARTIAL_KEY]).toBe(corridorPartial)
+    expect(store[ARCHIVE_SOURCE_KEY]).toEqual({ url: URL_ })
+    expect(store[ARCHIVE_PROGRESS_KEY]).toEqual({ receivedBytes: 16, totalBytes: 100 })
+  })
+
+  it("a failed download persists its partial under its own package, not another's", async () => {
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2)], totalBytes: 10 })
+
+    await expect(
+      downloadArchive(OTHER_KEY, OTHER_URL, { artifactKey: 'dem.pmtiles' }),
+    ).rejects.toThrow()
+
+    expect(store[`${OTHER_KEY}:partial`]).toBeInstanceOf(Blob)
+    expect(store[ARCHIVE_PARTIAL_KEY]).toBeUndefined()
+  })
+
+  it("deleting one package keeps every other package's archive", async () => {
+    const corridorArchive = new Blob(['corridor'])
+    const store = withStore({
+      [CORRIDOR_ARCHIVE_KEY]: corridorArchive,
+      [OTHER_KEY]: new Blob(['dem']),
+      [`${OTHER_KEY}:partial`]: new Blob(['stale attempt']),
+    })
+
+    await deleteArchive(OTHER_KEY)
+
+    expect(store[OTHER_KEY]).toBeUndefined()
+    expect(store[`${OTHER_KEY}:partial`]).toBeUndefined()
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBe(corridorArchive)
+  })
+
+  it('resume identity is judged per package: the same URL on another package starts clean', async () => {
+    // A partial held by the corridor package must not be resumed onto by a
+    // different package downloading from the same URL - the records simply
+    // never meet, because the keys differ.
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob(['held']),
+      [ARCHIVE_SOURCE_KEY]: { url: URL_ },
+    })
+    const spy = mockFetch({ chunks: [bytes(5)] })
+
+    await downloadArchive(OTHER_KEY, URL_, { artifactKey: ARTIFACT })
+
+    const init = spy.mock.calls[0][1] as RequestInit | undefined
+    expect(init?.headers).toBeUndefined()
+    expect(store[ARCHIVE_PARTIAL_KEY]).toBeInstanceOf(Blob)
+  })
+})
+
+describe('the completion marker (#190)', () => {
+  // Written on success, cleared on delete, and in localStorage rather than
+  // IndexedDB - the whole point is surviving the store the archive did not.
+
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  afterEach(() => {
+    localStorage.clear()
+  })
+
+  it('records a completed download, after the bytes are really stored', async () => {
+    withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+
+    expect(completedMarker(CORRIDOR_ARCHIVE_KEY)).toBeNull()
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
+
+    expect(completedMarker(CORRIDOR_ARCHIVE_KEY)).toBeInstanceOf(Date)
+  })
+
+  it('does not record an attempt that failed short', async () => {
+    // A marker without a completed archive is exactly the false eviction
+    // claim the marker must never produce.
+    withStore()
+    mockFetch({ chunks: [bytes(1)], totalBytes: 3 })
+
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow()
+
+    expect(completedMarker(CORRIDOR_ARCHIVE_KEY)).toBeNull()
+  })
+
+  it('clears the marker when the hiker deletes the archive', async () => {
+    // "The phone removed your map" about a deletion they performed would be
+    // the marker lying in the other direction.
+    withStore({ [CORRIDOR_ARCHIVE_KEY]: new Blob(['x']) })
+    recordCompleted(CORRIDOR_ARCHIVE_KEY)
+
+    await deleteArchive(CORRIDOR_ARCHIVE_KEY)
+
+    expect(completedMarker(CORRIDOR_ARCHIVE_KEY)).toBeNull()
+  })
+})
+
+describe('verification against the published hash (#197)', () => {
+  // The failure being closed here is not a download that breaks - it is one
+  // that succeeds and is wrong. Bytes from two builds spliced at the resume
+  // point produce a file of exactly the expected length, so the size check
+  // provably cannot see it (totalBytes is DEFINED as heldBytes + declared),
+  // and what arrives is a PMTiles archive whose directory disagrees with its
+  // tiles: a map that reports itself downloaded and renders wrong past the
+  // seam, with no network to correct it.
+
+  const HELD = bytes(1, 2, 3, 4)
+  const REST = bytes(5, 6, 7, 8)
+  const WHOLE = bytes(1, 2, 3, 4, 5, 6, 7, 8)
+
+  /** The hash of a resume that went right: held bytes then the remainder. */
+  const WHOLE_HASH = sha256Hex(WHOLE)
+
+  it('stores an archive whose bytes hash to what was published', async () => {
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3), bytes(4, 5, 6)] })
+    mockedPublishedHash.mockResolvedValue(sha256Hex(bytes(1, 2, 3, 4, 5, 6)))
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeInstanceOf(Blob)
+  })
+
+  it('keeps nothing when the completed bytes are not what was published', async () => {
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash.mockResolvedValue(sha256Hex(bytes(9, 9, 9)))
+
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow(ArchiveHashMismatchError)
+
+    // Not stored, and not left resumable either: the bytes are the right
+    // length and the wrong file, so resuming onto them would only rebuild
+    // the same wrong archive.
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
+    expect(store[ARCHIVE_PARTIAL_KEY]).toBeUndefined()
+    expect(store[ARCHIVE_PROGRESS_KEY]).toBeUndefined()
+    expect(store[ARCHIVE_SOURCE_KEY]).toBeUndefined()
+  })
+
+  it('leaves a working archive alone when an update fails verification', async () => {
+    const working = new Blob(['the map that already works'])
+    const store = withStore({ [CORRIDOR_ARCHIVE_KEY]: working })
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash.mockResolvedValue(sha256Hex(bytes(9, 9, 9)))
+
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow(ArchiveHashMismatchError)
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBe(working)
+  })
+
+  it('catches a splice that completes to exactly the expected length', async () => {
+    // The case the length check cannot reach. Four held bytes from one build,
+    // four more from another; the server honours the range (206) and the
+    // total is exactly what was promised. Only the digest can tell.
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([HELD]),
+      [ARCHIVE_SOURCE_KEY]: { url: URL_, sha256: WHOLE_HASH },
+    })
+    mockFetch({ chunks: [bytes(90, 91, 92, 93)], status: 206, totalBytes: 4 })
+    mockedPublishedHash.mockResolvedValue(WHOLE_HASH)
+
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow(ArchiveHashMismatchError)
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
+    expect(store[ARCHIVE_PARTIAL_KEY]).toBeUndefined()
+  })
+
+  it('completes a resume whose bytes really do belong together', async () => {
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([HELD]),
+      [ARCHIVE_SOURCE_KEY]: { url: URL_, sha256: WHOLE_HASH },
+    })
+    mockFetch({ chunks: [REST], status: 206, totalBytes: 4 })
+    mockedPublishedHash.mockResolvedValue(WHOLE_HASH)
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
+
+    const stored = new Uint8Array(
+      await (store[CORRIDOR_ARCHIVE_KEY] as Blob).arrayBuffer(),
+    )
+    expect([...stored]).toEqual([...WHOLE])
+  })
+
+  it('drops a partial the bucket has republished away from, before asking for bytes', async () => {
+    // The defence that does not depend on CORS exposing ETag - which is
+    // exactly the configuration DATA_RELEASES.md's consequence #1 describes.
+    // A published hash that has moved says the archive was rebuilt, so the
+    // held bytes are from the previous release and there is no Range to send.
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([HELD]),
+      [ARCHIVE_PROGRESS_KEY]: { receivedBytes: 4, totalBytes: 8 },
+      [ARCHIVE_SOURCE_KEY]: { url: URL_, sha256: sha256Hex(bytes(77)) },
+    })
+    const spy = mockFetch({ chunks: [WHOLE] })
+    mockedPublishedHash.mockResolvedValue(WHOLE_HASH)
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
+
+    const init = spy.mock.calls[0][1] as RequestInit | undefined
+    expect(init?.headers).toBeUndefined()
+    const stored = new Uint8Array(
+      await (store[CORRIDOR_ARCHIVE_KEY] as Blob).arrayBuffer(),
+    )
+    expect([...stored]).toEqual([...WHOLE])
+  })
+
+  it('resumes onto a partial the bucket still publishes the same hash for', async () => {
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([HELD]),
+      [ARCHIVE_SOURCE_KEY]: { url: URL_, sha256: WHOLE_HASH },
+    })
+    const spy = mockFetch({ chunks: [REST], status: 206, totalBytes: 4 })
+    mockedPublishedHash.mockResolvedValue(WHOLE_HASH)
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
+
+    const init = spy.mock.calls[0][1] as RequestInit | undefined
+    expect(new Headers(init?.headers).get('range')).toBe('bytes=4-')
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeInstanceOf(Blob)
+  })
+
+  it('carries the hash of held bytes across a failed attempt', async () => {
+    // What makes a resume cheap: the next attempt starts from this state
+    // rather than re-reading several hundred megabytes of Blob to catch up.
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)], totalBytes: 10 })
+    mockedPublishedHash.mockResolvedValue(sha256Hex(WHOLE))
+
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow(ArchiveSizeMismatchError)
+
+    const carried = (store[ARCHIVE_SOURCE_KEY] as { hash?: Sha256State }).hash
+    expect(carried?.byteLength).toBe(3)
+    expect(Sha256.fromState(carried as Sha256State).digest()).toBe(
+      sha256Hex(bytes(1, 2, 3)),
+    )
+  })
+
+  it('resumes from a carried hash state without re-reading the held bytes', async () => {
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([HELD]),
+      [ARCHIVE_SOURCE_KEY]: {
+        url: URL_,
+        sha256: WHOLE_HASH,
+        hash: new Sha256().update(HELD).toState(),
+      },
+    })
+    mockFetch({ chunks: [REST], status: 206, totalBytes: 4 })
+    mockedPublishedHash.mockResolvedValue(WHOLE_HASH)
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeInstanceOf(Blob)
+  })
+
+  it('re-hashes the held bytes when no state was carried', async () => {
+    // A partial written by a build before this existed, or by an attempt
+    // that found no published hash to check against. Re-reading is the cost;
+    // being unable to verify would be the alternative.
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([HELD]),
+      [ARCHIVE_SOURCE_KEY]: { url: URL_ },
+    })
+    mockFetch({ chunks: [REST], status: 206, totalBytes: 4 })
+    mockedPublishedHash.mockResolvedValue(WHOLE_HASH)
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeInstanceOf(Blob)
+  })
+
+  it('ignores a carried state that claims more bytes than the partial holds', async () => {
+    // Reachable: persistPartial writes the source record BEFORE the blob, on
+    // purpose, and the blob write is the one that fails under quota pressure.
+    // A state ahead of the bytes must not be trusted - it would digest a file
+    // nobody has - and re-hashing from zero is always safe because the
+    // partial only ever grows.
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([HELD]),
+      [ARCHIVE_SOURCE_KEY]: {
+        url: URL_,
+        sha256: WHOLE_HASH,
+        hash: new Sha256().update(WHOLE).toState(),
+      },
+    })
+    mockFetch({ chunks: [REST], status: 206, totalBytes: 4 })
+    mockedPublishedHash.mockResolvedValue(WHOLE_HASH)
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeInstanceOf(Blob)
+  })
+
+  it('starts the hash clean when the server ignores the range and resends the file', async () => {
+    // A 200 in reply to a Range request means the whole file is coming. The
+    // held bytes are not part of it, and hashing as though they were would
+    // fail an archive that is perfectly good.
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([HELD]),
+      [ARCHIVE_SOURCE_KEY]: {
+        url: URL_,
+        sha256: WHOLE_HASH,
+        hash: new Sha256().update(HELD).toState(),
+      },
+    })
+    mockFetch({ chunks: [WHOLE], status: 200 })
+    mockedPublishedHash.mockResolvedValue(WHOLE_HASH)
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
+
+    const stored = new Uint8Array(
+      await (store[CORRIDOR_ARCHIVE_KEY] as Blob).arrayBuffer(),
+    )
+    expect([...stored]).toEqual([...WHOLE])
+  })
+
+  it('stores the archive unverified when nothing published a hash for it', async () => {
+    // The download must not start failing because a metadata file moved.
+    // Absence of an expectation is absence of a check, not a failed one.
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash.mockResolvedValue(null)
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeInstanceOf(Blob)
+  })
+
+  it('records no hash state when there is nothing to check against', async () => {
+    // No expectation, no reason to spend a phone's CPU on a digest nobody
+    // will compare.
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)], totalBytes: 10 })
+    mockedPublishedHash.mockResolvedValue(null)
+
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow(ArchiveSizeMismatchError)
+
+    expect((store[ARCHIVE_SOURCE_KEY] as { hash?: unknown }).hash).toBeUndefined()
+  })
+
+  it('verifies against the hash the bucket publishes now, not the one held', async () => {
+    // A partial with no recorded expectation (written before this existed)
+    // resumed against a republished archive: the current manifest is what
+    // the completed bytes are held to, and they will not match.
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([HELD]),
+      [ARCHIVE_SOURCE_KEY]: { url: URL_ },
+    })
+    mockFetch({ chunks: [bytes(50, 51, 52, 53)], status: 206, totalBytes: 4 })
+    mockedPublishedHash.mockResolvedValue(WHOLE_HASH)
+
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow(ArchiveHashMismatchError)
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
+  })
+
+  it('says plainly what happened, in words a hiker can act on', async () => {
+    // The next move is a clean re-download, and the sentence has to be enough
+    // to know that without guessing - and without hex, which helps nobody
+    // standing on a trail. The hashes stay on the error for a field report.
+    withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash.mockResolvedValue(sha256Hex(bytes(9)))
+
+    const thrown = await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, {
+      artifactKey: ARTIFACT,
+    }).catch((e) => e)
+
+    expect(thrown).toBeInstanceOf(ArchiveHashMismatchError)
+    expect(thrown.message).toBe(
+      'The map that arrived is not the one the server published, so it was not saved. ' +
+        'Any map already on this phone is untouched. Try the download again.',
+    )
+    expect(thrown.message).not.toMatch(/[0-9a-f]{12}/)
+    expect(thrown.expected).toBe(sha256Hex(bytes(9)))
+    expect(thrown.actual).toBe(sha256Hex(bytes(1, 2, 3)))
+  })
+
+  it('keeps a whole archive the bucket republished mid-download', async () => {
+    // The innocent cause of a mismatch: the manifest was read at the start of
+    // the attempt, the bucket was republished before the last byte landed,
+    // and what arrived is a complete, correct, NEWER archive. Throwing away a
+    // gigabyte of good map over that would be its own failure, so the
+    // manifest is read once more and bytes matching what is published now
+    // are kept.
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash
+      .mockResolvedValueOnce(sha256Hex(bytes(7, 7, 7)))
+      .mockResolvedValueOnce(sha256Hex(bytes(1, 2, 3)))
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeInstanceOf(Blob)
+    // Recorded as the build it actually is, not the one the attempt began by
+    // asking about.
+    expect(store[ARCHIVE_VERSION_KEY]).toBe(sha256Hex(bytes(1, 2, 3)))
+  })
+
+  it('still refuses bytes that match no published build, old or new', async () => {
+    // The re-read is a rescue for a republish, not a second chance for a
+    // splice: spliced bytes match nothing the bucket ever published.
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash
+      .mockResolvedValueOnce(sha256Hex(bytes(7, 7, 7)))
+      .mockResolvedValueOnce(sha256Hex(bytes(8, 8, 8)))
+
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow(ArchiveHashMismatchError)
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
+    expect(store[ARCHIVE_VERSION_KEY]).toBeUndefined()
+  })
+
+  it('refuses when the second manifest read has no answer either', async () => {
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash
+      .mockResolvedValueOnce(sha256Hex(bytes(7, 7, 7)))
+      .mockResolvedValueOnce(null)
+
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow(ArchiveHashMismatchError)
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
+  })
+})
+
+describe('which build is on this phone', () => {
+  // DATA_RELEASES.md consequence #2: "a completed archive is stored with no
+  // hash, no ETag and no version, so a republish is invisible to a device
+  // that already downloaded". The verification above computes exactly that
+  // answer and used to throw it away.
+
+  it('keeps the verified hash beside the archive it describes', async () => {
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash.mockResolvedValue(sha256Hex(bytes(1, 2, 3)))
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
+
+    expect(store[ARCHIVE_VERSION_KEY]).toBe(sha256Hex(bytes(1, 2, 3)))
+    expect(await readArchiveVersion(CORRIDOR_ARCHIVE_KEY)).toBe(sha256Hex(bytes(1, 2, 3)))
+  })
+
+  it('claims nothing for an archive that could not be verified', async () => {
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash.mockResolvedValue(null)
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
+
+    expect(store[ARCHIVE_VERSION_KEY]).toBeUndefined()
+    expect(await readArchiveVersion(CORRIDOR_ARCHIVE_KEY)).toBeNull()
+  })
+
+  it('clears an older claim when the replacement cannot be verified', async () => {
+    // The dangerous combination is a hash from the previous archive sitting
+    // beside bytes nobody checked - a wrong answer stated with more
+    // confidence than no answer at all.
+    const store = withStore({ [ARCHIVE_VERSION_KEY]: sha256Hex(bytes(9)) })
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash.mockResolvedValue(null)
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
+
+    expect(store[ARCHIVE_VERSION_KEY]).toBeUndefined()
+  })
+
+  it('records nothing for an archive that failed verification', async () => {
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash.mockResolvedValue(sha256Hex(bytes(9, 9, 9)))
+
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow(ArchiveHashMismatchError)
+
+    expect(store[ARCHIVE_VERSION_KEY]).toBeUndefined()
+  })
+
+  it('lets the record go with the archive the hiker deleted', async () => {
+    const store = withStore({
+      [CORRIDOR_ARCHIVE_KEY]: new Blob(['x']),
+      [ARCHIVE_VERSION_KEY]: sha256Hex(bytes(1)),
+    })
+
+    await deleteArchive(CORRIDOR_ARCHIVE_KEY)
+
+    expect(store[ARCHIVE_VERSION_KEY]).toBeUndefined()
+  })
+
+  it('is per package, like every other record here', async () => {
+    const store = withStore({ 'ourhike:test-dem:version': sha256Hex(bytes(7)) })
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash.mockResolvedValue(sha256Hex(bytes(1, 2, 3)))
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
+
+    expect(store['ourhike:test-dem:version']).toBe(sha256Hex(bytes(7)))
+  })
+})
+
+describe('reporting the re-read of bytes already held (#197)', () => {
+  // Catching a held partial's hash up is local work, and on a phone it is
+  // seconds of it. Silence there is indistinguishable from a stalled
+  // connection - and someone standing in a dead spot responds to those two
+  // in opposite ways, so the attempt says which is happening.
+
+  const HELD = bytes(1, 2, 3, 4)
+  const REST = bytes(5, 6, 7, 8)
+  const WHOLE_HASH = sha256Hex(bytes(1, 2, 3, 4, 5, 6, 7, 8))
+
+  it('reports the re-read when a partial carries no hash state', async () => {
+    withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([HELD]),
+      [ARCHIVE_SOURCE_KEY]: { url: URL_ },
+    })
+    mockFetch({ chunks: [REST], status: 206, totalBytes: 4 })
+    mockedPublishedHash.mockResolvedValue(WHOLE_HASH)
+    const onChecking = vi.fn()
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, {
+      artifactKey: ARTIFACT,
+      onChecking,
+    })
+
+    // Opens at zero so the state appears before the first window is read,
+    // and closes having accounted for every held byte.
+    expect(onChecking).toHaveBeenCalledWith({ checkedBytes: 0, totalBytes: 4 })
+    expect(onChecking).toHaveBeenLastCalledWith({ checkedBytes: 4, totalBytes: 4 })
+  })
+
+  it('says nothing when the carried state already covers the held bytes', async () => {
+    // The common case, and the reason the state is worth carrying: there is
+    // no re-read to report because there is no re-read.
+    withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([HELD]),
+      [ARCHIVE_SOURCE_KEY]: {
+        url: URL_,
+        sha256: WHOLE_HASH,
+        hash: new Sha256().update(HELD).toState(),
+      },
+    })
+    mockFetch({ chunks: [REST], status: 206, totalBytes: 4 })
+    mockedPublishedHash.mockResolvedValue(WHOLE_HASH)
+    const onChecking = vi.fn()
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, {
+      artifactKey: ARTIFACT,
+      onChecking,
+    })
+
+    expect(onChecking).not.toHaveBeenCalled()
+  })
+
+  it('says nothing on a clean first download', async () => {
+    withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash.mockResolvedValue(sha256Hex(bytes(1, 2, 3)))
+    const onChecking = vi.fn()
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, {
+      artifactKey: ARTIFACT,
+      onChecking,
+    })
+
+    expect(onChecking).not.toHaveBeenCalled()
+  })
+
+  it('says nothing when there is no published hash to check against', async () => {
+    // No expectation means no digest is computed at all, so there is no
+    // re-read to announce - and announcing one would be a lie about what the
+    // phone is doing.
+    withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([HELD]),
+      [ARCHIVE_SOURCE_KEY]: { url: URL_ },
+    })
+    mockFetch({ chunks: [REST], status: 206, totalBytes: 4 })
+    mockedPublishedHash.mockResolvedValue(null)
+    const onChecking = vi.fn()
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, {
+      artifactKey: ARTIFACT,
+      onChecking,
+    })
+
+    expect(onChecking).not.toHaveBeenCalled()
+  })
+})
+
+describe('the artifact key is given, never guessed (#197)', () => {
+  it('looks the published hash up by the key the caller states', async () => {
+    // Not by the URL's last segment, which is what this used to do: the
+    // first artifact whose URL did not read like its manifest key would have
+    // found no entry, and "no entry" means the download proceeds unverified.
+    withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash.mockResolvedValue(sha256Hex(bytes(1, 2, 3)))
+
+    await downloadArchive(
+      CORRIDOR_ARCHIVE_KEY,
+      'https://cdn.example.org/signed/xyz?token=1',
+      {
+        artifactKey: 'background_z13.pmtiles',
+      },
+    )
+
+    expect(mockedPublishedHash).toHaveBeenCalledWith('background_z13.pmtiles', {
+      signal: undefined,
     })
   })
 })

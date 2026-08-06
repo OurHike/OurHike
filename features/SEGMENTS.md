@@ -68,6 +68,8 @@ FEATURES.md's v1 MVP is deliberately narrow (trail line, water, crossings, shelt
 
 **Update 2026-07-28:** [TRIP_PLANNING.md](TRIP_PLANNING.md) is that build - waypoint-based day-hike planning, bulk multi-day adjustment, POI-aware planning assistance, and a distance/elevation difficulty estimate, all built on top of the Hike/Segment tree here rather than a second structure.
 
+**Update 2026-08-05:** and it is now scheduled - **v2's first feature**, spiked in [HIKE_PLANNING.md](HIKE_PLANNING.md). That spike checked this document's tree against everything a multi-day plan actually needs and concluded it holds without a second model: a **zero day is a Segment whose start and end are the same stop**, needing no `kind` field, and a **section is derived from where resupply happens** rather than hand-built - which answers the persona-driven-templates question below with "generate days from the route and the target, then group them by where supplies come from." It adds three fields to `Segment` (a stop reference, a `pinned` flag and a `generated` flag) and changes nothing here.
+
 ## Open questions (for you, not decided here)
 
 - **Naming.** "Hike" and "Segment" are working names, not committed terminology — easy to change before anything's built.

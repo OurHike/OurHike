@@ -5,8 +5,9 @@ import { get, set, del } from 'idb-keyval'
 import App from './App'
 import { PREFERENCES_KEY } from './lib/preferences'
 import { DEFAULT_PREFERENCES } from './lib/userPreferences'
-import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
+import { ELEVATION_STORE_KEY, POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 import { CORRIDOR_ARCHIVE_KEY } from './map/pmtilesSource'
+import { POI_ID_PROPERTY, POI_LAYER_ID } from './map/poiLayers'
 import { archiveUrl } from './lib/config'
 import { MockMap, resetMapLibreMock } from './test/mocks/maplibre-gl'
 
@@ -43,6 +44,7 @@ const SHELTER = {
   lat: 39 + 5 * MILE_LAT,
   lon: -77,
   confidence: 'high' as const,
+  source: 'atc_shelters',
 }
 
 let watchSuccess: ((position: GeolocationPosition) => void) | undefined
@@ -121,6 +123,18 @@ async function reportFix(lat = 39 + 5 * MILE_LAT, lon = -77) {
   })
 }
 
+/**
+ * The download window, opened the way a hiker reaches it.
+ *
+ * There is no Downloads tab (chrome/tabs.ts): the door is the link at the foot
+ * of the legend, which is where the map screen keeps it.
+ */
+async function openDownloads(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole('button', { name: /legend/i }))
+  await user.click(await screen.findByRole('button', { name: /download/i }))
+  return screen.findByRole('dialog', { name: /offline map/i })
+}
+
 describe('once there is a GPS fix', () => {
   it('shows the mile instead of still looking for GPS', async () => {
     hikerOnTrail()
@@ -132,27 +146,26 @@ describe('once there is a GPS fix', () => {
     expect(await screen.findByText(/mi 5\./)).toBeInTheDocument()
   })
 
-  it('moves the camera to the first fix, since the map was built before it arrived', async () => {
+  // The mile assertions are what make this test mean anything: they prove each
+  // fix arrived and was used, so a run with an unmoved camera cannot be a run
+  // where no fix ever showed up.
+  it('leaves the camera on the whole corridor, since the view belongs to the hiker', async () => {
     hikerOnTrail()
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
+    // Wait for the map itself, not just its container div: findByRole resolves
+    // a commit before MapView's effect constructs the map, so reading
+    // instances[0] straight after it races the build and can find nothing at
+    // all. That would fail as a TypeError rather than as the assertion.
+    await waitFor(() => expect(MockMap.instances.length).toBeGreaterThan(0))
 
     await reportFix()
+    expect(await screen.findByText(/mi 5\./)).toBeInTheDocument()
 
-    await waitFor(() => expect(MockMap.instances[0].cameraMoves).toHaveLength(1))
-    expect(MockMap.instances[0].cameraMoves[0]).toMatchObject({ zoom: 13 })
-  })
-
-  it('leaves the camera alone after that, because the view belongs to whoever is panning it', async () => {
-    hikerOnTrail()
-    render(<App />)
-    await screen.findByRole('region', { name: /trail map/i })
-
-    await reportFix()
-    await waitFor(() => expect(MockMap.instances[0].cameraMoves).toHaveLength(1))
     await reportFix(39 + 6 * MILE_LAT)
+    expect(await screen.findByText(/mi 6\./)).toBeInTheDocument()
 
-    expect(MockMap.instances[0].cameraMoves).toHaveLength(1)
+    expect(MockMap.instances[0].cameraMoves).toHaveLength(0)
   })
 
   it('starts tracking a direction of travel once it has two fixes', async () => {
@@ -263,6 +276,146 @@ describe('the legend', () => {
   })
 })
 
+describe('tapping a pin on the map', () => {
+  /**
+   * Touch the canvas where MapLibre would report a pin.
+   *
+   * The map is real code with a mock MapLibre under it, so the pin has to be
+   * put where a rendered-feature query will find it - which is what the live
+   * map's own tile rendering does for a real one.
+   */
+  async function tapPin(properties: Record<string, unknown>) {
+    // The LIVE map, and only once it is listening. The map screen builds a new
+    // map when the trail lines land - a different object URL is a different
+    // style - so the first map constructed is routinely one that has already
+    // been torn down, and touching it would be touching nothing.
+    await waitFor(() => {
+      expect(MockMap.live).toHaveLength(1)
+      expect(MockMap.live[0].listenerCount('click')).toBeGreaterThan(0)
+    })
+    const map = MockMap.live[0]
+    map.renderedFeatures.set(POI_LAYER_ID, [{ properties }])
+    await act(async () => {
+      map.emit('click', { point: { x: 160, y: 300 } })
+    })
+  }
+
+  it('opens the waypoint’s details, which used to do nothing at all', async () => {
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await tapPin({ [POI_ID_PROPERTY]: SHELTER.id, poi_type: 'shelter' })
+
+    const sheet = await screen.findByRole('dialog', { name: /waypoint/i })
+    expect(
+      within(sheet).getByRole('heading', { name: 'Chairback Gap Lean-to' }),
+    ).toBeInTheDocument()
+    expect(within(sheet).getByText('Shelter')).toBeInTheDocument()
+  })
+
+  it('places the waypoint on the trail, at the mile search would give it', async () => {
+    // One number from one computation. A second way of working out the mile
+    // could disagree with search about the same shelter, which is exactly the
+    // kind of quiet contradiction OurHikeValues.md #4 is about.
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await tapPin({ [POI_ID_PROPERTY]: SHELTER.id, poi_type: 'shelter' })
+
+    const sheet = await screen.findByRole('dialog', { name: /waypoint/i })
+    expect(within(sheet).getByText(/^mi 5\./)).toBeInTheDocument()
+  })
+
+  it('says which source listed it', async () => {
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await tapPin({ [POI_ID_PROPERTY]: SHELTER.id, poi_type: 'shelter' })
+
+    const sheet = await screen.findByRole('dialog', { name: /waypoint/i })
+    expect(within(sheet).getByText(/Appalachian Trail Conservancy/)).toBeInTheDocument()
+  })
+
+  it('closes again', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await tapPin({ [POI_ID_PROPERTY]: SHELTER.id, poi_type: 'shelter' })
+    const sheet = await screen.findByRole('dialog', { name: /waypoint/i })
+    await user.click(within(sheet).getByRole('button', { name: /close/i }))
+
+    expect(screen.queryByRole('dialog', { name: /waypoint/i })).not.toBeInTheDocument()
+  })
+
+  it('goes away on a tap on bare map, without hunting for the close button', async () => {
+    // The card floats beside its pin, so it dismisses the way every floating
+    // map card does: tap anywhere else. Only a TAP - MapLibre withholds the
+    // click event when the gesture was a pan, so riding the map around with
+    // the card open keeps it.
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await tapPin({ [POI_ID_PROPERTY]: SHELTER.id, poi_type: 'shelter' })
+    await screen.findByRole('dialog', { name: /waypoint/i })
+
+    const map = MockMap.live[0]
+    map.renderedFeatures.set(POI_LAYER_ID, [])
+    await act(async () => {
+      map.emit('click', { point: { x: 40, y: 60 } })
+    })
+
+    expect(screen.queryByRole('dialog', { name: /waypoint/i })).not.toBeInTheDocument()
+  })
+
+  it('ignores a tap on a pin the app no longer holds', async () => {
+    // A stale tile can name a POI that a re-download has since dropped. An
+    // empty sheet would be worse than no sheet.
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await tapPin({ [POI_ID_PROPERTY]: 'atc_shelters:gone', poi_type: 'shelter' })
+
+    expect(screen.queryByRole('dialog', { name: /waypoint/i })).not.toBeInTheDocument()
+  })
+
+  it('replaces the legend rather than stacking on it', async () => {
+    // Both sit at the bottom of the map. Two at once leaves the lower one
+    // unreadable and its close button unreachable.
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('button', { name: /legend/i }))
+    await screen.findByRole('dialog', { name: /legend/i })
+    await tapPin({ [POI_ID_PROPERTY]: SHELTER.id, poi_type: 'shelter' })
+
+    expect(await screen.findByRole('dialog', { name: /waypoint/i })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: /legend/i })).not.toBeInTheDocument()
+  })
+
+  it('gets out of the way when the legend is opened over it', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await tapPin({ [POI_ID_PROPERTY]: SHELTER.id, poi_type: 'shelter' })
+    await screen.findByRole('dialog', { name: /waypoint/i })
+    await user.click(screen.getByRole('button', { name: /legend/i }))
+
+    expect(await screen.findByRole('dialog', { name: /legend/i })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: /waypoint/i })).not.toBeInTheDocument()
+  })
+})
+
 describe('downloading everything', () => {
   function servesEverything() {
     vi.mocked(fetch).mockImplementation((url) =>
@@ -271,6 +424,34 @@ describe('downloading everything', () => {
         status: 200,
         statusText: 'OK',
         blob: () => Promise.resolve(new Blob([TRAILS_GEOJSON])),
+        // The vector artifacts are hashed before they are stored (#197), so
+        // the double has to answer with bytes as well as with text.
+        arrayBuffer: () =>
+          Promise.resolve(
+            new TextEncoder().encode(
+              String(url).includes('poi_shelter')
+                ? JSON.stringify({
+                    type: 'FeatureCollection',
+                    features: [
+                      {
+                        type: 'Feature',
+                        properties: {
+                          id: SHELTER.id,
+                          name: SHELTER.name,
+                          confidence: 'high',
+                        },
+                        geometry: {
+                          type: 'Point',
+                          coordinates: [SHELTER.lon, SHELTER.lat],
+                        },
+                      },
+                    ],
+                  })
+                : String(url).includes('trails')
+                  ? TRAILS_GEOJSON
+                  : JSON.stringify({ type: 'FeatureCollection', features: [] }),
+            ).buffer,
+          ),
         text: () =>
           Promise.resolve(
             String(url).includes('poi_shelter')
@@ -315,27 +496,32 @@ describe('downloading everything', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
 
-    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    await openDownloads(user)
     await user.click(await screen.findByRole('button', { name: /download the map/i }))
 
     await waitFor(() => expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob))
     await waitFor(() => expect(store.get(CORRIDOR_ARCHIVE_KEY)).toBeInstanceOf(Blob))
   })
 
-  it('deletes the map, the trail data and the POIs together', async () => {
-    // Someone reclaiming space expects all of it back, not the raster alone.
+  it('deletes the background and keeps the trail (#192)', async () => {
+    // Someone reclaiming space is reclaiming the BACKGROUND - that is what
+    // the hundreds of megabytes are, and what they chose. The centerline and
+    // the POIs are a rounding error beside it, they are what makes this an
+    // app rather than a map viewer, and they are downloaded by default
+    // wherever they are missing - so taking them would blank the trail line
+    // until the next launch with signal fetched them straight back.
     const user = userEvent.setup()
     hikerOnTrail()
     store.set(CORRIDOR_ARCHIVE_KEY, new Blob(['archive']))
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
 
-    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    await openDownloads(user)
     await user.click(await screen.findByRole('button', { name: /delete/i }))
 
     await waitFor(() => expect(store.has(CORRIDOR_ARCHIVE_KEY)).toBe(false))
-    expect(store.has(TRAILS_BLOB_KEY)).toBe(false)
-    expect(store.has(POIS_KEY)).toBe(false)
+    expect(store.has(TRAILS_BLOB_KEY)).toBe(true)
+    expect(store.has(POIS_KEY)).toBe(true)
   })
 
   it('records a new detail level as a max background zoom', async () => {
@@ -344,7 +530,7 @@ describe('downloading everything', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
 
-    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    await openDownloads(user)
     await user.click(await screen.findByRole('radio', { name: /light/i }))
 
     await waitFor(() => {
@@ -403,7 +589,49 @@ describe('reporting, with a fix to attach', () => {
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
     await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
 
+    // Saving now hands over to the sign-in step (lib/contributionFlow.ts's
+    // stepAfterSaving). Declining it is the path this test cares about: the
+    // count has to be the same either way, because the report was already
+    // written before anyone was asked to authenticate.
+    await user.click(await screen.findByRole('button', { name: /not now/i }))
+
     expect(await screen.findByText(/1 .*(waiting|queued|outbox)/i)).toBeInTheDocument()
+  })
+
+  it('saves the report even when sign-in is declined', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+    await user.click(await screen.findByRole('button', { name: /blow down/i }))
+    await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
+    await user.click(await screen.findByRole('button', { name: /not now/i }))
+
+    // The promise the whole flow exists to keep: someone who cannot or will
+    // not authenticate still has what they wrote.
+    await waitFor(() => {
+      expect(store.get('ourhike:outbox')).toBeDefined()
+    })
+  })
+
+  it('asks to sign in only after the report is already saved', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+    await user.click(await screen.findByRole('button', { name: /blow down/i }))
+    await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
+
+    // Ordering is the design, not a detail - the screen says the report is
+    // already saved, and it has to be true when it says it.
+    expect(await screen.findByText(/already saved/i)).toBeInTheDocument()
+    expect(store.get('ourhike:outbox')).toBeDefined()
   })
 })
 
@@ -427,11 +655,14 @@ describe('preferences from the More screen', () => {
 })
 
 describe('the placeholder actions on More', () => {
-  // Sign-in, sync and export are all wired to no-ops today: the backend they
-  // need is Phase 2 (ROADMAP.md). Rendered and clickable anyway so the shape of
-  // the screen is real, and asserted here so a wiring mistake shows up as a
-  // failing test rather than as a button that throws in someone's hand.
-  it.each([/sign in/i, /^sync$/i, /export gpx/i, /export geojson/i])(
+  // Sync and export are wired to no-ops today: the backend they need is Phase
+  // 2 (ROADMAP.md). Rendered and clickable anyway so the shape of the screen
+  // is real, and asserted here so a wiring mistake shows up as a failing test
+  // rather than as a button that throws in someone's hand.
+  //
+  // Sign in used to be in this list and is not a placeholder any more, which
+  // is what the sign-in tests below cover instead.
+  it.each([/^sync$/i, /export gpx/i, /export geojson/i])(
     'does not throw when %s is tapped',
     async (name) => {
       const user = userEvent.setup()
@@ -445,6 +676,102 @@ describe('the placeholder actions on More', () => {
       expect(await screen.findByRole('heading', { name: 'You' })).toBeInTheDocument()
     },
   )
+})
+
+describe('signing in from Settings', () => {
+  it('opens the sign-in screen', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+
+    await user.click(await screen.findByRole('button', { name: /sign in/i }))
+
+    expect(
+      await screen.findByRole('button', { name: /continue with google/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('does not claim a report is saved, because this path has no report', async () => {
+    // The same screen serves the contribution flow, where "your report is
+    // already saved" is both true and the point. Reached from Settings there
+    // is nothing saved, and saying so would be a promise about something that
+    // does not exist.
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+
+    await user.click(await screen.findByRole('button', { name: /sign in/i }))
+    await screen.findByRole('button', { name: /continue with google/i })
+
+    expect(screen.queryByText(/already saved/i)).toBe(null)
+  })
+
+  it('backs out to the screen it came from', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+
+    await user.click(await screen.findByRole('button', { name: /sign in/i }))
+    await user.click(await screen.findByRole('button', { name: /not now/i }))
+
+    expect(await screen.findByRole('heading', { name: 'You' })).toBeInTheDocument()
+  })
+
+  it('offers only the providers this build has credentials for', async () => {
+    // ENABLED_PROVIDERS defaults to Google and email. Apple needs a $99/yr
+    // membership, and a button for a provider with no credentials behind it
+    // reaches an error page rather than an account.
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+
+    await user.click(await screen.findByRole('button', { name: /sign in/i }))
+    await screen.findByRole('button', { name: /continue with google/i })
+
+    expect(
+      screen.getByRole('button', { name: /continue with email/i }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /continue with apple/i })).toBe(null)
+  })
+
+  it('reaches the email form, which asks only for an address', async () => {
+    // The link is the default way in: one field, and nothing to remember.
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+
+    await user.click(await screen.findByRole('button', { name: /sign in/i }))
+    await user.click(await screen.findByRole('button', { name: /continue with email/i }))
+
+    expect(await screen.findByLabelText(/email/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/password/i)).toBe(null)
+  })
+
+  it('still offers a password, for someone who would rather not leave the app', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+
+    await user.click(await screen.findByRole('button', { name: /sign in/i }))
+    await user.click(await screen.findByRole('button', { name: /continue with email/i }))
+    await user.click(
+      await screen.findByRole('button', { name: /use a password instead/i }),
+    )
+
+    expect(await screen.findByLabelText(/password/i)).toBeInTheDocument()
+  })
 })
 
 describe('when the trail data cannot be downloaded', () => {
@@ -462,34 +789,10 @@ describe('when the trail data cannot be downloaded', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
 
-    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    await openDownloads(user)
     await user.click(await screen.findByRole('button', { name: /download the map/i }))
 
     expect(await screen.findByText('Trail data failed to download.')).toBeInTheDocument()
-  })
-})
-
-describe('a fix that arrives while the map is not on screen', () => {
-  it('does not try to move a map that is not mounted', async () => {
-    // The map only exists on the Trail tab. A fix landing while someone is on
-    // Downloads has no camera to move, and must not reach for one.
-    const user = userEvent.setup()
-    hikerOnTrail()
-    render(<App />)
-    await screen.findByRole('region', { name: /trail map/i })
-    // Wait for the map itself, not just its container div: findByRole resolves
-    // a commit before MapView's effect constructs the map, so reading
-    // instances[0] straight after it races the build and can find nothing at
-    // all. Here that would fail as a TypeError rather than as the assertion.
-    await waitFor(() => expect(MockMap.instances.length).toBeGreaterThan(0))
-    const built = MockMap.instances[0]
-
-    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
-    await screen.findByText('Offline map')
-
-    await reportFix()
-
-    expect(built.cameraMoves).toHaveLength(0)
   })
 })
 
@@ -508,7 +811,7 @@ describe('resuming an interrupted download', () => {
 
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
-    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    await openDownloads(user)
     const resume = await screen.findByRole('button', { name: /resume/i })
 
     vi.mocked(fetch).mockResolvedValue({
@@ -529,6 +832,143 @@ describe('resuming an interrupted download', () => {
       expect(vi.mocked(fetch).mock.calls[0][1]).toMatchObject({
         headers: expect.objectContaining({ Range: 'bytes=3-' }),
       }),
+    )
+  })
+})
+
+// WIREFRAMES.md §1.3 and §1.4. Both components were built, tested and accepted
+// by MapScreen as optional props long before anything downloaded a profile to
+// pass them, so they could never appear on any device in any state. What is
+// worth testing here is the wiring and the three conditions it is gated on -
+// not the drawing, which ElevationRibbon.test.tsx and WaypointLanes.test.tsx
+// already cover.
+describe('the elevation ribbon and the waypoint lanes', () => {
+  /** Flat to mile 8, a 1,000 ft climb to mile 10, back down by mile 12, flat
+   *  to the end of the synthetic centerline. */
+  function profileWithAClimb() {
+    const miles: number[] = []
+    const feet: number[] = []
+
+    for (let mile = 0; mile <= 40; mile += 0.1) {
+      const rounded = Number(mile.toFixed(2))
+      miles.push(rounded)
+      feet.push(
+        rounded <= 8
+          ? 1000
+          : rounded <= 10
+            ? 1000 + (rounded - 8) * 500
+            : rounded <= 12
+              ? 2000 - (rounded - 10) * 500
+              : 1000,
+      )
+    }
+
+    return {
+      distanceMi: Float32Array.from(miles),
+      elevationFt: Float32Array.from(feet),
+    }
+  }
+
+  function ribbon() {
+    return screen.queryByRole('img', { name: /elevation profile ahead/i })
+  }
+
+  it('draws the profile once there is a fix and a profile to draw', async () => {
+    hikerOnTrail()
+    store.set(ELEVATION_STORE_KEY, profileWithAClimb())
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await reportFix()
+
+    await waitFor(() => expect(ribbon()).toBeInTheDocument())
+  })
+
+  it('draws the three waypoint lanes beside it', async () => {
+    hikerOnTrail()
+    store.set(ELEVATION_STORE_KEY, profileWithAClimb())
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await reportFix()
+
+    await waitFor(() => expect(screen.getByTestId('lane-water')).toBeInTheDocument())
+    expect(screen.getByTestId('lane-sleep')).toBeInTheDocument()
+    expect(screen.getByTestId('lane-else')).toBeInTheDocument()
+  })
+
+  it('puts a POI the index can place into its lane', async () => {
+    // The shelter sits at mile 5 on the synthetic centerline, inside the window
+    // around a hiker standing at mile 5.
+    hikerOnTrail()
+    store.set(ELEVATION_STORE_KEY, profileWithAClimb())
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await reportFix()
+
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId('lane-sleep')).getByRole('button'),
+      ).toBeInTheDocument(),
+    )
+  })
+
+  it('shows nothing at all before there is a fix', async () => {
+    // Without a position there is no "ahead". An empty ribbon would read as
+    // "nothing ahead of you", which is a different and much worse claim than
+    // not drawing one.
+    hikerOnTrail()
+    store.set(ELEVATION_STORE_KEY, profileWithAClimb())
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    expect(ribbon()).not.toBeInTheDocument()
+    expect(screen.queryByTestId('lane-water')).not.toBeInTheDocument()
+  })
+
+  it('shows nothing when the release published no profile', async () => {
+    // A data release built before pipeline/export_elevation.py existed. The
+    // map still works; the ribbon and the lanes are simply absent.
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await reportFix()
+
+    await screen.findByText(/mi 5\./)
+    expect(ribbon()).not.toBeInTheDocument()
+    expect(screen.queryByTestId('lane-water')).not.toBeInTheDocument()
+  })
+
+  it('waits for the direction before captioning a climb', async () => {
+    // lib/hikeDirection.ts withholds the direction until a quarter mile of
+    // movement, and which way someone faces decides which climb is ahead.
+    hikerOnTrail()
+    store.set(ELEVATION_STORE_KEY, profileWithAClimb())
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await reportFix()
+
+    await waitFor(() => expect(ribbon()).toBeInTheDocument())
+    expect(screen.queryByTestId('climb-callout')).not.toBeInTheDocument()
+  })
+
+  it('captions the climb ahead once the direction is known', async () => {
+    hikerOnTrail()
+    store.set(ELEVATION_STORE_KEY, profileWithAClimb())
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await reportFix()
+    // A mile further north: enough movement for NOBO to be established.
+    await reportFix(39 + 6 * MILE_LAT)
+
+    // 1,000 ft between mile 8 and mile 10, and Naismith's duration for it -
+    // never an arrival clock.
+    expect(await screen.findByTestId('climb-callout')).toHaveTextContent(
+      '+1,000 ft · 2.0 mi · ≈1h 10m',
     )
   })
 })

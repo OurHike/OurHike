@@ -3,19 +3,19 @@
 // Three decisions here are load-bearing rather than cosmetic.
 //
 //  1. SHAPE is the primary channel, colour is the second one. This is the same
-//     rule the blaze dash rhythms follow (style.ts), and for the same reason:
+//     rule the blaze line widths follow (style.ts), and for the same reason:
 //     these six accent colours sit between 1.06:1 and 2.19:1 of each other, so
 //     in the greyscale pass (WIREFRAMES.md `9d`) or in direct sun they are one
 //     colour. A droplet is still a droplet. Every category therefore gets a
 //     silhouette that survives being reduced to a black shape, and no category
 //     is distinguished from another by hue alone.
 //
-//  2. The images are COMPUTED, not shipped as assets. Same reasoning as
-//     backdrop.ts: an offline-first app should not spend a network round trip
-//     or a build step on a handful of 30px badges, and a pure function is
-//     testable in jsdom - which can neither rasterise an SVG nor run a canvas.
-//     So the glyphs are polygons and this module contains a small scanline
-//     rasteriser, which is the price of both properties.
+//  2. The images are COMPUTED, not shipped as assets. An offline-first app
+//     should not spend a network round trip or a build step on a handful of
+//     30px badges, and a pure function is testable in jsdom - which can
+//     neither rasterise an SVG nor run a canvas. So the glyphs are polygons
+//     and this module contains a small scanline rasteriser, which is the
+//     price of both properties.
 //
 //  3. RED IS NOT AVAILABLE to a POI. Red is spoken for by closures
 //     (lib/closureStyle.ts) and by the serious-warning pin, and a spring that
@@ -30,9 +30,22 @@
 
 import { POI_TYPES, type PoiType } from '../lib/config'
 
-/** Rendered size in CSS pixels. Comfortably inside WIREFRAMES.md's 34px
- *  serious-warning pin, which should stay the biggest thing on the map. */
-export const POI_PIN_SIZE = 30
+/**
+ * Rendered size in CSS pixels.
+ *
+ * `--space-9` / the header-button size, which is a token this design system
+ * already has rather than a number invented for the map. Comfortably inside
+ * WIREFRAMES.md's serious-warning pin, which should stay the biggest thing on
+ * the map, and which moved up to one full touch target (44px) when this did -
+ * a warning pin that a water pin has caught up with has stopped outranking
+ * anything.
+ *
+ * The cost of drawing pins bigger is that fewer of them survive
+ * `icon-allow-overlap: false` at a given zoom. That is a trade the collision
+ * ordering was built to absorb: POI_PRIORITY in poiLayers.ts decides who
+ * survives, and water is first in it.
+ */
+export const POI_PIN_SIZE = 38
 
 /** Drawn at 2x so the pins stay crisp on a phone. */
 export const POI_PIN_PIXEL_RATIO = 2
@@ -86,14 +99,26 @@ export function poiIconId(type: string, confidence: PoiConfidence): string {
 }
 
 // Geometry, in image pixels from the centre outwards.
+//
+// Every one of these is a FRACTION of the pin rather than a fixed pixel count,
+// which is what makes {@link POI_PIN_SIZE} a single knob. Written as constants
+// they held their look at exactly one size: drawn bigger, the rim thinned out
+// and the glyph shrank inside a disc that grew around it, so a pin asked to be
+// larger came back not just larger but differently proportioned.
 const CENTER = PIXELS / 2
 const R_OUTER = CENTER
-const EDGE_WIDTH = 2
-const HALO_WIDTH = 5
+const EDGE_WIDTH = R_OUTER / 15
+const HALO_WIDTH = R_OUTER / 6
 const R_DISC = R_OUTER - EDGE_WIDTH - HALO_WIDTH
-/** Side of the centred box the glyph is drawn in. Its half-diagonal must stay
- *  inside {@link R_DISC} or the corners of a glyph would spill onto the halo. */
-const GLYPH_BOX = 28
+/**
+ * Side of the centred box the glyph is drawn in.
+ *
+ * Its half-diagonal must stay inside {@link R_DISC} or the corners of a glyph
+ * would spill onto the halo - so it is derived from that bound rather than
+ * checked against it. The largest box that fits has side `R_DISC * √2`; 86% of
+ * it leaves the corners some air.
+ */
+const GLYPH_BOX = R_DISC * Math.SQRT2 * 0.86
 
 /** Dash count around the rim of an unverified pin. Even, so the pattern closes
  *  cleanly where the last gap meets the first dash. */
@@ -205,6 +230,31 @@ const GLYPHS: Record<string, Glyph> = {
       [0.05, 0.5],
     ],
   ],
+}
+
+/**
+ * The category silhouette as SVG path data in a unit box (`viewBox="0 0 1 1"`),
+ * for chrome that wants the same shape language as the pins - the waypoint
+ * card's photo placeholder is the customer. One subpath per ring, so an
+ * `evenodd` fill keeps the shelter's doorway open exactly as the rasteriser's
+ * crossing count below does.
+ *
+ * Same fallback as {@link buildPoiIcon}: a type this build has never heard of
+ * gets the diamond, not an empty path - the placeholder should show SOMETHING
+ * for a POI the map is already drawing as a neutral pin.
+ */
+export function poiGlyphPath(type: string): string {
+  const glyph = GLYPHS[type] ?? GLYPHS[UNKNOWN_POI_TYPE]
+  return glyph
+    .map(
+      (ring) =>
+        `M${ring
+          // The arcs carry full float precision, which nobody rendering a
+          // 56px glyph can see and every DOM snapshot has to carry.
+          .map(([x, y]) => `${Number(x.toFixed(4))} ${Number(y.toFixed(4))}`)
+          .join('L')}Z`,
+    )
+    .join('')
 }
 
 /** Even-odd crossing count, which is what gives the tent its doorway. */

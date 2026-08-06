@@ -71,6 +71,26 @@ def test_a_spur_is_keyed_the_way_trails_geojson_keys_it():
     assert list(records) == ["side_trails:abc-123"]
 
 
+def test_a_null_global_id_resolves_to_the_same_id_on_both_sides():
+    """The drift this test exists to prevent: this file used to build ids
+    from a LOCAL copy of the fallback chain (`GlobalID or OBJECTID or
+    index`), and a feature with an explicit "GlobalID": null - a real shape
+    in ArcGIS exports - got `generated-{index}` in trails.geojson but its
+    OBJECTID here. Both files were valid; the spur just never joined. The
+    chain now has one home, lib/feature_id.py, so both sides are asked
+    rather than assumed."""
+    from lib.feature_id import resolve_feature_id
+
+    feature = side_trail(None, "3")
+    feature["properties"]["OBJECTID"] = 7
+
+    records = export_spurs.build_spur_records([feature], CENTERLINE, [], TYPE_DOMAIN)
+
+    trails_side = resolve_feature_id("side_trails", feature, feature["properties"], 0)
+    assert list(records) == [f"side_trails:{trails_side}"]
+    assert list(records) == ["side_trails:generated-0"]
+
+
 def test_the_destination_is_a_published_poi_id():
     records = export_spurs.build_spur_records(
         [side_trail("abc-123", "3")], CENTERLINE, [shelter("shelter:rocky-run")], TYPE_DOMAIN

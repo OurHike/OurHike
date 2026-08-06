@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, act, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { resetMapLibreMock } from '../test/mocks/maplibre-gl'
+import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { MapScreen } from './MapScreen'
 import { ATTRIBUTION, LIVE_ATTRIBUTION } from '../map/style'
 
@@ -50,6 +50,10 @@ const PROPS = {
     { id: 's1', name: 'Rocky Run Shelter', type: 'shelter', mile: 1043.2 },
   ],
   onSelectSearchResult: vi.fn(),
+
+  selectedPoi: null,
+  onSelectPoi: vi.fn(),
+  onClosePoi: vi.fn(),
 
   elevation: {
     samples: [
@@ -117,9 +121,9 @@ describe('MapScreen', () => {
     const user = userEvent.setup()
     render(<MapScreen {...PROPS} />)
 
-    await user.click(screen.getByRole('tab', { name: 'Downloads' }))
+    await user.click(screen.getByRole('tab', { name: 'More' }))
 
-    expect(PROPS.onSelectTab).toHaveBeenCalledWith('downloads')
+    expect(PROPS.onSelectTab).toHaveBeenCalledWith('more')
   })
 
   it('slots the elevation ribbon and waypoint lanes above the canvas', () => {
@@ -173,5 +177,146 @@ describe('MapScreen', () => {
 
     expect(PROPS.onOpenLegend).toHaveBeenCalledTimes(1)
     expect(PROPS.onOpenSearch).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows no waypoint card until a pin has been tapped', () => {
+    render(<MapScreen {...PROPS} />)
+
+    expect(screen.queryByRole('dialog', { name: /waypoint/i })).not.toBeInTheDocument()
+  })
+
+  it('puts the tapped pin’s detail over the map', () => {
+    render(
+      <MapScreen
+        {...PROPS}
+        selectedPoi={{
+          id: 'atc_shelters:abc',
+          name: 'Rocky Run Shelter',
+          type: 'shelter',
+          lat: 39.4,
+          lon: -77.6,
+          confidence: 'high',
+          mile: 1043.2,
+        }}
+      />,
+    )
+
+    expect(screen.getByRole('dialog', { name: /waypoint/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Rocky Run Shelter' })).toBeInTheDocument()
+  })
+
+  it('hands the card the live map, so it anchors to the pin it describes', () => {
+    // The shell above owns the POI data and MapView owns the canvas; this is
+    // the screen that has to introduce them. A card that never projected the
+    // POI's coordinates would render docked at the canvas origin - the exact
+    // bottom-anchored posture this card replaced.
+    render(
+      <MapScreen
+        {...PROPS}
+        selectedPoi={{
+          id: 'atc_shelters:abc',
+          name: 'Rocky Run Shelter',
+          type: 'shelter',
+          lat: 39.4,
+          lon: -77.6,
+          confidence: 'high',
+          mile: 1043.2,
+        }}
+      />,
+    )
+
+    expect(MockMap.live).toHaveLength(1)
+    expect(MockMap.live[0].projectCalls).toContainEqual([-77.6, 39.4])
+    expect(screen.getByRole('dialog', { name: /waypoint/i }).style.transform).not.toBe('')
+  })
+
+  it('carries a failed live background from the map up into the strip', () => {
+    // The whole path in one test: MapLibre reports a source error, the map
+    // view observes it, and the strip says so. PROPS is offline by default,
+    // so `online` is forced here - the point of this flag is the case where
+    // the phone believes it has a connection and the tiles never come.
+    render(<MapScreen {...PROPS} online />)
+
+    expect(screen.queryByText(/no live map/i)).not.toBeInTheDocument()
+
+    act(() => {
+      MockMap.live[0].emit('error', {
+        sourceId: 'osm',
+        error: new Error('Failed to fetch'),
+      })
+    })
+
+    expect(screen.getByText(/no live map/i)).toBeInTheDocument()
+  })
+
+  it('says on the map screen when Data Saver is holding the live sheet back', () => {
+    render(<MapScreen {...PROPS} backgroundOverride="data-saver" />)
+
+    expect(screen.getByText(/data saver/i)).toBeInTheDocument()
+  })
+
+  it('puts the background choice in the legend, one tap from the map', () => {
+    // It used to live only in Settings, three taps away behind a select. The
+    // moment someone wants to change the background is the moment the map is
+    // not showing what they expected, which is the worst moment to send them
+    // hunting through a settings screen.
+    render(
+      <MapScreen
+        {...PROPS}
+        legendOpen
+        backgroundChoice="usgs_topo_offline"
+        onChangeBackground={vi.fn()}
+      />,
+    )
+
+    const legend = screen.getByRole('dialog', { name: /legend/i })
+    expect(within(legend).getByRole('radio', { name: /live/i })).toBeInTheDocument()
+    expect(within(legend).getByRole('radio', { name: /downloaded/i })).toBeChecked()
+  })
+
+  it('reports a background change from the legend up to its owner', async () => {
+    const user = userEvent.setup()
+    const onChangeBackground = vi.fn()
+    render(
+      <MapScreen
+        {...PROPS}
+        legendOpen
+        backgroundChoice="usgs_topo_offline"
+        onChangeBackground={onChangeBackground}
+      />,
+    )
+
+    await user.click(screen.getByRole('radio', { name: /live/i }))
+
+    expect(onChangeBackground).toHaveBeenCalledWith('hiking_topo_live')
+  })
+
+  it('carries the way to the download, which is the only one left on this screen', async () => {
+    // The Downloads tab is gone (chrome/tabs.ts). If this link does not reach
+    // the shell, a hiker on the map has no route to the download at all.
+    const user = userEvent.setup()
+    const onOpenDownloads = vi.fn()
+    render(
+      <MapScreen
+        {...PROPS}
+        legendOpen
+        backgroundChoice="usgs_topo_offline"
+        onChangeBackground={vi.fn()}
+        onOpenDownloads={onOpenDownloads}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /choose what to download/i }))
+
+    expect(onOpenDownloads).toHaveBeenCalledTimes(1)
+  })
+
+  it('draws no picker when the shell has nowhere to write the choice', () => {
+    // The legend is rendered in tests and stories without a shell behind it,
+    // and a control that silently discards what it is told is worse than one
+    // that is not there.
+    render(<MapScreen {...PROPS} legendOpen />)
+
+    expect(screen.queryByRole('radio', { name: /live/i })).not.toBeInTheDocument()
   })
 })

@@ -20,6 +20,7 @@
  *
  * What §6 asks for and what is here:
  *   layout            the tab bar becomes a left sidebar          done
+ *   branding          the mark at the foot of that sidebar        done
  *   legend            a persistent panel, not a dismissable sheet done
  *   search            a field over the map, not a full sheet      done
  *                     (still opened from the header - Search renders
@@ -61,6 +62,14 @@
     padding-top: var(--space-3, 12px);
   }
 
+  /* The tabs run down the sidebar rather than across it. Left flexible rather
+     than sized: growing to fill the column is what pushes the brand mark below
+     it onto the bottom edge, with no height for either one to be told. */
+  .app__screen > .tab-bar .tab-bar__tabs,
+  .map-screen > .tab-bar .tab-bar__tabs {
+    flex-direction: column;
+  }
+
   .app__screen > .tab-bar .tab-bar__tab,
   .map-screen > .tab-bar .tab-bar__tab {
     flex: 0 0 auto;
@@ -71,6 +80,50 @@
     /* The selected marker moves to the inside edge, where the eye already is
        for a vertical list. */
     border-left: 3px solid transparent;
+  }
+
+  /* ---------- Brand mark: the foot of the sidebar ---------- */
+
+  /* The bottom-left corner of the page, which exists only in this layout - on a
+     phone this element is not drawn at all (chrome.css).
+
+     It is the LAST child of a column whose tab list grows, so it is carried to
+     the bottom edge by the layout rather than pinned there: no absolute
+     positioning, and no way for it to end up on top of the tabs if the tab set
+     ever grows past the height of the screen. */
+  .app__screen > .tab-bar .tab-bar__brand,
+  .map-screen > .tab-bar .tab-bar__brand {
+    display: flex;
+    /* Stacked, not side by side. At a 64px icon and a 32px wordmark the
+       horizontal lockup is about 206px wide, against 176px of usable width in
+       a 13rem sidebar - so laying it out in a row would either overflow the
+       column or force the wordmark back down to a size that reads as a
+       caption. */
+    flex-direction: column;
+    gap: var(--space-2, 8px);
+    padding: var(--space-4, 16px);
+    /* Aligned with the tab labels above it rather than centred in the column.
+       The sidebar has one left edge and everything in it reads off that. */
+    align-items: flex-start;
+    /* Back to DOM order. On a phone the mark is pulled ahead of the tabs to
+       reach the left end of the row; here it belongs after them, at the foot
+       of the column. */
+    order: 0;
+  }
+
+  /* Room for the real mark once the bar is a 13rem column rather than a strip
+     shared with three thumb targets. */
+  .app__screen > .tab-bar .tab-bar__brand-icon,
+  .map-screen > .tab-bar .tab-bar__brand-icon {
+    width: 64px;
+    height: 64px;
+    /* The artwork's own 20/96 at this size, as on the phone. */
+    border-radius: 13px;
+  }
+
+  .app__screen > .tab-bar .tab-bar__brand-wordmark,
+  .map-screen > .tab-bar .tab-bar__brand-wordmark {
+    display: block;
   }
 
   .app__screen > .tab-bar .tab-bar__tab[aria-selected='true'],
@@ -112,6 +165,20 @@
     border-top-right-radius: 0;
     border-left: 1px solid var(--border-1);
     box-shadow: none;
+    /* A column, so the download link at the end of it can be pushed to the
+       foot of the panel below. On a phone the legend is a sheet that ends
+       where its content ends and the link is already the bottom of it; here
+       the panel is full height, and left in normal flow the link would sit
+       against the pin list with a screen of empty paper under it. */
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* The rule that does the pushing. It collapses to nothing the moment the
+     content is taller than the panel, which is the right answer then too -
+     the link goes back to being the last thing you scroll to. */
+  .legend--persistent .downloads-link {
+    margin-top: auto;
   }
 
   /* A panel that is always there has nothing to dismiss, and a close button
@@ -156,6 +223,30 @@
     border: 1px solid var(--border-1);
     border-radius: 8px;
   }
+
+  /* ---------- The download window: a panel, not a takeover ---------- */
+
+  /* WEBSITE.md §6's "download UX reframed for a machine with signal" is copy
+     (screens/Downloads.tsx already says the download is for the phone you will
+     be carrying); this is its shape. A 1440px screen filled edge to edge by
+     three radio buttons is a dialog pretending to be an app, and it hides the
+     map that is the reason anyone opened it. */
+  .downloads-dialog {
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-5, 20px);
+  }
+
+  .downloads-dialog__panel {
+    flex: 0 1 auto;
+    width: min(28rem, 100%);
+    max-height: 100%;
+    border-radius: 14px;
+    /* The head's bottom border and the panel's corners have to agree, and the
+       body is what would otherwise square them off when it scrolls. */
+    overflow: hidden;
+    box-shadow: 0 12px 40px rgb(0 0 0 / 24%);
+  }
 }
 
 /* ---------- Input: what a mouse and a keyboard get ---------- */
@@ -190,16 +281,22 @@
 
 /* Focus rings, everywhere, with no media query around them.
  *
- * :focus-visible only matches when the browser judges a focus ring warranted -
- * keyboard navigation, essentially - so it is already silent for a tap. That
- * makes gating it on pointer or width both unnecessary and harmful: a phone
- * with a bluetooth keyboard, or a screen-reader user driving a touch device,
- * needs to see where focus is, and neither shows up as `pointer: fine`.
+ * :focus-visible mostly matches when the browser judges a focus ring
+ * warranted - keyboard navigation, essentially - so for buttons and links it
+ * is silent for a tap. (Not for text inputs: browsers match those on ANY
+ * focus, including a tap into the search field, so this rule does fire on
+ * phones.) Gating it on pointer or width would still be both unnecessary and
+ * harmful: a phone with a bluetooth keyboard, or a screen-reader user
+ * driving a touch device, needs to see where focus is, and neither shows up
+ * as `pointer: fine`.
  *
- * This is the one thing in this file the phone layout does get, and it is
- * deliberate. */
+ * Outline ONLY - nothing here may restyle the control itself. :where()
+ * contributes zero specificity, which leaves this selector at (0,1,0), a
+ * cascade TIE with every single-class rule in the app; this file is imported
+ * last, so a tie is a win, and a border-radius here once snapped the 12px
+ * search field square under focus. The outline follows each control's own
+ * corner rounding by itself. */
 :where(button, a, input, select, [tabindex]):focus-visible {
   outline: 2px solid var(--brand-primary);
   outline-offset: 2px;
-  border-radius: 2px;
 }

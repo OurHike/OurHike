@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { StrictMode } from 'react'
-import { render, cleanup, screen } from '@testing-library/react'
+import { render, cleanup, screen, waitFor } from '@testing-library/react'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { MapView } from './MapView'
 import { poiIconId } from './poiIcons'
 import {
   poiFeatureCollection,
   poiTypeFilter,
+  POI_ID_PROPERTY,
   POI_LAYER_ID,
   POI_SOURCE_ID,
 } from './poiLayers'
@@ -18,8 +19,9 @@ import type { MapPoint } from '../lib/legendContents'
 // React StrictMode deliberately mounts -> unmounts -> remounts in development
 // precisely to expose that class of bug, so these tests run under it.
 
-const { registrationOrder, workerOrder } = vi.hoisted(() => ({
+const { registrationOrder, basemapOrder, workerOrder } = vi.hoisted(() => ({
   registrationOrder: [] as number[],
+  basemapOrder: [] as number[],
   workerOrder: [] as number[],
 }))
 
@@ -34,6 +36,18 @@ vi.mock('./protocol', async () => {
     PMTILES_SCHEME: 'pmtiles',
     registerPMTilesProtocol: vi.fn(() => {
       registrationOrder.push(Recorded.instances.length)
+    }),
+  }
+})
+
+// The basemap:// scheme has the same before-any-map requirement: the live
+// style's osm source declares a basemap:// tiles template, and a map built
+// first would ask for tiles through a scheme nothing answers.
+vi.mock('./basemap', async () => {
+  const { MockMap: Recorded } = await import('../test/mocks/maplibre-gl')
+  return {
+    registerBasemapProtocol: vi.fn(() => {
+      basemapOrder.push(Recorded.instances.length)
     }),
   }
 })
@@ -61,6 +75,7 @@ const PROPS = {
 beforeEach(() => {
   resetMapLibreMock()
   registrationOrder.length = 0
+  basemapOrder.length = 0
   workerOrder.length = 0
 })
 
@@ -117,6 +132,13 @@ describe('MapView', () => {
     expect(registrationOrder[0]).toBe(0)
   })
 
+  it('registers the basemap protocol before constructing any map', () => {
+    render(<MapView {...PROPS} />)
+
+    expect(basemapOrder.length).toBeGreaterThan(0)
+    expect(basemapOrder[0]).toBe(0)
+  })
+
   it('points MapLibre at its bundled worker before constructing any map', () => {
     // Not a detail of setup order: with no worker MapLibre parses no tiles of
     // any kind, so the basemap, the contours, the trail line and the pins all
@@ -159,15 +181,6 @@ describe('MapView', () => {
 
     expect(MockMap.instances).toHaveLength(builtInitially)
     expect(MockMap.live).toHaveLength(1)
-  })
-
-  it('applies the off-archive backdrop once the style is up', () => {
-    render(<MapView {...PROPS} />)
-    const [map] = MockMap.live
-
-    map.emit('load')
-
-    expect(map.paintProperties.has('backdrop/background-pattern')).toBe(true)
   })
 
   it('leaves no load listener behind after unmount', () => {
@@ -294,6 +307,51 @@ describe('POI pins', () => {
 
     expect(map.listenerCount('load')).toBe(0)
   })
+
+  it('reports which pin was tapped, so the shell can describe it', () => {
+    const onSelectPoi = vi.fn()
+    render(<MapView {...PROPS} pois={POIS} onSelectPoi={onSelectPoi} />)
+    const [map] = MockMap.live
+    loadStyle(map)
+    map.renderedFeatures.set(POI_LAYER_ID, [
+      { properties: { [POI_ID_PROPERTY]: 's1', poi_type: 'shelter' } },
+    ])
+
+    map.emit('click', { point: { x: 120, y: 240 } })
+
+    expect(onSelectPoi).toHaveBeenCalledWith('s1')
+  })
+
+  it('re-binds taps for a new handler without rebuilding the map', () => {
+    // The shell's handler identity changes for reasons that have nothing to do
+    // with the pins. Folding this into the POI-data effect would re-serialise
+    // every pin on the trail whenever it did.
+    const { rerender } = render(<MapView {...PROPS} pois={POIS} onSelectPoi={vi.fn()} />)
+    const [map] = MockMap.live
+    loadStyle(map)
+    map.renderedFeatures.set(POI_LAYER_ID, [
+      { properties: { [POI_ID_PROPERTY]: 'w1', poi_type: 'water' } },
+    ])
+    const second = vi.fn()
+
+    rerender(<MapView {...PROPS} pois={POIS} onSelectPoi={second} />)
+    map.emit('click', { point: { x: 10, y: 10 } })
+
+    expect(MockMap.instances).toHaveLength(1)
+    expect(second).toHaveBeenCalledWith('w1')
+    expect(map.listenerCount('click')).toBe(1)
+  })
+
+  it('leaves no tap listeners behind after unmount', () => {
+    const { unmount } = render(<MapView {...PROPS} pois={POIS} onSelectPoi={vi.fn()} />)
+    const [map] = MockMap.live
+    loadStyle(map)
+
+    unmount()
+
+    expect(map.listenerCount('click')).toBe(0)
+    expect(map.listenerCount('mousemove')).toBe(0)
+  })
 })
 
 describe('opening view', () => {
@@ -347,5 +405,93 @@ describe('opening view', () => {
       expect(options.zoom).toBeDefined()
       expect(options.bounds).toBeUndefined()
     })
+  })
+})
+
+// #216: the archive is a range of scales, not a map of everywhere. The app
+// opens on the whole trail (~z3.8 on a phone) and every archive built before
+// 2026-08-05 starts at z6, so the opening view had nothing to draw and a
+// complete 314 MB download rendered as flat paper on every launch.
+//
+// MockMap does not implement fitBounds, so a map constructed with `bounds`
+// sits at its initial zoom of 0 - which is below any floor worth testing and
+// is exactly the state the clamp exists for.
+describe('keeping the opening camera inside what the download covers', () => {
+  const CORRIDOR: [[number, number], [number, number]] = [
+    [-84.73, 34.2],
+    [-68.3, 46.34],
+  ]
+
+  it('lifts the opening view to the archive floor when it falls under it', async () => {
+    render(
+      <MapView
+        {...PROPS}
+        background="usgs_topo_offline"
+        bounds={CORRIDOR}
+        archiveZooms={{ minZoom: 6, maxZoom: 12 }}
+      />,
+    )
+
+    // 5, not the header's 6: the @2x tileSize declaration (#191) means
+    // camera z5 already draws the archive's z6 tiles.
+    await waitFor(() => expect(MockMap.live[0]?.getZoom()).toBe(5))
+  })
+
+  it('leaves it alone once the archive reaches every zoom', async () => {
+    // What the pipeline builds from now on. The whole-trail opening view is a
+    // deliberate decision (App.tsx) and must survive untouched.
+    render(
+      <MapView
+        {...PROPS}
+        background="usgs_topo_offline"
+        bounds={CORRIDOR}
+        archiveZooms={{ minZoom: 0, maxZoom: 12 }}
+      />,
+    )
+
+    await waitFor(() => expect(MockMap.live.length).toBeGreaterThan(0))
+    expect(MockMap.live[0].cameraMoves).toHaveLength(0)
+  })
+
+  it('leaves the live background alone, which covers every zoom itself', async () => {
+    render(
+      <MapView
+        {...PROPS}
+        background="hiking_topo_live"
+        bounds={CORRIDOR}
+        archiveZooms={{ minZoom: 6, maxZoom: 12 }}
+      />,
+    )
+
+    await waitFor(() => expect(MockMap.live.length).toBeGreaterThan(0))
+    expect(MockMap.live[0].cameraMoves).toHaveLength(0)
+  })
+
+  it('claims nothing while the archive coverage is still unknown', async () => {
+    // Not-looked-yet must never be acted on as though the download were known
+    // to fall short - that conflation is what made #216 invisible.
+    render(<MapView {...PROPS} background="usgs_topo_offline" bounds={CORRIDOR} />)
+
+    await waitFor(() => expect(MockMap.live.length).toBeGreaterThan(0))
+    expect(MockMap.live[0].cameraMoves).toHaveLength(0)
+  })
+
+  it('does not touch a camera the hiker has already moved', async () => {
+    // The shell passes `bounds` only for the very first view; once there is a
+    // remembered camera it sends centre and zoom instead. So a hiker who
+    // deliberately zoomed out to look at the whole trail is never yanked back.
+    render(
+      <MapView
+        {...PROPS}
+        background="usgs_topo_offline"
+        center={[-77, 39]}
+        zoom={4}
+        archiveZooms={{ minZoom: 6, maxZoom: 12 }}
+      />,
+    )
+
+    await waitFor(() => expect(MockMap.live.length).toBeGreaterThan(0))
+    expect(MockMap.live[0].getZoom()).toBe(4)
+    expect(MockMap.live[0].cameraMoves).toHaveLength(0)
   })
 })

@@ -64,6 +64,20 @@ TYPE_LITERAL_ALIASES = {
 # the wrong end of the trail.
 JUNCTION_MAX_M = 100.0
 
+# How close an endpoint must sit to the AT to be considered ON it, for the
+# alternate-route refusal in orient().
+#
+# Deliberately much tighter than JUNCTION_MAX_M. Any spur shorter than the
+# junction radius has its far end "near" the AT by construction - at the
+# p50 spur length of 385 ft (features/SPUR_TRAILS.md) both ends clear the
+# 100 m bar - so "both ends within JUNCTION_MAX_M" cannot be the alternate-
+# route signature without refusing half the real spurs. What distinguishes
+# an alternate route is that both ends actually rejoin the trail: against
+# vertex spacing measured in metres (see build_centerline_index) and GPS
+# digitisation noise, a rejoining end reads within a few metres, and 25 m
+# covers that with room while staying under the p25 spur length of 162 ft.
+ON_TRAIL_M = 25.0
+
 # How far from a spur's far end a POI may sit and still be recorded as its
 # destination.
 #
@@ -217,30 +231,42 @@ def orient(
     the same thing `export_elevation.py`'s ordered_oriented_parts() exists to
     handle for the centerline.
 
-    Returns None in two cases, both of which must not be guessed at:
+    Returns None in three cases, none of which must be guessed at:
 
-    - BOTH ends sit on the AT. That is an alternate route, not a spur, and ATC
-      already codes those as Type=1 - but if one appears under Type=3 anyway,
-      picking whichever end won by a metre would name a destination that is
-      just a different bit of the AT.
-    - NEITHER end is near the AT. Then this line's relationship to the trail is
-      not what the code assumed, and the "far end" is not meaningfully far
-      from anything.
+    - BOTH ends sit ON the AT (within ON_TRAIL_M). That is an alternate
+      route, not a spur, and ATC already codes those as Type=1 - but if one
+      appears under Type=3 anyway, picking whichever end won by a metre
+      would name a destination that is just a different bit of the AT. Note
+      this is the ON-the-trail bound, not the junction radius: a spur
+      shorter than JUNCTION_MAX_M has both ends within the radius by
+      construction, and half of all real spurs are (p50 is 385 ft), so
+      "both within the radius" refuses them exactly when the nearer end
+      tells the two apart fine.
+    - BOTH ends are within the junction radius at exactly the same distance.
+      Then nothing tells them apart, and a coin flip would name a
+      destination at the wrong end half the time.
+    - NEITHER end is near the AT. Then this line's relationship to the trail
+      is not what the code assumed, and the "far end" is not meaningfully
+      far from anything.
     """
     first, last = ends
     _, first_distance = centerline.nearest(*first)
     _, last_distance = centerline.nearest(*last)
 
-    first_on_trail = first_distance is not None
-    last_on_trail = last_distance is not None
-
-    if first_on_trail and last_on_trail:
+    if first_distance is None and last_distance is None:
         return None
-    if first_on_trail:
-        return first, last
-    if last_on_trail:
+    if first_distance is None:
         return last, first
-    return None
+    if last_distance is None:
+        return first, last
+
+    if first_distance <= ON_TRAIL_M and last_distance <= ON_TRAIL_M:
+        return None
+    if first_distance == last_distance:
+        return None
+    if first_distance < last_distance:
+        return first, last
+    return last, first
 
 
 def resolve_destination(

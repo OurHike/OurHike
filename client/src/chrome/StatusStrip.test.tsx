@@ -79,4 +79,75 @@ describe('StatusStrip', () => {
 
     expect(screen.getByRole('status')).toBeInTheDocument()
   })
+
+  it('says the live map never loaded, which "Offline" cannot say', () => {
+    // The gap this closes: navigator.onLine is optimistic, so a captive
+    // portal, a filtered network or an outage at the tile host all read as a
+    // working connection. For a hiker who has downloaded nothing there is no
+    // archive underneath either, so the screen is blank paper - and until
+    // this flag existed, nothing anywhere said why.
+    render(<StatusStrip {...PROPS} liveBackgroundUnavailable />)
+
+    expect(screen.getByText(/no live map/i)).toBeInTheDocument()
+  })
+
+  it('does not add a second flag for one condition when already offline', () => {
+    // "Offline" already accounts for the paper. Two flags saying one thing is
+    // noise on a strip this narrow.
+    render(<StatusStrip {...PROPS} online={false} liveBackgroundUnavailable />)
+
+    expect(screen.queryByText(/no live map/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/offline/i)).toBeInTheDocument()
+  })
+
+  it('says when Data Saver is the reason the live map is missing', () => {
+    // lib/dataSaver.ts's rule is that the app may override a preference and
+    // may not do it silently. Settings said so; the map screen did not, and
+    // the map screen is where the override is actually visible - as nothing
+    // at all, on a phone with no download.
+    render(<StatusStrip {...PROPS} backgroundOverride="data-saver" />)
+
+    expect(screen.getByText(/data saver/i)).toBeInTheDocument()
+  })
+
+  it('says the live map is standing in for a download that is not there yet', () => {
+    // The opposite reason, and it must not borrow the Data Saver words: here
+    // the app is fetching tiles rather than withholding them.
+    render(<StatusStrip {...PROPS} backgroundOverride="nothing-downloaded" />)
+
+    expect(screen.getByText(/nothing downloaded yet/i)).toBeInTheDocument()
+    expect(screen.queryByText(/data saver/i)).not.toBeInTheDocument()
+  })
+
+  it('stays quiet about the background when nothing is wrong with it', () => {
+    render(<StatusStrip {...PROPS} />)
+
+    expect(screen.queryByText(/no live map/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/data saver/i)).not.toBeInTheDocument()
+  })
+
+  it('says when the view is zoomed out past what the download covers', () => {
+    // #216. Without this the app draws paper and offers no account of itself,
+    // which is exactly how a complete 314 MB download came to be reported as
+    // "no data downloaded".
+    render(<StatusStrip {...PROPS} belowArchiveZoom />)
+
+    expect(screen.getByText(/zoomed out past your download/i)).toBeInTheDocument()
+  })
+
+  it('does not call that an override, because nothing was overridden', () => {
+    // The chosen background IS what is drawn; it simply has no tiles at this
+    // scale. Borrowing either override's wording would be the quiet mismatch
+    // lib/dataSaver.ts exists to prevent, one condition further along.
+    render(<StatusStrip {...PROPS} belowArchiveZoom />)
+
+    expect(screen.queryByText(/data saver/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/nothing downloaded yet/i)).not.toBeInTheDocument()
+  })
+
+  it('stays quiet while the download does cover the view', () => {
+    render(<StatusStrip {...PROPS} />)
+
+    expect(screen.queryByText(/zoomed out past/i)).not.toBeInTheDocument()
+  })
 })

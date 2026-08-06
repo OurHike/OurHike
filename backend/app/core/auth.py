@@ -6,16 +6,36 @@ own JWTs on sign-in (Google/Apple/email, MFA, email verification all happen
 there) - this backend never issues a token itself, only verifies the one
 Supabase's client SDK hands back on each request.
 
-`verify_supabase_jwt` is kept as one small, isolated function on purpose:
-*how* to verify isn't fully pinned down yet. A Supabase project can be
-configured for either a shared HS256 secret (`SUPABASE_JWT_SECRET`, what's
-implemented below) or asymmetric JWKS-based verification, and which one a
-real project actually uses isn't knowable until a real Supabase project
-exists. Swapping the verification strategy later means editing this one
-function, not every call site that depends on it.
+`verify_supabase_jwt` was kept as one small, isolated function on purpose,
+because *how* to verify was not knowable without a real project to look at.
+It is now, and the answer turned out to be both.
+
+**A hosted Supabase project signs with ES256 and publishes the public half
+as a JWKS.** Confirmed against a token this project really issued: the
+header reads `{"alg": "ES256", "kid": "..."}`. There is no shared secret in
+that arrangement, so `SUPABASE_JWT_SECRET` is not merely unused, it does not
+exist to be set.
+
+**A self-hosted Supabase signs with HS256 against `JWT_SECRET`.** That path
+is not legacy cruft to be tidied away: OurHikeValues.md leans on
+self-hosting as the escape hatch that keeps this project inheritable
+(values #6 and #7), and dropping HS256 would quietly close it.
+
+So the algorithm named in the token's own header selects the key, and each
+branch pins exactly one algorithm and one source of key material. That
+dispatch is the part worth reviewing carefully, because reading `alg` off an
+unverified header is how algorithm-confusion attacks start. The attack is
+substituting a key the verifier will accept for one it should not - classically,
+handing an RS256 *public* key back as the HMAC secret. It cannot happen here:
+the HS256 branch only ever uses `settings.supabase_jwt_secret`, a value that
+never appears in the JWKS and is never derived from the token, and the
+asymmetric branch only ever uses a key fetched from the project's own JWKS
+endpoint. Neither branch can be steered to the other's key material, and an
+`alg` naming anything else is refused outright rather than defaulted.
 """
 
 from collections.abc import Iterable
+from functools import lru_cache
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -27,6 +47,12 @@ from app.core.orm import commit_and_refresh
 from app.db.session import get_db
 from app.models.profile import Profile, Role
 
+# The asymmetric algorithms a Supabase project can sign with. ES256 is what
+# hosted projects issue today; RS256 is accepted because Supabase's own key
+# settings offer it and a project switched to it should not need a code change
+# to keep working.
+ASYMMETRIC_ALGORITHMS = ("ES256", "RS256")
+
 # auto_error=False so a missing/malformed Authorization header doesn't short
 # -circuit into FastAPI's own default response - `HTTPBearer`'s built-in
 # auto_error path returns 403, not 401, on a missing header, which would be
@@ -35,13 +61,35 @@ from app.models.profile import Profile, Role
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
+@lru_cache(maxsize=1)
+def _jwk_client() -> jwt.PyJWKClient:
+    """The project's published signing keys.
+
+    Built once and cached, because PyJWKClient does its own key caching and a
+    fresh client per request would fetch the key set on every single API call.
+    """
+    return jwt.PyJWKClient(f"{settings.supabase_url}/auth/v1/.well-known/jwks.json")
+
+
+def signing_key_for(token: str) -> object:
+    """The public key this token says it was signed with.
+
+    A seam of its own so tests can supply a key without reaching the network -
+    verifying a real signature against a real key is the point of those tests,
+    and fetching someone's JWKS to do it is not.
+    """
+    return _jwk_client().get_signing_key_from_jwt(token).key
+
+
 def verify_supabase_jwt(token: str) -> dict:
     """Decode and verify a Supabase-issued JWT, returning its claims.
 
     Raises `jwt.PyJWTError` (or a subclass, e.g. `InvalidSignatureError` /
     `ExpiredSignatureError`) on a bad signature or an expired token -
     callers are expected to translate that into an HTTP 401, not to treat a
-    verification failure as a 500.
+    verification failure as a 500. `InvalidAlgorithmError` for an `alg` this
+    does not accept is deliberately in that same family, so an unexpected
+    signing algorithm reaches a hiker as "not signed in" rather than as a 500.
 
     The `audience` argument is load-bearing and not optional politeness.
     PyJWT refuses a token that carries an `aud` claim when the caller named
@@ -52,11 +100,31 @@ def verify_supabase_jwt(token: str) -> dict:
     have come back 401, with the token, the secret and the signature all
     perfectly correct.
     """
+    algorithm = jwt.get_unverified_header(token).get("alg")
+
+    if algorithm in ASYMMETRIC_ALGORITHMS:
+        key: object = signing_key_for(token)
+    elif algorithm == "HS256":
+        if not settings.supabase_jwt_secret:
+            # A hosted project has no shared secret to configure, so this is
+            # not a misconfiguration to shout about on every request - it is
+            # an HS256 token arriving at a deployment that verifies asymmetric
+            # ones. Refusing it is the correct answer, and saying which of the
+            # two is missing is what makes the 401 diagnosable.
+            raise jwt.InvalidKeyError("Token is signed with HS256 but SUPABASE_JWT_SECRET is not set.")
+        key = settings.supabase_jwt_secret
+    else:
+        raise jwt.InvalidAlgorithmError(f"Unsupported signing algorithm: {algorithm!r}")
+
     audience = settings.supabase_jwt_audience
     return jwt.decode(
         token,
-        settings.supabase_jwt_secret,
-        algorithms=["HS256"],
+        key,
+        # The single algorithm the header named, not the whole allowed set.
+        # It has already been checked against that set above, and narrowing to
+        # one leaves no room for a token to be verified under an algorithm
+        # other than the one it claims.
+        algorithms=[algorithm],
         # An empty setting means "this project's tokens are shaped some other
         # way" - skip the check rather than demand a claim that is not there.
         **({"audience": audience} if audience else {"options": {"verify_aud": False}}),

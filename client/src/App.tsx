@@ -313,10 +313,19 @@ function App() {
   useAppUpdate()
 
   useEffect(() => {
-    void loadPreferences().then((stored) => {
-      setPreferences(stored)
-      setPreferencesLoaded(true)
-    })
+    void loadPreferences().then(
+      (stored) => {
+        setPreferences(stored)
+        setPreferencesLoaded(true)
+      },
+      // A storage read that rejects - private browsing, an evicted database -
+      // must not keep the gate below closed: `preferencesLoaded` false renders
+      // NOTHING, and a rejection here left the app a permanently blank page
+      // with the map a tick away the whole time. Defaults are the honest
+      // fallback; the preferences another session stored are unreachable
+      // either way.
+      () => setPreferencesLoaded(true),
+    )
   }, [])
 
   // Two facts, not one number. A report waiting for signal resolves itself;
@@ -640,19 +649,18 @@ function App() {
   /**
    * The closure a hiker is about to walk into, in one line, or null.
    *
-   * Needs all three of a mile, a direction and a closure list, and says
-   * nothing without them - "ahead" is meaningless before the app knows which
-   * way someone is walking, and a NOBO/SOBO mix-up would stay silent about
-   * exactly the closure being walked into (lib/closureBanner.ts).
+   * Needs a mile and a closure list; the direction goes down as whatever is
+   * known, undefined included. "Ahead" is meaningless before the app knows
+   * which way someone is walking - a guess would put a NOBO hiker's closure
+   * behind them - but standing INSIDE a closure needs no direction at all,
+   * and direction takes a quarter mile of walking to establish
+   * (lib/hikeDirection.ts). Gating the whole banner on it kept the app
+   * silent for exactly the first quarter mile of a closed section, which is
+   * where the warning matters most. closureBanner.ts owns that split.
    */
   const closureAhead = useMemo(() => {
-    // `direction.direction` stays undefined until enough movement has happened
-    // to be sure (lib/hikeDirection.ts), and that is the case this guard is
-    // really for: a guess would put a NOBO hiker's closure behind them and say
-    // nothing about the one they are walking into.
-    const heading = direction?.direction
-    if (closures === null || fix === null || heading === undefined) return null
-    return nearestClosureBanner(closures, fix.mile, heading)
+    if (closures === null || fix === null) return null
+    return nearestClosureBanner(closures, fix.mile, direction?.direction)
   }, [closures, fix, direction])
 
   /**
@@ -1208,9 +1216,14 @@ function App() {
   const downloadsWindow = downloadsOpen && (
     <DownloadsDialog onClose={() => setDownloadsOpen(false)}>
       {!DATA_CONFIGURED && (
+        // Written for the hiker who hits it, even though the condition is a
+        // builder's mistake: an env var name in a role="alert" reads as
+        // gibberish to the one person guaranteed to be shown it. Whoever
+        // builds the app finds VITE_DATA_BASE_URL through lib/config.ts.
         <p role="alert" className="app__notice">
-          No data source is configured in this build, so downloading will not work.
-          VITE_DATA_BASE_URL has to point at the published bucket.
+          This copy of the app was built without a place to download maps from, so
+          downloading cannot work. That is a fault in the app itself — not your phone, and
+          not your signal.
         </p>
       )}
       {dataError !== null && (
@@ -1279,32 +1292,43 @@ function App() {
   )
 
   if (activeTab === 'more') {
+    // Its own boundary for the same reason the map has one, with the roles
+    // reversed: a throw anywhere in Settings used to escape to the ROOT
+    // boundary, which has no tab bar and no reset - one bad stored value
+    // rendering More was a permanently dead app. Caught here, the tab bar
+    // survives underneath and the map stays one tap away, which is the only
+    // recovery that matters on a trail.
     return (
       <>
         <div className="app__screen">
           <div>
-            <More
-              account={account}
-              reporterType="thru"
-              onSignIn={() => setAuthFlow({ screen: 'choose', afterReport: false })}
-              onSignOut={() => void handleSignOut()}
-              preferences={preferences}
-              onChange={updatePreferences}
-              onChangeBackground={handleChangeBackground}
-              lastSyncedAt={lastSyncedAt}
-              onSync={notYet}
-              onExport={notYet}
-              now={now}
-              dataSaver={saveData}
-              archiveDownloaded={archiveDownloaded}
-              hasDownload={anySheetDownloaded}
-              onOpenDownloads={openDownloads}
-              onStartReport={() => setReporting({ step: 'pick' })}
-              queuedReportCount={queuedCount}
-              stuckReports={stuckReports}
-              onRetryReport={handleRetryReport}
-              onDiscardReport={handleDiscardReport}
-            />
+            <ErrorBoundary
+              resetKey={activeTab}
+              fallback={() => <ScreenFailed what="This screen" />}
+            >
+              <More
+                account={account}
+                reporterType="thru"
+                onSignIn={() => setAuthFlow({ screen: 'choose', afterReport: false })}
+                onSignOut={() => void handleSignOut()}
+                preferences={preferences}
+                onChange={updatePreferences}
+                onChangeBackground={handleChangeBackground}
+                lastSyncedAt={lastSyncedAt}
+                onSync={notYet}
+                onExport={notYet}
+                now={now}
+                dataSaver={saveData}
+                archiveDownloaded={archiveDownloaded}
+                hasDownload={anySheetDownloaded}
+                onOpenDownloads={openDownloads}
+                onStartReport={() => setReporting({ step: 'pick' })}
+                queuedReportCount={queuedCount}
+                stuckReports={stuckReports}
+                onRetryReport={handleRetryReport}
+                onDiscardReport={handleDiscardReport}
+              />
+            </ErrorBoundary>
           </div>
           <TabBar active={activeTab} onSelect={setActiveTab} />
         </div>

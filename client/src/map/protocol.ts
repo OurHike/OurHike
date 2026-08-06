@@ -10,11 +10,58 @@
 // every caller to coordinate.
 
 import { addProtocol } from 'maplibre-gl'
-import { PMTiles, Protocol } from 'pmtiles'
+import { PMTiles, Protocol, SharedPromiseCache } from 'pmtiles'
+import type { Entry, Header, Source } from 'pmtiles'
 import { MAP_PACKAGES } from '../lib/packages'
 import { CORRIDOR_ARCHIVE_KEY, IndexedDbArchiveSource } from './pmtilesSource'
 
 export const PMTILES_SCHEME = 'pmtiles'
+
+/**
+ * pmtiles' SharedPromiseCache, minus one behaviour that breaks the offline
+ * map: it caches the header PROMISE before it settles and never evicts a
+ * rejection.
+ *
+ * The style declares the archive source on every background (style.ts), so on
+ * a phone that has not downloaded yet the first header read rejects with
+ * ArchiveNotDownloadedError - correctly. But with that rejection cached, the
+ * download finishing changes nothing: every later read replays the cached
+ * failure, and a hiker who downloads the corridor at a trailhead and switches
+ * to it gets blank paper until they happen to restart the app. The archive's
+ * own Source already refuses to memoise failure (pmtilesSource.ts), and this
+ * class is the same rule applied one layer up, where the caching actually
+ * happens. basemap.ts:126 and demTiles.ts:99 are the pattern's other two
+ * appearances.
+ */
+class RetryOnFailureCache extends SharedPromiseCache {
+  override getHeader(source: Source): Promise<Header> {
+    const header = super.getHeader(source)
+    header.catch(() => {
+      // The header entry is keyed by the source's key alone; the root
+      // directory that arrives with it is keyed with a `key|...` prefix.
+      // Both are settled-or-absent after this, never settled-rejected.
+      const prefix = source.getKey()
+      for (const key of [...this.cache.keys()]) {
+        if (key === prefix || key.startsWith(`${prefix}|`)) this.cache.delete(key)
+      }
+    })
+    return header
+  }
+
+  override getDirectory(
+    source: Source,
+    offset: number,
+    length: number,
+    header: Header,
+  ): Promise<Entry[]> {
+    const directory = super.getDirectory(source, offset, length, header)
+    directory.catch(() => {
+      // The same composed key the parent stores under.
+      this.cache.delete(`${source.getKey()}|${header.etag ?? ''}|${offset}|${length}`)
+    })
+    return directory
+  }
+}
 
 /**
  * The style URL that resolves to a package's archive on this phone rather
@@ -43,7 +90,9 @@ export function registerPMTilesProtocol(): Protocol {
   // real, reportable state), and registration order can never depend on
   // which packages a hiker happens to hold.
   for (const pkg of MAP_PACKAGES) {
-    protocol.add(new PMTiles(new IndexedDbArchiveSource(pkg.idbKey)))
+    protocol.add(
+      new PMTiles(new IndexedDbArchiveSource(pkg.idbKey), new RetryOnFailureCache()),
+    )
   }
   addProtocol(PMTILES_SCHEME, protocol.tile)
   registered = protocol

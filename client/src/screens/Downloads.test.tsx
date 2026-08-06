@@ -149,7 +149,7 @@ describe('Downloads', () => {
     expect(usgs.onResume).toHaveBeenCalledTimes(1)
   })
 
-  it('deletes a whole sheet from one button', async () => {
+  it('deletes a whole sheet, after asking twice', async () => {
     const user = userEvent.setup()
     const usgs = sheet({
       status: {
@@ -160,17 +160,22 @@ describe('Downloads', () => {
     })
     render(<Downloads sheets={[usgs]} />)
 
-    await user.click(screen.getByRole('button', { name: /delete/i }))
+    // The first tap arms, the second destroys - a mis-tap on a phone must
+    // never be enough to delete a map that needs signal to restore.
+    await user.click(screen.getByRole('button', { name: /delete the map/i }))
+    expect(usgs.onDelete).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: /yes, delete it/i }))
 
     expect(usgs.onDelete).toHaveBeenCalledTimes(1)
   })
 
   it('reports a sheet’s failure', () => {
-    render(
-      <Downloads sheets={[sheet({ error: 'Archive download failed: 404 Not Found' })]} />,
-    )
+    // The fixture is the shape lib/archiveDownload.ts actually throws now -
+    // a hiker sentence with the status in parentheses, never leading.
+    const failure = 'The server could not send the map (it answered 404).'
+    render(<Downloads sheets={[sheet({ error: failure })]} />)
 
-    expect(screen.getByRole('alert')).toHaveTextContent('404 Not Found')
+    expect(screen.getByRole('alert')).toHaveTextContent(failure)
   })
 
   it('does not list the trail’s own data as something to download', () => {
@@ -280,7 +285,10 @@ describe('the USGS sheet as its own decision (#237)', () => {
     const [hiking, usgs] = twoSheets()
     render(
       <Downloads
-        sheets={[hiking, { ...usgs, error: 'Archive download failed: 404 Not Found' }]}
+        sheets={[
+          hiking,
+          { ...usgs, error: 'The server could not send the map (it answered 404).' },
+        ]}
       />,
     )
 
@@ -308,7 +316,8 @@ describe('the USGS sheet as its own decision (#237)', () => {
     await openTab(user, /usgs sheet/i)
 
     const usgsCard = screen.getByRole('region', { name: /usgs sheet/i })
-    await user.click(within(usgsCard).getByRole('button', { name: /delete/i }))
+    await user.click(within(usgsCard).getByRole('button', { name: /delete the map/i }))
+    await user.click(within(usgsCard).getByRole('button', { name: /yes, delete it/i }))
 
     expect(downloadedUsgs.onDelete).toHaveBeenCalledTimes(1)
     expect(hiking.onDelete).not.toHaveBeenCalled()

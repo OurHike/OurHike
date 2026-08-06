@@ -654,7 +654,11 @@ describe('App shell', () => {
 
     // VITE_DATA_BASE_URL is unset under test, so this is the real state - and a
     // download that would silently 404 is worth saying out loud.
-    expect(await screen.findByRole('alert')).toHaveTextContent(/VITE_DATA_BASE_URL/)
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/built without a place to download maps/i)
+    // In the hiker's language, to the one person guaranteed to read it: no env
+    // var names in a role="alert". The builder finds theirs via lib/config.ts.
+    expect(alert).not.toHaveTextContent(/VITE_|BASE_URL|bucket/i)
   })
 
   it('keeps that warning inside the window rather than over the map', async () => {
@@ -807,7 +811,7 @@ describe('App shell', () => {
     await user.click(within(usgsCard).getByRole('button', { name: /download the map/i }))
 
     await waitFor(() => {
-      expect(screen.getByText(/failed to fetch/i)).toBeInTheDocument()
+      expect(screen.getByText(/trail details could not be fetched/i)).toBeInTheDocument()
     })
 
     // Only the trail-data attempt should have gone out. The archive request
@@ -1154,5 +1158,25 @@ describe('an archive that does not reach the view', () => {
     await atZoom(3)
 
     expect(screen.queryByText(/zoomed out past your download/i)).toBeNull()
+  })
+})
+
+describe('a storage read that fails', () => {
+  it('still opens the app instead of a permanently blank page', async () => {
+    // Safari private browsing, an evicted database, iOS Lockdown - IndexedDB
+    // reads can reject wholesale. The preferences read used to have no
+    // rejection handler, so `preferencesLoaded` never turned true and the
+    // shell rendered null forever: a white screen with the whole map one
+    // tick away. Falling back to defaults means first-run onboarding, which
+    // is a working app rather than a blank one.
+    vi.mocked(get).mockImplementation((key) =>
+      key === PREFERENCES_KEY
+        ? Promise.reject(new Error('The user denied permission to access the database.'))
+        : Promise.resolve(store.get(key as string)),
+    )
+
+    render(<App />)
+
+    expect(await screen.findByText('What OurHike is')).toBeInTheDocument()
   })
 })

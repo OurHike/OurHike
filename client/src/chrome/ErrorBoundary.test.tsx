@@ -166,4 +166,15 @@ describe('ScreenFailed', () => {
 
     expect(screen.getByRole('alert')).toBeInTheDocument()
   })
+
+  it('states a recovery that fits where it is standing', () => {
+    // The default line assumes a tab bar is rendered underneath, which is true
+    // inside the shell and false at the root - main.tsx renders this with no
+    // tabs anywhere, and "switch tabs" on a screen without tabs is an
+    // instruction that cannot be followed, discovered at the worst moment.
+    render(<ScreenFailed what="OurHike" recovery="Close the app and open it again." />)
+
+    expect(screen.getByText(/close the app/i)).toBeInTheDocument()
+    expect(screen.queryByText(/switching tabs/i)).not.toBeInTheDocument()
+  })
 })

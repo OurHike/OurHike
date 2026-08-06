@@ -171,8 +171,15 @@ async function readChecked(
   signal?: AbortSignal,
 ): Promise<FetchedArtifact> {
   if (!response.ok) {
+    // Shown to the hiker in the download window, so the sentence leads and is
+    // theirs: what failed is the trail details, and anything already here is
+    // safe. The artifact key and status ride along in parentheses - the same
+    // compromise TrailDataHashMismatchError makes above - because "which
+    // file" is what a field report needs and what these errors used to lead
+    // with ("Failed to fetch pois.json: 403 Forbidden").
     throw new Error(
-      `Failed to fetch ${artifactKey}: ${response.status} ${response.statusText}`,
+      `The trail details could not be fetched (${artifactKey}: the server ` +
+        `answered ${response.status}). Anything already on this phone is untouched.`,
     )
   }
 

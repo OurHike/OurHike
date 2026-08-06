@@ -313,6 +313,19 @@ describe('downloadArchive — failure', () => {
     expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
   })
 
+  it('says the mismatch in a hiker’s units, keeping the raw counts as fields', () => {
+    // The message IS the UI - the download card renders it in a role="alert" -
+    // and it used to read "297483822 bytes but the server said 314572800",
+    // which is a log line shown to the one person guaranteed not to want one.
+    const error = new ArchiveSizeMismatchError(314_000_000, 297_000_000)
+
+    expect(error.message).toMatch(/297 MB/)
+    expect(error.message).toMatch(/314 MB/)
+    expect(error.message).not.toMatch(/\d{6,}/)
+    expect(error.expectedBytes).toBe(314_000_000)
+    expect(error.actualBytes).toBe(297_000_000)
+  })
+
   it('keeps the partial bytes after a size mismatch, so a resume can finish it', async () => {
     const store = withStore()
     mockFetch({ chunks: [bytes(1, 2, 3)], totalBytes: 99 })
@@ -477,7 +490,7 @@ describe('downloadArchive — refusing to splice two different archives', () => 
 
       await expect(
         downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
-      ).rejects.toThrow(/no response body/)
+      ).rejects.toThrow(/no map data arrived/)
       expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
     })
   })

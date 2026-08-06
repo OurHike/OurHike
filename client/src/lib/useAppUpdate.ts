@@ -60,7 +60,15 @@ export function useAppUpdate(intervalMs: number = UPDATE_CHECK_MS): void {
     // that surfaces them, noise at the hiker. There is nothing to do about it
     // either way: the next tick tries again, and the running app is fine
     // meanwhile.
+    //
+    // And not attempted at all while the browser says there is no network.
+    // The fetch was going to fail; what it costs anyway is a cold cellular
+    // radio woken once an hour for the length of a hike, on the battery that
+    // gets someone to the next town. `navigator.onLine` saying true proves
+    // nothing (lib/useOnline.ts), but saying FALSE is definitive - that is
+    // the reading this guard acts on, and the only one it can trust.
     const check = () => {
+      if (!navigator.onLine) return
       void navigator.serviceWorker
         .getRegistration()
         .then((registration) => registration?.update())

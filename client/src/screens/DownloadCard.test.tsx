@@ -195,6 +195,56 @@ describe('DownloadCard', () => {
     expect(screen.getByRole('button', { name: /delete/i })).toBeInTheDocument()
   })
 
+  // A mis-tap must never be enough. This card can be holding 1.18 GB that
+  // took trailhead wifi to fetch and takes signal to restore, and
+  // DownloadsDialog already names deletion-by-mis-tap the worst thing this
+  // window can get wrong - guarding only the backdrop while the button
+  // itself was one tap.
+  describe('deleting asks twice', () => {
+    const downloaded = {
+      state: 'downloaded' as const,
+      totalBytes: 314_000_000,
+      completedAt: new Date('2026-07-26T12:00:00Z'),
+    }
+
+    it('arms on the first tap instead of deleting, and states the cost', async () => {
+      const user = userEvent.setup()
+      const onDelete = vi.fn()
+      render(<DownloadCard {...PROPS} status={downloaded} onDelete={onDelete} />)
+
+      await user.click(screen.getByRole('button', { name: /delete the map/i }))
+
+      expect(onDelete).not.toHaveBeenCalled()
+      // The cost, in the sentence: what is being deleted and what getting it
+      // back takes.
+      expect(screen.getByText(/delete this 314 MB map/i)).toBeInTheDocument()
+      expect(screen.getByText(/needs signal/i)).toBeInTheDocument()
+    })
+
+    it('deletes on the second tap', async () => {
+      const user = userEvent.setup()
+      const onDelete = vi.fn()
+      render(<DownloadCard {...PROPS} status={downloaded} onDelete={onDelete} />)
+
+      await user.click(screen.getByRole('button', { name: /delete the map/i }))
+      await user.click(screen.getByRole('button', { name: /yes, delete it/i }))
+
+      expect(onDelete).toHaveBeenCalledTimes(1)
+    })
+
+    it('disarms on "Keep it" and puts the ordinary button back', async () => {
+      const user = userEvent.setup()
+      const onDelete = vi.fn()
+      render(<DownloadCard {...PROPS} status={downloaded} onDelete={onDelete} />)
+
+      await user.click(screen.getByRole('button', { name: /delete the map/i }))
+      await user.click(screen.getByRole('button', { name: /keep it/i }))
+
+      expect(onDelete).not.toHaveBeenCalled()
+      expect(screen.getByRole('button', { name: /delete the map/i })).toBeInTheDocument()
+    })
+  })
+
   it('shows 0% rather than NaN% before the total size is known', () => {
     // The first progress callback can land before content-length has been
     // read, and "NaN%" on a progress bar reads as a broken app.

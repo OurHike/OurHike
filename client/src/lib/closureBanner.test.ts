@@ -42,9 +42,26 @@ describe('closureBanner', () => {
   })
 
   it('warns while standing inside the closure, whichever way they face', () => {
-    // 0.0 mi ahead is still very much worth saying.
-    expect(closureBanner(CLOSURE, 1409.5, 'NOBO')).toContain('Trail closed')
-    expect(closureBanner(CLOSURE, 1409.5, 'SOBO')).toContain('Trail closed')
+    // "Here", not "0.0 mi ahead" - a distance pretending to be a place.
+    expect(closureBanner(CLOSURE, 1409.5, 'NOBO')).toContain('Trail closed here')
+    expect(closureBanner(CLOSURE, 1409.5, 'SOBO')).toContain('Trail closed here')
+  })
+
+  it('warns while standing inside even before a direction is known', () => {
+    // Direction takes a quarter mile of walking to establish
+    // (lib/hikeDirection.ts). A hiker who opens the app standing in a closed
+    // section has not walked that quarter mile yet, and that first quarter
+    // mile is exactly where the warning matters - gating "inside" on
+    // direction kept the banner blank there.
+    expect(closureBanner(CLOSURE, 1409.5, undefined)).toContain('Trail closed here')
+  })
+
+  it('stays silent about a closure merely nearby until a direction is known', () => {
+    // Without a direction there is no "ahead". Guessing would warn half of
+    // all hikers about the closure behind them - and stay silent about the
+    // one in front.
+    expect(closureBanner(CLOSURE, 1407.2, undefined)).toBeNull()
+    expect(closureBanner(CLOSURE, 1412.0, undefined)).toBeNull()
   })
 
   it('reports the whole mile range, not just the near edge', () => {
@@ -125,8 +142,28 @@ describe('nearestClosureBanner', () => {
 
     const banner = nearestClosureBanner([inside, ahead], 100, 'NOBO')
 
-    expect(banner).toContain('0.0 mi ahead')
+    expect(banner).toContain('Trail closed here')
     expect(banner).toContain('mi 99.0 – 101.0')
+  })
+
+  it('warns about the closure being stood in even before a direction is known', () => {
+    // The App used to gate the whole banner on a known direction, which takes
+    // a quarter mile of walking (lib/hikeDirection.ts) - so a hiker opening
+    // the app inside a closed section saw nothing for exactly the quarter
+    // mile where it mattered most.
+    const inside = {
+      ...CLOSED,
+      id: 'inside',
+      start_mile_marker: 99,
+      end_mile_marker: 101,
+    }
+    const ahead = { ...CLOSED, id: 'ahead', start_mile_marker: 102, end_mile_marker: 103 }
+
+    const banner = nearestClosureBanner([inside, ahead], 100, undefined)
+
+    expect(banner).toContain('Trail closed here')
+    // And the one merely ahead stays quiet alone - "ahead" needs a direction.
+    expect(nearestClosureBanner([ahead], 100, undefined)).toBeNull()
   })
 
   it('reads direction, not just distance', () => {

@@ -31,7 +31,19 @@ applyTheme(systemPrefersDark() ? 'dark' : 'light', document)
 // with words on it, rather than the blank page React's default unmount leaves.
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ErrorBoundary fallback={() => <ScreenFailed what="OurHike" />}>
+    <ErrorBoundary
+      fallback={() => (
+        <ScreenFailed
+          what="OurHike"
+          // There is no tab bar at this level - the thing that renders it is
+          // what failed - so the default "switch tabs" line would be an
+          // instruction with nothing to tap. Closing and reopening works
+          // offline: the app shell is served by the service worker, and
+          // nothing on the phone is touched by a restart.
+          recovery="Close the app fully and open it again. That works without any signal."
+        />
+      )}
+    >
       <App />
     </ErrorBoundary>
   </StrictMode>,

@@ -22,6 +22,7 @@ import {
   CASING_OVERHANG,
 } from './style'
 import { POI_LAYER_ID, POI_SOURCE_ID } from './poiLayers'
+import { CAMERA_ZOOM_TILE_OFFSET } from '../lib/archiveCoverage'
 
 // See WIREFRAMES.md "Trail line rendering — blazes". Three rules there are
 // load-bearing rather than decorative:
@@ -355,6 +356,19 @@ describe('POI pins', () => {
 
     expect(source.type).toBe('geojson')
     expect(source.data).toEqual({ type: 'FeatureCollection', features: [] })
+  })
+
+  it('declares the archive @2x, paired with the coverage math it changes', () => {
+    // tileSize 256 over 512px tiles (#191): retina phones get the tiles'
+    // full resolution, and MapLibre requests tiles one level deeper than
+    // the camera. archiveCoverage.ts's floor arithmetic must carry exactly
+    // that offset - this is the pairing its comment points at, asserted so
+    // a change to either is a failing test rather than an invisible
+    // off-by-one at the archive floor.
+    const topo = style().sources[TOPO_SOURCE_ID] as { tileSize?: number }
+
+    expect(topo.tileSize).toBe(256)
+    expect(CAMERA_ZOOM_TILE_OFFSET).toBe(Math.log2(512 / 256))
   })
 
   it('declares no glyphs URL, and so must never ask for text', () => {

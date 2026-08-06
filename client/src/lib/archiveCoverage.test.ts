@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { archiveCoversZoom, openingZoomFloor } from './archiveCoverage'
+import {
+  CAMERA_ZOOM_TILE_OFFSET,
+  archiveCoversZoom,
+  openingZoomFloor,
+} from './archiveCoverage'
 
 // #216: the pipeline exported the corridor from z6, the app opened at ~z4, and
 // nothing compared the two - so a complete 314 MB download rendered as blank
@@ -12,10 +16,15 @@ const Z0 = { minZoom: 0, maxZoom: 12 }
 describe('archiveCoversZoom', () => {
   it('says no below the archive floor, which is where the paper shows through', () => {
     expect(archiveCoversZoom(Z6, 3.9)).toBe(false)
-    expect(archiveCoversZoom(Z6, 5.99)).toBe(false)
+    expect(archiveCoversZoom(Z6, 4.99)).toBe(false)
   })
 
-  it('says yes at the floor itself', () => {
+  it('says yes from one camera zoom under the floor, where @2x tiles begin', () => {
+    // The tileSize: 256 declaration (map/style.ts, #191) has MapLibre
+    // request tiles one level deeper than the camera, so a z6-floored
+    // archive first draws at camera z5 - the header speaks tile zooms,
+    // the camera does not.
+    expect(archiveCoversZoom(Z6, 5)).toBe(true)
     expect(archiveCoversZoom(Z6, 6)).toBe(true)
   })
 
@@ -39,8 +48,10 @@ describe('archiveCoversZoom', () => {
 })
 
 describe('openingZoomFloor', () => {
-  it('lifts an opening view that fell under the archive up to its floor', () => {
-    expect(openingZoomFloor(Z6, 3.9)).toBe(6)
+  it('lifts an opening view that fell under the archive up to its camera floor', () => {
+    // One under the header floor - the shallowest camera zoom that really
+    // has tiles behind it under the @2x declaration.
+    expect(openingZoomFloor(Z6, 3.9)).toBe(6 - CAMERA_ZOOM_TILE_OFFSET)
   })
 
   it('leaves a view the archive already reaches alone', () => {

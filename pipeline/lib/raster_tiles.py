@@ -66,30 +66,52 @@ def tile_transform(z: int, x: int, y: int, tile_px: int = TILE_PX):
     return from_bounds(west, south, east, north, tile_px, tile_px)
 
 
-def render_tile_from_quads(z, x, y, quad_datasets, tile_px: int = TILE_PX):
+def neatline_box_merc(neatline_4326):
+    """A quad's USGS-metadata neatline - the true mapped area, inside the
+    printed collar - as an EPSG:3857 polygon. Exact, not approximate: web
+    mercator maps meridians and parallels to straight lines, so a lon/lat
+    box IS a mercator box and needs no edge densification."""
+    from rasterio.warp import transform_bounds
+
+    return box(*transform_bounds("EPSG:4326", MERC_CRS, *neatline_4326))
+
+
+def render_tile_from_quads(z, x, y, quads, tile_px: int = TILE_PX):
     """One tile from native quads: a single warp per quad onto the tile's own
     grid, composited first-wins.
 
-    `quad_datasets` are open rasterio datasets (typically the neatline-cropped
-    VRTs spike_raster_mosaic.open_cropped_vrt returns), in whatever CRS each
-    quad natively carries - the per-quad UTM zones are exactly why the warp
-    happens here per tile rather than once into a shared intermediate.
+    `quads` is a list of (dataset, neatline_merc) pairs: an open rasterio
+    dataset in whatever CRS the quad natively carries (the per-quad UTM
+    zones are exactly why the warp happens here per tile rather than once
+    into a shared intermediate), and the quad's neatline as an EPSG:3857
+    polygon, or None to skip collar removal.
+
+    The neatline is applied AFTER the warp, on the tile's own grid, rather
+    than by cropping the source: a lon/lat neatline is not axis-aligned in
+    the quad's UTM grid, so a source-side window crop keeps collar slivers
+    at the corners - printed border ink that would composite into
+    neighbouring tiles as if it were map. spike_raster_mosaic's
+    open_cropped_vrt avoids that by warping to a 4326 grid first, but at
+    TARGET_RES_DEG - the 11 m degradation this module exists to drop - so
+    the native path masks per tile instead, which is exact at every zoom.
 
     Returns a (3, tile_px, tile_px) uint8 array, or None when nothing real
     covers the tile. All-zero means nodata by this pipeline's standing
-    convention (export_pmtiles.encode_webp documents the honest limitation).
+    convention (encode_webp documents the honest limitation).
 
     First-wins compositing matches rasterio.merge's default, which is what
     the cell mosaics did - so quad overlap keeps resolving the same way it
     always has, just at native resolution.
     """
+    from rasterio.features import geometry_mask
+
     transform = tile_transform(z, x, y, tile_px)
     resampling = resampling_for(z)
 
     out = np.zeros((3, tile_px, tile_px), dtype="uint8")
     filled = np.zeros((tile_px, tile_px), dtype=bool)
 
-    for dataset in quad_datasets:
+    for dataset, neatline_merc in quads:
         with WarpedVRT(
             dataset,
             crs=MERC_CRS,
@@ -97,11 +119,18 @@ def render_tile_from_quads(z, x, y, quad_datasets, tile_px: int = TILE_PX):
             width=tile_px,
             height=tile_px,
             resampling=resampling,
-            # 0 is nodata end to end: the cropped quad VRTs carry it, and the
+            # 0 is nodata end to end: the source quads carry it, and the
             # WebP encoder derives alpha from it.
             nodata=0,
         ) as vrt:
             data = vrt.read(indexes=[1, 2, 3])
+        if neatline_merc is not None:
+            outside = geometry_mask(
+                [neatline_merc.__geo_interface__],
+                out_shape=(tile_px, tile_px),
+                transform=transform,
+            )
+            data[:, outside] = 0
         coverage = data.any(axis=0) & ~filled
         if not coverage.any():
             continue
@@ -113,14 +142,34 @@ def render_tile_from_quads(z, x, y, quad_datasets, tile_px: int = TILE_PX):
     return out
 
 
+WEBP_QUALITY = 80
+
+
+def encode_webp(arr, quality: int = WEBP_QUALITY) -> bytes:
+    """RGBA WebP, alpha derived from the all-zero nodata convention - the
+    same encoding (and the same honest limitation: a genuinely pure-black
+    source pixel becomes transparent) export_pmtiles.py shipped, lifted here
+    so the per-cell renderer and assemble share one encoder. Scanned topo
+    ink is essentially never exactly 0 after resampling, and one see-through
+    pixel is a far smaller wrong than the black continent an RGB encode of a
+    mostly-empty corridor tile would be."""
+    import io
+
+    from PIL import Image
+
+    rgb = np.moveaxis(arr, 0, -1)
+    alpha = np.where(rgb.any(axis=-1), 255, 0).astype("uint8")
+    img = Image.fromarray(np.dstack([rgb, alpha]), mode="RGBA")
+    buf = io.BytesIO()
+    img.save(buf, format="WEBP", quality=quality)
+    return buf.getvalue()
+
+
 def tiles_intersecting_geom(geom_merc, zoom: int):
     """(x, y) of every tile at `zoom` whose bounds intersect the geometry."""
     x0, x1, y0, y1 = tile_range_for_bounds(geom_merc.bounds, zoom)
     return [
-        (x, y)
-        for x in range(x0, x1 + 1)
-        for y in range(y0, y1 + 1)
-        if geom_merc.intersects(box(*tile_bounds_merc(zoom, x, y)))
+        (x, y) for x in range(x0, x1 + 1) for y in range(y0, y1 + 1) if geom_merc.intersects(box(*tile_bounds_merc(zoom, x, y)))
     ]
 
 
@@ -193,6 +242,55 @@ def mask_outside(arr, geom_merc, z: int, x: int, y: int, tile_px: int = TILE_PX)
     )
     arr[:, ~inside] = 0
     return arr
+
+
+def render_overview(bounds_merc, quads, res_m: float = OVERVIEW_RES_M):
+    """One cell's overview: every quad averaged straight from native onto a
+    shared `res_m` EPSG:3857 grid over `bounds_merc`, first-wins composited
+    with per-quad neatline masking - the same rules as the tile path, at the
+    overview's resolution. Returns (array, transform); the caller owns
+    writing and any corridor mask.
+
+    Still "warp once": a native pixel that ends up in a z0-10 tile passes
+    through exactly one decimation (here, with `average`) plus the
+    final tile read from this grid - against the old chain's
+    native->11m->tile double resample, and with the kernel that is right
+    for shrinking ink at every step that shrinks it."""
+    from rasterio.features import geometry_mask
+    from rasterio.transform import from_bounds
+
+    west, south, east, north = bounds_merc
+    width = max(1, round((east - west) / res_m))
+    height = max(1, round((north - south) / res_m))
+    transform = from_bounds(west, south, east, north, width, height)
+
+    out = np.zeros((3, height, width), dtype="uint8")
+    filled = np.zeros((height, width), dtype=bool)
+    for dataset, neatline_merc in quads:
+        with WarpedVRT(
+            dataset,
+            crs=MERC_CRS,
+            transform=transform,
+            width=width,
+            height=height,
+            resampling=Resampling.average,
+            nodata=0,
+        ) as vrt:
+            data = vrt.read(indexes=[1, 2, 3])
+        if neatline_merc is not None:
+            outside = geometry_mask(
+                [neatline_merc.__geo_interface__],
+                out_shape=(height, width),
+                transform=transform,
+            )
+            data[:, outside] = 0
+        coverage = data.any(axis=0) & ~filled
+        if not coverage.any():
+            continue
+        out[:, coverage] = data[:, coverage]
+        filled |= coverage
+
+    return out, transform
 
 
 def meters_per_pixel(zoom: int, latitude_deg: float, tile_px: int = TILE_PX) -> float:

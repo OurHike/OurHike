@@ -357,7 +357,7 @@ if __name__ == "__main__":
     # (with allow_shrink passed as a plain kwarg) by the test suite, and
     # argparse.parse_args() with no explicit argv reads sys.argv, which would
     # try to parse pytest's own command-line arguments if this lived inside
-    # main() instead (see export_pmtiles.py for the same pattern).
+    # main() instead (see export_basemap.py for the same pattern).
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
         "--allow-shrink",

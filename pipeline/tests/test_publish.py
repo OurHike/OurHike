@@ -180,8 +180,15 @@ def test_publish_manifest_records_one_hash_per_artifact_not_one_hash_for_everyth
 
 
 def test_background_archives_cover_every_tier_the_client_offers():
-    """The tiers here must match downloadDetail.ts's three levels exactly."""
-    assert set(publish.BACKGROUND_ARCHIVES) == {"light", "standard", "fine"}
+    """The client's three levels must all be here. quad_sheet is #184's
+    optional USGS sheet (#191's z14 build), published alongside the tiers
+    rather than offered as a detail level - its download UX follows the
+    multi-package store (#192), and until then publishing it is what makes
+    it testable at all."""
+    assert {"light", "standard", "fine"} <= set(publish.BACKGROUND_ARCHIVES)
+    assert set(publish.BACKGROUND_ARCHIVES) - {"light", "standard", "fine"} == {
+        "quad_sheet"
+    }
 
 
 def test_each_tier_maps_to_a_distinct_archive():

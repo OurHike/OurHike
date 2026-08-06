@@ -60,6 +60,7 @@ def center_tile(bounds_4326, zoom):
     x0, x1, y0, y1 = tile_range_for_bounds((merc[0], merc[1], merc[0], merc[1]), zoom)
     return zoom, x0, y0
 
+
 # A ~2km box near Harpers Ferry - inside UTM 18N and the corridor's latitudes.
 QUAD_BOX = (-77.75, 39.30, -77.73, 39.32)
 
@@ -85,7 +86,7 @@ def test_renders_a_covered_tile_from_a_native_utm_quad(tmp_path):
     z, x, y = center_tile(QUAD_BOX, 15)
 
     with rasterio.open(quad) as src:
-        arr = render_tile_from_quads(z, x, y, [src], tile_px=64)
+        arr = render_tile_from_quads(z, x, y, [(src, None)], tile_px=64)
 
     assert arr is not None and arr.shape == (3, 64, 64)
     covered = arr.any(axis=0)
@@ -101,7 +102,7 @@ def test_returns_none_for_a_tile_nothing_covers(tmp_path):
     z, x, y = center_tile(far, 15)
 
     with rasterio.open(quad) as src:
-        assert render_tile_from_quads(z, x, y, [src], tile_px=64) is None
+        assert render_tile_from_quads(z, x, y, [(src, None)], tile_px=64) is None
 
 
 def test_composites_first_wins_where_quads_overlap(tmp_path):
@@ -113,7 +114,7 @@ def test_composites_first_wins_where_quads_overlap(tmp_path):
     z, x, y = center_tile(QUAD_BOX, 15)
 
     with rasterio.open(a) as src_a, rasterio.open(b) as src_b:
-        arr = render_tile_from_quads(z, x, y, [src_a, src_b], tile_px=64)
+        arr = render_tile_from_quads(z, x, y, [(src_a, None), (src_b, None)], tile_px=64)
 
     covered = arr.any(axis=0)
     assert int(arr[0][covered].mean()) > 200, "first quad should win the overlap"
@@ -131,7 +132,7 @@ def test_a_border_tile_composites_both_neighbouring_quads(tmp_path):
     z, x, y = center_tile((-77.75, 39.30, -77.73, 39.32), 15)
 
     with rasterio.open(a) as src_a, rasterio.open(b) as src_b:
-        arr = render_tile_from_quads(z, x, y, [src_a, src_b], tile_px=64)
+        arr = render_tile_from_quads(z, x, y, [(src_a, None), (src_b, None)], tile_px=64)
 
     reds = (arr[0] > 200) & (arr[1] < 60)
     greens = (arr[1] > 200) & (arr[0] < 60)
@@ -144,8 +145,8 @@ def test_ownership_is_exclusive_across_adjacent_cells():
     west_cell = (-78.0, 39.0, -77.0, 40.0)
     east_cell = (-77.0, 39.0, -76.0, 40.0)
     both = box(*west_cell).union(box(*east_cell))
-    from shapely.ops import transform as shp_transform
     from pyproj import Transformer
+    from shapely.ops import transform as shp_transform
 
     to_merc = Transformer.from_crs(GEO, MERC, always_xy=True)
     both_merc = shp_transform(to_merc.transform, both)
@@ -153,9 +154,7 @@ def test_ownership_is_exclusive_across_adjacent_cells():
     for zoom in (8, 10, 12):
         for x, y in tiles_intersecting_geom(both_merc, zoom):
             t_bounds = transform_bounds(MERC, GEO, *tile_bounds_merc(zoom, x, y))
-            owners = sum(
-                owns_tile(cell, t_bounds) for cell in (west_cell, east_cell)
-            )
+            owners = sum(owns_tile(cell, t_bounds) for cell in (west_cell, east_cell))
             cx = (t_bounds[0] + t_bounds[2]) / 2
             cy = (t_bounds[1] + t_bounds[3]) / 2
             inside = -78.0 <= cx < -76.0 and 39.0 <= cy < 40.0
@@ -163,8 +162,8 @@ def test_ownership_is_exclusive_across_adjacent_cells():
 
 
 def test_export_tiles_switches_to_the_near_trail_band_at_band_zoom():
-    from shapely.ops import transform as shp_transform
     from pyproj import Transformer
+    from shapely.ops import transform as shp_transform
 
     to_merc = Transformer.from_crs(GEO, MERC, always_xy=True)
     corridor = shp_transform(to_merc.transform, box(-78.0, 39.0, -77.0, 40.0))
@@ -181,8 +180,8 @@ def test_export_tiles_switches_to_the_near_trail_band_at_band_zoom():
 
 
 def test_export_tiles_refuses_a_missing_band_rather_than_shipping_a_hole():
-    from shapely.ops import transform as shp_transform
     from pyproj import Transformer
+    from shapely.ops import transform as shp_transform
 
     to_merc = Transformer.from_crs(GEO, MERC, always_xy=True)
     corridor = shp_transform(to_merc.transform, box(-78.0, 39.0, -77.0, 40.0))
@@ -212,7 +211,7 @@ def test_mask_outside_zeroes_ground_beyond_the_geometry(tmp_path):
     z, x, y = center_tile(QUAD_BOX, 15)
 
     with rasterio.open(quad) as src:
-        arr = render_tile_from_quads(z, x, y, [src], tile_px=64)
+        arr = render_tile_from_quads(z, x, y, [(src, None)], tile_px=64)
     before = int(arr.any(axis=0).sum())
 
     # A corridor covering only the western half of the quad box.
@@ -235,3 +234,66 @@ def test_overview_resolution_serves_its_zooms_by_decimation_only():
     # latitude, or rendering from it upsamples.
     assert meters_per_pixel(OVERVIEW_MAX_ZOOM, 34.0) > 2 * OVERVIEW_RES_M
     assert NATIVE_MIN_ZOOM == OVERVIEW_MAX_ZOOM + 1
+
+
+def test_neatline_mask_removes_collar_ink_including_utm_corner_slivers(tmp_path):
+    from lib.raster_tiles import neatline_box_merc
+
+    # A quad whose OUTER ring is painted collar (white border ink) and whose
+    # neatline covers only the inner region. An envelope crop in the quad's
+    # UTM grid would keep collar slivers at the corners; the per-tile mask
+    # must not let a single collar pixel through.
+    quad_box = QUAD_BOX
+    inner = (
+        quad_box[0] + 0.005,
+        quad_box[1] + 0.005,
+        quad_box[2] - 0.005,
+        quad_box[3] - 0.005,
+    )
+    path = tmp_path / "collared.tif"
+    west, south, east, north = transform_bounds(GEO, UTM_18N, *quad_box)
+    px = 64
+    data = np.full((3, px, px), 255, dtype="uint8")  # collar: white everywhere
+    data[0, 8:-8, 8:-8] = 30  # map ink: dark interior
+    data[1, 8:-8, 8:-8] = 90
+    data[2, 8:-8, 8:-8] = 30
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        width=px,
+        height=px,
+        count=3,
+        dtype="uint8",
+        crs=UTM_18N,
+        transform=from_bounds(west, south, east, north, px, px),
+        nodata=0,
+    ) as dst:
+        dst.write(data)
+
+    z, x, y = center_tile(quad_box, 15)
+    with rasterio.open(path) as src:
+        masked = render_tile_from_quads(z, x, y, [(src, neatline_box_merc(inner))], tile_px=64)
+        unmasked = render_tile_from_quads(z, x, y, [(src, None)], tile_px=64)
+
+    # Unmasked, the collar's near-white ink reaches the tile; masked, no
+    # pixel outside the neatline survives, so nothing is near-white.
+    assert (unmasked.min(axis=0) > 200).any(), "collar should be visible unmasked"
+    assert not (masked.min(axis=0) > 200).any(), "collar ink must be masked out"
+    assert masked.any(), "the interior map ink must survive the mask"
+
+
+def test_encode_webp_round_trips_with_alpha_from_nodata():
+    import io
+
+    from PIL import Image
+
+    from lib.raster_tiles import encode_webp
+
+    arr = np.zeros((3, 8, 8), dtype="uint8")
+    arr[:, :4, :] = 120  # top half painted, bottom half nodata
+
+    img = Image.open(io.BytesIO(encode_webp(arr)))
+    assert img.mode == "RGBA"
+    alpha = np.asarray(img)[..., 3]
+    assert alpha[:4].all() and not alpha[4:].any()

@@ -327,7 +327,16 @@ export function buildMapStyle({
       [TOPO_SOURCE_ID]: {
         type: 'raster',
         url: topoArchiveUrl,
-        tileSize: 512,
+        // 256, not the tiles' own 512 pixels - the @2x convention (#191).
+        // Declared at 512 every tile was drawn across 512 CSS px, which a
+        // DPR-2 phone upscales 2x: the top of the archive's own resolution
+        // never reached the screen. At 256 a 512px tile spans 256 CSS px,
+        // 1:1 with a retina phone's device pixels, and MapLibre asks for
+        // tiles one level deeper than the camera - which is why
+        // lib/archiveCoverage.ts's floor arithmetic carries a matching
+        // CAMERA_ZOOM_TILE_OFFSET. Old archives already on phones gain the
+        // same sharpness: the declaration is the client's, not the file's.
+        tileSize: 256,
         attribution: ATTRIBUTION,
       },
       [TRAILS_SOURCE_ID]: {

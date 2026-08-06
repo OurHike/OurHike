@@ -69,6 +69,27 @@ function returningHiker() {
 }
 
 /**
+ * A viewport wide enough for the desktop layout (lib/useDesktop.ts).
+ *
+ * Matched on the query rather than answering `true` to everything, because
+ * `matchMedia` is asked several other questions in this shell - whether the
+ * app is running standalone (lib/useInstallPrompt.ts), whether the pointer is
+ * fine (lib/useFinePointer.ts) - and a stub that says yes to all of them is
+ * testing a browser that does not exist.
+ */
+function onADesktop() {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn((query: string) => ({
+      matches: query.includes('min-width: 900px'),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })),
+  )
+}
+
+/**
  * A finished corridor archive on the phone.
  *
  * Needed by anything asserting Data Saver's override, because the override
@@ -160,6 +181,50 @@ describe('App shell', () => {
       await screen.findByRole('dialog', { name: /offline map/i }),
     ).toBeInTheDocument()
     expect(screen.getByRole('region', { name: /trail map/i })).toBeInTheDocument()
+  })
+
+  it('leaves a desktop on the map instead, where the download buys nothing yet', async () => {
+    // WEBSITE.md §6: a laptop has signal, and the live sheet is the default
+    // background, so this browser already draws the whole trail. Opening a
+    // 314 MB decision over it is asking someone to spend a phone's worth of
+    // storage on a machine that is not going up a mountain.
+    onADesktop()
+    const user = userEvent.setup()
+    render(<App />)
+
+    await completeOnboarding(user)
+
+    // Waiting on the preference write rather than on the absence of a dialog:
+    // it is the observable half of the same callback that would have opened
+    // the window, and it lands after it. A bare `queryByRole` here would pass
+    // just as readily against a window that was about to open.
+    await waitFor(() => {
+      const saved = store.get(PREFERENCES_KEY) as
+        { onboarding_completed: boolean } | undefined
+      expect(saved?.onboarding_completed).toBe(true)
+    })
+
+    expect(await screen.findByRole('region', { name: /trail map/i })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: /offline map/i })).not.toBeInTheDocument()
+  })
+
+  it('still offers a desktop the download, on screen and one click away', async () => {
+    // Withheld, not removed. Above 900px the legend is a permanent panel, so
+    // the link into the download window is visible without opening anything -
+    // which is more exposure than the phone gives it, not less.
+    onADesktop()
+    const user = userEvent.setup()
+    render(<App />)
+
+    await completeOnboarding(user)
+
+    await user.click(
+      await screen.findByRole('button', { name: /choose what to download/i }),
+    )
+
+    expect(
+      await screen.findByRole('dialog', { name: /offline map/i }),
+    ).toBeInTheDocument()
   })
 
   it('remembers that onboarding was completed, so a reload does not repeat it', async () => {

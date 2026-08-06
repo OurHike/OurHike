@@ -67,13 +67,15 @@ import { useArchiveDownloads } from './lib/useArchiveDownload'
 import { useArchiveZooms } from './lib/useArchiveZooms'
 import { archiveCoversZoom } from './lib/archiveCoverage'
 import {
-  BACKGROUND_DATA,
-  backgroundSizeBytes,
   CORRIDOR_BACKGROUND_PACKAGE,
   offeredPackages,
+  offeredSheets,
   packageArtifactKey,
   packageDownloadUrl,
   packageSizeBytes,
+  sheetSizeBytes,
+  USGS_SHEET,
+  type BackgroundSheet,
 } from './lib/packages'
 import { combineBackgroundStatus } from './lib/backgroundStatus'
 import { useClock } from './lib/useClock'
@@ -85,7 +87,12 @@ import { useInstallPrompt } from './lib/useInstallPrompt'
 import { useAppUpdate } from './lib/useAppUpdate'
 import { useGeolocation } from './lib/useGeolocation'
 import { buildTrailIndex, locateOnTrail, type TrailIndex } from './lib/trailPosition'
-import { downloadTrailData, loadTrailData, type StoredPoi } from './lib/trailData'
+import {
+  downloadTrailData,
+  loadTrailData,
+  TrailDataHashMismatchError,
+  type StoredPoi,
+} from './lib/trailData'
 import {
   ribbonSamples,
   ribbonWindow,
@@ -107,7 +114,7 @@ import {
   signUpWithEmail,
 } from './lib/auth'
 import { listQueued, removeQueued, retryQueued, type FlushResult } from './lib/outbox'
-import { useOutboxSync } from './lib/outboxSync'
+import { useOutboxSync, syncOutbox } from './lib/outboxSync'
 import type { BoundingBox, MapPoint } from './lib/legendContents'
 import type { SearchablePoi } from './lib/searchPoi'
 import './App.css'
@@ -216,7 +223,15 @@ function App() {
   const [pois, setPois] = useState<StoredPoi[]>([])
   const [elevation, setElevation] = useState<ElevationProfile | null>(null)
   const [trailsUrl, setTrailsUrl] = useState<string>(emptyTrailsUrl)
-  const [dataError, setDataError] = useState<string | null>(null)
+  /** The trail-data download's failure, with the one distinction that changes
+   *  what the notice says: a hash mismatch kept nothing on purpose, and its
+   *  remedy is a clean re-download rather than a retry of what stopped
+   *  (#238). Typed at the moment the error still has a type - matching on
+   *  message text would break the day the sentence was reworded. */
+  const [dataError, setDataError] = useState<{
+    kind: 'hash-mismatch' | 'error'
+    message: string
+  } | null>(null)
 
   const [reporting, setReporting] = useState<ReportingState>(null)
   const [authFlow, setAuthFlow] = useState<AuthFlowState>(null)
@@ -304,11 +319,31 @@ function App() {
 
   useOutboxSync(online && account !== null, handleSynced)
 
-  /** Clears the refusal and lets the next flush try again - the escape hatch
-   *  for the fixable cause, a phone whose clock was wrong. */
+  /**
+   * Clears the refusal and sends, now - the escape hatch for a cause the
+   * hiker has just fixed.
+   *
+   * The flush is the part that was missing (#266). Clearing the failure on
+   * its own only relabels the report: the sole flush trigger is
+   * useOutboxSync's effect, whose deps are both referentially stable, and
+   * outboxSync is "deliberately not on a timer" - so on a steady connection
+   * nothing ran, and the screen swapped "could not be sent" plus its reason
+   * for "waiting to send" at the exact moment nothing was going to try. That
+   * is the lie this whole feature exists to remove, told by the button meant
+   * to fix it.
+   *
+   * refreshOutbox runs in `finally` rather than after the flush, because the
+   * failure has been cleared either way - a retry with no signal has to leave
+   * the report reading as waiting, not as refused.
+   */
   const handleRetryReport = useCallback(
     (id: string) => {
-      void retryQueued(id).then(refreshOutbox)
+      void retryQueued(id)
+        .then(() => syncOutbox())
+        .then((result) => {
+          if (result !== null && result.sent > 0) setLastSyncedAt(new Date())
+        })
+        .finally(() => void refreshOutbox())
     },
     [refreshOutbox],
   )
@@ -325,17 +360,21 @@ function App() {
 
   const detailLevel: DetailLevel = detailLevelForZoom(preferences.max_background_zoom)
 
-  // The archives the background is currently made of (#192). Several pieces
-  // in the store, one thing on the screen - see lib/packages.ts.
-  const backgroundPackages = useMemo(() => offeredPackages(), [])
+  // The background sheets a hiker can choose between (#237), and every
+  // archive behind them (#192). One flat download store underneath - the
+  // per-sheet grouping is a fact about what a card shows, not about how
+  // bytes are held.
+  const backgroundSheets = useMemo(() => offeredSheets(), [])
   const downloadRequests = useMemo(
     () =>
-      backgroundPackages.map((pkg) => ({
-        packageKey: pkg.idbKey,
-        url: packageDownloadUrl(pkg, detailLevel),
-        artifactKey: packageArtifactKey(pkg, detailLevel),
-      })),
-    [backgroundPackages, detailLevel],
+      backgroundSheets
+        .flatMap((sheet) => offeredPackages(sheet))
+        .map((pkg) => ({
+          packageKey: pkg.idbKey,
+          url: packageDownloadUrl(pkg, detailLevel),
+          artifactKey: packageArtifactKey(pkg, detailLevel),
+        })),
+    [backgroundSheets, detailLevel],
   )
   const {
     statusFor: archiveStatusFor,
@@ -346,19 +385,30 @@ function App() {
     persistence: archivePersistence,
   } = useArchiveDownloads(downloadRequests)
 
-  /** The background as one state, however many archives are behind it. */
-  const backgroundStatus = combineBackgroundStatus(
-    backgroundPackages.map((pkg) => ({
-      status: archiveStatusFor(pkg.idbKey),
-      sizeBytes: packageSizeBytes(pkg, detailLevel),
-    })),
+  /** One sheet as one state, however many archives are behind it. */
+  const sheetStatus = useCallback(
+    (sheet: BackgroundSheet) =>
+      combineBackgroundStatus(
+        offeredPackages(sheet).map((pkg) => ({
+          status: archiveStatusFor(pkg.idbKey),
+          sizeBytes: packageSizeBytes(pkg, detailLevel),
+        })),
+      ),
+    [archiveStatusFor, detailLevel],
   )
 
-  /** The first archive with something to report. One card, so one message -
-   *  and the archives are not something a hiker was told about, so naming
-   *  which of them failed would explain nothing. */
-  const backgroundError =
-    backgroundPackages.map((pkg) => archiveErrorFor(pkg.idbKey)).find(Boolean) ?? null
+  /** The first of this sheet's archives with something to report. One card
+   *  per sheet, so one message - and the archives are not something a hiker
+   *  was told about, so naming which of them failed would explain nothing.
+   *  Per sheet rather than global, so one sheet's failure can never render
+   *  on the other's card. */
+  const sheetError = useCallback(
+    (sheet: BackgroundSheet) =>
+      offeredPackages(sheet)
+        .map((pkg) => archiveErrorFor(pkg.idbKey))
+        .find(Boolean) ?? null,
+    [archiveErrorFor],
+  )
 
   // Whether the corridor raster specifically is on the phone. Asked about
   // that archive rather than about the background as a whole, because it is
@@ -372,6 +422,15 @@ function App() {
   // offline background against an archive that draws nothing - the exact state
   // effectiveBackground exists to keep a hiker out of.
   const archiveDownloaded = archiveStatus.state === 'downloaded'
+
+  // Whether ANY sheet's archive is here - what words the DownloadsLink
+  // ("choose" vs "change"). Distinct from archiveDownloaded since #237: the
+  // hiking sheet downloading without the USGS raster is now a normal phone.
+  const anySheetDownloaded = backgroundSheets.some((sheet) =>
+    offeredPackages(sheet).some(
+      (pkg) => archiveStatusFor(pkg.idbKey).state === 'downloaded',
+    ),
+  )
 
   // What the archive on this phone actually covers, read from its own header
   // rather than assumed from the pipeline's constants (#216). Null until a
@@ -691,44 +750,61 @@ function App() {
       return true
     } catch (error) {
       setDataError(
-        error instanceof Error ? error.message : 'Trail data failed to download.',
+        error instanceof TrailDataHashMismatchError
+          ? { kind: 'hash-mismatch', message: error.message }
+          : {
+              kind: 'error',
+              message:
+                error instanceof Error ? error.message : 'Trail data failed to download.',
+            },
       )
       return false
     }
   }, [refreshTrailData])
 
-  /** The background: every archive it is made of, in one tap. Archives
-   *  already on the phone are left alone rather than re-fetched. */
-  const handleDownload = useCallback(async () => {
-    const missing = backgroundPackages
-      .map((pkg) => pkg.idbKey)
-      .filter((key) => archiveStatusFor(key).state !== 'downloaded')
-    if (missing.length === 0) return
-    if (!(await ensureTrailData())) return
-    await startPackages(missing)
-  }, [backgroundPackages, archiveStatusFor, ensureTrailData, startPackages])
+  /** One sheet: every archive it is made of, in one tap. Archives already on
+   *  the phone are left alone rather than re-fetched. */
+  const handleDownloadSheet = useCallback(
+    async (sheet: BackgroundSheet) => {
+      const missing = offeredPackages(sheet)
+        .map((pkg) => pkg.idbKey)
+        .filter((key) => archiveStatusFor(key).state !== 'downloaded')
+      if (missing.length === 0) return
+      if (!(await ensureTrailData())) return
+      await startPackages(missing)
+    },
+    [archiveStatusFor, ensureTrailData, startPackages],
+  )
 
   /** Resume, which skips the trail-data step: those bytes are already here,
    *  and the point of resuming is not to spend signal twice. */
-  const handleResumeDownload = useCallback(async () => {
-    await Promise.all(
-      backgroundPackages
-        .filter((pkg) => archiveStatusFor(pkg.idbKey).state !== 'downloaded')
-        .map((pkg) => startPackage(pkg.idbKey)),
-    )
-  }, [backgroundPackages, archiveStatusFor, startPackage])
+  const handleResumeSheet = useCallback(
+    async (sheet: BackgroundSheet) => {
+      await Promise.all(
+        offeredPackages(sheet)
+          .filter((pkg) => archiveStatusFor(pkg.idbKey).state !== 'downloaded')
+          .map((pkg) => startPackage(pkg.idbKey)),
+      )
+    },
+    [archiveStatusFor, startPackage],
+  )
 
-  /** Deleting the background deletes the background: every archive behind
-   *  it, and nothing else.
+  /** Deleting a sheet deletes that sheet: every archive behind it, and
+   *  nothing else - not the other sheet, which is the acceptance line #237
+   *  wrote down ("delete it without touching the background they navigate
+   *  by"), and not the trail's own data.
    *
-   *  The trail's own data deliberately stays. It belongs to the trail rather
-   *  than to the map under it, it is a rounding error against what is being
+   *  The trail data deliberately stays. It belongs to the trail rather than
+   *  to the map under it, it is a rounding error against what is being
    *  reclaimed, and it is downloaded by default anyway - so taking it would
-   *  strip the trail line off the screen only for the next launch with signal
-   *  to fetch it again. */
-  const handleDeleteDownload = useCallback(async () => {
-    await Promise.all(backgroundPackages.map((pkg) => removePackage(pkg.idbKey)))
-  }, [backgroundPackages, removePackage])
+   *  strip the trail line off the screen only for the next launch with
+   *  signal to fetch it again. */
+  const handleDeleteSheet = useCallback(
+    async (sheet: BackgroundSheet) => {
+      await Promise.all(offeredPackages(sheet).map((pkg) => removePackage(pkg.idbKey)))
+    },
+    [removePackage],
+  )
 
   // Every move is also where the camera would have to be put back, so this is
   // the one place that remembers it. Reading the map rather than deriving a
@@ -904,7 +980,12 @@ function App() {
       )}
       {dataError !== null && (
         <p role="alert" className="app__notice">
-          {dataError}
+          {dataError.message}
+          {/* The same one story the download card tells for a refused
+              archive: nothing kept, nothing here to resume, a fresh
+              download is the fix (#238). */}
+          {dataError.kind === 'hash-mismatch' &&
+            ' Downloading again fetches a fresh copy from the start.'}
         </p>
       )}
       <InstallPrompt
@@ -913,19 +994,32 @@ function App() {
         onInstall={install.install}
       />
       <Downloads
-        status={backgroundStatus}
-        title={BACKGROUND_DATA.title}
-        summary={BACKGROUND_DATA.summary}
-        sizeBytes={backgroundSizeBytes(detailLevel)}
-        detailLevel={detailLevel}
-        error={backgroundError}
+        sheets={backgroundSheets.map((sheet) => ({
+          id: sheet.id,
+          title: sheet.title,
+          summary: sheet.summary,
+          status: sheetStatus(sheet),
+          sizeBytes: sheetSizeBytes(sheet, detailLevel),
+          error: sheetError(sheet),
+          // The detail choice belongs to the sheet whose artifacts are
+          // tiered - the USGS raster (downloadDetail.ts). The hiking sheet
+          // has one measured size and gets no picker over a choice that
+          // does not exist.
+          detail:
+            sheet.id === USGS_SHEET.id
+              ? {
+                  level: detailLevel,
+                  onChange: (level: DetailLevel) =>
+                    updatePreferences({
+                      max_background_zoom: getDownloadDetail(level).zoom,
+                    }),
+                }
+              : undefined,
+          onStart: () => void handleDownloadSheet(sheet),
+          onResume: () => void handleResumeSheet(sheet),
+          onDelete: () => void handleDeleteSheet(sheet),
+        }))}
         persistence={archivePersistence}
-        onChangeDetail={(level) =>
-          updatePreferences({ max_background_zoom: getDownloadDetail(level).zoom })
-        }
-        onStart={() => void handleDownload()}
-        onResume={() => void handleResumeDownload()}
-        onDelete={() => void handleDeleteDownload()}
       />
     </DownloadsDialog>
   )
@@ -949,6 +1043,7 @@ function App() {
               now={now}
               dataSaver={saveData}
               archiveDownloaded={archiveDownloaded}
+              hasDownload={anySheetDownloaded}
               onOpenDownloads={openDownloads}
               onStartReport={() => setReporting({ step: 'pick' })}
               queuedReportCount={queuedCount}
@@ -1011,7 +1106,7 @@ function App() {
           // is the only way to the download from the map now that the tab is
           // gone - which is why it is carried, and not why it is given room.
           onOpenDownloads={openDownloads}
-          hasDownload={archiveDownloaded}
+          hasDownload={anySheetDownloaded}
           belowArchiveZoom={belowArchiveZoom}
           // For the opening camera only - MapView keeps it out of the zooms
           // the download has no tiles for.

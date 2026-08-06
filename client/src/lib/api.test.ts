@@ -228,19 +228,39 @@ describe('permanentFailureReason', () => {
     // the person holding it, if anyone tells them.
     const reason = permanentFailureReason(apiError(422))
 
-    expect(reason).toContain('date and time')
+    expect(reason).toContain('clock')
   })
 
   it('reads as a sentence, not a status code', async () => {
     // It is rendered verbatim on the More screen.
-    for (const status of [422, 409, 403, 413]) {
+    for (const status of [422, 409]) {
       const reason = permanentFailureReason(apiError(status))
       expect(reason).toMatch(/^[A-Z].*[.]$/s)
     }
   })
 
-  it('still says something useful for a 4xx it has never seen', async () => {
-    expect(permanentFailureReason(apiError(418))).toContain('418')
+  it.each([400, 403, 413, 418, 451, 494])(
+    'retries a %d rather than stranding the queue on it',
+    async (status) => {
+      // This assertion used to say the opposite, which is how the bug
+      // shipped: every unrecognised 4xx marked the report permanently
+      // refused. A captive portal, a WAF or a proxy answering 400/451/494
+      // would strand the WHOLE queue, in exactly the network conditions this
+      // app exists for - and it contradicted the function's own docstring.
+      // Only the two statuses this backend really returns are permanent.
+      expect(permanentFailureReason(apiError(status))).toBeNull()
+    },
+  )
+
+  it('does not promise that fixing the clock sends this report now', async () => {
+    // authored_at is never re-derived (a Monday report must still read as
+    // Monday on Thursday), so a badly wrong clock leaves an already-queued
+    // item unacceptable until real time catches up. "then try again" was a
+    // promise the code cannot keep.
+    const reason = permanentFailureReason(apiError(422)) ?? ''
+
+    expect(reason).not.toMatch(/then try again/i)
+    expect(reason).toMatch(/until that time has passed/i)
   })
 
   it.each([500, 502, 503])('retries a %d - the server may recover', async (status) => {

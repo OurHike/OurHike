@@ -497,7 +497,9 @@ describe('downloading everything', () => {
     await screen.findByRole('region', { name: /trail map/i })
 
     await openDownloads(user)
-    await user.click(await screen.findByRole('button', { name: /download the map/i }))
+    // The USGS card, named: two sheets each have a download button now (#237).
+    const usgsCard = await screen.findByRole('region', { name: /usgs sheet/i })
+    await user.click(within(usgsCard).getByRole('button', { name: /download the map/i }))
 
     await waitFor(() => expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob))
     await waitFor(() => expect(store.get(CORRIDOR_ARCHIVE_KEY)).toBeInstanceOf(Blob))
@@ -790,7 +792,8 @@ describe('when the trail data cannot be downloaded', () => {
     await screen.findByRole('region', { name: /trail map/i })
 
     await openDownloads(user)
-    await user.click(await screen.findByRole('button', { name: /download the map/i }))
+    const usgsCard = await screen.findByRole('region', { name: /usgs sheet/i })
+    await user.click(within(usgsCard).getByRole('button', { name: /download the map/i }))
 
     expect(await screen.findByText('Trail data failed to download.')).toBeInTheDocument()
   })

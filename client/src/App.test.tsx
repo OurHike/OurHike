@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, render, screen, cleanup, waitFor } from '@testing-library/react'
+import { act, render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { get, set } from 'idb-keyval'
 import App from './App'
@@ -218,7 +218,10 @@ describe('App shell', () => {
     await openDownloads(user)
 
     expect(screen.getByRole('region', { name: /trail map/i })).toBeInTheDocument()
-    expect(await screen.findByRole('button', { name: /download the map/i })).toBeVisible()
+    // Two sheets, two cards, each with its own button (#237).
+    const buttons = await screen.findAllByRole('button', { name: /download the map/i })
+    expect(buttons).toHaveLength(2)
+    expect(buttons[0]).toBeVisible()
   })
 
   it('closes the download window and leaves the map exactly where it was', async () => {
@@ -647,7 +650,8 @@ describe('App shell', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
     await openDownloads(user)
-    await user.click(await screen.findByRole('button', { name: /download the map/i }))
+    const usgsCard = await screen.findByRole('region', { name: /usgs sheet/i })
+    await user.click(within(usgsCard).getByRole('button', { name: /download the map/i }))
 
     await waitFor(() => {
       expect(screen.getByText(/404|not found|failed/i)).toBeInTheDocument()
@@ -670,7 +674,8 @@ describe('App shell', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
     await openDownloads(user)
-    await user.click(await screen.findByRole('button', { name: /download the map/i }))
+    const usgsCard = await screen.findByRole('region', { name: /usgs sheet/i })
+    await user.click(within(usgsCard).getByRole('button', { name: /download the map/i }))
 
     await waitFor(() => {
       expect(screen.getByText(/failed to fetch/i)).toBeInTheDocument()

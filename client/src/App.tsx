@@ -114,7 +114,7 @@ import {
   signUpWithEmail,
 } from './lib/auth'
 import { listQueued, removeQueued, retryQueued, type FlushResult } from './lib/outbox'
-import { useOutboxSync } from './lib/outboxSync'
+import { useOutboxSync, syncOutbox } from './lib/outboxSync'
 import type { BoundingBox, MapPoint } from './lib/legendContents'
 import type { SearchablePoi } from './lib/searchPoi'
 import './App.css'
@@ -319,11 +319,31 @@ function App() {
 
   useOutboxSync(online && account !== null, handleSynced)
 
-  /** Clears the refusal and lets the next flush try again - the escape hatch
-   *  for the fixable cause, a phone whose clock was wrong. */
+  /**
+   * Clears the refusal and sends, now - the escape hatch for a cause the
+   * hiker has just fixed.
+   *
+   * The flush is the part that was missing (#266). Clearing the failure on
+   * its own only relabels the report: the sole flush trigger is
+   * useOutboxSync's effect, whose deps are both referentially stable, and
+   * outboxSync is "deliberately not on a timer" - so on a steady connection
+   * nothing ran, and the screen swapped "could not be sent" plus its reason
+   * for "waiting to send" at the exact moment nothing was going to try. That
+   * is the lie this whole feature exists to remove, told by the button meant
+   * to fix it.
+   *
+   * refreshOutbox runs in `finally` rather than after the flush, because the
+   * failure has been cleared either way - a retry with no signal has to leave
+   * the report reading as waiting, not as refused.
+   */
   const handleRetryReport = useCallback(
     (id: string) => {
-      void retryQueued(id).then(refreshOutbox)
+      void retryQueued(id)
+        .then(() => syncOutbox())
+        .then((result) => {
+          if (result !== null && result.sent > 0) setLastSyncedAt(new Date())
+        })
+        .finally(() => void refreshOutbox())
     },
     [refreshOutbox],
   )

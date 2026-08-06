@@ -7,9 +7,12 @@ import {
   ARCHIVE_PROGRESS_KEY,
   ARCHIVE_SOURCE_KEY,
   ArchiveSizeMismatchError,
+  ArchiveHashMismatchError,
 } from './archiveDownload'
 import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
 import { completedMarker, recordCompleted } from './storageHealth'
+import { publishedHash } from './dataManifest'
+import { Sha256, sha256Hex, type Sha256State } from './sha256'
 
 // The download behind Downloads.tsx's buttons. WIREFRAMES.md `7a` requires a
 // failed transfer to RESUME rather than restart, and that promise is the
@@ -32,9 +35,17 @@ import { completedMarker, recordCompleted } from './storageHealth'
 
 vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
 
+// The published-hash lookup is mocked rather than served through the fetch
+// stub above: what it reads (latest.json under VITE_DATA_BASE_URL, which is
+// unset under test) is dataManifest.ts's own subject, tested there. Here the
+// interesting variable is only what the bucket claims - a hash, a different
+// hash, or no answer at all.
+vi.mock('./dataManifest', () => ({ publishedHash: vi.fn() }))
+
 const mockedGet = vi.mocked(get)
 const mockedSet = vi.mocked(set)
 const mockedDel = vi.mocked(del)
+const mockedPublishedHash = vi.mocked(publishedHash)
 
 const URL_ = 'https://cdn.example.org/background.pmtiles'
 
@@ -88,6 +99,10 @@ function mockFetch({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // The default for every test that is not about verification: no published
+  // answer, which is what a field-test server or an older release gives, and
+  // which must leave the download behaving exactly as it did before #197.
+  mockedPublishedHash.mockResolvedValue(null)
 })
 
 afterEach(() => {
@@ -607,5 +622,288 @@ describe('the completion marker (#190)', () => {
     await deleteArchive(CORRIDOR_ARCHIVE_KEY)
 
     expect(completedMarker(CORRIDOR_ARCHIVE_KEY)).toBeNull()
+  })
+})
+
+describe('verification against the published hash (#197)', () => {
+  // The failure being closed here is not a download that breaks - it is one
+  // that succeeds and is wrong. Bytes from two builds spliced at the resume
+  // point produce a file of exactly the expected length, so the size check
+  // provably cannot see it (totalBytes is DEFINED as heldBytes + declared),
+  // and what arrives is a PMTiles archive whose directory disagrees with its
+  // tiles: a map that reports itself downloaded and renders wrong past the
+  // seam, with no network to correct it.
+
+  const HELD = bytes(1, 2, 3, 4)
+  const REST = bytes(5, 6, 7, 8)
+  const WHOLE = bytes(1, 2, 3, 4, 5, 6, 7, 8)
+
+  /** The hash of a resume that went right: held bytes then the remainder. */
+  const WHOLE_HASH = sha256Hex(WHOLE)
+
+  it('stores an archive whose bytes hash to what was published', async () => {
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3), bytes(4, 5, 6)] })
+    mockedPublishedHash.mockResolvedValue(sha256Hex(bytes(1, 2, 3, 4, 5, 6)))
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeInstanceOf(Blob)
+  })
+
+  it('keeps nothing when the completed bytes are not what was published', async () => {
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash.mockResolvedValue(sha256Hex(bytes(9, 9, 9)))
+
+    await expect(downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)).rejects.toThrow(
+      ArchiveHashMismatchError,
+    )
+
+    // Not stored, and not left resumable either: the bytes are the right
+    // length and the wrong file, so resuming onto them would only rebuild
+    // the same wrong archive.
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
+    expect(store[ARCHIVE_PARTIAL_KEY]).toBeUndefined()
+    expect(store[ARCHIVE_PROGRESS_KEY]).toBeUndefined()
+    expect(store[ARCHIVE_SOURCE_KEY]).toBeUndefined()
+  })
+
+  it('leaves a working archive alone when an update fails verification', async () => {
+    const working = new Blob(['the map that already works'])
+    const store = withStore({ [CORRIDOR_ARCHIVE_KEY]: working })
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash.mockResolvedValue(sha256Hex(bytes(9, 9, 9)))
+
+    await expect(downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)).rejects.toThrow(
+      ArchiveHashMismatchError,
+    )
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBe(working)
+  })
+
+  it('catches a splice that completes to exactly the expected length', async () => {
+    // The case the length check cannot reach. Four held bytes from one build,
+    // four more from another; the server honours the range (206) and the
+    // total is exactly what was promised. Only the digest can tell.
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([HELD]),
+      [ARCHIVE_SOURCE_KEY]: { url: URL_, sha256: WHOLE_HASH },
+    })
+    mockFetch({ chunks: [bytes(90, 91, 92, 93)], status: 206, totalBytes: 4 })
+    mockedPublishedHash.mockResolvedValue(WHOLE_HASH)
+
+    await expect(downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)).rejects.toThrow(
+      ArchiveHashMismatchError,
+    )
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
+    expect(store[ARCHIVE_PARTIAL_KEY]).toBeUndefined()
+  })
+
+  it('completes a resume whose bytes really do belong together', async () => {
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([HELD]),
+      [ARCHIVE_SOURCE_KEY]: { url: URL_, sha256: WHOLE_HASH },
+    })
+    mockFetch({ chunks: [REST], status: 206, totalBytes: 4 })
+    mockedPublishedHash.mockResolvedValue(WHOLE_HASH)
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
+
+    const stored = new Uint8Array(
+      await (store[CORRIDOR_ARCHIVE_KEY] as Blob).arrayBuffer(),
+    )
+    expect([...stored]).toEqual([...WHOLE])
+  })
+
+  it('drops a partial the bucket has republished away from, before asking for bytes', async () => {
+    // The defence that does not depend on CORS exposing ETag - which is
+    // exactly the configuration DATA_RELEASES.md's consequence #1 describes.
+    // A published hash that has moved says the archive was rebuilt, so the
+    // held bytes are from the previous release and there is no Range to send.
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([HELD]),
+      [ARCHIVE_PROGRESS_KEY]: { receivedBytes: 4, totalBytes: 8 },
+      [ARCHIVE_SOURCE_KEY]: { url: URL_, sha256: sha256Hex(bytes(77)) },
+    })
+    const spy = mockFetch({ chunks: [WHOLE] })
+    mockedPublishedHash.mockResolvedValue(WHOLE_HASH)
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
+
+    const init = spy.mock.calls[0][1] as RequestInit | undefined
+    expect(init?.headers).toBeUndefined()
+    const stored = new Uint8Array(
+      await (store[CORRIDOR_ARCHIVE_KEY] as Blob).arrayBuffer(),
+    )
+    expect([...stored]).toEqual([...WHOLE])
+  })
+
+  it('resumes onto a partial the bucket still publishes the same hash for', async () => {
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([HELD]),
+      [ARCHIVE_SOURCE_KEY]: { url: URL_, sha256: WHOLE_HASH },
+    })
+    const spy = mockFetch({ chunks: [REST], status: 206, totalBytes: 4 })
+    mockedPublishedHash.mockResolvedValue(WHOLE_HASH)
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
+
+    const init = spy.mock.calls[0][1] as RequestInit | undefined
+    expect(new Headers(init?.headers).get('range')).toBe('bytes=4-')
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeInstanceOf(Blob)
+  })
+
+  it('carries the hash of held bytes across a failed attempt', async () => {
+    // What makes a resume cheap: the next attempt starts from this state
+    // rather than re-reading several hundred megabytes of Blob to catch up.
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)], totalBytes: 10 })
+    mockedPublishedHash.mockResolvedValue(sha256Hex(WHOLE))
+
+    await expect(downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)).rejects.toThrow(
+      ArchiveSizeMismatchError,
+    )
+
+    const carried = (store[ARCHIVE_SOURCE_KEY] as { hash?: Sha256State }).hash
+    expect(carried?.byteLength).toBe(3)
+    expect(Sha256.fromState(carried as Sha256State).digest()).toBe(
+      sha256Hex(bytes(1, 2, 3)),
+    )
+  })
+
+  it('resumes from a carried hash state without re-reading the held bytes', async () => {
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([HELD]),
+      [ARCHIVE_SOURCE_KEY]: {
+        url: URL_,
+        sha256: WHOLE_HASH,
+        hash: new Sha256().update(HELD).toState(),
+      },
+    })
+    mockFetch({ chunks: [REST], status: 206, totalBytes: 4 })
+    mockedPublishedHash.mockResolvedValue(WHOLE_HASH)
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeInstanceOf(Blob)
+  })
+
+  it('re-hashes the held bytes when no state was carried', async () => {
+    // A partial written by a build before this existed, or by an attempt
+    // that found no published hash to check against. Re-reading is the cost;
+    // being unable to verify would be the alternative.
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([HELD]),
+      [ARCHIVE_SOURCE_KEY]: { url: URL_ },
+    })
+    mockFetch({ chunks: [REST], status: 206, totalBytes: 4 })
+    mockedPublishedHash.mockResolvedValue(WHOLE_HASH)
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeInstanceOf(Blob)
+  })
+
+  it('ignores a carried state that claims more bytes than the partial holds', async () => {
+    // Reachable: persistPartial writes the source record BEFORE the blob, on
+    // purpose, and the blob write is the one that fails under quota pressure.
+    // A state ahead of the bytes must not be trusted - it would digest a file
+    // nobody has - and re-hashing from zero is always safe because the
+    // partial only ever grows.
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([HELD]),
+      [ARCHIVE_SOURCE_KEY]: {
+        url: URL_,
+        sha256: WHOLE_HASH,
+        hash: new Sha256().update(WHOLE).toState(),
+      },
+    })
+    mockFetch({ chunks: [REST], status: 206, totalBytes: 4 })
+    mockedPublishedHash.mockResolvedValue(WHOLE_HASH)
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeInstanceOf(Blob)
+  })
+
+  it('starts the hash clean when the server ignores the range and resends the file', async () => {
+    // A 200 in reply to a Range request means the whole file is coming. The
+    // held bytes are not part of it, and hashing as though they were would
+    // fail an archive that is perfectly good.
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([HELD]),
+      [ARCHIVE_SOURCE_KEY]: {
+        url: URL_,
+        sha256: WHOLE_HASH,
+        hash: new Sha256().update(HELD).toState(),
+      },
+    })
+    mockFetch({ chunks: [WHOLE], status: 200 })
+    mockedPublishedHash.mockResolvedValue(WHOLE_HASH)
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
+
+    const stored = new Uint8Array(
+      await (store[CORRIDOR_ARCHIVE_KEY] as Blob).arrayBuffer(),
+    )
+    expect([...stored]).toEqual([...WHOLE])
+  })
+
+  it('stores the archive unverified when nothing published a hash for it', async () => {
+    // The download must not start failing because a metadata file moved.
+    // Absence of an expectation is absence of a check, not a failed one.
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash.mockResolvedValue(null)
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeInstanceOf(Blob)
+  })
+
+  it('records no hash state when there is nothing to check against', async () => {
+    // No expectation, no reason to spend a phone's CPU on a digest nobody
+    // will compare.
+    const store = withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)], totalBytes: 10 })
+    mockedPublishedHash.mockResolvedValue(null)
+
+    await expect(downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)).rejects.toThrow(
+      ArchiveSizeMismatchError,
+    )
+
+    expect((store[ARCHIVE_SOURCE_KEY] as { hash?: unknown }).hash).toBeUndefined()
+  })
+
+  it('verifies against the hash the bucket publishes now, not the one held', async () => {
+    // A partial with no recorded expectation (written before this existed)
+    // resumed against a republished archive: the current manifest is what
+    // the completed bytes are held to, and they will not match.
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([HELD]),
+      [ARCHIVE_SOURCE_KEY]: { url: URL_ },
+    })
+    mockFetch({ chunks: [bytes(50, 51, 52, 53)], status: 206, totalBytes: 4 })
+    mockedPublishedHash.mockResolvedValue(WHOLE_HASH)
+
+    await expect(downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)).rejects.toThrow(
+      ArchiveHashMismatchError,
+    )
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
+  })
+
+  it('says plainly that nothing was kept', async () => {
+    // The hiker's next move is a clean re-download, and the message has to
+    // be enough to know that without guessing.
+    withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedPublishedHash.mockResolvedValue(sha256Hex(bytes(9)))
+
+    await expect(downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)).rejects.toThrow(
+      /was not kept - please download it again/,
+    )
   })
 })

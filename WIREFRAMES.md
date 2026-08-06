@@ -201,6 +201,7 @@ Confidence stays separate: a dashed pin means *never verified to exist*; stalene
 - **Motion:** 120–200 ms ease fades/colour transitions only; buttons press to 97%. No bounce, no spring (design-system rule).
 - **Offline everywhere:** every write (report, thanks, confirmation) queues in an outbox with its authored timestamp and syncs later. Nothing blocks on network.
 - **Loading/empty/error states are first-class:** download failure resumes rather than restarts; no-GPS shows the last known position with its age; empty search explains the boundary.
+  - **One exception, added 2026-08-06 ([#197](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/197)):** an archive that arrives complete and does not match the SHA-256 the bucket publishes for it is discarded, not kept for a resume, and the window says so and offers a clean re-download. Those bytes are the right length and the wrong file — resuming onto them can only rebuild the same wrong map — so this is the one failure where "keep what arrived" would be the dishonest choice.
 
 ## State management
 

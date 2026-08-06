@@ -30,6 +30,11 @@ vi.mock('./lib/api', () => ({
   accessToken: vi.fn(async () => 'a-real-token'),
   sendReport: vi.fn(async () => undefined),
   permanentFailureReason: vi.fn(() => null),
+  // The map's own reads (#232). App fetches these whenever it is online with
+  // a backend configured, which this file is; they are irrelevant to the
+  // retry path but a mock missing them makes App throw on mount.
+  fetchReports: vi.fn(async () => []),
+  fetchClosures: vi.fn(async () => []),
 }))
 vi.mock('./lib/auth', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./lib/auth')>()),

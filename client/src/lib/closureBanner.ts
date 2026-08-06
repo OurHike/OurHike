@@ -68,3 +68,53 @@ export function closureBanner(
     ` · mi ${mile(start)} – ${mile(end)}`
   )
 }
+
+/**
+ * How far ahead a closure is, or null if it is behind and irrelevant.
+ *
+ * Zero means standing inside it, which is why this is not simply a distance:
+ * "inside" has to sort ahead of every closure further up the trail, and a
+ * plain subtraction would put it at a negative number and lose it.
+ */
+function distanceAhead(
+  closure: Closure,
+  currentMile: number,
+  direction: HikeDirection,
+): number | null {
+  if (closure.status === 'open') return null
+
+  const { start_mile_marker: start, end_mile_marker: end } = closure
+  if (currentMile >= start && currentMile <= end) return 0
+
+  const nearEdge = direction === 'NOBO' ? start : end
+  const ahead = direction === 'NOBO' ? nearEdge - currentMile : currentMile - nearEdge
+
+  return ahead < 0 ? null : ahead
+}
+
+/**
+ * One banner for a whole trail's worth of closures: the one a hiker is about
+ * to walk into, or null if the way ahead is clear.
+ *
+ * Nearest wins, and a closure the hiker is standing in wins outright. The
+ * header has room for one line, and the closure two hundred miles north is
+ * not the one that changes what they do next - showing it instead of the one
+ * at mile 3 would be actively worse than showing nothing.
+ */
+export function nearestClosureBanner(
+  closures: readonly Closure[],
+  currentMile: number,
+  direction: HikeDirection,
+): string | null {
+  let best: Closure | null = null
+  let bestDistance = Infinity
+
+  for (const closure of closures) {
+    const ahead = distanceAhead(closure, currentMile, direction)
+    if (ahead === null || ahead >= bestDistance) continue
+    best = closure
+    bestDistance = ahead
+  }
+
+  return best === null ? null : closureBanner(best, currentMile, direction)
+}

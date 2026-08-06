@@ -4,6 +4,8 @@ import {
   apiFetch,
   sendReport,
   accessToken,
+  fetchReports,
+  fetchClosures,
   permanentFailureReason,
   ApiError,
   ApiNotConfiguredError,
@@ -312,4 +314,99 @@ describe('sendReport idempotency', () => {
     const body = JSON.parse(String((spy.mock.calls[0][1] as RequestInit).body))
     expect(body.id).toBe('outbox-1')
   })
+})
+
+// --- Reading the map (#286) ----------------------------------------------
+//
+// The client could post a report and never see one - its own included. Two
+// properties matter more than the fetch itself.
+//
+//  1. The token goes WHEN THERE IS ONE, and is never required. Browsing has
+//     never needed an account, but a reporter has to be able to see their own
+//     unmoderated report, which is what "Waiting" on the More screen means.
+//  2. A failed read THROWS. An empty list and a failed fetch draw the same
+//     map and mean opposite things on the ground.
+
+describe('reading reports and closures', () => {
+  async function configuredApi() {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.org')
+    vi.resetModules()
+    return import('./api')
+  }
+
+  function mockJson(payload: unknown, status = 200) {
+    return vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => payload,
+    } as Response)
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
+  it('reads reports without an account', async () => {
+    withSession(null)
+    const api = await configuredApi()
+    const spy = mockJson([{ id: 'r1' }])
+
+    await expect(api.fetchReports()).resolves.toEqual([{ id: 'r1' }])
+
+    const headers = (spy.mock.calls[0][1] as RequestInit).headers as Record<
+      string,
+      string
+    >
+    expect(headers.Authorization).toBeUndefined()
+  })
+
+  it('sends the token when there is one, so a reporter sees their own', async () => {
+    withSession('a-real-token')
+    const api = await configuredApi()
+    const spy = mockJson([])
+
+    await api.fetchReports()
+
+    const headers = (spy.mock.calls[0][1] as RequestInit).headers as Record<
+      string,
+      string
+    >
+    expect(headers.Authorization).toBe('Bearer a-real-token')
+  })
+
+  it('reads closures anonymously too', async () => {
+    withSession(null)
+    const api = await configuredApi()
+    const spy = mockJson([{ id: 'c1' }])
+
+    await expect(api.fetchClosures()).resolves.toEqual([{ id: 'c1' }])
+    expect(String(spy.mock.calls[0][0])).toBe('https://api.example.org/closures')
+  })
+
+  it.each([['fetchReports' as const], ['fetchClosures' as const]])(
+    '%s throws on a failed read rather than returning an empty list',
+    async (fn) => {
+      // The rule this exists for: [] and "could not ask" draw the same map,
+      // and the wrong one tells a hiker a closed stretch of trail is open.
+      withSession(null)
+      const api = await configuredApi()
+      mockJson(null, 500)
+
+      await expect(api[fn]()).rejects.toBeInstanceOf(api.ApiError)
+    },
+  )
+})
+
+describe('reading from a build with no backend', () => {
+  it.each([[fetchReports], [fetchClosures]])(
+    'throws rather than looking like an empty map',
+    async (read) => {
+      // Uses this file's own unconfigured module, so an absent backend cannot
+      // be mistaken for a trail with nothing reported on it.
+      withSession(null)
+
+      await expect(read()).rejects.toBeInstanceOf(ApiNotConfiguredError)
+    },
+  )
 })

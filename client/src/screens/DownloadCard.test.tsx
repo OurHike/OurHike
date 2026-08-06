@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { DownloadCard } from './DownloadCard'
-import { rasterDetailOptions } from './DetailPicker'
+import { hikingDetailOptions, rasterDetailOptions } from './DetailPicker'
 
 // One download's card, in every state it can be in. These were the Downloads
 // screen's own tests until #192 lifted the body into a card of its own; the
@@ -14,7 +14,6 @@ import { rasterDetailOptions } from './DetailPicker'
 
 const PROPS = {
   title: 'Offline map',
-  summary: 'The whole corridor as a map you can read with no signal.',
   status: { state: 'not-downloaded' as const },
   detail: { options: rasterDetailOptions(), value: 'standard', onChange: vi.fn() },
   onStart: vi.fn(),
@@ -54,19 +53,25 @@ describe('DownloadCard', () => {
     expect(PROPS.onStart).not.toHaveBeenCalled()
   })
 
-  it('shows no detail picker where there are no levels to pick', () => {
-    // The background has tiers; a download with one size does not, and a
-    // picker over it would offer a choice that does not exist.
+  it('greys out a level this sheet has none of, rather than dropping the row (#298)', () => {
+    // The hiking sheet is cut at z13 and z14 - there is no Light. Under a
+    // tab beside the raster's three, a two-row picker cannot say whether
+    // this map has no Light version or whether the app forgot to ask.
     render(
       <DownloadCard
         {...PROPS}
-        title="Terrain"
-        summary="Hillshade and contours."
-        detail={undefined}
+        title="Hiking sheet"
+        detail={{ ...PROPS.detail, options: hikingDetailOptions() }}
       />,
     )
 
-    expect(screen.queryByRole('radio')).toBe(null)
+    const levels = screen.getAllByRole('radio')
+    expect(levels).toHaveLength(3)
+    expect(screen.getByRole('radio', { name: /light/i })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: /light/i })).not.toBeChecked()
+    expect(screen.getByRole('radio', { name: /standard/i })).toBeEnabled()
+    expect(screen.getByRole('radio', { name: /fine/i })).toBeEnabled()
+    expect(screen.getByText(/not offered/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument()
   })
 
@@ -208,35 +213,15 @@ describe('DownloadCard', () => {
 
 describe('naming what a card is about (#192)', () => {
   it('is reachable by the thing it belongs to, so two cards are never confused', () => {
-    render(
-      <DownloadCard
-        {...PROPS}
-        title="Terrain"
-        summary="Hillshade and contours."
-        detail={undefined}
-      />,
-    )
+    render(<DownloadCard {...PROPS} title="Terrain" />)
 
     expect(screen.getByRole('region', { name: 'Terrain' })).toBeInTheDocument()
   })
 
-  it('names and describes it when it is one of several', () => {
-    render(
-      <DownloadCard
-        {...PROPS}
-        title="Terrain"
-        summary="Hillshade and contours."
-        detail={undefined}
-        showHeading
-      />,
-    )
-
-    expect(screen.getByRole('heading', { name: 'Terrain' })).toBeInTheDocument()
-    expect(screen.getByText('Hillshade and contours.')).toBeInTheDocument()
-  })
-
-  it('says it once when it is the only card, since the screen has already said it', () => {
-    render(<DownloadCard {...PROPS} showHeading={false} />)
+  it('says the name once, never as a heading of its own (#298)', () => {
+    // The tab above the card names the sheet, and where there is no tab the
+    // screen's own copy has. A heading here would be the third time.
+    render(<DownloadCard {...PROPS} title="Terrain" />)
 
     expect(screen.queryByRole('heading')).toBe(null)
   })
@@ -244,13 +229,7 @@ describe('naming what a card is about (#192)', () => {
 
 describe('a failure belongs to the download it happened to (#192)', () => {
   it('reports this download’s error in its own card', () => {
-    render(
-      <DownloadCard
-        {...PROPS}
-        detail={undefined}
-        error="Archive download failed: 404 Not Found"
-      />,
-    )
+    render(<DownloadCard {...PROPS} error="Archive download failed: 404 Not Found" />)
 
     expect(screen.getByRole('alert')).toHaveTextContent('404 Not Found')
   })

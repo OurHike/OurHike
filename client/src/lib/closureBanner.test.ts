@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { closureBanner, closureReasonLabel } from './closureBanner'
+import { closureBanner, nearestClosureBanner, closureReasonLabel } from './closureBanner'
 
 // WIREFRAMES.md §7's header banner: "Trail closed 1.4 mi ahead · Storm damage
 // · mi 1,408.6 – 1,411.0".
@@ -76,5 +76,91 @@ describe('closureReasonLabel', () => {
 
   it('falls back to plain "Closed" rather than printing a raw enum value', () => {
     expect(closureReasonLabel('other')).toBe('Closed')
+  })
+})
+
+// --- Picking one closure out of many (#232) ------------------------------
+//
+// The header has room for one line. Which closure gets it is the whole
+// question: the one two hundred miles north does not change what a hiker
+// does next, and showing it instead of the one at mile 3 is worse than
+// showing nothing.
+
+const CLOSED = {
+  reason_type: 'storm_damage' as const,
+  note: null,
+  status: 'closed' as const,
+}
+
+describe('nearestClosureBanner', () => {
+  it('says nothing when the way ahead is clear', () => {
+    const behind = { ...CLOSED, id: 'c1', start_mile_marker: 10, end_mile_marker: 11 }
+
+    expect(nearestClosureBanner([behind], 100, 'NOBO')).toBeNull()
+  })
+
+  it('says nothing about an empty list', () => {
+    expect(nearestClosureBanner([], 100, 'NOBO')).toBeNull()
+  })
+
+  it('picks the nearest of several ahead', () => {
+    const near = { ...CLOSED, id: 'near', start_mile_marker: 105, end_mile_marker: 106 }
+    const far = { ...CLOSED, id: 'far', start_mile_marker: 300, end_mile_marker: 301 }
+
+    const banner = nearestClosureBanner([far, near], 100, 'NOBO')
+
+    expect(banner).toContain('5.0 mi ahead')
+  })
+
+  it('prefers the closure being stood in over one further up', () => {
+    // Zero distance, and it has to sort ahead of everything - a plain
+    // subtraction would make "inside" negative and lose it entirely.
+    const inside = {
+      ...CLOSED,
+      id: 'inside',
+      start_mile_marker: 99,
+      end_mile_marker: 101,
+    }
+    const ahead = { ...CLOSED, id: 'ahead', start_mile_marker: 102, end_mile_marker: 103 }
+
+    const banner = nearestClosureBanner([inside, ahead], 100, 'NOBO')
+
+    expect(banner).toContain('0.0 mi ahead')
+    expect(banner).toContain('mi 99.0 – 101.0')
+  })
+
+  it('reads direction, not just distance', () => {
+    // The same closure and the same standing mile. A NOBO hiker has it in
+    // front of them; a SOBO hiker walked through it an hour ago. Getting
+    // this backwards means silence about the one being walked into.
+    const closure = { ...CLOSED, id: 'c', start_mile_marker: 105, end_mile_marker: 106 }
+
+    expect(nearestClosureBanner([closure], 100, 'NOBO')).toContain('5.0 mi ahead')
+    expect(nearestClosureBanner([closure], 100, 'SOBO')).toBeNull()
+  })
+
+  it('ignores a reopened closure even when it is the nearest thing', () => {
+    const reopened = {
+      ...CLOSED,
+      id: 'r',
+      status: 'open' as const,
+      start_mile_marker: 101,
+      end_mile_marker: 102,
+    }
+    const real = { ...CLOSED, id: 'real', start_mile_marker: 110, end_mile_marker: 111 }
+
+    expect(nearestClosureBanner([reopened, real], 100, 'NOBO')).toContain('10.0 mi ahead')
+  })
+
+  it('still warns about a reroute - somewhere else to walk is not passable trail', () => {
+    const reroute = {
+      ...CLOSED,
+      id: 'rr',
+      status: 'reroute_available' as const,
+      start_mile_marker: 105,
+      end_mile_marker: 106,
+    }
+
+    expect(nearestClosureBanner([reroute], 100, 'NOBO')).toContain('5.0 mi ahead')
   })
 })

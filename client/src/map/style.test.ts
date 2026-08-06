@@ -5,9 +5,9 @@ import {
   validateStyleMin,
 } from '@maplibre/maplibre-gl-style-spec'
 import { BLAZE_MATCH_EXPRESSION } from '../lib/blaze'
+import { OSM_CREDIT, USGS_TOPO_CREDIT } from './credits'
 import {
   buildMapStyle,
-  ATTRIBUTION,
   TOPO_SOURCE_ID,
   TRAILS_SOURCE_ID,
   BLAZE_LAYER_ID,
@@ -20,7 +20,12 @@ import {
   TRAIL_LINE_WIDTHS,
   DEFAULT_TRAIL_LINE_WIDTH,
   CASING_OVERHANG,
+  TOPO_LAYER_ID,
+  MAP_BACKDROP,
+  ARCHIVE_RASTER_PAINT,
+  attachMapTheme,
 } from './style'
+import { LIVE_TOPO_LAYER_IDS, TOPO_PALETTE, TOPO_PALETTE_DARK } from './liveTopo'
 import { POI_LAYER_ID, POI_SOURCE_ID } from './poiLayers'
 import { CAMERA_ZOOM_TILE_OFFSET } from '../lib/archiveCoverage'
 
@@ -319,16 +324,28 @@ describe('buildMapStyle', () => {
     // WIREFRAMES.md's map-corner copy shows the "© OSM" shorthand, but its own
     // Assets section requires a visible "© OpenStreetMap" - the abbreviation
     // does not satisfy the licence. Full form wins.
-    expect(ATTRIBUTION).toContain('© OpenStreetMap')
-    expect(ATTRIBUTION).toContain('USGS US Topo')
+    expect(OSM_CREDIT).toContain('© OpenStreetMap')
   })
 
-  it('attaches that attribution to every data source, so none can ship uncredited', () => {
+  it('gives every data source an attribution, so none can ship uncredited', () => {
     const sources = style().sources as Record<string, Record<string, unknown>>
 
     for (const id of [TOPO_SOURCE_ID, TRAILS_SOURCE_ID, POI_SOURCE_ID]) {
-      expect(sources[id].attribution).toBe(ATTRIBUTION)
+      expect(sources[id].attribution).toBeTruthy()
     }
+  })
+
+  it('credits each source for the data IT is, not for the whole app', () => {
+    // All three used to carry one composed "USGS US Topo · © OpenStreetMap
+    // contributors", which made the corner's job impossible: three sources
+    // declaring one string cannot say which of them is drawing, so the corner
+    // had to guess and guessed wrong (map/credits.ts). The raster IS the USGS
+    // survey; the trail lines and the pins contain none of it.
+    const sources = style().sources as Record<string, Record<string, unknown>>
+
+    expect(sources[TOPO_SOURCE_ID].attribution).toBe(USGS_TOPO_CREDIT)
+    expect(sources[TRAILS_SOURCE_ID].attribution).not.toContain(USGS_TOPO_CREDIT)
+    expect(sources[POI_SOURCE_ID].attribution).not.toContain(USGS_TOPO_CREDIT)
   })
 })
 
@@ -383,5 +400,203 @@ describe('POI pins', () => {
         (l.layout as Record<string, unknown> | undefined)?.['text-field'],
       ).toBeUndefined()
     }
+  })
+})
+
+describe('the canvas under light and dark', () => {
+  // The chrome follows `data-theme` through the design tokens; the canvas
+  // cannot, because it is WebGL. These are the three things that have to
+  // change instead, and the one that deliberately does not.
+  const styled = (
+    theme: 'light' | 'dark',
+    background: 'usgs_topo_offline' | 'hiking_topo_live' = 'usgs_topo_offline',
+  ) => buildMapStyle({ ...STYLE_OPTIONS, background, theme })
+
+  const layerIn = (built: ReturnType<typeof buildMapStyle>, id: string) => {
+    const found = built.layers.find((l) => l.id === id)
+    if (found === undefined) throw new Error(`no layer "${id}" in the style`)
+    return found.paint as Record<string, unknown>
+  }
+
+  it('defaults to light, so a caller with no opinion builds what it always built', () => {
+    expect(
+      layerIn(buildMapStyle(STYLE_OPTIONS), BACKDROP_LAYER_ID)['background-color'],
+    ).toBe(MAP_BACKGROUND_COLOR)
+  })
+
+  it('paints the backdrop in the theme, so a cold start is never a white flash', () => {
+    // attachMapTheme can repaint a live map, but it necessarily runs after the
+    // map exists. On a phone at night, one white frame is the thing the theme
+    // was chosen to avoid.
+    expect(layerIn(styled('light'), BACKDROP_LAYER_ID)['background-color']).toBe(
+      MAP_BACKDROP.light,
+    )
+    expect(layerIn(styled('dark'), BACKDROP_LAYER_ID)['background-color']).toBe(
+      MAP_BACKDROP.dark,
+    )
+  })
+
+  it('keeps the light backdrop identical to the paper every other file reads', () => {
+    // poiIcons.ts's halo and chrome.css's pre-WebGL fallback are both keyed to
+    // this one tone. A second paper would show as a seam at the handover.
+    expect(MAP_BACKDROP.light).toBe(MAP_BACKGROUND_COLOR)
+  })
+
+  it('uses opaque colours for both backdrops, not alpha black could show through', () => {
+    for (const colour of Object.values(MAP_BACKDROP)) {
+      expect(colour).toMatch(/^#[0-9a-f]{6}$/i)
+    }
+  })
+
+  it('dims the downloaded archive rather than pretending it can go dark', () => {
+    // US Topo quads are pre-rendered raster - their ink is pixels, and nothing
+    // here knows which pixels are contours. So the layer is turned down.
+    const dark = layerIn(styled('dark'), TOPO_LAYER_ID)
+
+    expect(dark['raster-brightness-max']).toBe(
+      ARCHIVE_RASTER_PAINT.dark['raster-brightness-max'],
+    )
+    expect(dark['raster-brightness-max'] as number).toBeLessThan(1)
+  })
+
+  it('leaves the archive at full strength under the light theme', () => {
+    const light = layerIn(styled('light'), TOPO_LAYER_ID)
+
+    expect(light['raster-brightness-max']).toBe(1)
+    expect(light['raster-saturation']).toBe(0)
+  })
+
+  it('keeps the dim readable rather than handsome', () => {
+    // The one screen a hiker uses to decide where to walk. 0.3 makes a better
+    // screenshot and a sheet whose 1:24,000 contour labels cannot be read.
+    expect(ARCHIVE_RASTER_PAINT.dark['raster-brightness-max']).toBeGreaterThanOrEqual(0.5)
+  })
+
+  it('names every archive property in both themes, so switching back restores it', () => {
+    // These are applied to a LIVE map. A property set under one theme and
+    // absent from the other would stay at the dark value forever after one
+    // trip through dark mode.
+    expect(Object.keys(ARCHIVE_RASTER_PAINT.dark).sort()).toEqual(
+      Object.keys(ARCHIVE_RASTER_PAINT.light).sort(),
+    )
+  })
+
+  it('draws the live sheet in the dark palette', () => {
+    const dark = layerIn(styled('dark', 'hiking_topo_live'), LIVE_TOPO_LAYER_IDS.wood)
+
+    expect(dark['fill-color']).toBe(TOPO_PALETTE_DARK.wood)
+  })
+
+  it('leaves the blaze colours alone, because they mean something', () => {
+    // A white blaze is the AT. Re-hueing the trail lines per theme would make
+    // the map lie about which trail a hiker is standing on, which is a
+    // different and much worse problem than a bright map at night.
+    expect(layerIn(styled('dark'), BLAZE_LAYER_ID)['line-color']).toEqual(
+      layerIn(styled('light'), BLAZE_LAYER_ID)['line-color'],
+    )
+  })
+
+  it('validates in both themes', () => {
+    for (const theme of ['light', 'dark'] as const) {
+      expect(validateStyleMin(styled(theme, 'hiking_topo_live'), latest)).toEqual([])
+    }
+  })
+})
+
+describe('attachMapTheme', () => {
+  // Repaints a map that is already built. Not an optimisation: swapping the
+  // style out drops the WebGL context, and with it the POI source pushed in
+  // from IndexedDB, every archive tile in flight, and the camera. A hiker who
+  // taps "Dark" while walking must not lose the map they were reading.
+  it('repaints the backdrop, the archive and the sheet in place', async () => {
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const m = new MockMap({})
+    m.layerIds = [BACKDROP_LAYER_ID, TOPO_LAYER_ID, LIVE_TOPO_LAYER_IDS.wood]
+
+    attachMapTheme(m as never, 'dark')
+
+    expect(m.paintProperties.get(`${BACKDROP_LAYER_ID}/background-color`)).toBe(
+      MAP_BACKDROP.dark,
+    )
+    expect(m.paintProperties.get(`${TOPO_LAYER_ID}/raster-brightness-max`)).toBe(
+      ARCHIVE_RASTER_PAINT.dark['raster-brightness-max'],
+    )
+    expect(m.paintProperties.get(`${LIVE_TOPO_LAYER_IDS.wood}/fill-color`)).toBe(
+      TOPO_PALETTE_DARK.wood,
+    )
+  })
+
+  it('never swaps the style out, and never tears the map down', async () => {
+    // The whole point. `setStyle` would drop the WebGL context; `remove` would
+    // take the GPS watcher and the camera with it.
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const m = new MockMap({})
+    m.layerIds = [BACKDROP_LAYER_ID, TOPO_LAYER_ID, LIVE_TOPO_LAYER_IDS.wood]
+
+    attachMapTheme(m as never, 'dark')
+
+    expect(m.styles).toEqual([])
+    expect(m.removed).toBe(false)
+  })
+
+  it('restores the light values on the way back', async () => {
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const m = new MockMap({})
+    m.layerIds = [BACKDROP_LAYER_ID, TOPO_LAYER_ID, LIVE_TOPO_LAYER_IDS.wood]
+
+    attachMapTheme(m as never, 'dark')()
+    attachMapTheme(m as never, 'light')
+
+    expect(m.paintProperties.get(`${BACKDROP_LAYER_ID}/background-color`)).toBe(
+      MAP_BACKDROP.light,
+    )
+    expect(m.paintProperties.get(`${TOPO_LAYER_ID}/raster-brightness-max`)).toBe(1)
+    expect(m.paintProperties.get(`${LIVE_TOPO_LAYER_IDS.wood}/fill-color`)).toBe(
+      TOPO_PALETTE.wood,
+    )
+  })
+
+  it('still repaints the backdrop where the live sheet is not in the style', async () => {
+    // The downloaded background has none of the sheet's layers. Folding the
+    // two waits into one probe would leave the backdrop waiting on a layer
+    // that is never coming, and the canvas paper-white behind a dark app.
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const m = new MockMap({})
+    m.layerIds = [BACKDROP_LAYER_ID, TOPO_LAYER_ID]
+
+    attachMapTheme(m as never, 'dark')
+
+    expect(m.paintProperties.get(`${BACKDROP_LAYER_ID}/background-color`)).toBe(
+      MAP_BACKDROP.dark,
+    )
+  })
+
+  it('waits for a style that has not brought its layers yet', async () => {
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const m = new MockMap({})
+
+    attachMapTheme(m as never, 'dark')
+    expect(m.paintProperties.size).toBe(0)
+
+    m.layerIds = [BACKDROP_LAYER_ID, TOPO_LAYER_ID, LIVE_TOPO_LAYER_IDS.wood]
+    m.emit('styledata')
+
+    expect(m.paintProperties.get(`${BACKDROP_LAYER_ID}/background-color`)).toBe(
+      MAP_BACKDROP.dark,
+    )
+    expect(m.paintProperties.get(`${LIVE_TOPO_LAYER_IDS.wood}/fill-color`)).toBe(
+      TOPO_PALETTE_DARK.wood,
+    )
+  })
+
+  it('detaches without writing anything', async () => {
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const m = new MockMap({})
+
+    attachMapTheme(m as never, 'dark')()
+    m.layerIds = [BACKDROP_LAYER_ID, TOPO_LAYER_ID, LIVE_TOPO_LAYER_IDS.wood]
+    m.emit('styledata')
+
+    expect(m.paintProperties.size).toBe(0)
   })
 })

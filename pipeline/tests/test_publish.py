@@ -236,13 +236,14 @@ def test_collect_hashes_each_archive_by_content(tmp_path, monkeypatch):
 # BACKGROUND_ARCHIVES.
 
 
-def test_offline_sheet_archives_are_the_basemap_package_and_the_dem():
+def test_offline_sheet_archives_are_the_basemap_cuts_and_the_dem():
     """The names are pinned, not just the set: they are the flat R2 keys the
     client requests (packages.ts sources, dataManifest hash lookups), and
     publish()'s additive-only manifest merge means a renamed key is a new
     key forever - the old one can never be removed by this module."""
     assert publish.OFFLINE_SHEET_ARCHIVES == {
         "basemap": "at_basemap_package.pmtiles",
+        "basemap_z13": "at_basemap_package_z13.pmtiles",
         "dem": "dem.pmtiles",
     }
 

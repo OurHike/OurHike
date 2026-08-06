@@ -22,6 +22,8 @@
 import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
 import { archiveKey, archiveUrl, dataUrl } from './config'
 import { getDownloadDetail, type DetailLevel } from './downloadDetail'
+import { getHikingDetail } from './hikingDetail'
+import type { HikingDetailLevel } from './userPreferences'
 
 /**
  * Where a package's bytes are fetched from, or `null` while nothing
@@ -43,7 +45,15 @@ export type PackageSource =
    * publish.py writes).
    */
   | { kind: 'tiered' }
-  /** One artifact, one size - what every package but the raster sheet is. */
+  /**
+   * One published artifact per HIKING level (#276) - the basemap's z13
+   * Standard cut or its z14 Fine one, resolved through hikingDetail.ts the
+   * same way 'tiered' resolves through downloadDetail.ts. A separate kind
+   * because the two sheets' level choices are separate preferences and must
+   * never share one dial.
+   */
+  | { kind: 'leveled' }
+  /** One artifact, one size - what the DEM is. */
   | { kind: 'artifact'; artifact: string; sizeBytes: number }
 
 export interface MapPackage {
@@ -91,21 +101,17 @@ export const CORRIDOR_BACKGROUND_PACKAGE: OfferedPackage = {
  * this key first and falls through to the network where the package does
  * not answer (#189).
  *
- * The artifact name is publish.py's OFFLINE_SHEET_ARCHIVES key, and the
- * size is the published artifact's exact bytes (build-basemap.yml run of
- * 2026-08-06: 14-state corridor build, z0-14 cut, 83,818 tiles) - measured,
- * per the honesty bar packageSizeBytes documents.
+ * Leveled since #276: the hiker's hiking_detail_level preference picks the
+ * z13 Standard cut or the z14 Fine one (lib/hikingDetail.ts carries the
+ * artifacts and their exact published bytes). One store key across levels,
+ * like the raster tiers: switching level re-downloads under the same key.
  */
 export const BASEMAP_PACKAGE: MapPackage = {
   id: 'basemap',
   idbKey: 'ourhike:basemap',
   title: 'Hiking sheet',
   summary: 'The styled topographic sheet, so the good map works offline too.',
-  source: {
-    kind: 'artifact',
-    artifact: 'at_basemap_package.pmtiles',
-    sizeBytes: 532_459_439,
-  },
+  source: { kind: 'leveled' },
 }
 
 /**
@@ -232,12 +238,24 @@ export function offeredSheets(): BackgroundSheet[] {
   return BACKGROUND_SHEETS.filter((sheet) => offeredPackages(sheet).length > 0)
 }
 
+/** The hiking sheet's total at a level (#276) - what its picker shows per
+ *  option. The raster detail argument is irrelevant to this sheet (none of
+ *  its packages are tiered), so any value yields the same sum; 'standard'
+ *  is passed as the arbitrary constant. */
+export function hikingSheetSizeBytes(level: HikingDetailLevel): number {
+  return sheetSizeBytes(HIKING_SHEET, 'standard', level)
+}
+
 /** What one sheet will cost in total: every archive of it that is actually
- *  offered, at the chosen detail. Every one of them has a measured size, so
+ *  offered, at the chosen levels. Every one of them has a measured size, so
  *  this is a sum of measurements and never carries an estimate. */
-export function sheetSizeBytes(sheet: BackgroundSheet, detail: DetailLevel): number {
+export function sheetSizeBytes(
+  sheet: BackgroundSheet,
+  detail: DetailLevel,
+  hikingLevel: HikingDetailLevel,
+): number {
   return offeredPackages(sheet).reduce(
-    (total, pkg) => total + packageSizeBytes(pkg, detail),
+    (total, pkg) => total + packageSizeBytes(pkg, detail, hikingLevel),
     0,
   )
 }
@@ -249,8 +267,14 @@ export function sheetSizeBytes(sheet: BackgroundSheet, detail: DetailLevel): num
  * hiker's live choice: a tap has to fetch the tier selected at the moment of
  * tapping, not the one selected when a callback was built.
  */
-export function packageDownloadUrl(pkg: OfferedPackage, detail: DetailLevel): string {
-  return pkg.source.kind === 'tiered' ? archiveUrl(detail) : dataUrl(pkg.source.artifact)
+export function packageDownloadUrl(
+  pkg: OfferedPackage,
+  detail: DetailLevel,
+  hikingLevel: HikingDetailLevel,
+): string {
+  return pkg.source.kind === 'tiered'
+    ? archiveUrl(detail)
+    : dataUrl(packageArtifactKey(pkg, detail, hikingLevel))
 }
 
 /**
@@ -262,8 +286,14 @@ export function packageDownloadUrl(pkg: OfferedPackage, detail: DetailLevel): st
  * in its manifest key, and the cost of the first one that did not would have
  * been a download that quietly skipped verification (lib/archiveDownload.ts).
  */
-export function packageArtifactKey(pkg: OfferedPackage, detail: DetailLevel): string {
-  return pkg.source.kind === 'tiered' ? archiveKey(detail) : pkg.source.artifact
+export function packageArtifactKey(
+  pkg: OfferedPackage,
+  detail: DetailLevel,
+  hikingLevel: HikingDetailLevel,
+): string {
+  if (pkg.source.kind === 'tiered') return archiveKey(detail)
+  if (pkg.source.kind === 'leveled') return getHikingDetail(hikingLevel).artifact
+  return pkg.source.artifact
 }
 
 /**
@@ -274,8 +304,12 @@ export function packageArtifactKey(pkg: OfferedPackage, detail: DetailLevel): st
  * and `OfferedPackage` exists so that a package with no measurement behind it
  * cannot reach this function at all.
  */
-export function packageSizeBytes(pkg: OfferedPackage, detail: DetailLevel): number {
-  return pkg.source.kind === 'tiered'
-    ? getDownloadDetail(detail).sizeBytes
-    : pkg.source.sizeBytes
+export function packageSizeBytes(
+  pkg: OfferedPackage,
+  detail: DetailLevel,
+  hikingLevel: HikingDetailLevel,
+): number {
+  if (pkg.source.kind === 'tiered') return getDownloadDetail(detail).sizeBytes
+  if (pkg.source.kind === 'leveled') return getHikingDetail(hikingLevel).basemapSizeBytes
+  return pkg.source.sizeBytes
 }

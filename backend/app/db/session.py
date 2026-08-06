@@ -1,7 +1,8 @@
 """Engine, sessionmaker, and the `get_db` FastAPI dependency.
 
-Reads DATABASE_URL from app.config.settings - DuckDB locally by default,
-a real Postgres in CI and production. See backend/README.md.
+Reads DATABASE_URL from app.config.settings - a local Postgres by default,
+CI's Postgres service container under CI, Supabase's Postgres in production.
+Same engine in all three. See backend/README.md.
 """
 
 from collections.abc import Generator

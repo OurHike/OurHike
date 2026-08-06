@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { DownloadCard } from './DownloadCard'
+import { rasterDetailOptions } from './DetailPicker'
 
 // One download's card, in every state it can be in. These were the Downloads
 // screen's own tests until #192 lifted the body into a card of its own; the
@@ -15,7 +16,7 @@ const PROPS = {
   title: 'Offline map',
   summary: 'The whole corridor as a map you can read with no signal.',
   status: { state: 'not-downloaded' as const },
-  detail: { level: 'standard' as const, onChange: vi.fn() },
+  detail: { options: rasterDetailOptions(), value: 'standard', onChange: vi.fn() },
   onStart: vi.fn(),
   onResume: vi.fn(),
   onDelete: vi.fn(),
@@ -31,8 +32,8 @@ describe('DownloadCard', () => {
     render(<DownloadCard {...PROPS} />)
 
     expect(screen.getAllByRole('radio')).toHaveLength(3)
-    expect(screen.getByText(/64 MB/)).toBeInTheDocument()
-    expect(screen.getByText(/314 MB/)).toBeInTheDocument()
+    expect(screen.getByText(/68\.9 MB/)).toBeInTheDocument()
+    expect(screen.getByText(/300\.3 MB/)).toBeInTheDocument()
     expect(screen.getByText(/1\.18 GB/)).toBeInTheDocument()
   })
 

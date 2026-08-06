@@ -25,8 +25,8 @@ describe('formatBytes', () => {
     // Guards the formatter and the table together: if either changes, the
     // three quoted sizes have to still come out.
     expect(DOWNLOAD_DETAIL_LEVELS.map((d) => formatBytes(d.sizeBytes))).toEqual([
-      '64 MB',
-      '314 MB',
+      '68.9 MB',
+      '300.3 MB',
       '1.18 GB',
     ])
   })

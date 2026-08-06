@@ -3,7 +3,9 @@ uvicorn[standard]
 sqlalchemy>=2.0
 alembic
 pydantic-settings
-duckdb-engine
-duckdb
 pyjwt[crypto]
+# The only database driver here, deliberately: this backend talks to Postgres
+# and nothing else. DuckDB is the data pipeline's engine (pipeline/), for
+# analytics over the trail dataset - it is not a stand-in for the database
+# Supabase runs.
 psycopg[binary]

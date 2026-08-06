@@ -23,8 +23,8 @@ client-facing input in v1; it stays `normal` until a later verify action
 (HIKER_SAFETY.md's moderator-escalated severity tier, built elsewhere) can
 raise it - there's no field for it on the create schema at all.
 
-See app/models/profile.py's module docstring for why every datetime column
-here is stored naive-UTC (a duckdb-engine/pytz gap, not a style choice).
+See app/models/profile.py for the naive-UTC convention every datetime
+column here follows, and the open question about it.
 """
 
 import enum
@@ -90,21 +90,19 @@ class Report(Base):
     __tablename__ = "reports"
 
     # A Python-generated UUID string primary key, not a DB-generated
-    # integer one - the same shape Profile.id already uses (see
-    # profile.py), and it sidesteps the SERIAL-on-DuckDB gap
-    # backend/README.md documents (duckdb-engine's Postgres-derived
-    # compiler renders SQLAlchemy's default "auto" autoincrement as
-    # `SERIAL`, which DuckDB doesn't have) rather than needing a
-    # DuckDB-specific Sequence/IDENTITY workaround for a real model that
-    # does need a DB-generated id.
+    # integer one - the same shape Profile.id already uses (see profile.py,
+    # where the id is Supabase's `auth.users` id and so is not this
+    # database's to mint). Reports keep it because a client can name its own
+    # id before the row exists, which is what makes the idempotent retry in
+    # routers/reports.py possible at all.
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
 
     reporter_id = Column(String, ForeignKey("profiles.id"), nullable=False)
 
-    # native_enum=False renders as VARCHAR + CHECK constraint rather than a
-    # dialect-native `CREATE TYPE ... AS ENUM` - portable across both the
-    # DuckDB-local and Postgres-CI/production engines this backend runs
-    # against, matching Profile.role's exact pattern (see profile.py).
+    # native_enum=False, matching Profile.role's exact pattern - see
+    # profile.py for why a native enum is the harder one to change later,
+    # and for what this really renders as on Postgres (a bare VARCHAR: the
+    # values are enforced in Python, not by the database).
     type = Column(Enum(ReportType, native_enum=False, length=20), nullable=False)
 
     # Location reference: either poi_id (a soft reference, see module

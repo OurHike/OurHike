@@ -19,6 +19,7 @@ def _valid_preferences(**overrides) -> dict:
         "unit_system": "imperial",
         "background_source": "usgs_topo_offline",
         "max_background_zoom": 12,
+        "hiking_detail_level": "fine",
         "show_roads": False,
         "waypoint_types_shown": ["water", "shelter"],
         "layer_detail_level": "standard",
@@ -150,3 +151,49 @@ def test_get_leaves_a_current_background_alone(client):
 
     assert response.status_code == 200
     assert response.json()["background_source"] == "usgs_topo_offline"
+
+
+def test_put_preferences_rejects_an_unknown_hiking_detail_level(client):
+    user_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+
+    response = client.put(
+        "/preferences/me",
+        json=_valid_preferences(hiking_detail_level="ultra"),
+        headers=auth_headers(user_id),
+    )
+
+    assert response.status_code == 422
+
+
+def test_get_defaults_hiking_detail_for_a_blob_written_before_it_existed(client, db_session):
+    """Rows synced before #276 have no hiking_detail_level key at all, and a
+    stored blob is not a client that can be asked to re-sync first. The read
+    side answers with Standard - the documented recommendation, and the level
+    a hiker who never made the choice should get."""
+    from datetime import UTC, datetime
+
+    from app.models.profile import Profile, Role
+
+    user_id = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
+    legacy = _valid_preferences()
+    del legacy["hiking_detail_level"]
+    db_session.add(Profile(id=user_id, role=Role.hiker))
+    db_session.commit()
+    db_session.add(UserPreferences(profile_id=user_id, data=legacy, updated_at=datetime.now(UTC)))
+    db_session.commit()
+
+    response = client.get("/preferences/me", headers=auth_headers(user_id))
+
+    assert response.status_code == 200
+    assert response.json()["hiking_detail_level"] == "standard"
+
+
+def test_put_preferences_round_trips_the_hiking_detail_level(client):
+    user_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+
+    put_response = client.put("/preferences/me", json=_valid_preferences(), headers=auth_headers(user_id))
+    assert put_response.status_code == 200
+    assert put_response.json()["hiking_detail_level"] == "fine"
+
+    get_response = client.get("/preferences/me", headers=auth_headers(user_id))
+    assert get_response.json()["hiking_detail_level"] == "fine"

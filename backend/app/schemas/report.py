@@ -1,10 +1,12 @@
 """Pydantic request/response models for the `/reports` router."""
 
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from app.core.time import UtcDatetime
 from app.models.report import ReporterType, ReportStatus, ReportType, Severity, Visibility
 
 
@@ -45,7 +47,22 @@ class ReportCreate(BaseModel):
     # the same reason: a field the server can supply itself should not be a
     # 422 waiting to happen for a caller that omits it. The outbox always
     # sends one, which is what gives the retry path its guarantee.
-    id: str | None = None
+    #
+    # Typed UUID rather than str, and that is a security boundary rather
+    # than tidiness (#265). This value becomes the row's PRIMARY KEY, and
+    # moderation addresses a report by URL path segment
+    # (`POST /reports/{report_id}/verify`). An unconstrained string let a
+    # caller choose an id that no route can ever match - `a/b`, ``, `..` -
+    # and since there is no delete endpoint for reports, the row was
+    # unreachable forever. Measured on the merged version: a `bad_hikers`
+    # report filed with id `a/b` returned 404 from BOTH verify and dismiss,
+    # so anyone with an account could park un-clearable notes about named
+    # people in the queue that closures and serious warnings share.
+    #
+    # UUID is the right constraint rather than merely a safe one: the only
+    # producer is the client outbox's `crypto.randomUUID()`, so nothing
+    # legitimate sends anything else.
+    id: uuid.UUID | None = None
 
     type: ReportType
     poi_id: str | None = None
@@ -86,11 +103,11 @@ class ReportOut(BaseModel):
     lat: float | None
     lon: float | None
     reporter_type: ReporterType
-    timestamp: datetime
+    timestamp: UtcDatetime
     note: str | None
     photo_url: str | None
     follow_up: Any | None
-    received_at: datetime
+    received_at: UtcDatetime
     maintainer_id: str | None
     club_id: str | None
     status: ReportStatus

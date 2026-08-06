@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Downloads, type SheetDownload } from './Downloads'
+import { hikingDetailOptions, rasterDetailOptions } from './DetailPicker'
 
 // WIREFRAMES.md §4 as amended by its own Known Deviations #1: the wireframe
 // drew a per-section list, and ROADMAP.md Phase 2 had already decided on ONE
@@ -25,7 +26,12 @@ function sheet(overrides: Partial<SheetDownload> = {}): SheetDownload {
     summary: 'The official government topo, as an optional second map.',
     status: { state: 'not-downloaded' as const },
     sizeBytes: 314_000_000,
-    detail: { level: 'standard' as const, onChange: vi.fn() },
+    detail: {
+      options: rasterDetailOptions(),
+      value: 'standard',
+      onChange: vi.fn(),
+      name: 'usgs-detail',
+    },
     onStart: vi.fn(),
     onResume: vi.fn(),
     onDelete: vi.fn(),
@@ -33,8 +39,8 @@ function sheet(overrides: Partial<SheetDownload> = {}): SheetDownload {
   }
 }
 
-/** The two-sheet world: the hiking sheet first (one measured size, no
- *  tiers), the USGS raster second with the detail picker. */
+/** The two-sheet world: the hiking sheet first with its own two-level
+ *  picker (#276), the USGS raster second with the tier picker. */
 function twoSheets(): [SheetDownload, SheetDownload] {
   return [
     sheet({
@@ -42,7 +48,12 @@ function twoSheets(): [SheetDownload, SheetDownload] {
       title: 'Hiking sheet',
       summary: 'The map you are looking at - cartography and terrain, offline.',
       sizeBytes: 1_160_000_000,
-      detail: undefined,
+      detail: {
+        options: hikingDetailOptions(),
+        value: 'standard',
+        onChange: vi.fn(),
+        name: 'hiking-detail',
+      },
     }),
     sheet(),
   ]
@@ -82,8 +93,9 @@ describe('Downloads', () => {
     render(<Downloads sheets={[sheet()]} />)
 
     expect(screen.getAllByRole('radio')).toHaveLength(3)
-    expect(screen.getByText(/64 MB/)).toBeInTheDocument()
-    expect(screen.getByText(/314 MB/)).toBeInTheDocument()
+    // Sizes from rasterDetailOptions() - downloadDetail.ts's measured figures.
+    expect(screen.getByText(/68\.9 MB/)).toBeInTheDocument()
+    expect(screen.getByText(/300\.3 MB/)).toBeInTheDocument()
     expect(screen.getByText(/1\.18 GB/)).toBeInTheDocument()
   })
 
@@ -186,17 +198,22 @@ describe('the USGS sheet as its own decision (#237)', () => {
     expect(usgs.onStart).not.toHaveBeenCalled()
   })
 
-  it('keeps the detail picker on the tiered sheet only', () => {
-    // The USGS raster has Light/Standard/Fine; the hiking sheet has one
-    // measured size, and a picker over it would offer a choice that does
-    // not exist.
+  it('gives each sheet its own picker, with its own level set (#276)', () => {
+    // The USGS raster has Light/Standard/Fine; the hiking sheet has its z13
+    // Standard cut and z14 Fine one. Distinct radio-group names keep one
+    // card's choice from toggling the other's.
     render(<Downloads sheets={twoSheets()} />)
 
     const hikingCard = screen.getByRole('region', { name: /hiking sheet/i })
     const usgsCard = screen.getByRole('region', { name: /usgs sheet/i })
+    const hikingRadios = within(hikingCard).getAllByRole('radio')
+    const usgsRadios = within(usgsCard).getAllByRole('radio')
 
-    expect(within(hikingCard).queryAllByRole('radio')).toHaveLength(0)
-    expect(within(usgsCard).getAllByRole('radio')).toHaveLength(3)
+    expect(hikingRadios).toHaveLength(2)
+    expect(usgsRadios).toHaveLength(3)
+    expect((hikingRadios[0] as HTMLInputElement).name).not.toBe(
+      (usgsRadios[0] as HTMLInputElement).name,
+    )
   })
 
   it('keeps one sheet’s failure off the other’s card', () => {

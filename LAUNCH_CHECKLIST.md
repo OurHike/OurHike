@@ -212,7 +212,7 @@ Read-only, and safe to run any time. It does **not** check the redirect allow-li
 
 ## 5. First database migration
 
-The initial migration now exists — `backend/alembic/versions/0f79a37f9358_initial_schema.py`, generated and verified locally against DuckDB (both `upgrade head` and `downgrade base` run clean). It has never been applied to a real Postgres.
+The initial migration now exists — `backend/alembic/versions/0f79a37f9358_initial_schema.py` — and, with the row-level-security revision on top of it, now runs against a real Postgres 16 as part of the test suite (`backend/tests/test_migrations.py`: `upgrade head`, RLS flags read back from `pg_class`, `downgrade base`, and `alembic check` for drift). It has still never been applied to *Supabase's* Postgres, which is what this step is.
 
 So this is one command, not two. Running `revision --autogenerate` again would produce an empty second migration on top of it:
 
@@ -222,7 +222,7 @@ cd backend
 .venv/Scripts/alembic upgrade head
 ```
 
-**Read the migration before applying it**, the same way you would review any migration against real data. Several models use `Enum(..., native_enum=False)` for DuckDB/Postgres portability — worth confirming that renders as expected on Postgres, since it was verified against the other one.
+**Read the migration before applying it**, the same way you would review any migration against real data. Several models use `Enum(..., native_enum=False)`. Inspecting the applied schema on a real Postgres for the first time shows what that renders as: a bare `VARCHAR(20)`, with **no** `CHECK` constraint — SQLAlchemy has defaulted `create_constraint` to `False` since 1.4, so the allowed values are enforced in Python and not by the database. Nothing is broken by that (every write goes through the API's pydantic schemas), but it is worth knowing before you assume the database will reject a bad `role` or `visibility`. See `backend/app/models/profile.py`.
 
 Tables it should create: `clubs`, `profiles`, `closures`, `hikes`, `maintainer_assignments`, `reports`, `user_preferences`.
 
@@ -259,7 +259,9 @@ An empty array or a permission error is what you want. Rows are the failure.
 
 It matters at all because email/password is a real sign-in path here — `VITE_AUTH_PROVIDERS` defaults to `google,email`, and `screens/EmailSignIn.tsx` offers a password as the fallback behind its magic-link default. Without the check, an account secured by a password reused from a breached site is exactly as reachable as that password, and these accounts can file `bad_hikers` reports about named people.
 
-**The mitigation that costs nothing is to have no passwords**, not to buy the check: magic-link email plus Google covers every case the password path does. See [#279](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/279) for the argument and what it would remove. Until that is decided, this is a known accepted risk rather than a gap nobody noticed.
+**The mitigation that costs nothing is to have no passwords**, not to buy the check — and specifically an emailed **6-digit code**, not the magic link already sent. `EmailSignIn.tsx` keeps the password because a link "means leaving for an email client and coming back, and on a ridge with one bar that round trip is the fragile part"; that is an argument against links, not for passwords. A typed code has the one property the password was kept for — finishing without leaving the app — with nothing to remember, leak or reuse. It also sidesteps a real PWA mechanic: a link tapped in a mail client opens the browser, which on iOS may not share storage with the installed app, so the session can land where the app cannot see it.
+
+See [#279](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/279) — `verifyOtp` is already in the installed SDK, so this is an email-template change plus one field, and it deletes more code than it adds. Until it is decided, the paywalled check is a known accepted risk rather than a gap nobody noticed.
 
 ---
 

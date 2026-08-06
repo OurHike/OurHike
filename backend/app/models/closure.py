@@ -59,8 +59,7 @@ class Closure(Base):
     __tablename__ = "closures"
 
     # App-generated UUID string PK, matching Report/Hike's pattern - see
-    # app/models/report.py's module docstring for why (sidesteps the
-    # SERIAL-on-DuckDB gap backend/README.md documents).
+    # app/models/report.py for why.
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
 
     reported_by = Column(String, ForeignKey("profiles.id"), nullable=False)

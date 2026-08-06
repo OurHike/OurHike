@@ -7,7 +7,12 @@ Companion to [../TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md). This 
 ```
 python -m venv .venv
 .venv/Scripts/pip install -r requirements-dev.txt   # Windows; .venv/bin/pip on macOS/Linux
+bash scripts/local-postgres.sh                      # start the local database
 ```
+
+`scripts/local-postgres.sh` is idempotent - run it whenever nothing is listening on 5432. It starts a Postgres if the machine has one installed (Debian/Ubuntu's `pg_ctlcluster` layout, Homebrew, anything already running), otherwise brings one up from `docker-compose.yml`, and either way creates the `ourhike` role plus the `ourhike_dev` and `ourhike_test` databases that `app/config.py` and `tests/conftest.py` default to. `OURHIKE_PG_PORT`, `OURHIKE_PG_USER` and friends override the defaults; `OURHIKE_PG_MODE=native|docker` overrides the auto-detection.
+
+Everything the suite touches lives in `ourhike_test`, which it drops tables from freely - that is why it is a separate database from `ourhike_dev` and why nothing you are working on lives there.
 
 ## Quick start
 
@@ -20,21 +25,23 @@ python -m venv .venv
 .venv/Scripts/python -m ruff format .                       # auto-format
 ```
 
-## DuckDB locally, Postgres in CI and production - and why
+## Postgres everywhere - and why DuckDB is not here
 
-TECHNICAL_ARCHITECTURE.md specifies Postgres (Supabase-hosted) as the real backend database. This dev sandbox has no Docker and no admin rights to install Postgres natively, so a real local Postgres isn't available here. Rather than block on that:
+TECHNICAL_ARCHITECTURE.md specifies Postgres (Supabase-hosted) as the real backend database. Every environment this code runs in is that same engine:
 
-- **Local/dev tests run against DuckDB** via `duckdb-engine` (a real SQLAlchemy dialect - the same `duckdb` dependency the data pipeline already relies on, not a new one) - fast, install-free, zero setup beyond `pip install`.
-- **CI runs the same test suite against a real Postgres** (a `postgres:16` GitHub Actions `services:` container - GitHub-hosted runners do have Docker) - that job is the actual correctness gate. DuckDB is a local convenience layer only, never the thing that decides whether a change is correct.
-- **`DATABASE_URL` is the only switch.** `app/config.py` defaults it to a local DuckDB file; CI and production override it via the environment to point at Postgres instead. No code branches on which database is in use.
+- **Local dev and local tests: a real Postgres**, started by `scripts/local-postgres.sh` (see Setup).
+- **CI: a real Postgres**, a `postgres:16` `services:` container - see `.github/workflows/backend-tests.yml`.
+- **Production: Supabase's Postgres.**
+- **`DATABASE_URL` is the only difference between them.** `app/config.py` defaults it to the local database; CI and production override it via the environment. No code branches on which database is in use, because there is only one kind.
 
-**Real dialect gaps hit and worked around, not silently papered over** (duckdb-engine is a genuine, functioning SQLAlchemy dialect, but a less mainstream one than Postgres/MySQL/SQLite - these are the two rough edges found standing this up):
+**DuckDB is the data pipeline's engine, not this one.** `pipeline/` uses it for what it is excellent at - spatial analytics over the trail dataset, columnar scans across millions of rows, all of it read-mostly and rebuildable from source. None of that describes a transactional API writing rows a hiker cannot afford to lose. This backend previously ran on DuckDB locally (via `duckdb-engine`) with Postgres only in CI, on the reasoning that a local Postgres was unavailable in the dev sandbox; that turned out not to be true, and the split cost more than it saved:
 
-1. **`SERIAL` primary keys.** duckdb-engine's compiler is PostgreSQL-derived, so SQLAlchemy's default "auto" autoincrement on a single-column `Integer` primary key renders `CREATE TABLE ... SERIAL`, and DuckDB has no `SERIAL` type - `CatalogException: Type with name SERIAL does not exist!`. Worked around in `tests/test_db_session.py` by disabling autoincrement (the test supplies its own ids anyway). Real app models that need a DB-generated integer PK will need to pick a DuckDB-compatible pattern explicitly (e.g. a `Sequence`, or lean on Postgres-native `IDENTITY`/UUID defaults that DuckDB also supports) rather than relying on SQLAlchemy's default - noted here rather than solved preemptively, since no real model needs it yet.
-2. **No Alembic DDL implementation for the `duckdb` dialect.** duckdb-engine registers a SQLAlchemy dialect but not an Alembic one - `alembic/env.py` hits `KeyError: 'duckdb'` immediately otherwise. `alembic/env.py` registers a minimal `DuckDBImpl` by subclassing Alembic's `PostgresqlImpl` (same PostgreSQL lineage as #1). This only matters for running migrations locally against DuckDB; CI/production use real Postgres, which Alembic already supports natively.
-3. **Index reflection isn't implemented** (`DuckDBEngineWarning: duckdb-engine doesn't yet support reflection on indices`) - surfaced during `alembic revision --autogenerate`, harmless for table/column-level autogenerate but worth knowing if an index-heavy migration's autogenerate diff looks incomplete.
+1. **`SERIAL` primary keys didn't exist there.** duckdb-engine's compiler is PostgreSQL-derived, so SQLAlchemy's default autoincrement on an `Integer` primary key rendered `CREATE TABLE ... SERIAL`, which DuckDB has no type for. Worked around in test code, and a standing constraint on any real model that wanted a database-generated integer id.
+2. **`TIMESTAMPTZ` couldn't be read back** without the optional `pytz` package, which is why every datetime column here is stored naive-UTC and stamped on the way out (see `app/models/profile.py` - the convention stays for now, and changing it is a migration, not a comment edit).
+3. **Alembic had no DDL implementation for the dialect**, so `alembic/env.py` had to register one by subclassing `PostgresqlImpl` - and the row-level-security migration then had to guard itself against being handed Postgres DDL it could not run.
+4. **Index reflection was unimplemented**, so `alembic revision --autogenerate` could not see indexes at all.
 
-None of these are modeling differences serious enough to justify not testing locally against DuckDB at all - they're narrow, identified, and either worked around in test code or documented as a "decide when it's real" open item, not hidden behind a workaround that would mask an actual Postgres-vs-DuckDB behavior difference.
+Every one of those is now gone rather than worked around, and the local suite exercises the migrations themselves for the first time (`tests/test_migrations.py`) - which was impossible while local dev ran on an engine that could not execute them.
 
 ## Auth
 
@@ -52,15 +59,19 @@ Supabase Auth issues the JWTs this backend verifies - see [../features/AUTHENTIC
 
 ## Layout
 
-`app/` is the FastAPI application (`main.py`'s `app`, `config.py`'s env-driven `Settings`, `db/` for the SQLAlchemy engine/session/base). `alembic/` holds migrations, wired to `app.db.base`'s metadata and `app.config`'s `DATABASE_URL` - see `alembic/env.py`. `tests/` mirrors `pipeline/tests/`'s shape: `conftest.py` for shared fixtures (a fresh per-test DuckDB engine/session, a `TestClient` with `get_db` overridden), one file per behavior area.
+`app/` is the FastAPI application (`main.py`'s `app`, `config.py`'s env-driven `Settings`, `db/` for the SQLAlchemy engine/session/base). `alembic/` holds migrations, wired to `app.db.base`'s metadata and `app.config`'s `DATABASE_URL` - see `alembic/env.py`. `scripts/` holds `local-postgres.sh`, and `docker-compose.yml` is the database it falls back to when the machine has no Postgres installed. `tests/` mirrors `pipeline/tests/`'s shape: `conftest.py` for shared fixtures (a clean-schema engine/session per test against the local Postgres, a `TestClient` with `get_db` overridden), one file per behavior area.
 
 ## Migrations
 
-`alembic/versions/` has one migration so far (`initial_schema`), creating all seven tables (`clubs`, `profiles`, `closures`, `hikes`, `maintainer_assignments`, `reports`, `user_preferences`). Generated and verified locally against DuckDB (both `upgrade head` and `downgrade base` run clean) - review it yourself before trusting it against real data, the same way you'd review any migration.
+`alembic/versions/` has two migrations: `initial_schema`, creating all seven tables (`clubs`, `profiles`, `closures`, `hikes`, `maintainer_assignments`, `reports`, `user_preferences`), and `enable_row_level_security`, which locks them against Supabase's PostgREST front door.
+
+**Both now run against a real Postgres in the test suite** - `tests/test_migrations.py` applies the chain to the local database, reads the RLS flags back out of `pg_class`, downgrades to base, and runs `alembic check` for drift between the models and the migrations. That is new: while local dev ran on DuckDB, no test had ever executed a migration at all, and the RLS revision was specifically unrunnable there. Review a migration yourself before trusting it against real data all the same - a passing test says the DDL is valid, not that it is what you meant.
+
+**One thing running it on real Postgres immediately showed, not fixed here:** the `Enum(..., native_enum=False)` columns render as a bare `VARCHAR(20)` with no `CHECK` constraint - SQLAlchemy has defaulted `create_constraint` to `False` since 1.4, so a comment claiming "VARCHAR + CHECK" had been wrong for as long as it existed and there was no way to notice while the local database was DuckDB. Nothing is currently broken by it: every write path goes through the pydantic schemas, which reject an unknown value long before SQLAlchemy sees it. Adding the constraints is a schema migration and a judgement call about what the database should enforce on its own, so it is written down here rather than slipped into a change about which database runs locally.
 
 **A real bug this surfaced, now fixed:** `app/models/__init__.py` was empty, and nothing else reachable from `alembic/env.py` ever imported the actual model modules - so `Base.metadata` was empty at the exact moment autogenerate looked at it, and `alembic revision --autogenerate` silently produced a no-op migration (`pass`/`pass`) instead of one creating any tables. `app/models/__init__.py` now imports every model (so `Base.metadata` is complete for any caller, not just this one), and `alembic/env.py` explicitly imports `app.models` too, since nothing else in its own import chain would trigger that registration. Worth knowing this existed if a *future* model ever gets added without a matching entry in `app/models/__init__.py` - the symptom would be the same silent empty migration, not an error.
 
-**Applying it to a real database** (not run as part of this change - needs real credentials this environment doesn't have):
+**Applying it to the real Supabase database** (never run against production from here - that needs credentials this environment doesn't have):
 
 ```
 DATABASE_URL=postgresql+psycopg://... .venv/Scripts/python -m alembic upgrade head
@@ -70,7 +81,7 @@ Point `DATABASE_URL` at the real Supabase Postgres connection string first. Deli
 
 ## CI
 
-`.github/workflows/backend-tests.yml` runs `ruff check`, `ruff format --check`, and two pytest jobs on every push and on PRs targeting `main` - one against the DuckDB fixture (fast, always runs), one against a real `postgres:16` service (the actual correctness gate for the database this backend really runs on). Same visibility-only posture as the pipeline's CI (see `../TESTING.md`'s CI section): not yet a required check via branch protection.
+`.github/workflows/backend-tests.yml` runs `ruff check`, `ruff format --check` and `pytest` on every push and on PRs targeting `main`, against a `postgres:16` service container. One job, because there is one database engine - the second job that used to run the suite against DuckDB went away with the DuckDB dev path (see above), having become a check on an engine nothing uses. Same visibility-only posture as the pipeline's CI (see `../TESTING.md`'s CI section): not yet a required check via branch protection.
 
 ## Deployment
 
@@ -83,4 +94,4 @@ Point `DATABASE_URL` at the real Supabase Postgres connection string first. Deli
 4. Run the Migrations step above against the real `DATABASE_URL` - not automatic, see why above.
 5. Point the client's API base URL at the deployed app, and add its origin to Supabase's allowed redirect URLs (see `../LAUNCH_CHECKLIST.md`).
 
-**Build/deploy config is untested against a real Fly.io account or Docker daemon** - this sandbox has neither available (see the DuckDB-locally note above for the same constraint applied to Postgres). The Dockerfile follows a standard, well-established FastAPI/uvicorn pattern and `fly.toml`'s shape matches Fly's own documented format, but "should work" isn't the same claim as "confirmed working" - budget for the first real `fly deploy` to surface something this couldn't catch locally.
+**Build/deploy config is untested against a real Fly.io account or Docker daemon** - this sandbox has no Fly.io account, and while the Docker CLI is on its PATH, no daemon is running behind it (the same reason `docker-compose.yml` is documented but unexercised here, and why `scripts/local-postgres.sh` uses the container's own Postgres install instead). The Dockerfile follows a standard, well-established FastAPI/uvicorn pattern and `fly.toml`'s shape matches Fly's own documented format, but "should work" isn't the same claim as "confirmed working" - budget for the first real `fly deploy` to surface something this couldn't catch locally.

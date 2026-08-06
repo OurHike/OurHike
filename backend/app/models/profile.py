@@ -29,14 +29,21 @@ from app.core.time import utc_now
 from app.db.base import Base
 
 # A tz-aware `datetime` gets stored as a naive UTC one (tzinfo stripped)
-# below - not a style preference, a worked-around DuckDB/duckdb-engine gap
-# in the same spirit as the ones backend/README.md already documents:
-# fetching a `TIMESTAMPTZ` column back through duckdb-engine requires the
-# optional `pytz` package (`InvalidInputException: Required module 'pytz'
-# failed to import`), which isn't otherwise a dependency of this backend.
-# Storing naive UTC (`DateTime(timezone=True)` -> plain `DateTime`, with
-# tzinfo stripped before insert) sidesteps that entirely and is portable to
-# Postgres too, since every value going in is already UTC by construction.
+# below - `DateTime`, not `DateTime(timezone=True)` - and every model here
+# follows it. The convention is uniform and safe because every value going
+# in is already UTC by construction (app.core.time.utc_now), and because the
+# UTC designator is stamped back on at the API boundary rather than being
+# lost (see app/core/time.py, which explains what a naive timestamp does to
+# a browser if it escapes unmarked).
+#
+# It was adopted for a reason that no longer exists: fetching `TIMESTAMPTZ`
+# back through duckdb-engine needed the optional `pytz` package, and the
+# backend ran on DuckDB locally. That path is gone - dev, CI and production
+# are all Postgres now (backend/scripts/local-postgres.sh) - so `TIMESTAMPTZ`
+# is available if it is ever wanted. Changing it is a schema migration plus a
+# sweep of every read path, not a comment edit, and nothing currently needs
+# it: left as an open call rather than quietly rewritten as if it had always
+# been the plan.
 
 
 class Role(str, enum.Enum):
@@ -50,13 +57,21 @@ class Profile(Base):
 
     id = Column(String, primary_key=True)
 
-    # native_enum=False renders as VARCHAR + CHECK constraint rather than a
-    # dialect-native `CREATE TYPE ... AS ENUM` - portable across both the
-    # DuckDB-local and Postgres-CI/production engines this backend runs
-    # against (see backend/README.md's "DuckDB locally, Postgres in CI and
-    # production" section for the general reasoning), rather than relying on
-    # DuckDB's PostgreSQL-derived compiler to handle a Postgres-native type
-    # the same way Postgres itself would.
+    # native_enum=False keeps this out of Postgres's `CREATE TYPE ... AS
+    # ENUM`, which is the one column type whose values cannot simply be
+    # altered later: adding a role means ALTER TYPE ... ADD VALUE, which
+    # cannot be undone in a transaction. Worth keeping now that Postgres is
+    # the only engine, for that reason rather than the portability one it
+    # was originally chosen for.
+    #
+    # What it actually renders is a bare VARCHAR(20) - *not* VARCHAR + a
+    # CHECK constraint, which is what a comment here claimed until the
+    # migration was first inspected on a real Postgres. SQLAlchemy has
+    # defaulted `create_constraint` to False since 1.4. So the allowed values
+    # are enforced in Python (this Enum on the way in and out, plus the
+    # pydantic schemas at the API boundary) and not by the database. Adding
+    # the constraint is a migration and a decision, not a keyword: see the
+    # note in backend/README.md's Migrations section.
     role = Column(Enum(Role, native_enum=False, length=20), nullable=False, default=Role.hiker)
 
     display_name = Column(String, nullable=True)

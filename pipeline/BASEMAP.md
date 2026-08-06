@@ -282,10 +282,11 @@ z12 = 4,172 / 44.1, z0–11 ≈ 31 MB. Tile counts land within 0.5% of the
 independent corridor enumeration from #184's research pass.
 
 Tier consequence: **z14 is 66% of the bytes**, so the natural download tiers
-are z0–13 ≈ **182 MB** (smaller than the 314 MB raster it improves on;
+are z0–13 ≈ **182 MB** (smaller than the 300.3 MB raster it improves on;
 MapLibre overzooms z13 vector cleanly) and z0–14 ≈ **532 MB** for full
-OpenMapTiles detail. Only the z0–14 cut is published today; a z13-capped
-extract is a future decision, not an artifact.
+OpenMapTiles detail. Both cuts are published now: the z13 extract stopped
+being a future decision when #276 made it the hiking sheet's Standard
+level, cut by the same `extract_package.py` run with `--max-zoom 13`.
 
 ### Published archives (2026-08-06)
 
@@ -296,6 +297,7 @@ now names, and the sizes `client/src/lib/packages.ts` advertises:
 | Artifact | Bytes | Notes |
 |---|---|---|
 | `at_basemap_package.pmtiles` | **532,459,439** | z0–14, 83,818 tiles; the rebuild reproduced run 2's package within 0.06 MB |
+| `at_basemap_package_z13.pmtiles` | **182,286,799** | z0–13, 21,721 tiles (the package minus its 62,097 z14 tiles); the hiking sheet's Standard level (#276), published 2026-08-06 from a rebuild whose z14 package came out hash-identical to the row above |
 | `dem.pmtiles` | **607,265,661** | z0–13, 21,758 tiles, 0 absent, **0.5 m quantize** |
 
 The DEM's per-zoom table lives beside the raster tiers in
@@ -306,5 +308,6 @@ where 0.5 m stays indistinguishable from unquantized at ~1.53× the bytes —
 the measured 397.6 MB at 1 m became 607.3 MB.
 
 Together the hiking sheet — the default background since #237 — is
-**≈ 1.14 GB** on a phone, plus ~6 MB of bundled glyphs
-(`client/public/glyphs/README.md`).
+**789,552,460 bytes ≈ 790 MB** on a phone at its Standard level (the z13
+cut plus the DEM, #276) and **1,139,725,100 bytes ≈ 1.14 GB** at Fine,
+plus ~6 MB of bundled glyphs (`client/public/glyphs/README.md`).

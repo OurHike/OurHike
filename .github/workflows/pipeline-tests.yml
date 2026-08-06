@@ -12,8 +12,20 @@ on:
   # merge).
   push:
     branches: [main]
+  # Deliberately NOT narrowed with `paths:`, even though that is the obvious
+  # way to stop a docs-only PR running the pipeline suite. A workflow skipped
+  # by a path filter reports no status at all, and a required check that
+  # reports no status blocks the PR forever rather than passing it - the same
+  # trap pr-issue-link.yml documents for job-level `if:`. The scoping happens
+  # inside the job instead, where it can still finish green.
   pull_request:
     branches: [main]
+
+# Narrower than the default token. `pull-requests: read` is what lets the
+# scope step ask which files the pull request touches.
+permissions:
+  contents: read
+  pull-requests: read
 
 jobs:
   pytest:
@@ -22,20 +34,42 @@ jobs:
       run:
         working-directory: pipeline
     steps:
+      # No `if:` on this job, and there should never be one - see the note on
+      # the trigger above. The steps carry the condition instead, so a PR that
+      # touches nothing under pipeline/ still reports success having done
+      # nothing, and this can be made a required check without that becoming a
+      # trap.
+      #
+      # Checkout is unconditional because the scope action lives in this
+      # repository and has to be on disk before it can decide anything.
       - uses: actions/checkout@v4
 
+      - id: scope
+        uses: ./.github/actions/changed-paths
+        with:
+          # pipeline/ carries its own requirements and pyproject, and nothing
+          # outside it is imported by the pipeline - checked, not assumed. The
+          # workflow and the action are in the list so a change to the gate
+          # itself still proves the suite it gates.
+          paths: pipeline/ .github/workflows/pipeline-tests.yml .github/actions/changed-paths/
+
       - uses: actions/setup-python@v5
+        if: steps.scope.outputs.run == 'true'
         with:
           python-version: "3.14"
 
       - name: Install dependencies
+        if: steps.scope.outputs.run == 'true'
         run: pip install -r requirements-dev.txt
 
       - name: Lint
+        if: steps.scope.outputs.run == 'true'
         run: python -m ruff check .
 
       - name: Check formatting
+        if: steps.scope.outputs.run == 'true'
         run: python -m ruff format --check .
 
       - name: Run tests
+        if: steps.scope.outputs.run == 'true'
         run: python -m pytest -v

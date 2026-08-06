@@ -8,7 +8,7 @@ it to and, later, moderate against.
 
 from datetime import timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
@@ -97,6 +97,7 @@ def _visible_to(report: Report, viewer: Profile | None) -> bool:
 @router.post("", response_model=ReportOut, status_code=status.HTTP_201_CREATED)
 def create_report(
     payload: ReportCreate,
+    response: Response,
     current_user: Profile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Report:
@@ -108,7 +109,32 @@ def create_report(
     `timestamp` is the moment the report was WRITTEN, which for an
     offline-first app is not the moment it arrived: the client supplies
     `authored_at` when flushing its outbox, and the server falls back to now
-    only when it is absent. `received_at` is always server truth."""
+    only when it is absent. `received_at` is always server truth.
+
+    **Idempotent on `id` (#243).** Re-sending a report that already arrived
+    returns the stored one with `200` instead of filing a second copy, so the
+    lost-response case - committed here, connection dropped before the 201,
+    client retries - costs a duplicate request rather than a duplicate
+    report. `201` still means newly created, which is what lets a test tell
+    the two apart; a client only needs to see a 2xx either way.
+
+    A resend is only ever *the same reporter's*. An id that belongs to
+    somebody else is refused outright rather than returned, because handing
+    back another person's report would turn a guessed UUID into a way to
+    read one - and for `bad_hikers`, into a way to read an incident note
+    about a named individual.
+    """
+    if payload.id is not None:
+        existing = db.get(Report, payload.id)
+        if existing is not None:
+            if existing.reporter_id != current_user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="That report id belongs to someone else.",
+                )
+            response.status_code = status.HTTP_200_OK
+            return existing
+
     now = utc_now()
     authored = payload.authored_at
     if authored is not None and authored.tzinfo is not None:
@@ -117,6 +143,9 @@ def create_report(
         authored = authored.astimezone(timezone.utc).replace(tzinfo=None)
 
     report = Report(
+        # None lets the model's own default mint one - the same fallback
+        # `authored_at` gets from the server clock just below.
+        **({"id": payload.id} if payload.id is not None else {}),
         reporter_id=current_user.id,
         type=payload.type,
         poi_id=payload.poi_id,

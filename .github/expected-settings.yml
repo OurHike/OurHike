@@ -110,6 +110,21 @@ settings:
       dashboard, and one that is not is a button reaching an error page. The
       Supabase config check is what compares those two lists.
 
+  API_BASE_URL:
+    where: variable
+    required: false
+    why: >-
+      Where the client sends queued reports - backend/'s FastAPI service, not
+      the R2 bucket DATA_BASE_URL names and not the Supabase project. Optional
+      because unset is a genuinely supported state and is what every build
+      currently produces: the backend is not deployed anywhere yet (#95), and
+      with no value the app still maps, downloads and writes reports, which
+      wait in the offline outbox with their authored timestamps instead of
+      being sent. On the Variables tab because it is a public URL that ships
+      inside the bundle, the same reasoning as DATA_BASE_URL. Read only by
+      pages.yml - pr-preview.yml deliberately does not, so a preview cannot
+      file test reports into the moderation queue a club works from.
+
   GITHUB_TOKEN:
     where: github-provided
     required: true

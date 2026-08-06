@@ -17,6 +17,12 @@ on:
         description: "Osmosis .poly of the second package's region"
         type: string
         default: "https://download.geofabrik.de/north-america/us/new-york.poly"
+  # TEMPORARY, removed before this branch merges: a dispatch-only workflow is
+  # not dispatchable until it exists on the default branch, and #193 wants
+  # its numbers before then. Scoped to this one branch so it costs nothing
+  # anywhere else.
+  push:
+    branches: [claude/issue-184-sub-issues-sid7af]
 
 permissions:
   contents: read
@@ -53,12 +59,15 @@ jobs:
       - name: Measure the overlap
         env:
           DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
+          # Empty on a push firing (the temporary trigger above); the script's
+          # own default is the same New York .poly.
+          POLY_URL: ${{ inputs.poly_url }}
         run: |
           python spike_package_overlap.py \
-            --poly "${{ inputs.poly_url }}" \
+            ${POLY_URL:+--poly "$POLY_URL"} \
             --fetch-from "$DATA_BASE_URL" | tee overlap.txt
           {
-            echo "## Package overlap (${{ inputs.poly_url }})"
+            echo "## Package overlap (${POLY_URL:-new-york.poly, the default})"
             echo '```'
             cat overlap.txt
             echo '```'

@@ -6,10 +6,13 @@
 # osmium cuts each state extract down to the corridor shape before Planetiler
 # ever runs, so Planetiler's RAM and temp-disk needs (0.5x / 5-10x its input)
 # scale with the corridor ribbon, not with fourteen whole states. The
-# fetched state PBFs (~3-4 GB) plus intermediates land well inside the
-# ~22-29 GB a hosted runner actually has free. When coverage outgrows this
-# shape - a statewide network, a whole region - the answer is a bigger
-# machine for the build, never a rebuild per trail: see BASEMAP.md and #194.
+# fetched state PBFs (~3-4 GB) plus intermediates land well inside the 88 GB
+# a hosted runner actually has free - measured by the step below, which is
+# why that step exists and why no number here is guessed. When coverage
+# outgrows this shape - a statewide network, a whole region - the answer is
+# MORE free runners rather than a bigger one: every Geofabrik sub-region
+# fits this machine, so a continental build shards across a matrix and
+# splits at z9. Never a rebuild per trail. See BASEMAP.md and #194.
 #
 # Nothing here publishes. The artifacts exist to be measured and looked at -
 # publishing goes through pipeline/DATA_RELEASES.md's rules once the artifact

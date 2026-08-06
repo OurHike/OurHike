@@ -1,6 +1,6 @@
 # Testing philosophy
 
-This describes how OurHike tests its code, project-wide - not just the Python data pipeline, which is the only thing built so far. When the client (React/TypeScript PWA) or a backend (Python/FastAPI, Phase 2+) exist, they get their own section below following the same philosophy, not a separate one invented from scratch.
+This describes how OurHike tests its code, project-wide. All three parts now exist and carry suites - the pipeline, the client and the backend, plus a small fourth suite covering the repository's own settings - and each has its own section below following the same philosophy, not a separate one invented from scratch. The client and backend sections began as pre-build test plans; they are kept because they still name the behaviors those parts must not lose, and each now opens with what actually exists.
 
 ## Why this exists
 
@@ -27,6 +27,21 @@ Found a bug where the code did something surprising or silently wrong? Before mo
 2. Write a test named for the behavior it guards against (e.g. `test_full_band_read_catches_late_strip_corruption`, not `test_bug_47`), in the same commit/PR as the fix.
 3. If it's fast to check, verify the test actually fails against the pre-fix code (revert the fix locally, confirm red, restore it, confirm green) - proves the test has teeth instead of passing vacuously.
 
+## What has actually failed, and what it teaches
+
+An audit of every CI run to date (2,538 runs, 2026-07-25 through 2026-08-06) puts numbers on where the risk really sits. Half of all suite failures were one infrastructure incident - the 2026-08-06 Actions outage - and a quarter were formatting-only, overwhelmingly `ruff format` in `pipeline/`, the exact round-trip CONTRIBUTING.md's "run what CI runs" exists to prevent. Real regressions caught by CI were about one failure in ten. Excluding the outage, the suites run ~98-99% green.
+
+The failures that *mattered* - the only ones that broke `main` - were neither. Both were timing races in client tests that passed on their own PR and failed at the merge, where the machine was loaded differently:
+
+- A staleness boundary test took two separate `Date.now()` readings and flaked when a millisecond elapsed between them (~1-in-6,000; broke `main` at #31, fixed in #32 with `vi.setSystemTime`).
+- Map-readiness races, fixed twice: asserting on `MockMap.live[0]` after `findByRole` resolved but before the effect constructing the map had run, and later, firing `moveend` before an offline-background rebuild finished - the state was gone, not late. CLAUDE.md canonizes that incident.
+
+Three rules fall out of this, and they are rules rather than tastes because each one has already cost a red `main`:
+
+1. **A time boundary is tested with a set clock** (`vi.setSystemTime`), never with two reads of the real one.
+2. **Wait on an observable that proves the sequence completed** - a map that reports itself live, a promise the code under test exposes - never on a sleep. A real-clock sleep followed by an assertion of *absence* is the worst shape: it passes on a broken implementation exactly as readily as on a correct one, and it is the next flake waiting for a loaded runner.
+3. **A test that cannot fail is worse than no test** - it spends its credibility everywhere else. #175 tracks the known ones (listener-leak tests asserting on an event production no longer uses, progress tests that assert nothing). The gotcha rule above already says to confirm red once; that applies to audit findings too - a vacuous test gets teeth or gets deleted.
+
 ---
 
 ## Pipeline (Python)
@@ -52,18 +67,20 @@ cd pipeline
 
 **Network isolation caveat:** DuckDB's spatial extension (`INSTALL spatial`) fetches from DuckDB's own extension repository over the network on first use *per machine* - this is a one-time local setup step, not a per-test-run network call, but it's a real exception to "tests never touch the network" worth knowing about if a fresh environment's first test run looks like it's doing something unexpected.
 
-**Blaze normalization, still to build (see `features/TRAIL_BLAZE_COLORS.md`):** decoding each trail-line source's raw color coding into one normalized `blaze_color` attribute happens here, during export - not on the client (see the Client section above, which only tests the client's *use* of the already-normalized value). Once built, this needs a regression test for exactly the gotcha `TRAIL_BLAZE_COLORS.md` already names from the real data: `side_trails`' `Blaze` field has 24 features with no value at all, 9 with the literal string `"Unknown"`, and 3 with `"Gold"`, none of which are in its actual 0-9 coded domain. The test should assert all three fall through to the neutral default with a warning logged - not a crash, and not a silently wrong color.
+**Blaze normalization, still to build (see `features/TRAIL_BLAZE_COLORS.md`):** decoding each trail-line source's raw color coding into one normalized `blaze_color` attribute happens here, during export - not on the client (see the Client section below, which only tests the client's *use* of the already-normalized value). Once built, this needs a regression test for exactly the gotcha `TRAIL_BLAZE_COLORS.md` already names from the real data: `side_trails`' `Blaze` field has 24 features with no value at all, 9 with the literal string `"Unknown"`, and 3 with `"Gold"`, none of which are in its actual 0-9 coded domain. The test should assert all three fall through to the neutral default with a warning logged - not a crash, and not a silently wrong color.
 
 **What's intentionally manual-only:** fetching the real ~1,650-quad USGS corridor dataset and mosaicking it (`fetch_topo_quads.py` + `spike_raster_mosaic.py`) is a real multi-GB, multi-minute operation against live services - run it by hand to verify changes that touch fetch/mosaic logic, don't expect it in `pytest`.
 
-## Client (React/TypeScript) - not yet built
+## Client (React/TypeScript)
 
-Not scaffolded yet (see ROADMAP.md Phase 2). Framework: **Vitest + React Testing Library** - Vitest because it shares Vite's transform pipeline (the confirmed bundler per TECHNICAL_ARCHITECTURE.md) instead of adding a second one; same philosophy as the pipeline above (pure-function/component unit tests, no real network in the suite, mock any data/API calls), not a from-scratch set of conventions.
+Built, and now the largest suite in the repository: 1,735 tests across 119 files (measured 2026-08-06), ~98% statement coverage - visibility-only, not a gate, same stance as the pipeline. Framework: **Vitest + React Testing Library** in jsdom - Vitest because it shares Vite's transform pipeline (the confirmed bundler per TECHNICAL_ARCHITECTURE.md) instead of adding a second one; same philosophy as the pipeline (pure-function/component unit tests, no real network in the suite, mock any data/API calls), not a from-scratch set of conventions. MapLibre is a hand-written double in `src/test/mocks/maplibre-gl.ts` that models the real library's throwing and lifecycle behavior, wired per-file - jsdom has no WebGL, so this is necessity, and item 19 below is what keeps the necessity honest.
 
-The test plan below is drawn from [WIREFRAMES.md](WIREFRAMES.md) - it names the behaviors those v1 MVP screens need covered, written before the client itself so the first pass at each area can be built test-first per this file's core rule. Written as behaviors, not implementations, so they survive refactors.
+The test plan below is drawn from [WIREFRAMES.md](WIREFRAMES.md) - it named the behaviors the v1 MVP screens needed covered, written before the client itself so the first pass at each area could be built test-first per this file's core rule. Written as behaviors, not implementations, so they survive refactors - which is why it stays now that the client exists: it is the list of behaviors the suite must keep asserting, not a to-do list that finished.
+
+One boundary worth stating plainly: everything in this suite runs in jsdom against mocked MapLibre and mocked storage. It attests to the *logic* of the client, on web semantics. What it cannot attest to - real IndexedDB under quota pressure, real map rendering, real touch, real platforms - is covered by the layers in "Redundancy" below, and the gaps that remain are named there rather than papered over here.
 
 **Pure logic (fast unit tests, zero rendering):**
-1. **Blaze normalization (client's half)** - the pipeline decodes raw source data into a normalized `blaze_color` string during export (see the Pipeline section below); the client's job is just mapping that already-clean string to a MapLibre paint style via a `match` expression. Test the client's defensive fallback: any `blaze_color` value that isn't one of the expected strings renders as the neutral grey and **emits a warning**, rather than the client trusting the pipeline blindly or crashing on an unexpected value. Line **width** is a second `match`, on the `source` attribute rather than on the blaze, and carries the hue-independent channel: the AT centerline is the widest line on the map, and a source this build has never heard of is drawn at the side-trail width rather than at nothing at all.
+1. **Blaze normalization (client's half)** - the pipeline decodes raw source data into a normalized `blaze_color` string during export (see the Pipeline section above); the client's job is just mapping that already-clean string to a MapLibre paint style via a `match` expression. Test the client's defensive fallback: any `blaze_color` value that isn't one of the expected strings renders as the neutral grey and **emits a warning**, rather than the client trusting the pipeline blindly or crashing on an unexpected value. Line **width** is a second `match`, on the `source` attribute rather than on the blaze, and carries the hue-independent channel: the AT centerline is the widest line on the map, and a source this build has never heard of is drawn at the side-trail width rather than at nothing at all.
 2. **Naismith** - 2.6 mi / 640 ft ⇒ `≈1h 10m`; rounds to 5-minute steps; descent never subtracts; output always carries `≈`; never formats an arrival time.
 3. **Download detail levels** - each of Light/Standard/Fine maps to its correct zoom (z11/z12/z13) and its correct measured size (64 MB/314 MB/1.18 GB, from `pipeline/README.md`) as a table-driven test, guarding against one of the three drifting out of sync with the other two. No per-section math - see WIREFRAMES.md Known Deviations #1.
 4. **Staleness tiers** - boundary tests at 14 and 60 days, `never confirmed` ⇒ stale, and staleness is independent of the verified/unverified flag (all four combinations produce the right pin treatment).
@@ -92,9 +109,13 @@ The test plan below is drawn from [WIREFRAMES.md](WIREFRAMES.md) - it names the 
 
 **Field testing (not automatable):** thresholds for off-trail distance and wrong-direction persistence need real GPS behaviour under tree canopy, ideally with NYNJTC/ATC volunteers, before the push path ships. Sunlight-glare readability and gloved one-handed use likewise (WIREFRAMES.md's `9d` is the greyscale pass to test against).
 
-## Backend (Python/FastAPI, Phase 2+) - not yet built
+## Backend (Python/FastAPI)
 
-Not scaffolded yet (see TECHNICAL_ARCHITECTURE.md). When it exists, it would likely reuse pytest and much of the pipeline's approach (HTTP mocking, synthetic fixtures over real data/DB where possible). Three invariants from the wireframe handoff belong here specifically, since they're only meaningfully enforceable server-side:
+Built. pytest, 167 tests (measured 2026-08-06), reusing the pipeline's approach - synthetic fixtures, no network (every JWT is minted locally; the JWKS fetch is a monkeypatched seam, never called). The one deliberate departure from "mock the heavy thing": the suite runs against a **real local Postgres 16** - the same engine Supabase runs in production - never a stand-in dialect, because RLS statements, Alembic migrations up *and* down, and `pg_class` readbacks are exactly the things a stand-in would vouch for wrongly. `scripts/local-postgres.sh` makes that a one-command setup, and CI runs a service container of the same version.
+
+The isolation model is worth knowing before pointing `DATABASE_URL` anywhere: each test drops every table in whatever database that URL names and recreates the schema. That is what makes the suite recover from a run killed mid-test, and it is also why the URL must never name a database anyone cares about.
+
+Three invariants from the wireframe handoff live here specifically, since they're only meaningfully enforceable server-side:
 
 - `severity: serious` on a `Report` is only ever set by a user with a moderator role; a self-set attempt is rejected server-side, not just hidden client-side.
 - Any report type intended to stay private (`bad_hikers` today - see [WIREFRAMES.md](WIREFRAMES.md) Known Deviations #2 for the still-open question of exactly what replaces it) has `visibility: internal-only` set on write, and public map/search API queries filter it out at the query level, not just in client rendering.
@@ -117,6 +138,33 @@ Which workflows use a setting is derived, never written down - a hand-kept copy 
 Two of these guard the checker rather than the settings, and both earn their place: one asserts the live inputs are names and never values, so a change that stopped reducing the contexts fails loudly instead of quietly putting credentials in an assertion message; the other fails the live job if its environment didn't arrive, since every live test skipping is otherwise indistinguishable from all of them passing.
 
 **Warning, not failure:** a setting declared for the Variables tab that is *also* kept as a secret still works, which is exactly why it survives. What it costs is the readability the Variables tab existed to provide - GitHub masks a registered secret value everywhere it appears, so the variable's own value prints as `***` too. `pages.yml` cannot see this: it takes the variable and never looks at the secret.
+
+## Platforms - web now, iOS and Android at Phase 3
+
+The client is one codebase for all three platforms: a PWA, wrapped with Capacitor for the app-store builds (TECHNICAL_ARCHITECTURE.md). The wrapper does not exist yet - that is Phase 3 - so "will the tests work on Android and iOS" has a precise answer today: the suite runs anywhere Node runs and will keep passing unchanged after wrapping, but it *attests* to web semantics only. jsdom is one idealized browser; nothing in a green run speaks for WKWebView on iOS or the Android System WebView. And those are where this app's riskiest behaviors genuinely differ:
+
+- **Storage.** WebKit can evict an origin's storage - Safari applies a seven-day cap to sites that aren't installed, and every platform evicts under pressure unless `navigator.storage.persist()` is granted. The suite's storage layer is mocked (`idb-keyval`), so eviction and quota exhaustion are precisely the failure modes it cannot see, on the platform where a hiker's 1.18 GB archive matters most.
+- **Service worker and offline.** Registration, precache and update semantics inside a Capacitor shell (which serves from a local origin) differ from a browser tab's. The build-output check guards the artifact; nothing yet exercises it inside a WebView.
+- **Geolocation and permissions.** Prompt flows and background behavior are platform policy, not web spec.
+- **Touch.** No test on either side simulates a touch; gestures are delegated to MapLibre, which every test mocks. Tap-target sizes are asserted as CSS text only.
+
+When Capacitor lands, the posture is: the unit suite stays platform-agnostic and does not fork. What gets added is a thin per-platform smoke layer, not a parallel suite - Playwright's WebKit and Chromium builds are the same rendering engines the two WebViews embed, which makes an engine-level smoke check cheap and runnable in CI. The truly device-bound behaviors - storage eviction, permission prompts, background GPS under canopy - belong to Phase 3 acceptance runs on real devices and to field testing: a documented manual procedure, same category as the full USGS fetch.
+
+## Redundancy - what double-checks what
+
+Coverage says how much code the tests touch. Redundancy is the different question of how many *independent* layers have to fail before a hiker sees the bug. Where it exists here, it has already earned its keep:
+
+- **The build-output check backs up the mocked-map suite.** Every source test mocks MapLibre, so `client/scripts/check-build-output.mjs` in `npm run build` is the second layer - it exists because of the one class of bug (item 19's worker URL) that a fully green suite structurally could not see.
+- **The settings manifest backs up the live check.** Drift is caught from any checkout on every PR; existence is confirmed from inside Actions weekly. Different failure modes, different vantage points.
+- **The post-merge full run on `main` backs up PR path-scoping.** It caught the staleness flake that was green on its own PR (#32), and it is what makes scoping PRs safe at all.
+- **The elevation-gain vectors are asserted from both languages.** `pipeline/reference/gain_vectors.json` is read by a pytest suite and a Vitest suite, with a guard test against the file silently emptying - the model for every cross-part contract.
+
+And where it is missing (audited 2026-08-06), which is where a bug can ship green today:
+
+- **The backend↔client seam has no second layer because it has no first.** `client/src/lib/api.ts` is tested against hand-written mock bodies; the backend's enums and response schemas are re-declared as TypeScript types with nothing keeping the two in step; and the suites are scoped so no PR ever runs both halves of one request. The backend already emits an OpenAPI document - the seam's contract test belongs against that document, not against a second hand-kept copy.
+- **The one existing contract test is one-sided in CI.** Client tests read `pipeline/reference/gain_vectors.json` and `site/index.html`, but the client suite's scope list is `client/` alone - so a PR editing the shared vectors runs only the Python half of the drift guard, and only the unscoped run on `main` closes the hole, after the merge. The rule that keeps this honest: **a suite's scope list includes every file its tests read.** The client workflow's comment asserting nothing outside `client/` is imported was checked in this audit and is wrong on both counts.
+- **The guard has no guard.** `check-build-output.mjs` has no tests of its own. If its assertions rot, every layer past the unit suite is gone and nothing says so.
+- **Storage has one layer and it is simulated.** Between `vi.mock('idb-keyval')` and a full phone there is nothing - no real-IndexedDB run, no quota-pressure test, for the app's headline feature.
 
 ## CI
 
@@ -146,3 +194,19 @@ So the triggers stay unfiltered and the decision moves inside the job, which alw
 The distinction is which half of the check you want. `settings-check.yml`'s `configured` job carries a job-level `if:` on purpose, and is right to: that check *should* be absent on a pull request, because it cannot pass on one. A test suite is the opposite - it is a check a reviewer expects to see reporting, so it has to report even when the answer is "nothing to do".
 
 The action answers "run" for every case it is unsure about - a push, a PR too large for the files API to list, an API call that failed, an empty path list. Running a suite that did not need to run costs a minute; skipping one that did costs a merge, and does it quietly.
+
+## The long-term strategy
+
+Where this is going, given what the audit measured. Five commitments, in the order they pay off; the concrete deltas live in issues, per CONTRIBUTING.md's one-home rule.
+
+1. **Contracts are asserted, not remembered.** Every surface two parts share gets the `gain_vectors.json` treatment: one fixture or schema, read from both sides, with a guard against the shared file going silently empty - the publish manifest's shape, the POI category ids, the download-tier sizes, and above all the backend's API, asserted from its OpenAPI document rather than from a hand-kept TypeScript copy. And every shared file sits in the scope list of every suite that reads it, so the guard fires on the PR, not after the merge.
+
+2. **Flake classes die structurally, not case-by-case.** Both incidents that broke `main` were the same class passing review twice. The rules in "What has actually failed" become mechanical where a config can hold them: a network guard in the client's test setup (the pipeline's "any unmocked request raises" posture, which the client currently trusts to convention), `TZ` pinned in CI so a formatter without an explicit zone cannot pass by fixture luck, and waits on observables rather than sleeps - with the real-clock-sleep-then-assert-absence shape treated as a defect in review, not a style preference.
+
+3. **A real-browser layer lands between jsdom and the trail.** Not a broad E2E suite - a smoke: the built app boots in real Chromium and WebKit, constructs a real map with its real worker, completes one small archive download against real IndexedDB, and comes back up offline. Its job is to catch the classes of bug the mocks structurally cannot - item 19's blank map is the acceptance test for it - and it doubles as the platform smoke layer Phase 3 needs anyway. Until it exists, `check-build-output.mjs` is the only non-jsdom layer, which is why it gets tests of its own.
+
+4. **Platform coverage arrives with Phase 3, not before.** Per the Platforms section: the unit suite never forks per platform; engine-level smoke runs in CI; device-bound behavior is Phase 3 acceptance plus field testing, documented as manual procedure.
+
+5. **Red means code.** Half of all historical failures were one outage and a quarter were formatting - noise that teaches people to re-run instead of read. The controllable half: dependencies pinned or locked in both Python suites (the client already has a lockfile) so an upstream release cannot redden an unrelated PR, and the DuckDB spatial extension cached in CI the way the session hook already seeds it locally, closing the one standing network dependency in "tests never touch the network."
+
+None of this moves the core rule. Every real gotcha still becomes a regression test in the same change that fixes it. The strategy is about the suite those tests land in - making sure its green is worth trusting, on every platform a hiker will actually stand on.

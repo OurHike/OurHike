@@ -9,6 +9,7 @@ import {
   ArchiveSizeMismatchError,
 } from './archiveDownload'
 import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
+import { completedMarker, recordCompleted } from './storageHealth'
 
 // The download behind Downloads.tsx's buttons. WIREFRAMES.md `7a` requires a
 // failed transfer to RESUME rather than restart, and that promise is the
@@ -561,5 +562,50 @@ describe('downloadArchive — packages are independent (issue #200)', () => {
     const init = spy.mock.calls[0][1] as RequestInit | undefined
     expect(init?.headers).toBeUndefined()
     expect(store[ARCHIVE_PARTIAL_KEY]).toBeInstanceOf(Blob)
+  })
+})
+
+describe('the completion marker (#190)', () => {
+  // Written on success, cleared on delete, and in localStorage rather than
+  // IndexedDB - the whole point is surviving the store the archive did not.
+
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  afterEach(() => {
+    localStorage.clear()
+  })
+
+  it('records a completed download, after the bytes are really stored', async () => {
+    withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+
+    expect(completedMarker(CORRIDOR_ARCHIVE_KEY)).toBeNull()
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)
+
+    expect(completedMarker(CORRIDOR_ARCHIVE_KEY)).toBeInstanceOf(Date)
+  })
+
+  it('does not record an attempt that failed short', async () => {
+    // A marker without a completed archive is exactly the false eviction
+    // claim the marker must never produce.
+    withStore()
+    mockFetch({ chunks: [bytes(1)], totalBytes: 3 })
+
+    await expect(downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_)).rejects.toThrow()
+
+    expect(completedMarker(CORRIDOR_ARCHIVE_KEY)).toBeNull()
+  })
+
+  it('clears the marker when the hiker deletes the archive', async () => {
+    // "The phone removed your map" about a deletion they performed would be
+    // the marker lying in the other direction.
+    withStore({ [CORRIDOR_ARCHIVE_KEY]: new Blob(['x']) })
+    recordCompleted(CORRIDOR_ARCHIVE_KEY)
+
+    await deleteArchive(CORRIDOR_ARCHIVE_KEY)
+
+    expect(completedMarker(CORRIDOR_ARCHIVE_KEY)).toBeNull()
   })
 })

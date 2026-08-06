@@ -251,3 +251,107 @@ describe('downloads on a desktop', () => {
     expect(screen.getByText(/works with no signal/i)).toBeInTheDocument()
   })
 })
+
+describe('eviction, said plainly (#190)', () => {
+  it('says the map was removed by the phone, never "not downloaded"', () => {
+    render(
+      <Downloads
+        {...PROPS}
+        status={{ state: 'evicted', completedAt: new Date('2026-07-20T08:00:00Z') }}
+      />,
+    )
+
+    expect(screen.getByText(/no longer on this phone/i)).toBeInTheDocument()
+    expect(screen.getByText(/removed it to free up space/i)).toBeInTheDocument()
+    expect(screen.getByText(/July 20/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /download it again/i })).toBeInTheDocument()
+  })
+
+  it('still reads honestly when the completion date did not survive', () => {
+    render(<Downloads {...PROPS} status={{ state: 'evicted', completedAt: null }} />)
+
+    expect(screen.getByText(/no longer on this phone/i)).toBeInTheDocument()
+  })
+
+  it('starts a fresh download from the eviction message', async () => {
+    render(<Downloads {...PROPS} status={{ state: 'evicted', completedAt: null }} />)
+
+    await userEvent.click(screen.getByRole('button', { name: /download it again/i }))
+
+    expect(PROPS.onStart).toHaveBeenCalled()
+  })
+})
+
+describe('durability, at its honest weight (#190)', () => {
+  const DOWNLOADED = {
+    state: 'downloaded' as const,
+    totalBytes: 314_000_000,
+    completedAt: new Date('2026-08-01T08:00:00Z'),
+  }
+
+  it('says nothing extra when persistence was granted - protected is the expected state', () => {
+    render(<Downloads {...PROPS} status={DOWNLOADED} persistence="granted" />)
+
+    expect(screen.queryByText(/reclaimable/i)).not.toBeInTheDocument()
+  })
+
+  it('states best-effort storage when the browser declined to protect it', () => {
+    render(<Downloads {...PROPS} status={DOWNLOADED} persistence="denied" />)
+
+    expect(screen.getByText(/reclaimable if storage runs very low/i)).toBeInTheDocument()
+    expect(screen.getByText(/declined/i)).toBeInTheDocument()
+  })
+
+  it('states best-effort storage where the API does not exist, without claiming a denial', () => {
+    render(<Downloads {...PROPS} status={DOWNLOADED} persistence="unsupported" />)
+
+    expect(screen.getByText(/reclaimable if storage runs very low/i)).toBeInTheDocument()
+    expect(screen.queryByText(/declined/i)).not.toBeInTheDocument()
+  })
+
+  it('keeps quiet while the answer has not arrived', () => {
+    render(<Downloads {...PROPS} status={DOWNLOADED} persistence={null} />)
+
+    expect(screen.queryByText(/reclaimable/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('room for the download (#190)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function stubEstimate(quota: number, usage: number) {
+    vi.stubGlobal('navigator', {
+      ...globalThis.navigator,
+      storage: { estimate: () => Promise.resolve({ quota, usage }) },
+    })
+  }
+
+  it('warns before starting when the chosen tier may not fit', async () => {
+    // Standard is 314 MB; leave ~100 MB free.
+    stubEstimate(1_000_000_000, 900_000_000)
+
+    render(<Downloads {...PROPS} />)
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/may not fit/i)
+    // Warned, never refused: the button is still there.
+    expect(screen.getByRole('button', { name: /download the map/i })).toBeInTheDocument()
+  })
+
+  it('stays quiet when there is room', async () => {
+    stubEstimate(10_000_000_000, 1_000_000_000)
+
+    render(<Downloads {...PROPS} />)
+
+    // The estimate resolves async; give it a beat before asserting absence.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('stays quiet where the browser will not say', () => {
+    render(<Downloads {...PROPS} />)
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+})

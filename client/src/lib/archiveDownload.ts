@@ -26,6 +26,7 @@
 
 import { get, set, del } from 'idb-keyval'
 import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
+import { clearCompleted, recordCompleted } from './storageHealth'
 
 /**
  * Every function here takes the PACKAGE key - the IndexedDB key the finished
@@ -188,6 +189,10 @@ export async function downloadArchive(
   }
 
   await set(packageKey, accumulated)
+  // After the blob is really stored, and in a different storage mechanism on
+  // purpose: this is what later distinguishes "the archive was evicted" from
+  // "no archive was ever downloaded" (storageHealth.ts, #190).
+  recordCompleted(packageKey)
   await discardPartial(packageKey)
 }
 
@@ -226,5 +231,10 @@ export async function readDownloadProgress(
  *  from this one key. */
 export async function deleteArchive(packageKey: string): Promise<void> {
   await del(packageKey)
+  // The marker goes with the archive the hiker asked to remove - an absent
+  // blob with a live marker would otherwise read as an eviction, and "the
+  // phone removed your map" about a deletion they performed is exactly the
+  // kind of false statement the marker exists to prevent.
+  clearCompleted(packageKey)
   await discardPartial(packageKey)
 }

@@ -265,6 +265,7 @@ function App() {
     resume: resumeArchive,
     remove: removeArchive,
     error: archiveError,
+    persistence: archivePersistence,
   } = useArchiveDownload(CORRIDOR_BACKGROUND_PACKAGE.idbKey, archiveUrl(detailLevel))
 
   // Whether there is a corridor on this phone at all. Only a FINISHED archive
@@ -786,6 +787,7 @@ function App() {
       <Downloads
         status={archiveStatus}
         detailLevel={detailLevel}
+        persistence={archivePersistence}
         onChangeDetail={(level) =>
           updatePreferences({ max_background_zoom: getDownloadDetail(level).zoom })
         }

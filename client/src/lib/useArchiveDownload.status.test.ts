@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { get } from 'idb-keyval'
 import { useArchiveDownload } from './useArchiveDownload'
+import { recordCompleted } from './storageHealth'
 import {
   deleteArchive,
   downloadArchive,
@@ -487,5 +488,121 @@ describe('useArchiveDownload on unmount', () => {
       expect(deleteArchive).toHaveBeenCalledTimes(1)
       expect(result.current.status).toEqual({ state: 'not-downloaded' })
     })
+  })
+})
+
+describe('eviction, told apart from absence (#190)', () => {
+  // The FarOut failure class: the archive was downloaded, the OS evicted it,
+  // and the screen offered a fresh download as if nothing had ever been
+  // here. The completion marker (storageHealth.ts, localStorage) is what
+  // lets the hook say "your map is gone" instead.
+
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  afterEach(() => {
+    localStorage.clear()
+  })
+
+  it('reports evicted when a completed archive left its marker but no bytes', async () => {
+    const finished = new Date('2026-08-01T09:00:00Z')
+    recordCompleted(CORRIDOR_ARCHIVE_KEY, finished)
+
+    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+
+    await waitFor(() => {
+      expect(result.current.status).toMatchObject({ state: 'evicted' })
+    })
+    expect(
+      (result.current.status as { completedAt: Date }).completedAt.toISOString(),
+    ).toBe(finished.toISOString())
+  })
+
+  it('still reports evicted when IndexedDB itself cannot be read', async () => {
+    // The marker lives in localStorage on purpose: the known real-world
+    // incidents broke IndexedDB specifically, and this is the case where
+    // the old code silently said not-downloaded.
+    vi.mocked(get).mockRejectedValue(new Error('database is broken'))
+    recordCompleted(CORRIDOR_ARCHIVE_KEY)
+
+    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+
+    await waitFor(() => {
+      expect(result.current.status).toMatchObject({ state: 'evicted' })
+    })
+  })
+
+  it('a resumable partial outranks the marker - resume is the better offer', async () => {
+    recordCompleted(CORRIDOR_ARCHIVE_KEY)
+    vi.mocked(readDownloadProgress).mockResolvedValue({
+      receivedBytes: 40,
+      totalBytes: 100,
+    })
+
+    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+
+    await waitFor(() => {
+      expect(result.current.status).toMatchObject({ state: 'failed' })
+    })
+  })
+
+  it('an intact archive outranks the marker, which merely describes it', async () => {
+    recordCompleted(CORRIDOR_ARCHIVE_KEY)
+    vi.mocked(get).mockResolvedValue(new Blob(['x']))
+
+    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+
+    await waitFor(() => {
+      expect(result.current.status).toMatchObject({ state: 'downloaded' })
+    })
+  })
+
+  it('keeps saying evicted after a failed re-download that saved nothing', async () => {
+    recordCompleted(CORRIDOR_ARCHIVE_KEY)
+    vi.mocked(downloadArchive).mockRejectedValue(new Error('HTTP 503'))
+
+    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    await waitFor(() => {
+      expect(result.current.status).toMatchObject({ state: 'evicted' })
+    })
+
+    await act(async () => {
+      await result.current.start()
+    })
+
+    expect(result.current.status).toMatchObject({ state: 'evicted' })
+    expect(result.current.error).toContain('HTTP 503')
+  })
+})
+
+describe('durable storage (#190)', () => {
+  it('asks the browser for persistence when a download starts, and reports the answer', async () => {
+    const persist = vi.fn().mockResolvedValue(true)
+    vi.stubGlobal('navigator', { ...globalThis.navigator, storage: { persist } })
+
+    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+    await act(async () => {
+      await result.current.start()
+    })
+
+    expect(persist).toHaveBeenCalled()
+    await waitFor(() => expect(result.current.persistence).toBe('granted'))
+    vi.unstubAllGlobals()
+  })
+
+  it('reflects the standing answer on mount, without prompting', async () => {
+    const persist = vi.fn()
+    const persisted = vi.fn().mockResolvedValue(true)
+    vi.stubGlobal('navigator', {
+      ...globalThis.navigator,
+      storage: { persist, persisted },
+    })
+
+    const { result } = renderHook(() => useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_))
+
+    await waitFor(() => expect(result.current.persistence).toBe('granted'))
+    expect(persist).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
   })
 })

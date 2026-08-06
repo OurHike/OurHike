@@ -17,18 +17,38 @@ import {
   readDownloadProgress,
   type DownloadProgress,
 } from './archiveDownload'
+import {
+  completedMarker,
+  readPersistence,
+  requestPersistence,
+  type PersistenceState,
+} from './storageHealth'
 import type { DownloadStatus } from '../screens/Downloads'
+
+/** The status when the blob is gone: evicted if a completed archive was ever
+ *  recorded here, plainly not-downloaded otherwise. The one distinction #190
+ *  exists for - "your map is gone and here is why" against "no map". */
+function absentStatus(packageKey: string): DownloadStatus {
+  const completed = completedMarker(packageKey)
+  return completed === null
+    ? { state: 'not-downloaded' }
+    : { state: 'evicted', completedAt: completed }
+}
 
 export function useArchiveDownload(packageKey: string, archiveUrl: string) {
   const [status, setStatus] = useState<DownloadStatus>({ state: 'not-downloaded' })
   const [error, setError] = useState<string | null>(null)
+  /** What asking the browser for durable storage came to - null until the
+   *  first answer arrives. Read on mount, re-asked at download time. */
+  const [persistence, setPersistence] = useState<PersistenceState | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   /** The attempt currently in flight, so a delete can wait for it to stop
    *  writing before it starts deleting - see `remove`. */
   const runningRef = useRef<Promise<void> | null>(null)
 
   // On mount, reflect what is already on the phone: a finished archive, an
-  // interrupted one worth resuming, or neither.
+  // interrupted one worth resuming, an archive that was here and is gone, or
+  // nothing at all.
   useEffect(() => {
     let cancelled = false
 
@@ -46,19 +66,30 @@ export function useArchiveDownload(packageKey: string, archiveUrl: string) {
         }
 
         const partial = await readDownloadProgress(packageKey)
-        if (cancelled || partial === null) return
-        setStatus({ state: 'failed', ...partial })
+        if (cancelled) return
+        if (partial !== null) {
+          setStatus({ state: 'failed', ...partial })
+          return
+        }
+
+        // No blob, no partial - but if the completion marker says an archive
+        // finished here, this is an eviction, and saying "not downloaded"
+        // would be the FarOut failure: a map that silently vanished offered
+        // back as if it had never existed (#190).
+        setStatus(absentStatus(packageKey))
       } catch {
-        // Both reads are IndexedDB, which can fail outright - storage evicted
-        // under pressure, a corrupt database, private browsing. Unhandled that
-        // was an unhandled rejection on app start; handled, it simply leaves
-        // the initial not-downloaded state, which is the honest reading of "we
-        // could not find out what is on this phone".
+        // The reads above are IndexedDB, which can fail outright - storage
+        // evicted under pressure, a corrupt database, private browsing.
+        // Unhandled that was an unhandled rejection on app start; handled,
+        // the marker still gets its say: an unreadable database on a phone
+        // that completed a download is closer to "your map is gone" than to
+        // "no map downloaded", and the marker lives in localStorage, which
+        // is still readable in exactly the incidents this guards against.
         //
-        // Deliberately silent rather than surfaced: this runs before the hiker
-        // has asked for anything, and the Downloads screen offering the
-        // download is already the right next step. A failure they DID ask for
-        // still reports itself - see the catch in `run`.
+        // Deliberately not surfaced as an error: this runs before the hiker
+        // has asked for anything. A failure they DID ask for still reports
+        // itself - see the catch in `run`.
+        if (!cancelled) setStatus(absentStatus(packageKey))
       }
     })()
 
@@ -67,10 +98,30 @@ export function useArchiveDownload(packageKey: string, archiveUrl: string) {
     }
   }, [packageKey])
 
+  // The standing durability answer, without prompting anyone: persisted()
+  // reports what the browser already decided, so the Downloads screen can be
+  // honest about best-effort storage before the first download ever starts.
+  useEffect(() => {
+    let cancelled = false
+    void readPersistence().then((state) => {
+      if (!cancelled) setPersistence(state)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const run = useCallback(async () => {
     setError(null)
     const controller = new AbortController()
     abortRef.current = controller
+
+    // Ask for durable storage at the moment it means something - the hiker
+    // just chose to store hundreds of megabytes, which is the context a
+    // Firefox-style permission prompt is answerable in. Not awaited: the
+    // download must not sit behind a prompt, and a denial changes what the
+    // screen says about durability, never whether the bytes arrive.
+    void requestPersistence().then(setPersistence)
 
     const onProgress = (progress: DownloadProgress) =>
       setStatus({ state: 'downloading', ...progress })
@@ -102,8 +153,11 @@ export function useArchiveDownload(packageKey: string, archiveUrl: string) {
       // someone with no idea whether to retry, wait, or check their signal.
       setError(thrown instanceof Error ? thrown.message : 'The map download failed.')
       const partial = await readDownloadProgress(packageKey)
+      // absentStatus rather than a bare not-downloaded: a download that
+      // failed before its first byte, on a phone whose previous archive was
+      // evicted, should keep saying so.
       setStatus(
-        partial === null ? { state: 'not-downloaded' } : { state: 'failed', ...partial },
+        partial === null ? absentStatus(packageKey) : { state: 'failed', ...partial },
       )
     }
   }, [packageKey, archiveUrl])
@@ -148,5 +202,5 @@ export function useArchiveDownload(packageKey: string, archiveUrl: string) {
 
   useEffect(() => () => abortRef.current?.abort(), [])
 
-  return { status, error, start, resume: start, remove }
+  return { status, error, persistence, start, resume: start, remove }
 }

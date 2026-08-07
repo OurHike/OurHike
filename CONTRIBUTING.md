@@ -98,6 +98,21 @@ python -m ruff format --check .
 
 Locally this checks that [`.github/expected-settings.yml`](.github/expected-settings.yml) still agrees with the workflows: every secret and variable a workflow reads is declared, and nothing declared has outlived its last reader. Whether those settings actually *exist* is a question no checkout can answer — a secret's value is write-only once set — so the **Settings check** workflow answers it from inside Actions, weekly and on every push to `main`. Adding a workflow that reads a new secret means adding it to the manifest in the same change.
 
+### Changing a Python dependency
+
+The `requirements.txt` and `requirements-dev.txt` files are **compiled output** — every package pinned to an exact version, transitive ones included. Do not edit them by hand. The hand-written files are the matching `.in`, which is where the comments explaining *why* a dependency exists live.
+
+Add, remove or re-pin something in the `.in`, then regenerate. Each compiled file carries the exact command that produced it in its header; for `pipeline/` that is:
+
+```
+uv pip compile --universal --python-version 3.11 pipeline/requirements.in -o pipeline/requirements.txt
+uv pip compile --universal --python-version 3.11 -c pipeline/requirements.txt pipeline/requirements-dev.in -o pipeline/requirements-dev.txt
+```
+
+Compile the runtime file first: the dev file takes it as a constraint, so the two cannot drift onto different versions of a shared package. `--universal` resolves across platforms rather than baking in whichever machine ran the command, and the 3.11 floor keeps one file installable on both CI's 3.14 and the web sandbox's 3.11.
+
+Pinning is not tidiness. Four workflows — `build-basemap`, `build-dem`, `build-raster` and `publish-vector-data` — install these files in a job holding R2 write credentials, so an unpinned resolve means a compromised upstream release executes next to the keys for the bucket hikers download maps from. Dependabot proposes the bumps ([`.github/dependabot.yml`](.github/dependabot.yml)), grouped weekly so the queue stays readable.
+
 The pipeline fetches large amounts of data from ATC, USGS and opentrail.org. Read [pipeline/README.md](pipeline/README.md) before running the fetch scripts — a full topo quad pull is on the order of 14 GB, and the scripts are built to skip work that has not changed upstream. Do not defeat that by clearing manifests.
 
 ## Pull requests

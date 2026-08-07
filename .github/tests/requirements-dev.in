@@ -1,0 +1,7 @@
+# No requirements.in alongside this one: nothing here ships or runs outside
+# the test suite, so there is no runtime half to separate out. That is also
+# why this file compiles without a -c constraint - there is no runtime
+# resolution for it to agree with.
+pytest
+PyYAML
+ruff

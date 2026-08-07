@@ -139,6 +139,29 @@
   color: var(--fg-2);
   font-size: 13px;
 }
+/* The delete confirmation: the cost stated where the tap is about to pay it.
+   The warning tint the space caveats already use - it changes a decision, so
+   it is allowed to be seen, and it is still not a modal. */
+.downloads__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-3, 12px);
+  border-radius: 8px;
+  background: var(--surface-warning);
+}
+.downloads__confirm-question {
+  margin: 0;
+  color: var(--fg-1);
+  font-size: 14px;
+}
+.downloads__confirm-actions {
+  display: flex;
+  gap: var(--space-2, 8px);
+}
+.downloads__confirm-actions > button {
+  flex: 1;
+}
 .downloads__bar {
   height: 8px;
   border-radius: 4px;

@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { StrictMode } from 'react'
-import { render, cleanup, screen, waitFor } from '@testing-library/react'
+import { act, render, cleanup, screen, waitFor } from '@testing-library/react'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { MapView } from './MapView'
+import { BACKDROP_LAYER_ID, MAP_BACKDROP } from './style'
 import { poiIconId } from './poiIcons'
 import {
   poiFeatureCollection,
@@ -209,6 +210,28 @@ describe('MapView', () => {
 
     expect(MockMap.instances).toHaveLength(builtInitially)
     expect(MockMap.live).toHaveLength(1)
+  })
+
+  it('repaints for a theme change without rebuilding the map underneath the hiker', () => {
+    // The theme is the preference most likely to change mid-walk - a phone on
+    // 'auto' flips to dark at sunset, which is when this app is most likely
+    // to be out. A rebuild there would take the map from a hiker reading it
+    // in fading light. The construction effect omits `theme` on purpose
+    // (MapView.tsx); this is that omission's regression test.
+    const { rerender } = render(<MapView {...PROPS} theme="light" />)
+    const builtInitially = MockMap.instances.length
+    const [map] = MockMap.live
+
+    act(() => map.emit('load'))
+    rerender(<MapView {...PROPS} theme="dark" />)
+
+    expect(MockMap.instances).toHaveLength(builtInitially)
+    expect(MockMap.live).toHaveLength(1)
+    // And the repaint really happened - the backdrop took the dark colour in
+    // place rather than waiting for some future rebuild to apply it.
+    expect(map.paintProperties.get(`${BACKDROP_LAYER_ID}/background-color`)).toBe(
+      MAP_BACKDROP.dark,
+    )
   })
 
   it('leaves no load listener behind after unmount', () => {

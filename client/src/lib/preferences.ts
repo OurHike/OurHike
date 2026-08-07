@@ -13,6 +13,7 @@ import {
   BACKGROUND_SOURCES,
   DEFAULT_PREFERENCES,
   HIKING_DETAIL_LEVEL_VALUES,
+  THEME_VALUES,
   type UserPreferences,
 } from './userPreferences'
 import { get, set } from 'idb-keyval'
@@ -55,9 +56,25 @@ function knownHikingDetail(stored: Partial<UserPreferences>): Partial<UserPrefer
   return rest
 }
 
+/** And again for the theme. An unknown stored value would ride the merge into
+ *  resolveTheme, come back out unresolved, and reach the map as a backdrop
+ *  colour MAP_BACKDROP does not have - `undefined`, which MapLibre draws as
+ *  the default black. The same road to the same black map, so it gets the
+ *  same guard. */
+function knownTheme(stored: Partial<UserPreferences>): Partial<UserPreferences> {
+  const value = stored.theme
+  if (value === undefined || THEME_VALUES.includes(value)) return stored
+
+  const { theme: _dropped, ...rest } = stored
+  return rest
+}
+
 export async function loadPreferences(): Promise<UserPreferences> {
   const stored = (await get(PREFERENCES_KEY)) as Partial<UserPreferences> | undefined
-  return { ...DEFAULT_PREFERENCES, ...knownHikingDetail(knownBackground(stored ?? {})) }
+  return {
+    ...DEFAULT_PREFERENCES,
+    ...knownTheme(knownHikingDetail(knownBackground(stored ?? {}))),
+  }
 }
 
 export async function savePreferences(

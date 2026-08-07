@@ -7,6 +7,7 @@
 // - so it lives behind a tab that already exists rather than being invented
 // into the most valuable strip of screen space.
 
+import { useState } from 'react'
 import { Settings, type SettingsProps } from './Settings'
 
 /** A report the server refused for good, reduced to what the screen shows. */
@@ -39,6 +40,14 @@ export function More({
   onDiscardReport,
   ...settings
 }: MoreProps) {
+  // Deleting a stuck report asks twice. "Try again" and "Delete" sit side by
+  // side in the same style, and one of them destroys text someone wrote on a
+  // ridge days ago with no way back - the note right below these buttons
+  // promises "Nothing has been lost... until you delete it", and a promise
+  // like that should not hinge on which of two identical buttons a cold
+  // thumb landed on. Keyed by report id so confirming one never arms another.
+  const [confirmingDiscard, setConfirmingDiscard] = useState<string | null>(null)
+
   return (
     <div className="more">
       <section className="settings__group">
@@ -67,22 +76,47 @@ export function More({
               {stuckReports.map((report) => (
                 <li key={report.id} className="more__stuck-item">
                   <span className="more__stuck-reason">{report.reason}</span>
-                  <span className="more__stuck-actions">
-                    <button
-                      type="button"
-                      className="settings__action"
-                      onClick={() => onRetryReport?.(report.id)}
-                    >
-                      Try again
-                    </button>
-                    <button
-                      type="button"
-                      className="settings__action"
-                      onClick={() => onDiscardReport?.(report.id)}
-                    >
-                      Delete
-                    </button>
-                  </span>
+                  {confirmingDiscard === report.id ? (
+                    <span className="more__stuck-actions">
+                      <span className="more__stuck-confirm">
+                        Delete what you wrote? There is no way back.
+                      </span>
+                      <button
+                        type="button"
+                        className="settings__action"
+                        onClick={() => setConfirmingDiscard(null)}
+                      >
+                        Keep it
+                      </button>
+                      <button
+                        type="button"
+                        className="settings__action"
+                        onClick={() => {
+                          setConfirmingDiscard(null)
+                          onDiscardReport?.(report.id)
+                        }}
+                      >
+                        Yes, delete it
+                      </button>
+                    </span>
+                  ) : (
+                    <span className="more__stuck-actions">
+                      <button
+                        type="button"
+                        className="settings__action"
+                        onClick={() => onRetryReport?.(report.id)}
+                      >
+                        Try again
+                      </button>
+                      <button
+                        type="button"
+                        className="settings__action"
+                        onClick={() => setConfirmingDiscard(report.id)}
+                      >
+                        Delete
+                      </button>
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>

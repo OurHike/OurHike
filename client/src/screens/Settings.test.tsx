@@ -72,19 +72,26 @@ describe('Settings', () => {
     expect(toggles.filter((name) => /closure|warning/i.test(name))).toEqual([])
   })
 
-  it('offers the wrong-way alert toggle, which IS a real preference', () => {
+  it('shows the wrong-way alert as Later, because nothing implements it yet', () => {
+    // The preference is real (lib/userPreferences.ts) but the feature is not:
+    // no monitor runs, no cue mounts, no push fires. A live-looking switch
+    // here told a hiker an alarm was armed when there is no alarm - the worst
+    // kind of safety copy. The row stays visible so the answer to "is there a
+    // wrong-way alert?" is an honest "later", not a hunt through screens.
     render(<Settings {...PROPS} />)
+    const toggle = screen.getByRole('checkbox', { name: /wrong-way alert.*later/i })
 
-    expect(screen.getByRole('checkbox', { name: /wrong-way alert/i })).toBeInTheDocument()
+    expect(toggle).toBeDisabled()
+    expect(toggle).not.toBeChecked()
   })
 
-  it('reports a wrong-way toggle change against the canonical field name', async () => {
+  it('never reports a wrong-way preference change, since no tap can happen', async () => {
     const user = userEvent.setup()
     render(<Settings {...PROPS} />)
 
-    await user.click(screen.getByRole('checkbox', { name: /wrong-way alert/i }))
+    await user.click(screen.getByRole('checkbox', { name: /wrong-way alert.*later/i }))
 
-    expect(PROPS.onChange).toHaveBeenCalledWith({ wrong_way_alert_enabled: false })
+    expect(PROPS.onChange).not.toHaveBeenCalled()
   })
 
   // Scoped to the Background group rather than to every radio on the screen.

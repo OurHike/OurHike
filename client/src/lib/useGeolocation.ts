@@ -45,12 +45,21 @@ export function useGeolocation(enabled: boolean): GeolocationState {
           accuracyFeet: position.coords.accuracy * METERS_TO_FEET,
           fixedAt: new Date(position.timestamp),
         }),
-      (error) =>
-        setState(
-          error.code === error.PERMISSION_DENIED
-            ? { status: 'denied' }
-            : { status: 'unavailable' },
-        ),
+      (error) => {
+        if (error.code === error.PERMISSION_DENIED) {
+          // "Denied simply stops" - the header's claim, made true here. The
+          // watch is released as well as reported: browsers go quiet on a
+          // denied watch anyway, but a registration held for the life of the
+          // tab is a promise about battery this hook should not leave to the
+          // browser to keep.
+          navigator.geolocation.clearWatch(id)
+          setState({ status: 'denied' })
+          return
+        }
+        // A timeout or a lost fix is weather, not a verdict - the watch stays,
+        // and the next fix that lands flips this back to located.
+        setState({ status: 'unavailable' })
+      },
       { enableHighAccuracy: true, maximumAge: 5_000, timeout: 30_000 },
     )
 

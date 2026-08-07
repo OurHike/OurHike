@@ -97,14 +97,24 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
  * not mislead, and "Something went wrong" with a shrug is misleading about how
  * much is still available.
  */
-export function ScreenFailed({ what }: { what: string }) {
+export function ScreenFailed({
+  what,
+  recovery = 'The rest of the app is fine. Switching tabs and coming back will start this screen again.',
+}: {
+  what: string
+  /**
+   * The way out, stated to fit where this fallback is actually standing. The
+   * default assumes a tab bar is rendered under it, which is true inside the
+   * shell and FALSE at the root - main.tsx has to say something else, because
+   * "switch tabs" on a screen with no tabs is an instruction that cannot be
+   * followed, read at the worst possible moment to discover that.
+   */
+  recovery?: string
+}) {
   return (
     <div className="screen-failed" role="alert">
       <h1 className="screen-failed__title">{what} stopped working</h1>
-      <p className="screen-failed__body">
-        The rest of the app is fine. Switching tabs and coming back will start this screen
-        again.
-      </p>
+      <p className="screen-failed__body">{recovery}</p>
       <p className="screen-failed__body screen-failed__body--quiet">
         Your downloaded map and anything waiting in your outbox are untouched.
       </p>

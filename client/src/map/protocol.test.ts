@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { get } from 'idb-keyval'
 
 // pmtiles' own docs say the Protocol "must be added once globally" - adding it
 // twice would give MapLibre two handlers for the same scheme and split the
@@ -10,6 +11,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // register would make every later one trivially pass.
 
 vi.mock('maplibre-gl', () => import('../test/mocks/maplibre-gl'))
+vi.mock('idb-keyval', () => ({ get: vi.fn() }))
 
 describe('registerPMTilesProtocol', () => {
   beforeEach(() => {
@@ -87,5 +89,46 @@ describe('registerPMTilesProtocol', () => {
     expect(a).not.toBe(b)
     expect(packageArchiveUrl('ourhike:package-b')).toBe('pmtiles://ourhike:package-b')
     vi.doUnmock('../lib/packages')
+  })
+
+  /**
+   * The smallest well-formed PMTiles archive: a valid header and an empty
+   * root directory. Built byte-for-byte so the test states exactly what
+   * "valid" means, per TESTING.md - the magic number, the spec version, and
+   * a root directory of zero entries are all pmtiles' header reader checks.
+   */
+  function syntheticArchive(): Blob {
+    const bytes = new Uint8Array(128)
+    const view = new DataView(bytes.buffer)
+    view.setUint16(0, 0x4d50, true) // "PM", the format's magic number
+    bytes[7] = 3 // spec version
+    view.setUint32(8, 127, true) // root directory offset...
+    view.setUint32(16, 1, true) // ...and length: the single byte below
+    bytes[97] = 1 // internal compression: none
+    bytes[127] = 0 // root directory: zero entries
+    return new Blob([bytes])
+  }
+
+  // The trailhead bug (#session-review): the style declares the archive
+  // source on BOTH backgrounds, so on a phone with nothing downloaded the
+  // first header read rejects - correctly. pmtiles' SharedPromiseCache then
+  // held that rejected promise forever, so downloading the corridor changed
+  // nothing: the hiker tapped "Downloaded", got blank paper, and only an app
+  // restart fixed it. A failed read must be retried, not replayed.
+  it('reads an archive downloaded after the first read failed, without a restart', async () => {
+    const { registerPMTilesProtocol } = await import('./protocol')
+    const { CORRIDOR_ARCHIVE_KEY } = await import('./pmtilesSource')
+
+    // Nothing downloaded yet: the read rejects, as it should.
+    vi.mocked(get).mockResolvedValue(undefined)
+    const archive = registerPMTilesProtocol().get(CORRIDOR_ARCHIVE_KEY)!
+    await expect(archive.getHeader()).rejects.toThrow(/No offline map archive/)
+
+    // The download lands - same session, same map, no restart.
+    vi.mocked(get).mockResolvedValue(syntheticArchive())
+
+    const header = await archive.getHeader()
+
+    expect(header.specVersion).toBe(3)
   })
 })

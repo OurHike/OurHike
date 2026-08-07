@@ -11,7 +11,11 @@
 // build is stronger than a control nobody has built yet. The backend guards
 // the same line with `extra="forbid"`.
 
-export type Theme = 'light' | 'dark' | 'auto'
+/** As a value list like BACKGROUND_SOURCES below, and for the same reason:
+ *  preferences.ts drops stored values this build does not know, and it can
+ *  only check against a list that exists at runtime. */
+export const THEME_VALUES = ['light', 'dark', 'auto'] as const
+export type Theme = (typeof THEME_VALUES)[number]
 export type UnitSystem = 'imperial' | 'metric'
 /**
  * Which background the map draws.

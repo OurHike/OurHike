@@ -201,15 +201,23 @@ export function Settings({
 
       <section className="settings__group">
         <h2 className="settings__heading">Safety &amp; privacy</h2>
-        <label className="settings__row">
+        {/* The detection exists (lib/wrongWay.ts) and nothing runs it yet -
+            no monitor is wired, no cue is mounted, no push ever fires. Until
+            that changes, a live-looking switch here is the most dangerous
+            control in the app: a hiker who checks that it is on believes an
+            alarm is armed, and there is no alarm. "Later" is the same honest
+            treatment the other unbuilt rows get, and the preference key stays
+            (default on, lib/userPreferences.ts) so the day the monitor is
+            wired, every phone already has it enabled. */}
+        <label className="settings__row settings__row--later">
           <span className="settings__label">Wrong-way alert</span>
+          <LaterTag />
           <input
             type="checkbox"
             name="wrong_way_alert_enabled"
-            checked={preferences.wrong_way_alert_enabled}
-            onChange={(event) =>
-              onChange({ wrong_way_alert_enabled: event.target.checked })
-            }
+            disabled
+            checked={false}
+            readOnly
           />
         </label>
         <label className="settings__row settings__row--later">

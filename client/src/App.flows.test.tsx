@@ -542,7 +542,8 @@ describe('downloading everything', () => {
 
     await openDownloads(user)
     const usgsCard = await usgsSheetCard(user)
-    await user.click(within(usgsCard).getByRole('button', { name: /delete/i }))
+    await user.click(within(usgsCard).getByRole('button', { name: /delete the map/i }))
+    await user.click(within(usgsCard).getByRole('button', { name: /yes, delete it/i }))
 
     await waitFor(() => expect(store.has(CORRIDOR_ARCHIVE_KEY)).toBe(false))
     expect(store.has(TRAILS_BLOB_KEY)).toBe(true)
@@ -666,19 +667,21 @@ describe('reporting, with a fix to attach', () => {
 
 describe('preferences from the More screen', () => {
   it('saves a changed setting straight away, with no explicit save step', async () => {
-    // The wrong-way alert is the one live toggle on this screen today - the
-    // rest are marked Later and deliberately disabled.
+    // The theme is the vehicle here because it is a live control. This test
+    // used to flip the wrong-way alert toggle, which is now marked Later and
+    // disabled like its neighbours - nothing implements the alert yet, and a
+    // live-looking safety switch that armed nothing was worse than none.
     const user = userEvent.setup()
-    hikerOnTrail({ wrong_way_alert_enabled: false })
+    hikerOnTrail({ theme: 'light' })
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
 
     await user.click(screen.getByRole('tab', { name: 'More' }))
-    await user.click(await screen.findByRole('checkbox', { name: /wrong-way alert/i }))
+    await user.click(await screen.findByRole('radio', { name: /dark/i }))
 
     await waitFor(() => {
-      const saved = store.get(PREFERENCES_KEY) as { wrong_way_alert_enabled: boolean }
-      expect(saved.wrong_way_alert_enabled).toBe(true)
+      const saved = store.get(PREFERENCES_KEY) as { theme: string }
+      expect(saved.theme).toBe('dark')
     })
   })
 

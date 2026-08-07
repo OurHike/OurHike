@@ -116,6 +116,32 @@ describe('useGeolocation', () => {
     expect(result.current).toEqual({ status: 'denied' })
   })
 
+  it('releases the watch on denial, making "denied simply stops" true', () => {
+    // The header comment promised this and the code did not do it: the watch
+    // registration outlived the denial for the life of the tab. Browsers go
+    // quiet on a denied watch, but the promise about battery is this hook's
+    // to keep, not the browser's.
+    const gps = stubGeolocation()
+    renderHook(() => useGeolocation(true))
+
+    gps.reportFailure(1)
+
+    expect(gps.clearWatch).toHaveBeenCalledWith(7)
+  })
+
+  it('keeps the watch through a timeout, which the next fix can heal', () => {
+    // Losing sky for a minute in a canyon must not end the watch - only a
+    // denial is settled.
+    const gps = stubGeolocation()
+    const { result } = renderHook(() => useGeolocation(true))
+
+    gps.reportFailure(3) // TIMEOUT
+    expect(gps.clearWatch).not.toHaveBeenCalled()
+
+    gps.reportFix({ longitude: -77.1, latitude: 39.3, accuracy: 10 })
+    expect(result.current).toMatchObject({ status: 'located' })
+  })
+
   it('separates a refused permission from a fix that merely did not arrive', () => {
     // Different answers to the hiker, and different next steps: one is a
     // settings screen, the other is standing still for a minute.

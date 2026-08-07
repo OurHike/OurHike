@@ -206,5 +206,13 @@
 .more__stuck-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-2, 8px);
+}
+/* The delete confirmation's one sentence, stated where the tap pays it. */
+.more__stuck-confirm {
+  flex-basis: 100%;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-1);
 }

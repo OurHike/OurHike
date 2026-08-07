@@ -54,6 +54,22 @@ describe('preferences', () => {
     expect((await loadPreferences()).background_source).toBe('usgs_topo_offline')
   })
 
+  // The same road to the same black map, via the newest preference: an
+  // unknown stored theme rides the merge into resolveTheme, comes back out
+  // unresolved, and reaches the map as MAP_BACKDROP[value] - undefined, which
+  // MapLibre paints as its default black.
+  it('drops a theme this build does not know, rather than trusting it', async () => {
+    await savePreferences({ ...DEFAULT_PREFERENCES, theme: 'sepia' as never })
+
+    expect((await loadPreferences()).theme).toBe(DEFAULT_PREFERENCES.theme)
+  })
+
+  it('keeps a theme it does know, so this too is a repair and not a reset', async () => {
+    await savePreferences({ ...DEFAULT_PREFERENCES, theme: 'dark' })
+
+    expect((await loadPreferences()).theme).toBe('dark')
+  })
+
   it('leaves the rest of a stored blob alone while repairing the background', async () => {
     await savePreferences({
       ...DEFAULT_PREFERENCES,

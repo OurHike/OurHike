@@ -44,6 +44,7 @@ import { get, set, del } from 'idb-keyval'
 import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
 import { clearCompleted, recordCompleted } from './storageHealth'
 import { publishedHash } from './dataManifest'
+import { formatBytes } from './formatBytes'
 import { Sha256, type Sha256State } from './sha256'
 
 /**
@@ -153,12 +154,21 @@ export interface DownloadOptions {
 }
 
 export class ArchiveSizeMismatchError extends Error {
+  /** The raw counts, for a log or a field report - the sentence a hiker reads
+   *  carries them through formatBytes, because "297483822 bytes" in an alert
+   *  is a stack trace wearing a shirt. */
+  readonly expectedBytes: number
+  readonly actualBytes: number
+
   constructor(expected: number, actual: number) {
     super(
-      `Downloaded archive is ${actual} bytes but the server said ${expected}. ` +
-        `Keeping what arrived so it can be resumed.`,
+      `The download ended early — ${formatBytes(actual)} of the ` +
+        `${formatBytes(expected)} map arrived. What arrived is kept, so picking it ` +
+        `up again carries on from there.`,
     )
     this.name = 'ArchiveSizeMismatchError'
+    this.expectedBytes = expected
+    this.actualBytes = actual
   }
 }
 
@@ -296,7 +306,14 @@ export async function downloadArchive(
   })
 
   if (!response.ok) {
-    throw new Error(`Archive download failed: ${response.status} ${response.statusText}`)
+    // The message is what the download card shows, so it is written for the
+    // hiker holding the phone, not the developer reading a log. The status
+    // code rides along in parentheses because it is the one detail a field
+    // report can carry that actually helps - but it does not lead.
+    throw new Error(
+      `The server could not send the map (it answered ${response.status}). ` +
+        `Anything already on this phone is untouched, and trying again later is safe.`,
+    )
   }
 
   // A 206 means the server honoured the range and is sending the remainder.
@@ -352,7 +369,11 @@ export async function downloadArchive(
   onProgress?.({ receivedBytes, totalBytes })
 
   const reader = response.body?.getReader()
-  if (reader === undefined) throw new Error('Archive download failed: no response body')
+  if (reader === undefined)
+    throw new Error(
+      'The connection opened but no map data arrived. Trying again is safe — ' +
+        'anything already on this phone is untouched.',
+    )
 
   try {
     for (;;) {

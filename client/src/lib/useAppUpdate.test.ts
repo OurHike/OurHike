@@ -10,10 +10,14 @@ function stubServiceWorker({
   controlled,
   updateFails = false,
   getRegistrationFails = false,
+  onLine = true,
 }: {
   controlled: boolean
   updateFails?: boolean
   getRegistrationFails?: boolean
+  /** What navigator.onLine reads. False is the definitive reading - the hook
+   *  skips the fetch entirely rather than waking the radio to fail. */
+  onLine?: boolean
 }) {
   const listeners: Record<string, Array<() => void>> = {}
 
@@ -45,7 +49,7 @@ function stubServiceWorker({
         : Promise.resolve({ update }),
   }
 
-  vi.stubGlobal('navigator', { serviceWorker: sw, userAgent: '', platform: '' })
+  vi.stubGlobal('navigator', { serviceWorker: sw, onLine, userAgent: '', platform: '' })
   return {
     updateCalls: () => updateCalls,
     fireControllerChange: () => listeners.controllerchange?.forEach((fn) => fn()),
@@ -76,6 +80,20 @@ describe('useAppUpdate', () => {
 
     // Once on mount plus three intervals.
     expect(sw.updateCalls()).toBeGreaterThanOrEqual(4)
+  })
+
+  it('never wakes the radio while the browser says there is no network', async () => {
+    // navigator.onLine true proves nothing, but false is definitive - and a
+    // fetch that was going to fail still costs a cold cellular radio woken
+    // once an hour for the length of a hike. The tick keeps ticking; the
+    // fetch waits for signal.
+    vi.useFakeTimers()
+    const sw = stubServiceWorker({ controlled: true, onLine: false })
+
+    renderHook(() => useAppUpdate(1000))
+    await vi.advanceTimersByTimeAsync(3500)
+
+    expect(sw.updateCalls()).toBe(0)
   })
 
   it('reloads once the new worker takes control of an already-controlled page', () => {

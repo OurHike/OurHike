@@ -29,6 +29,7 @@
 // and the note says what would have to happen instead - which says more than
 // an absent control ever did.
 
+import { useState } from 'react'
 import { facingFullDownload } from '../lib/backgroundStatus'
 import { formatBytes, formatBytesLive } from '../lib/formatBytes'
 import type { PersistenceState } from '../lib/storageHealth'
@@ -114,6 +115,16 @@ export function DownloadCard({
   onResume,
   onDelete,
 }: DownloadCardProps) {
+  // Deleting asks twice, and that is the whole design. DownloadsDialog.tsx
+  // already names a mis-tap deleting a download as "the worst possible thing
+  // for this particular window to get wrong" - and then guarded only the
+  // backdrop, leaving the delete itself one tap. One tap, on a phone, on a
+  // trail, destroying a map that took trailhead wifi to fetch and takes
+  // signal to restore. The second ask states that cost at the moment it is
+  // about to be paid; nothing else in this app confirms anything, because
+  // nothing else it does is this hard to undo.
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+
   const picker = (
     <DetailPicker
       options={detail.options}
@@ -289,9 +300,43 @@ export function DownloadCard({
             </p>
           )}
           {picker}
-          <button type="button" className="downloads__secondary" onClick={onDelete}>
-            Delete the map
-          </button>
+          {!confirmingDelete ? (
+            <button
+              type="button"
+              className="downloads__secondary"
+              onClick={() => setConfirmingDelete(true)}
+            >
+              Delete the map
+            </button>
+          ) : (
+            <div className="downloads__confirm">
+              <p className="downloads__confirm-question">
+                {`Delete this ${formatBytes(status.totalBytes)} map from the phone? Getting it back means downloading the whole thing again, and that needs signal.`}
+              </p>
+              <div className="downloads__confirm-actions">
+                {/* Keep first, styled as the primary: the safe answer is the
+                    default read, and the destructive one never sits where the
+                    finger just was. */}
+                <button
+                  type="button"
+                  className="downloads__primary"
+                  onClick={() => setConfirmingDelete(false)}
+                >
+                  Keep it
+                </button>
+                <button
+                  type="button"
+                  className="downloads__secondary"
+                  onClick={() => {
+                    setConfirmingDelete(false)
+                    onDelete()
+                  }}
+                >
+                  Yes, delete it
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </section>

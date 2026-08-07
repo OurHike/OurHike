@@ -124,9 +124,27 @@ describe('More, when a report was refused for good', () => {
     const onDiscardReport = vi.fn()
     render(<More {...PROPS} stuckReports={STUCK} onDiscardReport={onDiscardReport} />)
 
-    await user.click(screen.getByRole('button', { name: /delete/i }))
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+    await user.click(screen.getByRole('button', { name: /yes, delete it/i }))
 
     expect(onDiscardReport).toHaveBeenCalledWith('r1')
+  })
+
+  it('asks before deleting, because Delete sits beside Try again in the same coat', async () => {
+    // The two buttons are styled identically, one is safe and one destroys
+    // text written days ago - and the note below promises nothing is lost
+    // "until you delete it". That promise must not hinge on a cold thumb.
+    const user = userEvent.setup()
+    const onDiscardReport = vi.fn()
+    render(<More {...PROPS} stuckReports={STUCK} onDiscardReport={onDiscardReport} />)
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(onDiscardReport).not.toHaveBeenCalled()
+
+    // The safe answer disarms and puts the ordinary buttons back.
+    await user.click(screen.getByRole('button', { name: /keep it/i }))
+    expect(onDiscardReport).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument()
   })
 
   it('says nothing when nothing is stuck', () => {

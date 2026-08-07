@@ -45,26 +45,40 @@ function mile(value: number): string {
 export function closureBanner(
   closure: Closure,
   currentMile: number,
-  direction: HikeDirection,
+  direction: HikeDirection | undefined,
 ): string | null {
   // A reopened closure is not a warning. A reroute is - having somewhere else
   // to walk does not make the trail itself passable.
   if (closure.status === 'open') return null
 
   const { start_mile_marker: start, end_mile_marker: end } = closure
+  const inside = currentMile >= start && currentMile <= end
+
+  // Standing inside needs no direction: whichever way this hiker is walking,
+  // they are already in it. Said in those words rather than as "0.0 mi ahead",
+  // which is a distance pretending to be a place.
+  if (inside) {
+    return (
+      `Trail closed here · ${closureReasonLabel(closure.reason_type)}` +
+      ` · mi ${mile(start)} – ${mile(end)}`
+    )
+  }
+
+  // Not inside it, and no direction yet - "ahead" does not exist. Direction
+  // takes a quarter mile of walking to establish (lib/hikeDirection.ts), and
+  // guessing here would warn half of all hikers about the closure behind them
+  // while staying silent about the one in front.
+  if (direction === undefined) return null
 
   // Whichever end of the closure this hiker reaches first.
   const nearEdge = direction === 'NOBO' ? start : end
   const distanceAhead =
     direction === 'NOBO' ? nearEdge - currentMile : currentMile - nearEdge
 
-  const inside = currentMile >= start && currentMile <= end
-  if (!inside && distanceAhead < 0) return null
-
-  const ahead = Math.max(distanceAhead, 0)
+  if (distanceAhead < 0) return null
 
   return (
-    `Trail closed ${mile(ahead)} mi ahead · ${closureReasonLabel(closure.reason_type)}` +
+    `Trail closed ${mile(distanceAhead)} mi ahead · ${closureReasonLabel(closure.reason_type)}` +
     ` · mi ${mile(start)} – ${mile(end)}`
   )
 }
@@ -79,12 +93,16 @@ export function closureBanner(
 function distanceAhead(
   closure: Closure,
   currentMile: number,
-  direction: HikeDirection,
+  direction: HikeDirection | undefined,
 ): number | null {
   if (closure.status === 'open') return null
 
   const { start_mile_marker: start, end_mile_marker: end } = closure
   if (currentMile >= start && currentMile <= end) return 0
+
+  // Without a direction there is no "ahead" - only the inside case above can
+  // qualify.
+  if (direction === undefined) return null
 
   const nearEdge = direction === 'NOBO' ? start : end
   const ahead = direction === 'NOBO' ? nearEdge - currentMile : currentMile - nearEdge
@@ -104,7 +122,7 @@ function distanceAhead(
 export function nearestClosureBanner(
   closures: readonly Closure[],
   currentMile: number,
-  direction: HikeDirection,
+  direction: HikeDirection | undefined,
 ): string | null {
   let best: Closure | null = null
   let bestDistance = Infinity

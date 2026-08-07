@@ -9,3 +9,8 @@ pyjwt[crypto]
 # analytics over the trail dataset - it is not a stand-in for the database
 # Supabase runs.
 psycopg[binary]
+
+# Report photo uploads to R2 over its S3-compatible API (#363). The same
+# client pipeline/publish.py already uses for published artifacts - one
+# vendor, one API, one set of credentials to rotate.
+boto3

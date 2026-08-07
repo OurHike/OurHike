@@ -8,7 +8,7 @@ it to and, later, moderate against.
 
 from datetime import timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
@@ -16,6 +16,12 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import bearer_scheme, get_current_user
 from app.core.orm import commit_and_refresh
+from app.core.photo_storage import (
+    MAX_PHOTO_BYTES,
+    PhotoStorageUnavailable,
+    photo_rejection,
+    store_photo,
+)
 from app.core.time import utc_now
 from app.db.session import get_db
 from app.models.profile import Profile
@@ -255,3 +261,80 @@ def get_report(
     if report is None or not _visible_to(report, current_user):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
     return ReportOut.for_viewer(report, current_user)
+
+
+@router.put("/{report_id}/photo", response_model=ReportOut)
+async def upload_report_photo(
+    report_id: str,
+    request: Request,
+    current_user: Profile = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ReportOut:
+    """Attach a JPEG to a report you filed. Part 1 of #234.
+
+    **After the report exists, never before.** A derived key makes
+    upload-before-create possible and it is still the wrong order: nothing
+    could check who is allowed to upload, or whether the id names a report at
+    all. The outbox flushes in order and `POST /reports` is idempotent on the
+    same id (#243), so a retry of either half is safe.
+
+    **A report that is not yours is a 404, not a 403** - the same call
+    `_already_filed` makes above, for the same reason. Distinguishing "wrong
+    owner" from "no such id" turns a guessed UUID into a way to confirm one,
+    and for `bad_hikers` into a way to confirm that an incident note about a
+    named individual exists. A moderator is no exception here: reading a
+    photo is part 2's business, and this endpoint only ever writes the
+    caller's own.
+
+    **The body is the photo**, sent as `image/jpeg` - not multipart. One file
+    to one URL is what PUT is for, and a form wrapper would buy nothing but a
+    dependency.
+
+    Nothing can read the result yet: the bucket is private and the Worker
+    that checks `visibility` and `status` before streaming is part 2. A photo
+    uploaded today is stored and unreachable, which is deliberate - the
+    alternative is a readable photo whose report is still unmoderated.
+    """
+    report = db.get(Report, report_id)
+    if report is None or report.reporter_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
+
+    # Refused before the body is read, when the client says how big it is.
+    # Reading first and checking after would buffer the whole upload to reject
+    # it, which is the shape that makes a size limit useless against the
+    # traffic it exists to stop.
+    declared = request.headers.get("content-length")
+    if declared is not None and declared.isdigit() and int(declared) > MAX_PHOTO_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"That photo is larger than {MAX_PHOTO_BYTES // (1024 * 1024)} MB.",
+        )
+
+    data = await request.body()
+
+    # And again on what actually arrived. The header above is a claim; this is
+    # the measurement, and it is the one that decides.
+    rejection = photo_rejection(data)
+    if rejection is not None:
+        status_code = (
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE if len(data) > MAX_PHOTO_BYTES else status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+        raise HTTPException(status_code=status_code, detail=rejection)
+
+    try:
+        key = store_photo(report.id, data)
+    except PhotoStorageUnavailable as unavailable:
+        # 503, not 500 or 422: nothing was attempted and nothing is wrong with
+        # the photo, so a client should keep it and retry rather than mark it
+        # permanently refused. lib/api.ts's `permanentFailureReason` allow-lists
+        # only 409 and 422 as permanent for exactly this reason - a 503 leaves
+        # the report in the outbox where it belongs.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(unavailable),
+        ) from unavailable
+
+    # The key, not a URL. A full URL would bake today's bucket domain into
+    # every row permanently (#234).
+    report.photo_url = key
+    return ReportOut.for_viewer(commit_and_refresh(db, report), current_user)

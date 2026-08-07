@@ -3,3 +3,8 @@ pytest
 pytest-cov
 httpx
 ruff
+
+# Mocks S3/R2 in-process so the photo-upload tests drive a real boto3 client
+# rather than asserting a mock was called. Same choice pipeline/ made for the
+# same reason - see pipeline/tests/test_publish.py.
+moto[s3]

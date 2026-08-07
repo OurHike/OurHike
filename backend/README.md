@@ -75,6 +75,28 @@ Supabase Auth issues the JWTs this backend verifies - see [../features/AUTHENTIC
 
 `SUPABASE_JWT_AUDIENCE` is the one auth setting that *does* have a default, `authenticated`, because it is neither a secret nor project-specific - it is the `aud` claim Supabase Auth puts on every signed-in user's access token. It has to be passed to PyJWT explicitly: a token carrying `aud` is rejected outright when the verifier names no audience, so leaving it unset would 401 every real signed-in request while accepting the `aud`-less tokens only a test could produce. Set it if a project is configured differently, or to an empty string to skip the audience check entirely. Test tokens are minted in one place, `tests/tokens.py`, in the shape Supabase really issues.
 
+## Report photos
+
+`PUT /reports/{report_id}/photo` writes a JPEG to a **private** Cloudflare R2 bucket and records the object key on the row. Part 1 of three (#363); nothing can read a photo yet, and the client cannot take one yet.
+
+**Five environment variables, and none of them has a default.** Four are the same names `pipeline/publish.py` already reads, deliberately - one bucket, one set of credentials to rotate, rather than two that drift:
+
+| Variable | |
+|---|---|
+| `R2_ENDPOINT_URL` | the account's S3-compatible endpoint |
+| `R2_BUCKET` | private; never public-read |
+| `R2_ACCESS_KEY_ID` | |
+| `R2_SECRET_ACCESS_KEY` | |
+| `R2_WRITE_ENABLED` | the gate — uploads are refused unless this is `true` |
+
+Unlike the Supabase settings, a missing one of these does **not** stop the app booting: a deployment with no photo storage is a valid deployment, and everything else still works. The endpoint answers `503` and names which variable is missing, because "R2 is not configured" without saying which half is a support ticket rather than a fix.
+
+`R2_WRITE_ENABLED` is `pipeline/publish.py`'s gate reused, not a second one. It exists so an environment that should not be writing to the bucket cannot, and finds out loudly.
+
+**The bucket must stay private.** `bad_hikers` reports are `internal_only` and their photos are photos of people; `thanks` is `club_only`; and every report is unmoderated at the moment a photo is attached. A public-read bucket would publish the image while the report stayed private. `app/core/photo_storage.py` passes no ACL for that reason, and the Worker that checks the owning report's `visibility` and `status` before streaming an object is part 2.
+
+Tests use `moto` to mock S3 in-process, the same choice `pipeline/tests/test_publish.py` made — a real boto3 client against a fake bucket, rather than a mocked call and an assertion that it happened.
+
 ## Layout
 
 `app/` is the FastAPI application (`main.py`'s `app`, `config.py`'s env-driven `Settings`, `db/` for the SQLAlchemy engine/session/base). `alembic/` holds migrations, wired to `app.db.base`'s metadata and `app.config`'s `DATABASE_URL` - see `alembic/env.py`. `scripts/` holds `local-postgres.sh` (the database) and `local-pooler.sh` (a transaction-mode pooler in front of it, for the tests that need one); `docker-compose.yml` is the database `local-postgres.sh` falls back to when the machine has no Postgres installed. `tests/` mirrors `pipeline/tests/`'s shape: `conftest.py` for shared fixtures (a clean-schema engine/session per test against the local Postgres, a `TestClient` with `get_db` overridden), one file per behavior area.

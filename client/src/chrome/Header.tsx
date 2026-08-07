@@ -17,35 +17,29 @@ export interface HeaderProps {
   /** Omitted until the fix is placed in a state. */
   state?: string
   /**
-   * Current position along the trail, in miles. Omitted before there is a GPS
-   * fix, and omitted rather than zeroed: "mi 0.0" is Springer Mountain, which
-   * is a confident claim about somewhere the hiker is almost certainly not.
+   * The position line, already decided (lib/positionLine.ts).
+   *
+   * A string rather than the mile, and that is the change #312 asked for.
+   * This used to take `mile?: number` and render "Looking for GPS…" whenever
+   * it was absent - one sentence covering six situations, three of which
+   * never resolve, so a hiker whose permission was denied or whose onboarding
+   * skipped the location step was told to keep waiting for the rest of the
+   * install's life. Which of those is true is the shell's knowledge, not the
+   * chrome's, so the sentence is decided there and read here.
+   *
+   * Never empty: the slot always says something, because a blank where the
+   * mile goes is the same silence with better manners.
    */
-  mile?: number
-  /** Omitted until enough movement has happened to tell which way. */
-  direction?: HikeDirection
+  position: string
   onOpenLegend: () => void
   onOpenSearch: () => void
-}
-
-/**
- * Always one decimal place, with a thousands separator: "1,407.2".
- * Fixed precision keeps the number from changing width as the hiker walks,
- * which would otherwise make the whole header twitch.
- */
-function formatMile(mile: number): string {
-  return mile.toLocaleString('en-US', {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  })
 }
 
 export function Header({
   trailName,
   trailLogo,
   state,
-  mile,
-  direction,
+  position,
   onOpenLegend,
   onOpenSearch,
 }: HeaderProps) {
@@ -64,11 +58,7 @@ export function Header({
           <p className="map-header__eyebrow">
             {state === undefined ? trailName : `${trailName} · ${state}`}
           </p>
-          <p className="map-header__position">
-            {mile === undefined
-              ? 'Looking for GPS…'
-              : `mi ${formatMile(mile)}${direction === undefined ? '' : ` · ${direction}`}`}
-          </p>
+          <p className="map-header__position">{position}</p>
         </div>
       </div>
 

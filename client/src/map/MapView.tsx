@@ -110,6 +110,11 @@ export interface MapViewProps {
   /** Web only; touch platforms rely on pinch (see mapChrome.ts). */
   showZoomButtons?: boolean
   units?: ScaleUnits
+  /** Whether the hiker has location switched on - which decides whether the
+   *  locate control is offered at all (#312, and see mapChrome.ts for the
+   *  three things attaching it unconditionally cost). Defaults to false, so a
+   *  caller that has not thought about it does not open a GPS watch. */
+  locationEnabled?: boolean
   /**
    * Which theme the canvas is drawn in - see map/style.ts's mapBackdrop.
    *
@@ -194,6 +199,7 @@ export function MapView({
   archiveZooms = null,
   showZoomButtons = false,
   units = 'imperial',
+  locationEnabled = false,
   theme = 'light',
   mapStyle = 'field',
   redLight = false,
@@ -341,8 +347,8 @@ export function MapView({
   // the hiker.
   useEffect(() => {
     if (map === null) return
-    return attachMapChrome(map, { showZoomButtons, units })
-  }, [map, showZoomButtons, units])
+    return attachMapChrome(map, { showZoomButtons, units, locationEnabled })
+  }, [map, showZoomButtons, units, locationEnabled])
 
   // The appearance's half of the same promise, and the widest one: it
   // repaints the backdrop, the archive's dimming, the trail's ink and every

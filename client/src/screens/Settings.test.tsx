@@ -397,3 +397,58 @@ describe('Settings', () => {
     expect(screen.getByText('ridgerunner')).toBeInTheDocument()
   })
 })
+
+describe('the location switch (#312)', () => {
+  // `location_permission_requested` was written in exactly one place - the
+  // onboarding completion handler - and that step is skippable. So "Not now"
+  // during setup disabled GPS in this app for the life of the install, with no
+  // row anywhere to turn it back on and a header that went on saying "Looking
+  // for GPS…" about it.
+
+  it('offers a live switch, not a Later tag', () => {
+    render(<Settings {...PROPS} />)
+
+    const location = screen.getByRole('checkbox', { name: /use my location/i })
+
+    expect(location).toBeEnabled()
+  })
+
+  it('reads as off for the hiker who skipped the onboarding step', () => {
+    render(
+      <Settings
+        {...PROPS}
+        preferences={{ ...DEFAULT_PREFERENCES, location_permission_requested: false }}
+      />,
+    )
+
+    expect(screen.getByRole('checkbox', { name: /use my location/i })).not.toBeChecked()
+  })
+
+  it('turns location back on, which is the whole point of the row', async () => {
+    const user = userEvent.setup()
+    render(
+      <Settings
+        {...PROPS}
+        preferences={{ ...DEFAULT_PREFERENCES, location_permission_requested: false }}
+      />,
+    )
+
+    await user.click(screen.getByRole('checkbox', { name: /use my location/i }))
+
+    expect(PROPS.onChange).toHaveBeenCalledWith({ location_permission_requested: true })
+  })
+
+  it('turns it off again, so the switch is a switch rather than a one-shot', async () => {
+    const user = userEvent.setup()
+    render(
+      <Settings
+        {...PROPS}
+        preferences={{ ...DEFAULT_PREFERENCES, location_permission_requested: true }}
+      />,
+    )
+
+    await user.click(screen.getByRole('checkbox', { name: /use my location/i }))
+
+    expect(PROPS.onChange).toHaveBeenCalledWith({ location_permission_requested: false })
+  })
+})

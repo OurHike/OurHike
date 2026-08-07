@@ -238,6 +238,41 @@ export function Settings({
 
       <section className="settings__group">
         <h2 className="settings__heading">Safety &amp; privacy</h2>
+
+        {/* The row #312 exists for, and the only live control in this
+            section. `location_permission_requested` was written in exactly
+            one place - onboarding's completion handler - and the location
+            step there is skippable, correctly. So a hiker who tapped "Not
+            now" had disabled GPS in this app for the life of the install,
+            with the header telling them it was still "Looking for GPS…" and
+            nothing anywhere offering a way back.
+
+            A real switch rather than a Later tag, because unlike the two
+            below it governs machinery that is already wired: the watch in
+            lib/useGeolocation.ts and the map's own locate control, which is
+            attached only while this is on (map/mapChrome.ts).
+
+            Turning it on does not grant browser permission - it starts the
+            watch, which asks. If the browser has already been told no, the
+            header says "Location blocked" rather than pretending, which is
+            the honest end of what this switch can do. */}
+        <label className="settings__row">
+          <span className="settings__label">Use my location</span>
+          <input
+            type="checkbox"
+            name="location_permission_requested"
+            checked={preferences.location_permission_requested}
+            onChange={(event) =>
+              onChange({ location_permission_requested: event.target.checked })
+            }
+          />
+        </label>
+        <p className="settings__note">
+          Draws where you are on the map and reads your mile. The fix is used on the
+          device and sent nowhere unless you file a report. Off, the map still works
+          everywhere; it just cannot say where you are on it.
+        </p>
+
         {/* The detection exists (lib/wrongWay.ts) and nothing runs it yet -
             no monitor is wired, no cue is mounted, no push ever fires. Until
             that changes, a live-looking switch here is the most dangerous

@@ -16,7 +16,7 @@
 
 import { useCallback, useState } from 'react'
 import { StatusStrip } from './StatusStrip'
-import { Header, type HikeDirection } from './Header'
+import { Header } from './Header'
 import { TabBar } from './TabBar'
 import type { TabId } from './tabs'
 import { Legend, type BlazeCount } from './Legend'
@@ -53,8 +53,12 @@ export interface MapScreenProps {
   trailLogo?: string
   // All three are omitted until they are actually known - see HeaderProps.
   state?: string
-  mile?: number
-  direction?: HikeDirection
+  /** The position line, already decided by the shell (lib/positionLine.ts) -
+   *  see HeaderProps for why this is a sentence rather than a number. */
+  position: string
+  /** Whether location is switched on, which decides whether the map offers
+   *  its locate control at all (map/mapChrome.ts, #312). */
+  locationEnabled?: boolean
 
   time: Date
   online: boolean
@@ -225,8 +229,6 @@ export function MapScreen({
   trailName,
   trailLogo,
   state,
-  mile,
-  direction,
   time,
   online,
   hasGpsFix,
@@ -255,6 +257,8 @@ export function MapScreen({
   onClosePoi,
   elevation,
   waypoints,
+  position,
+  locationEnabled = false,
   showZoomButtons = false,
   units = 'imperial',
   theme = 'light',
@@ -343,8 +347,7 @@ export function MapScreen({
           trailName={trailName}
           trailLogo={trailLogo}
           state={state}
-          mile={mile}
-          direction={direction}
+          position={position}
           onOpenLegend={onOpenLegend}
           onOpenSearch={onOpenSearch}
         />
@@ -371,6 +374,7 @@ export function MapScreen({
               onSelectPoi={onSelectPoi}
               showZoomButtons={showZoomButtons}
               units={units}
+              locationEnabled={locationEnabled}
               theme={theme}
               mapStyle={mapStyle}
               redLight={redLight}

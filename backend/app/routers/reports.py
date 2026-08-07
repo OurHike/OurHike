@@ -9,6 +9,7 @@ it to and, later, moderate against.
 from datetime import timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
@@ -20,7 +21,9 @@ from app.core.photos import (
     ALLOWED_CONTENT_TYPE,
     MAX_PHOTO_BYTES,
     PhotoStorageUnavailable,
+    photo_storage_configured,
     photo_uploads_enabled,
+    presigned_photo_url,
     store_photo,
 )
 from app.core.time import utc_now
@@ -297,9 +300,9 @@ async def upload_report_photo(
 
     Returns the report, with `photo_url` now holding the object KEY - not a
     URL. See app/core/photos.py for why, and for why the object is private:
-    reading it is a separate authorising path that checks the report's own
-    visibility and status, which is not built yet. Nothing here makes a photo
-    reachable.
+    the bucket answers nobody directly, and reading a photo goes through
+    `GET /reports/{id}/photo` below, which checks the report's own visibility
+    and status first. Nothing here makes a photo reachable.
     """
     if not photo_uploads_enabled():
         # 503 rather than 500: nothing is broken, this deployment simply has
@@ -347,3 +350,71 @@ async def upload_report_photo(
     # the one direction of drift this design refuses (app/core/photos.py).
     report.photo_url = key
     return ReportOut.for_viewer(commit_and_refresh(db, report), current_user)
+
+
+@router.get(
+    "/{report_id}/photo",
+    response_class=RedirectResponse,
+    status_code=status.HTTP_302_FOUND,
+    summary="Fetch a report's photo, if you may see the report",
+    responses={
+        302: {"description": "Redirect to a short-lived signed URL for the image."},
+        404: {"description": "No such report, no photo on it, or not one you may see."},
+        503: {"description": "This deployment has no photo bucket configured."},
+    },
+)
+def get_report_photo(
+    report_id: str,
+    db: Session = Depends(get_db),
+    current_user: Profile | None = Depends(_get_current_user_optional),
+) -> RedirectResponse:
+    """Serve a report's photo, behind the report's own visibility (#234).
+
+    **The photo inherits the report's audience, and that is the whole reason
+    this endpoint exists rather than a public bucket URL.** `bad_hikers` is
+    `internal_only` and those are photos of people; `thanks` is `club_only`;
+    and every type is attached at create time, before a moderator has looked -
+    which #229 established is not publicly visible. A world-readable object
+    would publish the image while the report stayed private, undoing the
+    routing one layer down. So the answer comes from `_visible_to`, the same
+    function `GET /{report_id}` uses, rather than a second copy of the rule.
+
+    **404 for everything it refuses**, uniformly: no such report, a report
+    somebody else may not see, and a report with no photo all answer the same
+    way. A distinct 403 would confirm that an id names a real report to
+    somebody who may not read it, which for `bad_hikers` is confirmation that
+    an incident note about a named individual exists.
+
+    **A redirect, not the bytes.** R2 serves the object directly from a signed
+    URL that lasts minutes, so the image never crosses this backend - egress
+    stays free, which is the reason R2 was chosen (#234). app/core/photos.py
+    has the full trade, including what a bearer URL costs and why #234's
+    Cloudflare Worker is not what got built.
+    """
+    if not photo_storage_configured():
+        # 503 rather than 404: there is no bucket on this deployment, which is
+        # not the same as this report having no photo, and a client that is
+        # told "not found" would stop asking.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Report photos are not configured on this server.",
+        )
+
+    report = db.get(Report, report_id)
+    if report is None or not _visible_to(report, current_user) or report.photo_url is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report photo not found")
+
+    try:
+        signed = presigned_photo_url(report.id)
+    except PhotoStorageUnavailable as error:  # pragma: no cover - guarded above
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
+
+    response = RedirectResponse(signed, status_code=status.HTTP_302_FOUND)
+    # The redirect must not be cached, and this is load-bearing rather than
+    # hygiene. A cached 302 outlives two things at once: the signature, so the
+    # image breaks once it expires - and the visibility decision, so a report
+    # dismissed or made private an hour from now would still be reachable from
+    # whatever cached the hop. Re-asking is cheap; the check has to run every
+    # time for the answer to mean anything.
+    response.headers["Cache-Control"] = "private, no-store, max-age=0"
+    return response

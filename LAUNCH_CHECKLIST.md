@@ -84,6 +84,26 @@ Roughly 1.6 GB on the first run (all three background tiers plus trails, POIs an
 
 **Verify:** the bucket should contain `background_z11.pmtiles`, `background.pmtiles`, `background_z13.pmtiles`, `trails.geojson`, `trails.fgb`, the `poi_*` files, `elevation_profile.json`, and a `latest.json` manifest.
 
+**1.7 A SECOND bucket, private, for report photos (#234).** Not the one above, and this is the one step on this page where reusing what is already set up would be actively harmful.
+
+Everything in 1.1–1.6 is *published* data, and 1.5 turns public read on for exactly that reason. A report photo is not published data. `bad_hikers` reports are routed `internal_only` because they concern a person, `thanks` is `club_only`, and every type is photographed at submit time — before a moderator has looked, which [#229](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/229) established is not publicly visible. Putting those objects in a world-readable bucket publishes the image while the report it belongs to stays private.
+
+1. **Create the bucket.** R2 → Create bucket, e.g. `your-hike-photos`. **Leave public access off** — do not do 1.5 for this one. No CORS entry either: nothing fetches it cross-origin, because nothing fetches it directly at all.
+2. **Create a second API token**, Object Read & Write, **scoped to this bucket alone.** Same reason 1.2's is scoped to `your-hike`: a token that can reach both buckets is one bug away from writing a photo of a person into the public one.
+3. **Set five variables on the backend's host, not in GitHub Actions** (the backend deploys to Fly.io — `backend/README.md`'s Deployment section):
+
+```
+R2_PHOTO_ENDPOINT_URL=https://<accountid>.r2.cloudflarestorage.com
+R2_PHOTO_BUCKET=your-hike-photos
+R2_PHOTO_ACCESS_KEY_ID=<from 1.7.2>
+R2_PHOTO_SECRET_ACCESS_KEY=<from 1.7.2>
+R2_PHOTO_WRITE_ENABLED=true
+```
+
+**The `R2_PHOTO_` prefix is not decoration.** The backend used to read the same `R2_*` names as 1.3, which meant any environment carrying the publishing credentials configured it to store report photos in the published bucket. The prefix is what makes that impossible to do by accident; `backend/tests/test_report_photos.py` holds it.
+
+**Skipping this whole step is a supported state**, unlike most of this page: a backend with no photo bucket answers 503 on both photo endpoints, the client keeps the photo queued, and every other feature works. Nothing here blocks a launch — it blocks photos.
+
 ---
 
 ## 2. Point the client at the bucket

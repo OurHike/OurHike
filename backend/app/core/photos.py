@@ -37,10 +37,38 @@ even for the six public types a photo is attached at CREATE time, before
 moderation, which #229 established is not publicly visible. A public-read
 bucket would reopen that hole one layer down.
 
-So objects are written private, and reading them is a separate, authorising
-path (a Worker that checks the owning report's visibility and status before
-streaming - not built here, and named so nobody assumes this module made the
-photo reachable).
+So objects are written private, and reading them goes through an authorising
+path that checks the owning report's own `visibility` and `status` first -
+`GET /reports/{id}/photo` in app/routers/reports.py, which answers with a
+redirect to a short-lived signed URL rather than the bytes.
+
+WHY A SIGNED URL AND NOT A WORKER, WHICH IS A DEPARTURE FROM #234
+
+#234 specified a Cloudflare Worker in front of the bucket. The property it was
+bought for is real - the object is unreachable until something checks the
+report - and that property is kept here. What changed is where the check runs,
+for one reason: **the check needs the report row, and the report row is in
+Postgres behind this backend.** A Worker would have had to either reach the
+database from Cloudflare's edge (a new production dependency) or call back to
+this backend per image - in which case the backend is in the authorising path
+anyway and the Worker is a second runtime, a second deploy, and a second copy
+of `_visible_to` written in another language. That rule has drifted once
+already when it existed in two places (see the note on `_visible_to`), and it
+is the rule that decides whether a photo of a person is readable.
+
+So the check stays in the one place that already holds it, and the bytes still
+never pass through this backend: the response is a 302 to a presigned R2 URL,
+and R2 serves the object directly. Egress stays free, which is the reason R2
+was chosen at all.
+
+**The cost, named rather than discovered later.** A signed URL is a bearer
+token for one object: whoever holds it can fetch it until it expires, with no
+further check. A Worker re-checking per request would not have that property.
+That is why the TTL below is minutes rather than hours, why the redirect is
+`no-store` (a cached redirect would outlive both the signature and the
+visibility decision behind it), and why this is written down - if the exposure
+ever matters more than the second runtime costs, the endpoint's contract does
+not change when a Worker replaces the redirect behind it.
 """
 
 from __future__ import annotations
@@ -67,6 +95,17 @@ ALLOWED_CONTENT_TYPE = "image/jpeg"
 # client that skips the resize is refused rather than quietly billed for.
 MAX_PHOTO_BYTES = 2 * 1024 * 1024
 
+# How long a signed photo URL stays good for.
+#
+# Five minutes, and both bounds are real. A signed URL is a bearer token (see
+# the header), so the shorter the better - but it is handed to a phone that may
+# be on one bar of EDGE, and a URL that expires mid-download turns into a
+# broken image that a refresh fixes, which reads as the app being flaky.
+# Minutes is enough for the fetch plus a retry, and short enough that a URL
+# that leaks - out of a screenshot, a log line, a shared devtools trace - is a
+# capability that has already expired by the time anyone acts on it.
+PHOTO_URL_TTL_SECONDS = 300
+
 
 class PhotoStorageUnavailable(RuntimeError):
     """R2 is not configured, or refused the write.
@@ -87,22 +126,34 @@ def photo_key(report_id: str, index: int = FIRST_PHOTO_INDEX) -> str:
     return f"reports/{report_id}/{index}.jpg"
 
 
-def photo_uploads_enabled() -> bool:
-    """Whether this deployment may write photos at all.
+def photo_storage_configured() -> bool:
+    """Whether there is a bucket to talk to at all.
 
-    The same explicit gate `pipeline/publish.py` uses, for the same reason: a
-    process that should not upload should be unable to, rather than merely
-    unlikely to. A deployment with no R2 credentials is a normal state (every
-    developer machine, every CI run), not a misconfiguration to raise about -
-    it simply cannot take photos, and the endpoint says so.
+    A deployment with no R2 credentials is a normal state (every developer
+    machine, every CI run), not a misconfiguration to raise about - it simply
+    has no photos, and the endpoints say so rather than failing.
     """
     return bool(
-        settings.r2_write_enabled
-        and settings.r2_endpoint_url
-        and settings.r2_bucket
-        and settings.r2_access_key_id
-        and settings.r2_secret_access_key
+        settings.r2_photo_endpoint_url
+        and settings.r2_photo_bucket
+        and settings.r2_photo_access_key_id
+        and settings.r2_photo_secret_access_key
     )
+
+
+def photo_uploads_enabled() -> bool:
+    """Whether this deployment may WRITE photos.
+
+    Configured, plus the same explicit gate `pipeline/publish.py` uses, for the
+    same reason: a process that should not upload should be unable to, rather
+    than merely unlikely to.
+
+    Reading is deliberately not gated on the same flag - see
+    `photo_storage_configured`. Turning uploads off is a decision about what
+    this deployment may add to the bucket, not about whether a moderator may
+    look at a photo that is already in it.
+    """
+    return bool(settings.r2_photo_write_enabled) and photo_storage_configured()
 
 
 def _client():
@@ -115,9 +166,9 @@ def _client():
     """
     return boto3.client(
         "s3",
-        endpoint_url=settings.r2_endpoint_url,
-        aws_access_key_id=settings.r2_access_key_id,
-        aws_secret_access_key=settings.r2_secret_access_key,
+        endpoint_url=settings.r2_photo_endpoint_url,
+        aws_access_key_id=settings.r2_photo_access_key_id,
+        aws_secret_access_key=settings.r2_photo_secret_access_key,
         # R2 ignores the region but boto3 insists on one; `auto` is what
         # Cloudflare's own documentation uses.
         region_name="auto",
@@ -142,7 +193,7 @@ def store_photo(report_id: str, body: bytes) -> str:
     key = photo_key(report_id)
     try:
         _client().put_object(
-            Bucket=settings.r2_bucket,
+            Bucket=settings.r2_photo_bucket,
             Key=key,
             Body=body,
             ContentType=ALLOWED_CONTENT_TYPE,
@@ -151,3 +202,33 @@ def store_photo(report_id: str, body: bytes) -> str:
         raise PhotoStorageUnavailable(str(error)) from error
 
     return key
+
+
+def presigned_photo_url(report_id: str, expires_in: int = PHOTO_URL_TTL_SECONDS) -> str:
+    """A short-lived URL that fetches a report's photo straight from R2.
+
+    **Derived from the report id, never from a stored string**, and that is a
+    guard rather than a convention. `photo_url` is settable on `POST /reports`,
+    so a client can put any text it likes in it; a serving path that dereferenced
+    that value would let a report point at any object in the bucket - another
+    report's photo among them - and the visibility check in front of it would be
+    checking the wrong report. Building the key here means the only object this
+    can ever hand out is the one belonging to the report that was authorised.
+
+    No round trip: presigning is a local signature, so this costs nothing and
+    cannot fail for a network reason. It also does not prove the object exists -
+    a report whose upload never landed signs a URL that R2 answers with a 404,
+    which is the same "no photo" the caller would show anyway, one HEAD request
+    cheaper on a connection that is the scarce thing here.
+    """
+    if not photo_storage_configured():
+        raise PhotoStorageUnavailable("R2 is not configured for report photos.")
+
+    try:
+        return _client().generate_presigned_url(
+            "get_object",
+            Params={"Bucket": settings.r2_photo_bucket, "Key": photo_key(report_id)},
+            ExpiresIn=expires_in,
+        )
+    except (BotoCoreError, ClientError) as error:  # pragma: no cover - re-raised as one
+        raise PhotoStorageUnavailable(str(error)) from error

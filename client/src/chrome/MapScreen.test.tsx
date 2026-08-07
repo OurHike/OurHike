@@ -11,7 +11,7 @@ import {
 } from '../map/credits'
 import { closureFeatureCollection, CLOSURE_SOURCE_ID } from '../map/closureLayers'
 import { warningFeatureCollection, WARNING_SOURCE_ID } from '../map/warningLayers'
-import { HEALTHY, type LiveSourceHealth } from '../map/liveSourceHealth'
+import { HEALTHY, type SourceReport } from '../map/liveSourceHealth'
 
 // WIREFRAMES.md's map screen, top to bottom: status strip, header, elevation
 // ribbon, waypoint lanes, map canvas, tab bar - plus the legend sheet over the
@@ -271,12 +271,12 @@ describe('MapScreen', () => {
     // this screen is not rendered at all. What is left is the wiring, and the
     // wiring is worth a test: an unpassed prop is exactly how the flag
     // reached nobody before #314.
-    const reports: Array<[LiveSourceHealth, boolean]> = []
+    const reports: SourceReport[] = []
     const { unmount } = render(
       <MapScreen
         {...PROPS}
         online
-        onLiveSourceHealth={(health, withdrawn) => reports.push([health, withdrawn])}
+        onLiveSourceHealth={(report) => reports.push(report)}
       />,
     )
 
@@ -288,7 +288,11 @@ describe('MapScreen', () => {
     })
 
     expect(reports).toEqual([
-      [{ basemap: true, elevation: false, archive: false }, false],
+      {
+        unreachable: { basemap: true, elevation: false, archive: false },
+        drew: HEALTHY,
+        withdrawn: false,
+      },
     ])
 
     // And the withdrawal on the way out, flagged as one: the shell remembers
@@ -296,7 +300,11 @@ describe('MapScreen', () => {
     // map leaving rather than the sheet arriving.
     unmount()
 
-    expect(reports.at(-1)).toEqual([HEALTHY, true])
+    expect(reports.at(-1)).toEqual({
+      unreachable: HEALTHY,
+      drew: HEALTHY,
+      withdrawn: true,
+    })
   })
 
   it('renders the background problem the shell hands it', () => {

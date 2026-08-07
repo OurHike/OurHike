@@ -75,8 +75,13 @@ import {
 import { useArchiveDownloads } from './lib/useArchiveDownload'
 import { useArchiveZooms } from './lib/useArchiveZooms'
 import { archiveCoversZoom } from './lib/archiveCoverage'
-import { HEALTHY, type LiveSourceHealth } from './map/liveSourceHealth'
-import { backgroundProblem, forgetSheet, sheetNotDrawing } from './lib/backgroundHealth'
+import { HEALTHY, type LiveSourceHealth, type SourceReport } from './map/liveSourceHealth'
+import {
+  backgroundProblem,
+  forgetPackages,
+  rememberNotDrawing,
+  sheetNotDrawing,
+} from './lib/backgroundHealth'
 import {
   BASEMAP_PACKAGE,
   CORRIDOR_BACKGROUND_PACKAGE,
@@ -243,25 +248,20 @@ function App() {
   // over both of them, from the one background picker they share.
   const [downloadsOpen, setDownloadsOpen] = useState(false)
   /**
-   * What the map's background sources were last OBSERVED to be doing, held
-   * here rather than on the map screen because the downloads window outlives
-   * that screen (#334).
+   * Which background sources are known NOT to be drawing - remembered here
+   * rather than on the map screen, because the downloads window outlives that
+   * screen (#334) and is where a hiker acts on it.
    *
-   * "Last observed" is the whole distinction. `attachLiveSourceHealth` reports
-   * `HEALTHY` both when a source recovers and when its map is torn down, and
-   * those mean opposite things to a window opened from the More tab, where
-   * the map is not rendered at all: one says the download works now, the
-   * other says nobody is watching. Its `withdrawn` argument tells them apart,
-   * and a withdrawal deliberately leaves this state alone - the failure it
-   * described is still true of the archive on the phone, and the Downloads
-   * card is where a hiker goes to act on it.
-   *
-   * A recovery clears it, which is what keeps this honest in the other
-   * direction: a source that fails one tile before anything has drawn and
-   * then draws is a working download, and a remembered flag that outlived
-   * that would put "not drawing" on a healthy 314 MB archive.
+   * Remembered, not mirrored, and lib/backgroundHealth.ts's
+   * `rememberNotDrawing` owns the whole rule: a source that has drawn clears
+   * itself, a source that errored without ever drawing sets itself, and a
+   * source that has done neither leaves this alone. That last clause is what
+   * carries a real failure across the teardown a trip to the More tab costs,
+   * and the first is what stops a transient error condemning a good archive
+   * for the rest of the session - #352, which is the shape this state should
+   * have had from the start.
    */
-  const [liveSources, setLiveSources] = useState<LiveSourceHealth>(HEALTHY)
+  const [notDrawing, setNotDrawing] = useState<LiveSourceHealth>(HEALTHY)
   const [legendOpen, setLegendOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   // The tapped pin, held as an id rather than as the POI itself. Everything the
@@ -327,19 +327,18 @@ function App() {
   const online = useOnline()
 
   /**
-   * The map's source observations, kept; its withdrawals, ignored.
+   * The map's source observations, folded in; its withdrawals, dropped.
    *
-   * One line of logic and it is the whole of #334's second requirement - see
-   * `liveSources` above for why a withdrawal must not clear what it reports.
-   * Stable across renders, as MapViewProps requires of this handler.
+   * A withdrawal is a map saying it no longer speaks for anything, which is
+   * not evidence about the archive on the phone - dropping it here is what
+   * lets the failure survive the walk to the More tab. Everything else is
+   * `rememberNotDrawing`'s decision. Stable across renders, as MapViewProps
+   * requires of this handler.
    */
-  const recordSourceHealth = useCallback(
-    (health: LiveSourceHealth, withdrawn: boolean) => {
-      if (withdrawn) return
-      setLiveSources(health)
-    },
-    [],
-  )
+  const recordSourceHealth = useCallback((report: SourceReport) => {
+    if (report.withdrawn) return
+    setNotDrawing((remembered) => rememberNotDrawing(remembered, report))
+  }, [])
   // Read here rather than inside the map, so the settings screen and the canvas
   // are answering from the same value - a row that says "live" over a map
   // drawing the archive would be the exact mismatch this feature exists to
@@ -1097,9 +1096,12 @@ function App() {
         .filter((key) => archiveStatusFor(key).state !== 'downloaded')
       if (missing.length === 0) return
       if (!(await ensureTrailData())) return
-      // Whatever this sheet's sources did to the LAST copy of these bytes is
-      // not true of the one now arriving (lib/backgroundHealth.ts).
-      setLiveSources((current) => forgetSheet(current, sheet))
+      // Whatever these sources did to the LAST copy of these bytes is not true
+      // of the one now arriving. Scoped to `missing` rather than to the whole
+      // sheet (#352): fetching the DEM half of the hiking sheet says nothing
+      // about the basemap beside it, and clearing that flag withdrew a "No
+      // live map" that was still true.
+      setNotDrawing((current) => forgetPackages(current, missing))
       await startPackages(missing)
     },
     [archiveStatusFor, ensureTrailData, startPackages],
@@ -1109,11 +1111,16 @@ function App() {
    *  and the point of resuming is not to spend signal twice. */
   const handleResumeSheet = useCallback(
     async (sheet: BackgroundSheet) => {
-      await Promise.all(
-        offeredPackages(sheet)
-          .filter((pkg) => archiveStatusFor(pkg.idbKey).state !== 'downloaded')
-          .map((pkg) => startPackage(pkg.idbKey)),
-      )
+      const resuming = offeredPackages(sheet)
+        .filter((pkg) => archiveStatusFor(pkg.idbKey).state !== 'downloaded')
+        .map((pkg) => pkg.idbKey)
+      // The same clear the download path makes, and its absence here was a
+      // real defect (#352): a transfer that drops leaves the source erroring
+      // for the ordinary reason that nothing is downloaded yet, and the
+      // resume that completes then inherited that flag - so a byte-correct
+      // archive was announced as damaged the moment it finished.
+      setNotDrawing((current) => forgetPackages(current, resuming))
+      await Promise.all(resuming.map((key) => startPackage(key)))
     },
     [archiveStatusFor, startPackage],
   )
@@ -1413,7 +1420,7 @@ function App() {
           // says the download finished, so it has to be about the same claim
           // that card is making (lib/backgroundHealth.ts).
           notDrawing: sheetNotDrawing(
-            liveSources,
+            notDrawing,
             sheet,
             sheetStatus(sheet).state === 'downloaded',
           ),
@@ -1581,7 +1588,7 @@ function App() {
           // same answer. The DEM is deliberately not an input - an outage
           // there costs relief and contours on a sheet that still draws.
           backgroundProblem={backgroundProblem({
-            sources: liveSources,
+            sources: notDrawing,
             online,
             rasterArchiveDownloaded: archiveDownloaded,
             hikingSheetDownloaded,

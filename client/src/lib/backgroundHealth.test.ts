@@ -8,12 +8,22 @@
 import { describe, it, expect } from 'vitest'
 import {
   backgroundProblem,
-  forgetSheet,
+  forgetPackages,
+  rememberNotDrawing,
   sheetNotDrawing,
   type BackgroundHealthInputs,
 } from './backgroundHealth'
-import { HEALTHY, type LiveSourceHealth } from '../map/liveSourceHealth'
-import { HIKING_SHEET, USGS_SHEET } from './packages'
+import {
+  HEALTHY,
+  type LiveSourceHealth,
+  type SourceReport,
+} from '../map/liveSourceHealth'
+import {
+  BASEMAP_PACKAGE,
+  CORRIDOR_BACKGROUND_PACKAGE,
+  HIKING_SHEET,
+  USGS_SHEET,
+} from './packages'
 
 /** A phone with signal, nothing downloaded, and a map that is drawing. */
 const WELL: BackgroundHealthInputs = {
@@ -172,27 +182,96 @@ describe('sheetNotDrawing', () => {
   })
 })
 
-describe('forgetSheet', () => {
-  it('clears the sheet being fetched again and leaves its neighbour alone', () => {
-    // A remembered failure describes bytes that are about to be replaced.
-    // Carried into the fresh copy it would tell a hiker their new download is
-    // broken too - and clearing everything would lose a real failure on the
-    // sheet nobody touched.
+/** A report from a map: what failed, what drew, and whether it is leaving. */
+function reported(
+  unreachable: Partial<LiveSourceHealth> = {},
+  drew: Partial<LiveSourceHealth> = {},
+  withdrawn = false,
+): SourceReport {
+  return {
+    unreachable: { ...HEALTHY, ...unreachable },
+    drew: { ...HEALTHY, ...drew },
+    withdrawn,
+  }
+}
+
+describe('rememberNotDrawing', () => {
+  // The rule #352 exists for. Every case is a sequence, because the defect was
+  // never in one report - it was in what survived between them.
+
+  it('remembers a source that errored without ever drawing', () => {
+    expect(rememberNotDrawing(HEALTHY, reported({ archive: true })).archive).toBe(true)
+  })
+
+  it('forgets it the moment that source draws, whichever map drew', () => {
+    // The shipped bug. A later map that draws perfectly used to say nothing at
+    // all, so a remembered failure was never contradicted and one transient
+    // error condemned a good archive for the whole session.
+    const remembered = rememberNotDrawing(HEALTHY, reported({ archive: true }))
+
+    expect(rememberNotDrawing(remembered, reported({}, { archive: true })).archive).toBe(
+      false,
+    )
+  })
+
+  it('leaves a source that has neither failed nor drawn alone', () => {
+    // What carries a real failure across the teardown a trip to the More tab
+    // costs (#334). A fresh map has observed nothing, and treating its silence
+    // as good news would clear the failure exactly when the hiker walked to
+    // the screen that fixes it.
+    const remembered = rememberNotDrawing(HEALTHY, reported({ archive: true }))
+
+    expect(rememberNotDrawing(remembered, reported()).archive).toBe(true)
+  })
+
+  it('answers per source rather than wholesale', () => {
+    const remembered = rememberNotDrawing(
+      HEALTHY,
+      reported({ archive: true, basemap: true }),
+    )
+
+    const next = rememberNotDrawing(remembered, reported({}, { basemap: true }))
+
+    expect(next).toEqual({ basemap: false, elevation: false, archive: true })
+  })
+
+  it('lets a source that drew and then failed be remembered again', () => {
+    // Not a contradiction: `unreachable` already means errored AND never drew,
+    // so a source reported unreachable after drawing is a NEW map's opinion -
+    // the archive that worked yesterday and is corrupt today.
+    const drawing = rememberNotDrawing(HEALTHY, reported({}, { archive: true }))
+
+    expect(rememberNotDrawing(drawing, reported({ archive: true })).archive).toBe(true)
+  })
+})
+
+describe('forgetPackages', () => {
+  it('clears only the packages whose bytes are being replaced', () => {
+    // Scoped to the keys actually being fetched (#352). Clearing a whole sheet
+    // wiped `basemap` when only the DEM beside it was downloading, withdrawing
+    // a "No live map" that was still true and that the map had no way to say
+    // again.
     const both = failing('archive', 'basemap')
 
-    expect(forgetSheet(both, USGS_SHEET)).toEqual({
+    expect(forgetPackages(both, [CORRIDOR_BACKGROUND_PACKAGE.idbKey])).toEqual({
       basemap: true,
       elevation: false,
       archive: false,
     })
-    expect(forgetSheet(both, HIKING_SHEET)).toEqual({
+    expect(forgetPackages(both, [BASEMAP_PACKAGE.idbKey])).toEqual({
       basemap: false,
       elevation: false,
       archive: true,
     })
   })
 
-  it('leaves the flags it does not speak for untouched', () => {
-    expect(forgetSheet(failing('elevation'), HIKING_SHEET).elevation).toBe(true)
+  it('ignores keys no watched source speaks for', () => {
+    expect(forgetPackages(failing('elevation'), ['ourhike:dem'])).toEqual(
+      failing('elevation'),
+    )
+  })
+
+  it('changes nothing when nothing is being fetched', () => {
+    expect(forgetPackages(failing('archive'), [])).toEqual(failing('archive'))
   })
 })

@@ -29,7 +29,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapView } from '../map/MapView'
 import type { ClosureBand } from '../map/closureLayers'
 import type { WarningPoint } from '../map/warningLayers'
-import type { LiveSourceHealth } from '../map/liveSourceHealth'
+import type { SourceReport } from '../map/liveSourceHealth'
 import type { BackgroundProblem } from '../lib/backgroundHealth'
 import type { BackgroundOverride } from '../lib/dataSaver'
 import type { ArchiveZooms } from '../lib/archiveCoverage'
@@ -204,7 +204,7 @@ export interface MapScreenProps {
   backgroundProblem?: BackgroundProblem | null
   /** Where the map's source observations go. Passed straight to MapView, and
    *  stable across renders like every other handler here. */
-  onLiveSourceHealth?: (health: LiveSourceHealth, withdrawn: boolean) => void
+  onLiveSourceHealth?: (report: SourceReport) => void
   /**
    * Whether the view is zoomed out past what the download covers (#216).
    *

@@ -19,6 +19,7 @@ from app.core.auth import bearer_scheme, get_current_user
 from app.core.orm import commit_and_refresh, get_or_404
 from app.core.photos import (
     ALLOWED_CONTENT_TYPE,
+    JPEG_MAGIC,
     MAX_PHOTO_BYTES,
     PhotoStorageUnavailable,
     photo_storage_configured,
@@ -267,6 +268,54 @@ def get_report(
     return ReportOut.for_viewer(report, current_user)
 
 
+def _too_large() -> HTTPException:
+    # The client downscales before uploading (#234), so this is the guard for
+    # one that did not - a full-size phone photo is several MB, and egress is
+    # the cost R2 was chosen to keep flat.
+    return HTTPException(
+        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        detail="Photo is too large; it should be downscaled before upload.",
+    )
+
+
+async def read_capped_body(request: Request, limit: int) -> bytes:
+    """Read a request body, refusing it the moment it grows past `limit`.
+
+    `await request.body()` buffers the whole stream and lets the caller measure
+    afterwards, which makes a size limit into an accounting exercise: a 500 MB
+    upload is a 500 MB allocation followed by a polite 413, and the server has
+    already paid the cost the limit exists to avoid. Nothing upstream catches
+    it either - backend/Dockerfile runs uvicorn with no `--limit-*` flag,
+    uvicorn has no default body cap, and there is no proxy in front holding a
+    `client_max_body_size` (#379).
+
+    `Content-Length` is consulted first because refusing before reading a byte
+    is strictly cheaper, but it is only ever an optimisation: the header is a
+    claim, a chunked request omits it entirely, and neither case is allowed to
+    decide anything on its own. The running total over `request.stream()` is
+    what actually enforces the limit, so a body that lies about being small is
+    still cut off `limit` bytes into arriving.
+    """
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            promised = int(declared)
+        except ValueError:
+            # An unparseable header decides nothing; the stream below still does.
+            promised = None
+        if promised is not None and promised > limit:
+            raise _too_large()
+
+    chunks: list[bytes] = []
+    received = 0
+    async for chunk in request.stream():
+        received += len(chunk)
+        if received > limit:
+            raise _too_large()
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 @router.put(
     "/{report_id}/photo",
     response_model=ReportOut,
@@ -328,16 +377,17 @@ async def upload_report_photo(
             detail=f"Report photos must be {ALLOWED_CONTENT_TYPE}.",
         )
 
-    body = await request.body()
+    body = await read_capped_body(request, MAX_PHOTO_BYTES)
     if not body:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No photo in the request body.")
-    if len(body) > MAX_PHOTO_BYTES:
-        # The client downscales before uploading (#234), so this is the guard
-        # for one that did not - a full-size phone photo is several MB, and
-        # egress is the cost R2 was chosen to keep flat.
+    if not body.startswith(JPEG_MAGIC):
+        # The `Content-Type` checked above is the sender describing their own
+        # bytes. This is the bytes. They disagree exactly when it matters:
+        # the object is stored as `.jpg` with `ContentType: image/jpeg` set by
+        # us, and served back under that label to a browser (#379).
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="Photo is too large; it should be downscaled before upload.",
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Report photos must be {ALLOWED_CONTENT_TYPE}.",
         )
 
     try:

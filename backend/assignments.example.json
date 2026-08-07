@@ -1,0 +1,53 @@
+{
+  "_comment": [
+    "The shape load_assignments.py reads. Copy it, fill in real ids, keep it",
+    "in the club's own repository or somewhere reviewed - not here, because",
+    "it names volunteers and where they are.",
+    "",
+    "`maintainer_id` is a profile id, which is the Supabase auth user id.",
+    "A volunteer has to have signed into the app at least once before a",
+    "stretch can be assigned to them; the loader says so by name rather than",
+    "letting a foreign key say it.",
+    "",
+    "`club.id` is yours to choose and has to stay stable - it is what makes",
+    "re-running the loader an update rather than a duplicate.",
+    "",
+    "`publicly_creditable` is consent, and it defaults to false. Leave it",
+    "false unless the club has actually asked that volunteer. See",
+    "features/SAYING_THANKS.md: a feature that tells strangers a named",
+    "individual's regular location is a real safety exposure, and one they",
+    "never asked for by signing up to clear blowdowns.",
+    "",
+    "A hand-off is TWO rows, not an edit: close the old one with",
+    "`effective_to` and add a new one starting the next day. That is what",
+    "makes a thanks written in June still reach June's maintainer."
+  ],
+
+  "clubs": [
+    {
+      "id": "natural-bridge-atc",
+      "name": "Natural Bridge Appalachian Trail Club",
+      "region": "Central Virginia"
+    }
+  ],
+
+  "assignments": [
+    {
+      "maintainer_id": "00000000-0000-0000-0000-000000000001",
+      "club_id": "natural-bridge-atc",
+      "start_mile": 728.0,
+      "end_mile": 754.5,
+      "effective_from": "2026-01-01",
+      "effective_to": "2026-06-30",
+      "publicly_creditable": false
+    },
+    {
+      "maintainer_id": "00000000-0000-0000-0000-000000000002",
+      "club_id": "natural-bridge-atc",
+      "start_mile": 728.0,
+      "end_mile": 754.5,
+      "effective_from": "2026-07-01",
+      "publicly_creditable": true
+    }
+  ]
+}

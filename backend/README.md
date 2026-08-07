@@ -79,6 +79,25 @@ Supabase Auth issues the JWTs this backend verifies - see [../features/AUTHENTIC
 
 `app/` is the FastAPI application (`main.py`'s `app`, `config.py`'s env-driven `Settings`, `db/` for the SQLAlchemy engine/session/base). `alembic/` holds migrations, wired to `app.db.base`'s metadata and `app.config`'s `DATABASE_URL` - see `alembic/env.py`. `scripts/` holds `local-postgres.sh` (the database) and `local-pooler.sh` (a transaction-mode pooler in front of it, for the tests that need one); `docker-compose.yml` is the database `local-postgres.sh` falls back to when the machine has no Postgres installed. `tests/` mirrors `pipeline/tests/`'s shape: `conftest.py` for shared fixtures (a clean-schema engine/session per test against the local Postgres, a `TestClient` with `get_db` overridden), one file per behavior area.
 
+## Loading maintainer assignments
+
+`clubs` and `maintainer_assignments` are the two tables nothing writes to over HTTP, and that is deliberate: an assignment says a named volunteer is at a known place on a predictable schedule, which is the fact `features/SAYING_THANKS.md` declines to publish without consent. It comes from a club's own records a few times a season, so it arrives through a reviewed file rather than an admin endpoint nobody would use often enough to trust.
+
+```
+python load_assignments.py assignments.json           # says what it would do
+python load_assignments.py assignments.json --commit  # does it
+```
+
+`assignments.example.json` is the format, and the comment block at the top of it is the documentation. `tests/test_load_assignments.py` parses that example, so a typo in it fails rather than misleading somebody.
+
+Three things worth knowing before running it against real data:
+
+- **It is append-only for assignments.** The model is versioned - a hand-off closes one row and opens another rather than overwriting anything - so a changed `start_mile` writes a *second* row and says so, instead of quietly rewriting who looked after that stretch last June. The exceptions are `effective_to` (closing a stretch is the point) and `publicly_creditable` (consent has to be revocable). Clubs are updated in place, because a club's name is a fact about today rather than a version of anything.
+- **A maintainer must have signed into the app at least once.** `maintainer_id` is a profile id, which is the Supabase auth user id; the loader says so by name rather than letting a foreign key say it.
+- **It never changes anybody's `Profile.role`.** Looking after a stretch is not permission to moderate safety reports about named individuals.
+
+Without this, `GET /maintainer-assignments` and the thanks resolution both run against empty tables - and the client returns `[]` on failure, so "nothing is loaded" and "nobody is assigned" look identical ([#249](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/249)). Real per-club admin tooling is `features/VOLUNTEERING.md`'s larger module; this is the deliberate answer for one club getting started.
+
 ## Migrations
 
 `alembic/versions/` has two migrations: `initial_schema`, creating all seven tables (`clubs`, `profiles`, `closures`, `hikes`, `maintainer_assignments`, `reports`, `user_preferences`), and `enable_row_level_security`, which locks them against Supabase's PostgREST front door.

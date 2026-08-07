@@ -15,13 +15,10 @@ plain "who has this now?" case.
 from datetime import date
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.assignments import assignments_covering
 from app.db.session import get_db
-from app.models.club import Club
-from app.models.maintainer_assignment import MaintainerAssignment
-from app.models.profile import Profile
 from app.schemas.maintainer_assignment import MaintainerAssignmentOut
 
 router = APIRouter(tags=["maintainer-assignments"])
@@ -42,24 +39,12 @@ def resolve_assignments(
     boundaries, hand off mid-season, and go unassigned when a volunteer
     steps back. Zero is a normal answer - the caller falls back to the club
     or simply keeps the location.
-    """
-    when = as_of or date.today()
 
-    rows = (
-        db.query(MaintainerAssignment, Club, Profile)
-        .join(Club, Club.id == MaintainerAssignment.club_id)
-        .join(Profile, Profile.id == MaintainerAssignment.maintainer_id)
-        .filter(
-            MaintainerAssignment.start_mile <= mile,
-            MaintainerAssignment.end_mile >= mile,
-            MaintainerAssignment.effective_from <= when,
-            or_(
-                MaintainerAssignment.effective_to.is_(None),
-                MaintainerAssignment.effective_to >= when,
-            ),
-        )
-        .all()
-    )
+    **The query itself moved to app/core/assignments.py** (#249), because
+    receiving a thanks and delivering one now ask the same question. This is
+    the only caller allowed to default `as_of` to today - see that module.
+    """
+    rows = assignments_covering(db, mile, as_of or date.today())
 
     return [
         MaintainerAssignmentOut(

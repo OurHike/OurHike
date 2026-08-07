@@ -29,6 +29,7 @@ from enum import Enum
 from pydantic import BaseModel, ConfigDict
 
 from app.core.time import UtcDatetime
+from app.models.report import ReporterType
 
 
 class Theme(str, Enum):
@@ -144,6 +145,14 @@ class PreferencesIn(BaseModel):
 
     # Identity
     trail_name: str | None = None
+    # None until the hiker says, and deliberately not defaulted to a type
+    # (#233). Every report used to be filed as `thru` from a hardcoded literal
+    # in the client, and `reporter_type` is the one attribution that survives
+    # HIKER_SAFETY.md 2's anonymity window - so a value invented here would be
+    # the same false claim, written one layer deeper. What a report carries
+    # while this is None is the client's decision
+    # (client/src/lib/reporterIdentity.ts).
+    reporter_type: ReporterType | None = None
 
     # App-wide display
     theme: Theme = Theme.auto

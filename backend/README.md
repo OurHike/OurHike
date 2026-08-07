@@ -29,9 +29,9 @@ Everything the suite touches lives in `ourhike_test`, which it drops tables from
 
 TECHNICAL_ARCHITECTURE.md specifies Postgres (Supabase-hosted) as the real backend database. Every environment this code runs in is that same engine:
 
-- **Local dev and local tests: a real Postgres**, started by `scripts/local-postgres.sh` (see Setup).
-- **CI: a real Postgres**, a `postgres:16` `services:` container - see `.github/workflows/backend-tests.yml`.
-- **Production: Supabase's Postgres.**
+- **Local dev and local tests: a real Postgres**, started by `scripts/local-postgres.sh` (see Setup). Whatever major version the machine has - 16 on the Claude Code web sandbox, which is what its image ships.
+- **CI: a real Postgres**, a `postgres:17` `services:` container - see `.github/workflows/backend-tests.yml`. 17 because that is what the Supabase project runs (17.6, checked 2026-08-07), and the gate is the thing that should track production.
+- **Production: Supabase's Postgres**, 17.6.
 - **`DATABASE_URL` is the only difference between them.** `app/config.py` defaults it to the local database; CI and production override it via the environment. No code branches on which database is in use, because there is only one kind.
 
 **DuckDB is the data pipeline's engine, not this one.** `pipeline/` uses it for what it is excellent at - spatial analytics over the trail dataset, columnar scans across millions of rows, all of it read-mostly and rebuildable from source. None of that describes a transactional API writing rows a hiker cannot afford to lose. This backend previously ran on DuckDB locally (via `duckdb-engine`) with Postgres only in CI, on the reasoning that a local Postgres was unavailable in the dev sandbox; that turned out not to be true, and the split cost more than it saved:
@@ -42,6 +42,24 @@ TECHNICAL_ARCHITECTURE.md specifies Postgres (Supabase-hosted) as the real backe
 4. **Index reflection was unimplemented**, so `alembic revision --autogenerate` could not see indexes at all.
 
 Every one of those is now gone rather than worked around, and the local suite exercises the migrations themselves for the first time (`tests/test_migrations.py`) - which was impossible while local dev ran on an engine that could not execute them.
+
+## Connecting through Supabase's pooler
+
+Supabase offers more than one connection string, and they are not interchangeable. The **transaction pooler** (Supavisor, port 6543) is the one its dashboard presents first, and it hands each transaction whatever Postgres backend is free - so nothing a driver leaves on a connection between transactions survives.
+
+psycopg leaves exactly that: it prepares a statement server-side after its 5th execution and refers to it by name afterwards. Through a transaction pooler, that name means nothing on the next backend. The result is a 500 on an endpoint that worked the first four times, in production only.
+
+**`app/db/session.py`'s `engine_options` turns it off**, along with `pool_pre_ping` for connections a pooler or an idle timeout has closed underneath us. The default is the safe one: `DATABASE_PREPARED_STATEMENTS=true` opts a direct-connection deployment back into the plan caching.
+
+**It is tested against a real pooler, not asserted about.** `scripts/local-pooler.sh` runs pgbouncer in transaction mode in front of `ourhike_test` and prints a `POOLER_DATABASE_URL`; `tests/test_pooler.py` drives interleaved transactions through it, and skips itself when that variable is unset. CI sets it up the same way, using the same script. One of the two tests deliberately asserts the *unfixed* configuration still breaks - without it, deleting `prepare_threshold` from the engine options would leave a green suite.
+
+```
+bash scripts/local-pooler.sh
+export POOLER_DATABASE_URL=postgresql+psycopg://ourhike:ourhike@127.0.0.1:6432/ourhike_test
+python -m pytest tests/test_pooler.py -v
+```
+
+pgbouncer is not Supavisor. What it reproduces is the constraint they share - a transaction may land anywhere - which is the part the driver has to be configured for. Whether the *real* pooler behaves identically is still unverified, and needs the production connection string (see the open half of [#95](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/95)).
 
 ## Auth
 
@@ -59,7 +77,7 @@ Supabase Auth issues the JWTs this backend verifies - see [../features/AUTHENTIC
 
 ## Layout
 
-`app/` is the FastAPI application (`main.py`'s `app`, `config.py`'s env-driven `Settings`, `db/` for the SQLAlchemy engine/session/base). `alembic/` holds migrations, wired to `app.db.base`'s metadata and `app.config`'s `DATABASE_URL` - see `alembic/env.py`. `scripts/` holds `local-postgres.sh`, and `docker-compose.yml` is the database it falls back to when the machine has no Postgres installed. `tests/` mirrors `pipeline/tests/`'s shape: `conftest.py` for shared fixtures (a clean-schema engine/session per test against the local Postgres, a `TestClient` with `get_db` overridden), one file per behavior area.
+`app/` is the FastAPI application (`main.py`'s `app`, `config.py`'s env-driven `Settings`, `db/` for the SQLAlchemy engine/session/base). `alembic/` holds migrations, wired to `app.db.base`'s metadata and `app.config`'s `DATABASE_URL` - see `alembic/env.py`. `scripts/` holds `local-postgres.sh` (the database) and `local-pooler.sh` (a transaction-mode pooler in front of it, for the tests that need one); `docker-compose.yml` is the database `local-postgres.sh` falls back to when the machine has no Postgres installed. `tests/` mirrors `pipeline/tests/`'s shape: `conftest.py` for shared fixtures (a clean-schema engine/session per test against the local Postgres, a `TestClient` with `get_db` overridden), one file per behavior area.
 
 ## Migrations
 

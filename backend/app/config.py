@@ -29,6 +29,18 @@ class Settings(BaseSettings):
     # why they can sit in the file at all.
     database_url: str = "postgresql+psycopg://ourhike:ourhike@localhost:5432/ourhike_dev"
 
+    # Off by default, which is the unusual direction for a performance
+    # feature and is deliberate. psycopg prepares a statement server-side
+    # after its 5th execution on a connection; through Supabase's
+    # transaction-mode pooler the next transaction can land on a different
+    # backend, and the prepared name means nothing there. The failure is a
+    # 500 on a warm endpoint, in production only, under the connection
+    # string Supabase's dashboard offers first - see app/db/session.py's
+    # `engine_options` for the reproduction. Set this true on a deployment
+    # that connects directly to Postgres (no pooler) and wants the plan
+    # caching.
+    database_prepared_statements: bool = False
+
     # No defaults below - these are real credentials/identifiers for the
     # Supabase project this backend talks to, and must come from the
     # environment (or a local, gitignored .env file), never be hardcoded.

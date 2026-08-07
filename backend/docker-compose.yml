@@ -4,11 +4,12 @@
 #
 #   docker compose -f backend/docker-compose.yml up -d
 #
-# The image tag matches what CI's service container and Supabase both run, so
-# "works locally" means the same major version as "works in production".
+# The image tag matches what CI's service container and Supabase both run
+# (17.6, checked 2026-08-07), so "works locally" means the same major version
+# as "works in production" - which the sandbox's own preinstalled 16 cannot.
 services:
   postgres:
-    image: postgres:16
+    image: postgres:17
     container_name: ourhike-postgres
     environment:
       # These defaults are the ones app/config.py and tests/conftest.py fall

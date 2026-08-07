@@ -50,7 +50,11 @@ jobs:
     # that always reports.
     services:
       postgres:
-        image: postgres:16
+        # Matches the major version the Supabase project actually runs
+        # (17.6 as of 2026-08-07). It is the gate, so it is the one that
+        # should track production rather than whatever a developer's
+        # machine happens to have installed.
+        image: postgres:17
         env:
           POSTGRES_USER: ourhike
           POSTGRES_PASSWORD: ourhike
@@ -69,6 +73,11 @@ jobs:
       # point: the correctness gate and the loop you develop in are the same
       # engine, differing only in where it runs. See backend/README.md.
       DATABASE_URL: postgresql+psycopg://ourhike:ourhike@localhost:5432/ourhike_test
+      # The pooled counterpart, set up by the pgbouncer step below. Without
+      # it tests/test_pooler.py skips, and the failure it guards against -
+      # psycopg's prepared statements through a transaction pooler - is one
+      # that shows up in production and nowhere else.
+      POOLER_DATABASE_URL: postgresql+psycopg://ourhike:ourhike@127.0.0.1:6432/ourhike_test
     steps:
       # Checkout is unconditional because the scope action lives in this
       # repository and has to be on disk before it can decide anything.
@@ -91,6 +100,20 @@ jobs:
       - name: Install dependencies
         if: steps.scope.outputs.run == 'true'
         run: pip install -r requirements-dev.txt
+
+      - name: Start a transaction-mode pooler
+        if: steps.scope.outputs.run == 'true'
+        # The same script a developer runs, rather than a second copy of the
+        # configuration living in this file - the pooler's mode and its
+        # max_prepared_statements are the parts under test, and two copies of
+        # them is one copy that goes stale.
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq pgbouncer
+          # The package starts its own service on 6432 with a config that
+          # routes no databases. Ours needs the port, and the script refuses
+          # to assume an occupied one is usable.
+          sudo systemctl stop pgbouncer || true
+          bash scripts/local-pooler.sh
 
       - name: Lint
         if: steps.scope.outputs.run == 'true'

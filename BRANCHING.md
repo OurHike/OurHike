@@ -101,11 +101,28 @@ checks pass there. The pull request branch is never modified, and entries are
 tested speculatively in parallel rather than one at a time — which is the
 property this whole document is trying to buy.
 
-This repository is public, so the feature is available on the Free plan.
+**Not available to this repository, and being public is not what decides it.**
+GitHub's rule is ownership:
 
-**It cannot be switched on as-is.** Merge queue runs checks on the
-`merge_group` event, and no workflow in `.github/workflows/` currently triggers
-on it:
+> Pull request merge queues are available in any public repository owned by an
+> organization, or in private repositories owned by organizations using GitHub
+> Enterprise Cloud.
+
+`OurHike` is public but owned by a personal account, which is the one
+combination that misses. No plan upgrade fixes it — a personal account cannot
+buy the feature at any tier.
+
+What fixes it is already planned:
+[#272](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/272) moves
+this repository into the `OurHike` org, and
+[#274](https://github.com/jaimito-asuntos-gringuenos/OurHike/pull/274) is
+already waiting on that transfer. A public repository owned by an organisation
+gets merge queue at no cost, so the transfer unlocks it as a side effect rather
+than as something to buy.
+
+**And even then it cannot be switched on as-is.** Merge queue runs checks on
+the `merge_group` event, and no workflow in `.github/workflows/` currently
+triggers on it:
 
 ```yaml
 on:

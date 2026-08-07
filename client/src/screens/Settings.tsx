@@ -26,6 +26,8 @@ import { backgroundOverride } from '../lib/dataSaver'
 import { BackgroundPicker } from '../chrome/BackgroundPicker'
 import { DownloadsLink } from '../chrome/DownloadsLink'
 import { REPORTER_TYPES } from '../lib/contributionFlow'
+import { MapDetailPicker } from './MapDetailPicker'
+import { MapStylePicker } from './MapStylePicker'
 import { ThemePicker } from './ThemePicker'
 import type { ReportDraft } from '../lib/outbox'
 import './settings.css'
@@ -176,6 +178,41 @@ export function Settings({
             archiveDownloaded,
           )}
           idPrefix="settings"
+        />
+
+        <MapStylePicker
+          value={preferences.map_style}
+          onChange={(map_style) => onChange({ map_style })}
+        />
+
+        {/* night_hike's sub-mode, and only while night_hike is chosen: a
+            toggle that does nothing under Field would be a live-looking
+            control with no effect, which is the same dishonesty the Later
+            rows exist to avoid - see MapStylePicker's header for why it is
+            not a third style segment. */}
+        {preferences.map_style === 'night_hike' && (
+          <>
+            <label className="settings__row">
+              <span className="settings__label">Red light</span>
+              <input
+                type="checkbox"
+                name="red_light_enabled"
+                checked={preferences.red_light_enabled}
+                onChange={(event) =>
+                  onChange({ red_light_enabled: event.target.checked })
+                }
+              />
+            </label>
+            <p className="settings__note">
+              Re-inks the night sheet in red, the light night vision keeps. Every trail
+              draws in the same red — blaze colours return when you switch it off.
+            </p>
+          </>
+        )}
+
+        <MapDetailPicker
+          value={preferences.layer_detail_level}
+          onChange={(layer_detail_level) => onChange({ layer_detail_level })}
         />
 
         <label className="settings__row settings__row--later">

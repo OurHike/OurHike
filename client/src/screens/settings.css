@@ -89,13 +89,21 @@
  *
  * Its own class rather than reusing `.bg-picker`, since the two live in
  * different stylesheets for different components and a shared class would make
- * every future change to one silently a change to the other. */
-.theme-picker {
+ * every future change to one silently a change to the other. The three
+ * pickers that DO live in this stylesheet - theme, map style, map detail -
+ * share each rule as a selector list instead: same file, same screen, same
+ * kind of control, so a change to the treatment SHOULD reach all three, and
+ * three hand-copied blocks would only offer three chances to miss one. */
+.theme-picker,
+.map-style-picker,
+.map-detail-picker {
   margin: 0;
   padding: 0;
   border: 0;
 }
-.theme-picker__legend {
+.theme-picker__legend,
+.map-style-picker__legend,
+.map-detail-picker__legend {
   padding: 0;
   margin-bottom: var(--space-2, 8px);
   font-size: 12px;
@@ -104,11 +112,15 @@
   letter-spacing: 0.05em;
   color: var(--fg-3);
 }
-.theme-picker__options {
+.theme-picker__options,
+.map-style-picker__options,
+.map-detail-picker__options {
   display: flex;
   gap: var(--space-2, 8px);
 }
-.theme-picker__option {
+.theme-picker__option,
+.map-style-picker__option,
+.map-detail-picker__option {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -121,14 +133,18 @@
   border-radius: 10px;
   cursor: pointer;
 }
-.theme-picker__option[data-selected='true'] {
+.theme-picker__option[data-selected='true'],
+.map-style-picker__option[data-selected='true'],
+.map-detail-picker__option[data-selected='true'] {
   border-color: var(--brand-primary);
   box-shadow: inset 0 0 0 1px var(--brand-primary);
 }
 /* Visually hidden rather than removed: a display:none radio is unfocusable,
  * which would cost the arrow-key behaviour a real radio group was chosen for.
  * The label is the hit target, and it is the whole segment. */
-.theme-picker__input {
+.theme-picker__input,
+.map-style-picker__input,
+.map-detail-picker__input {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -139,23 +155,33 @@
   white-space: nowrap;
   border: 0;
 }
-.theme-picker__input:focus-visible + .theme-picker__label {
+.theme-picker__input:focus-visible + .theme-picker__label,
+.map-style-picker__input:focus-visible + .map-style-picker__label,
+.map-detail-picker__input:focus-visible + .map-detail-picker__label {
   outline: 2px solid var(--brand-primary);
   outline-offset: 2px;
   border-radius: 3px;
 }
-.theme-picker__label {
+.theme-picker__label,
+.map-style-picker__label,
+.map-detail-picker__label {
   font-size: 14px;
   color: var(--fg-1);
 }
-.theme-picker__option[data-selected='true'] .theme-picker__label {
+.theme-picker__option[data-selected='true'] .theme-picker__label,
+.map-style-picker__option[data-selected='true'] .map-style-picker__label,
+.map-detail-picker__option[data-selected='true'] .map-detail-picker__label {
   font-weight: 700;
 }
-.theme-picker__hint {
+.theme-picker__hint,
+.map-style-picker__hint,
+.map-detail-picker__hint {
   font-size: 11px;
   color: var(--fg-3);
 }
-.theme-picker__description {
+.theme-picker__description,
+.map-style-picker__description,
+.map-detail-picker__description {
   margin: var(--space-2, 8px) 0 0;
   font-size: 12px;
   color: var(--fg-3);
@@ -215,4 +241,31 @@
   font-size: 13px;
   font-weight: 600;
   color: var(--fg-1);
+}
+
+/* ---------- Your hike (HikePicker.tsx) ---------- */
+
+/* A label wrapping its own input, so the two are associated without an id -
+ * the same pattern the rest of this screen's controls use. Stacked rather than
+ * side by side because a mile marker on the AT is up to six characters and a
+ * cramped number field is the one thing that makes a gloved thumb give up. */
+.settings__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  font-size: 13px;
+  color: var(--fg-2);
+}
+.settings__field input {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-3, 12px);
+  font-size: 16px; /* 16px or iOS zooms the whole page on focus. */
+  color: var(--fg-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+}
+.settings__action:disabled {
+  opacity: 0.5;
+  cursor: default;
 }

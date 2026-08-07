@@ -37,7 +37,7 @@ import { mapCredits } from '../map/credits'
 import { MapAttribution } from './MapAttribution'
 import type { ScaleUnits } from '../map/mapChrome'
 import type { ResolvedTheme } from '../lib/theme'
-import type { BackgroundSource } from '../lib/userPreferences'
+import type { BackgroundSource, LayerDetailLevel, MapStyle } from '../lib/userPreferences'
 import type { BoundingBox, MapPoint } from '../lib/legendContents'
 import type { SearchablePoi } from '../lib/searchPoi'
 import './chrome.css'
@@ -139,6 +139,12 @@ export interface MapScreenProps {
   /** Which theme the canvas is drawn in. Passed down rather than read here so
    *  the chrome and the map answer from one value - see MapViewProps. */
   theme?: ResolvedTheme
+  /** The sheet's palette family, night_hike's red-light sub-mode, and the
+   *  detail level - passed straight through to MapView like `theme`, and for
+   *  the same reason. */
+  mapStyle?: MapStyle
+  redLight?: boolean
+  detail?: LayerDetailLevel
 
   /** Opening camera only; later moves are the hiker's. */
   center?: [number, number]
@@ -252,6 +258,9 @@ export function MapScreen({
   showZoomButtons = false,
   units = 'imperial',
   theme = 'light',
+  mapStyle = 'field',
+  redLight = false,
+  detail = 'standard',
   center,
   zoom,
   bounds,
@@ -363,6 +372,9 @@ export function MapScreen({
               showZoomButtons={showZoomButtons}
               units={units}
               theme={theme}
+              mapStyle={mapStyle}
+              redLight={redLight}
+              detail={detail}
               center={center}
               zoom={zoom}
               bounds={bounds}

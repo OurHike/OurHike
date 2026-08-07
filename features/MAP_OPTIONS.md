@@ -284,9 +284,25 @@ Two properties are asserted rather than assumed, in both directions: nothing the
 
 **Extended by [UX_CUSTOMIZATION.md](UX_CUSTOMIZATION.md):** the compass in `NavigationControl` above gets a real reset-to-north behavior once auto-rotate exists, and the legend's job grows to also reflect that doc's `layer_detail_level` and `waypoint_types_shown` settings - same legend, same "read from schemes that already exist" principle, not a second one.
 
+## 6. Map appearance: style, mode, and detail (built 2026-08-07)
+
+Built to MAP_STYLE_SPEC.md - a PR-shaped spec reviewed against live mockups (the design project's `Map Styles.html`, which renders every palette on the real stack). Three preferences, all display-only: none of them ever rebuilds the map, the same rule the unit switch and the theme already keep.
+
+**`map_style` - which of the sheet's palettes the map is drawn in.** Two of the spec's five ship: **`field`** (default), the reviewed day sheet - white paper, darker contour ink, and roads in deliberate neutral gray because *nothing on the ground may share a hue with a blaze colour* (review finding, 2026-08-06; the old sheet's tan roads sat too close to Yellow and Orange) - and **`night_hike`**, which is the dark sheet the theme work already built, now choosable outright so a hiker can ready night vision before dusk without flipping the whole app. The other three (`quiet_pine`, `parchment`, `ridgeline`) are specced with copy-ready palettes in the mockups and join `MAP_STYLE_VALUES`, the palette table (`client/src/map/liveTopo.ts`), and the backend enum together in the release that carries their colours - a value nothing can render is a value nothing may store.
+
+**The spec's `mapMode` (`day | night | auto`) is the existing `theme` preference under another name** - `light | dark | auto` already resolves through `prefers-color-scheme`, already drives the chrome, and since 2026-08-06 already repaints the canvas. Nothing new was added for it, deliberately: two preferences answering "is it dark" is how a dark app ends up around a light map. `field` follows the resolved theme (its after-dark form IS `night_hike` - the spec's "auto-dark for field"); `night_hike` ignores it.
+
+**`red_light_enabled` - night_hike's sub-mode, never a default.** The dark sheet re-inked in one red-amber family (`TOPO_PALETTE_RED`), because rods are near-blind to deep red: a red screen can be read without spending the half hour of dark adaptation a white one costs. Under it every trail draws in one red (`#e8804a`) - a blaze colour is a fact about the ground, but under red light every hue would render as barely-distinguishable murk anyway, so the loss is taken honestly and blaze identity lives on the tapped POI/trail details instead. The toggle renders in Settings only while `night_hike` is chosen; under `field` it changes nothing and so shows nothing.
+
+**`layer_detail_level` - wired at last.** The key shipped in the schema months before anything read it; the matrix and the reasoning live with [UX_CUSTOMIZATION.md](UX_CUSTOMIZATION.md)'s "Layer details" section, the mechanism in `client/src/map/mapDetail.ts`.
+
+**Where the controls live: Settings only, not onboarding** - the spec's own suggestion, taken. The defaults (field by day, night_hike after dark, standard detail) are right for most hikers, and onboarding already carries the one map decision that costs real megabytes. All three sync through the same `UserPreferences` contract as everything else; stored values from builds that don't know a style are dropped on read exactly as removed backgrounds are (`client/src/lib/preferences.ts`).
+
+**Still open from the spec:** whether `parchment`, when it ships, becomes the forced style for print/export views; and whether `minimal` should thin place labels to towns+ at hiking zooms (tracked with UX_CUSTOMIZATION.md's open questions).
+
 ## Data model sketch (settings, client-side)
 
-**Update 2026-07-28: consolidated into [IDENTITY_AND_PRIVACY.md](IDENTITY_AND_PRIVACY.md)'s `UserPreferences`**, alongside UX Customization's, Onboarding's, and Hiker Safety's settings, rather than five separate small models. This doc still owns *why* each of these settings exists (the reasoning above doesn't move) - only the data model shape now lives in one canonical place: `background_source`, `max_background_zoom`, `show_roads` (all designed here). `show_closures` deliberately isn't in that model at all - it's always-on, not user-hideable (see "Reroutes / closures" above), a fixed display rule rather than a preference.
+**Update 2026-07-28: consolidated into [IDENTITY_AND_PRIVACY.md](IDENTITY_AND_PRIVACY.md)'s `UserPreferences`**, alongside UX Customization's, Onboarding's, and Hiker Safety's settings, rather than five separate small models. This doc still owns *why* each of these settings exists (the reasoning above doesn't move) - only the data model shape now lives in one canonical place: `background_source`, `max_background_zoom`, `show_roads`, `map_style`, `red_light_enabled` (all designed here). `show_closures` deliberately isn't in that model at all - it's always-on, not user-hideable (see "Reroutes / closures" above), a fixed display rule rather than a preference.
 
 ## Open questions (for you, not decided here)
 

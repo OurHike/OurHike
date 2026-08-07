@@ -212,15 +212,20 @@ Read-only, and safe to run any time. It does **not** check the redirect allow-li
 
 ## 5. First database migration
 
-The initial migration now exists — `backend/alembic/versions/0f79a37f9358_initial_schema.py` — and, with the row-level-security revision on top of it, now runs against a real Postgres 16 as part of the test suite (`backend/tests/test_migrations.py`: `upgrade head`, RLS flags read back from `pg_class`, `downgrade base`, and `alembic check` for drift). It has still never been applied to *Supabase's* Postgres, which is what this step is.
+The initial migration now exists — `backend/alembic/versions/0f79a37f9358_initial_schema.py` — and, with the row-level-security revision on top of it, now runs against a real Postgres as part of the test suite (`backend/tests/test_migrations.py`: `upgrade head`, RLS flags read back from `pg_class`, `downgrade base`, and `alembic check` for drift). It has still never been applied to *Supabase's* Postgres, which is what this step is.
 
 So this is one command, not two. Running `revision --autogenerate` again would produce an empty second migration on top of it:
 
 ```
 cd backend
-# with DATABASE_URL pointed at your Supabase Postgres
+# with DATABASE_URL pointed at your Supabase Postgres - the DIRECT connection
+# (db.<ref>.supabase.co:5432), not a pooled one, see below
 .venv/Scripts/alembic upgrade head
 ```
+
+**Which connection string, for this step specifically: the direct one.** Supabase's dashboard offers the transaction pooler first, and a migration is the one workload that must not go through it — `CREATE TABLE`, `ALTER TABLE` and the advisory lock Alembic takes want a single session that stays put, not a transaction handed a different backend each time. The pooled string is the right one for the *running app* (see 7.2), and the backend is configured for it; it is the wrong one here.
+
+**Checked 2026-08-07, read-only, against the real project (`fehctqdwdjwryzgxzywc`):** it is Postgres **17.6**, and its migration list is **empty** — nothing has been applied, so this step is genuinely still ahead of you rather than half-done. The security advisors report no RLS problems, which follows from there being no tables in `public` yet; re-run them after this step, when the answer means something (5a).
 
 **Read the migration before applying it**, the same way you would review any migration against real data. Several models use `Enum(..., native_enum=False)`. Inspecting the applied schema on a real Postgres for the first time shows what that renders as: a bare `VARCHAR(20)`, with **no** `CHECK` constraint — SQLAlchemy has defaulted `create_constraint` to `False` since 1.4, so the allowed values are enforced in Python and not by the database. Nothing is broken by that (every write goes through the API's pydantic schemas), but it is worth knowing before you assume the database will reject a bad `role` or `visibility`. See `backend/app/models/profile.py`.
 
@@ -274,10 +279,12 @@ What is left is running it, in this order:
 1. **`fly apps create`** with a real, globally-unique name. `fly.toml`'s `app = "ourhike-backend"` is a placeholder — update it to match whatever the name ends up being.
 2. **`fly secrets set`** the runtime environment. Never committed, never baked into the image:
    ```
-   fly secrets set DATABASE_URL=postgresql://...   # the Supabase Postgres connection string
+   fly secrets set DATABASE_URL=postgresql://...   # the POOLED string, port 6543
    fly secrets set SUPABASE_URL=... SUPABASE_ANON_KEY=...
    ```
    `SUPABASE_JWT_SECRET` is **not** in that list for a hosted project — see 4.4. Set it only against a self-hosted Supabase.
+
+   **The pooled string is deliberate here, and the app is built for it.** A transaction pooler hands each transaction whatever backend is free, which breaks anything a driver leaves on a connection — psycopg's automatic prepared statements above all, and that failure appears only in production and only once an endpoint is warm. `backend/app/db/session.py` turns them off, and `backend/tests/test_pooler.py` proves it against a real transaction pooler rather than asserting it. If you use the direct string instead, nothing breaks; you can set `DATABASE_PREPARED_STATEMENTS=true` to get the plan caching back.
 3. **`fly deploy`** from `backend/`.
 4. **Run the migration** (step 5) against the real `DATABASE_URL`, then **confirm RLS is on** (step 5a — the migration does it, but check rather than assume). Deliberately separate from deploying: a migration should be a reviewed action, not something that fires on every container start.
 5. **Point the client at it** and add its origin to Supabase's allowed redirect URLs (4.3b).

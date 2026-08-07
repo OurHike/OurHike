@@ -57,6 +57,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl'
 import { whenStyleReady } from './styleReady'
 import { OPENFREEMAP_CREDIT, OSM_CREDIT } from './credits'
 import type { ResolvedTheme } from '../lib/theme'
+import type { MapStyle } from '../lib/userPreferences'
 import {
   CONTOUR_ELEVATION_KEY,
   CONTOUR_LAYER,
@@ -137,49 +138,50 @@ export const LIVE_TOPO_ATTRIBUTION = `${OPENFREEMAP_CREDIT} · ${OSM_CREDIT}`
 const FONT = ['Noto Sans Regular']
 
 /**
- * A topographic sheet's palette, not a screen palette.
+ * The `field` day sheet - MAP_STYLE_SPEC.md's reviewed favorite (card 1b in
+ * the spec's mockups), and the palette every hiker on the defaults sees.
  *
- * Anchored on the design system's own tokens (tokens/colors.css) so the map
- * belongs to the same app as the chrome around it, but pulled toward what a
- * paper quad does: the sheet itself stays the paper the backdrop already
- * paints, ink is brown rather than black, woodland is a flat overprint rather
- * than a photograph of trees, and nothing competes with the blaze colours the
- * trail lines are drawn in. That last constraint is the real one - the trail
- * has to stay the most legible thing on the screen, so every colour here is
- * chosen to sit behind it.
+ * A topographic sheet's palette, not a screen palette: white paper, ink that
+ * is brown rather than black, woodland as a flat overprint rather than a
+ * photograph of trees, and nothing competing with the blaze colours the trail
+ * lines are drawn in. That last constraint is the real one, and it got
+ * stricter in review: roads and tracks are NEUTRAL GRAY on purpose, because
+ * nothing on the ground may share a hue with a blaze colour (review finding,
+ * 2026-08-06) - the old sheet's tan roads sat too close to the Yellow and
+ * Orange blazes for a glance to separate.
  */
 export const TOPO_PALETTE = {
-  /** Woodland overprint - `--sage-100`, the same green family as the app. */
-  wood: '#e3ecda',
-  scrub: '#e9eedf',
-  wetland: '#d9e4dd',
-  rock: '#ece7dc',
+  /** Woodland overprint, the same green family as the app's sage tokens. */
+  wood: '#dcebd2',
+  scrub: '#e8f0dd',
+  wetland: '#cfe3d8',
+  rock: '#eae6da',
   /** Protected land, drawn as a tint plus an edge rather than a solid block. */
-  park: '#dfead6',
-  parkEdge: '#96b98c',
-  water: '#bcd8e6',
-  waterEdge: '#7fb0c9',
-  waterway: '#6ea3bf',
+  park: '#d3e6c6',
+  parkEdge: '#5f8f57',
+  water: '#8fc0dc',
+  waterEdge: '#2e79a6',
+  waterway: '#2e79a6',
   /** Contours in USGS brown. Index lines are the same hue, darker and wider. */
-  contour: '#b09168',
-  contourIndex: '#8f6f47',
-  contourLabel: '#7d6039',
-  /** Roads: present, and deliberately quiet. */
-  roadMajor: '#d8c9a8',
-  roadMajorEdge: '#b7a382',
-  roadMinor: '#e0d5bb',
-  track: '#a89372',
-  path: '#9a8a6e',
-  boundary: '#9c8f78',
-  label: '#4a4234',
-  labelHalo: '#f7f3e9',
-  waterLabel: '#3d6b81',
+  contour: '#8a6c42',
+  contourIndex: '#5f4527',
+  contourLabel: '#4a3620',
+  /** Roads and tracks: present, quiet, and hue-free - see above. */
+  roadMajor: '#dad6ca',
+  roadMajorEdge: '#8e897a',
+  roadMinor: '#ddd9cd',
+  track: '#7b776b',
+  path: '#55503f',
+  boundary: '#6f6753',
+  label: '#14130f',
+  labelHalo: '#ffffff',
+  waterLabel: '#1c5c86',
   /** Relief shading. Here rather than inline at the layer for the same reason
    *  as everything else in this object: it is a colour, so it is a colour the
-   *  theme can change. */
-  hillshadeShadow: '#6b5f4a',
-  hillshadeHighlight: '#fffdf7',
-  hillshadeAccent: '#8a8271',
+   *  appearance can change. */
+  hillshadeShadow: '#4a4234',
+  hillshadeHighlight: '#ffffff',
+  hillshadeAccent: '#6f6753',
 } as const
 
 /** The shape both palettes share, so a key added to one has to be added to the
@@ -187,7 +189,9 @@ export const TOPO_PALETTE = {
 export type TopoPalette = Record<keyof typeof TOPO_PALETTE, string>
 
 /**
- * The same sheet at night.
+ * The `night_hike` sheet - the dark style in its own right, and what `field`
+ * turns into when the theme resolves dark (MAP_STYLE_SPEC.md: "night_hike is
+ * the auto-dark for field").
  *
  * Not the light palette inverted. An inverted topo sheet puts white contours
  * and pale roads over dark ground, which is the wrong way round twice over:
@@ -238,9 +242,79 @@ export const TOPO_PALETTE_DARK: TopoPalette = {
   hillshadeAccent: '#272319',
 }
 
-/** The sheet's palette for a theme. One function so nothing else has to know
- *  that there are exactly two of them. */
-export function topoPalette(theme: ResolvedTheme): TopoPalette {
+/**
+ * night_hike's red-light sub-mode: the dark sheet re-inked in one hue.
+ *
+ * Rod cells are nearly blind to deep red, which is why headlamps carry a red
+ * mode - a red screen can be READ without spending the half hour of dark
+ * adaptation a white one costs. So this is TOPO_PALETTE_DARK's lightness
+ * ladder with every hue pulled to the same red-amber family: ground fills
+ * stay near-black, lines sit in dim rust, and only the labels are allowed
+ * brightness, exactly as on the dark sheet. Blue is the first casualty on
+ * purpose - water keeps its lightness step and loses its hue, because a blue
+ * that reads as blue is a wavelength the eye pays for.
+ *
+ * Derived to the spec's brief rather than copied from its mockups - the
+ * card-by-card values live in the design project's `Map Styles.html`, and
+ * swapping these for the reviewed ones is a values-only change to this one
+ * table.
+ */
+export const TOPO_PALETTE_RED: TopoPalette = {
+  wood: '#201310',
+  scrub: '#241611',
+  wetland: '#1d1210',
+  rock: '#261812',
+  park: '#221410',
+  parkEdge: '#64351f',
+  water: '#180e0c',
+  waterEdge: '#6b3018',
+  waterway: '#7c3a1e',
+  contour: '#6e4023',
+  contourIndex: '#90542c',
+  contourLabel: '#c47a3e',
+  roadMajor: '#4a2f22',
+  roadMajorEdge: '#2a1a12',
+  roadMinor: '#392419',
+  track: '#6b4426',
+  path: '#7c4f2c',
+  boundary: '#5f3d28',
+  label: '#e5975a',
+  labelHalo: '#140b07',
+  waterLabel: '#d08048',
+  hillshadeShadow: '#050202',
+  hillshadeHighlight: '#3f2818',
+  hillshadeAccent: '#251610',
+}
+
+/**
+ * Which palette the sheet is drawn in, per MAP_STYLE_SPEC.md's three
+ * preferences. All optional, defaulting to the sheet a caller with no opinion
+ * has always been handed - the field day palette.
+ *
+ * `theme` is the spec's `mapMode` under the name this codebase already had
+ * for it: day = light, night = dark, and auto resolves through
+ * lib/useTheme.ts before it gets here, exactly as it does for the chrome.
+ */
+export interface SheetAppearance {
+  theme?: ResolvedTheme
+  mapStyle?: MapStyle
+  /** Only meaningful with night_hike - see TOPO_PALETTE_RED. */
+  redLight?: boolean
+}
+
+/**
+ * The sheet's palette for an appearance. One function so nothing else has to
+ * know how the three preferences compose, and the composition is short:
+ * night_hike is dark under either theme (a hiker readying night vision before
+ * dusk should not have to flip the whole app), field follows the theme, and
+ * red light refines night_hike only - never a day sheet.
+ */
+export function sheetPalette({
+  theme = 'light',
+  mapStyle = 'field',
+  redLight = false,
+}: SheetAppearance): TopoPalette {
+  if (mapStyle === 'night_hike') return redLight ? TOPO_PALETTE_RED : TOPO_PALETTE_DARK
   return theme === 'dark' ? TOPO_PALETTE_DARK : TOPO_PALETTE
 }
 
@@ -274,7 +348,7 @@ export const LIVE_TOPO_LAYER_IDS = {
  *
  * It is read twice, which is the whole reason it is a table rather than
  * literals at each layer. liveTopoLayers() builds the style out of it, and
- * attachSheetTheme() replays it onto a LIVE map when the hiker changes theme.
+ * attachSheetAppearance() replays it onto a LIVE map when the appearance changes.
  * Written out in both places instead, the two would drift, and what drift
  * looks like here is one layer that did not follow the theme - a road still
  * drawn in paper-brown over an ink sheet, which reads as a rendering bug
@@ -399,17 +473,21 @@ export const PLACE_SORT_KEY_EXPRESSION = [
  * arrive - over the same 9-to-12 window they fade in across, read off the same
  * numbers rather than a second set that could drift from them.
  *
- * Past the handover nothing changes: at hiking zooms this is the 0.35 it has
- * always been, which is what keeps the shading from competing with the
- * contours for the same job and from making the trail line harder to follow
- * across a slope. `interpolate` holds its end values outside the stops, so
- * both ends are flat rather than extrapolating into a black hillside.
+ * Past the handover nothing changes: at hiking zooms this is one flat weight,
+ * which is what keeps the shading from competing with the contours for the
+ * same job and from making the trail line harder to follow across a slope.
+ * `interpolate` holds its end values outside the stops, so both ends are flat
+ * rather than extrapolating into a black hillside.
+ *
+ * 0.30 rather than the 0.35 it launched at - MAP_STYLE_SPEC.md's field sheet
+ * carries darker contour ink than the old palette did, and the ink now does
+ * some of the work the shading was doing.
  *
  * It also costs nothing. The DEM tiles behind this layer are fetched at every
  * zoom already; the ramp only decides how much of what they contain reaches
  * the screen.
  */
-export const HILLSHADE_EXAGGERATION = 0.35
+export const HILLSHADE_EXAGGERATION = 0.3
 export const HILLSHADE_RELIEF_ONLY_EXAGGERATION = 1
 /** The first zoom at which any contour ink is drawn, and the zoom by which
  *  both contour layers are at full strength - see the two `line-opacity`
@@ -447,20 +525,22 @@ export interface LiveTopoOptions {
   terrain?: TerrainUrls
   units: ContourUnits
   /**
-   * Which palette the sheet is drawn in - see TOPO_PALETTE_DARK.
+   * Which palette the sheet is drawn in - see sheetPalette().
    *
-   * Optional and light by default so that every caller who does not care
-   * about the theme, tests included, keeps building the sheet it always
+   * All optional, defaulting to field/day, so that every caller who does not
+   * care about appearance, tests included, keeps building the sheet it always
    * built. Only the shell resolves a theme (lib/useTheme.ts), and only
    * because it is the one place that knows the hiker's preference.
    *
    * The style is built with the right palette AND the map can be repainted in
-   * place afterwards (attachSheetTheme), which is not redundant: the first is
-   * so a cold start under the dark theme never paints a white frame, the
-   * second is so a hiker changing theme does not cost the WebGL context, its
-   * GPS watcher and every tile in flight.
+   * place afterwards (attachSheetAppearance), which is not redundant: the
+   * first is so a cold start under a dark appearance never paints a white
+   * frame, the second is so a hiker changing a preference does not cost the
+   * WebGL context, its GPS watcher and every tile in flight.
    */
   theme?: ResolvedTheme
+  mapStyle?: MapStyle
+  redLight?: boolean
 }
 
 /**
@@ -591,8 +671,10 @@ export function liveTopoLayers({
   terrain,
   units,
   theme = 'light',
+  mapStyle = 'field',
+  redLight = false,
 }: LiveTopoOptions): LayerSpecification[] {
-  const palette = topoPalette(theme)
+  const palette = sheetPalette({ theme, mapStyle, redLight })
 
   const layers: LayerSpecification[] = [
     {
@@ -735,7 +817,10 @@ export function liveTopoLayers({
         'symbol-placement': 'line',
         'text-field': contourLabelTextField(units) as never,
         'text-font': FONT,
-        'text-size': 10,
+        // 11, and every halo on the sheet at 1.8 (MAP_STYLE_SPEC.md's field
+        // extras): the field palette's darker ink earns slightly larger type,
+        // and the wider halo is what keeps it readable across contour ink.
+        'text-size': 11,
         'text-max-angle': 25,
         'text-padding': 6,
         // Set into the line the way a printed contour label is, rather than
@@ -744,7 +829,7 @@ export function liveTopoLayers({
       },
       paint: {
         ...sheetColours(LIVE_TOPO_LAYER_IDS.contourLabel, palette),
-        'text-halo-width': 1.4,
+        'text-halo-width': 1.8,
       },
     },
     {
@@ -844,14 +929,18 @@ export function liveTopoLayers({
       layout: {
         'text-field': peakLabelTextField(units) as never,
         'text-font': FONT,
-        'text-size': ['interpolate', ['linear'], ['zoom'], 10, 10, 14, 13] as never,
+        // 12 up to 14 across the same ramp (MAP_STYLE_SPEC.md's field
+        // extras): summits are the most hiking-specific type on the sheet,
+        // and the size they were launched at underweighted them against
+        // place names.
+        'text-size': ['interpolate', ['linear'], ['zoom'], 10, 12, 14, 14] as never,
         'text-anchor': 'top',
         'text-offset': [0, 0.4],
         'text-max-width': 8,
       },
       paint: {
         ...sheetColours(LIVE_TOPO_LAYER_IDS.peak, palette),
-        'text-halo-width': 1.6,
+        'text-halo-width': 1.8,
       },
     },
     {
@@ -868,7 +957,7 @@ export function liveTopoLayers({
       },
       paint: {
         ...sheetColours(LIVE_TOPO_LAYER_IDS.waterLabel, palette),
-        'text-halo-width': 1.4,
+        'text-halo-width': 1.8,
       },
     },
     // Towns only, and only the ones big enough to matter for resupply - a
@@ -903,7 +992,7 @@ export function liveTopoLayers({
       },
       paint: {
         ...sheetColours(LIVE_TOPO_LAYER_IDS.place, palette),
-        'text-halo-width': 1.6,
+        'text-halo-width': 1.8,
       },
     },
   ]
@@ -979,7 +1068,8 @@ export function attachElevationLabelUnits(
 }
 
 /**
- * The sheet's half of a live theme change.
+ * The sheet's half of a live appearance change - theme, map style, and red
+ * light alike, since all three resolve to one palette (sheetPalette).
  *
  * Repaints every colour in SHEET_COLOURS onto a map that is already built,
  * rather than rebuilding the style. That is not an optimisation, it is the
@@ -1002,11 +1092,14 @@ export function attachElevationLabelUnits(
  * nothing here to repaint - the wait simply ends at detach, exactly as
  * attachContourUnits treats its absent source. The archive's own dimming and
  * the backdrop are not this function's job; map/style.ts owns those, and its
- * attachMapTheme is what calls this - the parts of the canvas that are drawn
+ * attachMapAppearance is what calls this - the parts of the canvas that are drawn
  * whatever the background is belong to the file that declares them.
  */
-export function attachSheetTheme(map: MapLibreMap, theme: ResolvedTheme): () => void {
-  const palette = topoPalette(theme)
+export function attachSheetAppearance(
+  map: MapLibreMap,
+  appearance: SheetAppearance,
+): () => void {
+  const palette = sheetPalette(appearance)
 
   return whenStyleReady(
     map,
@@ -1017,6 +1110,6 @@ export function attachSheetTheme(map: MapLibreMap, theme: ResolvedTheme): () => 
         map.setPaintProperty(layer, property as never, palette[colour] as never)
       }
     },
-    'Sheet theme',
+    'Sheet appearance',
   )
 }

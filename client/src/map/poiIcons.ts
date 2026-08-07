@@ -77,8 +77,9 @@ export const POI_COLORS: Record<PoiType, string> = {
  */
 export const POI_FALLBACK_COLOR = '#5a5346'
 
-/** `--paper-0`. The halo and the glyph, deliberately lighter than the map's own
- *  paper (`MAP_BACKGROUND_COLOR`) so a pin reads as sitting on top of it. */
+/** `--paper-0`. The halo and the glyph. It sat lighter than the map's old
+ *  cream paper; on the field sheet's white (`MAP_BACKGROUND_COLOR`) the edge
+ *  hairline below is what keeps a pin reading as sitting on top. */
 export const PIN_HALO_COLOR = '#fffdf7'
 
 /** `--stone-900`, a hairline outside the halo. Without it a pale halo on pale

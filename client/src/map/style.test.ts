@@ -23,9 +23,21 @@ import {
   TOPO_LAYER_ID,
   MAP_BACKDROP,
   ARCHIVE_RASTER_PAINT,
-  attachMapTheme,
+  RED_LIGHT_BLAZE_COLOR,
+  archiveRasterPaint,
+  attachMapAppearance,
+  blazeLineColor,
+  mapBackdrop,
+  redLightActive,
+  sheetIsDark,
+  trailCasingColor,
 } from './style'
-import { LIVE_TOPO_LAYER_IDS, TOPO_PALETTE, TOPO_PALETTE_DARK } from './liveTopo'
+import {
+  LIVE_TOPO_LAYER_IDS,
+  TOPO_PALETTE,
+  TOPO_PALETTE_DARK,
+  TOPO_PALETTE_RED,
+} from './liveTopo'
 import { POI_LAYER_ID, POI_SOURCE_ID } from './poiLayers'
 import { CLOSURE_SOURCE_ID } from './closureLayers'
 import { WARNING_LAYER_ID, WARNING_SOURCE_ID } from './warningLayers'
@@ -497,9 +509,9 @@ describe('the canvas under light and dark', () => {
   })
 
   it('paints the backdrop in the theme, so a cold start is never a white flash', () => {
-    // attachMapTheme can repaint a live map, but it necessarily runs after the
-    // map exists. On a phone at night, one white frame is the thing the theme
-    // was chosen to avoid.
+    // attachMapAppearance can repaint a live map, but it necessarily runs
+    // after the map exists. On a phone at night, one white frame is the thing
+    // the theme was chosen to avoid.
     expect(layerIn(styled('light'), BACKDROP_LAYER_ID)['background-color']).toBe(
       MAP_BACKDROP.light,
     )
@@ -509,8 +521,8 @@ describe('the canvas under light and dark', () => {
   })
 
   it('keeps the light backdrop identical to the paper every other file reads', () => {
-    // poiIcons.ts's halo and chrome.css's pre-WebGL fallback are both keyed to
-    // this one tone. A second paper would show as a seam at the handover.
+    // chrome.css's pre-WebGL fallback is keyed to this one tone. A second
+    // paper would show as a seam at the handover.
     expect(MAP_BACKDROP.light).toBe(MAP_BACKGROUND_COLOR)
   })
 
@@ -575,7 +587,7 @@ describe('the canvas under light and dark', () => {
   })
 })
 
-describe('attachMapTheme', () => {
+describe('attachMapAppearance', () => {
   // Repaints a map that is already built. Not an optimisation: swapping the
   // style out drops the WebGL context, and with it the POI source pushed in
   // from IndexedDB, every archive tile in flight, and the camera. A hiker who
@@ -585,7 +597,7 @@ describe('attachMapTheme', () => {
     const m = new MockMap({})
     m.layerIds = [BACKDROP_LAYER_ID, TOPO_LAYER_ID, LIVE_TOPO_LAYER_IDS.wood]
 
-    attachMapTheme(m as never, 'dark')
+    attachMapAppearance(m as never, { theme: 'dark' })
 
     expect(m.paintProperties.get(`${BACKDROP_LAYER_ID}/background-color`)).toBe(
       MAP_BACKDROP.dark,
@@ -605,7 +617,7 @@ describe('attachMapTheme', () => {
     const m = new MockMap({})
     m.layerIds = [BACKDROP_LAYER_ID, TOPO_LAYER_ID, LIVE_TOPO_LAYER_IDS.wood]
 
-    attachMapTheme(m as never, 'dark')
+    attachMapAppearance(m as never, { theme: 'dark' })
 
     expect(m.styles).toEqual([])
     expect(m.removed).toBe(false)
@@ -616,8 +628,8 @@ describe('attachMapTheme', () => {
     const m = new MockMap({})
     m.layerIds = [BACKDROP_LAYER_ID, TOPO_LAYER_ID, LIVE_TOPO_LAYER_IDS.wood]
 
-    attachMapTheme(m as never, 'dark')()
-    attachMapTheme(m as never, 'light')
+    attachMapAppearance(m as never, { theme: 'dark' })()
+    attachMapAppearance(m as never, { theme: 'light' })
 
     expect(m.paintProperties.get(`${BACKDROP_LAYER_ID}/background-color`)).toBe(
       MAP_BACKDROP.light,
@@ -636,7 +648,7 @@ describe('attachMapTheme', () => {
     const m = new MockMap({})
     m.layerIds = [BACKDROP_LAYER_ID, TOPO_LAYER_ID]
 
-    attachMapTheme(m as never, 'dark')
+    attachMapAppearance(m as never, { theme: 'dark' })
 
     expect(m.paintProperties.get(`${BACKDROP_LAYER_ID}/background-color`)).toBe(
       MAP_BACKDROP.dark,
@@ -647,7 +659,7 @@ describe('attachMapTheme', () => {
     const { MockMap } = await import('../test/mocks/maplibre-gl')
     const m = new MockMap({})
 
-    attachMapTheme(m as never, 'dark')
+    attachMapAppearance(m as never, { theme: 'dark' })
     expect(m.paintProperties.size).toBe(0)
 
     m.layerIds = [BACKDROP_LAYER_ID, TOPO_LAYER_ID, LIVE_TOPO_LAYER_IDS.wood]
@@ -665,10 +677,116 @@ describe('attachMapTheme', () => {
     const { MockMap } = await import('../test/mocks/maplibre-gl')
     const m = new MockMap({})
 
-    attachMapTheme(m as never, 'dark')()
+    attachMapAppearance(m as never, { theme: 'dark' })()
     m.layerIds = [BACKDROP_LAYER_ID, TOPO_LAYER_ID, LIVE_TOPO_LAYER_IDS.wood]
     m.emit('styledata')
 
     expect(m.paintProperties.size).toBe(0)
+  })
+})
+
+describe('the map style and red light (MAP_STYLE_SPEC.md)', () => {
+  const TRAIL_LAYER_IDS = [
+    BACKDROP_LAYER_ID,
+    TOPO_LAYER_ID,
+    TRAIL_CASING_LAYER_ID,
+    BLAZE_LAYER_ID,
+    LIVE_TOPO_LAYER_IDS.wood,
+  ]
+
+  it('treats night_hike as a dark sheet even under the light theme', () => {
+    // A hiker readying night vision before dusk picks the style, not the
+    // whole app's theme - and everything keyed to "dark sheet" has to agree:
+    // the backdrop, the archive's dimming, and the palette itself.
+    const appearance = { theme: 'light', mapStyle: 'night_hike' } as const
+
+    expect(sheetIsDark(appearance)).toBe(true)
+    expect(mapBackdrop(appearance)).toBe(MAP_BACKDROP.dark)
+    expect(archiveRasterPaint(appearance)).toBe(ARCHIVE_RASTER_PAINT.dark)
+  })
+
+  it('keeps field by day a day sheet, red-light toggle armed or not', () => {
+    expect(sheetIsDark({ theme: 'light', mapStyle: 'field' })).toBe(false)
+    // The toggle refines night_hike only; armed under field it changes nothing.
+    expect(sheetIsDark({ theme: 'light', mapStyle: 'field', redLight: true })).toBe(false)
+    expect(redLightActive({ theme: 'light', mapStyle: 'field', redLight: true })).toBe(
+      false,
+    )
+  })
+
+  it('gives red light its own ink, the red palette halo, so halos dissolve into ground', () => {
+    const appearance = { mapStyle: 'night_hike', redLight: true } as const
+
+    expect(redLightActive(appearance)).toBe(true)
+    expect(mapBackdrop(appearance)).toBe(TOPO_PALETTE_RED.labelHalo)
+  })
+
+  it('inks the field casing at the palette label black, and keeps dark sheets warm', () => {
+    expect(trailCasingColor({ theme: 'light' })).toBe(TOPO_PALETTE.label)
+    expect(trailCasingColor({ theme: 'dark' })).toBe('#2b2620')
+    expect(trailCasingColor({ mapStyle: 'night_hike' })).toBe('#2b2620')
+  })
+
+  it('overrides the blazes to one red under red light, and only there', () => {
+    // A blaze colour is a fact about the ground. The override is the honest
+    // form of a loss that red light imposes anyway - every hue would render
+    // as murky dark red - so it applies exactly when the red palette does.
+    expect(blazeLineColor({ mapStyle: 'night_hike', redLight: true })).toBe(
+      RED_LIGHT_BLAZE_COLOR,
+    )
+    expect(blazeLineColor({ mapStyle: 'night_hike' })).toBe(BLAZE_MATCH_EXPRESSION)
+    expect(blazeLineColor({ theme: 'dark' })).toBe(BLAZE_MATCH_EXPRESSION)
+  })
+
+  it('seeds a red-light cold start red in its first frame', () => {
+    const built = buildMapStyle({
+      ...STYLE_OPTIONS,
+      background: 'hiking_topo_live',
+      mapStyle: 'night_hike',
+      redLight: true,
+    })
+    const paintOf = (id: string) =>
+      (built.layers.find((l) => l.id === id)?.paint ?? {}) as Record<string, unknown>
+
+    expect(paintOf(BLAZE_LAYER_ID)['line-color']).toBe(RED_LIGHT_BLAZE_COLOR)
+    expect(paintOf(BACKDROP_LAYER_ID)['background-color']).toBe(
+      TOPO_PALETTE_RED.labelHalo,
+    )
+    expect(paintOf(LIVE_TOPO_LAYER_IDS.wood)['fill-color']).toBe(TOPO_PALETTE_RED.wood)
+  })
+
+  it('still validates as a MapLibre style under night_hike and red light', () => {
+    for (const redLight of [false, true]) {
+      const built = buildMapStyle({
+        ...STYLE_OPTIONS,
+        background: 'hiking_topo_live',
+        mapStyle: 'night_hike',
+        redLight,
+      })
+      expect(validateStyleMin(built, latest)).toEqual([])
+    }
+  })
+
+  it('repaints casing and blaze in place on an appearance change, and restores', async () => {
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const m = new MockMap({})
+    m.layerIds = [...TRAIL_LAYER_IDS]
+
+    attachMapAppearance(m as never, { mapStyle: 'night_hike', redLight: true })()
+    attachMapAppearance(m as never, { theme: 'light' })
+
+    // Leaving red light is a true restore: the shared match expression goes
+    // back exactly as buildMapStyle spelled it, and the casing returns to the
+    // field ink.
+    expect(m.paintProperties.get(`${BLAZE_LAYER_ID}/line-color`)).toBe(
+      BLAZE_MATCH_EXPRESSION,
+    )
+    expect(m.paintProperties.get(`${TRAIL_CASING_LAYER_ID}/line-color`)).toBe(
+      TOPO_PALETTE.label,
+    )
+    expect(m.paintProperties.get(`${BACKDROP_LAYER_ID}/background-color`)).toBe(
+      MAP_BACKDROP.light,
+    )
+    expect(m.styles).toEqual([])
   })
 })

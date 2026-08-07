@@ -213,7 +213,6 @@ def test_python_mode_dump_still_yields_real_datetimes():
     ("model", "field"),
     [
         (ReportOut, "timestamp"),
-        (ReportOut, "received_at"),
         (ClosureOut, "reported_at"),
         (PreferencesOut, "updated_at"),
         (ProfileOut, "created_at"),
@@ -233,8 +232,19 @@ def test_openapi_still_documents_these_fields_as_date_time(model, field):
     assert schema.get("type") == "string"
 
 
-def test_openapi_documents_a_nullable_timestamp_as_date_time_or_null():
-    schema = ClosureOut.model_json_schema(mode="serialization")["properties"]["verified_at"]
+@pytest.mark.parametrize(
+    ("model", "field"),
+    [
+        (ClosureOut, "verified_at"),
+        # Nullable since #252: withheld from anyone who is neither the
+        # reporter nor a moderator. It moved out of the table above rather
+        # than losing its assertion - a withheld field still has to document
+        # what it is when it IS sent, or a generated client stops parsing it.
+        (ReportOut, "received_at"),
+    ],
+)
+def test_openapi_documents_a_nullable_timestamp_as_date_time_or_null(model, field):
+    schema = model.model_json_schema(mode="serialization")["properties"][field]
 
     assert {"type": "string", "format": "date-time"} in schema["anyOf"]
     assert {"type": "null"} in schema["anyOf"]

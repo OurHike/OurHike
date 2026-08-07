@@ -20,10 +20,23 @@ Five separate docs each independently added a piece of identity or privacy desig
 
 | Surface | Who sees it | What they see | Governed by |
 |---|---|---|---|
-| A condition report, closure, or warning pin | Anyone using the app (public) | Trail name + reporter type; name and exact date masked for `anonymity_window_days` | [HIKER_SAFETY.md](HIKER_SAFETY.md) |
+| A condition report, closure, or warning pin | Anyone using the app (public) | Reporter type only — see "What v1 actually ships" below; the trail name, and the date masking, are the window's job | [HIKER_SAFETY.md](HIKER_SAFETY.md) |
 | A Tramily's shared location (a check-in) | Only mutually-connected Tramily/safety-contact members | Trail name + current/recent location | [COMMUNITY_BUILDING.md](COMMUNITY_BUILDING.md) |
 | An "@" mention | Only the mentioned hiker (must be mutually connected) | Trail name of whoever mentioned them | [COMMUNITY_BUILDING.md](COMMUNITY_BUILDING.md) |
 | A hiker's own device | Only that hiker | Full local data - trail name, all their own contributions, unredacted | [ONBOARDING.md](ONBOARDING.md) / local storage |
+
+### What v1 actually ships, as against the row above — written down 2026-08-07
+
+The table describes the anonymity window, and the window is Post-MVP (ROADMAP.md). Left at that, the row read as a present-tense description of a v1 that does not exist, so here is the difference, stated rather than implied.
+
+**What the public gets on a report in v1: `reporter_type`, and nothing else that identifies anyone.** [#252](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/252) removed what was actually being served, which was worse than the row suggested in one direction and thinner in another:
+
+- **`reporter_id` — removed.** The backend was serving a stable Supabase account UUID to anonymous callers alongside a trail position and a time. Group by it and a hiker's route down the corridor falls out, with `curl` and no account. That is the linkability this whole document exists to prevent, and it was shipping while the row above described a masked trail name.
+- **`received_at`, `maintainer_id`, `club_id` — removed** from the public serialisation for the same reason. `maintainer_id` in particular was a second account UUID nobody had noticed: it is copied from the request for every report type while only a `thanks` is forced to `club_only`, so a public `blowdown` could carry a real person's id.
+- **No trail name is served at all**, so the row's "trail name" half was aspirational rather than descriptive. Public attribution is `reporter_type` alone today.
+- **The exact authored time is still served, deliberately.** The masking this document describes is *windowed* — `anonymity_window_days`, configurable, per-hiker — and an always-on coarsening is a different policy invented on the spot, not a smaller version of the designed one. The linkability that made an exact time dangerous was the stable identifier next to it, and that is gone. Revisit this when the window is built; it is a one-line change on the server and nothing in the client reads the field.
+
+`anonymity_window_days` is still accepted, stored, and read by nothing. That remains true and remains Post-MVP; what changed is that the version shipping in the meantime is no longer the linkable one.
 
 ## Reconciling the real tension, since it's easy to read these as contradictory
 

@@ -15,6 +15,8 @@ import {
   BASEMAP_MAX_ZOOM,
   BASEMAP_SCHEME,
   BASEMAP_TILES_URL,
+  BOUNDARY_OPACITY,
+  BOUNDARY_RHYTHM,
   BUNDLED_GLYPHS,
   LIVE_TOPO_ATTRIBUTION,
   LIVE_TOPO_LAYER_IDS,
@@ -427,6 +429,50 @@ describe('place labels, by distance', () => {
     // not an accident of feature order inside the tile.
     expect(sortKey('city')).toBeLessThan(sortKey('town'))
     expect(sortKey('town')).toBeLessThan(sortKey('village'))
+  })
+})
+
+describe('boundaries against paths', () => {
+  // Both draw as thin broken lines through the same woods, and along the
+  // corridor the protected land is a narrow sliver whose edges parallel the
+  // trail for miles - so the rhythm is what keeps "the law changes here" from
+  // reading as "you can walk here" (#347). Colour cannot carry that
+  // distinction alone: it is gone in greyscale and direct sun, the same
+  // argument closureStyle.ts settles for the closure band.
+
+  const paintOf = (id: string) =>
+    (liveTopoLayers({ terrain: TERRAIN, units: 'imperial' }).find(
+      (layer) => layer.id === id,
+    )?.paint ?? {}) as Record<string, unknown>
+
+  it('draws the park edge in the boundary rhythm, not a walkable one', () => {
+    // Dashed [4, 2] - a two-beat, walkable rhythm - these outlines were taken
+    // for a network of side trails. The park edge keeps the same dash-dot the
+    // state line is drawn in, and hue alone says which kind of boundary.
+    expect(paintOf(LIVE_TOPO_LAYER_IDS.parkEdge)['line-dasharray']).toEqual(
+      BOUNDARY_RHYTHM,
+    )
+    expect(paintOf(LIVE_TOPO_LAYER_IDS.boundary)['line-dasharray']).toEqual(
+      BOUNDARY_RHYTHM,
+    )
+  })
+
+  it('recedes like the rest of its class, one ink for both boundary layers', () => {
+    // Full-strength ink was the other half of the misreading: a line at path
+    // weight and path contrast gets read as a path whatever its rhythm.
+    expect(paintOf(LIVE_TOPO_LAYER_IDS.parkEdge)['line-opacity']).toBe(BOUNDARY_OPACITY)
+    expect(paintOf(LIVE_TOPO_LAYER_IDS.boundary)['line-opacity']).toBe(BOUNDARY_OPACITY)
+    expect(BOUNDARY_OPACITY).toBeLessThan(1)
+  })
+
+  it('keeps the two grammars apart: dash-dot in law, an even beat underfoot', () => {
+    // The rhythm IS the channel, so it must not collapse: the boundary
+    // pattern stays a dash-dot alternation, and the walkable lines stay on
+    // their plain two-beat patterns rather than picking the dash-dot up.
+    expect(BOUNDARY_RHYTHM.length).toBeGreaterThan(2)
+    for (const id of [LIVE_TOPO_LAYER_IDS.track, LIVE_TOPO_LAYER_IDS.path]) {
+      expect(paintOf(id)['line-dasharray']).toHaveLength(2)
+    }
   })
 })
 

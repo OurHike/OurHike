@@ -427,6 +427,33 @@ export const HILLSHADE_EXAGGERATION_EXPRESSION = [
   HILLSHADE_EXAGGERATION,
 ]
 
+/**
+ * The dash-dot rhythm for every line that exists in law rather than on the
+ * ground - the state line and the protected-land edge alike. In line-width
+ * units, like every MapLibre dasharray.
+ *
+ * The sheet's linework keeps a grammar. Walkable lines have an even, two-beat
+ * rhythm: tracks dashed [6, 3], other footpaths dotted [2, 2]. Boundaries get
+ * the dash-dot, and hue says which kind - green for protected land, grey-brown
+ * for jurisdiction.
+ *
+ * The park edge did not always follow it. Drawn dashed [4, 2] - a walkable
+ * rhythm - it was read as exactly that (#347): along the corridor the
+ * protected land is a narrow sliver whose edges run beside the trail for
+ * miles, so its outline made a plausible network of side trails. The fix is
+ * the rhythm, not a hue shift, because rhythm is the channel that survives
+ * greyscale, direct sun and colour-blindness - the same structural argument
+ * closureStyle.ts makes for the barred band. One constant for both boundary
+ * layers rather than a literal at each, so the class cannot drift back into
+ * two rhythms a reader has to learn separately.
+ */
+export const BOUNDARY_RHYTHM: [number, number, number, number] = [3, 2, 1, 2]
+
+/** Boundary ink, shared for the same reason as the rhythm: the class recedes
+ *  together. Quiet enough to sit behind anything walkable, per the palette's
+ *  own brief - nothing competes with the trail. */
+export const BOUNDARY_OPACITY = 0.7
+
 export interface LiveTopoOptions {
   /**
    * DEM and contour tile URLs, or `undefined` when they could not be built.
@@ -629,7 +656,9 @@ export function liveTopoLayers({
     },
     // Protected land is context a hiker plans with (where camping is allowed,
     // whose rules apply), so it gets an edge as well as a tint - a tint alone
-    // disappears against woodland, which is what most of it is.
+    // disappears against woodland, which is what most of it is. The edge is
+    // drawn in the boundary grammar, never a walkable rhythm - see
+    // BOUNDARY_RHYTHM for the misreading that rule comes from (#347).
     {
       id: LIVE_TOPO_LAYER_IDS.parkFill,
       type: 'fill',
@@ -648,7 +677,8 @@ export function liveTopoLayers({
       paint: {
         ...sheetColours(LIVE_TOPO_LAYER_IDS.parkEdge, palette),
         'line-width': 1,
-        'line-dasharray': [4, 2],
+        'line-dasharray': BOUNDARY_RHYTHM,
+        'line-opacity': BOUNDARY_OPACITY,
       },
     },
     // Relief shading, and the sheet's only terrain channel until the contours
@@ -827,8 +857,8 @@ export function liveTopoLayers({
       paint: {
         ...sheetColours(LIVE_TOPO_LAYER_IDS.boundary, palette),
         'line-width': 1,
-        'line-dasharray': [3, 2, 1, 2],
-        'line-opacity': 0.7,
+        'line-dasharray': BOUNDARY_RHYTHM,
+        'line-opacity': BOUNDARY_OPACITY,
       },
     },
     // Named summits with their height. This is the single most hiking-specific

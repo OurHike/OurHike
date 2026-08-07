@@ -64,7 +64,13 @@ def test_verify_report_can_set_severity_serious_in_the_same_action(client, db_se
     assert body["severity"] == "serious"
 
 
-def test_verify_report_defaults_severity_to_normal_when_omitted(client, db_session):
+def test_verify_report_leaves_severity_alone_when_omitted(client, db_session):
+    """A moderator saying nothing about severity is not a de-escalation.
+
+    This test used to assert the opposite - `severity` defaulted to `normal`
+    and was assigned unconditionally - which pinned the bug in place while
+    the schema's own docstring described the correct behaviour (#251).
+    """
     _reporter, report = _make_reporter_and_report(db_session)
     maintainer_id = _make_maintainer(db_session)
 
@@ -72,6 +78,111 @@ def test_verify_report_defaults_severity_to_normal_when_omitted(client, db_sessi
 
     assert response.status_code == 200
     assert response.json()["severity"] == "normal"
+
+
+def test_re_verifying_does_not_silently_un_escalate_a_serious_warning(client, db_session):
+    """The bug, walked end to end.
+
+    A `bad_hikers` report escalated to `serious` is what makes the 44px
+    warning pin exist on every phone (features/HIKER_SAFETY.md §1,
+    client/src/map/warningPin.ts). A second moderator re-verifying it with an
+    empty body used to take that pin off the map, with no error and no
+    record - and from a hiker's side, a warning vanishing looks exactly like
+    a warning withdrawn on purpose.
+
+    Two calls rather than one, because one call could never see it: the
+    field only resets on a verify that follows a verify.
+    """
+    _reporter, report = _make_reporter_and_report(db_session, report_type=ReportType.bad_hikers)
+    maintainer_id = _make_maintainer(db_session)
+
+    escalated = client.post(
+        f"/reports/{report.id}/verify",
+        json={"severity": "serious"},
+        headers=auth_headers(maintainer_id),
+    )
+    assert escalated.json()["severity"] == "serious"
+
+    again = client.post(f"/reports/{report.id}/verify", json={}, headers=auth_headers(maintainer_id))
+
+    assert again.status_code == 200
+    assert again.json()["severity"] == "serious"
+
+
+def test_a_moderator_can_still_de_escalate_by_saying_so(client, db_session):
+    """`normal` sent explicitly is a decision, and it has to keep working.
+
+    The fix distinguishes "omitted" from "explicitly normal"; it must not
+    turn the second into a no-op, or a warning escalated in error would have
+    no way back down.
+    """
+    _reporter, report = _make_reporter_and_report(db_session, report_type=ReportType.bad_hikers)
+    maintainer_id = _make_maintainer(db_session)
+
+    client.post(
+        f"/reports/{report.id}/verify",
+        json={"severity": "serious"},
+        headers=auth_headers(maintainer_id),
+    )
+    response = client.post(
+        f"/reports/{report.id}/verify",
+        json={"severity": "normal"},
+        headers=auth_headers(maintainer_id),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["severity"] == "normal"
+
+
+def test_verify_report_records_who_did_it_and_when(client, db_session):
+    """The audit trail closures have had all along.
+
+    Read off the row rather than the response body: these are deliberately
+    not on the public `ReportOut`, because a moderator's profile id has no
+    business in the anonymous `GET /reports` payload (#252). Surfacing them
+    to a moderator is the moderation surface's job (#235).
+    """
+    _reporter, report = _make_reporter_and_report(db_session, report_type=ReportType.bad_hikers)
+    maintainer_id = _make_maintainer(db_session)
+
+    response = client.post(
+        f"/reports/{report.id}/verify",
+        json={"severity": "serious"},
+        headers=auth_headers(maintainer_id),
+    )
+    assert response.status_code == 200
+
+    db_session.expire_all()
+    stored = db_session.get(Report, report.id)
+    assert stored.verified_by == maintainer_id
+    assert stored.verified_at is not None
+
+
+def test_an_unmoderated_report_has_no_verifier(client, db_session):
+    """Null means nobody has looked at it - which is what `status` already
+    says. These two answer WHO and WHEN, never WHETHER."""
+    _reporter, report = _make_reporter_and_report(db_session)
+
+    assert report.verified_by is None
+    assert report.verified_at is None
+
+
+def test_a_moderator_who_dismisses_a_report_is_not_recorded_as_verifying_it(client, db_session):
+    """Dismissal is a different action and must not forge a verification.
+
+    Worth asserting because the two sit next to each other in the same file
+    and take the same role gate - copying the two lines across would be an
+    easy and completely silent mistake.
+    """
+    _reporter, report = _make_reporter_and_report(db_session)
+    maintainer_id = _make_maintainer(db_session)
+
+    client.post(f"/reports/{report.id}/dismiss", headers=auth_headers(maintainer_id))
+
+    db_session.expire_all()
+    stored = db_session.get(Report, report.id)
+    assert stored.status == ReportStatus.dismissed
+    assert stored.verified_by is None
 
 
 def test_a_reporter_cannot_self_declare_their_own_report_serious(client):

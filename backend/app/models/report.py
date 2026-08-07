@@ -144,9 +144,29 @@ class Report(Base):
     # explicitly rather than relying on an implicit fallback.
     visibility = Column(Enum(Visibility, native_enum=False, length=20), nullable=False)
 
-    # Server-controlled; only a later verify action (another task) can
-    # raise this to `serious` - no field on the create schema at all.
+    # Server-controlled; only the verify action can raise this to `serious`
+    # - no field on the create schema at all. That action leaves it ALONE
+    # when a moderator says nothing about it, which it did not always do:
+    # see app/schemas/moderation.py's ReportVerifyRequest for what a silent
+    # de-escalation cost (#251).
     severity = Column(Enum(Severity, native_enum=False, length=20), nullable=False, default=Severity.normal)
+
+    # Who moderated this, and when. The same pair `closure` has carried from
+    # the start, added here because it was missing on the resource where the
+    # question matters most: a `bad_hikers` report names a person, and "who
+    # decided this was serious" had no answer at all.
+    #
+    # Nullable because most reports have never been through moderation -
+    # `status` starts at `submitted` and a great many stay there. Null means
+    # "nobody has verified this", which is exactly what `status` already
+    # says; these two answer WHO and WHEN, not WHETHER.
+    #
+    # Deliberately NOT on the public `ReportOut`. Surfacing an audit trail is
+    # the moderation surface's job (#235), and putting a moderator's profile
+    # id into the anonymous `GET /reports` payload would walk straight into
+    # the leak #252 is already open about.
+    verified_by = Column(String, ForeignKey("profiles.id"), nullable=True)
+    verified_at = Column(DateTime, nullable=True)
 
     # Optional attribution for a `thanks` (SAYING_THANKS.md). Both may be
     # empty: "someone cleared forty blowdowns and I have no idea who" is a

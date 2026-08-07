@@ -12,7 +12,7 @@ way Report's `status`/`visibility` split already works.
 
 import uuid
 
-from app.models.closure import Closure, ModerationStatus
+from app.models.closure import Closure, ClosureStatus, ModerationStatus
 from app.models.profile import Profile, Role
 from tests.tokens import auth_headers
 
@@ -124,3 +124,92 @@ def test_update_closure_status_allowed_for_maintainer_role(client, db_session):
 
     assert response.status_code == 200
     assert response.json()["status"] == "closed"
+
+
+# --- The status a closure is born with (#246) -----------------------------
+#
+# `open` in this enum means REOPENED, and the client renders it as such: the
+# banner stays silent and the sheet says "Open again". While it was also the
+# column's birth default, the designed happy path - report, verify, publish -
+# produced a verified closure that every reader was obliged to present as
+# reopened trail.
+#
+# What makes that worth a block of tests rather than a one-line assertion is
+# that nothing failed while it was broken. Both halves were individually
+# correct; only the sequence was wrong, and no test walked the sequence.
+
+
+def test_a_reported_closure_is_born_closed(client):
+    """Somebody filing this is telling us the trail is shut."""
+    response = client.post("/closures", json=_VALID_PAYLOAD, headers=auth_headers(str(uuid.uuid4())))
+
+    assert response.status_code == 201
+    assert response.json()["status"] == ClosureStatus.closed.value
+
+
+def test_a_reporter_cannot_declare_a_trail_open(client):
+    """`status` is server-controlled on create, like `moderation_status`.
+
+    Reopening a trail is a maintainer's judgment - PATCH, or the verify call.
+    A reporter who could set this could publish "the trail is fine" over
+    somebody else's closure by filing a second one.
+    """
+    payload = dict(_VALID_PAYLOAD, status="open")
+
+    response = client.post("/closures", json=payload, headers=auth_headers(str(uuid.uuid4())))
+
+    assert response.status_code == 201
+    assert response.json()["status"] == ClosureStatus.closed.value
+
+
+def test_report_then_verify_then_list_serves_a_closure_that_says_closed(client, db_session):
+    """The whole flow, in order, which is the thing that was broken.
+
+    Every step of this passed on its own. Walked end to end, the closure the
+    public list served said `open`, so client/src/lib/closureBanner.ts
+    returned null and client/src/map/closureLayers.ts drew no band - a
+    verified closure rendered as an open trail.
+    """
+    reporter_id = str(uuid.uuid4())
+    created = client.post("/closures", json=_VALID_PAYLOAD, headers=auth_headers(reporter_id))
+    assert created.status_code == 201
+    closure_id = created.json()["id"]
+
+    maintainer_id = str(uuid.uuid4())
+    db_session.add(Profile(id=maintainer_id, role=Role.maintainer))
+    db_session.commit()
+
+    verified = client.post(f"/closures/{closure_id}/verify", headers=auth_headers(maintainer_id))
+    assert verified.status_code == 200
+
+    listed = client.get("/closures").json()
+    served = next(c for c in listed if c["id"] == closure_id)
+
+    assert served["moderation_status"] == ModerationStatus.verified.value
+    assert served["status"] == ClosureStatus.closed.value
+
+
+def test_a_maintainer_can_still_reopen_a_trail(client, db_session):
+    """The `open` state has not gone anywhere - it has only stopped being the
+    state a closure starts in."""
+    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
+    maintainer_id = str(uuid.uuid4())
+    db_session.add_all([reporter, Profile(id=maintainer_id, role=Role.maintainer)])
+    db_session.commit()
+    closure = Closure(
+        reported_by=reporter.id,
+        reason_type="storm_damage",
+        start_mile_marker=1.0,
+        end_mile_marker=2.0,
+    )
+    db_session.add(closure)
+    db_session.commit()
+
+    response = client.patch(
+        f"/closures/{closure.id}",
+        json={"status": "open"},
+        headers=auth_headers(maintainer_id),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == ClosureStatus.open.value

@@ -32,6 +32,27 @@ class ClosureUpdate(BaseModel):
     note: str | None = None
 
 
+class ClosureVerify(BaseModel):
+    """What a moderator may settle in the same breath as verifying.
+
+    Optional, and the endpoint accepts no body at all - because for the
+    ordinary closure there is nothing to settle. A closure is born `closed`
+    (#246), so "yes, this is real" needs no second thought about status.
+
+    The case this exists for is the reroute. A moderator who has confirmed
+    both that the trail is shut AND that there is a marked way round is
+    making one judgment, and without this they would have to follow the
+    verify with a separate `PATCH /closures/{id}` that nothing in the flow
+    tells them about - which is the same trap #246 was, one size smaller.
+
+    `reason_type` and `note` are deliberately NOT here. Correcting what a
+    reporter wrote is editing their report, not verifying it, and PATCH is
+    where that belongs.
+    """
+
+    status: ClosureStatus | None = None
+
+
 class ClosureOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

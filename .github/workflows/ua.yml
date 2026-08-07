@@ -1,0 +1,254 @@
+# Deploys `main` to UA - the environment a release candidate sits in before it
+# is tagged. RELEASING.md §3b is the design; this is the build.
+#
+# UA exists because production used to deploy from this same push. There was no
+# state in which a change was built, integrated and reviewable but not yet being
+# served to hikers, so every gate had to run before the merge and therefore
+# tested something other than what people receive. `main` lands here now, and a
+# `v*` tag deploys production (pages.yml).
+#
+# WHY A CLOUDFLARE HOSTNAME AND NOT A PATH ON THE PRODUCTION SITE
+#
+# IndexedDB is scoped to an origin, not to a path. UA served from
+# /OurHike/ua/ on the production host would share one origin - and therefore one
+# IndexedDB - with the installed app, so a UA build with a half-finished storage
+# change could evict, overwrite or misread a hiker's 1.18 GB archive. Different
+# service worker scopes would not prevent any of it. A separate path is the
+# cheaper design and it is the wrong one.
+#
+# WHY THE EXISTING PREVIEW PROJECT AND NOT A NEW ONE
+#
+# `ua.<project>.pages.dev` is already covered by the wildcard entries the R2
+# CORS policy and Supabase's redirect list both carry for previews -
+# `https://*.<project>.pages.dev`. So UA adds no entry to either list, and
+# LAUNCH_CHECKLIST.md already names those two as the same mistake waiting to
+# happen twice. A new project would need both updated before UA could sign
+# anyone in or download anything.
+#
+# SETUP: the same Pages project and token as pr-preview.yml (LAUNCH_CHECKLIST.md
+# 3a), plus the optional UA_* settings below. Until the Cloudflare settings
+# exist this workflow says so and skips rather than failing every merge.
+
+name: Deploy UA
+
+on:
+  push:
+    branches: [main]
+  # So UA can be rebuilt after a UA_* setting changes, with no commit.
+  workflow_dispatch:
+
+# One UA at a time, newest wins. Unlike the previews there is only ever one of
+# these, so a shared group is right here where it would be wrong there.
+concurrency:
+  group: ua
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ua:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check whether this run can deploy
+        id: can
+        env:
+          API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
+        run: |
+          if [ -z "$API_TOKEN" ] || [ -z "$ACCOUNT_ID" ] || [ -z "$PROJECT" ]; then
+            echo "::warning::No Cloudflare Pages project is configured, so there is no UA deploy. See LAUNCH_CHECKLIST.md 3a."
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.can.outputs.deploy == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.can.outputs.deploy == 'true'
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install
+        if: steps.can.outputs.deploy == 'true'
+        working-directory: client
+        run: npm ci
+
+      # UA points at the candidate data where there is one, and at the same
+      # bucket as production otherwise. Prefix-only, never a separate bucket
+      # (RELEASING.md §14.2): UA verifying a copy of the bytes production will
+      # serve verifies the wrong thing.
+      - name: Resolve the data source
+        if: steps.can.outputs.deploy == 'true'
+        id: data
+        env:
+          UA_URL: ${{ vars.UA_DATA_BASE_URL }}
+          FROM_VAR: ${{ vars.DATA_BASE_URL }}
+          FROM_SECRET: ${{ secrets.DATA_BASE_URL }}
+        run: |
+          URL="${UA_URL:-${FROM_VAR:-$FROM_SECRET}}"
+          if [ -z "$URL" ]; then
+            echo "::warning::No data source is configured, so UA cannot download a map. See LAUNCH_CHECKLIST.md 1.5."
+          else
+            echo "Data source: $URL"
+          fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      # UA's own Supabase project where it exists, production's otherwise - and
+      # it says which. RELEASING.md §3d records the fallback and its cost: UA
+      # testers appear in production's user list. It is a fallback rather than
+      # the design because a UA tester's account is disposable and a hiker's is
+      # not.
+      #
+      # Sharing auth is survivable. Sharing the *database* is not, which is why
+      # the API below is a separate decision from this one.
+      - name: Resolve the Supabase project
+        if: steps.can.outputs.deploy == 'true'
+        id: supabase
+        env:
+          UA_URL: ${{ vars.UA_SUPABASE_URL }}
+          UA_KEY: ${{ vars.UA_SUPABASE_ANON_KEY }}
+          URL_FROM_VAR: ${{ vars.SUPABASE_URL }}
+          URL_FROM_SECRET: ${{ secrets.SUPABASE_URL }}
+          KEY_FROM_VAR: ${{ vars.SUPABASE_ANON_KEY }}
+          KEY_FROM_SECRET: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -n "$UA_URL" ] && [ -n "$UA_KEY" ]; then
+            URL="$UA_URL"
+            KEY="$UA_KEY"
+            echo "Supabase project: $URL (UA's own)"
+          else
+            URL="${URL_FROM_VAR:-$URL_FROM_SECRET}"
+            KEY="${KEY_FROM_VAR:-$KEY_FROM_SECRET}"
+            if [ -n "$URL" ]; then
+              echo "::warning::UA_SUPABASE_URL/UA_SUPABASE_ANON_KEY are unset, so UA signs in against the production Supabase project. Testers will appear in production's user list - see RELEASING.md 3d."
+            else
+              echo "::warning::No Supabase project is configured, so UA cannot sign anyone in."
+            fi
+          fi
+          {
+            echo "url=$URL"
+            echo "key=$KEY"
+          } >> "$GITHUB_OUTPUT"
+
+      # UA_API_BASE_URL only, and deliberately no fallback to API_BASE_URL.
+      #
+      # That variable names the production backend, and the production backend
+      # writes the moderation queue a club works from. A UA build that could
+      # send would file test reports into it - the same reasoning that keeps
+      # pr-preview.yml from setting this at all, and the reason UA gets its own
+      # backend and its own database rather than sharing production's.
+      #
+      # Unset is a supported state: reports queue in the outbox with their
+      # authored timestamps, which is behaviour worth exercising anyway.
+      - name: Resolve the backend
+        if: steps.can.outputs.deploy == 'true'
+        id: api
+        env:
+          UA_API: ${{ vars.UA_API_BASE_URL }}
+        run: |
+          if [ -z "$UA_API" ]; then
+            echo "::notice::UA_API_BASE_URL is unset, so UA queues reports in the outbox instead of sending them. It never falls back to the production backend."
+          else
+            echo "Backend: $UA_API"
+          fi
+          echo "url=$UA_API" >> "$GITHUB_OUTPUT"
+
+      - name: Build the app
+        if: steps.can.outputs.deploy == 'true'
+        working-directory: client
+        env:
+          # The root: UA has a hostname to itself, so the installed PWA's scope
+          # is the whole origin, which is also how production is served.
+          VITE_BASE_PATH: /
+          VITE_DATA_BASE_URL: ${{ steps.data.outputs.url }}
+          VITE_SUPABASE_URL: ${{ steps.supabase.outputs.url }}
+          VITE_SUPABASE_ANON_KEY: ${{ steps.supabase.outputs.key }}
+          VITE_AUTH_PROVIDERS: ${{ vars.AUTH_PROVIDERS }}
+          VITE_API_BASE_URL: ${{ steps.api.outputs.url }}
+        run: npm run build
+
+      # The same proof pages.yml makes about production, for the same reason:
+      # setting a variable and having it reach the bundle are different claims,
+      # and the gap is invisible from outside.
+      - name: Confirm the data source reached the bundle
+        if: steps.can.outputs.deploy == 'true'
+        working-directory: client
+        env:
+          DATA_URL: ${{ steps.data.outputs.url }}
+        run: |
+          if [ -z "$DATA_URL" ]; then
+            echo "No data source configured - skipping the check."
+            exit 0
+          fi
+          if grep -rqF -- "$DATA_URL" dist/assets/*.js; then
+            echo "Data source is present in the built bundle."
+          else
+            echo "::error::A data source was set but is absent from the built bundle - UA would ship unable to download anything."
+            exit 1
+          fi
+
+      - name: Publish UA
+        id: deploy
+        if: steps.can.outputs.deploy == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # `ua` is what Cloudflare turns into the hostname, and it is a fixed
+          # alias rather than a per-run one - the whole point is a URL that
+          # volunteers can keep. It cannot collide with a preview: those are all
+          # `pr-<n>`, and the cleanup action that removes them on close matches
+          # that shape rather than every alias in the project.
+          command: >-
+            pages deploy client/dist
+            --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }}
+            --branch=ua
+            --commit-dirty=true
+
+      # Cloudflare mints an alias lazily and its edge answers 522 for a minute
+      # or two before it routes anywhere - see pr-preview.yml, where trusting
+      # the upload rather than the URL cost the first person to click a link.
+      # This only happens on the very first UA deploy, but that is exactly the
+      # run whose failure would look like a broken design.
+      - name: Wait for UA to answer
+        if: steps.can.outputs.deploy == 'true'
+        env:
+          URL: ${{ steps.deploy.outputs.pages-deployment-alias-url }}
+          IMMUTABLE: ${{ steps.deploy.outputs.deployment-url }}
+        run: |
+          if [ -z "$URL" ]; then
+            echo "::warning::The deploy reported no alias URL. This build is at $IMMUTABLE."
+            exit 0
+          fi
+          for attempt in $(seq 1 30); do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$URL" || echo 000)"
+            if [ "$code" = "200" ]; then
+              echo "UA answered 200 on attempt $attempt: $URL"
+              exit 0
+            fi
+            echo "Attempt $attempt: $code. Waiting for the alias to route."
+            sleep 5
+          done
+          echo "::warning::UA still answers something other than 200 after 30 attempts. This build is at $IMMUTABLE."
+
+      - name: Say where UA is
+        if: steps.can.outputs.deploy == 'true'
+        env:
+          URL: ${{ steps.deploy.outputs.pages-deployment-alias-url }}
+          IMMUTABLE: ${{ steps.deploy.outputs.deployment-url }}
+        run: |
+          {
+            echo "### UA"
+            echo
+            echo "**${URL:-$IMMUTABLE}**"
+            echo
+            echo "Built from \`$GITHUB_SHA\`. This is what a release candidate looks like;"
+            echo "production is whatever tag was last deployed (RELEASING.md §2)."
+          } >> "$GITHUB_STEP_SUMMARY"

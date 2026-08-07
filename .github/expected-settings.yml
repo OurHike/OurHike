@@ -125,6 +125,53 @@ settings:
       pages.yml - pr-preview.yml deliberately does not, so a preview cannot
       file test reports into the moderation queue a club works from.
 
+  UA_DATA_BASE_URL:
+    where: variable
+    required: false
+    why: >-
+      Which published dataset UA reads, when that is deliberately not the one
+      production reads - a candidate release staged for verification
+      (pipeline/DATA_RELEASES.md). Optional because unset is the normal state:
+      ua.yml falls back to DATA_BASE_URL, so UA reads exactly what production
+      does until somebody is verifying a new dataset. A prefix in the same
+      bucket rather than a bucket of its own, on purpose - UA checking a copy
+      of the bytes production will serve checks the wrong bytes
+      (RELEASING.md 14.2).
+
+  UA_SUPABASE_URL:
+    where: variable
+    required: false
+    why: >-
+      UA's own Supabase project, so that a tester filing a test report is not
+      writing to the database a club moderates. Optional, and its absence is
+      the documented fallback rather than a fault: ua.yml uses production's
+      project for authentication and says so in the log, at the stated cost
+      that UA testers appear in production's user list (RELEASING.md 3d).
+      Sharing authentication is survivable; sharing the database is what
+      UA_API_BASE_URL below exists to prevent.
+
+  UA_SUPABASE_ANON_KEY:
+    where: variable
+    required: false
+    why: >-
+      The other half of UA's Supabase project, and public by design for the
+      same reason SUPABASE_ANON_KEY is. ua.yml uses the pair or neither - one
+      without the other falls back to production rather than building a UA
+      that cannot sign anyone in.
+
+  UA_API_BASE_URL:
+    where: variable
+    required: false
+    why: >-
+      Where UA sends queued reports - the UA backend, never production's.
+      Optional because unset is a supported and currently normal state: with no
+      value UA queues reports in the outbox with their authored timestamps,
+      which is behaviour worth exercising anyway. The reason this exists at all
+      rather than ua.yml reading API_BASE_URL is that API_BASE_URL names the
+      production backend, and a UA build that could send would file test
+      reports into the moderation queue a club works from. ua.yml deliberately
+      has no fallback for this one setting.
+
   CLOUDFLARE_API_TOKEN:
     where: secret
     required: true

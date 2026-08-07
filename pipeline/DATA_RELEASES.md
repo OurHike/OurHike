@@ -30,7 +30,7 @@ Four separate things, deliberately not collapsed into one:
 | **Daily freshness check** | cron, daily | **no — holds no credentials** | no |
 | **Weekly candidate build** | cron, weekly | yes, only under `releases/<new>/` | no |
 | **Verification battery** | after each build | no | no |
-| **Release** | a merged PR | no | **yes — this is the only one** |
+| **Release** | a merged PR, then a tag | no | **yes — this is the only one** (see §4's amendment) |
 
 The separation is the design. A scheduled job cannot change a hiker's data even if it wanted to, because the only thing that selects a dataset is a constant in the client source.
 
@@ -174,6 +174,8 @@ and `config.ts:dataUrl()` becomes `` `${DATA_BASE_URL}/releases/${DATA_RELEASE}/
 **Assumption (unanswered question): a committed constant, not a repo variable.** A variable would let the dataset every hiker receives change with no commit, no review and no history. A constant puts the release in `git log`, makes it revertable with `git revert`, and puts it structurally out of reach of every pipeline workflow — they all run with `contents: read`.
 
 The weekly build's last job opens a **draft PR** on `data-release/<version>` changing that one line, with the full verification report as the body. A human reviews and merges. `pages.yml` redeploys on push to main. That merge is the release, and it is the only thing that is.
+
+**Amended 2026-08-07 by [../RELEASING.md](../RELEASING.md).** That last sentence was written when `main` deployed straight to production, which was true at the time. Under the code release process it no longer is: the merge deploys to **UA**, and a tagged release is what puts the new dataset in front of hikers. Everything else above stands unchanged — the constant is still what selects a dataset, it is still committed rather than configured, and a scheduled job still cannot move it. What changes is that promoting it now gets a real client fetching it through a real browser first, which is the one thing this document's own verification battery cannot do from a runner. RELEASING.md §10 is the seam.
 
 `pages.yml` gains one guard next to its existing grep proving `DATA_BASE_URL` was inlined: assert `releases/<DATA_RELEASE>/manifest.json` returns 200, so a build can never deploy pinned to a folder that is not there.
 

@@ -27,6 +27,7 @@ This repository keeps two different kinds of writing, and the difference is wort
 | [BRANCHING.md](BRANCHING.md) | Branching and pull request strategy, and running several at once |
 | [ROADMAP.md](ROADMAP.md) | Phase narrative — where the project is and what each phase means |
 | [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) | Ordered runbook for getting v1 deployed |
+| [RELEASING.md](RELEASING.md) | How a release is versioned, named, gated and shipped, and the three environments it moves through |
 | [pipeline/DBT.md](pipeline/DBT.md), [pipeline/DATA_RELEASES.md](pipeline/DATA_RELEASES.md) | Data platform designs |
 | [pipeline/R2_LAYOUT.md](pipeline/R2_LAYOUT.md) | Where an artifact goes in the bucket and what it may be called |
 

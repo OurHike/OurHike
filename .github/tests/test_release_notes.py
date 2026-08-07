@@ -1,0 +1,259 @@
+"""Tests for the release process's machinery - the notes generator and the
+workflows that gate a release.
+
+Two halves, for the same reason `test_pages_publish.py` has two:
+
+`TestTheGenerator` covers `.github/scripts/release_notes.py`'s pure functions.
+The generator's I/O half - git and the GitHub API - is deliberately not covered:
+this suite installs pytest, PyYAML and ruff, and a release script is not worth
+adding an HTTP mocking dependency to it. The seam is kept small enough to read
+instead.
+
+`TestTheReleaseWorkflows` is the static half, and every assertion in it stands
+for a way the design in RELEASING.md can be undone by a one-line edit that looks
+harmless:
+
+  * `pages.yml` triggering on `main` again turns production back into continuous
+    deployment, which is the exact thing the whole process exists to stop, and
+    nothing else would notice - the site would deploy perfectly well.
+  * `ua.yml` reading `API_BASE_URL` gives UA the production backend, so a
+    tester's report lands in the moderation queue a club works from.
+  * `ua.yml` building for a subpath instead of its own origin puts UA on
+    production's origin, where it shares one IndexedDB with the installed app
+    and can evict a hiker's 1.18 GB archive.
+  * The release being created without `draft: true` publishes it, which
+    CLAUDE.md and RELEASING.md §12 both reserve for a human.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+import yaml
+from release_notes import (
+    Change,
+    area_of,
+    group_by_area,
+    hiker_facing,
+    linked_issues,
+    pull_request_numbers,
+    render_notes,
+    slug,
+)
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+WORKFLOW_DIR = REPO_ROOT / ".github" / "workflows"
+REPO = "jaimito-asuntos-gringuenos/OurHike"
+
+
+def _workflow(name: str) -> dict:
+    return yaml.safe_load((WORKFLOW_DIR / name).read_text(encoding="utf-8"))
+
+
+def _triggers(workflow: dict) -> dict:
+    """A workflow's `on:` block.
+
+    PyYAML implements YAML 1.1, in which `on` is a boolean - so the key comes
+    back as `True` rather than as the string every workflow file appears to
+    contain. Reading `workflow["on"]` returns None, which would make every
+    assertion below pass vacuously against a trigger nobody had checked.
+    """
+    return workflow.get(True, workflow.get("on"))
+
+
+def _text(name: str) -> str:
+    return (WORKFLOW_DIR / name).read_text(encoding="utf-8")
+
+
+class TestTheGenerator:
+    def test_reads_a_merge_commit_subject(self):
+        assert pull_request_numbers("Merge pull request #364 from owner/branch") == [364]
+
+    def test_reads_a_squashed_subject(self):
+        """Both spellings are in this repository's history, so a generator that
+        knew one would produce short notes rather than fail."""
+        assert pull_request_numbers("Serve POI photos from our own bucket (#366)") == [366]
+
+    def test_keeps_order_and_drops_duplicates(self):
+        log = "Merge pull request #10 from a/b\nSomething (#7)\nMerge pull request #10 from a/b\n"
+        assert pull_request_numbers(log) == [10, 7]
+
+    def test_ignores_a_subject_that_merely_mentions_a_number(self):
+        assert pull_request_numbers("Fix the thing described in #42") == []
+
+    def test_ignores_ordinary_commits(self):
+        assert pull_request_numbers("Give a report photo somewhere to go\nAnother commit\n") == []
+
+    @pytest.mark.parametrize("word", ["Closes", "closes", "closed", "Fixes", "fixed", "resolve", "Resolves"])
+    def test_reads_every_closing_keyword_github_honours(self, word):
+        assert linked_issues(f"{word} #370") == [370]
+
+    def test_a_bare_mention_does_not_close(self):
+        """CONTRIBUTING.md draws this distinction and pr-issue-link.yml enforces
+        it: referring to an issue and resolving it are different claims."""
+        assert linked_issues("Related to #370, see also #12") == []
+
+    def test_collects_several_issues_without_duplicates(self):
+        assert linked_issues("Closes #1\nfixes #2\nCloses #1") == [1, 2]
+
+    def test_area_follows_the_declared_order(self):
+        assert area_of(["ops", "client"]) == "client"
+
+    def test_area_of_an_unlabelled_change(self):
+        assert area_of([]) == "other"
+        assert area_of(["v1-mvp"]) == "other"
+
+    def test_groups_in_area_order_and_omits_empty_buckets(self):
+        changes = [Change(1, "a", ["docs"]), Change(2, "b", ["client"]), Change(3, "c", ["ops"])]
+        assert list(group_by_area(changes)) == ["client", "ops", "docs"]
+
+    def test_a_docs_only_change_is_not_hiker_facing(self):
+        assert hiker_facing([Change(1, "Fix a typo", ["docs"])]) == []
+
+    def test_an_internal_change_that_also_touches_the_client_is_hiker_facing(self):
+        changes = [Change(1, "Retarget the deploy", ["ops", "client"])]
+        assert len(hiker_facing(changes)) == 1
+
+    def test_an_unlabelled_change_is_offered_rather_than_dropped(self):
+        """Erring toward including is deliberate. An extra line a human deletes
+        costs a moment; a missed one ships a release that does not mention what
+        it changed."""
+        assert len(hiker_facing([Change(1, "Something", [])])) == 1
+
+    def test_slug_makes_a_filename_from_a_landmark(self):
+        assert slug("Springer Mountain") == "springer-mountain"
+        assert slug("Harpers Ferry") == "harpers-ferry"
+
+    def test_the_notes_lead_with_the_version_and_its_name(self):
+        notes = render_notes("v1.0.0", "Springer Mountain", [], REPO)
+        assert notes.startswith("# v1.0.0 — Springer Mountain\n")
+
+    def test_every_change_appears_with_its_pull_request_and_issue(self):
+        notes = render_notes("v1.1.0", "Blood Mountain", [Change(366, "Serve POI photos", ["client"], [234])], REPO)
+        assert "Serve POI photos" in notes
+        assert f"https://github.com/{REPO}/pull/366" in notes
+        assert f"https://github.com/{REPO}/issues/234" in notes
+
+    def test_a_change_closing_no_issue_still_appears(self):
+        """A `no-issue` change is a legitimate state, so leaving it out of the
+        notes would quietly under-report a release."""
+        notes = render_notes("v1.0.1", "Springer Mountain", [Change(9, "Bump a dependency", ["no-issue"])], REPO)
+        assert "Bump a dependency" in notes
+
+    def test_the_not_validated_section_is_present_even_with_nothing_to_put_in_it(self):
+        """RELEASING.md §8d: this section is never empty, and a release whose
+        author believes it is has not looked. An absent heading is how it would
+        quietly become optional."""
+        notes = render_notes("v1.0.0", "Springer Mountain", [], REPO, unvalidated=[])
+        assert "## What is not validated" in notes
+
+    def test_unvalidated_issues_are_listed_with_links(self):
+        notes = render_notes("v1.0.0", "Springer Mountain", [], REPO, unvalidated=[Change(93, "Wrong-way thresholds")])
+        assert "Wrong-way thresholds" in notes
+        assert f"https://github.com/{REPO}/issues/93" in notes
+
+    def test_a_release_with_nothing_hiker_visible_says_so(self):
+        notes = render_notes("v1.0.1", "Springer Mountain", [Change(1, "Tidy a comment", ["docs"])], REPO)
+        assert "internal work only" in notes
+
+    def test_the_pinned_data_release_is_named_when_there_is_one(self):
+        notes = render_notes("v1.2.0", "Fontana Dam", [], REPO, data_release="2026-08-07")
+        assert "2026-08-07" in notes
+
+    def test_an_unpinned_data_release_says_that_rather_than_nothing(self):
+        notes = render_notes("v1.2.0", "Fontana Dam", [], REPO, data_release=None)
+        assert "No data release is pinned" in notes
+
+    def test_the_human_half_is_marked_rather_than_left_blank(self):
+        """The name, the figure and the prose are the parts a generator cannot
+        do. A draft that looked finished is one that ships with the generated
+        pull request titles as its hiker-facing notes."""
+        notes = render_notes("v1.0.0", "Springer Mountain", [Change(1, "A change", ["client"])], REPO)
+        assert notes.count("TODO (human)") >= 3
+        assert "## Named beside" in notes
+
+
+class TestTheReleaseWorkflows:
+    def test_production_deploys_from_a_tag(self):
+        push = _triggers(_workflow("pages.yml"))["push"]
+        assert push.get("tags") == ["v*"]
+
+    def test_production_does_not_deploy_from_a_branch(self):
+        """The single most important assertion in this file. Re-adding
+        `branches: [main]` here turns production back into continuous deployment
+        - every merge live to hikers, no gate, nowhere for a candidate to wait -
+        and nothing else in the repository would report it, because the deploy
+        would keep working perfectly."""
+        push = _triggers(_workflow("pages.yml"))["push"]
+        assert "branches" not in push
+
+    def test_ua_deploys_from_main(self):
+        push = _triggers(_workflow("ua.yml"))["push"]
+        assert push.get("branches") == ["main"]
+
+    def test_ua_builds_for_its_own_origin(self):
+        """IndexedDB is per-origin, not per-path. A UA build made for a subpath
+        of the production host shares one IndexedDB with the installed app and
+        can evict a hiker's 1.18 GB archive - so the base path being `/` is a
+        storage-isolation assertion, not a cosmetic one."""
+        steps = _workflow("ua.yml")["jobs"]["ua"]["steps"]
+        build = next(step for step in steps if step.get("name") == "Build the app")
+        assert build["env"]["VITE_BASE_PATH"] == "/"
+
+    def test_ua_never_reaches_the_production_backend(self):
+        """`API_BASE_URL` names the backend that writes the moderation queue a
+        club works from. UA gets `UA_API_BASE_URL` or nothing - a fallback here
+        would file test reports into real moderation work, which is the same
+        reason pr-preview.yml sets no backend at all."""
+        text = _text("ua.yml")
+        assert "vars.UA_API_BASE_URL" in text
+        assert not re.search(r"vars\.API_BASE_URL", text)
+
+    def test_only_the_production_workflow_writes_the_pages_branch(self):
+        """UA is a Cloudflare deployment precisely so that it is a different
+        origin. Publishing it to `gh-pages` would put it back on production's
+        origin however the paths were arranged."""
+        writers = [path.name for path in WORKFLOW_DIR.glob("*.yml") if "publish-to-pages" in path.read_text(encoding="utf-8")]
+        assert writers == ["pages.yml"]
+
+    def test_a_tag_without_notes_does_not_deploy(self):
+        """Gate 12. The notes file is canonical (§7a), and the failure it
+        guards is silent in the direction that matters: the site deploys and the
+        release has no record."""
+        steps = _workflow("pages.yml")["jobs"]["build"]["steps"]
+        assert any("release notes" in (step.get("name") or "").lower() for step in steps)
+
+    def test_the_github_release_is_only_ever_drafted(self):
+        """CLAUDE.md and RELEASING.md §12: a workflow may prepare everything and
+        may not publish. `draft: true` is the whole of that rule in machine-
+        readable form."""
+        release = _workflow("pages.yml")["jobs"]["release"]
+        script = "\n".join(step.get("run", "") for step in release["steps"])
+        assert "draft: true" in script
+        assert '"draft": false' not in script
+
+    def test_the_release_job_attaches_the_build_that_deployed(self):
+        """A second build of the same commit is not the bytes that shipped - it
+        is a build that agrees with them until one day it does not."""
+        release = _workflow("pages.yml")["jobs"]["release"]
+        assert any("download-artifact" in str(step.get("uses", "")) for step in release["steps"])
+        assert release["needs"] == "build"
+
+    def test_the_notes_workflow_is_never_automatic(self):
+        """Drafting notes pushes a branch and opens a pull request. On a trigger
+        it would do that on somebody else's schedule."""
+        assert list(_triggers(_workflow("release-notes.yml"))) == ["workflow_dispatch"]
+
+    def test_the_notes_pull_request_is_labelled_so_it_can_pass_ci(self):
+        """`pr-issue-link.yml` fails a pull request that closes no issue, which
+        is correct of it and wrong for release paperwork. Without the label
+        every release pull request opens red for a reason the opener cannot
+        fix."""
+        assert "no-issue" in _text("release-notes.yml")
+
+    def test_the_notes_workflow_refuses_to_reuse_a_tag(self):
+        """Re-releasing a version would move a tag that installed builds and
+        retention policy are both pinned to."""
+        assert "already tagged" in _text("release-notes.yml")

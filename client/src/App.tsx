@@ -352,7 +352,7 @@ function App() {
   // Resolves 'auto' against the OS, writes `data-theme` for the stylesheets,
   // and hands back what actually got drawn - which the map needs as a prop,
   // because a WebGL canvas cannot read a CSS variable (map/style.ts's
-  // attachMapTheme).
+  // attachMapAppearance).
   //
   // Called above the `preferencesLoaded` gate below, like every other hook
   // here: it runs on DEFAULT_PREFERENCES for the tick before the phone's own
@@ -1649,8 +1649,12 @@ function App() {
           showZoomButtons={finePointer}
           // The canvas is WebGL and cannot read the `data-theme` attribute the
           // rest of the app follows, so the resolved answer goes down as a prop
-          // - see map/style.ts's attachMapTheme.
+          // - see map/style.ts's attachMapAppearance. The style, red-light and
+          // detail preferences ride the same road for the same reason.
           theme={resolvedTheme}
+          mapStyle={preferences.map_style}
+          redLight={preferences.red_light_enabled}
+          detail={preferences.layer_detail_level}
           // The corridor is the opening view only. Once there is a camera to put
           // back, it wins: `bounds` would otherwise re-frame the entire trail
           // every time the map screen came back from another tab.

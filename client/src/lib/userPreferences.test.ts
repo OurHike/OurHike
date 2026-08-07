@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   BACKGROUND_SOURCES,
   DEFAULT_PREFERENCES,
+  MAP_STYLE_VALUES,
   PREFERENCE_KEYS,
   type UserPreferences,
 } from './userPreferences'
@@ -58,8 +59,10 @@ describe('UserPreferences schema', () => {
         'hiking_detail_level',
         'layer_detail_level',
         'location_permission_requested',
+        'map_style',
         'max_background_zoom',
         'onboarding_completed',
+        'red_light_enabled',
         'show_roads',
         'theme',
         'trail_name',
@@ -109,5 +112,23 @@ describe('UserPreferences schema', () => {
 describe('the hiking sheet level (#276)', () => {
   it('defaults to Standard, the recommended and envelope-sized cut', () => {
     expect(DEFAULT_PREFERENCES.hiking_detail_level).toBe('standard')
+  })
+})
+
+describe('map appearance (MAP_STYLE_SPEC.md)', () => {
+  it('defaults to the field style with red light off - the reviewed day sheet, never the red one', () => {
+    expect(DEFAULT_PREFERENCES.map_style).toBe('field')
+    expect(DEFAULT_PREFERENCES.red_light_enabled).toBe(false)
+  })
+
+  it('offers only styles that have palettes to draw', () => {
+    // The spec names five; quiet_pine, parchment and ridgeline join this list
+    // in the release that carries their reviewed colours, not before - a
+    // style nothing can render is a settings row nobody can honour.
+    expect([...MAP_STYLE_VALUES].sort()).toEqual(['field', 'night_hike'].sort())
+  })
+
+  it('defaults layer detail to standard - borders off, everything else on', () => {
+    expect(DEFAULT_PREFERENCES.layer_detail_level).toBe('standard')
   })
 })

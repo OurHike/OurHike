@@ -696,7 +696,7 @@ describe('preferences from the More screen', () => {
     // The map is unmounted while More is showing (it is a different screen,
     // not a hidden one), so what this can observe on the way back is the style
     // the canvas was built with. That a theme change on a LIVE map repaints in
-    // place instead of rebuilding is map/style.test.ts's attachMapTheme block.
+    // place instead of rebuilding is map/style.test.ts's attachMapAppearance block.
     const user = userEvent.setup()
     hikerOnTrail()
     render(<App />)

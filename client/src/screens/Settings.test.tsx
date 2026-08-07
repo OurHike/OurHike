@@ -72,6 +72,47 @@ describe('Settings', () => {
     expect(toggles.filter((name) => /closure|warning/i.test(name))).toEqual([])
   })
 
+  it('writes a map style change as a preference patch', async () => {
+    const user = userEvent.setup()
+    render(<Settings {...PROPS} />)
+
+    await user.click(screen.getByRole('radio', { name: /night hike/i }))
+
+    expect(PROPS.onChange).toHaveBeenCalledWith({ map_style: 'night_hike' })
+  })
+
+  it('writes a detail change as a preference patch', async () => {
+    const user = userEvent.setup()
+    render(<Settings {...PROPS} />)
+
+    await user.click(screen.getByRole('radio', { name: /minimal/i }))
+
+    expect(PROPS.onChange).toHaveBeenCalledWith({ layer_detail_level: 'minimal' })
+  })
+
+  it('offers red light only while night_hike is chosen', () => {
+    // Under Field the toggle would change nothing - the sub-mode refines
+    // night_hike only (map/liveTopo.ts sheetPalette) - and a live-looking
+    // control with no effect is the dishonesty the Later rows exist to avoid.
+    render(<Settings {...PROPS} />)
+
+    expect(screen.queryByRole('checkbox', { name: /red light/i })).toBeNull()
+  })
+
+  it('writes the red-light toggle once night_hike is chosen', async () => {
+    const user = userEvent.setup()
+    render(
+      <Settings
+        {...PROPS}
+        preferences={{ ...DEFAULT_PREFERENCES, map_style: 'night_hike' }}
+      />,
+    )
+
+    await user.click(screen.getByRole('checkbox', { name: /red light/i }))
+
+    expect(PROPS.onChange).toHaveBeenCalledWith({ red_light_enabled: true })
+  })
+
   it('shows the wrong-way alert as Later, because nothing implements it yet', () => {
     // The preference is real (lib/userPreferences.ts) but the feature is not:
     // no monitor runs, no cue mounts, no push fires. A live-looking switch

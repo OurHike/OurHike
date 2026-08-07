@@ -3,10 +3,12 @@
 How a change gets from `main` to a hiker's phone, and what has to be true before it
 does.
 
-**Status: designed 2026-08-07, not yet built.** Written before the code, per this
+**Status: designed and largely built, 2026-08-07.** Written before the code, per this
 project's usual convention ([DATA_RELEASES.md](pipeline/DATA_RELEASES.md),
-[FEATURES.md](FEATURES.md)). Nothing in this document is running yet; the build is
-tracked in issues, per [CONTRIBUTING.md](CONTRIBUTING.md)'s one-home rule.
+[FEATURES.md](FEATURES.md)), and then built in the same change. **§13 is the honest
+line between the two** — the workflows exist and run, and the parts that need a
+dashboard, an account or a previous release to compare against do not. The remainder
+is tracked in issues, per [CONTRIBUTING.md](CONTRIBUTING.md)'s one-home rule.
 
 This is the canonical home for the **code** release process — versions, gates,
 environments, notes. [pipeline/DATA_RELEASES.md](pipeline/DATA_RELEASES.md) owns the
@@ -50,10 +52,10 @@ a change to wait.
 
 **`main` stops being production.**
 
-| | today | designed |
+| | before | now |
 |---|---|---|
 | push to `main` | → GitHub Pages, live to hikers | → **UA**, live to testers |
-| annotated tag `v*` | *nothing — no tags exist* | → **Production**, live to hikers |
+| annotated tag `v*` | *nothing — no tags existed* | → **Production**, live to hikers |
 
 That is the whole structural change. Everything else in this document is process
 arranged around it: naming, notes, review, compatibility and testing are all things
@@ -289,7 +291,7 @@ What must be true before a tag is pushed. **Hard** means the release does not ha
 | 9 | `check_freshness.py` — all four upstreams unchanged or knowingly changed | hard | LAUNCH_CHECKLIST.md 7 |
 | 10 | Release review complete, findings triaged (§9) | hard | procedure |
 | 11 | No open issue labelled `release-blocker` | hard | procedure, checkable by API |
-| 12 | Notes written, name assigned, figure cited | hard | the release file exists |
+| 12 | Notes written, name assigned, figure cited | hard | `pages.yml` refuses a tag with no `releases/<version>-*.md` |
 | 13 | Field-validated thresholds actually field-validated | **soft** | stated in the notes — see §8d |
 | 14 | Real-device pass on iOS and Android | **soft** until Phase 3 | stated in the notes |
 
@@ -477,10 +479,41 @@ which is the difference between this rule and the one it extends.
 
 ## 13. Status
 
-Designed. Not built. What exists today: the suites, the previews, `pages.yml`'s
-push-to-`main` deploy, and `pr-issue-link.yml`'s guarantee that every change carries
-an issue. What does not exist: UA, tags, the notes generator, the compatibility
-fixtures, the labels, the required checks, and the environment protection rule.
+**Built:**
+
+| | |
+|---|---|
+| `pages.yml` | Deploys production from a `v*` tag, not from `main`. Refuses a tag with no notes file (gate 12), and drafts the GitHub release with the app exactly as deployed, the OpenAPI document and the data manifest attached |
+| `ua.yml` | Deploys `main` to UA on its own Cloudflare origin, with no path to the production backend |
+| `release-notes.yml` | Generates a notes draft and opens it as a pull request, labelled so it can pass CI |
+| `.github/scripts/release_notes.py` | The generator. Pure half tested in `.github/tests/test_release_notes.py`; the git and API half is a thin seam |
+| `releases/` | Where the notes live, canonically |
+| `.github/expected-settings.yml` | The four `UA_*` settings declared, so the manifest suite can see them |
+
+**Not built, and each one is why the process is not yet enforced rather than merely
+followed:**
+
+- **The UA infrastructure itself.** The workflow is written and degrades politely;
+  the Cloudflare alias will appear on the first push to `main` after this lands,
+  but the UA Supabase project and the UA Fly app are account work
+  ([#371](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/371)).
+  Until `UA_API_BASE_URL` exists, UA queues reports in the outbox — which is a
+  supported state, not a broken one.
+- **The repository settings** — required status checks, the `production`
+  environment's reviewer, and the two labels
+  ([#375](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/375)).
+  These are the difference between §8's table being a mechanism and being a
+  document, and none of them can be set from a checkout.
+- **The compatibility checks** ([#374](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/374)).
+  Deliberately last: the OpenAPI diff and the stored-data fixtures both compare
+  against a *previous release*, and there is no previous release to compare to
+  until `v1.0.0` exists. Building them now would mean shipping code nothing can
+  exercise — which TESTING.md is explicit about being worse than not having it.
+  The baseline they will read is already being attached by the release job.
+- **The version in the app** ([#372](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/372)).
+  `client/package.json` still says `0.0.0` and nothing displays a version. The tag
+  is the source of truth for a release either way; this is about a hiker being
+  able to read back which build they have.
 
 The build is tracked in issues rather than enumerated here — CONTRIBUTING.md's one
 home per item, and the reason ROADMAP.md's checklists are gone.

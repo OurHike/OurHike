@@ -1,5 +1,7 @@
 [tool.pytest.ini_options]
 testpaths = ["."]
+# So a test can import the release scripts that live next door.
+pythonpath = ["../scripts"]
 
 [tool.ruff]
 line-length = 130

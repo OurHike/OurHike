@@ -33,10 +33,21 @@
 
 name: Deploy Pages
 
+# Production deploys from a TAG, not from `main`. RELEASING.md §2 is the whole
+# argument; the short version is that this workflow used to run on every push to
+# `main`, which made merging a pull request the act of shipping to hikers and
+# left nowhere for a release candidate to wait. `main` now deploys to UA
+# (ua.yml) and an annotated `v*` tag deploys here.
+#
+# workflow_dispatch stays, for the case it was added for - republishing after a
+# repository variable changes, with no code change - and now also serves as the
+# rollback: dispatch against a previous tag and production is that tag again
+# (RELEASING.md §11b).
 on:
   push:
-    branches: [main]
-  # So the site can be republished after setting DATA_BASE_URL, with no code change.
+    tags: ['v*']
+  # So the site can be republished after setting DATA_BASE_URL, with no code
+  # change - and so a previous tag can be re-deployed to roll back.
   workflow_dispatch:
 
 permissions:
@@ -58,6 +69,30 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+
+      # Gate 12 (RELEASING.md §8): a tag with no notes committed beside it is a
+      # release nobody wrote down, and the notes file is canonical rather than
+      # the GitHub release body (§7a). Checked here rather than trusted, because
+      # the failure is silent in the direction that matters - the site deploys
+      # perfectly well and the release has no record.
+      #
+      # Only on a tag. A workflow_dispatch run is a republish or a rollback of
+      # something already released, and re-asserting its paperwork would make
+      # the rollback path fail exactly when it is needed.
+      - name: Confirm this tag has its release notes
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          # Nullglob so a pattern that matches nothing is an empty list rather
+          # than the literal pattern, which would otherwise "exist" as a name.
+          shopt -s nullglob
+          notes=(releases/"$VERSION"-*.md)
+          if [ ${#notes[@]} -eq 0 ]; then
+            echo "::error::No release notes for $VERSION. Expected releases/$VERSION-<name>.md - see RELEASING.md §7a."
+            exit 1
+          fi
+          echo "Release notes: ${notes[0]}"
 
       - uses: actions/setup-node@v4
         with:
@@ -228,3 +263,136 @@ jobs:
           # that pushes without appearing to need a token to push with is the
           # kind of quiet that the manifest exists to prevent.
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Handed to the release job below rather than rebuilt there. The point of
+      # attaching a build to a release is to be able to answer a question about
+      # the bytes that shipped in three months' time, and a second build of the
+      # same commit is not those bytes - it is a build that agrees with them
+      # until some day it does not.
+      - name: Keep the built app for the release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-dist
+          path: _site/app
+          retention-days: 7
+
+  # The record of the release, drafted and left for a human. RELEASING.md §12:
+  # an agent - or a workflow, which is the same thing wearing a hat - may
+  # prepare everything and may not publish. So this creates a DRAFT and stops.
+  #
+  # Three attachments, each because a question gets asked later and rebuilding
+  # is not an answer: the app exactly as deployed, the backend's OpenAPI
+  # document (which is the baseline the next release's compatibility diff reads,
+  # #374), and the data manifest naming the artifacts this build pins.
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-dist
+          path: app-dist
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      # Importing the app is enough to render its schema, but its settings are
+      # required fields - so this needs values, and deliberately fake ones. A
+      # real project URL here would be a live credential in a workflow whose
+      # only job is to write a document.
+      - name: Dump the backend's OpenAPI document
+        working-directory: backend
+        env:
+          SUPABASE_URL: https://openapi-dump.invalid
+          SUPABASE_ANON_KEY: not-a-real-key
+        run: |
+          python -m pip install --quiet -r requirements.txt
+          python -c "import json, sys; from app.main import app; json.dump(app.openapi(), sys.stdout, indent=2)" > ../openapi.json
+          echo "Paths: $(python -c "import json; print(len(json.load(open('../openapi.json'))['paths']))")"
+
+      - name: Collect the assets
+        env:
+          VERSION: ${{ github.ref_name }}
+          DATA_BASE: ${{ vars.DATA_BASE_URL }}
+        run: |
+          tar -czf "ourhike-app-$VERSION.tar.gz" -C app-dist .
+
+          # Best effort, and said out loud when it fails. The manifest is a
+          # public object, so this needs no credentials - but a release whose
+          # data manifest could not be fetched is still a release, and failing
+          # here would block shipping over a record rather than over a defect.
+          if [ -n "$DATA_BASE" ] && curl -fsS --max-time 30 "$DATA_BASE/latest.json" -o data-manifest.json; then
+            echo "Attached the data manifest."
+          else
+            echo "::warning::Could not fetch $DATA_BASE/latest.json, so the release carries no data manifest."
+          fi
+
+          # The build job already refused to deploy a tag with no notes, so this
+          # cannot normally fail. It is here because the two jobs check the same
+          # thing from different checkouts, and a release drafted with an empty
+          # body would be a worse outcome than a red job.
+          shopt -s nullglob
+          notes=(releases/"$VERSION"-*.md)
+          if [ ${#notes[@]} -eq 0 ]; then
+            echo "::error::No release notes for $VERSION - see RELEASING.md §7a."
+            exit 1
+          fi
+          echo "NOTES=${notes[0]}" >> "$GITHUB_ENV"
+
+      # Through the API rather than an action, because the only thing that needs
+      # to be exactly right here is `draft: true`, and that is easier to see in
+      # four lines of JSON than in someone else's inputs.
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # The name after the version, read from the notes filename rather than
+          # kept anywhere a second time: releases/v1.0.0-springer-mountain.md is
+          # "v1.0.0 — Springer Mountain".
+          slug="$(basename "$NOTES" .md)"
+          slug="${slug#"$VERSION"-}"
+          title="$VERSION — $(echo "$slug" | tr '-' ' ' | sed -E 's/(^| )([a-z])/\1\u\2/g')"
+
+          jq -n \
+            --arg tag "$VERSION" \
+            --arg name "$title" \
+            --rawfile body "$NOTES" \
+            '{tag_name: $tag, name: $name, body: $body, draft: true, prerelease: false}' > payload.json
+
+          id="$(curl -fsS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/releases" \
+            -d @payload.json | jq -r '.id')"
+
+          echo "Drafted release $id ($title)."
+
+          for asset in "ourhike-app-$VERSION.tar.gz" openapi.json data-manifest.json; do
+            [ -f "$asset" ] || continue
+            curl -fsS -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary "@$asset" \
+              "https://uploads.github.com/repos/$REPO/releases/$id/assets?name=$asset" > /dev/null
+            echo "Attached $asset."
+          done
+
+          {
+            echo "### Release drafted"
+            echo
+            echo "**$title** is a draft at https://github.com/$REPO/releases"
+            echo
+            echo "Publishing it is a human action - RELEASING.md §12. Read the notes first;"
+            echo "they were generated and then edited, and the draft is the last chance to"
+            echo "notice a claim the release does not actually support."
+          } >> "$GITHUB_STEP_SUMMARY"

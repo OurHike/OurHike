@@ -1,0 +1,124 @@
+# Generates a release notes draft and opens it as a pull request. RELEASING.md
+# §7 is the design.
+#
+# The notes are DERIVED and then edited, never maintained. What makes that
+# reliable here is a rule this repository already enforces for other reasons:
+# `pr-issue-link.yml` fails any pull request that closes no issue, so every
+# merged change between two tags carries a linked issue or an explicit
+# `no-issue` label. That is a machine-readable changelog nobody had to remember
+# to keep.
+#
+# What this produces is a draft with TODOs in it. The name, the historical figure
+# and the paragraph that makes it a release rather than a diff are written by a
+# human on top of it - that is the part worth a person's time, and the only part.
+#
+# This does not tag anything and does not release anything. It opens a pull
+# request. Tagging is the maintainer's action (RELEASING.md §12), and the tag is
+# what deploys production (pages.yml).
+
+name: Draft release notes
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'The version being released, e.g. v1.2.0'
+        required: true
+      name:
+        description: "Its landmark name, e.g. 'Fontana Dam' - RELEASING.md §5 has the order"
+        required: true
+      previous:
+        description: 'The previous tag. Defaults to the most recent one.'
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Full history, and the tags with it: the generator walks
+      # `<previous>..HEAD` and picks the previous tag itself when not told one,
+      # so a shallow clone would silently produce notes covering one commit.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Check the version has not already been released
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            echo "::error::$VERSION is already tagged. Releasing it again would move a tag people may be pinned to."
+            exit 1
+          fi
+          case "$VERSION" in
+            v*.*.*) ;;
+            *) echo "::error::'$VERSION' is not vMAJOR.MINOR.PATCH - see RELEASING.md §4."; exit 1 ;;
+          esac
+
+      - name: Generate the notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python .github/scripts/release_notes.py \
+            --version "${{ inputs.version }}" \
+            --name "${{ inputs.name }}" \
+            ${{ inputs.previous && format('--previous {0}', inputs.previous) || '' }}
+
+      - name: Open the pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+          NAME: ${{ inputs.name }}
+        run: |
+          set -euo pipefail
+          branch="release/$VERSION"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add releases/
+          git commit -m "Draft the $VERSION notes"
+          git push -u origin "$branch"
+
+          # The body is a file rather than a heredoc here: a heredoc terminator
+          # cannot be indented, and every line of this script is inside an
+          # indented YAML block. It is also prose, which is easier to edit in a
+          # markdown file than inside a shell string.
+          number="$(jq -n \
+            --arg title "Release notes: $VERSION — $NAME" \
+            --arg head "$branch" \
+            --rawfile body .github/scripts/release_pr_body.md \
+            '{title: $title, head: $head, base: "main", body: $body, draft: true}' \
+            | curl -fsS -X POST \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/$REPO/pulls" -d @- | jq -r '.number')"
+
+          # Without this the pull request fails "PR has a linked issue", which is
+          # correct of that check and wrong for this pull request - so the label
+          # goes on in the same breath as the opening rather than being left for
+          # somebody to discover from a red check.
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/issues/$number/labels" \
+            -d '{"labels":["no-issue"]}' > /dev/null
+
+          {
+            echo "### Notes drafted"
+            echo
+            echo "https://github.com/$REPO/pull/$number"
+            echo
+            echo "Edit the TODOs, merge, then tag \`$VERSION\` when the §8 gate is green."
+          } >> "$GITHUB_STEP_SUMMARY"

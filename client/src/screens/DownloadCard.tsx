@@ -306,12 +306,21 @@ export function DownloadCard({
               The byte count and the date stay, and stay true - the transfer
               really did finish and those bytes really are on the phone. What
               is added is that they no longer add up to a map, and the one
-              way back, which is the Delete button already below. */}
+              way back, which is the Delete button already below.
+
+              It says what was OBSERVED and stops there. It used to add "the
+              file is damaged or incomplete", which is a safe reading of the
+              raster archive - pmtiles answers empty for a tile it does not
+              hold and only rejects on a read failure - and is not a safe
+              reading of the hiking sheet, whose flag covers the package AND
+              the network fallthrough behind it (map/basemap.ts). A hiker who
+              opened the app already panned past what their package covers,
+              with no signal, would have been told their download was corrupt
+              (#352). */}
           {notDrawing && (
             <p role="alert" className="downloads__error">
-              This map is on the phone, and the map screen could not draw from it — the
-              file is damaged or incomplete. Deleting it and downloading it again is the
-              fix, and that needs signal.
+              This map is on the phone, and the map screen could not draw from it.
+              Deleting it and downloading it again is the fix, and that needs signal.
             </p>
           )}
           <p className="downloads__bytes">

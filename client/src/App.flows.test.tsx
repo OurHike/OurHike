@@ -1134,3 +1134,108 @@ describe('a download that finished and cannot be read (#334)', () => {
     expect(within(usgsCard).queryByRole('alert')).not.toBeInTheDocument()
   })
 })
+
+describe('a remembered failure that stopped being true (#352)', () => {
+  // Both halves of the memory, from the hiker's side. #334 shipped one that
+  // only ever accumulated: it survived a teardown, which it had to, and
+  // nothing could ever lower it again.
+
+  async function sourceFails(sourceId: string) {
+    const map = await waitFor(() => {
+      const live = MockMap.live[0]
+      expect(live?.listenerCount('error')).toBeGreaterThan(0)
+      return live!
+    })
+    act(() => {
+      map.emit('error', { sourceId, error: new Error(`${sourceId} unavailable`) })
+    })
+    return map
+  }
+
+  async function openDownloadsFromMore(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /download/i }))
+    return screen.findByRole('dialog', { name: /offline map/i })
+  }
+
+  it('lets a later, healthy map retract what an earlier one reported', async () => {
+    // The shipped bug. A map that only ever SUCCEEDS used to say nothing at
+    // all - `report()` fires on change and a healthy map computes the answer
+    // it started with - so the flag an earlier map raised was never
+    // contradicted. One transient error marked a good 314 MB archive damaged
+    // for the rest of the session, on both screens.
+    const user = userEvent.setup()
+    hikerOnTrail()
+    store.set(CORRIDOR_ARCHIVE_KEY, new Blob(['fine']))
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await sourceFails('usgs-topo')
+    await screen.findByText(/downloaded map not drawing/i)
+
+    // Away to the More tab and back: the map is torn down and a new one built,
+    // which is what used to make this permanent.
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await waitFor(() => expect(MockMap.live).toHaveLength(0))
+    await user.click(screen.getByRole('tab', { name: 'Trail' }))
+
+    // The new map reads the archive perfectly.
+    const rebuilt = await waitFor(() => {
+      const live = MockMap.live[0]
+      expect(live?.listenerCount('sourcedata')).toBeGreaterThan(0)
+      return live!
+    })
+    act(() => {
+      rebuilt.emit('sourcedata', { sourceId: 'usgs-topo', tile: { state: 'loaded' } })
+    })
+
+    await waitFor(() =>
+      expect(screen.queryByText(/downloaded map not drawing/i)).not.toBeInTheDocument(),
+    )
+
+    await openDownloadsFromMore(user)
+    const usgsCard = await usgsSheetCard(user)
+    expect(within(usgsCard).queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('does not call a resumed download damaged', async () => {
+    // The path the download-side clear missed. Nothing downloaded, so the
+    // archive source fails for the ordinary reason; the transfer drops; the
+    // resume completes byte-correct - and the card announced it as damaged,
+    // telling the hiker to spend signal fetching what they already had.
+    const user = userEvent.setup()
+    hikerOnTrail()
+    store.set('ourhike:corridor-archive:partial', new Blob([new Uint8Array([1, 2, 3])]))
+    store.set('ourhike:corridor-archive:progress', { receivedBytes: 3, totalBytes: 6 })
+    store.set('ourhike:corridor-archive:source', { url: archiveUrl('standard') })
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    // The ordinary, correct failure on a phone whose archive is not there yet.
+    await sourceFails('usgs-topo')
+
+    await openDownloads(user)
+    const usgsCard = await usgsSheetCard(user)
+
+    // The rest of the archive, arriving clean - the same 206 the resume test
+    // above serves.
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 206,
+      statusText: 'Partial Content',
+      headers: new Headers({ 'content-length': '3', 'content-range': 'bytes 3-5/6' }),
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array([4, 5, 6]))
+          controller.close()
+        },
+      }),
+    } as unknown as Response)
+    await user.click(within(usgsCard).getByRole('button', { name: /resume/i }))
+
+    await waitFor(() => expect(store.get(CORRIDOR_ARCHIVE_KEY)).toBeInstanceOf(Blob))
+    await waitFor(() =>
+      expect(within(usgsCard).queryByRole('alert')).not.toBeInTheDocument(),
+    )
+  })
+})

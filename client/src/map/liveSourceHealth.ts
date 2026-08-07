@@ -96,6 +96,48 @@ export const HEALTHY: LiveSourceHealth = {
   archive: false,
 }
 
+/** Every flag, for callers that fold over them rather than naming each. */
+export const SOURCE_FLAGS = Object.keys(HEALTHY) as (keyof LiveSourceHealth)[]
+
+/**
+ * One map's answer about its background sources.
+ *
+ * TWO FACTS, NOT ONE, AND #352 IS WHY
+ *
+ * `unreachable` alone cannot be remembered past the map that observed it, and
+ * the shell has to remember it: the downloads window opens from the More tab,
+ * where the map screen is not rendered at all (#334). The trouble is that a
+ * map which never fails never reports - `report()` only fires on a CHANGE, and
+ * a healthy map computes the same all-false answer it started with. So a
+ * remembered failure was never contradicted by a later, perfectly healthy map,
+ * and one transient error marked a good archive damaged for the rest of the
+ * session, with the strip and the Downloads card both saying so.
+ *
+ * `drew` is the missing half: not "nothing has failed" but "this source has
+ * actually put ink on the screen". It is a positive fact, so it can clear a
+ * remembered negative one, and a shell that folds the two together
+ * (lib/backgroundHealth.ts's `rememberNotDrawing`) needs no separate clearing
+ * mechanism to keep in step - which is what the first attempt got wrong in
+ * three different places at once.
+ */
+export interface SourceReport {
+  /** Errored and never drew - see LiveSourceHealth. */
+  unreachable: LiveSourceHealth
+  /** Has drawn at least once, for THIS map. Never inferred from the absence
+   *  of an error: a source that has not been asked for a tile yet has neither
+   *  failed nor drawn, and the difference is the whole of #352. */
+  drew: LiveSourceHealth
+  /**
+   * True on precisely one report: the one the detach sends.
+   *
+   * The flags are all false either way, and they mean opposite things - "the
+   * sources recovered" against "there is no longer a map here to make a claim
+   * about". A caller drawing only this map's chrome can ignore it; one that
+   * remembers a failure past this map cannot.
+   */
+  withdrawn: boolean
+}
+
 /**
  * The sources worth reporting on, and the flag each one answers to.
  *
@@ -125,30 +167,25 @@ type SourceScopedError = { error?: unknown; sourceId?: unknown }
  * them.
  *
  * `onChange` fires only when the answer actually changes, so twelve failing
- * DEM tiles are one report rather than twelve renders, and it fires again with
- * everything false when a tile finally lands - which is what walking back into
- * signal looks like from here. The returned detach clears the state the same
- * way, because these flags describe one map and must not outlive it.
+ * DEM tiles are one report rather than twelve renders, and it fires again when
+ * a tile finally lands - which is what walking back into signal looks like
+ * from here. The returned detach withdraws what it claimed, because these
+ * flags describe one map and must not outlive it.
  *
- * WHY THE SECOND ARGUMENT EXISTS
+ * WHAT "CHANGES" MEANS, AFTER #352
  *
- * Those last two sentences describe two events that look identical from
- * outside - `HEALTHY`, twice - and mean opposite things: "the source came
- * back" against "there is no longer a map here to make a claim about". A
- * caller that only draws the current map's chrome can treat them the same,
- * and MapScreen's status strip does. A caller that REMEMBERS a failure past
- * this map's lifetime cannot: the downloads window opens from the More tab,
- * where the map screen is not rendered at all, so the shell has to carry the
- * fact across a teardown (#334) - and clearing it on the teardown's own
- * report would lose it exactly when the hiker went looking for the fix.
- *
- * `withdrawn` is therefore true on precisely one report: the one the detach
- * sends. It is not a hint about the flags, which are `HEALTHY` either way -
- * it says whether anything was observed to produce them.
+ * A change in EITHER fact, not only in `unreachable`. That distinction is the
+ * whole bug: while only failures were reported, a map that drew everything
+ * perfectly computed the same all-false answer it started with and therefore
+ * never reported at all - so a shell remembering an earlier failure was never
+ * told the sheet was fine now, and went on calling a good archive damaged for
+ * the rest of the session. The first tile that draws is a change worth
+ * sending, and it is the only thing that can honestly retract a failure
+ * observed by some earlier map.
  */
 export function attachLiveSourceHealth(
   map: MapLibreMap,
-  onChange: (health: LiveSourceHealth, withdrawn: boolean) => void,
+  onChange: (report: SourceReport) => void,
 ): () => void {
   // Errored-and-never-drew, tracked separately so neither can be inferred from
   // the other. `isSourceLoaded` cannot stand in for `drew`: a vector source
@@ -156,21 +193,32 @@ export function attachLiveSourceHealth(
   // style ignores it rather than stalling.
   const errored = new Set<string>()
   const drew = new Set<string>()
-  let reported: LiveSourceHealth = HEALTHY
+  let reported: SourceReport = { unreachable: HEALTHY, drew: HEALTHY, withdrawn: false }
+
+  const currently = (): { unreachable: LiveSourceHealth; drew: LiveSourceHealth } => {
+    const unreachable: LiveSourceHealth = { ...HEALTHY }
+    const hasDrawn: LiveSourceHealth = { ...HEALTHY }
+    for (const [sourceId, flag] of Object.entries(WATCHED)) {
+      hasDrawn[flag] = drew.has(sourceId)
+      unreachable[flag] = errored.has(sourceId) && !drew.has(sourceId)
+    }
+    return { unreachable, drew: hasDrawn }
+  }
 
   const report = () => {
-    const next: LiveSourceHealth = { ...HEALTHY }
-    for (const [sourceId, flag] of Object.entries(WATCHED)) {
-      next[flag] = errored.has(sourceId) && !drew.has(sourceId)
-    }
+    const next = currently()
     // Compared over the flags themselves rather than field by field: a fourth
     // source added to WATCHED with nothing added here would report once and
     // then go quiet, which is the failure this whole module exists to prevent
     // wearing the shape of a missed line.
-    const flags = Object.keys(next) as (keyof LiveSourceHealth)[]
-    if (flags.every((flag) => next[flag] === reported[flag])) return
-    reported = next
-    onChange(next, false)
+    const unchanged = SOURCE_FLAGS.every(
+      (flag) =>
+        next.unreachable[flag] === reported.unreachable[flag] &&
+        next.drew[flag] === reported.drew[flag],
+    )
+    if (unchanged) return
+    reported = { ...next, withdrawn: false }
+    onChange(reported)
   }
 
   const onError = (event: unknown) => {
@@ -206,9 +254,13 @@ export function attachLiveSourceHealth(
     map.off('sourcedata', onSourceData)
     errored.clear()
     drew.clear()
-    if (Object.values(reported).some(Boolean)) {
-      reported = HEALTHY
-      onChange(HEALTHY, true)
+    // Only a claim of unreachability is worth withdrawing. `drew` is a fact
+    // about a map that no longer exists and nothing downstream keeps it, so a
+    // map that merely drew fine leaves without saying anything - which is what
+    // keeps "detach after a quiet session" silent.
+    if (SOURCE_FLAGS.some((flag) => reported.unreachable[flag])) {
+      reported = { unreachable: HEALTHY, drew: HEALTHY, withdrawn: true }
+      onChange(reported)
     }
   }
 }

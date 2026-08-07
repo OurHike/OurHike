@@ -36,7 +36,11 @@
 // and did not need. Everything below is a state where the map is blank or
 // the fix is a download.
 
-import type { LiveSourceHealth } from '../map/liveSourceHealth'
+import {
+  SOURCE_FLAGS,
+  type LiveSourceHealth,
+  type SourceReport,
+} from '../map/liveSourceHealth'
 import {
   BASEMAP_PACKAGE,
   CORRIDOR_BACKGROUND_PACKAGE,
@@ -155,23 +159,67 @@ export function sheetNotDrawing(
 }
 
 /**
- * The same flags with one sheet's cleared - what a shell that REMEMBERS a
- * failure has to do when that sheet is fetched again.
+ * What the shell should remember, given what it remembered and what the map
+ * has just reported.
  *
- * Without this, a hiker who saw "not drawing", deleted the archive and
- * downloaded a good one would be told the fresh copy is broken too: the
- * remembered flag describes bytes that are no longer on the phone, and the
- * map only contradicts it once it happens to ask that source for a tile and
- * succeed. Cleared per sheet rather than wholesale, so re-fetching the
- * hiking sheet says nothing about the USGS archive beside it.
+ * THE RULE, AND THE TWO WAYS THE FIRST ATTEMPT BROKE IT (#352)
+ *
+ * A source that has DRAWN is drawing: forget any failure remembered against
+ * it, whichever map observed that failure. A source that errored and has
+ * never drawn is not: remember it. A source that has done neither leaves the
+ * memory alone, which is what carries a real failure across the teardown the
+ * downloads window costs (#334).
+ *
+ * That last clause is why this cannot be "trust the latest report". A fresh
+ * map has observed nothing; treating its silence as good news would clear a
+ * genuine failure the moment the hiker walked to the screen that fixes it.
+ * And treating a teardown's `HEALTHY` as good news does the same - hence
+ * `withdrawn`, which the caller drops before it ever gets here.
+ *
+ * The inverse mistake was the shipped one. With only failures reported, a
+ * healthy map said nothing at all, so nothing could ever lower a remembered
+ * flag and a single transient error condemned a good archive for the session.
+ * It was patched with a hand-maintained clear on the download path, which
+ * then had to be remembered on every OTHER path that replaces bytes - and was
+ * not, on resume. `drew` makes the clearing fall out of the same fold instead
+ * of being a second mechanism to keep in step.
  */
-export function forgetSheet(
+export function rememberNotDrawing(
+  remembered: LiveSourceHealth,
+  report: SourceReport,
+): LiveSourceHealth {
+  const next = { ...remembered }
+  for (const flag of SOURCE_FLAGS) {
+    if (report.drew[flag]) next[flag] = false
+    else if (report.unreachable[flag]) next[flag] = true
+  }
+  return next
+}
+
+/**
+ * The same flags with the given packages' cleared - what a shell has to do
+ * when those exact bytes are fetched again.
+ *
+ * Kept even though `rememberNotDrawing` now retracts a failure the moment the
+ * source draws, because the two cover different gaps. A finished download
+ * does not make the map re-request the tiles it already gave up on: MapLibre
+ * holds those as errored until something rebuilds the map or the hiker pans,
+ * so without this a fresh, good archive can wear the old one's verdict until
+ * they happen to move the camera. This clears it at the moment the bytes are
+ * known to be replaced.
+ *
+ * Takes the package keys actually being fetched rather than a whole sheet.
+ * Clearing a sheet wholesale (#352) cleared `basemap` when only the DEM
+ * beside it was being downloaded, silently withdrawing a "No live map" that
+ * was still true and that the map had no way to state again.
+ */
+export function forgetPackages(
   sources: LiveSourceHealth,
-  sheet: BackgroundSheet,
+  idbKeys: readonly string[],
 ): LiveSourceHealth {
   const cleared = { ...sources }
-  for (const pkg of sheet.packages) {
-    const flag = PACKAGE_SOURCE[pkg.idbKey]
+  for (const key of idbKeys) {
+    const flag = PACKAGE_SOURCE[key]
     if (flag !== undefined) cleared[flag] = false
   }
   return cleared

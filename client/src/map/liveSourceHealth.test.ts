@@ -12,6 +12,7 @@ import {
   attachLiveSourceHealth,
   HEALTHY,
   type LiveSourceHealth,
+  type SourceReport,
 } from './liveSourceHealth'
 import { OSM_SOURCE_ID } from './liveTopo'
 import { DEM_SOURCE_ID } from './terrain'
@@ -40,10 +41,19 @@ describe('attachLiveSourceHealth', () => {
 
   function attach() {
     const map = new MockMap({})
+    /** Every report, for the cases where `drew` or `withdrawn` IS the subject. */
+    const all: SourceReport[] = []
+    /** The unreachable half of each, which is what most cases here are about. */
     const reports: LiveSourceHealth[] = []
-    const detach = attachLiveSourceHealth(map as never, (h) => reports.push(h))
-    return { map, reports, detach }
+    const detach = attachLiveSourceHealth(map as never, (report) => {
+      all.push(report)
+      reports.push(report.unreachable)
+    })
+    return { map, all, reports, detach }
   }
+
+  /** What a source that has drawn nothing and failed nothing looks like. */
+  const NOTHING_YET = HEALTHY
 
   it('reports the basemap unreachable when it errors having drawn nothing', () => {
     const { map, reports } = attach()
@@ -53,16 +63,20 @@ describe('attachLiveSourceHealth', () => {
     expect(reports).toEqual([{ basemap: true, elevation: false, archive: false }])
   })
 
-  it('says nothing when a source that has already drawn loses one tile', () => {
+  it('claims nothing when a source that has already drawn loses one tile', () => {
     // The distinction the whole module exists to draw. A working sheet that
     // drops a tile at the edge of the view is not an unreachable one, and
     // flagging it would put a false claim on a map that is drawing fine.
-    const { map, reports } = attach()
+    const { map, reports, all } = attach()
 
     map.emit('sourcedata', tileArrived(OSM_SOURCE_ID))
     map.emit('error', sourceFailed(OSM_SOURCE_ID))
 
-    expect(reports).toEqual([])
+    // The tile arriving IS reported since #352 - a source that has drawn is
+    // the only thing that can retract a failure an earlier map observed - but
+    // it claims nothing is unreachable, before or after the lost tile.
+    expect(reports).toEqual([NOTHING_YET])
+    expect(all.at(-1)?.drew.basemap).toBe(true)
   })
 
   it('clears itself when a tile finally lands, which is walking back into signal', () => {
@@ -124,12 +138,13 @@ describe('attachLiveSourceHealth', () => {
     // A raster archive that draws the corridor and fails at its edge is a
     // working download. Flagging it would tell a hiker to re-fetch 314 MB
     // because they panned off the strip.
-    const { map, reports } = attach()
+    const { map, reports, all } = attach()
 
     map.emit('sourcedata', tileArrived(TOPO_SOURCE_ID))
     map.emit('error', sourceFailed(TOPO_SOURCE_ID))
 
-    expect(reports).toEqual([])
+    expect(reports).toEqual([NOTHING_YET])
+    expect(all.at(-1)?.drew.archive).toBe(true)
   })
 
   it('tracks the archive and the live sheet separately', () => {
@@ -183,12 +198,19 @@ describe('attachLiveSourceHealth', () => {
     // The archive draws tiles constantly, and on the offline background it is
     // the only thing drawing. Counting one as proof the live sheet arrived
     // would clear a flag the live sheet never earned.
-    const { map, reports } = attach()
+    const { map, reports, all } = attach()
 
     map.emit('error', sourceFailed(OSM_SOURCE_ID))
     map.emit('sourcedata', tileArrived(TOPO_SOURCE_ID))
 
-    expect(reports).toEqual([{ basemap: true, elevation: false, archive: false }])
+    // Two reports - the failure, then the archive's tile - and the basemap's
+    // claim stands through both. The second is what a shell needs to retract
+    // a remembered ARCHIVE failure, and it must not retract this one.
+    expect(reports).toEqual([
+      { basemap: true, elevation: false, archive: false },
+      { basemap: true, elevation: false, archive: false },
+    ])
+    expect(all.at(-1)?.drew).toEqual({ basemap: false, elevation: false, archive: true })
   })
 
   it('treats a null tile as no arrival at all', () => {
@@ -201,12 +223,14 @@ describe('attachLiveSourceHealth', () => {
   })
 
   it('does not re-report once a source is already known to draw', () => {
-    const { map, reports } = attach()
+    // One report for the first tile, and silence after it: the fact does not
+    // change, and a report per tile would be a render per tile.
+    const { map, all } = attach()
 
     map.emit('sourcedata', tileArrived(OSM_SOURCE_ID))
     map.emit('sourcedata', tileArrived(OSM_SOURCE_ID))
 
-    expect(reports).toEqual([])
+    expect(all).toHaveLength(1)
   })
 
   it('detaches both listeners and withdraws what it claimed', () => {
@@ -229,5 +253,72 @@ describe('attachLiveSourceHealth', () => {
     detach()
 
     expect(reports).toEqual([])
+  })
+})
+
+describe('what has actually drawn (#352)', () => {
+  // The half that was missing, and the reason a shell could not tell a healthy
+  // map from a silent one. Every case here is about a report EXISTING at all -
+  // a map that says nothing cannot retract anything.
+
+  function attach() {
+    const map = new MockMap({})
+    const all: SourceReport[] = []
+    const detach = attachLiveSourceHealth(map as never, (report) => all.push(report))
+    return { map, all, detach }
+  }
+
+  beforeEach(() => {
+    resetMapLibreMock()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('reports a source that draws without ever having failed', () => {
+    // The bug in one line. This map has nothing to complain about, so under
+    // the old contract it said nothing at all - and a shell remembering an
+    // earlier map's failure went on calling a good archive damaged for the
+    // rest of the session.
+    const { map, all } = attach()
+
+    map.emit('sourcedata', tileArrived(TOPO_SOURCE_ID))
+
+    expect(all).toHaveLength(1)
+    expect(all[0]).toEqual({
+      unreachable: HEALTHY,
+      drew: { basemap: false, elevation: false, archive: true },
+      withdrawn: false,
+    })
+  })
+
+  it('marks only the teardown report as withdrawn', () => {
+    const { map, all, detach } = attach()
+
+    map.emit('error', sourceFailed(OSM_SOURCE_ID))
+    expect(all.at(-1)?.withdrawn).toBe(false)
+
+    detach()
+
+    expect(all.at(-1)).toEqual({
+      unreachable: HEALTHY,
+      drew: HEALTHY,
+      withdrawn: true,
+    })
+  })
+
+  it('says nothing on detach when it claimed nothing, drawn or not', () => {
+    // `drew` describes a map that no longer exists and nothing downstream
+    // keeps it, so there is no claim to withdraw and no reason to speak.
+    const { map, all, detach } = attach()
+
+    map.emit('sourcedata', tileArrived(OSM_SOURCE_ID))
+    const before = all.length
+
+    detach()
+
+    expect(all).toHaveLength(before)
   })
 })

@@ -446,6 +446,39 @@ export async function dismissReport(reportId: string): Promise<void> {
   await authedFetch(`/reports/${reportId}/dismiss`, { method: 'POST', body: '{}' })
 }
 
+/**
+ * A URL that fetches one report's photo, good for a few minutes (#385).
+ *
+ * **The reason this is not just `<img src={apiUrl('/reports/x/photo')}>`.**
+ * That endpoint uses optional auth and an `<img>` cannot carry a token, so
+ * the request goes out anonymous and gets the PUBLIC answer - which for an
+ * `internal_only` `bad_hikers` photo is a 404 that renders as a broken image.
+ * A moderator would have no way to tell "there is no evidence" from "there is
+ * evidence and you are not being shown it", on the one screen built to tell
+ * those apart.
+ *
+ * So the token travels here, on a `fetch` that can carry it, and the URL it
+ * answers with goes in `src`. Images are exempt from CORS, so nothing new is
+ * needed on the private photo bucket - fetching the bytes cross-origin
+ * instead would have needed a CORS policy on the one bucket whose whole
+ * design is that nothing reaches it without a check.
+ *
+ * `readFetch`, not `authedFetch`: the endpoint answers an anonymous caller
+ * for a public photo, and a hiker looking at their own report is signed in
+ * without being a moderator. The token goes when there is one.
+ *
+ * **Throws on refusal rather than returning null**, so a caller cannot draw
+ * "no photo" over a photo it was refused - the whole failure this replaces.
+ */
+export async function fetchReportPhotoLink(
+  reportId: string,
+  signal?: AbortSignal,
+): Promise<{ url: string; expiresIn: number }> {
+  const response = await readFetch(`/reports/${reportId}/photo/link`, signal)
+  const body = (await response.json()) as { url: string; expires_in: number }
+  return { url: body.url, expiresIn: body.expires_in }
+}
+
 export async function verifyClosure(closureId: string): Promise<void> {
   // No body. A closure is born `closed`, so verifying one says everything
   // that needs saying; the optional `status` covers confirming a reroute,

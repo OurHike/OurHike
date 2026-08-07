@@ -195,3 +195,31 @@ class ReportOut(BaseModel):
             maintainer_id=report.maintainer_id if privileged else None,
             club_id=report.club_id if privileged else None,
         )
+
+
+class ReportPhotoLink(BaseModel):
+    """A short-lived URL that fetches one report's photo (#385).
+
+    The answer from `GET /reports/{id}/photo/link`, for the caller that
+    cannot follow the redirect form: an `<img>` carries no `Authorization`
+    header, so the token goes on this JSON call and the URL goes in `src`.
+
+    **This body is a bearer capability, not a description of one.** Whoever
+    holds the string can fetch that object until it expires, with no further
+    check - so it is never stored, never logged, and the response is
+    `no-store`. app/core/photos.py's header is the full trade.
+
+    No `photo_url`, deliberately: the object KEY is a stored field the client
+    already has from the queue, and repeating it here would invite a client
+    to build its own URL from it. The signed URL is the only spelling that
+    was authorised.
+    """
+
+    url: str
+
+    # Seconds, matching `PHOTO_URL_TTL_SECONDS`. Sent so a screen that holds a
+    # link open - a moderation queue worked through slowly - re-asks on a
+    # number from the server rather than one it guessed. The alternative to
+    # re-asking is a longer TTL, which is a real weakening of the trade above
+    # rather than a tuning knob (#385).
+    expires_in: int

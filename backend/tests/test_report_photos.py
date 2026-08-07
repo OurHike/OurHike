@@ -643,3 +643,211 @@ def test_says_so_rather_than_404ing_when_no_bucket_is_configured(client, db_sess
     report = _report(db_session, reporter, status=ReportStatus.verified, photo_url="reports/x/1.jpg")
 
     assert _photo(client, report.id, reporter.id).status_code == 503
+
+
+# --- The photo a MODERATOR is deciding on (#385) ---------------------------
+#
+# Everything above this line is about a hiker and their own report. The queue
+# is the other audience, and it was the one `GET /photo` refused: `_visible_to`
+# knew the reporter and the public and nobody else, so a maintainer looking at
+# an `internal_only` `bad_hikers` report - the case the private bucket, the
+# private routing and the queue's own separate section all exist for - got the
+# same 404 as a report with no photo.
+
+
+def _moderator(db_session, role: Role = Role.maintainer) -> Profile:
+    profile = Profile(id=str(uuid.uuid4()), role=role)
+    db_session.add(profile)
+    db_session.commit()
+    return profile
+
+
+def _link(client, report_id: str, viewer_id: str | None = None):
+    """GET the JSON form - the one an `<img>` can be pointed at."""
+    headers = auth_headers(viewer_id) if viewer_id is not None else {}
+    return client.get(f"/reports/{report_id}/photo/link", headers=headers)
+
+
+@pytest.mark.parametrize("role", [Role.maintainer, Role.club_admin])
+def test_a_moderator_sees_the_bad_hikers_photo_they_are_deciding_on(client, db_session, r2, role):
+    """The case #385 exists for, and the one that was broken.
+
+    `/moderation/queue` has handed this report's whole record - note,
+    `photo_url`, `reporter_id` - to exactly these two roles since #235. The
+    photo behind it answered 404. Both roles, because `MODERATOR_ROLES` is the
+    pair and a check that only knew one of them would pass a single-role test.
+    """
+    _, report = _stored(
+        client,
+        db_session,
+        r2,
+        type=ReportType.bad_hikers,
+        visibility=Visibility.internal_only,
+    )
+    moderator = _moderator(db_session, role)
+
+    assert _photo(client, report.id, moderator.id).status_code == 302
+    assert _link(client, report.id, moderator.id).status_code == 200
+
+
+def test_a_plain_hiker_is_still_refused_the_same_photo(client, db_session, r2):
+    """The moderator clause is a role, not a token.
+
+    Every signed-in account would be an authorisation check that had stopped
+    checking anything - and this is the report type where that is a photo of a
+    person handed to whoever asked.
+    """
+    _, report = _stored(
+        client,
+        db_session,
+        r2,
+        type=ReportType.bad_hikers,
+        visibility=Visibility.internal_only,
+    )
+    stranger = _reporter(db_session)  # role=hiker
+
+    assert _photo(client, report.id, stranger.id).status_code == 404
+    assert _link(client, report.id, stranger.id).status_code == 404
+
+
+def test_a_moderator_can_look_again_after_deciding(client, db_session, r2):
+    """A verified report leaves the queue; the photo does not leave with it.
+
+    This is the widening `_visible_to`'s docstring names deliberately: a
+    decision nobody can look at again after it is made is a decision nobody
+    can review.
+    """
+    _, report = _stored(
+        client,
+        db_session,
+        r2,
+        type=ReportType.bad_hikers,
+        visibility=Visibility.internal_only,
+        status=ReportStatus.verified,
+    )
+    moderator = _moderator(db_session)
+
+    assert _link(client, report.id, moderator.id).status_code == 200
+
+
+def test_moderator_visibility_does_not_leak_into_the_public_list(client, db_session, r2):
+    """`list_reports` deliberately did not gain the clause.
+
+    A maintainer browsing the map is a hiker, and every unmoderated report on
+    the trail appearing as a pin for them is a different feature from the
+    queue. The check is on the list, not on the photo, because the list is
+    where the widening would have been silent.
+    """
+    _, report = _stored(
+        client,
+        db_session,
+        r2,
+        type=ReportType.bad_hikers,
+        visibility=Visibility.internal_only,
+    )
+    moderator = _moderator(db_session)
+
+    listed = client.get("/reports", headers=auth_headers(moderator.id))
+
+    assert listed.status_code == 200
+    assert report.id not in {row["id"] for row in listed.json()}
+
+
+# --- `GET /{id}/photo/link`: the same photo, as a URL ----------------------
+
+
+def test_the_link_is_the_same_signed_url_the_redirect_would_have_sent(client, db_session, r2):
+    """Two spellings, one capability - not a second way of authorising.
+
+    Asserting the key and the signature rather than string equality, because
+    two presigns a second apart differ in `X-Amz-Date` and comparing them
+    whole would be testing the clock.
+    """
+    _, report = _stored(client, db_session, r2, status=ReportStatus.verified)
+
+    body = _link(client, report.id).json()
+
+    assert photo_key(report.id) in body["url"]
+    assert "X-Amz-Signature" in body["url"]
+    assert f"X-Amz-Expires={PHOTO_URL_TTL_SECONDS}" in body["url"]
+
+
+def test_the_link_really_fetches_the_photo(client, db_session, r2):
+    """The one case that follows the URL all the way to the bytes.
+
+    Everything else asserts its shape, which would keep passing if the
+    signature were wrong. An `<img src>` pointed at a URL that does not
+    resolve is the broken image #385 is about.
+    """
+    _, report = _stored(client, db_session, r2, status=ReportStatus.verified)
+
+    fetched = requests.get(_link(client, report.id).json()["url"], timeout=10)
+
+    assert fetched.status_code == 200
+    assert fetched.content == _JPEG
+
+
+def test_the_link_says_how_long_it_is_good_for(client, db_session, r2):
+    """So a screen holding one open re-asks on the server's number.
+
+    The alternative to re-asking is a longer TTL, which app/core/photos.py
+    records as a decision rather than a knob.
+    """
+    _, report = _stored(client, db_session, r2, status=ReportStatus.verified)
+
+    assert _link(client, report.id).json()["expires_in"] == PHOTO_URL_TTL_SECONDS
+
+
+def test_the_link_is_never_cached(client, db_session, r2):
+    """It matters more here than on the redirect: this response BODY is the
+    bearer token, where the redirect at least kept it in a header. A cache
+    holding it outlives the signature and the visibility decision both."""
+    _, report = _stored(client, db_session, r2, status=ReportStatus.verified)
+
+    assert "no-store" in _link(client, report.id).headers["cache-control"]
+
+
+def test_the_link_does_not_hand_back_the_stored_key(client, db_session, r2):
+    """`photo_url` is client-supplied text on `POST /reports`.
+
+    Repeating it in this body would invite a client to build its own URL from
+    it, and the signed URL is the only spelling that was authorised. The
+    queue already carries the key for anything that needs to know a photo
+    exists.
+    """
+    _, report = _stored(client, db_session, r2, status=ReportStatus.verified)
+
+    assert set(_link(client, report.id).json()) == {"url", "expires_in"}
+
+
+def test_the_link_refuses_exactly_what_the_redirect_refuses(client, db_session, r2):
+    """One check behind both, so they cannot answer differently.
+
+    A link endpoint with its own copy of `_visible_to` is the drift
+    app/core/photos.py refused a Cloudflare Worker over, one layer in.
+    """
+    _, unmoderated = _stored(client, db_session, r2)  # left `submitted`
+    stranger = _reporter(db_session)
+    no_photo = _report(db_session, stranger, status=ReportStatus.verified)
+
+    assert _link(client, unmoderated.id).status_code == 404
+    assert _link(client, unmoderated.id, stranger.id).status_code == 404
+    assert _link(client, no_photo.id, stranger.id).status_code == 404
+    assert _link(client, str(uuid.uuid4())).status_code == 404
+
+
+def test_the_link_needs_no_account_for_a_public_photo(client, db_session, r2):
+    """Browsing needs no account here either. The link form exists because an
+    `<img>` cannot authenticate - not because it always must."""
+    _, report = _stored(client, db_session, r2, status=ReportStatus.verified)
+
+    assert _link(client, report.id).status_code == 200
+
+
+def test_the_link_says_so_rather_than_404ing_when_no_bucket_is_configured(client, db_session):
+    """503, and specifically not 404 - the same distinction the redirect
+    makes. Note the absent `r2` fixture: this is every developer machine."""
+    reporter = _reporter(db_session)
+    report = _report(db_session, reporter, status=ReportStatus.verified, photo_url="reports/x/1.jpg")
+
+    assert _link(client, report.id, reporter.id).status_code == 503

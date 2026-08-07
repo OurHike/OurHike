@@ -636,4 +636,50 @@ describe('the moderation calls', () => {
     await expect(api.fetchMyProfile()).rejects.toBeInstanceOf(api.NotSignedInError)
     expect(spy).not.toHaveBeenCalled()
   })
+
+  it('asks for a photo URL WITH the token, which is the whole point (#385)', async () => {
+    // An `<img>` cannot carry an `Authorization` header, so pointing one at
+    // the photo endpoint sends an anonymous request and gets the public
+    // answer - a 404 for an `internal_only` photo, rendered as a broken
+    // image. The token going on THIS call is what makes the URL it returns
+    // one the moderator is actually entitled to.
+    const api = await configuredApi()
+    const spy = mockOk({ url: 'https://photos.example/signed', expires_in: 300 })
+
+    const link = await api.fetchReportPhotoLink('r-1')
+
+    expect(spy.mock.calls[0][0]).toBe('https://api.example.org/reports/r-1/photo/link')
+    const headers = (spy.mock.calls[0][1] as RequestInit).headers as Record<
+      string,
+      string
+    >
+    expect(headers.Authorization).toBe('Bearer a-real-token')
+    expect(link).toEqual({ url: 'https://photos.example/signed', expiresIn: 300 })
+  })
+
+  it('still asks when signed out, because a public photo needs no account', async () => {
+    // `readFetch`, not `authedFetch`: browsing has never needed an account
+    // here, and the endpoint answers an anonymous caller for a public report.
+    const api = await configuredApi()
+    withSession(null)
+    const spy = mockOk({ url: 'https://photos.example/signed', expires_in: 300 })
+
+    await api.fetchReportPhotoLink('r-1')
+
+    expect(spy).toHaveBeenCalled()
+    expect((spy.mock.calls[0][1] as RequestInit).headers).toEqual({})
+  })
+
+  it('THROWS on a refused photo rather than returning nothing to draw', async () => {
+    // A resolved "no URL" would be indistinguishable from a report with no
+    // photo, which is the exact confusion #385 exists to end.
+    const api = await configuredApi()
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({}),
+    } as Response)
+
+    await expect(api.fetchReportPhotoLink('r-1')).rejects.toBeInstanceOf(api.ApiError)
+  })
 })

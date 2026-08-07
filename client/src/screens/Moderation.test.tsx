@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Moderation, ageOf } from './Moderation'
 import * as api from '../lib/api'
@@ -19,9 +19,14 @@ import * as api from '../lib/api'
 //  3. **Verify sends no severity unless one was chosen** (#251). An explicit
 //     `normal` is a de-escalation that clears the flag putting a warning pin
 //     on every phone on the trail.
+//  4. **A photo is either shown or accounted for in words** (#385). Never
+//     drawn as absence - a broken image and a report with no photo look
+//     identical, and one of them means a moderator decided without evidence
+//     they were entitled to see.
 
 vi.mock('../lib/api', () => ({
   fetchModerationQueue: vi.fn(),
+  fetchReportPhotoLink: vi.fn(),
   verifyReport: vi.fn(),
   dismissReport: vi.fn(),
   verifyClosure: vi.fn(),
@@ -75,12 +80,20 @@ async function shown(queue: Partial<api.ModerationQueue> = {}) {
   await waitFor(() => expect(screen.queryByText(/reading the queue/i)).toBeNull())
 }
 
+/** The object key the backend stores in `photo_url` - what "has a photo"
+ *  actually looks like on the wire. Never a URL: see app/core/photos.py. */
+const PHOTO_KEY = 'reports/report-1/1.jpg'
+
 beforeEach(() => {
   vi.clearAllMocks()
   mocked.verifyReport.mockResolvedValue(undefined)
   mocked.dismissReport.mockResolvedValue(undefined)
   mocked.verifyClosure.mockResolvedValue(undefined)
   mocked.dismissClosure.mockResolvedValue(undefined)
+  mocked.fetchReportPhotoLink.mockResolvedValue({
+    url: 'https://photos.example/signed',
+    expiresIn: 300,
+  })
 })
 
 afterEach(() => {
@@ -255,13 +268,187 @@ describe('acting on the queue', () => {
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
   })
+})
 
-  it('names a photo it cannot show rather than saying nothing', async () => {
-    // An `<img>` cannot carry the token, so the one case that matters would
-    // render as a broken image indistinguishable from no photo at all.
-    await shown({ reports: [aReport({ photo_url: 'reports/report-1/1.jpg' })] })
+describe('the photo the decision turns on', () => {
+  // #385. The screen used to say "has a photo, which this screen cannot show
+  // yet", because the obvious `<img src={.../photo}>` fails silently: an
+  // `<img>` carries no token, the endpoint's optional auth answers anonymous
+  // callers with the public view, and an `internal_only` photo comes back 404
+  // as a broken image. The fix is a URL fetched WITH the token and put in
+  // `src` - so what these cases hold is that every path either shows the
+  // image or says why it is not showing it.
 
-    expect(screen.getByText(/has a photo/i)).toBeInTheDocument()
+  it('shows a trail photo, from a URL asked for with the token', async () => {
+    await shown({ reports: [aReport({ photo_url: PHOTO_KEY })] })
+
+    const photo = await screen.findByRole('img')
+    expect(photo).toHaveAttribute('src', 'https://photos.example/signed')
+    expect(mocked.fetchReportPhotoLink).toHaveBeenCalledWith(
+      'report-1',
+      expect.anything(),
+    )
+  })
+
+  it('draws nothing at all about photos for a report that has none', async () => {
+    // The other half of "never draw absence over a photo": absence still has
+    // to read as absence when it is real.
+    await shown({ reports: [aReport({ photo_url: null })] })
+
+    expect(screen.queryByRole('img')).toBeNull()
+    expect(screen.queryByText(/photo/i)).toBeNull()
+    expect(mocked.fetchReportPhotoLink).not.toHaveBeenCalled()
+  })
+
+  it('says a photo it was refused rather than showing an empty row', async () => {
+    // The exact failure #385 is about, now with words on it. A moderator who
+    // knows evidence exists and is not reaching them can wait for it; one
+    // shown a blank row decides without it and cannot know they did.
+    mocked.fetchReportPhotoLink.mockRejectedValue(new Error('404'))
+    await shown({ reports: [aReport({ photo_url: PHOTO_KEY })] })
+
+    expect(await screen.findByText(/could not be loaded/i)).toBeInTheDocument()
+    expect(screen.queryByRole('img')).toBeNull()
+  })
+
+  it('asks for a fresh URL when the image will not load, rather than breaking', async () => {
+    // A link is good for minutes and a queue is worked through over an hour,
+    // so the one at the bottom of the list is routinely expired by the time
+    // it renders. Re-asking is what let the TTL stay short (#385).
+    mocked.fetchReportPhotoLink
+      .mockResolvedValueOnce({ url: 'https://photos.example/expired', expiresIn: 300 })
+      .mockResolvedValueOnce({ url: 'https://photos.example/fresh', expiresIn: 300 })
+    await shown({ reports: [aReport({ photo_url: PHOTO_KEY })] })
+
+    const stale = await screen.findByRole('img')
+    expect(stale).toHaveAttribute('src', 'https://photos.example/expired')
+
+    fireEvent.error(stale)
+
+    // Waited on the rendered src rather than the call count: the second call
+    // starting proves nothing about the image the moderator ends up looking
+    // at, and this assertion cannot pass until that render has happened.
+    await waitFor(() =>
+      expect(screen.getByRole('img')).toHaveAttribute(
+        'src',
+        'https://photos.example/fresh',
+      ),
+    )
+    expect(mocked.fetchReportPhotoLink).toHaveBeenCalledTimes(2)
+  })
+
+  it('stops after a second failure and says so, rather than re-asking forever', async () => {
+    // Two failures in a row is not an expired link - it is an object that
+    // never landed, or R2 refusing. A retry loop against that spends the
+    // moderator's connection and still shows them nothing.
+    mocked.fetchReportPhotoLink
+      .mockResolvedValueOnce({ url: 'https://photos.example/one', expiresIn: 300 })
+      .mockResolvedValueOnce({ url: 'https://photos.example/two', expiresIn: 300 })
+    await shown({ reports: [aReport({ photo_url: PHOTO_KEY })] })
+
+    fireEvent.error(await screen.findByRole('img'))
+    await waitFor(() =>
+      expect(screen.getByRole('img')).toHaveAttribute(
+        'src',
+        'https://photos.example/two',
+      ),
+    )
+    fireEvent.error(screen.getByRole('img'))
+
+    expect(await screen.findByText(/could not be loaded/i)).toBeInTheDocument()
+    expect(mocked.fetchReportPhotoLink).toHaveBeenCalledTimes(2)
+  })
+
+  it('recovers again after one that loaded, because links keep expiring', async () => {
+    // The retry budget is per link, not per screen. A queue left open all
+    // afternoon expires its links repeatedly, and a component that spent its
+    // one retry at 09:00 would show a broken image for the rest of the day.
+    mocked.fetchReportPhotoLink
+      .mockResolvedValueOnce({ url: 'https://photos.example/one', expiresIn: 300 })
+      .mockResolvedValueOnce({ url: 'https://photos.example/two', expiresIn: 300 })
+      .mockResolvedValueOnce({ url: 'https://photos.example/three', expiresIn: 300 })
+    await shown({ reports: [aReport({ photo_url: PHOTO_KEY })] })
+
+    fireEvent.error(await screen.findByRole('img'))
+    await waitFor(() =>
+      expect(screen.getByRole('img')).toHaveAttribute(
+        'src',
+        'https://photos.example/two',
+      ),
+    )
+    // This one rendered - and then expired an hour later.
+    fireEvent.load(screen.getByRole('img'))
+    fireEvent.error(screen.getByRole('img'))
+
+    await waitFor(() =>
+      expect(screen.getByRole('img')).toHaveAttribute(
+        'src',
+        'https://photos.example/three',
+      ),
+    )
+  })
+
+  it('offers a retry after giving up, without re-reading the whole queue', async () => {
+    // Otherwise the only way back is a queue re-read, which for a moderator
+    // mid-decision means losing their place over one failed image.
+    const user = userEvent.setup()
+    mocked.fetchReportPhotoLink.mockRejectedValueOnce(new Error('502'))
+    mocked.fetchReportPhotoLink.mockResolvedValue({
+      url: 'https://photos.example/signed',
+      expiresIn: 300,
+    })
+    await shown({ reports: [aReport({ photo_url: PHOTO_KEY })] })
+    await screen.findByText(/could not be loaded/i)
+
+    await user.click(screen.getByRole('button', { name: /try the photo again/i }))
+
+    expect(await screen.findByRole('img')).toHaveAttribute(
+      'src',
+      'https://photos.example/signed',
+    )
+  })
+})
+
+describe('a photo of a person', () => {
+  const BAD_HIKER_PHOTO = aReport({
+    id: 'bad-1',
+    type: 'bad_hikers',
+    visibility: 'internal_only',
+    photo_url: 'reports/bad-1/1.jpg',
+  })
+
+  it('is not fetched until a moderator asks for it', async () => {
+    // #385 leaves thumbnail-versus-click-to-reveal open, and this is the
+    // answer that can be undone later. A queue rendering twenty faces has
+    // decided scrolling past is the same act as looking.
+    await shown({ reports: [BAD_HIKER_PHOTO] })
+
+    expect(screen.queryByRole('img')).toBeNull()
+    expect(mocked.fetchReportPhotoLink).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /show the photo/i })).toBeInTheDocument()
+  })
+
+  it('is shown when they do ask', async () => {
+    // The step is deliberate, not a refusal - the moderator is the audience
+    // `internal_only` names, and this is the evidence they are deciding on.
+    const user = userEvent.setup()
+    await shown({ reports: [BAD_HIKER_PHOTO] })
+
+    await user.click(screen.getByRole('button', { name: /show the photo/i }))
+
+    expect(await screen.findByRole('img')).toHaveAttribute(
+      'src',
+      'https://photos.example/signed',
+    )
+    expect(mocked.fetchReportPhotoLink).toHaveBeenCalledWith('bad-1', expect.anything())
+  })
+
+  it('says a photo is there while it is still waiting to be asked for', async () => {
+    // Otherwise the button is the only sign, and a button that says nothing
+    // about what is behind it is a report that looks like it has no evidence.
+    await shown({ reports: [BAD_HIKER_PHOTO] })
+
+    expect(screen.getByText(/this report has a photo/i)).toBeInTheDocument()
   })
 })
 

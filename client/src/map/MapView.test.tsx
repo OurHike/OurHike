@@ -4,6 +4,7 @@ import { act, render, cleanup, screen, waitFor } from '@testing-library/react'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { MapView } from './MapView'
 import { BACKDROP_LAYER_ID, MAP_BACKDROP } from './style'
+import { LIVE_TOPO_LAYER_IDS, TOPO_PALETTE_RED } from './liveTopo'
 import { poiIconId } from './poiIcons'
 import {
   poiFeatureCollection,
@@ -231,6 +232,41 @@ describe('MapView', () => {
     // place rather than waiting for some future rebuild to apply it.
     expect(map.paintProperties.get(`${BACKDROP_LAYER_ID}/background-color`)).toBe(
       MAP_BACKDROP.dark,
+    )
+  })
+
+  it('repaints for a map-style or red-light change without rebuilding the map', () => {
+    // MAP_STYLE_SPEC.md spells this as a requirement rather than a nicety:
+    // appearance preferences are display-only and never a map rebuild. The
+    // construction effect omits `mapStyle` and `redLight` exactly as it omits
+    // `theme`; this is that omission's regression test.
+    const { rerender } = render(<MapView {...PROPS} mapStyle="field" />)
+    const builtInitially = MockMap.instances.length
+    const [map] = MockMap.live
+
+    act(() => map.emit('load'))
+    rerender(<MapView {...PROPS} mapStyle="night_hike" redLight />)
+
+    expect(MockMap.instances).toHaveLength(builtInitially)
+    expect(MockMap.live).toHaveLength(1)
+    // And the repaint landed: red light's own ink on the backdrop, in place.
+    expect(map.paintProperties.get(`${BACKDROP_LAYER_ID}/background-color`)).toBe(
+      TOPO_PALETTE_RED.labelHalo,
+    )
+  })
+
+  it('rewires visibility for a detail change without rebuilding the map', () => {
+    const { rerender } = render(<MapView {...PROPS} detail="standard" />)
+    const builtInitially = MockMap.instances.length
+    const [map] = MockMap.live
+
+    act(() => map.emit('load'))
+    rerender(<MapView {...PROPS} detail="minimal" />)
+
+    expect(MockMap.instances).toHaveLength(builtInitially)
+    expect(MockMap.live).toHaveLength(1)
+    expect(map.layoutProperties.get(`${LIVE_TOPO_LAYER_IDS.track}/visibility`)).toBe(
+      'none',
     )
   })
 

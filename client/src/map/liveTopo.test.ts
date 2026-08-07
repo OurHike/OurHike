@@ -24,8 +24,10 @@ import {
   SHEET_COLOURS,
   TOPO_PALETTE,
   TOPO_PALETTE_DARK,
-  attachSheetTheme,
+  TOPO_PALETTE_RED,
+  attachSheetAppearance,
   liveTopoLayers,
+  sheetPalette,
 } from './liveTopo'
 import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec'
 import {
@@ -465,18 +467,21 @@ describe('protected land, drawn as an area rather than an outline', () => {
     )
   })
 
-  it('keeps the tint legible over woodland, in both palettes', () => {
+  it('keeps the tint legible over woodland, in every palette', () => {
     // What "the tint carries it alone" means in numbers: composited over the
     // wood fill at the layer's own opacity, the park wash has to move at
     // least one channel by a margin a phone panel still shows. The exact
-    // colours are the palette's business; only the margin is pinned.
+    // colours are the palette's business - under red light the wash is a
+    // dim rust, not a green - and only the margin is pinned. A palette
+    // added without meeting it is the old invisible tint coming back.
     const park = layers().find((l) => l.id === LIVE_TOPO_LAYER_IDS.parkFill)
-    const opacity = (park?.paint as Record<string, unknown>)['fill-opacity'] as number
+    if (park === undefined) throw new Error('no park fill layer in the live sheet')
+    const opacity = (park.paint as Record<string, unknown>)['fill-opacity'] as number
 
     expect(opacity).toBeGreaterThan(0)
     expect(opacity).toBeLessThan(1)
 
-    for (const palette of [TOPO_PALETTE, TOPO_PALETTE_DARK]) {
+    for (const palette of [TOPO_PALETTE, TOPO_PALETTE_DARK, TOPO_PALETTE_RED]) {
       const wood = hexChannels(palette.wood)
       const wash = hexChannels(palette.park)
       const delta = Math.max(
@@ -728,10 +733,33 @@ describe('the sheet under light and dark', () => {
     }
   })
 
-  it('keys both palettes the same, so a new colour cannot stay light', () => {
+  it('keys every palette the same, so a new colour cannot stay light', () => {
     expect(Object.keys(TOPO_PALETTE_DARK).sort()).toEqual(
       Object.keys(TOPO_PALETTE).sort(),
     )
+    expect(Object.keys(TOPO_PALETTE_RED).sort()).toEqual(Object.keys(TOPO_PALETTE).sort())
+  })
+
+  it('holds only real six-digit hex in every palette - the tables are data', () => {
+    // MAP_STYLE_SPEC.md's own test brief. A malformed value here is not a
+    // type error - TopoPalette is Record<..., string> - and MapLibre would
+    // swallow it per layer, so it is asserted where the data lives.
+    for (const palette of [TOPO_PALETTE, TOPO_PALETTE_DARK, TOPO_PALETTE_RED]) {
+      for (const [key, value] of Object.entries(palette)) {
+        expect(value, key).toMatch(/^#[0-9a-f]{6}$/)
+      }
+    }
+  })
+
+  it('aims every row of the colour table at a layer the sheet actually builds', () => {
+    // The complement of "lists every colour": a typo'd id in SHEET_COLOURS
+    // would build fine and repaint nothing, leaving one layer stuck in the
+    // palette it was born with.
+    const built = new Set(layersFor('light').map((layer) => layer.id))
+
+    for (const [layer] of SHEET_COLOURS) {
+      expect(built, layer).toContain(layer)
+    }
   })
 
   it('keeps the dark sheet genuinely dark rather than mid-grey', () => {
@@ -764,13 +792,80 @@ describe('the sheet under light and dark', () => {
   })
 })
 
-describe('attachSheetTheme', () => {
+describe('sheetPalette', () => {
+  // How the three preferences compose (MAP_STYLE_SPEC.md), spelled per case
+  // so a regression names the hiker it fails: which style, which mode, and
+  // whether red light was armed.
+  it.each([
+    [
+      'field by day is the field sheet',
+      { mapStyle: 'field', theme: 'light' },
+      TOPO_PALETTE,
+    ],
+    [
+      "field after dark is night_hike - the spec's auto-dark",
+      { mapStyle: 'field', theme: 'dark' },
+      TOPO_PALETTE_DARK,
+    ],
+    [
+      'night_hike chosen outright is dark even under the light theme',
+      { mapStyle: 'night_hike', theme: 'light' },
+      TOPO_PALETTE_DARK,
+    ],
+    [
+      'night_hike stays itself after dark',
+      { mapStyle: 'night_hike', theme: 'dark' },
+      TOPO_PALETTE_DARK,
+    ],
+    [
+      'red light re-inks night_hike',
+      { mapStyle: 'night_hike', theme: 'dark', redLight: true },
+      TOPO_PALETTE_RED,
+    ],
+    [
+      'red light never touches a day sheet - it refines night_hike only',
+      { mapStyle: 'field', theme: 'light', redLight: true },
+      TOPO_PALETTE,
+    ],
+  ] as const)('%s', (_name, appearance, expected) => {
+    expect(sheetPalette(appearance)).toBe(expected)
+  })
+
+  it('keeps the red sheet as dark as the night one, ground layer by ground layer', () => {
+    // Red light exists to spare dark adaptation; a red sheet lighter than the
+    // dark sheet would cost the very thing it advertises.
+    for (const key of ['wood', 'scrub', 'wetland', 'rock', 'park', 'water'] as const) {
+      const [r, g, b] = hexChannels(TOPO_PALETTE_RED[key])
+      expect((r + g + b) / 3, key).toBeLessThan(60)
+    }
+  })
+
+  it('spends its brightness on red wavelengths, not blue ones', () => {
+    // The whole physiological point: rods are near-blind to deep red, so red
+    // may be bright where blue may not. Every colour on the red sheet keeps
+    // its red channel dominant and its blue channel smallest.
+    for (const [key, value] of Object.entries(TOPO_PALETTE_RED)) {
+      const [r, g, b] = hexChannels(value)
+      expect(r, key).toBeGreaterThanOrEqual(g)
+      expect(g, key).toBeGreaterThanOrEqual(b)
+    }
+  })
+
+  it('keeps the labels the brightest thing on the red sheet too', () => {
+    const [lr, lg, lb] = hexChannels(TOPO_PALETTE_RED.label)
+    const [gr, gg, gb] = hexChannels(TOPO_PALETTE_RED.wood)
+
+    expect((lr + lg + lb) / 3).toBeGreaterThan((gr + gg + gb) / 3 + 100)
+  })
+})
+
+describe('attachSheetAppearance', () => {
   it('repaints every colour on a live map, without rebuilding the style', async () => {
     const { MockMap } = await import('../test/mocks/maplibre-gl')
     const m = new MockMap({})
     m.layerIds = [...new Set(SHEET_COLOURS.map(([layer]) => layer))]
 
-    attachSheetTheme(m as never, 'dark')
+    attachSheetAppearance(m as never, { theme: 'dark' })
 
     for (const [layer, property, colour] of SHEET_COLOURS) {
       expect(m.paintProperties.get(`${layer}/${property}`)).toBe(
@@ -787,7 +882,7 @@ describe('attachSheetTheme', () => {
     const m = new MockMap({})
     m.layerIds = [TOPO_LAYER_ID, BACKDROP_LAYER_ID]
 
-    const detach = attachSheetTheme(m as never, 'dark')
+    const detach = attachSheetAppearance(m as never, { theme: 'dark' })
     m.emit('styledata')
     detach()
 
@@ -803,7 +898,7 @@ describe('attachSheetTheme', () => {
     const m = new MockMap({})
     m.layerIds = [LIVE_TOPO_LAYER_IDS.wood, LIVE_TOPO_LAYER_IDS.place]
 
-    attachSheetTheme(m as never, 'dark')
+    attachSheetAppearance(m as never, { theme: 'dark' })
 
     expect(m.paintProperties.get(`${LIVE_TOPO_LAYER_IDS.wood}/fill-color`)).toBe(
       TOPO_PALETTE_DARK.wood,

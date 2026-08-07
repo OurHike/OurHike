@@ -18,6 +18,24 @@ export const THEME_VALUES = ['light', 'dark', 'auto'] as const
 export type Theme = (typeof THEME_VALUES)[number]
 export type UnitSystem = 'imperial' | 'metric'
 /**
+ * Which of the sheet's palettes the map is drawn in (MAP_STYLE_SPEC.md).
+ *
+ * Two values, both implemented, on the same rule BACKGROUND_SOURCES states
+ * below: the settings screen can only offer a style that exists, and the
+ * backend's enum mirrors this exactly. The spec names three more - quiet_pine,
+ * parchment, ridgeline - whose reviewed palettes live in the design project's
+ * mockups; each joins this list in the release that carries its colours, not
+ * before.
+ *
+ * This is a STYLE, orthogonal to the light/dark `theme` above (the spec's
+ * "mapMode", which this codebase already had under that name): `field` is a
+ * day sheet that turns into `night_hike` when the theme resolves dark, and
+ * `night_hike` chosen outright is dark under either theme - a hiker readying
+ * night vision before dusk should not have to flip the whole app to do it.
+ */
+export const MAP_STYLE_VALUES = ['field', 'night_hike'] as const
+export type MapStyle = (typeof MAP_STYLE_VALUES)[number]
+/**
  * Which background the map draws.
  *
  * Two values, both implemented, rather than a list of intentions - the map
@@ -61,6 +79,14 @@ export interface UserPreferences {
   background_source: BackgroundSource
   max_background_zoom: MaxBackgroundZoom
   hiking_detail_level: HikingDetailLevel
+  map_style: MapStyle
+  /**
+   * night_hike's red-light sub-mode (MAP_STYLE_SPEC.md): the dark sheet
+   * re-inked in red to spare dark adaptation entirely. A toggle under the
+   * style rather than a third style, because it modifies night_hike and
+   * means nothing without it - and never a default.
+   */
+  red_light_enabled: boolean
   show_roads: boolean
   waypoint_types_shown: string[]
   layer_detail_level: LayerDetailLevel
@@ -96,6 +122,11 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   // made the choice gets the sheet that fits the storage envelope, not the
   // 1.1 GB one.
   hiking_detail_level: 'standard',
+  // Field: the reviewed day sheet (MAP_STYLE_SPEC.md's "reviewed favorite"),
+  // which the resolved theme turns into night_hike after dark - so the
+  // default pair is right for most hikers with nothing chosen at all.
+  map_style: 'field',
+  red_light_enabled: false,
   show_roads: false,
   waypoint_types_shown: [],
   layer_detail_level: 'standard',

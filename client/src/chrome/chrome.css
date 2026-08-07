@@ -146,8 +146,18 @@
   /* The last line of defence against a black map, covering the window the
      style's own background layer cannot: before WebGL has painted a first
      frame, and if the context is lost or never obtained at all. Same paper as
-     MAP_BACKGROUND_COLOR, so the handover is invisible. */
-  background: var(--bg-page);
+     MAP_BACKGROUND_COLOR - a literal rather than --bg-page since the field
+     sheet moved the map onto white paper while the chrome kept its cream, so
+     the token and the map parted ways. The dark pair below keeps the handover
+     invisible under the dark theme too (MAP_BACKDROP.dark). A hiker who picks
+     night_hike under a light theme gets one white pre-WebGL frame at boot;
+     CSS knows the theme and not the style preference, and matching the common
+     case per theme is the best a stylesheet can do. */
+  background: #ffffff;
+}
+
+:root[data-theme='dark'] .map-view {
+  background: #15140f;
 }
 
 /* MapLibre's own controls, sized to the 42px the wireframe specifies. */

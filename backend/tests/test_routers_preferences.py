@@ -20,6 +20,8 @@ def _valid_preferences(**overrides) -> dict:
         "background_source": "usgs_topo_offline",
         "max_background_zoom": 12,
         "hiking_detail_level": "fine",
+        "map_style": "field",
+        "red_light_enabled": False,
         "show_roads": False,
         "waypoint_types_shown": ["water", "shelter"],
         "layer_detail_level": "standard",
@@ -197,3 +199,59 @@ def test_put_preferences_round_trips_the_hiking_detail_level(client):
 
     get_response = client.get("/preferences/me", headers=auth_headers(user_id))
     assert get_response.json()["hiking_detail_level"] == "fine"
+
+
+def test_put_preferences_rejects_a_specced_but_unshipped_map_style(client):
+    """The spec names five styles; only the two with palettes are accepted
+    (MAP_STYLE_SPEC.md). parchment is real in the spec and unreal in every
+    client, which is exactly the value that must 422 rather than store."""
+    user_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+
+    response = client.put(
+        "/preferences/me",
+        json=_valid_preferences(map_style="parchment"),
+        headers=auth_headers(user_id),
+    )
+
+    assert response.status_code == 422
+
+
+def test_get_defaults_map_style_for_a_blob_written_before_it_existed(client, db_session):
+    """Rows synced before the map-style keys have neither, and the read side
+    answers Field with red light off - the reviewed default, and never the
+    red sheet."""
+    from datetime import UTC, datetime
+
+    from app.models.profile import Profile, Role
+
+    user_id = "99999999-9999-9999-9999-999999999999"
+    legacy = _valid_preferences()
+    del legacy["map_style"]
+    del legacy["red_light_enabled"]
+    db_session.add(Profile(id=user_id, role=Role.hiker))
+    db_session.commit()
+    db_session.add(UserPreferences(profile_id=user_id, data=legacy, updated_at=datetime.now(UTC)))
+    db_session.commit()
+
+    response = client.get("/preferences/me", headers=auth_headers(user_id))
+
+    assert response.status_code == 200
+    assert response.json()["map_style"] == "field"
+    assert response.json()["red_light_enabled"] is False
+
+
+def test_put_preferences_round_trips_night_hike_with_red_light(client):
+    user_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+
+    put_response = client.put(
+        "/preferences/me",
+        json=_valid_preferences(map_style="night_hike", red_light_enabled=True),
+        headers=auth_headers(user_id),
+    )
+    assert put_response.status_code == 200
+    assert put_response.json()["map_style"] == "night_hike"
+    assert put_response.json()["red_light_enabled"] is True
+
+    get_response = client.get("/preferences/me", headers=auth_headers(user_id))
+    assert get_response.json()["map_style"] == "night_hike"
+    assert get_response.json()["red_light_enabled"] is True

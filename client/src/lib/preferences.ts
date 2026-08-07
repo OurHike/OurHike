@@ -13,6 +13,7 @@ import {
   BACKGROUND_SOURCES,
   DEFAULT_PREFERENCES,
   HIKING_DETAIL_LEVEL_VALUES,
+  MAP_STYLE_VALUES,
   THEME_VALUES,
   type UserPreferences,
 } from './userPreferences'
@@ -69,11 +70,23 @@ function knownTheme(stored: Partial<UserPreferences>): Partial<UserPreferences> 
   return rest
 }
 
+/** And for the map style, which will grow values (quiet_pine, parchment,
+ *  ridgeline are specced and unshipped) and can shrink them again. An unknown
+ *  stored style would ride the merge into the palette lookup and come back as
+ *  no palette at all - the same road to the same black map. */
+function knownMapStyle(stored: Partial<UserPreferences>): Partial<UserPreferences> {
+  const value = stored.map_style
+  if (value === undefined || MAP_STYLE_VALUES.includes(value)) return stored
+
+  const { map_style: _dropped, ...rest } = stored
+  return rest
+}
+
 export async function loadPreferences(): Promise<UserPreferences> {
   const stored = (await get(PREFERENCES_KEY)) as Partial<UserPreferences> | undefined
   return {
     ...DEFAULT_PREFERENCES,
-    ...knownTheme(knownHikingDetail(knownBackground(stored ?? {}))),
+    ...knownMapStyle(knownTheme(knownHikingDetail(knownBackground(stored ?? {})))),
   }
 }
 

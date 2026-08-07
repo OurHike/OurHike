@@ -305,3 +305,281 @@ def test_a_thanks_can_still_be_dismissed_so_abuse_has_a_removal_path(client, db_
 
 def test_thanks_is_a_real_member_of_the_report_type_enum(client):
     assert ReportType.thanks.value == "thanks"
+
+
+# --- Receiving a thanks: resolution, and the reader `club_only` never had ---
+#
+# #249 filed four gaps as one flow, because fixing them separately risks
+# fixing none of them. The client promised a server-side resolution nothing
+# performed; the server could not have resolved anyway without a mile (#244);
+# `club_only` appeared in no query, so a thanks was readable by exactly one
+# person forever - its author; and the tables it resolves against had no way
+# in.
+
+_JUNE = date(2026, 6, 1)
+_JULY = date(2026, 7, 1)
+
+
+def _thanks_at(client, mile, authored, *, hiker=None, **extra):
+    """File a thanks at a mile, authored on a date. Returns the response body."""
+    payload = dict(
+        _THANKS,
+        mile=mile,
+        authored_at=f"{authored.isoformat()}T12:00:00+00:00",
+        **extra,
+    )
+    return client.post("/reports", json=payload, headers=auth_headers(hiker or str(uuid.uuid4()))).json()
+
+
+def test_a_thanks_resolves_to_whoever_had_the_stretch(client, db_session):
+    """The resolution `maintainerLookup.ts` has been promising all along.
+
+    "The authoritative answer is worked out server-side when the thanks is
+    finally received, from its location and authored date" - which nothing
+    performed until now.
+    """
+    club = _club(db_session)
+    pat = _maintainer(db_session)
+    _assign(db_session, maintainer=pat, club=club, start=1000, end=1100, frm=_JUNE)
+
+    body = _thanks_at(client, 1043, _JUNE)
+
+    assert body["maintainer_id"] == pat.id
+    assert body["club_id"] == club.id
+
+
+def test_it_resolves_against_the_authored_date_not_today(client, db_session):
+    """The part that is easy to get wrong, and the reason assignments are
+    versioned at all.
+
+    A thanks written in June about a stretch reassigned in July, syncing from
+    an outbox in August, belongs to JUNE's maintainer. Resolving against now
+    would hand a stranger someone else's credit and quietly rob the person
+    who earned it.
+    """
+    club = _club(db_session)
+    pat = _maintainer(db_session, "Pat")
+    sam = _maintainer(db_session, "Sam")
+    _assign(db_session, maintainer=pat, club=club, start=1000, end=1100, frm=_JUNE, to=date(2026, 6, 30))
+    _assign(db_session, maintainer=sam, club=club, start=1000, end=1100, frm=_JULY)
+
+    body = _thanks_at(client, 1043, _JUNE)
+
+    assert body["maintainer_id"] == pat.id
+
+
+def test_a_hiker_who_knows_the_name_is_not_overruled_by_the_lookup(client, db_session):
+    """SAYING_THANKS.md's "optionally tagging the maintainer responsible".
+
+    Somebody who knows who they are thanking has said something the location
+    cannot say, and a lookup that overwrote it would be the app correcting a
+    hiker about their own gratitude.
+    """
+    club = _club(db_session)
+    pat = _maintainer(db_session, "Pat")
+    sam = _maintainer(db_session, "Sam")
+    _assign(db_session, maintainer=sam, club=club, start=1000, end=1100, frm=_JUNE)
+
+    body = _thanks_at(client, 1043, _JUNE, maintainer_id=pat.id)
+
+    assert body["maintainer_id"] == pat.id
+    # ...and the half they left blank is still resolved.
+    assert body["club_id"] == club.id
+
+
+def test_overlapping_stretches_name_the_club_but_not_a_person(client, db_session):
+    """Resolution returns zero or more, never exactly one.
+
+    Two maintainers cover a boundary; one foreign key cannot hold both, and
+    picking one would credit a coin toss. The club is still unambiguous, and
+    club-level is the documented default. Delivery reaches both - see below.
+    """
+    club = _club(db_session)
+    pat = _maintainer(db_session, "Pat")
+    sam = _maintainer(db_session, "Sam")
+    _assign(db_session, maintainer=pat, club=club, start=1000, end=1050, frm=_JUNE)
+    _assign(db_session, maintainer=sam, club=club, start=1050, end=1100, frm=_JUNE)
+
+    body = _thanks_at(client, 1050, _JUNE)
+
+    assert body["maintainer_id"] is None
+    assert body["club_id"] == club.id
+
+
+def test_a_thanks_with_no_mile_resolves_to_nobody_rather_than_guessing(client, db_session):
+    """Still a complete thanks. Inventing a position for it would credit a
+    volunteer for a stretch nobody said this was about."""
+    club = _club(db_session)
+    pat = _maintainer(db_session)
+    _assign(db_session, maintainer=pat, club=club, start=1000, end=1100, frm=_JUNE)
+
+    body = client.post("/reports", json=_THANKS, headers=auth_headers(str(uuid.uuid4()))).json()
+
+    assert body["maintainer_id"] is None
+    assert body["club_id"] is None
+
+
+def test_a_condition_report_cannot_carry_a_profile_id_it_names_itself(client, db_session):
+    """The hole `ReportOut` already documented, closed.
+
+    These are foreign keys to real people and they were copied from the
+    request for EVERY type - so a `blowdown`, which is `public`, could arrive
+    carrying any profile id a caller cared to name, and `maintainer_id` was a
+    second `reporter_id` nobody had noticed.
+    """
+    club = _club(db_session)
+    pat = _maintainer(db_session)
+    payload = {
+        "type": "blowdown",
+        "reporter_type": "thru",
+        "lat": 37.9,
+        "lon": -79.1,
+        "maintainer_id": pat.id,
+        "club_id": club.id,
+    }
+
+    body = client.post("/reports", json=payload, headers=auth_headers(pat.id)).json()
+
+    assert body["maintainer_id"] is None
+    assert body["club_id"] is None
+
+
+# --- GET /reports/thanks: the delivery ------------------------------------
+
+
+def _inbox(client, viewer_id):
+    response = client.get("/reports/thanks", headers=auth_headers(viewer_id))
+    assert response.status_code == 200
+    return response.json()
+
+
+def test_a_maintainer_sees_a_thanks_for_their_own_stretch(client, db_session):
+    """Before this, `club_only` appeared in no query at all: the public list
+    excludes it, the moderation queue excludes `thanks` on purpose, and
+    nothing else read it."""
+    club = _club(db_session)
+    pat = _maintainer(db_session)
+    _assign(db_session, maintainer=pat, club=club, start=1000, end=1100, frm=_JUNE)
+    filed = _thanks_at(client, 1043, _JUNE)
+
+    assert [row["id"] for row in _inbox(client, pat.id)] == [filed["id"]]
+
+
+def test_both_maintainers_of_an_overlap_see_it(client, db_session):
+    """The case a single `maintainer_id` cannot express, and the reason
+    delivery re-asks the question rather than reading that column.
+
+    "Two is also normal, and both hear about it" - SAYING_THANKS.md. Under
+    delivery-by-column this thanks would have reached neither, because
+    resolution correctly refused to pick one of them.
+    """
+    club = _club(db_session)
+    pat = _maintainer(db_session, "Pat")
+    sam = _maintainer(db_session, "Sam")
+    _assign(db_session, maintainer=pat, club=club, start=1000, end=1050, frm=_JUNE)
+    _assign(db_session, maintainer=sam, club=club, start=1050, end=1100, frm=_JUNE)
+    filed = _thanks_at(client, 1050, _JUNE)
+
+    assert [row["id"] for row in _inbox(client, pat.id)] == [filed["id"]]
+    assert [row["id"] for row in _inbox(client, sam.id)] == [filed["id"]]
+
+
+def test_a_maintainer_of_another_stretch_sees_nothing(client, db_session):
+    club = _club(db_session)
+    pat = _maintainer(db_session, "Pat")
+    sam = _maintainer(db_session, "Sam")
+    _assign(db_session, maintainer=pat, club=club, start=1000, end=1100, frm=_JUNE)
+    _assign(db_session, maintainer=sam, club=club, start=1, end=2, frm=_JUNE)
+    _thanks_at(client, 1043, _JUNE)
+
+    # Sam's own stretch is nowhere near it - but they share a club, which is
+    # the club-level default, so what they must not see is a thanks addressed
+    # to a club they are not in.
+    other_club = _club(db_session, "Other Club")
+    stranger = _maintainer(db_session, "Alex")
+    _assign(db_session, maintainer=stranger, club=other_club, start=1, end=2, frm=_JUNE)
+
+    assert _inbox(client, stranger.id) == []
+
+
+def test_the_maintainer_who_did_the_work_keeps_it_after_handing_over(client, db_session):
+    """And the one who took over does not inherit it.
+
+    Same rule as resolution, from the delivery end: the assignment's own
+    dates are checked against when the thanks was WRITTEN.
+    """
+    club = _club(db_session)
+    pat = _maintainer(db_session, "Pat")
+    sam = _maintainer(db_session, "Sam")
+    _assign(db_session, maintainer=pat, club=club, start=1000, end=1100, frm=_JUNE, to=date(2026, 6, 30))
+    _assign(db_session, maintainer=sam, club=club, start=1000, end=1100, frm=_JULY)
+    filed = _thanks_at(client, 1043, _JUNE)
+
+    assert [row["id"] for row in _inbox(client, pat.id)] == [filed["id"]]
+    # Sam shares the club, so they see it as club mail rather than as theirs -
+    # which is the club-level default, not a leak. What they must not be is
+    # the resolved individual.
+    assert filed["maintainer_id"] == pat.id
+
+
+def test_a_thanks_written_on_the_last_day_of_an_assignment_is_still_theirs(client, db_session):
+    """`effective_to` is a whole day and `timestamp` is a moment, so the
+    delivery bound is half-open on the upper end. A thanks written at noon on
+    a maintainer's last day belongs to them, not to nobody."""
+    club = _club(db_session)
+    pat = _maintainer(db_session)
+    last = date(2026, 6, 30)
+    _assign(db_session, maintainer=pat, club=club, start=1000, end=1100, frm=_JUNE, to=last)
+    filed = _thanks_at(client, 1043, last)
+
+    assert [row["id"] for row in _inbox(client, pat.id)] == [filed["id"]]
+
+
+def test_a_named_maintainer_with_no_assignment_still_gets_it(client, db_session):
+    """Being tagged by name stands alone - a maintainer between sections, or
+    one whose club has not been loaded into the table yet."""
+    pat = _maintainer(db_session)
+    filed = _thanks_at(client, 1043, _JUNE, maintainer_id=pat.id)
+
+    assert [row["id"] for row in _inbox(client, pat.id)] == [filed["id"]]
+
+
+def test_a_hiker_with_no_assignments_gets_an_empty_inbox_not_a_403(client, db_session):
+    """The true answer, rather than an error about a resource that does not
+    concern them."""
+    club = _club(db_session)
+    pat = _maintainer(db_session)
+    _assign(db_session, maintainer=pat, club=club, start=1000, end=1100, frm=_JUNE)
+    _thanks_at(client, 1043, _JUNE)
+
+    assert _inbox(client, str(uuid.uuid4())) == []
+
+
+def test_the_inbox_needs_an_account(client):
+    """Unlike every browsing endpoint in this app, and for the reason
+    `club_only` exists: "who is this addressed to" has no anonymous answer."""
+    assert client.get("/reports/thanks").status_code == 401
+
+
+def test_only_thanks_reach_the_inbox(client, db_session):
+    """A blowdown at the same mile is trail work, not gratitude, and it has
+    its own delivery - the moderation queue."""
+    club = _club(db_session)
+    pat = _maintainer(db_session)
+    _assign(db_session, maintainer=pat, club=club, start=1000, end=1100, frm=_JUNE)
+    client.post(
+        "/reports",
+        json={"type": "blowdown", "reporter_type": "thru", "lat": 37.9, "lon": -79.1, "mile": 1043},
+        headers=auth_headers(str(uuid.uuid4())),
+    )
+
+    assert _inbox(client, pat.id) == []
+
+
+def test_the_inbox_path_is_not_swallowed_by_the_report_detail_route(client, db_session):
+    """`/reports/thanks` and `/reports/{report_id}` are the same shape, so
+    declaration order is what keeps "thanks" from being read as an id. A 404
+    here would be that ordering having been lost in a later edit."""
+    pat = _maintainer(db_session)
+
+    assert client.get("/reports/thanks", headers=auth_headers(pat.id)).status_code == 200

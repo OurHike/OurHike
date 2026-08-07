@@ -6,7 +6,7 @@ account, matching every other browsing endpoint in this app; submitting
 it to and, later, moderate against.
 """
 
-from datetime import timezone
+from datetime import datetime, time, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
@@ -15,6 +15,7 @@ from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.assignments import assignments_covering
 from app.core.auth import bearer_scheme, get_current_user
 from app.core.orm import commit_and_refresh, get_or_404
 from app.core.photos import (
@@ -30,6 +31,7 @@ from app.core.photos import (
 )
 from app.core.time import utc_now
 from app.db.session import get_db
+from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.profile import MODERATOR_ROLES, Profile
 from app.models.report import Report, ReportStatus, ReportType, Visibility
 from app.schemas.report import ReportCreate, ReportOut, ReportPhotoLink
@@ -152,6 +154,75 @@ def _visible_to(report: Report, viewer: Profile | None) -> bool:
     return report.visibility == Visibility.public and report.status in _MODERATED_STATUSES
 
 
+def _credit_for(db: Session, payload: ReportCreate, authored: datetime) -> tuple[str | None, str | None]:
+    """Who a thanks is for: what the hiker said, and what location says otherwise.
+
+    **The second half is the resolution `client/src/lib/maintainerLookup.ts`
+    has been promising since it was written** - "the authoritative answer is
+    worked out server-side when the thanks is finally received, from its
+    location and authored date" - and which nothing performed (#249). The
+    outbox says the same thing from the other side: `maintainer_id` and
+    `club_id` are "both optional... not knowing who to thank is the ordinary
+    case, and the server resolves it from location and authored date
+    instead". Nothing resolved anything; the two fields were copied out of
+    the request and stored.
+
+    So the rule is: **what the hiker named wins, and what they left blank is
+    resolved.** Someone who knows the name is the case SAYING_THANKS.md's
+    "optionally tagging the maintainer responsible" exists for, and a lookup
+    must not overrule them. The two fields resolve independently - naming a
+    club without a person is the ordinary way to thank a stretch.
+
+    **On any other type, both are dropped.** They were copied for every type,
+    which is the hole `ReportOut` already documents: these are foreign keys to
+    real people, so a `blowdown` could arrive carrying any profile id a caller
+    cared to name, on a report that is `public`, and `maintainer_id` was a
+    second `reporter_id` nobody had noticed. Nothing legitimate sends them -
+    the form only offers them on a thanks - so they are ignored rather than
+    refused, the same way `ReportCreate` already ignores a submitted
+    `visibility`.
+
+    **The authored date, never today's.** A thanks written in June about a
+    stretch reassigned in July and synced from an outbox in August belongs to
+    June's maintainer; resolving against now would hand a stranger someone
+    else's credit and quietly rob the person who earned it
+    (SAYING_THANKS.md).
+
+    **Resolved only when the answer is unambiguous, and null is common.**
+    Resolution returns zero or more, never exactly one - so a single foreign
+    key cannot hold the answer when two stretches overlap, and a null here is
+    not a failure to deliver. Delivery is `GET /reports/thanks`, which re-asks
+    the same question and reaches every covering maintainer. What these two
+    columns record is the narrower thing they can honestly record: who was
+    credited when exactly one person, or one club, was.
+
+    A club can be named even where the individual cannot - two assignments
+    from the same club overlapping a boundary still say which club the work
+    belongs to, which is the club-level default SAYING_THANKS.md describes.
+    """
+    if payload.type is not ReportType.thanks:
+        return None, None
+
+    named_maintainer, named_club = payload.maintainer_id, payload.club_id
+    if named_maintainer is not None and named_club is not None:
+        return named_maintainer, named_club
+
+    if payload.mile is None:
+        # Nothing to resolve against. A thanks with no fix is still a
+        # complete thanks - inventing a position for it would credit a
+        # volunteer for a stretch nobody said this was about.
+        return named_maintainer, named_club
+
+    covering = assignments_covering(db, payload.mile, authored.date())
+    maintainers = {assignment.maintainer_id for assignment, _, _ in covering}
+    clubs = {assignment.club_id for assignment, _, _ in covering}
+
+    return (
+        named_maintainer or (maintainers.pop() if len(maintainers) == 1 else None),
+        named_club or (clubs.pop() if len(clubs) == 1 else None),
+    )
+
+
 @router.post("", response_model=ReportOut, status_code=status.HTTP_201_CREATED)
 def create_report(
     payload: ReportCreate,
@@ -201,6 +272,9 @@ def create_report(
         # aware value is converted to UTC rather than stored as it arrived.
         authored = authored.astimezone(timezone.utc).replace(tzinfo=None)
 
+    timestamp = authored if authored is not None else now
+    credited_maintainer, credited_club = _credit_for(db, payload, timestamp)
+
     report = Report(
         # None lets the model's own default mint one - the same fallback
         # `authored_at` gets from the server clock just below.
@@ -218,9 +292,9 @@ def create_report(
         note=payload.note,
         photo_url=payload.photo_url,
         visibility=_visibility_for(payload.type),
-        maintainer_id=payload.maintainer_id,
-        club_id=payload.club_id,
-        timestamp=authored if authored is not None else now,
+        maintainer_id=credited_maintainer,
+        club_id=credited_club,
+        timestamp=timestamp,
         received_at=now,
     )
     db.add(report)
@@ -280,6 +354,85 @@ def list_reports(
         rows = query.filter(moderated).all()
     else:
         rows = query.filter(or_(moderated, Report.reporter_id == current_user.id)).all()
+
+    return [ReportOut.for_viewer(row, current_user) for row in rows]
+
+
+@router.get("/thanks", response_model=list[ReportOut])
+def list_my_thanks(
+    db: Session = Depends(get_db),
+    current_user: Profile = Depends(get_current_user),
+) -> list[ReportOut]:
+    """Every thanks meant for the caller. **The reader `club_only` never had.**
+
+    A thanks is forced to `visibility = club_only` on create, and that value
+    appeared in no query anywhere (#249): the public list excludes it, the
+    moderation queue excludes `thanks` deliberately (verify refuses one -
+    gratitude has nothing to verify), and nothing else read it. So a thanks
+    was readable by exactly one person forever - its own author - which is
+    the whole feature not happening. `models/report.py` says `club_only`
+    "goes to the club and the maintainer"; this is the half that delivers.
+
+    **Three ways to be a recipient, and the third is the one that matters.**
+
+    1. Named directly. A hiker who knew the name tagged it.
+    2. Addressed to a club the caller holds an assignment for. Club-level is
+       SAYING_THANKS.md's default, and the common case - the hiker knew the
+       stretch, not the person.
+    3. Written at a mile inside one of the caller's own assignments, on a
+       date that assignment was effective.
+
+    Three exists because resolution "returns zero or more, never exactly
+    one". Where two stretches overlap, `report.maintainer_id` is null - one
+    foreign key cannot name two people - and delivery by that column alone
+    would silently drop both recipients in exactly the case the design calls
+    normal. Re-asking the question at read time reaches both.
+
+    **The assignment's own dates, against the report's AUTHORED time.** A
+    thanks written in June about a stretch reassigned in July belongs to
+    June's maintainer even when it syncs in August, so a maintainer who took
+    the section over in July does not inherit it - and the one who did the
+    work still sees it after handing off. Same rule as resolution, from the
+    other end.
+
+    Auth required and no role gate: holding an assignment is what makes
+    somebody a recipient, and a `club_admin` with no assignment is not one.
+    A hiker with no assignments gets an empty list, which is the true answer
+    rather than a 403 about a resource that concerns them not at all.
+    """
+    mine = db.query(MaintainerAssignment).filter(MaintainerAssignment.maintainer_id == current_user.id).all()
+
+    # Named directly. Stands alone: somebody can be thanked by name without
+    # holding any assignment at all - a maintainer between sections, or one
+    # whose club has not been loaded into the table yet.
+    recipient = [Report.maintainer_id == current_user.id]
+
+    clubs = {assignment.club_id for assignment in mine}
+    if clubs:
+        recipient.append(Report.club_id.in_(clubs))
+
+    for assignment in mine:
+        # Half-open on the upper end rather than `<= effective_to`, because
+        # `timestamp` is a moment and `effective_to` is a whole day: a thanks
+        # written at 14:00 on a maintainer's last day is theirs.
+        covers = [
+            Report.mile.is_not(None),
+            Report.mile >= assignment.start_mile,
+            Report.mile <= assignment.end_mile,
+            Report.timestamp >= datetime.combine(assignment.effective_from, time.min),
+        ]
+        if assignment.effective_to is not None:
+            covers.append(Report.timestamp < datetime.combine(assignment.effective_to + timedelta(days=1), time.min))
+        recipient.append(and_(*covers))
+
+    rows = (
+        db.query(Report)
+        .filter(Report.type == ReportType.thanks, or_(*recipient))
+        # Newest first: this is an inbox, and the useful end of one is the
+        # end that just arrived.
+        .order_by(Report.timestamp.desc())
+        .all()
+    )
 
     return [ReportOut.for_viewer(row, current_user) for row in rows]
 

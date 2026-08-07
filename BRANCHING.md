@@ -62,6 +62,62 @@ either way. Pre-merging every branch to look for it means paying for that check
 once per branch instead of once per landing, and still not catching it any
 earlier for the branch that lands second.
 
+### This rule is only followable if the setting allows it
+
+**Settings → Rules → "Require branches to be up to date before merging" must be
+off for any of the above to be possible.** With it on, GitHub disables the
+merge button until the branch is current, and the rule in this section becomes
+something nobody can follow — the catch-up merge stops being a habit and
+becomes policy.
+
+It is also the setting that specifically punishes concurrent work, because it
+serialises it. With five branches ready:
+
+| | up-to-date required | off |
+|---|---|---|
+| landing five ready branches | merge one → the other four are now behind → each updates → each re-runs CI → repeat | merge all five |
+
+Every merge invalidates every other open pull request. N ready branches cost N
+sequential full CI rounds, and the last one in line pays the most.
+
+Measured here: during a window with the setting off, pull requests merged 3, 7,
+9, 16 and 23 commits behind `main`, and `main` stayed green.
+
+### What the setting was protecting against
+
+Two branches that are each green alone and broken together — a semantic
+conflict, which merges cleanly and no `merge-tree` check can see. Turning the
+setting off gives that guarantee up. Two things soften it: the push-to-`main`
+runs catch it immediately after landing rather than before, and §2 keeps the
+branches that could plausibly interact from being in flight together in the
+first place.
+
+### The option that gives you both: merge queue
+
+A merge queue keeps the guarantee without anyone merging `main` into anything.
+GitHub builds each queued pull request against `main` plus everything ahead of
+it in the queue, in its own temporary branch, and merges only if the required
+checks pass there. The pull request branch is never modified, and entries are
+tested speculatively in parallel rather than one at a time — which is the
+property this whole document is trying to buy.
+
+This repository is public, so the feature is available on the Free plan.
+
+**It cannot be switched on as-is.** Merge queue runs checks on the
+`merge_group` event, and no workflow in `.github/workflows/` currently triggers
+on it:
+
+```yaml
+on:
+  pull_request:
+    branches: [main]
+  merge_group:        # ← required, currently missing everywhere
+```
+
+Without that, a required check never reports against a queue entry and every
+merge hangs until the queue times it out. The trigger has to land before the
+setting is turned on, not after.
+
 ### Answering "does it conflict?" without merging
 
 ```

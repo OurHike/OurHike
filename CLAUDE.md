@@ -22,36 +22,30 @@ followed, not because a breach would be visible later.
 
 ## What is still fine
 
-Merging `main` **into** a branch you are working on. Keeping a long-running branch current
-and resolving its conflicts is part of finishing the work, and it is the maintainer who
-then decides whether the result lands.
-
-Direction is the whole rule: `main` flows down into your branch, never the reverse.
+Merging `main` **into** a branch you are working on, *when the branch needs it*. Direction
+is the whole rule: `main` flows down into your branch, never the reverse.
 
 If a branch has drifted too far to reconcile honestly, say so in the pull request and
 leave it. Do not resolve it by pushing to `main`.
 
-## One branch per issue, unless the work is stacked
+## Do not merge `main` in just to be current
 
-**Default: a new issue gets a new branch off `main`, its own pull request, and gets closed
-out on its own.** Small and independently reviewable beats comprehensive, and a session
-that finds three things should leave three pull requests.
+**Being behind `main` is not a defect, and catching up is not part of finishing the work.**
+GitHub merges the pull request against `main` as it stands when the button is pressed, so a
+branch eleven commits behind produces the same merge commit as one freshly caught up.
 
-The exception is work that sits **on top of** an open branch — it touches code that branch
-is actively rewriting, or it only makes sense with those changes present. Splitting that
-does not produce two clean reviews. It produces two pull requests that conflict with each
-other and a merge order somebody has to hold in their head. Keep it where it depends, and
-say plainly in the pull request that it closes two issues and why.
+Forty-six of the last seventy-three `main`-into-branch merges in this repository resolved
+nothing — empty combined diffs, a full CI round trip each, bought nothing. This file used
+to ask for them. It was wrong.
 
-**The test is dependency, not subject or size.** [#216](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/216)
-had nothing to do with [#210](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/210)
-as a problem — one was a blank background, the other was how you reach the download — but
-its fix landed in `App.tsx`, `MapScreen.tsx` and `BackgroundPicker.tsx` while #210 was
-rewriting all three. It stayed, and the pull request said so.
+Merge `main` in when `scripts/threads.sh` reports `CONFLICTS`, when the branch cannot pass
+its own tests without something on `main`, or when the maintainer asks. Otherwise leave it
+alone and say in the pull request that it merges clean.
 
-Switching branches is nearly free. What costs is re-verifying and resolving conflicts, so
-the number worth minimising is how many times the full check suite has to run — not how
-many branches exist. Do not let "fewer branches" become the goal it is not.
+[BRANCHING.md](BRANCHING.md) is the full strategy — how to slice work so branches do not
+collide, which files actually cause the collisions, and what order to land things in. Read
+it before opening a second concurrent branch. It also holds the one-branch-per-issue rule
+that used to live here.
 
 ## Run what CI runs, before pushing
 

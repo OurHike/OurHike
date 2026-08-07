@@ -24,6 +24,7 @@ This repository keeps two different kinds of writing, and the difference is wort
 | [WIREFRAMES.md](WIREFRAMES.md) | Screen-by-screen specification |
 | [features/](features/) | Full design drafts, one per feature |
 | [TESTING.md](TESTING.md) | Testing approach and standards |
+| [BRANCHING.md](BRANCHING.md) | Branching and pull request strategy, and running several at once |
 | [ROADMAP.md](ROADMAP.md) | Phase narrative — where the project is and what each phase means |
 | [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) | Ordered runbook for getting v1 deployed |
 | [pipeline/DBT.md](pipeline/DBT.md), [pipeline/DATA_RELEASES.md](pipeline/DATA_RELEASES.md) | Data platform designs |
@@ -100,6 +101,7 @@ The pipeline fetches large amounts of data from ATC, USGS and opentrail.org. Rea
 ## Pull requests
 
 - Branch off `main`. Small and focused beats comprehensive.
+- **Do not merge `main` back in to keep the branch current.** GitHub merges your pull request against `main` as it stands at that moment, so a branch that is behind produces exactly the same result as one freshly caught up — the catch-up run costs a CI round trip and buys nothing. Merge `main` in when it genuinely conflicts, or when your branch cannot pass its own tests without something that landed there. `scripts/threads.sh` answers which, for every branch at once, without touching your working tree. [BRANCHING.md](BRANCHING.md) has the reasoning and the rest of the strategy.
 - Link the issue and let the merge close it — `Closes #42`. This is the mechanism that keeps the tracker honest, rather than someone remembering to tick a box. CI checks it: a PR that closes no issue fails **PR has a linked issue**. Attaching the issue through the sidebar's Development panel counts too, though that fires no event, so the check needs a manual re-run afterwards. A bare `#42` mention does not count — referring to an issue and resolving it are different claims.
 - If a change genuinely has no issue behind it — a typo, a revert, a dependency bump — label it `no-issue` rather than opening an issue for the sole purpose of closing it. The exemption is there so the rule does not manufacture the paperwork it exists to prevent.
 - New behaviour comes with tests. See [TESTING.md](TESTING.md) for what is expected; the short version is that tests describe behaviour rather than implementation.

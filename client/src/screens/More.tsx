@@ -19,6 +19,14 @@ export interface StuckReport {
 
 export interface MoreProps extends SettingsProps {
   onStartReport: () => void
+  /**
+   * The hike in one line (lib/plannedHike.ts), or null for a hiker who has
+   * not set one - which is a first-class state, not an incomplete setup. The
+   * row invites rather than nags, because every part of this app works
+   * without a hike.
+   */
+  hikeSummary?: string | null
+  onEditHike?: () => void
   /** Waiting for signal. Excludes anything in `stuckReports`. */
   queuedReportCount: number
   /**
@@ -34,6 +42,8 @@ export interface MoreProps extends SettingsProps {
 
 export function More({
   onStartReport,
+  hikeSummary = null,
+  onEditHike,
   queuedReportCount,
   stuckReports = [],
   onRetryReport,
@@ -50,6 +60,19 @@ export function More({
 
   return (
     <div className="more">
+      {onEditHike !== undefined && (
+        <section className="settings__group">
+          <h2 className="settings__heading">Your hike</h2>
+          <button type="button" className="settings__action" onClick={onEditHike}>
+            {hikeSummary ?? 'Say where you are walking'}
+          </button>
+          <p className="settings__note">
+            {hikeSummary === null
+              ? 'Optional. It lets the map say what is ahead of you instead of waiting until you have walked far enough for it to work out which way you are going.'
+              : 'Change or clear this at any time.'}
+          </p>
+        </section>
+      )}
       <section className="settings__group">
         <h2 className="settings__heading">Contribute</h2>
         <button type="button" className="settings__action" onClick={onStartReport}>

@@ -216,3 +216,30 @@
   font-weight: 600;
   color: var(--fg-1);
 }
+
+/* ---------- Your hike (HikePicker.tsx) ---------- */
+
+/* A label wrapping its own input, so the two are associated without an id -
+ * the same pattern the rest of this screen's controls use. Stacked rather than
+ * side by side because a mile marker on the AT is up to six characters and a
+ * cramped number field is the one thing that makes a gloved thumb give up. */
+.settings__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  font-size: 13px;
+  color: var(--fg-2);
+}
+.settings__field input {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-3, 12px);
+  font-size: 16px; /* 16px or iOS zooms the whole page on focus. */
+  color: var(--fg-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+}
+.settings__action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

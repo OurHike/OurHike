@@ -136,6 +136,15 @@ import {
   type ReportSummary,
 } from './lib/api'
 import { nearestClosureBanner } from './lib/closureBanner'
+import { HikePicker } from './screens/HikePicker'
+import {
+  clearPlannedHike,
+  hikeSummary,
+  loadPlannedHike,
+  plannedDirection,
+  savePlannedHike,
+  type PlannedHike,
+} from './lib/plannedHike'
 import { closureBands } from './map/closureLayers'
 import { isSeriousWarning, routeBannerText, warningsOnRoute } from './lib/seriousWarnings'
 import type { BoundingBox, MapPoint } from './lib/legendContents'
@@ -276,6 +285,11 @@ function App() {
   // looked like a bug in the strip rather than a missing feature.
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
 
+  // What the hiker SAID they are doing, as against what the GPS works out
+  // below. Null is the ordinary state rather than an incomplete setup (#335).
+  const [hike, setHike] = useState<PlannedHike | null>(null)
+  const [pickingHike, setPickingHike] = useState(false)
+
   const [direction, setDirection] = useState<DirectionTracker | null>(null)
   // The live map is state rather than a ref because effects have to run when
   // it appears. It appears more than once: the map screen unmounts whenever
@@ -330,6 +344,16 @@ function App() {
     )
   }, [])
 
+  // Nothing waits on this. A hike changes what the banners can say and
+  // nothing about whether the app renders, so unlike preferences it gets no
+  // `loaded` gate: a hiker who set one two states ago has their banners a tick
+  // later, and one who never did is already in the state this resolves to.
+  // A rejected read leaves it null for the same reason - null is what "no
+  // hike" already means everywhere.
+  useEffect(() => {
+    void loadPlannedHike().then(setHike, () => setHike(null))
+  }, [])
+
   // Two facts, not one number. A report waiting for signal resolves itself;
   // a report the server refused never will, and showing them as one count is
   // what let a phone with a wrong clock say "waiting to send" forever (#243).
@@ -368,6 +392,21 @@ function App() {
     },
     [refreshOutbox],
   )
+
+  // Written through to the phone before the state moves, so a hiker who sets
+  // a hike and immediately kills the app has it on the next launch. The same
+  // order updatePreferences uses, and for the same reason.
+  const handleSaveHike = useCallback(async (next: PlannedHike) => {
+    await savePlannedHike(next)
+    setHike(next)
+    setPickingHike(false)
+  }, [])
+
+  const handleClearHike = useCallback(async () => {
+    await clearPlannedHike()
+    setHike(null)
+    setPickingHike(false)
+  }, [])
 
   useOutboxSync(online && account !== null, handleSynced)
 
@@ -657,6 +696,27 @@ function App() {
   }, [fix])
 
   /**
+   * Which way this hiker is walking, from whichever source knows.
+   *
+   * OBSERVATION WINS, and the plan fills the gap it leaves. `hikeDirection.ts`
+   * waits for a quarter mile of movement before it will commit - deliberately,
+   * so a GPS wandering under tree cover at a lunch stop does not flip the
+   * header - and until then a declared hike is the only thing that can answer
+   * the question at all. That quarter mile is exactly the stretch a hiker
+   * leaving a trailhead walks with no banner (#335).
+   *
+   * The ordering is worth being deliberate about, because the two can
+   * disagree: somebody who said NOBO and is measurably walking south is
+   * either turned around or has changed their mind, and this app cannot tell
+   * which. Trusting the plan over the observation would redefine "ahead" as
+   * the way they are NOT going and warn about closures behind them, which is
+   * the worse of the two failures. Telling them they are walking the wrong
+   * way is the wrong-way alert's job (#93, #247), not this line's.
+   */
+  const heading =
+    direction?.direction ?? (hike === null ? undefined : plannedDirection(hike))
+
+  /**
    * The closure a hiker is about to walk into, in one line, or null.
    *
    * Needs a mile and a closure list; the direction goes down as whatever is
@@ -670,8 +730,8 @@ function App() {
    */
   const closureAhead = useMemo(() => {
     if (closures === null || fix === null) return null
-    return nearestClosureBanner(closures, fix.mile, direction?.direction)
-  }, [closures, fix, direction])
+    return nearestClosureBanner(closures, fix.mile, heading)
+  }, [closures, fix, heading])
 
   /**
    * Serious warnings between here and the end of the trail, counted.
@@ -684,7 +744,6 @@ function App() {
    * moderator has not escalated cannot reach this line.
    */
   const warningsAhead = useMemo(() => {
-    const heading = direction?.direction
     if (
       reports === null ||
       trailIndex === null ||
@@ -703,14 +762,29 @@ function App() {
       ]
     })
 
-    // To the end of the trail in the direction of travel: a warning behind
-    // someone is not on their route, and the terminus is as far as "ahead"
-    // can go.
-    const routeEnd = heading === 'NOBO' ? trailIndex.totalMiles : 0
+    // Where the ROUTE ends, which is the phrase the banner uses. A declared
+    // hike answers it exactly; without one the terminus is as far as "ahead"
+    // can honestly go, and "on your route" quietly means the two thousand
+    // miles between here and Katahdin (#335).
+    //
+    // Clamped to the direction actually being walked. A hiker heading north
+    // who declared a southbound hike would otherwise get a range running
+    // backwards past them, and `warningsOnRoute` normalises it into a count of
+    // everything BEHIND them - a banner about warnings they have already
+    // passed. Falling back to the terminus in that case says less and says it
+    // truthfully.
+    const declaredEnd = hike === null ? null : hike.endMile
+    const terminus = heading === 'NOBO' ? trailIndex.totalMiles : 0
+    const routeEnd =
+      declaredEnd !== null &&
+      (heading === 'NOBO' ? declaredEnd >= fix.mile : declaredEnd <= fix.mile)
+        ? declaredEnd
+        : terminus
+
     return routeBannerText(
       warningsOnRoute(placed, { fromMile: fix.mile, toMile: routeEnd }).length,
     )
-  }, [reports, trailIndex, fix, direction])
+  }, [reports, trailIndex, fix, heading, hike])
 
   /**
    * The same closures on the canvas: a barred red band along each closed
@@ -1351,28 +1425,44 @@ function App() {
               resetKey={activeTab}
               fallback={() => <ScreenFailed what="This screen" />}
             >
-              <More
-                account={account}
-                reporterType="thru"
-                onSignIn={() => setAuthFlow({ screen: 'choose', afterReport: false })}
-                onSignOut={() => void handleSignOut()}
-                preferences={preferences}
-                onChange={updatePreferences}
-                onChangeBackground={handleChangeBackground}
-                lastSyncedAt={lastSyncedAt}
-                onSync={notYet}
-                onExport={notYet}
-                now={now}
-                dataSaver={saveData}
-                archiveDownloaded={archiveDownloaded}
-                hasDownload={anySheetDownloaded}
-                onOpenDownloads={openDownloads}
-                onStartReport={() => setReporting({ step: 'pick' })}
-                queuedReportCount={queuedCount}
-                stuckReports={stuckReports}
-                onRetryReport={handleRetryReport}
-                onDiscardReport={handleDiscardReport}
-              />
+              {pickingHike ? (
+                // Replaces More rather than covering it. The picker is reached
+                // from here and nowhere else, so there is nothing behind it
+                // worth keeping visible - and a screen needs no backdrop, no
+                // focus trap and no Escape handler to get half right.
+                <HikePicker
+                  hike={hike}
+                  trailMiles={trailIndex?.totalMiles ?? null}
+                  onSave={(next) => void handleSaveHike(next)}
+                  onClear={() => void handleClearHike()}
+                  onClose={() => setPickingHike(false)}
+                />
+              ) : (
+                <More
+                  account={account}
+                  reporterType="thru"
+                  onSignIn={() => setAuthFlow({ screen: 'choose', afterReport: false })}
+                  onSignOut={() => void handleSignOut()}
+                  preferences={preferences}
+                  onChange={updatePreferences}
+                  onChangeBackground={handleChangeBackground}
+                  lastSyncedAt={lastSyncedAt}
+                  onSync={notYet}
+                  onExport={notYet}
+                  now={now}
+                  dataSaver={saveData}
+                  archiveDownloaded={archiveDownloaded}
+                  hasDownload={anySheetDownloaded}
+                  onOpenDownloads={openDownloads}
+                  hikeSummary={hike === null ? null : hikeSummary(hike)}
+                  onEditHike={() => setPickingHike(true)}
+                  onStartReport={() => setReporting({ step: 'pick' })}
+                  queuedReportCount={queuedCount}
+                  stuckReports={stuckReports}
+                  onRetryReport={handleRetryReport}
+                  onDiscardReport={handleDiscardReport}
+                />
+              )}
             </ErrorBoundary>
           </div>
           <TabBar active={activeTab} onSelect={setActiveTab} />

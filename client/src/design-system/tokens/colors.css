@@ -98,6 +98,32 @@ color-scheme:light;
 --surface-over-map-hover:var(--paper-100);
 --edge-over-map:rgb(20 19 15 / 10%);
 
+/* The chrome: the desktop sidebar and the identity band over the map - status
+   strip and header, painted in src/desktop.css. Its own aliases rather than a
+   reuse of `--bg-inverse`, which flips to bone under the dark theme; the
+   chrome is dark under BOTH themes, and that is the point of it. The sidebar
+   used to be the one pure-white surface in the app, sitting beside a header on
+   near-white paper beside a map on paper - the brightest thing on screen was
+   the navigation. On pine, the paper map becomes the single light surface:
+   the chrome recedes to a frame and terrain is what pops.
+
+   Every foreground here was picked against pine-900 at 4.5:1 or better:
+   paper-0 is 16.6:1, sage-200 11.4:1, moss-300 7.7:1. The accent - the
+   selected tab's rail - is blaze-orange-light at 5.9:1, a blaze painted on a
+   dark trunk, which is as close to literal branding as this app gets.
+
+   `--danger-on-chrome` exists because the light theme's `--danger` is
+   blaze-orange-DARK: 2.2:1 on pine, a closure flag nobody sees. It has no
+   dark-block re-point on purpose - it IS the dark theme's own danger colour,
+   legible on pine and ink alike. */
+--bg-chrome:var(--pine-900);
+--fg-chrome-1:var(--paper-0);
+--fg-chrome-2:var(--sage-200);
+--fg-chrome-3:var(--moss-300);
+--border-chrome:var(--pine-700);
+--accent-chrome:var(--blaze-orange-light);
+--danger-on-chrome:var(--blaze-orange-light);
+
 --brand-primary:var(--forest-600);
 --brand-primary-hover:var(--pine-700);
 --brand-primary-press:var(--pine-800);
@@ -162,6 +188,18 @@ color-scheme:dark;
 --surface-over-map:var(--ink-700);
 --surface-over-map-hover:var(--ink-600);
 --edge-over-map:rgb(236 231 219 / 26%);
+
+/* The chrome joins the ink surfaces at night rather than staying pine: a
+   green frame is a light-theme statement, and after dark the statement is "as
+   little light as possible". Page ink rather than surface ink, so the sidebar
+   settles a shade behind the ink-850 canvas instead of matching it - the map
+   stays the lighter thing in the dark theme too. */
+--bg-chrome:var(--ink-900);
+--fg-chrome-1:var(--bone-100);
+--fg-chrome-2:var(--bone-300);
+--fg-chrome-3:var(--bone-500);
+--border-chrome:var(--ink-700);
+--accent-chrome:var(--moss-400);
 
 --brand-primary:var(--moss-400);
 --brand-primary-hover:var(--moss-300);

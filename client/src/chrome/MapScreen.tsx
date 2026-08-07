@@ -30,6 +30,7 @@ import { MapView } from '../map/MapView'
 import type { ClosureBand } from '../map/closureLayers'
 import type { WarningPoint } from '../map/warningLayers'
 import { HEALTHY, type LiveSourceHealth } from '../map/liveSourceHealth'
+import { backgroundProblem } from '../lib/backgroundHealth'
 import type { BackgroundOverride } from '../lib/dataSaver'
 import type { ArchiveZooms } from '../lib/archiveCoverage'
 import { mapCredits } from '../map/credits'
@@ -183,6 +184,16 @@ export interface MapScreenProps {
    */
   hasRasterArchive?: boolean
   /**
+   * Whether the HIKING sheet's vector package is finished and on this phone.
+   *
+   * The third of these, and the last one that is not interchangeable with the
+   * other two: the strip has to be able to say that a download is present and
+   * not drawing, and only the package behind the failing source can answer
+   * that (lib/backgroundHealth.ts). `hasDownload` would say yes on the
+   * strength of the raster sheet alone.
+   */
+  hasHikingSheet?: boolean
+  /**
    * Whether the view is zoomed out past what the download covers (#216).
    *
    * Reported by the shell rather than worked out here, for the same reason
@@ -246,6 +257,7 @@ export function MapScreen({
   onOpenDownloads,
   hasDownload = false,
   hasRasterArchive = false,
+  hasHikingSheet = false,
   belowArchiveZoom = false,
   archiveZooms = null,
 }: MapScreenProps) {
@@ -285,10 +297,21 @@ export function MapScreen({
           online={online}
           hasGpsFix={hasGpsFix}
           lastSyncedAt={lastSyncedAt}
-          // The basemap alone. A DEM outage costs relief and contour lines on
-          // a sheet that still draws, which is the degradation terrain.ts
-          // promises rather than something to interrupt a hiker over.
-          liveBackgroundUnavailable={liveSources.basemap}
+          // Joined here rather than in the strip, one line from where it is
+          // rendered, for the same reason `backgroundOverride` is computed
+          // beside the background it describes: what the sources reported and
+          // what is on the phone mean nothing apart, and two readings of one
+          // condition is how a strip comes to disagree with the canvas above
+          // it. The DEM is not among the inputs on purpose - an outage there
+          // costs relief and contour lines on a sheet that still draws, which
+          // is the degradation terrain.ts promises rather than something to
+          // interrupt a hiker over.
+          backgroundProblem={backgroundProblem({
+            sources: liveSources,
+            online,
+            rasterArchiveDownloaded: hasRasterArchive,
+            hikingSheetDownloaded: hasHikingSheet,
+          })}
           backgroundOverride={backgroundOverride}
           belowArchiveZoom={belowArchiveZoom}
         />

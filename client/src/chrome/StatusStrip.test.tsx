@@ -86,18 +86,47 @@ describe('StatusStrip', () => {
     // working connection. For a hiker who has downloaded nothing there is no
     // archive underneath either, so the screen is blank paper - and until
     // this flag existed, nothing anywhere said why.
-    render(<StatusStrip {...PROPS} liveBackgroundUnavailable />)
+    render(<StatusStrip {...PROPS} backgroundProblem="live-unreachable" />)
 
     expect(screen.getByText(/no live map/i)).toBeInTheDocument()
   })
 
-  it('does not add a second flag for one condition when already offline', () => {
-    // "Offline" already accounts for the paper. Two flags saying one thing is
-    // noise on a strip this narrow.
-    render(<StatusStrip {...PROPS} online={false} liveBackgroundUnavailable />)
+  it('says a download is on the phone and not drawing', () => {
+    // The sentence #314 exists for. An archive that is present and unreadable
+    // kept every indicator green - "downloaded" on the card, an honoured
+    // offline background in the shell - while the map drew nothing, and the
+    // hiker had no way to connect the blank paper to the download.
+    render(<StatusStrip {...PROPS} backgroundProblem="download-not-drawing" />)
 
-    expect(screen.queryByText(/no live map/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/downloaded map not drawing/i)).toBeInTheDocument()
+  })
+
+  it('says offline that there is no download to draw, beside "Offline"', () => {
+    // The other half of #314, and the reason this is no longer suppressed
+    // while offline. "Offline" says the phone has no connection; it does not
+    // say the download is the missing half - which is what someone who
+    // deleted the hiking sheet an hour ago actually needs told.
+    render(<StatusStrip {...PROPS} online={false} backgroundProblem="nothing-to-draw" />)
+
+    expect(screen.getByText(/no downloaded map/i)).toBeInTheDocument()
     expect(screen.getByText(/offline/i)).toBeInTheDocument()
+  })
+
+  it('drops "nothing downloaded yet" when the background has a real problem', () => {
+    // Two flags for one blank screen, and the reassuring one reads first:
+    // the override describes what the app is TRYING to draw, the problem what
+    // is actually arriving.
+    render(
+      <StatusStrip
+        {...PROPS}
+        online={false}
+        backgroundOverride="nothing-downloaded"
+        backgroundProblem="nothing-to-draw"
+      />,
+    )
+
+    expect(screen.queryByText(/nothing downloaded yet/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/no downloaded map/i)).toBeInTheDocument()
   })
 
   it('says when Data Saver is the reason the live map is missing', () => {

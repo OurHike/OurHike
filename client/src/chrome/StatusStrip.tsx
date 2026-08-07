@@ -8,6 +8,23 @@
 
 import { syncAgeLabel } from '../lib/syncAge'
 import type { BackgroundOverride } from '../lib/dataSaver'
+import type { BackgroundProblem } from '../lib/backgroundHealth'
+
+/**
+ * What each problem is called on a strip this narrow (lib/backgroundHealth.ts
+ * decides which one applies).
+ *
+ * Three or four words each, and each one names the half a hiker can act on:
+ * a download that is not drawing sends them to the Downloads screen, and a
+ * download they do not have sends them to town first. "No live map" is
+ * carried over verbatim from the flag this replaced, because its case and its
+ * meaning are unchanged.
+ */
+const BACKGROUND_PROBLEM_LABEL: Record<BackgroundProblem, string> = {
+  'download-not-drawing': 'Downloaded map not drawing',
+  'live-unreachable': 'No live map',
+  'nothing-to-draw': 'No downloaded map',
+}
 
 export interface StatusStripProps {
   time: Date
@@ -16,15 +33,21 @@ export interface StatusStripProps {
   /** When the on-device data last synced; null if it never has. */
   lastSyncedAt: Date | null
   /**
-   * The live background's tiles reported an error and never drew - see
-   * map/liveSourceHealth.ts.
+   * Why the background is not on screen, or null when it is - decided by
+   * lib/backgroundHealth.ts from what the map's sources reported and what is
+   * actually downloaded.
    *
-   * Distinct from `online`, and that distinction is the point: navigator.onLine
-   * is documented as optimistic (lib/useOnline.ts), so a captive portal, a
-   * filtered network or an outage at the tile host all look like a working
-   * connection while the map draws nothing at all.
+   * This used to be `liveBackgroundUnavailable`, a boolean about the live
+   * sheet alone, and it was rendered only while `online` on the reasoning that
+   * "Offline already accounts for the paper". That reasoning holds for a phone
+   * with nothing downloaded and fails for every other phone: it is what kept
+   * the strip silent about a damaged archive and about a hiking sheet deleted
+   * an hour ago, which is to say silent in exactly the two cases where the
+   * hiker cannot work out what happened (#314). The connectivity question is
+   * now one input to the decision rather than a gate on whether it is allowed
+   * to be reported.
    */
-  liveBackgroundUnavailable?: boolean
+  backgroundProblem?: BackgroundProblem | null
   /**
    * Why the background on screen is not the one in settings, if it isn't -
    * see lib/dataSaver.ts.
@@ -53,7 +76,7 @@ export function StatusStrip({
   online,
   hasGpsFix,
   lastSyncedAt,
-  liveBackgroundUnavailable = false,
+  backgroundProblem = null,
   backgroundOverride = null,
   belowArchiveZoom = false,
 }: StatusStripProps) {
@@ -68,12 +91,10 @@ export function StatusStrip({
       <span className="status-strip__conditions" role="status">
         {!online && <span className="status-strip__flag">Offline</span>}
         {!hasGpsFix && <span className="status-strip__flag">No GPS fix</span>}
-        {/* Suppressed while offline: "Offline" already accounts for the paper,
-            and two flags for one condition is noise on a strip this narrow.
-            What it catches is the case "Offline" cannot - a connection the
-            phone believes in and the tile host does not answer. */}
-        {online && liveBackgroundUnavailable && (
-          <span className="status-strip__flag">No live map</span>
+        {backgroundProblem !== null && (
+          <span className="status-strip__flag">
+            {BACKGROUND_PROBLEM_LABEL[backgroundProblem]}
+          </span>
         )}
         {/* Two reasons, opposite in kind: one says the app is withholding the
             live sheet, the other that it is supplying it against a preference
@@ -82,7 +103,13 @@ export function StatusStrip({
         {backgroundOverride === 'data-saver' && (
           <span className="status-strip__flag">Data Saver: downloaded map only</span>
         )}
-        {backgroundOverride === 'nothing-downloaded' && (
+        {/* Dropped when the background has a problem of its own, which is the
+            one place these two can both fire and only one can be useful.
+            "Live map — nothing downloaded yet" describes what the app is
+            TRYING to draw; a problem above says what is actually arriving,
+            which is nothing. Both at once is two flags for one blank screen,
+            and the reassuring one reads first. */}
+        {backgroundOverride === 'nothing-downloaded' && backgroundProblem === null && (
           <span className="status-strip__flag">Live map — nothing downloaded yet</span>
         )}
         {/* Not a background override, and kept out of that type on purpose.

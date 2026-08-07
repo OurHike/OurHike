@@ -37,6 +37,11 @@
 // the fix is a download.
 
 import type { LiveSourceHealth } from '../map/liveSourceHealth'
+import {
+  BASEMAP_PACKAGE,
+  CORRIDOR_BACKGROUND_PACKAGE,
+  type BackgroundSheet,
+} from './packages'
 
 /**
  * Why the background is not on screen, or `null` when nothing is wrong.
@@ -109,4 +114,65 @@ export function backgroundProblem({
   if (rasterArchiveDownloaded) return null
 
   return 'nothing-to-draw'
+}
+
+/**
+ * Which watched source draws a given package's bytes.
+ *
+ * The DEM is deliberately absent, and its absence is the rule rather than an
+ * omission: a sheet whose hillshade failed still draws, so a DEM that never
+ * arrived must not make its sheet's card say the download is not drawing.
+ * The same exclusion `backgroundProblem` makes for the status strip, made
+ * once here so the two screens cannot disagree about it.
+ */
+const PACKAGE_SOURCE: Record<string, keyof LiveSourceHealth> = {
+  [CORRIDOR_BACKGROUND_PACKAGE.idbKey]: 'archive',
+  [BASEMAP_PACKAGE.idbKey]: 'basemap',
+}
+
+/**
+ * Whether a sheet's bytes are on the phone and its own source drew nothing -
+ * the sentence the Downloads card owes a hiker whose map is blank (#334).
+ *
+ * `downloaded` is the card's OWN claim, passed in rather than re-derived, and
+ * that is the point: this notice exists to contradict a card that says the
+ * download finished, so it must be answering about the same status the card
+ * is rendering. Every other combination stays silent - an archive that is
+ * absent has no card claiming otherwise, and a source failing with nothing
+ * downloaded is the ordinary state (see the header).
+ */
+export function sheetNotDrawing(
+  sources: LiveSourceHealth,
+  sheet: BackgroundSheet,
+  downloaded: boolean,
+): boolean {
+  if (!downloaded) return false
+
+  return sheet.packages.some((pkg) => {
+    const flag = PACKAGE_SOURCE[pkg.idbKey]
+    return flag !== undefined && sources[flag]
+  })
+}
+
+/**
+ * The same flags with one sheet's cleared - what a shell that REMEMBERS a
+ * failure has to do when that sheet is fetched again.
+ *
+ * Without this, a hiker who saw "not drawing", deleted the archive and
+ * downloaded a good one would be told the fresh copy is broken too: the
+ * remembered flag describes bytes that are no longer on the phone, and the
+ * map only contradicts it once it happens to ask that source for a tile and
+ * succeed. Cleared per sheet rather than wholesale, so re-fetching the
+ * hiking sheet says nothing about the USGS archive beside it.
+ */
+export function forgetSheet(
+  sources: LiveSourceHealth,
+  sheet: BackgroundSheet,
+): LiveSourceHealth {
+  const cleared = { ...sources }
+  for (const pkg of sheet.packages) {
+    const flag = PACKAGE_SOURCE[pkg.idbKey]
+    if (flag !== undefined) cleared[flag] = false
+  }
+  return cleared
 }

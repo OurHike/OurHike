@@ -11,6 +11,7 @@ import {
 } from '../map/credits'
 import { closureFeatureCollection, CLOSURE_SOURCE_ID } from '../map/closureLayers'
 import { warningFeatureCollection, WARNING_SOURCE_ID } from '../map/warningLayers'
+import { HEALTHY, type LiveSourceHealth } from '../map/liveSourceHealth'
 
 // WIREFRAMES.md's map screen, top to bottom: status strip, header, elevation
 // ribbon, waypoint lanes, map canvas, tab bar - plus the legend sheet over the
@@ -263,14 +264,21 @@ describe('MapScreen', () => {
     expect(screen.getByRole('dialog', { name: /waypoint/i }).style.transform).not.toBe('')
   })
 
-  it('carries a failed live background from the map up into the strip', () => {
-    // The whole path in one test: MapLibre reports a source error, the map
-    // view observes it, and the strip says so. PROPS is offline by default,
-    // so `online` is forced here - the point of this flag is the case where
-    // the phone believes it has a connection and the tiles never come.
-    render(<MapScreen {...PROPS} online />)
-
-    expect(screen.queryByText(/no live map/i)).not.toBeInTheDocument()
+  it('carries the map’s source reports up to the shell', () => {
+    // Half of a path that used to end here. This screen observed the error
+    // and decided what it meant; since #334 it does neither, because the
+    // downloads window needs the same fact and opens over the More tab where
+    // this screen is not rendered at all. What is left is the wiring, and the
+    // wiring is worth a test: an unpassed prop is exactly how the flag
+    // reached nobody before #314.
+    const reports: Array<[LiveSourceHealth, boolean]> = []
+    const { unmount } = render(
+      <MapScreen
+        {...PROPS}
+        online
+        onLiveSourceHealth={(health, withdrawn) => reports.push([health, withdrawn])}
+      />,
+    )
 
     act(() => {
       MockMap.live[0].emit('error', {
@@ -278,6 +286,23 @@ describe('MapScreen', () => {
         error: new Error('Failed to fetch'),
       })
     })
+
+    expect(reports).toEqual([
+      [{ basemap: true, elevation: false, archive: false }, false],
+    ])
+
+    // And the withdrawal on the way out, flagged as one: the shell remembers
+    // failures past this screen, so it has to know that this `HEALTHY` is the
+    // map leaving rather than the sheet arriving.
+    unmount()
+
+    expect(reports.at(-1)).toEqual([HEALTHY, true])
+  })
+
+  it('renders the background problem the shell hands it', () => {
+    // The other half. This screen no longer works out what a failing source
+    // means - it is told, and it shows it.
+    render(<MapScreen {...PROPS} online backgroundProblem="live-unreachable" />)
 
     expect(screen.getByText(/no live map/i)).toBeInTheDocument()
   })

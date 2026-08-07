@@ -1045,3 +1045,85 @@ describe('the elevation ribbon and the waypoint lanes', () => {
     )
   })
 })
+
+describe('a download that finished and cannot be read (#334)', () => {
+  /**
+   * Fail one of the map's sources, once the map is listening for it.
+   *
+   * The wait is load-bearing: the map is CONSTRUCTED during the render that
+   * puts "trail map" on screen, and MapView's listeners attach on the render
+   * after that. An error emitted in between reaches nobody.
+   */
+  async function sourceFails(sourceId: string) {
+    const map = await waitFor(() => {
+      const live = MockMap.live[0]
+      expect(live?.listenerCount('error')).toBeGreaterThan(0)
+      return live!
+    })
+    act(() => {
+      map.emit('error', { sourceId, error: new Error(`${sourceId} unavailable`) })
+    })
+    return map
+  }
+
+  /** The download window reached from the More tab, which is the path that
+   *  unmounts the map on the way - see the test below. */
+  async function openDownloadsFromMore(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /download/i }))
+    return screen.findByRole('dialog', { name: /offline map/i })
+  }
+
+  it('tells the Downloads card, even though reaching it unmounts the map', async () => {
+    // The whole reason the shell holds this rather than the map screen. A
+    // hiker reads "Downloaded map not drawing" on the map, goes looking for
+    // the fix, and the only door on the More tab takes the map down on the
+    // way - taking the observation with it, if the observation lived there.
+    const user = userEvent.setup()
+    hikerOnTrail()
+    store.set(CORRIDOR_ARCHIVE_KEY, new Blob(['damaged']))
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await sourceFails('usgs-topo')
+    expect(await screen.findByText(/downloaded map not drawing/i)).toBeInTheDocument()
+
+    await openDownloadsFromMore(user)
+    const usgsCard = await usgsSheetCard(user)
+
+    // The map really is gone by now - otherwise this proves nothing about
+    // surviving the teardown.
+    expect(MockMap.live).toHaveLength(0)
+    expect(within(usgsCard).getByRole('alert')).toHaveTextContent(
+      /could not draw from it/i,
+    )
+  })
+
+  it('says nothing on the card about a source that recovered', async () => {
+    // The failure mode of remembering: a source that errors on one tile
+    // before anything has drawn and then draws is a working download. Telling
+    // that hiker to delete and re-fetch 314 MB would be the same false
+    // statement as #314's, pointed the other way.
+    const user = userEvent.setup()
+    hikerOnTrail()
+    store.set(CORRIDOR_ARCHIVE_KEY, new Blob(['fine']))
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    const map = await sourceFails('usgs-topo')
+    await screen.findByText(/downloaded map not drawing/i)
+
+    // A tile lands: the archive is being read after all.
+    act(() => {
+      map.emit('sourcedata', { sourceId: 'usgs-topo', tile: { state: 'loaded' } })
+    })
+    await waitFor(() =>
+      expect(screen.queryByText(/downloaded map not drawing/i)).not.toBeInTheDocument(),
+    )
+
+    await openDownloadsFromMore(user)
+    const usgsCard = await usgsSheetCard(user)
+
+    expect(within(usgsCard).queryByRole('alert')).not.toBeInTheDocument()
+  })
+})

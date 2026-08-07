@@ -81,6 +81,22 @@ export interface OutboxItem {
   authoredAt: string
   payload: ReportDraft
   /**
+   * The photo, as bytes, already downscaled and re-encoded (lib/reportPhoto.ts).
+   *
+   * **The bytes and not a URL**, which is the whole reason this field exists
+   * rather than `payload.photo_url` carrying it. `photo_url` is the shape for
+   * a photo that has already been uploaded; out here the ordinary path is that
+   * the report is written with no signal at all and flushes days later, so the
+   * image has to survive in IndexedDB alongside the report it belongs to.
+   * `idb-keyval` stores a `Blob` natively, so this costs nothing extra.
+   *
+   * Prepared at pick time rather than at flush time, deliberately: shrinking
+   * it is the step that can fail in a way the hiker can do something about
+   * (take another one), and they can only do that while they are still
+   * standing in front of the thing they photographed.
+   */
+  photo?: Blob
+  /**
    * Set when the server refused this in a way retrying cannot fix.
    *
    * A marked item is kept, not deleted - it is still the only copy of
@@ -127,11 +143,16 @@ export async function listQueued(): Promise<OutboxItem[]> {
 export async function enqueue(
   payload: ReportDraft,
   authoredAt: Date = new Date(),
+  photo?: Blob,
 ): Promise<OutboxItem> {
   const item: OutboxItem = {
     id: crypto.randomUUID(),
     authoredAt: authoredAt.toISOString(),
     payload,
+    // Spread rather than `photo` outright so an item without one has no key
+    // at all. The queue is compared and rewritten in several places, and an
+    // explicit `photo: undefined` is a difference that reads as one.
+    ...(photo !== undefined ? { photo } : {}),
   }
 
   await set(OUTBOX_KEY, [...(await readQueue()), item])

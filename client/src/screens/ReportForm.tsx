@@ -13,6 +13,7 @@
 
 import { useState } from 'react'
 import type { ReportDraft } from '../lib/outbox'
+import { PhotoUnusable, prepareReportPhoto } from '../lib/reportPhoto'
 import './reporting.css'
 
 export type ReportFormType = ReportDraft['type']
@@ -41,6 +42,9 @@ export interface ReportFormLocation {
 
 export interface ReportFormSubmission extends ReportDraft {
   authoredAt: Date
+  /** The prepared JPEG, if one was attached - bytes rather than a URL, see
+   *  `OutboxItem.photo`. Absent is the ordinary case. */
+  photo?: Blob
 }
 
 /**
@@ -92,6 +96,37 @@ export function ReportForm({
   // Captured once, on mount - see the note above.
   const [authoredAt] = useState(() => now ?? new Date())
   const [note, setNote] = useState('')
+  const [photo, setPhoto] = useState<Blob | null>(null)
+  const [preparing, setPreparing] = useState(false)
+  const [photoError, setPhotoError] = useState<string | null>(null)
+
+  /**
+   * Shrink and re-encode the picked file, or say why it cannot be sent.
+   *
+   * Clearing the previous photo before starting is deliberate: a second pick
+   * that fails must not leave the first one silently attached, which would
+   * send a photo the hiker believes they replaced.
+   */
+  const choosePhoto = async (file: File | null) => {
+    setPhoto(null)
+    setPhotoError(null)
+    if (file === null) return
+
+    setPreparing(true)
+    try {
+      setPhoto(await prepareReportPhoto(file))
+    } catch (error) {
+      // The message is written for a hiker to read (lib/reportPhoto.ts);
+      // anything else that got this far is not, so it does not get shown.
+      setPhotoError(
+        error instanceof PhotoUnusable
+          ? error.message
+          : 'That photo could not be prepared. Try taking another.',
+      )
+    } finally {
+      setPreparing(false)
+    }
+  }
 
   const isThanks = type === 'thanks'
 
@@ -113,38 +148,45 @@ export function ReportForm({
         />
       </label>
 
-      {/* The photo field, deliberately not a working file input.
-          It was one: `<input type="file" accept="image/*">` with no onChange,
-          no ref and no state behind it. A hiker photographing a washed-out
-          bridge got a control that accepted the photo, and a report that
-          arrived without it, with nothing anywhere indicating the loss.
+      {/* The photo field, working at last (#234).
 
-          The backend half is finished - `photo_url` exists on the schema, is
-          persisted, and is read back. What does not exist is anywhere to
-          upload TO. That is a decision (R2, already in the stack with
-          credentials, or Supabase Storage, already the auth provider), and
-          until it is made there is nothing for a picker to do.
+          It was a real `<input type="file">` with no onChange and no state
+          behind it, so a hiker photographing a washed-out bridge got a control
+          that accepted the photo and a report that arrived without it. #89
+          disabled it and said so rather than removing it, on the grounds that
+          somebody who took a photo specifically to attach would otherwise
+          wonder whether they had missed the button. This is the wiring that
+          note was waiting for.
 
-          So the control is disabled and says why, rather than removed. Removed
-          would be honest too, but a hiker who took a photo specifically to
-          attach would be left wondering whether they had missed the button;
-          this tells them, and tells them the note is what carries the report
-          for now. It is still a real <input>, still labelled "Photo", so the
-          day an upload target exists this is a working control and a wired
-          onChange rather than a re-add. */}
+          The shrink happens HERE, on pick, rather than during a flush that may
+          be days away with the phone in a pocket. That is the whole reason:
+          the only failure a hiker can do anything about is "take another one",
+          and they can only do that while still standing in front of the thing
+          they photographed. */}
       <label className="reporting__field">
         <span className="reporting__field-label">Photo</span>
         <input
           type="file"
-          accept="image/*"
+          accept="image/jpeg,image/png,image/webp,image/heic"
           className="reporting__photo"
-          disabled
-          aria-describedby="photo-unavailable"
+          onChange={(event) => void choosePhoto(event.target.files?.[0] ?? null)}
+          aria-describedby={photoError === null ? undefined : 'photo-error'}
         />
-        <span className="reporting__unavailable" id="photo-unavailable">
-          Photos can&rsquo;t be attached yet. Describe what you saw in the note and it
-          will reach the club just the same.
-        </span>
+        {preparing && (
+          <span className="reporting__meta" role="status">
+            Shrinking the photo…
+          </span>
+        )}
+        {photoError !== null && (
+          <span className="reporting__unavailable" id="photo-error" role="alert">
+            {photoError}
+          </span>
+        )}
+        {photo !== null && !preparing && (
+          <span className="reporting__meta">
+            {`Photo attached — ${Math.round(photo.size / 1024)} KB. Location and camera details are not included.`}
+          </span>
+        )}
       </label>
 
       <p className="reporting__meta">{describeLocation(location)}</p>
@@ -164,6 +206,11 @@ export function ReportForm({
         <button
           type="button"
           className="reporting__primary"
+          // Disabled only while the shrink is running, and only then. A photo
+          // that failed leaves the button live on purpose: the note is what
+          // carries the report, and refusing to send it because the picture
+          // did not work would lose the words over the image.
+          disabled={preparing}
           onClick={() =>
             onSubmit({
               type,
@@ -176,6 +223,7 @@ export function ReportForm({
               lat: location?.lat,
               lon: location?.lon,
               authoredAt,
+              ...(photo !== null ? { photo } : {}),
             })
           }
         >

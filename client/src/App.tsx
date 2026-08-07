@@ -1256,11 +1256,12 @@ function App() {
   }, [preferences.reporter_type])
 
   const handleSubmitReport = useCallback(
-    async ({ authoredAt, ...draft }: ReportFormSubmission) => {
+    async ({ authoredAt, photo, ...draft }: ReportFormSubmission) => {
       // Saved first, always, and before authentication is so much as
       // mentioned. Everything below this line can fail without costing the
-      // hiker what they just wrote.
-      await beginContribution(draft, authoredAt)
+      // hiker what they just wrote - the photo included, which is why it is
+      // pulled out of the draft here and stored as bytes beside it (#234).
+      await beginContribution(draft, authoredAt, photo)
       setReporting(null)
 
       const next = stepAfterSaving({

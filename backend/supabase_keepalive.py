@@ -26,14 +26,13 @@ project through the front door that is actually exposed to the internet. If a
 later migration, policy or default grant ever makes one of these tables
 readable with the key that ships in the client bundle, this is what says so.
 
-**What this cannot promise.** Supabase's guidance is "a few user requests to
-the database each day over the previous week", and a weekly job is by
-construction one burst, seven days apart - the previous week's activity may
-have just aged out of the window as this week's run starts. Sweeping every
-table rather than one buys a little back, and the schedule is what was asked
-for. If a pause warning ever arrives anyway, the fix is to run
-.github/workflows/supabase-keepalive.yml daily, which is one field of its cron
-expression and nothing here.
+**How often it needs to run is Supabase's call, not ours.** Their wording is
+"a few user requests to the database each day over the previous week" - a
+per-day measure, which is what ruled out the weekly job this started as. The
+schedule in .github/workflows/supabase-keepalive.yml leaves no more than 20
+hours between runs, so every calendar day gets a sweep and a single failed or
+late run cannot open a gap that matters. Nothing in this file depends on the
+cadence; changing it is a cron expression there and nothing here.
 
 Stdlib only, like check_supabase_config.py, so the workflow installs nothing.
 """

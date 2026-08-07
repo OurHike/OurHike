@@ -1,5 +1,5 @@
-# Gives the Supabase project's database something to do once a week, so the
-# free plan does not pause it for inactivity.
+# Gives the Supabase project's database something to do, so the free plan does
+# not pause it for inactivity.
 #
 # Supabase pauses a Free plan project that shows too little activity over a
 # rolling seven-day window, and the thing it measures is *database* activity,
@@ -7,7 +7,7 @@
 # (https://supabase.com/docs/guides/platform/free-project-pausing). That is why
 # this is not a curl of a health endpoint: `/auth/v1/settings` answers from
 # GoTrue's configuration without Postgres hearing about it, so a keepalive
-# built on it would report success every week and still let the project pause.
+# built on it would report success every run and still let the project pause.
 # backend/supabase_keepalive.py reads tables over PostgREST instead, which is a
 # query Postgres actually runs.
 #
@@ -18,15 +18,13 @@
 # reads migrations, which is a different claim - and the front door it asks
 # through is the one open to anyone holding the key that ships in the client
 # bundle. This job is why a policy or grant that quietly opened `reports` would
-# be noticed within a week rather than by whoever found the data.
+# be noticed within a day rather than by whoever found the data.
 #
-# **The honest limitation.** Supabase's own guidance is "a few user requests to
-# the database each day over the previous week"; a weekly job is one burst,
-# seven days apart, and the previous run may have just aged out of the window
-# as this one starts. Sweeping every table rather than one buys a little back.
-# If a pause warning email ever arrives anyway, the fix is the day-of-week
-# field below - `50 7 * * *` makes this daily, and the run costs a checkout and
-# seven small HTTPS requests.
+# **The cadence is chosen against Supabase's own wording**, which is "a few
+# user requests to the database each day over the previous week" - a per-day
+# measure, which is what rules out the weekly job this started as. Twice a day
+# clears that with room to spare, at a cost of two checkouts and fourteen small
+# HTTPS requests a day.
 #
 # **There is deliberately only one of these.** A second scheduled job reaching
 # the same project would be a second thing to keep in sync for no additional
@@ -38,17 +36,25 @@ name: Supabase keepalive
 
 on:
   schedule:
-    # Sundays, 07:50 UTC. Off the hour because GitHub's scheduler queues
-    # everything submitted at :00 behind everyone else's cron, and a few
-    # minutes clear of check-upstream-freshness.yml (07:20) and
-    # settings-check.yml (07:35 Mondays) for the same reason.
+    # Every 20 hours, as far as cron can express it: 00:50 and 20:50 UTC, every
+    # day. Cron has no true interval - its hour field repeats within the day -
+    # so `*/20` means "the hours divisible by 20", which is 0 and 20. The gaps
+    # are therefore 20 hours and then 4, not a steady 20.
+    #
+    # That asymmetry does not matter here and the number that does is the
+    # larger gap: the project is never left untouched for more than 20 hours.
+    # test_supabase_keepalive_workflow.py asserts exactly that, rather than
+    # asserting this string, so a future edit is judged on the gap it produces.
+    #
+    # Off the hour because GitHub's scheduler queues everything submitted at
+    # :00 behind everyone else's cron.
     #
     # Worth knowing before it looks broken: GitHub runs scheduled workflows
     # only from the default branch, so this does nothing at all until it is on
     # `main`. It also disables schedules in a repository with no activity for
     # 60 days - which would silently take the keepalive with it, so a long
     # quiet spell is worth checking the Actions tab after.
-    - cron: "50 7 * * 0"
+    - cron: "50 */20 * * *"
   workflow_dispatch:
 
 # Reads the repository and nothing else. The job holds no credential that can
@@ -57,8 +63,9 @@ on:
 permissions:
   contents: read
 
-# Never two at once, and never cancel one in flight. A cancelled run is a week
-# with no recorded activity, which is the one thing this job exists to avoid.
+# Never two at once, and never cancel one in flight. A cancelled run is a
+# stretch with no recorded activity, which is the one thing this job exists to
+# avoid.
 concurrency:
   group: supabase-keepalive
   cancel-in-progress: false
@@ -79,8 +86,8 @@ jobs:
 
       # No install step: the script is stdlib-only on purpose, the same as
       # check_supabase_config.py next to it. A job whose whole point is to run
-      # unattended every week for months should not have a dependency tree that
-      # can break while nobody is watching.
+      # unattended for months should not have a dependency tree that can break
+      # while nobody is watching.
       - name: Read the project's tables with the anon key
         env:
           # Variable-or-secret, the way pages.yml and supabase-config-check.yml

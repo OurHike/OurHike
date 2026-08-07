@@ -4,6 +4,9 @@ import userEvent from '@testing-library/user-event'
 import { get, set } from 'idb-keyval'
 import App from './App'
 import { MockMap, NavigationControl, resetMapLibreMock } from './test/mocks/maplibre-gl'
+// The shared helper this file's own copy became (#331) - two other suites had
+// written the same wait by hand, and one of them had written it wrong.
+import { liveMap } from './test/liveMap'
 import { PREFERENCES_KEY } from './lib/preferences'
 import { DEFAULT_PREFERENCES } from './lib/userPreferences'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
@@ -131,22 +134,6 @@ async function openDownloads(user: ReturnType<typeof userEvent.setup>) {
 async function usgsSheetCard(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByRole('tab', { name: /usgs sheet/i }))
   return screen.findByRole('region', { name: /usgs sheet/i })
-}
-
-/**
- * The live map, once MapView's effect has actually built it.
- *
- * `findByRole('region')` resolves the moment MapView's container div lands in
- * the DOM - which is a commit BEFORE the effect that constructs the map runs.
- * Reading `MockMap.live[0]` straight after it is therefore a race that usually
- * wins on a quiet machine and loses under load: it went green on both of #86's
- * PR runs and red on the merge commit, with `Cannot read properties of
- * undefined (reading 'options')`. Waiting for the map itself is the thing these
- * tests actually mean.
- */
-async function liveMap() {
-  await waitFor(() => expect(MockMap.live.length).toBeGreaterThan(0))
-  return MockMap.live[0]
 }
 
 function styleOf(map: MockMap): { sources: Record<string, unknown> } {

@@ -10,6 +10,7 @@ import { CORRIDOR_ARCHIVE_KEY } from './map/pmtilesSource'
 import { POI_ID_PROPERTY, POI_LAYER_ID } from './map/poiLayers'
 import { archiveUrl } from './lib/config'
 import { MockMap, resetMapLibreMock } from './test/mocks/maplibre-gl'
+import { liveMap } from './test/liveMap'
 import { THEME_ATTRIBUTE } from './lib/theme'
 import { BACKDROP_LAYER_ID, MAP_BACKDROP } from './map/style'
 
@@ -386,7 +387,7 @@ describe('tapping a pin on the map', () => {
     await tapPin({ [POI_ID_PROPERTY]: SHELTER.id, poi_type: 'shelter' })
     await screen.findByRole('dialog', { name: /waypoint/i })
 
-    const map = MockMap.live[0]
+    const map = await liveMap()
     map.renderedFeatures.set(POI_LAYER_ID, [])
     await act(async () => {
       map.emit('click', { point: { x: 40, y: 60 } })
@@ -702,7 +703,12 @@ describe('preferences from the More screen', () => {
     await screen.findByRole('region', { name: /trail map/i })
 
     expect(document.documentElement.getAttribute(THEME_ATTRIBUTE)).toBe('light')
-    expect(backdropOf(MockMap.live[0])).toBe(MAP_BACKDROP.light)
+    // Waited on, exactly like the dark read at the end of this test. The map
+    // is built in an effect that runs a commit AFTER the container div lands,
+    // so `MockMap.live[0]` here was a race: one of the two reads in this test
+    // was wrapped and the other was not, and this is the one that failed
+    // under a full-suite run (#331).
+    expect(backdropOf(await liveMap())).toBe(MAP_BACKDROP.light)
 
     await user.click(screen.getByRole('tab', { name: 'More' }))
     await user.click(await screen.findByRole('radio', { name: /dark/i }))
@@ -720,6 +726,7 @@ describe('preferences from the More screen', () => {
     // inside an effect, so what proves the sequence completed is a live map
     // carrying the dark backdrop, not time passing.
     await waitFor(() => {
+      expect(MockMap.live.length).toBeGreaterThan(0)
       expect(backdropOf(MockMap.live[0])).toBe(MAP_BACKDROP.dark)
     })
   })

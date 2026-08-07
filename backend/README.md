@@ -59,7 +59,7 @@ export POOLER_DATABASE_URL=postgresql+psycopg://ourhike:ourhike@127.0.0.1:6432/o
 python -m pytest tests/test_pooler.py -v
 ```
 
-pgbouncer is not Supavisor. What it reproduces is the constraint they share - a transaction may land anywhere - which is the part the driver has to be configured for. Whether the *real* pooler behaves identically is still unverified, and needs the production connection string (see the open half of [#95](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/95)).
+pgbouncer is not Supavisor. What it reproduces is the constraint they share - a transaction may land anywhere - which is the part the driver has to be configured for. Whether the *real* pooler behaves identically is still unverified, and needs the production connection string (see the open half of [#95](https://github.com/OurHike/OurHike/issues/95)).
 
 ## Auth
 
@@ -96,7 +96,7 @@ Three things worth knowing before running it against real data:
 - **A maintainer must have signed into the app at least once.** `maintainer_id` is a profile id, which is the Supabase auth user id; the loader says so by name rather than letting a foreign key say it.
 - **It never changes anybody's `Profile.role`.** Looking after a stretch is not permission to moderate safety reports about named individuals.
 
-Without this, `GET /maintainer-assignments` and the thanks resolution both run against empty tables - and the client returns `[]` on failure, so "nothing is loaded" and "nobody is assigned" look identical ([#249](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/249)). Real per-club admin tooling is `features/VOLUNTEERING.md`'s larger module; this is the deliberate answer for one club getting started.
+Without this, `GET /maintainer-assignments` and the thanks resolution both run against empty tables - and the client returns `[]` on failure, so "nothing is loaded" and "nobody is assigned" look identical ([#249](https://github.com/OurHike/OurHike/issues/249)). Real per-club admin tooling is `features/VOLUNTEERING.md`'s larger module; this is the deliberate answer for one club getting started.
 
 ## Migrations
 

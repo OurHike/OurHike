@@ -29,7 +29,7 @@ Five separate docs each independently added a piece of identity or privacy desig
 
 The table describes the anonymity window, and the window is Post-MVP (ROADMAP.md). Left at that, the row read as a present-tense description of a v1 that does not exist, so here is the difference, stated rather than implied.
 
-**What the public gets on a report in v1: `reporter_type`, and nothing else that identifies anyone.** [#252](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/252) removed what was actually being served, which was worse than the row suggested in one direction and thinner in another:
+**What the public gets on a report in v1: `reporter_type`, and nothing else that identifies anyone.** [#252](https://github.com/OurHike/OurHike/issues/252) removed what was actually being served, which was worse than the row suggested in one direction and thinner in another:
 
 - **`reporter_id` — removed.** The backend was serving a stable Supabase account UUID to anonymous callers alongside a trail position and a time. Group by it and a hiker's route down the corridor falls out, with `curl` and no account. That is the linkability this whole document exists to prevent, and it was shipping while the row above described a masked trail name.
 - **`received_at`, `maintainer_id`, `club_id` — removed** from the public serialisation for the same reason. `maintainer_id` in particular was a second account UUID nobody had noticed: it is copied from the request for every report type while only a `thanks` is forced to `club_only`, so a public `blowdown` could carry a real person's id.

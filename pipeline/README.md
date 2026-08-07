@@ -63,7 +63,7 @@ That `--provider` label is as far as this registry currently goes toward being m
 
 ## Fetching opentrail.org (water sources + resupply)
 
-`fetch_opentrail.py` pulls AT waypoints from opentrail.org's public API (`/api/getData?trail=AT`) - 1,840 features, of which 142 are tagged water sources (`w`), 72 resupply (`r`), and 103 towns (`t`), the gap ATC's own data leaves. **Licensing isn't formally confirmed** (no LICENSE file in their repo; the maintainer reportedly called it "open data" in a Reddit post - [#98](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/98) tracks following up directly), so this deliberately excludes their user comments (personal contributions from named individuals - a separate consent question from licensing).
+`fetch_opentrail.py` pulls AT waypoints from opentrail.org's public API (`/api/getData?trail=AT`) - 1,840 features, of which 142 are tagged water sources (`w`), 72 resupply (`r`), and 103 towns (`t`), the gap ATC's own data leaves. **Licensing isn't formally confirmed** (no LICENSE file in their repo; the maintainer reportedly called it "open data" in a Reddit post - [#98](https://github.com/OurHike/OurHike/issues/98) tracks following up directly), so this deliberately excludes their user comments (personal contributions from named individuals - a separate consent question from licensing).
 
 ```
 .venv/Scripts/python fetch_opentrail.py
@@ -209,7 +209,7 @@ artifacts).
 ## Exporting the background as PMTiles (rebuilt from native resolution, #191)
 
 Superseded on 2026-08-06: `export_pmtiles.py` and its 11 m intermediate are
-gone. The measured diagnosis in [#191](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/191)
+gone. The measured diagnosis in [#191](https://github.com/OurHike/OurHike/issues/191)
 found the old chain shipped ~1/88th of the source's pixels - US Topo
 GeoTIFFs are 2.032 m/px natively, and the mosaic step downsampled them to
 11.13 m/px with bilinear before the tile export resampled them again.
@@ -237,7 +237,7 @@ upscaled 2x - the free half of #191's fix, and the reason
 `lib/archiveCoverage.ts` carries a camera-vs-tile zoom offset.
 
 **Measured sizes** from the first successful full-corridor run
-([run 31100130798](https://github.com/jaimito-asuntos-gringuenos/OurHike/actions/runs/31100130798),
+([run 31100130798](https://github.com/OurHike/OurHike/actions/runs/31100130798),
 2026-08-06, all 51 cells, receipts verified) - these are what
 `downloadDetail.ts` advertises, under the same +/-0.6% honesty bar the
 previous build held (its 11 m-chain figures were 64.4 MB / 314 MB /
@@ -291,6 +291,6 @@ To serve `data/processed/` locally instead - for testing the client's offline do
 
 ## Next steps
 
-Open pipeline work is tracked in [issues](https://github.com/jaimito-asuntos-gringuenos/OurHike/labels/pipeline) - notably [#99](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/99) (the unified POI schema beyond its first slice), [#96](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/96) (nothing runs the freshness check on a schedule) and [#100](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/100) (the dbt transform layer). Publish now ships as `publish.py`; the release design that supersedes it is [DATA_RELEASES.md](DATA_RELEASES.md).
+Open pipeline work is tracked in [issues](https://github.com/OurHike/OurHike/labels/pipeline) - notably [#99](https://github.com/OurHike/OurHike/issues/99) (the unified POI schema beyond its first slice), [#96](https://github.com/OurHike/OurHike/issues/96) (nothing runs the freshness check on a schedule) and [#100](https://github.com/OurHike/OurHike/issues/100) (the dbt transform layer). Publish now ships as `publish.py`; the release design that supersedes it is [DATA_RELEASES.md](DATA_RELEASES.md).
 
 **Chunking granularity decided 2026-07-28: whole corridor, one package** (not per-state/per-section) - see [../ROADMAP.md](../ROADMAP.md) Phase 2 for why, and the zoom-11/12/13 detail choice this Export step supports.

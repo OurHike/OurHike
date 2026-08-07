@@ -1,9 +1,9 @@
 # The offline vector basemap — build once, extract many
 
 Design for the pipeline half of making the hiking sheet work offline —
-[#184](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/184) holds the
+[#184](https://github.com/OurHike/OurHike/issues/184) holds the
 full program and the client half. Written 2026-08-04 alongside the spike
-([#185](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/185)); the numbers
+([#185](https://github.com/OurHike/OurHike/issues/185)); the numbers
 marked *estimate* below are replaced by measured ones the first time
 `build-basemap.yml` runs.
 
@@ -70,7 +70,7 @@ screen's release date is where a hiker reads it.
 
 Overlapping trails (the AT and NYNJTC systems share ground) mean packages cut
 this way duplicate tiles on a phone holding both — measured and decided in
-[#193](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/193), not here.
+[#193](https://github.com/OurHike/OurHike/issues/193), not here.
 
 ## Where the build runs, and what it costs
 
@@ -116,7 +116,7 @@ pair without ever materialising a ~23 GB national file.
 
 ### Measured: sharding is not lossless
 
-[#225](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/225) built
+[#225](https://github.com/OurHike/OurHike/issues/225) built
 a region three ways — whole as a control, then as two shards that saw *all*
 the data and differed only in `--polygon` (arm A), then as two shards that saw
 only their own state (arm B) — for a sparse pair (Vermont/New Hampshire) and a
@@ -266,7 +266,7 @@ what keeps that honest until immutable releases land.
 ## Measured results
 
 From `build-basemap.yml` run 2 (2026-08-04, all 14 states, free hosted
-runner, [logs](https://github.com/jaimito-asuntos-gringuenos/OurHike/actions/runs/30957719854)) —
+runner, [logs](https://github.com/OurHike/OurHike/actions/runs/30957719854)) —
 these supersede the estimates above:
 
 | Stage | Measured |

@@ -104,7 +104,8 @@ import { useFinePointer } from './lib/useFinePointer'
 import { useTheme } from './lib/useTheme'
 import { useDesktop } from './lib/useDesktop'
 import { useInstallPrompt } from './lib/useInstallPrompt'
-import { useAppUpdate } from './lib/useAppUpdate'
+import { useAppUpdate, UPDATE_CHECK_MS } from './lib/useAppUpdate'
+import { readCamera, writeCamera } from './lib/cameraMemory'
 import { useGeolocation } from './lib/useGeolocation'
 import { positionLine } from './lib/positionLine'
 import { buildTrailIndex, locateOnTrail, type TrailIndex } from './lib/trailPosition'
@@ -322,7 +323,13 @@ function App() {
   const [map, setMap] = useState<MapLibreMap | null>(null)
   // Where the camera was left, so a rebuilt map opens where the hiker left it
   // instead of snapping back to the whole corridor.
-  const [camera, setCamera] = useState<Camera | null>(null)
+  //
+  // Seeded from session storage (#311). A service-worker update restarts the
+  // page, and while that now waits for a moment nobody is watching
+  // (lib/useAppUpdate.ts), the restart still forgets the view - so a hiker who
+  // put the phone away reading a junction took it out again looking at the
+  // whole trail. Null on a fresh tab, which is the corridor, deliberately.
+  const [camera, setCamera] = useState<Camera | null>(() => readCamera())
 
   const now = useClock()
   const online = useOnline()
@@ -363,7 +370,22 @@ function App() {
   // machine is one that goes up a mountain. See handleOnboardingComplete.
   const isDesktop = useDesktop()
   const install = useInstallPrompt()
-  useAppUpdate()
+  // What a reload would destroy right now (#311). Every one of these is React
+  // state that no storage carries: a report being written, a window or sheet
+  // the hiker opened, a sign-in half done. The update waits for all of them to
+  // be put away AND for the page to be hidden - see lib/useAppUpdate.ts.
+  //
+  // The camera is deliberately NOT in this list. It is kept across the reload
+  // instead (lib/cameraMemory.ts), because holding an update for as long as
+  // someone is looking at a map would hold it for the whole hike.
+  const updateWouldCost =
+    reporting !== null ||
+    authFlow !== null ||
+    downloadsOpen ||
+    legendOpen ||
+    searchOpen ||
+    selectedPoiId !== null
+  useAppUpdate(UPDATE_CHECK_MS, { hold: updateWouldCost })
 
   useEffect(() => {
     void loadPreferences().then(
@@ -1153,7 +1175,13 @@ function App() {
       setBbox(next)
       if (map === null) return
       const centre = map.getCenter()
-      setCamera({ center: [centre.lng, centre.lat], zoom: map.getZoom() })
+      const settled: Camera = { center: [centre.lng, centre.lat], zoom: map.getZoom() }
+      setCamera(settled)
+      // Written on every settled move rather than on unload: a page being
+      // replaced by a new service worker gets no reliable last word, and
+      // `moveend` is already the one place that knows where the view came to
+      // rest (#311).
+      writeCamera(settled)
     },
     [map],
   )

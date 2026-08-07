@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { renderHook } from '@testing-library/react'
-import { useAppUpdate } from './useAppUpdate'
+import { cleanup, renderHook } from '@testing-library/react'
+import { useAppUpdate, UPDATE_CHECK_MS } from './useAppUpdate'
 
 // The bug this closes: a new build installed, sat in `waiting`, and the old
 // bundle kept being served - so every deploy looked like it had not happened
@@ -57,7 +57,29 @@ function stubServiceWorker({
   }
 }
 
+/**
+ * Put the page in the state a reload is allowed in.
+ *
+ * jsdom reports 'visible' by default, which is the state this hook now
+ * REFUSES to reload in - so every reload case has to say so out loud, and
+ * every case that does not call this is asserting the deferral.
+ */
+function hide(state: DocumentVisibilityState = 'hidden') {
+  Object.defineProperty(document, 'visibilityState', {
+    value: state,
+    configurable: true,
+  })
+  document.dispatchEvent(new Event('visibilitychange'))
+}
+
 afterEach(() => {
+  // Unmount first, and this file needs it for the same reason
+  // useGeolocation.test.ts does (#313): these hooks listen on `document`, so a
+  // single dispatched `visibilitychange` reaches every hook the file has ever
+  // rendered - each one calling the CURRENT test's reload stub. Two reloads
+  // where one was expected is what surfaced it.
+  cleanup()
+  hide('visible')
   vi.unstubAllGlobals()
   vi.useRealTimers()
   vi.clearAllMocks()
@@ -96,10 +118,11 @@ describe('useAppUpdate', () => {
     expect(sw.updateCalls()).toBe(0)
   })
 
-  it('reloads once the new worker takes control of an already-controlled page', () => {
+  it('reloads once the new worker takes control of a hidden, idle page', () => {
     const reload = vi.fn()
     vi.stubGlobal('location', { reload })
     const sw = stubServiceWorker({ controlled: true })
+    hide()
 
     renderHook(() => useAppUpdate())
     sw.fireControllerChange()
@@ -124,6 +147,7 @@ describe('useAppUpdate', () => {
     const reload = vi.fn()
     vi.stubGlobal('location', { reload })
     const sw = stubServiceWorker({ controlled: true })
+    hide()
 
     renderHook(() => useAppUpdate())
     sw.fireControllerChange()
@@ -209,5 +233,115 @@ describe('useAppUpdate with no signal', () => {
     await vi.advanceTimersByTimeAsync(3500)
 
     expect(sw.updateCalls()).toBeGreaterThanOrEqual(4)
+  })
+})
+
+describe('waiting for a moment the reload costs nothing (#311)', () => {
+  // The failure this closes: a deploy lands within the hour, the page reloads
+  // under whoever is holding it, and React state goes with it - the camera
+  // they panned to, the report they were half way through typing.
+
+  it('does not reload a page someone is looking at', () => {
+    const reload = vi.fn()
+    vi.stubGlobal('location', { reload })
+    const sw = stubServiceWorker({ controlled: true })
+
+    renderHook(() => useAppUpdate())
+    sw.fireControllerChange()
+
+    expect(reload).not.toHaveBeenCalled()
+  })
+
+  it('reloads as soon as the phone goes back in the pocket', () => {
+    // The whole design in one case: the update is not abandoned, it is
+    // deferred, and the next time the screen goes away it lands unwatched.
+    const reload = vi.fn()
+    vi.stubGlobal('location', { reload })
+    const sw = stubServiceWorker({ controlled: true })
+
+    renderHook(() => useAppUpdate())
+    sw.fireControllerChange()
+    expect(reload).not.toHaveBeenCalled()
+
+    hide()
+
+    expect(reload).toHaveBeenCalledTimes(1)
+  })
+
+  it('holds even while hidden when something is at stake', () => {
+    // A phone put down with a half-written report open is hidden and is still
+    // holding something worth keeping. Hidden alone is not enough.
+    const reload = vi.fn()
+    vi.stubGlobal('location', { reload })
+    const sw = stubServiceWorker({ controlled: true })
+    hide()
+
+    renderHook(() => useAppUpdate(UPDATE_CHECK_MS, { hold: true }))
+    sw.fireControllerChange()
+
+    expect(reload).not.toHaveBeenCalled()
+  })
+
+  it('takes the update the moment the hold is released', () => {
+    // Releasing a hold fires no event of its own - putting a form away is
+    // just a render - so the hook has to notice the prop changing.
+    const reload = vi.fn()
+    vi.stubGlobal('location', { reload })
+    const sw = stubServiceWorker({ controlled: true })
+    hide()
+
+    const { rerender } = renderHook(
+      ({ hold }) => useAppUpdate(UPDATE_CHECK_MS, { hold }),
+      {
+        initialProps: { hold: true },
+      },
+    )
+    sw.fireControllerChange()
+    expect(reload).not.toHaveBeenCalled()
+
+    rerender({ hold: false })
+
+    expect(reload).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not re-attach its listeners when the hold changes', () => {
+    // The hold is read through a ref for this reason: putting it in the
+    // effect's deps would re-read `controller`, re-register every listener and
+    // restart the hourly timer each time a hiker opened a sheet - and reset
+    // the pending update with them.
+    const sw = stubServiceWorker({ controlled: true })
+
+    const { rerender } = renderHook(
+      ({ hold }) => useAppUpdate(UPDATE_CHECK_MS, { hold }),
+      {
+        initialProps: { hold: false },
+      },
+    )
+    rerender({ hold: true })
+    rerender({ hold: false })
+
+    expect(sw.listenerCount()).toBe(1)
+  })
+
+  it('keeps a pending update across a hold, rather than losing it', () => {
+    const reload = vi.fn()
+    vi.stubGlobal('location', { reload })
+    const sw = stubServiceWorker({ controlled: true })
+
+    // Control changes while the page is visible AND holding.
+    const { rerender } = renderHook(
+      ({ hold }) => useAppUpdate(UPDATE_CHECK_MS, { hold }),
+      {
+        initialProps: { hold: true },
+      },
+    )
+    sw.fireControllerChange()
+
+    // Both conditions clear, one after the other, long after the event.
+    rerender({ hold: false })
+    expect(reload).not.toHaveBeenCalled()
+    hide()
+
+    expect(reload).toHaveBeenCalledTimes(1)
   })
 })

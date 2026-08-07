@@ -9,6 +9,7 @@ import { PREFERENCES_KEY } from './lib/preferences'
 import { DEFAULT_PREFERENCES } from './lib/userPreferences'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 import { CORRIDOR_ARCHIVE_KEY } from './map/pmtilesSource'
+import { readCamera } from './lib/cameraMemory'
 import { fetchClosures, fetchReports } from './lib/api'
 import { GeolocateControl } from './test/mocks/maplibre-gl'
 
@@ -397,6 +398,56 @@ describe('a map that cannot draw says so', () => {
 })
 
 describe('a background switch under the hiker', () => {
+  it('opens where the hiker left it after a reload they did not ask for', async () => {
+    // #311's other half. lib/useAppUpdate.ts now waits for a moment nobody is
+    // watching before it reloads, but the restart itself still forgets the
+    // view - so a hiker who put the phone away reading a junction took it out
+    // again looking at the whole trail. The camera is kept in session storage
+    // across exactly that restart (lib/cameraMemory.ts).
+    hikerOnTrail()
+    const { unmount } = render(<App />)
+    const before = await renderedMap()
+
+    before.center = { lng: -77.2, lat: 41.5 }
+    before.zoom = 13
+
+    // The emit is RETRIED, and that is the fix for a real flake rather than a
+    // hedge. `renderedMap()` resolves as soon as the map is constructed, but
+    // the shell only records a move once `onMapReady` has handed it that map -
+    // a commit or two later. A single `moveend` in the gap is dropped, the
+    // view is never written, and the test failed with the mock's default
+    // [0, 0] on roughly one run in three. Emitting until the write lands is
+    // the observable proof that the shell was listening when it happened.
+    await waitFor(() => {
+      act(() => before.emit('moveend'))
+      expect(readCamera()).toEqual({ center: [-77.2, 41.5], zoom: 13 })
+    })
+
+    // A reload, as far as this app can be made to have one: everything React
+    // holds is gone, and only what was written down survives.
+    unmount()
+    resetMapLibreMock()
+    render(<App />)
+
+    const reopened = await renderedMap()
+    expect(reopened.options.center).toEqual([-77.2, 41.5])
+    expect(reopened.options.zoom).toBe(13)
+    expect(reopened.options.bounds).toBeUndefined()
+  })
+
+  it('opens a fresh session on the whole corridor, not on last week’s view', async () => {
+    // The reason it is session storage. Restoring a durable camera would show
+    // someone starting in Maine the Georgia view they left on Tuesday, and
+    // the opening view is a deliberate decision (App.tsx's CORRIDOR_BOUNDS).
+    window.sessionStorage.clear()
+    hikerOnTrail()
+    render(<App />)
+
+    const opened = await renderedMap()
+    expect(opened.options.bounds).toBeDefined()
+    expect(opened.options.center).toBeUndefined()
+  })
+
   it('rebuilds the map where the hiker left it, not back at the whole trail', async () => {
     // Switching Live <-> Downloaded is the one preference that costs a WebGL
     // rebuild (MapView's construction effect). The rebuild is tolerable; the

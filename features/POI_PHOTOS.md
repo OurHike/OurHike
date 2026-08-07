@@ -39,7 +39,7 @@ Commons is the one large photo corpus where every file carries machine-readable 
 - **Licensing is per photo, not per source.** One Commons file is CC BY 4.0, its neighbour CC BY-SA 2.0, a third public domain. So the licence record travels **on each exported feature** (`photo_license`, `photo_author`, `photo_page_url`), and the card renders the credit line — author, licence name, one link to the Commons file page — the same load-bearing-attribution posture as the map's ODbL line. Only public domain, CC0, and **CC BY / CC BY-SA at 4.0 or newer** are accepted. The version floor is not pedantry: 4.0's §3(a)(2) explicitly allows satisfying attribution via a link to a page carrying the required information (the file page does), while the 2.0/2.5/3.0 licences require the licence URI itself to ship with every copy — a term a one-link credit cannot meet, so those files are rejected the same way NC (breaks any future paid tier), ND (arguably forbids the card's crop) and GFDL (demands the full licence text) are: wholesale, rather than negotiated. The real coverage cost is Flickr-to-Commons imports (still CC 2.0-suite); accepting them later means carrying a licence-deed URL through the artifact and growing a second link in the credit, which is a deliberate follow-up, not an oversight. A CC BY photo with no attributable author is unusable, not "usable, uncredited".
 - **"Real photo, recent" is enforced by one honest proxy:** the file must be a JPEG with a parseable EXIF capture date inside the window. Maps, SVG diagrams, screenshots and undated scans fail this naturally, with no image-content classification pretending to judge what the photo shows. The capture date ships with the photo (`photo_taken`) and the card shows the month.
 - **Proximity is the match, and its limit is disclosed by design.** The nearest eligible file within a per-type radius wins. This will occasionally pick a photo of the view *from* the shelter rather than *of* it. The credit line linking to the file page keeps provenance one tap away; anything smarter (name matching, depicts-statements) is future refinement.
-- **Never the original file — a sized thumbnail or nothing.** A Commons original is a full-resolution camera file, routinely 3–15 MB; the card's slot is 264 CSS pixels wide. The fetch asks for a 640px-wide rendering (`iiurlwidth`) and stores that `thumburl`. There is deliberately **no fallback to the original**: filling a thumbnail-sized box with a multi-megabyte download on a hiker's data plan is value #8's exact argument against itself.
+- **Never the original file — a sized thumbnail or nothing.** A Commons original is a full-resolution camera file, routinely 3–15 MB; the card's slot is 264 CSS pixels wide. The fetch asks for a 640px-wide rendering (`iiurlwidth`) and takes that `thumburl` — as built it stores the URL; per "Where the bytes live" below it will store our own mirrored copy of those bytes. Either way there is deliberately **no fallback to the original**: filling a thumbnail-sized box with a multi-megabyte download on a hiker's data plan is value #8's exact argument against itself.
 
 ### Expect very little of it
 
@@ -164,11 +164,80 @@ The share sheet says this in one plain sentence rather than burying it, because 
 
 Release folders under `releases/` are written once and never overwritten ([DATA_RELEASES.md](../pipeline/DATA_RELEASES.md)), and copy-forward is a real `copy_object`, so a photo baked into a published release could never be withdrawn from the releases already serving it. **Therefore community photos are served from the backend, not baked into release artifacts.** A withdrawal then removes the photo from the surface that serves it — a promise the app can keep. This is a genuine architectural consequence of a consent requirement, and the reason the community rung is not simply another pipeline artifact.
 
+### Saying that the photo has been shrunk, and offering the real one
+
+Every photo on a card is a 640px rendering of something larger. **The hiker is told that, and given a way to see the full thing** — value #4 applied to the app's own handling rather than only to its data.
+
+Where it is said matters more than that it is said. A permanent caption under every photo is noise nobody reads, so the disclosure sits where a reduced copy could actually mislead:
+
+- **On a hiker's own photo**, where the gap is largest and most personal — the strip says this is a copy and their library has the original, which is the same sentence that keeps the not-an-archive promise honest.
+- **In the share flow**, because what other hikers receive is the reduced version, and a photographer should know what they are publishing before they publish it irrevocably.
+
+And "see it yourself" costs nothing to offer, because in every case the real file is somewhere we are not holding it:
+
+| photo | full-quality original is | how the hiker reaches it |
+|---|---|---|
+| their own | their photo library | open it there |
+| a Commons photo | the Commons file page | the credit line already links it |
+| a shared photo | the photographer's own library | theirs; other hikers get the rendering |
+
+That table is the whole feature. The app never has to store a second copy to be honest about the first one.
+
 ### What the card renders, for all three sources
 
 One credit line, one shape, whatever the source: who, under what terms, when. A Commons photo names its author and licence and links the file page; a community photo names a trail name (subject to the window) and the date; a hiker's own photo needs no credit at all, because they are looking at their own picture. The rule is that **the slot never shows a photo whose provenance it cannot state.**
 
 ---
+
+## Where the bytes live, and what they cost
+
+**Decided 2026-08-07: everything OurHike serves is in R2, no photo is ever hotlinked from anyone else, and no image is ever processed server-side.**
+
+### Mirror Commons rather than hotlinking it
+
+Shipping Commons thumbnail URLs was the first slice, and it is the wrong long-term answer for the reason SOURCE_REGISTRY.md already gives about upstream endpoints: *a live third-party dependency is a 404 on a mountain*. Hotlinking makes every waypoint card depend on `upload.wikimedia.org` being reachable and unchanged. The fetch therefore **downloads the 640px rendering and stores it in our own bucket**, and the artifacts point at our copy.
+
+Two things this fixes at once. The card stops depending on somebody else's uptime — and we stop spending a nonprofit's bandwidth on our traffic. Wikimedia permits hotlinking, but a popular app pushing its image load onto Wikimedia is a cost externalised onto exactly the kind of organisation this project is supposed to be a good citizen toward. Serving it ourselves costs, per the table below, approximately nothing.
+
+Licensing permits this and it is worth stating why rather than assuming: PD and CC0 impose no condition, and CC BY / CC BY-SA permit redistribution provided attribution travels with the copy — which the credit line already does. One consequence to honour: **our 640px rendering of a CC BY-SA original is a derivative and carries the same licence.** OurHike claims nothing over it.
+
+### This needs two deliberate changes to the R2 rules, which is the gate working
+
+Checked against `lib/r2_keys.py` rather than assumed, and it refuses today:
+
+- **`.jpg` is not a served extension.** The set is `geojson`, `fgb`, `json`, `pmtiles`, `tif`, and a JPEG key is rejected outright.
+- **There is no prefix for photos.** Only `releases/` and `_internal/` are declared, and `_internal/` explicitly means "nothing here is a download", which photos are.
+
+Neither is a blocker; both are the gate doing its job. R2_LAYOUT.md anticipates exactly this — *"Adding a format is one line in the validator, reviewed alongside the artifact that needs it"* — so mirroring photos means adding `jpg` to `ALLOWED_EXTENSIONS` and declaring a photo prefix with its retention rule, in the PR that needs them. **The prefix must not be `releases/`**: release folders are written once and never overwritten, and a community photo that lands in one could never be withdrawn, which is the consent requirement above. Photos live under a mutable prefix the backend can delete from.
+
+Note also what "everything in R2" does and does not mean. R2 holds **bytes**; photo metadata, moderation state and the withdrawal flag stay in Postgres, because those are records to query, not objects to serve.
+
+### Reduce on the phone, never on a server
+
+**Every user-contributed photo is resized on the device before it is uploaded.** Commons photos arrive already rendered by Wikimedia's own thumbnailer, so nothing in this feature ever runs an image pipeline of our own.
+
+That is a cost decision as much as an architectural one. Storage and egress are close to free; **server-side image transformation is the one part of a photo feature that genuinely is not**, because those services price per image rather than per byte. Pushing the resize onto the device that already holds the photo keeps the whole feature inside the free tier and removes an entire class of running cost before it exists.
+
+### What it actually costs
+
+Prices from [Cloudflare R2](https://developers.cloudflare.com/r2/pricing) — $0.015/GB-month, $0.36 per million reads, **$0 egress**, with 10 GB storage and 10M reads free monthly. Volumes are scenarios; 47 KB per 640px photo is the same estimate the size budget uses, not a measurement.
+
+| shared photos stored | storage | R2 |
+|---|---|---|
+| 10,000 | 0.45 GB | $0 (free tier) |
+| 50,000 | 2.2 GB | $0 (free tier) |
+| 50,000 + 1600px copies | 16.6 GB | $0.10/mo |
+
+| devices served | fetches | egress | R2 | Supabase |
+|---|---|---|---|---|
+| 5,000 | 750k | 34 GB | $0 | $0 (inside Pro's 250 GB) |
+| 25,000 | 3.75M | 168 GB | $0 | $0 (inside Pro's 250 GB) |
+
+Mirroring Commons adds a few hundred MB and stays inside the same free tier.
+
+**The one case where the provider choice is not a wash is the offline bundle** — ~137 MB per device, so 5,000 downloads is 669 GB and 25,000 is 3.3 TB. On R2 that is $0; on egress-billed storage it is roughly $38/mo and $279/mo respectively. That is the concrete argument for R2 in the [#89](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/89) storage decision, and it is why that decision should be made once for all three photo kinds.
+
+**Money is not the constraint on this feature.** Moderation is: ten thousand shared photos is ten thousand human decisions on volunteer time, and that is what will limit how fast this can grow.
 
 ## Size budget
 
@@ -197,7 +266,14 @@ What follows:
 
 ## Decisions deliberately left open
 
-- **Offline delivery of Commons photos.** Today the artifacts carry photo *URLs* (Commons' thumbnail endpoint, which Wikimedia permits hot-loading); the card fetches one when it renders, and offline it falls back down the ladder. That is the right first slice — photos are enhancement, never safety-relevant — but it sits in honest tension with the "data goes through the build" posture (SOURCE_REGISTRY.md's "not a live proxy"). The full answer is the opt-in bundle above, which lands on the same storage decision as [#89](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/89)'s report photos. **Three photo kinds now converge on that one decision** — report photos, shared community photos, and any bundled Commons cut — and it should be made once. Whenever it is, `R2_LAYOUT.md`'s "Adding an artifact" checklist applies before the first upload: `poi_photos.json` is a legal key and reads family-first; an archive format is not.
+- **Offline delivery.** Mirroring into R2 (above) fixes reliability, not offline: the card still fetches a URL when it renders, and offline it falls back down the ladder. Photos are enhancement and never safety-relevant, so that is an acceptable resting state — the opt-in bundle in the size budget is the full answer, and it is the one case where R2's zero egress is worth real money.
+- **A premium tier for higher-quality photos — raised 2026-08-07, and the recommendation is not to.** Four things argue against it, and they should be weighed together rather than dismissed one at a time:
+  1. **There is no cost to recover.** Even 50,000 photos with 1600px copies alongside is $0.10/month, and egress is free. A paywall normally recovers a real expense; here there isn't one to point at.
+  2. **[PRICING_MODEL.md](PRICING_MODEL.md)'s pricing value #3 is directly on point** — *"Contribution stays free… A two-sided resource doesn't get better by charging the side that supplies it"* — and that doc already extends it past safety to community contribution features, because *"paywalling the supply side of a shared resource undermines the resource itself."* Photos are the supply side. Charging hikers to see hikers' donated photos properly is the cleanest example of the thing that rule exists to prevent.
+  3. **CC BY-SA makes it leaky anyway.** A paying hiker may redistribute freely, and the licence forbids applying technological measures that restrict what it grants. A quality paywall over CC content is a speed bump with an ethical cost attached.
+  4. **It would reverse the not-an-archive decision**, since offering higher quality means storing a second larger copy of everything.
+  
+  **If a photo-shaped premium is wanted, the defensible unit is the offline photo pack**, not photo quality: a convenience with a real download cost to the hiker's own data plan, which is exactly pricing value #5's *"pay for convenience and connection, not facts."* Photos are never safety-relevant, so gating that breaks no safety rule. A maintainer's call either way; recorded here with a recommendation rather than decided.
 - **Whether an irrevocable licence needs a cooling-off period.** CC BY-SA 4.0 is settled, but a hiker who shares a photo and regrets it ten minutes later cannot un-license it. A short window before a shared photo becomes visible to anyone — hours, not days — would make almost every regret recoverable at the cost of a delay nobody would notice, since moderation already sits in that path. Worth deciding when the share flow is built, not now.
 - **Whether a photo whose match was never confirmed may be shared at all.** The safe answer is no: an unconfirmed match is the app's guess, and a wrong guess published under an irrevocable licence with a trail name attached is the failure mode worth spending a tap to avoid. Recorded here rather than decided because it is really a question about the share flow's shape.
 - **Whether the Google Photos Picker API is worth integrating at all**, given the native pickers already reach the same photos for anyone whose library is on the phone. It matters for hikers whose photos live only in Google Photos, which is a real population, and it is a separate OAuth integration for a second path to the same feature. Sequence it after the native path works.
@@ -205,4 +281,4 @@ What follows:
 - **Wiring the Commons fetch into `publish-vector-data.yml`.** Deliberately not done: it would couple every data release to Commons API availability. The fetch is run by hand before an export, and the export ships cleanly without it.
 - **A registry row for Commons.** When SOURCE_REGISTRY.md's licence fields land on `sources.json`, Commons gets an entry (`trust: community`, per-photo licences noted as riding the features). Until then, CONTRIBUTING.md's licence note plus this doc are the record.
 
-Nothing in the Commons feature as built adds a bucket key: the photo fields ride inside the existing `poi_*.geojson` artifacts, and `data/raw/poi_images.json` is a local fetch artifact under the pipeline's gitignored `data/` tree — which is exactly where R2_LAYOUT.md says a mirror of a raw upstream pull belongs, nowhere near a world-readable bucket.
+**As built today, nothing here adds a bucket key** — the photo fields ride inside the existing `poi_*.geojson` artifacts, and `data/raw/poi_images.json` is a local fetch artifact under the pipeline's gitignored `data/` tree, exactly where R2_LAYOUT.md says a mirror of a raw upstream pull belongs. Mirroring the image bytes changes that, which is why it needs the extension and prefix decisions recorded above rather than a script inventing a key on its first upload.

@@ -52,6 +52,8 @@ _internal/cells/2026-08-07/tile_NNN.tif + cells_state.json
 
 Release ids are `YYYY-MM-DD`, with a `-2`, `-3` suffix for a same-day rebuild. Human-readable, lexically sortable, and it answers "how old is the map on my phone" without a lookup table.
 
+The naming rules those segments follow — what a prefix may be, what an object may be called, and why a published key can never be renamed — are [R2_LAYOUT.md](R2_LAYOUT.md), enforced by `lib/r2_keys.py`. This document owns the tree above and the clocks below; that one owns the spelling.
+
 Everything under `releases/<v>/` is **written once and never overwritten**. That single rule is what makes consequence 1 above structurally impossible rather than defended against.
 
 `_internal/` is build state, not hiker-facing. On the current r2.dev public bucket it is nonetheless publicly readable; it is named to make that obvious rather than to hide it.

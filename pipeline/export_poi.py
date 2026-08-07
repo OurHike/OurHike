@@ -46,6 +46,15 @@ inspection, 2026-07-28):
     still calls that exploratory/undecided). Shipping an empty-but-present
     layer (rather than omitting the poi_type, or inventing fake crossings)
     keeps the schema honest about what's actually populated.
+
+Photo enrichment: when fetch_poi_images.py has run, data/raw/poi_images.json
+holds per-POI photo records (Wikimedia Commons; url, author, licence, capture
+date) keyed by the same unified ids this export writes, and those fields ride
+along on the exported features as photo_* properties. The file being absent
+is a normal state, not an error - the export ships photo-less features and
+the client card shows its category placeholder. Per-photo licensing is why
+attribution travels per-feature instead of as one registry line (see
+CONTRIBUTING.md "A note on data and licences").
 """
 
 import hashlib
@@ -61,6 +70,16 @@ from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES, unify_poi
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
 OUT_DIR = ROOT / "data" / "processed" / "poi"
+
+# fetch_poi_images.py's output, read relative to RAW_DIR at call time (not a
+# frozen module constant) so redirecting RAW_DIR - as every test here does -
+# redirects this with it.
+IMAGES_FILENAME = "poi_images.json"
+
+# What travels from a fetched photo record onto the exported feature. Kept to
+# what the card actually renders (credit line + link) plus the capture date -
+# honesty about a photo's age is data, not decoration (OurHikeValues.md #4).
+PHOTO_FIELDS = ("url", "page_url", "author", "license", "taken")
 
 TRAIL_ID = "AT"
 
@@ -93,6 +112,36 @@ def load_features(path: Path) -> list[dict]:
     """Read a raw GeoJSON file's features as plain Python dicts."""
     data = json.loads(path.read_text(encoding="utf-8"))
     return data.get("features", [])
+
+
+def load_photo_records(path: Path) -> dict[str, dict]:
+    """fetch_poi_images.py's found photos keyed by unified POI id, or {}
+    when that script hasn't run - which is a normal, exportable state, not
+    an error. Only "found" outcomes matter here; a recorded miss and an
+    unchecked POI both export the same way, photo-less."""
+    if not path.exists():
+        return {}
+    outcomes = json.loads(path.read_text(encoding="utf-8")).get("pois", {})
+    return {
+        poi_id: record["photo"] for poi_id, record in outcomes.items() if record.get("status") == "found" and "photo" in record
+    }
+
+
+def attach_photos(records: list[dict], photos: dict[str, dict]) -> int:
+    """Copy each matched photo's PHOTO_FIELDS onto its unified POI record as
+    photo_* keys, returning how many matched. Unmatched records are left
+    without the keys entirely - write_poi_type reads them with .get(), and a
+    NULL column is the honest export of "no photo", the same shape the
+    client's card treats as its placeholder."""
+    attached = 0
+    for record in records:
+        photo = photos.get(record["id"])
+        if photo is None:
+            continue
+        for field in PHOTO_FIELDS:
+            record[f"photo_{field}"] = photo.get(field)
+        attached += 1
+    return attached
 
 
 def unify_all_sources(trail_id: str = TRAIL_ID) -> list[dict]:
@@ -154,12 +203,13 @@ def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[
     con.execute("""
         CREATE OR REPLACE TABLE poi_out (
             id VARCHAR, poi_type VARCHAR, trail_id VARCHAR, source VARCHAR,
-            source_feature_id VARCHAR, name VARCHAR, lat DOUBLE, lon DOUBLE, confidence VARCHAR
+            source_feature_id VARCHAR, name VARCHAR, lat DOUBLE, lon DOUBLE, confidence VARCHAR,
+            photo_url VARCHAR, photo_page_url VARCHAR, photo_author VARCHAR, photo_license VARCHAR, photo_taken VARCHAR
         )
     """)
     if records:
         con.executemany(
-            "INSERT INTO poi_out VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO poi_out VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (
                     r["id"],
@@ -171,6 +221,14 @@ def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[
                     r["lat"],
                     r["lon"],
                     r["confidence"],
+                    # .get, not [] - records arrive photo-less both when
+                    # attach_photos found no match and when a caller (or an
+                    # older test) never ran the attach step at all.
+                    r.get("photo_url"),
+                    r.get("photo_page_url"),
+                    r.get("photo_author"),
+                    r.get("photo_license"),
+                    r.get("photo_taken"),
                 )
                 for r in records
             ],
@@ -206,6 +264,13 @@ def main() -> dict:
 
     clipped = clip_to_corridor(con, unified)
     print(f"  {len(clipped)}/{len(unified)} within the corridor.")
+
+    photos = load_photo_records(RAW_DIR / IMAGES_FILENAME)
+    if photos:
+        attached = attach_photos(clipped, photos)
+        print(f"  {attached} POIs carry a photo (from {IMAGES_FILENAME}).")
+    else:
+        print(f"  No {IMAGES_FILENAME} - exporting without photos (run fetch_poi_images.py to add them).")
 
     manifest = {}
     counts = {}

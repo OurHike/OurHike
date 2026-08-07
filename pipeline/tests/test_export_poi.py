@@ -248,6 +248,79 @@ def test_export_poi_opentrail_seasonal_water_tag_is_not_treated_as_shelter(tmp_p
     assert "Seasonal Spring" in water_names  # folded into water instead, per README's documented role
 
 
+def test_export_poi_carries_fetched_photos_onto_their_features_and_only_theirs(tmp_path, monkeypatch, con):
+    """When fetch_poi_images.py has left data/raw/poi_images.json, its found
+    photos ride the matching exported features as photo_* properties -
+    licence and author included, because per-photo attribution is the
+    condition of shipping the photo at all (CONTRIBUTING.md's licence note).
+    A recorded miss and an unmatched POI both export photo-less, identical
+    to a run where the fetch never happened."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    (raw_dir / "poi_images.json").write_text(
+        json.dumps(
+            {
+                "pois": {
+                    "atc_shelters:shelter-glob-1": {
+                        "status": "found",
+                        "checked": "2026-08-07",
+                        "photo": {
+                            "title": "File:Test Shelter.jpg",
+                            "distance_m": 42.5,
+                            "url": "https://upload.wikimedia.org/test-shelter-640.jpg",
+                            "page_url": "https://commons.wikimedia.org/wiki/File:Test_Shelter.jpg",
+                            "author": "Jane Doe",
+                            "license": "CC BY-SA 4.0",
+                            "taken": "2025-06-18",
+                        },
+                    },
+                    "opentrail_at:100": {"status": "none", "checked": "2026-08-07"},
+                }
+            }
+        )
+    )
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+
+    export_poi.main()
+
+    shelter_fc = json.loads((out_dir / "shelter.geojson").read_text())
+    shelter_props = shelter_fc["features"][0]["properties"]
+    assert shelter_props["photo_url"] == "https://upload.wikimedia.org/test-shelter-640.jpg"
+    assert shelter_props["photo_page_url"] == "https://commons.wikimedia.org/wiki/File:Test_Shelter.jpg"
+    assert shelter_props["photo_author"] == "Jane Doe"
+    assert shelter_props["photo_license"] == "CC BY-SA 4.0"
+    assert shelter_props["photo_taken"] == "2025-06-18"
+
+    water_fc = json.loads((out_dir / "water.geojson").read_text())
+    for feature in water_fc["features"]:
+        # Recorded-miss and never-checked features alike: no photo value,
+        # whether the driver writes the property as null or omits it.
+        assert feature["properties"].get("photo_url") is None
+
+
+def test_export_poi_exports_photo_less_when_no_images_file_exists(tmp_path, monkeypatch, con):
+    """The images file being absent is a normal state (fetch_poi_images.py
+    is optional and slow), not an error - the export must ship, and ship
+    without inventing photo values."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+
+    manifest = export_poi.main()
+
+    assert manifest["shelter"]["geojson"]["feature_count"] == 1
+    shelter_fc = json.loads((out_dir / "shelter.geojson").read_text())
+    assert shelter_fc["features"][0]["properties"].get("photo_url") is None
+
+
 def test_export_poi_communities_and_opentrail_resupply_carry_different_confidence(tmp_path, monkeypatch, con):
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()

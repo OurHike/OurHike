@@ -66,11 +66,42 @@ Designing it as data collection produces the gamification playbook this project 
 - **Dated like every other photo.** Capture date from EXIF where present, otherwise the date it was added, and shown as a month exactly as the Commons credit line does. The honesty rule does not soften because the photographer is the person reading it.
 - **Works with no signal, always.** This is the one rung of the ladder that never needs a network. The bytes are already on the phone: a hiker on a ridge with no bars sees their own photo of the place they are standing in.
 
-### The limit worth stating plainly
+### OurHike is not a photo archive, and will not pretend to be one
 
-Device-local means **a lost or wiped phone loses the photos**, and a memento is exactly the kind of thing whose loss stings. That is a real cost of the private-by-default choice, not a detail to bury. Two honest mitigations, in order of how much they cost to build: the app says so where a hiker would first assume otherwise (the photo strip, not a settings page nobody opens), and private account-backed backup becomes the natural follow-up once accounts carry storage at all — see the open decisions.
+**Decided 2026-08-07: personal photos are never backed up to OurHike.** Not as a paid tier, not as a convenience, not later. The reasoning is worth keeping because it looks at first like a hiker-hostile choice and is the opposite:
+
+An app that stores the only copy of someone's memories has taken on a duty it is not built to discharge — durability, migration, export, an answer when a bug eats a year of photos, and a promise that outlives the project. Value #7 asks whether a club could inherit this; inheriting somebody's photo library is a different and much heavier thing than inheriting a map pipeline. Offering backup would also compete, badly, with the backup the hiker already has and which is better than anything this project would build.
+
+**What replaces backup is not holding the original at all.** The photo's home is the hiker's own library — camera roll, iCloud, Google Photos, whatever they already trust — and OurHike keeps a **640px derived rendering for offline display**: a cache, sized for the slot, not a copy of the photograph. Three things follow, and they are the whole answer to "avoid loss without becoming an archive":
+
+- **There is nothing here to lose.** Losing the phone loses a thumbnail; the photograph is wherever the hiker keeps photographs, covered by whatever backs that up.
+- **The app says which is which**, in the photo strip rather than a settings page nobody opens: this is a copy, your library has the original.
+- **A hiker deleting the original is not our emergency.** The rendering can stay until they clear it, and clearing it is one action that never touches their library.
+
+The one thing this genuinely gives up is a hiker who deletes a photo from their library and expected OurHike to still have it in full resolution. That is the correct thing to give up: the alternative is being the archive, and the moment this app is somebody's archive it has acquired an obligation it should never have taken.
 
 ---
+
+### Bringing photos in from a library, and matching them by where they were taken
+
+The version of this that everyone imagines first — connect Google Photos, let the app walk the library, fill every card automatically — **is no longer possible, and it is worth knowing that before anyone scopes it.** Google [removed the broad Library API scopes on 31 March 2025](https://developers.googleblog.com/en/google-photos-picker-api-launch-and-library-api-updates/): `photoslibrary.readonly`, `photoslibrary.sharing` and `photoslibrary` are gone, calls relying on them return `403 PERMISSION_DENIED`, and [the Library API now reaches only media the calling app itself created](https://developers.google.com/photos/support/updates). The replacement is the **Picker API**, where selection happens inside Google Photos and the app receives only what the hiker picked.
+
+The mobile platforms moved the same direction independently: iOS uses `PHPicker` with limited-library selection, and [Capacitor's Camera plugin](https://capacitorjs.com/docs/apis/camera) uses the Android Photo Picker for gallery selection. On Android, `ACCESS_MEDIA_LOCATION` is a separate runtime permission that exists specifically because **the OS redacts EXIF location by default** — the platforms already treat photo coordinates as the sensitive thing this doc treats them as.
+
+So full-library sync is closed. **Batch selection is open, and it keeps most of the magic:**
+
+1. A hiker finishes a section and taps *Add photos from my hike*.
+2. The native picker opens. They multi-select — a day's photos, or a whole trip.
+3. **Matching runs on the device.** EXIF GPS against corridor POIs, with capture time as the second signal: a burst of photos minutes apart is one stop, and a photo with no usable GPS can still be placed if the hiker's planned hike (`lib/plannedHike.ts`) says roughly where they were that afternoon. Tree canopy makes A.T. GPS unreliable in exactly the places this matters, so time is not a tiebreak — it is half the mechanism.
+4. The app reports what it found — *47 of these matched 23 waypoints* — and every match is a **suggestion the hiker confirms or corrects**, never a silent assertion. A wrong match on a hiker's own card is cheap and instantly obvious to the one person who knows; the confirm exists so that cheapness never leaks into a share.
+
+This is better than full-library sync on the merits, not just the only thing left. The hiker hands over a batch rather than their life, the grant is legible at the moment it happens, and nothing background-scans a library forever.
+
+Three constraints to design against rather than discover:
+
+- **Scope the work.** Matching a thru-hike's photo count against every corridor POI is real computation; bounding it to the planned hike's date range and the corridor cuts it to something a phone does without heating up.
+- **iCloud and Photos-cloud offloading.** A selected photo may not be on the device at all — [Capacitor has a standing issue where this errors](https://github.com/ionic-team/capacitor-plugins/issues/1807) — so importing a trip can mean pulling originals over cellular. That is a data-plan cost the hiker must be told about before it is spent, not after, and it is the same consent principle as the archive-size button.
+- **The permission ask is specific or it is refused.** "Let OurHike read your photo locations, to match your pictures to places on the trail" is answerable. A generic library-access prompt from a hiking app is the kind of thing that gets declined, and should be.
 
 ## Source 3: sharing, and becoming the default
 
@@ -94,23 +125,44 @@ Where no moderator has promoted anything, rung 2 is simply empty and the ladder 
 
 A shared photo is credited to the photographer's **trail name**, never a real name — the identity rule already settled in [IDENTITY_AND_PRIVACY.md](IDENTITY_AND_PRIVACY.md), reused rather than reinvented. The **anonymity window** ([HIKER_SAFETY.md](HIKER_SAFETY.md)) applies to photo attribution exactly as it does to reports and comments: for `anonymity_window_days`, the name and exact date are masked on the public surface. A photo is a stronger location-and-time claim than a comment is, so exempting it would quietly undo the protection the window exists to provide.
 
+**That masking and CC BY-SA's attribution requirement do not conflict, and the reason is worth recording** because it looks like a contradiction on first reading. Under CC 4.0 the attribution owed is the attribution *the licensor asked for* — the licence explicitly accommodates a creator who wants to be credited pseudonymously, or not named at all. A hiker sharing under the anonymity window has requested exactly that, so masking the name is honouring the licence rather than breaching it. What this does require is that the request is **recorded with the photo** alongside its licence, the same way a Commons file's author string travels with it: a downstream reuser needs to be able to see how to credit it correctly, and "credited as *Sawyer*, name withheld until 12 September by the photographer's request" is an answer. An unrecorded masking would leave a reuser unable to comply at all.
+
 ---
 
 ## Cross-cutting rules
 
-### Privacy: what is stripped, and why the association is not the EXIF
+### Privacy: GPS never leaves the device
 
-**GPS coordinates and device identifiers are stripped from the file on the device, before it is uploaded — never server-side.** The photo is already associated with a POI, because the hiker tapped that card; the EXIF location is redundant to the app and dangerous to publish, since it can pin exactly where someone slept. Capture date is kept: it is what the card prints, and the honesty rule needs it.
+**The rule is not "never read the location" — it is that the location never leaves the phone.** An earlier draft of this doc said the app should not look at a photo's EXIF GPS at all, on the grounds that the POI association comes from the card the hiker tapped. Bulk import from a photo library (below) is built entirely on reading that GPS, so the rule needed restating rather than quietly breaking:
+
+- **On the device, reading EXIF GPS is fine and is the whole mechanism.** It is the same thing the phone's own Places album does with the same bytes, and nothing is transmitted.
+- **Before any upload, GPS and device identifiers are stripped** — on the device, never server-side, because "we will remove it after you send it" is not a promise worth making. A published photo's coordinates pin exactly where someone slept.
+- **Capture date is kept** through both: it is what the card prints, and the honesty rule needs it.
 
 This is the same instinct that already governs the pipeline, where `fetch_opentrail.py` drops user comments as "personal contributions from named individuals — a consent concern separate from and in addition to the licensing question." A photo carries more of that than a comment does.
 
 Photos of identifiable people are a moderation matter and a share-sheet warning, not something a client-side check can solve. The queue exists; this is one more thing it looks at.
 
-### Licence and consent
+### Licence: shared photos are CC BY-SA 4.0
 
-The photographer keeps copyright. Sharing grants OurHike — **and the club that inherits it**, which value #7 makes a requirement rather than a nicety — a non-exclusive licence to display the photo in the app and on its site. Plain sentences at the moment of sharing, not a EULA nobody reads, and the grant is recorded with the photo the same way a Commons file's licence is: per photo, travelling with it.
+**Decided 2026-08-07.** A shared photo is released under **Creative Commons Attribution-ShareAlike 4.0**. The photographer keeps copyright; the licence is what lets the app, the site, and the club that inherits both show it.
 
-**Withdrawal has to actually work, and that constrains where shared photos live.** Release folders under `releases/` are written once and never overwritten ([DATA_RELEASES.md](../pipeline/DATA_RELEASES.md)), and copy-forward is a real `copy_object`, so a photo baked into a published release cannot be withdrawn from the releases already serving it. **Therefore community photos are served from the backend, not baked into the release artifacts.** A withdrawal then removes the photo from the surface that serves it, which is a promise the app can keep. This is a genuine architectural consequence of a consent requirement, and the reason the community rung is not simply another pipeline artifact.
+Why that licence rather than a bare display grant:
+
+- **It is the same licence this project already accepts from Commons**, so the credit line, the attribution rules and the 4.0-and-newer reasoning are one code path rather than two.
+- **Share-alike survives the handover.** Value #7 asks whether another club could pick this project up; a display grant to "OurHike" is a licence with a named beneficiary that has to be re-argued the day the name changes. CC BY-SA has no such dependency.
+- **It closes a loop.** Photos hikers contribute under CC BY-SA 4.0 are exactly what Wikimedia Commons accepts, so the corpus this project builds could flow back upstream instead of dead-ending in one app's database. That is value #3 doing real work rather than being a slogan.
+
+**The consequence that must be said out loud, at the moment of sharing: a CC licence cannot be revoked.** This interacts directly with the withdrawal design below and softens it, so neither the doc nor the share sheet may be vague about which half is which:
+
+- **What a hiker can always do:** ask OurHike to stop showing the photo. That is a product promise and it is kept — see the storage consequence below.
+- **What nobody can undo:** the licence itself, as to copies already made under it. Someone who took the photo under CC BY-SA before the withdrawal keeps that right, and no takedown reaches them.
+
+The share sheet says this in one plain sentence rather than burying it, because a hiker who learns it afterwards was misled by omission. It is also the strongest argument for the moderation step: an irrevocable licence on a photo containing someone else's child is a worse mistake than a display grant on the same photo.
+
+### Withdrawal, and where that puts the bytes
+
+Release folders under `releases/` are written once and never overwritten ([DATA_RELEASES.md](../pipeline/DATA_RELEASES.md)), and copy-forward is a real `copy_object`, so a photo baked into a published release could never be withdrawn from the releases already serving it. **Therefore community photos are served from the backend, not baked into release artifacts.** A withdrawal then removes the photo from the surface that serves it — a promise the app can keep. This is a genuine architectural consequence of a consent requirement, and the reason the community rung is not simply another pipeline artifact.
 
 ### What the card renders, for all three sources
 
@@ -146,8 +198,9 @@ What follows:
 ## Decisions deliberately left open
 
 - **Offline delivery of Commons photos.** Today the artifacts carry photo *URLs* (Commons' thumbnail endpoint, which Wikimedia permits hot-loading); the card fetches one when it renders, and offline it falls back down the ladder. That is the right first slice — photos are enhancement, never safety-relevant — but it sits in honest tension with the "data goes through the build" posture (SOURCE_REGISTRY.md's "not a live proxy"). The full answer is the opt-in bundle above, which lands on the same storage decision as [#89](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/89)'s report photos. **Three photo kinds now converge on that one decision** — report photos, shared community photos, and any bundled Commons cut — and it should be made once. Whenever it is, `R2_LAYOUT.md`'s "Adding an artifact" checklist applies before the first upload: `poi_photos.json` is a legal key and reads family-first; an archive format is not.
-- **Private backup of a hiker's own photos.** Device-local loses them with the phone. Account-backed private sync fixes that and costs storage, a sync path, and a clear promise that private means private even though the bytes are now on a server. Worth doing once accounts carry storage at all; not worth blocking the memento on.
-- **Whether shared photos should carry an open licence.** Value #3 argues for CC BY-SA, which would let the data outlive the app entirely. Against: asking a hiker to CC-license a personal photo at the moment they share it is a real barrier, and a mixed-licence corpus is harder to reason about than a uniform display grant. Recommendation is the display grant above, with an optional "release this openly" for hikers who want it — but this is a maintainer's call, not a design detail.
+- **Whether an irrevocable licence needs a cooling-off period.** CC BY-SA 4.0 is settled, but a hiker who shares a photo and regrets it ten minutes later cannot un-license it. A short window before a shared photo becomes visible to anyone — hours, not days — would make almost every regret recoverable at the cost of a delay nobody would notice, since moderation already sits in that path. Worth deciding when the share flow is built, not now.
+- **Whether a photo whose match was never confirmed may be shared at all.** The safe answer is no: an unconfirmed match is the app's guess, and a wrong guess published under an irrevocable licence with a trail name attached is the failure mode worth spending a tap to avoid. Recorded here rather than decided because it is really a question about the share flow's shape.
+- **Whether the Google Photos Picker API is worth integrating at all**, given the native pickers already reach the same photos for anyone whose library is on the phone. It matters for hikers whose photos live only in Google Photos, which is a real population, and it is a separate OAuth integration for a second path to the same feature. Sequence it after the native path works.
 - **Whether a club can add photos directly.** A maintaining club is the most authoritative photographer of its own shelter and has no obvious route in here except as an ordinary hiker. Overlaps [VOLUNTEERING.md](VOLUNTEERING.md)'s club-side surface.
 - **Wiring the Commons fetch into `publish-vector-data.yml`.** Deliberately not done: it would couple every data release to Commons API availability. The fetch is run by hand before an export, and the export ships cleanly without it.
 - **A registry row for Commons.** When SOURCE_REGISTRY.md's licence fields land on `sources.json`, Commons gets an entry (`trust: community`, per-photo licences noted as riding the features). Until then, CONTRIBUTING.md's licence note plus this doc are the record.

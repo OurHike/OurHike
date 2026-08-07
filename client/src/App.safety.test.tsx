@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { get, set, del } from 'idb-keyval'
 import App from './App'
 import { MockMap, resetMapLibreMock } from './test/mocks/maplibre-gl'
+import { renderedMap } from './test/liveMap'
 import { PREFERENCES_KEY } from './lib/preferences'
 import { DEFAULT_PREFERENCES } from './lib/userPreferences'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
@@ -348,10 +349,14 @@ describe('a background switch under the hiker', () => {
     hikerOnTrail()
     store.set(CORRIDOR_ARCHIVE_KEY, new Blob(['pmtiles']))
     render(<App />)
-    await screen.findByRole('region', { name: /trail map/i })
+
+    // `renderedMap`, not `findByRole` then `MockMap.live[0]`: the container div
+    // commits before the effect that builds the map runs, so the bare read was
+    // a race that wins on a quiet machine and loses under a full-suite run
+    // (#331, test/liveMap.ts).
+    const before = await renderedMap()
 
     // The hiker pans somewhere that matters to them.
-    const before = MockMap.live[0]!
     before.center = { lng: -77.2, lat: 41.5 }
     before.zoom = 13
     act(() => before.emit('moveend'))

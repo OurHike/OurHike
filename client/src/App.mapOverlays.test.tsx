@@ -15,6 +15,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import { get, set } from 'idb-keyval'
 import { MockMap, resetMapLibreMock } from './test/mocks/maplibre-gl'
+import { renderedMap } from './test/liveMap'
 import { PREFERENCES_KEY } from './lib/preferences'
 import { DEFAULT_PREFERENCES } from './lib/userPreferences'
 import { TRAILS_BLOB_KEY } from './lib/trailData'
@@ -147,9 +148,14 @@ afterEach(() => {
 async function renderApp(): Promise<MockMap> {
   const { default: App } = await import('./App')
   render(<App />)
-  await screen.findByRole('region', { name: /trail map/i })
 
-  const [map] = MockMap.live
+  // `renderedMap`, not `findByRole` then `MockMap.live[0]`. The container div
+  // commits before the effect that builds the map runs, so reading the array
+  // straight after the div is a race - it passed here every time and failed on
+  // the fourth consecutive full-suite run with `Cannot set properties of
+  // undefined (setting 'sourceIds')` (#331). See test/liveMap.ts.
+  const map = await renderedMap()
+
   // Real MapLibre holds its sources by the time `load` fires; the mock has to
   // be told. Emitted after the first render so the attach helpers exercise
   // their wait-for-the-style path, which is the one that actually runs.

@@ -244,6 +244,39 @@ describe('the serious-warnings banner', () => {
         lat: 39 + 8 * MILE_LAT,
         lon: -77,
         poi_id: null,
+        mile: null,
+        note: null,
+        timestamp: '2026-08-01T00:00:00Z',
+      },
+    ])
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await establishNobo(5)
+
+    expect(
+      await screen.findByText(/1 serious warning on your route/i),
+    ).toBeInTheDocument()
+  })
+
+  it('counts one filed against a POI, which has no coordinates to snap', async () => {
+    // #244. The banner used to place reports by snapping lat/lon to the
+    // centerline, so a report with a `poi_id` and no fix could never appear on
+    // anybody's route however serious a moderator had marked it - the warning
+    // reaching nobody, which is the failure HIKER_SAFETY.md §1 exists to stop.
+    // The reporting phone's own mile is what answers it.
+    vi.mocked(fetchReports).mockResolvedValue([
+      {
+        id: 'w-poi',
+        type: 'bad_hikers',
+        reporter_type: 'thru',
+        status: 'verified',
+        severity: 'serious',
+        lat: null,
+        lon: null,
+        poi_id: 'shelter-42',
+        mile: 8,
         note: null,
         timestamp: '2026-08-01T00:00:00Z',
       },

@@ -21,6 +21,7 @@ from app.core.photos import (
     ALLOWED_CONTENT_TYPE,
     JPEG_MAGIC,
     MAX_PHOTO_BYTES,
+    PHOTO_URL_TTL_SECONDS,
     PhotoStorageUnavailable,
     photo_storage_configured,
     photo_uploads_enabled,
@@ -29,9 +30,9 @@ from app.core.photos import (
 )
 from app.core.time import utc_now
 from app.db.session import get_db
-from app.models.profile import Profile
+from app.models.profile import MODERATOR_ROLES, Profile
 from app.models.report import Report, ReportStatus, ReportType, Visibility
-from app.schemas.report import ReportCreate, ReportOut
+from app.schemas.report import ReportCreate, ReportOut, ReportPhotoLink
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -115,13 +116,38 @@ def _visible_to(report: Report, viewer: Profile | None) -> bool:
     moderator has not looked at it yet. Everyone else only sees reports that
     are public and moderated.
 
+    **A moderator sees any of them, and that is the clause `internal_only`
+    was always naming (#385).** Without it this function refused the one
+    audience the private routing exists to reach: a `bad_hikers` report is
+    `internal_only` and `submitted`, so a maintainer matched neither branch
+    above and got a 404 on the photo of the person they were deciding about -
+    the same 404 as "no photo", from the one screen built to tell those apart.
+
+    It grants a moderator nothing they were not already being handed.
+    `GET /moderation/queue` returns the whole `ReportOut` - note, `photo_url`,
+    `reporter_id` - for every submitted report to exactly `MODERATOR_ROLES`,
+    and `ReportOut.for_viewer` has spelled privileged as "the reporter, or a
+    moderator" since #252. This is the third place that same pair is written,
+    and the last one where it was missing.
+
+    What it does widen is `GET /{report_id}`: a moderator can now read a
+    report the queue does not list - a dismissed one, a `thanks`, one they
+    verified an hour ago. That is deliberate rather than incidental. A
+    decision that cannot be looked at again after it is made is a decision
+    nobody can review, and the alternative - a second rule that says "in the
+    queue" instead of "a moderator" - is the drift this docstring's last
+    paragraph exists to warn about.
+
     Kept in step with the list endpoint's filter by construction: both read
     `_MODERATED_STATUSES`, and `list_reports` composes the same two rules in
     SQL. They disagreed once - the detail endpoint would hand out a
     `submitted` report by id - and a shared constant is what stops that
-    being two separate things to remember.
+    being two separate things to remember. `list_reports` deliberately does
+    NOT gain the moderator clause: a maintainer browsing the map is a hiker,
+    and every unmoderated report on the trail appearing as a pin for them is
+    a different feature from the queue, not this one.
     """
-    if viewer is not None and report.reporter_id == viewer.id:
+    if viewer is not None and (report.reporter_id == viewer.id or viewer.role in MODERATOR_ROLES):
         return True
     return report.visibility == Visibility.public and report.status in _MODERATED_STATUSES
 
@@ -184,6 +210,10 @@ def create_report(
         poi_id=payload.poi_id,
         lat=payload.lat,
         lon=payload.lon,
+        # Stored as sent, not re-derived: there is no centerline here to
+        # re-derive it against (#244). A client that omits it leaves the
+        # column null, which is the honest answer for an off-trail fix.
+        mile=payload.mile,
         reporter_type=payload.reporter_type,
         note=payload.note,
         photo_url=payload.photo_url,
@@ -402,6 +432,104 @@ async def upload_report_photo(
     return ReportOut.for_viewer(commit_and_refresh(db, report), current_user)
 
 
+def _authorised_photo_url(report_id: str, db: Session, viewer: Profile | None) -> str:
+    """A signed URL for a report's photo, or the HTTPException that refuses it.
+
+    **The whole check, in one place, because two endpoints hand out the same
+    capability** (#385) - the redirect below and the JSON link after it. A
+    signed URL is a bearer token for the object, so a second copy of these
+    four lines is a second place for the `internal_only` rule to drift, and
+    the rule that drifts is the one deciding who sees a photo of a person.
+    That is the same argument app/core/photos.py makes for not writing
+    `_visible_to` again inside a Cloudflare Worker.
+
+    **404 for everything it refuses**, uniformly: no such report, a report
+    somebody else may not see, and a report with no photo all answer the same
+    way. A distinct 403 would confirm that an id names a real report to
+    somebody who may not read it, which for `bad_hikers` is confirmation that
+    an incident note about a named individual exists.
+    """
+    if not photo_storage_configured():
+        # 503 rather than 404: there is no bucket on this deployment, which is
+        # not the same as this report having no photo, and a client that is
+        # told "not found" would stop asking.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Report photos are not configured on this server.",
+        )
+
+    report = db.get(Report, report_id)
+    if report is None or not _visible_to(report, viewer) or report.photo_url is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report photo not found")
+
+    try:
+        return presigned_photo_url(report.id)
+    except PhotoStorageUnavailable as error:  # pragma: no cover - guarded above
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
+
+
+@router.get(
+    "/{report_id}/photo/link",
+    response_model=ReportPhotoLink,
+    summary="Ask for a report's photo URL, if you may see the report",
+    responses={
+        404: {"description": "No such report, no photo on it, or not one you may see."},
+        503: {"description": "This deployment has no photo bucket configured."},
+    },
+)
+def get_report_photo_link(
+    report_id: str,
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user: Profile | None = Depends(_get_current_user_optional),
+) -> ReportPhotoLink:
+    """The same photo as below, handed back as a URL instead of a redirect (#385).
+
+    **This exists because an `<img>` cannot carry a token.** The endpoint
+    below uses optional auth, so an anonymous `<img src>` gets the *public*
+    answer - which is a 404 for an `internal_only` `bad_hikers` photo, and a
+    404 renders as a broken image indistinguishable from a report with no
+    photo at all. A moderator deciding whether to escalate an incident note
+    about a person could not tell "there is no evidence" from "there is
+    evidence and you are not being shown it".
+
+    So the token travels on this call, where a `fetch` can put it, and the
+    URL it answers with goes straight into `<img src>`. Images are exempt
+    from CORS, so the private photo bucket needs no CORS policy - the
+    property LAUNCH_CHECKLIST 1.7 built it with. Fetching the bytes
+    cross-origin instead would have needed one, on the one bucket whose whole
+    design is that nothing reaches it without a check.
+
+    **A separate path rather than `Accept: application/json` on the one
+    below**, which was the open question in #385. Content negotiation has to
+    pick a default for `*/*`, and the default has to stay the redirect -
+    which leaves the form the moderation screen depends on reachable only by
+    a client that sets the header exactly, and silently wrong for any proxy
+    that normalises it. Two paths are also two lines in a log that say which
+    one happened. The cost is that one resource has two URLs; that is the
+    cheaper of the two mistakes.
+
+    **The TTL is unchanged, and that is the decision rather than an
+    oversight** (#385 asked). A queue left open for an hour outlives a
+    five-minute URL, and the fix for that is the client asking again - which
+    costs one request against a check that has to run every time anyway - not
+    a longer-lived bearer token for a photo of a person. `expires_in` is
+    returned so the client can re-ask on a number from here rather than one
+    it hardcoded.
+
+    Everything else - who may see it, what it refuses, and how uniformly -
+    is `_authorised_photo_url` above, shared with the redirect.
+    """
+    url = _authorised_photo_url(report_id, db, current_user)
+
+    # Same reasoning as the redirect's `no-store`, and it matters more here:
+    # this response body IS the bearer token, where the redirect at least
+    # kept it in a header. A cache holding it outlives the signature and the
+    # visibility decision both.
+    response.headers["Cache-Control"] = "private, no-store, max-age=0"
+    return ReportPhotoLink(url=url, expires_in=PHOTO_URL_TTL_SECONDS)
+
+
 @router.get(
     "/{report_id}/photo",
     response_class=RedirectResponse,
@@ -427,37 +555,22 @@ def get_report_photo(
     which #229 established is not publicly visible. A world-readable object
     would publish the image while the report stayed private, undoing the
     routing one layer down. So the answer comes from `_visible_to`, the same
-    function `GET /{report_id}` uses, rather than a second copy of the rule.
-
-    **404 for everything it refuses**, uniformly: no such report, a report
-    somebody else may not see, and a report with no photo all answer the same
-    way. A distinct 403 would confirm that an id names a real report to
-    somebody who may not read it, which for `bad_hikers` is confirmation that
-    an incident note about a named individual exists.
+    function `GET /{report_id}` uses, rather than a second copy of the rule -
+    reached through `_authorised_photo_url`, which the link endpoint above
+    shares so there is one check and not two.
 
     **A redirect, not the bytes.** R2 serves the object directly from a signed
     URL that lasts minutes, so the image never crosses this backend - egress
     stays free, which is the reason R2 was chosen (#234). app/core/photos.py
     has the full trade, including what a bearer URL costs and why #234's
     Cloudflare Worker is not what got built.
+
+    **Still here, and still the default.** The link form above was added for
+    the one caller that cannot follow a hop while carrying a token (#385);
+    anything that can follow one should use this, which is every `<img>`
+    pointed at a public report and every `curl -L`.
     """
-    if not photo_storage_configured():
-        # 503 rather than 404: there is no bucket on this deployment, which is
-        # not the same as this report having no photo, and a client that is
-        # told "not found" would stop asking.
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Report photos are not configured on this server.",
-        )
-
-    report = db.get(Report, report_id)
-    if report is None or not _visible_to(report, current_user) or report.photo_url is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report photo not found")
-
-    try:
-        signed = presigned_photo_url(report.id)
-    except PhotoStorageUnavailable as error:  # pragma: no cover - guarded above
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
+    signed = _authorised_photo_url(report_id, db, current_user)
 
     response = RedirectResponse(signed, status_code=status.HTTP_302_FOUND)
     # The redirect must not be cached, and this is load-bearing rather than

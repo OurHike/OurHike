@@ -55,6 +55,19 @@ export interface ReportDraft {
   poi_id?: string
   lat?: number
   lon?: number
+  /**
+   * Where along the trail, in miles from the southern terminus (#244).
+   *
+   * The form already snaps the fix to the centerline to render "mi 1,407.2",
+   * and used to drop it here - so the one number the serious-warnings banner
+   * filters on was computed and discarded in the same breath. Sent because
+   * nothing server-side can re-derive it: the trail is a published artifact
+   * the client and pipeline share, not a table the backend holds.
+   *
+   * Optional, and absent is ordinary rather than a gap: off the trail, or
+   * before the trail index has downloaded. Zero would be Springer Mountain.
+   */
+  mile?: number
   photo_url?: string
   /** Thanks only, and both optional - see SAYING_THANKS.md. Either may be
    *  absent: not knowing who to thank is the ordinary case, and the server

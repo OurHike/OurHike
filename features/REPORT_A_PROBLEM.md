@@ -76,6 +76,9 @@ Report
   location reference:
     - existing POI id, OR
     - a dropped/GPS pin (lat/lon)
+  mile (optional - where along the centerline, as the reporting phone
+        measured it; the backend holds no trail geometry to derive one.
+        Null off-trail, and for a phone with no trail index yet)
   reporter_type (thru-hiker / section-hiker / day-hiker / maintainer -
                  FEATURES.md's existing "reporter type shown" line)
   timestamp

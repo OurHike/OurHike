@@ -76,6 +76,19 @@ class ReportCreate(BaseModel):
     poi_id: str | None = None
     lat: float | None = None
     lon: float | None = None
+
+    # Where along the centerline, in miles (#244). The third sanctioned
+    # client claim, and it exists for the same reason `authored_at` does:
+    # the value is knowable on the phone and nowhere else. This backend holds
+    # no centerline geometry - the trail is a published artifact, not a table
+    # here - so a mile the client does not send is a mile that does not exist
+    # server-side, and `/maintainer-assignments` resolving a thanks by mile
+    # has nothing to resolve against.
+    #
+    # The form has been computing it all along and dropping it at submit,
+    # which is what made this a defect rather than a missing feature.
+    mile: float | None = None
+
     reporter_type: ReporterType
     note: str | None = None
     photo_url: str | None = None
@@ -98,6 +111,42 @@ class ReportCreate(BaseModel):
 
         if compared > now + skew:
             raise ValueError("authored_at cannot be in the future")
+        return value
+
+    @field_validator("mile")
+    @classmethod
+    def _reject_an_impossible_mile(cls, value: float | None) -> float | None:
+        """Bounded at the one end this server can bound (#244).
+
+        Below zero is south of the southern terminus, which no trail index
+        produces and no snap can return - so a negative is a bug or a lie
+        either way, and it would sort into every route range that starts at
+        mile 0.
+
+        NaN and the infinities are refused because a mile has to be
+        comparable at all: every `>=` and `<=` against NaN is false, so a
+        serious warning carrying one is silently absent from every banner
+        rather than wrong in a visible way. **JSON cannot deliver them** -
+        FastAPI's parser refuses the bare `NaN` token and `JSON.stringify`
+        writes `null` - so this guards the model rather than the wire, which
+        matters because pydantic accepts both as floats by default
+        (`allow_inf_nan`) for anything constructing a `ReportCreate` in
+        Python.
+
+        **No upper bound, deliberately.** The trail's length is a property of
+        the published centerline (~2,197 miles today, and it moves every
+        year as relocations land), and this backend does not hold it. A
+        constant here would be a second copy of a number the pipeline owns,
+        wrong the first time the trail is re-measured, and it would start
+        refusing real reports from the northern end.
+        """
+        if value is None:
+            return None
+        # `!=` on itself is the NaN test that survives without importing math.
+        if value != value or value in (float("inf"), float("-inf")):
+            raise ValueError("mile must be a real number")
+        if value < 0:
+            raise ValueError("mile cannot be negative")
         return value
 
 
@@ -129,6 +178,14 @@ class ReportOut(BaseModel):
     poi_id: str | None
     lat: float | None
     lon: float | None
+
+    # Public, alongside `lat`/`lon` and for the same reason they are (#244):
+    # it says nothing about the reporter that the coordinates next to it do
+    # not already say, and anyone holding the published centerline can derive
+    # it from them anyway. Withholding it would hide it from the app while
+    # leaving it computable with the trail file and a script.
+    mile: float | None
+
     reporter_type: ReporterType
     timestamp: UtcDatetime
     note: str | None
@@ -182,6 +239,7 @@ class ReportOut(BaseModel):
             poi_id=report.poi_id,
             lat=report.lat,
             lon=report.lon,
+            mile=report.mile,
             reporter_type=report.reporter_type,
             timestamp=report.timestamp,
             note=report.note,
@@ -195,3 +253,31 @@ class ReportOut(BaseModel):
             maintainer_id=report.maintainer_id if privileged else None,
             club_id=report.club_id if privileged else None,
         )
+
+
+class ReportPhotoLink(BaseModel):
+    """A short-lived URL that fetches one report's photo (#385).
+
+    The answer from `GET /reports/{id}/photo/link`, for the caller that
+    cannot follow the redirect form: an `<img>` carries no `Authorization`
+    header, so the token goes on this JSON call and the URL goes in `src`.
+
+    **This body is a bearer capability, not a description of one.** Whoever
+    holds the string can fetch that object until it expires, with no further
+    check - so it is never stored, never logged, and the response is
+    `no-store`. app/core/photos.py's header is the full trade.
+
+    No `photo_url`, deliberately: the object KEY is a stored field the client
+    already has from the queue, and repeating it here would invite a client
+    to build its own URL from it. The signed URL is the only spelling that
+    was authorised.
+    """
+
+    url: str
+
+    # Seconds, matching `PHOTO_URL_TTL_SECONDS`. Sent so a screen that holds a
+    # link open - a moderation queue worked through slowly - re-asks on a
+    # number from the server rather than one it guessed. The alternative to
+    # re-asking is a longer TTL, which is a real weakening of the trade above
+    # rather than a tuning knob (#385).
+    expires_in: int

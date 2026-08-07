@@ -156,9 +156,6 @@ async function readFetch(path: string, signal?: AbortSignal): Promise<Response> 
  * of `ReportOut`); declaring only what is consumed keeps this honest about
  * what the client actually depends on rather than mirroring a schema it does
  * not use.
- *
- * `mile` is deliberately absent, because the backend does not send one - see
- * #244. Anything wanting to place a report along the trail has to derive it.
  */
 export interface ReportSummary {
   id: string
@@ -168,6 +165,20 @@ export interface ReportSummary {
   severity: 'normal' | 'serious'
   lat: number | null
   lon: number | null
+  /**
+   * Miles from the southern terminus, as the reporting phone measured it
+   * (#244) - or null.
+   *
+   * **Null is the common case and will stay common**, so nothing may treat
+   * this as the only source of a mile. It is null for every report filed
+   * before the field existed, for a fix that did not land on the trail, and
+   * for a phone that had not downloaded the trail index yet. Where this app
+   * holds the centerline it should prefer its own snap of `lat`/`lon`, which
+   * is derived from the same index it measures the hiker against; this is
+   * what answers the cases that snap cannot, chiefly a report with a
+   * `poi_id` and no coordinates at all.
+   */
+  mile: number | null
   poi_id: string | null
   note: string | null
   /** ISO 8601, UTC-designated - the server stamps the `Z` on the way out. */
@@ -444,6 +455,39 @@ export async function verifyReport(
 
 export async function dismissReport(reportId: string): Promise<void> {
   await authedFetch(`/reports/${reportId}/dismiss`, { method: 'POST', body: '{}' })
+}
+
+/**
+ * A URL that fetches one report's photo, good for a few minutes (#385).
+ *
+ * **The reason this is not just `<img src={apiUrl('/reports/x/photo')}>`.**
+ * That endpoint uses optional auth and an `<img>` cannot carry a token, so
+ * the request goes out anonymous and gets the PUBLIC answer - which for an
+ * `internal_only` `bad_hikers` photo is a 404 that renders as a broken image.
+ * A moderator would have no way to tell "there is no evidence" from "there is
+ * evidence and you are not being shown it", on the one screen built to tell
+ * those apart.
+ *
+ * So the token travels here, on a `fetch` that can carry it, and the URL it
+ * answers with goes in `src`. Images are exempt from CORS, so nothing new is
+ * needed on the private photo bucket - fetching the bytes cross-origin
+ * instead would have needed a CORS policy on the one bucket whose whole
+ * design is that nothing reaches it without a check.
+ *
+ * `readFetch`, not `authedFetch`: the endpoint answers an anonymous caller
+ * for a public photo, and a hiker looking at their own report is signed in
+ * without being a moderator. The token goes when there is one.
+ *
+ * **Throws on refusal rather than returning null**, so a caller cannot draw
+ * "no photo" over a photo it was refused - the whole failure this replaces.
+ */
+export async function fetchReportPhotoLink(
+  reportId: string,
+  signal?: AbortSignal,
+): Promise<{ url: string; expiresIn: number }> {
+  const response = await readFetch(`/reports/${reportId}/photo/link`, signal)
+  const body = (await response.json()) as { url: string; expires_in: number }
+  return { url: body.url, expiresIn: body.expires_in }
 }
 
 export async function verifyClosure(closureId: string): Promise<void> {

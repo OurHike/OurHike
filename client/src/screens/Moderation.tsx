@@ -40,6 +40,7 @@ import {
   dismissClosure,
   dismissReport,
   fetchModerationQueue,
+  fetchReportPhotoLink,
   verifyClosure,
   verifyReport,
   type ModerationQueue,
@@ -81,6 +82,144 @@ const TYPE_WORDS: Record<string, string> = {
   animals: 'Animals',
   invasive_species: 'Invasive species',
   bad_hikers: 'Someone unsafe',
+}
+
+/** The photo a moderator is deciding on (#385).
+ *
+ *  **The one thing this must never do is draw nothing.** `<img src>` pointed
+ *  at `/reports/{id}/photo` cannot carry the token, so the request goes out
+ *  anonymous, an `internal_only` photo comes back 404, and the moderator sees
+ *  a broken image identical to a report with no photo. Every branch here
+ *  either shows the image or says in words why it is not showing it.
+ *
+ *  So the URL is asked for over an authenticated `fetch`
+ *  (`fetchReportPhotoLink`) and handed to `src`. Images are exempt from CORS,
+ *  which is why nothing had to change on the private bucket.
+ *
+ *  WHY A REPORT ABOUT A PERSON IS NOT SHOWN UNTIL IT IS ASKED FOR
+ *
+ *  #385 leaves this open and it is the same kind of question as the two this
+ *  section already says out loud: a `bad_hikers` photo is a photo of a
+ *  PERSON, and a queue that renders twenty of them as thumbnails has decided
+ *  a moderator scrolling past is the same act as a moderator looking. Waiting
+ *  for a click is the answer that can be undone later; a wall of faces is not.
+ *  It is not a privacy control - whoever clicks sees it - it is a deliberate
+ *  step, and it is marked as an open policy question rather than a settled
+ *  design.
+ *
+ *  It also answers #385's other question for free. A link is good for minutes
+ *  and a queue is worked through over an hour, so one minted when the screen
+ *  loaded is dead by the last row. Minting it when the moderator asks costs
+ *  one request against a check that has to run every time anyway - which is
+ *  why the TTL did not need lengthening, and app/core/photos.py records why
+ *  lengthening it would have been the wrong trade. */
+function ReportPhoto({ report }: { report: QueuedReport }) {
+  // Photos of people wait to be asked for; a blowdown does not.
+  const sensitive = report.type === 'bad_hikers'
+  const [asked, setAsked] = useState(!sensitive)
+  const [url, setUrl] = useState<string | null>(null)
+  const [refused, setRefused] = useState(false)
+  // Bumped to ask for a FRESH link. A previous one may simply have expired.
+  const [request, setRequest] = useState(0)
+  // Whether the current link already failed to render once, so a second
+  // failure is reported rather than retried around forever.
+  const [brokeOnce, setBrokeOnce] = useState(false)
+
+  // `photo_url` is checked here as well as at the early return below, because
+  // the early return comes after the hooks - so without it a report with no
+  // photo would still spend a request asking for one.
+  const has = report.photo_url !== null
+
+  useEffect(() => {
+    if (!has || !asked) return
+    let live = true
+    const controller = new AbortController()
+
+    fetchReportPhotoLink(report.id, controller.signal)
+      .then((link) => {
+        if (!live) return
+        setUrl(link.url)
+        setRefused(false)
+      })
+      .catch(() => {
+        // Including a 404, which here means the server would not serve a
+        // photo the queue said exists - reported, never drawn as absence.
+        if (live) setRefused(true)
+      })
+
+    return () => {
+      live = false
+      controller.abort()
+    }
+  }, [has, asked, request, report.id])
+
+  const askAgain = () => {
+    setRefused(false)
+    setBrokeOnce(false)
+    setUrl(null)
+    setRequest((n) => n + 1)
+  }
+
+  if (!has) return null
+
+  if (!asked) {
+    return (
+      <div className="moderation__photo">
+        <button type="button" onClick={() => setAsked(true)}>
+          Show the photo
+        </button>
+        <p className="moderation__attachment">
+          This report has a photo, and it is a photo of a person. Whether one belongs in a
+          queue at all is still undecided, so nothing is fetched until you ask.
+        </p>
+      </div>
+    )
+  }
+
+  if (refused) {
+    return (
+      <div className="moderation__photo">
+        <p className="moderation__attachment moderation__refused" role="status">
+          There is a photo on this report and it could not be loaded. This is not a report
+          filed without evidence — decide with that in mind, or try again.
+        </p>
+        <button type="button" onClick={askAgain}>
+          Try the photo again
+        </button>
+      </div>
+    )
+  }
+
+  if (url === null) {
+    return (
+      <p className="moderation__attachment" role="status">
+        Loading the photo…
+      </p>
+    )
+  }
+
+  return (
+    <img
+      className="moderation__photo-image"
+      src={url}
+      // Named rather than empty: a moderator on a screen reader is deciding
+      // the same thing, and "" would say this image carries no information.
+      alt={`Attached to this ${(TYPE_WORDS[report.type] ?? report.type).toLowerCase()} report`}
+      onLoad={() => setBrokeOnce(false)}
+      onError={() => {
+        // First failure is almost always an expired link, because a queue is
+        // worked through slowly - ask for a new one. A second in a row is
+        // something else: an object that never landed, or R2 refusing.
+        if (brokeOnce) {
+          setRefused(true)
+          return
+        }
+        setBrokeOnce(true)
+        setUrl(null)
+        setRequest((n) => n + 1)
+      }}
+    />
+  )
 }
 
 export function Moderation({ onClose }: ModerationProps) {
@@ -133,15 +272,7 @@ export function Moderation({ onClose }: ModerationProps) {
         </span>
       </p>
       {report.note !== null && <p className="moderation__note">{report.note}</p>}
-      {report.photo_url !== null && (
-        // Named, not shown, and that is a gap rather than a design - see the
-        // note at the foot of this file. Saying a photo exists is still worth
-        // more than silence: a moderator who knows there is evidence they
-        // cannot see yet can wait for it rather than deciding without it.
-        <p className="moderation__attachment">
-          Has a photo, which this screen cannot show yet.
-        </p>
-      )}
+      <ReportPhoto report={report} />
       <div className="moderation__actions">
         <button
           type="button"
@@ -272,21 +403,28 @@ export function Moderation({ onClose }: ModerationProps) {
   )
 }
 
-// WHY THE PHOTO IS NAMED RATHER THAN SHOWN
+// WHY THE PHOTO IS FETCHED AS A URL RATHER THAN POINTED AT (#385)
+//
+// This is the note that used to say the photo could not be shown, kept as the
+// reason the shape above is what it is rather than deleted.
 //
 // `GET /reports/{id}/photo` exists and works (#234), and an `<img src>`
-// pointed at it would render the photo on a public, verified report. It would
-// fail on exactly the reports this screen exists for.
+// pointed at it renders the photo on a public, verified report. It fails on
+// exactly the reports this screen exists for: an `<img>` cannot carry an
+// `Authorization` header, so the endpoint's optional auth gives the anonymous
+// caller the PUBLIC answer - and an `internal_only` `bad_hikers` photo comes
+// back 404 and renders as a broken image, indistinguishable from a report
+// with no photo.
 //
-// An `<img>` cannot carry an `Authorization` header, and the endpoint answers
-// an anonymous caller with the PUBLIC answer - so an `internal_only`
-// `bad_hikers` photo comes back 404 and renders as a broken image. The two
-// cases would look identical to a moderator: no photo, and a photo they are
-// not being shown.
+// Fetching the BYTES with the token and rendering an object URL also works,
+// and costs a deployment step: the endpoint answers 302 to a presigned R2
+// URL, and a cross-origin `fetch` that follows that redirect needs CORS on
+// the photo bucket - which LAUNCH_CHECKLIST 1.7 deliberately left off, on a
+// bucket whose whole design is that nothing reaches it without a check.
 //
-// Doing it properly means fetching the bytes with the token and rendering an
-// object URL, which works - and drags in a deployment step nobody has taken
-// yet, because the redirect lands on a presigned R2 URL and a cross-origin
-// `fetch` of it needs CORS on the photo bucket (LAUNCH_CHECKLIST 1.4 covers
-// that for the published bucket only). That is its own change with its own
-// checklist entry, not something to bolt onto a queue screen.
+// So the endpoint hands back the URL instead of redirecting to it, when asked
+// (`GET /reports/{id}/photo/link`). The token travels on the JSON call, where
+// it can; the URL goes in `src`, where images are exempt from CORS; and the
+// bytes still come straight from R2, so egress stays free - the reason R2 was
+// chosen at all (#234). The redirect form is unchanged and is still what
+// anything able to follow a hop should use.

@@ -42,6 +42,15 @@ path that checks the owning report's own `visibility` and `status` first -
 `GET /reports/{id}/photo` in app/routers/reports.py, which answers with a
 redirect to a short-lived signed URL rather than the bytes.
 
+There are two spellings of that answer and one check behind them (#385).
+`/photo` redirects, for anything that can follow a hop. `/photo/link` returns
+the URL as JSON, for the caller that cannot: an `<img>` carries no
+`Authorization` header, so an anonymous request gets the public answer - a
+404 for the `internal_only` photo, rendering as a broken image the moderation
+queue could not tell from a report with no photo. Both go through
+`_authorised_photo_url`, because a second copy of the check is a second place
+for the rule about photos of people to drift.
+
 WHY A SIGNED URL AND NOT A WORKER, WHICH IS A DEPARTURE FROM #234
 
 #234 specified a Cloudflare Worker in front of the bucket. The property it was
@@ -120,6 +129,16 @@ MAX_PHOTO_BYTES = 2 * 1024 * 1024
 # Minutes is enough for the fetch plus a retry, and short enough that a URL
 # that leaks - out of a screenshot, a log line, a shared devtools trace - is a
 # capability that has already expired by the time anyone acts on it.
+#
+# **Deliberately not raised for the moderation queue** (#385 asked, and this
+# is the answer). A moderator works through twenty reports over an hour, so a
+# link minted when the screen loaded is long dead by the time they reach the
+# last row. The fix for that is the client asking again - one request, against
+# a check that has to run on every view anyway for its answer to mean anything
+# - and not a bearer token for a photo of a person that stays good for the
+# length of a shift. A TTL nudged upward "because the queue is slow" would be
+# the trade above being reversed by a number, without the sentence that
+# reverses it ever being written down.
 PHOTO_URL_TTL_SECONDS = 300
 
 

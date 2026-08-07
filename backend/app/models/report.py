@@ -113,6 +113,26 @@ class Report(Base):
     lat = Column(Float, nullable=True)
     lon = Column(Float, nullable=True)
 
+    # Where along the centerline, in miles from the southern terminus (#244).
+    #
+    # **Client-supplied, and derived rather than measured** - the report form
+    # snaps the GPS fix to the trail index it already holds and has been
+    # computing this value, showing it ("mi 1,407.2"), and then dropping it at
+    # submit. Same trust posture as `authored_at`: a claim, bounded at the one
+    # end that can be bounded (see ReportCreate), with the server's own
+    # `lat`/`lon` alongside it.
+    #
+    # **Nullable, and null is the ordinary state rather than a gap.** There is
+    # no mile when the fix is off-trail, when the trail index has not been
+    # downloaded yet, or for every row filed before this column existed. A
+    # zero would be Springer Mountain, which is why it is not the default.
+    #
+    # Nothing server-side derives it, and nothing can: this backend holds no
+    # centerline geometry - the trail is a published artifact the client and
+    # the pipeline share, not a table here. That is why carrying it costs a
+    # column rather than a function.
+    mile = Column(Float, nullable=True)
+
     reporter_type = Column(Enum(ReporterType, native_enum=False, length=20), nullable=False)
 
     # When the report was WRITTEN. WIREFRAMES.md is explicit that this is

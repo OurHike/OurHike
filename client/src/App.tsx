@@ -160,7 +160,12 @@ import {
   type PlannedHike,
 } from './lib/plannedHike'
 import { closureBands } from './map/closureLayers'
-import { isSeriousWarning, routeBannerText, warningsOnRoute } from './lib/seriousWarnings'
+import {
+  isSeriousWarning,
+  placeAll,
+  routeBannerText,
+  warningsOnRoute,
+} from './lib/seriousWarnings'
 import type { BoundingBox, MapPoint } from './lib/legendContents'
 import type { SearchablePoi } from './lib/searchPoi'
 import './App.css'
@@ -822,9 +827,10 @@ function App() {
   /**
    * Serious warnings between here and the end of the trail, counted.
    *
-   * The mile comes from `locateOnTrail`, not the server - a report carries
-   * lat/lon and no mile (#244), and this is the same derivation
-   * `searchablePois` below already does for POIs.
+   * Placing them is `placeAll`'s job (#244), which snaps lat/lon against this
+   * same trail index where it can and falls back to the mile the reporting
+   * phone recorded where it cannot - the case that used to be uncountable, a
+   * report filed against a POI with no coordinates.
    *
    * `severity` filtering is `warningsOnRoute`'s job, so a report that a
    * moderator has not escalated cannot reach this line.
@@ -839,14 +845,7 @@ function App() {
       return null
     }
 
-    const placed = reports.flatMap((report) => {
-      if (report.lat === null || report.lon === null) return []
-      const at = locateOnTrail(trailIndex, { lon: report.lon, lat: report.lat })
-      if (at === null) return []
-      return [
-        { id: report.id, type: report.type, severity: report.severity, mile: at.mile },
-      ]
-    })
+    const placed = placeAll(reports, trailIndex)
 
     // Where the ROUTE ends, which is the phrase the banner uses. A declared
     // hike answers it exactly; without one the terminus is as far as "ahead"

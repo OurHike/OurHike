@@ -11,9 +11,11 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from pydantic import ValidationError
 
 from app.models.profile import Profile, Role
 from app.models.report import Report, ReporterType, ReportStatus, ReportType, Visibility
+from app.schemas.report import ReportCreate
 from tests.tokens import auth_headers
 
 _VALID_PAYLOAD = {
@@ -933,3 +935,127 @@ def test_that_guard_is_actually_looking_at_something():
     # The nested case: this one declares ModerationQueue, not ReportOut.
     assert "/moderation/queue" in found
     assert len(found) >= 5
+
+
+# --- The trail mile a report was written at (#244) -------------------------
+#
+# The form snapped the GPS fix to the centerline, rendered "mi 1,407.2" on
+# screen, and then submitted `lat`/`lon` alone - so the one number the serious-
+# warnings banner filters on was known at the moment it was thrown away, and
+# unavailable to anything server-side ever after. It is a client claim like
+# `authored_at`, for the same reason: this backend holds no centerline to
+# derive one from.
+
+
+def test_create_report_stores_the_mile_the_form_already_computed(client):
+    user_id = str(uuid.uuid4())
+    payload = dict(_VALID_PAYLOAD, mile=1407.2)
+
+    body = client.post("/reports", json=payload, headers=auth_headers(user_id)).json()
+
+    assert body["mile"] == 1407.2
+
+
+def test_a_report_without_a_mile_is_null_rather_than_zero(client):
+    """Mile 0 is Springer Mountain, so it is not a stand-in for "unknown".
+
+    An off-trail fix and a phone with no trail index downloaded both produce
+    no mile, and a zero default would file both at the southern terminus -
+    two thousand miles from where they happened.
+    """
+    user_id = str(uuid.uuid4())
+
+    body = client.post("/reports", json=_VALID_PAYLOAD, headers=auth_headers(user_id)).json()
+
+    assert body["mile"] is None
+
+
+def test_the_mile_travels_back_out_on_the_public_list(client, db_session):
+    """The banner reads this list, so a mile that only exists in the row is a
+    mile the safety feature still cannot filter on."""
+    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
+    db_session.add(reporter)
+    db_session.commit()
+    db_session.add(
+        Report(
+            id=str(uuid.uuid4()),
+            reporter_id=reporter.id,
+            type=ReportType.blowdown,
+            reporter_type=ReporterType.thru,
+            lat=35.6,
+            lon=-83.5,
+            mile=1407.2,
+            status=ReportStatus.verified,
+            visibility=Visibility.public,
+        )
+    )
+    db_session.commit()
+
+    listed = client.get("/reports").json()
+
+    assert [row["mile"] for row in listed] == [1407.2]
+
+
+@pytest.mark.parametrize("bad", [-0.1, -1, -2197])
+def test_a_negative_mile_is_refused(client, bad):
+    """South of the southern terminus, which no snap returns.
+
+    It would also sort into every route range that starts at mile 0 - so a
+    bad value is not merely wrong, it is wrong in the direction of appearing
+    on every hiker's banner.
+    """
+    user_id = str(uuid.uuid4())
+    payload = dict(_VALID_PAYLOAD, mile=bad)
+
+    assert client.post("/reports", json=payload, headers=auth_headers(user_id)).status_code == 422
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_a_mile_that_is_not_a_number_is_refused(bad):
+    """NaN is the dangerous one, and it fails quietly rather than loudly.
+
+    Every `>=` and `<=` against NaN is false, so a serious warning carrying
+    one is absent from every route range instead of misplaced in one - a
+    safety warning that exists in the database and on no phone.
+
+    **Tested on the schema rather than over HTTP, because HTTP cannot carry
+    it.** These values only exist in JSON as the bare `NaN`/`Infinity` tokens
+    Python's `json.dumps` emits, and FastAPI's body parser refuses those
+    before any validator runs - as does `JSON.stringify`, which writes
+    `null`. So the wire is already closed, and what this guards is the model
+    itself: pydantic accepts inf and NaN as floats by default
+    (`allow_inf_nan`), so anything constructing a `ReportCreate` in Python -
+    a script, a future non-JSON transport, a test - would otherwise get one
+    through.
+    """
+    with pytest.raises(ValidationError, match="real number"):
+        ReportCreate(type="blowdown", reporter_type="thru", mile=bad)
+
+
+def test_the_northern_end_of_the_trail_is_not_refused(client):
+    """No upper bound, deliberately.
+
+    The trail's length lives in the published centerline and moves as
+    relocations land; a constant here would be a second copy of a number the
+    pipeline owns, and it would start refusing real reports from Maine the
+    first time the trail was re-measured longer.
+    """
+    user_id = str(uuid.uuid4())
+    payload = dict(_VALID_PAYLOAD, mile=2197.4)
+
+    assert client.post("/reports", json=payload, headers=auth_headers(user_id)).status_code == 201
+
+
+def test_a_resent_report_keeps_the_mile_it_was_filed_with(client):
+    """The idempotent retry path (#243) returns the STORED report, so this is
+    really a check that the mile is on the stored one and not re-read from the
+    resend - a phone that has since walked on would otherwise move the pin."""
+    user_id = str(uuid.uuid4())
+    report_id = str(uuid.uuid4())
+    first = dict(_VALID_PAYLOAD, id=report_id, mile=1407.2)
+    client.post("/reports", json=first, headers=auth_headers(user_id))
+
+    resent = dict(_VALID_PAYLOAD, id=report_id, mile=1500.0)
+    body = client.post("/reports", json=resent, headers=auth_headers(user_id)).json()
+
+    assert body["mile"] == 1407.2

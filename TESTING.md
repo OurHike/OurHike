@@ -137,6 +137,8 @@ Which workflows use a setting is derived, never written down - a hand-kept copy 
 
 Two of these guard the checker rather than the settings, and both earn their place: one asserts the live inputs are names and never values, so a change that stopped reducing the contexts fails loudly instead of quietly putting credentials in an assertion message; the other fails the live job if its environment didn't arrive, since every live test skipping is otherwise indistinguishable from all of them passing.
 
+**The suite also holds claims about the *set* of workflows,** which is the other thing no checkout of one file can answer. `test_supabase_keepalive_workflow.py` is the current example: it fails if a second scheduled workflow starts reaching the Supabase project, because one weekly sweep is all a free-plan project needs and a second is only another thing to keep in sync — and it fails on a cron expression that has quietly stopped meaning "every Sunday", which is the one part of that job with no feedback loop of its own.
+
 **Warning, not failure:** a setting declared for the Variables tab that is *also* kept as a secret still works, which is exactly why it survives. What it costs is the readability the Variables tab existed to provide - GitHub masks a registered secret value everywhere it appears, so the variable's own value prints as `***` too. `pages.yml` cannot see this: it takes the variable and never looks at the secret.
 
 ## Platforms - web now, iOS and Android at Phase 3
@@ -158,6 +160,7 @@ Coverage says how much code the tests touch. Redundancy is the different questio
 - **The build-output check backs up the mocked-map suite.** Every source test mocks MapLibre, so `client/scripts/check-build-output.mjs` in `npm run build` is the second layer - it exists because of the one class of bug (item 19's worker URL) that a fully green suite structurally could not see.
 - **The settings manifest backs up the live check.** Drift is caught from any checkout on every PR; existence is confirmed from inside Actions weekly. Different failure modes, different vantage points.
 - **The post-merge full run on `main` backs up PR path-scoping.** It caught the staleness flake that was green on its own PR (#32), and it is what makes scoping PRs safe at all.
+- **The live project backs up the RLS migration.** `backend/tests/test_migration_rls.py` proves a revision turns RLS on and that no model escaped one; the weekly Supabase keepalive (LAUNCH_CHECKLIST.md 4.6) reads all seven tables with the anon key against the deployed project and fails on a row. Different claims - "the migration says so" and "the database still does" - and the second one is asked through the front door an attacker would use.
 - **The elevation-gain vectors are asserted from both languages.** `pipeline/reference/gain_vectors.json` is read by a pytest suite and a Vitest suite, with a guard test against the file silently emptying - the model for every cross-part contract.
 
 And where it is missing (audited 2026-08-06), which is where a bug can ship green today:

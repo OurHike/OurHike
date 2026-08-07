@@ -1,0 +1,93 @@
+# Gives the Supabase project's database something to do once a week, so the
+# free plan does not pause it for inactivity.
+#
+# Supabase pauses a Free plan project that shows too little activity over a
+# rolling seven-day window, and the thing it measures is *database* activity,
+# not requests to the project in general
+# (https://supabase.com/docs/guides/platform/free-project-pausing). That is why
+# this is not a curl of a health endpoint: `/auth/v1/settings` answers from
+# GoTrue's configuration without Postgres hearing about it, so a keepalive
+# built on it would report success every week and still let the project pause.
+# backend/supabase_keepalive.py reads tables over PostgREST instead, which is a
+# query Postgres actually runs.
+#
+# **It is also the RLS check, run against the live project.** The reads use the
+# anon key and expect an empty array or a permission error, exactly as
+# LAUNCH_CHECKLIST.md 5a describes; rows are the failure. Nothing else asks
+# that question of the deployed project - backend/tests/test_migration_rls.py
+# reads migrations, which is a different claim - and the front door it asks
+# through is the one open to anyone holding the key that ships in the client
+# bundle. This job is why a policy or grant that quietly opened `reports` would
+# be noticed within a week rather than by whoever found the data.
+#
+# **The honest limitation.** Supabase's own guidance is "a few user requests to
+# the database each day over the previous week"; a weekly job is one burst,
+# seven days apart, and the previous run may have just aged out of the window
+# as this one starts. Sweeping every table rather than one buys a little back.
+# If a pause warning email ever arrives anyway, the fix is the day-of-week
+# field below - `50 7 * * *` makes this daily, and the run costs a checkout and
+# seven small HTTPS requests.
+#
+# **There is deliberately only one of these.** A second scheduled job reaching
+# the same project would be a second thing to keep in sync for no additional
+# protection; .github/tests/test_supabase_keepalive_workflow.py fails if one
+# appears. supabase-config-check.yml reaches the project too, but is manual by
+# design and so cannot be relied on for this.
+
+name: Supabase keepalive
+
+on:
+  schedule:
+    # Sundays, 07:50 UTC. Off the hour because GitHub's scheduler queues
+    # everything submitted at :00 behind everyone else's cron, and a few
+    # minutes clear of check-upstream-freshness.yml (07:20) and
+    # settings-check.yml (07:35 Mondays) for the same reason.
+    #
+    # Worth knowing before it looks broken: GitHub runs scheduled workflows
+    # only from the default branch, so this does nothing at all until it is on
+    # `main`. It also disables schedules in a repository with no activity for
+    # 60 days - which would silently take the keepalive with it, so a long
+    # quiet spell is worth checking the Actions tab after.
+    - cron: "50 7 * * 0"
+  workflow_dispatch:
+
+# Reads the repository and nothing else. The job holds no credential that can
+# write anywhere: the anon key below is public by design, and RLS is what makes
+# that safe (LAUNCH_CHECKLIST.md 5a).
+permissions:
+  contents: read
+
+# Never two at once, and never cancel one in flight. A cancelled run is a week
+# with no recorded activity, which is the one thing this job exists to avoid.
+concurrency:
+  group: supabase-keepalive
+  cancel-in-progress: false
+
+jobs:
+  keepalive:
+    name: Give the database a query to run
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      # No install step: the script is stdlib-only on purpose, the same as
+      # check_supabase_config.py next to it. A job whose whole point is to run
+      # unattended every week for months should not have a dependency tree that
+      # can break while nobody is watching.
+      - name: Read the project's tables with the anon key
+        env:
+          # Variable-or-secret, the way pages.yml and supabase-config-check.yml
+          # resolve these - "Secrets and variables" is one settings page with
+          # two tabs and picking the wrong one is easy. Neither value is
+          # secret: the anon key is designed to be public and already ships
+          # inside the client bundle.
+          SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
+        run: python supabase_keepalive.py

@@ -83,6 +83,21 @@ color-scheme:light;
 --border-2:var(--stone-300);
 --border-strong:var(--pine-700);
 
+/* Chrome drawn OVER the map canvas rather than on a screen: MapLibre's zoom,
+   compass, locate and scale controls (chrome/chrome.css).
+
+   A role of its own because the canvas is not a page. The screen surfaces above
+   are picked to sit on `--bg-page`; the map paints its own backdrop
+   (map/style.ts's MAP_BACKDROP), and a control given a screen surface came out
+   at 1.06:1 against it - the same colour as the map (#336). The edge is a
+   separate token for the reason that bug turned on: over ink, a boundary has to
+   be LIGHTER than what it separates, and MapLibre's own 10%-black ring cannot
+   be. Light-theme values are what MapLibre already draws, so the light map is
+   left to the library and these stay honest in both. */
+--surface-over-map:var(--white);
+--surface-over-map-hover:var(--paper-100);
+--edge-over-map:rgb(20 19 15 / 10%);
+
 --brand-primary:var(--forest-600);
 --brand-primary-hover:var(--pine-700);
 --brand-primary-press:var(--pine-800);
@@ -143,6 +158,10 @@ color-scheme:dark;
 --border-1:var(--ink-700);
 --border-2:var(--ink-600);
 --border-strong:var(--moss-400);
+
+--surface-over-map:var(--ink-700);
+--surface-over-map-hover:var(--ink-600);
+--edge-over-map:rgb(236 231 219 / 26%);
 
 --brand-primary:var(--moss-400);
 --brand-primary-hover:var(--moss-300);

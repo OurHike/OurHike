@@ -169,25 +169,68 @@
  * recoloured: there is no property to reach into them with. `hue-rotate(180)`
  * undoes the hue flip `invert` brings with it, which matters for the one
  * control that is not monochrome - the geolocate button turns blue when it has
- * a fix, and without this it would turn orange. */
+ * a fix, and without this it would turn orange.
+ *
+ * THE EDGE IS THE PART THAT MATTERS, AND IT IS NOT THE PART THAT LOOKS WRONG
+ *
+ * These were reported as hard to read (#336), and the glyph was innocent: at
+ * `#ccc` it sits about 10.7:1 against the button. What had gone missing was the
+ * BUTTON. Two things, and the second is the one worth remembering.
+ *
+ * The chip was `--bg-surface`, which is a SCREEN surface - a token picked to
+ * sit on `--bg-page` in a settings list, not on a map. Against the canvas's own
+ * backdrop (`MAP_BACKDROP.dark`, #15140f) that is 1.06:1, so the control was
+ * very nearly the same colour as the map behind it.
+ *
+ * And maplibre-gl.css's only boundary for the group is
+ * `box-shadow: 0 0 0 2px rgba(0,0,0,.1)`. On paper that faint dark ring is what
+ * separates a white chip from the map. On ink it is DARKER than both surfaces
+ * and draws nothing at all - so overriding the background silently took the
+ * edge away too, and left grey glyphs floating with no affordance around them.
+ *
+ * Hence a light hairline rather than a darker one. Any dark chip on a dark map
+ * has low surface contrast; the edge has to carry the separation, and an edge
+ * made of translucent black cannot carry anything here. The lift stops at
+ * `--ink-700` (1.38:1) deliberately: the whole argument for this theme is a
+ * phone that does not cost night vision on a trail after dark
+ * (features/UX_CUSTOMIZATION.md), and a control bright enough to solve this by
+ * luminance alone would undo that. */
 :root[data-theme='dark'] .map-view .maplibregl-ctrl-group {
-  background: var(--bg-surface);
+  background: var(--surface-over-map);
+  box-shadow:
+    0 0 0 1px var(--edge-over-map),
+    0 2px 12px rgb(0 0 0 / 60%);
 }
 :root[data-theme='dark'] .map-view .maplibregl-ctrl-group button + button {
-  border-top-color: var(--border-1);
+  border-top-color: var(--edge-over-map);
 }
 :root[data-theme='dark'] .map-view .maplibregl-ctrl-group button:hover {
-  background: var(--surface-card-alt);
+  background: var(--surface-over-map-hover);
 }
 :root[data-theme='dark'] .map-view .maplibregl-ctrl-icon {
   filter: invert(1) hue-rotate(180deg);
 }
+/* A disabled control still has to say it is there. maplibre takes the icon to
+   25%, which on white leaves a legible pale grey and on this chip leaves very
+   nearly nothing - the zoom-in button at maximum zoom simply vanished. Raised
+   until it reads as present-and-off rather than absent, and no further: it must
+   still be obviously weaker than the button beside it. */
+:root[data-theme='dark']
+  .map-view
+  .maplibregl-ctrl
+  button:disabled
+  .maplibregl-ctrl-icon {
+  opacity: 0.4;
+}
 /* The scale bar is drawn as a bordered box over the canvas, so it needs the
-   canvas's own colours rather than an inversion. */
+   canvas's own colours rather than an inversion - and the same edge treatment,
+   for the same reason: its `border: 2px solid #333` is another boundary that
+   assumes something light behind it. */
 :root[data-theme='dark'] .map-view .maplibregl-ctrl-scale {
   color: var(--fg-1);
-  background: color-mix(in srgb, var(--bg-page) 70%, transparent);
-  border-color: var(--border-2);
+  background: color-mix(in srgb, var(--surface-over-map) 82%, transparent);
+  border-color: var(--edge-over-map);
+  box-shadow: 0 2px 12px rgb(0 0 0 / 60%);
 }
 
 /* ---------- Tab bar ---------- */

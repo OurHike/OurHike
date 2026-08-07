@@ -154,9 +154,10 @@ export const TOPO_PALETTE = {
   scrub: '#e9eedf',
   wetland: '#d9e4dd',
   rock: '#ece7dc',
-  /** Protected land, drawn as a tint plus an edge rather than a solid block. */
-  park: '#dfead6',
-  parkEdge: '#96b98c',
+  /** Protected land. The wash is the WHOLE treatment - no outline (#347) -
+   *  so it is mixed green enough to still read over woodland, which is what
+   *  most protected land along the corridor is. */
+  park: '#cfe0bf',
   water: '#bcd8e6',
   waterEdge: '#7fb0c9',
   waterway: '#6ea3bf',
@@ -214,8 +215,7 @@ export const TOPO_PALETTE_DARK: TopoPalette = {
   scrub: '#1f2519',
   wetland: '#182420',
   rock: '#231f18',
-  park: '#1c2a19',
-  parkEdge: '#4e6b48',
+  park: '#26401b',
   water: '#152e3b',
   waterEdge: '#2f6c88',
   waterway: '#3f8caa',
@@ -250,7 +250,6 @@ export const LIVE_TOPO_LAYER_IDS = {
   wetland: 'topo-wetland',
   rock: 'topo-rock',
   parkFill: 'topo-park-fill',
-  parkEdge: 'topo-park-edge',
   hillshade: 'topo-hillshade',
   water: 'topo-water',
   waterway: 'topo-waterway',
@@ -292,7 +291,6 @@ export const SHEET_COLOURS: ReadonlyArray<
   [LIVE_TOPO_LAYER_IDS.wetland, 'fill-color', 'wetland'],
   [LIVE_TOPO_LAYER_IDS.rock, 'fill-color', 'rock'],
   [LIVE_TOPO_LAYER_IDS.parkFill, 'fill-color', 'park'],
-  [LIVE_TOPO_LAYER_IDS.parkEdge, 'line-color', 'parkEdge'],
   [LIVE_TOPO_LAYER_IDS.hillshade, 'hillshade-shadow-color', 'hillshadeShadow'],
   [LIVE_TOPO_LAYER_IDS.hillshade, 'hillshade-highlight-color', 'hillshadeHighlight'],
   [LIVE_TOPO_LAYER_IDS.hillshade, 'hillshade-accent-color', 'hillshadeAccent'],
@@ -426,33 +424,6 @@ export const HILLSHADE_EXAGGERATION_EXPRESSION = [
   HILLSHADE_HANDOVER_END_ZOOM,
   HILLSHADE_EXAGGERATION,
 ]
-
-/**
- * The dash-dot rhythm for every line that exists in law rather than on the
- * ground - the state line and the protected-land edge alike. In line-width
- * units, like every MapLibre dasharray.
- *
- * The sheet's linework keeps a grammar. Walkable lines have an even, two-beat
- * rhythm: tracks dashed [6, 3], other footpaths dotted [2, 2]. Boundaries get
- * the dash-dot, and hue says which kind - green for protected land, grey-brown
- * for jurisdiction.
- *
- * The park edge did not always follow it. Drawn dashed [4, 2] - a walkable
- * rhythm - it was read as exactly that (#347): along the corridor the
- * protected land is a narrow sliver whose edges run beside the trail for
- * miles, so its outline made a plausible network of side trails. The fix is
- * the rhythm, not a hue shift, because rhythm is the channel that survives
- * greyscale, direct sun and colour-blindness - the same structural argument
- * closureStyle.ts makes for the barred band. One constant for both boundary
- * layers rather than a literal at each, so the class cannot drift back into
- * two rhythms a reader has to learn separately.
- */
-export const BOUNDARY_RHYTHM: [number, number, number, number] = [3, 2, 1, 2]
-
-/** Boundary ink, shared for the same reason as the rhythm: the class recedes
- *  together. Quiet enough to sit behind anything walkable, per the palette's
- *  own brief - nothing competes with the trail. */
-export const BOUNDARY_OPACITY = 0.7
 
 export interface LiveTopoOptions {
   /**
@@ -655,10 +626,16 @@ export function liveTopoLayers({
       paint: sheetColours(LIVE_TOPO_LAYER_IDS.rock, palette),
     },
     // Protected land is context a hiker plans with (where camping is allowed,
-    // whose rules apply), so it gets an edge as well as a tint - a tint alone
-    // disappears against woodland, which is what most of it is. The edge is
-    // drawn in the boundary grammar, never a walkable rhythm - see
-    // BOUNDARY_RHYTHM for the misreading that rule comes from (#347).
+    // whose rules apply), and the wash is the WHOLE treatment: an area, drawn
+    // as an area. It used to get an outline too, and the outline was the bug
+    // (#347) - along the corridor the protected land is a narrow sliver whose
+    // edges run beside the trail for miles, and a broken line wandering
+    // through woodland gets read as a walkable one whatever its rhythm. So
+    // the tint is calibrated to carry the fact alone instead: mixed green
+    // enough to read over the woodland most protected land here is, and
+    // still a ground that sits behind every line the sheet draws. The test
+    // file holds that over-woodland margin on both palettes, so a palette
+    // tweak cannot quietly fade the fact back out of the map.
     {
       id: LIVE_TOPO_LAYER_IDS.parkFill,
       type: 'fill',
@@ -666,19 +643,7 @@ export function liveTopoLayers({
       'source-layer': 'park',
       paint: {
         ...sheetColours(LIVE_TOPO_LAYER_IDS.parkFill, palette),
-        'fill-opacity': 0.45,
-      },
-    },
-    {
-      id: LIVE_TOPO_LAYER_IDS.parkEdge,
-      type: 'line',
-      source: OSM_SOURCE_ID,
-      'source-layer': 'park',
-      paint: {
-        ...sheetColours(LIVE_TOPO_LAYER_IDS.parkEdge, palette),
-        'line-width': 1,
-        'line-dasharray': BOUNDARY_RHYTHM,
-        'line-opacity': BOUNDARY_OPACITY,
+        'fill-opacity': 0.55,
       },
     },
     // Relief shading, and the sheet's only terrain channel until the contours
@@ -857,8 +822,8 @@ export function liveTopoLayers({
       paint: {
         ...sheetColours(LIVE_TOPO_LAYER_IDS.boundary, palette),
         'line-width': 1,
-        'line-dasharray': BOUNDARY_RHYTHM,
-        'line-opacity': BOUNDARY_OPACITY,
+        'line-dasharray': [3, 2, 1, 2],
+        'line-opacity': 0.7,
       },
     },
     // Named summits with their height. This is the single most hiking-specific

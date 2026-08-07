@@ -139,6 +139,29 @@ async function reportFixAtMile(mile: number) {
   })
 }
 
+/**
+ * Fail one of the map's sources, the way MapLibre reports a tile that would
+ * not load.
+ *
+ * The wait is the whole helper and it is not a hedge. The map is CONSTRUCTED
+ * during the render that puts "trail map" on screen, and MapView's listeners
+ * attach on the render after that - `setMap(created)` is what schedules them.
+ * An error emitted in between reaches nobody, which is a test that fails while
+ * the app works. Waiting on the listener itself is the observable proof that
+ * the wiring is in place, rather than a longer timeout hoping it turns up.
+ */
+async function sourceFails(sourceId: string): Promise<void> {
+  const map = await waitFor(() => {
+    const live = MockMap.live[0]
+    expect(live?.listenerCount('error')).toBeGreaterThan(0)
+    return live!
+  })
+
+  act(() => {
+    map.emit('error', { sourceId, error: new Error(`${sourceId} unavailable`) })
+  })
+}
+
 /** Walk far enough north for the direction tracker to commit to NOBO. */
 async function establishNobo(fromMile: number) {
   await reportFixAtMile(fromMile)
@@ -248,6 +271,70 @@ describe('the map without its sensors', () => {
     render(<App />)
 
     expect(await screen.findByRole('region', { name: /trail map/i })).toBeInTheDocument()
+  })
+})
+
+describe('a map that cannot draw says so', () => {
+  // #314's whole subject: the worst screen this app can produce is a hiker
+  // offline on blank paper with every indicator green. Both paths are wired
+  // end to end here rather than only in lib/backgroundHealth.test.ts, because
+  // what failed before was never the decision - it was that nothing carried
+  // the answer to the strip. #232 is the standing lesson: every component in
+  // that list existed too.
+
+  it('says a downloaded archive is not drawing, rather than nothing at all', async () => {
+    // The blob is under the key, so the shell holds `downloaded`, the offline
+    // background is honoured, and the card shows a finished download. The
+    // archive is damaged, so every tile read against it fails.
+    hikerOnTrail({ background_source: 'usgs_topo_offline' })
+    store.set(CORRIDOR_ARCHIVE_KEY, new Blob(['truncated']))
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await sourceFails('usgs-topo')
+
+    // findBy rather than getBy, and not as a timing hedge: the flag needs BOTH
+    // the failing source and the archive status read out of IndexedDB, and
+    // those land in either order. What is asserted is that the two meet,
+    // whichever arrives second.
+    expect(await screen.findByText(/downloaded map not drawing/i)).toBeInTheDocument()
+  })
+
+  it('names the missing download when offline with nothing to draw', async () => {
+    // The hiking sheet deleted an hour ago, and no signal. "Offline" was the
+    // only thing the strip said, and it does not tell anyone that a download
+    // is the missing half.
+    vi.stubGlobal('navigator', { onLine: false, userAgent: '', platform: '' })
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await sourceFails('osm')
+
+    expect(await screen.findByText(/no downloaded map/i)).toBeInTheDocument()
+    expect(screen.getByText(/offline/i)).toBeInTheDocument()
+  })
+
+  it('stays quiet while the archive draws under a live sheet that cannot', async () => {
+    // The stacking working as designed (features/MAP_OPTIONS.md §1): offline,
+    // the live layers draw nothing and the download shows through. A hiker
+    // with a working map must not be told their map is missing.
+    vi.stubGlobal('navigator', { onLine: false, userAgent: '', platform: '' })
+    hikerOnTrail()
+    store.set(CORRIDOR_ARCHIVE_KEY, new Blob(['pmtiles']))
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    // Waited for rather than assumed: the archive status is an IndexedDB read,
+    // and asserting a silence before it lands would pass for the wrong reason.
+    // The USGS credit is the observable proof it landed - map/credits.ts names
+    // that survey only while its tiles are on the phone.
+    await screen.findByText(/USGS US Topo/i)
+
+    await sourceFails('osm')
+
+    expect(screen.queryByText(/no downloaded map/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/not drawing/i)).not.toBeInTheDocument()
   })
 })
 

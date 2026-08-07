@@ -76,6 +76,7 @@ import { useArchiveDownloads } from './lib/useArchiveDownload'
 import { useArchiveZooms } from './lib/useArchiveZooms'
 import { archiveCoversZoom } from './lib/archiveCoverage'
 import {
+  BASEMAP_PACKAGE,
   CORRIDOR_BACKGROUND_PACKAGE,
   HIKING_SHEET,
   offeredPackages,
@@ -527,6 +528,14 @@ function App() {
       (pkg) => archiveStatusFor(pkg.idbKey).state === 'downloaded',
     ),
   )
+
+  // Whether the hiking sheet's TILES are on the phone - the basemap package
+  // alone, not the sheet as a whole. The DEM beside it is the same sheet's
+  // terrain, and a missing hillshade is not what makes a background fail to
+  // draw. Read by the status strip to tell "your download is not drawing"
+  // from "you have no download" (lib/backgroundHealth.ts, #314).
+  const hikingSheetDownloaded =
+    archiveStatusFor(BASEMAP_PACKAGE.idbKey).state === 'downloaded'
 
   // What the archive on this phone actually covers, read from its own header
   // rather than assumed from the pipeline's constants (#216). Null until a
@@ -1425,6 +1434,10 @@ function App() {
           // the USGS survey only while there are USGS tiles on the phone to
           // draw, and a hiking-sheet-only download has none.
           hasRasterArchive={archiveDownloaded}
+          // The third download fact, and the one that lets the strip say a
+          // download is present and not drawing rather than guessing which
+          // half of #314 a blank screen is.
+          hasHikingSheet={hikingSheetDownloaded}
           belowArchiveZoom={belowArchiveZoom}
           // For the opening camera only - MapView keeps it out of the zooms
           // the download has no tiles for.

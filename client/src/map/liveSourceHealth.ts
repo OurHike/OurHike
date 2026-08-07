@@ -1,4 +1,23 @@
-// Whether the live sheet's network sources ever actually arrived.
+// Whether the background's sources ever actually arrived.
+//
+// NAMED "LIVE" FOR THE TWO IT STARTED WITH, AND NO LONGER ONLY ABOUT THEM
+//
+// This watched the two network sources and deliberately not the downloaded
+// archive, on the reasoning that "the downloaded archive has its own error
+// path on the Downloads screen - a second opinion about it here would be a
+// second place to keep right." That was wrong in one specific way, and #314
+// is the shape of it: the Downloads screen reports a download that FAILED,
+// and says nothing whatever about one that finished and cannot be read. A
+// truncated or corrupt archive is a blob under the key, so every indicator
+// stays green - `downloaded` on the card, `archiveDownloaded` in the shell -
+// while the raster source fails every tile it asks for and the hiker looks
+// at blank paper. Nothing anywhere said so.
+//
+// The archive source is therefore watched here too, and the honesty rule
+// below is what makes that safe rather than noisy. See lib/backgroundHealth.ts
+// for the other half: `archive` reports that the SOURCE never drew, which is
+// the ordinary state on a phone that has downloaded nothing - only a phone
+// that HAS a download and still sees this has something wrong with it.
 //
 // WHY THIS IS NOT THE ONLINE/OFFLINE BRANCH THE PROJECT FORBIDS
 //
@@ -37,6 +56,7 @@
 import type { Map as MapLibreMap, MapSourceDataEvent } from 'maplibre-gl'
 import { OSM_SOURCE_ID } from './liveTopo'
 import { DEM_SOURCE_ID } from './terrain'
+import { TOPO_SOURCE_ID } from './style'
 
 /**
  * What never arrived, as against what merely has not arrived yet.
@@ -47,27 +67,48 @@ import { DEM_SOURCE_ID } from './terrain'
  * otherwise over a map the hiker is reading would be its own false statement.
  */
 export interface LiveSourceHealth {
-  /** The OSM vector sheet - the landcover, water, paths, roads and labels. */
+  /** The OSM vector sheet - the landcover, water, paths, roads and labels.
+   *  Its tiles come from the downloaded hiking sheet first and the network
+   *  where the package does not answer (map/basemap.ts), so this one flag
+   *  covers both halves of that fallthrough - which is right, because what a
+   *  hiker sees is one sheet either way. */
   basemap: boolean
   /** The elevation model behind the hillshade and the generated contours. */
   elevation: boolean
+  /**
+   * The downloaded raster archive - the USGS sheet the offline background is
+   * drawn from.
+   *
+   * True on any phone with no archive downloaded, and that is not a defect:
+   * map/style.ts declares this source under BOTH backgrounds (the live sheet
+   * stacks OVER it), so with nothing under the key every tile request fails
+   * exactly as it should. The flag says "this source drew nothing", never
+   * "your download is broken" - only a caller that knows an archive IS on the
+   * phone can say the second thing, and lib/backgroundHealth.ts is the one
+   * that does.
+   */
+  archive: boolean
 }
 
-export const HEALTHY: LiveSourceHealth = { basemap: false, elevation: false }
+export const HEALTHY: LiveSourceHealth = {
+  basemap: false,
+  elevation: false,
+  archive: false,
+}
 
 /**
  * The sources worth reporting on, and the flag each one answers to.
  *
- * Only the two that reach the network for the BACKGROUND. The trail lines and
- * the POI pins are local, and the downloaded archive has its own error path on
- * the Downloads screen - a second opinion about it here would be a second
- * place to keep right. The contour source is deliberately absent too: it is
- * generated from the DEM in-process, so it fails when and because the DEM
- * does, and reporting both would double-count one outage.
+ * The three that draw the BACKGROUND. The trail lines and the POI pins are
+ * local and drawn from data the app already holds, so a failure there is a
+ * different report on a different screen. The contour source is deliberately
+ * absent too: it is generated from the DEM in-process, so it fails when and
+ * because the DEM does, and reporting both would double-count one outage.
  */
 const WATCHED: Record<string, keyof LiveSourceHealth> = {
   [OSM_SOURCE_ID]: 'basemap',
   [DEM_SOURCE_ID]: 'elevation',
+  [TOPO_SOURCE_ID]: 'archive',
 }
 
 /** MapLibre merges `sourceId` into events as they bubble up from a source's
@@ -106,7 +147,12 @@ export function attachLiveSourceHealth(
     for (const [sourceId, flag] of Object.entries(WATCHED)) {
       next[flag] = errored.has(sourceId) && !drew.has(sourceId)
     }
-    if (next.basemap === reported.basemap && next.elevation === reported.elevation) return
+    // Compared over the flags themselves rather than field by field: a fourth
+    // source added to WATCHED with nothing added here would report once and
+    // then go quiet, which is the failure this whole module exists to prevent
+    // wearing the shape of a missed line.
+    const flags = Object.keys(next) as (keyof LiveSourceHealth)[]
+    if (flags.every((flag) => next[flag] === reported[flag])) return
     reported = next
     onChange(next)
   }
@@ -144,7 +190,7 @@ export function attachLiveSourceHealth(
     map.off('sourcedata', onSourceData)
     errored.clear()
     drew.clear()
-    if (reported.basemap || reported.elevation) {
+    if (Object.values(reported).some(Boolean)) {
       reported = HEALTHY
       onChange(HEALTHY)
     }

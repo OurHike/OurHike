@@ -15,6 +15,7 @@ import {
 } from './liveSourceHealth'
 import { OSM_SOURCE_ID } from './liveTopo'
 import { DEM_SOURCE_ID } from './terrain'
+import { TOPO_SOURCE_ID } from './style'
 
 /** A tile that loaded, as MapLibre reports one: the `tile` is the proof. */
 function tileArrived(sourceId: string) {
@@ -49,7 +50,7 @@ describe('attachLiveSourceHealth', () => {
 
     map.emit('error', sourceFailed(OSM_SOURCE_ID))
 
-    expect(reports).toEqual([{ basemap: true, elevation: false }])
+    expect(reports).toEqual([{ basemap: true, elevation: false, archive: false }])
   })
 
   it('says nothing when a source that has already drawn loses one tile', () => {
@@ -71,8 +72,8 @@ describe('attachLiveSourceHealth', () => {
     map.emit('sourcedata', tileArrived(OSM_SOURCE_ID))
 
     expect(reports).toEqual([
-      { basemap: true, elevation: false },
-      { basemap: false, elevation: false },
+      { basemap: true, elevation: false, archive: false },
+      { basemap: false, elevation: false, archive: false },
     ])
   })
 
@@ -83,7 +84,7 @@ describe('attachLiveSourceHealth', () => {
 
     for (let i = 0; i < 12; i += 1) map.emit('error', sourceFailed(DEM_SOURCE_ID))
 
-    expect(reports).toEqual([{ basemap: false, elevation: true }])
+    expect(reports).toEqual([{ basemap: false, elevation: true, archive: false }])
   })
 
   it('tracks the basemap and the elevation model separately', () => {
@@ -92,19 +93,55 @@ describe('attachLiveSourceHealth', () => {
     map.emit('error', sourceFailed(DEM_SOURCE_ID))
     map.emit('error', sourceFailed(OSM_SOURCE_ID))
 
-    expect(reports.at(-1)).toEqual({ basemap: true, elevation: true })
+    expect(reports.at(-1)).toEqual({ basemap: true, elevation: true, archive: false })
   })
 
   it('ignores sources it does not speak for', () => {
-    // The downloaded archive reports through the Downloads screen and the
-    // trail lines are local. A second opinion here would be a second place to
-    // keep right.
+    // The trail lines and the pins are drawn from data the app already holds,
+    // so a failure there is a different report on a different screen. The
+    // downloaded archive used to be in this list and is not any more (#314) -
+    // see the archive cases below.
     const { map, reports } = attach()
 
-    map.emit('error', sourceFailed('usgs-topo'))
     map.emit('error', sourceFailed('trails'))
+    map.emit('error', sourceFailed('poi'))
 
     expect(reports).toEqual([])
+  })
+
+  it('reports the downloaded archive when it errors having drawn nothing', () => {
+    // The signal #314 needed and did not have. What it MEANS depends on
+    // whether an archive is on the phone at all, which this module cannot see
+    // and deliberately does not guess - lib/backgroundHealth.ts joins the two.
+    const { map, reports } = attach()
+
+    map.emit('error', sourceFailed(TOPO_SOURCE_ID))
+
+    expect(reports).toEqual([{ basemap: false, elevation: false, archive: true }])
+  })
+
+  it('holds the archive to the same errored-and-never-drew rule', () => {
+    // A raster archive that draws the corridor and fails at its edge is a
+    // working download. Flagging it would tell a hiker to re-fetch 314 MB
+    // because they panned off the strip.
+    const { map, reports } = attach()
+
+    map.emit('sourcedata', tileArrived(TOPO_SOURCE_ID))
+    map.emit('error', sourceFailed(TOPO_SOURCE_ID))
+
+    expect(reports).toEqual([])
+  })
+
+  it('tracks the archive and the live sheet separately', () => {
+    // Offline with a damaged download, both fail, and they are not one fact:
+    // the download is fixable where the hiker stands and the live sheet is
+    // not, so the strip has to be able to tell them apart.
+    const { map, reports } = attach()
+
+    map.emit('error', sourceFailed(TOPO_SOURCE_ID))
+    map.emit('error', sourceFailed(OSM_SOURCE_ID))
+
+    expect(reports.at(-1)).toEqual({ basemap: true, elevation: false, archive: true })
   })
 
   it('ignores metadata events, which prove nothing about ink on the screen', () => {
@@ -113,7 +150,7 @@ describe('attachLiveSourceHealth', () => {
     map.emit('sourcedata', { sourceId: OSM_SOURCE_ID, sourceDataType: 'metadata' })
     map.emit('error', sourceFailed(OSM_SOURCE_ID))
 
-    expect(reports).toEqual([{ basemap: true, elevation: false }])
+    expect(reports).toEqual([{ basemap: true, elevation: false, archive: false }])
   })
 
   it('still logs every error, because attaching this listener silenced MapLibre', () => {
@@ -142,15 +179,16 @@ describe('attachLiveSourceHealth', () => {
     expect(warn).toHaveBeenCalledTimes(2)
   })
 
-  it('ignores a tile that belongs to a source it does not watch', () => {
-    // The archive draws tiles constantly. Counting one as proof the live sheet
-    // arrived would clear a flag the live sheet never earned.
+  it('does not let one source’s tile clear another source’s flag', () => {
+    // The archive draws tiles constantly, and on the offline background it is
+    // the only thing drawing. Counting one as proof the live sheet arrived
+    // would clear a flag the live sheet never earned.
     const { map, reports } = attach()
 
     map.emit('error', sourceFailed(OSM_SOURCE_ID))
-    map.emit('sourcedata', tileArrived('usgs-topo'))
+    map.emit('sourcedata', tileArrived(TOPO_SOURCE_ID))
 
-    expect(reports).toEqual([{ basemap: true, elevation: false }])
+    expect(reports).toEqual([{ basemap: true, elevation: false, archive: false }])
   })
 
   it('treats a null tile as no arrival at all', () => {
@@ -159,7 +197,7 @@ describe('attachLiveSourceHealth', () => {
     map.emit('sourcedata', { sourceId: OSM_SOURCE_ID, tile: null })
     map.emit('error', sourceFailed(OSM_SOURCE_ID))
 
-    expect(reports).toEqual([{ basemap: true, elevation: false }])
+    expect(reports).toEqual([{ basemap: true, elevation: false, archive: false }])
   })
 
   it('does not re-report once a source is already known to draw', () => {

@@ -56,7 +56,11 @@
     justify-content: flex-start;
     flex: 0 0 13rem;
     border-top: 0;
-    border-right: 1px solid var(--border-1);
+    /* Pine instead of chrome.css's white - the "Chrome colour" section below
+       is the why. The phone keeps its light bar not by promise but because
+       nothing in this file can match below 900px. */
+    background: var(--bg-chrome);
+    border-right: 1px solid var(--border-chrome);
     /* The home-indicator inset is a notched-phone concern and nothing else. */
     padding-bottom: 0;
     padding-top: var(--space-3, 12px);
@@ -76,6 +80,10 @@
     text-align: left;
     padding: var(--space-3, 12px) var(--space-4, 16px);
     font-size: 14px;
+    /* Worth a number: chrome.css's resting label is stone-500 on white,
+       3.6:1 - under WCAG AA's 4.5:1 floor. Sage on pine is 11.4:1, so the
+       sidebar fixes in passing what the phone bar still owes. */
+    color: var(--fg-chrome-2);
     border-top: 0;
     /* The selected marker moves to the inside edge, where the eye already is
        for a vertical list. */
@@ -124,13 +132,90 @@
   .app__screen > .tab-bar .tab-bar__brand-wordmark,
   .map-screen > .tab-bar .tab-bar__brand-wordmark {
     display: block;
+    /* chrome.css colours the wordmark with --fg-1, which is stone-900 under
+       the light theme - near-black type on a pine-900 column. The chrome's
+       own foreground, in both themes. */
+    color: var(--fg-chrome-1);
   }
 
   .app__screen > .tab-bar .tab-bar__tab[aria-selected='true'],
   .map-screen > .tab-bar .tab-bar__tab[aria-selected='true'] {
     border-top-color: transparent;
-    border-left-color: var(--brand-primary);
-    background: color-mix(in srgb, var(--brand-primary) 8%, transparent);
+    color: var(--fg-chrome-1);
+    /* The rail is the accent, not the brand green: on pine the two greens
+       melt together, and a blaze on a dark trunk is what the mark on the
+       sidebar's own foot is drawn as. 14% where the light theme used 8% -
+       a wash needs more of itself to register on a dark ground. */
+    border-left-color: var(--accent-chrome);
+    background: color-mix(in srgb, var(--accent-chrome) 14%, transparent);
+  }
+
+  /* ---------- Chrome colour: the frame, not the paper ---------- */
+
+  /* The sidebar was the one pure-white surface in the app, beside a header on
+     near-white paper, beside a map drawn on paper - four lightnesses within a
+     few percent of each other, and the brightest of them was the navigation.
+     Painted pine, the chrome recedes to a frame and the map becomes the
+     single light surface on the screen, which is the right hierarchy for a
+     map app: terrain is the object, everything else holds it.
+
+     Everything here reads the --*-chrome aliases (tokens/colors.css) rather
+     than hues - themeTokens.test.ts fails this file the moment it names a
+     base colour - so the dark theme re-points the same rules at its own inks
+     and night is left essentially as it was.
+
+     Colour only, and inside the same 900px guard as the layout. Whether the
+     phone's bar should follow the sidebar off white is a real question, but
+     it is its own decision with its own thumb-zone stakes, not something to
+     smuggle in with the desktop's. */
+
+  .map-screen .status-strip {
+    background: var(--bg-chrome);
+    color: var(--fg-chrome-3);
+  }
+
+  /* The light theme's --danger is blaze-orange-dark: 2.2:1 on pine, a
+     closure flag nobody sees. The on-chrome danger is the one the dark theme
+     already uses for the same job. */
+  .map-screen .status-strip__flag {
+    color: var(--danger-on-chrome);
+  }
+
+  .map-screen .map-header {
+    background: var(--bg-chrome);
+    border-bottom-color: var(--border-chrome);
+  }
+
+  .map-screen .map-header__eyebrow {
+    color: var(--fg-chrome-2);
+  }
+
+  .map-screen .map-header__position {
+    color: var(--fg-chrome-1);
+  }
+
+  /* chrome.css fills these with --bg-surface - the brightest possible square
+     on the darkest surface in the app. An outline drawn from the chrome's own
+     foreground holds its shape on pine and on ink alike. */
+  .map-screen .map-header__button {
+    color: var(--fg-chrome-2);
+    background: transparent;
+    border-color: color-mix(in srgb, var(--fg-chrome-2) 40%, transparent);
+  }
+
+  .map-screen .map-header__button:hover {
+    background: color-mix(in srgb, var(--fg-chrome-1) 10%, transparent);
+    color: var(--fg-chrome-1);
+  }
+
+  /* The global focus ring at the bottom of this file is --brand-primary:
+     forest on pine is 1.9:1, a ring that cannot be seen on exactly the
+     surfaces this section darkens. Outline colour only - width, offset and
+     everywhere else on the page stay the global rule's. */
+  .app__screen > .tab-bar :focus-visible,
+  .map-screen > .tab-bar :focus-visible,
+  .map-screen .map-header :focus-visible {
+    outline-color: var(--fg-chrome-1);
   }
 
   /* The screen's own content takes the rest of the frame. `min-width: 0` for
@@ -311,6 +396,20 @@
 
   .legend__toggle:hover {
     color: var(--fg-1);
+  }
+}
+
+/* The sidebar's hover, restated for pine. The wash above is 5% forest over
+   white; over pine-900 the same mix is nothing anyone can see. A lift of the
+   chrome's own foreground reads as "raised" on any dark ground, in both
+   themes. Gated on the width as well as the pointer, because below 900px the
+   bar is the phone's light strip whatever the pointer is - and there the
+   rules above are the right ones. */
+@media (hover: hover) and (min-width: 900px) {
+  .app__screen > .tab-bar .tab-bar__tab:hover,
+  .map-screen > .tab-bar .tab-bar__tab:hover {
+    color: var(--fg-chrome-1);
+    background: color-mix(in srgb, var(--fg-chrome-1) 8%, transparent);
   }
 }
 

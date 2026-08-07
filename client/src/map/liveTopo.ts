@@ -156,9 +156,10 @@ export const TOPO_PALETTE = {
   scrub: '#e8f0dd',
   wetland: '#cfe3d8',
   rock: '#eae6da',
-  /** Protected land, drawn as a tint plus an edge rather than a solid block. */
-  park: '#d3e6c6',
-  parkEdge: '#5f8f57',
+  /** Protected land. The wash is the WHOLE treatment - no outline (#347) -
+   *  so it is mixed green enough to still read over woodland, which is what
+   *  most protected land along the corridor is. */
+  park: '#c2ddb1',
   water: '#8fc0dc',
   waterEdge: '#2e79a6',
   waterway: '#2e79a6',
@@ -218,8 +219,12 @@ export const TOPO_PALETTE_DARK: TopoPalette = {
   scrub: '#0f1913',
   wetland: '#0e1c19',
   rock: '#141a13',
-  park: '#122016',
-  parkEdge: '#35543a',
+  /* Lifted off the card's own #122016 to clear the over-woodland margin the
+     outline's removal made load-bearing (#347): the card drew this wash with
+     a dashed edge to lean on, and with the edge gone the tint has to carry
+     protected land by itself. Same hue, same night-vision brief - only far
+     enough from `wood` for the fact to survive on a phone panel. */
+  park: '#163218',
   water: '#0e2430',
   waterEdge: '#1f4456',
   waterway: '#2c5a72',
@@ -266,8 +271,12 @@ export const TOPO_PALETTE_RED: TopoPalette = {
   scrub: '#190805',
   wetland: '#1a0a07',
   rock: '#1e0b07',
-  park: '#200c08',
-  parkEdge: '#5a2415',
+  /* The wash stays in the red family - a green would be a wavelength the eye
+     pays for - and clears the same over-woodland margin the other sheets
+     hold, because protected land is still information at night. Lifted off
+     the card's #200c08 for the reason the dark sheet's was: the outline it
+     was drawn beside is gone (#347), so the tint carries the fact alone. */
+  park: '#3a1409',
   water: '#260e08',
   waterEdge: '#45180d',
   waterway: '#571f10',
@@ -301,8 +310,13 @@ export const TOPO_PALETTE_FIELD_NIGHT: TopoPalette = {
   scrub: '#141d15',
   wetland: '#12211d',
   rock: '#1c1e17',
-  park: '#152417',
-  parkEdge: '#577a4f',
+  /* Every sheet below carries its park wash lifted off its card value, for
+     the reason the two above do: the cards drew this tint with a dashed
+     outline beside it, #347 removed the outline as a false trail line, and
+     the wash now has to carry protected land alone - far enough from the
+     sheet's own `wood` for the fact to survive over the woodland most
+     protected land here is. The test file pins that margin per palette. */
+  park: '#1b3d1c',
   water: '#123349',
   waterEdge: '#3d84ad',
   waterway: '#3d84ad',
@@ -335,8 +349,7 @@ export const TOPO_PALETTE_QUIET_PINE: TopoPalette = {
   scrub: '#e7ecdc',
   wetland: '#d6e2da',
   rock: '#e9e7dd',
-  park: '#dbe7d0',
-  parkEdge: '#8fb287',
+  park: '#cbe0be',
   water: '#b7d4de',
   waterEdge: '#84aec2',
   waterway: '#6f9fb8',
@@ -364,8 +377,7 @@ export const TOPO_PALETTE_QUIET_PINE_NIGHT: TopoPalette = {
   scrub: '#192720',
   wetland: '#182a26',
   rock: '#20261f',
-  park: '#1d2f22',
-  parkEdge: '#4a6b4a',
+  park: '#1e3e22',
   water: '#14303c',
   waterEdge: '#2b5468',
   waterway: '#3a6b84',
@@ -397,8 +409,7 @@ export const TOPO_PALETTE_PARCHMENT: TopoPalette = {
   scrub: '#e5ebcf',
   wetland: '#cfdfc9',
   rock: '#e9e2cd',
-  park: '#dce6c2',
-  parkEdge: '#7d9a5f',
+  park: '#c4dea0',
   water: '#aed3e4',
   waterEdge: '#5b9cbd',
   waterway: '#4f92b4',
@@ -427,8 +438,7 @@ export const TOPO_PALETTE_LANTERN: TopoPalette = {
   scrub: '#1c1d0e',
   wetland: '#1a2013',
   rock: '#241c0e',
-  park: '#232512',
-  parkEdge: '#5f6b35',
+  park: '#2c3a14',
   water: '#142834',
   waterEdge: '#2b4c5e',
   waterway: '#396379',
@@ -460,8 +470,7 @@ export const TOPO_PALETTE_RIDGELINE: TopoPalette = {
   scrub: '#e9eadf',
   wetland: '#dde4dd',
   rock: '#e7e5da',
-  park: '#e1e8d7',
-  parkEdge: '#7fa06f',
+  park: '#cee0ba',
   water: '#a5c8d6',
   waterEdge: '#6ba2bb',
   waterway: '#5e97b2',
@@ -490,8 +499,7 @@ export const TOPO_PALETTE_RIDGELINE_NIGHT: TopoPalette = {
   scrub: '#191d17',
   wetland: '#182019',
   rock: '#1f211c',
-  park: '#1b2318',
-  parkEdge: '#4c5f43',
+  park: '#1e381c',
   water: '#122833',
   waterEdge: '#295062',
   waterway: '#356882',
@@ -730,7 +738,6 @@ export const LIVE_TOPO_LAYER_IDS = {
   wetland: 'topo-wetland',
   rock: 'topo-rock',
   parkFill: 'topo-park-fill',
-  parkEdge: 'topo-park-edge',
   hillshade: 'topo-hillshade',
   water: 'topo-water',
   waterway: 'topo-waterway',
@@ -772,7 +779,6 @@ export const SHEET_COLOURS: ReadonlyArray<
   [LIVE_TOPO_LAYER_IDS.wetland, 'fill-color', 'wetland'],
   [LIVE_TOPO_LAYER_IDS.rock, 'fill-color', 'rock'],
   [LIVE_TOPO_LAYER_IDS.parkFill, 'fill-color', 'park'],
-  [LIVE_TOPO_LAYER_IDS.parkEdge, 'line-color', 'parkEdge'],
   [LIVE_TOPO_LAYER_IDS.hillshade, 'hillshade-shadow-color', 'hillshadeShadow'],
   [LIVE_TOPO_LAYER_IDS.hillshade, 'hillshade-highlight-color', 'hillshadeHighlight'],
   [LIVE_TOPO_LAYER_IDS.hillshade, 'hillshade-accent-color', 'hillshadeAccent'],
@@ -979,7 +985,7 @@ export interface LiveTopoOptions {
    *
    * Optional because elevation is one INPUT to this sheet rather than the
    * sheet itself: of the layers below, exactly one reads the DEM (the
-   * hillshade) and three read the contour tiles. The other seventeen are OSM
+   * hillshade) and three read the contour tiles. The other sixteen are OSM
    * vector - landcover, parks, water, the path and road network, summits and
    * place names - and none of them needs an elevation model to draw.
    *
@@ -988,7 +994,7 @@ export interface LiveTopoOptions {
    * failure path here is a missing layer, never a broken map") and until this
    * was optional the promise was not kept: style.ts folded "asked for the live
    * sheet" and "got terrain URLs" into one boolean, so a missing DEM dropped
-   * all twenty-one layers and left bare paper.
+   * every layer of the sheet and left bare paper.
    */
   terrain?: TerrainUrls
   units: ContourUnits
@@ -1183,8 +1189,17 @@ export function liveTopoLayers({
       paint: sheetColours(LIVE_TOPO_LAYER_IDS.rock, palette),
     },
     // Protected land is context a hiker plans with (where camping is allowed,
-    // whose rules apply), so it gets an edge as well as a tint - a tint alone
-    // disappears against woodland, which is what most of it is.
+    // whose rules apply), and the wash is the WHOLE treatment: an area, drawn
+    // as an area. It used to get an outline too, and the outline was the bug
+    // (#347) - along the corridor the protected land is a narrow sliver whose
+    // edges run beside the trail for miles, and a broken line wandering
+    // through woodland gets read as a walkable one whatever its rhythm. So
+    // every palette's tint is calibrated to carry the fact alone instead:
+    // mixed far enough from its wood fill to read over the woodland most
+    // protected land here is, and still a ground that sits behind every line
+    // the sheet draws. The test file holds that over-woodland margin on all
+    // three palettes, so a palette tweak cannot quietly fade the fact back
+    // out of the map.
     {
       id: LIVE_TOPO_LAYER_IDS.parkFill,
       type: 'fill',
@@ -1192,18 +1207,7 @@ export function liveTopoLayers({
       'source-layer': 'park',
       paint: {
         ...sheetColours(LIVE_TOPO_LAYER_IDS.parkFill, palette),
-        'fill-opacity': 0.45,
-      },
-    },
-    {
-      id: LIVE_TOPO_LAYER_IDS.parkEdge,
-      type: 'line',
-      source: OSM_SOURCE_ID,
-      'source-layer': 'park',
-      paint: {
-        ...sheetColours(LIVE_TOPO_LAYER_IDS.parkEdge, palette),
-        'line-width': 1,
-        'line-dasharray': [4, 2],
+        'fill-opacity': 0.55,
       },
     },
     // Relief shading, and the sheet's only terrain channel until the contours

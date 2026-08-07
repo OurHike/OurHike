@@ -29,7 +29,7 @@ import { registerMapWorker } from './mapWorker'
 import { attachMapAppearance, buildMapStyle } from './style'
 import { attachMapDetail } from './mapDetail'
 import { attachContourUnits, registerTerrain } from './contours'
-import { attachLiveSourceHealth, type LiveSourceHealth } from './liveSourceHealth'
+import { attachLiveSourceHealth, type SourceReport } from './liveSourceHealth'
 import { attachElevationLabelUnits } from './liveTopo'
 import type { TerrainUrls } from './terrain'
 import { attachMapChrome, type ScaleUnits } from './mapChrome'
@@ -167,12 +167,12 @@ export interface MapViewProps {
    * renders (a `useState` setter already is), like `onViewportChange` - an
    * inline function would re-attach the listeners on every parent render.
    *
-   * `withdrawn` is true only on the report this map sends as it is torn down,
-   * where `HEALTHY` means "nobody is watching any more" rather than "the
-   * sources recovered". A caller drawing only this map's chrome can ignore
-   * the difference; one that remembers a failure across screens cannot.
+   * The report carries both what never arrived and what has actually drawn,
+   * plus `withdrawn` for the one report this map sends as it is torn down. A
+   * caller drawing only this map's chrome needs the first; one that remembers
+   * a failure across screens needs all three (#352).
    */
-  onLiveSourceHealth?: (health: LiveSourceHealth, withdrawn: boolean) => void
+  onLiveSourceHealth?: (report: SourceReport) => void
 }
 
 const DEFAULT_CENTER: [number, number] = [-77.1, 39.3]

@@ -158,4 +158,27 @@ describe('desktop layout contract', () => {
     // that cannot be reopened has a button that closes it.
     expect(css).toMatch(/\.legend--persistent \.legend__close\s*\{[^}]*display:\s*none/)
   })
+
+  it('paints the chrome from its own aliases, which is what lets the theme re-point it', () => {
+    // The frame is pine under the light theme and ink under the dark one, and
+    // one stylesheet can only say both by reading the --*-chrome tokens -
+    // themeTokens.test.ts is what keeps base palette names out of this file,
+    // and this is what keeps these rules from quietly going back to
+    // --bg-surface, which would put the white sidebar back.
+    expect(declarationsOf('.map-screen > .tab-bar')).toMatch(/var\(--bg-chrome\)/)
+    expect(declarationsOf('.map-screen .status-strip')).toMatch(/var\(--bg-chrome\)/)
+    expect(declarationsOf('.map-screen .map-header')).toMatch(/var\(--bg-chrome\)/)
+    expect(
+      declarationsOf(".map-screen > .tab-bar .tab-bar__tab[aria-selected='true']"),
+    ).toMatch(/var\(--accent-chrome\)/)
+  })
+
+  it('restates the focus ring on the chrome, where the global ring is invisible', () => {
+    // The unguarded rule at the foot of desktop.css draws --brand-primary
+    // rings: forest on pine is 1.9:1. The chrome zones restate the colour -
+    // and only the colour - in their own foreground. Guarded like every other
+    // rule that mentions the chrome; test one above already proves that.
+    expect(css).toMatch(/\.map-header :focus-visible/)
+    expect(css).toMatch(/outline-color: var\(--fg-chrome-1\)/)
+  })
 })

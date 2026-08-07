@@ -122,7 +122,14 @@ def eligible_photo(title: str, distance_m: float, imageinfo: dict, *, cutoff: da
     if license_id.lower().startswith("cc-by") and not author:
         return None
 
-    url = imageinfo.get("thumburl") or imageinfo.get("url")
+    # The thumbnail, and never the original. Commons originals are full-
+    # resolution camera files - a shelter photo is routinely 3-15 MB - and
+    # the card's slot is 264 CSS pixels wide. Falling back to `url` when the
+    # thumbnailer has no rendering would put a multi-megabyte download on a
+    # hiker's data plan to fill a thumbnail-sized box, which is value #8's
+    # exact argument. A file we cannot get a sized rendering of is not
+    # shippable; the placeholder is the honest fallback.
+    url = imageinfo.get("thumburl")
     if not url:
         return None
 

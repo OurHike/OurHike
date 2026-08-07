@@ -57,10 +57,16 @@ OUT_PATH = Path(__file__).parent / "data" / "raw" / "poi_images.json"
 # way to reach whoever runs the client - the repository is that contact.
 USER_AGENT = "OurHike-pipeline/1.0 (https://github.com/jaimito-asuntos-gringuenos/OurHike; contact via repository issues)"
 
-# The freshness bar: a photo's EXIF capture date must be within two years of
-# the run. Old photos of shelters that have since burned, moved or grown a
-# graffiti problem are worse than the honest placeholder.
-MAX_PHOTO_AGE_DAYS = 730
+# The freshness bar: a photo's EXIF capture date must be within four years
+# of the run. A photo of a shelter that has since burned, moved or grown a
+# graffiti problem is worse than the honest placeholder - but shelters
+# change slowly, and the card always prints the capture month, so the hiker
+# can see the age and judge for themselves rather than being protected from
+# it. Four rather than two because the Commons corridor corpus is thin and
+# old (see features/POI_PHOTOS.md); the bar is a judgement about how stale a
+# picture may be, not a constant with a right answer, so it lives here in
+# one place and moves when the measured coverage says it should.
+MAX_PHOTO_AGE_DAYS = 1461  # four years, including one leap day
 
 # How far from the POI a Commons file may sit and still plausibly depict it.
 # Springs are point-precise and drown in near-miss trail/vista shots at any

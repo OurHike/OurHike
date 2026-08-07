@@ -193,11 +193,24 @@ def test_eligible_photo_honors_an_explicit_attribution_field_over_artist():
     assert record["author"] == "Photo courtesy of the Green Mountain Club"
 
 
-def test_eligible_photo_falls_back_to_the_original_url_when_no_thumb_exists():
-    record = eligible_photo("File:Shelter.jpg", 5.0, _imageinfo(thumburl=None), cutoff=CUTOFF)
+def test_eligible_photo_rejects_a_file_with_no_sized_thumbnail_rather_than_shipping_the_original():
+    """Commons originals are full-resolution camera files - a shelter photo
+    is routinely 3-15 MB - and the card's slot is 264 CSS pixels wide.
+    Falling back to the original would put a multi-megabyte download on a
+    hiker's data plan to fill a thumbnail-sized box. No sized rendering
+    means no photo; the placeholder is the honest fallback."""
+    info = _imageinfo(thumburl=None)
+    assert info["url"] == "https://upload.wikimedia.org/shelter.jpg"  # the original IS available
+
+    assert eligible_photo("File:Shelter.jpg", 5.0, info, cutoff=CUTOFF) is None
+
+
+def test_eligible_photo_ships_the_sized_thumbnail_not_the_original():
+    record = eligible_photo("File:Shelter.jpg", 5.0, _imageinfo(), cutoff=CUTOFF)
 
     assert record is not None
-    assert record["url"] == "https://upload.wikimedia.org/shelter.jpg"
+    assert record["url"] == "https://upload.wikimedia.org/thumb/shelter-640.jpg"
+    assert record["url"] != _imageinfo()["url"]
 
 
 def test_eligible_photo_labels_the_licence_from_its_id_when_no_short_name_exists():

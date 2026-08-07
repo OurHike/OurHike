@@ -1,0 +1,27 @@
+# The one version constraint written by hand rather than resolved. DuckDB
+# extensions are ABI-locked to the exact DuckDB version, so this can only move
+# to a release that duckdb-extension-spatial has also published on PyPI -
+# .claude/hooks/session-start.sh reads this pin back out of the compiled
+# requirements.txt to seed the sandbox's spatial extension offline. A
+# Dependabot PR bumping it is only safe once the matching extension build
+# exists; check PyPI before merging one.
+duckdb==1.5.4
+requests
+rasterio
+numpy
+pillow
+pmtiles
+shapely
+# Not here on purpose: tifffile and imagecodecs. README.md's corrupted-quad
+# note cites them as the second, independent decoder that confirmed the three
+# bad USGS quads - that was a one-off investigation, not something any shipped
+# script imports. Install them ad hoc to redo that check; they cost ~84MB in
+# every build job the rest of the time. pdfplumber (with pdfminer.six and
+# pypdfium2 behind it, ~18MB) went the same way, and affine came out because
+# nothing imports it and rasterio pulls it in regardless.
+
+# Explicit rather than transitive: export_trails.py reprojects to EPSG:5070
+# to simplify in real metres. rasterio happens to pull pyproj in locally,
+# which is exactly why this was missing - it worked here and failed in CI.
+pyproj
+boto3

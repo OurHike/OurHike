@@ -1,0 +1,85 @@
+# Keeps the five dependency manifests moving without anyone having to
+# remember to look. Before this file, an upstream release was noticed when
+# someone happened to run `npm outdated` - which is to say, rarely.
+#
+# THE GROUPING IS THE POINT. Five ecosystems left ungrouped produce a PR per
+# package per week, and a queue nobody reads is worse than no queue: it
+# trains people to close Dependabot PRs unread, including the one that
+# mattered. So minor and patch updates arrive as one PR per manifest per
+# week, and majors - the ones that actually need a human to think - come
+# separately, one at a time, where they are visible.
+#
+# This is the same reasoning check-upstream-freshness.yml applies to data:
+# a signal that fires constantly is not a signal.
+
+version: 2
+
+updates:
+  # ---------------------------------------------------------------- client
+  - package-ecosystem: npm
+    directory: /client
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      client-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  # -------------------------------------------------------------- pipeline
+  # requirements.txt here is compiled output, not a hand-written list.
+  # Dependabot recognises the uv/pip-compile header and regenerates the file
+  # rather than editing the pin in place, so requirements.in stays the source
+  # of truth. A duckdb bump is the one that needs care - its spatial
+  # extension is ABI-locked to the exact version and the sandbox hook reads
+  # the pin back out. See the comment in pipeline/requirements.in.
+  - package-ecosystem: pip
+    directory: /pipeline
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      pipeline-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  # --------------------------------------------------------------- backend
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      backend-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  # ------------------------------------------------- repository-settings tests
+  - package-ecosystem: pip
+    directory: /.github/tests
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      repo-tests-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  # ------------------------------------------------------- github actions
+  # Every workflow pins its actions by major tag (actions/checkout@v4), which
+  # silently absorbs minor releases already. This catches the major bumps
+  # that tag will never deliver, and any action that stops being maintained.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      actions-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]

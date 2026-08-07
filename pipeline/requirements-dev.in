@@ -1,0 +1,6 @@
+-r requirements.in
+pytest
+pytest-cov
+requests-mock
+moto[s3]
+ruff

@@ -9,10 +9,11 @@
 # `INSTALL spatial` looks before trying the network.
 #
 # duckdb is pinned to duckdb-extension-spatial's newest release because
-# extensions are ABI-locked to the exact DuckDB version. Bump the two
-# together, and only once PyPI has the matching extension build. CI is
-# unaffected either way: it installs requirements-dev.txt unpinned and
-# downloads the extension from the network like always.
+# extensions are ABI-locked to the exact DuckDB version. That pin now lives in
+# pipeline/requirements.in and is read back out of the compiled
+# requirements.txt below, so there is one version to bump rather than two that
+# can silently disagree. CI installs the same compiled file and downloads the
+# extension from the network like always.
 set -euo pipefail
 
 # Local machines have real network access and their own environment - this
@@ -25,18 +26,45 @@ fi
 # script runnable by hand from anywhere inside the repo.
 cd "${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 
-DUCKDB_PIN=1.5.4
+DUCKDB_PIN=$(sed -n 's/^duckdb==\([^ ;]*\).*/\1/p' pipeline/requirements.txt | head -1)
+if [ -z "${DUCKDB_PIN}" ]; then
+  echo "[session-start] no duckdb pin found in pipeline/requirements.txt" >&2
+  exit 1
+fi
+
+# The image ships these five as Debian dist-packages with no RECORD file, so
+# pip cannot uninstall them to put a pinned version in their place - it aborts
+# the entire install with "Cannot uninstall X, RECORD file not found". They
+# were invisible while the requirements were unpinned, because any version
+# satisfied a bare requirement. Installing them first with --ignore-installed
+# writes the pinned build into site-packages, which precedes dist-packages on
+# sys.path, and the -r install that follows is then already satisfied.
+#
+# This also retires the old cffi workaround: the reason moto's mock_aws used
+# to panic was Debian's cryptography 41 missing _cffi_backend, and a pinned
+# cryptography from PyPI is a wheel that bundles its own.
+#
+# CI never reaches any of this - setup-python starts from a clean interpreter.
+DEBIAN_SHADOWED="PyYAML cryptography pyjwt pyparsing packaging"
+
+# Pinned install that survives the above. $1 is the compiled requirements
+# file, which doubles as the constraint so the shadow copies land on exactly
+# the versions that file pins; any remaining arguments are installed with it.
+pip_install_pinned() {
+  local reqs="$1"
+  shift
+  pip install -q --ignore-installed -c "${reqs}" ${DEBIAN_SHADOWED}
+  pip install -q -r "${reqs}" "$@"
+}
 
 echo "[session-start] pipeline deps, duckdb pinned to ${DUCKDB_PIN}"
-# cffi rides along because the image's Debian-built cryptography package is
-# missing _cffi_backend, which makes moto's mock_aws (and anything else that
-# imports cryptography) panic. One pip resolve, so an unpinned duckdb is
-# never installed first and then downgraded.
-pip install -q -r pipeline/requirements-dev.txt cffi \
-  "duckdb==${DUCKDB_PIN}" "duckdb-extension-spatial==${DUCKDB_PIN}"
+# duckdb itself is already pinned by the compiled file; only the extension
+# needs naming here, and it must match that pin exactly.
+pip_install_pinned pipeline/requirements-dev.txt \
+  "duckdb-extension-spatial==${DUCKDB_PIN}"
 
 echo "[session-start] backend deps"
-pip install -q -r backend/requirements-dev.txt
+pip_install_pinned backend/requirements-dev.txt
 
 echo "[session-start] local postgres for the backend"
 # The backend's database is Supabase's Postgres, so its tests run against a
@@ -51,7 +79,10 @@ bash backend/scripts/local-postgres.sh || \
   echo "[session-start] WARNING: no local postgres - backend tests will not run"
 
 echo "[session-start] repository-settings test deps"
-pip install -q -r .github/tests/requirements-dev.txt
+# Through the same helper as the other two: this suite pins PyYAML, which is
+# one of the Debian-shadowed five. It happens to work today only because the
+# pipeline install already shadowed it, and that is not a thing to depend on.
+pip_install_pinned .github/tests/requirements-dev.txt
 
 echo "[session-start] seeding the duckdb spatial extension"
 python - <<'PY'

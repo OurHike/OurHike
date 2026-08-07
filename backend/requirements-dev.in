@@ -1,0 +1,10 @@
+-r requirements.in
+pytest
+pytest-cov
+httpx
+ruff
+
+# S3 doubled in-process rather than a live bucket, the project's established
+# convention (pipeline/requirements-dev.in asks for the same thing for
+# publish.py's tests).
+moto[s3]

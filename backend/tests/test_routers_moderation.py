@@ -11,7 +11,7 @@ action, is the entire mechanism.
 
 import uuid
 
-from app.models.closure import Closure, ModerationStatus
+from app.models.closure import Closure, ClosureStatus, ModerationStatus
 from app.models.profile import Profile, Role
 from app.models.report import Report, ReportStatus, ReportType, Severity, Visibility
 from tests.tokens import auth_headers
@@ -98,6 +98,22 @@ def test_dismiss_report_requires_maintainer_or_club_admin_role(client, db_sessio
     assert allowed.json()["status"] == ReportStatus.dismissed.value
 
 
+def _submitted_closure(db_session):
+    """An unmoderated closure and a maintainer who can act on it."""
+    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
+    db_session.add(reporter)
+    db_session.commit()
+    closure = Closure(
+        reported_by=reporter.id,
+        reason_type="storm_damage",
+        start_mile_marker=1.0,
+        end_mile_marker=2.0,
+    )
+    db_session.add(closure)
+    db_session.commit()
+    return closure, _make_maintainer(db_session)
+
+
 def test_verify_closure_sets_verified_by_and_verified_at(client, db_session):
     reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
     db_session.add(reporter)
@@ -119,6 +135,66 @@ def test_verify_closure_sets_verified_by_and_verified_at(client, db_session):
     assert body["moderation_status"] == ModerationStatus.verified.value
     assert body["verified_by"] == maintainer_id
     assert body["verified_at"] is not None
+
+
+def test_verify_closure_leaves_the_status_alone_when_no_body_is_sent(client, db_session):
+    """The ordinary case, and the one that has to need no thought.
+
+    A closure is born `closed` (#246), so "yes, this is real" is the whole of
+    verifying one. The band and the banner appear because the record was
+    already true - not because this call repaired it.
+    """
+    closure, maintainer_id = _submitted_closure(db_session)
+
+    response = client.post(f"/closures/{closure.id}/verify", headers=auth_headers(maintainer_id))
+
+    assert response.status_code == 200
+    assert response.json()["status"] == ClosureStatus.closed.value
+
+
+def test_verify_closure_can_settle_a_reroute_in_the_same_call(client, db_session):
+    """The one judgment that genuinely belongs at the moment of verifying.
+
+    Without this a moderator who has confirmed both that the trail is shut
+    and that there is a marked way round has to follow up with a separate
+    `PATCH /closures/{id}` that nothing in the flow tells them about - which
+    is the same trap #246 was, one size smaller.
+    """
+    closure, maintainer_id = _submitted_closure(db_session)
+
+    response = client.post(
+        f"/closures/{closure.id}/verify",
+        json={"status": "reroute_available"},
+        headers=auth_headers(maintainer_id),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == ClosureStatus.reroute_available.value
+    assert body["moderation_status"] == ModerationStatus.verified.value
+
+
+def test_verify_closure_ignores_a_body_that_names_no_status(client, db_session):
+    """`{}` is not "set the status to nothing" - there is nothing to set."""
+    closure, maintainer_id = _submitted_closure(db_session)
+
+    response = client.post(f"/closures/{closure.id}/verify", json={}, headers=auth_headers(maintainer_id))
+
+    assert response.status_code == 200
+    assert response.json()["status"] == ClosureStatus.closed.value
+
+
+def test_verify_closure_still_refuses_a_plain_hiker_with_a_status_in_hand(client, db_session):
+    """The body must not become a way past the role gate."""
+    closure, _ = _submitted_closure(db_session)
+
+    response = client.post(
+        f"/closures/{closure.id}/verify",
+        json={"status": "open"},
+        headers=auth_headers(str(uuid.uuid4())),
+    )
+
+    assert response.status_code == 403
 
 
 def test_dismiss_closure_requires_maintainer_or_club_admin_role(client, db_session):

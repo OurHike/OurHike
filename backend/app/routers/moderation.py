@@ -26,7 +26,7 @@ from app.db.session import get_db
 from app.models.closure import Closure, ModerationStatus
 from app.models.profile import Profile
 from app.models.report import Report, ReportStatus, ReportType
-from app.schemas.closure import ClosureOut
+from app.schemas.closure import ClosureOut, ClosureVerify
 from app.schemas.moderation import ModerationQueue, ReportVerifyRequest
 from app.schemas.report import ReportOut
 
@@ -120,14 +120,27 @@ def dismiss_report(
 @router.post("/closures/{closure_id}/verify", response_model=ClosureOut)
 def verify_closure(
     closure_id: str,
+    payload: ClosureVerify | None = None,
     current_user: Profile = Depends(require_role("maintainer", "club_admin")),
     db: Session = Depends(get_db),
 ) -> Closure:
+    """Publish a closure to every hiker on the trail.
+
+    The body is optional and usually absent. A closure is born `closed`
+    (app/models/closure.py), so verifying one says everything that needs
+    saying - the band and the banner appear because the record was already
+    true, not because this call fixed it up.
+
+    Passing `status` covers the one judgment that genuinely happens here:
+    confirming a reroute. See ClosureVerify.
+    """
     closure = get_or_404(db, Closure, closure_id, detail="Closure not found")
 
     closure.moderation_status = ModerationStatus.verified
     closure.verified_by = current_user.id
     closure.verified_at = utc_now()
+    if payload is not None and payload.status is not None:
+        closure.status = payload.status
     return commit_and_refresh(db, closure)
 
 

@@ -31,7 +31,15 @@ def create_closure(
 ) -> Closure:
     """Report a new closure. `moderation_status` always starts at
     `submitted` - never accepted from the client, matching Report's
-    `visibility`/`severity` server-controlled pattern."""
+    `visibility`/`severity` server-controlled pattern.
+
+    The real-world `status` is server-controlled too, and starts at `closed`:
+    somebody filing this is telling us the trail is shut. See the column's
+    own comment in app/models/closure.py for why that default is the whole of
+    #246, and why a REPORTER never picks this field - reopening a trail, or
+    confirming a reroute exists, is a maintainer's judgment (PATCH, or the
+    verify call in app/routers/moderation.py).
+    """
     closure = Closure(
         reported_by=current_user.id,
         reason_type=payload.reason_type,

@@ -76,7 +76,29 @@ class Closure(Base):
     note = Column(Text, nullable=True)
 
     # The closure's real-world physical state.
-    status = Column(Enum(ClosureStatus, native_enum=False, length=20), nullable=False, default=ClosureStatus.open)
+    #
+    # Born `closed`, and that default is load-bearing rather than arbitrary.
+    # `open` here means REOPENED - the state a maintainer moves a closure to
+    # when the trail is walkable again - and the client renders it as exactly
+    # that: `closureBanner` stays silent ("a reopened closure is not a
+    # warning") and ClosureSheet says "Open again".
+    #
+    # So while this defaulted to `open`, the designed happy path published a
+    # nonsense record. Someone reports a closure because the trail is closed;
+    # a moderator verifies it; and `GET /closures` served a verified closure
+    # the client was contractually obliged to present as reopened trail, with
+    # no banner and no band. Making it show meant a second, separate
+    # `PATCH /closures/{id}` that no code path suggested and no test
+    # exercised (#246).
+    #
+    # One word was doing two jobs - the enum's "reopened again" meaning and
+    # the column's birth default. Only the second was ever wrong.
+    #
+    # A Python-side default rather than a `server_default`, matching the
+    # column as the initial migration created it, so this needs no revision
+    # of its own: SQLAlchemy applies it on every insert, and there is no
+    # deployed database holding rows written under the old one (#95).
+    status = Column(Enum(ClosureStatus, native_enum=False, length=20), nullable=False, default=ClosureStatus.closed)
 
     # Whether this closure has been through moderation yet - see module
     # docstring. Never client-settable on create; only PATCH (role-gated to

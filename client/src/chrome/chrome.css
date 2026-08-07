@@ -787,11 +787,53 @@
   object-fit: cover;
 }
 
+/* The photo's credit line - author, licence, month, from the pipeline's
+   Wikimedia Commons match (PoiCard.tsx). Like the map's ODbL line
+   (map/style.ts), this is load-bearing attribution, not decoration: CC BY /
+   BY-SA photos are only OurHike's to show while the credit shows with them.
+   Which is why it never hides or truncates: it wraps when an institutional
+   attribution string runs long, and the text-shadow is what keeps white
+   text legible where the scrim is still thin - a photo's bottom edge is
+   snow or pale rock often enough that the gradient alone cannot promise
+   contrast. The tall top padding gives the gradient room to reach real
+   opacity before the first line of text starts. */
+.poi-card__credit {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 16px 8px 6px;
+  font-size: 10px;
+  line-height: 1.3;
+  color: rgb(255 255 255 / 95%);
+  text-align: left;
+  text-decoration: none;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 75%);
+  background: linear-gradient(transparent, rgb(0 0 0 / 70%));
+}
+
+a.poi-card__credit:hover {
+  text-decoration: underline;
+}
+
+/* Same drawn/hit split as the close button above the photo: the visible
+   strip stays one small line, the hit area grows upward to the 44px
+   minimum. Nothing else is tappable in the bottom half of the media box,
+   so the expanded area collides with nothing. */
+a.poi-card__credit::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  min-height: var(--min-touch-target);
+}
+
 /* The empty photo slot: the category's own silhouette on a wash of its accent.
    Honest iconography rather than a stock photo pretending to be the shelter -
-   no published source carries imagery yet (see PoiCard.tsx), so today this IS
-   the photo slot. The wash keeps the fallback background for engines without
-   color-mix. */
+   most waypoints have no eligible photo even now that the pipeline can carry
+   imagery (see PoiCard.tsx), so this stays the everyday state of the slot.
+   The wash keeps the fallback background for engines without color-mix. */
 .poi-card__placeholder {
   display: flex;
   align-items: center;

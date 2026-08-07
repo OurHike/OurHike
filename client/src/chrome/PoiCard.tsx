@@ -15,11 +15,16 @@
 // that nobody has built the mechanism for a hiker to confirm anything
 // (WIREFRAMES.md §11, features/DATA_NUDGES.md - both post-MVP).
 //
-// The photo slot is held to the same rule. No published source carries
-// imagery yet, so `photoUrl` is optional and the slot shows the category's
-// own silhouette on its accent - honest iconography, not a stock photo
-// pretending to be the shelter. The day a source publishes photos, the data
-// fills the slot without this component changing shape.
+// The photo slot is held to the same rule. The pipeline can now carry
+// imagery (fetch_poi_images.py matches openly-licensed, recent Wikimedia
+// Commons photos to POIs), but most waypoints will never have an eligible
+// photo - so `photoUrl` stays optional and the empty slot shows the
+// category's own silhouette on its accent: honest iconography, not a stock
+// photo pretending to be the shelter. When a photo does ship, its credit
+// line ships with it - naming the photographer and licence is the condition
+// CC BY/BY-SA attach to using the photo at all, and dating it is this app's
+// own honesty-about-uncertainty rule (OurHikeValues.md #4) applied to
+// somebody else's camera.
 //
 // The one line that is not a bare fact is the unverified sentence, and it is
 // the reason this card is worth having. The pin already says it with a broken
@@ -68,13 +73,24 @@ export interface PoiDetail {
   /**
    * A photo of the place, when one exists.
    *
-   * No published source carries one yet - the pipeline's POI schema has no
-   * imagery field - so today this is always undefined and the card always
-   * shows the category placeholder. The field exists so the contract is
-   * settled now: a photo is optional, and its absence is a placeholder, never
-   * a broken image or a withheld card.
+   * Published as photo_* properties on the POI artifacts (pipeline
+   * fetch_poi_images.py + export_poi.py: openly-licensed Wikimedia Commons
+   * photos with a recent EXIF capture date, matched by proximity). Most
+   * waypoints have no eligible photo, and a photo is optional either way:
+   * its absence is the placeholder, never a broken image or a withheld card.
    */
   photoUrl?: string
+  /** The Commons file page - full licence terms, history, original file.
+   *  The credit line links here when present. */
+  photoPage?: string
+  /** Who took it. For CC BY/BY-SA photos the pipeline guarantees this is
+   *  set - naming the author is the condition of use, not a courtesy. */
+  photoAuthor?: string
+  /** The licence's short name, e.g. "CC BY-SA 4.0". */
+  photoLicense?: string
+  /** EXIF capture date, ISO "YYYY-MM-DD". Shown as a month: a photo's age
+   *  is a fact the hiker gets, same rule as the unverified sentence. */
+  photoTaken?: string
 }
 
 export interface PoiCardProps {
@@ -97,6 +113,51 @@ function mile(value: number): string {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
   })
+}
+
+const MONTHS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+]
+
+/**
+ * "Jun 2025" from an ISO capture date - month precision is honest about what
+ * an EXIF date is worth and short enough for a credit line. Formatted by
+ * hand rather than through Date: "2025-06-18" parsed as a Date is UTC
+ * midnight, which toLocaleDateString renders as the previous month's last
+ * day in any western-hemisphere timezone.
+ */
+function photoMonth(taken: string | undefined): string | null {
+  if (taken === undefined) return null
+  const match = /^(\d{4})-(\d{2})/.exec(taken)
+  if (match === null) return null
+  const month = Number(match[2])
+  if (month < 1 || month > 12) return null
+  return `${MONTHS[month - 1]} ${match[1]}`
+}
+
+/**
+ * The whole credit line, or null when there is nothing to say. Author and
+ * licence are the parts CC attribution requires; the month is this app's own
+ * honesty rule applied to the photo. A photo can legitimately have no
+ * author (public domain) - the line simply shortens.
+ */
+function photoCredit(poi: PoiDetail): string | null {
+  const parts = [poi.photoAuthor, poi.photoLicense, photoMonth(poi.photoTaken)].filter(
+    (part): part is string => typeof part === 'string' && part !== '',
+  )
+  if (parts.length === 0) return null
+  return `Photo: ${parts.join(' · ')}`
 }
 
 /**
@@ -183,6 +244,7 @@ export function PoiCard({ poi, map, onClose }: PoiCardProps) {
   const accent =
     poi.type in POI_COLORS ? POI_COLORS[poi.type as PoiType] : POI_FALLBACK_COLOR
   const showPhoto = poi.photoUrl !== undefined && !photoFailed
+  const credit = photoCredit(poi)
 
   return (
     <div
@@ -226,6 +288,26 @@ export function PoiCard({ poi, map, onClose }: PoiCardProps) {
             </svg>
           </div>
         )}
+
+        {/* The credit rides the photo, never the placeholder: it is a fact
+            about a photo on screen, and the licence's price for it being
+            there. A link when the file page is known - full terms live
+            there - and plain text when it is not, because a credit is owed
+            either way. */}
+        {showPhoto &&
+          credit !== null &&
+          (poi.photoPage !== undefined ? (
+            <a
+              className="poi-card__credit"
+              href={poi.photoPage}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {credit}
+            </a>
+          ) : (
+            <span className="poi-card__credit">{credit}</span>
+          ))}
 
         <button type="button" className="poi-card__close" onClick={onClose}>
           <span className="visually-hidden">Close waypoint details</span>

@@ -160,10 +160,10 @@ describe('PoiCard', () => {
 })
 
 describe('the photo slot', () => {
-  it('shows the category silhouette while no source publishes photos', () => {
+  it('shows the category silhouette when the waypoint has no photo', () => {
     // The placeholder is honest iconography, not a stock photo pretending to
-    // be the shelter - and it is the everyday state, since no published
-    // source carries imagery yet.
+    // be the shelter - and it stays the everyday state: most waypoints have
+    // no eligible photo even now that the pipeline can carry imagery.
     renderCard(SHELTER)
 
     expect(screen.getByTestId('poi-card-placeholder')).toBeInTheDocument()
@@ -205,6 +205,70 @@ describe('the photo slot', () => {
 
     expect(screen.getByTestId('poi-card-placeholder')).toBeInTheDocument()
     expect(screen.queryByTestId('poi-card-photo')).not.toBeInTheDocument()
+  })
+
+  // A shippable Commons photo the way the pipeline publishes one: URL plus
+  // the three credit facts and the file page. CC BY/BY-SA photos always
+  // arrive with an author - the pipeline enforces that, because the credit
+  // is the licence's condition of use.
+  const PHOTO = {
+    photoUrl: 'blob:photo-of-the-lean-to',
+    photoPage: 'https://commons.wikimedia.org/wiki/File:Chairback_Gap_Lean-to.jpg',
+    photoAuthor: 'A. Hiker',
+    photoLicense: 'CC BY-SA 4.0',
+    photoTaken: '2025-06-18',
+  }
+
+  it('credits the photographer, licence and month, linking to the file page', () => {
+    // The credit is load-bearing: CC BY/BY-SA photos are only OurHike's to
+    // show while the attribution shows with them, same deal as the map's
+    // ODbL line. The month is this app's own honesty rule - a photo's age
+    // is a fact the hiker gets, not a detail to hide.
+    renderCard({ ...SHELTER, ...PHOTO })
+
+    const credit = screen.getByRole('link', {
+      name: 'Photo: A. Hiker · CC BY-SA 4.0 · Jun 2025',
+    })
+    expect(credit).toHaveAttribute('href', PHOTO.photoPage)
+    // A new tab, and no opener handle into the running map.
+    expect(credit).toHaveAttribute('target', '_blank')
+    expect(credit).toHaveAttribute('rel', 'noreferrer')
+  })
+
+  it('credits a public-domain photo by licence alone when nobody is named', () => {
+    // Public domain and CC0 photos legitimately have no author to credit -
+    // the line shortens rather than printing a blank where a name would go.
+    renderCard({
+      ...SHELTER,
+      photoUrl: 'blob:pd-photo',
+      photoPage: 'https://commons.wikimedia.org/wiki/File:PD.jpg',
+      photoLicense: 'Public domain',
+    })
+
+    expect(screen.getByRole('link', { name: 'Photo: Public domain' })).toBeInTheDocument()
+  })
+
+  it('says nothing under a photo that carries no credit facts at all', () => {
+    // No pipeline path produces a photo without credit facts today (the
+    // fetch rejects CC files with no author and always records a licence),
+    // so this is the component's own contract, not a data state: a bare
+    // photoUrl renders no credit line, because "Photo:" with nothing after
+    // it would be noise pretending to be attribution.
+    renderCard({ ...SHELTER, photoUrl: 'blob:bare' })
+
+    expect(screen.queryByText(/^Photo:/)).not.toBeInTheDocument()
+  })
+
+  it('drops the credit with the photo when the photo fails to load', () => {
+    // The credit is a fact about a photo on screen. Once the slot falls back
+    // to the placeholder there is nothing being used that needs crediting -
+    // and a credit under the silhouette would claim the glyph was somebody's
+    // photograph.
+    renderCard({ ...SHELTER, ...PHOTO })
+
+    fireEvent.error(screen.getByTestId('poi-card-photo'))
+
+    expect(screen.queryByText(/^Photo:/)).not.toBeInTheDocument()
   })
 
   it('gives a category this build has never heard of the neutral pin’s own look', () => {

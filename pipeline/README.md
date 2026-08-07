@@ -71,6 +71,17 @@ That `--provider` label is as far as this registry currently goes toward being m
 
 Change-aware via real HTTP conditional requests (the API documents `ETag`/`If-None-Match` support) - a 304 response means skip, no re-parsing or re-saving.
 
+## Fetching POI photos from Wikimedia Commons
+
+`fetch_poi_images.py` matches openly-licensed photos to corridor POIs for the waypoint card's photo slot (design and sourcing decisions in [features/POI_PHOTOS.md](../features/POI_PHOTOS.md)). Per POI it geosearches Commons' File namespace around the coordinates (per-type radius: 300m shelters/campsites, 120m water, 500m resupply towns), then keeps only files that are JPEGs with an EXIF capture date inside the last two years and a licence OurHike can ship under - public domain, CC0, or CC BY / CC BY-SA at 4.0+, with an author to credit wherever the licence requires one (`lib/commons.py` holds the rules, including why pre-4.0 CC versions are rejected). Nearest eligible file wins. **Licensing is per photo, not per source**, so each photo's licence, author, file-page URL and capture date are recorded in `data/raw/poi_images.json` and ride the exported features as `photo_*` properties (see `export_poi.py`), where the client renders them as the card's credit line.
+
+```
+.venv/Scripts/python fetch_poi_images.py            # only POIs without a recorded outcome
+.venv/Scripts/python fetch_poi_images.py --recheck  # re-query everything (new uploads, deleted files)
+```
+
+Run after `fetch_all.py` and `fetch_opentrail.py` (it derives the POI list by calling `export_poi.py`'s own unify + corridor clip, so ids match the export exactly), before `export_poi.py`. Change-aware per POI: every outcome - found, with the photo record, or a recorded miss - is kept with its check date, so the first pass is thousands of throttled sequential requests (tens of minutes; Wikimedia-required User-Agent, `maxlag=5` waited out politely, 429/5xx retried honoring `Retry-After`, progress flushed atomically every 200 queried POIs so an aborted crawl resumes from its last flush) and every later pass only queries new POIs plus found photos that have aged past the two-year window. A run that would wipe a suspicious share of still-fresh photos refuses to persist, same posture as `fetch_opentrail.py`'s drop guard. Coverage is expected to be partial and honest - most water sources have no Commons photo at all; the card's category-glyph placeholder is the designed fallback. Not yet wired into `publish-vector-data.yml`: doing so couples every data release to Commons availability, a decision deliberately left open in POI_PHOTOS.md.
+
 ## Fetching USGS US Topo background quads
 
 `fetch_topo_quads.py` pulls the raster quads used for the background map. Rather than the TNM Access API (flaky pagination, multiple-editions-per-quad problems - see the script's docstring for the full story of what didn't work), it uses USGS's own metadata inventory (`ustopo_current.csv`) to find exactly which quads intersect the 30-mile corridor, then matches each to its real GeoTIFF file by listing each state's S3 folder directly (the CSV's own filename field is unreliable for constructing the URL).

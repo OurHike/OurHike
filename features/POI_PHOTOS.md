@@ -1,0 +1,32 @@
+# OurHike — POI Photos (Feature Design Draft v1)
+
+Companion to [FEATURES.md](../FEATURES.md), [WIREFRAMES.md](../WIREFRAMES.md) (the waypoint card, frames 6a–6b, whose photo slot this fills) and [OurHikeValues.md](../OurHikeValues.md). Mechanics — invocation, change-awareness, radii, throttling — live in [pipeline/README.md](../pipeline/README.md)'s "Fetching POI photos from Wikimedia Commons" section, not here; this doc is the sourcing decisions and their reasons.
+
+**Scope note:** the waypoint card and its photo slot already shipped (the slot showed the category silhouette unconditionally). This adds the first source that can fill it: `pipeline/fetch_poi_images.py` + the `photo_*` properties on the exported POI artifacts + the card's credit line.
+
+---
+
+## The ask, and the two constraints that shaped everything
+
+The ask is simple: real photos of the places, not placeholders, for v1. Two constraints do all the design work:
+
+- **Licence-first is non-negotiable.** CONTRIBUTING.md's rule — establish the licence before fetching, record it — rules out every "scrape the web for pictures" shortcut outright. Google Images results, AllTrails photos, Instagram embeds: all copyrighted, none OurHike's to redistribute, and an unlicensed photo baked into a data release is exactly the inherited liability the rule exists to prevent (value #7).
+- **Recent and real.** A 2009 photo of a shelter that has since been rebuilt, burned, or grown a resident bear is worse than the honest silhouette — it is a small lie with a frame around it (value #4). The bar: a real camera photo taken within the last two years.
+
+## Why Wikimedia Commons
+
+Commons is the one large photo corpus where every file carries machine-readable licence, author, and EXIF metadata, queryable by coordinates, explicitly built for reuse. AT shelters and trail towns are genuinely well-photographed there. Flickr's API needs a key and per-account terms; Openverse aggregates but launders the metadata this needs intact; everything else fails the licence-first rule. Commons it is — as a *source of individually-licensed files*, not as one licensed dataset:
+
+- **Licensing is per photo, not per source.** One Commons file is CC BY 4.0, its neighbor CC BY-SA 2.0, a third public domain. So the licence record travels **on each exported feature** (`photo_license`, `photo_author`, `photo_page_url`), and the card renders the credit line — author, licence name, one link to the Commons file page — the same load-bearing-attribution posture as the map's ODbL line. Only public domain, CC0, and **CC BY / CC BY-SA at 4.0 or newer** are accepted. The version floor is not pedantry: 4.0's §3(a)(2) explicitly allows satisfying attribution via a link to a page carrying the required information (the file page does), while the 2.0/2.5/3.0 licences require the licence URI itself to ship with every copy — a term a one-link credit cannot meet, so those files are rejected the same way NC (breaks any future paid tier), ND (arguably forbids the card's crop) and GFDL (demands the full licence text) are: wholesale, rather than negotiated. The real coverage cost is Flickr-to-Commons imports (still CC 2.0-suite); accepting them later means carrying a licence-deed URL through the artifact and growing a second link in the credit, which is a deliberate follow-up, not an oversight. A CC BY photo with no attributable author is unusable, not "usable, uncredited".
+- **"Real photo, recent" is enforced by one honest proxy:** the file must be a JPEG with a parseable EXIF capture date inside the window. Maps, SVG diagrams, screenshots and undated scans fail this naturally, with no image-content classification pretending to judge what the photo shows. The capture date ships with the photo (`photo_taken`) and the card shows the month — the photo's age is a fact the hiker gets, the same rule the unverified sentence follows.
+- **Proximity is the match, and its limit is disclosed by design.** The nearest eligible file within a per-type radius wins. This will occasionally pick a photo of the view *from* the shelter rather than *of* it. The credit line linking to the Commons file page keeps the provenance one tap away; anything smarter (name matching, depicts-statements) is future refinement, not v1.
+
+## Partial coverage is the design, not a gap in it
+
+Most water sources have no Commons photo and never will; plenty of real shelter photos fail the two-year bar. Expected, and fine: the category-silhouette placeholder remains the everyday state of the slot, photos appear where an eligible one exists, and nothing anywhere implies completeness. The alternative — loosening the bar to inflate coverage — trades trustworthiness for decoration, which is value #4 backwards.
+
+## Decisions deliberately left open
+
+- **Offline delivery.** Today the artifacts carry photo *URLs* (Commons' own thumbnail endpoint, which Wikimedia explicitly permits hot-loading); the card fetches one only when it renders, and offline it falls back to the placeholder it would have shown anyway. That is the right first slice — photos are enhancement, never safety-relevant, and nothing here violates "nothing safety-relevant requires a live connection" — but it sits in honest tension with the "data goes through the build" posture (SOURCE_REGISTRY.md's "not a live proxy"). The full answer is bundling sized photo bytes into a release artifact, downloaded and stored like every other artifact, surfaced as object URLs — which lands on the same R2-vs-Supabase-Storage decision as [#89](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/89)'s report photos and on a real size budget (value #8: a few hundred 640px JPEGs is tens of MB on a hiker's data plan). That decision should be made once, for both photo kinds, not twice.
+- **Wiring into `publish-vector-data.yml`.** The fetch is deliberately not in the release workflow yet: it would couple every data release to Commons API availability. Until the release automation grows (DATA_RELEASES.md's candidate-build design, where a freshness marker in `lib/freshness_state.py` would also belong), the fetch is run by hand before an export, and the export ships cleanly without it.
+- **A registry row.** When SOURCE_REGISTRY.md's licence fields land on `sources.json`, Commons gets an entry (`trust: community`; per-photo licences noted as riding the features). Until the registry carries licence fields at all, CONTRIBUTING.md's licence note plus this doc are the record.

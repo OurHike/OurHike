@@ -59,6 +59,27 @@ export interface StoredPoi {
    * provenance line rather than a wrong one.
    */
   source?: string
+  /**
+   * A photo of the place, with what the licence obliges us to say about it.
+   *
+   * The pipeline's fetch_poi_images.py matches openly-licensed Wikimedia
+   * Commons photos (recent, by EXIF capture date) to POIs, and export_poi.py
+   * publishes them as photo_* properties. All optional for the same
+   * backward-compat reason as `source` - and photoUrl is the gate: the other
+   * four are facts about a photo, so none is stored without one.
+   */
+  photoUrl?: string
+  /** The Commons file page, where the full licence terms and history live. */
+  photoPage?: string
+  /** Who to credit. CC BY/BY-SA make the credit a condition of use, so the
+   *  pipeline only ships an author-less photo when its licence needs no
+   *  credit (public domain, CC0). */
+  photoAuthor?: string
+  /** The licence's short name, e.g. "CC BY-SA 4.0". */
+  photoLicense?: string
+  /** EXIF capture date, ISO "YYYY-MM-DD" - the card shows the month, because
+   *  a two-year-old photo presented as current would be a quiet lie. */
+  photoTaken?: string
 }
 
 export interface TrailData {
@@ -82,6 +103,18 @@ interface PoiProperties {
   lon?: unknown
   confidence?: unknown
   source?: unknown
+  photo_url?: unknown
+  photo_page_url?: unknown
+  photo_author?: unknown
+  photo_license?: unknown
+  photo_taken?: unknown
+}
+
+/** The property when it is a non-empty string, else nothing - the artifact
+ *  writes null for absent values, and neither null nor "" is a fact worth
+ *  storing. */
+function stringProp(value: unknown): string | undefined {
+  return typeof value === 'string' && value !== '' ? value : undefined
 }
 
 function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
@@ -93,6 +126,12 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
     // A POI with no coordinates cannot be drawn, found by search or reported
     // against, so it is dropped rather than carried as a broken row.
     if (typeof props.lat !== 'number' || typeof props.lon !== 'number') continue
+
+    const photoUrl = stringProp(props.photo_url)
+    const photoPage = stringProp(props.photo_page_url)
+    const photoAuthor = stringProp(props.photo_author)
+    const photoLicense = stringProp(props.photo_license)
+    const photoTaken = stringProp(props.photo_taken)
 
     pois.push({
       id: String(props.id ?? `${fallbackType}:${props.lat},${props.lon}`),
@@ -110,6 +149,17 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
       // by whether there is one, and "unknown" is not a source.
       ...(typeof props.source === 'string' && props.source !== ''
         ? { source: props.source }
+        : {}),
+      // Photo fields ride only behind a photo URL: an author or licence with
+      // no photo is a credit for nothing, and would render as one.
+      ...(photoUrl !== undefined
+        ? {
+            photoUrl,
+            ...(photoPage !== undefined ? { photoPage } : {}),
+            ...(photoAuthor !== undefined ? { photoAuthor } : {}),
+            ...(photoLicense !== undefined ? { photoLicense } : {}),
+            ...(photoTaken !== undefined ? { photoTaken } : {}),
+          }
         : {}),
     })
   }

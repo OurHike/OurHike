@@ -222,6 +222,79 @@ describe('trail data', () => {
     expect(pois[0]).not.toHaveProperty('source')
   })
 
+  it('carries a photo and its attribution facts, so the card can pay for showing it', async () => {
+    // The photo_* properties are how export_poi.py publishes the Wikimedia
+    // Commons match. The credit fields are not decoration: CC BY/BY-SA make
+    // the attribution a condition of using the photo, so dropping them here
+    // would put the card in breach the moment it rendered the image.
+    serve(
+      poiCollection([
+        {
+          id: 'atc_shelters:abc',
+          poi_type: 'shelter',
+          name: 'Chairback Gap Lean-to',
+          lat: 45.45,
+          lon: -69.26,
+          confidence: 'high',
+          photo_url: 'https://upload.wikimedia.org/lean-to-640.jpg',
+          photo_page_url: 'https://commons.wikimedia.org/wiki/File:Lean-to.jpg',
+          photo_author: 'A. Hiker',
+          photo_license: 'CC BY-SA 4.0',
+          photo_taken: '2025-06-18',
+        },
+      ]),
+    )
+    await downloadTrailData()
+
+    const pois = store.get(POIS_KEY) as StoredPoi[]
+    expect(pois[0].photoUrl).toBe('https://upload.wikimedia.org/lean-to-640.jpg')
+    expect(pois[0].photoPage).toBe('https://commons.wikimedia.org/wiki/File:Lean-to.jpg')
+    expect(pois[0].photoAuthor).toBe('A. Hiker')
+    expect(pois[0].photoLicense).toBe('CC BY-SA 4.0')
+    expect(pois[0].photoTaken).toBe('2025-06-18')
+  })
+
+  it('leaves photo fields off entirely when the artifact carries none', async () => {
+    // The artifact writes null for every photo property of a photo-less POI
+    // (the export's columns exist either way). Null is not a photo, and a
+    // stored null would read as one to anything checking for the key.
+    serve(
+      poiCollection([
+        { id: 'x', poi_type: 'water', name: 'Spring', lat: 1, lon: 2, photo_url: null },
+      ]),
+    )
+    await downloadTrailData()
+
+    const pois = store.get(POIS_KEY) as StoredPoi[]
+    expect(pois[0]).not.toHaveProperty('photoUrl')
+    expect(pois[0]).not.toHaveProperty('photoAuthor')
+  })
+
+  it('drops credit fields that arrive without a photo to credit', async () => {
+    // An author with no photo is a credit for nothing - it would render as
+    // attribution for the placeholder glyph. The photo URL is the gate for
+    // the whole group.
+    serve(
+      poiCollection([
+        {
+          id: 'x',
+          poi_type: 'water',
+          name: 'Spring',
+          lat: 1,
+          lon: 2,
+          photo_author: 'A. Hiker',
+          photo_license: 'CC BY-SA 4.0',
+        },
+      ]),
+    )
+    await downloadTrailData()
+
+    const pois = store.get(POIS_KEY) as StoredPoi[]
+    expect(pois[0]).not.toHaveProperty('photoUrl')
+    expect(pois[0]).not.toHaveProperty('photoAuthor')
+    expect(pois[0]).not.toHaveProperty('photoLicense')
+  })
+
   it('drops a POI with no coordinates rather than carrying a broken row', async () => {
     // It cannot be drawn, found by search, or reported against - so it is not
     // a POI, it is a row that would fail somewhere further downstream.

@@ -2,6 +2,22 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ReportForm } from './ReportForm'
+import { PhotoUnusable, prepareReportPhoto } from '../lib/reportPhoto'
+
+// The shrink itself is doubled here and tested for real in
+// lib/reportPhoto.test.ts. What this file is about is the FORM's half: that
+// the prepared bytes reach `onSubmit`, and that a hiker whose photo cannot be
+// prepared is told so and still gets their report sent.
+vi.mock('../lib/reportPhoto', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/reportPhoto')>()),
+  prepareReportPhoto: vi.fn(),
+}))
+
+const mockPrepare = vi.mocked(prepareReportPhoto)
+
+/** What the doubled shrink returns - the same object every time, so a test
+ *  can assert the form passed THAT on rather than something Blob-shaped. */
+const PREPARED = new Blob([new Uint8Array([9, 9, 9])], { type: 'image/jpeg' })
 
 // WIREFRAMES.md §6's report form: note, optional photo, location, "signed as
 // <trail name> · <reporter type>", and the report's real timestamp - the
@@ -25,6 +41,9 @@ const PROPS = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // Reset per test rather than once: `clearAllMocks` drops the calls but
+  // leaves a `mockRejectedValueOnce` from a previous case armed.
+  mockPrepare.mockResolvedValue(PREPARED)
 })
 
 afterEach(() => {
@@ -138,59 +157,140 @@ describe('ReportForm', () => {
     expect(screen.getByText(/Switchback/)).toHaveTextContent(/thru/i)
   })
 
-  // The photo field accepted a file and threw it away. There was no onChange,
-  // no ref and no state behind the input, so a hiker photographing a
-  // washed-out bridge got a control that took the photo and a report that
-  // arrived without it - with nothing indicating the loss.
-  //
-  // The backend half is finished; what does not exist is anywhere to upload
-  // to, and picking between R2 and Supabase Storage is a decision rather than
-  // a task. Until it is made, the honest control is one that does not pretend.
+  // #89 disabled this field because there was nowhere to upload to; #234
+  // built the endpoint, so it works now. What it must not do is go back to
+  // the original bug - a control that accepts a photo and files a report
+  // without it - which is why every case below is about the picked file
+  // actually reaching `onSubmit`, or about the hiker being told it will not.
   describe('the photo field', () => {
-    it('does not accept a file it has nowhere to send', () => {
+    const A_PHOTO = new File(['pretend jpeg'], 'bridge.jpg', { type: 'image/jpeg' })
+
+    /** Waits for the picked file to have been through the shrink, which is
+     *  async - the attached line appearing is what proves it finished, and
+     *  asserting on anything before it would be asserting on a half-run pick. */
+    async function attach(user: ReturnType<typeof userEvent.setup>, file = A_PHOTO) {
+      await user.upload(screen.getByLabelText(/photo/i), file)
+      await screen.findByText(/photo attached/i)
+    }
+
+    it('accepts a file, now that there is somewhere to send it', () => {
       render(<ReportForm {...PROPS} />)
 
-      expect(screen.getByLabelText(/photo/i)).toBeDisabled()
+      expect(screen.getByLabelText(/photo/i)).toBeEnabled()
     })
 
-    it('says why, rather than looking broken', () => {
-      // A hiker who took a photo specifically to attach would otherwise be
-      // left wondering whether they had missed the button.
-      render(<ReportForm {...PROPS} />)
-
-      expect(screen.getByText(/can.t be attached yet/i)).toBeInTheDocument()
-    })
-
-    it('points at the note as the thing that does carry the report', () => {
-      render(<ReportForm {...PROPS} />)
-
-      expect(screen.getByText(/describe what you saw in the note/i)).toBeInTheDocument()
-    })
-
-    it('ties the explanation to the control for a screen reader', () => {
-      // A disabled input a screen reader announces with no reason attached is
-      // the same dead end as an unexplained one on screen.
-      render(<ReportForm {...PROPS} />)
-
-      expect(screen.getByLabelText(/photo/i)).toHaveAccessibleDescription(
-        /can.t be attached yet/i,
-      )
-    })
-
-    it('still submits the report the note carries', () => {
-      // The field being unavailable must not block the thing that does work.
-      // Whatever else is true, the washed-out bridge has to get reported.
+    it('sends the PREPARED bytes, not the file the hiker picked', async () => {
+      // The original file carries EXIF and several megabytes; what goes in
+      // the outbox is what came back from lib/reportPhoto.ts.
+      const user = userEvent.setup()
       const onSubmit = vi.fn()
       render(<ReportForm {...PROPS} onSubmit={onSubmit} />)
 
-      return userEvent
-        .type(screen.getByRole('textbox'), 'Bridge is out at the creek')
-        .then(() =>
-          userEvent.click(screen.getByRole('button', { name: /send|submit|report/i })),
-        )
-        .then(() => {
-          expect(onSubmit).toHaveBeenCalled()
-        })
+      await attach(user)
+      await user.click(screen.getByRole('button', { name: /send|save/i }))
+
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ photo: PREPARED }))
+    })
+
+    it('leaves the key off entirely when no photo was picked', async () => {
+      const user = userEvent.setup()
+      const onSubmit = vi.fn()
+      render(<ReportForm {...PROPS} onSubmit={onSubmit} />)
+
+      await user.click(screen.getByRole('button', { name: /send|save/i }))
+
+      expect('photo' in onSubmit.mock.calls[0][0]).toBe(false)
+    })
+
+    it('says the location and camera details are not included', async () => {
+      // The strip is invisible, and a hiker filing a `bad_hikers` report has
+      // a real reason to want to know it happened.
+      const user = userEvent.setup()
+      render(<ReportForm {...PROPS} />)
+
+      await attach(user)
+
+      expect(screen.getByText(/not included/i)).toBeInTheDocument()
+    })
+
+    it('shows the refusal in the words the hiker can act on', async () => {
+      const user = userEvent.setup()
+      mockPrepare.mockRejectedValueOnce(new PhotoUnusable('Too big. Try taking another.'))
+      render(<ReportForm {...PROPS} />)
+
+      await user.upload(screen.getByLabelText(/photo/i), A_PHOTO)
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(/try taking another/i)
+    })
+
+    it('does not show an internal error message to a hiker', async () => {
+      // Anything that is not a PhotoUnusable was not written to be read on a
+      // ridge - a TypeError from a browser quirk, say.
+      const user = userEvent.setup()
+      mockPrepare.mockRejectedValueOnce(new TypeError('canvas.toBlob is not a function'))
+      render(<ReportForm {...PROPS} />)
+
+      await user.upload(screen.getByLabelText(/photo/i), A_PHOTO)
+
+      const alert = await screen.findByRole('alert')
+      expect(alert).not.toHaveTextContent(/toBlob/)
+      expect(alert).toHaveTextContent(/try taking another/i)
+    })
+
+    it('still sends the report when the photo could not be prepared', async () => {
+      // The note is what carries the report. Losing the words over the
+      // picture would be a worse bug than the one #89 disabled this for.
+      const user = userEvent.setup()
+      const onSubmit = vi.fn()
+      mockPrepare.mockRejectedValueOnce(new PhotoUnusable('No good.'))
+      render(<ReportForm {...PROPS} onSubmit={onSubmit} />)
+
+      await user.upload(screen.getByLabelText(/photo/i), A_PHOTO)
+      await screen.findByRole('alert')
+      await user.click(screen.getByRole('button', { name: /send|save/i }))
+
+      expect(onSubmit).toHaveBeenCalled()
+      expect('photo' in onSubmit.mock.calls[0][0]).toBe(false)
+    })
+
+    it('drops a previous photo when a second pick fails', async () => {
+      // Otherwise the hiker believes they replaced it and the first one is
+      // still what gets sent.
+      const user = userEvent.setup()
+      const onSubmit = vi.fn()
+      render(<ReportForm {...PROPS} onSubmit={onSubmit} />)
+
+      await attach(user)
+      mockPrepare.mockRejectedValueOnce(new PhotoUnusable('No good.'))
+      await user.upload(
+        screen.getByLabelText(/photo/i),
+        new File(['second'], 'second.jpg', { type: 'image/jpeg' }),
+      )
+      await screen.findByRole('alert')
+      await user.click(screen.getByRole('button', { name: /send|save/i }))
+
+      expect('photo' in onSubmit.mock.calls[0][0]).toBe(false)
+    })
+
+    it('does not let the report go while the photo is still being shrunk', async () => {
+      // Submitting mid-shrink would file the report without the photo that
+      // is moments from being ready - the original bug, on a timer.
+      const user = userEvent.setup()
+      let finish: (blob: Blob) => void = () => {}
+      mockPrepare.mockReturnValueOnce(
+        new Promise<Blob>((resolve) => {
+          finish = resolve
+        }),
+      )
+      render(<ReportForm {...PROPS} />)
+
+      await user.upload(screen.getByLabelText(/photo/i), A_PHOTO)
+      await screen.findByText(/shrinking/i)
+      expect(screen.getByRole('button', { name: /send|save/i })).toBeDisabled()
+
+      finish(PREPARED)
+      await screen.findByText(/photo attached/i)
+      expect(screen.getByRole('button', { name: /send|save/i })).toBeEnabled()
     })
   })
 

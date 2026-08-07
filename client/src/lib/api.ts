@@ -20,6 +20,7 @@ import { getAuthClient } from './supabase'
 import type { OutboxItem } from './outbox'
 import type { BackendReportStatus } from './reportStatus'
 import type { ClosureReason, ClosureStatus } from './closureBanner'
+import { PHOTO_CONTENT_TYPE } from './reportPhoto'
 
 const RAW_BASE: string = import.meta.env.VITE_API_BASE_URL ?? ''
 
@@ -232,6 +233,65 @@ export async function sendReport(item: OutboxItem): Promise<void> {
     // commits and whose response never arrives.
     body: JSON.stringify({ ...item.payload, id: item.id, authored_at: item.authoredAt }),
   })
+
+  if (item.photo !== undefined) await sendReportPhoto(item.id, item.photo)
+}
+
+/**
+ * The photo, sent second, because the endpoint needs the row to exist (#234).
+ *
+ * **A throw from here keeps the whole item queued**, and that is correct
+ * rather than wasteful: the next flush re-POSTs the report, which #243 made
+ * idempotent, so a retry costs one duplicate request instead of a duplicate
+ * report - and the alternative, dropping the item once the report lands,
+ * would lose the photo on every hiker whose signal died between the two
+ * requests, which out here is most of them.
+ *
+ * The exception is a refusal retrying cannot fix. The report is already
+ * filed by then, so continuing to fail the item would tell a hiker their
+ * report is "waiting to send" about one a moderator can already see - a
+ * durable lie in exchange for bytes the server will never accept. So the
+ * photo is dropped and the item completes.
+ *
+ * That branch should be unreachable, and it is worth being exact about why,
+ * because a swallowed failure is worth suspecting. Every permanent code this
+ * endpoint returns is one lib/reportPhoto.ts has already made impossible:
+ * 415 needs a content type other than JPEG, which is what the canvas encodes;
+ * 413 needs more than 2 MB, which is the ladder's exit condition; 400 needs
+ * an empty body, which an encoded canvas is not. It is a valve for a bug in
+ * this app's own preparation step, not a path a working client takes.
+ */
+async function sendReportPhoto(reportId: string, photo: Blob): Promise<void> {
+  try {
+    await authedFetchBytes(`/reports/${reportId}/photo`, photo)
+  } catch (error) {
+    if (error instanceof ApiError && PERMANENTLY_UNACCEPTABLE_PHOTO.has(error.status))
+      return
+    throw error
+  }
+}
+
+/** The statuses that mean this photo will never be accepted, however often it
+ *  is offered. NOT 503 - that is "no bucket on this deployment yet", which is
+ *  precisely the case worth waiting out. */
+const PERMANENTLY_UNACCEPTABLE_PHOTO = new Set([400, 413, 415])
+
+/** Like `authedFetch`, but sends raw bytes rather than JSON. */
+async function authedFetchBytes(path: string, body: Blob): Promise<Response> {
+  const token = await accessToken()
+  if (token === null) throw new NotSignedInError()
+
+  return apiFetch(path, {
+    method: 'PUT',
+    body,
+    headers: {
+      // Stated rather than left to the Blob's own type, which is whatever
+      // `toBlob` happened to set. The server checks this header and refuses
+      // anything else, so guessing is not an option available to us.
+      'Content-Type': PHOTO_CONTENT_TYPE,
+      Authorization: `Bearer ${token}`,
+    },
+  })
 }
 
 // An ALLOWLIST, and that is the whole design (#266).
@@ -249,7 +309,10 @@ export async function sendReport(item: OutboxItem): Promise<void> {
 //   401  the token was rejected; Supabase refreshes in the background.
 //   403  create_report has no role gate, so this is never ours.
 //   408  a network symptom wearing a 4xx.
-//   413  no size limit is enforced yet; revisit when photos land (#234).
+//   413  `POST /reports` enforces no size limit. The photo endpoint does,
+//        but a photo refused for size is handled where it happens
+//        (`sendReportPhoto`) rather than here, because by then the report
+//        itself has already been filed and must not be marked unsendable.
 //   429  explicitly "later".
 //
 // Written for a hiker reading a phone on a ridge, not for a log: each says

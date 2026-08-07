@@ -420,3 +420,129 @@ describe('reading from a build with no backend', () => {
     },
   )
 })
+
+// --- The photo, sent second (#234) ---------------------------------------
+//
+// `PUT /reports/{id}/photo` needs the row to exist, so the upload is a second
+// request after the report lands. That makes `sendReport` two calls where it
+// was one, and three properties decide whether that is safe:
+//
+//  1. It happens ONLY when there is a photo. Most reports have none, and a
+//     wasted round trip out here is a wasted minute of radio.
+//  2. A retryable failure keeps the whole item queued. The re-POST is
+//     idempotent (#243), so re-sending costs a duplicate request rather than
+//     a duplicate report - and the alternative loses the photo of every hiker
+//     whose signal died between the two calls.
+//  3. A refusal retrying cannot fix does NOT fail the item. The report is
+//     already filed by then, and marking it unsendable would tell a hiker
+//     their report is waiting while a moderator is already looking at it.
+
+describe('sending a report that has a photo', () => {
+  async function configuredApi() {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.org')
+    vi.resetModules()
+    return import('./api')
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
+  const PHOTO = { size: 1234, type: 'image/jpeg' } as Blob
+  const WITH_PHOTO: OutboxItem = { ...ITEM, photo: PHOTO }
+
+  /** Answers the POST, then the PUT, with the statuses given in order. */
+  function mockSequence(...statuses: number[]) {
+    const spy = vi.spyOn(globalThis, 'fetch')
+    for (const status of statuses) {
+      spy.mockResolvedValueOnce({
+        ok: status >= 200 && status < 300,
+        status,
+        json: async () => ({}),
+      } as Response)
+    }
+    return spy
+  }
+
+  it('sends nothing extra for a report with no photo', async () => {
+    const api = await configuredApi()
+    const spy = mockSequence(201)
+
+    await api.sendReport(ITEM)
+
+    expect(spy).toHaveBeenCalledTimes(1)
+  })
+
+  it('puts the bytes at the report it belongs to, after the report', async () => {
+    const api = await configuredApi()
+    const spy = mockSequence(201, 200)
+
+    await api.sendReport(WITH_PHOTO)
+
+    expect(spy).toHaveBeenCalledTimes(2)
+    // Order matters and is the reason this is a sequence rather than two
+    // independent assertions: the endpoint 404s if the row is not there yet.
+    expect(spy.mock.calls[0][0]).toBe('https://api.example.org/reports')
+    expect(spy.mock.calls[1][0]).toBe('https://api.example.org/reports/outbox-1/photo')
+
+    const put = spy.mock.calls[1][1] as RequestInit
+    expect(put.method).toBe('PUT')
+    expect(put.body).toBe(PHOTO)
+    const headers = put.headers as Record<string, string>
+    // Stated explicitly rather than inherited from the Blob: the server
+    // refuses anything that is not this, so it cannot be left to chance.
+    expect(headers['Content-Type']).toBe('image/jpeg')
+    expect(headers.Authorization).toBe('Bearer a-real-token')
+  })
+
+  it('does not attempt the photo when the report itself failed', async () => {
+    // There would be no row to attach it to, and the 404 that came back
+    // would look like a missing report rather than a failed send.
+    const api = await configuredApi()
+    const spy = mockSequence(500)
+
+    await expect(api.sendReport(WITH_PHOTO)).rejects.toBeInstanceOf(api.ApiError)
+
+    expect(spy).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the item queued when the photo upload is worth retrying', async () => {
+    // The ordinary trail case: the report got through and the connection died
+    // before the photo did. Throwing is what leaves it in the outbox.
+    const api = await configuredApi()
+    mockSequence(201, 500)
+
+    await expect(api.sendReport(WITH_PHOTO)).rejects.toBeInstanceOf(api.ApiError)
+  })
+
+  it('keeps it queued when the server has no photo bucket yet', async () => {
+    // 503 is "not configured on this deployment", which is precisely the
+    // case worth waiting out - the photo becomes sendable when a bucket does.
+    const api = await configuredApi()
+    mockSequence(201, 503)
+
+    await expect(api.sendReport(WITH_PHOTO)).rejects.toMatchObject({ status: 503 })
+  })
+
+  it.each([400, 413, 415])(
+    'completes the item when the photo is refused permanently (%i)',
+    async (status) => {
+      // The report is filed. Failing the item over bytes the server will
+      // never accept would strand it in "waiting to send" forever.
+      const api = await configuredApi()
+      mockSequence(201, status)
+
+      await expect(api.sendReport(WITH_PHOTO)).resolves.toBeUndefined()
+    },
+  )
+
+  it('refuses before spending the upload when signed out', async () => {
+    const api = await configuredApi()
+    withSession(null)
+    const spy = mockSequence(201, 200)
+
+    await expect(api.sendReport(WITH_PHOTO)).rejects.toBeInstanceOf(api.NotSignedInError)
+    expect(spy).not.toHaveBeenCalled()
+  })
+})

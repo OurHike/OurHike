@@ -32,8 +32,12 @@ export type ContributionStep = 'sign-in' | 'identity' | 'send'
 export async function beginContribution(
   draft: ReportDraft,
   authoredAt: Date,
+  photo?: Blob,
 ): Promise<OutboxItem> {
-  return enqueue(draft, authoredAt)
+  // The photo is saved here with everything else, for the reason above: it is
+  // part of what the hiker wrote down, and it must not depend on the sign-in
+  // round trip that has not been asked for yet.
+  return enqueue(draft, authoredAt, photo)
 }
 
 export function stepAfterSaving({

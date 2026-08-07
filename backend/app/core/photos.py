@@ -91,8 +91,24 @@ FIRST_PHOTO_INDEX = 1
 # whole point is that egress is the cost that grows.
 ALLOWED_CONTENT_TYPE = "image/jpeg"
 
+# JPEG's start-of-image marker, plus the first byte of the segment that always
+# follows it.
+#
+# The `Content-Type` header the uploader sends is a claim by the sender about
+# the sender's own bytes, and it is not the claim that ends up stored: the
+# object is written under a key ending `.jpg` with `ContentType: image/jpeg`
+# set by `store_photo` - so a mislabelling is not merely recorded here, it is
+# asserted by us, and `presigned_photo_url` later hands that assertion to a
+# browser. Three bytes of comparison is what makes it true (#379).
+JPEG_MAGIC = b"\xff\xd8\xff"
+
 # Comfortably above a downscaled photo and far below an untouched one, so a
 # client that skips the resize is refused rather than quietly billed for.
+#
+# Enforced against the bytes as they ARRIVE, not against the finished buffer -
+# see `read_capped_body` in app/routers/reports.py. A limit measured after
+# `await request.body()` has already allocated the whole upload has paid the
+# exact cost it exists to avoid (#379).
 MAX_PHOTO_BYTES = 2 * 1024 * 1024
 
 # How long a signed photo URL stays good for.

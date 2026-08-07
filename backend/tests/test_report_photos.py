@@ -19,17 +19,20 @@ hold one of them:
     `GET /reports/{id}` uses - and it refuses uniformly with a 404.
 """
 
+import asyncio
 import uuid
 
 import boto3
 import pytest
 import requests
+from fastapi import HTTPException, Request
 from moto import mock_aws
 
 from app.config import Settings, settings
-from app.core.photos import PHOTO_URL_TTL_SECONDS, photo_key
+from app.core.photos import MAX_PHOTO_BYTES, PHOTO_URL_TTL_SECONDS, photo_key
 from app.models.profile import Profile, Role
 from app.models.report import Report, ReporterType, ReportStatus, ReportType, Visibility
+from app.routers.reports import read_capped_body
 from tests.tokens import auth_headers
 
 _BUCKET = "ourhike-test"
@@ -218,6 +221,150 @@ def test_refuses_a_photo_that_was_never_downscaled(client, db_session, r2):
 
     assert response.status_code == 413
     assert r2.list_objects_v2(Bucket=_BUCKET).get("KeyCount", 0) == 0
+
+
+def _reading(chunks: list[bytes], headers: dict[str, str] | None = None) -> tuple[Request, list[int]]:
+    """A `Request` whose body really arrives in pieces, and a record of which
+    pieces were asked for.
+
+    Direct rather than through `client`: starlette's sync `TestClient` calls
+    `request.read()` on the way in, so a generator body is drained in the
+    client and the app sees one chunk however it was offered. That makes the
+    status code observable through the route (the tests below do check it) but
+    not the reading, which is the half #379 is actually about. Under uvicorn
+    `receive` delivers what has arrived off the socket, which is what this
+    reproduces.
+    """
+    pulled: list[int] = []
+    remaining = list(chunks)
+
+    async def receive() -> dict:
+        if not remaining:
+            return {"type": "http.request", "body": b"", "more_body": False}
+        chunk = remaining.pop(0)
+        pulled.append(len(chunk))
+        return {"type": "http.request", "body": chunk, "more_body": bool(remaining)}
+
+    scope = {
+        "type": "http",
+        "method": "PUT",
+        "path": "/reports/x/photo",
+        "headers": [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()],
+    }
+    return Request(scope, receive), pulled
+
+
+def test_an_oversized_body_is_cut_off_partway_rather_than_buffered():
+    """No `Content-Length` at all, which is the case a header check misses.
+
+    A chunked request declares nothing, so the only thing that can refuse it
+    is the running total over the stream - and it has to refuse partway. The
+    assertion that matters is the second one: a limit applied to the finished
+    buffer would pull all 64 pieces and refuse afterwards, having already
+    allocated the thing it was refusing.
+    """
+    # 4 MB offered in 64 KB pieces, against a 2 MB cap.
+    request, pulled = _reading([b"x" * (64 * 1024)] * 64)
+
+    with pytest.raises(HTTPException) as refused:
+        asyncio.run(read_capped_body(request, MAX_PHOTO_BYTES))
+
+    assert refused.value.status_code == 413
+    assert len(pulled) < 64, "the whole body was read before the limit was applied"
+    assert sum(pulled) <= MAX_PHOTO_BYTES + 64 * 1024, f"read {sum(pulled)} bytes of a 4 MB body"
+
+
+def test_a_declared_oversize_is_refused_without_reading_the_body_at_all():
+    """`Content-Length` is only an optimisation, but it is a real one: when the
+    sender declares an oversized body there is no reason to read a byte of it."""
+    request, pulled = _reading(
+        [b"x" * 1024] * 4,
+        headers={"content-length": str(8 * 1024 * 1024)},
+    )
+
+    with pytest.raises(HTTPException) as refused:
+        asyncio.run(read_capped_body(request, MAX_PHOTO_BYTES))
+
+    assert refused.value.status_code == 413
+    assert pulled == [], f"read {sum(pulled)} bytes of a body that declared itself oversized"
+
+
+def test_a_lying_content_length_does_not_get_the_body_through():
+    """The header is a claim. A body that declares itself small and then keeps
+    arriving is stopped by the running total, not by the claim."""
+    request, pulled = _reading(
+        [b"x" * (64 * 1024)] * 64,
+        headers={"content-length": "12"},
+    )
+
+    with pytest.raises(HTTPException) as refused:
+        asyncio.run(read_capped_body(request, MAX_PHOTO_BYTES))
+
+    assert refused.value.status_code == 413
+    assert sum(pulled) <= MAX_PHOTO_BYTES + 64 * 1024
+
+
+def test_an_unparseable_content_length_decides_nothing_either_way():
+    """A header this malformed is somebody else's bug, and it must neither
+    refuse a body that fits nor wave through one that does not."""
+    fits, _ = _reading([_JPEG], headers={"content-length": "not a number"})
+    assert asyncio.run(read_capped_body(fits, MAX_PHOTO_BYTES)) == _JPEG
+
+    does_not, _ = _reading(
+        [b"x" * (64 * 1024)] * 64,
+        headers={"content-length": "not a number"},
+    )
+    with pytest.raises(HTTPException) as refused:
+        asyncio.run(read_capped_body(does_not, MAX_PHOTO_BYTES))
+    assert refused.value.status_code == 413
+
+
+def test_a_body_that_fits_is_returned_whole():
+    """The reassembly is as much of the function as the refusing: a photo that
+    arrives in four pieces has to come back out as the bytes that were sent."""
+    request, pulled = _reading([_JPEG[:4], _JPEG[4:10], _JPEG[10:]])
+
+    assert asyncio.run(read_capped_body(request, MAX_PHOTO_BYTES)) == _JPEG
+    assert len(pulled) == 3, "the pieces were not all read"
+
+
+def test_an_oversized_upload_is_refused_by_the_endpoint(client, db_session, r2):
+    """The same limit, through the route, so the status a client sees is
+    pinned as well as the reading behaviour above."""
+    reporter = _reporter(db_session)
+    report = _report(db_session, reporter)
+
+    response = client.put(
+        f"/reports/{report.id}/photo",
+        content=b"\xff\xd8\xff" + b"x" * (2 * 1024 * 1024),
+        headers={**auth_headers(reporter.id), "content-type": "image/jpeg"},
+    )
+
+    assert response.status_code == 413
+    assert r2.list_objects_v2(Bucket=_BUCKET).get("KeyCount", 0) == 0
+
+
+def test_refuses_bytes_that_are_not_a_jpeg_however_they_are_labelled(client, db_session, r2):
+    """The `Content-Type` header is the sender describing their own bytes.
+
+    We store the object as `.jpg` with `ContentType: image/jpeg` set by us and
+    hand that back to a browser through a signed URL, so the label has to be
+    true rather than merely claimed (#379).
+    """
+    reporter = _reporter(db_session)
+    report = _report(db_session, reporter)
+
+    response = client.put(
+        f"/reports/{report.id}/photo",
+        content=b'<svg onload="alert(1)"/>',
+        headers={**auth_headers(reporter.id), "content-type": "image/jpeg"},
+    )
+
+    assert response.status_code == 415
+    assert r2.list_objects_v2(Bucket=_BUCKET).get("KeyCount", 0) == 0
+
+    db_session.refresh(report)
+    assert report.photo_url is None
 
 
 def test_says_so_rather_than_failing_when_no_bucket_is_configured(client, db_session):

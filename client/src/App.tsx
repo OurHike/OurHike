@@ -51,6 +51,7 @@ import {
 } from './screens/DetailPicker'
 import { DownloadsDialog } from './screens/DownloadsDialog'
 import { More, type StuckReport } from './screens/More'
+import { Moderation } from './screens/Moderation'
 import { InstallPrompt } from './screens/InstallPrompt'
 import { Onboarding, type OnboardingResult } from './screens/Onboarding'
 import { ReportForm, type ReportFormSubmission } from './screens/ReportForm'
@@ -124,6 +125,7 @@ import {
 import { upcomingClimb } from './lib/upcomingClimb'
 import { startTracking, trackDirection, type DirectionTracker } from './lib/hikeDirection'
 import { beginContribution, stepAfterSaving } from './lib/contributionFlow'
+import { useModerator } from './lib/useModerator'
 import { hasStatedReporterType, signReportAs } from './lib/reporterIdentity'
 import { IdentitySetup } from './screens/IdentitySetup'
 import { SignInPrompt, type AuthProvider } from './screens/SignInPrompt'
@@ -333,6 +335,11 @@ function App() {
   // below. Null is the ordinary state rather than an incomplete setup (#335).
   const [hike, setHike] = useState<PlannedHike | null>(null)
   const [pickingHike, setPickingHike] = useState(false)
+  // Whether the moderation queue is open, and whether it may be. The role is
+  // read once per sign-in (lib/useModerator.ts) and decides only whether the
+  // entry point exists - the backend gates every call regardless (#235).
+  const [moderating, setModerating] = useState(false)
+  const isModerator = useModerator(account !== null)
 
   const [direction, setDirection] = useState<DirectionTracker | null>(null)
   // The live map is state rather than a ref because effects have to run when
@@ -1596,7 +1603,12 @@ function App() {
               resetKey={activeTab}
               fallback={() => <ScreenFailed what="This screen" />}
             >
-              {pickingHike ? (
+              {moderating ? (
+                // Replaces More rather than covering it, for the same reason
+                // HikePicker does: it is reached from here and nowhere else,
+                // so there is nothing behind it worth keeping visible.
+                <Moderation onClose={() => setModerating(false)} />
+              ) : pickingHike ? (
                 // Replaces More rather than covering it. The picker is reached
                 // from here and nowhere else, so there is nothing behind it
                 // worth keeping visible - and a screen needs no backdrop, no
@@ -1627,6 +1639,7 @@ function App() {
                   hikeSummary={hike === null ? null : hikeSummary(hike)}
                   onEditHike={() => setPickingHike(true)}
                   onStartReport={() => setReporting({ step: 'pick' })}
+                  onOpenModeration={isModerator ? () => setModerating(true) : undefined}
                   queuedReportCount={queuedCount}
                   stuckReports={stuckReports}
                   onRetryReport={handleRetryReport}

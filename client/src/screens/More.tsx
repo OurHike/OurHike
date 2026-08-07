@@ -20,6 +20,15 @@ export interface StuckReport {
 export interface MoreProps extends SettingsProps {
   onStartReport: () => void
   /**
+   * Opens the moderation queue, and present ONLY for a moderator (#235).
+   *
+   * An optional callback rather than an `isModerator` flag, deliberately:
+   * this screen has no business knowing what a role is, and the difference
+   * between "may moderate" and "has somewhere to go" is a distinction it
+   * would only get wrong. Absent means no entry is rendered at all.
+   */
+  onOpenModeration?: () => void
+  /**
    * The hike in one line (lib/plannedHike.ts), or null for a hiker who has
    * not set one - which is a first-class state, not an incomplete setup. The
    * row invites rather than nags, because every part of this app works
@@ -42,6 +51,7 @@ export interface MoreProps extends SettingsProps {
 
 export function More({
   onStartReport,
+  onOpenModeration,
   hikeSummary = null,
   onEditHike,
   queuedReportCount,
@@ -78,6 +88,11 @@ export function More({
         <button type="button" className="settings__action" onClick={onStartReport}>
           Report a problem
         </button>
+        {onOpenModeration !== undefined && (
+          <button type="button" className="settings__action" onClick={onOpenModeration}>
+            Moderation queue
+          </button>
+        )}
         {queuedReportCount > 0 && (
           <p className="settings__note" role="status">
             {queuedReportCount === 1

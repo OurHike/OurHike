@@ -228,6 +228,18 @@ Adding an entry per PR by hand is not a plan, and without a matching entry every
 
 Read-only, and safe to run any time. It does **not** check the redirect allow-list — the public API does not expose it, so 4.3b stays a manual step.
 
+**4.6 The free plan pauses a project nobody touches — handled.** Supabase pauses a Free plan project that shows too little activity over a rolling seven-day window, and restoring one is a manual click in the dashboard. For a trail app that is a hiker who cannot sign in, on a Saturday, because nothing happened all week — the failure arrives precisely when the project is least used and nobody is looking.
+
+`.github/workflows/supabase-keepalive.yml` does something about it, at 00:50 and 20:50 UTC daily. Nothing to configure: it reads the same `SUPABASE_URL` and `SUPABASE_ANON_KEY` 4.3a already sets.
+
+**What it measures is the part worth knowing.** Supabase's rule is *database* activity, not requests to the project in general ([Project Pausing](https://supabase.com/docs/guides/platform/free-project-pausing)) — so the obvious keepalive, a ping of the health or settings endpoint, does not work. `/auth/v1/settings` is answered by GoTrue from its own configuration and Postgres never hears about it, which would give you a green run every time and a paused project anyway. `backend/supabase_keepalive.py` reads all seven tables over PostgREST instead, because that is a query Postgres actually runs.
+
+**The cadence follows Supabase's own wording**, which is "a few user requests to the database each day over the previous week" — a per-day measure, and the reason this is not the weekly job it started as. The cron reads `50 */20 * * *`, which is as close to "every 20 hours" as cron gets: its hour field repeats within the day, so the runs land 20 hours apart and then 4, not on a steady 20-hour cycle. **The number that matters is the larger gap** — the project is never untouched for more than 20 hours, so every calendar day gets a sweep and one failed or late run cannot open a hole. The test asserts that gap rather than the string, so re-spelling the schedule is safe and lengthening it is not.
+
+Two things about the schedule are worth knowing before either looks like a bug: GitHub runs scheduled workflows **only from the default branch**, so this does nothing until it is on `main`; and GitHub disables schedules in a repository with **no activity for 60 days**, which would take the keepalive with it. After a long quiet spell, check the Actions tab. The thing that actually *guarantees* no pausing is the Pro plan; this is the free-tier answer.
+
+The reads double as the live RLS check — see 5a.
+
 ---
 
 ## 5. First database migration
@@ -279,6 +291,8 @@ curl "https://<ref>.supabase.co/rest/v1/reports?select=*" \
 ```
 
 An empty array or a permission error is what you want. Rows are the failure.
+
+**That check now runs itself, twice a day.** The keepalive in 4.6 makes exactly this request against all seven tables, for its own reasons, and fails the run if any of them returns a row. It is the only thing in this repository that asks the question of the *deployed* project rather than of the migrations — `backend/tests/test_migration_rls.py` proves a revision enables RLS, which is a different claim from the live database still having it on, through the front door that is actually open to anyone holding the key in the client bundle.
 
 **While you are in Advisors:** it also flags **leaked password protection as disabled**, and will keep flagging it. That check — Supabase's [HaveIBeenPwned integration](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection) — is **a paid-plan feature, confirmed 2026-08-06 against this project's own dashboard**. It is not a free toggle somebody forgot, so treat that advisor line as known and unactionable rather than as an outstanding task. An earlier version of this section said to go and switch it on; that was wrong, and re-discovering it costs somebody the same trip to the dashboard every time.
 

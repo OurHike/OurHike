@@ -18,6 +18,9 @@ TECHNICAL_ARCHITECTURE.md's explicit "per-artifact, not one hash for
 everything" - the same reasoning `assemble_raster.py`/`export_trails.py`/
 `export_poi.py` already apply per-artifact rather than per-run).
 
+Where each artifact lands and what it may be called is R2_LAYOUT.md, enforced
+by lib/r2_keys.py before the first upload of any run.
+
 R2 credentials/endpoint are read from the environment only (R2_ENDPOINT_URL,
 R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY) - never hardcoded, same
 discipline backend/app/config.py already applies to Supabase credentials.
@@ -35,6 +38,8 @@ import uuid
 from pathlib import Path
 
 import boto3
+
+from lib.r2_keys import assert_valid_keys
 
 ROOT = Path(__file__).parent
 PROCESSED_DIR = ROOT / "data" / "processed"
@@ -229,6 +234,14 @@ def publish(
         artifacts = collect_artifacts()
     if sidecars is None:
         sidecars = collect_sidecars()
+
+    # Before anything is uploaded, not per-object: a name that breaks the
+    # layout (pipeline/R2_LAYOUT.md) must fail the whole run rather than
+    # leave half a release in the bucket under keys nobody meant to publish.
+    # It also has to fail *here* rather than in review, because the manifest
+    # merge below is additive-only - a key published once cannot be renamed,
+    # only abandoned in place and served forever.
+    assert_valid_keys([MANIFEST_KEY, *artifacts, *sidecars])
 
     if s3_client is None:
         s3_client = boto3.client(

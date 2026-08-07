@@ -45,6 +45,7 @@ function aReport(over: Partial<api.QueuedReport> = {}): api.QueuedReport {
     lat: 35.6,
     lon: -83.5,
     poi_id: null,
+    mile: null,
     note: 'Large tree across the trail.',
     timestamp: new Date().toISOString(),
     visibility: 'public',

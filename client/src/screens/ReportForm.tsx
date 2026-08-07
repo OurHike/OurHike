@@ -222,6 +222,12 @@ export function ReportForm({
               // it is a report at a confident, wrong place in the Atlantic.
               lat: location?.lat,
               lon: location?.lon,
+              // The mile this form has been computing all along, and used to
+              // throw away here (#244). It is the value the serious-warnings
+              // banner filters on, and nothing server-side can re-derive it -
+              // the backend holds no centerline. Same omitted-not-zeroed rule
+              // as the coordinates: mi 0 is Springer Mountain, not "unknown".
+              mile: location?.mile,
               authoredAt,
               ...(photo !== null ? { photo } : {}),
             })

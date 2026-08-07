@@ -151,6 +151,31 @@ describe('ReportForm', () => {
     )
   })
 
+  it('sends the trail mile it just showed, rather than computing and dropping it', async () => {
+    // #244. This form snapped the fix to the centerline to render "mi 1,043.2"
+    // and then submitted lat/lon alone, so the one number the serious-warnings
+    // banner filters on was discarded at the moment it was known - and nothing
+    // server-side can re-derive it, because the backend holds no centerline.
+    const user = userEvent.setup()
+    render(<ReportForm {...PROPS} />)
+
+    await user.click(screen.getByRole('button', { name: /send|save/i }))
+
+    expect(PROPS.onSubmit).toHaveBeenCalledWith(expect.objectContaining({ mile: 1043.2 }))
+  })
+
+  it('omits the mile rather than zeroing it when there is no fix', async () => {
+    // Mile 0 is Springer Mountain - the same reason 0,0 is not a stand-in for
+    // missing coordinates. A zeroed mile would put every fixless report on the
+    // banner of every hiker starting the trail.
+    const user = userEvent.setup()
+    render(<ReportForm {...PROPS} location={null} />)
+
+    await user.click(screen.getByRole('button', { name: /send|save/i }))
+
+    expect(vi.mocked(PROPS.onSubmit).mock.calls[0][0].mile).toBeUndefined()
+  })
+
   it('shows how the report will be signed', () => {
     render(<ReportForm {...PROPS} />)
 

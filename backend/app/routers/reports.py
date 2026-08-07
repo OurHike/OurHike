@@ -210,6 +210,10 @@ def create_report(
         poi_id=payload.poi_id,
         lat=payload.lat,
         lon=payload.lon,
+        # Stored as sent, not re-derived: there is no centerline here to
+        # re-derive it against (#244). A client that omits it leaves the
+        # column null, which is the honest answer for an off-trail fix.
+        mile=payload.mile,
         reporter_type=payload.reporter_type,
         note=payload.note,
         photo_url=payload.photo_url,

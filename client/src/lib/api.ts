@@ -156,9 +156,6 @@ async function readFetch(path: string, signal?: AbortSignal): Promise<Response> 
  * of `ReportOut`); declaring only what is consumed keeps this honest about
  * what the client actually depends on rather than mirroring a schema it does
  * not use.
- *
- * `mile` is deliberately absent, because the backend does not send one - see
- * #244. Anything wanting to place a report along the trail has to derive it.
  */
 export interface ReportSummary {
   id: string
@@ -168,6 +165,20 @@ export interface ReportSummary {
   severity: 'normal' | 'serious'
   lat: number | null
   lon: number | null
+  /**
+   * Miles from the southern terminus, as the reporting phone measured it
+   * (#244) - or null.
+   *
+   * **Null is the common case and will stay common**, so nothing may treat
+   * this as the only source of a mile. It is null for every report filed
+   * before the field existed, for a fix that did not land on the trail, and
+   * for a phone that had not downloaded the trail index yet. Where this app
+   * holds the centerline it should prefer its own snap of `lat`/`lon`, which
+   * is derived from the same index it measures the hiker against; this is
+   * what answers the cases that snap cannot, chiefly a report with a
+   * `poi_id` and no coordinates at all.
+   */
+  mile: number | null
   poi_id: string | null
   note: string | null
   /** ISO 8601, UTC-designated - the server stamps the `Z` on the way out. */

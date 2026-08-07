@@ -69,5 +69,25 @@ class Settings(BaseSettings):
     # anticipate. See app/core/auth.py for why it must be passed explicitly.
     supabase_jwt_audience: str = "authenticated"
 
+    # Cloudflare R2, for report photos (#234). The same four variables
+    # pipeline/publish.py reads, spelled identically on purpose - one bucket,
+    # one credential shape, one thing to rotate.
+    #
+    # All four default to empty rather than being required, because a backend
+    # with no bucket is a normal, working deployment: every developer machine
+    # and every CI run is one. What it cannot do is accept a photo, and the
+    # endpoint says exactly that rather than failing at startup for a feature
+    # most runs never touch.
+    r2_endpoint_url: str = ""
+    r2_bucket: str = ""
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+    # The explicit gate, copied from pipeline/publish.py's R2_WRITE_ENABLED
+    # rather than inferred from "are the credentials present". Credentials can
+    # be present for a reason that is not this one - a shared environment, a
+    # secret injected by a platform - and a process that should not upload
+    # should be UNABLE to, not merely unlikely to.
+    r2_write_enabled: bool = False
+
 
 settings = Settings()

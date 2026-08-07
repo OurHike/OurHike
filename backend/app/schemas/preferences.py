@@ -125,17 +125,15 @@ class HikingDetailLevel(str, Enum):
 class MapStyle(str, Enum):
     """Which of the live sheet's palettes the map is drawn in
     (MAP_STYLE_SPEC.md). Mirrors client/src/lib/userPreferences.ts
-    `MAP_STYLE_VALUES` exactly, like every enum in this module - both values
-    are implemented palettes, so a value nothing can render is also a value
-    nothing can sync.
+    `MAP_STYLE_VALUES` exactly, like every enum in this module - all five
+    values are implemented palettes (map/liveTopo.ts's SHEET_VARIANTS), so a
+    value nothing can render is also a value nothing can sync."""
 
-    The spec names three more (quiet_pine, parchment, ridgeline); each joins
-    this enum in the release that ships its palette, the same release it
-    joins the client list - accepting one early would store a preference
-    that comes back as a map with no colours."""
-
+    quiet_pine = "quiet_pine"
     field = "field"
     night_hike = "night_hike"
+    parchment = "parchment"
+    ridgeline = "ridgeline"
 
 
 class PreferencesIn(BaseModel):

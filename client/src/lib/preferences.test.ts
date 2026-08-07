@@ -70,21 +70,20 @@ describe('preferences', () => {
     expect((await loadPreferences()).theme).toBe('dark')
   })
 
-  // The style list is the one that is KNOWN to change: three more styles are
-  // specced (quiet_pine, parchment, ridgeline) and will ship palette by
-  // palette, so a phone moving between builds can hold a value this build
-  // has no colours for. Trusted, it reaches the palette lookup and draws
-  // nothing - the same road to the same black map.
+  // The style list is the one that has ALREADY changed once - v1 shipped two
+  // of the five and the rest followed - so a phone moving between builds can
+  // hold a value some build has no colours for. Trusted, it reaches the
+  // palette lookup and draws nothing - the same road to the same black map.
   it('drops a map style this build cannot draw, rather than trusting it', async () => {
-    await savePreferences({ ...DEFAULT_PREFERENCES, map_style: 'parchment' as never })
+    await savePreferences({ ...DEFAULT_PREFERENCES, map_style: 'sepia' as never })
 
     expect((await loadPreferences()).map_style).toBe(DEFAULT_PREFERENCES.map_style)
   })
 
   it('keeps a map style it does know, so this too is a repair and not a reset', async () => {
-    await savePreferences({ ...DEFAULT_PREFERENCES, map_style: 'night_hike' })
+    await savePreferences({ ...DEFAULT_PREFERENCES, map_style: 'parchment' })
 
-    expect((await loadPreferences()).map_style).toBe('night_hike')
+    expect((await loadPreferences()).map_style).toBe('parchment')
   })
 
   it('leaves the rest of a stored blob alone while repairing the background', async () => {

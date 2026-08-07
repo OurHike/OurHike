@@ -39,7 +39,12 @@ import { attachClosureData, type ClosureBand } from './closureLayers'
 import { attachWarningData, attachWarningIcon, type WarningPoint } from './warningLayers'
 import { attachPoiTaps } from './poiTaps'
 import type { BoundingBox, MapPoint } from '../lib/legendContents'
-import type { BackgroundSource, LayerDetailLevel, MapStyle } from '../lib/userPreferences'
+import type {
+  BackgroundSource,
+  LayerDetailLevel,
+  MapStyle,
+  Theme,
+} from '../lib/userPreferences'
 import { openingZoomFloor, type ArchiveZooms } from '../lib/archiveCoverage'
 
 export interface MapViewProps {
@@ -121,6 +126,13 @@ export interface MapViewProps {
    */
   theme?: ResolvedTheme
   /**
+   * The stored theme preference behind `theme`'s resolution, so the sheet
+   * can tell a CHOSEN dark from a sunset one: field's auto-dark is
+   * night_hike, its chosen dark is its own maximum-contrast night sheet -
+   * see liveTopo.ts's sheetVariant.
+   */
+  themeChoice?: Theme
+  /**
    * Which of the sheet's palettes to draw, and whether night_hike's red-light
    * sub-mode is armed (MAP_STYLE_SPEC.md). Handed down like `theme` and
    * applied the same two ways: seeded into the built style for a correct
@@ -195,6 +207,7 @@ export function MapView({
   showZoomButtons = false,
   units = 'imperial',
   theme = 'light',
+  themeChoice = 'auto',
   mapStyle = 'field',
   redLight = false,
   detail = 'standard',
@@ -270,6 +283,7 @@ export function MapView({
         terrain,
         units,
         theme,
+        themeChoice,
         mapStyle,
         redLight,
       }),
@@ -349,8 +363,8 @@ export function MapView({
   // colour on the live sheet - see map/style.ts's attachMapAppearance.
   useEffect(() => {
     if (map === null) return
-    return attachMapAppearance(map, { theme, mapStyle, redLight })
-  }, [map, theme, mapStyle, redLight])
+    return attachMapAppearance(map, { theme, themeChoice, mapStyle, redLight })
+  }, [map, theme, themeChoice, mapStyle, redLight])
 
   // And the detail level's: which of the sheet's layers are drawn at all.
   // Pure visibility (map/mapDetail.ts), so a hiker thinning the sheet keeps

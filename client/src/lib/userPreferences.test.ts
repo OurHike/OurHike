@@ -121,11 +121,13 @@ describe('map appearance (MAP_STYLE_SPEC.md)', () => {
     expect(DEFAULT_PREFERENCES.red_light_enabled).toBe(false)
   })
 
-  it('offers only styles that have palettes to draw', () => {
-    // The spec names five; quiet_pine, parchment and ridgeline join this list
-    // in the release that carries their reviewed colours, not before - a
-    // style nothing can render is a settings row nobody can honour.
-    expect([...MAP_STYLE_VALUES].sort()).toEqual(['field', 'night_hike'].sort())
+  it('offers all five specced styles, every one with palettes to draw', () => {
+    // A style nothing can render is a settings row nobody can honour - all
+    // five carry reviewed day and night sheets in map/liveTopo.ts's
+    // SHEET_VARIANTS, which liveTopo.test.ts sweeps against this same list.
+    expect([...MAP_STYLE_VALUES].sort()).toEqual(
+      ['quiet_pine', 'field', 'night_hike', 'parchment', 'ridgeline'].sort(),
+    )
   })
 
   it('defaults layer detail to standard - borders off, everything else on', () => {

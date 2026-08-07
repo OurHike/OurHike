@@ -157,7 +157,9 @@
 }
 
 :root[data-theme='dark'] .map-view {
-  background: #15140f;
+  /* MAP_BACKDROP.dark - night_hike's own ink, the sheet the default dark
+     path lands on now that every style carries its own backdrop. */
+  background: #0c1410;
 }
 
 /* MapLibre's own controls, sized to the 42px the wireframe specifies. */

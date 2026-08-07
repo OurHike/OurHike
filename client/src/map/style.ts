@@ -68,15 +68,13 @@ import { buildClosureLayers } from '../lib/closureStyle'
 import { buildClosureSource, CLOSURE_SOURCE_ID } from './closureLayers'
 import { buildPoiLayer, buildPoiSource, POI_SOURCE_ID } from './poiLayers'
 import { buildWarningLayer, buildWarningSource, WARNING_SOURCE_ID } from './warningLayers'
-import type { BackgroundSource, MapStyle } from '../lib/userPreferences'
+import type { BackgroundSource, MapStyle, Theme } from '../lib/userPreferences'
 import {
   BUNDLED_GLYPHS,
-  TOPO_PALETTE,
-  TOPO_PALETTE_RED,
   attachSheetAppearance,
   liveTopoLayers,
   liveTopoSources,
-  sheetPalette,
+  sheetVariant,
   type SheetAppearance,
 } from './liveTopo'
 import { OSM_CREDIT, USGS_TOPO_CREDIT } from './credits'
@@ -156,16 +154,16 @@ export const MAP_BACKGROUND_COLOR = '#ffffff'
 
 /** Whether an appearance resolves to a dark sheet - night_hike outright (red
  *  light included) or the dark theme. Defined as "not the day palette" so it
- *  cannot drift from sheetPalette's own composition. */
+ *  cannot drift from the variant table's own composition. */
 export function sheetIsDark(appearance: SheetAppearance): boolean {
-  return sheetPalette(appearance) !== TOPO_PALETTE
+  return sheetVariant(appearance).dark
 }
 
 /** Whether the red-light sub-mode is actually in force - armed AND on the
  *  style it refines. The toggle alone means nothing under field, exactly as
- *  sheetPalette treats it. */
+ *  the variant table treats it. */
 export function redLightActive(appearance: SheetAppearance): boolean {
-  return sheetPalette(appearance) === TOPO_PALETTE_RED
+  return sheetVariant(appearance).redLight
 }
 
 /**
@@ -185,20 +183,20 @@ export function redLightActive(appearance: SheetAppearance): boolean {
  */
 export const MAP_BACKDROP: Record<ResolvedTheme, string> = {
   light: MAP_BACKGROUND_COLOR,
-  dark: '#15140f',
+  // night_hike's ink - the sheet the DEFAULT dark path lands on (field's
+  // auto-dark is night_hike), which is what makes it the right pre-WebGL
+  // fallback for the dark theme. Individual sheets carry their own backdrops
+  // in SHEET_VARIANTS; this pair is the anchor chrome.css and the tests pin.
+  dark: '#0c1410',
 }
 
 /**
- * The backdrop, per appearance: each sheet's own paper.
- *
- * Red light gets its own ink - the red palette's labelHalo, so halos dissolve
- * into ground exactly as the field sheet's white halos do into white paper -
- * because #15140f carries a green cast that reads grey against a sheet whose
- * every other colour is red-warm.
+ * The backdrop, per appearance: each sheet's own paper, straight from its
+ * card in the variant table - parchment's warm quad paper, red light's
+ * near-black red ink, and everything between.
  */
 export function mapBackdrop(appearance: SheetAppearance): string {
-  if (redLightActive(appearance)) return TOPO_PALETTE_RED.labelHalo
-  return sheetIsDark(appearance) ? MAP_BACKDROP.dark : MAP_BACKDROP.light
+  return sheetVariant(appearance).backdrop
 }
 
 /**
@@ -243,16 +241,14 @@ export function archiveRasterPaint(
 }
 
 /**
- * The hairline under every blaze, per appearance.
- *
- * The field sheet inks it at the palette's own label black - MAP_STYLE_SPEC.md
- * tightened this from the old warm #2b2620, which against field's neutral-grey
- * roads read as one more brown line. Dark sheets keep the warm hairline: on
- * ink ground the casing's job is a soft edge, and true black there is no edge
- * at all.
+ * The hairline under every blaze, per appearance - each sheet inks its own
+ * (SheetVariant.casing). Day sheets carry it near their label ink so the
+ * near-white centerline keeps an edge on pale paper; dark sheets drop it to
+ * near-black so the casing recedes into ground and the blaze itself is the
+ * edge.
  */
 export function trailCasingColor(appearance: SheetAppearance): string {
-  return sheetIsDark(appearance) ? '#2b2620' : TOPO_PALETTE.label
+  return sheetVariant(appearance).casing
 }
 
 /**
@@ -500,14 +496,17 @@ export interface MapStyleOptions {
   /**
    * Which appearance the canvas is drawn in - see mapBackdrop above.
    *
-   * All three optional and defaulting to the field day sheet, so every caller
+   * All optional and defaulting to the field day sheet, so every caller
    * that has no opinion builds exactly the style it always built. Present at
    * all so that a cold start under a dark appearance is dark in its FIRST
    * frame: attachMapAppearance can repaint a live map, but it necessarily
    * runs after the map exists, and a white flash on a phone at night is the
-   * thing these preferences exist to avoid.
+   * thing these preferences exist to avoid. `themeChoice` is the stored
+   * theme preference before resolution - liveTopo.ts's sheetVariant needs it
+   * to tell a chosen dark from a sunset one.
    */
   theme?: ResolvedTheme
+  themeChoice?: Theme
   mapStyle?: MapStyle
   redLight?: boolean
 }
@@ -519,10 +518,11 @@ export function buildMapStyle({
   terrain,
   units = 'imperial',
   theme = 'light',
+  themeChoice = 'auto',
   mapStyle = 'field',
   redLight = false,
 }: MapStyleOptions): StyleSpecification {
-  const appearance: SheetAppearance = { theme, mapStyle, redLight }
+  const appearance: SheetAppearance = { theme, themeChoice, mapStyle, redLight }
   // Asked for, and that is the whole question. Terrain used to be half of it -
   // `background === 'hiking_topo_live' && terrain !== undefined` - on the
   // reasoning that a style must not reference sources resolving to nothing.
@@ -539,7 +539,9 @@ export function buildMapStyle({
   // paper. That contradicted what terrain.ts and MapView.tsx each promise in
   // their own words: a failure there costs a layer, never the map.
   const live = background === 'hiking_topo_live'
-  const liveOptions = live ? { terrain, units, theme, mapStyle, redLight } : null
+  const liveOptions = live
+    ? { terrain, units, theme, themeChoice, mapStyle, redLight }
+    : null
 
   return {
     version: 8,

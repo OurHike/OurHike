@@ -1,4 +1,4 @@
-// Field / Night hike, as a control (MAP_STYLE_SPEC.md).
+// The five map styles, as a control (MAP_STYLE_SPEC.md).
 //
 // A segmented radio group like ThemePicker beside it, and a separate
 // component for the reason that file gives about the background picker: this
@@ -6,24 +6,26 @@
 // the app, and one component serving both would be two components sharing a
 // stylesheet spelled as one.
 //
-// Two options today, five in the spec. quiet_pine, parchment and ridgeline
-// join OPTIONS in the release that carries their reviewed palettes
-// (lib/userPreferences.ts MAP_STYLE_VALUES gates the same list) - the control
-// grows by rows, not by redesign.
+// The rows are the spec's own order and each style's hint is its mockup
+// card's use-case line, compressed - the card already answered "when would I
+// pick this", and the control's job is to keep that answer within reach.
 //
-// The red-light sub-mode is deliberately NOT a third segment here. It refines
+// The red-light sub-mode is deliberately NOT a sixth segment here. It refines
 // night_hike rather than standing beside it, so it renders as a toggle under
 // this control (Settings.tsx), shown only while night_hike is chosen.
 
 import type { MapStyle } from '../lib/userPreferences'
 
-// "Night sheet" rather than "Dark sheet", deliberately: the theme control on
-// the same screen has a radio named Dark, and two radios answering /dark/i is
-// ambiguous for a screen reader user and for every query that reaches the
-// screen the way one does.
+// "Night sheet" rather than "Dark sheet" for night_hike, deliberately: the
+// theme control on the same screen has a radio named Dark, and two radios
+// answering /dark/i is ambiguous for a screen reader user and for every query
+// that reaches the screen the way one does.
 const OPTIONS: ReadonlyArray<{ value: MapStyle; label: string; hint: string }> = [
+  { value: 'quiet_pine', label: 'Quiet pine', hint: 'Calm sheet' },
   { value: 'field', label: 'Field', hint: 'Day sheet' },
   { value: 'night_hike', label: 'Night hike', hint: 'Night sheet' },
+  { value: 'parchment', label: 'Parchment', hint: 'Print sheet' },
+  { value: 'ridgeline', label: 'Ridgeline', hint: 'Terrain first' },
 ]
 
 /**
@@ -33,13 +35,20 @@ const OPTIONS: ReadonlyArray<{ value: MapStyle; label: string; hint: string }> =
  * otherwise invisible until sunset does it: on the Auto theme the day sheet
  * becomes Night hike by itself. The night line says what choosing it outright
  * is FOR - readying night vision before dusk - so nobody has to discover that
- * by flipping the whole app dark.
+ * by flipping the whole app dark. The other three carry their cards' own
+ * one-line briefs.
  */
 const DESCRIPTIONS: Record<MapStyle, string> = {
+  quiet_pine:
+    'Muted gray-green ink on calm paper, closest to the app itself — the blazes become the loudest thing on the sheet.',
   field:
-    'The white-paper day sheet. On the Auto theme it turns into Night hike by itself after dark.',
+    'High-contrast white paper, built for full sun at arm’s length. On the Auto theme it turns into Night hike by itself after dark.',
   night_hike:
     'The dark sheet, tuned to protect night vision. Choosing it here keeps the map dark whatever the theme — for readying your eyes before dusk.',
+  parchment:
+    'The USGS quad leaned into: warmer paper, inkier browns, the classic green woodland overprint. For trail pages and anything printed.',
+  ridgeline:
+    'Terrain does the talking — relief carried strong, contours promoted, colour saved for water and blazes. For judging a climb before committing.',
 }
 
 export interface MapStylePickerProps {

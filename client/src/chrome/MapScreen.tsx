@@ -37,7 +37,12 @@ import { mapCredits } from '../map/credits'
 import { MapAttribution } from './MapAttribution'
 import type { ScaleUnits } from '../map/mapChrome'
 import type { ResolvedTheme } from '../lib/theme'
-import type { BackgroundSource, LayerDetailLevel, MapStyle } from '../lib/userPreferences'
+import type {
+  BackgroundSource,
+  LayerDetailLevel,
+  MapStyle,
+  Theme,
+} from '../lib/userPreferences'
 import type { BoundingBox, MapPoint } from '../lib/legendContents'
 import type { SearchablePoi } from '../lib/searchPoi'
 import './chrome.css'
@@ -139,9 +144,10 @@ export interface MapScreenProps {
   /** Which theme the canvas is drawn in. Passed down rather than read here so
    *  the chrome and the map answer from one value - see MapViewProps. */
   theme?: ResolvedTheme
-  /** The sheet's palette family, night_hike's red-light sub-mode, and the
-   *  detail level - passed straight through to MapView like `theme`, and for
-   *  the same reason. */
+  /** The stored theme preference behind `theme`, the sheet's palette family,
+   *  night_hike's red-light sub-mode, and the detail level - passed straight
+   *  through to MapView like `theme`, and for the same reason. */
+  themeChoice?: Theme
   mapStyle?: MapStyle
   redLight?: boolean
   detail?: LayerDetailLevel
@@ -258,6 +264,7 @@ export function MapScreen({
   showZoomButtons = false,
   units = 'imperial',
   theme = 'light',
+  themeChoice = 'auto',
   mapStyle = 'field',
   redLight = false,
   detail = 'standard',
@@ -372,6 +379,7 @@ export function MapScreen({
               showZoomButtons={showZoomButtons}
               units={units}
               theme={theme}
+              themeChoice={themeChoice}
               mapStyle={mapStyle}
               redLight={redLight}
               detail={detail}

@@ -201,19 +201,32 @@ def test_put_preferences_round_trips_the_hiking_detail_level(client):
     assert get_response.json()["hiking_detail_level"] == "fine"
 
 
-def test_put_preferences_rejects_a_specced_but_unshipped_map_style(client):
-    """The spec names five styles; only the two with palettes are accepted
-    (MAP_STYLE_SPEC.md). parchment is real in the spec and unreal in every
-    client, which is exactly the value that must 422 rather than store."""
+def test_put_preferences_rejects_an_unknown_map_style(client):
+    """All five specced styles are shipped and accepted; a style outside the
+    set - a typo, or a future style syncing from a newer client - must 422
+    rather than store as a preference that comes back unrenderable."""
     user_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
     response = client.put(
         "/preferences/me",
-        json=_valid_preferences(map_style="parchment"),
+        json=_valid_preferences(map_style="sepia"),
         headers=auth_headers(user_id),
     )
 
     assert response.status_code == 422
+
+
+def test_put_preferences_round_trips_every_shipped_map_style(client):
+    user_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+
+    for style in ["quiet_pine", "field", "night_hike", "parchment", "ridgeline"]:
+        response = client.put(
+            "/preferences/me",
+            json=_valid_preferences(map_style=style),
+            headers=auth_headers(user_id),
+        )
+        assert response.status_code == 200
+        assert response.json()["map_style"] == style
 
 
 def test_get_defaults_map_style_for_a_blob_written_before_it_existed(client, db_session):

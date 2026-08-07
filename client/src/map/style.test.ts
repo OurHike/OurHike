@@ -721,10 +721,13 @@ describe('the map style and red light (MAP_STYLE_SPEC.md)', () => {
     expect(mapBackdrop(appearance)).toBe(TOPO_PALETTE_RED.labelHalo)
   })
 
-  it('inks the field casing at the palette label black, and keeps dark sheets warm', () => {
+  it('inks each sheet its own casing - field at label black, dark sheets near-black', () => {
     expect(trailCasingColor({ theme: 'light' })).toBe(TOPO_PALETTE.label)
-    expect(trailCasingColor({ theme: 'dark' })).toBe('#2b2620')
-    expect(trailCasingColor({ mapStyle: 'night_hike' })).toBe('#2b2620')
+    // Dark sheets drop the casing into ground rather than keeping a warm
+    // hairline: on ink the blaze itself is the edge.
+    expect(trailCasingColor({ theme: 'dark' })).toBe('#060907')
+    expect(trailCasingColor({ mapStyle: 'night_hike' })).toBe('#060907')
+    expect(trailCasingColor({ mapStyle: 'parchment' })).toBe('#241d12')
   })
 
   it('overrides the blazes to one red under red light, and only there', () => {

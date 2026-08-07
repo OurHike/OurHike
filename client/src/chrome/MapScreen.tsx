@@ -29,8 +29,8 @@ import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapView } from '../map/MapView'
 import type { ClosureBand } from '../map/closureLayers'
 import type { WarningPoint } from '../map/warningLayers'
-import { HEALTHY, type LiveSourceHealth } from '../map/liveSourceHealth'
-import { backgroundProblem } from '../lib/backgroundHealth'
+import type { LiveSourceHealth } from '../map/liveSourceHealth'
+import type { BackgroundProblem } from '../lib/backgroundHealth'
 import type { BackgroundOverride } from '../lib/dataSaver'
 import type { ArchiveZooms } from '../lib/archiveCoverage'
 import { mapCredits } from '../map/credits'
@@ -184,15 +184,21 @@ export interface MapScreenProps {
    */
   hasRasterArchive?: boolean
   /**
-   * Whether the HIKING sheet's vector package is finished and on this phone.
+   * Why the background is not on screen, or null when it is
+   * (lib/backgroundHealth.ts).
    *
-   * The third of these, and the last one that is not interchangeable with the
-   * other two: the strip has to be able to say that a download is present and
-   * not drawing, and only the package behind the failing source can answer
-   * that (lib/backgroundHealth.ts). `hasDownload` would say yes on the
-   * strength of the raster sheet alone.
+   * Decided by the shell rather than here, and it moved there rather than
+   * staying local for a concrete reason (#334): the same failing source has
+   * to reach the Downloads window, which opens over the More tab where this
+   * screen is not rendered at all. A screen that owned the fact could not
+   * hand it to a window that outlives it. `onLiveSourceHealth` below is the
+   * other half of that move - the observations go up, the conclusion comes
+   * back down.
    */
-  hasHikingSheet?: boolean
+  backgroundProblem?: BackgroundProblem | null
+  /** Where the map's source observations go. Passed straight to MapView, and
+   *  stable across renders like every other handler here. */
+  onLiveSourceHealth?: (health: LiveSourceHealth, withdrawn: boolean) => void
   /**
    * Whether the view is zoomed out past what the download covers (#216).
    *
@@ -257,7 +263,8 @@ export function MapScreen({
   onOpenDownloads,
   hasDownload = false,
   hasRasterArchive = false,
-  hasHikingSheet = false,
+  backgroundProblem = null,
+  onLiveSourceHealth,
   belowArchiveZoom = false,
   archiveZooms = null,
 }: MapScreenProps) {
@@ -280,12 +287,6 @@ export function MapScreen({
     [onMapReady],
   )
 
-  // Held here rather than lifted to the shell: nothing above this screen acts
-  // on it, and the strip that reports it is three lines up. `setState` is
-  // stable across renders, so handing it straight to MapView satisfies that
-  // prop's stability contract without a useCallback.
-  const [liveSources, setLiveSources] = useState<LiveSourceHealth>(HEALTHY)
-
   return (
     <div className="map-screen">
       {/* Everything that is not the navigation. On a phone this is a plain
@@ -297,21 +298,7 @@ export function MapScreen({
           online={online}
           hasGpsFix={hasGpsFix}
           lastSyncedAt={lastSyncedAt}
-          // Joined here rather than in the strip, one line from where it is
-          // rendered, for the same reason `backgroundOverride` is computed
-          // beside the background it describes: what the sources reported and
-          // what is on the phone mean nothing apart, and two readings of one
-          // condition is how a strip comes to disagree with the canvas above
-          // it. The DEM is not among the inputs on purpose - an outage there
-          // costs relief and contour lines on a sheet that still draws, which
-          // is the degradation terrain.ts promises rather than something to
-          // interrupt a hiker over.
-          backgroundProblem={backgroundProblem({
-            sources: liveSources,
-            online,
-            rasterArchiveDownloaded: hasRasterArchive,
-            hikingSheetDownloaded: hasHikingSheet,
-          })}
+          backgroundProblem={backgroundProblem}
           backgroundOverride={backgroundOverride}
           belowArchiveZoom={belowArchiveZoom}
         />
@@ -382,7 +369,7 @@ export function MapScreen({
               archiveZooms={archiveZooms}
               onViewportChange={onViewportChange}
               onMapReady={handleMapReady}
-              onLiveSourceHealth={setLiveSources}
+              onLiveSourceHealth={onLiveSourceHealth}
             />
             {/* Inline above the desktop breakpoint, where the whole list fits
                 on one line - the same `isDesktop` the legend uses, so the two

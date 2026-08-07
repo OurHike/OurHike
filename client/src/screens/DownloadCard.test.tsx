@@ -438,3 +438,42 @@ describe('a refused download, said plainly (#238)', () => {
     expect(screen.queryByRole('progressbar')).toBe(null)
   })
 })
+
+describe('a download that finished and cannot be read (#334)', () => {
+  const DOWNLOADED = {
+    ...PROPS,
+    status: {
+      state: 'downloaded' as const,
+      totalBytes: 314_000_000,
+      completedAt: new Date('2026-08-06T10:00:00'),
+    },
+  }
+
+  it('says the map screen could not draw from it, and how to fix that', () => {
+    // #314 gave the map the words for this and left this card saying the
+    // download finished and nothing else - so the two screens disagreed, and
+    // the one a hiker opens to fix it was the reassuring one.
+    render(<DownloadCard {...DOWNLOADED} notDrawing />)
+
+    const notice = screen.getByRole('alert')
+    expect(notice).toHaveTextContent(/could not draw from it/i)
+    expect(notice).toHaveTextContent(/deleting it and downloading it again/i)
+  })
+
+  it('keeps the byte count and the date, because both are still true', () => {
+    // The transfer really did finish and those bytes really are on the phone.
+    // Withdrawing that would be answering one false statement with another,
+    // and it is what tells a hiker how much space deleting will give back.
+    render(<DownloadCard {...DOWNLOADED} notDrawing />)
+
+    expect(screen.getByText(/314 MB on this phone/i)).toBeInTheDocument()
+    expect(screen.getByText(/August 6/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /delete the map/i })).toBeInTheDocument()
+  })
+
+  it('says nothing at all about a download that draws', () => {
+    render(<DownloadCard {...DOWNLOADED} />)
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+})

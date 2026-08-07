@@ -6,8 +6,14 @@
 // screen a hiker is looking at is the same in all of them: paper.
 
 import { describe, it, expect } from 'vitest'
-import { backgroundProblem, type BackgroundHealthInputs } from './backgroundHealth'
+import {
+  backgroundProblem,
+  forgetSheet,
+  sheetNotDrawing,
+  type BackgroundHealthInputs,
+} from './backgroundHealth'
 import { HEALTHY, type LiveSourceHealth } from '../map/liveSourceHealth'
+import { HIKING_SHEET, USGS_SHEET } from './packages'
 
 /** A phone with signal, nothing downloaded, and a map that is drawing. */
 const WELL: BackgroundHealthInputs = {
@@ -126,5 +132,67 @@ describe('backgroundProblem', () => {
     expect(
       backgroundProblem({ ...WELL, online: false, sources: failing('elevation') }),
     ).toBeNull()
+  })
+})
+
+describe('sheetNotDrawing', () => {
+  // The Downloads card's half of the same question (#334). What makes this a
+  // separate function rather than a second read of `backgroundProblem` is
+  // which claim it is contradicting: the card's own "this finished".
+
+  it('says a downloaded sheet whose source drew nothing is not drawing', () => {
+    expect(sheetNotDrawing(failing('archive'), USGS_SHEET, true)).toBe(true)
+    expect(sheetNotDrawing(failing('basemap'), HIKING_SHEET, true)).toBe(true)
+  })
+
+  it('stays silent when the card is not claiming the download finished', () => {
+    // The whole point of the notice is to contradict a green card. With no
+    // card saying so - nothing downloaded, a partial, an eviction - there is
+    // nothing to contradict, and the archive source failing with no archive
+    // is the ordinary state.
+    expect(sheetNotDrawing(failing('archive'), USGS_SHEET, false)).toBe(false)
+    expect(sheetNotDrawing(failing('basemap'), HIKING_SHEET, false)).toBe(false)
+  })
+
+  it('never blames one sheet for the other one’s source', () => {
+    expect(sheetNotDrawing(failing('archive'), HIKING_SHEET, true)).toBe(false)
+    expect(sheetNotDrawing(failing('basemap'), USGS_SHEET, true)).toBe(false)
+  })
+
+  it('does not let a failed DEM condemn the sheet it belongs to', () => {
+    // The hiking sheet is the basemap AND the DEM, and only one of them is
+    // the map. A hillshade that never arrived costs relief on a sheet that
+    // still draws - telling someone to re-download 300 MB for that would be
+    // the strip's DEM rule broken on a different screen.
+    expect(sheetNotDrawing(failing('elevation'), HIKING_SHEET, true)).toBe(false)
+  })
+
+  it('is silent about a healthy download', () => {
+    expect(sheetNotDrawing(HEALTHY, USGS_SHEET, true)).toBe(false)
+  })
+})
+
+describe('forgetSheet', () => {
+  it('clears the sheet being fetched again and leaves its neighbour alone', () => {
+    // A remembered failure describes bytes that are about to be replaced.
+    // Carried into the fresh copy it would tell a hiker their new download is
+    // broken too - and clearing everything would lose a real failure on the
+    // sheet nobody touched.
+    const both = failing('archive', 'basemap')
+
+    expect(forgetSheet(both, USGS_SHEET)).toEqual({
+      basemap: true,
+      elevation: false,
+      archive: false,
+    })
+    expect(forgetSheet(both, HIKING_SHEET)).toEqual({
+      basemap: false,
+      elevation: false,
+      archive: true,
+    })
+  })
+
+  it('leaves the flags it does not speak for untouched', () => {
+    expect(forgetSheet(failing('elevation'), HIKING_SHEET).elevation).toBe(true)
   })
 })

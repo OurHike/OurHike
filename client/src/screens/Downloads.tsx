@@ -61,6 +61,11 @@ export interface SheetDownload {
   sizeBytes: number
   /** Its own failure, if it has one - never a sibling sheet's. */
   error?: string | null
+  /** Whether this sheet's bytes are on the phone and the map could not draw
+   *  from them (lib/backgroundHealth.ts). Distinct from `error`, which is a
+   *  transfer that failed; this one is a transfer that SUCCEEDED and left an
+   *  archive the map cannot read (#334). */
+  notDrawing?: boolean
   /** This sheet's levels, its chosen one, and how to report a change. Every
    *  level the app knows comes through, with a null size where this sheet
    *  has none of it, so the picker is the same shape under every tab
@@ -160,6 +165,7 @@ export function Downloads({ sheets, persistence = null }: DownloadsProps) {
           title={sheet.title}
           status={sheet.status}
           error={sheet.error ?? null}
+          notDrawing={sheet.notDrawing ?? false}
           detail={sheet.detail}
           persistence={persistence}
           onStart={sheet.onStart}

@@ -132,15 +132,20 @@ export interface MapViewProps {
    */
   onMapReady?: (map: MapLibreMap | null) => void
   /**
-   * Which of the live background's network sources reported an error and never
-   * drew anything - see map/liveSourceHealth.ts.
+   * Which of the background's sources reported an error and never drew
+   * anything - see map/liveSourceHealth.ts.
    *
    * Reported rather than rendered: this component draws the map, and what the
    * hiker is told about it belongs to the chrome. Must be stable across
    * renders (a `useState` setter already is), like `onViewportChange` - an
    * inline function would re-attach the listeners on every parent render.
+   *
+   * `withdrawn` is true only on the report this map sends as it is torn down,
+   * where `HEALTHY` means "nobody is watching any more" rather than "the
+   * sources recovered". A caller drawing only this map's chrome can ignore
+   * the difference; one that remembers a failure across screens cannot.
    */
-  onLiveSourceHealth?: (health: LiveSourceHealth) => void
+  onLiveSourceHealth?: (health: LiveSourceHealth, withdrawn: boolean) => void
 }
 
 const DEFAULT_CENTER: [number, number] = [-77.1, 39.3]

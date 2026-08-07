@@ -68,6 +68,19 @@ export interface DownloadCardProps {
   /** This download's own failure, in its own card. A shared notice could
    *  only ever say "a download failed" without saying which one. */
   error?: string | null
+  /**
+   * The bytes are here and the map could not draw from them (#334).
+   *
+   * A separate input from `status` rather than a state inside it, and the
+   * reason is which question each answers. `status` is the TRANSFER's story
+   * and every word of it stays true: this many bytes arrived, on this day,
+   * and they are still on the phone. This says the archive those bytes make
+   * up is not readable - a thing only the map can find out, by asking it for
+   * a tile and being refused. Folding it into `status` would mean the card
+   * denying its own byte count, and lib/backgroundStatus.ts would have to
+   * rank a fact that is not about transferring against five that are.
+   */
+  notDrawing?: boolean
   /** This download's levels, its chosen one, and how to report a change.
    *  Every level the app knows comes through, with a null size where this
    *  download has none of it, so the picker is the same shape under every
@@ -109,6 +122,7 @@ export function DownloadCard({
   title,
   status,
   error = null,
+  notDrawing = false,
   detail,
   persistence = null,
   onStart,
@@ -280,6 +294,26 @@ export function DownloadCard({
 
       {status.state === 'downloaded' && (
         <div className="downloads__done">
+          {/* Above the byte count, because it changes what that line means.
+              #314 gave the map screen the words for this - "Downloaded map
+              not drawing" - and left this card saying the download finished
+              and nothing else, so the two screens disagreed and the one a
+              hiker comes to for the fix was the reassuring one (#334).
+
+              role="alert" like More.tsx's stuck reports: this is not ambient
+              status, it is the reason someone opened this window.
+
+              The byte count and the date stay, and stay true - the transfer
+              really did finish and those bytes really are on the phone. What
+              is added is that they no longer add up to a map, and the one
+              way back, which is the Delete button already below. */}
+          {notDrawing && (
+            <p role="alert" className="downloads__error">
+              This map is on the phone, and the map screen could not draw from it — the
+              file is damaged or incomplete. Deleting it and downloading it again is the
+              fix, and that needs signal.
+            </p>
+          )}
           <p className="downloads__bytes">
             {`${formatBytes(status.totalBytes)} on this phone, finished ${formatDay(
               status.completedAt,

@@ -129,10 +129,26 @@ type SourceScopedError = { error?: unknown; sourceId?: unknown }
  * everything false when a tile finally lands - which is what walking back into
  * signal looks like from here. The returned detach clears the state the same
  * way, because these flags describe one map and must not outlive it.
+ *
+ * WHY THE SECOND ARGUMENT EXISTS
+ *
+ * Those last two sentences describe two events that look identical from
+ * outside - `HEALTHY`, twice - and mean opposite things: "the source came
+ * back" against "there is no longer a map here to make a claim about". A
+ * caller that only draws the current map's chrome can treat them the same,
+ * and MapScreen's status strip does. A caller that REMEMBERS a failure past
+ * this map's lifetime cannot: the downloads window opens from the More tab,
+ * where the map screen is not rendered at all, so the shell has to carry the
+ * fact across a teardown (#334) - and clearing it on the teardown's own
+ * report would lose it exactly when the hiker went looking for the fix.
+ *
+ * `withdrawn` is therefore true on precisely one report: the one the detach
+ * sends. It is not a hint about the flags, which are `HEALTHY` either way -
+ * it says whether anything was observed to produce them.
  */
 export function attachLiveSourceHealth(
   map: MapLibreMap,
-  onChange: (health: LiveSourceHealth) => void,
+  onChange: (health: LiveSourceHealth, withdrawn: boolean) => void,
 ): () => void {
   // Errored-and-never-drew, tracked separately so neither can be inferred from
   // the other. `isSourceLoaded` cannot stand in for `drew`: a vector source
@@ -154,7 +170,7 @@ export function attachLiveSourceHealth(
     const flags = Object.keys(next) as (keyof LiveSourceHealth)[]
     if (flags.every((flag) => next[flag] === reported[flag])) return
     reported = next
-    onChange(next)
+    onChange(next, false)
   }
 
   const onError = (event: unknown) => {
@@ -192,7 +208,7 @@ export function attachLiveSourceHealth(
     drew.clear()
     if (Object.values(reported).some(Boolean)) {
       reported = HEALTHY
-      onChange(HEALTHY)
+      onChange(HEALTHY, true)
     }
   }
 }

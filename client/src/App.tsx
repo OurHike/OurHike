@@ -75,6 +75,8 @@ import {
 import { useArchiveDownloads } from './lib/useArchiveDownload'
 import { useArchiveZooms } from './lib/useArchiveZooms'
 import { archiveCoversZoom } from './lib/archiveCoverage'
+import { HEALTHY, type LiveSourceHealth } from './map/liveSourceHealth'
+import { backgroundProblem, forgetSheet, sheetNotDrawing } from './lib/backgroundHealth'
 import {
   BASEMAP_PACKAGE,
   CORRIDOR_BACKGROUND_PACKAGE,
@@ -231,6 +233,26 @@ function App() {
   // it used to be. Held here rather than on either screen because it opens
   // over both of them, from the one background picker they share.
   const [downloadsOpen, setDownloadsOpen] = useState(false)
+  /**
+   * What the map's background sources were last OBSERVED to be doing, held
+   * here rather than on the map screen because the downloads window outlives
+   * that screen (#334).
+   *
+   * "Last observed" is the whole distinction. `attachLiveSourceHealth` reports
+   * `HEALTHY` both when a source recovers and when its map is torn down, and
+   * those mean opposite things to a window opened from the More tab, where
+   * the map is not rendered at all: one says the download works now, the
+   * other says nobody is watching. Its `withdrawn` argument tells them apart,
+   * and a withdrawal deliberately leaves this state alone - the failure it
+   * described is still true of the archive on the phone, and the Downloads
+   * card is where a hiker goes to act on it.
+   *
+   * A recovery clears it, which is what keeps this honest in the other
+   * direction: a source that fails one tile before anything has drawn and
+   * then draws is a working download, and a remembered flag that outlived
+   * that would put "not drawing" on a healthy 314 MB archive.
+   */
+  const [liveSources, setLiveSources] = useState<LiveSourceHealth>(HEALTHY)
   const [legendOpen, setLegendOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   // The tapped pin, held as an id rather than as the POI itself. Everything the
@@ -289,6 +311,21 @@ function App() {
 
   const now = useClock()
   const online = useOnline()
+
+  /**
+   * The map's source observations, kept; its withdrawals, ignored.
+   *
+   * One line of logic and it is the whole of #334's second requirement - see
+   * `liveSources` above for why a withdrawal must not clear what it reports.
+   * Stable across renders, as MapViewProps requires of this handler.
+   */
+  const recordSourceHealth = useCallback(
+    (health: LiveSourceHealth, withdrawn: boolean) => {
+      if (withdrawn) return
+      setLiveSources(health)
+    },
+    [],
+  )
   // Read here rather than inside the map, so the settings screen and the canvas
   // are answering from the same value - a row that says "live" over a map
   // drawing the archive would be the exact mismatch this feature exists to
@@ -986,6 +1023,9 @@ function App() {
         .filter((key) => archiveStatusFor(key).state !== 'downloaded')
       if (missing.length === 0) return
       if (!(await ensureTrailData())) return
+      // Whatever this sheet's sources did to the LAST copy of these bytes is
+      // not true of the one now arriving (lib/backgroundHealth.ts).
+      setLiveSources((current) => forgetSheet(current, sheet))
       await startPackages(missing)
     },
     [archiveStatusFor, ensureTrailData, startPackages],
@@ -1294,6 +1334,15 @@ function App() {
           status: sheetStatus(sheet),
           sizeBytes: sheetSizeBytes(sheet, detailLevel, hikingLevel),
           error: sheetError(sheet),
+          // Answered against the card's OWN status, not a second reading of
+          // what is downloaded: this notice exists to contradict a card that
+          // says the download finished, so it has to be about the same claim
+          // that card is making (lib/backgroundHealth.ts).
+          notDrawing: sheetNotDrawing(
+            liveSources,
+            sheet,
+            sheetStatus(sheet).state === 'downloaded',
+          ),
           // Each sheet's picker carries its own level set and writes its own
           // preference (#276) - the USGS raster's tiers and the hiking
           // sheet's cuts are separate dials. The `as` casts are safe because
@@ -1434,10 +1483,20 @@ function App() {
           // the USGS survey only while there are USGS tiles on the phone to
           // draw, and a hiking-sheet-only download has none.
           hasRasterArchive={archiveDownloaded}
-          // The third download fact, and the one that lets the strip say a
-          // download is present and not drawing rather than guessing which
-          // half of #314 a blank screen is.
-          hasHikingSheet={hikingSheetDownloaded}
+          // Decided here rather than on the screen (#334): the same failing
+          // source has to reach the downloads window, which opens over the
+          // More tab where the map screen is not rendered at all. What the
+          // sources reported and what is on the phone mean nothing apart, so
+          // they are joined once, in one place, and both screens read the
+          // same answer. The DEM is deliberately not an input - an outage
+          // there costs relief and contours on a sheet that still draws.
+          backgroundProblem={backgroundProblem({
+            sources: liveSources,
+            online,
+            rasterArchiveDownloaded: archiveDownloaded,
+            hikingSheetDownloaded,
+          })}
+          onLiveSourceHealth={recordSourceHealth}
           belowArchiveZoom={belowArchiveZoom}
           // For the opening camera only - MapView keeps it out of the zooms
           // the download has no tiles for.

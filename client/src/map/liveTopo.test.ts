@@ -22,13 +22,18 @@ import {
   PLACE_TOWN_MIN_ZOOM,
   PLACE_VILLAGE_MIN_ZOOM,
   SHEET_COLOURS,
+  SHEET_VARIANTS,
+  SHEET_VARIANT_RED,
   TOPO_PALETTE,
   TOPO_PALETTE_DARK,
+  TOPO_PALETTE_FIELD_NIGHT,
   TOPO_PALETTE_RED,
   attachSheetAppearance,
   liveTopoLayers,
   sheetPalette,
+  sheetVariant,
 } from './liveTopo'
+import { MAP_STYLE_VALUES } from '../lib/userPreferences'
 import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec'
 import {
   CONTOUR_LEVEL_KEY,
@@ -467,13 +472,19 @@ describe('protected land, drawn as an area rather than an outline', () => {
     )
   })
 
-  it('keeps the tint legible over woodland, in every palette', () => {
+  it('keeps the tint legible over woodland, in every palette of every style', () => {
     // What "the tint carries it alone" means in numbers: composited over the
     // wood fill at the layer's own opacity, the park wash has to move at
     // least one channel by a margin a phone panel still shows. The exact
     // colours are the palette's business - under red light the wash is a
     // dim rust, not a green - and only the margin is pinned. A palette
     // added without meeting it is the old invisible tint coming back.
+    //
+    // Swept over the whole variant table rather than the three palettes this
+    // was written against, and that is the case it caught: every mockup card
+    // drew its park wash with a dashed outline beside it, so all eleven
+    // arrived a few RGB steps from their own wood fill. A style added later
+    // faces the same bar without anyone remembering to add it here.
     const park = layers().find((l) => l.id === LIVE_TOPO_LAYER_IDS.parkFill)
     if (park === undefined) throw new Error('no park fill layer in the live sheet')
     const opacity = (park.paint as Record<string, unknown>)['fill-opacity'] as number
@@ -481,14 +492,22 @@ describe('protected land, drawn as an area rather than an outline', () => {
     expect(opacity).toBeGreaterThan(0)
     expect(opacity).toBeLessThan(1)
 
-    for (const palette of [TOPO_PALETTE, TOPO_PALETTE_DARK, TOPO_PALETTE_RED]) {
+    const palettes = [
+      ...MAP_STYLE_VALUES.flatMap((style) => [
+        SHEET_VARIANTS[style].day.palette,
+        SHEET_VARIANTS[style].night.palette,
+      ]),
+      SHEET_VARIANT_RED.palette,
+    ]
+
+    for (const palette of palettes) {
       const wood = hexChannels(palette.wood)
       const wash = hexChannels(palette.park)
       const delta = Math.max(
         ...wood.map((w, at) => Math.abs(w * (1 - opacity) + wash[at] * opacity - w)),
       )
 
-      expect(delta).toBeGreaterThanOrEqual(8)
+      expect(delta, `${palette.wood} -> ${palette.park}`).toBeGreaterThanOrEqual(8)
     }
   })
 })
@@ -740,14 +759,38 @@ describe('the sheet under light and dark', () => {
     expect(Object.keys(TOPO_PALETTE_RED).sort()).toEqual(Object.keys(TOPO_PALETTE).sort())
   })
 
-  it('holds only real six-digit hex in every palette - the tables are data', () => {
-    // MAP_STYLE_SPEC.md's own test brief. A malformed value here is not a
-    // type error - TopoPalette is Record<..., string> - and MapLibre would
-    // swallow it per layer, so it is asserted where the data lives.
-    for (const palette of [TOPO_PALETTE, TOPO_PALETTE_DARK, TOPO_PALETTE_RED]) {
-      for (const [key, value] of Object.entries(palette)) {
+  it('holds only real six-digit hex in every variant of every style - the tables are data', () => {
+    // MAP_STYLE_SPEC.md's own test brief, swept across the full variant
+    // table. A malformed value here is not a type error - TopoPalette is
+    // Record<..., string> - and MapLibre would swallow it per layer, so it is
+    // asserted where the data lives. Backdrop and casing ride along: they
+    // are the same class of data one table over.
+    const variants = [
+      ...MAP_STYLE_VALUES.flatMap((style) => [
+        SHEET_VARIANTS[style].day,
+        SHEET_VARIANTS[style].night,
+      ]),
+      SHEET_VARIANT_RED,
+    ]
+
+    for (const variant of variants) {
+      for (const [key, value] of Object.entries(variant.palette)) {
         expect(value, key).toMatch(/^#[0-9a-f]{6}$/)
       }
+      expect(variant.backdrop).toMatch(/^#[0-9a-f]{6}$/)
+      expect(variant.casing).toMatch(/^#[0-9a-f]{6}$/)
+      expect(variant.hillshadeBase).toBeGreaterThan(0)
+      expect(variant.hillshadeBase).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('gives every style a day and a night sheet, keyed to the same value list', () => {
+    // MAP_STYLE_VALUES is what the picker offers and the backend accepts; a
+    // style in that list without variants here is a control writing a value
+    // nothing can render.
+    for (const style of MAP_STYLE_VALUES) {
+      expect(SHEET_VARIANTS[style]?.day, style).toBeDefined()
+      expect(SHEET_VARIANTS[style]?.night, style).toBeDefined()
     }
   })
 
@@ -827,8 +870,49 @@ describe('sheetPalette', () => {
       { mapStyle: 'field', theme: 'light', redLight: true },
       TOPO_PALETTE,
     ],
+    [
+      'a CHOSEN dark theme reaches field/night - the bright-screen-in-the-dark sheet',
+      { mapStyle: 'field', theme: 'dark', themeChoice: 'dark' },
+      TOPO_PALETTE_FIELD_NIGHT,
+    ],
+    [
+      "an auto theme that resolved dark does not - sunset on a trail wants night_hike's dim",
+      { mapStyle: 'field', theme: 'dark', themeChoice: 'auto' },
+      TOPO_PALETTE_DARK,
+    ],
   ] as const)('%s', (_name, appearance, expected) => {
     expect(sheetPalette(appearance)).toBe(expected)
+  })
+
+  it('follows every other style to its own night sheet, chosen or auto alike', () => {
+    // Field's auto-dark exception is field's alone: quiet_pine, parchment and
+    // ridgeline drew their nights as dim companions, so both roads to dark
+    // land on the same sheet.
+    for (const style of ['quiet_pine', 'parchment', 'ridgeline'] as const) {
+      for (const themeChoice of ['auto', 'dark'] as const) {
+        expect(
+          sheetVariant({ mapStyle: style, theme: 'dark', themeChoice }),
+          `${style}/${themeChoice}`,
+        ).toBe(SHEET_VARIANTS[style].night)
+      }
+      expect(sheetVariant({ mapStyle: style, theme: 'light' })).toBe(
+        SHEET_VARIANTS[style].day,
+      )
+    }
+  })
+
+  it('carries each card’s tuning on the variant, ridgeline strongest', () => {
+    // The card notes are data too: ridgeline is 0.55 relief with contours a
+    // zoom early - terrain first means terrain sooner - while field sits at
+    // 0.30 with the bold sunlight type, and quiet_pine keeps the launch
+    // weights untouched.
+    expect(SHEET_VARIANTS.ridgeline.day.hillshadeBase).toBe(0.55)
+    expect(SHEET_VARIANTS.ridgeline.day.contoursEarly).toBe(true)
+    expect(SHEET_VARIANTS.field.day.hillshadeBase).toBe(0.3)
+    expect(SHEET_VARIANTS.field.day.boldType).toBe(true)
+    expect(SHEET_VARIANTS.quiet_pine.day.hillshadeBase).toBe(0.35)
+    expect(SHEET_VARIANTS.quiet_pine.day.boldType).toBe(false)
+    expect(SHEET_VARIANTS.quiet_pine.day.contoursEarly).toBe(false)
   })
 
   it('keeps the red sheet as dark as the night one, ground layer by ground layer', () => {
@@ -852,10 +936,14 @@ describe('sheetPalette', () => {
   })
 
   it('keeps the labels the brightest thing on the red sheet too', () => {
+    // A smaller margin than the dark sheet's 100, on purpose: the reviewed
+    // red values are dimmer throughout - "astronomy-grade darkness" is the
+    // card's own bar - and a label bright enough to clear the dark sheet's
+    // margin would be spending the adaptation the mode exists to keep.
     const [lr, lg, lb] = hexChannels(TOPO_PALETTE_RED.label)
     const [gr, gg, gb] = hexChannels(TOPO_PALETTE_RED.wood)
 
-    expect((lr + lg + lb) / 3).toBeGreaterThan((gr + gg + gb) / 3 + 100)
+    expect((lr + lg + lb) / 3).toBeGreaterThan((gr + gg + gb) / 3 + 80)
   })
 })
 
@@ -906,5 +994,52 @@ describe('attachSheetAppearance', () => {
     expect(
       m.paintProperties.get(`${LIVE_TOPO_LAYER_IDS.hillshade}/hillshade-shadow-color`),
     ).toBeUndefined()
+  })
+
+  it('replays the variant tuning too, and a style change is a true restore', async () => {
+    // Ridgeline turns the relief up and pulls the contours a zoom early;
+    // leaving it must turn both back. Sticky properties make a loop that only
+    // writes what differs a one-way ratchet - so the attach writes the full
+    // managed set for the TARGET variant every time.
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const m = new MockMap({})
+    m.layerIds = [...new Set(SHEET_COLOURS.map(([layer]) => layer))]
+
+    attachSheetAppearance(m as never, { mapStyle: 'ridgeline' })()
+
+    const exaggeration = m.paintProperties.get(
+      `${LIVE_TOPO_LAYER_IDS.hillshade}/hillshade-exaggeration`,
+    ) as unknown[]
+    expect(exaggeration[exaggeration.length - 1]).toBe(0.55)
+    const minorOpacity = m.paintProperties.get(
+      `${LIVE_TOPO_LAYER_IDS.contour}/line-opacity`,
+    ) as unknown[]
+    expect(minorOpacity).toContain(9)
+
+    attachSheetAppearance(m as never, { mapStyle: 'quiet_pine' })
+
+    const restored = m.paintProperties.get(
+      `${LIVE_TOPO_LAYER_IDS.hillshade}/hillshade-exaggeration`,
+    ) as unknown[]
+    expect(restored[restored.length - 1]).toBe(0.35)
+    expect(m.layoutProperties.get(`${LIVE_TOPO_LAYER_IDS.contourLabel}/text-size`)).toBe(
+      10,
+    )
+    expect(m.paintProperties.get(`${LIVE_TOPO_LAYER_IDS.peak}/text-halo-width`)).toBe(1.6)
+  })
+
+  it('writes the field type treatment when field is the target', async () => {
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const m = new MockMap({})
+    m.layerIds = [...new Set(SHEET_COLOURS.map(([layer]) => layer))]
+
+    attachSheetAppearance(m as never, { mapStyle: 'field', theme: 'light' })
+
+    expect(m.layoutProperties.get(`${LIVE_TOPO_LAYER_IDS.contourLabel}/text-size`)).toBe(
+      11,
+    )
+    expect(
+      m.paintProperties.get(`${LIVE_TOPO_LAYER_IDS.contourLabel}/text-halo-width`),
+    ).toBe(1.8)
   })
 })

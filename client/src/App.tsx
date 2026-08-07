@@ -1659,6 +1659,7 @@ function App() {
           // - see map/style.ts's attachMapAppearance. The style, red-light and
           // detail preferences ride the same road for the same reason.
           theme={resolvedTheme}
+          themeChoice={preferences.theme}
           mapStyle={preferences.map_style}
           redLight={preferences.red_light_enabled}
           detail={preferences.layer_detail_level}

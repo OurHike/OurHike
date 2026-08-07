@@ -20,20 +20,27 @@ export type UnitSystem = 'imperial' | 'metric'
 /**
  * Which of the sheet's palettes the map is drawn in (MAP_STYLE_SPEC.md).
  *
- * Two values, both implemented, on the same rule BACKGROUND_SOURCES states
- * below: the settings screen can only offer a style that exists, and the
- * backend's enum mirrors this exactly. The spec names three more - quiet_pine,
- * parchment, ridgeline - whose reviewed palettes live in the design project's
- * mockups; each joins this list in the release that carries its colours, not
- * before.
+ * All five of the spec's styles, each with its reviewed day and night
+ * palettes in map/liveTopo.ts's SHEET_VARIANTS - on the same rule
+ * BACKGROUND_SOURCES states below: the settings screen can only offer a
+ * style that exists, and the backend's enum mirrors this exactly. Listed in
+ * the spec's own order, which is the order the picker shows.
  *
  * This is a STYLE, orthogonal to the light/dark `theme` above (the spec's
- * "mapMode", which this codebase already had under that name): `field` is a
- * day sheet that turns into `night_hike` when the theme resolves dark, and
- * `night_hike` chosen outright is dark under either theme - a hiker readying
- * night vision before dusk should not have to flip the whole app to do it.
+ * "mapMode", which this codebase already had under that name): the day
+ * sheets follow the theme to their own night forms, `night_hike` chosen
+ * outright is dark under either theme - a hiker readying night vision before
+ * dusk should not have to flip the whole app to do it - and field's
+ * auto-dark is night_hike (see liveTopo.ts's sheetVariant for the one
+ * distinction that carries).
  */
-export const MAP_STYLE_VALUES = ['field', 'night_hike'] as const
+export const MAP_STYLE_VALUES = [
+  'quiet_pine',
+  'field',
+  'night_hike',
+  'parchment',
+  'ridgeline',
+] as const
 export type MapStyle = (typeof MAP_STYLE_VALUES)[number]
 /**
  * Which background the map draws.

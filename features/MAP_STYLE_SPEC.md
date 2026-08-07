@@ -2,13 +2,15 @@
 
 > **Status, 2026-08-07:** received from the design project (`Map Styles.html`
 > lives there, with the live mockups and the copy-ready palette blocks this
-> spec refers to) and built the same day at the spec's own v1 scope: `field` +
-> `night_hike` + the detail control, red light included.
-> [MAP_OPTIONS.md](MAP_OPTIONS.md) §6 records what shipped and the choices
-> made where this spec left room; the remaining three palettes land as
-> values-only changes to `client/src/map/liveTopo.ts`'s tables. The spec
-> itself is kept verbatim below - it is what code comments citing
-> MAP_STYLE_SPEC.md mean.
+> spec refers to) and built the same day - first at the spec's own v1 scope
+> (`field` + `night_hike` + the detail control, red light included, PR #345),
+> then in full once the mockups' palette blocks arrived: all five styles,
+> each with its reviewed day and night sheets, in
+> `client/src/map/liveTopo.ts`'s SHEET_VARIANTS table, per-card tuning
+> included (ridgeline's 0.55 relief and early contours, field's sunlight
+> type). [MAP_OPTIONS.md](MAP_OPTIONS.md) §6 records the choices made where
+> this spec left room. The spec itself is kept verbatim below - it is what
+> code comments citing MAP_STYLE_SPEC.md mean.
 
 PR-shaped spec, written against `main` (2026-08-06). Companion to the live
 mockups in this project's `Map Styles.html`, which render every palette below

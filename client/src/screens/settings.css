@@ -186,6 +186,17 @@
   font-size: 12px;
   color: var(--fg-3);
 }
+/* The style picker alone carries five segments where its siblings carry
+ * three, so it alone is allowed to wrap: a floor on segment width keeps each
+ * one tappable, and on a phone the row breaks to two lines rather than
+ * crushing five labels into sliver columns. */
+.map-style-picker__options {
+  flex-wrap: wrap;
+}
+.map-style-picker__option {
+  flex: 1 1 30%;
+  min-width: 104px;
+}
 
 /* A report the server refused for good (#243).
  *

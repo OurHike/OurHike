@@ -57,7 +57,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl'
 import { whenStyleReady } from './styleReady'
 import { OPENFREEMAP_CREDIT, OSM_CREDIT } from './credits'
 import type { ResolvedTheme } from '../lib/theme'
-import type { MapStyle } from '../lib/userPreferences'
+import type { MapStyle, Theme } from '../lib/userPreferences'
 import {
   CONTOUR_ELEVATION_KEY,
   CONTOUR_LAYER,
@@ -215,31 +215,38 @@ export type TopoPalette = Record<keyof typeof TOPO_PALETTE, string>
  * vision it was meant to protect.
  */
 export const TOPO_PALETTE_DARK: TopoPalette = {
-  wood: '#1a2417',
-  scrub: '#1f2519',
-  wetland: '#182420',
-  rock: '#231f18',
-  park: '#26401b',
-  water: '#152e3b',
-  waterEdge: '#2f6c88',
-  waterway: '#3f8caa',
-  contour: '#6a5539',
-  contourIndex: '#94764c',
-  contourLabel: '#c3a67a',
-  roadMajor: '#4c4535',
-  roadMajorEdge: '#2c2820',
-  roadMinor: '#3a352a',
-  track: '#6d6049',
-  path: '#7f7259',
-  boundary: '#6b6253',
-  label: '#dfd9c9',
-  labelHalo: '#100f0c',
-  waterLabel: '#8fc4da',
+  wood: '#101b14',
+  scrub: '#0f1913',
+  wetland: '#0e1c19',
+  rock: '#141a13',
+  /* Lifted off the card's own #122016 to clear the over-woodland margin the
+     outline's removal made load-bearing (#347): the card drew this wash with
+     a dashed edge to lean on, and with the edge gone the tint has to carry
+     protected land by itself. Same hue, same night-vision brief - only far
+     enough from `wood` for the fact to survive on a phone panel. */
+  park: '#163218',
+  water: '#0e2430',
+  waterEdge: '#1f4456',
+  waterway: '#2c5a72',
+  contour: '#2c3a2e',
+  contourIndex: '#465844',
+  contourLabel: '#6b8465',
+  roadMajor: '#2a2f22',
+  roadMajorEdge: '#3a4030',
+  roadMinor: '#232819',
+  track: '#4a4f3a',
+  path: '#565b46',
+  boundary: '#444a3a',
+  /* Moss, not white - card 1c's whole trick: the brightest ink on this sheet
+     is the White blaze itself, which is the point of it. */
+  label: '#96b98c',
+  labelHalo: '#0c1410',
+  waterLabel: '#5f8ea6',
   /* Relief inverts more honestly than ink does: a shadow on dark ground is
-     near-black, and a lit slope is a dim warm grey rather than paper. */
-  hillshadeShadow: '#04060a',
-  hillshadeHighlight: '#40392c',
-  hillshadeAccent: '#272319',
+     near-black, and a lit slope is a dim green-grey rather than paper. */
+  hillshadeShadow: '#040705',
+  hillshadeHighlight: '#1d2a1e',
+  hillshadeAccent: '#0f1a12',
 }
 
 /**
@@ -254,70 +261,475 @@ export const TOPO_PALETTE_DARK: TopoPalette = {
  * purpose - water keeps its lightness step and loses its hue, because a blue
  * that reads as blue is a wavelength the eye pays for.
  *
- * Derived to the spec's brief rather than copied from its mockups - the
- * card-by-card values live in the design project's `Map Styles.html`, and
- * swapping these for the reviewed ones is a values-only change to this one
- * table.
+ * The reviewed values from the mockups' card 1c (Red light), which are dimmer
+ * throughout than a first derivation of them was - "astronomy-grade darkness"
+ * is the card's own bar, and every step of brightness spent here is spent
+ * against it.
  */
 export const TOPO_PALETTE_RED: TopoPalette = {
-  wood: '#201310',
-  scrub: '#241611',
-  wetland: '#1d1210',
-  rock: '#261812',
-  /* The wash stays in the red family - a green would be a wavelength the
-     eye pays for - but keeps the same legible-over-woodland margin the other
-     two sheets hold, because protected land is still information at night. */
-  park: '#361c10',
-  water: '#180e0c',
-  waterEdge: '#6b3018',
-  waterway: '#7c3a1e',
-  contour: '#6e4023',
-  contourIndex: '#90542c',
-  contourLabel: '#c47a3e',
-  roadMajor: '#4a2f22',
-  roadMajorEdge: '#2a1a12',
-  roadMinor: '#392419',
-  track: '#6b4426',
-  path: '#7c4f2c',
-  boundary: '#5f3d28',
-  label: '#e5975a',
-  labelHalo: '#140b07',
-  waterLabel: '#d08048',
-  hillshadeShadow: '#050202',
-  hillshadeHighlight: '#3f2818',
-  hillshadeAccent: '#251610',
+  wood: '#1c0906',
+  scrub: '#190805',
+  wetland: '#1a0a07',
+  rock: '#1e0b07',
+  /* The wash stays in the red family - a green would be a wavelength the eye
+     pays for - and clears the same over-woodland margin the other sheets
+     hold, because protected land is still information at night. Lifted off
+     the card's #200c08 for the reason the dark sheet's was: the outline it
+     was drawn beside is gone (#347), so the tint carries the fact alone. */
+  park: '#3a1409',
+  water: '#260e08',
+  waterEdge: '#45180d',
+  waterway: '#571f10',
+  contour: '#481a0e',
+  contourIndex: '#6b2a16',
+  contourLabel: '#963f20',
+  roadMajor: '#341107',
+  roadMajorEdge: '#45180c',
+  roadMinor: '#2a0e06',
+  track: '#5f2412',
+  path: '#6b2a15',
+  boundary: '#521f10',
+  label: '#c1611a',
+  labelHalo: '#140503',
+  waterLabel: '#a34c1c',
+  hillshadeShadow: '#000000',
+  hillshadeHighlight: '#2b0f07',
+  hillshadeAccent: '#1c0906',
 }
 
 /**
- * Which palette the sheet is drawn in, per MAP_STYLE_SPEC.md's three
- * preferences. All optional, defaulting to the sheet a caller with no opinion
- * has always been handed - the field day palette.
+ * `field` after an EXPLICIT dark - card 1b's Night: maximum-contrast dark,
+ * white type on near-black, water still saturated. Deliberately distinct from
+ * night_hike, which is dim on purpose: this one is for a bright screen in the
+ * dark - driving to a trailhead - not for eyes that are adapting. Which is
+ * why it is only reachable by CHOOSING dark (see sheetVariant): a phone that
+ * flips itself dark at sunset on the trail gets night_hike instead.
+ */
+export const TOPO_PALETTE_FIELD_NIGHT: TopoPalette = {
+  wood: '#17231a',
+  scrub: '#141d15',
+  wetland: '#12211d',
+  rock: '#1c1e17',
+  /* Every sheet below carries its park wash lifted off its card value, for
+     the reason the two above do: the cards drew this tint with a dashed
+     outline beside it, #347 removed the outline as a false trail line, and
+     the wash now has to carry protected land alone - far enough from the
+     sheet's own `wood` for the fact to survive over the woodland most
+     protected land here is. The test file pins that margin per palette. */
+  park: '#1b3d1c',
+  water: '#123349',
+  waterEdge: '#3d84ad',
+  waterway: '#3d84ad',
+  contour: '#5f5236',
+  contourIndex: '#8a7649',
+  contourLabel: '#b39b60',
+  roadMajor: '#383830',
+  roadMajorEdge: '#55534a',
+  roadMinor: '#2a2a24',
+  track: '#6f6d62',
+  path: '#7a745c',
+  boundary: '#5f5c4a',
+  label: '#ffffff',
+  labelHalo: '#0d0e0b',
+  waterLabel: '#7cbade',
+  hillshadeShadow: '#000000',
+  hillshadeHighlight: '#2e3128',
+  hillshadeAccent: '#141610',
+}
+
+/**
+ * `quiet_pine` - card 1a: modern muted outdoor. The brown ink cools to
+ * gray-green so the sheet reads as one calm surface and the blaze colours
+ * become the loudest thing on it. The closest sheet to the app chrome's own
+ * palette, and the mockups' own suggested default before review settled on
+ * field.
+ */
+export const TOPO_PALETTE_QUIET_PINE: TopoPalette = {
+  wood: '#dfe8d6',
+  scrub: '#e7ecdc',
+  wetland: '#d6e2da',
+  rock: '#e9e7dd',
+  park: '#cbe0be',
+  water: '#b7d4de',
+  waterEdge: '#84aec2',
+  waterway: '#6f9fb8',
+  contour: '#a3a08c',
+  contourIndex: '#7c7a64',
+  contourLabel: '#6d6b55',
+  roadMajor: '#dcd4bd',
+  roadMajorEdge: '#bcb193',
+  roadMinor: '#e3ddc9',
+  track: '#a99f83',
+  path: '#97907a',
+  boundary: '#9a9483',
+  label: '#3f4237',
+  labelHalo: '#f4f4ec',
+  waterLabel: '#41708a',
+  hillshadeShadow: '#5f6350',
+  hillshadeHighlight: '#ffffff',
+  hillshadeAccent: '#8b8f7c',
+}
+
+/** quiet_pine's dark companion - evening use at normal screen brightness;
+ *  blazes keep their day hexes. For headlamp hours, night_hike goes further. */
+export const TOPO_PALETTE_QUIET_PINE_NIGHT: TopoPalette = {
+  wood: '#1c2b21',
+  scrub: '#192720',
+  wetland: '#182a26',
+  rock: '#20261f',
+  park: '#1e3e22',
+  water: '#14303c',
+  waterEdge: '#2b5468',
+  waterway: '#3a6b84',
+  contour: '#46503f',
+  contourIndex: '#66705a',
+  contourLabel: '#8b9678',
+  roadMajor: '#38402f',
+  roadMajorEdge: '#4c5540',
+  roadMinor: '#2c3326',
+  track: '#5a5f48',
+  path: '#6a6f58',
+  boundary: '#55584a',
+  label: '#cfd8c2',
+  labelHalo: '#121a14',
+  waterLabel: '#7fb3cc',
+  hillshadeShadow: '#060b08',
+  hillshadeHighlight: '#2c3a2e',
+  hillshadeAccent: '#1a231c',
+}
+
+/**
+ * `parchment` - card 1d: the current sheet leaned harder into the USGS quad
+ * it quotes. Warmer paper, contours saturated toward true USGS brown, the
+ * classic green woodland overprint, water edges at engraving weight. The
+ * style for anything a hiker prints or reads like a document.
+ */
+export const TOPO_PALETTE_PARCHMENT: TopoPalette = {
+  wood: '#d9e4c0',
+  scrub: '#e5ebcf',
+  wetland: '#cfdfc9',
+  rock: '#e9e2cd',
+  park: '#c4dea0',
+  water: '#aed3e4',
+  waterEdge: '#5b9cbd',
+  waterway: '#4f92b4',
+  contour: '#b06e35',
+  contourIndex: '#7e4a1e',
+  contourLabel: '#6b3d16',
+  roadMajor: '#e2c99b',
+  roadMajorEdge: '#a67c48',
+  roadMinor: '#e6d8b4',
+  track: '#8f6f3f',
+  path: '#7d6a45',
+  boundary: '#8a6f4a',
+  label: '#3d3222',
+  labelHalo: '#f6efdd',
+  waterLabel: '#2f6b8a',
+  hillshadeShadow: '#6b5535',
+  hillshadeHighlight: '#fff8e6',
+  hillshadeAccent: '#93825f',
+}
+
+/** parchment's Lantern mode - the same engraved linework on umber, warm
+ *  candle-dark. For reading in the tent, not navigating on the move;
+ *  night_hike owns that job. */
+export const TOPO_PALETTE_LANTERN: TopoPalette = {
+  wood: '#1f2010',
+  scrub: '#1c1d0e',
+  wetland: '#1a2013',
+  rock: '#241c0e',
+  park: '#2c3a14',
+  water: '#142834',
+  waterEdge: '#2b4c5e',
+  waterway: '#396379',
+  contour: '#6b4a24',
+  contourIndex: '#966c38',
+  contourLabel: '#c19453',
+  roadMajor: '#3d2f18',
+  roadMajorEdge: '#55432a',
+  roadMinor: '#2c2312',
+  track: '#6b5738',
+  path: '#77644a',
+  boundary: '#5f4f36',
+  label: '#e0d0a6',
+  labelHalo: '#191108',
+  waterLabel: '#7aa8bf',
+  hillshadeShadow: '#000000',
+  hillshadeHighlight: '#2e2410',
+  hillshadeAccent: '#4a3d24',
+}
+
+/**
+ * `ridgeline` - card 1e: terrain does the talking. Hillshade carried at 0.55
+ * through hiking zooms, contours promoted to gray ink, landcover flattened
+ * near-monochrome; colour is reserved for water, park edges and the blazes.
+ * For judging a climb before committing to it.
+ */
+export const TOPO_PALETTE_RIDGELINE: TopoPalette = {
+  wood: '#e2e4d8',
+  scrub: '#e9eadf',
+  wetland: '#dde4dd',
+  rock: '#e7e5da',
+  park: '#cee0ba',
+  water: '#a5c8d6',
+  waterEdge: '#6ba2bb',
+  waterway: '#5e97b2',
+  contour: '#97948a',
+  contourIndex: '#6e6b60',
+  contourLabel: '#5c594e',
+  roadMajor: '#dcd6c4',
+  roadMajorEdge: '#b5ac94',
+  roadMinor: '#e2dccb',
+  track: '#9d9480',
+  path: '#8c8574',
+  boundary: '#969082',
+  label: '#3a382f',
+  labelHalo: '#efeee8',
+  waterLabel: '#40708a',
+  hillshadeShadow: '#3f3d33',
+  hillshadeHighlight: '#ffffff',
+  hillshadeAccent: '#6e6b60',
+}
+
+/** ridgeline's Moonlit relief - the highlight lifts instead of the shadow
+ *  deepening, so ridges glow and valleys sink; contours one step brighter
+ *  than quiet_pine's night so terrain still reads. */
+export const TOPO_PALETTE_RIDGELINE_NIGHT: TopoPalette = {
+  wood: '#1b201a',
+  scrub: '#191d17',
+  wetland: '#182019',
+  rock: '#1f211c',
+  park: '#1e381c',
+  water: '#122833',
+  waterEdge: '#295062',
+  waterway: '#356882',
+  contour: '#4c4e45',
+  contourIndex: '#6e7165',
+  contourLabel: '#909485',
+  roadMajor: '#30322a',
+  roadMajorEdge: '#43463a',
+  roadMinor: '#26281f',
+  track: '#565949',
+  path: '#626555',
+  boundary: '#4e5145',
+  label: '#d5d8c9',
+  labelHalo: '#141613',
+  waterLabel: '#79aac2',
+  hillshadeShadow: '#000000',
+  hillshadeHighlight: '#34372e',
+  hillshadeAccent: '#101210',
+}
+
+/**
+ * One sheet as drawn: its palette plus the handful of values that vary with
+ * it but do not live in the palette's 24 colour keys. Exactly what one mockup
+ * card mode carries, and the cards are the source of every row below.
+ *
+ * - `backdrop`/`casing` are style.ts's layers (the paper under everything,
+ *   the hairline under every blaze) - carried here because each sheet inks
+ *   them itself, and read through style.ts's mapBackdrop/trailCasingColor.
+ * - `hillshadeBase` is the relief weight at hiking zooms - ridgeline's whole
+ *   idea is carrying it at 0.55 where the others sit at 0.30-0.35.
+ * - `contoursEarly` moves the contour fade-ins one zoom earlier (ridgeline:
+ *   terrain first means terrain sooner).
+ * - `boldType` is field's sunlight brief: labels one size up, halos 1.8 -
+ *   per the card, not sheet-wide.
+ * - `dark` is what the archive dimming and the chrome-facing predicates key
+ *   off; `redLight` marks the one variant that overrides the blazes.
+ */
+export interface SheetVariant {
+  palette: TopoPalette
+  backdrop: string
+  casing: string
+  hillshadeBase: number
+  contoursEarly: boolean
+  boldType: boolean
+  dark: boolean
+  redLight: boolean
+}
+
+const QUIET_PINE_DAY: SheetVariant = {
+  palette: TOPO_PALETTE_QUIET_PINE,
+  backdrop: '#f4f4ec',
+  casing: '#2b2f26',
+  hillshadeBase: 0.35,
+  contoursEarly: false,
+  boldType: false,
+  dark: false,
+  redLight: false,
+}
+
+const QUIET_PINE_NIGHT: SheetVariant = {
+  palette: TOPO_PALETTE_QUIET_PINE_NIGHT,
+  backdrop: '#16201a',
+  casing: '#0a0f0b',
+  hillshadeBase: 0.35,
+  contoursEarly: false,
+  boldType: false,
+  dark: true,
+  redLight: false,
+}
+
+const FIELD_DAY: SheetVariant = {
+  palette: TOPO_PALETTE,
+  backdrop: '#ffffff',
+  casing: '#14130f',
+  hillshadeBase: 0.3,
+  contoursEarly: false,
+  boldType: true,
+  dark: false,
+  redLight: false,
+}
+
+const FIELD_NIGHT: SheetVariant = {
+  palette: TOPO_PALETTE_FIELD_NIGHT,
+  backdrop: '#0d0e0b',
+  casing: '#000000',
+  hillshadeBase: 0.3,
+  contoursEarly: false,
+  boldType: true,
+  dark: true,
+  redLight: false,
+}
+
+/** One variant for both of night_hike's slots: it has no day form - a
+ *  night-vision sheet chosen in daylight is still the night-vision sheet. */
+const NIGHT_HIKE: SheetVariant = {
+  palette: TOPO_PALETTE_DARK,
+  backdrop: '#0c1410',
+  casing: '#060907',
+  hillshadeBase: 0.3,
+  contoursEarly: false,
+  boldType: false,
+  dark: true,
+  redLight: false,
+}
+
+const NIGHT_HIKE_RED: SheetVariant = {
+  palette: TOPO_PALETTE_RED,
+  backdrop: '#140503',
+  casing: '#0a0301',
+  hillshadeBase: 0.3,
+  contoursEarly: false,
+  boldType: false,
+  dark: true,
+  redLight: true,
+}
+
+const PARCHMENT_DAY: SheetVariant = {
+  palette: TOPO_PALETTE_PARCHMENT,
+  backdrop: '#f6efdd',
+  casing: '#241d12',
+  hillshadeBase: 0.35,
+  contoursEarly: false,
+  boldType: false,
+  dark: false,
+  redLight: false,
+}
+
+const PARCHMENT_LANTERN: SheetVariant = {
+  palette: TOPO_PALETTE_LANTERN,
+  backdrop: '#191108',
+  casing: '#0e0a05',
+  hillshadeBase: 0.35,
+  contoursEarly: false,
+  boldType: false,
+  dark: true,
+  redLight: false,
+}
+
+const RIDGELINE_DAY: SheetVariant = {
+  palette: TOPO_PALETTE_RIDGELINE,
+  backdrop: '#efeee8',
+  casing: '#26251e',
+  hillshadeBase: 0.55,
+  contoursEarly: true,
+  boldType: false,
+  dark: false,
+  redLight: false,
+}
+
+const RIDGELINE_NIGHT: SheetVariant = {
+  palette: TOPO_PALETTE_RIDGELINE_NIGHT,
+  backdrop: '#171916',
+  casing: '#0b0d0a',
+  hillshadeBase: 0.55,
+  contoursEarly: true,
+  boldType: false,
+  dark: true,
+  redLight: false,
+}
+
+/** Every style's day and night sheet, exactly as the mockup cards spec them.
+ *  Exported for the tests that sweep all of them; resolution goes through
+ *  sheetVariant below, never through this table directly. */
+export const SHEET_VARIANTS: Record<
+  MapStyle,
+  { day: SheetVariant; night: SheetVariant }
+> = {
+  quiet_pine: { day: QUIET_PINE_DAY, night: QUIET_PINE_NIGHT },
+  field: { day: FIELD_DAY, night: FIELD_NIGHT },
+  night_hike: { day: NIGHT_HIKE, night: NIGHT_HIKE },
+  parchment: { day: PARCHMENT_DAY, night: PARCHMENT_LANTERN },
+  ridgeline: { day: RIDGELINE_DAY, night: RIDGELINE_NIGHT },
+}
+
+/** The red variant, reachable only through night_hike + the toggle - see
+ *  sheetVariant. Exported for the same test sweep as SHEET_VARIANTS. */
+export const SHEET_VARIANT_RED: SheetVariant = NIGHT_HIKE_RED
+
+/**
+ * Which sheet the map draws, per MAP_STYLE_SPEC.md's preferences. All
+ * optional, defaulting to the sheet a caller with no opinion has always been
+ * handed - the field day sheet.
  *
  * `theme` is the spec's `mapMode` under the name this codebase already had
  * for it: day = light, night = dark, and auto resolves through
  * lib/useTheme.ts before it gets here, exactly as it does for the chrome.
+ * `themeChoice` is the preference BEFORE that resolution, and it exists for
+ * exactly one distinction - see sheetVariant on field's two darks.
  */
 export interface SheetAppearance {
   theme?: ResolvedTheme
+  /** The stored preference ('light' | 'dark' | 'auto'), so night can tell
+   *  "chosen" from "arrived with sunset". Defaults to 'auto', which keeps
+   *  every caller that does not pass it on the spec's auto behaviour. */
+  themeChoice?: Theme
   mapStyle?: MapStyle
   /** Only meaningful with night_hike - see TOPO_PALETTE_RED. */
   redLight?: boolean
 }
 
 /**
- * The sheet's palette for an appearance. One function so nothing else has to
- * know how the three preferences compose, and the composition is short:
- * night_hike is dark under either theme (a hiker readying night vision before
- * dusk should not have to flip the whole app), field follows the theme, and
- * red light refines night_hike only - never a day sheet.
+ * The sheet's variant for an appearance. One function so nothing else has to
+ * know how the preferences compose:
+ *
+ * - night_hike is dark under either theme (a hiker readying night vision
+ *   before dusk should not have to flip the whole app), and red light
+ *   refines it only - never any day sheet.
+ * - Every other style follows the resolved theme to its own night form -
+ *   with one deliberate exception. Field's AUTO-dark is night_hike (the
+ *   spec's own line): a phone that flips itself dark at sunset is a phone on
+ *   a trail at dusk, and handing it field's maximum-contrast white-on-black
+ *   night sheet would light the woods up. Field/night is reachable by
+ *   CHOOSING the dark theme, which is the "bright screen in the dark" case
+ *   it was drawn for.
  */
-export function sheetPalette({
+export function sheetVariant({
   theme = 'light',
+  themeChoice = 'auto',
   mapStyle = 'field',
   redLight = false,
-}: SheetAppearance): TopoPalette {
-  if (mapStyle === 'night_hike') return redLight ? TOPO_PALETTE_RED : TOPO_PALETTE_DARK
-  return theme === 'dark' ? TOPO_PALETTE_DARK : TOPO_PALETTE
+}: SheetAppearance): SheetVariant {
+  if (mapStyle === 'night_hike' && redLight) return NIGHT_HIKE_RED
+  if (theme !== 'dark') return SHEET_VARIANTS[mapStyle].day
+  if (mapStyle === 'field' && themeChoice !== 'dark') return NIGHT_HIKE
+  return SHEET_VARIANTS[mapStyle].night
+}
+
+/** The palette alone, for the callers that only paint colours. */
+export function sheetPalette(appearance: SheetAppearance): TopoPalette {
+  return sheetVariant(appearance).palette
 }
 
 export const LIVE_TOPO_LAYER_IDS = {
@@ -479,9 +891,13 @@ export const PLACE_SORT_KEY_EXPRESSION = [
  * `interpolate` holds its end values outside the stops, so both ends are flat
  * rather than extrapolating into a black hillside.
  *
- * 0.30 rather than the 0.35 it launched at - MAP_STYLE_SPEC.md's field sheet
- * carries darker contour ink than the old palette did, and the ink now does
- * some of the work the shading was doing.
+ * The hiking-zoom weight is the variant's own (SheetVariant.hillshadeBase):
+ * 0.30 on field and night_hike, whose darker contour ink does some of the
+ * work the shading was doing; 0.35 on quiet_pine and parchment, the weight
+ * the sheet launched at; 0.55 on ridgeline, whose whole idea is relief
+ * carried strong. The constant below is the default sheet's value, kept for
+ * the callers and tests that reason about the ramp without a variant in
+ * hand.
  *
  * It also costs nothing. The DEM tiles behind this layer are fetched at every
  * zoom already; the ramp only decides how much of what they contain reaches
@@ -490,20 +906,78 @@ export const PLACE_SORT_KEY_EXPRESSION = [
 export const HILLSHADE_EXAGGERATION = 0.3
 export const HILLSHADE_RELIEF_ONLY_EXAGGERATION = 1
 /** The first zoom at which any contour ink is drawn, and the zoom by which
- *  both contour layers are at full strength - see the two `line-opacity`
- *  ramps below, which these have to keep agreeing with. */
+ *  both contour layers are at full strength - see contourFadeZooms below,
+ *  which these have to keep agreeing with. */
 export const HILLSHADE_HANDOVER_START_ZOOM = 9
 export const HILLSHADE_HANDOVER_END_ZOOM = 12
 
-export const HILLSHADE_EXAGGERATION_EXPRESSION = [
-  'interpolate',
-  ['linear'],
-  ['zoom'],
-  HILLSHADE_HANDOVER_START_ZOOM,
-  HILLSHADE_RELIEF_ONLY_EXAGGERATION,
-  HILLSHADE_HANDOVER_END_ZOOM,
-  HILLSHADE_EXAGGERATION,
-]
+/** The relief ramp for one variant's hiking-zoom weight. One builder, used
+ *  by the style build and the live repaint alike, so the two cannot drift. */
+export function hillshadeExaggerationExpression(base: number): unknown[] {
+  return [
+    'interpolate',
+    ['linear'],
+    ['zoom'],
+    HILLSHADE_HANDOVER_START_ZOOM,
+    HILLSHADE_RELIEF_ONLY_EXAGGERATION,
+    HILLSHADE_HANDOVER_END_ZOOM,
+    base,
+  ]
+}
+
+export const HILLSHADE_EXAGGERATION_EXPRESSION =
+  hillshadeExaggerationExpression(HILLSHADE_EXAGGERATION)
+
+/**
+ * Where each contour layer fades in, per variant.
+ *
+ * The default window is the handover the hillshade comment above describes:
+ * index lines over 9-11, minor lines over 10-12. `contoursEarly` (ridgeline)
+ * moves both one zoom earlier - the card's "contour opacity ramps arrive one
+ * zoom earlier" - because a terrain-first sheet wants the land's shape before
+ * a general sheet needs it.
+ */
+export function contourFadeZooms(variant: SheetVariant): {
+  minor: [start: number, full: number]
+  index: [start: number, full: number]
+} {
+  return variant.contoursEarly
+    ? { minor: [9, 11], index: [8, 10] }
+    : { minor: [10, 12], index: [9, 11] }
+}
+
+/**
+ * The type treatment one variant carries - field's sunlight brief against the
+ * baseline everything else uses (MAP_STYLE_SPEC.md's "field extras": labels
+ * one size up, halos 1.8). One builder for the style build and the live
+ * repaint, like the palette table and for the same reason.
+ */
+export function sheetTypeSizes(variant: SheetVariant): {
+  contourLabelSize: number
+  peakSizeExpression: unknown[]
+  contourLabelHalo: number
+  peakHalo: number
+  waterLabelHalo: number
+  placeHalo: number
+} {
+  return variant.boldType
+    ? {
+        contourLabelSize: 11,
+        peakSizeExpression: ['interpolate', ['linear'], ['zoom'], 10, 12, 14, 14],
+        contourLabelHalo: 1.8,
+        peakHalo: 1.8,
+        waterLabelHalo: 1.8,
+        placeHalo: 1.8,
+      }
+    : {
+        contourLabelSize: 10,
+        peakSizeExpression: ['interpolate', ['linear'], ['zoom'], 10, 10, 14, 13],
+        contourLabelHalo: 1.4,
+        peakHalo: 1.6,
+        waterLabelHalo: 1.4,
+        placeHalo: 1.6,
+      }
+}
 
 export interface LiveTopoOptions {
   /**
@@ -539,6 +1013,7 @@ export interface LiveTopoOptions {
    * WebGL context, its GPS watcher and every tile in flight.
    */
   theme?: ResolvedTheme
+  themeChoice?: Theme
   mapStyle?: MapStyle
   redLight?: boolean
 }
@@ -671,10 +1146,14 @@ export function liveTopoLayers({
   terrain,
   units,
   theme = 'light',
+  themeChoice = 'auto',
   mapStyle = 'field',
   redLight = false,
 }: LiveTopoOptions): LayerSpecification[] {
-  const palette = sheetPalette({ theme, mapStyle, redLight })
+  const variant = sheetVariant({ theme, themeChoice, mapStyle, redLight })
+  const palette = variant.palette
+  const fade = contourFadeZooms(variant)
+  const type = sheetTypeSizes(variant)
 
   const layers: LayerSpecification[] = [
     {
@@ -739,7 +1218,9 @@ export function liveTopoLayers({
       type: 'hillshade',
       source: DEM_SOURCE_ID,
       paint: {
-        'hillshade-exaggeration': HILLSHADE_EXAGGERATION_EXPRESSION as never,
+        'hillshade-exaggeration': hillshadeExaggerationExpression(
+          variant.hillshadeBase,
+        ) as never,
         ...sheetColours(LIVE_TOPO_LAYER_IDS.hillshade, palette),
       },
     },
@@ -785,8 +1266,18 @@ export function liveTopoLayers({
         ...sheetColours(LIVE_TOPO_LAYER_IDS.contour, palette),
         'line-width': 0.6,
         // Faded out where they would otherwise mat together into a solid
-        // hillside, rather than switched off at a hard zoom threshold.
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], 10, 0, 12, 0.7] as never,
+        // hillside, rather than switched off at a hard zoom threshold. The
+        // window is the variant's (contourFadeZooms) - ridgeline pulls it a
+        // zoom earlier.
+        'line-opacity': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          fade.minor[0],
+          0,
+          fade.minor[1],
+          0.7,
+        ] as never,
       },
     },
     {
@@ -798,7 +1289,15 @@ export function liveTopoLayers({
       paint: {
         ...sheetColours(LIVE_TOPO_LAYER_IDS.contourIndex, palette),
         'line-width': 1.2,
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], 9, 0, 11, 0.9] as never,
+        'line-opacity': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          fade.index[0],
+          0,
+          fade.index[1],
+          0.9,
+        ] as never,
       },
     },
     // Only index lines are labelled. Labelling every contour is what makes a
@@ -815,10 +1314,9 @@ export function liveTopoLayers({
         'symbol-placement': 'line',
         'text-field': contourLabelTextField(units) as never,
         'text-font': FONT,
-        // 11, and every halo on the sheet at 1.8 (MAP_STYLE_SPEC.md's field
-        // extras): the field palette's darker ink earns slightly larger type,
-        // and the wider halo is what keeps it readable across contour ink.
-        'text-size': 11,
+        // Size and halo are the variant's (sheetTypeSizes): field's sunlight
+        // brief takes both up a step, the other sheets keep the baseline.
+        'text-size': type.contourLabelSize,
         'text-max-angle': 25,
         'text-padding': 6,
         // Set into the line the way a printed contour label is, rather than
@@ -827,7 +1325,7 @@ export function liveTopoLayers({
       },
       paint: {
         ...sheetColours(LIVE_TOPO_LAYER_IDS.contourLabel, palette),
-        'text-halo-width': 1.8,
+        'text-halo-width': type.contourLabelHalo,
       },
     },
     {
@@ -927,18 +1425,17 @@ export function liveTopoLayers({
       layout: {
         'text-field': peakLabelTextField(units) as never,
         'text-font': FONT,
-        // 12 up to 14 across the same ramp (MAP_STYLE_SPEC.md's field
-        // extras): summits are the most hiking-specific type on the sheet,
-        // and the size they were launched at underweighted them against
-        // place names.
-        'text-size': ['interpolate', ['linear'], ['zoom'], 10, 12, 14, 14] as never,
+        // The ramp is the variant's (sheetTypeSizes): field carries summits
+        // a size up - they are the most hiking-specific type on the sheet -
+        // and the other sheets keep the launch weights.
+        'text-size': type.peakSizeExpression as never,
         'text-anchor': 'top',
         'text-offset': [0, 0.4],
         'text-max-width': 8,
       },
       paint: {
         ...sheetColours(LIVE_TOPO_LAYER_IDS.peak, palette),
-        'text-halo-width': 1.8,
+        'text-halo-width': type.peakHalo,
       },
     },
     {
@@ -955,7 +1452,7 @@ export function liveTopoLayers({
       },
       paint: {
         ...sheetColours(LIVE_TOPO_LAYER_IDS.waterLabel, palette),
-        'text-halo-width': 1.8,
+        'text-halo-width': type.waterLabelHalo,
       },
     },
     // Towns only, and only the ones big enough to matter for resupply - a
@@ -990,7 +1487,7 @@ export function liveTopoLayers({
       },
       paint: {
         ...sheetColours(LIVE_TOPO_LAYER_IDS.place, palette),
-        'text-halo-width': 1.8,
+        'text-halo-width': type.placeHalo,
       },
     },
   ]
@@ -1067,16 +1564,23 @@ export function attachElevationLabelUnits(
 
 /**
  * The sheet's half of a live appearance change - theme, map style, and red
- * light alike, since all three resolve to one palette (sheetPalette).
+ * light alike, since all of them resolve to one variant (sheetVariant).
  *
  * Repaints every colour in SHEET_COLOURS onto a map that is already built,
- * rather than rebuilding the style. That is not an optimisation, it is the
- * same rule MapView.tsx keeps for the scale bar's units and contours.ts keeps
- * for the contour interval: a preference change must not cost a WebGL context.
- * Swapping the style out drops the context, and with it the POI source pushed
- * in from IndexedDB, every tile in flight from the archive, and the camera -
- * so a hiker who taps "Dark" while walking would watch the map they were
- * reading disappear and rebuild.
+ * rather than rebuilding the style - and then the variant's tuning: relief
+ * weight, contour fade windows, and the type treatment, each with the same
+ * builder the style was built from so the two cannot drift. Not rebuilding is
+ * not an optimisation, it is the same rule MapView.tsx keeps for the scale
+ * bar's units and contours.ts keeps for the contour interval: a preference
+ * change must not cost a WebGL context. Swapping the style out drops the
+ * context, and with it the POI source pushed in from IndexedDB, every tile in
+ * flight from the archive, and the camera - so a hiker who taps "Dark" while
+ * walking would watch the map they were reading disappear and rebuild.
+ *
+ * Every write, colour and tuning alike, targets ALL managed properties for
+ * the target variant rather than only the ones that differ: `setPaintProperty`
+ * is sticky, so writing the full set is what makes leaving ridgeline for
+ * quiet_pine an actual restore of the 0.35 relief and the later contours.
  *
  * Waits on the wood layer and not on any of the others, deliberately. It is
  * the first layer this module declares and it reads the plain OSM source, so
@@ -1097,16 +1601,58 @@ export function attachSheetAppearance(
   map: MapLibreMap,
   appearance: SheetAppearance,
 ): () => void {
-  const palette = sheetPalette(appearance)
+  const variant = sheetVariant(appearance)
+  const palette = variant.palette
+  const fade = contourFadeZooms(variant)
+  const type = sheetTypeSizes(variant)
+
+  const paint = (layer: string, property: string, value: unknown) => {
+    if (map.getLayer(layer) === undefined) return
+    map.setPaintProperty(layer, property as never, value as never)
+  }
+  const layout = (layer: string, property: string, value: unknown) => {
+    if (map.getLayer(layer) === undefined) return
+    map.setLayoutProperty(layer, property as never, value as never)
+  }
 
   return whenStyleReady(
     map,
     () => map.getLayer(LIVE_TOPO_LAYER_IDS.wood) !== undefined,
     () => {
       for (const [layer, property, colour] of SHEET_COLOURS) {
-        if (map.getLayer(layer) === undefined) continue
-        map.setPaintProperty(layer, property as never, palette[colour] as never)
+        paint(layer, property, palette[colour])
       }
+
+      paint(
+        LIVE_TOPO_LAYER_IDS.hillshade,
+        'hillshade-exaggeration',
+        hillshadeExaggerationExpression(variant.hillshadeBase),
+      )
+      paint(LIVE_TOPO_LAYER_IDS.contour, 'line-opacity', [
+        'interpolate',
+        ['linear'],
+        ['zoom'],
+        fade.minor[0],
+        0,
+        fade.minor[1],
+        0.7,
+      ])
+      paint(LIVE_TOPO_LAYER_IDS.contourIndex, 'line-opacity', [
+        'interpolate',
+        ['linear'],
+        ['zoom'],
+        fade.index[0],
+        0,
+        fade.index[1],
+        0.9,
+      ])
+
+      layout(LIVE_TOPO_LAYER_IDS.contourLabel, 'text-size', type.contourLabelSize)
+      layout(LIVE_TOPO_LAYER_IDS.peak, 'text-size', type.peakSizeExpression)
+      paint(LIVE_TOPO_LAYER_IDS.contourLabel, 'text-halo-width', type.contourLabelHalo)
+      paint(LIVE_TOPO_LAYER_IDS.peak, 'text-halo-width', type.peakHalo)
+      paint(LIVE_TOPO_LAYER_IDS.waterLabel, 'text-halo-width', type.waterLabelHalo)
+      paint(LIVE_TOPO_LAYER_IDS.place, 'text-halo-width', type.placeHalo)
     },
     'Sheet appearance',
   )

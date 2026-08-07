@@ -70,10 +70,10 @@ function knownTheme(stored: Partial<UserPreferences>): Partial<UserPreferences> 
   return rest
 }
 
-/** And for the map style, which will grow values (quiet_pine, parchment,
- *  ridgeline are specced and unshipped) and can shrink them again. An unknown
- *  stored style would ride the merge into the palette lookup and come back as
- *  no palette at all - the same road to the same black map. */
+/** And for the map style, whose list has already grown once (v1 shipped two
+ *  of the spec's five) and can shrink again. An unknown stored style would
+ *  ride the merge into the palette lookup and come back as no palette at
+ *  all - the same road to the same black map. */
 function knownMapStyle(stored: Partial<UserPreferences>): Partial<UserPreferences> {
   const value = stored.map_style
   if (value === undefined || MAP_STYLE_VALUES.includes(value)) return stored

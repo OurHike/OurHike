@@ -13,6 +13,7 @@ import { MockMap, resetMapLibreMock } from './test/mocks/maplibre-gl'
 import { liveMap } from './test/liveMap'
 import { THEME_ATTRIBUTE } from './lib/theme'
 import { BACKDROP_LAYER_ID, MAP_BACKDROP } from './map/style'
+import { SHEET_VARIANTS } from './map/liveTopo'
 
 /** The colour the backdrop layer was BUILT with, off the style the mock map
  *  was constructed from - which is the only half of the theme a screen that
@@ -724,10 +725,13 @@ describe('preferences from the More screen', () => {
 
     // Waited on the built style rather than on a tick: the map is constructed
     // inside an effect, so what proves the sequence completed is a live map
-    // carrying the dark backdrop, not time passing.
+    // carrying the dark backdrop, not time passing. Field/night's backdrop
+    // specifically: dark CHOSEN from the control reaches field's own night
+    // sheet, where an auto theme resolving dark would land on night_hike -
+    // liveTopo.ts's sheetVariant owns that distinction.
     await waitFor(() => {
       expect(MockMap.live.length).toBeGreaterThan(0)
-      expect(backdropOf(MockMap.live[0])).toBe(MAP_BACKDROP.dark)
+      expect(backdropOf(MockMap.live[0])).toBe(SHEET_VARIANTS.field.night.backdrop)
     })
   })
 })

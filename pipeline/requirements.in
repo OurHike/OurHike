@@ -5,7 +5,7 @@
 # requirements.txt to seed the sandbox's spatial extension offline. A
 # Dependabot PR bumping it is only safe once the matching extension build
 # exists; check PyPI before merging one.
-duckdb==1.5.4
+duckdb==1.5.5
 requests
 rasterio
 numpy

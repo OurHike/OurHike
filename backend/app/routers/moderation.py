@@ -24,7 +24,7 @@ from app.core.orm import commit_and_refresh, get_or_404
 from app.core.time import utc_now
 from app.db.session import get_db
 from app.models.closure import Closure, ModerationStatus
-from app.models.profile import Profile
+from app.models.profile import MODERATOR_ROLES, Profile
 from app.models.report import Report, ReportStatus, ReportType
 from app.schemas.closure import ClosureOut, ClosureVerify
 from app.schemas.moderation import ModerationQueue, ReportVerifyRequest
@@ -35,7 +35,7 @@ router = APIRouter(tags=["moderation"])
 
 @router.get("/moderation/queue", response_model=ModerationQueue)
 def read_moderation_queue(
-    current_user: Profile = Depends(require_role("maintainer", "club_admin")),
+    current_user: Profile = Depends(require_role(*MODERATOR_ROLES)),
     db: Session = Depends(get_db),
 ) -> ModerationQueue:
     """Everything waiting on a moderator: submitted reports and submitted
@@ -75,7 +75,10 @@ def read_moderation_queue(
     closures = db.query(Closure).filter(Closure.moderation_status == ModerationStatus.submitted).all()
 
     return ModerationQueue(
-        reports=[ReportOut.model_validate(report) for report in reports],
+        # A moderator sees the whole record - schemas/moderation.py explains
+        # why the queue reuses ReportOut rather than a leaner row, and #252
+        # does not change that: what it changes is what the PUBLIC sees.
+        reports=[ReportOut.for_viewer(report, current_user) for report in reports],
         closures=[ClosureOut.model_validate(closure) for closure in closures],
     )
 
@@ -84,9 +87,9 @@ def read_moderation_queue(
 def verify_report(
     report_id: str,
     payload: ReportVerifyRequest,
-    current_user: Profile = Depends(require_role("maintainer", "club_admin")),
+    current_user: Profile = Depends(require_role(*MODERATOR_ROLES)),
     db: Session = Depends(get_db),
-) -> Report:
+) -> ReportOut:
     report = get_or_404(db, Report, report_id, detail="Report not found")
 
     # A thanks is not a claim about the world, so there is nothing to verify
@@ -114,26 +117,26 @@ def verify_report(
     # structurally false at exactly this point.
     report.verified_by = current_user.id
     report.verified_at = utc_now()
-    return commit_and_refresh(db, report)
+    return ReportOut.for_viewer(commit_and_refresh(db, report), current_user)
 
 
 @router.post("/reports/{report_id}/dismiss", response_model=ReportOut)
 def dismiss_report(
     report_id: str,
-    current_user: Profile = Depends(require_role("maintainer", "club_admin")),
+    current_user: Profile = Depends(require_role(*MODERATOR_ROLES)),
     db: Session = Depends(get_db),
-) -> Report:
+) -> ReportOut:
     report = get_or_404(db, Report, report_id, detail="Report not found")
 
     report.status = ReportStatus.dismissed
-    return commit_and_refresh(db, report)
+    return ReportOut.for_viewer(commit_and_refresh(db, report), current_user)
 
 
 @router.post("/closures/{closure_id}/verify", response_model=ClosureOut)
 def verify_closure(
     closure_id: str,
     payload: ClosureVerify | None = None,
-    current_user: Profile = Depends(require_role("maintainer", "club_admin")),
+    current_user: Profile = Depends(require_role(*MODERATOR_ROLES)),
     db: Session = Depends(get_db),
 ) -> Closure:
     """Publish a closure to every hiker on the trail.
@@ -159,7 +162,7 @@ def verify_closure(
 @router.post("/closures/{closure_id}/dismiss", response_model=ClosureOut)
 def dismiss_closure(
     closure_id: str,
-    current_user: Profile = Depends(require_role("maintainer", "club_admin")),
+    current_user: Profile = Depends(require_role(*MODERATOR_ROLES)),
     db: Session = Depends(get_db),
 ) -> Closure:
     closure = get_or_404(db, Closure, closure_id, detail="Closure not found")

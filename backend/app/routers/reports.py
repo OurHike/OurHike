@@ -121,7 +121,7 @@ def create_report(
     response: Response,
     current_user: Profile = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> Report:
+) -> ReportOut:
     """Submit a new report. `visibility` and `severity` are never taken
     from the request - `visibility` is derived from `type` here, and
     `severity` stays at the model's `normal` default until a later verify
@@ -184,7 +184,7 @@ def create_report(
     )
     db.add(report)
     try:
-        return commit_and_refresh(db, report)
+        return ReportOut.for_viewer(commit_and_refresh(db, report), current_user)
     except IntegrityError:
         # The check above and this insert are two statements, so two
         # concurrent sends of the same id both see "not filed yet" and both
@@ -198,14 +198,14 @@ def create_report(
             # The conflict was not the id, so it is not ours to interpret.
             raise
         response.status_code = status.HTTP_200_OK
-        return settled
+        return ReportOut.for_viewer(settled, current_user)
 
 
 @router.get("", response_model=list[ReportOut])
 def list_reports(
     db: Session = Depends(get_db),
     current_user: Profile | None = Depends(_get_current_user_optional),
-) -> list[Report]:
+) -> list[ReportOut]:
     """List reports the caller may see: public and moderated, plus their own
     at any status.
 
@@ -216,10 +216,31 @@ def list_reports(
     """
     moderated = and_(Report.visibility == Visibility.public, Report.status.in_(_MODERATED_STATUSES))
 
-    if current_user is None:
-        return db.query(Report).filter(moderated).all()
+    # ORDERED, and by the id rather than by anything meaningful.
+    #
+    # Unordered, this returned rows in whatever order Postgres happened to
+    # scan them, which for a small table is heap order, which is insertion
+    # order. The array index was then a covert copy of `received_at` - the
+    # field ReportOut withholds - recoverable with `jq 'to_entries'` and no
+    # account. Worse, the client outbox flushes strictly serially
+    # (client/src/lib/outbox.ts), so one hiker's days-long backlog arrives as
+    # consecutive INSERTs and came back as a CONTIGUOUS RUN: adjacent
+    # indices, positions advancing along the corridor at walking pace. That
+    # is the reporter grouping withholding `reporter_id` was meant to end,
+    # rebuilt out of array order.
+    #
+    # `Report.id` is a random UUID - the client's `crypto.randomUUID()`, or
+    # `uuid4()` here - so ordering by it correlates with nothing, which is
+    # the entire requirement. Anything meaningful (a date, a mile) would just
+    # be a different channel.
+    query = db.query(Report).order_by(Report.id)
 
-    return db.query(Report).filter(or_(moderated, Report.reporter_id == current_user.id)).all()
+    if current_user is None:
+        rows = query.filter(moderated).all()
+    else:
+        rows = query.filter(or_(moderated, Report.reporter_id == current_user.id)).all()
+
+    return [ReportOut.for_viewer(row, current_user) for row in rows]
 
 
 @router.get("/{report_id}", response_model=ReportOut)
@@ -227,10 +248,10 @@ def get_report(
     report_id: str,
     db: Session = Depends(get_db),
     current_user: Profile | None = Depends(_get_current_user_optional),
-) -> Report:
+) -> ReportOut:
     """Return a single report, with the same visibility filtering as the
     list endpoint - except the reporter can always see their own report."""
     report = db.get(Report, report_id)
     if report is None or not _visible_to(report, current_user):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
-    return report
+    return ReportOut.for_viewer(report, current_user)

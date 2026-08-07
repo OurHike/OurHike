@@ -7,7 +7,15 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.core.time import UtcDatetime
-from app.models.report import ReporterType, ReportStatus, ReportType, Severity, Visibility
+from app.models.profile import MODERATOR_ROLES, Profile
+from app.models.report import (
+    Report,
+    ReporterType,
+    ReportStatus,
+    ReportType,
+    Severity,
+    Visibility,
+)
 
 
 class ReportCreate(BaseModel):
@@ -94,10 +102,29 @@ class ReportCreate(BaseModel):
 
 
 class ReportOut(BaseModel):
+    """One report, as much of it as the caller is entitled to (#252).
+
+    **Build these with `for_viewer`, never by returning the ORM row.** Four
+    fields are withheld from anyone who is neither the reporter nor a
+    moderator, and the withholding happens at construction so a caller cannot
+    leak them by forgetting to check - the same posture
+    app/routers/maintainer_assignments.py takes with `display_name`.
+
+    Nothing structural stops `return report` from a handler, and it is worth
+    being honest about that rather than claiming otherwise. Dropping
+    `from_attributes` looks like it would - `ReportOut.model_validate(row)`
+    then raises - but FastAPI validates response models with
+    `validate_python(value, from_attributes=True)` passed explicitly
+    (fastapi/_compat/v2.py), so `response_model=ReportOut` would go on
+    serialising the whole ORM row regardless. A comment claiming the leak is
+    impossible would be worse than no comment. The guard is
+    tests/test_routers_reports.py's route-table check, which walks the real
+    app and fails on any handler returning a report by another path.
+    """
+
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-    reporter_id: str
     type: ReportType
     poi_id: str | None
     lat: float | None
@@ -107,9 +134,64 @@ class ReportOut(BaseModel):
     note: str | None
     photo_url: str | None
     follow_up: Any | None
-    received_at: UtcDatetime
-    maintainer_id: str | None
-    club_id: str | None
     status: ReportStatus
     visibility: Visibility
     severity: Severity
+
+    # ---- Withheld from the public. Null is "not for you", not "unset". ----
+
+    # A stable account UUID next to a trail position and a time is the
+    # linkability features/IDENTITY_AND_PRIVACY.md names: group by it and a
+    # hiker's route down the corridor falls out, with curl and no account.
+    # `reporter_type` is the public attribution by design - it informs
+    # without identifying.
+    reporter_id: str | None = None
+
+    # A second clock. Even with `timestamp` left exact, the pair narrows
+    # "when was this person there" further than either alone, and nothing
+    # public reads it - the client's ReportSummary does not even declare it.
+    received_at: UtcDatetime | None = None
+
+    # Only meaningful on a `thanks`, which is `club_only` and so never
+    # reaches a non-owner through these endpoints anyway. They are withheld
+    # because `create_report` copies them from the request for EVERY type
+    # while only a `thanks` is forced to `club_only` - so a `blowdown`
+    # carrying an arbitrary real profile id is `public`, and `maintainer_id`
+    # was a second reporter_id nobody had noticed.
+    maintainer_id: str | None = None
+    club_id: str | None = None
+
+    @classmethod
+    def for_viewer(cls, report: "Report", viewer: "Profile | None") -> "ReportOut":
+        """The only correct way to build one. `viewer` is None when anonymous.
+
+        Privileged means the reporter reading their own report, or a
+        moderator - the two audiences that already authenticate, and the two
+        `MODERATOR_ROLES` exists to keep in step.
+
+        Per (row, viewer) rather than per route, which is what rules out a
+        public-schema/privileged-subclass split: `GET /reports` with a token
+        returns the caller's own rows AND other people's public rows in one
+        response, so the decision has to be made row by row inside it.
+        """
+        privileged = viewer is not None and (report.reporter_id == viewer.id or viewer.role in MODERATOR_ROLES)
+
+        return cls(
+            id=report.id,
+            type=report.type,
+            poi_id=report.poi_id,
+            lat=report.lat,
+            lon=report.lon,
+            reporter_type=report.reporter_type,
+            timestamp=report.timestamp,
+            note=report.note,
+            photo_url=report.photo_url,
+            follow_up=report.follow_up,
+            status=report.status,
+            visibility=report.visibility,
+            severity=report.severity,
+            reporter_id=report.reporter_id if privileged else None,
+            received_at=report.received_at if privileged else None,
+            maintainer_id=report.maintainer_id if privileged else None,
+            club_id=report.club_id if privileged else None,
+        )

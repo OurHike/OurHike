@@ -52,6 +52,16 @@ class Role(str, enum.Enum):
     club_admin = "club_admin"
 
 
+# The roles the moderation queue is gated to, and the roles that see a report's
+# `reporter_id`. ONE constant, because those two rules must not drift apart: a
+# moderator who can act on a report but cannot see who filed it, or worse the
+# reverse, is a permission model that only looks like one.
+#
+# Here rather than in core/auth.py so app/schemas/report.py can import it
+# without pulling the auth stack into a schema module.
+MODERATOR_ROLES: tuple[str, ...] = (Role.maintainer.value, Role.club_admin.value)
+
+
 class Profile(Base):
     __tablename__ = "profiles"
 

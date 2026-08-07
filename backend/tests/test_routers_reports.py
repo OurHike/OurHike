@@ -657,3 +657,279 @@ def test_losing_the_insert_race_returns_the_stored_report_not_a_500(client, monk
     assert second.json()["id"] == report_id
     assert calls["n"] == 2
     assert len(client.get("/reports", headers=headers).json()) == 1
+
+
+# --- What leaves the server, and to whom (#252) ---------------------------
+#
+# `ReportOut` used to serialise `reporter_id` - a stable account UUID - to
+# anonymous callers alongside a trail position and a time. Group by it and a
+# hiker's route down the corridor falls out, with curl and no account.
+# features/IDENTITY_AND_PRIVACY.md names exactly that linkability.
+#
+# The decision is per (row, viewer), not per route, which is why there is one
+# schema with a `for_viewer` constructor rather than a public/private pair:
+# `GET /reports` with a token returns the caller's own rows AND other people's
+# public rows in ONE response. A per-route split gets that case silently
+# wrong, so it has a test of its own below.
+
+
+def _public_report(db_session, reporter_id: str, **overrides) -> Report:
+    """A verified, public report by someone - the kind anyone can read."""
+    report = Report(
+        reporter_id=reporter_id,
+        type=ReportType.blowdown,
+        reporter_type="thru",
+        visibility=Visibility.public,
+        status=ReportStatus.verified,
+        **overrides,
+    )
+    db_session.add(report)
+    db_session.commit()
+    return report
+
+
+def test_anonymous_list_withholds_the_reporter_id(client, db_session):
+    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
+    db_session.add(reporter)
+    db_session.commit()
+    _public_report(db_session, reporter.id)
+
+    body = client.get("/reports").json()
+
+    assert len(body) == 1
+    # Present and null, not absent: the field stays in the contract so a
+    # client does not have to tell "withheld" from "this build is older".
+    assert "reporter_id" in body[0]
+    assert body[0]["reporter_id"] is None
+
+
+def test_anonymous_detail_withholds_it_too(client, db_session):
+    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
+    db_session.add(reporter)
+    db_session.commit()
+    report = _public_report(db_session, reporter.id)
+
+    body = client.get(f"/reports/{report.id}").json()
+
+    assert body["reporter_id"] is None
+
+
+def test_a_signed_in_stranger_is_still_a_stranger(client, db_session):
+    """Having an account does not entitle you to somebody else's identity.
+
+    The case a per-route split silently gets wrong: the route is
+    authenticated, so a schema chosen by route would hand over everything.
+    """
+    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
+    stranger_id = str(uuid.uuid4())
+    db_session.add_all([reporter, Profile(id=stranger_id, role=Role.hiker)])
+    db_session.commit()
+    report = _public_report(db_session, reporter.id)
+
+    body = client.get(f"/reports/{report.id}", headers=auth_headers(stranger_id)).json()
+
+    assert body["reporter_id"] is None
+
+
+def test_one_response_can_carry_both_answers_at_once(client, db_session):
+    """The whole reason this is decided per row.
+
+    A signed-in hiker's list contains their own report and a stranger's
+    public one. The first must carry the id; the second must not.
+    """
+    mine = Profile(id=str(uuid.uuid4()), role=Role.hiker)
+    theirs = Profile(id=str(uuid.uuid4()), role=Role.hiker)
+    db_session.add_all([mine, theirs])
+    db_session.commit()
+    my_report = _public_report(db_session, mine.id)
+    their_report = _public_report(db_session, theirs.id)
+
+    body = client.get("/reports", headers=auth_headers(mine.id)).json()
+    by_id = {row["id"]: row for row in body}
+
+    assert by_id[my_report.id]["reporter_id"] == mine.id
+    assert by_id[their_report.id]["reporter_id"] is None
+
+
+def test_a_moderator_sees_who_filed_it(client, db_session):
+    """The queue is unusable otherwise: deciding whether a `bad_hikers` note
+    is abuse means knowing whether the same account filed six of them."""
+    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
+    maintainer_id = str(uuid.uuid4())
+    db_session.add_all([reporter, Profile(id=maintainer_id, role=Role.maintainer)])
+    db_session.commit()
+    report = _public_report(db_session, reporter.id)
+
+    body = client.get(f"/reports/{report.id}", headers=auth_headers(maintainer_id)).json()
+
+    assert body["reporter_id"] == reporter.id
+
+
+def test_a_maintainer_id_on_a_public_report_is_withheld_too(client, db_session):
+    """The second leak, which the issue did not name.
+
+    `create_report` copies `maintainer_id` and `club_id` from the request for
+    EVERY report type, while `_visibility_for` forces `club_only` only for a
+    `thanks`. So a `blowdown` carrying an arbitrary real profile id is
+    `public` - `maintainer_id` was a second `reporter_id` that nobody had
+    noticed, and dropping only the obvious one would have left it.
+    """
+    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
+    named = Profile(id=str(uuid.uuid4()), role=Role.maintainer)
+    db_session.add_all([reporter, named])
+    db_session.commit()
+    report = _public_report(db_session, reporter.id, maintainer_id=named.id)
+
+    body = client.get(f"/reports/{report.id}").json()
+
+    assert body["maintainer_id"] is None
+    assert body["club_id"] is None
+
+
+def test_the_receipt_time_is_withheld_as_well(client, db_session):
+    """A second clock narrows "when was this person there" further than
+    either alone, and nothing public reads it - the client's own
+    `ReportSummary` does not even declare the field."""
+    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
+    db_session.add(reporter)
+    db_session.commit()
+    _public_report(db_session, reporter.id)
+
+    assert client.get("/reports").json()[0]["received_at"] is None
+
+
+def test_a_reporter_reading_their_own_report_still_gets_everything(client, db_session):
+    """The nuance the fix had to preserve. "Waiting" needs something to
+    appear on, and their own report is theirs to see in full."""
+    reporter_id = str(uuid.uuid4())
+    db_session.add(Profile(id=reporter_id, role=Role.hiker))
+    db_session.commit()
+    report = _public_report(db_session, reporter_id)
+
+    body = client.get(f"/reports/{report.id}", headers=auth_headers(reporter_id)).json()
+
+    assert body["reporter_id"] == reporter_id
+    assert body["received_at"] is not None
+
+
+def test_creating_a_report_returns_it_to_its_author_in_full(client):
+    """The author is the caller by construction here, so this is the owner
+    path - a 201 that withheld the id would be withholding it from the one
+    person it belongs to."""
+    reporter_id = str(uuid.uuid4())
+
+    response = client.post("/reports", json=_VALID_PAYLOAD, headers=auth_headers(reporter_id))
+
+    assert response.status_code == 201
+    assert response.json()["reporter_id"] == reporter_id
+
+
+def test_the_public_list_is_ordered_so_array_position_leaks_nothing(client, db_session):
+    """The covert channel that survived withholding `received_at`.
+
+    Unordered, this endpoint returned rows in whatever order Postgres
+    happened to scan them - for a small table, heap order, which is
+    insertion order. `jq 'to_entries'` then recovers the receipt ordering
+    the response had just withheld. Worse: the client outbox flushes
+    strictly serially, so one hiker's days-long backlog arrives as
+    consecutive INSERTs and came back as a contiguous run of adjacent
+    indices at positions advancing along the corridor - the reporter
+    grouping this whole change exists to end, rebuilt out of array order.
+
+    Asserted as "sorted by id" rather than "not insertion order", because
+    the second is a property of a particular database's scan behaviour and
+    the first is the thing the code promises.
+    """
+    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
+    db_session.add(reporter)
+    db_session.commit()
+    for _ in range(5):
+        _public_report(db_session, reporter.id)
+
+    ids = [row["id"] for row in client.get("/reports").json()]
+
+    assert len(ids) == 5
+    assert ids == sorted(ids)
+
+
+def _report_emitting_routes():
+    """Every route in the REAL app that can put a ReportOut on the wire.
+
+    Two signals, unioned, because either alone has a blind spot: a handler
+    declaring `response_model=ReportOut` and returning the ORM row never
+    mentions the schema in its body, and `GET /moderation/queue` declares
+    `ModerationQueue` while nesting ReportOut inside it.
+
+    The walk descends through `original_router`: this FastAPI version wraps
+    each `include_router` in an `_IncludedRouter` rather than flattening, so
+    `app.routes` alone reaches only `/health` and the docs.
+    """
+    import inspect
+
+    from app.main import app
+
+    def walk(routes):
+        for route in routes:
+            included = getattr(route, "original_router", None)
+            if included is not None:
+                yield from walk(included.routes)
+                continue
+            nested = getattr(route, "routes", None)
+            if nested:
+                yield from walk(nested)
+            else:
+                yield route
+
+    for route in walk(app.routes):
+        endpoint = getattr(route, "endpoint", None)
+        if endpoint is None:
+            continue
+        source = inspect.getsource(endpoint)
+        declared = str(getattr(route, "response_model", "") or "")
+        if "ReportOut" in declared or "ReportOut" in source:
+            yield route, source
+
+
+def test_every_route_that_can_emit_a_report_goes_through_for_viewer():
+    """The guard, and an honest account of what it can and cannot prove.
+
+    Dropping `from_attributes` from ReportOut looks like it would make the
+    leak impossible - `ReportOut.model_validate(row)` then raises - and it
+    does not: FastAPI validates response models with
+    `validate_python(value, from_attributes=True)` passed explicitly
+    (fastapi/_compat/v2.py), so `response_model=ReportOut` would go on
+    serialising the whole ORM row regardless. Measured against this repo,
+    not assumed - which is why ReportOut keeps its `from_attributes` and
+    says so, instead of carrying a comment claiming a protection it does
+    not have.
+
+    So nothing structural stops a seventh handler shipping `return report`.
+    What this does instead is read the REAL route table - not a list kept
+    here - and require every handler that can emit a ReportOut to name
+    `for_viewer`. A route added later is caught because the app is the thing
+    being read.
+    """
+    offenders = [
+        f"{sorted(route.methods)} {route.path} -> {route.endpoint.__name__}"
+        for route, source in _report_emitting_routes()
+        if "for_viewer" not in source
+    ]
+
+    assert offenders == [], (
+        "These handlers can emit a ReportOut without going through "
+        "ReportOut.for_viewer, so they serialise the raw ORM row and hand "
+        "reporter_id to whoever called them (#252):\n  " + "\n  ".join(offenders)
+    )
+
+
+def test_that_guard_is_actually_looking_at_something():
+    """Guards the guard. A walk that failed to reach the routers - which is
+    exactly what `app.routes` alone does here - would make the test above
+    pass vacuously and for ever."""
+    found = {route.path for route, _ in _report_emitting_routes()}
+
+    assert "/reports" in found
+    assert "/reports/{report_id}" in found
+    # The nested case: this one declares ModerationQueue, not ReportOut.
+    assert "/moderation/queue" in found
+    assert len(found) >= 5

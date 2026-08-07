@@ -104,7 +104,19 @@ def verify_report(
         )
 
     report.status = ReportStatus.verified
-    report.severity = payload.severity
+    # Only when the moderator actually said something about it. An omitted
+    # severity is not a de-escalation - see ReportVerifyRequest (#251).
+    if payload.severity is not None:
+        report.severity = payload.severity
+
+    # The same two fields verify_closure has set all along. Without them
+    # "who marked this dangerous-person report serious, and when" was
+    # unanswerable for the one resource where it matters most, while being
+    # answerable for a washed-out footbridge - which made
+    # features/REPORT_A_PROBLEM.md's "not building a second review workflow"
+    # structurally false at exactly this point.
+    report.verified_by = current_user.id
+    report.verified_at = utc_now()
     return ReportOut.for_viewer(commit_and_refresh(db, report), current_user)
 
 

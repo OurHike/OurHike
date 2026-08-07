@@ -8,11 +8,29 @@ from app.schemas.report import ReportOut
 
 
 class ReportVerifyRequest(BaseModel):
-    """`severity` is optional - a moderator verifying a report doesn't have
-    to escalate it; when omitted, severity stays at whatever it already was
-    (normal, since there's no path to set it before this action exists)."""
+    """`severity` is optional, and omitting it LEAVES IT ALONE.
 
-    severity: Severity = Severity.normal
+    This docstring used to say that and the code did the opposite: the field
+    defaulted to `normal` and `verify_report` assigned it unconditionally, so
+    the parenthetical excuse - "normal, since there's no path to set it
+    before this action exists" - was false the moment anybody used this same
+    action a second time (#251).
+
+    What that cost: moderator A escalates a `bad_hikers` report to `serious`,
+    which is what makes the 44px warning pin exist on every phone
+    (features/HIKER_SAFETY.md §1, client/src/map/warningPin.ts). Moderator B
+    re-verifies it with `{}` - or with a client that simply does not send the
+    field - and the pin disappears from the map. No error, no record, and the
+    disappearance looks exactly like the warning having been withdrawn on
+    purpose.
+
+    `None` rather than a default value is what makes "omitted" and
+    "explicitly normal" different requests. They mean different things: one
+    is a moderator saying nothing about severity, the other is a moderator
+    de-escalating, and only the second should change anything.
+    """
+
+    severity: Severity | None = None
 
 
 class ModerationQueue(BaseModel):

@@ -153,3 +153,23 @@ describe('More, when a report was refused for good', () => {
     expect(screen.queryByRole('alert')).toBe(null)
   })
 })
+
+describe('the moderation entry (#235)', () => {
+  it('is absent for an ordinary hiker', () => {
+    // Offered on a guess, it costs a 403 the person cannot act on and an app
+    // that looks broken. `onOpenModeration` being undefined IS "not a
+    // moderator" as far as this screen is concerned.
+    render(<More {...PROPS} />)
+
+    expect(screen.queryByRole('button', { name: /moderation/i })).toBeNull()
+  })
+
+  it('appears, and opens the queue, when there is somewhere to go', () => {
+    const onOpenModeration = vi.fn()
+    render(<More {...PROPS} onOpenModeration={onOpenModeration} />)
+
+    screen.getByRole('button', { name: /moderation queue/i }).click()
+
+    expect(onOpenModeration).toHaveBeenCalled()
+  })
+})

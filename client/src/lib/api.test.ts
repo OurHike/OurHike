@@ -546,3 +546,94 @@ describe('sending a report that has a photo', () => {
     expect(spy).not.toHaveBeenCalled()
   })
 })
+
+// --- Moderation (#235) ----------------------------------------------------
+
+describe('the moderation calls', () => {
+  async function configuredApi() {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.org')
+    vi.resetModules()
+    return import('./api')
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
+  function mockOk(body: unknown = {}) {
+    return vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => body,
+    } as Response)
+  }
+
+  it('reads the queue with the token, because the backend gates it on a role', async () => {
+    const api = await configuredApi()
+    const spy = mockOk({ reports: [], closures: [] })
+
+    await api.fetchModerationQueue()
+
+    expect(spy.mock.calls[0][0]).toBe('https://api.example.org/moderation/queue')
+    const headers = (spy.mock.calls[0][1] as RequestInit).headers as Record<
+      string,
+      string
+    >
+    expect(headers.Authorization).toBe('Bearer a-real-token')
+  })
+
+  it('THROWS on a failed queue read rather than answering with an empty queue', async () => {
+    // The property this whole screen rests on: "nothing is waiting" and "I
+    // could not ask" must not be the same value.
+    const api = await configuredApi()
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({}),
+    } as Response)
+
+    await expect(api.fetchModerationQueue()).rejects.toBeInstanceOf(api.ApiError)
+  })
+
+  it('omits severity entirely when the moderator did not choose one', async () => {
+    // #251. An absent field means "said nothing"; `normal` means
+    // "de-escalate", and the two must not be the same request.
+    const api = await configuredApi()
+    const spy = mockOk()
+
+    await api.verifyReport('r-1')
+
+    expect(JSON.parse(String((spy.mock.calls[0][1] as RequestInit).body))).toEqual({})
+  })
+
+  it('sends severity when one was chosen', async () => {
+    const api = await configuredApi()
+    const spy = mockOk()
+
+    await api.verifyReport('r-1', 'serious')
+
+    expect(JSON.parse(String((spy.mock.calls[0][1] as RequestInit).body))).toEqual({
+      severity: 'serious',
+    })
+  })
+
+  it('reads the signed-in profile, which is where a role comes from', async () => {
+    const api = await configuredApi()
+    const spy = mockOk({ id: 'p-1', role: 'maintainer', display_name: null })
+
+    const profile = await api.fetchMyProfile()
+
+    expect(spy.mock.calls[0][0]).toBe('https://api.example.org/profiles/me')
+    expect(profile.role).toBe('maintainer')
+  })
+
+  it('refuses to ask who you are when signed out, rather than guessing', async () => {
+    const api = await configuredApi()
+    withSession(null)
+    const spy = mockOk()
+
+    await expect(api.fetchMyProfile()).rejects.toBeInstanceOf(api.NotSignedInError)
+    expect(spy).not.toHaveBeenCalled()
+  })
+})

@@ -349,3 +349,110 @@ export function permanentFailureReason(error: unknown): string | null {
 
   return PERMANENT_REASONS[error.status] ?? null
 }
+
+// --- Moderation (#235) ----------------------------------------------------
+//
+// The queue could be acted on and read by the backend long before anything
+// here could call it, so a `bad_hikers` report - one about being followed on
+// trail - reached the audience `internal_only` names only if somebody ran
+// curl. These are the calls the moderator screen makes.
+//
+// Every one of them is `authedFetch`: the backend gates all five behind
+// `require_role(maintainer, club_admin)`, and this is the first place the
+// client has ever cared what a role is.
+
+/** The signed-in user's own profile. Only `role` is read today; the rest is
+ *  what `GET /profiles/me` returns and is declared so it is not re-guessed. */
+export interface ProfileSummary {
+  id: string
+  role: 'hiker' | 'maintainer' | 'club_admin'
+  display_name: string | null
+}
+
+export async function fetchMyProfile(signal?: AbortSignal): Promise<ProfileSummary> {
+  // Not `readFetch`: this endpoint IS the identity, so without a token there
+  // is no question to ask, and a 401 is the honest answer rather than a
+  // guess at an anonymous default.
+  const response = await authedFetch('/profiles/me', { method: 'GET', signal })
+  return (await response.json()) as ProfileSummary
+}
+
+/**
+ * A report as a MODERATOR sees it - the whole record, not the public subset.
+ *
+ * Wider than `ReportSummary` deliberately, and the extra fields are the ones
+ * the decision actually turns on: the note and the photo are the evidence,
+ * `visibility` is what says this is an incident note about a person rather
+ * than a blowdown, and `severity` is what a verify may change.
+ */
+export interface QueuedReport extends ReportSummary {
+  visibility: 'public' | 'internal_only' | 'club_only'
+  photo_url: string | null
+  reporter_id: string | null
+}
+
+/** A closure awaiting review. A line along the trail rather than a pin, which
+ *  is why it is a different shape and not a flag on the rows above. */
+export interface QueuedClosure {
+  id: string
+  reason_type: ClosureReason
+  note: string | null
+  status: ClosureStatus
+  start_mile_marker: number
+  end_mile_marker: number
+  reported_at: string
+}
+
+export interface ModerationQueue {
+  reports: QueuedReport[]
+  closures: QueuedClosure[]
+}
+
+/**
+ * Everything waiting on a moderator.
+ *
+ * **Throws rather than returning an empty queue**, for the same reason
+ * `fetchReports` does: "nothing is waiting" and "I could not ask" draw the
+ * same empty screen and mean opposite things. Here the wrong one of those
+ * tells a moderator there are no unreviewed safety reports.
+ */
+export async function fetchModerationQueue(
+  signal?: AbortSignal,
+): Promise<ModerationQueue> {
+  const response = await authedFetch('/moderation/queue', { method: 'GET', signal })
+  return (await response.json()) as ModerationQueue
+}
+
+/**
+ * Verify a report, optionally saying something about its severity.
+ *
+ * **`severity` is omitted unless the moderator chose one, and that is not a
+ * formality (#251).** The backend treats an absent field as "said nothing"
+ * and an explicit `normal` as a de-escalation. Sending `normal` by default
+ * would silently clear a `serious` flag another moderator set - which is the
+ * flag that puts a warning pin on every phone on the trail.
+ */
+export async function verifyReport(
+  reportId: string,
+  severity?: 'normal' | 'serious',
+): Promise<void> {
+  await authedFetch(`/reports/${reportId}/verify`, {
+    method: 'POST',
+    body: JSON.stringify(severity === undefined ? {} : { severity }),
+  })
+}
+
+export async function dismissReport(reportId: string): Promise<void> {
+  await authedFetch(`/reports/${reportId}/dismiss`, { method: 'POST', body: '{}' })
+}
+
+export async function verifyClosure(closureId: string): Promise<void> {
+  // No body. A closure is born `closed`, so verifying one says everything
+  // that needs saying; the optional `status` covers confirming a reroute,
+  // which is a judgment this screen does not yet offer.
+  await authedFetch(`/closures/${closureId}/verify`, { method: 'POST', body: '{}' })
+}
+
+export async function dismissClosure(closureId: string): Promise<void> {
+  await authedFetch(`/closures/${closureId}/dismiss`, { method: 'POST', body: '{}' })
+}

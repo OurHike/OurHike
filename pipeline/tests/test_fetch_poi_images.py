@@ -14,6 +14,7 @@ import requests
 
 import export_poi
 import fetch_poi_images
+from lib.photo_store import local_photo_path, photo_digest
 from tests.test_export_poi import _write_fixture_sources
 
 FRESH = (date.today() - timedelta(days=100)).isoformat()
@@ -63,9 +64,29 @@ def _imageinfo_page(pageid, title, taken=None, license_id="cc-by-sa-4.0", licens
     }
 
 
+JPEG_BYTES = b"\xff\xd8\xff\xe0 pretend shelter photo"
+
+
 def _use_pois(monkeypatch, tmp_path, pois):
     monkeypatch.setattr(fetch_poi_images, "corridor_pois", lambda: pois)
     monkeypatch.setattr(fetch_poi_images, "OUT_PATH", tmp_path / "poi_images.json")
+    monkeypatch.setattr(fetch_poi_images, "RAW_DIR", tmp_path)
+
+
+def _serve_image(requests_mock, pageid=1, content=JPEG_BYTES):
+    """The thumbnail download #362 added. Registered separately from the API
+    mock because the bytes come from a different host."""
+    requests_mock.get(f"https://upload.wikimedia.org/{pageid}-640.jpg", content=content)
+
+
+def _cache_image(tmp_path, content=JPEG_BYTES):
+    """Put an image in the local cache the way a previous run would have,
+    and return its digest."""
+    digest = photo_digest(content)
+    path = local_photo_path(tmp_path, digest)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    return digest
 
 
 def _no_sleep(monkeypatch):
@@ -89,6 +110,7 @@ def test_a_nearby_eligible_photo_is_recorded_with_its_licence_attribution_and_da
             {"json": {"query": {"pages": _imageinfo_page(1, "File:Test Shelter.jpg")}}},
         ],
     )
+    _serve_image(requests_mock)
 
     fetch_poi_images.main()
 
@@ -150,9 +172,14 @@ def test_a_prior_outcome_is_carried_forward_without_any_api_calls(tmp_path, monk
     found = _poi()
     missed = _poi(poi_id="opentrail_at:100", poi_type="water")
     _use_pois(monkeypatch, tmp_path, [found, missed])
+    digest = _cache_image(tmp_path)
     prior = {
         "pois": {
-            found["id"]: {"status": "found", "checked": "2026-08-01", "photo": {"url": "u", "taken": FRESH}},
+            found["id"]: {
+                "status": "found",
+                "checked": "2026-08-01",
+                "photo": {"url": "u", "taken": FRESH, "digest": digest},
+            },
             missed["id"]: {"status": "none", "checked": "2026-08-01"},
         }
     }
@@ -163,6 +190,63 @@ def test_a_prior_outcome_is_carried_forward_without_any_api_calls(tmp_path, monk
 
     assert requests_mock.call_count == 0
     assert _saved(tmp_path) == prior["pois"]
+
+
+def test_a_found_photo_whose_cached_bytes_are_gone_is_refetched_without_a_new_search(tmp_path, monkeypatch, requests_mock):
+    """publish.py uploads from the cached files, so an outcomes file claiming
+    photos whose images were cleared would publish POIs pointing at objects
+    nobody ever uploaded - a 404 on a mountain. The recorded answer still
+    stands, though, so only the image is re-fetched, not the geosearch that
+    produced it."""
+    _no_sleep(monkeypatch)
+    poi = _poi()
+    _use_pois(monkeypatch, tmp_path, [poi])
+    prior = {
+        "pois": {
+            poi["id"]: {
+                "status": "found",
+                "checked": "2026-08-01",
+                # Recorded by a previous run, whose data/ tree has since been
+                # cleared - the digest is here, the file is not.
+                "photo": {"url": "https://upload.wikimedia.org/1-640.jpg", "taken": FRESH, "digest": photo_digest(JPEG_BYTES)},
+            }
+        }
+    }
+    (tmp_path / "poi_images.json").write_text(json.dumps(prior))
+    _serve_image(requests_mock)
+
+    fetch_poi_images.main()
+
+    # One request, and it was for the image rather than the API.
+    assert requests_mock.call_count == 1
+    assert requests_mock.last_request.url == "https://upload.wikimedia.org/1-640.jpg"
+    assert local_photo_path(tmp_path, photo_digest(JPEG_BYTES)).read_bytes() == JPEG_BYTES
+    assert _saved(tmp_path)[poi["id"]]["status"] == "found"
+
+
+def test_a_downloaded_photo_is_cached_under_its_own_digest_and_carries_it(tmp_path, monkeypatch, requests_mock):
+    """The content-addressing contract: what lands on disk is named by the
+    hash of its own bytes, and the record carries that name so export_poi.py
+    can point the artifact at the same object publish.py will upload."""
+    _no_sleep(monkeypatch)
+    _use_pois(monkeypatch, tmp_path, [_poi()])
+    requests_mock.get(
+        fetch_poi_images.API_URL,
+        [
+            {"json": _geosearch(("File:Test Shelter.jpg", 40.0))},
+            {"json": {"query": {"pages": _imageinfo_page(1, "File:Test Shelter.jpg")}}},
+        ],
+    )
+    _serve_image(requests_mock)
+
+    fetch_poi_images.main()
+
+    digest = photo_digest(JPEG_BYTES)
+    assert _saved(tmp_path)["atc_shelters:glob-1"]["photo"]["digest"] == digest
+    assert local_photo_path(tmp_path, digest).read_bytes() == JPEG_BYTES
+    # No stray temp file: the write is atomic, so a half-written image can
+    # never sit under a name promising a digest its bytes do not have.
+    assert list(local_photo_path(tmp_path, digest).parent.glob("*.tmp")) == []
 
 
 def test_a_found_photo_that_aged_past_the_freshness_window_is_requeried(tmp_path, monkeypatch, requests_mock):
@@ -195,6 +279,7 @@ def test_recheck_requeries_poi_outcomes_that_would_otherwise_be_skipped(tmp_path
             {"json": {"query": {"pages": _imageinfo_page(1, "File:Test Shelter.jpg")}}},
         ],
     )
+    _serve_image(requests_mock)
 
     fetch_poi_images.run(["--recheck"])
 
@@ -394,6 +479,7 @@ def test_normalized_titles_are_mapped_back_to_the_geosearch_hit(tmp_path, monkey
             },
         ],
     )
+    _serve_image(requests_mock)
 
     fetch_poi_images.main()
 
@@ -415,6 +501,8 @@ def test_the_nearest_eligible_file_wins_over_a_newer_farther_one(tmp_path, monke
             {"json": {"query": {"pages": pages}}},
         ],
     )
+    _serve_image(requests_mock, pageid=1)
+    _serve_image(requests_mock, pageid=2)
 
     fetch_poi_images.main()
 

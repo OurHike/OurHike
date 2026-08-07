@@ -30,8 +30,17 @@ things follow, and every rule on this page is one of them:
 
 ## What belongs in the bucket
 
-Published map data, the manifest that names it, and build metadata describing that data.
-That is the whole list.
+Published map data, the manifest that names it, build metadata describing that data, and
+the POI photos that data points at. That is the whole list.
+
+The photos are the one payload here rather than a dataset, and they follow a different
+rule from everything else because they are **content-addressed**: the key is the sha256
+of the image bytes, so `photos/<digest>.jpg` never needs renaming (the thing this layout
+cannot do), identical images shared by two waypoints are one object, and a client can
+verify a download by hashing it against the key it asked for. They are also the one
+hiker-facing thing in the bucket that gets **deleted** — a shared photo can be withdrawn,
+which is why they are not under `releases/` and why no prune rule may treat them as
+release output.
 
 **What does not, and why it matters that it never starts:** user accounts, condition
 reports, closures, comments and anything a hiker typed live in Postgres behind the
@@ -54,6 +63,7 @@ data a phone is pinned to.
 | *(root)* | today's flat keys, plus `latest.json` | frozen; `latest.json` is the one mutable pointer | yes |
 | `releases/` | one immutable folder per dated release, plus `index.json` and `pinned.json` | written once, never overwritten | yes |
 | `_internal/` | build intermediates, keyed by release | rewritten per build | no |
+| `photos/` | POI photos, one object per image, content-addressed | mutable: objects are added and deleted, never rewritten | yes |
 
 `releases/` and `_internal/` are the layout [DATA_RELEASES.md](DATA_RELEASES.md) designs and
 is rolling out; the root keys are what is live today and stay frozen when it lands. That
@@ -71,9 +81,11 @@ Enforced, in `lib/r2_keys.py`:
 - **`-` is reserved for release ids** (`2026-08-07`, `2026-08-07-2` for a same-day
   rebuild), so a date can never turn up inside an object name by accident.
 - **Exactly one extension, from the set the bucket serves** — `.geojson`, `.fgb`,
-  `.pmtiles`, `.json`, `.tif`. Adding a format is one line in the validator, reviewed
-  alongside the artifact that needs it, rather than a `.tar.gz` appearing in a public
-  bucket unremarked.
+  `.pmtiles`, `.json`, `.tif`, `.jpg`. Adding a format is one line in the validator,
+  reviewed alongside the artifact that needs it, rather than a `.tar.gz` appearing in a
+  public bucket unremarked. `.jpg` arrived that way, for POI photos; there is
+  deliberately no `.jpeg` alias, because two spellings of one format is two keys for one
+  photo and neither can be renamed afterwards.
 - **No version or date in the name.** Not `trails_v2.geojson`, not
   `trails_2026_08_07.geojson`. Which build an object came from is what the release folder
   says, and it is the only place that stays true.

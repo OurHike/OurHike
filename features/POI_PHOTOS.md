@@ -4,7 +4,7 @@ Companion to [FEATURES.md](../FEATURES.md), [WIREFRAMES.md](../WIREFRAMES.md) (t
 
 **This doc owns one square of screen:** the photo slot on the waypoint card, and everything that can legitimately fill it. Three sources can, and they are not equals — a hiker's own photo of the shelter where they met their tramily is not the same kind of object as a stranger's geotagged upload, and the design turns on that difference rather than treating all pixels alike.
 
-**Built today:** the Commons source only (`pipeline/fetch_poi_images.py`, the `photo_*` properties, the card's credit line). Everything under "Your own photo" and "Sharing" is designed here and not implemented — the design doc is the first contribution, per CONTRIBUTING.md.
+**Built today:** the Commons source only (`pipeline/fetch_poi_images.py`, the `photo_*` properties, the card's credit line), with its images served from our own bucket (#362). Everything under "Your own photo" and "Sharing" is designed here and not implemented — the design doc is the first contribution, per CONTRIBUTING.md.
 
 ---
 
@@ -16,7 +16,7 @@ One slot, four possible occupants, in this order:
 |---|---|---|---|
 | 1 | **Your own photo** of this place | your device | always |
 | 2 | **The community default** — a shared photo a moderator promoted | backend | when cached |
-| 3 | **A Commons photo** — openly licensed, recent, nearest | published artifact | URL only |
+| 3 | **A Commons photo** — openly licensed, recent, nearest | our bucket, `photos/` | when cached |
 | 4 | **The category silhouette** | the app itself | always |
 
 **Your own photo always wins, and nothing can displace it.** Not a better-composed community photo, not a fresher one, not a moderator. This is the whole point of the feature and it is value #1 stated as a render rule: a hiker's memory of a place outranks the app's opinion about it. The ladder falls through only downward, and rung 4 is a floor rather than a failure — it is what the slot has always shown and the honest answer when nothing better is true.
@@ -39,7 +39,7 @@ Commons is the one large photo corpus where every file carries machine-readable 
 - **Licensing is per photo, not per source.** One Commons file is CC BY 4.0, its neighbour CC BY-SA 2.0, a third public domain. So the licence record travels **on each exported feature** (`photo_license`, `photo_author`, `photo_page_url`), and the card renders the credit line — author, licence name, one link to the Commons file page — the same load-bearing-attribution posture as the map's ODbL line. Only public domain, CC0, and **CC BY / CC BY-SA at 4.0 or newer** are accepted. The version floor is not pedantry: 4.0's §3(a)(2) explicitly allows satisfying attribution via a link to a page carrying the required information (the file page does), while the 2.0/2.5/3.0 licences require the licence URI itself to ship with every copy — a term a one-link credit cannot meet, so those files are rejected the same way NC (breaks any future paid tier), ND (arguably forbids the card's crop) and GFDL (demands the full licence text) are: wholesale, rather than negotiated. The real coverage cost is Flickr-to-Commons imports (still CC 2.0-suite); accepting them later means carrying a licence-deed URL through the artifact and growing a second link in the credit, which is a deliberate follow-up, not an oversight. A CC BY photo with no attributable author is unusable, not "usable, uncredited".
 - **"Real photo, recent" is enforced by one honest proxy:** the file must be a JPEG with a parseable EXIF capture date inside the window. Maps, SVG diagrams, screenshots and undated scans fail this naturally, with no image-content classification pretending to judge what the photo shows. The capture date ships with the photo (`photo_taken`) and the card shows the month.
 - **Proximity is the match, and its limit is disclosed by design.** The nearest eligible file within a per-type radius wins. This will occasionally pick a photo of the view *from* the shelter rather than *of* it. The credit line linking to the file page keeps provenance one tap away; anything smarter (name matching, depicts-statements) is future refinement.
-- **Never the original file — a sized thumbnail or nothing.** A Commons original is a full-resolution camera file, routinely 3–15 MB; the card's slot is 264 CSS pixels wide. The fetch asks for a 640px-wide rendering (`iiurlwidth`) and takes that `thumburl` — as built it stores the URL; per "Where the bytes live" below it will store our own mirrored copy of those bytes. Either way there is deliberately **no fallback to the original**: filling a thumbnail-sized box with a multi-megabyte download on a hiker's data plan is value #8's exact argument against itself.
+- **Never the original file — a sized thumbnail or nothing.** A Commons original is a full-resolution camera file, routinely 3–15 MB; the card's slot is 264 CSS pixels wide. The fetch asks for a 640px-wide rendering (`iiurlwidth`), downloads those bytes, and stores our own copy of them (see "Where the bytes live"). There is deliberately **no fallback to the original**: filling a thumbnail-sized box with a multi-megabyte download on a hiker's data plan is value #8's exact argument against itself.
 
 ### Expect very little of it
 
@@ -195,7 +195,7 @@ One credit line, one shape, whatever the source: who, under what terms, when. A 
 
 ### Mirror Commons rather than hotlinking it
 
-Shipping Commons thumbnail URLs was the first slice, and it is the wrong long-term answer for the reason SOURCE_REGISTRY.md already gives about upstream endpoints: *a live third-party dependency is a 404 on a mountain*. Hotlinking makes every waypoint card depend on `upload.wikimedia.org` being reachable and unchanged. The fetch therefore **downloads the 640px rendering and stores it in our own bucket**, and the artifacts point at our copy.
+**Built 2026-08-07 (#362).** Shipping Commons thumbnail URLs was the first slice, and it was the wrong long-term answer for the reason SOURCE_REGISTRY.md already gives about upstream endpoints: *a live third-party dependency is a 404 on a mountain*. Hotlinking makes every waypoint card depend on `upload.wikimedia.org` being reachable and unchanged. The fetch therefore **downloads the 640px rendering and stores it in our own bucket**, and the artifacts point at our copy.
 
 Two things this fixes at once. The card stops depending on somebody else's uptime — and we stop spending a nonprofit's bandwidth on our traffic. Wikimedia permits hotlinking, but a popular app pushing its image load onto Wikimedia is a cost externalised onto exactly the kind of organisation this project is supposed to be a good citizen toward. Serving it ourselves costs, per the table below, approximately nothing.
 
@@ -203,7 +203,7 @@ Licensing permits this and it is worth stating why rather than assuming: PD and 
 
 ### This needs two deliberate changes to the R2 rules, which is the gate working
 
-Checked against `lib/r2_keys.py` rather than assumed, and it refuses today:
+Checked against `lib/r2_keys.py` rather than assumed. It refused both, which is the gate working; #362 made each change deliberately, in the PR that needed it:
 
 - **`.jpg` is not a served extension.** The set is `geojson`, `fgb`, `json`, `pmtiles`, `tif`, and a JPEG key is rejected outright.
 - **There is no prefix for photos.** Only `releases/` and `_internal/` are declared, and `_internal/` explicitly means "nothing here is a download", which photos are.

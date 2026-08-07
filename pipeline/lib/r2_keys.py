@@ -36,13 +36,24 @@ RELEASE_ID_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}(-\d+)?$")
 # The formats this bucket actually serves. A closed set on purpose: adding
 # one is a single line here, reviewed alongside the artifact that needs it,
 # rather than a `.tar.gz` appearing in a public bucket unremarked.
-ALLOWED_EXTENSIONS = frozenset({"geojson", "fgb", "pmtiles", "json", "tif"})
+#
+# `jpg` was added for POI photos (#362, features/POI_PHOTOS.md) - the one
+# format here that is a payload rather than a dataset. It stays narrow
+# deliberately: no `jpeg` alias, because two spellings of one format is two
+# keys for one photo and the layout cannot rename either afterwards.
+ALLOWED_EXTENSIONS = frozenset({"geojson", "fgb", "pmtiles", "json", "tif", "jpg"})
 
 # Top-level prefixes anyone may write under. A new one is a design decision
 # (see R2_LAYOUT.md), not something a script invents on its first upload -
 # retention rules are written per prefix, so a prefix nobody declared is a
 # prefix no prune job knows to spare.
-TOP_LEVEL_PREFIXES = frozenset({"releases", "_internal"})
+#
+# `photos` holds POI photos, content-addressed by the sha256 of the image
+# bytes. Deliberately NOT under `releases/`: those folders are written once
+# and never overwritten, so a photo published into one could never be taken
+# down, and withdrawal is a promise made to the hiker who shared it
+# (features/POI_PHOTOS.md). This prefix is mutable for exactly that reason.
+TOP_LEVEL_PREFIXES = frozenset({"releases", "_internal", "photos"})
 
 # Keys that mean something specific and are therefore spelled exactly one
 # way. `latest.json` is the mutable pointer at the bucket root; the two under

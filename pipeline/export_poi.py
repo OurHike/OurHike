@@ -48,9 +48,12 @@ inspection, 2026-07-28):
     keeps the schema honest about what's actually populated.
 
 Photo enrichment: when fetch_poi_images.py has run, data/raw/poi_images.json
-holds per-POI photo records (Wikimedia Commons; url, author, licence, capture
-date) keyed by the same unified ids this export writes, and those fields ride
-along on the exported features as photo_* properties. The file being absent
+holds per-POI photo records (Wikimedia Commons; author, licence, capture date
+and the digest of the downloaded image) keyed by the same unified ids this
+export writes, and those ride along on the exported features as photo_*
+properties. The feature carries `photo_key` - the bucket key our own copy is
+served under (#362) - never the Commons URL, so a card never depends on
+somebody else's host. The file being absent
 is a normal state, not an error - the export ships photo-less features and
 the client card shows its category placeholder. Per-photo licensing is why
 attribution travels per-feature instead of as one registry line (see
@@ -65,6 +68,7 @@ import duckdb
 
 from lib.completeness import count_problems, fail_if_incomplete
 from lib.corridor import build_corridor
+from lib.photo_store import photo_key
 from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES, unify_poi
 
 ROOT = Path(__file__).parent
@@ -79,7 +83,11 @@ IMAGES_FILENAME = "poi_images.json"
 # What travels from a fetched photo record onto the exported feature. Kept to
 # what the card actually renders (credit line + link) plus the capture date -
 # honesty about a photo's age is data, not decoration (OurHikeValues.md #4).
-PHOTO_FIELDS = ("url", "page_url", "author", "license", "taken")
+# `url` is deliberately absent: it is the Commons source of the bytes, kept
+# in the raw fetch record as provenance, but the card must never fetch it -
+# that is the hotlink #362 removed. `photo_key` is added separately by
+# attach_photos, derived from the digest rather than copied.
+PHOTO_FIELDS = ("page_url", "author", "license", "taken")
 
 TRAIL_ID = "AT"
 
@@ -132,14 +140,26 @@ def attach_photos(records: list[dict], photos: dict[str, dict]) -> int:
     photo_* keys, returning how many matched. Unmatched records are left
     without the keys entirely - write_poi_type reads them with .get(), and a
     NULL column is the honest export of "no photo", the same shape the
-    client's card treats as its placeholder."""
+    client's card treats as its placeholder.
+
+    A photo with no `digest` is skipped rather than exported: since #362 the
+    image is served from our own bucket, and the digest is the only thing
+    that names it there. A record without one predates the download step, so
+    there is nothing for a card to point at - and exporting the Commons URL
+    instead would silently reintroduce the hotlink that change removed.
+    """
     attached = 0
     for record in records:
         photo = photos.get(record["id"])
-        if photo is None:
+        if photo is None or not photo.get("digest"):
             continue
         for field in PHOTO_FIELDS:
             record[f"photo_{field}"] = photo.get(field)
+        # The bucket key, not a URL: the host a hiker fetches from is the
+        # client's build-time VITE_DATA_BASE_URL, and baking one into
+        # published data would break every card the day the bucket or CDN
+        # in front of it changes. Every other artifact is named the same way.
+        record["photo_key"] = photo_key(photo["digest"])
         attached += 1
     return attached
 
@@ -204,7 +224,7 @@ def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[
         CREATE OR REPLACE TABLE poi_out (
             id VARCHAR, poi_type VARCHAR, trail_id VARCHAR, source VARCHAR,
             source_feature_id VARCHAR, name VARCHAR, lat DOUBLE, lon DOUBLE, confidence VARCHAR,
-            photo_url VARCHAR, photo_page_url VARCHAR, photo_author VARCHAR, photo_license VARCHAR, photo_taken VARCHAR
+            photo_key VARCHAR, photo_page_url VARCHAR, photo_author VARCHAR, photo_license VARCHAR, photo_taken VARCHAR
         )
     """)
     if records:
@@ -224,7 +244,7 @@ def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[
                     # .get, not [] - records arrive photo-less both when
                     # attach_photos found no match and when a caller (or an
                     # older test) never ran the attach step at all.
-                    r.get("photo_url"),
+                    r.get("photo_key"),
                     r.get("photo_page_url"),
                     r.get("photo_author"),
                     r.get("photo_license"),

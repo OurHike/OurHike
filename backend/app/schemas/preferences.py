@@ -165,6 +165,24 @@ class PreferencesIn(BaseModel):
     auto_rotate_enabled: bool = False
 
     # Safety / privacy
+    #
+    # `wrong_way_alert_enabled` SYNCS, and that is a decision rather than an
+    # oversight corrected (#242). It is not the OS notification permission -
+    # that is genuinely per-device and lives with the platform. This is the
+    # app-level question "do I want OurHike's one alert at all", which
+    # belongs to a person rather than to a handset.
+    #
+    # It defaults ON, so the safety path is opt-out - which is exactly why
+    # not syncing it would be the wrong way round: a hiker who deliberately
+    # turned the alert off would get it back on a reinstalled phone, firing
+    # when they had chosen silence. For the one notification this app ever
+    # sends (client/src/lib/push.ts), spending the trust budget that way is
+    # worse than losing a preference.
+    #
+    # Defaulted here for the same reason `map_style` is: a row synced before
+    # this key existed must read back as the safety default rather than as a
+    # ValidationError.
+    wrong_way_alert_enabled: bool = True
     anonymity_window_days: int
 
     # Onboarding progress

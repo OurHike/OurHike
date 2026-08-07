@@ -11,7 +11,7 @@ import {
   TrailDataHashMismatchError,
   type StoredPoi,
 } from './trailData'
-import { ELEVATION_KEY, POI_TYPES, SPURS_KEY, TRAILS_KEY } from './config'
+import { dataUrl, ELEVATION_KEY, POI_TYPES, SPURS_KEY, TRAILS_KEY } from './config'
 import type { ElevationProfile } from './elevationProfile'
 import { publishedHash } from './dataManifest'
 import { sha256Hex } from './sha256'
@@ -236,7 +236,7 @@ describe('trail data', () => {
           lat: 45.45,
           lon: -69.26,
           confidence: 'high',
-          photo_url: 'https://upload.wikimedia.org/lean-to-640.jpg',
+          photo_key: 'photos/abc123.jpg',
           photo_page_url: 'https://commons.wikimedia.org/wiki/File:Lean-to.jpg',
           photo_author: 'A. Hiker',
           photo_license: 'CC BY-SA 4.0',
@@ -247,7 +247,11 @@ describe('trail data', () => {
     await downloadTrailData()
 
     const pois = store.get(POIS_KEY) as StoredPoi[]
-    expect(pois[0].photoUrl).toBe('https://upload.wikimedia.org/lean-to-640.jpg')
+    // Resolved through the build-time data base, not stored as published:
+    // the artifact carries a bucket key so moving bucket or fronting it with
+    // a CDN never invalidates data already published.
+    expect(pois[0].photoUrl).toBe(dataUrl('photos/abc123.jpg'))
+    expect(pois[0].photoUrl).not.toContain('upload.wikimedia.org')
     expect(pois[0].photoPage).toBe('https://commons.wikimedia.org/wiki/File:Lean-to.jpg')
     expect(pois[0].photoAuthor).toBe('A. Hiker')
     expect(pois[0].photoLicense).toBe('CC BY-SA 4.0')
@@ -260,7 +264,7 @@ describe('trail data', () => {
     // stored null would read as one to anything checking for the key.
     serve(
       poiCollection([
-        { id: 'x', poi_type: 'water', name: 'Spring', lat: 1, lon: 2, photo_url: null },
+        { id: 'x', poi_type: 'water', name: 'Spring', lat: 1, lon: 2, photo_key: null },
       ]),
     )
     await downloadTrailData()

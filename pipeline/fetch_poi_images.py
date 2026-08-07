@@ -49,9 +49,11 @@ import export_poi
 from lib.commons import eligible_photo, pick_photo
 from lib.completeness import fail_if_incomplete
 from lib.corridor import build_corridor
+from lib.photo_store import local_photo_path, photo_digest
 
 API_URL = "https://commons.wikimedia.org/w/api.php"
-OUT_PATH = Path(__file__).parent / "data" / "raw" / "poi_images.json"
+RAW_DIR = Path(__file__).parent / "data" / "raw"
+OUT_PATH = RAW_DIR / "poi_images.json"
 
 # The Wikimedia API etiquette page requires a descriptive User-Agent with a
 # way to reach whoever runs the client - the repository is that contact.
@@ -128,23 +130,27 @@ def retry_after_seconds(resp: requests.Response) -> int | None:
     return min(int(header), MAX_RETRY_AFTER_SECONDS)
 
 
-def request_with_retry(session: requests.Session, params: dict) -> requests.Response:
-    """session.get against API_URL, retried over RETRY_BACKOFF_SECONDS on
+def request_with_retry(session: requests.Session, url: str, params: dict | None = None) -> requests.Response:
+    """session.get against `url`, retried over RETRY_BACKOFF_SECONDS on
     connection faults and on RETRYABLE_STATUSES (honoring Retry-After),
-    throttled on success so the crawl's pace is set here in one place."""
+    throttled on success so the crawl's pace is set here in one place.
+
+    Takes a url rather than assuming API_URL because photo bytes come from
+    upload.wikimedia.org while the metadata comes from the API host, and
+    both want identical politeness - one throttle, one backoff, one place."""
     attempts = len(RETRY_BACKOFF_SECONDS) + 1
     for attempt, delay in enumerate((*RETRY_BACKOFF_SECONDS, None)):
         try:
-            resp = session.get(API_URL, params=params, timeout=60)
+            resp = session.get(url, params=params, timeout=60)
         except (requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError, requests.exceptions.Timeout) as e:
             if delay is None:
                 raise
-            print(f"  Commons API: {type(e).__name__} on attempt {attempt + 1}/{attempts}, retrying in {delay}s")
+            print(f"  {url}: {type(e).__name__} on attempt {attempt + 1}/{attempts}, retrying in {delay}s")
             time.sleep(delay)
             continue
         if resp.status_code in RETRYABLE_STATUSES and delay is not None:
             wait = retry_after_seconds(resp) or delay
-            print(f"  Commons API answered {resp.status_code} on attempt {attempt + 1}/{attempts}, retrying in {wait}s")
+            print(f"  {url} answered {resp.status_code} on attempt {attempt + 1}/{attempts}, retrying in {wait}s")
             time.sleep(wait)
             continue
         # Out of retries, or a status that is an answer rather than a flake
@@ -162,7 +168,7 @@ def api_get(session: requests.Session, params: dict) -> dict:
     answer persisted quietly is worse than a loud dead run."""
     full = {**params, "format": "json", "maxlag": str(MAXLAG_SECONDS)}
     for attempt, delay in enumerate((*MAXLAG_RETRY_SECONDS, None)):
-        payload = request_with_retry(session, full).json()
+        payload = request_with_retry(session, API_URL, full).json()
         error = payload.get("error")
         if error is None:
             return payload
@@ -236,6 +242,51 @@ def best_photo(session: requests.Session, poi: dict, cutoff: date) -> dict | Non
         if record is not None:
             candidates.append(record)
     return pick_photo(candidates)
+
+
+def store_photo(session: requests.Session, photo: dict) -> dict:
+    """Download a chosen photo's bytes, cache them under RAW_DIR, and return
+    the record with its content digest attached.
+
+    Downloading rather than linking is the whole of #362: a hotlinked card
+    depends on upload.wikimedia.org being up, and spends a nonprofit's
+    bandwidth on our traffic. `url` stays on the record as provenance - where
+    these bytes came from - while `digest` is what names them in our bucket.
+
+    Idempotent by construction: an image already cached under its own digest
+    is already the right bytes, so a re-run costs nothing.
+    """
+    resp = request_with_retry(session, photo["url"])
+    image_bytes = resp.content
+    digest = photo_digest(image_bytes)
+
+    path = local_photo_path(RAW_DIR, digest)
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # Same sibling-temp-then-replace as the outcomes file: a half-written
+        # image is a file whose name promises a digest its bytes do not have,
+        # which is the one thing content-addressing must never allow.
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        tmp_path.write_bytes(image_bytes)
+        os.replace(tmp_path, path)
+
+    return {**photo, "digest": digest}
+
+
+def cached_photo_missing(record: dict) -> bool:
+    """Whether a prior "found" outcome has lost the bytes it recorded.
+
+    A cleared data/ directory leaves the outcomes file claiming photos whose
+    images are gone, and publish.py uploads from those files - so without
+    this the run would carry the record forward and quietly publish a POI
+    pointing at an object nobody ever uploaded. Re-downloading one image is
+    far cheaper than re-querying the API for it."""
+    if record.get("status") != "found":
+        return False
+    digest = record.get("photo", {}).get("digest")
+    if digest is None:
+        return True
+    return not local_photo_path(RAW_DIR, digest).exists()
 
 
 def corridor_pois() -> list[dict]:
@@ -337,18 +388,25 @@ def main(recheck: bool = False) -> None:
 
     today = date.today().isoformat()
     records = {}
-    kept = fetched = 0
+    kept = fetched = redownloaded = 0
     for index, poi in enumerate(pois, start=1):
         prior_record = prior.get(poi["id"])
-        if keep_prior(prior_record, cutoff, recheck):
+        if keep_prior(prior_record, cutoff, recheck) and not cached_photo_missing(prior_record):
             records[poi["id"]] = prior_record
             kept += 1
+        elif keep_prior(prior_record, cutoff, recheck):
+            # The outcome still stands; only its bytes went missing (a
+            # cleared data/ tree). Re-fetch the image alone rather than
+            # re-running the geosearch that already answered this.
+            records[poi["id"]] = {**prior_record, "photo": store_photo(session, prior_record["photo"])}
+            redownloaded += 1
+            fetched += 1
         else:
             photo = best_photo(session, poi, cutoff)
             if photo is None:
                 records[poi["id"]] = {"status": "none", "checked": today}
             else:
-                records[poi["id"]] = {"status": "found", "checked": today, "photo": photo}
+                records[poi["id"]] = {"status": "found", "checked": today, "photo": store_photo(session, photo)}
             fetched += 1
             # Flush on queried-POI boundaries, not loop boundaries: a run
             # that is all carry-forwards has nothing new worth writing, and
@@ -362,7 +420,8 @@ def main(recheck: bool = False) -> None:
             print(f"  {index}/{len(pois)} checked ({kept} carried forward), {found_so_far} photos")
 
     persist(records, prior, cutoff)
-    print(f"Saved -> {OUT_PATH} ({kept} carried forward, {fetched} queried)")
+    redownload_note = f", {redownloaded} image(s) re-fetched for a cleared cache" if redownloaded else ""
+    print(f"Saved -> {OUT_PATH} ({kept} carried forward, {fetched} queried{redownload_note})")
 
     totals: dict[str, list[int]] = {}
     for poi in pois:

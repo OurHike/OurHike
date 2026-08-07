@@ -39,10 +39,12 @@ from pathlib import Path
 
 import boto3
 
+from lib.photo_store import PHOTO_EXTENSION, PHOTOS_DIRNAME, photo_key
 from lib.r2_keys import assert_valid_keys
 
 ROOT = Path(__file__).parent
 PROCESSED_DIR = ROOT / "data" / "processed"
+RAW_DIR = ROOT / "data" / "raw"
 MANIFEST_KEY = "latest.json"
 WRITE_ENABLED_ENV_VAR = "R2_WRITE_ENABLED"
 
@@ -143,6 +145,48 @@ def collect_sidecars() -> dict[str, dict]:
     return found
 
 
+def collect_photos() -> dict[str, str]:
+    """Every cached POI photo, as {bucket key: local path}.
+
+    Photos are not artifacts and deliberately do not go through the manifest.
+    They are content-addressed (lib/photo_store.py), so the key already
+    carries the checksum a manifest entry would have restated, an object's
+    bytes can never change under a key, and listing several thousand of them
+    in `latest.json` would add hundreds of KB to a file every client fetches
+    before anything else.
+
+    That also means they never trigger a version bump on their own, which is
+    correct: a photo only becomes visible through a `poi_*.geojson` that
+    references it, and that artifact's bytes changing is the real event.
+    """
+    photos_dir = RAW_DIR / PHOTOS_DIRNAME
+    if not photos_dir.is_dir():
+        return {}
+    return {photo_key(path.stem): str(path) for path in sorted(photos_dir.glob(f"*.{PHOTO_EXTENSION}"))}
+
+
+def upload_photos(s3_client, bucket: str, photos: dict[str, str]) -> list[str]:
+    """Upload any photo the bucket does not already hold, and return what
+    was uploaded.
+
+    Existence is the whole check - no hash comparison, because the key IS
+    the hash: an object already at `photos/<digest>.jpg` is by construction
+    the bytes we were about to send. One cheap HEAD per photo per run beats
+    both re-uploading everything and carrying a manifest of them.
+    """
+    uploaded: list[str] = []
+    for key, path in photos.items():
+        try:
+            s3_client.head_object(Bucket=bucket, Key=key)
+            continue
+        except Exception as exc:
+            if "404" not in str(exc) and "NoSuchKey" not in str(exc) and "Not Found" not in str(exc):
+                raise
+        s3_client.upload_file(path, bucket, key, ExtraArgs={"ContentType": "image/jpeg"})
+        uploaded.append(key)
+    return uploaded
+
+
 def collect_artifacts() -> dict[str, dict]:
     """Gather every publishable artifact into one flat {name: {path, sha256}}
     dict, reading whichever of Export's manifests actually exist (a fresh
@@ -216,6 +260,7 @@ def publish(
     artifacts: dict[str, dict] | None = None,
     *,
     sidecars: dict[str, dict] | None = None,
+    photos: dict[str, str] | None = None,
     s3_client=None,
     bucket: str | None = None,
 ) -> dict:
@@ -234,6 +279,8 @@ def publish(
         artifacts = collect_artifacts()
     if sidecars is None:
         sidecars = collect_sidecars()
+    if photos is None:
+        photos = collect_photos()
 
     # Before anything is uploaded, not per-object: a name that breaks the
     # layout (pipeline/R2_LAYOUT.md) must fail the whole run rather than
@@ -241,7 +288,7 @@ def publish(
     # It also has to fail *here* rather than in review, because the manifest
     # merge below is additive-only - a key published once cannot be renamed,
     # only abandoned in place and served forever.
-    assert_valid_keys([MANIFEST_KEY, *artifacts, *sidecars])
+    assert_valid_keys([MANIFEST_KEY, *artifacts, *sidecars, *photos])
 
     if s3_client is None:
         s3_client = boto3.client(
@@ -255,6 +302,14 @@ def publish(
 
     remote_manifest = _load_remote_manifest(s3_client, bucket)
     remote_artifacts = remote_manifest["artifacts"] if remote_manifest else {}
+
+    # Photos first, before any artifact that names them and well before the
+    # manifest. A `poi_*.geojson` live in the bucket while its photos are
+    # still uploading is a card pointing at a 404; the reverse - a photo
+    # nothing references yet - is invisible and harmless. Ordering is the
+    # only thing making that safe, since photos are outside the manifest and
+    # so cannot be diffed into the same transaction as the artifacts.
+    uploaded_photos = upload_photos(s3_client, bucket, photos)
 
     uploaded: list[str] = []
     skipped: list[str] = []
@@ -271,6 +326,7 @@ def publish(
             "uploaded": [],
             "skipped": sorted(skipped),
             "sidecars": [],
+            "photos_uploaded": sorted(uploaded_photos),
             "version_written": False,
             "version": remote_manifest["version"] if remote_manifest else None,
         }
@@ -308,6 +364,7 @@ def publish(
         "uploaded": sorted(uploaded),
         "skipped": sorted(skipped),
         "sidecars": sorted(sidecars),
+        "photos_uploaded": sorted(uploaded_photos),
         "version_written": True,
         "version": new_version,
     }
@@ -317,13 +374,18 @@ def main() -> dict:
     artifacts = collect_artifacts()
     if not artifacts:
         print("No exported artifacts found under data/processed/ - run the export scripts first.")
-        return {"uploaded": [], "skipped": [], "version_written": False, "version": None}
+        return {"uploaded": [], "skipped": [], "photos_uploaded": [], "version_written": False, "version": None}
 
     result = publish(artifacts)
     if result["version_written"]:
         print(f"Published version {result['version']}: uploaded {result['uploaded']}, skipped {result['skipped']}.")
         if result["sidecars"]:
             print(f"Build metadata published alongside it: {result['sidecars']}.")
+    if result["photos_uploaded"]:
+        # Reported whether or not a version was written: photos are outside
+        # the manifest, so a run that uploads only photos legitimately writes
+        # no version and would otherwise print "nothing changed".
+        print(f"{len(result['photos_uploaded'])} new POI photo(s) uploaded.")
     else:
         print(f"Nothing changed - all {len(result['skipped'])} artifacts already up to date. No new version written.")
     return result

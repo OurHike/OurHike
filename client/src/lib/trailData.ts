@@ -63,10 +63,14 @@ export interface StoredPoi {
    * A photo of the place, with what the licence obliges us to say about it.
    *
    * The pipeline's fetch_poi_images.py matches openly-licensed Wikimedia
-   * Commons photos (recent, by EXIF capture date) to POIs, and export_poi.py
-   * publishes them as photo_* properties. All optional for the same
-   * backward-compat reason as `source` - and photoUrl is the gate: the other
-   * four are facts about a photo, so none is stored without one.
+   * Commons photos (recent, by EXIF capture date) to POIs, downloads the
+   * 640px rendering into our own bucket, and export_poi.py publishes the
+   * bucket KEY as `photo_key` (#362). This field is that key resolved
+   * through dataUrl() - the same build-time base every other artifact is
+   * fetched from, so moving bucket or adding a CDN never invalidates
+   * published data. All optional for the same backward-compat reason as
+   * `source`, and this is the gate: the other four are facts about a photo,
+   * so none is stored without one.
    */
   photoUrl?: string
   /** The Commons file page, where the full licence terms and history live. */
@@ -103,7 +107,7 @@ interface PoiProperties {
   lon?: unknown
   confidence?: unknown
   source?: unknown
-  photo_url?: unknown
+  photo_key?: unknown
   photo_page_url?: unknown
   photo_author?: unknown
   photo_license?: unknown
@@ -127,7 +131,11 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
     // against, so it is dropped rather than carried as a broken row.
     if (typeof props.lat !== 'number' || typeof props.lon !== 'number') continue
 
-    const photoUrl = stringProp(props.photo_url)
+    // A key, resolved here rather than stored resolved: what is kept in
+    // IndexedDB should survive the app being rebuilt against a different
+    // data base URL.
+    const photoKey = stringProp(props.photo_key)
+    const photoUrl = photoKey === undefined ? undefined : dataUrl(photoKey)
     const photoPage = stringProp(props.photo_page_url)
     const photoAuthor = stringProp(props.photo_author)
     const photoLicense = stringProp(props.photo_license)

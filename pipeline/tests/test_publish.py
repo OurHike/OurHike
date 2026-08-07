@@ -15,6 +15,7 @@ import pytest
 from moto import mock_aws
 
 import publish
+from lib.photo_store import PHOTOS_DIRNAME, photo_digest, photo_key
 
 BUCKET = "ourhike-test-bucket"
 
@@ -357,3 +358,102 @@ def test_collect_sidecars_is_empty_when_no_capture_ran(tmp_path, monkeypatch):
     monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
 
     assert publish.collect_sidecars() == {}
+
+
+# --- POI photos (#362) ---
+#
+# Photos deliberately sit outside the manifest: content-addressed keys already
+# carry the checksum a manifest entry would restate, and several thousand of
+# them would add hundreds of KB to the file every client fetches first.
+
+
+@pytest.fixture
+def local_photos(tmp_path):
+    """Two cached photos, named the way lib/photo_store.py names them."""
+    photos_dir = tmp_path / PHOTOS_DIRNAME
+    photos_dir.mkdir()
+    keys = {}
+    for content in (b"\xff\xd8 shelter", b"\xff\xd8 spring"):
+        digest = photo_digest(content)
+        path = photos_dir / f"{digest}.jpg"
+        path.write_bytes(content)
+        keys[photo_key(digest)] = str(path)
+    return keys
+
+
+def test_photos_are_uploaded_under_their_content_addressed_keys(s3_client, local_artifacts, local_photos):
+    result = publish.publish(local_artifacts, sidecars={}, photos=local_photos, s3_client=s3_client, bucket=BUCKET)
+
+    assert sorted(result["photos_uploaded"]) == sorted(local_photos)
+    for key, path in local_photos.items():
+        stored = s3_client.get_object(Bucket=BUCKET, Key=key)["Body"].read()
+        assert stored == open(path, "rb").read()
+
+
+def test_a_photo_already_in_the_bucket_is_not_re_uploaded(s3_client, local_artifacts, local_photos):
+    """The key IS the hash, so an object already at that key is by
+    construction the bytes we were about to send. Re-uploading thousands of
+    unchanged photos every run is the cost this check exists to avoid."""
+    publish.publish(local_artifacts, sidecars={}, photos=local_photos, s3_client=s3_client, bucket=BUCKET)
+
+    again = publish.publish(local_artifacts, sidecars={}, photos=local_photos, s3_client=s3_client, bucket=BUCKET)
+
+    assert again["photos_uploaded"] == []
+
+
+def test_photos_land_before_the_manifest_that_makes_them_reachable(s3_client, local_artifacts, local_photos):
+    """Ordering is the only thing keeping this safe, since photos are outside
+    the manifest and cannot be diffed into the same transaction as the
+    artifacts. A manifest live while its photos are still uploading is a card
+    pointing at a 404."""
+    seen: list[str] = []
+    real_upload, real_put = s3_client.upload_file, s3_client.put_object
+
+    def record_upload(path, bucket, key, **kwargs):
+        seen.append(key)
+        return real_upload(path, bucket, key, **kwargs)
+
+    def record_put(**kwargs):
+        seen.append(kwargs["Key"])
+        return real_put(**kwargs)
+
+    s3_client.upload_file, s3_client.put_object = record_upload, record_put
+
+    publish.publish(local_artifacts, sidecars={}, photos=local_photos, s3_client=s3_client, bucket=BUCKET)
+
+    photo_positions = [i for i, key in enumerate(seen) if key.startswith("photos/")]
+    assert photo_positions, "no photo was uploaded at all"
+    assert max(photo_positions) < seen.index(publish.MANIFEST_KEY)
+    # And before the artifacts that name them, not merely before the manifest.
+    assert max(photo_positions) < seen.index("trails.geojson")
+
+
+def test_photos_alone_do_not_write_a_new_version(s3_client, local_artifacts, local_photos):
+    """A photo only becomes visible through a poi artifact that references
+    it; that artifact's bytes changing is the real event. Bumping the version
+    for a photo would be the no-op bump publish() exists to prevent."""
+    publish.publish(local_artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    result = publish.publish(local_artifacts, sidecars={}, photos=local_photos, s3_client=s3_client, bucket=BUCKET)
+
+    assert result["photos_uploaded"]  # they did upload
+    assert result["version_written"] is False  # and wrote no version
+    assert publish.MANIFEST_KEY not in result["uploaded"]
+
+
+def test_an_illegal_photo_key_fails_the_run_before_anything_uploads(s3_client, local_artifacts, tmp_path):
+    """Same gate the artifacts get: a key that breaks the layout must fail
+    the whole run rather than leave half a set in the bucket."""
+    stray = tmp_path / "Photo_V2.jpg"
+    stray.write_bytes(b"\xff\xd8")
+
+    with pytest.raises(ValueError):
+        publish.publish(
+            local_artifacts,
+            sidecars={},
+            photos={"photos/Photo_V2.jpg": str(stray)},
+            s3_client=s3_client,
+            bucket=BUCKET,
+        )
+
+    assert "Contents" not in s3_client.list_objects_v2(Bucket=BUCKET)

@@ -11,12 +11,15 @@ import duckdb
 import pytest
 
 import export_poi
+from lib.photo_store import photo_digest
 from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES
 
 # A small line near (-74, 41), same neighborhood other synthetic fixtures in
 # this suite use (see test_spike_corridor.py) - far from any real data, so
 # it can't collide with anything.
 CENTERLINE_COORDS = [(-74.0, 41.0), (-73.9, 41.1)]
+
+SHELTER_DIGEST = photo_digest(b"\xff\xd8 a test shelter photo")
 
 
 def _write_centerline(path, coords=CENTERLINE_COORDS):
@@ -269,7 +272,11 @@ def test_export_poi_carries_fetched_photos_onto_their_features_and_only_theirs(t
                         "photo": {
                             "title": "File:Test Shelter.jpg",
                             "distance_m": 42.5,
+                            # Where the bytes came from - provenance only. The
+                            # feature must not carry this; #362 replaced the
+                            # hotlink with our own copy.
                             "url": "https://upload.wikimedia.org/test-shelter-640.jpg",
+                            "digest": SHELTER_DIGEST,
                             "page_url": "https://commons.wikimedia.org/wiki/File:Test_Shelter.jpg",
                             "author": "Jane Doe",
                             "license": "CC BY-SA 4.0",
@@ -277,6 +284,13 @@ def test_export_poi_carries_fetched_photos_onto_their_features_and_only_theirs(t
                         },
                     },
                     "opentrail_at:100": {"status": "none", "checked": "2026-08-07"},
+                    # Recorded before the download step existed: no digest, so
+                    # nothing names it in our bucket and it must not export.
+                    "atc_campsites:campsite-glob-1": {
+                        "status": "found",
+                        "checked": "2026-08-07",
+                        "photo": {"url": "https://upload.wikimedia.org/legacy.jpg", "taken": "2025-06-18"},
+                    },
                 }
             }
         )
@@ -289,7 +303,10 @@ def test_export_poi_carries_fetched_photos_onto_their_features_and_only_theirs(t
 
     shelter_fc = json.loads((out_dir / "shelter.geojson").read_text())
     shelter_props = shelter_fc["features"][0]["properties"]
-    assert shelter_props["photo_url"] == "https://upload.wikimedia.org/test-shelter-640.jpg"
+    # A bucket key, not a URL: the host comes from the client's build-time
+    # base, so published data survives moving bucket or putting a CDN in front.
+    assert shelter_props["photo_key"] == f"photos/{SHELTER_DIGEST}.jpg"
+    assert "upload.wikimedia.org" not in json.dumps(shelter_props)
     assert shelter_props["photo_page_url"] == "https://commons.wikimedia.org/wiki/File:Test_Shelter.jpg"
     assert shelter_props["photo_author"] == "Jane Doe"
     assert shelter_props["photo_license"] == "CC BY-SA 4.0"
@@ -299,7 +316,14 @@ def test_export_poi_carries_fetched_photos_onto_their_features_and_only_theirs(t
     for feature in water_fc["features"]:
         # Recorded-miss and never-checked features alike: no photo value,
         # whether the driver writes the property as null or omits it.
-        assert feature["properties"].get("photo_url") is None
+        assert feature["properties"].get("photo_key") is None
+
+    # The digest-less legacy record exports photo-less rather than falling
+    # back to the Commons URL, which would reinstate the hotlink.
+    campsite_fc = json.loads((out_dir / "campsite.geojson").read_text())
+    campsite_props = campsite_fc["features"][0]["properties"]
+    assert campsite_props.get("photo_key") is None
+    assert "upload.wikimedia.org" not in json.dumps(campsite_props)
 
 
 def test_export_poi_exports_photo_less_when_no_images_file_exists(tmp_path, monkeypatch, con):
@@ -318,7 +342,7 @@ def test_export_poi_exports_photo_less_when_no_images_file_exists(tmp_path, monk
 
     assert manifest["shelter"]["geojson"]["feature_count"] == 1
     shelter_fc = json.loads((out_dir / "shelter.geojson").read_text())
-    assert shelter_fc["features"][0]["properties"].get("photo_url") is None
+    assert shelter_fc["features"][0]["properties"].get("photo_key") is None
 
 
 def test_export_poi_communities_and_opentrail_resupply_carry_different_confidence(tmp_path, monkeypatch, con):

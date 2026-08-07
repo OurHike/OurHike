@@ -122,6 +122,22 @@ class HikingDetailLevel(str, Enum):
     fine = "fine"
 
 
+class MapStyle(str, Enum):
+    """Which of the live sheet's palettes the map is drawn in
+    (MAP_STYLE_SPEC.md). Mirrors client/src/lib/userPreferences.ts
+    `MAP_STYLE_VALUES` exactly, like every enum in this module - both values
+    are implemented palettes, so a value nothing can render is also a value
+    nothing can sync.
+
+    The spec names three more (quiet_pine, parchment, ridgeline); each joins
+    this enum in the release that ships its palette, the same release it
+    joins the client list - accepting one early would store a preference
+    that comes back as a map with no colours."""
+
+    field = "field"
+    night_hike = "night_hike"
+
+
 class PreferencesIn(BaseModel):
     """What a client PUTs to `/preferences/me` - a full replace of the
     synced blob, not a partial patch (see the router's upsert docstring)."""
@@ -139,6 +155,12 @@ class PreferencesIn(BaseModel):
     background_source: BackgroundSource
     max_background_zoom: MaxBackgroundZoom
     hiking_detail_level: HikingDetailLevel = HikingDetailLevel.standard
+    # Defaulted like hiking_detail_level, and for the same two reasons: Field
+    # with red light off is the documented recommendation (the reviewed day
+    # sheet, never the red one), and rows synced before these keys existed
+    # must read back as exactly that rather than as a ValidationError.
+    map_style: MapStyle = MapStyle.field
+    red_light_enabled: bool = False
     show_roads: bool = False
     waypoint_types_shown: list[str] = []
     layer_detail_level: LayerDetailLevel

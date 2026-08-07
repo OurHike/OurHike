@@ -26,7 +26,8 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { registerPMTilesProtocol } from './protocol'
 import { registerBasemapProtocol } from './basemap'
 import { registerMapWorker } from './mapWorker'
-import { attachMapTheme, buildMapStyle } from './style'
+import { attachMapAppearance, buildMapStyle } from './style'
+import { attachMapDetail } from './mapDetail'
 import { attachContourUnits, registerTerrain } from './contours'
 import { attachLiveSourceHealth, type LiveSourceHealth } from './liveSourceHealth'
 import { attachElevationLabelUnits } from './liveTopo'
@@ -38,7 +39,7 @@ import { attachClosureData, type ClosureBand } from './closureLayers'
 import { attachWarningData, attachWarningIcon, type WarningPoint } from './warningLayers'
 import { attachPoiTaps } from './poiTaps'
 import type { BoundingBox, MapPoint } from '../lib/legendContents'
-import type { BackgroundSource } from '../lib/userPreferences'
+import type { BackgroundSource, LayerDetailLevel, MapStyle } from '../lib/userPreferences'
 import { openingZoomFloor, type ArchiveZooms } from '../lib/archiveCoverage'
 
 export interface MapViewProps {
@@ -110,7 +111,7 @@ export interface MapViewProps {
   showZoomButtons?: boolean
   units?: ScaleUnits
   /**
-   * Which theme the canvas is drawn in - see map/style.ts's MAP_BACKDROP.
+   * Which theme the canvas is drawn in - see map/style.ts's mapBackdrop.
    *
    * Resolved by the shell (lib/useTheme.ts) rather than read here, for the
    * reason `units` is: this component draws the map, and a hiker's preference
@@ -119,6 +120,20 @@ export interface MapViewProps {
    * is how a dark app ends up around a light map.
    */
   theme?: ResolvedTheme
+  /**
+   * Which of the sheet's palettes to draw, and whether night_hike's red-light
+   * sub-mode is armed (MAP_STYLE_SPEC.md). Handed down like `theme` and
+   * applied the same two ways: seeded into the built style for a correct
+   * first frame, repainted in place on change.
+   */
+  mapStyle?: MapStyle
+  redLight?: boolean
+  /**
+   * How much of the sheet to draw - see map/mapDetail.ts. Pure layer
+   * visibility on the live sheet; the downloaded raster has no layers to
+   * thin and ignores it.
+   */
+  detail?: LayerDetailLevel
   /**
    * What is on screen now, so the legend can describe it. Must be stable
    * across renders (useCallback) - an inline function would re-subscribe on
@@ -175,6 +190,9 @@ export function MapView({
   showZoomButtons = false,
   units = 'imperial',
   theme = 'light',
+  mapStyle = 'field',
+  redLight = false,
+  detail = 'standard',
   onViewportChange,
   onMapReady,
   onLiveSourceHealth,
@@ -247,6 +265,8 @@ export function MapView({
         terrain,
         units,
         theme,
+        mapStyle,
+        redLight,
       }),
       // `bounds` wins where it is given: MapLibre works out the zoom that fits
       // the box on this particular screen, which is the whole point of asking
@@ -272,10 +292,12 @@ export function MapView({
     // interval: switching to metric must not cost a WebGL context. The units
     // effect below re-points the contour source in place instead.
     //
-    // `theme` is omitted on exactly that pattern. It seeds the backdrop, the
-    // archive's dimming and the sheet's palette so a cold start under the dark
-    // theme is dark in its first frame, and the theme effect below repaints all
-    // three in place for every change after that. A hiker tapping "Dark" while
+    // `theme`, `mapStyle` and `redLight` are omitted on exactly that pattern
+    // (MAP_STYLE_SPEC.md spells it as a requirement: appearance never rebuilds
+    // the map). They seed the backdrop, the archive's dimming, the trail ink
+    // and the sheet's palette so a cold start under a dark appearance is dark
+    // in its first frame, and the appearance effect below repaints all of it
+    // in place for every change after that. A hiker tapping "Dark" while
     // walking must not lose the map they were reading.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topoArchiveUrl, trailsUrl, background])
@@ -317,13 +339,22 @@ export function MapView({
     return attachMapChrome(map, { showZoomButtons, units })
   }, [map, showZoomButtons, units])
 
-  // The theme's half of the same promise, and the widest one: it repaints the
-  // backdrop, the archive's dimming and every colour on the live sheet - see
-  // map/style.ts's attachMapTheme.
+  // The appearance's half of the same promise, and the widest one: it
+  // repaints the backdrop, the archive's dimming, the trail's ink and every
+  // colour on the live sheet - see map/style.ts's attachMapAppearance.
   useEffect(() => {
     if (map === null) return
-    return attachMapTheme(map, theme)
-  }, [map, theme])
+    return attachMapAppearance(map, { theme, mapStyle, redLight })
+  }, [map, theme, mapStyle, redLight])
+
+  // And the detail level's: which of the sheet's layers are drawn at all.
+  // Pure visibility (map/mapDetail.ts), so a hiker thinning the sheet keeps
+  // the camera, the tiles in flight and the WebGL context, like every other
+  // preference on this screen.
+  useEffect(() => {
+    if (map === null) return
+    return attachMapDetail(map, detail)
+  }, [map, detail])
 
   // The contours' half of that same promise. The scale bar can just be
   // re-created with new units; the contour source has to be re-pointed at a

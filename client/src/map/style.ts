@@ -68,12 +68,16 @@ import { buildClosureLayers } from '../lib/closureStyle'
 import { buildClosureSource, CLOSURE_SOURCE_ID } from './closureLayers'
 import { buildPoiLayer, buildPoiSource, POI_SOURCE_ID } from './poiLayers'
 import { buildWarningLayer, buildWarningSource, WARNING_SOURCE_ID } from './warningLayers'
-import type { BackgroundSource } from '../lib/userPreferences'
+import type { BackgroundSource, MapStyle } from '../lib/userPreferences'
 import {
   BUNDLED_GLYPHS,
-  attachSheetTheme,
+  TOPO_PALETTE,
+  TOPO_PALETTE_RED,
+  attachSheetAppearance,
   liveTopoLayers,
   liveTopoSources,
+  sheetPalette,
+  type SheetAppearance,
 } from './liveTopo'
 import { OSM_CREDIT, USGS_TOPO_CREDIT } from './credits'
 import { whenStyleReady } from './styleReady'
@@ -92,10 +96,13 @@ export const BLAZE_LAYER_ID = 'trail-blaze'
 /**
  * What the map paints wherever it has no topo ink to paint.
  *
- * `--paper-100`, the same tone as USGS topo's own paper, so uncovered ground
- * belongs to the same map as the covered parts. Named rather than inlined
- * because poiIcons.ts and chrome.css's pre-WebGL fallback read it too: every
- * one of them has to agree on the same paper.
+ * White, the field sheet's own paper (MAP_STYLE_SPEC.md - the palette's
+ * halos and hillshade highlight are the same #ffffff, so uncovered ground,
+ * label halos and lit slopes read as one sheet). It used to be the chrome's
+ * `--paper-100` cream; the field palette was reviewed on white, and a cream
+ * ground under white-haloed labels reads as two papers. Named rather than
+ * inlined because chrome.css's pre-WebGL fallback has to agree on the same
+ * paper - see `.map-view` there.
  *
  * Uncovered ground is not an edge case, and reaching it does not need the
  * pipeline's transparent-nodata tiles to be involved at all - the corridor
@@ -103,24 +110,27 @@ export const BLAZE_LAYER_ID = 'trail-blaze'
  * archive's own minzoom, opening the app before the download finishes, or
  * simply moving faster than tiles decode each leave a hole too.
  */
-export const MAP_BACKGROUND_COLOR = '#f7f3e9'
+export const MAP_BACKGROUND_COLOR = '#ffffff'
 
 /*
- * THE CANVAS'S HALF OF LIGHT/DARK MODE
+ * THE CANVAS'S HALF OF MAP APPEARANCE
  *
  * Everything in the chrome follows `data-theme` through the design tokens
  * (design-system/tokens/colors.css). The map cannot: it is WebGL, its colours
  * are paint properties on a style specification, and a style has never heard
  * of a CSS variable. So the resolved theme comes down as a value
- * (lib/useTheme.ts -> App -> MapScreen -> MapView) and the three constants
- * below are what it means once it gets there.
+ * (lib/useTheme.ts -> App -> MapScreen -> MapView) - joined since
+ * MAP_STYLE_SPEC.md by the map style and red-light preferences, which never
+ * touch the chrome at all - and the definitions below are what the three of
+ * them mean once they get here.
  *
- * Two of the three layers it touches are this file's own - the backdrop and
- * the downloaded archive - which is why this lives here rather than in a
- * module of its own: a fourth file holding a table of two layer ids owned by
- * this one is indirection, not separation. The live sheet's twenty-one layers
- * are handled where their palette is (liveTopo.ts's attachSheetTheme), the
- * same way liveTopo.ts already owns the unit switch for its own labels.
+ * The layers they touch beyond the sheet are this file's own - the backdrop,
+ * the downloaded archive, and the trail's casing and blaze - which is why
+ * this lives here rather than in a module of its own: a fifth file holding a
+ * table of layer ids owned by this one is indirection, not separation. The
+ * live sheet's twenty-one layers are handled where their palette is
+ * (liveTopo.ts's attachSheetAppearance), the same way liveTopo.ts already
+ * owns the unit switch for its own labels.
  *
  * THE ARCHIVE CANNOT GO DARK, AND IS DIMMED INSTEAD
  *
@@ -135,23 +145,60 @@ export const MAP_BACKGROUND_COLOR = '#f7f3e9'
  * dimmed those too - which would make the one safety-critical thing on the
  * screen the thing dark mode faded out.
  *
- * So under the dark theme the archive is a dimmed paper map rather than a dark
+ * So under a dark sheet the archive is a dimmed paper map rather than a dark
  * one, and that limitation is not hidden: a hiker on the downloaded background
  * gets a quieter version of the same sheet, a hiker on the live background
- * gets a genuinely dark one.
+ * gets a genuinely dark one. "Dark sheet" rather than "dark theme" since the
+ * style preference arrived: night_hike picked under a light theme dims the
+ * archive exactly as the dark theme does, because what the dimming serves is
+ * the sheet the archive sits under, not the chrome around the canvas.
  */
+
+/** Whether an appearance resolves to a dark sheet - night_hike outright (red
+ *  light included) or the dark theme. Defined as "not the day palette" so it
+ *  cannot drift from sheetPalette's own composition. */
+export function sheetIsDark(appearance: SheetAppearance): boolean {
+  return sheetPalette(appearance) !== TOPO_PALETTE
+}
+
+/** Whether the red-light sub-mode is actually in force - armed AND on the
+ *  style it refines. The toggle alone means nothing under field, exactly as
+ *  sheetPalette treats it. */
+export function redLightActive(appearance: SheetAppearance): boolean {
+  return sheetPalette(appearance) === TOPO_PALETTE_RED
+}
 
 /**
  * The backdrop, per theme.
  *
- * `--bg-page` in each, and that identity is load-bearing rather than tidy:
- * chrome.css paints `.map-view` with the same token as its pre-WebGL fallback,
- * so the handover from the DOM's background to the style's backdrop layer has
- * to be invisible in BOTH themes, not only the one these were picked in.
+ * chrome.css paints `.map-view` with the same pair as its pre-WebGL fallback,
+ * and that identity is load-bearing rather than tidy: the handover from the
+ * DOM's background to the style's backdrop layer has to be invisible in BOTH
+ * themes, not only the one these were picked in. (The dark value is also
+ * `--bg-page` under the dark theme; the light one stopped being a token when
+ * the field sheet moved the map onto white paper - see MAP_BACKGROUND_COLOR.)
+ *
+ * Per THEME, while the sheet's palette is per appearance - which is why
+ * mapBackdrop() below exists and callers with an appearance in hand use it
+ * instead. This record stays because the two explicit sheets it names are
+ * real anchor points the tests and the CSS pin against.
  */
 export const MAP_BACKDROP: Record<ResolvedTheme, string> = {
   light: MAP_BACKGROUND_COLOR,
   dark: '#15140f',
+}
+
+/**
+ * The backdrop, per appearance: each sheet's own paper.
+ *
+ * Red light gets its own ink - the red palette's labelHalo, so halos dissolve
+ * into ground exactly as the field sheet's white halos do into white paper -
+ * because #15140f carries a green cast that reads grey against a sheet whose
+ * every other colour is red-warm.
+ */
+export function mapBackdrop(appearance: SheetAppearance): string {
+  if (redLightActive(appearance)) return TOPO_PALETTE_RED.labelHalo
+  return sheetIsDark(appearance) ? MAP_BACKDROP.dark : MAP_BACKDROP.light
 }
 
 /**
@@ -186,8 +233,48 @@ export const ARCHIVE_RASTER_PAINT: Record<
   },
 }
 
+/** The archive's dimming for an appearance: dark-sheet appearances dim, day
+ *  sheets do not - see the header note on why this follows the sheet rather
+ *  than the theme. */
+export function archiveRasterPaint(
+  appearance: SheetAppearance,
+): Readonly<Record<string, number>> {
+  return ARCHIVE_RASTER_PAINT[sheetIsDark(appearance) ? 'dark' : 'light']
+}
+
 /**
- * Applies a theme to a map that is already built, and hands back a detach.
+ * The hairline under every blaze, per appearance.
+ *
+ * The field sheet inks it at the palette's own label black - MAP_STYLE_SPEC.md
+ * tightened this from the old warm #2b2620, which against field's neutral-grey
+ * roads read as one more brown line. Dark sheets keep the warm hairline: on
+ * ink ground the casing's job is a soft edge, and true black there is no edge
+ * at all.
+ */
+export function trailCasingColor(appearance: SheetAppearance): string {
+  return sheetIsDark(appearance) ? '#2b2620' : TOPO_PALETTE.label
+}
+
+/**
+ * What red light does to the blazes: one red-amber, every trail
+ * (MAP_STYLE_SPEC.md). A blaze colour is a fact about the ground, and
+ * recolouring facts is exactly what this map exists not to do - but under red
+ * light every hue would render as a barely-distinguishable dark red anyway,
+ * which is the same information loss drawn less legibly. So the loss is taken
+ * honestly: the line stays the most legible thing on the screen, in the one
+ * hue the mode permits, and blaze identity moves to the tapped trail's
+ * details rather than pretending to survive on the line.
+ */
+export const RED_LIGHT_BLAZE_COLOR = '#e8804a'
+
+/** `line-color` for the blaze layer, per appearance. */
+export function blazeLineColor(appearance: SheetAppearance): unknown {
+  return redLightActive(appearance) ? RED_LIGHT_BLAZE_COLOR : BLAZE_MATCH_EXPRESSION
+}
+
+/**
+ * Applies an appearance - theme, map style, red light - to a map that is
+ * already built, and hands back a detach.
  *
  * Repaints rather than rebuilds, which is not an optimisation but the same
  * rule MapView.tsx keeps for the scale bar's units and contours.ts keeps for
@@ -202,26 +289,49 @@ export const ARCHIVE_RASTER_PAINT: Record<
  * shared probe would leave the backdrop waiting on a layer that is never
  * coming.
  */
-export function attachMapTheme(map: MapLibreMap, theme: ResolvedTheme): () => void {
+export function attachMapAppearance(
+  map: MapLibreMap,
+  appearance: SheetAppearance,
+): () => void {
   const detachBase = whenStyleReady(
     map,
     () => map.getLayer(BACKDROP_LAYER_ID) !== undefined,
     () => {
-      map.setPaintProperty(BACKDROP_LAYER_ID, 'background-color', MAP_BACKDROP[theme])
+      map.setPaintProperty(BACKDROP_LAYER_ID, 'background-color', mapBackdrop(appearance))
 
       // Guarded on its own: the backdrop proves the style is parsed and takes
       // writes, not that this particular layer is in it. It always is today -
       // both backgrounds stack over the archive - and a guard that costs
       // nothing is cheaper than finding out the day one of them does not.
-      if (map.getLayer(TOPO_LAYER_ID) === undefined) return
-      for (const [property, value] of Object.entries(ARCHIVE_RASTER_PAINT[theme])) {
-        map.setPaintProperty(TOPO_LAYER_ID, property as never, value as never)
+      if (map.getLayer(TOPO_LAYER_ID) !== undefined) {
+        for (const [property, value] of Object.entries(archiveRasterPaint(appearance))) {
+          map.setPaintProperty(TOPO_LAYER_ID, property as never, value as never)
+        }
+      }
+
+      // The trail's two layers, same per-layer guards. Writing the blaze
+      // colour unconditionally is what makes leaving red light an actual
+      // restore: the match expression goes back exactly as buildMapStyle
+      // spelled it.
+      if (map.getLayer(TRAIL_CASING_LAYER_ID) !== undefined) {
+        map.setPaintProperty(
+          TRAIL_CASING_LAYER_ID,
+          'line-color',
+          trailCasingColor(appearance) as never,
+        )
+      }
+      if (map.getLayer(BLAZE_LAYER_ID) !== undefined) {
+        map.setPaintProperty(
+          BLAZE_LAYER_ID,
+          'line-color',
+          blazeLineColor(appearance) as never,
+        )
       }
     },
-    'Map theme',
+    'Map appearance',
   )
 
-  const detachSheet = attachSheetTheme(map, theme)
+  const detachSheet = attachSheetAppearance(map, appearance)
 
   return () => {
     detachBase()
@@ -388,15 +498,18 @@ export interface MapStyleOptions {
   /** Decides whether contours and summit heights are in feet or metres. */
   units?: ContourUnits
   /**
-   * Which theme the canvas is drawn in - see MAP_BACKDROP above.
+   * Which appearance the canvas is drawn in - see mapBackdrop above.
    *
-   * Optional and light by default, so every caller that has no opinion builds
-   * exactly the style it always built. Present at all so that a cold start
-   * under the dark theme is dark in its FIRST frame: attachMapTheme can repaint
-   * a live map, but it necessarily runs after the map exists, and a white flash
-   * on a phone at night is the thing the theme was chosen to avoid.
+   * All three optional and defaulting to the field day sheet, so every caller
+   * that has no opinion builds exactly the style it always built. Present at
+   * all so that a cold start under a dark appearance is dark in its FIRST
+   * frame: attachMapAppearance can repaint a live map, but it necessarily
+   * runs after the map exists, and a white flash on a phone at night is the
+   * thing these preferences exist to avoid.
    */
   theme?: ResolvedTheme
+  mapStyle?: MapStyle
+  redLight?: boolean
 }
 
 export function buildMapStyle({
@@ -406,7 +519,10 @@ export function buildMapStyle({
   terrain,
   units = 'imperial',
   theme = 'light',
+  mapStyle = 'field',
+  redLight = false,
 }: MapStyleOptions): StyleSpecification {
+  const appearance: SheetAppearance = { theme, mapStyle, redLight }
   // Asked for, and that is the whole question. Terrain used to be half of it -
   // `background === 'hiking_topo_live' && terrain !== undefined` - on the
   // reasoning that a style must not reference sources resolving to nothing.
@@ -423,7 +539,7 @@ export function buildMapStyle({
   // paper. That contradicted what terrain.ts and MapView.tsx each promise in
   // their own words: a failure there costs a layer, never the map.
   const live = background === 'hiking_topo_live'
-  const liveOptions = live ? { terrain, units, theme } : null
+  const liveOptions = live ? { terrain, units, theme, mapStyle, redLight } : null
 
   return {
     version: 8,
@@ -538,17 +654,17 @@ export function buildMapStyle({
         // off-corridor pan as well as the transparent ground it was added for.
         id: BACKDROP_LAYER_ID,
         type: 'background',
-        paint: { 'background-color': MAP_BACKDROP[theme] },
+        paint: { 'background-color': mapBackdrop(appearance) },
       },
       {
         id: TOPO_LAYER_ID,
         type: 'raster',
         source: TOPO_SOURCE_ID,
         // The archive is pre-rendered paper and cannot be restyled, so under
-        // the dark theme it is dimmed rather than redrawn - see
+        // a dark sheet it is dimmed rather than redrawn - see
         // ARCHIVE_RASTER_PAINT above, including why this is a layer property
         // and not a filter over the canvas.
-        paint: { ...ARCHIVE_RASTER_PAINT[theme] },
+        paint: { ...archiveRasterPaint(appearance) },
       },
       // The live sheet goes OVER the downloaded raster, and that ordering is
       // the whole offline story rather than a cosmetic preference.
@@ -590,7 +706,7 @@ export function buildMapStyle({
           'line-sort-key': TRAIL_SORT_KEY_EXPRESSION as unknown as number,
         },
         paint: {
-          'line-color': '#2b2620',
+          'line-color': trailCasingColor(appearance),
           'line-width': TRAIL_CASING_WIDTH_EXPRESSION as unknown as number,
           'line-opacity': 0.7,
         },
@@ -613,7 +729,10 @@ export function buildMapStyle({
           'line-sort-key': TRAIL_SORT_KEY_EXPRESSION as unknown as number,
         },
         paint: {
-          'line-color': BLAZE_MATCH_EXPRESSION as unknown as string,
+          // Through blazeLineColor rather than the match expression directly,
+          // so a cold start under red light is red in its first frame - the
+          // same reason `appearance` seeds the backdrop above.
+          'line-color': blazeLineColor(appearance) as unknown as string,
           'line-width': TRAIL_WIDTH_EXPRESSION as unknown as number,
         },
       },

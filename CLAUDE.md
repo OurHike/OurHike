@@ -28,6 +28,19 @@ is the whole rule: `main` flows down into your branch, never the reverse.
 If a branch has drifted too far to reconcile honestly, say so in the pull request and
 leave it. Do not resolve it by pushing to `main`.
 
+## Never cut a release either
+
+Same rule, one step further down the pipe: **do not push a tag, do not publish a GitHub
+release, do not promote anything to production.** Shipping to hikers is the maintainer's
+decision for the same reason landing on `main` is, and with the same invisibility
+afterwards — the token authenticates as the repository owner, so a tag an agent pushed
+and a tag the owner pushed are the same object.
+
+Everything up to that line is fine and is the job: prepare the branch, generate the
+notes, run the gate, open the pull request, create the GitHub release **as a draft**.
+Publishing the draft is a human action. [RELEASING.md](RELEASING.md) is the full
+process — §12 is this rule with its mechanism.
+
 ## Do not merge `main` in just to be current
 
 **Being behind `main` is not a defect, and catching up is not part of finishing the work.**

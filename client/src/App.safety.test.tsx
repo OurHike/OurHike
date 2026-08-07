@@ -10,6 +10,7 @@ import { DEFAULT_PREFERENCES } from './lib/userPreferences'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 import { CORRIDOR_ARCHIVE_KEY } from './map/pmtilesSource'
 import { fetchClosures, fetchReports } from './lib/api'
+import { GeolocateControl } from './test/mocks/maplibre-gl'
 
 // The on-trail safety battery. Every test here is one of the ways losing the
 // map - or trusting a silent map - could hurt someone on a ridge, written as
@@ -272,6 +273,62 @@ describe('the map without its sensors', () => {
     render(<App />)
 
     expect(await screen.findByRole('region', { name: /trail map/i })).toBeInTheDocument()
+  })
+
+  it('names the settled states instead of telling the hiker to keep waiting', async () => {
+    // Three of the six situations behind the old "Looking for GPS…" never
+    // resolve, and this is the one a hiker can walk into by tapping "Not now"
+    // once during setup (#312). It is a safety case rather than a wording one:
+    // someone standing at a junction waiting for a mile number that is never
+    // coming is worse off than someone told the switch is off.
+    hikerOnTrail({ location_permission_requested: false })
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    expect(screen.getByText(/location is off/i)).toBeInTheDocument()
+    expect(screen.queryByText(/looking for gps/i)).not.toBeInTheDocument()
+  })
+
+  it('does not offer the map’s own locate control while location is off', async () => {
+    // The gate the control used to bypass entirely. Attached regardless, it
+    // prompted for browser permission behind the preference's back and fed its
+    // fix to MapLibre's blue dot only - so the canvas drew a position the
+    // header knew nothing about, on a second high-accuracy watch.
+    hikerOnTrail({ location_permission_requested: false })
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    const map = await waitFor(() => {
+      const live = MockMap.live[0]
+      expect(live).toBeDefined()
+      return live!
+    })
+
+    await waitFor(() => {
+      expect(
+        map.controls.filter(({ control }) => control instanceof GeolocateControl),
+      ).toHaveLength(0)
+    })
+  })
+
+  it('offers it again once location is switched back on', async () => {
+    // The recovery path the Settings row exists for, proven from the shell:
+    // the same preference that starts the watch is what puts the control back.
+    hikerOnTrail({ location_permission_requested: true })
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    const map = await waitFor(() => {
+      const live = MockMap.live[0]
+      expect(live).toBeDefined()
+      return live!
+    })
+
+    await waitFor(() => {
+      expect(
+        map.controls.filter(({ control }) => control instanceof GeolocateControl),
+      ).toHaveLength(1)
+    })
   })
 })
 

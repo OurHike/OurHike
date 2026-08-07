@@ -277,12 +277,34 @@ describe('App shell', () => {
     })
   })
 
-  it('says the position is unknown rather than claiming mile zero before a fix', async () => {
+  it('says location is off rather than pretending to look for it', async () => {
+    // This fixture is a hiker who never allowed location - which is what
+    // skipping the onboarding step leaves behind, and what the default
+    // preference is. The header used to tell them "Looking for GPS…" for the
+    // life of the install, about a watch that had never started and never
+    // would (#312).
     returningHiker()
     render(<App />)
 
+    expect(await screen.findByText(/location is off/i)).toBeInTheDocument()
+    expect(screen.queryByText(/looking for gps/i)).not.toBeInTheDocument()
     // Mile 0.0 is Springer Mountain - a confident claim about somewhere the
     // hiker is almost certainly not standing.
+    expect(screen.queryByText(/mi 0\.0/)).not.toBeInTheDocument()
+  })
+
+  it('is still allowed to say it is looking, while it genuinely is', async () => {
+    // The other half, and the reason the line above is not simply a rename:
+    // with location allowed and no fix yet, waiting is exactly what the app is
+    // doing and saying so is honest.
+    store.set(PREFERENCES_KEY, {
+      ...DEFAULT_PREFERENCES,
+      onboarding_completed: true,
+      download_choice_made: true,
+      location_permission_requested: true,
+    })
+    render(<App />)
+
     expect(await screen.findByText(/looking for gps/i)).toBeInTheDocument()
     expect(screen.queryByText(/mi 0\.0/)).not.toBeInTheDocument()
   })

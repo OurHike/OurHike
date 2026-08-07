@@ -12,8 +12,10 @@ import { Header } from './Header'
 const PROPS = {
   trailName: 'Appalachian Trail',
   state: 'Virginia',
-  mile: 1407.2,
-  direction: 'NOBO' as const,
+  // Already decided by the shell since #312 - what the line SAYS, and which
+  // of eight situations it is saying it about, is lib/positionLine.ts's job
+  // and is tested there. What is left here is that the header renders it.
+  position: 'mi 1,407.2 · NOBO',
   onOpenLegend: vi.fn(),
   onOpenSearch: vi.fn(),
 }
@@ -31,23 +33,23 @@ describe('Header', () => {
     expect(screen.getByText(/Virginia/)).toBeInTheDocument()
   })
 
-  it('renders mile and direction exactly as WIREFRAMES.md spells them', () => {
+  it('renders the position line it is handed, in the mono slot', () => {
     render(<Header {...PROPS} />)
 
     // "mi 1,407.2 · NOBO" - thousands separator, one decimal place.
     expect(screen.getByText('mi 1,407.2 · NOBO')).toBeInTheDocument()
   })
 
-  it('keeps one decimal place even on a whole mile, so the number never jitters in width', () => {
-    render(<Header {...PROPS} mile={1400} />)
+  it('renders a settled state in the same slot, without dressing it up', () => {
+    // The half of #312 this component owns. It used to render "Looking for
+    // GPS…" for every mile-less state, including three that never resolve, so
+    // the words could not be told apart from here. Now the slot says whatever
+    // the shell decided - and this test is what keeps it from growing its own
+    // opinion about which of those states deserves the mono slot.
+    render(<Header {...PROPS} position="Location is off" />)
 
-    expect(screen.getByText('mi 1,400.0 · NOBO')).toBeInTheDocument()
-  })
-
-  it('renders a southbound hike as SOBO', () => {
-    render(<Header {...PROPS} direction="SOBO" />)
-
-    expect(screen.getByText('mi 1,407.2 · SOBO')).toBeInTheDocument()
+    expect(screen.getByText('Location is off')).toBeInTheDocument()
+    expect(screen.queryByText(/Looking for GPS/)).not.toBeInTheDocument()
   })
 
   it('has no trail logo when none is given', () => {

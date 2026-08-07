@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { act, renderHook } from '@testing-library/react'
+import { act, cleanup, renderHook } from '@testing-library/react'
 import { useGeolocation } from './useGeolocation'
 
 // A hiker reads their mile off this, so the states it can be in matter as much
@@ -46,6 +46,13 @@ function stubGeolocation() {
 }
 
 afterEach(() => {
+  // Unmounting between cases is not housekeeping here, it is isolation. This
+  // hook now listens on `document` for visibility, and a hook left mounted by
+  // an earlier test keeps that listener - so one dispatched visibilitychange
+  // reached every hook this file had ever rendered, each of them calling the
+  // CURRENT test's navigator stub. The count that exposed it was 11 watches
+  // where two were expected.
+  cleanup()
   vi.unstubAllGlobals()
   vi.clearAllMocks()
 })
@@ -180,5 +187,75 @@ describe('useGeolocation', () => {
     unmount()
 
     expect(gps.clearWatch).toHaveBeenCalledWith(7)
+  })
+})
+
+describe('the watch in the pack (#313)', () => {
+  // High-accuracy GNSS is 30-100 mW sustained, and nothing in this client
+  // responded to the tab being hidden - not one visibilitychange handler
+  // anywhere - so the chipset was pinned on for the life of the tab whether
+  // the phone was in a hand or in a pack. On a three-day battery that is real
+  // distance.
+
+  /** Hide or show the tab, the way a browser reports it. */
+  function setHidden(hidden: boolean) {
+    Object.defineProperty(document, 'hidden', { value: hidden, configurable: true })
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+  }
+
+  afterEach(() => {
+    Object.defineProperty(document, 'hidden', { value: false, configurable: true })
+  })
+
+  it('releases the watch when the phone goes into the pocket', () => {
+    const { clearWatch } = stubGeolocation()
+    renderHook(() => useGeolocation(true))
+
+    setHidden(true)
+
+    expect(clearWatch).toHaveBeenCalledWith(7)
+  })
+
+  it('starts watching again when it comes back out', () => {
+    const { watchPosition } = stubGeolocation()
+    renderHook(() => useGeolocation(true))
+    expect(watchPosition).toHaveBeenCalledTimes(1)
+
+    setHidden(true)
+    setHidden(false)
+
+    expect(watchPosition).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps the last fix across the pause, so the mile does not blink', () => {
+    // Deliberate, and the reason pausing is not just "stop": clearing the fix
+    // would blank the header's mile every time the phone came out of a pocket,
+    // and a paused watch leaves exactly the state a lost signal already leaves
+    // - which this hook has always kept.
+    const { reportFix } = stubGeolocation()
+    const { result } = renderHook(() => useGeolocation(true))
+
+    reportFix({ longitude: -77, latitude: 39, accuracy: 5 })
+    expect(result.current.status).toBe('located')
+
+    setHidden(true)
+    expect(result.current.status).toBe('located')
+
+    setHidden(false)
+    expect(result.current.status).toBe('located')
+  })
+
+  it('does not start a watch at all while hidden and disabled', () => {
+    const { watchPosition } = stubGeolocation()
+    const { rerender } = renderHook(({ on }) => useGeolocation(on), {
+      initialProps: { on: false },
+    })
+
+    setHidden(true)
+    rerender({ on: true })
+
+    expect(watchPosition).not.toHaveBeenCalled()
   })
 })

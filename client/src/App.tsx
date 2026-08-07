@@ -106,6 +106,7 @@ import { useDesktop } from './lib/useDesktop'
 import { useInstallPrompt } from './lib/useInstallPrompt'
 import { useAppUpdate } from './lib/useAppUpdate'
 import { useGeolocation } from './lib/useGeolocation'
+import { positionLine } from './lib/positionLine'
 import { buildTrailIndex, locateOnTrail, type TrailIndex } from './lib/trailPosition'
 import {
   downloadTrailData,
@@ -1600,8 +1601,20 @@ function App() {
           archiveZooms={archiveZooms}
           trailName={TRAIL_NAME}
           trailLogo={TRAIL_LOGO}
-          mile={fix?.mile}
-          direction={direction?.direction}
+          // One sentence rather than a number, decided in one place
+          // (lib/positionLine.ts): the header used to say "Looking for GPS…"
+          // for six different situations, three of which never resolve (#312).
+          position={positionLine({
+            gps,
+            enabled: locationAllowed,
+            mile: fix?.mile,
+            direction: direction?.direction,
+            trailReady: trailIndex !== null,
+          })}
+          // Which also decides whether the map offers its locate control -
+          // attaching it regardless was a second high-accuracy watch and a
+          // permission prompt behind this preference's back.
+          locationEnabled={locationAllowed}
           closureAhead={closureAhead}
           warningsAhead={warningsAhead}
           closures={closureBandsOnMap}

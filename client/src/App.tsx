@@ -65,6 +65,7 @@ import {
   DEFAULT_PREFERENCES,
   type BackgroundSource,
   type HikingDetailLevel,
+  type ReporterType,
   type UserPreferences,
 } from './lib/userPreferences'
 import {
@@ -122,6 +123,8 @@ import {
 import { upcomingClimb } from './lib/upcomingClimb'
 import { startTracking, trackDirection, type DirectionTracker } from './lib/hikeDirection'
 import { beginContribution, stepAfterSaving } from './lib/contributionFlow'
+import { hasStatedReporterType, signReportAs } from './lib/reporterIdentity'
+import { IdentitySetup } from './screens/IdentitySetup'
 import { SignInPrompt, type AuthProvider } from './screens/SignInPrompt'
 import { EmailSignIn } from './screens/EmailSignIn'
 import { ENABLED_PROVIDERS } from './lib/supabase'
@@ -290,6 +293,23 @@ function App() {
 
   const [reporting, setReporting] = useState<ReportingState>(null)
   const [authFlow, setAuthFlow] = useState<AuthFlowState>(null)
+  /**
+   * Whether the identity screen is showing (#233).
+   *
+   * `stepAfterSaving()` has reported this step since the flow was designed and
+   * there was no screen to show for it, so the branch did nothing and every
+   * report went out signed `thru`. screens/IdentitySetup.tsx was built and
+   * tested for exactly this and imported by nothing.
+   */
+  const [collectingIdentity, setCollectingIdentity] = useState(false)
+  /**
+   * Whether this session has already asked. Skipping is allowed and does NOT
+   * write a reporter type - inventing one is the bug being closed - so
+   * without this a hiker who skips is asked again on their very next report.
+   * Once per session is the balance: never nagging, and never silently
+   * deciding they are a day hiker because they closed a screen.
+   */
+  const identityAsked = useRef(false)
   // Null until a stored session is read, and null forever if nobody signs in.
   // Signed out is the state every screen already works in, so this gates
   // nothing.
@@ -1190,6 +1210,23 @@ function App() {
     })
   }, [])
 
+  /**
+   * Ask who is reporting, at most once a session and never twice over.
+   *
+   * Called from both paths that reach the step: straight after a report when
+   * there is nothing to sign in to, and after the sign-in flow closes for a
+   * hiker who was sent there first. contributionFlow.ts puts the account
+   * ahead of the identity, and this keeps that order without letting it
+   * SWALLOW the question - a hiker who declines the account still files
+   * reports, and every one of them carries a reporter type.
+   */
+  const askForIdentity = useCallback(() => {
+    if (identityAsked.current) return
+    if (hasStatedReporterType(preferences.reporter_type)) return
+    identityAsked.current = true
+    setCollectingIdentity(true)
+  }, [preferences.reporter_type])
+
   const handleSubmitReport = useCallback(
     async ({ authoredAt, ...draft }: ReportFormSubmission) => {
       // Saved first, always, and before authentication is so much as
@@ -1200,16 +1237,34 @@ function App() {
 
       const next = stepAfterSaving({
         hasAccount: account !== null,
-        hasIdentity: preferences.trail_name !== null,
+        // The reporter type, not the trail name, is what says this screen has
+        // been answered: it is the field every report must carry, and the
+        // trail name beside it may legitimately be left blank (#233).
+        hasIdentity: hasStatedReporterType(preferences.reporter_type),
       })
-      // 'identity' still has no screen (#233). 'send' needs no step here:
+      // 'send' needs no step here:
       // useOutboxSync above is already watching, and a report queued by a
       // signed-in hiker with signal goes on its own. Nothing is awaited for
       // it, because a send that blocked this callback would be a network round
       // trip standing between someone and the map they were reading.
       if (next === 'sign-in') setAuthFlow({ screen: 'choose', afterReport: true })
+      else if (next === 'identity') askForIdentity()
     },
-    [account, preferences.trail_name],
+    [account, preferences.reporter_type, askForIdentity],
+  )
+
+  /** Answered: both fields land together, which is what the screen collects.
+   *  An empty trail name is stored as null rather than as "", so Settings can
+   *  keep saying "Not set" rather than showing a blank. */
+  const handleSaveIdentity = useCallback(
+    ({ trailName, reporterType }: { trailName: string; reporterType: ReporterType }) => {
+      updatePreferences({
+        trail_name: trailName.trim() === '' ? null : trailName.trim(),
+        reporter_type: reporterType,
+      })
+      setCollectingIdentity(false)
+    },
+    [updatePreferences],
   )
 
   const handleChooseProvider = useCallback((provider: AuthProvider) => {
@@ -1236,6 +1291,20 @@ function App() {
   useEffect(() => {
     if (account !== null) setAuthFlow(null)
   }, [account])
+
+  /**
+   * Signing in hands on to the step it was standing in front of (#233).
+   *
+   * contributionFlow.ts puts the account first because a trail name belongs
+   * to a profile, so this is where the identity question actually becomes
+   * askable. Only on a SUCCESSFUL sign-in: someone who backed out has just
+   * declined one question, and answering that with a second one is how an app
+   * teaches people to dismiss whatever it puts in front of them. They can
+   * still say who they are in Settings, which is where it is editable now.
+   */
+  useEffect(() => {
+    if (account !== null && authFlow?.afterReport === true) askForIdentity()
+  }, [account, authFlow, askForIdentity])
 
   // Nothing renders until the phone's own preferences have been read, so a
   // returning hiker never sees a flash of the first-run onboarding.
@@ -1340,6 +1409,18 @@ function App() {
     )
   }
 
+  // After the report is saved and after sign-in, which is the order
+  // contributionFlow.ts insists on: a trail name belongs to a profile, so
+  // asking first collects something with nowhere to put it (#233).
+  if (collectingIdentity) {
+    return (
+      <IdentitySetup
+        onSave={handleSaveIdentity}
+        onSkip={() => setCollectingIdentity(false)}
+      />
+    )
+  }
+
   if (reporting !== null) {
     if (reporting.step === 'pick') {
       return (
@@ -1354,7 +1435,11 @@ function App() {
       <ReportForm
         type={reporting.type}
         trailName={preferences.trail_name}
-        reporterType="thru"
+        // The stored answer, or the floor when nobody has said (#233). It was
+        // a hardcoded "thru" here and in More below, so every report in the
+        // queue claimed to be from a thru-hiker - see lib/reporterIdentity.ts
+        // for why the fallback is the weakest claim rather than that one.
+        reporterType={signReportAs(preferences.reporter_type)}
         // Null with no fix, rather than 0,0 - which is a real place in the
         // Atlantic, and one a maintainer cannot tell from a missing location.
         // The mile is separately unknown when the fix is off the centerline or
@@ -1497,7 +1582,6 @@ function App() {
               ) : (
                 <More
                   account={account}
-                  reporterType="thru"
                   onSignIn={() => setAuthFlow({ screen: 'choose', afterReport: false })}
                   onSignOut={() => void handleSignOut()}
                   preferences={preferences}

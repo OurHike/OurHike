@@ -74,9 +74,39 @@ export type LayerDetailLevel = 'minimal' | 'standard' | 'full'
 export const HIKING_DETAIL_LEVEL_VALUES = ['standard', 'fine'] as const
 export type HikingDetailLevel = (typeof HIKING_DETAIL_LEVEL_VALUES)[number]
 
+/**
+ * Who a report is from, in the only terms the trail cares about.
+ *
+ * Declared here rather than imported from lib/outbox.ts, which spells the
+ * same four out for `ReportDraft`: preferences are the durable half and the
+ * outbox is the wire half, and a preferences model that imported the outbox
+ * would make the stored shape depend on the submission shape. The two are
+ * held together by lib/reporterIdentity.ts, which is the only place they
+ * meet, and by its test.
+ */
+export const REPORTER_TYPE_VALUES = ['thru', 'section', 'day', 'maintainer'] as const
+export type ReporterType = (typeof REPORTER_TYPE_VALUES)[number]
+
 export interface UserPreferences {
   // Identity
   trail_name: string | null
+  /**
+   * How this hiker's reports are signed - null until they say (#233).
+   *
+   * Null is the honest starting state and it is not the same as any of the
+   * four answers. Every report used to be filed as `thru` from a hardcoded
+   * literal at both call sites, so a day hiker, a section hiker and a club
+   * maintainer all reached the moderation queue claiming to be thru-hikers.
+   * `reporter_type` is the ONE attribution that survives HIKER_SAFETY.md §2's
+   * anonymity window - it is kept visible precisely because it carries
+   * information without identifying anyone - so a maintainer weighs a report
+   * by it, and a field that says the same thing about everybody weighs
+   * nothing.
+   *
+   * What a report carries when this is still null is lib/reporterIdentity.ts's
+   * decision, not this file's.
+   */
+  reporter_type: ReporterType | null
 
   // App-wide display
   theme: Theme
@@ -113,6 +143,7 @@ export interface UserPreferences {
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
   trail_name: null,
+  reporter_type: null,
 
   theme: 'auto',
   unit_system: 'imperial',

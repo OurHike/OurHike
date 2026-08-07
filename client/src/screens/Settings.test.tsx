@@ -19,7 +19,6 @@ import { BACKGROUND_SOURCES, DEFAULT_PREFERENCES } from '../lib/userPreferences'
 
 const PROPS = {
   account: null as { email: string } | null,
-  reporterType: 'thru' as const,
   onSignIn: vi.fn(),
   onSignOut: vi.fn(),
   preferences: DEFAULT_PREFERENCES,
@@ -333,13 +332,58 @@ describe('Settings', () => {
   })
 
   it('shows the reporter type reports are signed with', () => {
-    render(<Settings {...PROPS} />)
+    render(
+      <Settings
+        {...PROPS}
+        preferences={{ ...DEFAULT_PREFERENCES, reporter_type: 'thru' }}
+      />,
+    )
 
-    expect(screen.getByText(/thru-hiker/i)).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: /signed as/i })).toHaveValue('thru')
+  })
+
+  it('says "Not set" rather than a type nobody chose (#233)', () => {
+    // The bug: every report was filed as `thru` from a hardcoded literal, so
+    // this row showed a claim its owner had never made. Null is its own
+    // state, and it is the one that says the screen still owes an answer.
+    render(
+      <Settings
+        {...PROPS}
+        preferences={{ ...DEFAULT_PREFERENCES, reporter_type: null }}
+      />,
+    )
+
+    expect(screen.getByRole('combobox', { name: /signed as/i })).toHaveValue('')
+    expect(screen.getByRole('option', { name: /not set/i })).toBeInTheDocument()
+  })
+
+  it('lets a hiker correct what their reports say about them', async () => {
+    // Editable here and not only at first contribution: someone who skipped
+    // the screen, or who started section-hiking after a day hike, had no way
+    // to change the one attribution a maintainer actually reads.
+    const user = userEvent.setup()
+    render(
+      <Settings
+        {...PROPS}
+        preferences={{ ...DEFAULT_PREFERENCES, reporter_type: null }}
+      />,
+    )
+
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: /signed as/i }),
+      'section',
+    )
+
+    expect(PROPS.onChange).toHaveBeenCalledWith({ reporter_type: 'section' })
   })
 
   it('says a maintainer claim is still unverified', () => {
-    render(<Settings {...PROPS} reporterType="maintainer" />)
+    render(
+      <Settings
+        {...PROPS}
+        preferences={{ ...DEFAULT_PREFERENCES, reporter_type: 'maintainer' }}
+      />,
+    )
 
     expect(screen.getByText(/unverified/i)).toBeInTheDocument()
   })
@@ -392,9 +436,22 @@ describe('Settings', () => {
 
   it('shows a reporter type it has no label for rather than a blank', () => {
     // The set of reporter types can grow server-side ahead of this build.
-    render(<Settings {...PROPS} reporterType={'ridgerunner' as 'thru'} />)
+    render(
+      <Settings
+        {...PROPS}
+        preferences={{
+          ...DEFAULT_PREFERENCES,
+          reporter_type: 'ridgerunner' as 'thru',
+        }}
+      />,
+    )
 
-    expect(screen.getByText('ridgerunner')).toBeInTheDocument()
+    // Shown by its raw id rather than dropped: a select with no matching
+    // option renders as its FIRST one, which would quietly re-sign every
+    // future report as a thru-hiker.
+    expect(screen.getByRole('combobox', { name: /signed as/i })).toHaveValue(
+      'ridgerunner',
+    )
   })
 })
 

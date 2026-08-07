@@ -50,6 +50,14 @@ describe('UserPreferences schema', () => {
   it('matches the backend contract field-for-field', () => {
     // backend/app/schemas/preferences.py is the sync target; a key here that
     // it does not accept becomes a 422 the moment an account is linked.
+    //
+    // This list is a THIRD copy of the model, which the real cross-language
+    // guard warns against in its own docstring
+    // (backend/tests/test_preferences_contract.py: "any check that restated
+    // the field list here would be a third copy to keep in step"). It is kept
+    // because it fails fast, in the client's own suite, where a field is
+    // added - but it proves nothing on its own. That test reads both files
+    // and compares them; this one only remembers.
     expect([...PREFERENCE_KEYS].sort()).toEqual(
       [
         'anonymity_window_days',
@@ -63,6 +71,7 @@ describe('UserPreferences schema', () => {
         'max_background_zoom',
         'onboarding_completed',
         'red_light_enabled',
+        'reporter_type',
         'show_roads',
         'theme',
         'trail_name',

@@ -1243,3 +1243,56 @@ describe('a remembered failure that stopped being true (#352)', () => {
     )
   })
 })
+
+describe('who a report says it is from (#233)', () => {
+  // `reporterType="thru"` was a literal at both call sites, so every report in
+  // the moderation queue claimed to be from a thru-hiker - and
+  // screens/IdentitySetup.tsx, which collects the real answer, was built,
+  // tested, and imported by nothing.
+
+  async function fileAReport(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+    await user.click(await screen.findByRole('button', { name: /blow down/i }))
+    await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
+  }
+
+  function queued() {
+    return store.get('ourhike:outbox') as Array<{
+      payload: { reporter_type?: string }
+    }>
+  }
+
+  it('does not sign an unanswered report as a thru-hiker', async () => {
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await fileAReport(user)
+
+    await waitFor(() => expect(queued()).toHaveLength(1))
+    expect(queued()[0].payload.reporter_type).not.toBe('thru')
+    expect(queued()[0].payload.reporter_type).toBe('day')
+  })
+
+  it('signs later reports with what Settings says, not with a literal', async () => {
+    // The wiring end to end, without an account: the reporter type is stored
+    // on this phone and is what every report carries, signed in or not.
+    const user = userEvent.setup()
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.selectOptions(
+      await screen.findByRole('combobox', { name: /signed as/i }),
+      'section',
+    )
+
+    await fileAReport(user)
+
+    await waitFor(() => expect(queued()).toHaveLength(1))
+    expect(queued()[0].payload.reporter_type).toBe('section')
+  })
+})

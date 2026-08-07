@@ -21,7 +21,11 @@
 // deliberate.
 
 import { syncAgeLabel } from '../lib/syncAge'
-import type { BackgroundSource, UserPreferences } from '../lib/userPreferences'
+import type {
+  BackgroundSource,
+  ReporterType,
+  UserPreferences,
+} from '../lib/userPreferences'
 import { backgroundOverride } from '../lib/dataSaver'
 import { BackgroundPicker } from '../chrome/BackgroundPicker'
 import { DownloadsLink } from '../chrome/DownloadsLink'
@@ -29,13 +33,11 @@ import { REPORTER_TYPES } from '../lib/contributionFlow'
 import { MapDetailPicker } from './MapDetailPicker'
 import { MapStylePicker } from './MapStylePicker'
 import { ThemePicker } from './ThemePicker'
-import type { ReportDraft } from '../lib/outbox'
 import './settings.css'
 
 export interface SettingsProps {
   /** Null when signed out. */
   account: { email: string } | null
-  reporterType: ReportDraft['reporter_type']
   onSignIn: () => void
   onSignOut: () => void
   preferences: UserPreferences
@@ -99,7 +101,6 @@ function LaterTag() {
 
 export function Settings({
   account,
-  reporterType,
   onSignIn,
   onSignOut,
   preferences,
@@ -128,14 +129,48 @@ export function Settings({
           </span>
         </p>
 
-        <p className="settings__row">
+        {/* Editable here, not only at first contribution (#233). Someone who
+            skipped the screen, or who started section-hiking after a day hike,
+            had no way to correct what every one of their reports says about
+            them - and this is the one attribution that survives the anonymity
+            window, so it is the one a maintainer reads. */}
+        <label className="settings__row">
           <span className="settings__label">Reports signed as</span>
-          <span className="settings__value">
-            {REPORTER_TYPES.find((r) => r.id === reporterType)?.label ?? reporterType}
-          </span>
-        </p>
+          <select
+            className="settings__value"
+            name="reporter_type"
+            value={preferences.reporter_type ?? ''}
+            onChange={(event) =>
+              onChange({
+                reporter_type:
+                  event.target.value === '' ? null : (event.target.value as ReporterType),
+              })
+            }
+          >
+            {/* Present only while it is the truth: an app that keeps offering
+                "Not set" after an answer invites someone to un-say something
+                every report still has to carry. */}
+            {preferences.reporter_type === null && <option value="">Not set</option>}
+            {/* A value this build has no label for still has to be shown, not
+                silently swallowed: the set can grow server-side ahead of the
+                app, and a select with no matching option renders as its first
+                one - which would quietly re-sign every future report as a
+                thru-hiker. Shown by its raw id, which is at least true. */}
+            {preferences.reporter_type !== null &&
+              !REPORTER_TYPES.some((r) => r.id === preferences.reporter_type) && (
+                <option value={preferences.reporter_type}>
+                  {preferences.reporter_type}
+                </option>
+              )}
+            {REPORTER_TYPES.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
 
-        {REPORTER_TYPES.find((r) => r.id === reporterType)?.clubGranted && (
+        {REPORTER_TYPES.find((r) => r.id === preferences.reporter_type)?.clubGranted && (
           <p className="settings__note">Unverified until a club confirms it.</p>
         )}
 

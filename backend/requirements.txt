@@ -9,3 +9,8 @@ pyjwt[crypto]
 # analytics over the trail dataset - it is not a stand-in for the database
 # Supabase runs.
 psycopg[binary]
+
+# Report photos go to Cloudflare R2 over its S3-compatible API (#234), the
+# same way pipeline/publish.py syncs published artifacts - one vendor, one
+# client library, one credential shape. See app/core/photos.py.
+boto3

@@ -8,14 +8,21 @@ it to and, later, moderate against.
 
 from datetime import timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import bearer_scheme, get_current_user
-from app.core.orm import commit_and_refresh
+from app.core.orm import commit_and_refresh, get_or_404
+from app.core.photos import (
+    ALLOWED_CONTENT_TYPE,
+    MAX_PHOTO_BYTES,
+    PhotoStorageUnavailable,
+    photo_uploads_enabled,
+    store_photo,
+)
 from app.core.time import utc_now
 from app.db.session import get_db
 from app.models.profile import Profile
@@ -255,3 +262,88 @@ def get_report(
     if report is None or not _visible_to(report, current_user):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
     return ReportOut.for_viewer(report, current_user)
+
+
+@router.put(
+    "/{report_id}/photo",
+    response_model=ReportOut,
+    summary="Attach a photo to a report you filed",
+)
+async def upload_report_photo(
+    report_id: str,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    current_user: Profile = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ReportOut:
+    """Store the photo for an existing report and record its key (#234).
+
+    **After the report, not before, and that ordering is the design.** The key
+    is derived from the report id, so an upload could in principle happen
+    first - but nothing could then check who is allowed to make it, or whether
+    the id belongs to a report at all. Requiring the row means every upload is
+    attributable and every stored object has a reason to exist. The client's
+    outbox already flushes in order, and `POST /reports` is idempotent on the
+    same id (#243), so a retry of either half is safe.
+
+    **Owner only.** A photo is evidence attached to somebody's account, and
+    `bad_hikers` photos are photos of people - letting a second account attach
+    one to a report it did not file would put an image under a stranger's name
+    in a queue that treats attribution as meaningful.
+
+    The body is the image itself rather than a multipart form: the client has
+    bytes in hand after downscaling and stripping EXIF, and a form part would
+    be a wrapper around the same bytes with a filename nobody reads.
+
+    Returns the report, with `photo_url` now holding the object KEY - not a
+    URL. See app/core/photos.py for why, and for why the object is private:
+    reading it is a separate authorising path that checks the report's own
+    visibility and status, which is not built yet. Nothing here makes a photo
+    reachable.
+    """
+    if not photo_uploads_enabled():
+        # 503 rather than 500: nothing is broken, this deployment simply has
+        # no bucket - which is true of every developer machine. The client
+        # keeps the photo queued rather than discarding it as rejected.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Photo uploads are not configured on this server.",
+        )
+
+    report = get_or_404(db, Report, report_id, detail="Report not found")
+    if report.reporter_id != current_user.id:
+        # 404, not 403: a report that is not yours is one you have no business
+        # knowing exists, and distinguishing "wrong owner" from "no such id"
+        # turns a guessed UUID into a way to confirm one - the same reasoning
+        # create_report applies to a resend under someone else's id.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
+
+    content_type = (request.headers.get("content-type") or "").split(";")[0].strip()
+    if content_type != ALLOWED_CONTENT_TYPE:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Report photos must be {ALLOWED_CONTENT_TYPE}.",
+        )
+
+    body = await request.body()
+    if not body:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No photo in the request body.")
+    if len(body) > MAX_PHOTO_BYTES:
+        # The client downscales before uploading (#234), so this is the guard
+        # for one that did not - a full-size phone photo is several MB, and
+        # egress is the cost R2 was chosen to keep flat.
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Photo is too large; it should be downscaled before upload.",
+        )
+
+    try:
+        key = store_photo(report.id, body)
+    except PhotoStorageUnavailable as error:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
+
+    # The row last, and only once the object is really there: the report is
+    # the authoritative half, so a `photo_url` pointing at nothing would be
+    # the one direction of drift this design refuses (app/core/photos.py).
+    report.photo_url = key
+    return ReportOut.for_viewer(commit_and_refresh(db, report), current_user)

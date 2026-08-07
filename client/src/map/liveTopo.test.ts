@@ -432,6 +432,67 @@ describe('place labels, by distance', () => {
   })
 })
 
+describe('protected land, drawn as an area rather than an outline', () => {
+  // The outline was the bug (#347): along the corridor the protected land is
+  // a narrow sliver whose edges parallel the trail for miles, and a broken
+  // line wandering through woodland gets read as a walkable one whatever its
+  // rhythm - restyling the edge still left two long lines beside the trail.
+  // So there is no edge at all, and the tint carries the fact alone. These
+  // hold the two halves of that: no outline can come back, and no palette
+  // tweak can fade the tint out of legibility over the woodland that most
+  // protected land here is - which is the failure the outline originally
+  // existed to paper over.
+
+  const layers = () => liveTopoLayers({ terrain: TERRAIN, units: 'imperial' })
+
+  it('draws no park outline at all', () => {
+    expect(layers().map((l) => l.id)).not.toContain('topo-park-edge')
+  })
+
+  it('leaves every broken line accounted for: walkable beats, or the state line', () => {
+    // Paths and tracks own the even two-beat rhythms; the admin boundary owns
+    // the dash-dot. A new dashed layer joining the sheet has to face this
+    // list, which is the point - a broken green line through woodland is
+    // exactly how #347 happened.
+    const dashed = layers().filter(
+      (l) => (l.paint as Record<string, unknown> | undefined)?.['line-dasharray'],
+    )
+
+    expect(dashed.map((l) => l.id).sort()).toEqual(
+      [
+        LIVE_TOPO_LAYER_IDS.boundary,
+        LIVE_TOPO_LAYER_IDS.path,
+        LIVE_TOPO_LAYER_IDS.track,
+      ].sort(),
+    )
+  })
+
+  it('keeps the tint legible over woodland, in every palette', () => {
+    // What "the tint carries it alone" means in numbers: composited over the
+    // wood fill at the layer's own opacity, the park wash has to move at
+    // least one channel by a margin a phone panel still shows. The exact
+    // colours are the palette's business - under red light the wash is a
+    // dim rust, not a green - and only the margin is pinned. A palette
+    // added without meeting it is the old invisible tint coming back.
+    const park = layers().find((l) => l.id === LIVE_TOPO_LAYER_IDS.parkFill)
+    if (park === undefined) throw new Error('no park fill layer in the live sheet')
+    const opacity = (park.paint as Record<string, unknown>)['fill-opacity'] as number
+
+    expect(opacity).toBeGreaterThan(0)
+    expect(opacity).toBeLessThan(1)
+
+    for (const palette of [TOPO_PALETTE, TOPO_PALETTE_DARK, TOPO_PALETTE_RED]) {
+      const wood = hexChannels(palette.wood)
+      const wash = hexChannels(palette.park)
+      const delta = Math.max(
+        ...wood.map((w, at) => Math.abs(w * (1 - opacity) + wash[at] * opacity - w)),
+      )
+
+      expect(delta).toBeGreaterThanOrEqual(8)
+    }
+  })
+})
+
 describe('the offline-only background', () => {
   it('adds no live source, so choosing it really does stay off the network', () => {
     const style = offline()

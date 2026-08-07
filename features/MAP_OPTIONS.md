@@ -298,6 +298,8 @@ Built to MAP_STYLE_SPEC.md - a PR-shaped spec reviewed against live mockups (the
 
 **Where the controls live: Settings only, not onboarding** - the spec's own suggestion, taken. The defaults (field by day, night_hike after dark, standard detail) are right for most hikers, and onboarding already carries the one map decision that costs real megabytes. All three sync through the same `UserPreferences` contract as everything else; stored values from builds that don't know a style are dropped on read exactly as removed backgrounds are (`client/src/lib/preferences.ts`).
 
+**One deviation from the spec's palettes, decided after it was received (2026-08-07, #347): protected land has no outline, so every palette drops `parkEdge`.** The spec's sheets carry the tint-plus-dashed-edge treatment the old palette had, but along the corridor the protected land is a narrow sliver whose edges parallel the trail for miles, and rendering showed a broken line wandering through woodland reads as a walkable one whatever its rhythm or hue - the maintainer's call was shading only. Each palette's `park` wash is strengthened to carry the fact alone (the spec's tints sat a few RGB steps from their wood fills, invisible exactly where most protected land is), and `client/src/map/liveTopo.test.ts` pins the over-woodland margin per palette. The three palettes still to ship land the same way: their mockups' `parkEdge` value is dropped on import, and their `park` value must meet the margin test.
+
 **Still open from the spec:** whether `parchment`, when it ships, becomes the forced style for print/export views; and whether `minimal` should thin place labels to towns+ at hiking zooms (tracked with UX_CUSTOMIZATION.md's open questions).
 
 ## Data model sketch (settings, client-side)

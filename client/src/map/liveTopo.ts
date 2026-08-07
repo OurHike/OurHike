@@ -156,9 +156,10 @@ export const TOPO_PALETTE = {
   scrub: '#e8f0dd',
   wetland: '#cfe3d8',
   rock: '#eae6da',
-  /** Protected land, drawn as a tint plus an edge rather than a solid block. */
-  park: '#d3e6c6',
-  parkEdge: '#5f8f57',
+  /** Protected land. The wash is the WHOLE treatment - no outline (#347) -
+   *  so it is mixed green enough to still read over woodland, which is what
+   *  most protected land along the corridor is. */
+  park: '#c2ddb1',
   water: '#8fc0dc',
   waterEdge: '#2e79a6',
   waterway: '#2e79a6',
@@ -218,8 +219,7 @@ export const TOPO_PALETTE_DARK: TopoPalette = {
   scrub: '#1f2519',
   wetland: '#182420',
   rock: '#231f18',
-  park: '#1c2a19',
-  parkEdge: '#4e6b48',
+  park: '#26401b',
   water: '#152e3b',
   waterEdge: '#2f6c88',
   waterway: '#3f8caa',
@@ -264,8 +264,10 @@ export const TOPO_PALETTE_RED: TopoPalette = {
   scrub: '#241611',
   wetland: '#1d1210',
   rock: '#261812',
-  park: '#221410',
-  parkEdge: '#64351f',
+  /* The wash stays in the red family - a green would be a wavelength the
+     eye pays for - but keeps the same legible-over-woodland margin the other
+     two sheets hold, because protected land is still information at night. */
+  park: '#361c10',
   water: '#180e0c',
   waterEdge: '#6b3018',
   waterway: '#7c3a1e',
@@ -324,7 +326,6 @@ export const LIVE_TOPO_LAYER_IDS = {
   wetland: 'topo-wetland',
   rock: 'topo-rock',
   parkFill: 'topo-park-fill',
-  parkEdge: 'topo-park-edge',
   hillshade: 'topo-hillshade',
   water: 'topo-water',
   waterway: 'topo-waterway',
@@ -366,7 +367,6 @@ export const SHEET_COLOURS: ReadonlyArray<
   [LIVE_TOPO_LAYER_IDS.wetland, 'fill-color', 'wetland'],
   [LIVE_TOPO_LAYER_IDS.rock, 'fill-color', 'rock'],
   [LIVE_TOPO_LAYER_IDS.parkFill, 'fill-color', 'park'],
-  [LIVE_TOPO_LAYER_IDS.parkEdge, 'line-color', 'parkEdge'],
   [LIVE_TOPO_LAYER_IDS.hillshade, 'hillshade-shadow-color', 'hillshadeShadow'],
   [LIVE_TOPO_LAYER_IDS.hillshade, 'hillshade-highlight-color', 'hillshadeHighlight'],
   [LIVE_TOPO_LAYER_IDS.hillshade, 'hillshade-accent-color', 'hillshadeAccent'],
@@ -511,7 +511,7 @@ export interface LiveTopoOptions {
    *
    * Optional because elevation is one INPUT to this sheet rather than the
    * sheet itself: of the layers below, exactly one reads the DEM (the
-   * hillshade) and three read the contour tiles. The other seventeen are OSM
+   * hillshade) and three read the contour tiles. The other sixteen are OSM
    * vector - landcover, parks, water, the path and road network, summits and
    * place names - and none of them needs an elevation model to draw.
    *
@@ -520,7 +520,7 @@ export interface LiveTopoOptions {
    * failure path here is a missing layer, never a broken map") and until this
    * was optional the promise was not kept: style.ts folded "asked for the live
    * sheet" and "got terrain URLs" into one boolean, so a missing DEM dropped
-   * all twenty-one layers and left bare paper.
+   * every layer of the sheet and left bare paper.
    */
   terrain?: TerrainUrls
   units: ContourUnits
@@ -710,8 +710,17 @@ export function liveTopoLayers({
       paint: sheetColours(LIVE_TOPO_LAYER_IDS.rock, palette),
     },
     // Protected land is context a hiker plans with (where camping is allowed,
-    // whose rules apply), so it gets an edge as well as a tint - a tint alone
-    // disappears against woodland, which is what most of it is.
+    // whose rules apply), and the wash is the WHOLE treatment: an area, drawn
+    // as an area. It used to get an outline too, and the outline was the bug
+    // (#347) - along the corridor the protected land is a narrow sliver whose
+    // edges run beside the trail for miles, and a broken line wandering
+    // through woodland gets read as a walkable one whatever its rhythm. So
+    // every palette's tint is calibrated to carry the fact alone instead:
+    // mixed far enough from its wood fill to read over the woodland most
+    // protected land here is, and still a ground that sits behind every line
+    // the sheet draws. The test file holds that over-woodland margin on all
+    // three palettes, so a palette tweak cannot quietly fade the fact back
+    // out of the map.
     {
       id: LIVE_TOPO_LAYER_IDS.parkFill,
       type: 'fill',
@@ -719,18 +728,7 @@ export function liveTopoLayers({
       'source-layer': 'park',
       paint: {
         ...sheetColours(LIVE_TOPO_LAYER_IDS.parkFill, palette),
-        'fill-opacity': 0.45,
-      },
-    },
-    {
-      id: LIVE_TOPO_LAYER_IDS.parkEdge,
-      type: 'line',
-      source: OSM_SOURCE_ID,
-      'source-layer': 'park',
-      paint: {
-        ...sheetColours(LIVE_TOPO_LAYER_IDS.parkEdge, palette),
-        'line-width': 1,
-        'line-dasharray': [4, 2],
+        'fill-opacity': 0.55,
       },
     },
     // Relief shading, and the sheet's only terrain channel until the contours

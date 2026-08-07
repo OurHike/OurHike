@@ -108,6 +108,7 @@ Point `DATABASE_URL` at the real Supabase Postgres connection string first. Deli
 **Not yet done, and needs real decisions first:**
 1. `fly apps create` (or `fly launch`) with a real, globally-unique app name - `fly.toml`'s `app = "ourhike-backend"` is a placeholder, update it to match.
 2. Set the real secrets Fly.io needs at runtime (`fly secrets set DATABASE_URL=... SUPABASE_JWT_SECRET=... SUPABASE_URL=... SUPABASE_ANON_KEY=...`) - never committed, never baked into the image.
+   - Report photos (#234) need five more, and they are **not** the `R2_*` four the pipeline publishes with: `R2_PHOTO_ENDPOINT_URL`, `R2_PHOTO_BUCKET`, `R2_PHOTO_ACCESS_KEY_ID`, `R2_PHOTO_SECRET_ACCESS_KEY`, `R2_PHOTO_WRITE_ENABLED=true`. `R2_PHOTO_BUCKET` must name a **private** bucket - see `../LAUNCH_CHECKLIST.md` 1.7 and the comment in `app/config.py` for what pointing it at the published one would publish. Leaving all five unset is a valid deployment: it simply cannot take or serve photos, and both endpoints answer 503 rather than failing.
 3. `fly deploy` from this directory.
 4. Run the Migrations step above against the real `DATABASE_URL` - not automatic, see why above.
 5. Point the client's API base URL at the deployed app, and add its origin to Supabase's allowed redirect URLs (see `../LAUNCH_CHECKLIST.md`).

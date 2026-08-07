@@ -69,25 +69,49 @@ class Settings(BaseSettings):
     # anticipate. See app/core/auth.py for why it must be passed explicitly.
     supabase_jwt_audience: str = "authenticated"
 
-    # Cloudflare R2, for report photos (#234). The same four variables
-    # pipeline/publish.py reads, spelled identically on purpose - one bucket,
-    # one credential shape, one thing to rotate.
+    # Cloudflare R2, for report photos (#234). Same vendor and same credential
+    # SHAPE as pipeline/publish.py, and deliberately not the same variables.
+    #
+    # A PRIVATE BUCKET, WHICH IS WHY THE NAMES DIFFER
+    #
+    # These read R2_PHOTO_* rather than the R2_* that publish.py reads, and the
+    # prefix is the whole point rather than tidiness. `R2_BUCKET` names the
+    # PUBLISHED bucket - world-readable with no auth in front of it, by design
+    # (LAUNCH_CHECKLIST.md 1.5 turns public access on; pipeline/R2_LAYOUT.md
+    # says in as many words that condition reports must never go in it). This
+    # backend originally read those same four variables, so any deployment that
+    # carried the publishing environment - a shared secret store, a platform
+    # that injects one set for the whole project - would have written report
+    # photos into the public bucket. For a `bad_hikers` report that is a photo
+    # of a person, published, while the report it belongs to stays private:
+    # exactly the hole a private bucket exists to close, reopened by a variable
+    # name.
+    #
+    # The token is separate for the same reason. The published bucket's token
+    # is scoped to that bucket alone (LAUNCH_CHECKLIST.md 1.2), so it could not
+    # write here even if pointed here - a shared credential would simply fail,
+    # and the failure would arrive as a 503 on a hiker's upload rather than as
+    # a configuration error anybody saw.
     #
     # All four default to empty rather than being required, because a backend
     # with no bucket is a normal, working deployment: every developer machine
-    # and every CI run is one. What it cannot do is accept a photo, and the
-    # endpoint says exactly that rather than failing at startup for a feature
-    # most runs never touch.
-    r2_endpoint_url: str = ""
-    r2_bucket: str = ""
-    r2_access_key_id: str = ""
-    r2_secret_access_key: str = ""
+    # and every CI run is one. What it cannot do is accept or serve a photo,
+    # and the endpoints say exactly that rather than failing at startup for a
+    # feature most runs never touch.
+    r2_photo_endpoint_url: str = ""
+    r2_photo_bucket: str = ""
+    r2_photo_access_key_id: str = ""
+    r2_photo_secret_access_key: str = ""
     # The explicit gate, copied from pipeline/publish.py's R2_WRITE_ENABLED
     # rather than inferred from "are the credentials present". Credentials can
     # be present for a reason that is not this one - a shared environment, a
     # secret injected by a platform - and a process that should not upload
     # should be UNABLE to, not merely unlikely to.
-    r2_write_enabled: bool = False
+    #
+    # Writes only. Serving a photo that is already stored is not gated on this:
+    # a deployment told to stop accepting uploads should still be able to show
+    # a moderator the photo attached to the report they are deciding on.
+    r2_photo_write_enabled: bool = False
 
 
 settings = Settings()

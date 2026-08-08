@@ -43,6 +43,14 @@ jobs:
     name: UA
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Unused here, and check_schema_drift.py cannot import DATABASE_URL
+    # without them - migrate.yml's UA job has the reasoning, including why
+    # these are placeholders and not the real vars.SUPABASE_URL. It matters
+    # more here than there: this workflow is scheduled, and a scheduled one
+    # reading those settings reads as a second keepalive.
+    env:
+      SUPABASE_URL: "https://migrations-never-call-this.invalid"
+      SUPABASE_ANON_KEY: "unused-by-migrations"
     defaults:
       run:
         working-directory: backend
@@ -84,6 +92,10 @@ jobs:
     name: Production
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Unused here - see migrate.yml's UA job.
+    env:
+      SUPABASE_URL: "https://migrations-never-call-this.invalid"
+      SUPABASE_ANON_KEY: "unused-by-migrations"
     defaults:
       run:
         working-directory: backend

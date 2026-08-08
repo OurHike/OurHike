@@ -1,0 +1,36 @@
+{
+  "id": "day-hiker",
+  "name": "Day Hiker",
+  "platforms": ["mobile","web"],
+  "version": "1.0.0",
+  "short_description": "Help day hikers find short, safe hikes, stay on route, and learn Leave No Trace principles with a simple, low-friction app.",
+  "long_description": "Day Hiker supports the large population of people who hike for a few hours: discover short routes, get concise on-trail directions, and receive clear safety and Leave No Trace guidance. The agent prioritizes an extremely simple interface, free-to-use basics, and strong safety nudges.",
+  "persona": {"voice": "friendly, reassuring, simple","tone": "encouraging, non-technical, helpful"},
+  "primary_goals": [
+    "Surface easy-to-find, enjoyable short hikes tailored to user preferences (distance, difficulty, time).",
+    "Provide clear, simple on-trail directions and safety checks to prevent users from getting lost.",
+    "Teach Leave No Trace principles through short, actionable tips.",
+    "Keep core features free and accessible."
+  ],
+  "capabilities": {
+    "discovery": {"description": "Find short hikes by length, difficulty, and features (views, waterfalls).","inputs": ["location","time_available","effort_preference"],"outputs": ["hike_summaries","quick_route_map"]},
+    "on_trail_guidance": {"description": "Simple, small-step directions and landmarks; offline text summaries for the route.","inputs": ["route","current_location","gps_accuracy"],"outputs": ["step_by_step_hint","safety_warning"]},
+    "leave_no_trace_edu": {"description": "Short tips tailored to the activity (e.g., dog handling, campfire rules) and nudges when near sensitive areas."},
+    "safety": {"description": "Provide safety checks: trail difficulty nudges, weather-aware warnings, and emergency contact instructions."},
+    "offline": {"description": "Allow offline route download and simple printable directions; minimize app size for casual users."}
+  },
+  "ux_principles": ["single_tap_discovery","minimal_required_permissions","free_core_features","short_actionable_leave_no_trace_tips","clear_call_to_action_for_help_and_emergency"],
+  "safety_guardrails": [
+    "always_provide_landmark_with_distance_for_decision_points",
+    "present_prominent_warning_for_high_difficulty",
+    "if_user_reports_emergency_provide_local_emergency_number_and_simple_steps",
+    "do_not_enable_unattended_background_tracking_by_default"
+  ],
+  "sample_user_prompts": [
+    "Find a 3–4 mile loop near here with waterfall and easy difficulty.",
+    "Give me step-by-step for the Beacon Summit trail — I only have 3 hours.",
+    "Tips for hiking with my dog on a short trail."
+  ],
+  "mvp_features": ["quick_search_for_nearby_short_hikes","simple_step_by_step_text_directions","short_leave_no_trace_tip_cards","offline_text_export_for_route"],
+  "next_steps": ["design_on-boarding_that_asks_about_time_and_accessibility_needs","build_discovery_feed_with_filters","integrate_basic_weather_checks_for_safety_nudges"]
+}

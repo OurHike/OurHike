@@ -149,6 +149,15 @@ def _admin_connection():
     return psycopg.connect(ADMIN_URL, autocommit=True, connect_timeout=3)
 
 
+SCRATCH_URL = ADMIN_URL.rsplit("/", 1)[0] + f"/{SCRATCH_DB}"
+
+# The role the RLS tests connect as, matching what production creates. Its
+# password is a fixture detail: this role exists only inside the scratch
+# database, for the length of one test session.
+READER = "ourhike_conditions_reader_test"
+READER_PASSWORD = "conditions-test-only"
+
+
 @pytest.fixture(scope="module")
 def conditions_db():
     """A scratch database with a `closures` table, dropped afterwards.
@@ -164,8 +173,7 @@ def conditions_db():
     except psycopg.OperationalError as exc:
         pytest.skip(f"no Postgres to test against ({exc.__class__.__name__}) - run backend/scripts/local-postgres.sh")
 
-    url = ADMIN_URL.rsplit("/", 1)[0] + f"/{SCRATCH_DB}"
-    with psycopg.connect(url, autocommit=True) as conn:
+    with psycopg.connect(SCRATCH_URL, autocommit=True) as conn:
         conn.execute(CLOSURES_DDL)
         yield conn
 
@@ -180,6 +188,56 @@ def clean_closures(conditions_db):
     conditions_db.execute("ALTER TABLE public.closures DISABLE ROW LEVEL SECURITY")
     conditions_db.execute("DROP POLICY IF EXISTS conditions_reader_closures ON public.closures")
     return conditions_db
+
+
+@pytest.fixture
+def rls_subject(clean_closures):
+    """A connection row-level security actually applies to.
+
+    **This fixture is the whole reason the RLS tests are trustworthy, and it
+    exists because the obvious shortcut is wrong in a way that passes
+    locally.** The first version of these tests used
+    `FORCE ROW LEVEL SECURITY` to make RLS bind the table's owner, since the
+    suite had no second role to be. That works on a developer machine and is
+    a no-op on CI: the postgres service container makes its `POSTGRES_USER` a
+    SUPERUSER, and a superuser bypasses row security outright - FORCE binds
+    the *owner*, and a superuser is not stopped by being one. Green locally,
+    red on CI, and the difference was the privilege of the connecting role.
+
+    So this connects as a real non-owner, non-superuser role, which is what
+    production has and what makes RLS bind for the honest reason. Creating it
+    needs CREATE ROLE - which CI's superuser has, and which the local role
+    deliberately does not (`local-postgres.sh`: "not SUPERUSER, because
+    production's role is not"). Where the role cannot be created, the test
+    skips rather than quietly falling back to the weaker check: a proof that
+    silently downgrades is how this got through the first time.
+    """
+    try:
+        clean_closures.execute(f"DROP ROLE IF EXISTS {READER}")
+        clean_closures.execute(f"CREATE ROLE {READER} LOGIN PASSWORD '{READER_PASSWORD}'")
+    except psycopg.errors.InsufficientPrivilege:
+        pytest.skip(
+            "the connecting role cannot CREATE ROLE, so RLS cannot be exercised against a non-owner. "
+            "CI's postgres service runs these; to run them locally, point "
+            "PIPELINE_TEST_DATABASE_URL at a superuser - the Debian cluster's own `postgres` role "
+            'will do once it has a password (`sudo -u postgres psql -c "ALTER ROLE postgres WITH PASSWORD ..."`).'
+        )
+
+    clean_closures.execute(f"GRANT USAGE ON SCHEMA public TO {READER}")
+    clean_closures.execute(f"GRANT SELECT ON public.closures TO {READER}")
+
+    reader_url = SCRATCH_URL.split("://", 1)[1].split("@", 1)[1]
+    with psycopg.connect(f"postgresql://{READER}:{READER_PASSWORD}@{reader_url}", autocommit=True) as conn:
+        yield conn
+
+    # The policy goes first, and not for tidiness: a policy naming this role
+    # is a dependency on it, and DROP ROLE fails outright while one exists.
+    # `clean_closures` also drops it, but that runs before the *next* test
+    # rather than after this one, which is too late to help here.
+    clean_closures.execute("DROP POLICY IF EXISTS conditions_reader_closures ON public.closures")
+    clean_closures.execute(f"REVOKE ALL ON public.closures FROM {READER}")
+    clean_closures.execute(f"REVOKE ALL ON SCHEMA public FROM {READER}")
+    clean_closures.execute(f"DROP ROLE IF EXISTS {READER}")
 
 
 def _insert(conn, *, closure_id, moderation_status, mile=10.0):
@@ -236,51 +294,50 @@ def test_exported_timestamps_are_stamped(clean_closures):
     assert row["verified_at"] == "2026-08-02T12:00:00Z"
 
 
-def test_row_level_security_turns_a_missing_policy_into_silence(clean_closures):
+def test_row_level_security_turns_a_missing_policy_into_silence(clean_closures, rls_subject):
     """The failure this script exists to catch, reproduced rather than argued.
 
-    A verified closure is present and readable. Turning RLS on with no policy
-    makes the identical query return **zero rows and no error** - which,
-    published, is an empty artifact and a hiker shown no closure warnings.
+    A verified closure is present and readable by the reader. Turning RLS on
+    with no policy makes the identical query return **zero rows and no
+    error** - which, published, is an empty artifact and a hiker shown no
+    closure warnings.
 
-    FORCE is what lets this run as the table's owner. Production does not need
-    it because the reader is not the owner; this suite has no second role to
-    be (the local Postgres role has no CREATEROLE, matching production's), and
-    without FORCE the owner is exempt and the bug cannot be demonstrated. It
-    belongs here and nowhere near a migration - backend/tests/test_migration_rls.py
-    asserts the word never appears in one, because forcing RLS on the owner
-    there would break every endpoint at once.
+    Read as the non-owner reader, not as the owner, for the reason `rls_subject`
+    records at length: RLS exempts the owner, and a superuser is exempt even
+    from FORCE.
     """
     _insert(clean_closures, closure_id="c1", moderation_status="verified")
-    assert len(read_closures(clean_closures)) == 1
+    assert len(read_closures(rls_subject)) == 1
 
     clean_closures.execute("ALTER TABLE public.closures ENABLE ROW LEVEL SECURITY")
-    clean_closures.execute("ALTER TABLE public.closures FORCE ROW LEVEL SECURITY")
 
-    assert read_closures(clean_closures) == []
+    assert read_closures(rls_subject) == []
 
     with pytest.raises(SystemExit) as exc:
-        assert_reader_permissions(clean_closures)
+        assert_reader_permissions(rls_subject)
     assert "empty artifact" in str(exc.value)
 
 
-def test_a_policy_restores_the_rows_it_is_written_for(clean_closures):
+def test_a_policy_restores_the_rows_it_is_written_for(clean_closures, rls_subject):
     """The fix, proved against the same database - so the SQL in
-    features/CONDITIONS_DELIVERY.md is verified rather than asserted."""
+    features/CONDITIONS_DELIVERY.md is verified rather than asserted.
+
+    Note there is no FORCE here and none is needed: the reader is not the
+    table's owner, which is exactly the situation production is in.
+    """
     _insert(clean_closures, closure_id="c1", moderation_status="verified", mile=10.0)
     _insert(clean_closures, closure_id="c2", moderation_status="submitted", mile=20.0)
     clean_closures.execute("ALTER TABLE public.closures ENABLE ROW LEVEL SECURITY")
-    clean_closures.execute("ALTER TABLE public.closures FORCE ROW LEVEL SECURITY")
     clean_closures.execute(
-        """
+        f"""
         CREATE POLICY conditions_reader_closures ON public.closures
-            FOR SELECT TO PUBLIC USING (moderation_status = 'verified')
+            FOR SELECT TO {READER} USING (moderation_status = 'verified')
         """
     )
 
-    assert_reader_permissions(clean_closures)
+    assert_reader_permissions(rls_subject)
 
-    assert [row["id"] for row in read_closures(clean_closures)] == ["c1"]
+    assert [row["id"] for row in read_closures(rls_subject)] == ["c1"]
 
 
 def test_the_catalog_queries_answer_against_a_real_schema(clean_closures):

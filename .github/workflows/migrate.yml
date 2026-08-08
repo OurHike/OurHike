@@ -107,6 +107,28 @@ jobs:
     timeout-minutes: 15
     outputs:
       applied: ${{ steps.apply.outputs.applied }}
+    # A migration touches neither of these, and cannot run without them.
+    # app/config.py builds Settings() at import time and gives the Supabase
+    # fields no default on purpose, so a job carrying only DATABASE_URL cannot
+    # import the module that holds DATABASE_URL - alembic/env.py included.
+    # That is what failed on the merge commit of #411, and it failed with the
+    # connection string half-printed in a pydantic traceback.
+    #
+    # Passed here rather than defaulted in app/config.py, because a default
+    # there would also apply to the app, where refusing to start without a
+    # Supabase project is the documented intent.
+    #
+    # PLACEHOLDERS RATHER THAN vars.SUPABASE_URL, for two reasons. Wiring real
+    # config into a job that never reads it invents a dependency that can then
+    # break it - rotate or unset that variable and migrations fail for a
+    # reason with nothing to do with migrations. And a workflow reading
+    # vars.SUPABASE_* is how .github/tests/test_supabase_keepalive_workflow.py
+    # recognises something talking to the Supabase project, which on a
+    # schedule would read as a second keepalive. These jobs reach Postgres
+    # directly, through DATABASE_URL, and never the project.
+    env:
+      SUPABASE_URL: "https://migrations-never-call-this.invalid"
+      SUPABASE_ANON_KEY: "unused-by-migrations"
     defaults:
       run:
         working-directory: backend
@@ -186,6 +208,10 @@ jobs:
     # cannot, and the environment is what makes that structural rather than
     # a convention someone follows.
     environment: production
+    # Unused by a migration, required to import anything - see the UA job.
+    env:
+      SUPABASE_URL: "https://migrations-never-call-this.invalid"
+      SUPABASE_ANON_KEY: "unused-by-migrations"
     defaults:
       run:
         working-directory: backend

@@ -22,6 +22,12 @@ assumption is that no migration has run.
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
 import sqlalchemy
 
@@ -31,6 +37,13 @@ from app.config import settings
 from tests.conftest import _reset_schema
 
 REAL_REVISIONS = {"aaaa1111", "bbbb2222", "cccc3333"}
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+
+# A well-formed session-mode string, so the subprocess tests below fail on the
+# thing they are about rather than on the URL. The password is fake and is
+# asserted absent from the output.
+SESSION_POOLER_URL = "postgresql+psycopg://postgres.abc:hunter2@aws-0-us-east-1.pooler.supabase.com:5432/postgres"
 
 
 @pytest.fixture()
@@ -117,10 +130,80 @@ def test_an_unusable_url_stops_the_run_before_it_connects(monkeypatch, capsys):
         raise AssertionError("a refused URL must not connect")
 
     monkeypatch.setattr(check_schema_drift, "read_current_revision", fail)
-    monkeypatch.setattr(check_schema_drift.settings, "database_url", "postgresql://postgres:pw@localhost:5432/x")
+    monkeypatch.setattr(
+        check_schema_drift,
+        "load_settings",
+        lambda: SimpleNamespace(database_url="postgresql://postgres:pw@localhost:5432/x"),
+    )
 
     assert check_schema_drift.main(["--label", "test"]) == 2
     assert "postgresql+psycopg://" in capsys.readouterr().out
+
+
+# --- the environment a migration job actually has --------------------------
+
+
+def _run_in(env: dict[str, str]):
+    """The script in its own process, with exactly the environment given.
+
+    A subprocess rather than monkeypatch because `tests/conftest.py` sets
+    SUPABASE_URL and SUPABASE_ANON_KEY for the whole session - which is right
+    for the suite and is precisely why no in-process test could have caught
+    the failure this covers. Nothing in this process can un-import
+    `app.config` once conftest has made it importable.
+    """
+    return subprocess.run(
+        [sys.executable, "check_schema_drift.py", "--label", "test", "--url-only"],
+        cwd=BACKEND_DIR,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_only_database_url_is_not_enough_and_the_message_says_which():
+    """What migrate.yml passed on the merge commit of #411.
+
+    `app/config.py` builds Settings() at import time and several fields have
+    no default, so a job carrying only DATABASE_URL cannot import the module
+    that holds DATABASE_URL. alembic/env.py imports the same settings, so the
+    upgrade step would have died the same way one step later.
+    """
+    result = _run_in({"PATH": os.environ["PATH"], "DATABASE_URL": SESSION_POOLER_URL})
+
+    assert result.returncode == 2
+    assert "SUPABASE_URL" in result.stdout and "SUPABASE_ANON_KEY" in result.stdout
+
+
+def test_a_missing_setting_never_prints_the_connection_string():
+    """The reason load_settings() catches ValidationError rather than letting
+    it raise. Pydantic renders the rejected input, which for this model is the
+    dict holding DATABASE_URL - and GitHub's log masking matches whole secret
+    values, so a truncated one prints in fragments. That is how #411's run
+    revealed which endpoint the credential named.
+    """
+    result = _run_in({"PATH": os.environ["PATH"], "DATABASE_URL": SESSION_POOLER_URL})
+
+    combined = result.stdout + result.stderr
+    assert "supabase.com" not in combined, "the host leaked"
+    assert "hunter2" not in combined, "the password leaked"
+    assert "Traceback" not in combined, "a traceback here is how the fragments got out in the first place"
+
+
+def test_the_environment_the_workflows_pass_is_enough():
+    """The fix, asserted as the workflows configure it: DATABASE_URL plus the
+    two Supabase settings the app needs and a migration does not."""
+    result = _run_in(
+        {
+            "PATH": os.environ["PATH"],
+            "DATABASE_URL": SESSION_POOLER_URL,
+            "SUPABASE_URL": "https://example.supabase.co",
+            "SUPABASE_ANON_KEY": "sb_publishable_example",
+        }
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "usable for a migration" in result.stdout
 
 
 # --- classify, as a pure function -----------------------------------------

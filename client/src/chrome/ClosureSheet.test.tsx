@@ -24,7 +24,6 @@ const CLOSURE = {
   end_mile_marker: 1411.0,
   closed_since: new Date('2026-07-10T00:00:00Z'),
   expected_reopen: new Date('2026-09-01T00:00:00Z'),
-  marked_by: 'Mountain Club',
   reroute_url: 'https://example.org/reroute',
 }
 
@@ -74,10 +73,16 @@ describe('ClosureSheet', () => {
     expect(screen.getByText(/September 1/)).toBeInTheDocument()
   })
 
-  it('says who marked it', () => {
+  // `marked_by` used to be asserted here, and it was the only one of the four
+  // extras that named a person (#245). Its sources were profile ids whose
+  // display names sit behind an anonymity position the app has stored and not
+  // applied, so the field was deleted rather than wired. This replaces the
+  // assertion instead of dropping it: the point now is that the sheet says
+  // nothing at all about who marked the closure.
+  it('attributes the closure to nobody', () => {
     render(<ClosureSheet {...PROPS} />)
 
-    expect(screen.getByText(/Mountain Club/)).toBeInTheDocument()
+    expect(screen.queryByText(/Marked by/)).not.toBeInTheDocument()
   })
 
   it('links to the club’s reroute notice when there is one', () => {

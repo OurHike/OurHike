@@ -19,3 +19,12 @@ _site/
 # A vitest run from the root put node_modules/.vite/ under version control
 # once already.
 node_modules/
+
+# Python bytecode. .github/scripts/__pycache__/release_notes.cpython-311.pyc
+# was tracked, so every run of that module under a different interpreter
+# showed up as a modified file and rode along on the next commit - which has
+# already cost one commit to undo. Nothing else in the repository ignored
+# bytecode, because the three Python subtrees each ignore their own and this
+# file was the only one outside them.
+__pycache__/
+*.py[cod]

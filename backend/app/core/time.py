@@ -10,6 +10,24 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+def to_naive_utc(value: datetime | None) -> datetime | None:
+    """Normalise an inbound datetime to the naive-UTC storage convention.
+
+    The wire carries offsets - `2026-08-08T02:00:00Z`, or a phone's local
+    `-04:00` - and storage is naive-UTC throughout (the convention documented
+    in app/models/profile.py). Converting rather than truncating is the whole
+    point: dropping a `-04:00` offset instead of applying it moves the value
+    four hours, which is the same class of error `_stamp_utc` exists to
+    prevent on the way out.
+
+    `None` passes through, so callers can hand this an optional field
+    directly.
+    """
+    if value is None or value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 def _stamp_utc(value: datetime) -> str:
     """Render a stored datetime with the UTC designator it was always meant to carry.
 

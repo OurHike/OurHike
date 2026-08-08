@@ -213,3 +213,252 @@ def test_a_maintainer_can_still_reopen_a_trail(client, db_session):
 
     assert response.status_code == 200
     assert response.json()["status"] == ClosureStatus.open.value
+
+
+# --- The three fields the sheet renders (#245) ----------------------------
+#
+# `ClosureDetail` extended the shared `Closure` shape with four fields that no
+# backend could supply, so the component looked finished while being
+# unfillable - every test fed them by hand. Three are facts about the closure
+# and now have columns. The fourth, `marked_by`, is a fact about a person and
+# was deleted from the client type instead.
+#
+# What these pin down is not that the columns exist - a schema test would say
+# that - but that a maintainer can actually move them, that a reporter cannot,
+# and that verifying does not wipe them.
+
+
+def _closure_and_maintainer(db_session):
+    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
+    maintainer_id = str(uuid.uuid4())
+    db_session.add_all([reporter, Profile(id=maintainer_id, role=Role.maintainer)])
+    db_session.commit()
+    closure = Closure(
+        reported_by=reporter.id,
+        reason_type="storm_damage",
+        start_mile_marker=1.0,
+        end_mile_marker=2.0,
+    )
+    db_session.add(closure)
+    db_session.commit()
+    return closure, maintainer_id
+
+
+def test_a_new_closure_has_all_three_detail_fields_null(client):
+    """Null is the honest start: nobody has said when the trail shut."""
+    response = client.post("/closures", json=_VALID_PAYLOAD, headers=auth_headers(str(uuid.uuid4())))
+
+    body = response.json()
+    assert response.status_code == 201
+    assert body["closed_since"] is None
+    assert body["expected_reopen"] is None
+    assert body["reroute_url"] is None
+
+
+def test_a_maintainer_sets_the_three_detail_fields(client, db_session):
+    closure, maintainer_id = _closure_and_maintainer(db_session)
+
+    response = client.patch(
+        f"/closures/{closure.id}",
+        json={
+            "closed_since": "2026-08-01T00:00:00Z",
+            "expected_reopen": "2026-09-15T00:00:00Z",
+            "reroute_url": "https://www.nynjtc.org/notice/storm-reroute",
+        },
+        headers=auth_headers(maintainer_id),
+    )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["closed_since"] == "2026-08-01T00:00:00Z"
+    assert body["expected_reopen"] == "2026-09-15T00:00:00Z"
+    assert body["reroute_url"] == "https://www.nynjtc.org/notice/storm-reroute"
+
+
+def test_a_plain_hiker_cannot_set_the_detail_fields(client, db_session):
+    """Same gate as every other PATCH field - judging a reopening date is a
+    maintainer's job, and `reroute_url` renders as a link a hiker taps."""
+    closure, _ = _closure_and_maintainer(db_session)
+    hiker_id = str(uuid.uuid4())
+    db_session.add(Profile(id=hiker_id, role=Role.hiker))
+    db_session.commit()
+
+    response = client.patch(
+        f"/closures/{closure.id}",
+        json={"reroute_url": "https://example.com/anything"},
+        headers=auth_headers(hiker_id),
+    )
+
+    assert response.status_code == 403
+
+
+def test_the_detail_fields_are_not_settable_on_create(client):
+    """They are absent from `ClosureCreate`, so a reporter sending them
+    changes nothing - the same posture `moderation_status` takes."""
+    payload = dict(
+        _VALID_PAYLOAD,
+        closed_since="2020-01-01T00:00:00Z",
+        reroute_url="https://example.com/not-reviewed",
+    )
+
+    response = client.post("/closures", json=payload, headers=auth_headers(str(uuid.uuid4())))
+
+    body = response.json()
+    assert response.status_code == 201
+    assert body["closed_since"] is None
+    assert body["reroute_url"] is None
+
+
+def test_an_omitted_detail_field_is_left_alone(client, db_session):
+    """A PATCH that only changes `status` must not clear the dates."""
+    closure, maintainer_id = _closure_and_maintainer(db_session)
+    client.patch(
+        f"/closures/{closure.id}",
+        json={"closed_since": "2026-08-01T00:00:00Z"},
+        headers=auth_headers(maintainer_id),
+    )
+
+    response = client.patch(
+        f"/closures/{closure.id}",
+        json={"status": "open"},
+        headers=auth_headers(maintainer_id),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["closed_since"] == "2026-08-01T00:00:00Z"
+
+
+def test_an_explicit_null_clears_a_detail_field(client, db_session):
+    """The distinction `model_fields_set` exists for: a reopening date that
+    slips or is withdrawn has to be removable, or a stale promise outlives
+    the promise."""
+    closure, maintainer_id = _closure_and_maintainer(db_session)
+    client.patch(
+        f"/closures/{closure.id}",
+        json={"expected_reopen": "2026-09-15T00:00:00Z"},
+        headers=auth_headers(maintainer_id),
+    )
+
+    response = client.patch(
+        f"/closures/{closure.id}",
+        json={"expected_reopen": None},
+        headers=auth_headers(maintainer_id),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["expected_reopen"] is None
+
+
+def test_verifying_a_closure_preserves_the_detail_fields(client, db_session):
+    """ "Survives moderation" from #245, walked rather than asserted about:
+    the fields are set, the closure goes through the real verify action, and
+    the public list is what gets checked."""
+    closure, maintainer_id = _closure_and_maintainer(db_session)
+    client.patch(
+        f"/closures/{closure.id}",
+        json={
+            "closed_since": "2026-08-01T00:00:00Z",
+            "reroute_url": "https://www.nynjtc.org/notice/storm-reroute",
+        },
+        headers=auth_headers(maintainer_id),
+    )
+
+    verify = client.post(f"/closures/{closure.id}/verify", headers=auth_headers(maintainer_id))
+    assert verify.status_code == 200
+
+    listed = client.get("/closures").json()
+    served = next(c for c in listed if c["id"] == closure.id)
+    assert served["closed_since"] == "2026-08-01T00:00:00Z"
+    assert served["reroute_url"] == "https://www.nynjtc.org/notice/storm-reroute"
+
+
+def test_a_reroute_url_must_be_http_or_https(client, db_session):
+    """A `javascript:` URL on a safety sheet is the reason this is validated
+    at all - the sheet renders the value as an anchor a hiker taps."""
+    closure, maintainer_id = _closure_and_maintainer(db_session)
+
+    response = client.patch(
+        f"/closures/{closure.id}",
+        json={"reroute_url": "javascript:alert(document.cookie)"},
+        headers=auth_headers(maintainer_id),
+    )
+
+    assert response.status_code == 422
+
+
+def test_a_blank_reroute_url_is_read_as_a_clear(client, db_session):
+    """The shape a form sends for an emptied box. Storing it would give the
+    client a truthy value that renders an anchor pointing nowhere."""
+    closure, maintainer_id = _closure_and_maintainer(db_session)
+    client.patch(
+        f"/closures/{closure.id}",
+        json={"reroute_url": "https://www.nynjtc.org/notice/storm-reroute"},
+        headers=auth_headers(maintainer_id),
+    )
+
+    response = client.patch(
+        f"/closures/{closure.id}",
+        json={"reroute_url": "   "},
+        headers=auth_headers(maintainer_id),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["reroute_url"] is None
+
+
+def test_a_reopening_date_before_the_closing_date_is_refused(client, db_session):
+    closure, maintainer_id = _closure_and_maintainer(db_session)
+
+    response = client.patch(
+        f"/closures/{closure.id}",
+        json={
+            "closed_since": "2026-08-01T00:00:00Z",
+            "expected_reopen": "2026-07-01T00:00:00Z",
+        },
+        headers=auth_headers(maintainer_id),
+    )
+
+    assert response.status_code == 422
+    # Nothing from the refused request survives. The check runs before the
+    # assignment for this reason: values left on a live ORM instance can be
+    # written out by the next autoflush, behind the 422.
+    stored = db_session.get(Closure, closure.id)
+    db_session.refresh(stored)
+    assert stored.closed_since is None
+    assert stored.expected_reopen is None
+
+
+def test_the_ordering_check_reads_the_stored_value_not_just_the_payload(client, db_session):
+    """The two dates arrive in whichever order a maintainer sends them,
+    possibly days apart. A payload-only check passes on every second half of
+    an inconsistent pair."""
+    closure, maintainer_id = _closure_and_maintainer(db_session)
+    client.patch(
+        f"/closures/{closure.id}",
+        json={"closed_since": "2026-08-01T00:00:00Z"},
+        headers=auth_headers(maintainer_id),
+    )
+
+    response = client.patch(
+        f"/closures/{closure.id}",
+        json={"expected_reopen": "2026-07-01T00:00:00Z"},
+        headers=auth_headers(maintainer_id),
+    )
+
+    assert response.status_code == 422
+
+
+def test_an_offset_bearing_date_is_converted_rather_than_truncated(client, db_session):
+    """Storage is naive-UTC, so a phone's `-04:00` has to be applied. Dropping
+    the offset instead would move the date by four hours - across midnight for
+    exactly the evening values a hiker reads as "yesterday"."""
+    closure, maintainer_id = _closure_and_maintainer(db_session)
+
+    response = client.patch(
+        f"/closures/{closure.id}",
+        json={"closed_since": "2026-08-01T22:30:00-04:00"},
+        headers=auth_headers(maintainer_id),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["closed_since"] == "2026-08-02T02:30:00Z"

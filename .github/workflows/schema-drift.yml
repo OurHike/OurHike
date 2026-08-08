@@ -1,0 +1,116 @@
+# Asks, on a schedule, whether the hosted databases still match this checkout.
+#
+# migrate.yml is how a schema change gets *in*. This is what notices a change
+# that arrived some other way - a column widened in the Supabase dashboard to
+# unblock something at the time, row-level security clicked off while chasing a
+# 403, an `alembic stamp` run by hand to make an error go away. None of those
+# produce a diff, a pull request or a failing test, and the next migration to
+# run against that schema is where they are discovered.
+#
+# Nothing else asks this. tests/test_migrations.py runs the whole chain against
+# real Postgres, including `alembic check` - but against a throwaway database
+# the suite created seconds earlier, so it is a claim about the revisions and
+# never about Supabase. settings-check.yml is the closest relative: both ask a
+# question a checkout cannot answer about itself.
+#
+# NOT GATED ON AN ENVIRONMENT, deliberately, where migrate.yml's production job
+# is. A scheduled run that waits for a reviewer waits forever, and there is
+# nothing here to approve: this reads `alembic_version` and reflects the
+# schema, and writes nothing to either database.
+#
+# WHAT IT FAILS ON is narrower than "anything unexpected", and
+# check_schema_drift.py's docstring holds the reasoning. Being behind head is
+# normal - it is every moment between a migration merging and a maintainer
+# choosing to apply it, which RELEASING.md 8c makes a deliberate wait rather
+# than a delay. A red X for that would be a red X most weeks, and the value of
+# this check is entirely in a red X being unusual.
+
+name: Schema drift
+
+on:
+  schedule:
+    # 08:10 UTC daily. Clear of check-upstream-freshness.yml at 07:20 and
+    # settings-check.yml at 07:35, and off the hour for the reason both of
+    # those record: GitHub queues everything submitted at :00 together.
+    - cron: "10 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ua:
+    name: UA
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Is there a UA database to check
+        id: can
+        run: |
+          if [ -z "${{ secrets.UA_MIGRATION_DATABASE_URL }}" ]; then
+            echo "::warning::No UA database is configured, so nothing was checked. See LAUNCH_CHECKLIST.md 5 and #371."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.can.outputs.go == 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.can.outputs.go == 'true'
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        if: steps.can.outputs.go == 'true'
+        run: pip install -r requirements.txt
+
+      - name: Check UA
+        if: steps.can.outputs.go == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.UA_MIGRATION_DATABASE_URL }}
+        run: python check_schema_drift.py --label UA
+
+  production:
+    name: Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Is there a production database to check
+        id: can
+        run: |
+          if [ -z "${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}" ]; then
+            echo "::warning::No production database is configured, so nothing was checked. See LAUNCH_CHECKLIST.md 5."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.can.outputs.go == 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.can.outputs.go == 'true'
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        if: steps.can.outputs.go == 'true'
+        run: pip install -r requirements.txt
+
+      - name: Check production
+        if: steps.can.outputs.go == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+        run: python check_schema_drift.py --label production

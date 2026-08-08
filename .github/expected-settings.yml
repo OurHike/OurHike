@@ -210,6 +210,35 @@ settings:
       create one from CI, and a typo here is a deploy that fails saying the
       project was not found.
 
+  UA_MIGRATION_DATABASE_URL:
+    where: secret
+    required: false
+    why: >-
+      UA's Postgres, for migrate.yml to apply the Alembic chain to and for
+      schema-drift.yml to read back. The MIGRATION_ in the name is not
+      decoration: this must be Supabase's DIRECT string (db.<ref>.supabase.co,
+      port 5432), never the pooled one the running app uses, because
+      CREATE TABLE, ALTER TABLE and Alembic's advisory lock all need one
+      session that stays put. Optional because unset is the current state and
+      both workflows skip politely rather than turning every merge to main
+      red - but migrate.yml's production job refuses to run when this is
+      missing, so an unconfigured UA blocks production rather than waving it
+      through. A secret rather than a variable: it carries the database
+      password.
+
+  PRODUCTION_MIGRATION_DATABASE_URL:
+    where: secret
+    required: false
+    why: >-
+      Production's Postgres, same direct-not-pooled rule as the UA entry above
+      and the same reason. Held by a job in the `production` environment so
+      applying it waits for a reviewer, but declared here as a repository
+      secret rather than an environment one, like the R2 four - the settings
+      check resolves these with no `environment:` set, and a scoped copy would
+      be invisible to it. Optional for now because no schema has ever been
+      applied (LAUNCH_CHECKLIST.md 5); it stops being optional the day a hiker
+      can sign in.
+
   GITHUB_TOKEN:
     where: github-provided
     required: true

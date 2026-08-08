@@ -1,0 +1,200 @@
+# Applies the Alembic revisions in this checkout to a hosted database.
+#
+# Until this existed, nothing in the repository could reach Supabase at all.
+# The schema was applied by a maintainer running `alembic upgrade head` from a
+# laptop, which RELEASING.md's gate table admits in its own words: gate 4
+# ("migrations up, down and `alembic check`, against real Postgres") is `hard`,
+# enforced by tests/test_migrations.py, while gate 5 ("migration applied to UA
+# before production") is `procedure` - a person is trusted to remember. This
+# workflow is gate 5 becoming hard.
+#
+# WHAT STAYS A DECISION. Not the typing - the timing. RELEASING.md 8c requires
+# expand-and-contract across two releases because the previous release is still
+# serving traffic during a rollout, so a migration that drops a column breaks
+# it. No workflow can know when that is safe. Production is therefore dispatch
+# only and gated on the `production` environment's reviewers; what has been
+# removed is the hand-typed connection string, not the judgement.
+#
+# UA IS NOT OPTIONAL ON THE WAY TO PRODUCTION. Dispatching production runs the
+# UA leg first, in the same run, and the production job refuses to start unless
+# UA really applied - not "was configured", not "was skipped politely".
+# RELEASING.md 3 says "applied to UA first, always"; this is that sentence with
+# teeth. Re-applying to UA is free when it is already there: `upgrade head` on
+# a database at head is a no-op.
+#
+# THE DIRECT CONNECTION STRING, NOT THE POOLER, and the setting names say so
+# rather than trusting anyone to remember. Supabase offers the transaction
+# pooler first, and a migration is the one workload that must not use it -
+# `CREATE TABLE`, `ALTER TABLE` and Alembic's advisory lock all want one
+# session that stays put, where the pooler hands each transaction whatever
+# backend is free. The pooled string is right for the running app
+# (backend/tests/test_pooler.py) and wrong here, which is why these are
+# *_MIGRATION_DATABASE_URL and not the DATABASE_URL Fly holds - the same
+# reasoning that gave the report-photo credentials their R2_PHOTO_ prefix
+# (LAUNCH_CHECKLIST.md 1.7).
+#
+# REPOSITORY SECRETS, HELD BY A JOB IN A PROTECTED ENVIRONMENT - not
+# environment secrets. Environment protection rules gate the job either way,
+# so the reviewer requirement is unaffected, and settings-check.yml resolves
+# the contexts with no `environment:` set, so an environment-scoped secret
+# would be invisible to the one job whose purpose is noticing it had gone.
+# publish-vector-data.yml already holds the R2 credentials this way.
+#
+# WHAT THIS IS NOT: the Supabase management API, and not the `apply_migration`
+# tool an agent session has sitting in front of it. Those write Supabase's own
+# `supabase_migrations.schema_migrations` ledger rather than Alembic's
+# `alembic_version`, which would leave two ledgers disagreeing about what has
+# been applied - strictly worse than the person this replaces. #371 rejected
+# that route for a second reason as well: it produces the right tables while
+# skipping the path UA exists to rehearse.
+
+name: Migrate
+
+on:
+  push:
+    branches: [main]
+    # UA follows main automatically, and only when there is something to
+    # apply. A merge that touches no revision needs no run: `upgrade head`
+    # would be a no-op, and a workflow that fires constantly to do nothing is
+    # one nobody reads the log of.
+    paths:
+      - "backend/alembic/versions/**"
+      - ".github/workflows/migrate.yml"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Which database. Production runs UA first and then waits for a reviewer."
+        type: choice
+        options: [ua, production]
+        default: ua
+
+# One migration at a time, across both targets. Two concurrent runs would
+# contend for the same advisory lock and interleave in the log, and
+# cancel-in-progress is wrong here in a way it is not for a preview build:
+# cancelling mid-upgrade leaves a partially-applied chain.
+concurrency:
+  group: migrate
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ua:
+    name: Apply to UA
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      applied: ${{ steps.apply.outputs.applied }}
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      # Skips rather than fails when UA has no database yet, the same way
+      # ua.yml skips when no Pages project is configured: an unconfigured UA
+      # must not turn every merge to main red. The production job below is
+      # what makes sure that politeness cannot become a way past the gate.
+      - name: Is there a UA database to migrate
+        id: can
+        run: |
+          if [ -z "${{ secrets.UA_MIGRATION_DATABASE_URL }}" ]; then
+            echo "::warning::No UA database is configured, so nothing was migrated. See LAUNCH_CHECKLIST.md 5 and #371."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.can.outputs.go == 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.can.outputs.go == 'true'
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        if: steps.can.outputs.go == 'true'
+        run: pip install -r requirements.txt
+
+      # Printed before and after, because "it ran" and "it moved" are
+      # different facts and only the second one is evidence.
+      - name: Apply
+        id: apply
+        if: steps.can.outputs.go == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.UA_MIGRATION_DATABASE_URL }}
+        run: |
+          echo "Before: $(alembic current 2>&1 | tail -1)"
+          alembic upgrade head
+          echo "After:  $(alembic current 2>&1 | tail -1)"
+          echo "applied=true" >> "$GITHUB_OUTPUT"
+
+      # The same check schema-drift.yml runs on a schedule, run here against
+      # the database that was just migrated. Catching a hand-edit at the
+      # moment of the next deploy is the whole reason UA is applied to first.
+      - name: Confirm UA matches this checkout
+        if: steps.can.outputs.go == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.UA_MIGRATION_DATABASE_URL }}
+        run: python check_schema_drift.py --label UA
+
+  production:
+    name: Apply to production
+    needs: ua
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'production'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # The reviewer gate. Everything above this line can run unattended; this
+    # cannot, and the environment is what makes that structural rather than
+    # a convention someone follows.
+    environment: production
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      # Two refusals, both cheap, both guarding a mistake that is expensive
+      # and quiet. A dispatch can name any ref, and a migration applied to
+      # production from a feature branch is a schema no merged commit
+      # describes.
+      - name: Refuse anything this should not do
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "::error::Production migrations run from main only; this dispatch names ${{ github.ref }}."
+            exit 1
+          fi
+          if [ "${{ needs.ua.outputs.applied }}" != "true" ]; then
+            echo "::error::UA was not migrated in this run, so this would be the first database to see these revisions. RELEASING.md 3: applied to UA first, always. Configure UA_MIGRATION_DATABASE_URL (#371) and dispatch again."
+            exit 1
+          fi
+          if [ -z "${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}" ]; then
+            echo "::error::No production database is configured. See LAUNCH_CHECKLIST.md 5."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Apply
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+        run: |
+          echo "Before: $(alembic current 2>&1 | tail -1)"
+          alembic upgrade head
+          echo "After:  $(alembic current 2>&1 | tail -1)"
+
+      - name: Confirm production matches this checkout
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+        run: python check_schema_drift.py --label production

@@ -1,0 +1,23 @@
+# CODEOWNERS for OurHike
+# Lines are matched from top to bottom; the first matching pattern takes effect.
+
+# Agent manifests and related metadata
+.claude/agents/*  @OurHike/engineering
+
+# Data/pipeline ownership
+pipeline/**         @OurHike/data
+
+# Client and frontend
+client/**           @OurHike/frontend
+
+# Backend ownership
+backend/**          @OurHike/backend
+
+# Ops and workflows
+.github/workflows/** @OurHike/ops
+
+# COSTS and cost reviews
+/COSTS.md           @jaimito-asuntos-gringuenos
+
+# Default fallback owners
+*                   @OurHike/engineering

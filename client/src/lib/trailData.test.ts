@@ -327,6 +327,48 @@ describe('trail data', () => {
     await expect(downloadTrailData()).rejects.toThrow(/trails\.geojson.*404/)
   })
 
+  it('names the file and the host when the request never completes at all', async () => {
+    // A refused origin, a bucket that is not public and a dead zone all reject
+    // with the same bare browser TypeError - "NetworkError when attempting to
+    // fetch resource." on Firefox - which named neither the artifact nor where
+    // it was asked. That sentence went to the hiker and into a bug report
+    // verbatim, and it is the whole reason a CORS policy that did not name the
+    // app's origin read as a missing centerline.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.reject(new TypeError('NetworkError when attempting to fetch resource.')),
+      ),
+    )
+
+    await expect(downloadTrailData()).rejects.toThrow(
+      /trails\.geojson.*did not complete.*NetworkError when attempting to fetch resource/,
+    )
+  })
+
+  it('keeps the browser’s own words, which are what separate refused from offline', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))),
+    )
+
+    await expect(downloadTrailData()).rejects.toThrow(/Failed to fetch/)
+  })
+
+  it('lets a cancellation stay a cancellation rather than dressing it as a failure', async () => {
+    // publishedHash() re-throws an abort by name for this reason, and the
+    // wrapper has to agree: the hiker stopping a download is not the bucket
+    // refusing one, and only one of the two is worth a notice.
+    const abort = new Error('The operation was aborted.')
+    abort.name = 'AbortError'
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.reject(abort)),
+    )
+
+    await expect(downloadTrailData()).rejects.toThrow(abort)
+  })
+
   it('says there is nothing downloaded rather than returning an empty map', async () => {
     expect(await loadTrailData()).toBeNull()
   })

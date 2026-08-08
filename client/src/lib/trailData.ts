@@ -22,6 +22,7 @@
 
 import { get, set, del } from 'idb-keyval'
 import {
+  DATA_BASE_URL,
   dataUrl,
   ELEVATION_KEY,
   POI_TYPES,
@@ -251,12 +252,81 @@ async function readChecked(
   return { buffer, bytes, contentType: response.headers.get('content-type') ?? '' }
 }
 
+/**
+ * The host an artifact was asked of, for the message below.
+ *
+ * A build with no bucket configured is described rather than named, and that
+ * is not just defensiveness about the relative URL: resolving it would print
+ * the app's OWN origin, which is the one host that is certainly not the
+ * problem. (That build has its own notice - see App.tsx's DATA_CONFIGURED
+ * block - and this sentence should not quietly contradict it.)
+ *
+ * Anything unparseable is described too. A sentence about a failure must not
+ * fail.
+ */
+function hostOf(url: string): string {
+  if (DATA_BASE_URL === '') return 'the data source'
+  try {
+    return new URL(url, globalThis.location?.href ?? 'http://localhost/').host
+  } catch {
+    return 'the data source'
+  }
+}
+
+/**
+ * `fetch`, with the artifact named when the request never completes at all.
+ *
+ * A non-OK response already says which file and what the server answered
+ * (readChecked above). A fetch that REJECTS says neither. The browser throws a
+ * bare TypeError whose entire message is "NetworkError when attempting to
+ * fetch resource." on Firefox, or "Failed to fetch" on Chrome - no URL, no
+ * artifact, and no way to tell apart the several very different things that
+ * produce it: no signal, DNS, a bucket whose public access is off, or a CORS
+ * policy that does not name the origin the app is served from.
+ *
+ * That bare sentence is what reached the hiker in the download window, and it
+ * is what reached us in a field report. It is the same eight words whether the
+ * phone is in a dead zone or the bucket is refusing this origin, which are the
+ * two ends of "your problem" and "our problem".
+ *
+ * So the key and the host it was asked of go back in. The browser's own
+ * sentence is KEPT rather than replaced - it is the only part that separates a
+ * refusal from a dead zone - and the original rides along as `cause` for a
+ * console that wants the stack.
+ *
+ * An abort is deliberately not wrapped: that is the hiker cancelling, it is
+ * why publishedHash() re-throws it by name, and a cancellation dressed up as a
+ * failed download would be a lie about what happened.
+ */
+async function fetchArtifactResponse(
+  artifactKey: string,
+  signal?: AbortSignal,
+): Promise<Response> {
+  const url = dataUrl(artifactKey)
+  try {
+    return await fetch(url, { signal })
+  } catch (error) {
+    if ((error as { name?: string } | null)?.name === 'AbortError') throw error
+    const reason = error instanceof Error ? error.message : String(error)
+    throw new Error(
+      `The trail details could not be fetched (${artifactKey}: the request to ` +
+        `${hostOf(url)} did not complete - ${reason}). Anything already on this ` +
+        `phone is untouched.`,
+      { cause: error },
+    )
+  }
+}
+
 /** An artifact this release must have. */
 async function fetchArtifact(
   artifactKey: string,
   signal?: AbortSignal,
 ): Promise<FetchedArtifact> {
-  return readChecked(artifactKey, await fetch(dataUrl(artifactKey), { signal }), signal)
+  return readChecked(
+    artifactKey,
+    await fetchArtifactResponse(artifactKey, signal),
+    signal,
+  )
 }
 
 /** An artifact a release may predate - spurs.json and elevation_profile.json -
@@ -265,7 +335,7 @@ async function fetchOptionalArtifact(
   artifactKey: string,
   signal?: AbortSignal,
 ): Promise<FetchedArtifact | null> {
-  const response = await fetch(dataUrl(artifactKey), { signal })
+  const response = await fetchArtifactResponse(artifactKey, signal)
   if (response.status === 404) return null
   return readChecked(artifactKey, response, signal)
 }

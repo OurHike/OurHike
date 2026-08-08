@@ -69,6 +69,21 @@ export interface StatusStripProps {
    * app for two zoom levels.
    */
   belowArchiveZoom?: boolean
+  /**
+   * Whether the map is drawing no trail line at all.
+   *
+   * A sibling of `backgroundProblem` rather than one of its cases, and the
+   * distinction is the whole reason this exists: every problem in that type is
+   * about the sheet UNDER the trail, and a hiker who loses the sheet still has
+   * the line they are walking. This is the other way round - the background
+   * can be drawing perfectly while the one thing the app is for is absent.
+   *
+   * Silent was the old behaviour and it produced a map that looked finished
+   * and had no Appalachian Trail on it (App.tsx's launch fetch has the whole
+   * story). Three words here, and the sentence saying WHY is in the downloads
+   * window, which is also where the retry is.
+   */
+  trailLinesMissing?: boolean
 }
 
 export function StatusStrip({
@@ -79,6 +94,7 @@ export function StatusStrip({
   backgroundProblem = null,
   backgroundOverride = null,
   belowArchiveZoom = false,
+  trailLinesMissing = false,
 }: StatusStripProps) {
   return (
     <div className="status-strip">
@@ -96,6 +112,12 @@ export function StatusStrip({
             {BACKGROUND_PROBLEM_LABEL[backgroundProblem]}
           </span>
         )}
+        {/* Kept even when a background problem is already flagged, unlike the
+            'nothing-downloaded' override below. Those two are two readings of
+            one blank screen; these two are two different things missing, and a
+            hiker told only "No live map" would reasonably conclude the trail
+            is under it somewhere. */}
+        {trailLinesMissing && <span className="status-strip__flag">No trail line</span>}
         {/* Two reasons, opposite in kind: one says the app is withholding the
             live sheet, the other that it is supplying it against a preference
             that has no download to honour yet. One word of the wrong one is a

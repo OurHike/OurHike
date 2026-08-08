@@ -230,6 +230,33 @@ function emptyTrailsUrl(): string {
   )
 }
 
+/**
+ * What went wrong fetching the trail's own data, in the shape both fetch paths
+ * report.
+ *
+ * One function because there are two callers and they must not drift: the
+ * launch fetch nobody asked for, and the tapped download. They fail for
+ * exactly the same reasons - no signal, a refused origin, a bucket with
+ * nothing in it - and the hiker reading the sentence has no way to tell which
+ * request produced it, so two wordings would be two accounts of one event.
+ *
+ * The hash mismatch keeps its own kind because its remedy differs: nothing was
+ * kept on purpose, and a fresh download is the fix rather than a resume
+ * (#238).
+ */
+function describeTrailDataError(error: unknown): {
+  kind: 'hash-mismatch' | 'error'
+  message: string
+} {
+  if (error instanceof TrailDataHashMismatchError) {
+    return { kind: 'hash-mismatch', message: error.message }
+  }
+  return {
+    kind: 'error',
+    message: error instanceof Error ? error.message : 'Trail data failed to download.',
+  }
+}
+
 type ReportingState = null | { step: 'pick' } | { step: 'form'; type: ReportTypeId }
 
 // Sign-in is its own flow rather than another step of the reporting one,
@@ -289,6 +316,10 @@ function App() {
   const [pois, setPois] = useState<StoredPoi[]>([])
   const [elevation, setElevation] = useState<ElevationProfile | null>(null)
   const [trailsUrl, setTrailsUrl] = useState<string>(emptyTrailsUrl)
+  /** Whether the map has a real trail line on it, as against the empty
+   *  collection the style is seeded with. What the strip reads to say the
+   *  trail itself is missing - see `trailLinesMissing` below. */
+  const [haveTrailLines, setHaveTrailLines] = useState(false)
   /** The trail-data download's failure, with the one distinction that changes
    *  what the notice says: a hash mismatch kept nothing on purpose, and its
    *  remedy is a clean re-download rather than a retry of what stopped
@@ -682,6 +713,12 @@ function App() {
     if (data === null) return false
 
     setTrailsUrl(URL.createObjectURL(data.trails))
+    // Set here rather than derived from `trailsUrl`, which starts life as a
+    // perfectly valid object URL for an empty collection and so cannot answer
+    // "is there a trail on this map". Nothing else can answer it either: the
+    // POIs are a separate artifact and the index is best-effort, so a phone
+    // can hold both and still be drawing no line.
+    setHaveTrailLines(true)
     setPois(data.pois)
     setElevation(data.elevation)
 
@@ -721,12 +758,27 @@ function App() {
   // seeing where the Appalachian Trail runs is the wrong trade at any
   // connection speed, and it is the state every first run was in.
   //
-  // Deliberately quiet about failing. This is not something the hiker asked
-  // for, so a failure is not a result they are owed a message about - it
-  // leaves exactly the empty map they would have had anyway, and the Downloads
-  // screen still reports errors for the download they DO ask for. Retried when
-  // the phone comes back online, which is the one condition likely to have
-  // changed.
+  // NOT quiet about failing, which is what this used to be, and the reasoning
+  // for the quiet was wrong in a way worth writing down rather than deleting.
+  // It ran: the hiker did not ask for this, so a failure is not a result they
+  // are owed a message about - it leaves exactly the empty map they would have
+  // had anyway, and the Downloads screen still reports the download they DO
+  // ask for.
+  //
+  // Both halves fail. "The empty map they would have had anyway" is a map with
+  // no Appalachian Trail drawn on it, which this file argues three paragraphs
+  // up is not the empty state but a broken one: the lines "are not decoration
+  // on the map, they ARE the map". And the Downloads screen only reports what
+  // was tapped, so a launch fetch that failed was recorded nowhere at all -
+  // not on the map, not in the window, not in a state anything rendered.
+  //
+  // What that cost is the bug report this comment was rewritten for: an app
+  // whose trail line was missing because the bucket refused its origin, and
+  // whose entire account of itself was a map with no trail on it. The failure
+  // is now carried the same way a tapped download's is, and the strip says the
+  // trail is missing (`trailLinesMissing`) so the sentence is findable from
+  // the screen the missing line is on. Retried when the phone comes back
+  // online, which is the one condition likely to have changed.
   // Reading what is already on the phone, and unconditionally. This has to
   // stay independent of the fetch below: an unconfigured build and a phone
   // with no signal both still have whatever was downloaded last time, and
@@ -751,11 +803,16 @@ function App() {
         await downloadTrailData()
         if (cancelled) return
         await refreshTrailData()
-      } catch {
+      } catch (error) {
         // Cleared rather than left set, so coming back into signal can try
-        // again. Nothing is shown and nothing is stored - downloadTrailData
-        // commits all four files or none.
+        // again. Nothing is stored either way - downloadTrailData commits all
+        // four files or none.
         trailDataFetch.current = false
+        // Not reported if the effect was torn down under us: by then this is a
+        // fetch nobody is waiting on, and a notice about it would outlive the
+        // screen that could act on it.
+        if (cancelled) return
+        setDataError(describeTrailDataError(error))
       }
     })()
 
@@ -1124,15 +1181,7 @@ function App() {
       await refreshTrailData()
       return true
     } catch (error) {
-      setDataError(
-        error instanceof TrailDataHashMismatchError
-          ? { kind: 'hash-mismatch', message: error.message }
-          : {
-              kind: 'error',
-              message:
-                error instanceof Error ? error.message : 'Trail data failed to download.',
-            },
-      )
+      setDataError(describeTrailDataError(error))
       return false
     }
   }, [refreshTrailData])
@@ -1742,6 +1791,13 @@ function App() {
           })}
           onLiveSourceHealth={recordSourceHealth}
           belowArchiveZoom={belowArchiveZoom}
+          // Only once something has actually gone wrong, not merely because
+          // the lines have not arrived yet. A first launch spends a few
+          // seconds with no trail on the map in the ordinary case, and a flag
+          // that fired during it would be crying wolf on every cold start -
+          // which is how a flag stops being read. `dataError` is what turns
+          // "not yet" into "not coming".
+          trailLinesMissing={!haveTrailLines && dataError !== null}
           // For the opening camera only - MapView keeps it out of the zooms
           // the download has no tiles for.
           archiveZooms={archiveZooms}

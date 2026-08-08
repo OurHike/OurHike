@@ -112,6 +112,34 @@ describe('StatusStrip', () => {
     expect(screen.getByText(/offline/i)).toBeInTheDocument()
   })
 
+  it('says when the trail line itself is not on the map', () => {
+    // Every other flag here is about the sheet UNDER the trail, and a hiker
+    // who loses the sheet still has the line they are walking. This is the
+    // one that says the line is gone - the state that read, to the person who
+    // reported it, as "the centerline isn't showing".
+    render(<StatusStrip {...PROPS} trailLinesMissing />)
+
+    expect(screen.getByText(/no trail line/i)).toBeInTheDocument()
+  })
+
+  it('says the trail line is missing even while the background is failing too', () => {
+    // Unlike the two readings of one blank screen below, these are two
+    // different things absent. Told only "No live map", a hiker would
+    // reasonably conclude the trail is under it somewhere.
+    render(
+      <StatusStrip {...PROPS} backgroundProblem="live-unreachable" trailLinesMissing />,
+    )
+
+    expect(screen.getByText(/no live map/i)).toBeInTheDocument()
+    expect(screen.getByText(/no trail line/i)).toBeInTheDocument()
+  })
+
+  it('stays quiet about the trail line when there is one', () => {
+    render(<StatusStrip {...PROPS} backgroundProblem="live-unreachable" />)
+
+    expect(screen.queryByText(/no trail line/i)).not.toBeInTheDocument()
+  })
+
   it('drops "nothing downloaded yet" when the background has a real problem', () => {
     // Two flags for one blank screen, and the reassuring one reads first:
     // the override describes what the app is TRYING to draw, the problem what

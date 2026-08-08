@@ -1,19 +1,31 @@
 # Where the backend runs, and what else could
 
 `backend/README.md`'s Deployment section says the backend targets Fly.io. This document is
-why that choice was re-examined, what the alternatives actually cost, and what the answer
-came out as. It owns the hosting decision; README.md owns the steps for carrying it out.
+why, what the alternatives cost, and what would make the answer different. README.md owns
+the steps for carrying the choice out; this owns the choice.
 
-**Prices were gathered 2026-08-08 from secondary sources.** The sandbox's egress proxy
-blocks `fly.io` and `developers.cloudflare.com`, so the vendor pricing pages could not be
-read directly — except Cloudflare's, which came through its documentation MCP server and
-is therefore first-party. Everything else is search-result reporting of a vendor's rate
-card, not the rate card. Re-check any number before it decides a bill.
+## What this document is not
 
-## The question
+**[#393](https://github.com/OurHike/OurHike/issues/393) owns the money.** It holds the
+whole running-cost model — per-user cost, the curve at 200K and 1MM MAU, the three
+architectural properties holding ~97% of the bill down, and a "Non-options, considered and
+rejected" list that already covers rewriting onto Workers or Edge Functions and deleting
+the backend in favour of PostgREST. None of that is restated here.
 
-Fly is a fourth vendor, behind GitHub, Cloudflare and Supabase, and it is the only one of
-the four carrying a config file in this repository. Is it worth keeping?
+Its single most important finding for this document, and the reason this one stays short:
+
+> The backend host is ~3% of the bill at 1MM. Authentication is ~75%. Any effort spent
+> choosing between Fly, Cloudflare Workers and Supabase Edge Functions is effort spent on
+> the wrong line by a factor of about thirty.
+
+So **this document answers a different question than #393 does** — not "what does the host
+cost" but "is Fly a fourth tool worth keeping up with." That question was asked
+independently, it is a fair one, and the answer is not the same shape as the money answer.
+
+**Prices below were gathered 2026-08-08 from secondary sources**, with the same caveat
+#393 records: the sandbox egress proxy blocks `fly.io`, so its rate card could not be read
+directly. Cloudflare's numbers are the exception — they came through its documentation MCP
+server and are first-party.
 
 ## What Fly actually costs us today
 
@@ -21,69 +33,69 @@ Worth measuring before replacing it, because the intuition and the measurement d
 
 - **`backend/fly.toml`** — 30 lines, of which 12 are comment explaining the
   `min_machines_running = 1` tradeoff. The mechanical part is about 15 lines.
-- **`flyctl`** — not installed anywhere in this repository, not invoked by any workflow.
+- **`flyctl`** — not installed anywhere in this repository and invoked by no workflow;
   `grep -rl fly .github/workflows/` returns nothing. Deploys are a human running
-  `fly deploy` by hand.
-- **A fourth place secrets live** — `fly secrets set`, alongside GitHub Actions secrets,
-  Supabase's dashboard, and Cloudflare's R2 tokens. This is the real recurring cost, and
-  it is a cost every alternative below also has.
-- **Money: roughly $1.94–$2.02/month** for the `shared-cpu-1x` / 256 MB machine, with no
-  plan fee on pay-as-you-go.
+  `fly deploy` by hand, which is the gap
+  [#424](https://github.com/OurHike/OurHike/issues/424) exists to close.
+- **A fourth place secrets live**, alongside GitHub Actions, Supabase and Cloudflare. This
+  is the real recurring cost — and every alternative below has it too.
+- **Money: roughly $1.94–$2.02/month** for the `shared-cpu-1x` / 256 MB machine, no plan
+  fee on pay-as-you-go. Matches the ~$2/month #393 already records as the pre-launch
+  position.
 
 **Nothing has been deployed to it yet.** No Fly account exists, `fly deploy` has never
-run, and `fly.toml`'s `app = "ourhike-backend"` is still a placeholder. So this is not a
-migration question — it is a question about a commitment not yet made, which is the
-cheapest possible moment to ask it.
+run, and `fly.toml`'s `app = "ourhike-backend"` is still a placeholder. This is not a
+migration question — it is a commitment not yet made, which is the cheapest possible
+moment to ask about it.
 
-## The constraint that drives everything
+## The constraint that rules out every free tier
 
 `fly.toml` pins `min_machines_running = 1` because a cold start on the first request after
-idle is bad for something safety-adjacent. That is a real constraint and it is what makes
-every free tier on the list unusable — but it is worth being precise about how bad, because
-the precision changes which options are on the table.
+idle is bad for something safety-adjacent. Worth being precise about how bad, because the
+precision is what decides whether the free tiers are on the table.
 
-The client is offline-first. Map, downloads and the reporting flow all work with the
-backend entirely absent, and a written report queues in the outbox with its authored
-timestamp rather than being lost. What a cold start delays is the **closures read** —
-`App.tsx:508-510` calls closures "the half a hiker walks into," and holds them as
-`ClosureSummary[] | null` with the null case degrading to no closure warnings rather than
-an error.
+The client is offline-first: map, downloads and the reporting flow all work with the
+backend absent, and a written report queues in the outbox with its authored timestamp
+rather than being lost. What a cold start delays is the **closures read** — `App.tsx:508-510`
+calls closures "the half a hiker walks into," and holds them as `ClosureSummary[] | null`
+with the null case degrading to no closure warnings rather than an error.
 
 So a cold start is not an outage. It is a window of tens of seconds in which a hiker who
-opens the app sees no closure warnings and is not told that is why. That is a modest but
-genuine safety argument for always-on, and it is the reason the free tiers below get ruled
+opens the app sees no closure warnings and **is not told that is why**. That is a modest
+but real safety argument for always-on, and it is why the $0 rows below are listed as ruled
 out rather than shortlisted.
 
-## Option A: consolidate onto a vendor we already have
+## Can a vendor we already have host it?
 
-The appealing answer — no fourth vendor at all. All three fail, and it is worth writing
-down why so the question does not get reopened from scratch.
+The appealing answer — no fourth vendor at all. #393 already rejects the rewrites on cost
+grounds. What follows is the *mechanical* reason they are not close calls, which is new,
+and which matters more than the money for a question about tooling.
 
-**GitHub Pages** serves static files. There is no server to run. Not a candidate.
+**GitHub Pages** serves static files. No server. Not a candidate.
 
-**Cloudflare Workers (Python)** cannot run this backend. Python Workers execute under
-Pyodide, a CPython port to WebAssembly, and packages requiring C extensions are
-unavailable and cannot be made available — `psycopg` is named explicitly in that
-category. `requirements.txt` pins `psycopg==3.3.4` with `psycopg-binary`, plus
-`cryptography==50.0.0` under PyJWT for the ES256 verification. The documented Postgres
-paths on Workers — Hyperdrive, `cloudflare:sockets` — are JavaScript APIs. Getting there
-means not porting the backend but rewriting it.
+**Cloudflare Workers (Python) cannot run this backend at all** — this is a hard blocker,
+not a cost tradeoff. Python Workers execute under Pyodide, a CPython port to WebAssembly,
+where packages needing C extensions are unavailable and cannot be made available;
+`psycopg` is named explicitly in that category. `requirements.txt` pins `psycopg==3.3.4`
+with `psycopg-binary`, plus `cryptography==50.0.0` under PyJWT for ES256 verification. The
+documented Postgres paths on Workers — Hyperdrive, `cloudflare:sockets` — are JavaScript
+APIs.
 
-**Cloudflare Containers** can run the image, and is the option that looks like
-consolidation right up until you count the pieces. A container is driven by a Durable
-Object: the `Container` class from `@cloudflare/containers` extends `DurableObject`, and
-Wrangler's own configuration reference states you *must* also define a Durable Object
-whose `class_name` matches the container config. So replacing `fly.toml` means adding a
-`wrangler.jsonc`, a Worker entrypoint, and a Durable Object subclass — three files in
-TypeScript, in a Python service, in a repository whose client is the only thing that
-currently speaks TypeScript. That is more config to keep up with, not less.
+**Cloudflare Containers can run the image, and still make the tooling worse.** A container
+is driven by a Durable Object: the `Container` class from `@cloudflare/containers` extends
+`DurableObject`, and Wrangler's configuration reference states you *must* also define a
+Durable Object whose `class_name` matches the container config. Replacing `fly.toml` means
+adding a `wrangler.jsonc`, a Worker entrypoint and a Durable Object subclass — three
+TypeScript files, in a Python service, in a repository where the client is currently the
+only thing that speaks TypeScript. For a question whose premise is "one more tool and
+config to keep up with," that is the wrong direction.
 
-It also costs more. Containers are billed per 10ms of running time against allowances
-that come **with the $5/month Workers Paid plan** — the free plan's container allowance is
-listed as N/A. We are not on Workers Paid today: there is no `wrangler` config anywhere in
-the tree, and R2 is reached over its S3-compatible API with boto3, which needs no Workers
-plan at all. Always-on for a month (730 h) on the `lite` instance type
-(1/16 vCPU, 256 MiB, 2 GB disk):
+It also costs more, which is worth recording because #393 costed Workers but not
+Containers. Container allowances come **with the $5/month Workers Paid plan** — the free
+plan's container allowance is listed as N/A — and we are not on it: there is no `wrangler`
+config anywhere in the tree, and R2 is reached over its S3-compatible API with boto3, which
+needs no Workers plan. Always-on for a month (730 h) on `lite` (1/16 vCPU, 256 MiB, 2 GB
+disk):
 
 | | calculation | cost |
 | --- | --- | --- |
@@ -93,26 +105,20 @@ plan at all. Always-on for a month (730 h) on the `lite` instance type
 | Workers Paid | required for any container allowance at all | $5.00 |
 | | | **~$6.74** |
 
-Against Fly's ~$2. And the sleep model runs against the grain of the always-on
-constraint: `sleepAfter` is a core property of the `Container` class, charges "stop after
-the container instance goes to sleep," and keeping one awake indefinitely means fighting
-the platform's default with heartbeats rather than setting `min_machines_running = 1`.
+Against Fly's ~$2. And the sleep model runs against the always-on constraint: `sleepAfter`
+is a core property of the `Container` class, charges "stop after the container instance
+goes to sleep," and keeping one awake means fighting the platform's default with
+heartbeats rather than setting `min_machines_running = 1`.
 
-**Supabase Edge Functions** run Deno. The backend is 3,615 lines of Python across 39
-files, eight routers, seven SQLAlchemy models and two Alembic migrations. Not a port.
+**Supabase Edge Functions** run Deno. The backend is 3,615 lines of Python behind 6,999
+lines of pytest (measured 2026-08-08; #393 quotes the smaller figures it measured the day
+before). Not a port. #393's rejection stands on cost; the language boundary is why it is
+not even close.
 
-There is a narrower version of this idea worth naming: `enable_row_level_security` locked
-the tables against PostgREST, and *unlocking* them with real policies would let Supabase's
-own REST front door serve the plain CRUD without any backend at all. But moderation,
-warning escalation, wrong-way detection, hike direction and the R2 photo signing are
-genuine application logic with tests behind them, and PostgREST does not host logic. It
-would shrink the backend, not remove it, and the remaining piece still needs somewhere to
-run.
+## Swapping Fly for a different PaaS
 
-## Option B: swap Fly for a different PaaS
-
-If a fourth vendor is unavoidable, is there a better fourth vendor? Costs are for an
-always-on service in the 256–512 MB class, ~730 h/month.
+If a fourth vendor is unavoidable, is there a better one? Always-on, 256–512 MB class,
+~730 h/month.
 
 | Host | Monthly | Sleeps? | Config in repo | Notes |
 | --- | --- | --- | --- | --- |
@@ -127,54 +133,48 @@ always-on service in the 256–512 MB class, ~730 h/month.
 
 Two things fall out of that table.
 
-**The original comparison was not apples to apples.** `backend/README.md` says Fly was
-"picked over Render specifically to avoid Render's free-tier sleep-on-idle behavior" —
+**The original comparison was not apples to apples.** `backend/README.md` used to say Fly
+was "picked over Render specifically to avoid Render's free-tier sleep-on-idle behavior" —
 free Render against paid Fly. Render's $7 Starter tier does not sleep. The honest
-comparison is $7 against $2, and Fly still wins it.
+comparison is $7 against $2, and Fly still wins it. The old sentence is corrected rather
+than deleted because the conclusion survived the correction; if it had not, this document
+would say so.
 
 **Nothing here is a reduction.** Every row is a fourth vendor with a fourth place for
-secrets. Render and Railway can carry zero config files in the repository, which is a real
-if small win over `fly.toml` — paid for at roughly 3.5× and 2.5× the money respectively,
-and by moving deploy configuration into a dashboard where it is not reviewable in a pull
-request. For this repository, which writes down the reasoning behind a 30-line file, that
-trade is probably backwards.
-
-## Option C: drop the always-on requirement
-
-The only option that genuinely removes a vendor's cost rather than moving it. Render free
-or Koyeb free at $0, accepting a cold start on the first request after 15 or 60 minutes
-idle.
-
-Not recommended, but for a narrower reason than "safety." The client already degrades
-correctly when the backend is unreachable — the null-closures path is written and tested.
-What it does *not* do is distinguish "no closures exist" from "could not reach the
-backend," which is the same ambiguity [#249](https://github.com/OurHike/OurHike/issues/249)
-records for maintainer assignments. Until a hiker can tell those apart on screen, a host
-that is predictably unreachable for the first request after idle is buying $2/month with a
-silence the app cannot explain. Fix the ambiguity first and this option gets much more
-attractive — it would then be a visible "reconnecting" state rather than a blank map.
+secrets. Render and Railway can carry zero config files, which is a real if small win over
+`fly.toml` — bought at roughly 3.5× and 2.5× the money, and by moving deploy configuration
+into a dashboard where no pull request can review it. For a repository that writes 12 lines
+of comment explaining one setting, that trade is backwards.
 
 ## Recommendation
 
-**Keep Fly.** Not because it is exciting, but because every alternative examined is either
-more expensive, more configuration, in a language this service is not written in, or a
-free tier ruled out by a constraint we chose deliberately. It is the cheapest option on
-the list by roughly 2.5×, and the thing that feels like overhead — `fly.toml` — is 15
-mechanical lines that no workflow depends on.
+**Keep Fly.** Every alternative examined is more expensive, more configuration, in a
+language this service is not written in, or a free tier ruled out by a constraint chosen
+deliberately. It is the cheapest option on the list by roughly 2.5×, and the part that
+feels like overhead — `fly.toml` — is 15 mechanical lines no workflow depends on.
 
-**The fourth vendor is not really Fly's fault.** Cloudflare, Supabase and GitHub simply do
-not host a long-running Python process between them, and that is a fact about the stack
-rather than about Fly. Anything that runs FastAPI + psycopg is a new account somewhere.
+**The fourth vendor is not Fly's fault.** GitHub, Cloudflare and Supabase do not host a
+long-running Python process between them. Anything running FastAPI + psycopg is a new
+account somewhere. That is a fact about the stack, not about Fly.
 
-**What is worth doing instead**, if the goal is less to keep up with:
+**And the tooling answer agrees with #393's money answer, by a different route.** #393 says
+the host is the wrong line to optimize because it is 3% of the bill. This says it is the
+wrong line to optimize because every move costs more configuration than it removes. Two
+independent arguments, same conclusion — which is the strongest reason to stop asking.
 
-1. **Make the client say when the backend is unreachable** (the #249 ambiguity, applied to
-   closures). This is the highest-value item here — it is a correctness fix on its own
-   terms, and it is the precondition that would make Option C real, which is the only path
-   that actually deletes the line item.
-2. **Leave `fly.toml` alone.** Reopening this costs more than the file does.
+**What is worth doing instead:**
 
-**Revisit if:** Cloudflare Containers gain a first-class always-on mode that does not need
-a Durable Object wrapper; or the backend shrinks enough that PostgREST-with-policies plus
-a handful of Edge Functions covers it; or real traffic shows the always-on machine is idle
-enough that the constraint was never worth $2.
+1. **Make the client say when the backend is unreachable.** It cannot currently
+   distinguish "no closures" from "could not reach the backend" — the same ambiguity
+   [#249](https://github.com/OurHike/OurHike/issues/249) records for maintainer
+   assignments, applied to the one read a hiker walks into. It is a correctness fix on its
+   own terms, and it is the precondition that would make a scale-to-zero host thinkable,
+   which is the only path that deletes the line item rather than moving it.
+2. **Leave `fly.toml` alone**, and let [#424](https://github.com/OurHike/OurHike/issues/424)
+   move the deploy off a laptop as planned. Reopening the host choice costs more than the
+   file does.
+
+**Revisit if:** Cloudflare Containers gain a first-class always-on mode with no Durable
+Object wrapper; or the client learns to show an unreachable-backend state, making the free
+tiers viable; or real traffic shows the always-on machine idle enough that the constraint
+was never worth $2.

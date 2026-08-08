@@ -56,16 +56,35 @@ def _alembic_config() -> Config:
     return config
 
 
+VERSION_TABLE = "alembic_version"
+
+
 def _public_tables(engine) -> dict[str, tuple[bool, bool]]:
     """Every ordinary table in `public`, with its RLS flags.
 
-    `alembic_version` is Alembic's own bookkeeping table, not part of the
-    schema under test, so it is dropped from the result rather than being
-    asserted about.
+    `alembic_version` is dropped here because it is Alembic's, not this
+    schema's - the tests below are about the tables the revisions create,
+    and the version table's own lifecycle is Alembic's business.
+
+    That exclusion used to mean nothing checked its RLS at all, which is a
+    different claim and was wrong: PostgREST serves every table in `public`
+    to anyone holding the anon key, and does not care which tool created
+    them. Supabase's advisors found it on UA within minutes of the first
+    real migration. `test_the_version_table_is_locked_too` is the assertion
+    that gap needed, and revision e5b2f7c1a903 is the fix.
     """
     with engine.connect() as connection:
         rows = connection.execute(RLS_QUERY).all()
-    return {name: (rls, force) for name, rls, force in rows if name != "alembic_version"}
+    return {name: (rls, force) for name, rls, force in rows if name != VERSION_TABLE}
+
+
+def _version_table_flags(engine) -> tuple[bool, bool] | None:
+    with engine.connect() as connection:
+        rows = connection.execute(RLS_QUERY).all()
+    for name, rls, force in rows:
+        if name == VERSION_TABLE:
+            return rls, force
+    return None
 
 
 @pytest.fixture()
@@ -109,6 +128,53 @@ def test_upgrade_head_builds_the_schema_with_rls_on(migration_engine):
         # this asserts the database ended up in that state.
         assert rls_enabled, f"{table} was created without row level security"
         assert not rls_forced, f"{table} has FORCE row level security"
+
+
+def test_the_version_table_is_locked_too(migration_engine):
+    """The eighth table, and the one nothing was asserting about.
+
+    `alembic_version` is created by Alembic rather than by any revision
+    here, which is why it sat outside `_public_tables` and outside
+    `supabase_keepalive.py`'s sweep of the seven. PostgREST exposes it
+    regardless. Reading it leaks only which revision is deployed; writing it
+    is the real hazard - change the row and the next `upgrade head` re-runs
+    or skips migrations, delete it and the database reads as EMPTY and an
+    upgrade tries to create tables that already exist.
+
+    Not forced, for a reason sharper here than anywhere else: forcing
+    applies RLS to the owner, which is what Alembic connects as, and would
+    lock it out of its own bookkeeping - breaking every future migration.
+    """
+    command.upgrade(_alembic_config(), "head")
+
+    flags = _version_table_flags(migration_engine)
+
+    assert flags is not None, f"{VERSION_TABLE} does not exist after upgrade head - has Alembic renamed it?"
+    rls_enabled, rls_forced = flags
+    assert rls_enabled, (
+        f"{VERSION_TABLE} was left without row level security, so anyone holding the anon key can read and rewrite "
+        f"the revision pointer over PostgREST. Revision e5b2f7c1a903 is what locks it."
+    )
+    assert not rls_forced, f"{VERSION_TABLE} has FORCE row level security, which locks Alembic out of its own table"
+
+
+def test_migrations_still_run_against_the_locked_version_table(migration_engine):
+    """The risk the lock introduces, exercised rather than reasoned about.
+
+    RLS on the table Alembic uses to know where it is would be a poor place
+    to be wrong: every future migration fails at once. It is safe because
+    RLS does not apply to a table's owner and Alembic connects as the owner
+    - but that is an argument, and this is a second `upgrade head` against a
+    database whose version table is already locked, which is the thing the
+    argument claims works.
+    """
+    command.upgrade(_alembic_config(), "head")
+    assert _version_table_flags(migration_engine)[0], "precondition: the lock is on"
+
+    command.upgrade(_alembic_config(), "head")  # a no-op that still reads and writes alembic_version
+
+    command.downgrade(_alembic_config(), "base")
+    assert _public_tables(migration_engine) == {}
 
 
 def test_downgrade_base_removes_everything_it_created(migration_engine):

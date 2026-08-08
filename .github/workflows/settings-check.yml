@@ -11,14 +11,20 @@
 #
 #   manifest    expected-settings.yml still agrees with the workflows. Needs
 #               nothing but the checkout, so it runs on every pull request -
-#               including from a fork - and it is the half with teeth on an
-#               ordinary change, since drift is what actually happens.
+#               including from a fork - and on every merge queue entry, and it
+#               is the half with teeth on an ordinary change, since drift is
+#               what actually happens.
 #
 #   configured  the settings are really there. Deliberately not on
 #               pull_request: GitHub passes no secrets to a fork's PR run, so
 #               this job would fail for every outside contributor, for a
 #               reason none of them could fix and that says nothing about
-#               their change.
+#               their change. Deliberately not on merge_group either, for a
+#               different reason - a queue entry asks "does this change break
+#               `main`", and whether an R2 token was rotated last night is not
+#               that question. Gating merges on it would let an expired
+#               credential wedge the queue against every pull request at once.
+#               The push and schedule runs are what watch the credentials.
 #
 # The weekly run is the point of the whole thing. An R2 token can be revoked
 # or expire without anyone touching this repository, and the next thing to
@@ -33,6 +39,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # The event a merge queue raises checks on, carrying the `manifest` job only
+  # (see the note on `configured` above). Unfiltered for the same reason as the
+  # three test workflows - BRANCHING.md has it.
+  merge_group:
   schedule:
     # Mondays, 07:35 UTC. Off the hour for the same reason as
     # check-upstream-freshness.yml, and a few minutes clear of it.
@@ -72,7 +82,14 @@ jobs:
 
   configured:
     name: Settings are configured
-    if: github.event_name != 'pull_request'
+    # A job-level `if:`, which for a test suite would be the trap the three
+    # test workflows document - a skipped job reports no status, and a required
+    # check with no status hangs a pull request and a queue entry alike. It is
+    # right here and wrong there: this check *should* be absent from a pull
+    # request and from a queue entry, because it cannot answer on either. What
+    # keeps that safe is that it must never be named a required check, which is
+    # already true of it and stays true (BRANCHING.md lists what to require).
+    if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     defaults:
       run:

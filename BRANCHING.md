@@ -101,39 +101,88 @@ checks pass there. The pull request branch is never modified, and entries are
 tested speculatively in parallel rather than one at a time — which is the
 property this whole document is trying to buy.
 
-**Not available to this repository, and being public is not what decides it.**
-GitHub's rule is ownership:
+**Available now.** It was not when this section was first written, and being
+public was never what decided it. GitHub's rule is ownership:
 
 > Pull request merge queues are available in any public repository owned by an
 > organization, or in private repositories owned by organizations using GitHub
 > Enterprise Cloud.
 
-`OurHike` is public but owned by a personal account, which is the one
-combination that misses. No plan upgrade fixes it — a personal account cannot
-buy the feature at any tier.
+`OurHike` was public but owned by a personal account — the one combination that
+misses, and one no plan upgrade fixes. It now lives in the
+[`OurHike`](https://github.com/OurHike) org, so it is a public repository owned
+by an organisation and the feature arrived with the transfer, at no cost and as
+a side effect. (The transfer is done; the repo-side link sweep that goes with it
+is [#272](https://github.com/OurHike/OurHike/issues/272), still open.)
 
-What fixes it is already planned:
-[#272](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/272) moves
-this repository into the `OurHike` org, and
-[#274](https://github.com/jaimito-asuntos-gringuenos/OurHike/pull/274) is
-already waiting on that transfer. A public repository owned by an organisation
-gets merge queue at no cost, so the transfer unlocks it as a side effect rather
-than as something to buy.
+#### The half that lives in the repository
 
-**And even then it cannot be switched on as-is.** Merge queue runs checks on
-the `merge_group` event, and no workflow in `.github/workflows/` currently
-triggers on it:
+Merge queue raises its checks on the `merge_group` event, and a workflow that
+does not trigger on that event never reports against a queue entry. That does
+not fail the entry — it **hangs** it, until the queue times out and ejects the
+pull request. So the trigger has to be in place before the setting is turned on,
+not after.
 
-```yaml
-on:
-  pull_request:
-    branches: [main]
-  merge_group:        # ← required, currently missing everywhere
-```
+It is in place. These are the checks that report on a queue entry:
 
-Without that, a required check never reports against a queue entry and every
-merge hangs until the queue times it out. The trigger has to land before the
-setting is turned on, not after.
+| Workflow | Check name |
+|---|---|
+| `client-tests.yml` | `test` |
+| `pipeline-tests.yml` | `pytest` |
+| `backend-tests.yml` | `pytest-postgres` |
+| `settings-check.yml` | `Manifest agrees with the workflows` |
+| `pr-issue-link.yml` | `PR has a linked issue` |
+
+Two of those are not quite what they look like:
+
+- **`settings-check.yml`'s second job, `Settings are configured`, deliberately
+  does not run in the queue, and must never be a required check.** It asks
+  whether the R2 and Cloudflare credentials are still live. That is a real
+  question and it is not this one — gating merges on it would let a token
+  revoked overnight wedge the queue against every open pull request at once.
+  The scheduled and push-to-`main` runs are what watch it.
+- **`pr-issue-link.yml` reports green on a queue entry without checking
+  anything**, and says so in its summary. A queue entry is not a pull request
+  and cannot be asked whether it closes an issue; each pull request in the group
+  already answered that on its own runs before it was queued. It triggers anyway
+  so that requiring it — which is the entire point of that file — cannot hang
+  the queue.
+
+Everything else stays out, and none of it can be a required check anyway.
+`pr-preview.yml` builds a per-pull-request preview and a queue entry is not one;
+the spikes and the data builds are `workflow_dispatch`.
+
+**Queue entries are never path-scoped.** `.github/actions/changed-paths` answers
+"run" for `merge_group` exactly as it does for a push, so all four suites run on
+every entry. That is deliberate. The failure a queue exists to catch belongs to
+the *combination* of two changes rather than to either one's diff, and it is
+therefore invisible in any single pull request's file list — the scoping
+described in [TESTING.md](TESTING.md) is a pull-request optimisation, and it
+stops at the queue door.
+
+#### The half that does not, and will not
+
+Switching the queue on is a settings change on `main`, under **Settings → Rules
+→ Rulesets** (or classic branch protection). Four decisions:
+
+1. **Require merge queue.** The switch itself.
+2. **Require status checks to pass**, naming the checks from the table above —
+   and nothing outside it. A required check that cannot report on `merge_group`
+   is the hang described above, so the table is the whole menu.
+3. **Leave "Require branches to be up to date before merging" off.** §1 above is
+   why, and the queue is what makes it unnecessary rather than merely
+   tolerable: the queue builds each entry against `main` plus everything ahead
+   of it, which is the guarantee that setting was reaching for, obtained without
+   serialising anybody.
+4. **Merge method, and how many entries to build and merge at once.** The
+   sizing knobs are the tuning; the only one with a wrong answer is a build
+   concurrency of 1, which throws away the speculative parallelism that is the
+   reason to want a queue at all.
+
+**Nothing in `.github/` can grant itself the power to stop a merge, and this
+repository does not try.** That switch is the maintainer's, for the same reason
+landing anything on `main` is ([CLAUDE.md](CLAUDE.md)) — and `pr-issue-link.yml`
+has recorded the same boundary since it was written.
 
 ### Answering "does it conflict?" without merging
 

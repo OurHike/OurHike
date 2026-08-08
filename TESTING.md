@@ -174,9 +174,9 @@ And where it is missing (audited 2026-08-06), which is where a bug can ship gree
 
 Three workflows, one per part: `.github/workflows/pipeline-tests.yml`, `backend-tests.yml` and `client-tests.yml`. Each runs that part's linter, formatter check and test suite - the same commands [CONTRIBUTING.md](CONTRIBUTING.md) gives for running them locally, so a green local run means a green CI run.
 
-None of them is (yet) a required check via branch protection - a red run doesn't currently block merging, it's just visible on the PR.
+None of them is (yet) a required check via branch protection - a red run doesn't currently block merging, it's just visible on the PR. All four do now trigger on `merge_group` as well, so they report against a merge queue entry the day one is switched on; [BRANCHING.md](BRANCHING.md) is the home for that, including which checks are safe to require and which would wedge the queue.
 
-`.github/workflows/settings-check.yml` runs the settings suite. Its `manifest` job runs on every PR; its `configured` job deliberately does not, because GitHub passes no secrets to a fork's PR run and the job would fail for every outside contributor for a reason none of them could fix.
+`.github/workflows/settings-check.yml` runs the settings suite. Its `manifest` job runs on every PR; its `configured` job deliberately does not, because GitHub passes no secrets to a fork's PR run and the job would fail for every outside contributor for a reason none of them could fix. It sits out merge queue entries too, for a different reason - see BRANCHING.md.
 
 ### Why a PR only runs some of them
 
@@ -194,6 +194,8 @@ Two deliberate limits:
 The obvious implementation is a `paths:` filter on the trigger, and it is a trap. A workflow skipped by a path filter reports no status at all, and a required status check that reports no status leaves the PR pending forever rather than passing it - so the day someone ticks "require Client tests", every docs-only PR becomes unmergeable for a reason that points nowhere near the cause. `pr-issue-link.yml` records the same hazard for job-level `if:`.
 
 So the triggers stay unfiltered and the decision moves inside the job, which always runs and always finishes green. `.github/actions/changed-paths` asks the API which files the PR touches and returns `run`; every step after it carries `if: steps.scope.outputs.run == 'true'`. The suites can be made required checks whenever the maintainer wants, with nothing else to change.
+
+The scoping is a pull-request optimisation and deliberately stops there: on a merge queue entry the action answers "run" for everything, the same as it does for a push. A queue entry is a commit combining several pull requests, so the union of their file lists is the most any filter could compute - and the failure a queue exists to catch is the one that belongs to the combination rather than to either diff, which no file list shows.
 
 The distinction is which half of the check you want. `settings-check.yml`'s `configured` job carries a job-level `if:` on purpose, and is right to: that check *should* be absent on a pull request, because it cannot pass on one. A test suite is the opposite - it is a check a reviewer expects to see reporting, so it has to report even when the answer is "nothing to do".
 

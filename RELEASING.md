@@ -73,7 +73,7 @@ two targets is a smaller change than the workflow's own header comment.
 |---|---|---|---|
 | **What it is** | a laptop, and a preview per pull request | one persistent deployment of `main` | what hikers install |
 | **Deployed by** | `npm run dev`; `pr-preview.yml` | push to `main` | an annotated tag `v*` |
-| **Client origin** | `localhost:5173` / `:4173`; `pr-<n>.ourhike-preview.pages.dev` | `ua.ourhike-preview.pages.dev` | `jaimito-asuntos-gringuenos.github.io` |
+| **Client origin** | `localhost:5173` / `:4173`; `pr-<n>.ourhike-preview.pages.dev` | `ua.ourhike-preview.pages.dev` | `ourhike.github.io` |
 | **Backend** | local uvicorn | `ourhike-backend-ua` on Fly, `min_machines_running = 0` | `ourhike-backend` on Fly, `min_machines_running = 1` |
 | **Database** | local Postgres (`backend/scripts/local-postgres.sh`) | UA Supabase project | production Supabase project |
 | **Map data** | local artifacts | the **candidate** `releases/<id>/` | the **released** `releases/<id>/` |
@@ -110,17 +110,17 @@ What UA is *for*, specifically — the things no amount of CI can answer:
    `maplibre-gl`, because jsdom has no WebGL (TESTING.md item 19). The whole suite can
    pass while the shipped bundle draws a blank sheet of paper, and has.
 2. **A real download of real published bytes.** TESTING.md names this gap outright
-   ([#94](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/94)):
+   ([#94](https://github.com/OurHike/OurHike/issues/94)):
    everything is verified against local files and mocks. `verify_release.py`
    (DATA_RELEASES.md §3) checks the artifacts over HTTPS; UA is where a *browser*
    does, through the same CORS policy and range machinery a phone uses.
 3. **A real migration against a real hosted Postgres.** Applied to UA first, always.
    The production run then has a precedent rather than being the first attempt
-   ([#95](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/95)).
+   ([#95](https://github.com/OurHike/OurHike/issues/95)).
 4. **Real storage.** `vi.mock('idb-keyval')` and a full phone have nothing between
    them (TESTING.md, Redundancy). A 1.18 GB archive in real IndexedDB under real
    quota pressure is a UA activity or it is a production incident.
-5. **Somewhere to send NYNJTC.** [#109](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/109)
+5. **Somewhere to send NYNJTC.** [#109](https://github.com/OurHike/OurHike/issues/109)
    is a soft launch with a real club. Handing volunteers a URL that changes under them
    several times a day is not a soft launch; UA is what makes that issue actionable.
 
@@ -282,7 +282,7 @@ What must be true before a tag is pushed. **Hard** means the release does not ha
 |---|---|---|---|
 | 1 | All four suites green on the release commit, **unscoped** | hard | branch protection: required status checks |
 | 2 | `check-build-output.mjs` passes — a build that cannot draw a map does not ship | hard | already inside `npm run build` |
-| 3 | Ordering-sensitive client tests run three times, green each time | hard | CLAUDE.md; [#343](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/343) is the open instance |
+| 3 | Ordering-sensitive client tests run three times, green each time | hard | CLAUDE.md; [#343](https://github.com/OurHike/OurHike/issues/343) is the open instance |
 | 4 | Migrations up, down, and `alembic check`, against real Postgres | hard | `backend/tests/test_migrations.py` |
 | 5 | Migration applied to UA before production | hard | procedure; §3 |
 | 6 | `verify_release.py` battery green against the candidate data over HTTPS | hard | DATA_RELEASES.md §3 |
@@ -363,12 +363,12 @@ at all.
 ### 8d. What is not validated goes in the notes
 
 Three things are known-unvalidated today and each is already an issue: the wrong-way
-alert's thresholds ([#93](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/93) —
+alert's thresholds ([#93](https://github.com/OurHike/OurHike/issues/93) —
 wireframe placeholders, and the feature where a false alarm costs most), cumulative
-ascent ([#91](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/91) — the
+ascent ([#91](https://github.com/OurHike/OurHike/issues/91) — the
 check exists and deliberately fails for want of reference figures), and end-to-end
 verification against real published artifacts
-([#94](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/94)).
+([#94](https://github.com/OurHike/OurHike/issues/94)).
 
 **A release does not have to resolve them. It has to say so.** A hiker deciding
 whether to trust a direction cue is entitled to know the thresholds behind it have
@@ -496,21 +496,21 @@ followed:**
 - **The UA infrastructure itself.** The workflow is written and degrades politely;
   the Cloudflare alias will appear on the first push to `main` after this lands,
   but the UA Supabase project and the UA Fly app are account work
-  ([#371](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/371)).
+  ([#371](https://github.com/OurHike/OurHike/issues/371)).
   Until `UA_API_BASE_URL` exists, UA queues reports in the outbox — which is a
   supported state, not a broken one.
 - **The repository settings** — required status checks, the `production`
   environment's reviewer, and the two labels
-  ([#375](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/375)).
+  ([#375](https://github.com/OurHike/OurHike/issues/375)).
   These are the difference between §8's table being a mechanism and being a
   document, and none of them can be set from a checkout.
-- **The compatibility checks** ([#374](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/374)).
+- **The compatibility checks** ([#374](https://github.com/OurHike/OurHike/issues/374)).
   Deliberately last: the OpenAPI diff and the stored-data fixtures both compare
   against a *previous release*, and there is no previous release to compare to
   until `v1.0.0` exists. Building them now would mean shipping code nothing can
   exercise — which TESTING.md is explicit about being worse than not having it.
   The baseline they will read is already being attached by the release job.
-- **The version in the app** ([#372](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/372)).
+- **The version in the app** ([#372](https://github.com/OurHike/OurHike/issues/372)).
   `client/package.json` still says `0.0.0` and nothing displays a version. The tag
   is the source of truth for a release either way; this is about a hiker being
   able to read back which build they have.

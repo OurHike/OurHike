@@ -6,7 +6,7 @@ OurHike is a map for hikers, built to be handed to the clubs that maintain the t
 
 **A trail condition** — a blowdown, flooding, a damaged shelter, a closure — goes through the **app's own "Report a problem" flow**, not GitHub. That reaches a moderator who can act on it. Nobody is watching this repository for washed-out bridges.
 
-**A bug in the software**, or **a systematic data problem** (a shelter in the wrong place, a missing water source, a wrong blaze colour) belongs in [Issues](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues). There is a form for each.
+**A bug in the software**, or **a systematic data problem** (a shelter in the wrong place, a missing water source, a wrong blaze colour) belongs in [Issues](https://github.com/OurHike/OurHike/issues). There is a form for each.
 
 If a bug could mislead someone about where they are, where water is, or a hazard, say so — there is a checkbox for it, and those get looked at first. This app gets used in places where being wrong is expensive.
 
@@ -39,11 +39,11 @@ If you are proposing something substantial, the design doc is usually the first 
 
 ## Finding something to work on
 
-- [`good first issue`](https://github.com/jaimito-asuntos-gringuenos/OurHike/labels/good%20first%20issue) — settled design, existing patterns to follow
-- [`v1-mvp`](https://github.com/jaimito-asuntos-gringuenos/OurHike/labels/v1-mvp) — needed before launch
-- [`post-mvp`](https://github.com/jaimito-asuntos-gringuenos/OurHike/labels/post-mvp) — designed, deliberately not started
-- [`needs-field-testing`](https://github.com/jaimito-asuntos-gringuenos/OurHike/labels/needs-field-testing) — needs someone on an actual trail, which is a real contribution and does not require writing code
-- [`blocked-external`](https://github.com/jaimito-asuntos-gringuenos/OurHike/labels/blocked-external) — waiting on credentials or a third party; probably not a good starting point
+- [`good first issue`](https://github.com/OurHike/OurHike/labels/good%20first%20issue) — settled design, existing patterns to follow
+- [`v1-mvp`](https://github.com/OurHike/OurHike/labels/v1-mvp) — needed before launch
+- [`post-mvp`](https://github.com/OurHike/OurHike/labels/post-mvp) — designed, deliberately not started
+- [`needs-field-testing`](https://github.com/OurHike/OurHike/labels/needs-field-testing) — needs someone on an actual trail, which is a real contribution and does not require writing code
+- [`blocked-external`](https://github.com/OurHike/OurHike/labels/blocked-external) — waiting on credentials or a third party; probably not a good starting point
 
 Area labels: `client`, `backend`, `pipeline`, `data`, `ops`, `docs`.
 
@@ -127,4 +127,4 @@ The pipeline fetches large amounts of data from ATC, USGS and opentrail.org. Rea
 
 ## A note on data and licences
 
-The app is AGPL-3.0. The data it ships is not all ours to relicense: USGS topo data is public domain, OpenStreetMap-derived basemap tiles are ODbL and require visible attribution (already rendered in `client/src/map/style.ts`), the bundled Noto Sans glyphs are SIL OFL 1.1 (provenance and licence text in `client/public/glyphs/`), opentrail.org's terms are [not yet formally confirmed](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/98), and POI photos are Wikimedia Commons files licensed **per photo** (public domain, CC0, or CC BY / CC BY-SA at 4.0+ only — the pipeline rejects everything else, including pre-4.0 CC versions, whose terms a one-link credit cannot meet), each shipping with the author, licence and file-page link the waypoint card displays (`features/POI_PHOTOS.md`). If you add a data source, establish its licence first and record it — an unlicensed source is a problem inherited by every club that takes this project on later.
+The app is AGPL-3.0. The data it ships is not all ours to relicense: USGS topo data is public domain, OpenStreetMap-derived basemap tiles are ODbL and require visible attribution (already rendered in `client/src/map/style.ts`), the bundled Noto Sans glyphs are SIL OFL 1.1 (provenance and licence text in `client/public/glyphs/`), opentrail.org's terms are [not yet formally confirmed](https://github.com/OurHike/OurHike/issues/98), and POI photos are Wikimedia Commons files licensed **per photo** (public domain, CC0, or CC BY / CC BY-SA at 4.0+ only — the pipeline rejects everything else, including pre-4.0 CC versions, whose terms a one-link credit cannot meet), each shipping with the author, licence and file-page link the waypoint card displays (`features/POI_PHOTOS.md`). If you add a data source, establish its licence first and record it — an unlicensed source is a problem inherited by every club that takes this project on later.

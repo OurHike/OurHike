@@ -235,7 +235,7 @@ Prices from [Cloudflare R2](https://developers.cloudflare.com/r2/pricing) — $0
 
 Mirroring Commons adds a few hundred MB and stays inside the same free tier.
 
-**The one case where the provider choice is not a wash is the offline bundle** — ~137 MB per device, so 5,000 downloads is 669 GB and 25,000 is 3.3 TB. On R2 that is $0; on egress-billed storage it is roughly $38/mo and $279/mo respectively. That is the concrete argument for R2 in the [#89](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/89) storage decision, and it is why that decision should be made once for all three photo kinds.
+**The one case where the provider choice is not a wash is the offline bundle** — ~137 MB per device, so 5,000 downloads is 669 GB and 25,000 is 3.3 TB. On R2 that is $0; on egress-billed storage it is roughly $38/mo and $279/mo respectively. That is the concrete argument for R2 in the [#89](https://github.com/OurHike/OurHike/issues/89) storage decision, and it is why that decision should be made once for all three photo kinds.
 
 **Money is not the constraint on this feature.** Moderation is: ten thousand shared photos is ten thousand human decisions on volunteer time, and that is what will limit how fast this can grow.
 
@@ -258,7 +258,7 @@ Nor can it be shrunk away: the slot is 264 CSS pixels, so a DPR-2 phone needs ~5
 What follows:
 
 1. **Only the card photo is ever a candidate for bundling.** Photos 2–5 exist for a gallery someone deliberately opens — usually in town, with signal. Bundling them pays 5× for bytes almost never viewed offline.
-2. **If photos are ever bundled, it is an opt-in package**, sized and offered beside the background sheets rather than landing unasked. `lib/packages.ts` already has that machinery and its "sizes are measured, never estimates" rule, and the Data Saver incident ([#122](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/122)) already settled the consent principle: the archive is a size on a button someone taps.
+2. **If photos are ever bundled, it is an opt-in package**, sized and offered beside the background sheets rather than landing unasked. `lib/packages.ts` already has that machinery and its "sizes are measured, never estimates" rule, and the Data Saver incident ([#122](https://github.com/OurHike/OurHike/issues/122)) already settled the consent principle: the archive is a size on a button someone taps.
 3. **A hiker's own photos cost nothing worth budgeting.** A thru-hiker who photographs 200 places holds ~9 MB. They should be visible in storage management for the same reason everything else is, not capped.
 4. **A single bundled file is right for storage and wrong for access, unless it is indexed.** One artifact means one SHA-256 in `latest.json` — the verification model the whole download path already uses (#197) — and one IndexedDB blob rather than thousands of entries, which is exactly why trail lines are stored as one opaque Blob today. But an opaque lump means wanting twelve nearby photos costs the whole archive, and one corrected photo republishes all of it. The pattern that resolves this is the one already in use for tiles: **PMTiles — a single file with an internal index, served over HTTP range requests.** Note that `R2_LAYOUT.md`'s served-extension set is closed to `.geojson`/`.fgb`/`.pmtiles`/`.json`/`.tif`, so a `.zip` or `.tar` would not pass `lib/r2_keys.py` at all; widening it is a reviewed decision, not a side effect of needing somewhere to put bytes.
 

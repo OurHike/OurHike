@@ -113,9 +113,9 @@ combination that misses. No plan upgrade fixes it — a personal account cannot
 buy the feature at any tier.
 
 What fixes it is already planned:
-[#272](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/272) moves
+[#272](https://github.com/OurHike/OurHike/issues/272) moves
 this repository into the `OurHike` org, and
-[#274](https://github.com/jaimito-asuntos-gringuenos/OurHike/pull/274) is
+[#274](https://github.com/OurHike/OurHike/pull/274) is
 already waiting on that transfer. A public repository owned by an organisation
 gets merge queue at no cost, so the transfer unlocks it as a side effect rather
 than as something to buy.
@@ -174,7 +174,7 @@ it a day later.
 
 The structural fix is to decompose `App.tsx` so features wire themselves in
 without a shared edit point. That is
-[#327](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/327) — a
+[#327](https://github.com/OurHike/OurHike/issues/327) — a
 refactor with its own risk, not something to fold into whatever else is in
 flight.
 

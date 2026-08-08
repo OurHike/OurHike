@@ -45,7 +45,7 @@ from release_notes import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW_DIR = REPO_ROOT / ".github" / "workflows"
-REPO = "jaimito-asuntos-gringuenos/OurHike"
+REPO = "OurHike/OurHike"
 
 
 def _workflow(name: str) -> dict:

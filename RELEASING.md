@@ -584,7 +584,7 @@ followed:**
   politely; the Cloudflare alias will appear on the first push to `main` after this
   lands, but the UA Supabase project and the two Fly apps are account work
   ([#371](https://github.com/OurHike/OurHike/issues/371)) — an account, a card, two
-  `fly apps create`, and a `FLY_API_TOKEN` (LAUNCH_CHECKLIST.md 6).
+  `fly apps create`, and a deploy token per app (LAUNCH_CHECKLIST.md 6).
   Until `UA_API_BASE_URL` exists, UA queues reports in the outbox — which is a
   supported state, not a broken one.
 - **The repository settings** — required status checks, the `production`

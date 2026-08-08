@@ -341,7 +341,16 @@ The host is picked and the config is written: `backend/Dockerfile` and `backend/
    **The pooled string is deliberate here, and the app is built for it.** A transaction pooler hands each transaction whatever backend is free, which breaks anything a driver leaves on a connection — psycopg's automatic prepared statements above all, and that failure appears only in production and only once an endpoint is warm. `backend/app/db/session.py` turns them off, and `backend/tests/test_pooler.py` proves it against a real transaction pooler rather than asserting it. If you use the direct string instead, nothing breaks; you can set `DATABASE_PREPARED_STATEMENTS=true` to get the plan caching back.
 
    Missing one of these is the failure the deploy is built to catch rather than hide: `app/config.py` gives the Supabase fields no default on purpose, so the process exits at import time, Fly restarts it, and `fly deploy` still reports success. The workflow's health step asks the app itself and fails the run.
-4. **`fly tokens create deploy`**, and put it in the `FLY_API_TOKEN` repository secret (Settings → Secrets and variables → Actions). A deploy token scoped to these apps, not a personal org-wide one — this is the only credential in that list that can replace what a hiker's phone is talking to. From here on, merging to `main` deploys UA.
+4. **`fly tokens create deploy`, once per app** — two tokens, into two repository secrets (Settings → Secrets and variables → Actions):
+   ```
+   fly tokens create deploy -a <ua-app>   -x 999999h   # -> UA_FLY_API_TOKEN
+   fly tokens create deploy -a <prod-app> -x 999999h   # -> PRODUCTION_FLY_API_TOKEN
+   ```
+   **Two, because a deploy token is scoped to a single app.** One secret cannot reach both; the only thing that could is an org-scoped token (`fly tokens create org`), which can also delete every app on the account — not what the UA job, running unattended on every merge to `main`, should be holding. Splitting them is the same line `migrate.yml` already draws between `UA_MIGRATION_DATABASE_URL` and `PRODUCTION_MIGRATION_DATABASE_URL`.
+
+   `-x` sets the expiry. Fly's own CI guide uses `999999h`, and the reason to bother is that an expired UA token reads as a UA that quietly stopped following `main` rather than as a credential problem.
+
+   **From here on, merging to `main` deploys UA.** Setting `PRODUCTION_FLY_API_TOKEN` before the production app has its secrets means the first `v*` tag deploys a container that exits at startup — so do steps 2 and 3 for production first, in that order.
 5. **Apply the migration** — dispatch **Migrate** (step 5), then **confirm RLS is on** (step 5a — the migration does it, but check rather than assume). Deliberately separate from deploying, and it stays that way now that a workflow does each: a migration is a reviewed action, not something that fires on every container start. Note that the secret the Migrate job holds is the **session** pooler (port 5432), while the `DATABASE_URL` you set on Fly above is the **transaction** pooler (6543) — two different values on the same host, and both are correct for their own job.
 6. **Point the client at it** and add its origin to Supabase's allowed redirect URLs (4.3b).
 

@@ -241,24 +241,41 @@ settings:
       applied (LAUNCH_CHECKLIST.md 5); it stops being optional the day a hiker
       can sign in.
 
-  FLY_API_TOKEN:
+  UA_FLY_API_TOKEN:
     where: secret
     required: false
     why: >-
-      Lets deploy-backend.yml push an image to the two Fly apps RELEASING.md 3
-      names - `ourhike-backend-ua` from main, `ourhike-backend` from a v* tag.
-      A deploy token scoped to those apps (`fly tokens create deploy`), not a
-      personal org-wide one: this is the only credential in this file that can
-      replace what a hiker's phone is talking to, and an org token could do it
-      to anything else on the account too. One token for both apps because Fly
-      scopes a deploy token to an app and the workflow needs both - the
-      alternative is two settings whose only difference is which half of the
-      release they break when one expires. Optional because no Fly account has
-      ever been reached from here (LAUNCH_CHECKLIST.md 6): the UA job says so
-      and skips rather than turning every merge to main red. The production job
-      does not skip - a tag whose backend quietly did not deploy is a release
-      whose client talks to the previous build - so this stops being optional
-      the day a tag exists.
+      Lets deploy-backend.yml push an image to the UA Fly app RELEASING.md 3
+      names, `ourhike-backend-ua`, on every merge to main. `fly tokens create
+      deploy -a <app>` mints a macaroon scoped to one app, which is why this
+      and the production entry below are two settings rather than one - not
+      symmetry, but the fact that no single deploy token can reach both. An
+      org-scoped token could, and can also delete every app on the account,
+      which is not a thing to hand a job that runs unattended on every merge.
+      Optional because no Fly account has ever been reached from here
+      (LAUNCH_CHECKLIST.md 6): without it the UA job warns and skips rather
+      than turning main red. A token that has expired is the failure worth
+      knowing about - it reads as a UA that silently stopped following main,
+      so give it a long expiry (`-x 999999h`, as Fly's own CI guide does) and
+      let this file's weekly check notice if it goes.
+
+  PRODUCTION_FLY_API_TOKEN:
+    where: secret
+    required: false
+    why: >-
+      The same for `ourhike-backend`, deployed from a v* tag. Held separately
+      from the UA token above so that the job running unattended on every
+      merge holds a credential that cannot touch what hikers are talking to -
+      the same split migrate.yml draws between UA_MIGRATION_DATABASE_URL and
+      PRODUCTION_MIGRATION_DATABASE_URL, for the same reason. A repository
+      secret rather than an environment-scoped one even though the job runs
+      under `environment: production`, like the R2 four: the settings check
+      resolves these with no `environment:` set, so a scoped copy would be
+      invisible to the one job whose purpose is noticing it had gone.
+      Optional only because nothing has ever been tagged. Unlike UA the
+      production job refuses to skip - a tag whose backend quietly did not
+      deploy is a release whose client talks to the previous build's API - so
+      this stops being optional the day a v* tag exists.
 
   PROTECTIONS_READ_TOKEN:
     where: secret

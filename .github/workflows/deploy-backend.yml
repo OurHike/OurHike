@@ -13,7 +13,15 @@
 # `fly secrets set` puts the runtime credentials on the app once - neither is
 # something a workflow should do, and neither is something this one does. It
 # deploys an image to an app that already exists. LAUNCH_CHECKLIST.md 6 is the
-# one-time setup; the token below is the last step of it.
+# one-time setup; the two tokens below are the last step of it.
+#
+# TWO TOKENS, ONE PER APP, AND NOT BECAUSE SYMMETRY IS TIDY. `fly tokens create
+# deploy` mints a macaroon scoped to a single app, so one secret genuinely
+# cannot deploy both of these - the only thing that could is an org-scoped
+# token, which can also delete every app on the account. Splitting them is what
+# keeps the UA job, which runs unattended on every merge to `main`, holding a
+# credential that cannot touch production. This is the shape migrate.yml
+# already uses for the same two environments.
 #
 # WHY UA IS NOT PATH-FILTERED. A push to `main` that touches nothing under
 # backend/ still redeploys UA, the same way ua.yml rebuilds the client for a
@@ -91,11 +99,16 @@ jobs:
         # bash sees the line, so a token containing a quote or a `$(...)` would
         # be parsed as script rather than as data. Nothing prints it either
         # way; this is about what bash does with it, not about masking.
+        #
+        # The secret is UA's; the environment variable is the name flyctl reads.
+        # Those being different is the point - a job that mapped production's
+        # secret onto this variable would deploy UA's commit to production and
+        # look identical in the log.
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_API_TOKEN: ${{ secrets.UA_FLY_API_TOKEN }}
         run: |
           if [ -z "$FLY_API_TOKEN" ]; then
-            echo "::warning::No Fly.io token is configured, so the UA backend was not deployed. See LAUNCH_CHECKLIST.md 6."
+            echo "::warning::No UA Fly.io token is configured, so the UA backend was not deployed. See LAUNCH_CHECKLIST.md 6."
             echo "go=false" >> "$GITHUB_OUTPUT"
           else
             echo "go=true" >> "$GITHUB_OUTPUT"
@@ -120,7 +133,7 @@ jobs:
       - name: Deploy
         if: steps.can.outputs.go == 'true'
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_API_TOKEN: ${{ secrets.UA_FLY_API_TOKEN }}
         run: flyctl deploy --config fly.ua.toml --remote-only
 
       - name: Confirm UA answers
@@ -171,7 +184,7 @@ jobs:
         # Both values through env rather than into the script body - see the UA
         # job's gate for why.
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_API_TOKEN: ${{ secrets.PRODUCTION_FLY_API_TOKEN }}
           REF: ${{ github.ref }}
         run: |
           case "$REF" in
@@ -182,7 +195,7 @@ jobs:
               ;;
           esac
           if [ -z "$FLY_API_TOKEN" ]; then
-            echo "::error::No Fly.io token is configured, so this tag has no backend. The client it ships alongside would talk to whatever was deployed last. See LAUNCH_CHECKLIST.md 6."
+            echo "::error::No production Fly.io token is configured, so this tag has no backend. The client it ships alongside would talk to whatever was deployed last. See LAUNCH_CHECKLIST.md 6."
             exit 1
           fi
 
@@ -192,7 +205,7 @@ jobs:
 
       - name: Deploy
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_API_TOKEN: ${{ secrets.PRODUCTION_FLY_API_TOKEN }}
         run: flyctl deploy --config fly.toml --remote-only
 
       # This is verification, not a gate, and the difference is worth being

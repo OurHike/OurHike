@@ -406,7 +406,7 @@ continuing to hand-write HTML — §5.3 alone is several hundred pages.
 and `client/dist/` → `/app/`. The change is one build step before the copy;
 paths and the app's `base` are untouched. Worth doing at the same time:
 **register `ourhike.app`** — LAUNCH_CHECKLIST.md §1.5 already anticipates
-`data.ourhike.app` for the R2 bucket, and `jaimito-asuntos-gringuenos.github.io/
+`data.ourhike.app` for the R2 bucket, and `ourhike.github.io/
 OurHike/` is not a URL to put on a site meant to be trusted with somebody's
 navigation.
 

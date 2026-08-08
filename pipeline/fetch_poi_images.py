@@ -57,7 +57,7 @@ OUT_PATH = RAW_DIR / "poi_images.json"
 
 # The Wikimedia API etiquette page requires a descriptive User-Agent with a
 # way to reach whoever runs the client - the repository is that contact.
-USER_AGENT = "OurHike-pipeline/1.0 (https://github.com/jaimito-asuntos-gringuenos/OurHike; contact via repository issues)"
+USER_AGENT = "OurHike-pipeline/1.0 (https://github.com/OurHike/OurHike; contact via repository issues)"
 
 # The freshness bar: a photo's EXIF capture date must be within four years
 # of the run. A photo of a shelter that has since burned, moved or grown a

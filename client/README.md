@@ -66,7 +66,7 @@ this is the only one that receives anything.
 
 **Unset is a supported state, and is what every deploy currently builds**, since
 the backend is not deployed anywhere yet
-([#95](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/95)). The map,
+([#95](https://github.com/OurHike/OurHike/issues/95)). The map,
 downloads and reporting flow all work; a written report stays queued with its
 authored timestamp instead of being sent, and nothing is lost. Sending starts
 working when a build has somewhere to send to — no code change.

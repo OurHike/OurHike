@@ -22,6 +22,12 @@
 # linked issue" is a required status check on `main` (Settings -> Rules, or
 # branch protection). That switch is deliberately not in the repository -
 # nothing in `.github/` can grant itself the power to stop a merge.
+#
+# It is, though, the check most likely to be the first one required, which is
+# why it triggers on `merge_group` below despite having nothing to say there.
+# A required check that never reports hangs a queue entry rather than failing
+# it, so the cost of leaving the trigger off is not a weaker rule - it is a
+# queue that stops merging anything the day somebody ticks the box.
 
 name: PR issue link
 
@@ -42,6 +48,9 @@ on:
       - ready_for_review
       - labeled
       - unlabeled
+  # Reports green without asking anything - see the job below. `types:` is not
+  # repeated because `merge_group` has only the one activity type.
+  merge_group:
 
 # Reads three things and writes nothing. `issues: read` is what lets the
 # query name the issue it found instead of just counting it.
@@ -50,8 +59,15 @@ permissions:
   pull-requests: read
   issues: read
 
+# The fallback is load-bearing, not defensive tidiness. A merge_group run has
+# no `pull_request` in its payload, so the interpolation is empty and every
+# queue entry would land in the single group `pr-issue-link-` - where
+# cancel-in-progress means each entry cancels the one before it. A cancelled
+# run reports no status, which is the one outcome that hangs a queue instead of
+# failing it, and it would happen only once two entries were queued at once:
+# exactly the case a merge queue exists to create.
 concurrency:
-  group: pr-issue-link-${{ github.event.pull_request.number }}
+  group: pr-issue-link-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -76,6 +92,31 @@ jobs:
             const escapeLabel = process.env.ESCAPE_LABEL
 
             const summary = lines => core.summary.addRaw(lines.join('\n')).write()
+
+            // A merge queue entry is not a pull request, and this is a question
+            // only a pull request can be asked - `closingIssuesReferences` is a
+            // property of one, and the temporary branch a queue builds names at
+            // most the last of the several pull requests it may contain. So
+            // this reports green here having checked nothing, and says so.
+            //
+            // Reporting green is the point rather than a concession. Every pull
+            // request in a merge group answered this on its own runs before it
+            // was queued, so there is nothing left to catch; what the status
+            // buys is that this check can sit in the required list without
+            // leaving queue entries waiting on a report that was never coming.
+            if (!pr) {
+              await summary([
+                '## PR issue link',
+                '',
+                'Not checked here — this is a merge queue entry, not a pull request.',
+                '',
+                'Each pull request in the group answered this on its own runs before',
+                'it was queued. This reports green so that requiring the check cannot',
+                'leave a queue entry waiting on a status it would never receive.',
+              ])
+              core.info('merge_group: nothing to ask, reporting green so the queue is not left waiting.')
+              return
+            }
 
             // The escape hatch exists so the rule does not manufacture the
             // exact thing it is meant to prevent. A typo fix, a revert, a

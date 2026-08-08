@@ -192,6 +192,40 @@ describe('the request a configured build sends', () => {
     await expect(api.sendReport(ITEM)).rejects.toMatchObject({ status: 401 })
   })
 
+  // #412: the status alone cannot say WHY a 422 happened, and the two reasons
+  // want opposite handling. Without the body reaching `permanentFailureReason`
+  // there is nothing to classify on.
+  it('carries the refusal body, so 422 can be told from 422', async () => {
+    const api = await configured()
+    const body = { detail: [{ loc: ['body', 'authored_at'], type: 'value_error' }] }
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 422,
+      json: async () => body,
+    } as Response)
+
+    await expect(api.sendReport(ITEM)).rejects.toMatchObject({ detail: body })
+  })
+
+  it('still throws when the refusal body is not JSON', async () => {
+    // A proxy answering with HTML, or a connection that dies mid-read. The
+    // parse failure must not replace a useful ApiError with a parse error -
+    // the caller loses the detail and keeps the status.
+    const api = await configured()
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 502,
+      json: async () => {
+        throw new SyntaxError('Unexpected token < in JSON at position 0')
+      },
+    } as unknown as Response)
+
+    await expect(api.sendReport(ITEM)).rejects.toMatchObject({
+      status: 502,
+      detail: undefined,
+    })
+  })
+
   it('resolves on a 201', async () => {
     const api = await configured()
     mockFetch(201)
@@ -222,21 +256,80 @@ describe('accessToken', () => {
 // what makes those two different states.
 
 describe('permanentFailureReason', () => {
-  const apiError = (status: number) => new ApiError(status, `failed: ${status}`)
+  const apiError = (status: number, detail?: unknown) =>
+    new ApiError(status, `failed: ${status}`, detail)
 
-  it('names the clock, because that is the likeliest cause of a 422', async () => {
+  /** What FastAPI sends when the `authored_at` rule refuses a report. Its
+   *  shape is pinned server-side by
+   *  backend/tests/test_report_authored_at_contract.py. */
+  const clockRefusal = {
+    detail: [
+      {
+        type: 'value_error',
+        loc: ['body', 'authored_at'],
+        msg: 'Value error, authored_at cannot be in the future',
+      },
+    ],
+  }
+
+  /** What an older client's request looks like to a newer API: validation
+   *  failing on a field that has nothing to do with the clock. */
+  const skewRefusal = {
+    detail: [
+      {
+        type: 'missing',
+        loc: ['body', 'a_field_added_after_this_build'],
+        msg: 'Field required',
+      },
+    ],
+  }
+
+  it('names the clock when the server named authored_at', async () => {
     // The server refuses an authored time more than five minutes ahead, so a
     // phone running fast has EVERY report refused - and that is fixable by
     // the person holding it, if anyone tells them.
-    const reason = permanentFailureReason(apiError(422))
+    const reason = permanentFailureReason(apiError(422, clockRefusal))
 
     expect(reason).toContain('clock')
   })
 
+  it('blames the app, not the clock, when some other field was refused', async () => {
+    // #412: version skew and a wrong clock are both 422, and the clock
+    // message sends somebody to check a setting that is fine - after six
+    // months on trail, about a report they can no longer file.
+    const reason = permanentFailureReason(apiError(422, skewRefusal)) ?? ''
+
+    expect(reason).not.toMatch(/clock/i)
+    expect(reason).toMatch(/too old/i)
+    expect(reason).toMatch(/update/i)
+  })
+
+  it('promises the report is kept, because that is the fear', async () => {
+    const reason = permanentFailureReason(apiError(422, skewRefusal)) ?? ''
+
+    expect(reason).toMatch(/kept/i)
+  })
+
+  it('blames the app for a 422 with no readable body', async () => {
+    // FastAPI always sends a JSON body for a validation failure, so a 422
+    // without one came from something else - a proxy, a gateway. Attributing
+    // that to the hiker's phone clock is a guess dressed as a diagnosis, and
+    // the app-version message is the one that is harmless when wrong: it
+    // keeps the report and asks for an update rather than accusing a setting.
+    const reason = permanentFailureReason(apiError(422)) ?? ''
+
+    expect(reason).not.toMatch(/clock/i)
+    expect(reason).toMatch(/too old/i)
+  })
+
   it('reads as a sentence, not a status code', async () => {
     // It is rendered verbatim on the More screen.
-    for (const status of [422, 409]) {
-      const reason = permanentFailureReason(apiError(status))
+    for (const error of [
+      apiError(422, clockRefusal),
+      apiError(422, skewRefusal),
+      apiError(409),
+    ]) {
+      const reason = permanentFailureReason(error)
       expect(reason).toMatch(/^[A-Z].*[.]$/s)
     }
   })
@@ -259,7 +352,7 @@ describe('permanentFailureReason', () => {
     // Monday on Thursday), so a badly wrong clock leaves an already-queued
     // item unacceptable until real time catches up. "then try again" was a
     // promise the code cannot keep.
-    const reason = permanentFailureReason(apiError(422)) ?? ''
+    const reason = permanentFailureReason(apiError(422, clockRefusal)) ?? ''
 
     expect(reason).not.toMatch(/then try again/i)
     expect(reason).toMatch(/until that time has passed/i)

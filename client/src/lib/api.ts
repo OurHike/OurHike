@@ -42,14 +42,24 @@ export function apiUrl(path: string): string {
   return `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`
 }
 
-/** A request that reached the server and came back refused. */
+/** A request that reached the server and came back refused.
+ *
+ * `detail` is the parsed response body, when there was one and it was JSON.
+ * Carried because the status alone is not enough to say what happened: the
+ * backend produces 422 for two unrelated reasons, and telling them apart
+ * decides whether a hiker's report is worth retrying (#412). Left `undefined`
+ * rather than defaulted, so "no body" and "a body saying nothing" stay
+ * distinguishable.
+ */
 export class ApiError extends Error {
   readonly status: number
+  readonly detail: unknown
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, detail?: unknown) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.detail = detail
   }
 }
 
@@ -102,9 +112,28 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
     throw new ApiError(
       response.status,
       `${init.method ?? 'GET'} ${path} failed: ${response.status}`,
+      await errorBody(response),
     )
   }
   return response
+}
+
+/**
+ * The parsed body of a refused response, or undefined.
+ *
+ * Every failure here is swallowed on purpose. This runs while building the
+ * error for a request that has ALREADY failed, and a body that is empty,
+ * truncated, HTML from a proxy, or unreadable because the connection died
+ * mid-read must not replace a useful `ApiError` with a parse exception. The
+ * caller loses the extra detail and keeps the status, which is what it had
+ * before this existed.
+ */
+async function errorBody(response: Response): Promise<unknown> {
+  try {
+    return await response.json()
+  } catch {
+    return undefined
+  }
 }
 
 /** Like `apiFetch`, but refuses before spending a request when signed out. */
@@ -345,6 +374,44 @@ const PERMANENT_REASONS: Record<number, string> = {
   409: 'The server already has a different report filed under this one’s id.',
 }
 
+// The backend returns 422 for two unrelated reasons, and the entry above is
+// written for only one of them (#412).
+//
+//   1. The `authored_at` refusal, which is this app's own rule and is about
+//      the hiker's clock.
+//   2. Request validation - a field this build does not send, a value this
+//      build still sends and the server has stopped accepting. That is
+//      version skew: an old client meeting a newer API, which RELEASING.md
+//      §8c's support window exists to bound and cannot prevent past its edge.
+//
+// They want opposite handling. The clock case is about this one report and
+// resolves when real time catches up. Skew is about the whole app, resolves
+// when it updates, and telling somebody to check their clock sends them to
+// look at a setting that is fine.
+//
+// Told apart by which field the server named. FastAPI reports validation
+// failures as `detail: [{loc: [...], ...}]`, and the `authored_at` rule -
+// being a field validator on ReportCreate - names that field in `loc`.
+// backend/tests/test_report_authored_at_contract.py pins that shape from the
+// other side, because this is a cross-boundary assumption and the client
+// cannot notice on its own if the body ever changes.
+const AUTHORED_AT_FIELD = 'authored_at'
+
+/** The version-skew message. Exported so tests name it once. */
+export const OUTDATED_CLIENT_REASON =
+  'This version of the app is too old for the server to accept it. Update the app when you have signal, then try again — your report is kept until you do.'
+
+function namesAuthoredAt(detail: unknown): boolean {
+  if (typeof detail !== 'object' || detail === null) return false
+  const entries = (detail as { detail?: unknown }).detail
+  if (!Array.isArray(entries)) return false
+
+  return entries.some((entry) => {
+    const loc = (entry as { loc?: unknown })?.loc
+    return Array.isArray(loc) && loc.includes(AUTHORED_AT_FIELD)
+  })
+}
+
 /**
  * Whether a failed send is worth retrying: a sentence to show the hiker if
  * it is not, or null if it is.
@@ -357,6 +424,14 @@ const PERMANENT_REASONS: Record<number, string> = {
  */
 export function permanentFailureReason(error: unknown): string | null {
   if (!(error instanceof ApiError)) return null
+
+  // A 422 that does not name `authored_at` is validation failing on some
+  // other field, which this build cannot fix by trying again - but a newer
+  // build can, so the message says so and `flushOutbox` retries it once the
+  // app version changes rather than stranding it for good.
+  if (error.status === 422 && !namesAuthoredAt(error.detail)) {
+    return OUTDATED_CLIENT_REASON
+  }
 
   return PERMANENT_REASONS[error.status] ?? null
 }

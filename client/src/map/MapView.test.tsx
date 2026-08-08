@@ -3,7 +3,7 @@ import { StrictMode } from 'react'
 import { act, render, cleanup, screen, waitFor } from '@testing-library/react'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { MapView } from './MapView'
-import { BACKDROP_LAYER_ID, MAP_BACKDROP } from './style'
+import { BACKDROP_LAYER_ID, MAP_BACKDROP, TRAILS_SOURCE_ID } from './style'
 import { LIVE_TOPO_LAYER_IDS, TOPO_PALETTE_RED } from './liveTopo'
 import { poiIconId } from './poiIcons'
 import {
@@ -268,6 +268,43 @@ describe('MapView', () => {
     expect(map.layoutProperties.get(`${LIVE_TOPO_LAYER_IDS.track}/visibility`)).toBe(
       'none',
     )
+  })
+
+  it('re-points the trail source for new lines without rebuilding the map', () => {
+    // The lines come out of IndexedDB a beat after the map is built, so this
+    // omission is the one a cold start actually pays for: depending on the URL
+    // meant every launch tore the map down and built a second one a second
+    // after the first appeared. They are a GeoJSON source, and a
+    // GeoJSON source takes a new URL in place - the same treatment the POIs,
+    // closures and warnings have always had.
+    const { rerender } = render(<MapView {...PROPS} trailsUrl="/data/empty.geojson" />)
+    const builtInitially = MockMap.instances.length
+    const [map] = MockMap.live
+
+    act(() => map.emit('load'))
+    rerender(<MapView {...PROPS} trailsUrl="/data/trails.geojson" />)
+
+    expect(MockMap.instances).toHaveLength(builtInitially)
+    expect(MockMap.live).toHaveLength(1)
+    // And the lines really landed, rather than waiting on a rebuild that no
+    // longer comes.
+    expect(map.sourceData.get(TRAILS_SOURCE_ID)).toBe('/data/trails.geojson')
+  })
+
+  it('does not re-push lines the style was built holding', () => {
+    // Seeding the style is what puts the trail on the very first frame when
+    // the lines are already known. Writing them in again straight afterwards
+    // would re-fetch and re-tile twelve megabytes of coordinates for a source
+    // that already holds them.
+    render(<MapView {...PROPS} trailsUrl="/data/trails.geojson" />)
+    const [map] = MockMap.live
+
+    act(() => map.emit('load'))
+
+    expect(map.options.style).toMatchObject({
+      sources: { [TRAILS_SOURCE_ID]: { data: '/data/trails.geojson' } },
+    })
+    expect(map.sourceData.has(TRAILS_SOURCE_ID)).toBe(false)
   })
 
   it('leaves no load listener behind after unmount', () => {

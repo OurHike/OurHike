@@ -34,10 +34,16 @@ import { MockMap } from './mocks/maplibre-gl'
 /**
  * The live map, once MapView's effect has actually built it.
  *
- * `MockMap.live` rather than `MockMap.instances`, deliberately: the map screen
- * builds a NEW map when the trail lines land (a different object URL is a
- * different style), so the first map ever constructed is routinely one that
- * has already been torn down. Touching it would be touching nothing, silently.
+ * `MockMap.live` rather than `MockMap.instances`, deliberately: a map screen
+ * can build a NEW map and tear the old one down - switching background does
+ * exactly that, and so does finishing the first-run steps - so the first map
+ * ever constructed is not reliably the one that is up. Touching it would be
+ * touching nothing, silently.
+ *
+ * That used to happen on every single launch, because the trail lines landing
+ * from IndexedDB rebuilt the map too. It does not any more
+ * (App.mapLifecycle.test.tsx), which makes this distinction rarer than it was
+ * and no less necessary.
  */
 export async function liveMap(): Promise<MockMap> {
   await waitFor(() => expect(MockMap.live.length).toBeGreaterThan(0))

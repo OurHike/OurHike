@@ -26,7 +26,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { registerPMTilesProtocol } from './protocol'
 import { registerBasemapProtocol } from './basemap'
 import { registerMapWorker } from './mapWorker'
-import { attachMapAppearance, buildMapStyle } from './style'
+import { attachMapAppearance, attachTrailData, buildMapStyle } from './style'
 import { attachMapDetail } from './mapDetail'
 import { attachContourUnits, registerTerrain } from './contours'
 import { attachLiveSourceHealth, type SourceReport } from './liveSourceHealth'
@@ -50,7 +50,14 @@ import { openingZoomFloor, type ArchiveZooms } from '../lib/archiveCoverage'
 export interface MapViewProps {
   /** `pmtiles://` URL for the downloaded topo archive. */
   topoArchiveUrl: string
-  /** Local URL of the exported trail lines. */
+  /**
+   * Local URL of the exported trail lines.
+   *
+   * Seeds the style so the opening frame already has the trail on it, and is
+   * then re-pointed in place whenever it changes - the same two-step `theme`
+   * and `pois` get, and for the same reason. The shell mints this URL when the
+   * lines come back from IndexedDB, a beat after the map is built.
+   */
   trailsUrl: string
   /** Which background to draw - see lib/userPreferences.ts. */
   background?: BackgroundSource
@@ -224,6 +231,19 @@ export function MapView({
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [map, setMap] = useState<MapLibreMap | null>(null)
 
+  /**
+   * Which trail lines the live map's source is already pointing at, or null
+   * when there is no map.
+   *
+   * Seeding the style AND pushing the same URL in afterwards would fetch and
+   * re-tile the lines twice for every map built - twelve megabytes of
+   * coordinates, and measurably more worker time than the whole low-zoom
+   * tiling costs once (see the `tolerance` note in map/style.ts). So the
+   * construction below records what it seeded, and the attach further down
+   * writes only when the answer has actually changed.
+   */
+  const drawnTrailsUrl = useRef<string | null>(null)
+
   // `center`/`zoom` are deliberately NOT dependencies. A parent writing
   // center={[x, y]} inline hands over a new array identity on every render; if
   // that drove this effect the map would be destroyed and rebuilt each time the
@@ -303,9 +323,15 @@ export function MapView({
       // WIREFRAMES.md, rather than by MapLibre's default control.
       attributionControl: false,
     })
+    // Recorded, not assumed: the style above was seeded with whatever this
+    // render's lines are, so the attach below has nothing to do until they
+    // change. Cleared on teardown so the next map is seeded and recorded
+    // together, and a rebuild can never inherit the previous map's answer.
+    drawnTrailsUrl.current = trailsUrl
     setMap(created)
 
     return () => {
+      drawnTrailsUrl.current = null
       created.remove()
       setMap(null)
     }
@@ -324,8 +350,22 @@ export function MapView({
     // in its first frame, and the appearance effect below repaints all of it
     // in place for every change after that. A hiker tapping "Dark" while
     // walking must not lose the map they were reading.
+    //
+    // `trailsUrl` is omitted on that same pattern, and it is the one that used
+    // to cost a cold start a whole extra map. The lines are read out of
+    // IndexedDB a beat after the map is built, so depending on this URL meant
+    // every launch tore down the map a second after it appeared - a blink and
+    // a re-frame, for data a GeoJSON source can take in place. It still seeds
+    // the style, so the first frame already has the trail on it; the effect
+    // below re-points the source for every change after that.
+    //
+    // Only `background` remains, and it earns the rebuild: the two backgrounds
+    // are different sources and a different layer stack, not a different value
+    // in the same one. App.tsx holds its first render until it knows which one
+    // to ask for, so switching is the hiker's doing rather than a fact about
+    // the phone arriving late.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [topoArchiveUrl, trailsUrl, background])
+  }, [topoArchiveUrl, background])
 
   // Keeps the OPENING camera out of the zooms the download cannot draw (#216).
   //
@@ -396,6 +436,18 @@ export function MapView({
     if (map === null) return
     return attachElevationLabelUnits(map, units)
   }, [map, units])
+
+  // The trail lines, pushed onto the live map for the same reason the POIs
+  // below are: they come out of IndexedDB after the map exists, and they are
+  // one GeoJSON source, which can simply be handed a new URL. Its own effect
+  // rather than folded in with the pins, because the two arrive from separate
+  // reads and a re-tiling of twelve megabytes of coordinates must not ride
+  // along with a legend tap.
+  useEffect(() => {
+    if (map === null || drawnTrailsUrl.current === trailsUrl) return
+    drawnTrailsUrl.current = trailsUrl
+    return attachTrailData(map, trailsUrl)
+  }, [map, trailsUrl])
 
   // Three separate effects rather than one, because they change on completely
   // different clocks: the pin images are built once and never again, the POIs

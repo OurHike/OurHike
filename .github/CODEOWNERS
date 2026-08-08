@@ -1,23 +1,23 @@
 # CODEOWNERS for OurHike
-# Lines are matched from top to bottom; the first matching pattern takes effect.
+# Minimal mappings while this project has a single maintainer.
+# When the org grows, replace these with team handles and more granular owners.
 
 # Agent manifests and related metadata
-.claude/agents/*  @OurHike/engineering
+.claude/agents/* @jaimito-asuntos-gringuenos
 
 # Data/pipeline ownership
-pipeline/**         @OurHike/data
+pipeline/** @jaimito-asuntos-gringuenos
 
 # Client and frontend
-client/**           @OurHike/frontend
+client/** @jaimito-asuntos-gringuenos
 
 # Backend ownership
-backend/**          @OurHike/backend
+backend/** @jaimito-asuntos-gringuenos
 
 # Ops and workflows
-.github/workflows/** @OurHike/ops
+.github/workflows/** @jaimito-asuntos-gringuenos
 
 # COSTS and cost reviews
-/COSTS.md           @jaimito-asuntos-gringuenos
+/COSTS.md @jaimito-asuntos-gringuenos
 
-# Default fallback owners
-*                   @OurHike/engineering
+# No global fallback owner — limits review requests to critical areas.

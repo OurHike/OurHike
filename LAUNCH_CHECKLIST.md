@@ -249,15 +249,28 @@ The initial migration now exists — `backend/alembic/versions/0f79a37f9358_init
 **This is now two repository secrets, not a command you run.** `.github/workflows/migrate.yml` applies the chain; what is left for you is pasting the connection strings once, the same shape of job as the R2 credentials in 1.3:
 
 ```
-UA_MIGRATION_DATABASE_URL=postgresql+psycopg://postgres:<pw>@db.mksewhxtaqlghtvucfsk.supabase.co:5432/postgres
-PRODUCTION_MIGRATION_DATABASE_URL=postgresql+psycopg://postgres:<pw>@db.fehctqdwdjwryzgxzywc.supabase.co:5432/postgres
+UA_MIGRATION_DATABASE_URL=postgresql+psycopg://postgres.mksewhxtaqlghtvucfsk:<pw>@aws-0-us-east-1.pooler.supabase.com:5432/postgres
+PRODUCTION_MIGRATION_DATABASE_URL=postgresql+psycopg://postgres.fehctqdwdjwryzgxzywc:<pw>@aws-0-us-east-1.pooler.supabase.com:5432/postgres
 ```
 
-Settings → Secrets and variables → Actions → **Secrets** tab. The password is only visible in the Supabase dashboard (Project Settings → Database), which is the one part of this nothing in the repository can do for itself.
+Settings → Secrets and variables → Actions → **Secrets** tab. Get each one from the Supabase dashboard: **Connect** (top of the project) → **Session pooler**, and copy the host and region from there rather than trusting the `aws-0-` above — the prefix and region are per project. The password is set at project creation and is only visible there (Project Settings → Database → Reset database password, if it has been lost), which is the one part of this nothing in the repository can do for itself.
+
+**Two edits to make to what the dashboard gives you**, both of which fail confusingly if skipped, and both of which `check_schema_drift.py --url-only` now refuses by name before any migration runs:
+
+- **`postgresql://` → `postgresql+psycopg://`.** `app/config.py` uses `DATABASE_URL` exactly as given, and SQLAlchemy resolves a bare `postgresql://` to psycopg2, which this backend does not install. The failure is an import error naming a driver nobody chose.
+- **Note it is `postgres.<project-ref>` as the username**, not bare `postgres` — the pooler routes by that prefix.
 
 After that: UA follows `main` automatically whenever a revision lands, and production is a **dispatch** — Actions → **Migrate** → Run workflow → target `production`, which runs the UA leg first and then waits on the `production` environment's reviewers. Running `revision --autogenerate` again would produce an empty second migration on top of the existing one; there is nothing to generate.
 
-**Which connection string: the direct one, and the setting names say so rather than trusting anyone to remember.** Supabase's dashboard offers the transaction pooler first, and a migration is the one workload that must not go through it — `CREATE TABLE`, `ALTER TABLE` and the advisory lock Alembic takes want a single session that stays put, not a transaction handed a different backend each time. The pooled string is the right one for the *running app* (see 7.2), and the backend is configured for it; it is the wrong one here. That is why these two are `*_MIGRATION_DATABASE_URL` and not the `DATABASE_URL` Fly holds — the same reason the report-photo credentials carry an `R2_PHOTO_` prefix (1.7).
+**Which of the three connection strings, because they look interchangeable and are not.** Supabase's Connect panel offers all of them:
+
+| | Reachable over | For a migration |
+|---|---|---|
+| Direct — `db.<ref>.supabase.co:5432` | **IPv6** only, unless the project buys the IPv4 add-on | Best target, but **times out from GitHub Actions**, whose hosted runners are IPv4-only. Fine from your laptop if your ISP does IPv6. |
+| **Session pooler — `aws-<region>.pooler.supabase.com:5432`** | IPv4 | **This one.** One backend per connection for its whole life, which is the property the direct endpoint was wanted for. |
+| Transaction pooler — same host, `:6543` | IPv4 | **Wrong.** A different backend per transaction, so `CREATE TABLE`, `ALTER TABLE` and Alembic's advisory lock stop sharing a session. This is the string the *running app* wants (see 6.2), and the backend is built for it. |
+
+That is why these two settings are `*_MIGRATION_DATABASE_URL` and not the `DATABASE_URL` Fly holds — two different values, both correct for their own job, the same reason the report-photo credentials carry an `R2_PHOTO_` prefix (1.7). Supabase's own guidance is the same: direct connections are best for long-lived sessions, and *"if IPv4 is required for those sessions, Supavisor session mode can be used as an alternative."*
 
 **What still is not automatic, on purpose:** *when*. §8c of [RELEASING.md](RELEASING.md) requires expand-and-contract across two releases because the previous release is still serving traffic during a rollout, so a migration that drops a column breaks it. No workflow can know when that is safe, which is why production is dispatched and reviewed rather than applied on merge. What has been removed is the hand-typed connection string, not the judgement.
 
@@ -326,7 +339,7 @@ What is left is running it, in this order:
 
    **The pooled string is deliberate here, and the app is built for it.** A transaction pooler hands each transaction whatever backend is free, which breaks anything a driver leaves on a connection — psycopg's automatic prepared statements above all, and that failure appears only in production and only once an endpoint is warm. `backend/app/db/session.py` turns them off, and `backend/tests/test_pooler.py` proves it against a real transaction pooler rather than asserting it. If you use the direct string instead, nothing breaks; you can set `DATABASE_PREPARED_STATEMENTS=true` to get the plan caching back.
 3. **`fly deploy`** from `backend/`.
-4. **Apply the migration** — dispatch **Migrate** (step 5), then **confirm RLS is on** (step 5a — the migration does it, but check rather than assume). Deliberately separate from deploying, and it stays that way now that a workflow does it: a migration is a reviewed action, not something that fires on every container start. Note that the secret this job holds is the *direct* string, while the `DATABASE_URL` you set on Fly above is the *pooled* one — they are two different values and both are correct for their own job.
+4. **Apply the migration** — dispatch **Migrate** (step 5), then **confirm RLS is on** (step 5a — the migration does it, but check rather than assume). Deliberately separate from deploying, and it stays that way now that a workflow does it: a migration is a reviewed action, not something that fires on every container start. Note that the secret this job holds is the **session** pooler (port 5432), while the `DATABASE_URL` you set on Fly above is the **transaction** pooler (6543) — two different values on the same host, and both are correct for their own job.
 5. **Point the client at it** and add its origin to Supabase's allowed redirect URLs (4.3b).
 
 **None of this has been run against a real Fly.io account or Docker daemon.** The Dockerfile follows a standard FastAPI/uvicorn pattern and `fly.toml` matches Fly's documented format, but "should work" is not "confirmed working" — budget for the first real `fly deploy` to surface something no local check could. See [backend/README.md](backend/README.md) for the reasoning behind each choice.

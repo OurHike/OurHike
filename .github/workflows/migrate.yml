@@ -22,16 +22,37 @@
 # teeth. Re-applying to UA is free when it is already there: `upgrade head` on
 # a database at head is a no-op.
 #
-# THE DIRECT CONNECTION STRING, NOT THE POOLER, and the setting names say so
-# rather than trusting anyone to remember. Supabase offers the transaction
-# pooler first, and a migration is the one workload that must not use it -
-# `CREATE TABLE`, `ALTER TABLE` and Alembic's advisory lock all want one
-# session that stays put, where the pooler hands each transaction whatever
-# backend is free. The pooled string is right for the running app
-# (backend/tests/test_pooler.py) and wrong here, which is why these are
-# *_MIGRATION_DATABASE_URL and not the DATABASE_URL Fly holds - the same
-# reasoning that gave the report-photo credentials their R2_PHOTO_ prefix
-# (LAUNCH_CHECKLIST.md 1.7).
+# WHICH CONNECTION STRING: SESSION MODE, PORT 5432. Not the transaction
+# pooler, and - from a hosted runner - not the direct endpoint either. Three
+# options that all look interchangeable in the dashboard:
+#
+#   db.<ref>.supabase.co:5432          direct. The best target for a
+#                                      migration, and IPv6-only unless the
+#                                      project buys the IPv4 add-on. GitHub's
+#                                      hosted runners are IPv4-only, so this
+#                                      works from a laptop and times out here.
+#   aws-<region>.pooler...:5432        Supavisor session mode. IPv4, and one
+#                                      backend per connection for its whole
+#                                      life. THIS ONE.
+#   aws-<region>.pooler...:6543        Supavisor transaction mode. IPv4, and
+#                                      a different backend per transaction -
+#                                      so `CREATE TABLE`, `ALTER TABLE` and
+#                                      Alembic's advisory lock stop sharing a
+#                                      session. Right for the running app
+#                                      (backend/tests/test_pooler.py), wrong
+#                                      here.
+#
+# The property a migration needs is one session that stays put, which session
+# mode has and transaction mode does not; IPv4 is what makes it reachable from
+# here at all. That is why these settings are *_MIGRATION_DATABASE_URL rather
+# than the DATABASE_URL Fly holds - two different values, both correct for
+# their own job, the same reasoning that gave the report-photo credentials
+# their R2_PHOTO_ prefix (LAUNCH_CHECKLIST.md 1.7).
+#
+# check_schema_drift.py --url-only runs before every upgrade and refuses the
+# two wrong ones by name, because both fail far from their cause: port 6543
+# fails intermittently once an endpoint is warm, and a URL without `+psycopg`
+# fails as an import error about a driver nobody chose.
 #
 # REPOSITORY SECRETS, HELD BY A JOB IN A PROTECTED ENVIRONMENT - not
 # environment secrets. Environment protection rules gate the job either way,
@@ -119,6 +140,14 @@ jobs:
         if: steps.can.outputs.go == 'true'
         run: pip install -r requirements.txt
 
+      # Before `upgrade head`, never after: a connection string a migration
+      # cannot use should stop the run while nothing has been applied.
+      - name: Check the connection string is one a migration can use
+        if: steps.can.outputs.go == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.UA_MIGRATION_DATABASE_URL }}
+        run: python check_schema_drift.py --label UA --url-only
+
       # Printed before and after, because "it ran" and "it moved" are
       # different facts and only the second one is evidence.
       - name: Apply
@@ -185,6 +214,11 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      - name: Check the connection string is one a migration can use
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+        run: python check_schema_drift.py --label production --url-only
 
       - name: Apply
         env:

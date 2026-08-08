@@ -44,6 +44,85 @@ def migration_engine():
         engine.dispose()
 
 
+# --- the connection string is one a migration can use ----------------------
+
+
+def test_a_dashboard_url_without_the_driver_is_refused():
+    """What you get by pasting Supabase's string unedited.
+
+    SQLAlchemy resolves a bare `postgresql://` to psycopg2, which this backend
+    does not install, so without this the failure is an import error naming a
+    driver nobody chose.
+    """
+    reason = check_schema_drift.unsuitable_reason("postgresql://postgres:pw@db.abc.supabase.co:5432/postgres")
+    assert reason is not None
+    assert "postgresql+psycopg://" in reason
+
+
+def test_the_transaction_pooler_is_refused():
+    """Port 6543 is right for the running app and wrong for a migration -
+    each transaction gets a different backend, so the DDL and the advisory
+    lock do not share a session."""
+    reason = check_schema_drift.unsuitable_reason(
+        "postgresql+psycopg://postgres.abc:pw@aws-0-us-east-1.pooler.supabase.com:6543/postgres"
+    )
+    assert reason is not None
+    assert "5432" in reason, "The message names the port to use instead, not just the one that is wrong."
+
+
+def test_the_session_pooler_is_accepted():
+    """Session mode: IPv4, and one backend per connection for its whole life.
+    The combination GitHub's hosted runners actually need."""
+    assert (
+        check_schema_drift.unsuitable_reason(
+            "postgresql+psycopg://postgres.abc:pw@aws-0-us-east-1.pooler.supabase.com:5432/postgres"
+        )
+        is None
+    )
+
+
+def test_the_direct_endpoint_is_accepted_but_warned_about():
+    """Not refused, because it is the best target for a migration and works
+    from a laptop with IPv6 or a project with the IPv4 add-on. Warned about,
+    because it is IPv6-only by default and hosted runners are IPv4-only, so
+    the failure it produces is a timeout that names nothing."""
+    url = "postgresql+psycopg://postgres:pw@db.abc.supabase.co:5432/postgres"
+    assert check_schema_drift.unsuitable_reason(url) is None
+    assert "IPv6" in (check_schema_drift.warn_if_hard_to_reach(url) or "")
+
+
+def test_the_local_database_warns_about_nothing():
+    assert check_schema_drift.warn_if_hard_to_reach(settings.database_url) is None
+
+
+def test_url_only_stops_before_touching_the_network(monkeypatch, capsys):
+    """The preflight migrate.yml runs before `alembic upgrade head`, so a
+    mistyped secret is caught before anything is half-applied."""
+
+    def fail(_url):
+        raise AssertionError("--url-only must not connect")
+
+    monkeypatch.setattr(check_schema_drift, "read_current_revision", fail)
+
+    assert check_schema_drift.main(["--label", "test", "--url-only"]) == 0
+    assert "usable for a migration" in capsys.readouterr().out
+
+
+def test_an_unusable_url_stops_the_run_before_it_connects(monkeypatch, capsys):
+    """Exit 2, the same as an unreachable database: both mean the check could
+    not form a verdict, which is a different thing from the schema being
+    wrong."""
+
+    def fail(_url):
+        raise AssertionError("a refused URL must not connect")
+
+    monkeypatch.setattr(check_schema_drift, "read_current_revision", fail)
+    monkeypatch.setattr(check_schema_drift.settings, "database_url", "postgresql://postgres:pw@localhost:5432/x")
+
+    assert check_schema_drift.main(["--label", "test"]) == 2
+    assert "postgresql+psycopg://" in capsys.readouterr().out
+
+
 # --- classify, as a pure function -----------------------------------------
 
 

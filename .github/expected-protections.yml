@@ -1,0 +1,166 @@
+# The repository protections RELEASING.md §8's gate table depends on, and
+# which of them are actually configured.
+#
+# The companion to expected-settings.yml, for the same reason and with the same
+# split. That file covers Settings -> Secrets and variables; this one covers
+# Settings -> Rules, Settings -> Environments and the labels. Neither is
+# visible from a checkout, and both are the kind of thing that gets set once,
+# by hand, and then silently removed.
+#
+# WHY THIS FILE EXISTS AT ALL. #375's complaint is that §8's gate is "a
+# document rather than a mechanism": three of its rows say `procedure` or name
+# a repository setting nobody has made. Making those settings is a human
+# action - no API this repository can reach will do it. What can be automated
+# is noticing, so the settings stop being something remembered and start being
+# something checked. A gate that nothing verifies is the state #375 objects to,
+# and a gate verified only on the day it was set up is the same state with a
+# delay.
+#
+# WHAT A PULL REQUEST CAN CHECK, AND WHAT ONLY A LIVE RUN CAN. The tests in
+# .github/tests/test_repository_protections.py split the same way
+# test_repository_settings.py does:
+#
+#   from the checkout   whether this file still agrees with the workflows -
+#                       above all, that every check named below can actually
+#                       report on a merge queue entry.
+#   from a live run     whether GitHub is really configured this way.
+#
+# The first half is the one with teeth day to day, because drift in the
+# workflows is what actually happens.
+
+# The branch these protections are asserted about. Everything below is scoped
+# to it; nothing here says anything about any other branch.
+branch: main
+
+# ---------------------------------------------------------------------------
+# Required status checks
+# ---------------------------------------------------------------------------
+#
+# THE MENU IS CLOSED, AND THE REASON IS A HANG RATHER THAN A FAILURE.
+# BRANCHING.md: merge queue raises its checks on the `merge_group` event, and a
+# workflow that does not trigger on that event never reports against a queue
+# entry. That does not fail the entry, it hangs it until the queue times out
+# and ejects the pull request. So a check may only be required here if its
+# workflow carries `merge_group:` - which is a fact about the workflow file,
+# and therefore something a test can insist on rather than a rule someone
+# remembers. That test is the point of this section.
+#
+# The check name is a job's `name:` where it has one and its job id otherwise,
+# because that is what GitHub reports and therefore what the setting must
+# name. `workflow` is here so the test knows where to look, not as
+# documentation.
+
+required_status_checks:
+  test:
+    workflow: client-tests.yml
+    why: >-
+      The client suite - 2190 tests across 144 files, plus typecheck, lint,
+      format and the build. TESTING.md item 19 records what it cannot see
+      (jsdom has no WebGL, so every map test mocks maplibre-gl), which is an
+      argument for UA rather than against requiring this.
+
+  pytest:
+    workflow: pipeline-tests.yml
+    why: >-
+      The pipeline suite. The half of the system that decides where the trail
+      is drawn and how far along it a hiker is, so a red run here is the
+      safety-critical set in RELEASING.md §8b rather than an inconvenience.
+
+  pytest-postgres:
+    workflow: backend-tests.yml
+    why: >-
+      The backend suite against a real Postgres service container, which is
+      what makes gate 4 - migrations up, down and `alembic check` - a check
+      rather than a claim. It is also the job that catches a migration chain
+      with two heads, which has happened.
+
+  PR has a linked issue:
+    workflow: pr-issue-link.yml
+    why: >-
+      CONTRIBUTING.md's tracker rule, and the only one of the four that is
+      about process rather than correctness. Required because the exemption it
+      polices is a label - a pull request with no issue and no `no-issue` label
+      is the case it exists for, and a check nobody has to satisfy does not
+      police anything.
+
+# Checks that exist, look like they belong above, and must stay out.
+#
+# Declared rather than merely omitted so that leaving one out is a recorded
+# decision instead of an oversight - and so a test can fail if the reason ever
+# stops being true.
+never_required:
+  Manifest agrees with the workflows:
+    workflow: settings-check.yml
+    why: >-
+      No `merge_group:` trigger, so requiring it is the hang above rather than
+      a stricter gate. Left out on measured evidence rather than principle:
+      BRANCHING.md records five attempts on the pull request that added those
+      triggers, in which any proposed change to settings-check.yml at all - a
+      comment was enough - produced `action_required` with zero jobs, and only
+      restoring the file byte-for-byte turned it green. The fix that would let
+      this be required is splitting its two jobs into two workflows so the half
+      reading secrets and the half reading the checkout stop sharing an `on:`
+      block. Until somebody does that, this stays out.
+
+  Settings are configured:
+    workflow: settings-check.yml
+    why: >-
+      Deliberately does not run on `pull_request` at all - GitHub passes no
+      secrets to a fork's run, so the job would fail for every outside
+      contributor for a reason none of them could fix. A required check that
+      cannot report on a pull request blocks every pull request.
+
+# ---------------------------------------------------------------------------
+# Branch protection settings that are not about which checks run
+# ---------------------------------------------------------------------------
+
+settings:
+  require_branches_up_to_date:
+    expected: false
+    why: >-
+      Must stay OFF. BRANCHING.md §1: with it on, GitHub disables the merge
+      button until the branch is current, and the whole branching strategy -
+      which explicitly tells contributors not to merge `main` in to stay
+      current - becomes something nobody can follow. It is also the setting
+      that specifically punishes concurrent work by serialising it, and five
+      branches open at once is the normal state here. The merge queue is what
+      makes it unnecessary rather than merely tolerable: the queue builds each
+      entry against `main` plus everything ahead of it, which is the guarantee
+      this setting was reaching for, without serialising anybody.
+
+# ---------------------------------------------------------------------------
+# Environments
+# ---------------------------------------------------------------------------
+
+environments:
+  production:
+    required_reviewers_at_least: 1
+    why: >-
+      What makes RELEASING.md §12 - only the maintainer ships - checked by
+      GitHub rather than by discipline. Two workflows already run under this
+      environment and neither is gated by anything today:
+      publish-vector-data.yml, which overwrites the map data hikers download,
+      and migrate.yml's production job, which applies schema changes to the
+      database a club's moderation queue lives in. Both are dispatch-only, so
+      the environment is the only thing that could ask a second time.
+
+# ---------------------------------------------------------------------------
+# Labels
+# ---------------------------------------------------------------------------
+#
+# Gate 11 - "no open issue labelled release-blocker" - is checkable by API
+# once these exist, and unanswerable until they do: a search for a label that
+# does not exist returns no issues, which reads exactly like a clean gate.
+
+labels:
+  release-blocker:
+    why: >-
+      This release does not go out. RELEASING.md §8b: a finding in the
+      safety-critical set can never become a follow-up issue, and this label is
+      how that distinction is recorded somewhere a query can see.
+
+  release-followup:
+    why: >-
+      The next release carries it. The other half of the same decision - the
+      one that makes `release-blocker` mean something, because a tracker with
+      only a blocking label grows a habit of not applying it.

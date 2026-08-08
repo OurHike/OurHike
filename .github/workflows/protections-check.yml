@@ -1,0 +1,176 @@
+# Asks whether Settings -> Rules, Settings -> Environments and the labels hold
+# what RELEASING.md §8's gate table depends on.
+#
+# The companion to settings-check.yml, which asks the same shape of question
+# about Settings -> Secrets and variables. Both exist because a checkout cannot
+# answer anything about the repository's own configuration, and both are aimed
+# at the same failure: something set once, by hand, and later removed by
+# somebody who had a good reason and no way to know what depended on it.
+#
+# WHY IT IS NOT ENOUGH TO JUST SET THEM. #375's complaint is that §8's gate is
+# "a document rather than a mechanism". Making the settings is a human action -
+# no API this repository can reach will do it. Verifying them is not, and a
+# gate checked only on the day it was configured is the same document with a
+# delay.
+#
+# READ-ONLY, AND NOTHING HERE IS SECRET. Unlike settings-check.yml there is no
+# value to be careful about: branch protection, environments and labels are
+# configuration, not credentials, so this workflow prints what it found and the
+# tests can quote it in a failure message. That is why the live half runs the
+# comparison in the open rather than reducing anything to names first.
+#
+# THE PERMISSION IS THE FRAGILE PART. Branch protection and environments need
+# `administration: read`, which is requested below and which an organization
+# policy can still withhold. When that happens the API returns 403 and this job
+# must fail loudly rather than skip - a protections check that goes green
+# having read nothing is worse than no protections check, because it answers
+# the question wrongly instead of not at all. Hence the explicit
+# PROTECTIONS_CHECK_LIVE guard, borrowed from settings-check.yml.
+#
+# NOT ON pull_request, for the same reason settings-check.yml's `configured`
+# job is not: a fork's run gets no elevated token, so this would fail for every
+# outside contributor for a reason none of them could fix. The half of the
+# suite that reads only the checkout - which is the half that catches real
+# drift - runs on every pull request through settings-check.yml's manifest job,
+# because both suites live in .github/tests and pytest collects them together.
+
+name: Protections check
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Mondays, 07:45 UTC. Ten minutes behind settings-check.yml so the two
+    # never contend, and off the hour for the reason every cron here records:
+    # GitHub queues everything submitted at :00 behind everyone else's.
+    - cron: "45 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Branch protection and the environments list. Without it both reads 403 and
+  # the job fails saying so.
+  administration: read
+  # The labels list.
+  issues: read
+
+jobs:
+  configured:
+    name: Protections are configured
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .github/tests
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      # Read in Python rather than inside the github-script step below.
+      # `actions/github-script` provides @actions/* and Octokit and nothing
+      # else - `require('js-yaml')` is not available to it - and the branch
+      # this is all scoped to belongs in one place, which is the manifest.
+      - name: Which branch the manifest is about
+        id: manifest
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import pathlib
+          import yaml
+
+          manifest = yaml.safe_load(pathlib.Path("../expected-protections.yml").read_text(encoding="utf-8"))
+          print(f"branch={manifest['branch']}")
+          PY
+
+      # Each read is separate and each failure is named, so a policy that
+      # withholds one permission does not look like the repository being
+      # misconfigured in some other way.
+      - name: Read how GitHub is configured
+        id: read
+        uses: actions/github-script@v7
+        env:
+          BRANCH: ${{ steps.manifest.outputs.branch }}
+        with:
+          script: |
+            const branch = process.env.BRANCH;
+            const failures = [];
+
+            let requiredChecks = [];
+            let upToDate = null;
+            try {
+              const {data} = await github.rest.repos.getBranchProtection({
+                owner: context.repo.owner, repo: context.repo.repo, branch,
+              });
+              const checks = data.required_status_checks;
+              // `checks` is absent when the branch is protected but requires
+              // no status checks, which is a real answer (an empty set) and
+              // not a missing one.
+              requiredChecks = checks ? (checks.checks || []).map(c => c.context) : [];
+              upToDate = checks ? Boolean(checks.strict) : false;
+            } catch (error) {
+              if (error.status === 404) {
+                // Not an error to read - it is the answer. `main` has no
+                // protection at all, which is exactly what #375 describes.
+                requiredChecks = [];
+                upToDate = false;
+                core.warning(`${branch} has no branch protection at all.`);
+              } else {
+                failures.push(`branch protection: ${error.status} ${error.message}`);
+              }
+            }
+
+            const environments = {};
+            try {
+              const {data} = await github.rest.repos.getAllEnvironments({
+                owner: context.repo.owner, repo: context.repo.repo,
+              });
+              for (const environment of data.environments || []) {
+                const reviewers = (environment.protection_rules || [])
+                  .filter(rule => rule.type === 'required_reviewers')
+                  .flatMap(rule => rule.reviewers || []);
+                environments[environment.name] = reviewers.length;
+              }
+            } catch (error) {
+              failures.push(`environments: ${error.status} ${error.message}`);
+            }
+
+            let labels = [];
+            try {
+              labels = (await github.paginate(github.rest.issues.listLabelsForRepo, {
+                owner: context.repo.owner, repo: context.repo.repo, per_page: 100,
+              })).map(label => label.name);
+            } catch (error) {
+              failures.push(`labels: ${error.status} ${error.message}`);
+            }
+
+            if (failures.length) {
+              core.setFailed(
+                'Could not read the repository configuration, so nothing below was checked. ' +
+                'Branch protection and environments need `administration: read`, which this workflow requests and ' +
+                'an organization policy can withhold:\n  ' + failures.join('\n  ')
+              );
+              return;
+            }
+
+            core.info(`required checks on ${branch}: ${JSON.stringify(requiredChecks)}`);
+            core.info(`strict (up to date): ${upToDate}`);
+            core.info(`environments: ${JSON.stringify(environments)}`);
+            core.setOutput('live', JSON.stringify({
+              required_status_checks: requiredChecks,
+              require_branches_up_to_date: upToDate,
+              environments,
+              labels,
+            }));
+
+      - name: Check them against the manifest
+        env:
+          LIVE_PROTECTIONS: ${{ steps.read.outputs.live }}
+          # The guard that turns a silent skip into a failure. Without it, an
+          # empty LIVE_PROTECTIONS would skip every live test and pass.
+          PROTECTIONS_CHECK_LIVE: "1"
+        run: python -m pytest test_repository_protections.py -v

@@ -297,7 +297,7 @@ What must be true before a tag is pushed. **Hard** means the release does not ha
 
 | | Check | | Enforced by |
 |---|---|---|---|
-| 1 | All four suites green on the release commit, **unscoped** | hard | branch protection: required status checks |
+| 1 | All four suites green on the release commit, **unscoped** | hard | branch protection: required status checks — declared in `.github/expected-protections.yml`, verified by `protections-check.yml` |
 | 2 | `check-build-output.mjs` passes — a build that cannot draw a map does not ship | hard | already inside `npm run build` |
 | 3 | Ordering-sensitive client tests run three times, green each time | hard | CLAUDE.md; [#343](https://github.com/OurHike/OurHike/issues/343) is the open instance |
 | 4 | Migrations up, down, and `alembic check`, against real Postgres | hard | `backend/tests/test_migrations.py` |
@@ -307,7 +307,7 @@ What must be true before a tag is pushed. **Hard** means the release does not ha
 | 8 | Backwards-compatibility checks (§8) | hard | tests |
 | 9 | `check_freshness.py` — all four upstreams unchanged or knowingly changed | hard | LAUNCH_CHECKLIST.md 7 |
 | 10 | Release review complete, findings triaged (§9) | hard | procedure |
-| 11 | No open issue labelled `release-blocker` | hard | procedure, checkable by API |
+| 11 | No open issue labelled `release-blocker` | hard | procedure, checkable by API — `protections-check.yml` asserts the labels exist, without which the query answers "clean" |
 | 12 | Notes written, name assigned, figure cited | hard | `pages.yml` refuses a tag with no `releases/<version>-*.md` |
 | 13 | Field-validated thresholds actually field-validated | **soft** | stated in the notes — see §8d |
 | 14 | Real-device pass on iOS and Android | **soft** until Phase 3 | stated in the notes |
@@ -319,6 +319,21 @@ merging, it's just visible on the PR" — and the scoping was deliberately built
 
 Gate 11 needs two new labels: `release-blocker` (this release does not go out) and
 `release-followup` (the next one carries it).
+
+**Both are still clicks, and both are now checked.** Nothing this repository can reach
+will make a repository setting — that asymmetry is why
+[#375](https://github.com/OurHike/OurHike/issues/375) is open. What is automatable is
+noticing, so [`.github/expected-protections.yml`](.github/expected-protections.yml)
+declares what these rows depend on and `protections-check.yml` confirms it weekly
+against the live API. A gate verified only on the day it was configured is a document
+with a delay.
+
+The manifest also closes the trap that makes gate 1 dangerous to turn on carelessly.
+Exactly four checks are safe to require, because a required check whose workflow has no
+`merge_group:` trigger **hangs** a queue entry rather than failing it —
+[BRANCHING.md](BRANCHING.md) measured that, and
+`.github/tests/test_repository_protections.py` now fails on a pull request that would
+reintroduce it, rather than leaving it to be discovered by a wedged queue.
 
 ### 8a. What "zero errors" can and cannot mean
 

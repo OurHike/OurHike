@@ -89,7 +89,7 @@ jobs:
     # request and from a queue entry, because it cannot answer on either. What
     # keeps that safe is that it must never be named a required check, which is
     # already true of it and stays true (BRANCHING.md lists what to require).
-    if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     defaults:
       run:

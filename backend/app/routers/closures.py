@@ -10,11 +10,12 @@ Closures reuse "the same permission tier" - read here as the same split
 Report a Problem establishes, not a stated decision of its own.
 """
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user, require_role
 from app.core.orm import commit_and_refresh, get_or_404
+from app.core.time import to_naive_utc
 from app.db.session import get_db
 from app.models.closure import Closure, ModerationStatus
 from app.models.profile import Profile
@@ -77,6 +78,36 @@ def update_closure(
         closure.reason_type = payload.reason_type
     if payload.note is not None:
         closure.note = payload.note
+
+    # `model_fields_set` rather than a None check, so a maintainer can put a
+    # date back to unknown - see ClosureUpdate's docstring for why these three
+    # differ from the fields above.
+    provided = payload.model_fields_set
+
+    def settled(field: str, incoming: object) -> object:
+        return incoming if field in provided else getattr(closure, field)
+
+    closed_since = settled("closed_since", to_naive_utc(payload.closed_since))
+    expected_reopen = settled("expected_reopen", to_naive_utc(payload.expected_reopen))
+
+    # Checked against the state this request would leave behind, not against
+    # the payload, and BEFORE anything is assigned. Two reasons, in that
+    # order. The dates arrive in whichever order a maintainer happens to send
+    # them, quite possibly in separate requests days apart, so a payload-only
+    # check passes on every second half of an inconsistent pair. And a check
+    # that runs after the assignment leaves the rejected values sitting on a
+    # live ORM instance, where the next autoflush - any query on this session,
+    # not necessarily a commit - can write them out behind the 422.
+    if closed_since is not None and expected_reopen is not None and expected_reopen < closed_since:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="expected_reopen cannot be before closed_since",
+        )
+
+    closure.closed_since = closed_since
+    closure.expected_reopen = expected_reopen
+    if "reroute_url" in provided:
+        closure.reroute_url = payload.reroute_url
 
     return commit_and_refresh(db, closure)
 

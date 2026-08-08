@@ -16,10 +16,19 @@
 import { closureReasonLabel, type Closure } from '../lib/closureBanner'
 import { syncAgeLabel } from '../lib/syncAge'
 
+// The three extras beyond the shared `Closure` shape, each backed by a
+// column as of #245. They were four; `marked_by` is gone.
+//
+// It rendered as "Marked by <name>", and the only sources for that name were
+// `verified_by`/`reported_by` - profile ids, whose display names live behind
+// `/profiles` and an anonymity position that is stored and not yet applied
+// (#252). The other three are facts about the closure; this one was a fact
+// about a person, and the app has not settled when it shows those. A field
+// nothing can fill is a quiet lie the type system exists to prevent, and of
+// the two ways to end it, deleting is the reversible one.
 export interface ClosureDetail extends Closure {
   closed_since: Date | null
   expected_reopen: Date | null
-  marked_by: string | null
   reroute_url: string | null
 }
 
@@ -85,10 +94,6 @@ export function ClosureSheet({
         <p className="closure-sheet__meta">
           {`Expected to reopen ${longDate(closure.expected_reopen)}`}
         </p>
-      )}
-
-      {closure.marked_by !== null && (
-        <p className="closure-sheet__meta">{`Marked by ${closure.marked_by}`}</p>
       )}
 
       {closure.reroute_url !== null && (

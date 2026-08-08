@@ -115,6 +115,26 @@ never_required:
 # ---------------------------------------------------------------------------
 
 settings:
+  # ONE MAINTAINER, and the two settings that would lock them out.
+  #
+  # This repository has a single maintainer, and two of GitHub's protections
+  # behave differently for one person than for a team - in opposite
+  # directions. Both are recorded here because both are a click away from
+  # making the repository unusable by the only person who can use it, and
+  # neither failure explains itself.
+  required_approving_review_count:
+    expected: 0
+    why: >-
+      Must stay 0. GitHub does not let an author approve their own pull
+      request - a platform rule with no toggle, unlike everything else in this
+      file. With one maintainer, requiring even one approval means no pull
+      request is ever mergeable: there is nobody who can give it. The escapes
+      are worse than the rule - an admin bypass hollows it out, and a second
+      account to approve one's own work is a fiction the audit trail records
+      as review. Note this applies to the agent-authored pull requests too:
+      the token authenticates as the maintainer, so GitHub considers them
+      their own. Revisit when there is a second person, not before.
+
   require_branches_up_to_date:
     expected: false
     why: >-
@@ -135,6 +155,7 @@ settings:
 environments:
   production:
     required_reviewers_at_least: 1
+    prevent_self_review: false
     why: >-
       What makes RELEASING.md §12 - only the maintainer ships - checked by
       GitHub rather than by discipline. Two workflows already run under this
@@ -143,6 +164,20 @@ environments:
       and migrate.yml's production job, which applies schema changes to the
       database a club's moderation queue lives in. Both are dispatch-only, so
       the environment is the only thing that could ask a second time.
+
+      `prevent_self_review` must stay FALSE, and this is where an environment
+      differs from a pull request rather than matching it. GitHub allows a
+      required reviewer to approve their own deployment by default; "Prevent
+      self-review" is an opt-in toggle added in October 2023. Off, a single
+      maintainer can be their own reviewer and the gate does real work - a
+      publish or a migration waits for a deliberate approval instead of firing
+      the moment a dispatch is submitted. On, with one reviewer, it is the
+      same lockout as requiring a pull request approval: nobody can ever
+      approve, and both of these workflows become undispatchable.
+
+      So the gate here is not a second pair of eyes and should not be
+      described as one. It is a speed bump against an accidental dispatch,
+      which is the failure actually available to a solo maintainer.
 
 # ---------------------------------------------------------------------------
 # Labels

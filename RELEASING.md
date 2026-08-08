@@ -476,6 +476,15 @@ How:
 
 1. `/code-review` over `v(previous)..HEAD` at high effort, plus a read of the full
    diff by a human for anything about position, water or hazard.
+
+   **Today that human is the maintainer reviewing their own work**, which is worth
+   naming rather than leaving implied. It is why this step is a *release* review over
+   a combined diff rather than a per-pull-request approval: an approval a solo
+   maintainer gives themselves is a formality GitHub will not even record, while
+   reading fifty-one merged changes as the one thing that ships is a different act
+   with a different chance of catching something. The review is left as a Comment
+   review on the release pull request — the Approve option is unavailable to an
+   author — and step 4's counts are what make it auditable afterwards.
 2. Every finding lands in one of exactly three places: **fixed on the release
    branch**, **an issue labelled `release-followup`** and milestoned to the next
    release, or **`release-blocker`** and the release waits.
@@ -561,6 +570,24 @@ under `environment: production`, so the concept is in place; what it lacks is th
 protection rule. An environment gate is checked by GitHub rather than by discipline,
 which is the difference between this rule and the one it extends.
 
+**With one maintainer, that gate is a speed bump rather than a second pair of eyes,
+and it is worth saying which.** GitHub allows a required reviewer to approve their own
+deployment — "Prevent self-review" is an opt-in toggle, and
+[`.github/expected-protections.yml`](.github/expected-protections.yml) records that it
+must stay off, because with a single reviewer it locks the only person who can approve
+out of approving. So the maintainer reviews their own deployment, and what the gate
+buys is real but narrow: a publish that overwrites the map hikers have downloaded, or a
+migration reaching the database a club moderates, waits for a deliberate approval
+instead of firing the moment a dispatch is submitted. That is the failure actually
+available to a solo maintainer — an accidental dispatch, not an unreviewed one.
+
+**Pull requests are the opposite case, and the difference is not a preference.** Nobody
+can approve their own pull request on GitHub: it is a platform rule with no toggle. So
+`main` requires status checks and **no approvals** — a requirement of one would mean
+nothing here is ever mergeable, including the agent-authored pull requests, since the
+token authenticates as the maintainer and GitHub counts those as theirs. Both of these
+are asserted rather than remembered, in `.github/tests/test_repository_protections.py`.
+
 ## 13. Status
 
 **Built:**
@@ -584,11 +611,16 @@ followed:**
   ([#371](https://github.com/OurHike/OurHike/issues/371)).
   Until `UA_API_BASE_URL` exists, UA queues reports in the outbox — which is a
   supported state, not a broken one.
-- **The repository settings** — required status checks, the `production`
-  environment's reviewer, and the two labels
-  ([#375](https://github.com/OurHike/OurHike/issues/375)).
+- **The repository settings** — required status checks and the `production`
+  environment's reviewer ([#375](https://github.com/OurHike/OurHike/issues/375)).
   These are the difference between §8's table being a mechanism and being a
-  document, and none of them can be set from a checkout.
+  document, and none of them can be set from a checkout. **The two labels are done**
+  (2026-08-08), which closes gate 11's half of that list.
+
+  What *is* built is the noticing: `.github/workflows/protections-check.yml` reads the
+  live configuration weekly and reports what is missing, so the remaining two stop
+  being something to remember. Its first real run found exactly the state described
+  above — no required checks, no environment reviewer — and said so.
 - **The compatibility checks** ([#374](https://github.com/OurHike/OurHike/issues/374)).
   Deliberately last: the OpenAPI diff and the stored-data fixtures both compare
   against a *previous release*, and there is no previous release to compare to

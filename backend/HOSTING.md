@@ -175,6 +175,14 @@ independent arguments, same conclusion — which is the strongest reason to stop
    file does.
 
 **Revisit if:** Cloudflare Containers gain a first-class always-on mode with no Durable
-Object wrapper; or the client learns to show an unreachable-backend state, making the free
-tiers viable; or real traffic shows the always-on machine idle enough that the constraint
-was never worth $2.
+Object wrapper; or real traffic shows the always-on machine idle enough that the constraint
+was never worth $2; **or the safety read path stops going through the backend at all** —
+which is [features/CONDITIONS_DELIVERY.md](../features/CONDITIONS_DELIVERY.md), designed
+2026-08-08 in answer to this document. That design serves closures as a published artifact
+from R2, which removes the cold-start argument for `min_machines_running = 1` entirely and
+brings the scale-to-zero rows above back into scope.
+
+**Nothing here changes until that lands and is being read**, and the ordering is
+deliberate: until the baseline is actually serving closures, the always-on machine is the
+only thing delivering them. See that document's "Order of work" — hosting is step 4 of 4,
+and gets its own decision rather than following automatically.

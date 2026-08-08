@@ -4,6 +4,8 @@ Companion to [README.md](README.md), [../TECHNICAL_ARCHITECTURE.md](../TECHNICAL
 
 Scope is **trail data only** — the artifacts `publish.py` ships to R2. User accounts, condition reports, closures and comments live in Postgres/Supabase behind the FastAPI backend and are untouched by any of this.
 
+**One half of that sentence has a design against it now.** [../features/CONDITIONS_DELIVERY.md](../features/CONDITIONS_DELIVERY.md) (designed 2026-08-08, not yet built) publishes *verified* closures and reports as artifacts under `conditions/`, so the public read path stops going through the backend. Accounts, comments and everything unmoderated stay exactly where this sentence puts them. The release machinery below — versioning, retention, the `latest.json` manifest — is what that design reuses rather than rebuilds; what it adds is a second producer writing into the same layout, which is the part worth reading this document for before building it.
+
 ## Why: what breaks today
 
 `publish.py` writes every artifact to a **flat key at the bucket root** — `background.pmtiles`, `trails.geojson`, `poi_shelter.geojson` — and the client builds exactly those URLs from a build-time `VITE_DATA_BASE_URL` (`client/src/lib/config.ts:23-25`). A publish is a `PutObject` overwrite of a live key. Four consequences, in rough order of how badly they hurt a hiker:

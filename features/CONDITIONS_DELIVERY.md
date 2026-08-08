@@ -1,0 +1,184 @@
+# How closures and verified reports reach a hiker
+
+Companion to [MAP_OPTIONS.md](MAP_OPTIONS.md) (what a closure *is*) and
+[REPORT_A_PROBLEM.md](REPORT_A_PROBLEM.md) (what a report *is*). This document owns the
+**delivery path** for both: how public safety data gets from the moderation queue onto a
+phone, and why that path should not run through an always-on server.
+
+It does not restate the closure or report designs, and it does not own hosting —
+[backend/HOSTING.md](../backend/HOSTING.md) does, and its "Revisit if" clause names this
+document as the thing that would change its answer.
+
+## The problem, stated as a value rather than a bill
+
+Today `GET /closures` is served by the FastAPI backend. That makes the safety-critical
+read path depend on the single most fragile component in the system: one container, on one
+host, on one account, on one person's card.
+
+That is not primarily a cost problem — it is about **$2/month**, and
+[#393](https://github.com/OurHike/OurHike/issues/393) is emphatic that the host line is the
+wrong thing to optimize. It is a values problem, and three of them:
+
+- **#4 Trustworthy above all.** Today, if the backend is unreachable, a hiker gets *no
+  closure warnings and no indication that is why*. `App.tsx` holds closures as
+  `ClosureSummary[] | null` and the null branch renders nothing. "No closures" and "could
+  not ask" are indistinguishable on screen — the same ambiguity
+  [#249](https://github.com/OurHike/OurHike/issues/249) records for maintainer assignments,
+  on the read `App.tsx:508-510` calls "the half a hiker walks into."
+- **#8 Sustainable.** *"Design so the project can survive turnover in maintainers."* A
+  lapsed card silently removes closure warnings for everyone.
+- **#3 Open by default / #7 Built to be inherited.** A club forking this inherits the code
+  but not the running service. The safety data arrives only if they stand up a backend.
+
+Worth noting this is a *return*, not a departure:
+[TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md)'s Hosting section already calls
+the backend "a real, deliberate cost/complexity increase over the original 'no servers to
+run' MVP framing."
+
+## The seam already exists
+
+`moderation_status == verified` is the line the public/private split already runs along.
+`closures.py`'s docstring: browsing needs no account; `reports.py` filters public queries
+on the same flag.
+
+So **everything a hiker reads without signing in is already public, unauthenticated and
+read-mostly** — which is the exact shape of the trail data this project already serves
+brilliantly as static bytes on R2 with free egress. The safety data is being served
+dynamically because it happens to live in Postgres, not because it needs to be.
+
+## The design
+
+**Split by read versus write, not by feature.** The read path becomes a published
+artifact; the write path stays on the backend and becomes latency-tolerant.
+
+### 1. What gets baked
+
+A new artifact family published by the existing pipeline, alongside the trail exports:
+
+```
+conditions/closures.json      verified closures
+conditions/reports.json       verified, publicly-visible reports
+```
+
+Both referenced from `latest.json` with a sha256, exactly like every other artifact —
+`pipeline/publish.py` (399 lines, with `lib/r2_keys.py` enforcing the key rules) already
+does this and needs an artifact added, not a mechanism built. That matters for **value #8's
+preference for boring technology**: this is not new machinery.
+
+**Fields the bake must drop: `reported_by` and `verified_by`.** They are Supabase auth
+user ids — stable identifiers tying a person to a place and a time. `SAYING_THANKS.md`
+declines to publish that a named volunteer is at a known place on a predictable schedule
+without consent, and a published artifact is the most permanent form of publishing
+available here.
+
+*Separately and more urgently:* `ClosureOut` currently returns both fields on the
+unauthenticated `GET /closures`. That is a live question about the existing endpoint, not
+something this design introduces, and it wants its own issue rather than a quiet fix
+buried in this one.
+
+**Fields kept:** `id`, `trail_id`, `start_mile_marker`, `end_mile_marker`, `reason_type`,
+`note`, `status`, `closed_since`, `expected_reopen`, `reroute_url`, `verified_at`.
+
+### 2. How it is produced
+
+A scheduled job reads verified rows from Postgres and writes the artifacts — the same
+shape as `publish-vector-data.yml`, on a daily schedule.
+
+**Daily is the maintainer's stated tolerance** (2026-08-08): *"a closure can be latent by a
+day. we won't be adjusting minute by minute."* Recorded here because it is the number the
+whole design rests on, and because a future reader will otherwise assume it was guessed.
+
+**It needs a read-only database credential, distinct from the two that already exist.**
+The repository already draws this distinction twice — `*_MIGRATION_DATABASE_URL` is not
+`DATABASE_URL`, and the report-photo credentials carry an `R2_PHOTO_` prefix precisely so
+they cannot be confused with the publishing ones. A job that only ever reads verified rows
+should hold a credential that can only do that.
+
+### 3. How the client reads it
+
+Two tiers, and the second is optional:
+
+1. **Baseline** — fetch `conditions/closures.json` from R2 at startup, with the map data.
+   No account, no backend, CDN-backed, free egress. Always available.
+2. **Live refresh** — if `VITE_API_BASE_URL` is set *and* reachable, `GET /closures` for
+   fresher data, overlaid on the baseline.
+
+**The state model has to change, and this is the part that is not optional.** Closures stop
+being `ClosureSummary[] | null` and become three distinguishable states:
+
+| State | Meaning | What a hiker sees |
+| --- | --- | --- |
+| `live` | fetched from the backend just now | closures, no staleness note |
+| `baseline` | from the published artifact | closures, **"as of <date>"** |
+| `unavailable` | neither reachable | an explicit "conditions unavailable" |
+
+That third row is the #249 fix, and the second row is **value #4 doing real work** —
+*"honesty about uncertainty (e.g., 'reported 3 days ago' vs 'confirmed today')."* A
+staleness stamp is not decoration here; it is the feature that makes a day-old baseline
+trustworthy instead of misleading.
+
+Note the failure mode this removes: today, an unreachable backend means *no warnings at
+all*. With a baseline, the worst case is *day-old warnings, labelled as day-old*. That is
+strictly safer.
+
+### 4. What this does to hosting
+
+Once closures come from R2, the safety argument for `min_machines_running = 1` is gone,
+because nothing a hiker reads on the trail touches the backend any more. What remains is
+latency-tolerant by construction:
+
+- **Report submission** already queues in an offline outbox with its authored timestamp.
+  A cold start is invisible to it.
+- **Moderation** is a handful of trusted people doing deliberate work at a desk.
+- **Photo loads** tolerate a few seconds.
+
+So the backend can scale to zero, and the free tiers HOSTING.md ruled out come back into
+scope. **This is a consequence, not the goal** — the saving is ~$2/month, and chasing that
+would be exactly the mistake #393 warns about.
+
+### 5. What stays on the backend, and why it is irreducible
+
+- **All writes** — `POST /closures`, `POST /reports`, the role-gated `PATCH`.
+- **`_visible_to`** — the unmoderated/private view. **This does not move into SQL policies.**
+  #393 rejected PostgREST-with-RLS precisely because that rule has drifted once already
+  when it lived in two places. This design *shrinks* the surface it governs rather than
+  relocating it: everything public is baked, so `_visible_to` only ever answers for
+  authenticated, unmoderated reads.
+- **Photo presigning** — needs the R2 signing key, which cannot live on a phone.
+- **Per-user private state** — profiles, preferences, hikes.
+- **`GET /moderation/queue`.**
+
+### 6. Honest costs
+
+- **Up to a day of staleness**, accepted above.
+- **A dismissed closure lingers.** If a moderator dismisses a verified closure, the
+  baseline keeps showing it until the next bake. The live tier corrects it whenever the
+  backend is reachable, and dismissal-after-verification is rarer than creation — but this
+  is the one case where the baseline is *wrong* rather than merely old, and it should be
+  named rather than discovered.
+- **A new scheduled job**, with a credential and a failure mode of its own. A bake that
+  silently stops produces a baseline that ages without saying so — so the artifact carries
+  its own generation timestamp, and the client renders it. Staleness must be visible in
+  the data, not inferred from the schedule.
+- **It removes no vendor.** Supabase, R2 and a (now scale-to-zero) host all remain.
+
+### 7. What it buys, restated
+
+A fork points at its own R2 bucket and the safety read path works, with no account handoff
+and no backend at all. That is **#3 and #7 implemented** rather than aspired to — and it is
+the thing switching hosts could never have delivered.
+
+## Order of work
+
+The ordering is load-bearing: **do not relax `min_machines_running` until the baseline is
+actually being served and read.** Until then the always-on machine is the only thing
+delivering closures.
+
+1. Bake and publish `conditions/closures.json` (pipeline + scheduled workflow + read-only
+   credential).
+2. Client reads the baseline, with the three-state model and the staleness stamp.
+3. Extend to `conditions/reports.json`.
+4. Only then revisit hosting — HOSTING.md's "Revisit if" clause, with its own decision.
+
+The privacy question in §1 about `ClosureOut` is not in this sequence deliberately: it
+concerns the endpoint as it exists today and should not wait for any of this.

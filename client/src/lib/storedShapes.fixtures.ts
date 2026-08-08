@@ -23,9 +23,17 @@
 // N = 1, and honestly so: `git tag -l` is empty and releases/ holds only a
 // README, so there is no shipped release to capture. This records the shape
 // as of the baseline below, which is what the release process attaches to
-// going forward. RELEASING.md §14.3 - how many releases back to support - is
-// still a maintainer decision; when it is answered this file grows a second
-// map, not a second meaning.
+// going forward. Each release adds a map; none of them replaces this one.
+//
+// **Entries here are kept indefinitely, and that is deliberately NOT the
+// backend's rule.** RELEASING.md §8c bounds API support at three releases
+// plus ninety days from supersession, because holding the schema still has a
+// running cost. This surface has almost none: the penalty for failing to read
+// an old stored shape is a 1.18 GB re-download at a resupply stop, and the
+// price of preventing it is a fallback in the reader and a fixture that is
+// already written. Nothing here ages out. If an entry is ever removed, it is
+// because the app deliberately stopped supporting an upgrade path, and that
+// is a decision with a release note attached rather than a tidy-up.
 
 /** What the entries below describe. Not a git tag - none exists yet. */
 export const BASELINE_LABEL = 'pre-1.0 baseline, recorded 2026-08-08'

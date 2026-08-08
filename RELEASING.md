@@ -368,14 +368,66 @@ Four surfaces, each with a check rather than a promise:
 
 | Surface | What breaks | The check |
 |---|---|---|
-| **Stored client data** | An update that cannot read the previous release's IndexedDB orphans a downloaded archive or drops queued reports. | A fixture of each of the last N releases' stored shapes, which the current build must read. Written at release time, kept afterwards. |
-| **Backend API** | Old clients stay in the field — a PWA can be served from cache, and an app-store build cannot be forced forward at all. A removed field 404s somebody's report. | Diff the OpenAPI document against the previous release's attached copy. Removals and narrowings fail. |
+| **Stored client data** | An update that cannot read the previous release's IndexedDB orphans a downloaded archive or drops queued reports. | A fixture of each supported release's stored shapes, which the current build must read. Written at release time, kept afterwards. `client/src/lib/storedShapes.fixtures.ts`. |
+| **Backend API** | Old clients stay in the field — a PWA can be served from cache, and an app-store build cannot be forced forward at all. A removed field 404s somebody's report. | Diff the OpenAPI document against **every** retained release's attached copy. Removals and narrowings fail. `backend/openapi_baselines/`, enforced by `backend/tests/test_openapi_compat.py`. |
 | **Data artifacts** | A key a released client builds stops resolving. | R2_LAYOUT.md already forbids renaming a published key; `verify_release.py` check 19 already re-verifies the currently released folder. Extend to every folder a supported release pins. |
-| **Migrations** | A column dropped in the same release that stops writing it breaks the previous release, which is still running during the rollout. | Expand and contract across two releases: add and backfill in one, remove in a later one. Never both. |
+| **Migrations** | A column dropped in the same release that stops writing it breaks the previous release, which is still running during the rollout. | Expand and contract across two releases: add and backfill in one, remove in a later one. Never both. `backend/tests/test_migration_expand_contract.py`. |
 
 The stored-data fixture is the one worth building first, because it is the one whose
 failure costs a hiker a gigabyte on a mountain, and the one nothing currently watches
 at all.
+
+**Every retained release, not only the oldest.** Compatibility is not transitive, and
+the mistake is a tempting one: a field added in N-2 and removed today is absent from
+N-3's document, so a diff against N-3 alone sees nothing while every N-2 client in the
+field reads it. Each supported release is its own claim and gets its own diff.
+
+#### How far back "supported" reaches
+
+**Three releases, and three is the least important part of the answer** — §14.3 asked
+for a number, and a number on its own is a wish. This is
+[DATA_RELEASES.md](pipeline/DATA_RELEASES.md)'s retention rule with the same shape and
+a different verb: there, dropping an entry deletes bytes from R2; here it stops the
+backend promising to answer that release's clients. The two are deliberately the same
+policy, because a client that can still fetch its map and can no longer file a report
+— or the reverse — is a worse failure than either window being short.
+
+| Rule | Why |
+|---|---|
+| The **current** release is never eligible | Nothing has taken over from it |
+| A **pinned** release is never eligible, at any age | The escape hatch — see below |
+| The **3 most recent** are kept regardless of age | The floor |
+| Everything else is kept **90 days from supersession** | The clock |
+
+**The clock runs from supersession, not publication**, and that is the half a
+count-only rule gets wrong. A release that stayed current for six months must not age
+out from under the hikers who installed during those six months the moment three quick
+releases follow it. With §14.5's cadence question still open — release-when-ready is
+on the table — three releases can land in a fortnight, so "the last three" alone can
+mean "the last two weeks".
+
+**Three releases does not cover a thru-hike, and the pin is how that is answered.** At
+the roughly monthly cadence [DATA_RELEASES.md](pipeline/DATA_RELEASES.md) assumes,
+three releases is about ninety days. A thru-hike is five to seven months, so a NOBO who
+installs at Springer in March is five or six releases behind at Katahdin — the app's
+flagship user, outside the window, filing a report about a washed-out bridge. The
+answer is not a bigger number, which would hold the schema still for a year to cover a
+case a list covers exactly: `backend/openapi_baselines/retained.json` carries a
+`pinned` flag per release, mirroring `releases/pinned.json` on the data side, which
+DATA_RELEASES.md introduces in precisely these terms as "the escape hatch that makes a
+90-day policy safe for a 7-month thru-hike". **A release that shipped an app-store
+build gets pinned, and stays pinned until that build is genuinely out of the field.**
+
+**Stored client data is deliberately not bounded by this window.** The economics are
+not the same: the penalty for failing to read an old stored shape is a 1.18 GB
+re-download at a resupply stop, and the cost of keeping a reader fallback is a few
+lines and a fixture that already exists. Old entries in
+`client/src/lib/storedShapes.fixtures.ts` are kept indefinitely, and the file says so.
+
+What this costs the backend is that a column cannot be dropped until every release that
+wrote it is out of the window — three releases and ninety days after the code stops
+writing it, longer if one is pinned. That is the expand-and-contract row above with a
+duration attached, and it is the price of the row above that.
 
 ### 8d. What is not validated goes in the notes
 
@@ -546,10 +598,14 @@ home per item, and the reason ROADMAP.md's checklists are gone.
    UA points at a candidate folder in the same bucket, which is what makes UA a real
    verification of the bytes production will serve. A separate bucket would verify a
    copy.
-3. **How many releases back does the backend support?** §8c needs a number. "The last
-   two" is the cheapest answer that is not "forever", but app-store builds
-   (Phase 3) may force a longer window, and that is the same argument DATA_RELEASES.md
-   makes about retention.
+3. ~~**How many releases back does the backend support?**~~ **Answered: three, plus 90
+   days from supersession, plus a pin.** §8c's "How far back 'supported' reaches" is
+   the rule and `backend/openapi_baselines/retained.json` is its state. This question
+   guessed its own answer correctly — it is the same argument DATA_RELEASES.md makes
+   about retention, so it is now the same policy with the same numbers, and the
+   app-store case it worried about is handled by the pin rather than by a larger
+   number. The count alone was never going to be enough: three releases is about
+   ninety days at a monthly cadence and a thru-hike is five to seven months.
 4. **Does the client tell a hiker their map data is old?** DATA_RELEASES.md leaves the
    record built and the signal unbuilt. A release that moves `DATA_RELEASE` currently
    has no way to say so to a phone that already downloaded.

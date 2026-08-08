@@ -1,14 +1,23 @@
-"""Fail when this build's API breaks the last release's clients (#374, surface 2).
+"""Fail when this build's API breaks a supported release's clients (#374, surface 2).
 
 RELEASING.md §8c: "Old clients stay in the field; a PWA can be served from
 cache and an app-store build cannot be forced forward. Diff the OpenAPI
 document against the previous release's attached copy - removals and
 narrowings fail."
 
-`openapi_baseline.json` is that attached copy. It is regenerated when a
-release is cut (`python scripts/check_openapi_compat.py --write`), NOT when
-the API changes - the whole point is that it lags HEAD by one release, so an
-ordinary additive change passes without anybody touching it.
+`openapi_baselines/` holds those attached copies, one per release, with
+`retained.json` recording which releases are still supported. A baseline is
+added when a release is cut (`--write <release>`), NOT when the API changes -
+the whole point is that they lag HEAD, so ordinary additive work passes
+without anybody touching them.
+
+WHY EVERY RETAINED BASELINE, AND NOT JUST THE OLDEST
+
+Checking only the oldest supported release looks sufficient and is not,
+because compatibility is not transitive. A field added in N-2 and removed
+today is absent from N-3's document, so a diff against N-3 alone sees
+nothing - while every N-2 and N-1 client in the field reads it. Each
+supported release is its own claim and gets its own diff.
 
 WHY REQUEST AND RESPONSE ARE OPPOSITE
 
@@ -43,12 +52,15 @@ unambiguous.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import pathlib
 import sys
 from typing import Any
 
-BASELINE_PATH = pathlib.Path(__file__).resolve().parent.parent / "openapi_baseline.json"
+BACKEND_DIR = pathlib.Path(__file__).resolve().parent.parent
+BASELINES_DIR = BACKEND_DIR / "openapi_baselines"
+MANIFEST_PATH = BASELINES_DIR / "retained.json"
 
 # A schema reachable from a requestBody is written by the client; one
 # reachable from a response is read by it. A schema reachable from both gets
@@ -256,29 +268,102 @@ def _enum_breaks(where: str, old: dict[str, Any], new: dict[str, Any], roles: se
     ]
 
 
-def load_baseline(path: pathlib.Path = BASELINE_PATH) -> dict[str, Any]:
-    """The last release's document.
+def load_manifest(path: pathlib.Path = MANIFEST_PATH) -> dict[str, Any]:
+    """Which releases are still supported, and where each one's document is.
 
     Raises rather than returning `{}` when the file is missing. An empty
-    baseline compares clean against anything, so a silent fallback would turn
-    this whole check into a green light - the failure
-    tests/test_preferences_contract.py names: passing because it failed to
-    find the file.
+    manifest yields no baselines, and no baselines compare clean against
+    anything - a silent fallback would turn this whole check into a green
+    light, the failure tests/test_preferences_contract.py names: passing
+    because it failed to find the file.
     """
     if not path.exists():
         raise FileNotFoundError(
-            f"{path} is missing. It is the last release's OpenAPI document and the "
-            "check is meaningless without it; regenerate with --write only when cutting a release."
+            f"{path} is missing. It records which releases the backend still answers, and the check is meaningless without it."
         )
     return json.loads(path.read_text())
+
+
+def retained(manifest: dict[str, Any], today: dt.date) -> list[dict[str, Any]]:
+    """The releases still supported on `today`, newest first.
+
+    RELEASING.md §8c's rule, which is DATA_RELEASES.md's retention rule with
+    the same numbers and a different verb - there, dropping an entry deletes
+    bytes from R2; here it stops the backend promising to answer that
+    release's clients. Four parts, and the number is the least important:
+
+    1. **The current release is never eligible.** `superseded: null` means
+       nothing has taken over from it.
+    2. **A pinned release is never eligible.** An app-store build cannot be
+       forced forward and a thru-hike runs five to seven months against a
+       window measured in ninety days. This is the escape hatch, and
+       DATA_RELEASES.md names it in exactly those terms for the data side.
+    3. **The three most recent are kept regardless of age.** The floor.
+    4. **Everything else is kept for 90 days from SUPERSESSION**, not from
+       publication. A release that stayed current for six months must not
+       age out from under the hikers who installed during those six months
+       the moment three quick releases follow it - which, with §14.5's
+       cadence question still open, is a thing that can happen in a
+       fortnight.
+    """
+    policy = manifest.get("policy", {})
+    window = dt.timedelta(days=int(policy.get("supersededDays", 90)))
+    floor = int(policy.get("floor", 3))
+
+    entries = list(manifest.get("releases", []))
+    # Newest first: the current release (never superseded) leads, then by
+    # supersession date descending - the later something was replaced, the
+    # more recent it is.
+    entries.sort(key=lambda entry: entry.get("superseded") or "9999-12-31", reverse=True)
+
+    kept: list[dict[str, Any]] = []
+    for index, entry in enumerate(entries):
+        superseded = entry.get("superseded")
+        if superseded is None or entry.get("pinned") or index < floor:
+            kept.append(entry)
+            continue
+        if today - dt.date.fromisoformat(superseded) <= window:
+            kept.append(entry)
+    return kept
+
+
+def load_baselines(
+    manifest: dict[str, Any] | None = None,
+    *,
+    today: dt.date | None = None,
+    directory: pathlib.Path = BASELINES_DIR,
+) -> list[tuple[str, dict[str, Any]]]:
+    """Every retained release's document, as (release, document)."""
+    manifest = load_manifest(directory / "retained.json") if manifest is None else manifest
+    today = dt.date.today() if today is None else today
+
+    loaded: list[tuple[str, dict[str, Any]]] = []
+    for entry in retained(manifest, today):
+        path = directory / entry["document"]
+        if not path.exists():
+            raise FileNotFoundError(
+                f"{path} is listed in retained.json as {entry['release']}'s document and is not on disk. "
+                "A supported release with no document is a promise nothing checks."
+            )
+        loaded.append((entry["release"], json.loads(path.read_text())))
+    return loaded
+
+
+def compare_all(baselines: list[tuple[str, dict[str, Any]]], current: dict[str, Any]) -> list[tuple[str, Break]]:
+    """Every break, against every retained release, tagged with which one.
+
+    Not just the oldest: compatibility is not transitive, so a field added in
+    N-2 and removed today is invisible to a diff against N-3 while every N-2
+    client in the field still reads it.
+    """
+    return [(release, item) for release, document in baselines for item in compare(document, current)]
 
 
 def current_document() -> dict[str, Any]:
     # `backend/` on the path, so this runs as a script from anywhere as well
     # as under pytest, whose pyproject sets `pythonpath = ["."]`.
-    backend_root = str(BASELINE_PATH.parent)
-    if backend_root not in sys.path:
-        sys.path.insert(0, backend_root)
+    if str(BACKEND_DIR) not in sys.path:
+        sys.path.insert(0, str(BACKEND_DIR))
 
     from app.main import app
 
@@ -289,29 +374,40 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--write",
-        action="store_true",
-        help="Overwrite the baseline with this build's document. Only when cutting a release.",
+        metavar="RELEASE",
+        help=("Write this build's document as RELEASE's baseline and add it to retained.json. Only when cutting a release."),
     )
     args = parser.parse_args(argv)
 
     document = current_document()
 
     if args.write:
-        BASELINE_PATH.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n")
-        print(f"wrote {BASELINE_PATH}")
+        path = BASELINES_DIR / f"{args.write}.json"
+        path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n")
+        print(f"wrote {path}")
+        print(
+            "Now add it to openapi_baselines/retained.json, and set `superseded` on the release "
+            "it takes over from - the retention clock starts there, not at publication."
+        )
         return 0
 
-    breaks = compare(load_baseline(), document)
-    if not breaks:
-        print("OpenAPI is backwards compatible with the baseline.")
+    baselines = load_baselines()
+    if not baselines:
+        print("no retained baselines - refusing to report compatibility with nothing", file=sys.stderr)
+        return 1
+
+    found = compare_all(baselines, document)
+    names = ", ".join(release for release, _ in baselines)
+    if not found:
+        print(f"OpenAPI is backwards compatible with all {len(baselines)} retained release(s): {names}.")
         return 0
 
-    print(f"{len(breaks)} backwards-incompatible change(s) against openapi_baseline.json:\n")
-    for item in breaks:
-        print(f"  {item}")
+    print(f"{len(found)} backwards-incompatible change(s) against retained releases ({names}):\n")
+    for release, item in found:
+        print(f"  [{release}] {item}")
     print(
         "\nIf this is a deliberate break, the release it lands in is a major one and the "
-        "baseline moves with it - see RELEASING.md §8c and §11b."
+        "baselines move with it - see RELEASING.md §8c and §11b."
     )
     return 1
 

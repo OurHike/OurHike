@@ -19,13 +19,22 @@
 # tests can quote it in a failure message. That is why the live half runs the
 # comparison in the open rather than reducing anything to names first.
 #
-# THE PERMISSION IS THE FRAGILE PART. Branch protection and environments need
-# `administration: read`, which is requested below and which an organization
-# policy can still withhold. When that happens the API returns 403 and this job
-# must fail loudly rather than skip - a protections check that goes green
-# having read nothing is worse than no protections check, because it answers
-# the question wrongly instead of not at all. Hence the explicit
-# PROTECTIONS_CHECK_LIVE guard, borrowed from settings-check.yml.
+# THE TOKEN IS THE FRAGILE PART, and there are three outcomes rather than two.
+#
+#   no PROTECTIONS_READ_TOKEN   the labels are checked, the other two sections
+#                               are reported as unseen, and the run is green.
+#                               A declared absence, like an unconfigured UA
+#                               database - not a fault, and not worth turning
+#                               `main` red for something #375 already tracks.
+#   token present, read refused the PAT's scopes are wrong. Fails, naming what
+#                               was refused.
+#   nothing read at all         fails, because a protections check that goes
+#                               green having read nothing answers the question
+#                               wrongly rather than not at all. That is the
+#                               PROTECTIONS_CHECK_LIVE guard, borrowed from
+#                               settings-check.yml, plus an assertion that the
+#                               labels - readable with GITHUB_TOKEN alone -
+#                               really were.
 #
 # NOT ON pull_request, for the same reason settings-check.yml's `configured`
 # job is not: a fork's run gets no elevated token, so this would fail for every
@@ -46,12 +55,26 @@ on:
     - cron: "45 7 * * 1"
   workflow_dispatch:
 
+# THE PERMISSION THAT DOES NOT EXIST, and the reason this workflow reads two
+# of its three sections with a different token.
+#
+# The first version of this file asked for `administration: read` here. That is
+# not one of the keys GitHub accepts in a workflow `permissions:` block, and an
+# unrecognised key does not warn - it makes the file invalid, so every run is a
+# startup failure with **zero jobs**, named by its path because GitHub never
+# got as far as reading `name:`. Three of those landed before anyone noticed,
+# because a run with no jobs reports no failing check to look at.
+#
+# The consequence is larger than the typo. GITHUB_TOKEN has no scope for
+# repository administration at all, so it can never read branch protection or
+# the environments list - no permissions block would have worked. Those two
+# need a fine-grained PAT with Administration: read, which is
+# PROTECTIONS_READ_TOKEN below and is optional: without it this job checks the
+# labels, says plainly which sections it could not see, and stays green rather
+# than turning `main` red for a state that is known and declared.
 permissions:
   contents: read
-  # Branch protection and the environments list. Without it both reads 403 and
-  # the job fails saying so.
-  administration: read
-  # The labels list.
+  # The labels list, which GITHUB_TOKEN can read.
   issues: read
 
 jobs:
@@ -95,14 +118,30 @@ jobs:
         uses: actions/github-script@v7
         env:
           BRANCH: ${{ steps.manifest.outputs.branch }}
+          HAS_ADMIN_TOKEN: ${{ secrets.PROTECTIONS_READ_TOKEN != '' }}
         with:
+          # The PAT where there is one, GITHUB_TOKEN otherwise. Octokit is
+          # built once, so the labels read below uses whichever arrived - both
+          # tokens can read those.
+          github-token: ${{ secrets.PROTECTIONS_READ_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
             const branch = process.env.BRANCH;
+            const hasAdminToken = process.env.HAS_ADMIN_TOKEN === 'true';
             const failures = [];
+            // Which questions this run was actually able to ask. The tests
+            // read it, so a section nobody could see is reported as unseen
+            // rather than as configured-correctly or as broken.
+            const read = ['labels'];
 
             let requiredChecks = [];
             let upToDate = null;
-            try {
+            if (!hasAdminToken) {
+              core.warning(
+                'No PROTECTIONS_READ_TOKEN, so branch protection and the environments were not checked. ' +
+                'GITHUB_TOKEN has no scope for repository administration - a fine-grained PAT with ' +
+                'Administration: read is the only way to read them. See #375.'
+              );
+            } else try {
               const {data} = await github.rest.repos.getBranchProtection({
                 owner: context.repo.owner, repo: context.repo.repo, branch,
               });
@@ -112,12 +151,14 @@ jobs:
               // not a missing one.
               requiredChecks = checks ? (checks.checks || []).map(c => c.context) : [];
               upToDate = checks ? Boolean(checks.strict) : false;
+              read.push('branch_protection');
             } catch (error) {
               if (error.status === 404) {
                 // Not an error to read - it is the answer. `main` has no
                 // protection at all, which is exactly what #375 describes.
                 requiredChecks = [];
                 upToDate = false;
+                read.push('branch_protection');
                 core.warning(`${branch} has no branch protection at all.`);
               } else {
                 failures.push(`branch protection: ${error.status} ${error.message}`);
@@ -125,7 +166,7 @@ jobs:
             }
 
             const environments = {};
-            try {
+            if (hasAdminToken) try {
               const {data} = await github.rest.repos.getAllEnvironments({
                 owner: context.repo.owner, repo: context.repo.repo,
               });
@@ -135,6 +176,7 @@ jobs:
                   .flatMap(rule => rule.reviewers || []);
                 environments[environment.name] = reviewers.length;
               }
+              read.push('environments');
             } catch (error) {
               failures.push(`environments: ${error.status} ${error.message}`);
             }
@@ -148,19 +190,24 @@ jobs:
               failures.push(`labels: ${error.status} ${error.message}`);
             }
 
+            // A refused read is different from a read nobody attempted. The
+            // absent-token case warned above and carried on; this is a token
+            // that exists and was turned away, which means the PAT's scopes
+            // are wrong and somebody has to look.
             if (failures.length) {
               core.setFailed(
-                'Could not read the repository configuration, so nothing below was checked. ' +
-                'Branch protection and environments need `administration: read`, which this workflow requests and ' +
-                'an organization policy can withhold:\n  ' + failures.join('\n  ')
+                'A read was refused, so those sections were not checked. PROTECTIONS_READ_TOKEN needs a ' +
+                'fine-grained PAT with Administration: read on this repository:\n  ' + failures.join('\n  ')
               );
               return;
             }
 
+            core.info(`sections read: ${JSON.stringify(read)}`);
             core.info(`required checks on ${branch}: ${JSON.stringify(requiredChecks)}`);
             core.info(`strict (up to date): ${upToDate}`);
             core.info(`environments: ${JSON.stringify(environments)}`);
             core.setOutput('live', JSON.stringify({
+              read,
               required_status_checks: requiredChecks,
               require_branches_up_to_date: upToDate,
               environments,

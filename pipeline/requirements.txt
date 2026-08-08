@@ -19,11 +19,16 @@ charset-normalizer==3.4.9
     # via requests
 click==8.4.2
     # via
+    #   click-plugins
     #   cligj
     #   rasterio
+click-plugins==1.1.1.2 ; python_full_version < '3.12'
+    # via rasterio
 cligj==0.7.2
     # via rasterio
-duckdb==1.5.5
+colorama==0.4.6 ; sys_platform == 'win32'
+    # via click
+duckdb==1.5.4
     # via -r requirements.in
 idna==3.18
     # via requests
@@ -31,7 +36,12 @@ jmespath==1.1.0
     # via
     #   boto3
     #   botocore
-numpy==2.5.1
+numpy==2.4.6 ; python_full_version < '3.12'
+    # via
+    #   -r requirements.in
+    #   rasterio
+    #   shapely
+numpy==2.5.1 ; python_full_version >= '3.12'
     # via
     #   -r requirements.in
     #   rasterio
@@ -46,7 +56,9 @@ pyproj==3.7.2
     # via -r requirements.in
 python-dateutil==2.9.0.post0
     # via botocore
-rasterio==1.5.0
+rasterio==1.4.4 ; python_full_version < '3.12'
+    # via -r requirements.in
+rasterio==1.5.0 ; python_full_version >= '3.12'
     # via -r requirements.in
 requests==2.34.2
     # via -r requirements.in

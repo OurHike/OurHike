@@ -56,6 +56,11 @@ def test_every_artifact_name_publish_can_produce_is_a_legal_key():
         "releases/2026-08-07-2/manifest.json",
         "_internal/cells/2026-08-07/cells_state.json",
         "_internal/cells/2026-08-07/tile_017.tif",
+        # The published safety data (features/CONDITIONS_DELIVERY.md). Its own
+        # prefix because it is rewritten in place daily, which a release
+        # folder written once and never overwritten cannot express.
+        "conditions/closures.json",
+        "conditions/reports.json",
     ],
 )
 def test_accepts_the_layout_as_documented(key):

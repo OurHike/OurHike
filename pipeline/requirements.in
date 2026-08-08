@@ -25,3 +25,10 @@ shapely
 # which is exactly why this was missing - it worked here and failed in CI.
 pyproj
 boto3
+
+# export_conditions.py alone, and the only reason this pipeline talks to
+# Postgres at all (features/CONDITIONS_DELIVERY.md). Raw psycopg rather than
+# SQLAlchemy on purpose: the job is two SELECTs against a schema the backend
+# owns, and pulling an ORM in here would create a second place that believes
+# it knows the shape of those tables.
+psycopg[binary]

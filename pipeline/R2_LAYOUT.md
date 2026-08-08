@@ -64,11 +64,26 @@ data a phone is pinned to.
 | `releases/` | one immutable folder per dated release, plus `index.json` and `pinned.json` | written once, never overwritten | yes |
 | `_internal/` | build intermediates, keyed by release | rewritten per build | no |
 | `photos/` | POI photos, one object per image, content-addressed | mutable: objects are added and deleted, never rewritten | yes |
+| `conditions/` | published safety data — verified closures now, verified reports later | mutable: rewritten in place, daily | yes |
 
 `releases/` and `_internal/` are the layout [DATA_RELEASES.md](DATA_RELEASES.md) designs and
 is rolling out; the root keys are what is live today and stay frozen when it lands. That
 document owns the tree, the retention clocks and the migration — this one only says what
 the segments may be called.
+
+`conditions/` is the one prefix that is neither versioned nor content-addressed, and both
+are deliberate ([../features/CONDITIONS_DELIVERY.md](../features/CONDITIONS_DELIVERY.md)).
+A closure that has reopened must stop being served, which an immutable release folder
+cannot express — it could only add a second answer beside the first. And the freshness a
+hiker needs is *inside* the document, as `generated_at`, rather than in which folder it
+came from: the client renders it as "as of &lt;date&gt;", which is what makes a day-old
+baseline honest instead of misleading. It is on a different clock from the trail data —
+daily, against a release cadence measured in months — which is the other reason it does
+not live under `releases/`.
+
+Retention is therefore trivial and needs no prune job: one object per artifact, overwritten
+in place, never accumulating. That is the exemption to DATA_RELEASES.md's rule that a new
+prefix needs a retention clock written for it — there is nothing to retain.
 
 `_internal/` is named to be obvious rather than to hide: on a public r2.dev bucket it is
 readable by anyone. It means "nothing here is a download", not "nobody can see this".

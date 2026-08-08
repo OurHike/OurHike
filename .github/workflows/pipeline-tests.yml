@@ -45,6 +45,28 @@ jobs:
     defaults:
       run:
         working-directory: pipeline
+    # For tests/test_export_conditions.py alone, and worth a service container
+    # for one file: what it proves is that row-level security turns a missing
+    # policy into ZERO ROWS rather than an error, which is the failure
+    # export_conditions.py exists to catch and the one that would otherwise
+    # publish an empty closures artifact. Those tests skip when no database is
+    # reachable, so without this they would skip here - silently, and exactly
+    # where the proof is worth having. Same image and credentials as
+    # backend-tests.yml, which tracks the version Supabase runs.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: ourhike
+          POSTGRES_PASSWORD: ourhike
+          POSTGRES_DB: ourhike_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       # No `if:` on this job, and there should never be one - see the note on
       # the trigger above. The steps carry the condition instead, so a PR that

@@ -227,6 +227,19 @@ def collect_artifacts() -> dict[str, dict]:
         manifest = json.loads(spurs_manifest.read_text())
         artifacts["spurs.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
+    # Verified closures, if export_conditions.py has run
+    # (features/CONDITIONS_DELIVERY.md). An ordinary artifact rather than a
+    # special case: it wants the same sha256 diffing every other one gets, and
+    # that diffing is what makes a daily bake cheap - a day with no closure
+    # changes uploads nothing and writes no new version.
+    #
+    # Published under `conditions/` rather than at the root because the whole
+    # prefix is rewritten in place on a different clock from the trail data.
+    conditions_manifest = PROCESSED_DIR / "conditions_manifest.json"
+    if conditions_manifest.exists():
+        manifest = json.loads(conditions_manifest.read_text())
+        artifacts["conditions/closures.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+
     for name in (*BACKGROUND_ARCHIVES.values(), *OFFLINE_SHEET_ARCHIVES.values()):
         path = PROCESSED_DIR / name
         if path.exists():

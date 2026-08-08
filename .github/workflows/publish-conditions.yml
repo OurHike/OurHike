@@ -1,0 +1,108 @@
+# Publishes verified closures to R2, so reading one needs no running server.
+#
+# features/CONDITIONS_DELIVERY.md is the design; this is step 1 of its order
+# of work. Daily rather than continuous because that is the staleness the
+# maintainer accepted (2026-08-08): "a closure can be latent by a day. we
+# won't be adjusting minute by minute." The artifact carries its own
+# `generated_at` and the client renders it, so a hiker is told how old the
+# answer is rather than left to assume.
+#
+# WHY THIS IS SAFE TO RUN BEFORE ANYTHING IS CONFIGURED. The reader
+# credential is account work on Supabase, and it does not exist yet. Like
+# migrate.yml's UA job, this skips with a warning rather than a red X when
+# the secret is absent - a scheduled workflow that fails every night until
+# someone does account work trains people to ignore it.
+#
+# WHY IT CANNOT PUBLISH AN EMPTY ARTIFACT. Row-level security is on for every
+# table with no policies, and the backend only works because it connects as
+# the owner. The reader is not the owner, so a missing GRANT or policy returns
+# zero rows *without an error* - which, published, is a client holding a valid
+# baseline that says the trail is clear. export_conditions.py asks the catalog
+# whether its permissions are really in place and refuses to write anything if
+# they are not, which is what makes a genuinely empty result trustworthy.
+#
+# NOT GATED ON AN ENVIRONMENT. There is nothing to approve: this reads
+# verified rows a hiker could already fetch from `GET /closures` without an
+# account, and writes them to a bucket. schema-drift.yml records the same
+# reasoning for the same shape of job.
+
+name: Publish conditions
+
+on:
+  schedule:
+    # 08:40 UTC daily. Off the hour, and clear of the other scheduled jobs -
+    # check-upstream-freshness at 07:20, settings-check at 07:35, schema-drift
+    # at 08:10 - for the reason each of those records: GitHub queues
+    # everything submitted at :00 together.
+    - cron: "40 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - name: Is there a database to read
+        id: can
+        # Before the checkout, so not in pipeline/ - migrate.yml's gate has
+        # the reasoning for testing the secret this way rather than letting
+        # the connection fail with something less legible.
+        working-directory: .
+        run: |
+          if [ -z "${{ secrets.PRODUCTION_CONDITIONS_DATABASE_URL }}" ]; then
+            echo "::warning::No conditions database is configured, so nothing was published. See features/CONDITIONS_DELIVERY.md and #429."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.can.outputs.go == 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.can.outputs.go == 'true'
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        if: steps.can.outputs.go == 'true'
+        run: pip install -r requirements.txt
+
+      - name: Export verified closures
+        id: export
+        if: steps.can.outputs.go == 'true'
+        env:
+          CONDITIONS_DATABASE_URL: ${{ secrets.PRODUCTION_CONDITIONS_DATABASE_URL }}
+        run: python export_conditions.py
+
+      # Printed before publishing, because "it read something" and "it
+      # published something" are different facts and only the first one
+      # explains an empty upload.
+      - name: Say what was read
+        if: steps.can.outputs.go == 'true'
+        run: |
+          python -c "import json; m = json.load(open('data/processed/conditions_manifest.json')); print(f\"{m['count']} verified closure(s), generated {m['generated_at']}\")"
+
+      - name: Publish to R2
+        if: steps.can.outputs.go == 'true'
+        env:
+          # The gate publish.py checks. Set only on this step, so every other
+          # step here is structurally incapable of writing to the bucket -
+          # publish-vector-data.yml sets it the same way for the same reason.
+          R2_WRITE_ENABLED: "true"
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        # publish.py collects whatever data/processed/ holds, which in this
+        # job is the conditions manifest and nothing else - a fresh checkout
+        # has run no other export script. The manifest merge is additive, so
+        # the trail artifacts already in latest.json survive untouched.
+        run: python publish.py

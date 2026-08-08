@@ -92,7 +92,52 @@ whole design rests on, and because a future reader will otherwise assume it was 
 The repository already draws this distinction twice — `*_MIGRATION_DATABASE_URL` is not
 `DATABASE_URL`, and the report-photo credentials carry an `R2_PHOTO_` prefix precisely so
 they cannot be confused with the publishing ones. A job that only ever reads verified rows
-should hold a credential that can only do that.
+should hold a credential that can only do that. Declared as
+`PRODUCTION_CONDITIONS_DATABASE_URL` in `.github/expected-settings.yml`.
+
+**And it needs an RLS policy, which is the part that would otherwise be found the hard
+way.** `enable_row_level_security` turns RLS on for every table with *no policies*, and
+its own docstring explains why the backend is unaffected: *"RLS does not apply to a
+table's owner, and the backend connects with the Postgres connection string as the
+owner."* A reader role is not the owner. So `GRANT SELECT` alone returns **zero rows
+rather than an error** — which, published unchecked, is an empty closures artifact, a
+client treating it as a valid baseline, and hikers shown no closure warnings. A
+permissions mistake wearing the costume of a quiet trail.
+
+That migration anticipated this: *"Add policies if and only if something is later built
+that genuinely needs direct table access."* This is that case, and the policy earns its
+keep twice — it is also where the moderation filter belongs, so the database refuses to
+show the publisher anything unverified and a buggy exporter structurally cannot leak an
+unmoderated row:
+
+```sql
+CREATE ROLE ourhike_conditions_reader LOGIN PASSWORD '<generated>';
+GRANT CONNECT ON DATABASE postgres TO ourhike_conditions_reader;
+GRANT USAGE  ON SCHEMA public      TO ourhike_conditions_reader;
+
+-- Two tables. Deliberately not `profiles`: the artifact names nobody (#430),
+-- and no grant means the exporter could not resolve a person if it tried.
+GRANT SELECT ON public.closures, public.reports TO ourhike_conditions_reader;
+
+CREATE POLICY conditions_reader_closures
+  ON public.closures FOR SELECT TO ourhike_conditions_reader
+  USING (moderation_status = 'verified');
+
+-- Reports differ from closures: `status` + `visibility`, mirroring
+-- `_MODERATED_STATUSES` and excluding internal_only and club_only.
+CREATE POLICY conditions_reader_reports
+  ON public.reports FOR SELECT TO ourhike_conditions_reader
+  USING (status IN ('verified', 'resolved') AND visibility = 'public');
+```
+
+String literals rather than enum casts because those columns are `native_enum=False`, so
+they are `VARCHAR(20)`.
+
+**`export_conditions.py` refuses to run unless both are in place**, asking the catalog
+rather than trusting the configuration, so that a genuinely empty result is trustworthy.
+`pipeline/tests/test_export_conditions.py` proves the underlying trap is real by
+reproducing it against a live Postgres — a verified closure that reads fine, then reads as
+nothing the moment RLS is on without a policy.
 
 ### 3. How the client reads it
 
@@ -175,7 +220,9 @@ actually being served and read.** Until then the always-on machine is the only t
 delivering closures.
 
 1. Bake and publish `conditions/closures.json` (pipeline + scheduled workflow + read-only
-   credential).
+   credential). **Built.** `pipeline/export_conditions.py` and
+   `.github/workflows/publish-conditions.yml`; the workflow skips with a warning until the
+   credential above exists, so nothing here is waiting on it.
 2. Client reads the baseline, with the three-state model and the staleness stamp.
 3. Extend to `conditions/reports.json`.
 4. Only then revisit hosting — HOSTING.md's "Revisit if" clause, with its own decision.

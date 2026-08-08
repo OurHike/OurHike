@@ -99,6 +99,14 @@ pmtiles==3.7.0
     # via
     #   -c pipeline/requirements.txt
     #   -r pipeline/requirements.in
+psycopg==3.3.4
+    # via
+    #   -c pipeline/requirements.txt
+    #   -r pipeline/requirements.in
+psycopg-binary==3.3.4 ; implementation_name != 'pypy'
+    # via
+    #   -c pipeline/requirements.txt
+    #   psycopg
 py-partiql-parser==0.6.3
     # via moto
 pycparser==3.0 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
@@ -162,6 +170,14 @@ six==1.17.0
     #   python-dateutil
 tomli==2.4.1 ; python_full_version <= '3.11'
     # via coverage
+typing-extensions==4.16.0 ; python_full_version < '3.13'
+    # via
+    #   -c pipeline/requirements.txt
+    #   psycopg
+tzdata==2026.3 ; sys_platform == 'win32'
+    # via
+    #   -c pipeline/requirements.txt
+    #   psycopg
 urllib3==2.7.0
     # via
     #   -c pipeline/requirements.txt

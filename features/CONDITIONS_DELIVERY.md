@@ -133,6 +133,14 @@ CREATE POLICY conditions_reader_reports
 String literals rather than enum casts because those columns are `native_enum=False`, so
 they are `VARCHAR(20)`.
 
+**The connection string's username must be tenant-qualified.** Supabase's pooler routes on
+the part after the dot, so it wants `ourhike_conditions_reader.<project-ref>`, not the bare
+role name. A bare role is refused at connect with
+`FATAL: (ENOTFOUND) tenant/user ... not found` — a message that reads like the role was
+never created, and sends you back to re-check SQL that is already correct. The first real
+run of `publish-conditions.yml` failed on exactly this (2026-08-08); `export_conditions.py`
+now catches it and says so rather than passing the raw error through.
+
 **`export_conditions.py` refuses to run unless both are in place**, asking the catalog
 rather than trusting the configuration, so that a genuinely empty result is trustworthy.
 `pipeline/tests/test_export_conditions.py` proves the underlying trap is real by

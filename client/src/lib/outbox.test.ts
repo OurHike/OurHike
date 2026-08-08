@@ -8,6 +8,7 @@ import {
   flushOutbox,
   OUTBOX_KEY,
 } from './outbox'
+import { BUILD_INFO } from './buildInfo'
 
 // TESTING.md item 13, and WIREFRAMES.md's rule that "every write (report,
 // thanks, confirmation) queues in an outbox with its authored timestamp and
@@ -270,6 +271,85 @@ describe('a permanently refused report', () => {
     )
 
     await retryQueued('doomed')
+    const send = vi.fn()
+    await flushOutbox(send)
+
+    expect(send).toHaveBeenCalledTimes(1)
+  })
+
+  it('records which build gave up on it', async () => {
+    // #412: the verdict belongs to a build, not to the report, so the build
+    // has to be part of the record for a later one to overturn it.
+    const read = withStoredQueue([...REFUSED])
+
+    await flushOutbox(
+      async () => {
+        throw new Error('422')
+      },
+      () => 'nope',
+    )
+
+    const stored = read()[0] as { failure?: { build?: string } }
+    expect(stored.failure?.build).toBe(BUILD_INFO.commit)
+  })
+
+  it('is retried once by a different build', async () => {
+    // The whole point. A 422 on a field the previous build did not send is
+    // fixed by the build that sends it - and a hiker who never opens More
+    // and presses "Try again" would otherwise lose the report to a verdict
+    // that has stopped being true.
+    const read = withStoredQueue([...REFUSED])
+    await flushOutbox(
+      async () => {
+        throw new Error('422')
+      },
+      () => 'nope',
+    )
+
+    // The same stored queue, now read by a build with a different commit.
+    const stored = read()[0] as { failure: { build?: string } }
+    stored.failure.build = 'a0000000000000000000000000000000000000ff'
+
+    const send = vi.fn()
+    const result = await flushOutbox(send)
+
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(result.sent).toBe(1)
+  })
+
+  it('is not retried again by the build that re-marked it', async () => {
+    // Bounded to one retry per update: the rule is "a different build may
+    // disagree", not "keep resetting a failure the hiker is being shown".
+    const read = withStoredQueue([...REFUSED])
+    const refuse = async () => {
+      throw new Error('422')
+    }
+    await flushOutbox(refuse, () => 'nope')
+
+    const stored = read()[0] as { failure: { build?: string } }
+    stored.failure.build = 'a0000000000000000000000000000000000000ff'
+
+    // The new build tries, is refused, and re-marks it under its own commit.
+    await flushOutbox(refuse, () => 'nope')
+    const send = vi.fn()
+    const third = await flushOutbox(send, () => 'nope')
+
+    expect(send).not.toHaveBeenCalled()
+    expect(third).toEqual({ sent: 0, failed: 1, stuck: 1 })
+  })
+
+  it('retries a failure stored before builds were recorded', async () => {
+    // The shape on a phone that upgraded into this change: `failure` with no
+    // `build`. Absent is not this build, so it gets the same single retry an
+    // older build's verdict would - see storedShapes.fixtures.ts, which
+    // carries exactly this item.
+    withStoredQueue([
+      {
+        ...REFUSED[0],
+        failure: { reason: 'Refused by an older build.', at: '2026-07-30T08:00:00.000Z' },
+      },
+    ])
+
     const send = vi.fn()
     await flushOutbox(send)
 

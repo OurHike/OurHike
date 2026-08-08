@@ -7,6 +7,7 @@ import { PREFERENCES_KEY } from './lib/preferences'
 import { DEFAULT_PREFERENCES } from './lib/userPreferences'
 import { OUTBOX_KEY } from './lib/outbox'
 import { sendReport } from './lib/api'
+import { BUILD_INFO } from './lib/buildInfo'
 
 // #266: "Try again" cleared the refusal and sent nothing.
 //
@@ -53,11 +54,22 @@ vi.mock('./lib/auth', async (importOriginal) => ({
 const mockedSend = vi.mocked(sendReport)
 const store = new Map<string, unknown>()
 
+// `build` is THIS build's commit, and that is what makes the item genuinely
+// stuck for the purposes of this file (#412). A failure recorded by a
+// different build - or by one too old to record any, which is what this
+// fixture was before - gets one automatic retry on the next flush, so the
+// report would send itself on mount and "Try again" would have nothing left
+// to do. That behaviour has its own tests in lib/outbox.test.ts; what this
+// file is about is the affordance for a report this build has given up on.
 const STUCK_ITEM = {
   id: 'r1',
   authoredAt: '2026-08-01T10:00:00.000Z',
   payload: { type: 'blowdown', reporter_type: 'thru', note: 'Tree down.' },
-  failure: { reason: 'Its date is in the future.', at: '2026-08-01T10:00:05.000Z' },
+  failure: {
+    reason: 'Its date is in the future.',
+    at: '2026-08-01T10:00:05.000Z',
+    build: BUILD_INFO.commit,
+  },
 }
 
 beforeEach(() => {

@@ -32,6 +32,8 @@
 
 import { get, set } from 'idb-keyval'
 
+import { BUILD_INFO } from './buildInfo'
+
 export const OUTBOX_KEY = 'ourhike:outbox'
 
 export interface ReportDraft {
@@ -81,6 +83,24 @@ export interface OutboxFailure {
   /** Shown to the hiker verbatim, so it has to read like a sentence. */
   reason: string
   at: string
+  /**
+   * The build that gave up on this report - `BUILD_INFO.commit` (#412).
+   *
+   * Here so a later build can disagree. The reason a report is refused may be
+   * the app rather than the report: an old client meeting a newer API gets a
+   * 422 on a field it does not know about, and no amount of retrying by THAT
+   * build will help while an update fixes it outright. Without this the
+   * report sits marked unsendable until somebody happens to open More and
+   * press "Try again", which is not a thing a hiker knows to do.
+   *
+   * The commit rather than the version, because `version` is `0.0.0` until
+   * the first tag (RELEASING.md §13) and so cannot tell two builds apart.
+   *
+   * Optional: absent means the failure was stored before this existed, which
+   * is treated as "not this build" - one retry on the next update, which is
+   * the same answer that build would have got had it recorded anything.
+   */
+  build?: string
 }
 
 export interface OutboxItem {
@@ -221,7 +241,14 @@ export async function flushOutbox(
     // Already known to be unacceptable. Retrying it would spend signal to
     // be refused again, and would keep resetting a failure the hiker is
     // being shown.
-    if (item.failure !== undefined) {
+    //
+    // **Unless a different build reached that verdict** (#412). The judgment
+    // is the app's, not the report's, and an update can overturn it - a 422
+    // on a field the previous build did not send is fixed by the build that
+    // sends it. Bounded to one retry per update, so this is not the
+    // resetting the rule above guards against: the failure is re-marked with
+    // the current build if it fails again, and skipped from then on.
+    if (item.failure !== undefined && item.failure.build === BUILD_INFO.commit) {
       failed += 1
       stuck += 1
       continue
@@ -259,7 +286,14 @@ async function markFailed(id: string, reason: string): Promise<void> {
     OUTBOX_KEY,
     queue.map((item) =>
       item.id === id
-        ? { ...item, failure: { reason, at: new Date().toISOString() } }
+        ? {
+            ...item,
+            failure: {
+              reason,
+              at: new Date().toISOString(),
+              build: BUILD_INFO.commit,
+            },
+          }
         : item,
     ),
   )

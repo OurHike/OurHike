@@ -98,9 +98,28 @@ export const STORED_SHAPES: Readonly<Record<string, unknown>> = deepFreeze({
         reporter_type: 'section',
         poi_id: 'atc_shelter_0421',
       },
+      // No `build`, deliberately. That field arrived with #412, so this is
+      // the shape a phone that upgraded into it is holding - and `flushOutbox`
+      // reads its absence as "not this build", which buys the report one
+      // retry rather than stranding it on a verdict an older build reached.
       failure: {
         reason: 'That report was refused and will not be retried.',
         at: '2026-07-30T08:00:00.000Z',
+      },
+    },
+    {
+      id: 'c3e4f506-1728-493a-ab1c-2d3e4f5061a7',
+      authoredAt: '2026-07-28T11:12:00.000Z',
+      payload: {
+        type: 'flooding',
+        reporter_type: 'thru',
+        note: 'Creek over the trail at the ford.',
+      },
+      // The same record as written by a build that does stamp itself.
+      failure: {
+        reason: 'That report was refused and will not be retried.',
+        at: '2026-07-29T08:00:00.000Z',
+        build: '4c1f9a2b7e6d5c4b3a29180f7e6d5c4b3a291807',
       },
     },
   ],

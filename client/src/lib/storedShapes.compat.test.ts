@@ -74,7 +74,7 @@ describe('a stored phone from the baseline release', () => {
   it('still has its queued reports, photo bytes included', async () => {
     const queued = await listQueued()
 
-    expect(queued).toHaveLength(3)
+    expect(queued).toHaveLength(4)
     expect(queued[0].id).toBe('5f8e1b3a-0c4d-4a2e-9f1b-2c3d4e5f6a7b')
     expect(queued[0].authoredAt).toBe('2026-08-01T14:32:00.000Z')
     expect(queued[0].payload.type).toBe('blowdown')
@@ -99,6 +99,23 @@ describe('a stored phone from the baseline release', () => {
       'That report was refused and will not be retried.',
     )
     expect(queued[2].failure?.at).toBe('2026-07-30T08:00:00.000Z')
+  })
+
+  // #412 added `build` to OutboxFailure. Both shapes are on phones: written
+  // before it existed, and written after. Absent must stay absent rather than
+  // being defaulted to something - `flushOutbox` reads it as "some other
+  // build", which is what buys an older build's casualty one retry.
+  it('still reads a failure stored before builds were recorded', async () => {
+    const queued = await listQueued()
+
+    expect(queued[2].failure).toBeDefined()
+    expect(queued[2].failure?.build).toBeUndefined()
+  })
+
+  it('still reads a failure that recorded its build', async () => {
+    const queued = await listQueued()
+
+    expect(queued[3].failure?.build).toBe('4c1f9a2b7e6d5c4b3a29180f7e6d5c4b3a291807')
   })
 
   it('keeps the preferences it recognises', async () => {

@@ -331,12 +331,43 @@ export function useArchiveDownloads(requests: readonly ArchiveDownloadRequest[])
     [statuses],
   )
 
+  /**
+   * Whether `statusFor` is answering from the phone yet, rather than from its
+   * own default.
+   *
+   * The distinction the fallback above cannot make: a package nobody has read
+   * yet and a package that was read and is not here both come back
+   * `not-downloaded`, and a caller deciding something on that answer decides
+   * it twice - once wrongly, then again a tick later when the read lands.
+   * That was a whole extra map build on every launch: the shell asks this
+   * hook whether an offline background can be honoured, got "no" before the
+   * first IndexedDB read had returned, drew the live sheet, and rebuilt the
+   * map around the archive the moment the truth arrived.
+   *
+   * Derived rather than held as its own flag, so it cannot drift: it is
+   * exactly "every package in the set has a status", which also answers
+   * correctly if the set ever changes underneath. An empty set is read - there
+   * was nothing to ask.
+   */
+  const statusesKnown = packageKeys.every(
+    (packageKey) => statuses[packageKey] !== undefined,
+  )
+
   const errorFor = useCallback(
     (packageKey: string): string | null => errors[packageKey] ?? null,
     [errors],
   )
 
-  return { statusFor, errorFor, persistence, start, startAll, resume: start, remove }
+  return {
+    statusFor,
+    errorFor,
+    statusesKnown,
+    persistence,
+    start,
+    startAll,
+    resume: start,
+    remove,
+  }
 }
 
 /**
@@ -356,6 +387,7 @@ export function useArchiveDownload(
   const {
     statusFor,
     errorFor,
+    statusesKnown,
     persistence,
     start: startPackage,
     remove: removePackage,
@@ -367,6 +399,8 @@ export function useArchiveDownload(
   return {
     status: statusFor(packageKey),
     error: errorFor(packageKey),
+    /** Whether `status` is the phone's answer yet - see `statusesKnown`. */
+    statusKnown: statusesKnown,
     persistence,
     start,
     resume: start,

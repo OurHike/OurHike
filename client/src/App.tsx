@@ -606,6 +606,7 @@ function App() {
   const {
     statusFor: archiveStatusFor,
     errorFor: archiveErrorFor,
+    statusesKnown: archivesRead,
     start: startPackage,
     startAll: startPackages,
     remove: removePackage,
@@ -1341,9 +1342,29 @@ function App() {
     if (account !== null && authFlow?.afterReport === true) askForIdentity()
   }, [account, authFlow, askForIdentity])
 
-  // Nothing renders until the phone's own preferences have been read, so a
-  // returning hiker never sees a flash of the first-run onboarding.
-  if (!preferencesLoaded) return null
+  // Nothing renders until the phone has answered about itself: its stored
+  // preferences, so a returning hiker never sees a flash of the first-run
+  // onboarding, and what is in its archive store, so the map is built around
+  // the right background the first time (App.mapLifecycle.test.tsx).
+  //
+  // The second half is the same argument as the first, one screen further in.
+  // `archiveStatusFor` answers "not downloaded" for a package it has not read
+  // yet, which is the same answer it gives for one that genuinely is not
+  // there - and effectiveBackground() below turns that into "draw the live
+  // sheet". So a phone WITH the corridor on it used to open on the live sheet,
+  // start pulling vector and DEM tiles over the network, and then throw the
+  // whole map away and rebuild it around the archive when the read landed a
+  // beat later. A blink, a re-frame, and roughly 2 MB of somebody's data
+  // allowance spent on a background they had already downloaded their way out
+  // of - which is precisely the spend lib/dataSaver.ts exists to prevent.
+  //
+  // Both reads start on mount and run in parallel, so what this waits for is
+  // the slower of the two rather than their sum, and both are IndexedDB reads
+  // of small things - an object of preferences, and blob HANDLES whose bytes
+  // are not touched. Neither can hang the app open: loadPreferences() falls
+  // back to defaults if it rejects, and every path through the archive read,
+  // including its catch, sets a status.
+  if (!preferencesLoaded || !archivesRead) return null
 
   // First run, over the map rather than in front of a blank page.
   //

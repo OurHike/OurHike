@@ -79,7 +79,7 @@ import {
 } from './liveTopo'
 import { OSM_CREDIT, USGS_TOPO_CREDIT } from './credits'
 import { whenStyleReady } from './styleReady'
-import type { Map as MapLibreMap } from 'maplibre-gl'
+import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
 import type { ResolvedTheme } from '../lib/theme'
 import type { ContourUnits, TerrainUrls } from './terrain'
 
@@ -333,6 +333,39 @@ export function attachMapAppearance(
     detachBase()
     detachSheet()
   }
+}
+
+/**
+ * Re-points the trail source at a different set of lines, on a live map.
+ *
+ * The same promise `attachPoiData` makes, for data that arrives on the same
+ * clock: the lines are read out of IndexedDB well after the map is built, and
+ * feeding them in by rebuilding the map drops the WebGL context, every tile in
+ * flight and the camera along with them. A hiker watching that sees the map
+ * blink and re-frame itself a second after it appeared, which is what this
+ * exists to stop - see App.mapLifecycle.test.tsx.
+ *
+ * `setData` takes a URL as readily as a feature collection, so the blob URL the
+ * shell mints for the downloaded lines can be handed straight over - MapLibre
+ * fetches it and re-tiles the source in place.
+ */
+export function attachTrailData(map: MapLibreMap, trailsUrl: string): () => void {
+  return whenStyleReady(
+    map,
+    // The source itself, like the POIs: getting it back proves the style spec
+    // is parsed and that this write is legal, and it is the narrowest question
+    // that answers "can this land".
+    () => map.getSource(TRAILS_SOURCE_ID) !== undefined,
+    () => {
+      // `getSource` answers with the union of every source kind, and only the
+      // GeoJSON one takes new data.
+      const source = map.getSource<GeoJSONSource>(TRAILS_SOURCE_ID)
+      if (source === undefined || typeof source.setData !== 'function') return
+
+      source.setData(trailsUrl as never)
+    },
+    'Trail lines',
+  )
 }
 
 /** The pipeline's own key for ATC's trail-centerline feed (pipeline/sources.json). */

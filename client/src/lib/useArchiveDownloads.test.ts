@@ -266,3 +266,51 @@ describe('holding several packages at once', () => {
     expect(vi.mocked(get).mock.calls.length).toBe(afterMount)
   })
 })
+
+describe('whether the phone has been read yet', () => {
+  it('says no until every package has answered, then yes', async () => {
+    // `statusFor` answers 'not-downloaded' for a package it has not read yet,
+    // which is the same answer it gives for one that genuinely is not there.
+    // A caller deciding anything on that answer decides it twice - once
+    // wrongly, then again when the read lands - which cost the app a whole
+    // extra map build on every launch. This flag is the difference.
+    const held: Array<() => void> = []
+    vi.mocked(get).mockImplementation(
+      (key) =>
+        new Promise((resolve) => {
+          held.push(() => resolve(key === SHEET.packageKey ? new Blob(['x']) : undefined))
+        }),
+    )
+
+    const { result } = renderHook(() => useArchiveDownloads(BOTH))
+
+    // Both reads are out. Nothing has come back, and the hook says so rather
+    // than answering for the store.
+    await waitFor(() => expect(held.length).toBe(BOTH.length))
+    expect(result.current.statusesKnown).toBe(false)
+
+    // Released in rounds, because answering a read is how the next one gets
+    // asked: a package with no finished blob goes on to look for a partial
+    // under a second key.
+    for (let round = 0; round < 4 && held.length > 0; round += 1) {
+      const releases = held.splice(0, held.length)
+      await act(async () => {
+        for (const release of releases) release()
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      })
+    }
+
+    await waitFor(() => expect(result.current.statusesKnown).toBe(true))
+    expect(result.current.statusFor(SHEET.packageKey).state).toBe('downloaded')
+  })
+
+  it('is read from the start when there is nothing to ask about', async () => {
+    // A build with no published archives has no store to consult, so there is
+    // nothing to wait for - and a gate that waited anyway would never open.
+    withStore()
+
+    const { result } = renderHook(() => useArchiveDownloads([]))
+
+    expect(result.current.statusesKnown).toBe(true)
+  })
+})

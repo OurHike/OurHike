@@ -159,34 +159,46 @@ What was measured, on the pull request that added these triggers:
 | same, next commit | `action_required` |
 | `if:` restored to its original text, trigger kept | `action_required` |
 | trigger removed, comment edits kept | `action_required` |
-| file restored byte-for-byte to `main` | *the experiment this table exists to finish* |
+| **file restored byte-for-byte to `main`** | **success** |
 
 The four other workflows that got the same trigger in the same commit ran
 normally throughout, and this is the only `action_required` run in the
 repository's last two hundred.
 
-Two things about it are established. It is not the `merge_group:` trigger —
-removing it changed nothing. And it is not "the pull request edits a workflow" —
-[#402](https://github.com/OurHike/OurHike/pull/402) edits `pages.yml` and its
-`Settings check` is green.
+So the cause is **any proposed change to this file at all** — a comment is
+enough — and not the trigger, not the `if:`, and not "the pull request edits a
+workflow" ([#402](https://github.com/OurHike/OurHike/pull/402) edits `pages.yml`
+and is green). The last row is what pins it: zero proposed changes, green.
 
-The best remaining explanation is that this is the only workflow that both runs
-on `pull_request` *and* reads the secrets context, via `configured`'s
-`toJSON(secrets)`; `action_required` is what GitHub reports when a run needs
-approval before it may reach secrets, and a pull request proposing edits to that
-workflow is exactly what such a gate exists for. That would make it a property
-of **a pull request touching this file**, not of the file's merged contents —
-and no pull request had ever modified this file before, since
-[#180](https://github.com/OurHike/OurHike/pull/180) created it. **Unconfirmed.
-Do not build on it without re-running the experiment.**
+The mechanism that fits is that this is the only workflow which both runs on
+`pull_request` *and* reads the secrets context, through `configured`'s
+`toJSON(secrets)`. `action_required` is what GitHub reports when a run needs
+approval before it may reach secrets, and a pull request proposing edits to a
+secrets-reading workflow is exactly what such a gate is for. Nobody had met it
+before because no pull request had ever modified this file —
+[#180](https://github.com/OurHike/OurHike/pull/180) created it.
 
-If it is confirmed, the trigger can simply be added: only pull requests that
-themselves edit this file would need the one approval, and everything else would
-be unaffected. If it is not, the durable fix is to split the two jobs into two
-workflows so the half that reads secrets and the half that reads only the
-checkout stop sharing an `on:` block — then the manifest half can trigger on
-`merge_group` with no secrets anywhere near it. Until one of those happens,
-three suites gate the queue and this one does not.
+**The gate therefore belongs to the pull request, not to `main`.** Adding the
+trigger would not break anything downstream: a pull request that does not touch
+this file would run it normally. That was the reason first given for leaving it
+out, and it was wrong.
+
+The reason it stays out is the one that survived:
+
+> A pull request that edits this file, once queued, would raise its
+> `merge_group` run of this workflow under the same gate — and a queue entry
+> waiting on an approval nobody knows to give is the hang this whole section is
+> about, arriving in the one place it costs the most.
+
+That cannot be tested without a queue to test it in, so it stays a risk rather
+than a measurement, and the trade is bad: the settings suite is the smallest of
+the four, and the failure it would buy is the expensive one.
+
+The fix that removes the risk instead of avoiding it is to split the two jobs
+into two workflows, so the half that reads secrets and the half that reads only
+the checkout stop sharing an `on:` block. The manifest half would then read no
+secrets, sit under no gate, and carry `merge_group:` like the other three. Until
+somebody does that, three suites gate the queue and this one does not.
 
 **Queue entries are never path-scoped.** `.github/actions/changed-paths` answers
 "run" for `merge_group` exactly as it does for a push, so every suite that runs

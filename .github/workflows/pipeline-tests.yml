@@ -20,6 +20,18 @@ on:
   # inside the job instead, where it can still finish green.
   pull_request:
     branches: [main]
+  # The event a merge queue raises checks on. This has to be in place before
+  # the queue is switched on rather than after: a required check that never
+  # reports does not fail a queue entry, it hangs it until the queue times out
+  # and ejects the pull request. BRANCHING.md holds the rest of the setup.
+  #
+  # Deliberately unfiltered, unlike the two triggers above. A queue entry's ref
+  # is `refs/heads/gh-readonly-queue/main/pr-N-<sha>` rather than `main`, and
+  # `merge_group`'s `branches:` filter is undocumented as to which of those two
+  # it matches (github/docs#32879). A filter that guesses wrong costs the same
+  # hang as no trigger at all, and there is nothing to scope anyway - a queue
+  # is enabled per branch in the ruleset, and only `main` has one.
+  merge_group:
 
 # Narrower than the default token. `pull-requests: read` is what lets the
 # scope step ask which files the pull request touches.

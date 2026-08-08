@@ -7,9 +7,9 @@
 # run. Those are fixed once here, not three times.
 #
 # The contract is deliberately lopsided. Every uncertain case answers "run":
-# a push, a PR too large to list, an API that did not cooperate. Running a
-# suite that did not need to run costs a minute. Skipping one that did costs
-# a merge, and does it silently.
+# a push, a merge queue entry, a PR too large to list, an API that did not
+# cooperate. Running a suite that did not need to run costs a minute. Skipping
+# one that did costs a merge, and does it silently.
 
 name: Changed paths
 description: Decide whether a suite has anything to test in this run.
@@ -38,11 +38,23 @@ runs:
         PATHS: ${{ inputs.paths }}
       with:
         script: |
-          // A push to main runs everything. Post-merge validation against the
-          // real merge commit is the whole reason that trigger was kept - it
-          // is what caught the flaky staleness boundary test in #32, green on
-          // the PR and red on the merge - so narrowing it here would give
-          // back exactly what it exists to catch.
+          // A push to main runs everything, and so does a merge queue entry.
+          //
+          // For the push, post-merge validation against the real merge commit
+          // is the whole reason that trigger was kept - it is what caught the
+          // flaky staleness boundary test in #32, green on the PR and red on
+          // the merge - so narrowing it here would give back exactly what it
+          // exists to catch.
+          //
+          // For the queue entry there is no pull request to ask, and the
+          // question does not survive the translation anyway. An entry is a
+          // commit that may combine several pull requests, so the union of
+          // their file lists is the most any filter could compute - and the
+          // failures a queue exists to catch are the ones that belong to the
+          // combination rather than to any single diff in it. Two changes that
+          // are each green alone and broken together are not visible in either
+          // one's file list. Running everything is both the only answer
+          // available here and the right one.
           if (context.eventName !== 'pull_request') {
             core.setOutput('run', 'true')
             core.info(`${context.eventName} is not a pull request - running the full suite.`)

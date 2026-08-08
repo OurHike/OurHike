@@ -49,6 +49,9 @@ jobs:
     steps:
       - name: Is there a UA database to check
         id: can
+        # Before the checkout, so not in backend/ - see migrate.yml's gate for
+        # what this cost the first time it was missing.
+        working-directory: .
         run: |
           if [ -z "${{ secrets.UA_MIGRATION_DATABASE_URL }}" ]; then
             echo "::warning::No UA database is configured, so nothing was checked. See LAUNCH_CHECKLIST.md 5 and #371."
@@ -87,6 +90,8 @@ jobs:
     steps:
       - name: Is there a production database to check
         id: can
+        # Before the checkout, so not in backend/ - see migrate.yml's gate.
+        working-directory: .
         run: |
           if [ -z "${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}" ]; then
             echo "::warning::No production database is configured, so nothing was checked. See LAUNCH_CHECKLIST.md 5."

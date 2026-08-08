@@ -118,6 +118,12 @@ jobs:
       # what makes sure that politeness cannot become a way past the gate.
       - name: Is there a UA database to migrate
         id: can
+        # Runs before the checkout, so it cannot inherit the job's
+        # working-directory: backend - that path does not exist yet, and bash
+        # fails to start rather than the step failing, which reads as an
+        # infrastructure fault rather than a workflow bug. This was the first
+        # run's failure (#407 merged red).
+        working-directory: .
         run: |
           if [ -z "${{ secrets.UA_MIGRATION_DATABASE_URL }}" ]; then
             echo "::warning::No UA database is configured, so nothing was migrated. See LAUNCH_CHECKLIST.md 5 and #371."
@@ -190,6 +196,8 @@ jobs:
       # production from a feature branch is a schema no merged commit
       # describes.
       - name: Refuse anything this should not do
+        # Before the checkout, so not in backend/ - see the UA job's gate.
+        working-directory: .
         run: |
           if [ "${{ github.ref }}" != "refs/heads/main" ]; then
             echo "::error::Production migrations run from main only; this dispatch names ${{ github.ref }}."

@@ -146,36 +146,47 @@ the spikes and the data builds are `workflow_dispatch`.
 ##### The one suite that is missing from that table, and why
 
 **`settings-check.yml` has no `merge_group:` trigger, so `Manifest agrees with
-the workflows` cannot be a required check of the queue.** That is the one piece
-of this that did not work, and it is worth the paragraphs because the way it
-failed is the way this whole section warns about.
+the workflows` is not among the checks a queue can require.** It is left out on
+evidence rather than on principle, and the evidence is worth writing down,
+because what it produced is precisely the failure this section warns about: a
+check reporting *nothing* rather than red.
 
-It got the trigger with the other four, in the same commit. The other four ran
-normally. This one then concluded `action_required` **with zero jobs** on an
-ordinary pull request — no status at all rather than red — and did it again on
-the next commit, and again with the trigger's only companion change reverted. It
-is the sole `action_required` run in the repository's last two hundred.
+What was measured, on the pull request that added these triggers:
 
-What singles it out is almost certainly that its `configured` job resolves
-`toJSON(secrets)` — the only job here that reads the secrets context — and
-`action_required` is what GitHub reports when a run needs approval before it
-may. Adding an event on which `configured` is not excluded by its `if:` appears
-to be enough to make a pull_request run of the whole workflow look like one that
-wants secrets. **That is a measurement with a plausible mechanism attached, not
-a documented rule**, and it should be read as the former.
+| Attempt | `Settings check` on the pull request |
+|---|---|
+| `merge_group:` added, `configured`'s `if:` widened to exclude it | `action_required`, **zero jobs** |
+| same, next commit | `action_required` |
+| `if:` restored to its original text, trigger kept | `action_required` |
+| trigger removed, comment edits kept | `action_required` |
+| file restored byte-for-byte to `main` | *the experiment this table exists to finish* |
 
-The reason it was backed out rather than worked around is the blast radius. The
-workflow definition GitHub uses for a `pull_request` run comes from the pull
-request's own head, so a `merge_group:` merged into this file would give *every
-later pull request* a Settings check that silently never reports — the drift
-guard quietly switching itself off, in the one file whose job is noticing that
-something is quietly off.
+The four other workflows that got the same trigger in the same commit ran
+normally throughout, and this is the only `action_required` run in the
+repository's last two hundred.
 
-To revisit it, the thing to change is the coupling rather than the trigger:
-split the two jobs into two workflows, so the half that reads secrets and the
-half that reads only the checkout stop sharing an `on:` block. Then the manifest
-half can trigger on `merge_group` with no secrets anywhere near it. Until
-somebody does that, three suites gate the queue and this one does not.
+Two things about it are established. It is not the `merge_group:` trigger —
+removing it changed nothing. And it is not "the pull request edits a workflow" —
+[#402](https://github.com/OurHike/OurHike/pull/402) edits `pages.yml` and its
+`Settings check` is green.
+
+The best remaining explanation is that this is the only workflow that both runs
+on `pull_request` *and* reads the secrets context, via `configured`'s
+`toJSON(secrets)`; `action_required` is what GitHub reports when a run needs
+approval before it may reach secrets, and a pull request proposing edits to that
+workflow is exactly what such a gate exists for. That would make it a property
+of **a pull request touching this file**, not of the file's merged contents —
+and no pull request had ever modified this file before, since
+[#180](https://github.com/OurHike/OurHike/pull/180) created it. **Unconfirmed.
+Do not build on it without re-running the experiment.**
+
+If it is confirmed, the trigger can simply be added: only pull requests that
+themselves edit this file would need the one approval, and everything else would
+be unaffected. If it is not, the durable fix is to split the two jobs into two
+workflows so the half that reads secrets and the half that reads only the
+checkout stop sharing an `on:` block — then the manifest half can trigger on
+`merge_group` with no secrets anywhere near it. Until one of those happens,
+three suites gate the queue and this one does not.
 
 **Queue entries are never path-scoped.** `.github/actions/changed-paths` answers
 "run" for `merge_group` exactly as it does for a push, so every suite that runs

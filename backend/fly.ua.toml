@@ -1,0 +1,45 @@
+# Fly.io app config for the UA backend - the deployment a release candidate is
+# verified against before a tag ships it (RELEASING.md §3b).
+#
+# A second file rather than flags on `fly deploy`, because the two settings UA
+# differs on are config values with no command-line override. What that costs
+# is a second home for everything else in fly.toml, which CONTRIBUTING.md's
+# one-home rule warns goes stale unnoticed - so tests/test_fly_config.py
+# asserts these two files agree on every key except the three below, and names
+# the ones that have drifted apart when they do not.
+#
+# `app` is a placeholder in the same way fly.toml's is: `fly apps create` needs
+# a real, globally-unique name, and this file must be updated to match once one
+# is picked. It is what `fly deploy --config fly.ua.toml` reads to decide which
+# app it is deploying, so a stale name here deploys UA over something else or
+# fails, depending on who owns that name.
+app = "ourhike-backend-ua"
+primary_region = "iad"  # Production's region. UA testing latency somewhere else would be testing something else.
+
+[build]
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # The two settings this file exists for, and they are the same decision twice.
+  #
+  # Production keeps a machine warm because a cold start on the first request
+  # after quiet is a bad experience for something safety-adjacent (fly.toml).
+  # UA has no hikers: it has testers, who are told what they are testing, and
+  # for whom a few seconds of cold start is not the thing being verified. So UA
+  # scales to zero and costs nothing while nobody is looking at it - which is
+  # what RELEASING.md §3d budgets for when it calls UA "one more Fly machine".
+  #
+  # This is the one behaviour UA deliberately does not share with production.
+  # Anything else that differs is drift rather than design.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+
+[env]
+  PORT = "8000"

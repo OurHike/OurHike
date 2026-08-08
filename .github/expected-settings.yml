@@ -241,6 +241,25 @@ settings:
       applied (LAUNCH_CHECKLIST.md 5); it stops being optional the day a hiker
       can sign in.
 
+  FLY_API_TOKEN:
+    where: secret
+    required: false
+    why: >-
+      Lets deploy-backend.yml push an image to the two Fly apps RELEASING.md 3
+      names - `ourhike-backend-ua` from main, `ourhike-backend` from a v* tag.
+      A deploy token scoped to those apps (`fly tokens create deploy`), not a
+      personal org-wide one: this is the only credential in this file that can
+      replace what a hiker's phone is talking to, and an org token could do it
+      to anything else on the account too. One token for both apps because Fly
+      scopes a deploy token to an app and the workflow needs both - the
+      alternative is two settings whose only difference is which half of the
+      release they break when one expires. Optional because no Fly account has
+      ever been reached from here (LAUNCH_CHECKLIST.md 6): the UA job says so
+      and skips rather than turning every merge to main red. The production job
+      does not skip - a tag whose backend quietly did not deploy is a release
+      whose client talks to the previous build - so this stops being optional
+      the day a tag exists.
+
   PROTECTIONS_READ_TOKEN:
     where: secret
     required: false

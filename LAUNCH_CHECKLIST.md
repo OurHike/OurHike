@@ -325,24 +325,27 @@ See [#279](https://github.com/OurHike/OurHike/issues/279) — `verifyOtp` is alr
 
 ## 6. Host the backend
 
-The host is picked and the config is written: `backend/Dockerfile` and `backend/fly.toml` target **Fly.io**, chosen over Render specifically to avoid its free tier sleeping on idle — a cold start on the first request after quiet is a worse experience for something safety-adjacent than a small ongoing cost. `fly.toml` keeps `min_machines_running = 1` for the same reason, and `primary_region = "iad"` is the closest major Fly region to the trail's own corridor.
+The host is picked and the config is written: `backend/Dockerfile` and `backend/fly.toml` target **Fly.io**, chosen over Render specifically to avoid its free tier sleeping on idle — a cold start on the first request after quiet is a worse experience for something safety-adjacent than a small ongoing cost. `fly.toml` keeps `min_machines_running = 1` for the same reason, and `primary_region = "iad"` is the closest major Fly region to the trail's own corridor. `backend/fly.ua.toml` is the same service for UA, differing only in the app name and in scaling to zero between testers (RELEASING.md §3).
 
-What is left is running it, in this order:
+**The deploy itself is a workflow** — `.github/workflows/deploy-backend.yml`, UA from `main` and production from a `v*` tag. What is left below is the account work it deliberately does not do, and until step 4 exists the UA leg says so in a warning and skips rather than turning every merge red.
 
-1. **`fly apps create`** with a real, globally-unique name. `fly.toml`'s `app = "ourhike-backend"` is a placeholder — update it to match whatever the name ends up being.
-2. **`fly secrets set`** the runtime environment. Never committed, never baked into the image:
+1. **`fly auth login`**, on your own machine. A browser OAuth flow against an account with a payment method on it — there is one always-on production machine (`min_machines_running = 1`) plus a UA machine that sleeps, which is what §3d of RELEASING.md budgets for. Nothing in this repository can do this step or needs to; it exists so that step 2 can happen.
+2. **`fly apps create`, twice** — a production name and a UA name, both globally unique. Then update `app =` in `backend/fly.toml` and `backend/fly.ua.toml` to match; `ourhike-backend` and `ourhike-backend-ua` are placeholders, and `fly deploy --config` reads that key to decide which app it is deploying. `backend/tests/test_fly_config.py` fails if the two files end up naming the same app, which would make a UA deploy land on production.
+3. **`fly secrets set`** the runtime environment, on each app. Never committed, never baked into the image, and not something the deploy workflow passes — they live on the app and a deploy neither reads nor needs them:
    ```
-   fly secrets set DATABASE_URL=postgresql://...   # the POOLED string, port 6543
-   fly secrets set SUPABASE_URL=... SUPABASE_ANON_KEY=...
+   fly secrets set -a <app> DATABASE_URL=postgresql://...   # the POOLED string, port 6543
+   fly secrets set -a <app> SUPABASE_URL=... SUPABASE_ANON_KEY=...
    ```
    `SUPABASE_JWT_SECRET` is **not** in that list for a hosted project — see 4.4. Set it only against a self-hosted Supabase.
 
    **The pooled string is deliberate here, and the app is built for it.** A transaction pooler hands each transaction whatever backend is free, which breaks anything a driver leaves on a connection — psycopg's automatic prepared statements above all, and that failure appears only in production and only once an endpoint is warm. `backend/app/db/session.py` turns them off, and `backend/tests/test_pooler.py` proves it against a real transaction pooler rather than asserting it. If you use the direct string instead, nothing breaks; you can set `DATABASE_PREPARED_STATEMENTS=true` to get the plan caching back.
-3. **`fly deploy`** from `backend/`.
-4. **Apply the migration** — dispatch **Migrate** (step 5), then **confirm RLS is on** (step 5a — the migration does it, but check rather than assume). Deliberately separate from deploying, and it stays that way now that a workflow does it: a migration is a reviewed action, not something that fires on every container start. Note that the secret this job holds is the **session** pooler (port 5432), while the `DATABASE_URL` you set on Fly above is the **transaction** pooler (6543) — two different values on the same host, and both are correct for their own job.
-5. **Point the client at it** and add its origin to Supabase's allowed redirect URLs (4.3b).
 
-**None of this has been run against a real Fly.io account or Docker daemon.** The Dockerfile follows a standard FastAPI/uvicorn pattern and `fly.toml` matches Fly's documented format, but "should work" is not "confirmed working" — budget for the first real `fly deploy` to surface something no local check could. See [backend/README.md](backend/README.md) for the reasoning behind each choice.
+   Missing one of these is the failure the deploy is built to catch rather than hide: `app/config.py` gives the Supabase fields no default on purpose, so the process exits at import time, Fly restarts it, and `fly deploy` still reports success. The workflow's health step asks the app itself and fails the run.
+4. **`fly tokens create deploy`**, and put it in the `FLY_API_TOKEN` repository secret (Settings → Secrets and variables → Actions). A deploy token scoped to these apps, not a personal org-wide one — this is the only credential in that list that can replace what a hiker's phone is talking to. From here on, merging to `main` deploys UA.
+5. **Apply the migration** — dispatch **Migrate** (step 5), then **confirm RLS is on** (step 5a — the migration does it, but check rather than assume). Deliberately separate from deploying, and it stays that way now that a workflow does each: a migration is a reviewed action, not something that fires on every container start. Note that the secret the Migrate job holds is the **session** pooler (port 5432), while the `DATABASE_URL` you set on Fly above is the **transaction** pooler (6543) — two different values on the same host, and both are correct for their own job.
+6. **Point the client at it** and add its origin to Supabase's allowed redirect URLs (4.3b).
+
+**None of this has been run against a real Fly.io account or Docker daemon.** The Dockerfile follows a standard FastAPI/uvicorn pattern, both Fly configs match Fly's documented format, and the workflow is checked for the things a checkout can check — but "should work" is not "confirmed working". Budget for the first real deploy to surface something no local check could. See [backend/README.md](backend/README.md) for the reasoning behind each choice.
 
 ---
 

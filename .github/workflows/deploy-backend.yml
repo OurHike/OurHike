@@ -1,0 +1,219 @@
+# Deploys backend/ to Fly.io - UA from `main`, production from a `v*` tag.
+#
+# Until this existed the backend was deployed by a maintainer running
+# `fly deploy` from a laptop, which is the same shape migrate.yml replaced for
+# the schema: a step that works fine right up until the person who knows it is
+# unavailable, and that leaves no record of which commit is actually serving.
+# RELEASING.md §3's table already names the two apps this deploys to -
+# `ourhike-backend-ua` and `ourhike-backend` - so what is new here is the
+# running of it, not the design.
+#
+# WHAT STAYS A DECISION. Creating the apps, and paying for them. `fly apps
+# create` needs a globally-unique name and an account with a card on it, and
+# `fly secrets set` puts the runtime credentials on the app once - neither is
+# something a workflow should do, and neither is something this one does. It
+# deploys an image to an app that already exists. LAUNCH_CHECKLIST.md 6 is the
+# one-time setup; the token below is the last step of it.
+#
+# WHY UA IS NOT PATH-FILTERED. A push to `main` that touches nothing under
+# backend/ still redeploys UA, the same way ua.yml rebuilds the client for a
+# docs-only commit. migrate.yml *is* filtered because `upgrade head` on a
+# database already at head is a no-op worth nobody's attention, but a deploy is
+# not a no-op: it is how UA's running commit catches up with `main`, and UA
+# claiming to be `main` while running something older is the one thing UA
+# cannot afford. The cost is a cached rebuild of the last two Docker layers.
+#
+# WHY PRODUCTION FAILS WHERE UA SKIPS. An unconfigured UA must not turn every
+# merge red, so the UA job says so and stops. Production is the opposite case:
+# a tag is somebody shipping, and a production backend that quietly did not
+# deploy is a release whose client points at the previous build's API. So the
+# production job errors rather than skipping - the same asymmetry migrate.yml
+# draws between its two jobs, for the same reason.
+#
+# WHAT THIS DOES NOT DO: migrations. The Dockerfile is explicit about why they
+# do not run on container start, and migrate.yml is where they run instead.
+# Order matters and is a human's call - RELEASING.md §8c's expand-and-contract
+# rule exists because the previous release is still serving traffic during a
+# rollout, so "migrate then deploy" is right for an additive revision and
+# nothing can decide that generally.
+
+name: Deploy backend
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  # Redeploying after a secret changes on the Fly app, and the rollback:
+  # dispatch against a previous tag and production is that tag again
+  # (RELEASING.md §11b, the same use pages.yml's dispatch serves).
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Which app. Production requires a v* tag and waits for a reviewer."
+        type: choice
+        options: [ua, production]
+        default: ua
+
+permissions:
+  contents: read
+
+jobs:
+  ua:
+    name: Deploy UA
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && inputs.target == 'ua')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Never cancelled mid-flight, unlike ua.yml's client deploy. A Pages upload
+    # is atomic - the new build is live or it is not - but a Fly deploy is a
+    # rolling replacement, and cancelling one halfway leaves some machines on
+    # the new image and some on the old, which is a worse thing for a tester to
+    # meet than a deploy that finished and was then superseded.
+    concurrency:
+      group: deploy-backend-ua
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Is there a Fly account to deploy to
+        id: can
+        # Before the checkout, so it cannot inherit working-directory: backend -
+        # that path does not exist yet, and bash fails to start rather than the
+        # step failing, which reads as a broken runner. migrate.yml's first run
+        # died exactly there; .github/tests/test_workflow_working_directory.py
+        # is the rule now.
+        working-directory: .
+        # Through env, not interpolated into the script body - pages.yml
+        # documents the rule. `${{ }}` is substituted as literal text before
+        # bash sees the line, so a token containing a quote or a `$(...)` would
+        # be parsed as script rather than as data. Nothing prints it either
+        # way; this is about what bash does with it, not about masking.
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "::warning::No Fly.io token is configured, so the UA backend was not deployed. See LAUNCH_CHECKLIST.md 6."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.can.outputs.go == 'true'
+
+      # Fly's own action, and `@master` is the only ref its documentation
+      # offers for this subpath. Worth naming rather than leaving to look like
+      # an oversight: it is a third-party action that can change underneath a
+      # run, the same trust already extended to cloudflare/wrangler-action in
+      # pr-preview.yml, and it installs a CLI that talks to the account this
+      # repository deploys from.
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+        if: steps.can.outputs.go == 'true'
+
+      # --remote-only because a hosted runner has no Docker daemon worth
+      # building on and Fly has builders for exactly this. Note that
+      # `fly secrets` are already on the app - they are set once, out of band,
+      # and a deploy neither reads nor needs them.
+      - name: Deploy
+        if: steps.can.outputs.go == 'true'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --config fly.ua.toml --remote-only
+
+      - name: Confirm UA answers
+        if: steps.can.outputs.go == 'true'
+        working-directory: .
+        run: .github/scripts/wait-for-backend.sh backend/fly.ua.toml
+
+      - name: Say where UA is
+        if: steps.can.outputs.go == 'true'
+        run: |
+          app="$(sed -n 's/^app *= *"\(.*\)"/\1/p' fly.ua.toml | head -1)"
+          {
+            echo "### UA backend"
+            echo
+            echo "**https://$app.fly.dev**"
+            echo
+            echo "Deployed from \`$GITHUB_SHA\`. Production is whatever tag was last deployed"
+            echo "(RELEASING.md §2), and its schema is applied separately - dispatch **Migrate**."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  production:
+    name: Deploy production
+    if: >-
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.target == 'production')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The reviewer gate. RELEASING.md §12 names a `production` environment with
+    # a required reviewer as the mechanism that makes "only the maintainer
+    # ships" checked by GitHub rather than followed by discipline;
+    # publish-vector-data.yml and migrate.yml's production job already run under
+    # it. The protection rule itself is #375 - declared in
+    # .github/expected-protections.yml, not yet configured - so today this
+    # names an environment that gates nothing. It costs nothing to be here
+    # first, and everything to be added afterwards.
+    environment: production
+    concurrency:
+      group: deploy-backend-production
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Refuse anything this should not do
+        # Before the checkout - see the UA job's gate.
+        working-directory: .
+        # Both values through env rather than into the script body - see the UA
+        # job's gate for why.
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          REF: ${{ github.ref }}
+        run: |
+          case "$REF" in
+            refs/tags/v*) ;;
+            *)
+              echo "::error::Production deploys from a v* tag only; this run names $REF. A dispatch is for redeploying or rolling back a tag that already exists (RELEASING.md 11b), not for putting a branch in front of hikers."
+              exit 1
+              ;;
+          esac
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "::error::No Fly.io token is configured, so this tag has no backend. The client it ships alongside would talk to whatever was deployed last. See LAUNCH_CHECKLIST.md 6."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --config fly.toml --remote-only
+
+      # This is verification, not a gate, and the difference is worth being
+      # honest about: by the time a curl here fails, the rollout has already
+      # happened and production is already answering with it. The version that
+      # would actually gate is a [[http_service.checks]] block in fly.toml, so
+      # that Fly refuses to move traffic to a machine failing /health - which
+      # is the right next change and is deliberately not being made blind,
+      # against an account nothing in this repository has ever reached.
+      - name: Confirm production answers
+        working-directory: .
+        run: .github/scripts/wait-for-backend.sh backend/fly.toml
+
+      - name: Say what is deployed
+        run: |
+          app="$(sed -n 's/^app *= *"\(.*\)"/\1/p' fly.toml | head -1)"
+          {
+            echo "### Production backend"
+            echo
+            echo "**https://$app.fly.dev** — \`${{ github.ref_name }}\`"
+            echo
+            echo "The schema is not part of this. If this release carries a migration and it has"
+            echo "not been applied yet, dispatch **Migrate** with target \`production\` (RELEASING.md §3)."
+          } >> "$GITHUB_STEP_SUMMARY"

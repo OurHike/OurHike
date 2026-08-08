@@ -570,6 +570,8 @@ which is the difference between this rule and the one it extends.
 | `pages.yml` | Deploys production from a `v*` tag, not from `main`. Refuses a tag with no notes file (gate 12) or one that disagrees with `client/package.json` (§4), and drafts the GitHub release with the app exactly as deployed, the OpenAPI document and the data manifest attached |
 | `client/src/lib/buildInfo.ts` | The version, commit and build time, inlined at build time and shown at the foot of Settings |
 | `ua.yml` | Deploys `main` to UA on its own Cloudflare origin, with no path to the production backend |
+| `deploy-backend.yml` | The backend half of the same split: `main` deploys the UA app, a `v*` tag deploys production under `environment: production`, and a dispatch against a previous tag is §11b's rollback. Skips politely for UA when no Fly token is configured and refuses to skip for production |
+| `backend/fly.ua.toml` | UA's own app, differing from production in the app name and in scaling to zero between testers. `backend/tests/test_fly_config.py` fails on any other difference |
 | `release-notes.yml` | Generates a notes draft and opens it as a pull request, labelled so it can pass CI |
 | `.github/scripts/release_notes.py` | The generator. Pure half tested in `.github/tests/test_release_notes.py`; the git and API half is a thin seam |
 | `releases/` | Where the notes live, canonically |
@@ -578,10 +580,11 @@ which is the difference between this rule and the one it extends.
 **Not built, and each one is why the process is not yet enforced rather than merely
 followed:**
 
-- **The UA infrastructure itself.** The workflow is written and degrades politely;
-  the Cloudflare alias will appear on the first push to `main` after this lands,
-  but the UA Supabase project and the UA Fly app are account work
-  ([#371](https://github.com/OurHike/OurHike/issues/371)).
+- **The UA infrastructure itself.** Both workflows are written and both degrade
+  politely; the Cloudflare alias will appear on the first push to `main` after this
+  lands, but the UA Supabase project and the two Fly apps are account work
+  ([#371](https://github.com/OurHike/OurHike/issues/371)) — an account, a card, two
+  `fly apps create`, and a `FLY_API_TOKEN` (LAUNCH_CHECKLIST.md 6).
   Until `UA_API_BASE_URL` exists, UA queues reports in the outbox — which is a
   supported state, not a broken one.
 - **The repository settings** — required status checks, the `production`

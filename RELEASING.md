@@ -301,7 +301,7 @@ What must be true before a tag is pushed. **Hard** means the release does not ha
 | 2 | `check-build-output.mjs` passes — a build that cannot draw a map does not ship | hard | already inside `npm run build` |
 | 3 | Ordering-sensitive client tests run three times, green each time | hard | CLAUDE.md; [#343](https://github.com/OurHike/OurHike/issues/343) is the open instance |
 | 4 | Migrations up, down, and `alembic check`, against real Postgres | hard | `backend/tests/test_migrations.py` |
-| 5 | Migration applied to UA before production | hard | procedure; §3 |
+| 5 | Migration applied to UA before production | hard | `.github/workflows/migrate.yml` — the production job `needs: ua` and refuses to start unless UA really applied in the same run |
 | 6 | `verify_release.py` battery green against the candidate data over HTTPS | hard | DATA_RELEASES.md §3 |
 | 7 | UA smoke: install the PWA, download the smallest archive, go offline, map still draws | hard | procedure, until automated |
 | 8 | Backwards-compatibility checks (§8) | hard | tests |

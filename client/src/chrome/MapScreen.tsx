@@ -32,6 +32,7 @@ import type { WarningPoint } from '../map/warningLayers'
 import type { SourceReport } from '../map/liveSourceHealth'
 import type { BackgroundProblem } from '../lib/backgroundHealth'
 import type { BackgroundOverride } from '../lib/dataSaver'
+import type { DownloadActivity } from '../lib/downloadActivity'
 import type { ArchiveZooms } from '../lib/archiveCoverage'
 import { mapCredits } from '../map/credits'
 import { MapAttribution } from './MapAttribution'
@@ -189,6 +190,10 @@ export interface MapScreenProps {
   onOpenDownloads?: () => void
   /** Whether a finished archive is on the phone, which words that link. */
   hasDownload?: boolean
+  /** What is downloading right now, if anything - drawn on that same link, so
+   *  a transfer started from the window and left running is visible from the
+   *  map without opening the window again (lib/downloadActivity.ts). */
+  downloadActivity?: DownloadActivity | null
   /**
    * Whether the corridor RASTER archive specifically is finished and on this
    * phone, which decides whether the corner credits USGS at all.
@@ -293,6 +298,7 @@ export function MapScreen({
   onChangeBackground,
   onOpenDownloads,
   hasDownload = false,
+  downloadActivity = null,
   hasRasterArchive = false,
   backgroundProblem = null,
   onLiveSourceHealth,
@@ -447,6 +453,7 @@ export function MapScreen({
             belowArchiveZoom={belowArchiveZoom}
             onOpenDownloads={onOpenDownloads}
             hasDownload={hasDownload}
+            downloadActivity={downloadActivity}
           />
         </div>
       </div>

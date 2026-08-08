@@ -31,6 +31,7 @@
 
 import { useState } from 'react'
 import { facingFullDownload } from '../lib/backgroundStatus'
+import { downloadPercent } from '../lib/downloadActivity'
 import { formatBytes, formatBytesLive } from '../lib/formatBytes'
 import type { PersistenceState } from '../lib/storageHealth'
 import { DetailPicker, type DetailOption } from './DetailPicker'
@@ -108,10 +109,6 @@ function lockedNote(status: DownloadStatus): string {
   return status.state === 'downloaded'
     ? 'This map is on the phone. Deleting it and downloading again is how to change the detail.'
     : 'A download is under way. Its detail is fixed until it finishes.'
-}
-
-function percent(received: number, total: number): number {
-  return total === 0 ? 0 : Math.round((received / total) * 100)
 }
 
 function formatDay(date: Date): string {
@@ -200,14 +197,16 @@ export function DownloadCard({
           <div
             role="progressbar"
             aria-label="Checking downloaded data"
-            aria-valuenow={percent(status.checkedBytes, status.totalBytes)}
+            aria-valuenow={downloadPercent(status.checkedBytes, status.totalBytes)}
             aria-valuemin={0}
             aria-valuemax={100}
             className="downloads__bar"
           >
             <span
               className="downloads__bar-fill"
-              style={{ width: `${percent(status.checkedBytes, status.totalBytes)}%` }}
+              style={{
+                width: `${downloadPercent(status.checkedBytes, status.totalBytes)}%`,
+              }}
             />
           </div>
           {/* Said plainly because the whole point of this state is telling a
@@ -228,14 +227,16 @@ export function DownloadCard({
           <div
             role="progressbar"
             aria-label="Download progress"
-            aria-valuenow={percent(status.receivedBytes, status.totalBytes)}
+            aria-valuenow={downloadPercent(status.receivedBytes, status.totalBytes)}
             aria-valuemin={0}
             aria-valuemax={100}
             className="downloads__bar"
           >
             <span
               className="downloads__bar-fill"
-              style={{ width: `${percent(status.receivedBytes, status.totalBytes)}%` }}
+              style={{
+                width: `${downloadPercent(status.receivedBytes, status.totalBytes)}%`,
+              }}
             />
           </div>
           {/* The received figure changes on every chunk; formatBytesLive keeps

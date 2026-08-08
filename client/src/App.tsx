@@ -98,6 +98,7 @@ import {
   type BackgroundSheet,
 } from './lib/packages'
 import { combineBackgroundStatus } from './lib/backgroundStatus'
+import { activeDownload } from './lib/downloadActivity'
 import { useClock } from './lib/useClock'
 import { useOnline } from './lib/useOnline'
 import { useDataSaver } from './lib/useDataSaver'
@@ -690,6 +691,15 @@ function App() {
       (pkg) => archiveStatusFor(pkg.idbKey).state === 'downloaded',
     ),
   )
+
+  // What is arriving right now, across every sheet, for the link that says so
+  // (lib/downloadActivity.ts). Decided here rather than on either screen for
+  // the reason the transfer itself lives here: the download outlives the
+  // window it was started from and has to be reportable from the map and from
+  // Settings alike, which are never both mounted. Off the SHEET statuses the
+  // cards already render, so the footer's figure and the card's cannot
+  // disagree about the same download.
+  const downloadActivity = activeDownload(backgroundSheets.map(sheetStatus))
 
   // Whether the hiking sheet's TILES are on the phone - the basemap package
   // alone, not the sheet as a whole. The DEM beside it is the same sheet's
@@ -1704,6 +1714,7 @@ function App() {
                   dataSaver={saveData}
                   archiveDownloaded={archiveDownloaded}
                   hasDownload={anySheetDownloaded}
+                  downloadActivity={downloadActivity}
                   onOpenDownloads={openDownloads}
                   hikeSummary={hike === null ? null : hikeSummary(hike)}
                   onEditHike={() => setPickingHike(true)}
@@ -1772,6 +1783,10 @@ function App() {
           // gone - which is why it is carried, and not why it is given room.
           onOpenDownloads={openDownloads}
           hasDownload={anySheetDownloaded}
+          // The bar on that same link. This is the only place a download in
+          // flight is visible from the map, and the map is where a hiker who
+          // shut the window is standing.
+          downloadActivity={downloadActivity}
           // Narrower than the line above on purpose: the credit corner names
           // the USGS survey only while there are USGS tiles on the phone to
           // draw, and a hiking-sheet-only download has none.

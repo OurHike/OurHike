@@ -130,33 +130,58 @@ It is in place. These are the checks that report on a queue entry:
 | `client-tests.yml` | `test` |
 | `pipeline-tests.yml` | `pytest` |
 | `backend-tests.yml` | `pytest-postgres` |
-| `settings-check.yml` | `Manifest agrees with the workflows` |
 | `pr-issue-link.yml` | `PR has a linked issue` |
 
-Two of those are not quite what they look like:
-
-- **`settings-check.yml`'s second job, `Settings are configured`, deliberately
-  does not run in the queue, and must never be a required check.** It asks
-  whether the R2 and Cloudflare credentials are still live. That is a real
-  question and it is not this one — gating merges on it would let a token
-  revoked overnight wedge the queue against every open pull request at once.
-  The scheduled and push-to-`main` runs are what watch it.
-- **`pr-issue-link.yml` reports green on a queue entry without checking
-  anything**, and says so in its summary. A queue entry is not a pull request
-  and cannot be asked whether it closes an issue; each pull request in the group
-  already answered that on its own runs before it was queued. It triggers anyway
-  so that requiring it — which is the entire point of that file — cannot hang
-  the queue.
+`pr-issue-link.yml` is not what it looks like. **It reports green on a queue
+entry without checking anything**, and says so in its summary. A queue entry is
+not a pull request and cannot be asked whether it closes an issue; each pull
+request in the group already answered that on its own runs before it was queued.
+It triggers anyway so that requiring it — which is the entire point of that file
+— cannot hang the queue.
 
 Everything else stays out, and none of it can be a required check anyway.
 `pr-preview.yml` builds a per-pull-request preview and a queue entry is not one;
 the spikes and the data builds are `workflow_dispatch`.
 
+##### The one suite that is missing from that table, and why
+
+**`settings-check.yml` has no `merge_group:` trigger, so `Manifest agrees with
+the workflows` cannot be a required check of the queue.** That is the one piece
+of this that did not work, and it is worth the paragraphs because the way it
+failed is the way this whole section warns about.
+
+It got the trigger with the other four, in the same commit. The other four ran
+normally. This one then concluded `action_required` **with zero jobs** on an
+ordinary pull request — no status at all rather than red — and did it again on
+the next commit, and again with the trigger's only companion change reverted. It
+is the sole `action_required` run in the repository's last two hundred.
+
+What singles it out is almost certainly that its `configured` job resolves
+`toJSON(secrets)` — the only job here that reads the secrets context — and
+`action_required` is what GitHub reports when a run needs approval before it
+may. Adding an event on which `configured` is not excluded by its `if:` appears
+to be enough to make a pull_request run of the whole workflow look like one that
+wants secrets. **That is a measurement with a plausible mechanism attached, not
+a documented rule**, and it should be read as the former.
+
+The reason it was backed out rather than worked around is the blast radius. The
+workflow definition GitHub uses for a `pull_request` run comes from the pull
+request's own head, so a `merge_group:` merged into this file would give *every
+later pull request* a Settings check that silently never reports — the drift
+guard quietly switching itself off, in the one file whose job is noticing that
+something is quietly off.
+
+To revisit it, the thing to change is the coupling rather than the trigger:
+split the two jobs into two workflows, so the half that reads secrets and the
+half that reads only the checkout stop sharing an `on:` block. Then the manifest
+half can trigger on `merge_group` with no secrets anywhere near it. Until
+somebody does that, three suites gate the queue and this one does not.
+
 **Queue entries are never path-scoped.** `.github/actions/changed-paths` answers
-"run" for `merge_group` exactly as it does for a push, so all four suites run on
-every entry. That is deliberate. The failure a queue exists to catch belongs to
-the *combination* of two changes rather than to either one's diff, and it is
-therefore invisible in any single pull request's file list — the scoping
+"run" for `merge_group` exactly as it does for a push, so every suite that runs
+on an entry runs whole. That is deliberate. The failure a queue exists to catch
+belongs to the *combination* of two changes rather than to either one's diff, and
+it is therefore invisible in any single pull request's file list — the scoping
 described in [TESTING.md](TESTING.md) is a pull-request optimisation, and it
 stops at the queue door.
 
@@ -170,20 +195,10 @@ Switching the queue on is a settings change on `main`, under **Settings → Rule
    and nothing outside it. A required check that cannot report on `merge_group`
    is the hang described above, so the table is the whole menu.
 
-   > **One caveat, found while writing this.** On the pull request that added
-   > these triggers, the `Settings check` run completed as `action_required`
-   > with **zero jobs** — so it reported no status at all, rather than red. The
-   > six other workflows on that same commit ran normally, and this one had
-   > passed on every other recent pull request. [#274](https://github.com/OurHike/OurHike/pull/274)
-   > records the same workflow orphaned once before, stuck `queued` for five
-   > hours while its siblings finished. The cause is not established, and this
-   > note is the observation rather than a diagnosis.
-   >
-   > It matters here because it *is* the hang condition, arriving unprompted. A
-   > required check that intermittently reports nothing wedges pull requests
-   > today and would wedge the queue tomorrow. So `Manifest agrees with the
-   > workflows` is the one row in the table worth watching for a while before
-   > requiring it — the other four have no such history.
+   > The table is four rows and not five on purpose — see the note above on
+   > `settings-check.yml`. Requiring `Manifest agrees with the workflows` while
+   > that workflow has no `merge_group:` trigger is the hang, not a stricter
+   > gate.
 3. **Leave "Require branches to be up to date before merging" off.** §1 above is
    why, and the queue is what makes it unnecessary rather than merely
    tolerable: the queue builds each entry against `main` plus everything ahead

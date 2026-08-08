@@ -11,20 +11,40 @@
 #
 #   manifest    expected-settings.yml still agrees with the workflows. Needs
 #               nothing but the checkout, so it runs on every pull request -
-#               including from a fork - and on every merge queue entry, and it
-#               is the half with teeth on an ordinary change, since drift is
-#               what actually happens.
+#               including from a fork - and it is the half with teeth on an
+#               ordinary change, since drift is what actually happens.
 #
 #   configured  the settings are really there. Deliberately not on
 #               pull_request: GitHub passes no secrets to a fork's PR run, so
 #               this job would fail for every outside contributor, for a
 #               reason none of them could fix and that says nothing about
-#               their change. Deliberately not on merge_group either, for a
-#               different reason - a queue entry asks "does this change break
-#               `main`", and whether an R2 token was rotated last night is not
-#               that question. Gating merges on it would let an expired
-#               credential wedge the queue against every pull request at once.
-#               The push and schedule runs are what watch the credentials.
+#               their change.
+#
+# NO `merge_group:` TRIGGER HERE, AND IT IS NOT AN OVERSIGHT. Every other
+# workflow that gates `main` got one so that a merge queue can raise checks
+# against a queue entry (BRANCHING.md). Adding it to this file breaks it:
+# measured on three commits of the branch that added the triggers, this
+# workflow then concluded `action_required` with zero jobs on an ordinary
+# pull request - no status at all rather than red - while the four workflows
+# that got the same trigger in the same commit ran normally.
+#
+# What singles this one out is almost certainly the step below that resolves
+# `toJSON(secrets)`: it is the only job in the repository that reads the
+# secrets context, and `action_required` is what GitHub reports when a run
+# needs approval before it may. Adding an event on which `configured` is not
+# excluded by its `if:` appears to be enough to make a pull_request run of the
+# whole workflow look like one that wants secrets.
+#
+# That was measured, not read in a document, so treat the mechanism as the
+# best available explanation rather than as established. What is established
+# is the effect, and the cost of getting it wrong: the definition used for a
+# pull_request run comes from the pull request's own head, so merging a
+# `merge_group:` here would give EVERY later pull request a Settings check
+# that silently never reports.
+#
+# The consequence for the queue is that `Manifest agrees with the workflows`
+# cannot be one of its required checks. Recorded in BRANCHING.md, with what it
+# would take to revisit.
 #
 # The weekly run is the point of the whole thing. An R2 token can be revoked
 # or expire without anyone touching this repository, and the next thing to
@@ -39,10 +59,6 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  # The event a merge queue raises checks on, carrying the `manifest` job only
-  # (see the note on `configured` above). Unfiltered for the same reason as the
-  # three test workflows - BRANCHING.md has it.
-  merge_group:
   schedule:
     # Mondays, 07:35 UTC. Off the hour for the same reason as
     # check-upstream-freshness.yml, and a few minutes clear of it.
@@ -84,11 +100,16 @@ jobs:
     name: Settings are configured
     # A job-level `if:`, which for a test suite would be the trap the three
     # test workflows document - a skipped job reports no status, and a required
-    # check with no status hangs a pull request and a queue entry alike. It is
-    # right here and wrong there: this check *should* be absent from a pull
-    # request and from a queue entry, because it cannot answer on either. What
-    # keeps that safe is that it must never be named a required check, which is
-    # already true of it and stays true (BRANCHING.md lists what to require).
+    # check with no status hangs a pull request. It is right here and wrong
+    # there: this check *should* be absent from a pull request, because it
+    # cannot answer on one. What keeps that safe is that it must never be named
+    # a required check, which is already true of it and stays true.
+    #
+    # Left exactly as it was, deliberately. Widening it to exclude a second
+    # event was the first suspect for the `action_required` runs described at
+    # the top of this file, and restoring it changed nothing - the trigger was
+    # the cause. So the shape of this line is now evidence, and a later change
+    # to it should expect to re-run that experiment.
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     defaults:

@@ -174,9 +174,9 @@ And where it is missing (audited 2026-08-06), which is where a bug can ship gree
 
 Three workflows, one per part: `.github/workflows/pipeline-tests.yml`, `backend-tests.yml` and `client-tests.yml`. Each runs that part's linter, formatter check and test suite - the same commands [CONTRIBUTING.md](CONTRIBUTING.md) gives for running them locally, so a green local run means a green CI run.
 
-None of them is (yet) a required check via branch protection - a red run doesn't currently block merging, it's just visible on the PR. All four do now trigger on `merge_group` as well, so they report against a merge queue entry the day one is switched on; [BRANCHING.md](BRANCHING.md) is the home for that, including which checks are safe to require and which would wedge the queue.
+None of them is (yet) a required check via branch protection - a red run doesn't currently block merging, it's just visible on the PR. All three do now trigger on `merge_group` as well, so they report against a merge queue entry the day one is switched on; [BRANCHING.md](BRANCHING.md) is the home for that, including which checks are safe to require and which would wedge the queue.
 
-`.github/workflows/settings-check.yml` runs the settings suite. Its `manifest` job runs on every PR; its `configured` job deliberately does not, because GitHub passes no secrets to a fork's PR run and the job would fail for every outside contributor for a reason none of them could fix. It sits out merge queue entries too, for a different reason - see BRANCHING.md.
+`.github/workflows/settings-check.yml` runs the settings suite. Its `manifest` job runs on every PR; its `configured` job deliberately does not, because GitHub passes no secrets to a fork's PR run and the job would fail for every outside contributor for a reason none of them could fix. This is the one gating workflow with **no** `merge_group:` trigger - adding one made it report no status at all on ordinary pull requests, apparently because `configured` reads the secrets context. So the settings suite cannot gate a merge queue until those two jobs stop sharing an `on:` block. BRANCHING.md has the measurement and what it would take to fix.
 
 ### Why a PR only runs some of them
 

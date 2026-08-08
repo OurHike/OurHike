@@ -30,7 +30,11 @@
       "published": "2026-08-08",
       "superseded": null,
       "pinned": false,
-      "note": "Not a release. No tag exists yet - `git tag -l` is empty and releases/ holds only a README. This records the API shape as of the date above so the check has something to be true about, and the first real release replaces it rather than joining it."
+      "note": "Not a release. No tag exists yet - `git tag -l` is empty and releases/ holds only a README. This records the API shape as of the date above so the check has something to be true about, and the first real release replaces it rather than joining it.",
+      "refreshed": [
+        "2026-08-08, for #430: `ClosureOut.reported_by` and `ClosureOut.verified_by` were removed, and check_openapi_compat.py correctly failed on two response-field removals before this file was touched. Rewriting a baseline to clear that check is the exact failure the script's docstring warns about, so the justification is written here rather than left to be inferred: on this date `git tag -l` was still empty, releases/ still held only a README, and the backend had never been deployed - `fly deploy` has never run and every client build ships with VITE_API_BASE_URL unset. There is no old client, because there is no client. The 'old client reads this field' premise the checker asserts is true in general and false here.",
+        "This entry is a same-day snapshot, not a compatibility promise, and refreshing it is what its own note above describes. Once a real tag exists this stops being available: a removal then is a major-version break under RELEASING.md 8c, and the baselines move with the release rather than with the change."
+      ]
     }
   ]
 }

@@ -244,8 +244,16 @@ def test_verify_closure_sets_verified_by_and_verified_at(client, db_session):
     assert response.status_code == 200
     body = response.json()
     assert body["moderation_status"] == ModerationStatus.verified.value
-    assert body["verified_by"] == maintainer_id
     assert body["verified_at"] is not None
+
+    # Who verified it is stamped on the ROW, and read back from the row - it
+    # left the response with #430. Asserting it here rather than on `body` is
+    # the point: the audit trail has to survive the field being taken off the
+    # wire, and this is what would notice if it stopped being written at all.
+    db_session.expire_all()
+    stored = db_session.get(Closure, closure.id)
+    assert stored.verified_by == maintainer_id
+    assert stored.verified_at is not None
 
 
 def test_verify_closure_leaves_the_status_alone_when_no_body_is_sent(client, db_session):

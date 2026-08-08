@@ -78,6 +78,45 @@ def test_list_closures_requires_no_authentication(client):
     assert response.status_code == 200
 
 
+def test_public_closures_name_nobody(client, db_session):
+    """#430: `reported_by`/`verified_by` are not on the wire.
+
+    They are profile ids, which are Supabase auth user ids, and the test above
+    is the reason this one matters - `GET /closures` needs no account, so
+    every id it returned was readable by anybody. Joined across closures they
+    say which maintainer covers which stretch and how often.
+
+    Asserted against the response keys rather than a value, because a null
+    would pass a value check on any closure nobody has verified yet - which is
+    most of them, and would leave this green while the field was back for the
+    verified ones.
+    """
+    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
+    verifier = Profile(id=str(uuid.uuid4()), role=Role.maintainer)
+    db_session.add_all([reporter, verifier])
+    db_session.commit()
+    db_session.add(
+        Closure(
+            reported_by=reporter.id,
+            reason_type="storm_damage",
+            start_mile_marker=300.0,
+            end_mile_marker=301.0,
+            moderation_status=ModerationStatus.verified,
+            verified_by=verifier.id,
+        )
+    )
+    db_session.commit()
+
+    response = client.get("/closures")
+
+    assert response.status_code == 200
+    [closure] = [c for c in response.json() if c["start_mile_marker"] == 300.0]
+    assert "reported_by" not in closure
+    assert "verified_by" not in closure
+    assert reporter.id not in response.text
+    assert verifier.id not in response.text
+
+
 def test_update_closure_status_rejected_for_a_plain_hiker_role_with_403(client, db_session):
     reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
     db_session.add(reporter)

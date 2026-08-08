@@ -45,6 +45,7 @@
         "type": "object"
       },
       "ClosureOut": {
+        "description": "What `/closures` answers with.\n\n**`reported_by` and `verified_by` are deliberately absent (#430).** They\nare profile ids - which are Supabase auth user ids - and `GET /closures`\nneeds no account, so every one of them was readable by anybody. Joined\nacross closures they say which maintainer verifies which stretch of trail\nand how often, which is the fact `features/SAYING_THANKS.md` declines to\npublish without consent and the reason `maintainer_assignments` withholds\na display name behind `publicly_creditable` rather than filtering it\ndownstream.\n\nNothing read them. `ClosureSheet.tsx` used to render \"Marked by <name>\"\nfrom exactly these two and that field was deleted before this, on the\ngrounds that it was \"a fact about a person, and the app has not settled\nwhen it shows those\"; `ClosureDetail` has never carried either.\n\n**The columns stay.** This is the wire, not the record - `closures.py`\nstill stamps `reported_by` on create and `moderation.py` still stamps\n`verified_by` on verify, so the audit trail is intact in the database and\nonly stops being handed to anonymous HTTP callers.\n\nIf attribution is ever wanted on the closure sheet, the mechanism already\nexists and is not a new field here: `publicly_creditable` plus\n`display_name`, opt-in and revocable, as `routers/maintainer_assignments.py`\nalready does it.",
         "properties": {
           "closed_since": {
             "anyOf": [
@@ -100,10 +101,6 @@
             "title": "Reported At",
             "type": "string"
           },
-          "reported_by": {
-            "title": "Reported By",
-            "type": "string"
-          },
           "reroute_url": {
             "anyOf": [
               {
@@ -137,22 +134,10 @@
               }
             ],
             "title": "Verified At"
-          },
-          "verified_by": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Verified By"
           }
         },
         "required": [
           "id",
-          "reported_by",
           "reported_at",
           "trail_id",
           "start_mile_marker",
@@ -161,7 +146,6 @@
           "note",
           "status",
           "moderation_status",
-          "verified_by",
           "verified_at",
           "closed_since",
           "expected_reopen",

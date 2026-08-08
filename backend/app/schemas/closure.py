@@ -105,10 +105,36 @@ class ClosureVerify(BaseModel):
 
 
 class ClosureOut(BaseModel):
+    """What `/closures` answers with.
+
+    **`reported_by` and `verified_by` are deliberately absent (#430).** They
+    are profile ids - which are Supabase auth user ids - and `GET /closures`
+    needs no account, so every one of them was readable by anybody. Joined
+    across closures they say which maintainer verifies which stretch of trail
+    and how often, which is the fact `features/SAYING_THANKS.md` declines to
+    publish without consent and the reason `maintainer_assignments` withholds
+    a display name behind `publicly_creditable` rather than filtering it
+    downstream.
+
+    Nothing read them. `ClosureSheet.tsx` used to render "Marked by <name>"
+    from exactly these two and that field was deleted before this, on the
+    grounds that it was "a fact about a person, and the app has not settled
+    when it shows those"; `ClosureDetail` has never carried either.
+
+    **The columns stay.** This is the wire, not the record - `closures.py`
+    still stamps `reported_by` on create and `moderation.py` still stamps
+    `verified_by` on verify, so the audit trail is intact in the database and
+    only stops being handed to anonymous HTTP callers.
+
+    If attribution is ever wanted on the closure sheet, the mechanism already
+    exists and is not a new field here: `publicly_creditable` plus
+    `display_name`, opt-in and revocable, as `routers/maintainer_assignments.py`
+    already does it.
+    """
+
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-    reported_by: str
     reported_at: UtcDatetime
     trail_id: str
     start_mile_marker: float
@@ -117,7 +143,6 @@ class ClosureOut(BaseModel):
     note: str | None
     status: ClosureStatus
     moderation_status: ModerationStatus
-    verified_by: str | None
     verified_at: UtcDatetime | None
 
     # The three the sheet renders (#245). `UtcDatetime` rather than bare

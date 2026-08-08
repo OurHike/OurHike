@@ -207,6 +207,31 @@ def test_collect_gathers_every_background_archive_that_exists(tmp_path, monkeypa
         assert name in artifacts
 
 
+def test_collect_gathers_published_conditions_under_their_own_prefix(tmp_path, monkeypatch):
+    """features/CONDITIONS_DELIVERY.md. An ordinary artifact so it gets the
+    same sha256 diffing as everything else - which is what makes a daily bake
+    cheap, since a day with no closure changes uploads nothing at all."""
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    closures = tmp_path / "conditions" / "closures.json"
+    closures.parent.mkdir()
+    closures.write_text('{"generated_at": "2026-08-08T06:00:00Z", "closures": []}')
+    (tmp_path / "conditions_manifest.json").write_text(json.dumps({"path": str(closures), "sha256": "abc123", "count": 0}))
+
+    artifacts = publish.collect_artifacts()
+
+    # The key is the prefixed one, not a bare `closures.json` at the root -
+    # a key in this bucket can never be renamed, only abandoned in place.
+    assert artifacts["conditions/closures.json"]["sha256"] == "abc123"
+
+
+def test_collect_ignores_conditions_that_have_not_been_exported(tmp_path, monkeypatch):
+    """The normal state until the reader credential exists. An absent bake is
+    an absence, not an error - same rule as a background tier."""
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+
+    assert "conditions/closures.json" not in publish.collect_artifacts()
+
+
 def test_collect_skips_a_tier_that_has_not_been_built_yet(tmp_path, monkeypatch):
     """A fresh checkout that has only run some exports still publishes what it
     has - a missing tier is not an error, just an absence."""

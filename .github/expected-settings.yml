@@ -241,6 +241,27 @@ settings:
       applied (LAUNCH_CHECKLIST.md 5); it stops being optional the day a hiker
       can sign in.
 
+  PRODUCTION_CONDITIONS_DATABASE_URL:
+    where: secret
+    required: false
+    why: >-
+      Production's Postgres again, read-only, for publish-conditions.yml to
+      bake verified closures into the artifact the client reads as its
+      baseline (features/CONDITIONS_DELIVERY.md). A third database URL rather
+      than a reuse of either MIGRATION one, for the reason those two are
+      already separate from the DATABASE_URL the app holds: this connects as
+      `ourhike_conditions_reader`, whose only privilege is SELECT on
+      `closures` and `reports` behind an RLS policy pinned to verified rows.
+      A credential that cannot write is a credential a scheduled job may hold.
+      Deliberately no grant on `profiles` - the artifact names nobody (#430),
+      and no grant means the exporter could not resolve a person even if a
+      later edit tried to. Either pooler works here, unlike a migration: this
+      runs two SELECTs and disconnects, so transaction mode's prepared-
+      statement problem never arises. Session mode on 5432 is the
+      recommendation only because it is simpler to hold in your head. Optional
+      because unset is the current state and the workflow skips with a warning
+      rather than failing every night until somebody does the account work.
+
   PROTECTIONS_READ_TOKEN:
     where: secret
     required: false

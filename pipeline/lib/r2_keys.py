@@ -53,7 +53,18 @@ ALLOWED_EXTENSIONS = frozenset({"geojson", "fgb", "pmtiles", "json", "tif", "jpg
 # and never overwritten, so a photo published into one could never be taken
 # down, and withdrawal is a promise made to the hiker who shared it
 # (features/POI_PHOTOS.md). This prefix is mutable for exactly that reason.
-TOP_LEVEL_PREFIXES = frozenset({"releases", "_internal", "photos"})
+#
+# `conditions` holds the published safety data - verified closures now,
+# verified reports later (features/CONDITIONS_DELIVERY.md). Mutable and
+# overwritten in place, for the opposite reason to `photos`: a closure that
+# has reopened must stop being served, and a release folder written once and
+# never overwritten could only ever add a second answer beside the first.
+#
+# It is also deliberately not versioned the way trail data is. A release is a
+# monthly-ish event about a large immutable dataset; this is a daily rewrite
+# of a small one, and the freshness a hiker needs is inside the document
+# (`generated_at`) rather than in which folder it came from.
+TOP_LEVEL_PREFIXES = frozenset({"releases", "_internal", "photos", "conditions"})
 
 # Keys that mean something specific and are therefore spelled exactly one
 # way. `latest.json` is the mutable pointer at the bucket root; the two under

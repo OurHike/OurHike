@@ -120,3 +120,62 @@ def test_the_guard_would_actually_fail(rls_migration):
     sides are empty or because getattr silently returned nothing."""
     assert len(rls_migration.RLS_TABLES) > 0
     assert set(Base.metadata.tables) == set(rls_migration.RLS_TABLES)
+
+
+# --- e5b2f7c1a903, Alembic's own version table -----------------------------
+
+VERSION_TABLE_REVISION = "e5b2f7c1a903_lock_alembics_own_version_table"
+
+
+@pytest.fixture(scope="module")
+def version_table_migration():
+    return _load_revision(VERSIONS_DIR / f"{VERSION_TABLE_REVISION}.py")
+
+
+def test_the_version_table_revision_names_whatever_alembic_calls_it(version_table_migration):
+    """The table name is an argument, not a literal, and that is the point.
+
+    Alembic's `version_table` and `version_table_schema` are configurable.
+    A revision that hardcoded `public.alembic_version` would keep passing
+    while locking nothing at all if either were ever set.
+    """
+    statements = version_table_migration.rls_statement("postgresql", "somewhere_else", "custom", enable=True)
+
+    assert statements == ["ALTER TABLE custom.somewhere_else ENABLE ROW LEVEL SECURITY"]
+
+
+def test_the_version_table_revision_falls_back_to_public(version_table_migration):
+    statements = version_table_migration.rls_statement("postgresql", "alembic_version", None, enable=True)
+
+    assert statements == ["ALTER TABLE alembic_version ENABLE ROW LEVEL SECURITY"]
+
+
+@pytest.mark.parametrize("dialect", ["sqlite", "duckdb", "mysql"])
+def test_the_version_table_revision_does_nothing_off_postgres(version_table_migration, dialect):
+    assert version_table_migration.rls_statement(dialect, "alembic_version", "public", enable=True) == []
+
+
+def test_the_version_table_revision_downgrade_undoes_its_upgrade(version_table_migration):
+    up = version_table_migration.rls_statement("postgresql", "alembic_version", "public", enable=True)
+    down = version_table_migration.rls_statement("postgresql", "alembic_version", "public", enable=False)
+
+    assert up == ["ALTER TABLE public.alembic_version ENABLE ROW LEVEL SECURITY"]
+    assert down == ["ALTER TABLE public.alembic_version DISABLE ROW LEVEL SECURITY"]
+
+
+def test_the_version_table_revision_never_forces_rls(version_table_migration):
+    """Sharper here than in b3d1c7a94e02: forcing RLS on the version table
+    applies it to the owner, which is what Alembic connects as, and would
+    break every future migration at once rather than every endpoint."""
+    for enable in (True, False):
+        for statement in version_table_migration.rls_statement("postgresql", "alembic_version", "public", enable=enable):
+            assert "FORCE" not in statement.upper()
+
+
+def test_the_version_table_is_not_smuggled_into_the_model_drift_guard(version_table_migration):
+    """`test_every_model_table_is_locked_by_some_migration` unions RLS_TABLES
+    across revisions and compares it against Base.metadata. This revision
+    locks a table that is not a model, so naming its constant RLS_TABLES
+    would make that union larger than the set it is checked against - which
+    would still pass, while quietly weakening the guard."""
+    assert not hasattr(version_table_migration, "RLS_TABLES")

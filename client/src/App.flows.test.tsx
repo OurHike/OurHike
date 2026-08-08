@@ -861,6 +861,14 @@ describe('when the trail data cannot be downloaded', () => {
     // fetch can reject with anything at all, and a rejection this code cannot
     // read the message off still has to produce a sentence rather than
     // "undefined" or a blank alert.
+    //
+    // It used to produce exactly one sentence for every such rejection -
+    // "Trail data failed to download." - which said nothing about which of the
+    // eight requests died. lib/trailData.ts now names the artifact and carries
+    // whatever the rejection stringifies to, so even a thrown string arrives
+    // attached to the file it was thrown for. This build has no bucket
+    // configured, so the host is described rather than named: printing this
+    // app's own origin would name the one host that is certainly not at fault.
     const user = userEvent.setup()
     store.set(PREFERENCES_KEY, {
       ...DEFAULT_PREFERENCES,
@@ -875,7 +883,10 @@ describe('when the trail data cannot be downloaded', () => {
     const usgsCard = await usgsSheetCard(user)
     await user.click(within(usgsCard).getByRole('button', { name: /download the map/i }))
 
-    expect(await screen.findByText('Trail data failed to download.')).toBeInTheDocument()
+    const notice = await screen.findByText(/could not be fetched/i)
+    expect(notice).toHaveTextContent(/trails\.geojson/)
+    expect(notice).toHaveTextContent(/the network went away/)
+    expect(notice).toHaveTextContent(/the data source/)
   })
 })
 

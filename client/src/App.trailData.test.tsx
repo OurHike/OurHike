@@ -164,10 +164,13 @@ describe('trail data on a phone that has downloaded nothing', () => {
     expect(requested()).toEqual([])
   })
 
-  it('says nothing when the fetch fails, because nobody asked for it', async () => {
-    // Not a result the hiker is owed a message about: it leaves exactly the
-    // empty map they would have had anyway, and the Downloads screen still
-    // reports errors for the download they DO ask for.
+  it('says the trail line is missing when the fetch nobody asked for fails', async () => {
+    // This asserted the opposite until the bug it describes was reported: the
+    // launch fetch was silent on the reasoning that nobody asked for it, so a
+    // bucket refusing the app's origin produced a finished-looking map with no
+    // Appalachian Trail on it and no account of itself anywhere in the UI.
+    // Nobody asking for the fetch is not the same as nobody noticing it
+    // failed - what is missing is the map.
     vi.mocked(fetch).mockResolvedValue({
       ok: false,
       status: 404,
@@ -176,11 +179,58 @@ describe('trail data on a phone that has downloaded nothing', () => {
 
     await renderApp()
 
-    await waitFor(() => {
-      expect(requested().some((url) => url.includes('trails'))).toBe(true)
-    })
-    expect(screen.queryByText(/404|not found|failed/i)).not.toBeInTheDocument()
+    expect(await screen.findByText(/no trail line/i)).toBeInTheDocument()
     expect(store.get(TRAILS_BLOB_KEY)).toBeUndefined()
+  })
+
+  it('carries the reason to the download window, where the retry is', async () => {
+    // The strip has room for three words; the sentence naming the artifact and
+    // what the browser said belongs where someone can act on it. Both come
+    // from one description of the failure (App's describeTrailDataError), so
+    // the flag and the sentence cannot disagree about whether anything is
+    // wrong.
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+    vi.mocked(fetch).mockRejectedValue(
+      new TypeError('NetworkError when attempting to fetch resource.'),
+    )
+
+    await renderApp()
+    await screen.findByText(/no trail line/i)
+
+    await user.click(await screen.findByRole('button', { name: /legend/i }))
+    await user.click(await screen.findByRole('button', { name: /download/i }))
+    await screen.findByRole('dialog', { name: /offline map/i })
+
+    const notice = await screen.findByRole('alert')
+    expect(notice).toHaveTextContent(/trails\.geojson/)
+    expect(notice).toHaveTextContent(/data\.example/)
+    expect(notice).toHaveTextContent(/NetworkError when attempting to fetch resource/)
+  })
+
+  it('does not flag a missing trail line on a launch that works', async () => {
+    // The flag has to mean "not coming", not "not yet". A cold start spends a
+    // moment with no line on the map in the ordinary case, and a flag that
+    // fired during it would be raised on every launch - which is how a flag
+    // stops being read.
+    await renderApp()
+
+    await waitFor(() => expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob))
+    expect(screen.queryByText(/no trail line/i)).not.toBeInTheDocument()
+  })
+
+  it('leaves the flag down for a phone that already holds the lines', async () => {
+    // Offline with the lines on the phone is the working state this app is
+    // built for, and the fetch is skipped entirely - nothing has failed and
+    // the map has its trail.
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    store.set(TRAILS_BLOB_KEY, new Blob([TRAILS]))
+    store.set('ourhike:pois', [])
+
+    await renderApp()
+
+    await waitFor(() => expect(MockMap.live.length).toBeGreaterThan(0))
+    expect(screen.queryByText(/no trail line/i)).not.toBeInTheDocument()
   })
 })
 

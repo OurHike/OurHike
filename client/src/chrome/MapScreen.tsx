@@ -224,6 +224,17 @@ export interface MapScreenProps {
    * disagree.
    */
   belowArchiveZoom?: boolean
+  /**
+   * Whether the map is drawing no trail line at all - see StatusStrip, which
+   * is the only thing that reads it.
+   *
+   * Decided by the shell, like `backgroundProblem` and for the same reason:
+   * whether the phone holds trail lines is a fact about IndexedDB and a fetch
+   * that may have failed, neither of which this screen can see. It arrives as
+   * a settled boolean rather than as the data, so the strip cannot come to a
+   * different conclusion than the download window's own notice.
+   */
+  trailLinesMissing?: boolean
   /** What the archive's own header says it covers, for the opening camera. */
   archiveZooms?: ArchiveZooms | null
 }
@@ -286,6 +297,7 @@ export function MapScreen({
   backgroundProblem = null,
   onLiveSourceHealth,
   belowArchiveZoom = false,
+  trailLinesMissing = false,
   archiveZooms = null,
 }: MapScreenProps) {
   // The one thing the stylesheet cannot do. The legend announces itself as
@@ -321,6 +333,7 @@ export function MapScreen({
           backgroundProblem={backgroundProblem}
           backgroundOverride={backgroundOverride}
           belowArchiveZoom={belowArchiveZoom}
+          trailLinesMissing={trailLinesMissing}
         />
 
         {/* Between the status strip and the header, and that placement is the

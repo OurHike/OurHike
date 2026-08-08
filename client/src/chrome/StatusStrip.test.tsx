@@ -208,3 +208,29 @@ describe('StatusStrip', () => {
     expect(screen.queryByText(/zoomed out past/i)).not.toBeInTheDocument()
   })
 })
+
+describe('how old the closures are', () => {
+  it('says nothing when the closures came from a live read', () => {
+    // A caveat on data that has none teaches people to ignore caveats, which
+    // costs more than it buys the one time the caveat matters.
+    render(<StatusStrip {...PROPS} conditionsAge={null} />)
+
+    expect(screen.queryByText(/Conditions as of/)).toBeNull()
+    expect(screen.queryByText(/conditions unavailable/i)).toBeNull()
+  })
+
+  it('says how old a published baseline is', () => {
+    render(<StatusStrip {...PROPS} conditionsAge="Conditions as of 6h ago" />)
+
+    expect(screen.getByText('Conditions as of 6h ago')).toBeTruthy()
+  })
+
+  it('says conditions are unavailable rather than showing a reassuring blank', () => {
+    // The #249 fix as a hiker meets it. Before this, neither source being
+    // reachable rendered exactly like a stretch of trail with nothing closed
+    // on it - the strip is where those two stop looking identical.
+    render(<StatusStrip {...PROPS} conditionsAge="Trail conditions unavailable" />)
+
+    expect(screen.getByText('Trail conditions unavailable')).toBeTruthy()
+  })
+})

@@ -146,9 +146,17 @@ import {
   API_CONFIGURED,
   fetchClosures,
   fetchReports,
-  type ClosureSummary,
   type ReportSummary,
 } from './lib/api'
+import {
+  NO_CLOSURES,
+  closureAgeLabel,
+  closuresOf,
+  withBaseline,
+  withLive,
+  type ClosureState,
+} from './lib/closureState'
+import { fetchPublishedClosures } from './lib/publishedConditions'
 import { nearestClosureBanner } from './lib/closureBanner'
 import { HikePicker } from './screens/HikePicker'
 import {
@@ -360,7 +368,13 @@ function App() {
   // renders a reassuring absence from either: a clear header is what a hiker
   // sees when the way ahead is clear AND when we could not check, and the
   // status strip's sync age is what tells those apart (lib/syncAge.ts).
-  const [closures, setClosures] = useState<ClosureSummary[] | null>(null)
+  // One state rather than a list plus a separate "where did this come from",
+  // because the two reads race and updating two states from a race is how you
+  // get fresh closures labelled stale. lib/closureState.ts owns the rule that
+  // live always wins; `closures` below stays exactly the `ClosureSummary[] |
+  // null` every consumer already expects.
+  const [closureState, setClosureState] = useState<ClosureState>(NO_CLOSURES)
+  const closures = closuresOf(closureState)
   const [reports, setReports] = useState<ReportSummary[] | null>(null)
   // Was a state with no setter until #231 - nothing ever synced, so the status
   // strip said "never synced" on every device forever, which was true and
@@ -539,6 +553,46 @@ function App() {
   // Both settle independently. A closures read that succeeds while reports
   // fails should still warn about the closure - pairing them would mean one
   // failure silencing both, and closures are the half a hiker walks into.
+  // The published baseline, fetched once and independently of the backend
+  // (features/CONDITIONS_DELIVERY.md). This is the read that makes an
+  // unreachable backend mean "day-old closures, labelled as day-old" rather
+  // than the silence it used to mean.
+  //
+  // Gated on `online`, matching the rule the trail-line fetch already keeps -
+  // "waits for signal rather than failing a fetch it knows cannot work".
+  // This was written ungated first, on the theory that the service worker
+  // might hold a copy; it does not. vite.config.ts precaches the app shell and
+  // the glyph ranges and nothing else, because this app's offline story is
+  // IndexedDB rather than cached responses. So offline there is genuinely no
+  // baseline to get, and the honest state is `unavailable` - which the strip
+  // now says out loud instead of rendering as a clear trail.
+  //
+  // Losing that case matters less than it sounds: the failure this baseline
+  // exists for is a backend that is down while the phone has signal, and that
+  // is an online phone. Keeping a baseline across a real signal loss means
+  // persisting it the way the trail lines are persisted, which is a storage
+  // decision of its own rather than a line in this effect.
+  //
+  // NOT gated on API_CONFIGURED, though - this path has nothing to do with the
+  // backend, and a build with no backend configured at all is exactly the one
+  // that most needs a baseline.
+  useEffect(() => {
+    if (!online) return
+
+    let cancelled = false
+
+    void fetchPublishedClosures().then((published) => {
+      if (cancelled || published === null) return
+      // Functional update, because the live read may already have landed -
+      // `withBaseline` is what refuses to overwrite it.
+      setClosureState((current) => withBaseline(current, published))
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [online])
+
   useEffect(() => {
     if (!online || !API_CONFIGURED) return
 
@@ -559,7 +613,7 @@ function App() {
 
     void fetchClosures().then((next) => {
       if (cancelled) return
-      setClosures(next)
+      setClosureState(withLive(next))
       markSynced()
     }, leaveUnknown)
 
@@ -1825,6 +1879,7 @@ function App() {
           online={online}
           hasGpsFix={gps.status === 'located'}
           lastSyncedAt={lastSyncedAt}
+          conditionsAge={closureAgeLabel(closureState, now)}
           activeTab={activeTab}
           onSelectTab={setActiveTab}
           onOpenLegend={handleOpenLegend}

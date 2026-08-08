@@ -1,24 +1,6 @@
-# Normalize all text files to LF in the repository AND in the working tree.
-#
-# `eol=lf` (not just `text=auto`) is load-bearing on Windows: with git's
-# core.autocrlf=true, `text=auto` alone stores LF but checks CRLF out, and
-# Prettier - whose `endOfLine` default is "lf" - then reports every freshly
-# checked-out file as unformatted. That makes `npm run format:check` fail
-# locally while passing in CI, which is exactly the kind of it-works-on-CI
-# split that hides real failures. Nothing in this repo is a Windows-native
-# script (no .bat/.cmd/.ps1), so LF everywhere is safe.
-* text=auto eol=lf
-
-# Images are binary - never munge their bytes.
-*.png binary
-*.jpg binary
-*.ico binary
-*.woff binary
-*.woff2 binary
-
-# Large geospatial artifacts are binary too (these are gitignored today, but
-# declare it so an accidental add can't corrupt one).
-*.pmtiles binary
-*.fgb binary
-*.tif binary
-*.tiff binary
+﻿# Enforce consistent line endings for repository
+* text=auto
+# Force LF for YAML/JSON manifests to avoid CRLF->LF warning on Windows
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf

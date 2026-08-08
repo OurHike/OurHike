@@ -94,6 +94,30 @@ jobs:
           fi
           echo "Release notes: ${notes[0]}"
 
+      # RELEASING.md §4 makes client/package.json the single source for the
+      # version, and the app now reads it back to a hiker (#378,
+      # client/src/lib/buildInfo.ts). A tag that disagrees with that file ships
+      # an app confidently reporting a version nobody released - and the whole
+      # value of the About line is somebody quoting it and being believed.
+      #
+      # A gate rather than deriving the version from the tag, because "single
+      # source" and "read it from whichever of two places is convenient" are
+      # different claims, and only one of them survives a build done anywhere
+      # other than a tagged CI run. package.json is in the tree; the tag is
+      # not, and a laptop, a preview and UA all have to answer this too.
+      - name: Confirm this tag matches the app's version
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          packaged="$(jq -r '.version' client/package.json)"
+          if [ "$VERSION" != "v$packaged" ]; then
+            echo "::error::Tag $VERSION does not match client/package.json ($packaged). Bump the version in the same commit the tag points at - see RELEASING.md §4."
+            exit 1
+          fi
+          echo "Version: $packaged"
+
       - uses: actions/setup-node@v4
         with:
           node-version: '24'

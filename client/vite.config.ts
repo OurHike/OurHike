@@ -1,4 +1,5 @@
-import { existsSync, realpathSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -38,9 +39,62 @@ const BASE = process.env.VITE_BASE_PATH ?? '/'
 // symlinked checkout, and an input outside `root` fails the build.
 const ROOT = realpathSync.native(fileURLToPath(new URL('.', import.meta.url)))
 
+// Which build this is, inlined so the app can say so (#378, RELEASING.md §4).
+//
+// DELIBERATELY NOT VITE_-PREFIXED ENVIRONMENT VARIABLES, which is how every
+// other build-time value here arrives (lib/config.ts, lib/api.ts,
+// lib/supabase.ts). Those name things a checkout cannot know - which bucket,
+// which Supabase project - so they have to be configured per deployment, and
+// each one is a line in a workflow that a fourth workflow can forget. These
+// two are already sitting in the tree being built, so reading them here means
+// production, UA, every pull request preview and a laptop all report their
+// build correctly with no workflow change and nothing to keep in sync.
+//
+// package.json is the single source for the version, per RELEASING.md §4;
+// pages.yml refuses to deploy a `v*` tag that disagrees with it, so the two
+// cannot drift apart unnoticed.
+const PACKAGE_VERSION: string =
+  (JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as { version?: string })
+    .version ?? ''
+
+// HEAD first and GITHUB_SHA only as a fallback, because HEAD is literally the
+// tree being built: on a `pull_request` event GITHUB_SHA names the ephemeral
+// merge commit, and while actions/checkout has that checked out anyway, git is
+// the answer that stays right if a workflow ever checks out something else.
+//
+// Empty when neither can answer - a tarball with no .git outside CI - and the
+// app says "unknown" rather than inventing something. Never fatal: a build
+// that fails because it could not work out its own version number would be
+// this feature costing more than it is worth.
+function buildCommit(): string {
+  try {
+    return execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+  } catch {
+    return process.env.GITHUB_SHA ?? ''
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   base: BASE,
+  // Substituted textually into the bundle. lib/buildInfo.ts is the only reader
+  // and guards each one with `typeof`, so a toolchain that does not perform
+  // the substitution gets "unknown" rather than a ReferenceError.
+  //
+  // The build time is here for a failure this app has already had: a service
+  // worker can serve a bundle indefinitely after a newer one deployed (see the
+  // registerType note below), and "built three weeks ago" on a site that
+  // deployed yesterday is what makes that visible from the phone rather than
+  // from the deploy log.
+  define: {
+    __APP_VERSION__: JSON.stringify(PACKAGE_VERSION),
+    __BUILD_COMMIT__: JSON.stringify(buildCommit()),
+    __BUILT_AT__: JSON.stringify(new Date().toISOString()),
+  },
   // Explicit root resolved from this file's own URL, not process.cwd(): on
   // Windows, a shell invocation with a lowercase drive letter (e.g. `c:\...`)
   // makes Vitest's internal root-comparison silently mismatch against the

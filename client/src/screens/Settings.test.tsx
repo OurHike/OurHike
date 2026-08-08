@@ -48,6 +48,19 @@ describe('Settings', () => {
     }
   })
 
+  // #378. Settings is where somebody goes looking for it, and it is the only
+  // screen a hiker can reach that could carry it - so the wiring is worth a
+  // test of its own even though screens/AboutBuild.test.tsx covers the rows.
+  it('says which build the app is running, without being passed one', () => {
+    render(<Settings {...PROPS} />)
+
+    const about = screen.getByRole('heading', { name: 'About this build' })
+    expect(about).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /copy build details/i }),
+    ).toBeInTheDocument()
+  })
+
   it('states that closures and serious warnings are always shown', () => {
     render(<Settings {...PROPS} />)
 

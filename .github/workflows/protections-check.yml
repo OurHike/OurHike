@@ -135,6 +135,10 @@ jobs:
 
             let requiredChecks = [];
             let upToDate = null;
+            // Zero both when the branch is unprotected and when it is
+            // protected without a review requirement - the same answer, and
+            // the one that keeps a solo maintainer able to merge.
+            let approvals = 0;
             if (!hasAdminToken) {
               core.warning(
                 'No PROTECTIONS_READ_TOKEN, so branch protection and the environments were not checked. ' +
@@ -151,6 +155,9 @@ jobs:
               // not a missing one.
               requiredChecks = checks ? (checks.checks || []).map(c => c.context) : [];
               upToDate = checks ? Boolean(checks.strict) : false;
+              approvals = data.required_pull_request_reviews
+                ? (data.required_pull_request_reviews.required_approving_review_count || 0)
+                : 0;
               read.push('branch_protection');
             } catch (error) {
               if (error.status === 404) {
@@ -171,10 +178,16 @@ jobs:
                 owner: context.repo.owner, repo: context.repo.repo,
               });
               for (const environment of data.environments || []) {
-                const reviewers = (environment.protection_rules || [])
-                  .filter(rule => rule.type === 'required_reviewers')
-                  .flatMap(rule => rule.reviewers || []);
-                environments[environment.name] = reviewers.length;
+                const rule = (environment.protection_rules || [])
+                  .find(rule => rule.type === 'required_reviewers');
+                environments[environment.name] = {
+                  // `prevent_self_review` only exists on the rule, so an
+                  // environment with no reviewers reports false rather than
+                  // undefined - which is the safe value and also the truth:
+                  // nothing is being prevented.
+                  reviewers: rule ? (rule.reviewers || []).length : 0,
+                  prevent_self_review: rule ? Boolean(rule.prevent_self_review) : false,
+                };
               }
               read.push('environments');
             } catch (error) {
@@ -206,10 +219,12 @@ jobs:
             core.info(`required checks on ${branch}: ${JSON.stringify(requiredChecks)}`);
             core.info(`strict (up to date): ${upToDate}`);
             core.info(`environments: ${JSON.stringify(environments)}`);
+            core.info(`required approving reviews: ${approvals}`);
             core.setOutput('live', JSON.stringify({
               read,
               required_status_checks: requiredChecks,
               require_branches_up_to_date: upToDate,
+              required_approving_review_count: approvals,
               environments,
               labels,
             }));

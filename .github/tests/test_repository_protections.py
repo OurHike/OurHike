@@ -202,6 +202,28 @@ def test_the_never_required_reasons_are_still_true():
     )
 
 
+def test_the_solo_maintainer_lockouts_are_declared_at_their_safe_values():
+    """Both settings that can make this repository unusable by the only person
+    who can use it, asserted from the checkout so a change to the manifest is
+    caught on the pull request that proposes it rather than by the weekly run.
+
+    They point opposite ways, which is the whole reason for stating them
+    together: a pull request approval requirement locks a solo maintainer out
+    when it is ON, and an environment's self-review prevention locks them out
+    when it is ON, while the environment's *reviewer* requirement is the one
+    thing here that should be on.
+    """
+    assert MANIFEST["settings"]["required_approving_review_count"]["expected"] == 0, (
+        "expected-protections.yml now expects pull request approvals to be required. Nobody can approve their own "
+        "pull request on GitHub, so with one maintainer that is a repository nothing can be merged into. If a second "
+        "person has joined, say so here and in RELEASING.md §9 in the same pull request."
+    )
+    assert MANIFEST["environments"]["production"]["prevent_self_review"] is False, (
+        "expected-protections.yml now expects `Prevent self-review` on the production environment. With a single "
+        "required reviewer that is a lockout: the only reviewer is always the dispatcher, so nothing can be approved."
+    )
+
+
 def test_require_branches_up_to_date_is_declared_off():
     """Not a preference. BRANCHING.md §1 is written around this being off, and
     turning it on makes the document's central instruction - do not merge
@@ -251,6 +273,28 @@ def test_require_branches_up_to_date_is_actually_off():
 
 
 @live
+@_needs("branch_protection")
+def test_no_pull_request_approval_is_required():
+    """The lockout, not a preference.
+
+    GitHub does not let an author approve their own pull request - a platform
+    rule with no toggle, unlike everything else this file checks. With one
+    maintainer, requiring an approval means no pull request is ever mergeable,
+    including the agent-authored ones: the token authenticates as the
+    maintainer, so GitHub considers those theirs too.
+    """
+    expected = MANIFEST["settings"]["required_approving_review_count"]["expected"]
+    actual = LIVE["required_approving_review_count"]
+
+    assert actual == expected, (
+        f"{BRANCH} requires {actual} approving review(s). This repository has one maintainer, and GitHub does not "
+        "let anyone approve their own pull request - so nothing can ever be merged without an admin bypass, which "
+        "hollows out the rule it was meant to enforce. Set it to 0, or revisit this line when there is a second "
+        "person to give the approval."
+    )
+
+
+@live
 @_needs("environments")
 def test_the_production_environment_asks_a_human():
     expected = MANIFEST["environments"]["production"]["required_reviewers_at_least"]
@@ -260,10 +304,35 @@ def test_the_production_environment_asks_a_human():
         "There is no `production` environment, but publish-vector-data.yml and migrate.yml both run jobs under it. "
         "A job naming an environment that does not exist runs anyway, ungated."
     )
-    assert actual >= expected, (
-        f"The `production` environment has {actual} required reviewer(s), fewer than the {expected} expected. "
-        "Nothing then asks a second time before a publish overwrites the map hikers download, or before a migration "
-        "reaches the database a club moderates. RELEASING.md §12."
+    assert actual["reviewers"] >= expected, (
+        f"The `production` environment has {actual['reviewers']} required reviewer(s), fewer than the {expected} "
+        "expected. Nothing then asks a second time before a publish overwrites the map hikers download, or before a "
+        "migration reaches the database a club moderates. RELEASING.md §12."
+    )
+
+
+@live
+@_needs("environments")
+def test_the_production_environment_does_not_prevent_self_review():
+    """The other lockout, and the one that inverts the pull-request rule.
+
+    GitHub lets a required reviewer approve their own deployment by default;
+    "Prevent self-review" is an opt-in toggle. Off, one maintainer can be
+    their own reviewer and the gate still does real work - a publish waits for
+    a deliberate approval rather than firing on dispatch. On, with a single
+    reviewer, nobody can ever approve and both workflows under this
+    environment become undispatchable.
+    """
+    production = LIVE["environments"].get("production")
+    if production is None:
+        pytest.skip("No production environment yet - test_the_production_environment_asks_a_human is the failure.")
+
+    expected = MANIFEST["environments"]["production"]["prevent_self_review"]
+
+    assert production["prevent_self_review"] == expected, (
+        "The `production` environment has `Prevent self-review` ON. With one maintainer that is a lockout rather "
+        "than a tightening: the only required reviewer is always the person who dispatched, so no publish and no "
+        "production migration can ever be approved. Turn it off until there is a second reviewer."
     )
 
 

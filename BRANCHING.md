@@ -112,8 +112,8 @@ public was never what decided it. GitHub's rule is ownership:
 misses, and one no plan upgrade fixes. It now lives in the
 [`OurHike`](https://github.com/OurHike) org, so it is a public repository owned
 by an organisation and the feature arrived with the transfer, at no cost and as
-a side effect. (The transfer is done; the repo-side link sweep that goes with it
-is [#272](https://github.com/OurHike/OurHike/issues/272), still open.)
+a side effect. (The transfer is done, and so is the repo-side link sweep that
+went with it — [#272](https://github.com/OurHike/OurHike/issues/272).)
 
 #### The half that lives in the repository
 
@@ -253,7 +253,7 @@ it a day later.
 
 The structural fix is to decompose `App.tsx` so features wire themselves in
 without a shared edit point. That is
-[#327](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/327) — a
+[#327](https://github.com/OurHike/OurHike/issues/327) — a
 refactor with its own risk, not something to fold into whatever else is in
 flight.
 

@@ -6,7 +6,7 @@ The A.T. is maintained by thirty clubs — ATC's own `trail_club_sections` layer
 
 This is the mechanism for the rest of them: an organization registers where its data lives and who to tell when it breaks, and that data reaches hikers through the same reviewed, versioned path everything else does.
 
-**Scope: Post-MVP**, with one cheap piece worth doing much earlier — see "Do this part first" at the end. It is also a **prerequisite for something already scheduled**: ROADMAP.md Phase 5 expects NYNJTC's own non-A.T. network on a near-term timeline, and calls the dbt layer ([#100](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/100)) the thing that makes onboarding it "new rows and new staging models rather than a second parallel pipeline." This document is where those rows come from.
+**Scope: Post-MVP**, with one cheap piece worth doing much earlier — see "Do this part first" at the end. It is also a **prerequisite for something already scheduled**: ROADMAP.md Phase 5 expects NYNJTC's own non-A.T. network on a near-term timeline, and calls the dbt layer ([#100](https://github.com/OurHike/OurHike/issues/100)) the thing that makes onboarding it "new rows and new staging models rather than a second parallel pipeline." This document is where those rows come from.
 
 ---
 
@@ -47,7 +47,7 @@ DATA_RELEASES.md separates four things on purpose:
 
 ### What is missing
 
-Nobody outside this repository can add anything, nobody outside it can be told when their data breaks, and the licence question gets asked too late. Both of this project's unresolved data-terms problems — ATC's redistribution terms, and opentrail.org's ([#98](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/98), open and `blocked-external`) — are the same failure: the data was fetched first and the right to ship it was investigated afterwards. A registration form is the one moment where that question can be asked *before* the bytes are in the build.
+Nobody outside this repository can add anything, nobody outside it can be told when their data breaks, and the licence question gets asked too late. Both of this project's unresolved data-terms problems — ATC's redistribution terms, and opentrail.org's ([#98](https://github.com/OurHike/OurHike/issues/98), open and `blocked-external`) — are the same failure: the data was fetched first and the right to ship it was investigated afterwards. A registration form is the one moment where that question can be asked *before* the bytes are in the build.
 
 ## The shape: registration is a form, the build input is a file
 
@@ -282,7 +282,7 @@ What stage 3 needs that this document does not cover: per-organization admin UI,
 
 The subset worth doing well before any form exists, because it costs little and pays immediately:
 
-**Give the twelve existing entries a real steward, a licence field and a contact.** ATC is already the de facto registered organization; recording it in the shape above turns [#98](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/98) and the unconfirmed ATC terms from two one-off unknowns into two rows with an empty required field — which is a question someone can answer, rather than a thing everyone remembers is unresolved. It also proves the schema against real data before an outsider depends on it.
+**Give the twelve existing entries a real steward, a licence field and a contact.** ATC is already the de facto registered organization; recording it in the shape above turns [#98](https://github.com/OurHike/OurHike/issues/98) and the unconfirmed ATC terms from two one-off unknowns into two rows with an empty required field — which is a question someone can answer, rather than a thing everyone remembers is unresolved. It also proves the schema against real data before an outsider depends on it.
 
 ## Open questions (for you, not decided here)
 
@@ -295,8 +295,8 @@ The subset worth doing well before any form exists, because it costs little and 
 
 ## Related: reused elsewhere
 
-[../pipeline/DBT.md](../pipeline/DBT.md) and [#100](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/100) are the other half of this: the registry supplies the rows, dbt's staging models absorb the sources whose shape a declarative field map can't express. Neither makes the other unnecessary.
+[../pipeline/DBT.md](../pipeline/DBT.md) and [#100](https://github.com/OurHike/OurHike/issues/100) are the other half of this: the registry supplies the rows, dbt's staging models absorb the sources whose shape a declarative field map can't express. Neither makes the other unnecessary.
 
-[#99](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/99) (expanding the unified POI schema beyond its first slice) becomes considerably more urgent once sources arrive from organizations who did not read `poi_schema.py` before deciding what to call their columns.
+[#99](https://github.com/OurHike/OurHike/issues/99) (expanding the unified POI schema beyond its first slice) becomes considerably more urgent once sources arrive from organizations who did not read `poi_schema.py` before deciding what to call their columns.
 
 [PRICING_MODEL.md](PRICING_MODEL.md)'s regional pass is priced on "dozens of trails beyond the A.T." existing. This is the mechanism by which they would.

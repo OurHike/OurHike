@@ -325,7 +325,7 @@ See [#279](https://github.com/OurHike/OurHike/issues/279) — `verifyOtp` is alr
 
 ## 6. Host the backend
 
-The host is picked and the config is written: `backend/Dockerfile` and `backend/fly.toml` target **Fly.io**, chosen over Render specifically to avoid its free tier sleeping on idle — a cold start on the first request after quiet is a worse experience for something safety-adjacent than a small ongoing cost. `fly.toml` keeps `min_machines_running = 1` for the same reason, and `primary_region = "iad"` is the closest major Fly region to the trail's own corridor.
+The host is picked and the config is written: `backend/Dockerfile` and `backend/fly.toml` target **Fly.io**, keeping `min_machines_running = 1` so the first request after quiet does not pay a cold start, with `primary_region = "iad"` the closest major Fly region to the trail's own corridor. [backend/HOSTING.md](backend/HOSTING.md) is the reasoning and the costed comparison against every alternative considered — including the two vendors already in this stack, both of which turn out to add configuration rather than remove it.
 
 What is left is running it, in this order:
 

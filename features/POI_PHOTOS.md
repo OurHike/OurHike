@@ -41,11 +41,46 @@ Commons is the one large photo corpus where every file carries machine-readable 
 - **Proximity is the match, and its limit is disclosed by design.** The nearest eligible file within a per-type radius wins. This will occasionally pick a photo of the view *from* the shelter rather than *of* it. The credit line linking to the file page keeps provenance one tap away; anything smarter (name matching, depicts-statements) is future refinement.
 - **Never the original file — a sized thumbnail or nothing.** A Commons original is a full-resolution camera file, routinely 3–15 MB; the card's slot is 264 CSS pixels wide. The fetch asks for a 640px-wide rendering (`iiurlwidth`), downloads those bytes, and stores our own copy of them (see "Where the bytes live"). There is deliberately **no fallback to the original**: filling a thumbnail-sized box with a multi-megabyte download on a hiker's data plan is value #8's exact argument against itself.
 
-### Expect very little of it
+### Measured, 2026-08-08: it is worse than thin, and the number that looks fine is the misleading one
 
-Desk research suggests A.T. coverage on Commons is thin — likely **well under 1% of corridor POIs**, possibly none, once the freshness bar and the 4.0+ licence floor both apply. That estimate has never been measured against the live API and should be, before anyone counts on this source. Either way the design holds: partial coverage is the intended state, the placeholder is the everyday case, and nothing implies completeness. The alternative — loosening the bar to inflate coverage — trades trustworthiness for decoration, which is value #4 backwards.
+This section used to carry a desk estimate — *well under 1% of corridor POIs, possibly none* — with a note that it had never been measured against the live API and should be. It has now been measured: a full first pass of `fetch_poi_images.py` over all **817 corridor POIs**, every one queried, nothing carried forward.
 
-**This is also the argument for the other two sources.** Commons was never going to photograph a spring in Maine. Hikers walk past every one of these places every season.
+| type | with a photo | total | coverage |
+|---|---|---|---|
+| shelter | 5 | 280 | 1.8% |
+| campsite | 5 | 232 | 2.2% |
+| water | 13 | 174 | 7.5% |
+| resupply | 53 | 131 | 40.5% |
+| **all** | **76** | **817** | **9.3%** |
+
+**Do not quote the 9.3%.** Of those 76 photos, **35 are iNaturalist species observations** — a plant, photographed where it grows. Three were verified against the API rather than inferred from filenames: `Commelina communis 573573501.jpg` is "Asiatic dayflower, in the United States", categorised *Media from iNaturalist*, and it is the photo the card would put on **Gravel Springs Hut Shelter**. `Hydrophyllum virginianum 564000033.jpg` (Virginia waterleaf) is what **Byrds Nest 3 Hut** gets.
+
+**This is the freshness proxy meeting a corpus that satisfies it perfectly by accident, and it is the finding that matters here.** An iNaturalist upload is a real camera JPEG, with a real EXIF capture date days old, licensed CC BY 4.0, with a creditable author, geotagged to a few metres. It passes every bar in `lib/commons.py` — not by evading them, but by genuinely being all the things those bars test for. "Recent, openly licensed, geotagged photograph" describes a dayflower exactly as well as it describes a shelter. Proximity was always known to be a weak match, and this doc already conceded it *"will occasionally pick a photo of the view from the shelter rather than of it"*. The measurement says the real failure is not a near miss, it is a different subject entirely, and it is now the plurality of what the source returns.
+
+Discounting species uploads and requiring a photo to share a distinctive word with its POI's name (a crude proxy for "plausibly depicts this place", but the cheap one available):
+
+- **0 of 280 shelters** and **0 of 232 campsites** have a usable photo. The only non-species shelter match is a photo of two named people at Killington Summit, 232 m from Cooper Lodge Shelter.
+- **Water is effectively zero** — 7 of its 13 are species uploads and the rest are a bridge, a redoubt and a museum.
+- **Resupply is the one category that works**: 23 of 131 towns (~18%) matched something like the Hanover Inn or a county courthouse. A town is a big subject, so proximity is a much better match for it than for a spring.
+
+**Loosening the bars would not help, and the miss diagnosis is what proves it.** Across a 240-POI stratified sample, **72% of POIs have no Commons file within radius at all** — 92% of shelters, 90% of campsites, 85% of water. Only 3 of 60 sampled shelters had nearby files that were all rejected. The licence floor and the freshness window do reject plenty where files *do* exist (of 672 candidate files: 31% too old, 26% licence, and 175 of those 176 licence rejections are the pre-4.0 CC suite) — but that rejection is concentrated around towns, which is the one place coverage already works. **For shelters the corpus is simply empty**, so relaxing the 4.0 floor or the four-year window buys close to nothing where it is actually needed, while letting in more of exactly what is already wrong.
+
+The design still holds, and holds harder than before: partial coverage is the intended state, the placeholder is the everyday case, nothing implies completeness. What the measurement changes is that **the placeholder is not the everyday case for shelters — it is the only case**, and the few photos that do appear are the ones most likely to be wrong.
+
+### One thing the measurement makes urgent: nothing moderates the Commons path
+
+`David Rudmin, 2024.jpg` is what the card would show for **Front Royal, Virginia**. Its Commons categories are *User page images* and *Self-published work*: it is somebody's self-portrait, uploaded for their user page, CC0, geotagged near the town. It passes every bar.
+
+"Photos of identifiable people are a moderation matter and a share-sheet warning" is already this doc's rule, but it was written for **shared** photos and the queue it names only exists on that path. The Commons rung has no moderation step of any kind — the fetch runs by hand, the nearest eligible file wins, and it ships. A photograph of a private individual's face, rendered as a town's illustration with their name in the credit line, is a worse failure than a wrong shelter, and there is currently nothing between it and a hiker.
+
+### Openly-licensed alternatives, checked the same day
+
+Both were measured against the same 817 POIs rather than reasoned about, because "somebody must have photographed these" is exactly the intuition that produced the estimate this section had to replace.
+
+- **OpenStreetMap: essentially nothing.** OSM hosts no images, so the question is whether it carries *pointers* — `image`, `wikimedia_commons`, `mapillary`, `panoramax`, `wikipedia` — on features near our POIs, queried through Overpass at the same per-type radii. Across all 817: `image` 6, `wikimedia_commons` 6, `panoramax` 2, `mapillary` 1. **For the 280 shelters, OSM offers two pointers in total**, both `image=` URLs to third-party sites (wikitrail.org, appalachiantrailhistory.org) with no licence metadata, which fails CONTRIBUTING.md's establish-the-licence-first rule before anything is fetched. The `wikimedia_commons` tags are almost all Helen, GA storefronts and point back into the corpus already crawled. `wikipedia` looks better at 70 POIs (8.6%) but is 55 towns having encyclopedia articles — the resupply coverage that already works, reached a second way. *(Route relations are excluded: the A.T. relation itself carries `wikipedia` and passes within metres of every shelter on it, so counting it would manufacture 100% coverage out of one tag.)*
+- **The "Appalachian Trail Shelter" Flickr group** ([908185@N20](https://www.flickr.com/groups/908185@N20/pool/), 527 photos, 105 members, est. 2008) is the most promising corpus found and cannot be used as-is. Its content is right where Commons is wrong: photos titled with the shelter's actual name, many inside the freshness window — the matching problem solved by the filing rather than by proximity. But **a group pool carries no licence**; pool membership is a filing decision, not a grant, so the licence stays per photo. One photo checked directly is *All rights reserved*, and every one of the 20 items in the group's public feed is by that same photographer. The pool feed does not expose the licence field, so the CC-and-fresh subset is unmeasured; measuring it needs a Flickr API key and one `flickr.groups.pools.getPhotos` call with `extras=license,date_taken`. Even then, Flickr's CC picker is dominated by the 2.0 suite this doc rejects wholesale, so the realistic route is asking the handful of prolific contributors to relicense under the CC BY-SA 4.0 already chosen for shared photos — a conversation, not a crawl.
+
+**All of which is the argument for the other two sources, now with numbers behind it.** Commons was never going to photograph a spring in Maine, and neither was OSM. Hikers walk past every one of these places every season.
 
 ---
 

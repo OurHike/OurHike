@@ -1,0 +1,36 @@
+{
+  "_comment": [
+    "Which releases the backend still promises to answer, and the document each one's",
+    "clients were built against. RELEASING.md §8c defines the policy; this file is its",
+    "state, and scripts/check_openapi_compat.py is what enforces it.",
+    "",
+    "An entry is added by the release process, alongside the release notes in releases/.",
+    "Removing one is not a tidy-up: it is a decision to stop supporting that release's",
+    "clients, and the retention rule below is what says when that is allowed.",
+    "",
+    "`superseded` is the date a NEWER release took over, not the date this one shipped.",
+    "The distinction is the whole of why the clock is written this way - a release that",
+    "stays current for six months must not age out from under the hikers who installed",
+    "during those six months the moment three quick releases follow it.",
+    "",
+    "`pinned` is the escape hatch, mirroring releases/pinned.json on the data side. An",
+    "app-store build cannot be forced forward, and a thru-hike is five to seven months",
+    "against a window measured in ninety days. Set it for a release that shipped an",
+    "app-store build still in the field, and clear it by hand when that build is",
+    "genuinely out of support."
+  ],
+  "policy": {
+    "supersededDays": 90,
+    "floor": 3
+  },
+  "releases": [
+    {
+      "release": "pre-1.0.0",
+      "document": "pre-1.0.0.json",
+      "published": "2026-08-08",
+      "superseded": null,
+      "pinned": false,
+      "note": "Not a release. No tag exists yet - `git tag -l` is empty and releases/ holds only a README. This records the API shape as of the date above so the check has something to be true about, and the first real release replaces it rather than joining it."
+    }
+  ]
+}

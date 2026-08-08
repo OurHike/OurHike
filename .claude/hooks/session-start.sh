@@ -50,10 +50,23 @@ DEBIAN_SHADOWED="PyYAML cryptography pyjwt pyparsing packaging"
 # Pinned install that survives the above. $1 is the compiled requirements
 # file, which doubles as the constraint so the shadow copies land on exactly
 # the versions that file pins; any remaining arguments are installed with it.
+#
+# The constraint is a copy with extras stripped, not the file itself: pip
+# rejects a constraints file containing `coverage[toml]` or `moto[s3]` with
+# "ERROR: Constraints cannot have extras" and installs nothing at all. Those
+# two entered pipeline/requirements-dev.txt when the dependencies were pinned,
+# and every web session since has provisioned no Python dependencies for any
+# of the three suites. Extras only select optional dependencies - dropping
+# them costs the constraint nothing, because a constraint pins a version and
+# never asks for a package to be installed.
 pip_install_pinned() {
   local reqs="$1"
   shift
-  pip install -q --ignore-installed -c "${reqs}" ${DEBIAN_SHADOWED}
+  local constraints
+  constraints="$(mktemp)"
+  sed 's/\[[^][]*\]//g' "${reqs}" >"${constraints}"
+  pip install -q --ignore-installed -c "${constraints}" ${DEBIAN_SHADOWED}
+  rm -f "${constraints}"
   pip install -q -r "${reqs}" "$@"
 }
 

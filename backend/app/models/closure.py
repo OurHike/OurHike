@@ -109,3 +109,32 @@ class Closure(Base):
 
     verified_by = Column(String, ForeignKey("profiles.id"), nullable=True)
     verified_at = Column(DateTime, nullable=True)
+
+    # The three fields the closure sheet renders that nothing could fill
+    # (#245). All maintainer-set through `ClosureUpdate`, never accepted on
+    # create, for the same reason `status` is not: reporting that a trail is
+    # shut and judging when it reopens are different jobs.
+    #
+    # `closed_since` is when the TRAIL shut, which is neither `reported_at`
+    # (when somebody filed it) nor `verified_at` (when a moderator confirmed
+    # it). A closure reported four days after a storm is already four days old
+    # when it arrives, and this is the field that says so.
+    closed_since = Column(DateTime, nullable=True)
+
+    # Null is not "unknown, ask later" - the client omits the line entirely
+    # rather than rendering it, because "expected reopen: unknown" reads as a
+    # promise nobody made.
+    expected_reopen = Column(DateTime, nullable=True)
+
+    # The club's own reroute notice, which is what the sheet's closing line
+    # ("Follow the club's notice, or the signage on the ground") points at.
+    # This is not OurHike computing a detour - the module docstring's
+    # no-routing rule is about geometry we would have to derive, not about
+    # linking to what the club already published. `ClosureStatus
+    # .reroute_available` has existed since the initial schema; until this
+    # column there was nowhere to say where the reroute actually is.
+    #
+    # Rendered as an outbound link, so the scheme is constrained to http/https
+    # in app/schemas/closure.py rather than here: a `javascript:` URL on a
+    # safety sheet is the reason that validation exists.
+    reroute_url = Column(String, nullable=True)

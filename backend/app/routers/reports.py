@@ -6,7 +6,7 @@ account, matching every other browsing endpoint in this app; submitting
 it to and, later, moderate against.
 """
 
-from datetime import datetime, time, timedelta, timezone
+from datetime import datetime, time, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
@@ -29,7 +29,7 @@ from app.core.photos import (
     presigned_photo_url,
     store_photo,
 )
-from app.core.time import utc_now
+from app.core.time import to_naive_utc, utc_now
 from app.db.session import get_db
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.profile import MODERATOR_ROLES, Profile
@@ -266,11 +266,9 @@ def create_report(
             return settled
 
     now = utc_now()
-    authored = payload.authored_at
-    if authored is not None and authored.tzinfo is not None:
-        # Stored naive-UTC throughout (see app/models/profile.py), so an
-        # aware value is converted to UTC rather than stored as it arrived.
-        authored = authored.astimezone(timezone.utc).replace(tzinfo=None)
+    # Stored naive-UTC throughout (see app/models/profile.py), so an aware
+    # value is converted to UTC rather than stored as it arrived.
+    authored = to_naive_utc(payload.authored_at)
 
     timestamp = authored if authored is not None else now
     credited_maintainer, credited_club = _credit_for(db, payload, timestamp)

@@ -188,7 +188,8 @@ Two detection modes: distance-from-centerline (reuses `ST_LineLocatePoint` snap 
 
 ### 10. Settings (`16a`)
 
-Four groups, one canonical `UserPreferences` model:
+Five groups over one canonical `UserPreferences` model, then an About block that is
+not one of them:
 
 - **You** — trail name (Linked / on-this-device), reporter type, account.
 - **The map** — background source (USGS topo downloaded is the default and the only offline-capable one), detail for new downloads, roads & walkability *(Later)*.
@@ -199,6 +200,10 @@ Four groups, one canonical `UserPreferences` model:
 - **Your data** — export reports/routes (GPX, GeoJSON), last synced + Sync, sources & attribution.
 
 Later rows are shown at reduced opacity with a "Later" tag rather than hidden.
+
+**About this build** (added 2026-08-08, [#378](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/378)) — version, commit and build time, with a **Copy build details** button. Reference material rather than a preference, so it takes no `UserPreferences` key and sits below every group that can be changed — but *above* the download link, which keeps the foot of the screen for the reason §2's note gives.
+
+The commit is there because the version alone cannot identify most builds: `client/package.json` reads `0.0.0` until the first tag, so `main`, every preview and every laptop share it, and the section says as much rather than letting `0.0.0` pass for a version someone could look up. The build time is there because a service worker can serve a bundle long after a newer one deployed, which is otherwise invisible from the phone. The copy button is not a convenience — seven characters of hex retyped from a phone into an email is exactly what arrives with a digit changed — and the three rows stay readable either way, so a browser that refuses the clipboard costs accuracy rather than the feature. RELEASING.md §4 has the version meanings.
 
 ### 11. Data staleness (`16b`)
 

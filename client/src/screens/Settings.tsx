@@ -1,5 +1,7 @@
 // Settings (WIREFRAMES.md §10). Five groups over one canonical
-// UserPreferences model.
+// UserPreferences model, plus screens/AboutBuild.tsx at the foot - which is
+// not one of them: it holds no preference and writes nothing, it is what this
+// build is (#378).
 //
 // The account row (Phase E5) states plainly that signing out keeps
 // everything. The map, the outbox and the preferences are local first, and an
@@ -27,6 +29,8 @@ import type {
   UserPreferences,
 } from '../lib/userPreferences'
 import { backgroundOverride } from '../lib/dataSaver'
+import type { BuildInfo } from '../lib/buildInfo'
+import { AboutBuild } from './AboutBuild'
 import { BackgroundPicker } from '../chrome/BackgroundPicker'
 import { DownloadsLink } from '../chrome/DownloadsLink'
 import { REPORTER_TYPES } from '../lib/contributionFlow'
@@ -93,6 +97,9 @@ export interface SettingsProps {
    * Omitted, no link is drawn.
    */
   onOpenDownloads?: () => void
+  /** Which build this is (#378). Injectable for the same reason `now` is -
+   *  see screens/AboutBuild.tsx. Omitted, the real one is shown. */
+  build?: BuildInfo
 }
 
 function LaterTag() {
@@ -114,6 +121,7 @@ export function Settings({
   archiveDownloaded = false,
   hasDownload = false,
   onOpenDownloads,
+  build,
 }: SettingsProps) {
   return (
     <main className="settings">
@@ -375,6 +383,11 @@ export function Settings({
           OpenMapTiles, USGS 3DEP via AWS Terrain Tiles.
         </p>
       </section>
+
+      {/* Below every group that can be changed, and deliberately not last -
+          the download link below keeps the foot of the screen it was given.
+          See screens/AboutBuild.tsx for the rest of why. */}
+      <AboutBuild build={build} />
 
       {/* Below the last group rather than inside "The map" beside the
           background it affects. It is the only way to the download

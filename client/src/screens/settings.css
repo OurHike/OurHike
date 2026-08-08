@@ -41,6 +41,14 @@
   color: var(--fg-2);
   font-size: 13px;
 }
+/* A commit hash, and the reason it is not in the body face: this is a string
+   somebody reads off a screen and types somewhere else, so 0/O and 1/l have to
+   be told apart. `user-select: all` makes one tap select the whole hash on the
+   phones where the copy button cannot work. */
+.settings__value--code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  user-select: all;
+}
 .settings__later {
   font-size: 10px;
   text-transform: uppercase;

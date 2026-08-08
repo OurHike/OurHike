@@ -165,9 +165,26 @@ rather than for what they cost a developer:
 - **MINOR** — new behaviour, nothing required of anyone.
 - **PATCH** — fixes only, no new behaviour, no schema change.
 
-`client/package.json`'s `0.0.0` becomes the single source, read at build time into an
-About line and into the header the client sends. A version a hiker cannot read back to
-you is a version that does not help when they report something.
+`client/package.json` is the single source, read at build time into the **About this
+build** section at the foot of Settings. A version a hiker cannot read back to you is a
+version that does not help when they report something.
+
+Single source is enforced rather than asked for: `pages.yml` refuses to deploy a `v*`
+tag whose version disagrees with that file, so the two cannot drift. It is the file and
+not the tag that is read, because a tag exists only for a released build — and UA, every
+pull request preview and a laptop all have to be able to answer the same question.
+
+Two facts travel beside the version, because on their own neither the version nor the
+tag can identify most of the builds people actually run:
+
+- **The commit.** `client/package.json` says `0.0.0` and will until the first tag, so
+  every build off `main`, every preview and every laptop carries the same version
+  number. The commit is the only thing that tells them apart, and the section says so
+  rather than letting `0.0.0` read as a version somebody could look up.
+- **The build time.** A service worker can serve a bundle long after a newer one
+  deployed (`client/vite.config.ts` has the history), so "built three weeks ago" on a
+  site that deployed yesterday is what makes a stale install visible from the phone
+  instead of from the deploy log.
 
 ## 5. Release names — the trail, northbound
 
@@ -483,7 +500,8 @@ which is the difference between this rule and the one it extends.
 
 | | |
 |---|---|
-| `pages.yml` | Deploys production from a `v*` tag, not from `main`. Refuses a tag with no notes file (gate 12), and drafts the GitHub release with the app exactly as deployed, the OpenAPI document and the data manifest attached |
+| `pages.yml` | Deploys production from a `v*` tag, not from `main`. Refuses a tag with no notes file (gate 12) or one that disagrees with `client/package.json` (§4), and drafts the GitHub release with the app exactly as deployed, the OpenAPI document and the data manifest attached |
+| `client/src/lib/buildInfo.ts` | The version, commit and build time, inlined at build time and shown at the foot of Settings |
 | `ua.yml` | Deploys `main` to UA on its own Cloudflare origin, with no path to the production backend |
 | `release-notes.yml` | Generates a notes draft and opens it as a pull request, labelled so it can pass CI |
 | `.github/scripts/release_notes.py` | The generator. Pure half tested in `.github/tests/test_release_notes.py`; the git and API half is a thin seam |
@@ -510,10 +528,12 @@ followed:**
   until `v1.0.0` exists. Building them now would mean shipping code nothing can
   exercise — which TESTING.md is explicit about being worse than not having it.
   The baseline they will read is already being attached by the release job.
-- **The version in the app** ([#372](https://github.com/jaimito-asuntos-gringuenos/OurHike/issues/372)).
-  `client/package.json` still says `0.0.0` and nothing displays a version. The tag
-  is the source of truth for a release either way; this is about a hiker being
-  able to read back which build they have.
+- **The version on the wire.** Settings now shows the version, the commit and the
+  build time, and offers to copy all three (§4, `client/src/screens/AboutBuild.tsx`),
+  so a hiker can read back which build they have. What a report still does not carry
+  is that version *automatically* — somebody has to quote it. Nothing on the backend
+  records a client version today, so sending a header would be a value with no
+  reader; that is the half left open.
 
 The build is tracked in issues rather than enumerated here — CONTRIBUTING.md's one
 home per item, and the reason ROADMAP.md's checklists are gone.

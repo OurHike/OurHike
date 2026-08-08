@@ -103,12 +103,13 @@ against it would prove nothing about production.
 
 ## Deploying
 
-`.github/workflows/pages.yml` publishes to GitHub Pages on every push to
-`main` — the beta landing page (`site/`) at `/OurHike/` and this app at
-`/OurHike/app/`. Enable it once under Settings → Pages → Source →
-**GitHub Actions**, and set `DATA_BASE_URL` as a repository _variable_ (not a
-secret — it is public either way, and secrets are unavailable to the build in
-the form Vite needs).
+`.github/workflows/pages.yml` publishes to GitHub Pages when a `v*` tag is
+pushed — the beta landing page (`site/`) at `/OurHike/` and this app at
+`/OurHike/app/`. A push to `main` deploys to UA instead (`ua.yml`); see
+[RELEASING.md](../RELEASING.md) §2 for why those are two different things.
+Enable Pages once under Settings → Pages → Source → **GitHub Actions**, and set
+`DATA_BASE_URL` as a repository _variable_ (not a secret — it is public either
+way, and secrets are unavailable to the build in the form Vite needs).
 
 Any other static host works too; the build output is `dist/`, the build
 command is `npm run build`.
@@ -131,6 +132,26 @@ path, so `VITE_BASE_PATH=/OurHike/app/ npm run build` silently produces
 over HTTPS with a manifest, a service worker and the two icons — all of which
 `vite-plugin-pwa` emits into `dist/` already. Localhost counts as secure for
 development, so `npm run preview` is installable too.
+
+### Which build is this
+
+Settings ends with **About this build** — the version, the commit and the build
+time, with a button that copies all three. Ask for that when somebody reports a
+problem; it is the difference between a bug report about "the app" and one
+about a build you can check out.
+
+Nothing needs configuring for it. `vite.config.ts` reads the version out of
+`package.json` and the commit out of `git rev-parse HEAD` (falling back to
+`GITHUB_SHA`), and `define`s all three into the bundle, so production, UA, a
+pull request preview and a laptop all report themselves correctly with no
+workflow variable to set or forget. A build with neither git nor `GITHUB_SHA`
+— a tarball outside CI — says `unknown` rather than guessing.
+
+The version stays `0.0.0` until the first release tag, which means `main`,
+every preview and every laptop share it. That is why the commit is shown
+beside it, and why the section says out loud that an untagged build is not a
+release. `pages.yml` refuses to deploy a `v*` tag that disagrees with
+`package.json`, so a released build's version is the tag's.
 
 ## Installing on Android for a field test
 

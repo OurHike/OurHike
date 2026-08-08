@@ -241,6 +241,22 @@ settings:
       applied (LAUNCH_CHECKLIST.md 5); it stops being optional the day a hiker
       can sign in.
 
+  PROTECTIONS_READ_TOKEN:
+    where: secret
+    required: false
+    why: >-
+      A fine-grained PAT with Administration: read, so protections-check.yml can
+      read branch protection and the environments list. It exists because
+      GITHUB_TOKEN cannot: repository administration is not among the scopes a
+      workflow `permissions:` block can request, and asking for one that does
+      not exist makes the whole file invalid rather than warning - three runs
+      failed at startup with zero jobs before that was noticed. Optional, and
+      its absence is a declared state rather than a fault: without it the check
+      still reads the labels, says which sections it could not see, and stays
+      green instead of turning main red for something already tracked in #375.
+      Present but refused is different and fails the run - that means the PAT's
+      scopes are wrong, which is a thing to fix rather than a thing to accept.
+
   GITHUB_TOKEN:
     where: github-provided
     required: true

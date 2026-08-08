@@ -11,9 +11,19 @@ is a merge queue that hangs rather than fails.
 
 **What only a live run can answer** - whether GitHub is actually configured
 that way. `protections-check.yml` reads the API and hands the result here
-through the environment. Unlike the settings check there is no secret to be
-careful about: branch protection, environments and labels are configuration,
-not credentials, so this file can print what it found.
+through the environment. Nothing it hands over is a credential - branch
+protection, environments and labels are configuration - so unlike the settings
+check this file can print what it found.
+
+It can also arrive incomplete, which is the one thing worth understanding
+before reading a green run. **GITHUB_TOKEN has no scope for repository
+administration at all**: `administration: read` is not a key a workflow
+`permissions:` block accepts, and asking for it does not warn - it makes the
+file invalid, so every run is a startup failure with zero jobs. Three of those
+landed on `main` before anyone noticed. Branch protection and the environments
+are therefore readable only with a fine-grained PAT, which is optional, so
+those two sections may be absent while the labels are always present. `_needs`
+is how a test says which section it depends on.
 
 **Why the asymmetry with #375 matters.** Making these settings is a human
 action - no API this repository can reach will do it, which is why #375 is
@@ -91,6 +101,24 @@ live = pytest.mark.skipif(
     LIVE is None,
     reason="Only a job with repository administration access can see how GitHub is configured - see protections-check.yml.",
 )
+
+
+def _needs(section: str):
+    """Skip when this run could not ask the question at all.
+
+    Not the same as skipping a refused read, which fails the job instead.
+    GITHUB_TOKEN has no scope for repository administration - there is no
+    permissions block that grants it - so branch protection and the
+    environments are readable only with a fine-grained PAT in
+    PROTECTIONS_READ_TOKEN, and that secret is optional. Absent, this reports
+    which sections it could not see rather than turning `main` red for a state
+    that is declared; present but refused, the workflow fails before pytest
+    runs at all.
+    """
+    return pytest.mark.skipif(
+        LIVE is not None and section not in LIVE.get("read", []),
+        reason=f"{section} was not read - no PROTECTIONS_READ_TOKEN. See protections-check.yml.",
+    )
 
 
 # --- What a checkout can answer -------------------------------------------
@@ -190,6 +218,7 @@ def test_require_branches_up_to_date_is_declared_off():
 
 
 @live
+@_needs("branch_protection")
 def test_the_required_checks_configured_are_the_ones_declared():
     configured = set(LIVE["required_status_checks"])
     declared = set(REQUIRED)
@@ -203,6 +232,7 @@ def test_the_required_checks_configured_are_the_ones_declared():
 
 
 @live
+@_needs("branch_protection")
 def test_no_never_required_check_is_configured():
     wrongly_required = sorted(set(LIVE["required_status_checks"]) & set(NEVER_REQUIRED))
     assert not wrongly_required, (
@@ -212,6 +242,7 @@ def test_no_never_required_check_is_configured():
 
 
 @live
+@_needs("branch_protection")
 def test_require_branches_up_to_date_is_actually_off():
     assert LIVE["require_branches_up_to_date"] is False, (
         "`Require branches to be up to date before merging` is ON for " + BRANCH + ". BRANCHING.md §1: this "
@@ -220,6 +251,7 @@ def test_require_branches_up_to_date_is_actually_off():
 
 
 @live
+@_needs("environments")
 def test_the_production_environment_asks_a_human():
     expected = MANIFEST["environments"]["production"]["required_reviewers_at_least"]
     actual = LIVE["environments"].get("production")
@@ -236,6 +268,7 @@ def test_the_production_environment_asks_a_human():
 
 
 @live
+@_needs("labels")
 def test_the_release_labels_exist():
     missing = sorted(set(MANIFEST["labels"]) - set(LIVE["labels"]))
     assert not missing, (
@@ -251,6 +284,11 @@ def test_the_live_check_is_not_silently_skipping_where_it_is_meant_to_run():
     test_repository_settings.py, which learned it first."""
     if os.environ.get("PROTECTIONS_CHECK_LIVE") != "1":
         pytest.skip("Not the job that checks the live protections.")
+    assert LIVE is not None and LIVE.get("read"), (
+        "This job read nothing at all. Even without PROTECTIONS_READ_TOKEN the labels are readable with "
+        "GITHUB_TOKEN, so an empty `read` means the reading step did not run or produced no output - and every live "
+        "test below skipped, leaving a green job that checked nothing."
+    )
     assert LIVE is not None, (
         "This job is meant to check how GitHub is configured, but LIVE_PROTECTIONS did not arrive, so every live test "
         "skipped and the job would have passed having checked nothing. The most likely cause is the API refusing a "

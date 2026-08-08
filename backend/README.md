@@ -122,7 +122,7 @@ Point `DATABASE_URL` at the real Supabase Postgres connection string first. Deli
 
 ## Deployment
 
-`Dockerfile` + `fly.toml` target [Fly.io](https://fly.io) - picked over Render specifically to avoid Render's free-tier sleep-on-idle behavior (a cold start on the first request after idle is a worse experience for something safety-adjacent than a small ongoing hosting cost). `fly.toml` deliberately keeps `min_machines_running = 1` for the same reason - see the comment in that file if that tradeoff ever needs revisiting.
+`Dockerfile` + `fly.toml` target [Fly.io](https://fly.io), which keeps `min_machines_running = 1` so the first request after an idle period does not pay a cold start. **[HOSTING.md](HOSTING.md) is why that host and why always-on** - it re-examines the choice against Cloudflare Containers, Cloudflare Python Workers, Supabase Edge Functions, Render, Railway, Cloud Run, Koyeb, DigitalOcean and a bare VPS, with costs, and comes out on keeping Fly. Read it before changing hosts; it also records what would make the answer different.
 
 **Not yet done, and needs real decisions first:**
 1. `fly apps create` (or `fly launch`) with a real, globally-unique app name - `fly.toml`'s `app = "ourhike-backend"` is a placeholder, update it to match.

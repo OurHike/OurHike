@@ -169,6 +169,21 @@ Switching the queue on is a settings change on `main`, under **Settings → Rule
 2. **Require status checks to pass**, naming the checks from the table above —
    and nothing outside it. A required check that cannot report on `merge_group`
    is the hang described above, so the table is the whole menu.
+
+   > **One caveat, found while writing this.** On the pull request that added
+   > these triggers, the `Settings check` run completed as `action_required`
+   > with **zero jobs** — so it reported no status at all, rather than red. The
+   > six other workflows on that same commit ran normally, and this one had
+   > passed on every other recent pull request. [#274](https://github.com/OurHike/OurHike/pull/274)
+   > records the same workflow orphaned once before, stuck `queued` for five
+   > hours while its siblings finished. The cause is not established, and this
+   > note is the observation rather than a diagnosis.
+   >
+   > It matters here because it *is* the hang condition, arriving unprompted. A
+   > required check that intermittently reports nothing wedges pull requests
+   > today and would wedge the queue tomorrow. So `Manifest agrees with the
+   > workflows` is the one row in the table worth watching for a while before
+   > requiring it — the other four have no such history.
 3. **Leave "Require branches to be up to date before merging" off.** §1 above is
    why, and the queue is what makes it unnecessary rather than merely
    tolerable: the queue builds each entry against `main` plus everything ahead

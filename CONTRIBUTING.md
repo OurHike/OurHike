@@ -125,6 +125,14 @@ The pipeline fetches large amounts of data from ATC, USGS and opentrail.org. Rea
 - If a change contradicts something in a design doc, update the doc in the same PR. A doc that disagrees with the code is worse than no doc.
 - Lint and format before pushing. CI checks both and will fail on formatting alone.
 
+Money Man (cost) requirements
+
+- The project maintains a strict $0 ongoing-cost policy for core features unless a documented coverage plan exists. Any PR that introduces a new external dependency, paid API, hosted dataset, or server-side background job must include a COSTS.md (see project root) documenting recurring cost estimates, mitigation options, and approval.
+- The repository includes a lightweight GitHub Actions cost check that scans PR changes for common paid-provider indicators (e.g., Mapbox, Google Maps, AWS, Stripe, MapTiler). If a potential paid provider is detected and no COSTS.md is present in the PR or at the repository root, the check will fail and request a documented mitigation or funding plan.
+- PR reviewers must explicitly consider cost implications: check whether the change needs a new secret, a hosted service, or long-running storage/compute. If the change introduces recurring costs, require a funding/coverage plan and a named approver before merge.
+- Add `@money-man` (or request a cost reviewer) on PRs that touch map providers, external APIs, telemetry, server-side inference, or paid hosting.
+
+
 ## A note on data and licences
 
 The app is AGPL-3.0. The data it ships is not all ours to relicense: USGS topo data is public domain, OpenStreetMap-derived basemap tiles are ODbL and require visible attribution (already rendered in `client/src/map/style.ts`), the bundled Noto Sans glyphs are SIL OFL 1.1 (provenance and licence text in `client/public/glyphs/`), opentrail.org's terms are [not yet formally confirmed](https://github.com/OurHike/OurHike/issues/98), and POI photos are Wikimedia Commons files licensed **per photo** (public domain, CC0, or CC BY / CC BY-SA at 4.0+ only — the pipeline rejects everything else, including pre-4.0 CC versions, whose terms a one-link credit cannot meet), each shipping with the author, licence and file-page link the waypoint card displays (`features/POI_PHOTOS.md`). If you add a data source, establish its licence first and record it — an unlicensed source is a problem inherited by every club that takes this project on later.

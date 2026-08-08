@@ -1,7 +1,7 @@
 """lock alembic's own version table
 
 Revision ID: e5b2f7c1a903
-Revises: d4a91c3e7b25
+Revises: e8b4d2f61c93
 Create Date: 2026-08-08 03:50:00.000000
 
 `b3d1c7a94e02` locked every table this schema creates. It did not lock the
@@ -54,7 +54,15 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "e5b2f7c1a903"
-down_revision: Union[str, Sequence[str], None] = "d4a91c3e7b25"
+# Chained after e8b4d2f61c93 rather than beside it. Both were written against
+# d4a91c3e7b25 on separate branches, which is two heads and an Alembic that
+# refuses to resolve `head` - the failure this branch hit on CI before the
+# merge. Linearising is right rather than `alembic merge` because the two are
+# independent: closure columns and a lock on the version table have no
+# ordering between them, so a merge revision would record a reconciliation
+# that never happened. BRANCHING.md names the versions directory as one of the
+# files that collides.
+down_revision: Union[str, Sequence[str], None] = "e8b4d2f61c93"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -54,7 +54,18 @@ jobs:
     # them across jobs would work only as long as the runner's checkout path
     # never changed - a trap rather than a design.
     environment: production
-    timeout-minutes: 60
+    # Raised from 60 when photos were added, because the old ceiling no longer
+    # fit and the failure mode is bad: a timeout kills a release mid-run, and
+    # the first thing publish.py uploads is photos, so a half-finished publish
+    # is the one state the ordering was designed to avoid.
+    #
+    # Measured on the first cold run (2026-08-09): ATC photos 17m47s, and that
+    # is with an empty cache, which is the normal case rather than the unlucky
+    # one - see the cache step. Commons adds ~10-15 min cold on top, so photos
+    # alone are ~30 min of a 60-minute budget. Ticking include_elevation as
+    # well (+~25 min by its own note) would have run right at the ceiling.
+    # Nobody had hit it because photos did not exist until now.
+    timeout-minutes: 120
     defaults:
       run:
         working-directory: pipeline
@@ -90,12 +101,25 @@ jobs:
       # which is how this went unnoticed when the ATC source was added.
       #
       # Cached because both fetches are change-aware per POI and the cache is
-      # the only thing that state survives in: without it every release
-      # re-downloads all ~450 images from ATC's Drive and re-queries Commons
-      # for 817 POIs. The key is deliberately coarse - one cache for the
-      # photo store, restored by prefix - because the fetches themselves
-      # decide what is stale, and a cache miss costs time rather than
-      # correctness.
+      # the only thing that state survives in. The key is deliberately coarse
+      # - one cache for the photo store, restored by prefix - because the
+      # fetches themselves decide what is stale, and a cache miss costs time
+      # rather than correctness.
+      #
+      # Do not expect it to hit. GitHub evicts cache entries not accessed for
+      # 7 days, and DATA_RELEASES.md puts releases on a monthly-ish cadence,
+      # so the normal publish finds no cache and pays the full ~18 minutes
+      # (measured cold, 2026-08-09) plus Commons. This step earns its keep on
+      # runs close together - a dry run followed by the real publish, or a
+      # re-run after a failure - which is exactly when re-downloading 75 MB
+      # from ATC would be most gratuitous.
+      #
+      # The cold cost is not pure waste, which is why it is tolerated rather
+      # than engineered around: ATC is still adding photos to these layers
+      # (one dated October 2025), and a cold fetch is how those get found.
+      # If it ever needs to be cheap, the fix is not a longer-lived cache -
+      # it is teaching the fetch that bytes already in R2 need not be
+      # downloaded again to be published.
       - name: Restore POI photo cache
         if: inputs.include_photos
         uses: actions/cache@v4

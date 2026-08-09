@@ -2,8 +2,22 @@
 // Deviations #1: the wireframe's per-section download list is superseded by
 // ROADMAP.md Phase 2's decision - one package for the whole corridor, with
 // this Light/Standard/Fine choice as the *only* download's detail, not a
-// per-section override. Sizes are the real measured whole-corridor figures
-// from pipeline/README.md, not derived per-section ratios.
+// per-section override.
+//
+// SIZES ARE MEASURED FROM THE BUCKET, NOT FROM A BUILD LOG (#505).
+//
+// They used to be copied from pipeline/README.md's table, which records what a
+// particular run produced. That is a different fact from what is currently
+// SERVED, and the two had drifted apart: the advertised Standard tier was
+// 300.3 MB while the published archive was 315.1 MB - 14.8 MB larger, in the
+// direction that strands somebody who freed up exactly enough space.
+//
+// This number's only job is to let a hiker at a trailhead decide whether they
+// have room, so it tracks the object they will actually download.
+// `verify_release.py` check 18 fails a release where any tier drifts more than
+// 2% from what is advertised here, which is what caught this and what keeps it
+// honest - and #505 carries the better fix, publishing `size_bytes` in
+// `latest.json` so the figure stops being hand-kept at all.
 
 export type DetailLevel = 'light' | 'standard' | 'fine'
 
@@ -15,9 +29,11 @@ export interface DownloadDetail {
 }
 
 export const DOWNLOAD_DETAIL_LEVELS: DownloadDetail[] = [
-  { level: 'light', zoom: 11, sizeBytes: 68_900_000, recommended: false },
-  { level: 'standard', zoom: 12, sizeBytes: 300_300_000, recommended: true },
-  { level: 'fine', zoom: 13, sizeBytes: 1_179_200_000, recommended: false },
+  // Measured against the published bucket on 2026-08-09, rounded to the
+  // hundred-kilobyte the display never shows past.
+  { level: 'light', zoom: 11, sizeBytes: 65_000_000, recommended: false },
+  { level: 'standard', zoom: 12, sizeBytes: 315_100_000, recommended: true },
+  { level: 'fine', zoom: 13, sizeBytes: 1_184_700_000, recommended: false },
 ]
 
 export function getDownloadDetail(level: DetailLevel): DownloadDetail {

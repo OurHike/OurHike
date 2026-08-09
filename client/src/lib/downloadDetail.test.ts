@@ -8,25 +8,27 @@ import {
 
 // Whole-corridor, one package (ROADMAP.md Phase 2, WIREFRAMES.md Known
 // Deviations #1) - a single download's detail choice, not a per-section
-// override. Sizes are the real measured whole-corridor figures from
-// pipeline/README.md - no per-section ratio math needed or wanted here.
+// override. Sizes are measured against the PUBLISHED bucket rather than copied
+// from a build log (#505): what this number is for is a hiker at a trailhead
+// deciding whether they have room, so it has to track the object they will
+// actually download.
 
 describe('downloadDetail', () => {
   it('maps each of the three detail levels to its correct zoom and measured size', () => {
     expect(getDownloadDetail('light')).toMatchObject({
       level: 'light',
       zoom: 11,
-      sizeBytes: 68_900_000,
+      sizeBytes: 65_000_000,
     })
     expect(getDownloadDetail('standard')).toMatchObject({
       level: 'standard',
       zoom: 12,
-      sizeBytes: 300_300_000,
+      sizeBytes: 315_100_000,
     })
     expect(getDownloadDetail('fine')).toMatchObject({
       level: 'fine',
       zoom: 13,
-      sizeBytes: 1_179_200_000,
+      sizeBytes: 1_184_700_000,
     })
   })
 

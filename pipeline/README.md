@@ -278,9 +278,8 @@ upscaled 2x - the free half of #191's fix, and the reason
 
 **Measured sizes** from the first successful full-corridor run
 ([run 31100130798](https://github.com/OurHike/OurHike/actions/runs/31100130798),
-2026-08-06, all 51 cells, receipts verified) - these are what
-`downloadDetail.ts` advertises, under the same +/-0.6% honesty bar the
-previous build held (its 11 m-chain figures were 64.4 MB / 314 MB /
+2026-08-06, all 51 cells, receipts verified), under the same +/-0.6% honesty bar
+the previous build held (its 11 m-chain figures were 64.4 MB / 314 MB /
 1.18 GB, measured 2026-07-29):
 
 | tier | tiles | measured |
@@ -289,6 +288,16 @@ previous build held (its 11 m-chain figures were 64.4 MB / 314 MB /
 | Standard `background.pmtiles` | 5,826 | 300.3 MB |
 | Fine `background_z13.pmtiles` | 21,758 | 1,179.2 MB |
 | Quad sheet `quad_sheet_z14.pmtiles` | 31,987 | 1,698.1 MB |
+
+**This table records what a RUN produced. It is not what the bucket currently
+serves, and the two are not the same fact** - which is how they drifted apart
+unnoticed until `verify_release.py` check 18 compared them (#505). Measured
+against the published archives on 2026-08-09: Light **65.0 MB**, Standard
+**315.1 MB**, Fine **1,184.7 MB** - closer to the previous build's figures above
+than to this run's. So either the bucket is stale or this run never shipped;
+#505 carries that question. `downloadDetail.ts` no longer copies from here, and
+advertises the bucket's figures instead, because what a hiker weighs against
+their remaining storage is the object they will actually download.
 
 The quad sheet is not yet in the client's detail catalog - whether it ships
 as a fourth choice there or as its own optional package is #193's shape

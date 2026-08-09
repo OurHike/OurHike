@@ -420,8 +420,15 @@ def _healthy_bucket(mock, *, allow_origins=True):
 
     mock.get(f"{BASE}/latest.json", json=latest)
     mock.options(f"{BASE}/latest.json", headers={"Access-Control-Allow-Headers": "range, if-range"})
+    # A healthy bucket also serves each tier at the size the app advertises
+    # (#505). Toy lengths here would make `check_advertised_sizes` report a
+    # 100% drift on a fixture whose whole job is to be correct.
+    from verify_release import advertised_sizes, archive_keys
+
+    tier_sizes = {key: advertised_sizes()[tier] for tier, key in archive_keys().items()}
     for key in PUBLISHED["artifacts"]:
-        mock.head(f"{BASE}/{key}", headers={"Content-Length": "999", "Accept-Ranges": "bytes"})
+        length = tier_sizes.get(key, 999)
+        mock.head(f"{BASE}/{key}", headers={"Content-Length": str(length), "Accept-Ranges": "bytes"})
     mock.get(f"{BASE}/background.pmtiles", status_code=206, headers={"Content-Range": "bytes 0-0/999"})
     return mock
 
@@ -556,3 +563,37 @@ def test_a_trailing_slash_on_the_base_does_not_double_up(mock, monkeypatch):
 
     assert check_deployment.main([]) == 0
     assert all("//latest.json" not in request.url for request in mock.request_history)
+
+
+class TestTheAdvertisedSizesAreCheckedDaily:
+    """#505: the app advertised 300.3 MB while the bucket served 315.1 MB, and
+    nothing compared the two. `verify_release.py` asks this at release time;
+    asking it here is the difference between noticing in a day and noticing at
+    the next release."""
+
+    def _bucket(self, requests_mock, sizes):
+        for key, length in sizes.items():
+            requests_mock.head(f"{BASE}/{key}", headers={"Content-Length": str(length)})
+
+    def test_a_tier_that_has_drifted_is_caught(self, requests_mock):
+        from verify_release import advertised_sizes, archive_keys
+
+        keys = archive_keys()
+        sizes = advertised_sizes()
+        # Standard 5% larger than advertised - the direction that strands a
+        # hiker who freed up exactly enough space.
+        self._bucket(
+            requests_mock,
+            {key: int(sizes[tier] * (1.05 if tier == "standard" else 1.0)) for tier, key in keys.items()},
+        )
+
+        reports = check_deployment.check_advertised_sizes(BASE, list(keys.values()))
+        by_key = {report["key"]: report["state"] for report in reports}
+
+        assert by_key[keys["standard"]] == FAILED
+        assert by_key[keys["light"]] == OK
+
+    def test_tiers_the_bucket_does_not_hold_are_not_invented(self, requests_mock):
+        """A release that has not published the archives yet must not report
+        three failures about objects nobody claimed exist."""
+        assert check_deployment.check_advertised_sizes(BASE, []) == []

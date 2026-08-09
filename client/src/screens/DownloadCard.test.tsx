@@ -31,8 +31,8 @@ describe('DownloadCard', () => {
     render(<DownloadCard {...PROPS} />)
 
     expect(screen.getAllByRole('radio')).toHaveLength(3)
-    expect(screen.getByText(/68\.9 MB/)).toBeInTheDocument()
-    expect(screen.getByText(/300\.3 MB/)).toBeInTheDocument()
+    expect(screen.getByText(/65 MB/)).toBeInTheDocument()
+    expect(screen.getByText(/315\.1 MB/)).toBeInTheDocument()
     expect(screen.getByText(/1\.18 GB/)).toBeInTheDocument()
   })
 

@@ -31,6 +31,10 @@ on:
         description: "Also build the elevation profile. Adds ~25 min; no client code reads it yet."
         type: boolean
         default: false
+      include_photos:
+        description: "Fetch POI photos before exporting. Untick only to publish a release without them."
+        type: boolean
+        default: true
 
 # One publish at a time. Two concurrent runs would race on latest.json and could
 # interleave uploads, leaving the manifest describing a mixture of two builds.
@@ -50,7 +54,18 @@ jobs:
     # them across jobs would work only as long as the runner's checkout path
     # never changed - a trap rather than a design.
     environment: production
-    timeout-minutes: 60
+    # Raised from 60 when photos were added, because the old ceiling no longer
+    # fit and the failure mode is bad: a timeout kills a release mid-run, and
+    # the first thing publish.py uploads is photos, so a half-finished publish
+    # is the one state the ordering was designed to avoid.
+    #
+    # Measured on the first cold run (2026-08-09): ATC photos 17m47s, and that
+    # is with an empty cache, which is the normal case rather than the unlucky
+    # one - see the cache step. Commons adds ~10-15 min cold on top, so photos
+    # alone are ~30 min of a 60-minute budget. Ticking include_elevation as
+    # well (+~25 min by its own note) would have run right at the ceiling.
+    # Nobody had hit it because photos did not exist until now.
+    timeout-minutes: 120
     defaults:
       run:
         working-directory: pipeline
@@ -77,6 +92,64 @@ jobs:
 
       - name: Fetch opentrail.org POIs
         run: python fetch_opentrail.py
+
+      # Photos live outside the repository - pipeline/.gitignore excludes
+      # data/ entirely - so a fresh runner has neither the outcome files nor
+      # the image bytes, and without this step export_poi.py takes its
+      # "exporting without photos" path and publish.py finds nothing to
+      # upload. That is a green run that silently ships POIs with no photo,
+      # which is how this went unnoticed when the ATC source was added.
+      #
+      # Cached because both fetches are change-aware per POI and the cache is
+      # the only thing that state survives in. The key is deliberately coarse
+      # - one cache for the photo store, restored by prefix - because the
+      # fetches themselves decide what is stale, and a cache miss costs time
+      # rather than correctness.
+      #
+      # Do not expect it to hit. GitHub evicts cache entries not accessed for
+      # 7 days, and DATA_RELEASES.md puts releases on a monthly-ish cadence,
+      # so the normal publish finds no cache and pays the full ~18 minutes
+      # (measured cold, 2026-08-09) plus Commons. This step earns its keep on
+      # runs close together - a dry run followed by the real publish, or a
+      # re-run after a failure - which is exactly when re-downloading 75 MB
+      # from ATC would be most gratuitous.
+      #
+      # The cold cost is not pure waste, which is why it is tolerated rather
+      # than engineered around: ATC is still adding photos to these layers
+      # (one dated October 2025), and a cold fetch is how those get found.
+      # If it ever needs to be cheap, the fix is not a longer-lived cache -
+      # it is teaching the fetch that bytes already in R2 need not be
+      # downloaded again to be published.
+      - name: Restore POI photo cache
+        if: inputs.include_photos
+        uses: actions/cache@v4
+        with:
+          path: |
+            pipeline/data/raw/poi_photos
+            pipeline/data/raw/poi_images.json
+            pipeline/data/raw/poi_images_atc.json
+          key: poi-photos-${{ github.run_id }}
+          restore-keys: poi-photos-
+
+      # ATC's own facility photographs: 453 of the 522 photos a hiker sees,
+      # and the only source covering shelters and campsites at all
+      # (features/POI_PHOTOS.md). Allowed to fail the release, unlike the
+      # Commons fetch below: this reads the same ATC data the export is built
+      # from, so if it is unreachable the release has bigger problems than
+      # missing photos.
+      - name: Fetch ATC facility photos
+        if: inputs.include_photos
+        run: python fetch_atc_photos.py
+
+      # Commons fills water and resupply only, and it is a third-party API
+      # this project has no relationship with - so a Commons outage must not
+      # be able to block a trail-data release. continue-on-error is the whole
+      # point of running it separately: the export ships cleanly without it,
+      # carrying whatever the last cached run found.
+      - name: Fetch Commons photos
+        if: inputs.include_photos
+        continue-on-error: true
+        run: python fetch_poi_images.py
 
       - name: Export trail lines
         run: python export_trails.py
@@ -148,6 +221,50 @@ jobs:
               total += size
               print(f"{size / 1e6:9.2f} MB  {name}")
           print(f"{total / 1e6:9.2f} MB  TOTAL across {len(artifacts)} artifacts")
+          PY
+
+      # Photos are outside the manifest by design (publish.py's collect_photos
+      # explains why), so the artifact listing above cannot show them - and a
+      # dry run that says nothing about photos is exactly how a release ships
+      # without them and nobody notices until a card is blank.
+      - name: How many photos would be published
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          from publish import collect_photos
+
+          photos = collect_photos()
+          size = sum(Path(p).stat().st_size for p in photos.values())
+          print(f"{len(photos)} photo object(s), {size / 1e6:.1f} MB")
+
+          for name in ("poi_images_atc.json", "poi_images.json"):
+              path = Path("data/raw") / name
+              if not path.exists():
+                  print(f"  {name}: absent")
+                  continue
+              records = json.loads(path.read_text())["pois"]
+              found = sum(1 for r in records.values() if r.get("status") == "found")
+              print(f"  {name}: {found} found of {len(records)} checked")
+
+          referenced = set()
+          for poi_type in ("shelter", "campsite", "water", "resupply"):
+              exported = Path("data/processed/poi") / f"{poi_type}.geojson"
+              if not exported.exists():
+                  continue
+              features = json.loads(exported.read_text())["features"]
+              with_photo = [f for f in features if f["properties"].get("photo_key")]
+              referenced.update(f["properties"]["photo_key"] for f in with_photo)
+              print(f"  {poi_type}: {len(with_photo)}/{len(features)} features carry a photo")
+
+          # The one failure that would reach a hiker as a broken card: an
+          # exported feature pointing at an object this run is not uploading.
+          # publish.py already orders photos before artifacts, so this catches
+          # the other case - bytes that were never fetched at all.
+          missing = referenced - set(photos)
+          if missing:
+              raise SystemExit(f"{len(missing)} exported photo_key(s) have no local image to upload, e.g. {sorted(missing)[:3]}")
           PY
 
       # Kept short-lived: these are inspectable evidence for a dry run, not a

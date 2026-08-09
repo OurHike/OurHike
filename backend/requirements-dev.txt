@@ -158,6 +158,7 @@ python-dotenv==1.2.2
 pyyaml==6.0.3
     # via
     #   -c backend/requirements.txt
+    #   -r backend/requirements-dev.in
     #   moto
     #   responses
     #   uvicorn

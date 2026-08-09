@@ -56,6 +56,15 @@ CLIENT_SRC = Path(__file__).resolve().parents[2] / "client" / "src"
 OUTBOX = CLIENT_SRC / "lib" / "outbox.ts"
 REPORT_STATUS = CLIENT_SRC / "lib" / "reportStatus.ts"
 REPORT_PHOTO = CLIENT_SRC / "lib" / "reportPhoto.ts"
+PREFERENCES = CLIENT_SRC / "lib" / "userPreferences.ts"
+
+# Named as a set rather than left implicit in the calls below, because
+# tests/test_ci_scope.py reads it: the backend workflow lists these files
+# individually so that ordinary client work does not stand up a Postgres
+# container, and a narrow list is only honest while it is complete. Add a
+# client file to this module and it belongs here in the same edit - the scope
+# test is what makes forgetting a failure rather than a silent hole.
+CLIENT_FILES_READ = (OUTBOX, REPORT_STATUS, REPORT_PHOTO, PREFERENCES)
 
 
 def _read(path: Path) -> str:
@@ -160,7 +169,7 @@ def test_both_halves_spell_the_reporter_types_the_same_way():
     preferences = _quoted(
         re.search(
             r"export const REPORTER_TYPE_VALUES = \[(.*?)\]",
-            _read(CLIENT_SRC / "lib" / "userPreferences.ts"),
+            _read(PREFERENCES),
             re.DOTALL,
         ).group(1)
     )

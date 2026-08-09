@@ -59,6 +59,14 @@ PUBLISHED_CONDITIONS = CLIENT_SRC / "lib" / "publishedConditions.ts"
 HIKING_DETAIL = CLIENT_SRC / "lib" / "hikingDetail.ts"
 PACKAGES = CLIENT_SRC / "lib" / "packages.ts"
 
+# Named as a set rather than left implicit in the calls below, because
+# tests/test_ci_scope.py reads it: the pipeline workflow lists these files
+# individually so that ordinary client work does not run the whole pipeline
+# suite, and a narrow list is only honest while it is complete. Add a client
+# file to this module and it belongs here in the same edit - the scope test is
+# what makes forgetting a failure rather than a silent hole.
+CLIENT_FILES_READ = (CONFIG, PUBLISHED_CONDITIONS, HIKING_DETAIL, PACKAGES)
+
 
 def _read(path: Path) -> str:
     """The client module, or a failure naming it.

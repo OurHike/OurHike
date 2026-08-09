@@ -86,15 +86,30 @@ jobs:
           # workflow and the action are in the list so a change to the gate
           # itself still proves the suite it gates.
           #
-          # client/src/lib/ is here because tests/test_published_key_contract.py
-          # READS it as text: every published R2 key the app fetches is built
-          # from those modules, and a key renamed there is a 404 on a mountain
-          # that nothing else in this repository would notice. That rename
-          # arrives in a client-only pull request, which is exactly the run a
-          # `pipeline/`-only scope would skip. TESTING.md's rule, in the
-          # "Redundancy" section: **a suite's scope list includes every file
-          # its tests read.**
-          paths: pipeline/ client/src/lib/ .github/workflows/pipeline-tests.yml .github/actions/changed-paths/
+          # The four client modules are here because
+          # tests/test_published_key_contract.py READS them as text: every
+          # published R2 key the app fetches is built from them, and a key
+          # renamed there is a 404 on a mountain that nothing else in this
+          # repository would notice. That rename arrives in a client-only pull
+          # request, which is exactly the run a `pipeline/`-only scope would
+          # skip. TESTING.md's rule, in the "Redundancy" section: **a suite's
+          # scope list includes every file its tests read.**
+          #
+          # Four files rather than `client/src/lib/`, which is what this said
+          # first: the directory is touched by most client work, and spending a
+          # full pipeline run on it to catch drift in four rarely-edited
+          # modules is a tax on the commonest kind of pull request here. The
+          # narrow list is only honest while it is complete, so
+          # tests/test_ci_scope.py reads this line back and fails if the
+          # contract test starts reading a client file that is not on it.
+          paths: >-
+            pipeline/
+            client/src/lib/config.ts
+            client/src/lib/hikingDetail.ts
+            client/src/lib/packages.ts
+            client/src/lib/publishedConditions.ts
+            .github/workflows/pipeline-tests.yml
+            .github/actions/changed-paths/
 
       - uses: actions/setup-python@v5
         if: steps.scope.outputs.run == 'true'

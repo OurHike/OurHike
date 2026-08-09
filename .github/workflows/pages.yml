@@ -6,8 +6,10 @@
 #
 # Two things land, at the two paths the site is written to expect:
 #
-#   /OurHike/       site/index.html      - the beta announcement and install steps
-#   /OurHike/app/   client/dist/         - the app itself
+#   /OurHike/         site/index.html         - the beta announcement and install steps
+#   /OurHike/app/     client/dist/            - the app itself
+#   /OurHike/status/  site/status/index.html  - "is it me or us?", checked live
+#                                               in the visitor's browser (#467)
 #
 # The app's `base` has to match its serving path exactly, because a PWA's
 # `scope` and `start_url` decide which pages the installed app owns - see the
@@ -255,6 +257,8 @@ jobs:
           fi
 
       - name: Assemble the site
+        env:
+          DATA_URL: ${{ steps.data.outputs.url }}
         run: |
           mkdir -p _site/app
           cp -r site/. _site/
@@ -264,6 +268,28 @@ jobs:
           # underscore - Vite does not emit any today, but a build tool changing
           # its naming should not silently break the deploy.
           touch _site/.nojekyll
+
+          # The status page checks the bucket from the visitor's own browser
+          # (#431 tier 2, #467), so it needs the same URL the app is built
+          # with. Substituted here rather than committed, so site/ never holds
+          # a bucket URL that can drift from the app's - which is the class of
+          # drift #457 was about.
+          #
+          # DATA_URL goes through the environment and then through a python
+          # replace rather than sed: a URL contains `/`, and a sed delimiter
+          # collision would silently produce a mangled page rather than fail.
+          # Read from os.environ inside python rather than interpolated into
+          # the source, so the value is data and never code.
+          #
+          # An unset DATA_URL leaves the placeholder alone on purpose - the
+          # page detects it and says it is unconfigured, which is true and is a
+          # different sentence from "the map is down".
+          if [ -n "$DATA_URL" ]; then
+            python3 -c 'import os, pathlib; p = pathlib.Path("_site/status/index.html"); p.write_text(p.read_text().replace("__DATA_BASE_URL__", os.environ["DATA_URL"]))'
+            echo "Status page points at $DATA_URL"
+          else
+            echo "::warning::No DATA_BASE_URL, so /status/ will say it is unconfigured rather than checking anything."
+          fi
 
       # Through the local action rather than peaceiris/actions-gh-pages, which
       # pushes exactly once and fails the whole deploy on a rejected push. See

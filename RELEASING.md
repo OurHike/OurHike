@@ -74,7 +74,7 @@ two targets is a smaller change than the workflow's own header comment.
 | **What it is** | a laptop, and a preview per pull request | one persistent deployment of `main` | what hikers install |
 | **Deployed by** | `npm run dev`; `pr-preview.yml` | push to `main` | an annotated tag `v*` |
 | **Client origin** | `localhost:5173` / `:4173`; `pr-<n>.ourhike-preview.pages.dev` | `ua.ourhike-preview.pages.dev` | `ourhike.github.io` |
-| **Backend** | local uvicorn | `ourhike-backend-ua` on Fly, `min_machines_running = 0` | `ourhike-backend` on Fly, `min_machines_running = 1` |
+| **Backend** | local uvicorn | a UA service on the backend host | a production service on the backend host |
 | **Database** | local Postgres (`backend/scripts/local-postgres.sh`) | UA Supabase project | production Supabase project |
 | **Map data** | local artifacts | the **candidate** `releases/<id>/` | the **released** `releases/<id>/` |
 | **Migrations** | applied and reverted freely | applied here **first**, always | applied only after UA |
@@ -140,8 +140,10 @@ A separate origin is the requirement, and §3b is how to get one for free.
 - **Client: nothing.** Cloudflare's free plan does not limit preview deployments, and
   this uploads a directory built in Actions rather than using Cloudflare's builders
   (LAUNCH_CHECKLIST.md 3a).
-- **Backend: one more Fly machine**, with `min_machines_running = 0` — a cold start is
-  fine for a tester and is exactly what production declines to accept.
+- **Backend: one more service on the same host.** Both scale to zero now
+  (backend/HOSTING.md, revised 2026-08-09), so a cold start is what UA and
+  production both accept — closures no longer come from this service, and
+  everything left on it waits well.
 - **Database: one more Supabase project.** *Unverified:* whether the free tier allows
   a second active project for this account needs checking in the dashboard before this
   is planned around. If it does not, the fallback is UA using production's Supabase
@@ -607,7 +609,7 @@ followed:**
 
 - **The UA infrastructure itself.** The workflow is written and degrades politely;
   the Cloudflare alias will appear on the first push to `main` after this lands,
-  but the UA Supabase project and the UA Fly app are account work
+  but the UA Supabase project and the UA backend service are account work
   ([#371](https://github.com/OurHike/OurHike/issues/371)).
   Until `UA_API_BASE_URL` exists, UA queues reports in the outbox — which is a
   supported state, not a broken one.

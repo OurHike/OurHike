@@ -13,5 +13,4 @@ tests/
 .git/
 .dockerignore
 Dockerfile
-fly.toml
 README.md

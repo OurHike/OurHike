@@ -103,27 +103,32 @@ jobs:
           # workflow and the action are in the list so a change to the gate
           # itself still proves the suite it gates.
           #
-          # The four client modules are here because two suites READ them as
-          # text. tests/test_preferences_contract.py and
-          # tests/test_client_report_contract.py compare the TypeScript halves
-          # of UserPreferences, ReportDraft, the moderation statuses and the
-          # photo cap against this backend's schemas, and the drift they exist
-          # to catch is far more likely to arrive in a client-only pull request
-          # than in a backend one. Scoped out, the guard would run on every
-          # change except the change it is for. TESTING.md's rule, in the
-          # "Redundancy" section: **a suite's scope list includes every file
-          # its tests read.**
+          # The six client modules are here because three suites READ them as
+          # text. tests/test_preferences_contract.py,
+          # tests/test_client_report_contract.py and
+          # tests/test_client_response_contract.py compare the TypeScript
+          # halves of UserPreferences, ReportDraft, the moderation statuses,
+          # the photo cap, the closure vocabulary and every response shape
+          # against this backend's schemas and its OpenAPI document. The drift
+          # they exist to catch is far more likely to arrive in a client-only
+          # pull request than in a backend one; scoped out, the guard would run
+          # on every change except the change it is for. TESTING.md's rule, in
+          # the "Redundancy" section: **a suite's scope list includes every
+          # file its tests read.**
           #
-          # Four files rather than `client/src/lib/`, which is what this said
+          # Named files rather than `client/src/lib/`, which is what this said
           # first. The directory is touched by most client work and the suite
           # is a Postgres service plus 400 tests, so the broad prefix spent a
           # backend CI run on nearly every client pull request to catch drift
-          # in four rarely-edited modules. The narrow list is only honest while
-          # it is complete, which is not something to leave to memory - so
-          # tests/test_ci_scope.py reads this line back and fails if a contract
-          # test starts reading a client file that is not on it.
+          # in a handful of rarely-edited modules. The narrow list is only
+          # honest while it is complete, which is not something to leave to
+          # memory - so tests/test_ci_scope.py reads this line back and fails
+          # if a contract test starts reading a client file that is not on it.
+          # It did, when api.ts and closureBanner.ts joined the list.
           paths: >-
             backend/
+            client/src/lib/api.ts
+            client/src/lib/closureBanner.ts
             client/src/lib/outbox.ts
             client/src/lib/reportPhoto.ts
             client/src/lib/reportStatus.ts

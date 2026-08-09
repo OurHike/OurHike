@@ -85,7 +85,16 @@ jobs:
           # outside it is imported by the pipeline - checked, not assumed. The
           # workflow and the action are in the list so a change to the gate
           # itself still proves the suite it gates.
-          paths: pipeline/ .github/workflows/pipeline-tests.yml .github/actions/changed-paths/
+          #
+          # client/src/lib/ is here because tests/test_published_key_contract.py
+          # READS it as text: every published R2 key the app fetches is built
+          # from those modules, and a key renamed there is a 404 on a mountain
+          # that nothing else in this repository would notice. That rename
+          # arrives in a client-only pull request, which is exactly the run a
+          # `pipeline/`-only scope would skip. TESTING.md's rule, in the
+          # "Redundancy" section: **a suite's scope list includes every file
+          # its tests read.**
+          paths: pipeline/ client/src/lib/ .github/workflows/pipeline-tests.yml .github/actions/changed-paths/
 
       - uses: actions/setup-python@v5
         if: steps.scope.outputs.run == 'true'

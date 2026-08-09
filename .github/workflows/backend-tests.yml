@@ -102,7 +102,17 @@ jobs:
           # outside it is imported by the backend - checked, not assumed. The
           # workflow and the action are in the list so a change to the gate
           # itself still proves the suite it gates.
-          paths: backend/ .github/workflows/backend-tests.yml .github/actions/changed-paths/
+          #
+          # client/src/lib/ is here because two suites READ it as text.
+          # tests/test_preferences_contract.py and
+          # tests/test_client_report_contract.py compare the TypeScript halves
+          # of UserPreferences, ReportDraft and the photo cap against this
+          # backend's schemas, and the drift they exist to catch is far more
+          # likely to arrive in a client-only pull request than in a backend
+          # one. Scoped out, the guard would run on every change except the
+          # change it is for. TESTING.md's rule, in the "Redundancy" section:
+          # **a suite's scope list includes every file its tests read.**
+          paths: backend/ client/src/lib/ .github/workflows/backend-tests.yml .github/actions/changed-paths/
 
       - uses: actions/setup-python@v5
         if: steps.scope.outputs.run == 'true'

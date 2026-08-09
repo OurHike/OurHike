@@ -1,0 +1,23 @@
+# Who to notify about this repository.
+#
+# Added for #431, which needs "the codeowners" to resolve to somebody before an
+# alarm can reach them. It is one person today - c902e34 wrote that down and
+# guarded the two repository settings that quietly assumed otherwise - and that
+# is the reason this is a file rather than a name inside a workflow: the day it
+# stops being one person, nothing should need editing but this line.
+#
+# WHAT THIS DOES AND DOES NOT DO HERE. GitHub uses this to request review
+# automatically on a pull request, and to resolve @mentions of the owning team.
+# It does NOT, on its own, gate merging - that is branch protection's
+# "Require review from Code Owners", declared in .github/expected-protections.yml
+# and checked by protections-check.yml. With a single maintainer, requiring
+# code-owner review would mean nobody can ever approve a pull request, which is
+# exactly the class of setting c902e34 went and guarded.
+#
+# The alarm path this was added for does not read this file directly either:
+# check-deployment.yml opens a tracking issue, and GitHub emails the people
+# watching the repository. This file is what makes "the codeowners" a real list
+# rather than a phrase, so that a second maintainer starts receiving those
+# notifications by being added here.
+
+* @jaimito-asuntos-gringuenos

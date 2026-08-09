@@ -32,3 +32,10 @@ boto3
 # owns, and pulling an ORM in here would create a second place that believes
 # it knows the shape of those tables.
 psycopg[binary]
+
+# check_deployment.py alone, to read .github/expected-origins.yml (#431).
+# YAML rather than JSON for that file specifically because the reasoning
+# behind each origin is the valuable half - which origin serves whom, and what
+# breaks when it is dropped - and JSON cannot carry a comment. The same
+# argument .github/expected-settings.yml is already written on.
+PyYAML

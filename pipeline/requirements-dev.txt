@@ -133,6 +133,8 @@ python-dateutil==2.9.0.post0
     #   botocore
 pyyaml==6.0.3
     # via
+    #   -c pipeline/requirements.txt
+    #   -r pipeline/requirements.in
     #   moto
     #   responses
 rasterio==1.4.4 ; python_full_version < '3.12'

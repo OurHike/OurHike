@@ -20,7 +20,7 @@ The checklists this file used to carry are gone, for a reason worth recording: b
 
 ## Feature design docs
 
-Twenty-six docs in [features/](features/) — twenty-five features and one consolidated reference. Design is written before code here; that convention is the reason most issues can link to a doc instead of restating it. The table below is three rows short of the directory: CONDITIONS_DELIVERY.md, MAP_STYLE_SPEC.md and POI_PHOTOS.md are written and unlisted.
+Twenty-nine docs in [features/](features/) — twenty-seven features and two consolidated references. Design is written before code here; that convention is the reason most issues can link to a doc instead of restating it. The table below is four rows short of the directory: ATC_TRAIL_UPDATES.md, CONDITIONS_DELIVERY.md, MAP_STYLE_SPEC.md and POI_PHOTOS.md are written and unlisted.
 
 A cross-feature alignment review on 2026-07-28 moved **Authentication**, **Report a Problem**, Map Options' **closures**, and Hiker Safety's **warnings and wrong-way alert** into the v1 MVP — see TECHNICAL_ARCHITECTURE.md's revised Backend section. The scope column reflects that revision, not the scope each doc originally launched with.
 
@@ -38,6 +38,7 @@ A cross-feature alignment review on 2026-07-28 moved **Authentication**, **Repor
 | [SPUR_TRAILS.md](features/SPUR_TRAILS.md) | **Scope call.** The rendering half already ships; linking a spur to its destination is a contained pipeline addition — [#111](https://github.com/OurHike/OurHike/issues/111). |
 | [IDENTITY_AND_PRIVACY.md](features/IDENTITY_AND_PRIVACY.md) | **Reference, not a feature.** Ties together identity/privacy design scattered across five docs, and replaces five small settings models with one canonical `UserPreferences`. |
 | [FEATURE_GATING.md](features/FEATURE_GATING.md) | **Post-MVP, recommended first.** Per-chapter flags and experiments via self-hosted GrowthBook, always evaluated locally so the app never depends on the flag service being reachable. |
+| [EVENTING.md](features/EVENTING.md) | **v2. Reference, not a feature.** How OurHike measures itself: DAU/WAU/MAU with no identifier of any kind, task outcomes rather than engagement counts, and experiments measured from aggregates. Owns the event taxonomy FEATURE_GATING.md sketched and deferred. |
 | [LAND_OWNERSHIP.md](features/LAND_OWNERSHIP.md) | Post-MVP (a scope call). What kind of land surrounds the corridor, so that stepping off protected land is a visible act rather than an accident. |
 | [PERSONALIZED_PACE.md](features/PERSONALIZED_PACE.md) | Post-MVP (a scope call). Naismith answers how long a stretch takes *a* hiker; this answers how long it takes *you*, today, with this pack. |
 | [SEGMENTS.md](features/SEGMENTS.md) | Post-MVP. Hierarchical Hike → Segment tree for thru-, section- and day-hikes. |
@@ -155,3 +156,17 @@ Four findings worth surfacing here:
 - **The PWA cannot tell wifi from cellular, and on iOS it cannot tell anything** — `navigator.connection` is undefined in Safari, which `client/src/lib/dataSaver.ts` already documents. So "download on wifi" becomes **cap the bytes, not the link type**, which protects the same data plan on every platform today and improves rather than changes when [#101](https://github.com/OurHike/OurHike/issues/101) wires up Capacitor.
 - **Content-addressing had already done most of the work.** `photos/<digest>.jpg` is the sha256 of the image, so a stored photo cannot go stale, verification needs no manifest, and the three verbs asked for collapse into two plus a local integrity check.
 - **It wants the same prerequisite the planner does.** Every scope here — a day, a section, a hike, "near me" — is a mile range, which needs `mile` published on every POI. That is [HIKE_PLANNING.md](features/HIKE_PLANNING.md)'s Phase A, already the first thing that feature asks for and already worth doing on its own.
+
+## v2 — knowing whether any of it works
+
+**Scoped 2026-08-09: [features/EVENTING.md](features/EVENTING.md).** Not a fifth feature — the thing the other four are measured with. v1 records nothing at all, which was the right call for a launch and is not a position that survives a second release: four v2 features are about to be built against guesses, and [FEATURE_GATING.md](features/FEATURE_GATING.md) has been recommended as the first post-launch work precisely so that stops being true.
+
+The ask was DAU/WAU/MAU at minimum, evidence about which features work, something A/B tests can be measured against, collection client-side because an offline-first app is invisible from the server — and none of it at the hiker's expense.
+
+Three things it settled that reach beyond it:
+
+- **Unique-user counts need no identifier.** The reflex is that DAU/WAU/MAU require a stable id so the server can tell two phones apart. The device already knows its own history, so it sends the *answer* — three booleans on a dateless-but-dated heartbeat — and the server counts those. Exact numbers, no sketching, and nothing in the payload that differs between two hikers active on the same day.
+- **The taxonomy already written down re-created the leak [#252](https://github.com/OurHike/OurHike/issues/252) closed.** FEATURE_GATING.md §6 proposed events carrying `user_id` alongside `segment_id` and a timestamp — a stable identifier next to a trail position and a time, which is the pair that was removed from the public report API three days earlier. Every question that taxonomy wanted answered is answerable without it.
+- **A/B tests at club scale can find big effects and cannot find small ones** — ~260 devices per arm to detect 20%→30%, ~25,600 to detect a 5% relative lift. So staged rollout watched against guardrails is the default and experiments are for genuine disagreements, and the aggregate shape that follows leaves GrowthBook's *analysis* half unused while its flagging half stands.
+
+It also states the thing this project has to keep saying to itself: an app committed to being used *less* cannot treat engagement as a goal, so every engagement number is read next to a task-success number or not at all.

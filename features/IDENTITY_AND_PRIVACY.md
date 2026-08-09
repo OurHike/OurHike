@@ -14,6 +14,7 @@ Five separate docs each independently added a piece of identity or privacy desig
 - **Trail name** ([ONBOARDING.md](ONBOARDING.md)) - the identity actually *shown* to others, never a hiker's real name by default. Starts local-only (a device personalization, no backend); becomes `User.display_name` only once linked to a real account.
 - **The anonymity window** ([HIKER_SAFETY.md](HIKER_SAFETY.md)) - a display-layer redaction *on top of* trail name, for a configurable number of days, masking name and exact date on **public** reports/comments. Governs the "anyone browsing the map" surface.
 - **Check-in privacy** ([COMMUNITY_BUILDING.md](COMMUNITY_BUILDING.md)) - a **different audience** (a mutual Tramily or explicit safety contacts, never the general public) and a **different protection model** (opt-in per session, minimal retention, no public links) than the anonymity window. Governs a completely different surface - shared location, not public comment attribution.
+- **Measurement identity — none, deliberately** ([EVENTING.md](EVENTING.md), added 2026-08-09) - the fourth kind of identity is the one v2's analytics does not have. No account id, no device id, no session id, no rotating pseudonym: unique-user counts are deduplicated on the device and sent as answers rather than as evidence, so the identifier this list would otherwise have gained does not exist. Recorded here so the next doc that needs it finds the question already settled rather than open.
 - **Reporter identity** ([REPORT_A_PROBLEM.md](REPORT_A_PROBLEM.md)) - originally scoped around a device-local anonymous ID stopgap, written before Authentication was MVP. **Resolved 2026-07-28:** Authentication is MVP now too, so reporters are real (but pseudonymous, via trail name) accounts from day one - the stopgap is no longer needed.
 
 ### Who sees what, on which surface - the table none of the five source docs states on its own
@@ -68,6 +69,7 @@ UserPreferences   (client-side by default, IndexedDB - syncs via Authentication
 
   # Safety / privacy
   anonymity_window_days: int
+  measurement_enabled: bool                      (default: true; v2, EVENTING.md §9)
 
   # Onboarding progress
   onboarding_completed: bool

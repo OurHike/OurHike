@@ -147,17 +147,19 @@ import {
   API_CONFIGURED,
   fetchClosures,
   fetchReports,
+  type ClosureSummary,
   type ReportSummary,
 } from './lib/api'
 import {
-  NO_CLOSURES,
-  closureAgeLabel,
-  closuresOf,
+  UNAVAILABLE,
+  conditionsAgeLabel,
+  itemsOf,
   withBaseline,
   withLive,
-  type ClosureState,
-} from './lib/closureState'
-import { fetchPublishedClosures } from './lib/publishedConditions'
+  worstOf,
+  type ConditionState,
+} from './lib/conditionState'
+import { fetchPublishedClosures, fetchPublishedReports } from './lib/publishedConditions'
 import { nearestClosureBanner } from './lib/closureBanner'
 import { HikePicker } from './screens/HikePicker'
 import {
@@ -371,12 +373,17 @@ function App() {
   // status strip's sync age is what tells those apart (lib/syncAge.ts).
   // One state rather than a list plus a separate "where did this come from",
   // because the two reads race and updating two states from a race is how you
-  // get fresh closures labelled stale. lib/closureState.ts owns the rule that
-  // live always wins; `closures` below stays exactly the `ClosureSummary[] |
-  // null` every consumer already expects.
-  const [closureState, setClosureState] = useState<ClosureState>(NO_CLOSURES)
-  const closures = closuresOf(closureState)
-  const [reports, setReports] = useState<ReportSummary[] | null>(null)
+  // get fresh closures labelled stale. lib/conditionState.ts owns the rule
+  // that live always wins; `closures` and `reports` below stay exactly the
+  // `T[] | null` every consumer already expects. Reports carry the same state
+  // machine as closures (#436) - they are the warning pins, the other half of
+  // what a hiker walks into.
+  const [closureState, setClosureState] =
+    useState<ConditionState<ClosureSummary>>(UNAVAILABLE)
+  const closures = itemsOf(closureState)
+  const [reportState, setReportState] =
+    useState<ConditionState<ReportSummary>>(UNAVAILABLE)
+  const reports = itemsOf(reportState)
   // Was a state with no setter until #231 - nothing ever synced, so the status
   // strip said "never synced" on every device forever, which was true and
   // looked like a bug in the strip rather than a missing feature.
@@ -586,7 +593,19 @@ function App() {
       if (cancelled || published === null) return
       // Functional update, because the live read may already have landed -
       // `withBaseline` is what refuses to overwrite it.
-      setClosureState((current) => withBaseline(current, published))
+      setClosureState((current) =>
+        withBaseline(current, published.items, published.generatedAt),
+      )
+    })
+
+    // Reports the same way (#436). The baseline holds only public moderated
+    // rows, so a signed-in reporter's own unmoderated report still needs the
+    // live read - which wins whenever it lands, exactly as with closures.
+    void fetchPublishedReports().then((published) => {
+      if (cancelled || published === null) return
+      setReportState((current) =>
+        withBaseline(current, published.items, published.generatedAt),
+      )
     })
 
     return () => {
@@ -606,10 +625,11 @@ function App() {
       if (!cancelled) setLastSyncedAt(new Date())
     }
 
-    // A read that throws leaves its state null and says nothing else. Being
-    // unable to reach the backend is the ordinary condition out here, not an
-    // error to interrupt someone over - and null is already the honest record
-    // of it, which the sync age above turns into something a hiker can read.
+    // A read that throws leaves its state where it was - the baseline if one
+    // landed, `unavailable` otherwise - and says nothing else. Being unable to
+    // reach the backend is the ordinary condition out here, not an error to
+    // interrupt someone over; the conditions age on the status strip is what
+    // turns the state left behind into something a hiker can read.
     const leaveUnknown = () => undefined
 
     void fetchClosures().then((next) => {
@@ -620,7 +640,7 @@ function App() {
 
     void fetchReports().then((next) => {
       if (cancelled) return
-      setReports(next)
+      setReportState(withLive(next))
       markSynced()
     }, leaveUnknown)
 
@@ -1960,7 +1980,7 @@ function App() {
           online={online}
           hasGpsFix={gps.status === 'located'}
           lastSyncedAt={lastSyncedAt}
-          conditionsAge={closureAgeLabel(closureState, now)}
+          conditionsAge={conditionsAgeLabel(worstOf(closureState, reportState), now)}
           activeTab={activeTab}
           onSelectTab={setActiveTab}
           onOpenLegend={handleOpenLegend}

@@ -227,18 +227,23 @@ def collect_artifacts() -> dict[str, dict]:
         manifest = json.loads(spurs_manifest.read_text())
         artifacts["spurs.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
-    # Verified closures, if export_conditions.py has run
-    # (features/CONDITIONS_DELIVERY.md). An ordinary artifact rather than a
-    # special case: it wants the same sha256 diffing every other one gets, and
-    # that diffing is what makes a daily bake cheap - a day with no closure
+    # Verified closures and reports, if export_conditions.py has run
+    # (features/CONDITIONS_DELIVERY.md). Ordinary artifacts rather than a
+    # special case: they want the same sha256 diffing every other one gets, and
+    # that diffing is what makes a daily bake cheap - a day with no condition
     # changes uploads nothing and writes no new version.
     #
     # Published under `conditions/` rather than at the root because the whole
     # prefix is rewritten in place on a different clock from the trail data.
+    # The manifest keys its artifacts by payload name - "closures", "reports" -
+    # and each becomes `conditions/<name>.json`; a manifest from before #436
+    # has no "artifacts" key at all, and a KeyError here beats quietly
+    # publishing a stale shape (re-running export_conditions.py rewrites it).
     conditions_manifest = PROCESSED_DIR / "conditions_manifest.json"
     if conditions_manifest.exists():
         manifest = json.loads(conditions_manifest.read_text())
-        artifacts["conditions/closures.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+        for kind, entry in manifest["artifacts"].items():
+            artifacts[f"conditions/{kind}.json"] = {"path": entry["path"], "sha256": entry["sha256"]}
 
     for name in (*BACKGROUND_ARCHIVES.values(), *OFFLINE_SHEET_ARCHIVES.values()):
         path = PROCESSED_DIR / name

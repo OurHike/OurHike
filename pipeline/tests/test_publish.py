@@ -208,20 +208,33 @@ def test_collect_gathers_every_background_archive_that_exists(tmp_path, monkeypa
 
 
 def test_collect_gathers_published_conditions_under_their_own_prefix(tmp_path, monkeypatch):
-    """features/CONDITIONS_DELIVERY.md. An ordinary artifact so it gets the
+    """features/CONDITIONS_DELIVERY.md. Ordinary artifacts so they get the
     same sha256 diffing as everything else - which is what makes a daily bake
-    cheap, since a day with no closure changes uploads nothing at all."""
+    cheap, since a day with no condition changes uploads nothing at all."""
     monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
-    closures = tmp_path / "conditions" / "closures.json"
-    closures.parent.mkdir()
+    conditions_dir = tmp_path / "conditions"
+    conditions_dir.mkdir()
+    closures = conditions_dir / "closures.json"
     closures.write_text('{"generated_at": "2026-08-08T06:00:00Z", "closures": []}')
-    (tmp_path / "conditions_manifest.json").write_text(json.dumps({"path": str(closures), "sha256": "abc123", "count": 0}))
+    reports = conditions_dir / "reports.json"
+    reports.write_text('{"generated_at": "2026-08-08T06:00:00Z", "reports": []}')
+    (tmp_path / "conditions_manifest.json").write_text(
+        json.dumps(
+            {
+                "artifacts": {
+                    "closures": {"path": str(closures), "sha256": "abc123", "count": 0},
+                    "reports": {"path": str(reports), "sha256": "def456", "count": 0},
+                }
+            }
+        )
+    )
 
     artifacts = publish.collect_artifacts()
 
-    # The key is the prefixed one, not a bare `closures.json` at the root -
-    # a key in this bucket can never be renamed, only abandoned in place.
+    # The keys are the prefixed ones, not bare names at the root - a key in
+    # this bucket can never be renamed, only abandoned in place.
     assert artifacts["conditions/closures.json"]["sha256"] == "abc123"
+    assert artifacts["conditions/reports.json"]["sha256"] == "def456"
 
 
 def test_collect_ignores_conditions_that_have_not_been_exported(tmp_path, monkeypatch):
@@ -229,7 +242,9 @@ def test_collect_ignores_conditions_that_have_not_been_exported(tmp_path, monkey
     an absence, not an error - same rule as a background tier."""
     monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
 
-    assert "conditions/closures.json" not in publish.collect_artifacts()
+    collected = publish.collect_artifacts()
+    assert "conditions/closures.json" not in collected
+    assert "conditions/reports.json" not in collected
 
 
 def test_collect_skips_a_tier_that_has_not_been_built_yet(tmp_path, monkeypatch):

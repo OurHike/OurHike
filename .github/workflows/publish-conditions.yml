@@ -1,7 +1,8 @@
-# Publishes verified closures to R2, so reading one needs no running server.
+# Publishes verified closures and reports to R2, so reading one needs no
+# running server.
 #
-# features/CONDITIONS_DELIVERY.md is the design; this is step 1 of its order
-# of work. Daily rather than continuous because that is the staleness the
+# features/CONDITIONS_DELIVERY.md is the design; this is steps 1 and 3 of its
+# order of work. Daily rather than continuous because that is the staleness the
 # maintainer accepted (2026-08-08): "a closure can be latent by a day. we
 # won't be adjusting minute by minute." The artifact carries its own
 # `generated_at` and the client renders it, so a hiker is told how old the
@@ -75,7 +76,7 @@ jobs:
         if: steps.can.outputs.go == 'true'
         run: pip install -r requirements.txt
 
-      - name: Export verified closures
+      - name: Export verified conditions
         id: export
         if: steps.can.outputs.go == 'true'
         env:
@@ -88,7 +89,11 @@ jobs:
       - name: Say what was read
         if: steps.can.outputs.go == 'true'
         run: |
-          python -c "import json; m = json.load(open('data/processed/conditions_manifest.json')); print(f\"{m['count']} verified closure(s), generated {m['generated_at']}\")"
+          python -c "
+          import json
+          for kind, entry in json.load(open('data/processed/conditions_manifest.json'))['artifacts'].items():
+              print(f\"{entry['count']} {kind} row(s), generated {entry['generated_at']}\")
+          "
 
       - name: Publish to R2
         if: steps.can.outputs.go == 'true'

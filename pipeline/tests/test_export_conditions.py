@@ -12,6 +12,12 @@ error*. That is the failure this script exists to catch, and asserting it
 against a real Postgres is the only way to know the catch works. They skip
 when no database is reachable, the way backend/tests/test_pooler.py skips
 without its pooler.
+
+Reports get the same treatment as closures plus one test closures cannot
+have: the predicate is two columns, and the row that must never appear is a
+`bad_hikers` report - the one type that reports on *people*. A published
+artifact cannot be recalled, so that exclusion is asserted directly rather
+than inferred from the predicate looking right.
 """
 
 from __future__ import annotations
@@ -27,6 +33,7 @@ from export_conditions import (
     MAY_SELECT_SQL,
     POLICY_COUNT_SQL,
     PUBLIC_CLOSURES_SQL,
+    PUBLIC_REPORTS_SQL,
     RLS_ENABLED_SQL,
     _stamp_utc,
     assert_reader_permissions,
@@ -34,6 +41,7 @@ from export_conditions import (
     connection_url,
     permission_problem,
     read_closures,
+    read_reports,
 )
 
 # Mirrors backend/app/models/closure.py closely enough to run the real query
@@ -62,35 +70,74 @@ CLOSURES_DDL = """
     )
 """
 
+# Mirrors backend/app/models/report.py, with the same drift caveat as above.
+# `"timestamp"` is quoted for the reason PUBLIC_REPORTS_SQL quotes it.
+REPORTS_DDL = """
+    CREATE TABLE public.reports (
+        id            VARCHAR PRIMARY KEY,
+        reporter_id   VARCHAR NOT NULL,
+        type          VARCHAR(20) NOT NULL,
+        poi_id        VARCHAR,
+        lat           DOUBLE PRECISION,
+        lon           DOUBLE PRECISION,
+        mile          DOUBLE PRECISION,
+        reporter_type VARCHAR(20) NOT NULL,
+        "timestamp"   TIMESTAMP NOT NULL,
+        received_at   TIMESTAMP NOT NULL,
+        note          TEXT,
+        photo_url     VARCHAR,
+        follow_up     JSON,
+        status        VARCHAR(20) NOT NULL DEFAULT 'submitted',
+        visibility    VARCHAR(20) NOT NULL,
+        severity      VARCHAR(20) NOT NULL DEFAULT 'normal',
+        verified_by   VARCHAR,
+        verified_at   TIMESTAMP,
+        maintainer_id VARCHAR,
+        club_id       VARCHAR
+    )
+"""
+
 
 # ---------------------------------------------------------------- pure tests
 
 
 def test_a_missing_grant_is_refused_by_name():
-    problem = permission_problem(may_select=False, rls_enabled=True, policies=1)
+    problem = permission_problem("closures", may_select=False, rls_enabled=True, policies=1)
 
     assert problem is not None
     assert "GRANT SELECT" in problem
+    assert "closures" in problem
 
 
 def test_rls_on_with_no_readable_policy_is_refused():
     """The case the whole script is built around: everything looks configured,
     the query succeeds, and it returns nothing."""
-    problem = permission_problem(may_select=True, rls_enabled=True, policies=0)
+    problem = permission_problem("closures", may_select=True, rls_enabled=True, policies=0)
 
     assert problem is not None
     assert "empty artifact" in problem
+
+
+def test_the_reports_refusal_quotes_the_reports_predicate():
+    """The fix the message carries has to be the right fix for the table it
+    names - the reports policy is two columns, and pasting the closures one
+    would create a policy that leaks every submitted report."""
+    problem = permission_problem("reports", may_select=True, rls_enabled=True, policies=0)
+
+    assert problem is not None
+    assert "reports" in problem
+    assert "status IN ('verified', 'resolved') AND visibility = 'public'" in problem
 
 
 def test_no_policy_is_fine_when_rls_is_off():
     """Local development and CI, where the suite owns the table and never turns
     RLS on. Demanding a policy there would fail on a database that is not
     hiding anything."""
-    assert permission_problem(may_select=True, rls_enabled=False, policies=0) is None
+    assert permission_problem("closures", may_select=True, rls_enabled=False, policies=0) is None
 
 
 def test_a_grant_and_a_policy_together_pass():
-    assert permission_problem(may_select=True, rls_enabled=True, policies=1) is None
+    assert permission_problem("closures", may_select=True, rls_enabled=True, policies=1) is None
 
 
 def test_a_naive_timestamp_leaves_stamped_as_utc():
@@ -115,10 +162,20 @@ def test_a_missing_timestamp_stays_missing():
 def test_the_document_carries_when_it_was_built():
     """`generated_at` is what the client renders as "as of <date>", and the
     only thing that would reveal a bake job that silently stopped."""
-    document = build_document([], datetime(2026, 8, 8, 6, 0, 0, tzinfo=timezone.utc))
+    document = build_document("closures", [], datetime(2026, 8, 8, 6, 0, 0, tzinfo=timezone.utc))
 
     assert document["generated_at"] == "2026-08-08T06:00:00Z"
     assert document["closures"] == []
+
+
+def test_each_document_names_its_own_payload():
+    """`conditions/reports.json` holds `reports`, the way the live endpoint's
+    path names what it answers with - the client validates the field by name
+    before trusting the document."""
+    document = build_document("reports", [], datetime(2026, 8, 8, 6, 0, 0, tzinfo=timezone.utc))
+
+    assert document["reports"] == []
+    assert "closures" not in document
 
 
 def test_a_sqlalchemy_style_url_is_accepted(monkeypatch):
@@ -157,10 +214,16 @@ SCRATCH_URL = ADMIN_URL.rsplit("/", 1)[0] + f"/{SCRATCH_DB}"
 READER = "ourhike_conditions_reader_test"
 READER_PASSWORD = "conditions-test-only"
 
+POLICIES = {
+    "closures": "conditions_reader_closures",
+    "reports": "conditions_reader_reports",
+}
+
 
 @pytest.fixture(scope="module")
 def conditions_db():
-    """A scratch database with a `closures` table, dropped afterwards.
+    """A scratch database with `closures` and `reports` tables, dropped
+    afterwards.
 
     Its own database rather than `ourhike_test`, which the backend suite drops
     tables from freely - two suites sharing one database is a race the moment
@@ -175,6 +238,7 @@ def conditions_db():
 
     with psycopg.connect(SCRATCH_URL, autocommit=True) as conn:
         conn.execute(CLOSURES_DDL)
+        conn.execute(REPORTS_DDL)
         yield conn
 
     with _admin_connection() as conn:
@@ -182,16 +246,17 @@ def conditions_db():
 
 
 @pytest.fixture
-def clean_closures(conditions_db):
-    conditions_db.execute("TRUNCATE public.closures")
-    conditions_db.execute("ALTER TABLE public.closures NO FORCE ROW LEVEL SECURITY")
-    conditions_db.execute("ALTER TABLE public.closures DISABLE ROW LEVEL SECURITY")
-    conditions_db.execute("DROP POLICY IF EXISTS conditions_reader_closures ON public.closures")
+def clean_tables(conditions_db):
+    for table, policy in POLICIES.items():
+        conditions_db.execute(f"TRUNCATE public.{table}")
+        conditions_db.execute(f"ALTER TABLE public.{table} NO FORCE ROW LEVEL SECURITY")
+        conditions_db.execute(f"ALTER TABLE public.{table} DISABLE ROW LEVEL SECURITY")
+        conditions_db.execute(f"DROP POLICY IF EXISTS {policy} ON public.{table}")
     return conditions_db
 
 
 @pytest.fixture
-def rls_subject(clean_closures):
+def rls_subject(clean_tables):
     """A connection row-level security actually applies to.
 
     **This fixture is the whole reason the RLS tests are trustworthy, and it
@@ -213,8 +278,8 @@ def rls_subject(clean_closures):
     silently downgrades is how this got through the first time.
     """
     try:
-        clean_closures.execute(f"DROP ROLE IF EXISTS {READER}")
-        clean_closures.execute(f"CREATE ROLE {READER} LOGIN PASSWORD '{READER_PASSWORD}'")
+        clean_tables.execute(f"DROP ROLE IF EXISTS {READER}")
+        clean_tables.execute(f"CREATE ROLE {READER} LOGIN PASSWORD '{READER_PASSWORD}'")
     except psycopg.errors.InsufficientPrivilege:
         pytest.skip(
             "the connecting role cannot CREATE ROLE, so RLS cannot be exercised against a non-owner. "
@@ -223,21 +288,22 @@ def rls_subject(clean_closures):
             'will do once it has a password (`sudo -u postgres psql -c "ALTER ROLE postgres WITH PASSWORD ..."`).'
         )
 
-    clean_closures.execute(f"GRANT USAGE ON SCHEMA public TO {READER}")
-    clean_closures.execute(f"GRANT SELECT ON public.closures TO {READER}")
+    clean_tables.execute(f"GRANT USAGE ON SCHEMA public TO {READER}")
+    clean_tables.execute(f"GRANT SELECT ON public.closures, public.reports TO {READER}")
 
     reader_url = SCRATCH_URL.split("://", 1)[1].split("@", 1)[1]
     with psycopg.connect(f"postgresql://{READER}:{READER_PASSWORD}@{reader_url}", autocommit=True) as conn:
         yield conn
 
-    # The policy goes first, and not for tidiness: a policy naming this role
+    # The policies go first, and not for tidiness: a policy naming this role
     # is a dependency on it, and DROP ROLE fails outright while one exists.
-    # `clean_closures` also drops it, but that runs before the *next* test
+    # `clean_tables` also drops them, but that runs before the *next* test
     # rather than after this one, which is too late to help here.
-    clean_closures.execute("DROP POLICY IF EXISTS conditions_reader_closures ON public.closures")
-    clean_closures.execute(f"REVOKE ALL ON public.closures FROM {READER}")
-    clean_closures.execute(f"REVOKE ALL ON SCHEMA public FROM {READER}")
-    clean_closures.execute(f"DROP ROLE IF EXISTS {READER}")
+    for table, policy in POLICIES.items():
+        clean_tables.execute(f"DROP POLICY IF EXISTS {policy} ON public.{table}")
+    clean_tables.execute(f"REVOKE ALL ON public.closures, public.reports FROM {READER}")
+    clean_tables.execute(f"REVOKE ALL ON SCHEMA public FROM {READER}")
+    clean_tables.execute(f"DROP ROLE IF EXISTS {READER}")
 
 
 def _insert(conn, *, closure_id, moderation_status, mile=10.0):
@@ -261,40 +327,133 @@ def _insert(conn, *, closure_id, moderation_status, mile=10.0):
     )
 
 
-def test_only_verified_closures_are_exported(clean_closures):
+def _insert_report(
+    conn,
+    *,
+    report_id,
+    status="verified",
+    visibility="public",
+    report_type="blowdown",
+    written=datetime(2026, 8, 1, 9, 0, 0),
+):
+    """One report with every withheld field populated, so the exclusion tests
+    assert against real values rather than against nulls that were never
+    going to leak anyway."""
+    conn.execute(
+        """
+        INSERT INTO public.reports
+            (id, reporter_id, type, lat, lon, mile, reporter_type, "timestamp",
+             received_at, note, photo_url, status, visibility, severity,
+             verified_by, verified_at, maintainer_id, club_id)
+        VALUES (%s, 'reporter-profile-id', %s, 41.2, -74.1, 1407.2, 'thru', %s,
+                %s, 'a note', 'photo-object-key', %s, %s, 'serious',
+                'verifier-profile-id', %s, 'maintainer-profile-id', 'club-1')
+        """,
+        (
+            report_id,
+            report_type,
+            written,
+            datetime(2026, 8, 4, 9, 0, 0),
+            status,
+            visibility,
+            datetime(2026, 8, 2, 12, 0, 0),
+        ),
+    )
+
+
+def test_only_verified_closures_are_exported(clean_tables):
     """`moderation_status == verified` is the public/private line, and it is
     the whole reason this artifact can be published at all."""
-    _insert(clean_closures, closure_id="yes", moderation_status="verified", mile=10.0)
-    _insert(clean_closures, closure_id="no", moderation_status="submitted", mile=20.0)
+    _insert(clean_tables, closure_id="yes", moderation_status="verified", mile=10.0)
+    _insert(clean_tables, closure_id="no", moderation_status="submitted", mile=20.0)
 
-    exported = read_closures(clean_closures)
+    exported = read_closures(clean_tables)
 
     assert [row["id"] for row in exported] == ["yes"]
 
 
-def test_the_export_names_nobody(clean_closures):
+def test_the_export_names_nobody(clean_tables):
     """#430, enforced a second time on the way out. The reader role is not
     granted `profiles`, so these could not be resolved to a name - but the ids
     are themselves the join key, and a published artifact is permanent."""
-    _insert(clean_closures, closure_id="c1", moderation_status="verified")
+    _insert(clean_tables, closure_id="c1", moderation_status="verified")
 
-    [row] = read_closures(clean_closures)
+    [row] = read_closures(clean_tables)
 
     assert "reported_by" not in row
     assert "verified_by" not in row
-    assert "reporter-profile-id" not in json.dumps(build_document([row], datetime.now(timezone.utc)))
+    assert "reporter-profile-id" not in json.dumps(build_document("closures", [row], datetime.now(timezone.utc)))
 
 
-def test_exported_timestamps_are_stamped(clean_closures):
-    _insert(clean_closures, closure_id="c1", moderation_status="verified")
+def test_exported_timestamps_are_stamped(clean_tables):
+    _insert(clean_tables, closure_id="c1", moderation_status="verified")
 
-    [row] = read_closures(clean_closures)
+    [row] = read_closures(clean_tables)
 
     assert row["reported_at"] == "2026-08-01T12:00:00Z"
     assert row["verified_at"] == "2026-08-02T12:00:00Z"
 
 
-def test_row_level_security_turns_a_missing_policy_into_silence(clean_closures, rls_subject):
+def test_moderated_public_reports_are_exported_and_submitted_ones_are_not(clean_tables):
+    """`resolved` stays public deliberately - it was verified once and reads
+    as "Fixed" - while `submitted` leaking is the difference between
+    verification being a gate and being a label on something already public."""
+    _insert_report(clean_tables, report_id="r-verified", status="verified", written=datetime(2026, 8, 1, 9, 0, 0))
+    _insert_report(clean_tables, report_id="r-resolved", status="resolved", written=datetime(2026, 8, 2, 9, 0, 0))
+    _insert_report(clean_tables, report_id="r-submitted", status="submitted", written=datetime(2026, 8, 3, 9, 0, 0))
+    _insert_report(clean_tables, report_id="r-dismissed", status="dismissed", written=datetime(2026, 8, 4, 9, 0, 0))
+
+    exported = read_reports(clean_tables)
+
+    assert [row["id"] for row in exported] == ["r-verified", "r-resolved"]
+
+
+def test_a_bad_hikers_report_and_a_thanks_never_appear(clean_tables):
+    """The one test #436 says this cannot ship without. A `bad_hikers` report
+    is about a person and routes `internal_only`; a `thanks` is `club_only`.
+    Both are inserted VERIFIED, so the only thing keeping each out is the
+    `visibility` half of the predicate - the half closures do not have, and
+    the reason reports were not simply copied from them.
+    """
+    _insert_report(clean_tables, report_id="about-a-person", report_type="bad_hikers", visibility="internal_only")
+    _insert_report(clean_tables, report_id="a-thanks", report_type="thanks", visibility="club_only")
+    _insert_report(clean_tables, report_id="a-blowdown", report_type="blowdown", visibility="public")
+
+    exported = read_reports(clean_tables)
+
+    assert [row["id"] for row in exported] == ["a-blowdown"]
+    document = json.dumps(build_document("reports", exported, datetime.now(timezone.utc)))
+    assert "about-a-person" not in document
+    assert "a-thanks" not in document
+
+
+def test_the_reports_export_names_nobody_and_carries_no_photo(clean_tables):
+    """The anonymous `ReportOut` withholds `reporter_id`, `received_at`,
+    `maintainer_id` and `club_id`, never sends `verified_by`/`verified_at`,
+    and the baked artifact drops `photo_url` too - a presigned URL expires in
+    minutes, the artifact lives a day, and the object key underneath points
+    into a private bucket (#436). The live tier supplies photos."""
+    _insert_report(clean_tables, report_id="r1")
+
+    [row] = read_reports(clean_tables)
+
+    for withheld in ("reporter_id", "received_at", "maintainer_id", "club_id", "verified_by", "verified_at", "photo_url"):
+        assert withheld not in row
+    document = json.dumps(build_document("reports", [row], datetime.now(timezone.utc)))
+    assert "reporter-profile-id" not in document
+    assert "verifier-profile-id" not in document
+    assert "photo-object-key" not in document
+
+
+def test_exported_report_timestamps_are_stamped(clean_tables):
+    _insert_report(clean_tables, report_id="r1", written=datetime(2026, 8, 1, 9, 0, 0))
+
+    [row] = read_reports(clean_tables)
+
+    assert row["timestamp"] == "2026-08-01T09:00:00Z"
+
+
+def test_row_level_security_turns_a_missing_policy_into_silence(clean_tables, rls_subject):
     """The failure this script exists to catch, reproduced rather than argued.
 
     A verified closure is present and readable by the reader. Turning RLS on
@@ -306,54 +465,102 @@ def test_row_level_security_turns_a_missing_policy_into_silence(clean_closures, 
     records at length: RLS exempts the owner, and a superuser is exempt even
     from FORCE.
     """
-    _insert(clean_closures, closure_id="c1", moderation_status="verified")
+    _insert(clean_tables, closure_id="c1", moderation_status="verified")
     assert len(read_closures(rls_subject)) == 1
 
-    clean_closures.execute("ALTER TABLE public.closures ENABLE ROW LEVEL SECURITY")
+    clean_tables.execute("ALTER TABLE public.closures ENABLE ROW LEVEL SECURITY")
 
     assert read_closures(rls_subject) == []
 
     with pytest.raises(SystemExit) as exc:
-        assert_reader_permissions(rls_subject)
+        assert_reader_permissions(rls_subject, "closures")
     assert "empty artifact" in str(exc.value)
 
 
-def test_a_policy_restores_the_rows_it_is_written_for(clean_closures, rls_subject):
+def test_a_policy_restores_the_rows_it_is_written_for(clean_tables, rls_subject):
     """The fix, proved against the same database - so the SQL in
     features/CONDITIONS_DELIVERY.md is verified rather than asserted.
 
     Note there is no FORCE here and none is needed: the reader is not the
     table's owner, which is exactly the situation production is in.
     """
-    _insert(clean_closures, closure_id="c1", moderation_status="verified", mile=10.0)
-    _insert(clean_closures, closure_id="c2", moderation_status="submitted", mile=20.0)
-    clean_closures.execute("ALTER TABLE public.closures ENABLE ROW LEVEL SECURITY")
-    clean_closures.execute(
+    _insert(clean_tables, closure_id="c1", moderation_status="verified", mile=10.0)
+    _insert(clean_tables, closure_id="c2", moderation_status="submitted", mile=20.0)
+    clean_tables.execute("ALTER TABLE public.closures ENABLE ROW LEVEL SECURITY")
+    clean_tables.execute(
         f"""
         CREATE POLICY conditions_reader_closures ON public.closures
             FOR SELECT TO {READER} USING (moderation_status = 'verified')
         """
     )
 
-    assert_reader_permissions(rls_subject)
+    assert_reader_permissions(rls_subject, "closures")
 
     assert [row["id"] for row in read_closures(rls_subject)] == ["c1"]
 
 
-def test_the_catalog_queries_answer_against_a_real_schema(clean_closures):
-    """The three SQL constants, run for real. A typo in one of them would
-    otherwise only show up against production, where it fails open."""
-    with clean_closures.cursor() as cur:
-        cur.execute(MAY_SELECT_SQL)
-        assert cur.fetchone()[0] is True
+def test_the_reports_policy_lets_through_exactly_the_public_moderated_rows(clean_tables, rls_subject):
+    """features/CONDITIONS_DELIVERY.md's reports policy, verified rather than
+    asserted - and verified with a bare SELECT, not the exporter's own query,
+    so this is the database refusing to show the reader a private row even if
+    a future exporter edit forgot the WHERE clause entirely.
+    """
+    _insert_report(clean_tables, report_id="public-verified", status="verified", visibility="public")
+    _insert_report(clean_tables, report_id="public-submitted", status="submitted", visibility="public")
+    _insert_report(clean_tables, report_id="about-a-person", report_type="bad_hikers", visibility="internal_only")
+    clean_tables.execute("ALTER TABLE public.reports ENABLE ROW LEVEL SECURITY")
+    clean_tables.execute(
+        f"""
+        CREATE POLICY conditions_reader_reports ON public.reports
+            FOR SELECT TO {READER}
+            USING (status IN ('verified', 'resolved') AND visibility = 'public')
+        """
+    )
 
-        cur.execute(RLS_ENABLED_SQL)
-        assert cur.fetchone()[0] is False
+    assert_reader_permissions(rls_subject, "reports")
 
-        cur.execute(POLICY_COUNT_SQL)
-        assert cur.fetchone()[0] == 0
+    with rls_subject.cursor() as cur:
+        cur.execute("SELECT id FROM public.reports")
+        assert [row[0] for row in cur.fetchall()] == ["public-verified"]
 
-    with clean_closures.cursor() as cur:
+
+def test_a_half_configured_database_is_refused_before_anything_is_read(clean_tables, rls_subject):
+    """The likeliest real misconfiguration after #436: the closures policy was
+    applied in #434, the reports one was not, and half a baseline would look
+    exactly like a day with no reports. The refusal names the table that is
+    missing its policy."""
+    clean_tables.execute("ALTER TABLE public.closures ENABLE ROW LEVEL SECURITY")
+    clean_tables.execute("ALTER TABLE public.reports ENABLE ROW LEVEL SECURITY")
+    clean_tables.execute(
+        f"""
+        CREATE POLICY conditions_reader_closures ON public.closures
+            FOR SELECT TO {READER} USING (moderation_status = 'verified')
+        """
+    )
+
+    assert_reader_permissions(rls_subject, "closures")
+
+    with pytest.raises(SystemExit) as exc:
+        assert_reader_permissions(rls_subject, "reports")
+    assert "public.reports" in str(exc.value)
+
+
+def test_the_catalog_queries_answer_against_a_real_schema(clean_tables):
+    """The three SQL constants, run for real against both tables. A typo in
+    one of them would otherwise only show up against production, where it
+    fails open."""
+    for table in ("closures", "reports"):
+        with clean_tables.cursor() as cur:
+            cur.execute(MAY_SELECT_SQL, (f"public.{table}",))
+            assert cur.fetchone()[0] is True
+
+            cur.execute(RLS_ENABLED_SQL, (f"public.{table}",))
+            assert cur.fetchone()[0] is False
+
+            cur.execute(POLICY_COUNT_SQL, (table,))
+            assert cur.fetchone()[0] == 0
+
+    with clean_tables.cursor() as cur:
         cur.execute(PUBLIC_CLOSURES_SQL)
         assert [d.name for d in cur.description] == [
             "id",
@@ -369,4 +576,22 @@ def test_the_catalog_queries_answer_against_a_real_schema(clean_closures):
             "closed_since",
             "expected_reopen",
             "reroute_url",
+        ]
+
+    with clean_tables.cursor() as cur:
+        cur.execute(PUBLIC_REPORTS_SQL)
+        assert [d.name for d in cur.description] == [
+            "id",
+            "type",
+            "poi_id",
+            "lat",
+            "lon",
+            "mile",
+            "reporter_type",
+            "timestamp",
+            "note",
+            "follow_up",
+            "status",
+            "visibility",
+            "severity",
         ]

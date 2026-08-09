@@ -1,13 +1,41 @@
 """Build reference/shelter_capacity.json - how many people each A.T. shelter
 sleeps, keyed to ATC's own shelter ids.
 
-**ATC's shelter layer does not carry capacity.** Checked field by field
-against the live layer (2026-08-09): all 135 of its fields are an FMSS asset
-inventory - exterior length and width, roof area, door and window counts,
-`FMSS_QTY` (which is floor area, not people: 15.6 x 15.6 = 243.36 exactly) -
-and not one of them says how many hikers fit. So capacity has to come from
-somewhere else, and the somewhere else is a hiker-maintained list rather
-than a GIS layer.
+**No ATC source carries capacity.** Searched rather than assumed, against
+the live services (2026-08-09), because a field we already had would beat
+anything below:
+
+  - All twelve registered sources in `sources.json`. The shelter layer's own
+    135 fields are an FMSS asset inventory - exterior length and width, roof
+    area, door and window counts, `FMSS_QTY` (floor area, not people:
+    15.6 x 15.6 = 243.36 exactly). Nothing in any of them is a person count.
+    The only near-misses are `parking`'s space counts.
+  - `ANST_Facilities`' three asset tables (`Assets_Structures`,
+    `Assets_Trail`, `Assets_Bridges`), which are not in `sources.json` and
+    are what the shelter layer's one relationship points at, joined on
+    `FMSS_LocID`. They are a maintenance inventory - asset number,
+    replacement cost, quantity in EA/LF/SF. There are `Sleeping Platform`
+    asset types, and they are 6 rows across the whole trail, all measured in
+    square feet.
+  - The shelter layer's free text (`Comments`, `Descriptio`, `Feat_Name`) on
+    all 280 features. Twenty-odd mention sleeping space; every one is a
+    dimension - "272 sq ft sleeping space", "sleeping loft 8 x 7 plywood".
+    Floor area could be divided into a person count, and that would be an
+    invention, not a reading.
+  - The sibling A.T. services in the same NPS org
+    (`ANST_Administrative_Features`, `AT_Lands`, `AT_Communities`).
+
+So capacity has to come from somewhere else, and the somewhere else is a
+hiker-maintained list rather than a GIS layer.
+
+*One layer in that org does have a real capacity field and is deliberately
+not used:* `GRSM_BACKCOUNTRY_SHELTERS`, the Smokies park layer, covers 15
+shelters of which 12 are in ATC's. A source for a twentieth of the trail
+would buy a second join, a second provenance and a precedence rule, and it
+is worth knowing what it would buy them for: its numbers agree with this
+file on all 12, exactly. That agreement is the useful part - an independent
+NPS-published check on the list below, wherever the two can be compared -
+and it is recorded here rather than wired in.
 
 Source: https://www.greenbelly.co/pages/appalachian-trail-shelters, a single
 HTML table of every shelter with a `Capacity` column, which the page credits

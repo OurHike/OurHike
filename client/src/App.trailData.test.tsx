@@ -234,6 +234,104 @@ describe('trail data on a phone that has downloaded nothing', () => {
   })
 })
 
+describe('the trail data a tapped download waits for', () => {
+  // The reported bug, from a first run: the download "did not start - it just
+  // stayed at 0". It had started. Tapping the button runs `ensureTrailData`
+  // first, which is 12.3 MB of trails.geojson in the shipped bucket, and the
+  // card had nothing to say for the whole of that wait - it went on offering
+  // the button that had just been pressed.
+
+  /** A trail-data fetch this test decides when to finish, so the wait it
+   *  causes can be looked at rather than raced. Everything else answers
+   *  normally. */
+  function holdTrailsFetch() {
+    let release = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const answer = () =>
+      ({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        arrayBuffer: () => Promise.resolve(new TextEncoder().encode(TRAILS).buffer),
+        blob: () => Promise.resolve(new Blob([TRAILS])),
+        text: () => Promise.resolve(TRAILS),
+        json: () => Promise.resolve(JSON.parse(TRAILS)),
+      }) as unknown as Response
+
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      if (String(input).includes('trails')) await held
+      return answer()
+    })
+    return () => release()
+  }
+
+  it('says the tap landed, instead of re-offering the button just pressed', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+    const release = holdTrailsFetch()
+
+    await renderApp()
+    await user.click(await screen.findByRole('button', { name: /legend/i }))
+    await user.click(await screen.findByRole('button', { name: /download/i }))
+    const card = await usgsSheetCard(user)
+    await user.click(within(card).getByRole('button', { name: /download the map/i }))
+
+    // The state the whole wait used to be invisible in.
+    expect(await within(card).findByText(/getting the trail/i)).toBeVisible()
+    expect(within(card).queryByRole('button', { name: /download the map/i })).toBeNull()
+
+    // And it really is the archive that is being waited for, not something
+    // that already went out: nothing has asked for the map yet.
+    expect(requested().some((url) => url.includes('.pmtiles'))).toBe(false)
+
+    // Released and then WAITED OUT, not just released: the fetch this test
+    // holds open outlives the test otherwise, and its writes land in the next
+    // one's store. That is not hypothetical - it put trail data on the phone
+    // of the hash-mismatch test below, which then had nothing to download and
+    // no failure to report.
+    release()
+    await waitFor(() => expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob))
+    // And it gives way to the transfer rather than sticking - the failure
+    // mode of a state that only ever gets switched on.
+    await waitFor(() => expect(within(card).queryByText(/getting the trail/i)).toBeNull())
+  })
+
+  it('joins the fetch already running rather than pulling the same megabytes twice', async () => {
+    // On a first run the launch fetch is already going when the window opens,
+    // and `loadTrailData()` answers null until it commits - so a tap used to
+    // start a SECOND download of the same 12.3 MB, against the same
+    // connection, ahead of the archive the hiker was waiting for.
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+    const release = holdTrailsFetch()
+
+    await renderApp()
+    // The launch fetch is in flight and cannot finish yet.
+    await waitFor(() =>
+      expect(requested().filter((url) => url.includes('trails'))).toHaveLength(1),
+    )
+
+    await user.click(await screen.findByRole('button', { name: /legend/i }))
+    await user.click(await screen.findByRole('button', { name: /download/i }))
+    const card = await usgsSheetCard(user)
+    await user.click(within(card).getByRole('button', { name: /download the map/i }))
+
+    // Waited on rather than duplicated: the tap is visibly in the canary
+    // step, and the request count has not moved.
+    expect(await within(card).findByText(/getting the trail/i)).toBeVisible()
+    expect(requested().filter((url) => url.includes('trails'))).toHaveLength(1)
+
+    // Waited out rather than merely released - see the test above.
+    release()
+    await waitFor(() => expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob))
+    // Still one fetch once it lands: the tap was sharing it, not queued
+    // behind it waiting to start its own.
+    expect(requested().filter((url) => url.includes('trails'))).toHaveLength(1)
+  })
+})
+
 describe('a refused trail-data download, told apart by type (#238)', () => {
   // The one failure whose remedy is not "retry what stopped": the bytes
   // arrived whole, matched no published build, and were deliberately not

@@ -21,9 +21,11 @@ COPY app/ ./app/
 COPY alembic/ ./alembic/
 COPY alembic.ini .
 
-# Cloudflare/most PaaS hosts (Fly.io included) inject PORT at runtime rather
-# than trusting a fixed value baked into the image - default to 8000 for
-# any host/local run that doesn't set it.
+# Most PaaS hosts inject PORT at runtime rather than trusting a fixed value
+# baked into the image - default to 8000 for any host/local run that doesn't
+# set it. This one line is what makes the image portable across Render,
+# Railway, Koyeb, Cloud Run and the rest, which is why there is no
+# host-specific config file beside it (see HOSTING.md).
 ENV PORT=8000
 EXPOSE 8000
 

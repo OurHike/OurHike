@@ -246,8 +246,8 @@ settings:
     required: false
     why: >-
       Production's Postgres again, read-only, for publish-conditions.yml to
-      bake verified closures into the artifact the client reads as its
-      baseline (features/CONDITIONS_DELIVERY.md). A third database URL rather
+      bake verified closures and public reports into the artifacts the client
+      reads as its baseline (features/CONDITIONS_DELIVERY.md). A third database URL rather
       than a reuse of either MIGRATION one, for the reason those two are
       already separate from the DATABASE_URL the app holds: this connects as
       `ourhike_conditions_reader`, whose only privilege is SELECT on
@@ -258,9 +258,16 @@ settings:
       later edit tried to. Either pooler works here, unlike a migration: this
       runs two SELECTs and disconnects, so transaction mode's prepared-
       statement problem never arises. Session mode on 5432 is the
-      recommendation only because it is simpler to hold in your head. Optional
-      because unset is the current state and the workflow skips with a warning
-      rather than failing every night until somebody does the account work.
+      recommendation only because it is simpler to hold in your head.
+      THE USERNAME MUST BE TENANT-QUALIFIED - `ourhike_conditions_reader.
+      <project-ref>`, not the bare role name. Supavisor routes on the part
+      after the dot, so a bare role fails at connect with
+      `FATAL: (ENOTFOUND) tenant/user ... not found`, which reads like the
+      role was never created rather than like a URL format problem - that is
+      exactly how the first real run of this workflow failed (2026-08-08).
+      Optional because unset is the current state and the workflow skips with
+      a warning rather than failing every night until somebody does the
+      account work.
 
   PROTECTIONS_READ_TOKEN:
     where: secret

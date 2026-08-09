@@ -109,6 +109,15 @@ CAPACITY_PATH = ROOT / "reference" / "shelter_capacity.json"
 # redirects this with it.
 IMAGES_FILENAME = "poi_images.json"
 
+# fetch_atc_photos.py's output, read the same way. Two photo sources, and the
+# precedence between them is not a toss-up: ATC's are photographs *of the
+# facility*, taken by the organisation that maintains it, where a Commons hit
+# is the nearest openly-licensed file to a coordinate and measurably often a
+# photograph of a plant (features/POI_PHOTOS.md). ATC wins wherever both have
+# one; Commons still fills water and resupply POIs, which ATC's layers do not
+# cover at all.
+ATC_IMAGES_FILENAME = "poi_images_atc.json"
+
 # What travels from a fetched photo record onto the exported feature. Kept to
 # what the card actually renders (credit line + link) plus the capture date -
 # honesty about a photo's age is data, not decoration (OurHikeValues.md #4).
@@ -448,15 +457,19 @@ def main() -> dict:
     else:
         print(f"  No {CAPACITY_PATH.name} - exporting without shelter capacities.")
 
+    # After the capacity attach, not before: "sleeps 8" is a clause in the
+    # composed sentence and that number is not ATC's.
     described = attach_descriptions(clipped)
     print(f"  {described} shelters/campsites carry a description.")
 
-    photos = load_photo_records(RAW_DIR / IMAGES_FILENAME)
+    commons_photos = load_photo_records(RAW_DIR / IMAGES_FILENAME)
+    atc_photos = load_photo_records(RAW_DIR / ATC_IMAGES_FILENAME)
+    photos = {**commons_photos, **atc_photos}  # ATC last: it wins any overlap
     if photos:
         attached = attach_photos(clipped, photos)
-        print(f"  {attached} POIs carry a photo (from {IMAGES_FILENAME}).")
+        print(f"  {attached} POIs carry a photo ({len(atc_photos)} ATC, {len(commons_photos)} Commons; ATC wins overlaps).")
     else:
-        print(f"  No {IMAGES_FILENAME} - exporting without photos (run fetch_poi_images.py to add them).")
+        print(f"  No {IMAGES_FILENAME} or {ATC_IMAGES_FILENAME} - exporting without photos.")
 
     manifest = {}
     counts = {}

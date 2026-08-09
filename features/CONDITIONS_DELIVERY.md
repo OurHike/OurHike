@@ -79,6 +79,20 @@ buried in this one.
 **Fields kept:** `id`, `trail_id`, `start_mile_marker`, `end_mile_marker`, `reason_type`,
 `note`, `status`, `closed_since`, `expected_reopen`, `reroute_url`, `verified_at`.
 
+**Reports track what `ReportOut.for_viewer` sends an anonymous caller** (#436), which is
+why the artifact has no `reporter_id`, `received_at`, `maintainer_id` or `club_id` — those
+are withheld from anonymous responses — and no `verified_by`/`verified_at`, which the
+public report schema never carries at all.
+
+**`photo_url` is absent from the reports artifact, decided rather than deferred**
+(#436, option one of the three it weighed): the live endpoint answers it with a
+presigned URL whose expiry is measured in minutes, against a private bucket, and a baked
+artifact is rewritten daily — a published signature would be broken by the time it was
+read, and a long-lived one would defeat the private bucket. So the baseline supplies the
+warning and the live tier supplies the photo; a baseline report simply renders without
+one. Revisit only if field testing shows a photo changes what a hiker does about a
+warning, and then via the stable-indirection option, not a longer signature.
+
 ### 2. How it is produced
 
 A scheduled job reads verified rows from Postgres and writes the artifacts — the same
@@ -132,6 +146,14 @@ CREATE POLICY conditions_reader_reports
 
 String literals rather than enum casts because those columns are `native_enum=False`, so
 they are `VARCHAR(20)`.
+
+**The connection string's username must be tenant-qualified.** Supabase's pooler routes on
+the part after the dot, so it wants `ourhike_conditions_reader.<project-ref>`, not the bare
+role name. A bare role is refused at connect with
+`FATAL: (ENOTFOUND) tenant/user ... not found` — a message that reads like the role was
+never created, and sends you back to re-check SQL that is already correct. The first real
+run of `publish-conditions.yml` failed on exactly this (2026-08-08); `export_conditions.py`
+now catches it and says so rather than passing the raw error through.
 
 **`export_conditions.py` refuses to run unless both are in place**, asking the catalog
 rather than trusting the configuration, so that a genuinely empty result is trustworthy.
@@ -224,7 +246,14 @@ delivering closures.
    `.github/workflows/publish-conditions.yml`; the workflow skips with a warning until the
    credential above exists, so nothing here is waiting on it.
 2. Client reads the baseline, with the three-state model and the staleness stamp.
-3. Extend to `conditions/reports.json`.
+   **Built** (#435).
+3. Extend to `conditions/reports.json`. **Built** (#436): `export_conditions.py` bakes
+   both artifacts and refuses to run unless *both* tables' grants and policies are in
+   place, so a half-configured database publishes nothing rather than one artifact of
+   two. The client holds reports in the same three-state model as closures, and the
+   status strip's one conditions line reports the *worst* of the two states — a live
+   closures read next to unreachable reports is a map silently missing its warning pins,
+   and no caveat would claim a completeness the screen does not have.
 4. Only then revisit hosting — HOSTING.md's "Revisit if" clause, with its own decision.
 
 The privacy question in §1 about `ClosureOut` is not in this sequence deliberately: it

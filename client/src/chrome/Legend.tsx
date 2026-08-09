@@ -22,6 +22,7 @@ import { BackgroundPicker } from './BackgroundPicker'
 import { DownloadsLink } from './DownloadsLink'
 import type { BackgroundSource } from '../lib/userPreferences'
 import type { BackgroundOverride } from '../lib/dataSaver'
+import type { DownloadActivity } from '../lib/downloadActivity'
 
 export interface BlazeCount {
   blaze: string
@@ -67,6 +68,11 @@ export interface LegendProps {
   onOpenDownloads?: () => void
   /** Whether a finished archive is on the phone, which words that link. */
   hasDownload?: boolean
+  /** What is downloading right now, if anything - passed through to the link,
+   *  which is where it is drawn (lib/downloadActivity.ts). This panel is one
+   *  tap from the map, so it is where a hiker who started a download and shut
+   *  its window will actually look to find out whether it is still going. */
+  downloadActivity?: DownloadActivity | null
 }
 
 export function Legend({
@@ -84,6 +90,7 @@ export function Legend({
   belowArchiveZoom = false,
   onOpenDownloads,
   hasDownload = false,
+  downloadActivity = null,
 }: LegendProps) {
   if (!open && !persistent) return null
 
@@ -191,7 +198,11 @@ export function Legend({
           day to answer a different question. On a desktop the panel is full
           height and this is pushed to the foot of it - see desktop.css. */}
       {onOpenDownloads !== undefined && (
-        <DownloadsLink onOpen={onOpenDownloads} hasDownload={hasDownload} />
+        <DownloadsLink
+          onOpen={onOpenDownloads}
+          hasDownload={hasDownload}
+          downloadActivity={downloadActivity}
+        />
       )}
     </div>
   )

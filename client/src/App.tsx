@@ -98,6 +98,7 @@ import {
   type BackgroundSheet,
 } from './lib/packages'
 import { combineBackgroundStatus } from './lib/backgroundStatus'
+import { activeDownload } from './lib/downloadActivity'
 import { useClock } from './lib/useClock'
 import { useOnline } from './lib/useOnline'
 import { useDataSaver } from './lib/useDataSaver'
@@ -149,6 +150,16 @@ import {
   type ClosureSummary,
   type ReportSummary,
 } from './lib/api'
+import {
+  UNAVAILABLE,
+  conditionsAgeLabel,
+  itemsOf,
+  withBaseline,
+  withLive,
+  worstOf,
+  type ConditionState,
+} from './lib/conditionState'
+import { fetchPublishedClosures, fetchPublishedReports } from './lib/publishedConditions'
 import { nearestClosureBanner } from './lib/closureBanner'
 import { HikePicker } from './screens/HikePicker'
 import {
@@ -360,8 +371,19 @@ function App() {
   // renders a reassuring absence from either: a clear header is what a hiker
   // sees when the way ahead is clear AND when we could not check, and the
   // status strip's sync age is what tells those apart (lib/syncAge.ts).
-  const [closures, setClosures] = useState<ClosureSummary[] | null>(null)
-  const [reports, setReports] = useState<ReportSummary[] | null>(null)
+  // One state rather than a list plus a separate "where did this come from",
+  // because the two reads race and updating two states from a race is how you
+  // get fresh closures labelled stale. lib/conditionState.ts owns the rule
+  // that live always wins; `closures` and `reports` below stay exactly the
+  // `T[] | null` every consumer already expects. Reports carry the same state
+  // machine as closures (#436) - they are the warning pins, the other half of
+  // what a hiker walks into.
+  const [closureState, setClosureState] =
+    useState<ConditionState<ClosureSummary>>(UNAVAILABLE)
+  const closures = itemsOf(closureState)
+  const [reportState, setReportState] =
+    useState<ConditionState<ReportSummary>>(UNAVAILABLE)
+  const reports = itemsOf(reportState)
   // Was a state with no setter until #231 - nothing ever synced, so the status
   // strip said "never synced" on every device forever, which was true and
   // looked like a bug in the strip rather than a missing feature.
@@ -539,6 +561,58 @@ function App() {
   // Both settle independently. A closures read that succeeds while reports
   // fails should still warn about the closure - pairing them would mean one
   // failure silencing both, and closures are the half a hiker walks into.
+  // The published baseline, fetched once and independently of the backend
+  // (features/CONDITIONS_DELIVERY.md). This is the read that makes an
+  // unreachable backend mean "day-old closures, labelled as day-old" rather
+  // than the silence it used to mean.
+  //
+  // Gated on `online`, matching the rule the trail-line fetch already keeps -
+  // "waits for signal rather than failing a fetch it knows cannot work".
+  // This was written ungated first, on the theory that the service worker
+  // might hold a copy; it does not. vite.config.ts precaches the app shell and
+  // the glyph ranges and nothing else, because this app's offline story is
+  // IndexedDB rather than cached responses. So offline there is genuinely no
+  // baseline to get, and the honest state is `unavailable` - which the strip
+  // now says out loud instead of rendering as a clear trail.
+  //
+  // Losing that case matters less than it sounds: the failure this baseline
+  // exists for is a backend that is down while the phone has signal, and that
+  // is an online phone. Keeping a baseline across a real signal loss means
+  // persisting it the way the trail lines are persisted, which is a storage
+  // decision of its own rather than a line in this effect.
+  //
+  // NOT gated on API_CONFIGURED, though - this path has nothing to do with the
+  // backend, and a build with no backend configured at all is exactly the one
+  // that most needs a baseline.
+  useEffect(() => {
+    if (!online) return
+
+    let cancelled = false
+
+    void fetchPublishedClosures().then((published) => {
+      if (cancelled || published === null) return
+      // Functional update, because the live read may already have landed -
+      // `withBaseline` is what refuses to overwrite it.
+      setClosureState((current) =>
+        withBaseline(current, published.items, published.generatedAt),
+      )
+    })
+
+    // Reports the same way (#436). The baseline holds only public moderated
+    // rows, so a signed-in reporter's own unmoderated report still needs the
+    // live read - which wins whenever it lands, exactly as with closures.
+    void fetchPublishedReports().then((published) => {
+      if (cancelled || published === null) return
+      setReportState((current) =>
+        withBaseline(current, published.items, published.generatedAt),
+      )
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [online])
+
   useEffect(() => {
     if (!online || !API_CONFIGURED) return
 
@@ -551,21 +625,22 @@ function App() {
       if (!cancelled) setLastSyncedAt(new Date())
     }
 
-    // A read that throws leaves its state null and says nothing else. Being
-    // unable to reach the backend is the ordinary condition out here, not an
-    // error to interrupt someone over - and null is already the honest record
-    // of it, which the sync age above turns into something a hiker can read.
+    // A read that throws leaves its state where it was - the baseline if one
+    // landed, `unavailable` otherwise - and says nothing else. Being unable to
+    // reach the backend is the ordinary condition out here, not an error to
+    // interrupt someone over; the conditions age on the status strip is what
+    // turns the state left behind into something a hiker can read.
     const leaveUnknown = () => undefined
 
     void fetchClosures().then((next) => {
       if (cancelled) return
-      setClosures(next)
+      setClosureState(withLive(next))
       markSynced()
     }, leaveUnknown)
 
     void fetchReports().then((next) => {
       if (cancelled) return
-      setReports(next)
+      setReportState(withLive(next))
       markSynced()
     }, leaveUnknown)
 
@@ -691,6 +766,35 @@ function App() {
     ),
   )
 
+  /**
+   * Which sheets are in the step BEFORE their transfer - fetching the trail
+   * data that has to land first (`ensureTrailData`).
+   *
+   * State, and rendered, because it used to be neither. The canary is 12.3 MB
+   * of trails.geojson, and until it finished nothing on the card changed at
+   * all: the button a hiker had just pressed sat there unchanged, no status,
+   * no figure, for as long as that took on their connection. The download had
+   * genuinely started; the app simply had no way to say so, which is the same
+   * complaint the footer bar exists to answer, one step earlier in the flow.
+   *
+   * Per sheet rather than one flag because the card that reports it is per
+   * sheet - and the trail data being shared is exactly why two sheets tapped
+   * together can both be in this step off one fetch.
+   */
+  const [preparingSheets, setPreparingSheets] = useState<readonly string[]>([])
+
+  // What is arriving right now, across every sheet, for the link that says so
+  // (lib/downloadActivity.ts). Decided here rather than on either screen for
+  // the reason the transfer itself lives here: the download outlives the
+  // window it was started from and has to be reportable from the map and from
+  // Settings alike, which are never both mounted. Off the SHEET statuses the
+  // cards already render, so the footer's figure and the card's cannot
+  // disagree about the same download.
+  const downloadActivity = activeDownload(
+    backgroundSheets.map(sheetStatus),
+    preparingSheets.length > 0,
+  )
+
   // Whether the hiking sheet's TILES are on the phone - the basemap package
   // alone, not the sheet as a whole. The DEM beside it is the same sheet's
   // terrain, and a missing hillshade is not what makes a background fail to
@@ -741,11 +845,50 @@ function App() {
   }, [])
 
   /**
-   * Whether a trail-data fetch is already in flight or has already succeeded,
-   * so that re-renders and connectivity flapping cannot start a second one.
-   * A ref rather than state because nothing renders from it.
+   * The trail-data fetch that is in flight, so that re-renders, connectivity
+   * flapping and a tapped download cannot start a second one. A ref rather
+   * than state because nothing renders from it.
+   *
+   * THE PROMISE, not a boolean, and that is the whole point of it. It was a
+   * flag, which only the launch fetch below ever read - so a hiker who tapped
+   * Download while that fetch was still running got `loadTrailData()` back as
+   * null (nothing committed yet), and pulled the same 12.3 MB of
+   * trails.geojson a second time, against the same connection, ahead of the
+   * archive they were actually waiting for. Sharing the attempt means the tap
+   * waits for the bytes already coming rather than racing them.
+   *
+   * Cleared when it settles, either way: a fetch that failed must be
+   * retryable when signal returns, and one that succeeded leaves
+   * `loadTrailData()` answering from the phone, which is cheaper than any
+   * flag.
    */
-  const trailDataFetch = useRef(false)
+  const trailDataFetch = useRef<Promise<void> | null>(null)
+
+  /**
+   * The trail's own data on the phone, fetched at most once at a time.
+   *
+   * Rejects with whatever the fetch rejected with - both callers report it,
+   * differently: the launch fetch nobody asked for reports through the status
+   * strip, a tapped download reports on the card that was tapped.
+   */
+  const fetchTrailDataOnce = useCallback(() => {
+    const inFlight = trailDataFetch.current
+    if (inFlight !== null) return inFlight
+
+    const attempt = (async () => {
+      // Asked directly rather than assumed: a phone that already has the
+      // lines needs no network at all.
+      if ((await loadTrailData()) !== null) return
+      await downloadTrailData()
+      await refreshTrailData()
+    })()
+    trailDataFetch.current = attempt
+    const clear = () => {
+      if (trailDataFetch.current === attempt) trailDataFetch.current = null
+    }
+    attempt.then(clear, clear)
+    return attempt
+  }, [refreshTrailData])
 
   // The trail lines load themselves, rather than waiting for someone to tap
   // Download.
@@ -789,37 +932,27 @@ function App() {
   }, [refreshTrailData])
 
   useEffect(() => {
-    if (!DATA_CONFIGURED || !online || trailDataFetch.current) return
+    if (!DATA_CONFIGURED || !online) return
 
     let cancelled = false
-    trailDataFetch.current = true
 
-    void (async () => {
-      try {
-        // Asked directly rather than inferred from the effect above, which is
-        // racing this one and reports through state either way. A phone that
-        // already has the lines needs no network at all.
-        if ((await loadTrailData()) !== null) return
-        await downloadTrailData()
-        if (cancelled) return
-        await refreshTrailData()
-      } catch (error) {
-        // Cleared rather than left set, so coming back into signal can try
-        // again. Nothing is stored either way - downloadTrailData commits all
-        // four files or none.
-        trailDataFetch.current = false
-        // Not reported if the effect was torn down under us: by then this is a
-        // fetch nobody is waiting on, and a notice about it would outlive the
-        // screen that could act on it.
-        if (cancelled) return
-        setDataError(describeTrailDataError(error))
-      }
-    })()
+    // Deduplicated inside fetchTrailDataOnce rather than by a flag here, so
+    // that a download tapped while this is still running joins it instead of
+    // fetching the same megabytes alongside it.
+    void fetchTrailDataOnce().catch((error: unknown) => {
+      // Not reported if the effect was torn down under us: by then this is a
+      // fetch nobody is waiting on, and a notice about it would outlive the
+      // screen that could act on it. Nothing is stored either way -
+      // downloadTrailData commits all four files or none - so coming back
+      // into signal can simply try again.
+      if (cancelled) return
+      setDataError(describeTrailDataError(error))
+    })
 
     return () => {
       cancelled = true
     }
-  }, [refreshTrailData, online])
+  }, [fetchTrailDataOnce, online])
 
   // Revoking belongs here rather than inside the setTrailsUrl updater it used
   // to live in. A state updater has to be pure: React may run it more than
@@ -1174,17 +1307,16 @@ function App() {
   const ensureTrailData = useCallback(async () => {
     setDataError(null)
     try {
-      // Already here is already done. Re-fetching on every tap spent signal
-      // on bytes the phone was holding.
-      if ((await loadTrailData()) !== null) return true
-      await downloadTrailData()
-      await refreshTrailData()
+      // Shares whatever is already coming, and asks the phone first - both
+      // inside fetchTrailDataOnce, so that a tap during the launch fetch
+      // waits on it rather than duplicating it.
+      await fetchTrailDataOnce()
       return true
     } catch (error) {
       setDataError(describeTrailDataError(error))
       return false
     }
-  }, [refreshTrailData])
+  }, [fetchTrailDataOnce])
 
   /** One sheet: every archive it is made of, in one tap. Archives already on
    *  the phone are left alone rather than re-fetched. */
@@ -1194,7 +1326,22 @@ function App() {
         .map((pkg) => pkg.idbKey)
         .filter((key) => archiveStatusFor(key).state !== 'downloaded')
       if (missing.length === 0) return
-      if (!(await ensureTrailData())) return
+
+      // Said before the wait rather than after it, which is the point: this
+      // is the first thing the tap does and it used to be the silent thing.
+      setPreparingSheets((current) =>
+        current.includes(sheet.id) ? current : [...current, sheet.id],
+      )
+      try {
+        if (!(await ensureTrailData())) return
+      } finally {
+        // In `finally` so a refused canary puts the card back to a state with
+        // a button in it. Leaving this sheet "preparing" after a failure
+        // would be a phone claiming to be working with nothing in flight -
+        // and the error the catch above set would have nothing to sit under.
+        setPreparingSheets((current) => current.filter((id) => id !== sheet.id))
+      }
+
       // Whatever these sources did to the LAST copy of these bytes is not true
       // of the one now arriving. Scoped to `missing` rather than to the whole
       // sheet (#352): fetching the DEM half of the hiking sheet says nothing
@@ -1615,6 +1762,9 @@ function App() {
             sheet,
             sheetStatus(sheet).state === 'downloaded',
           ),
+          // The step before this sheet's transfer, so the tap has something
+          // to show for itself while the canary is in flight.
+          preparing: preparingSheets.includes(sheet.id),
           // Each sheet's picker carries its own level set and writes its own
           // preference (#276) - the USGS raster's tiers and the hiking
           // sheet's cuts are separate dials. The `as` casts are safe because
@@ -1704,6 +1854,7 @@ function App() {
                   dataSaver={saveData}
                   archiveDownloaded={archiveDownloaded}
                   hasDownload={anySheetDownloaded}
+                  downloadActivity={downloadActivity}
                   onOpenDownloads={openDownloads}
                   hikeSummary={hike === null ? null : hikeSummary(hike)}
                   onEditHike={() => setPickingHike(true)}
@@ -1772,6 +1923,10 @@ function App() {
           // gone - which is why it is carried, and not why it is given room.
           onOpenDownloads={openDownloads}
           hasDownload={anySheetDownloaded}
+          // The bar on that same link. This is the only place a download in
+          // flight is visible from the map, and the map is where a hiker who
+          // shut the window is standing.
+          downloadActivity={downloadActivity}
           // Narrower than the line above on purpose: the credit corner names
           // the USGS survey only while there are USGS tiles on the phone to
           // draw, and a hiking-sheet-only download has none.
@@ -1825,6 +1980,7 @@ function App() {
           online={online}
           hasGpsFix={gps.status === 'located'}
           lastSyncedAt={lastSyncedAt}
+          conditionsAge={conditionsAgeLabel(worstOf(closureState, reportState), now)}
           activeTab={activeTab}
           onSelectTab={setActiveTab}
           onOpenLegend={handleOpenLegend}

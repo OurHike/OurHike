@@ -1,5 +1,13 @@
 {
   "_comment": "Registry of upstream data sources for the OurHike pipeline. Generated/updated by discover_sources.py - re-run that script rather than hand-editing urls here.",
+  "photo_licence": {
+    "_comment": "The basis on which the Photo1..Photo10 images on the ATC facilities layers may be mirrored and served, recorded rather than assumed - CONTRIBUTING.md, 'A note on data and licences'. This is NOT a Creative Commons grant and must not be rendered as one: ATC holds the copyright, and what is recorded here is the permission to use them, not a licence to sublicense them onward. A club inheriting this project needs to re-confirm it in its own name rather than relying on this line.",
+    "author": "Appalachian Trail Conservancy",
+    "license": "© ATC, used with permission",
+    "basis": "Maintainer authorisation, on the basis of Appalachian Trail Conservancy affiliation",
+    "recorded_date": "2026-08-08",
+    "open_question": "https://github.com/OurHike/OurHike/issues/98 - ATC's redistribution and attribution terms are unresolved in general, and settling them should replace this line with the agreed terms."
+  },
   "sources": [
     {
       "key": "trail_club_sections",

@@ -139,6 +139,16 @@
   color: var(--fg-2);
   font-size: 13px;
 }
+/* The canary step, before there is a transfer to draw a bar for. Weighted
+   like the byte counter it replaces, so the card does not change shape when
+   the real figures arrive a moment later - and deliberately not animated:
+   there is nothing to animate honestly, the sizes here are unannounced, and a
+   spinner would be motion standing in for information. */
+.downloads__preparing {
+  margin: 0;
+  font-weight: 600;
+  font-size: 15px;
+}
 /* The delete confirmation: the cost stated where the tap is about to pay it.
    The warning tint the space caveats already use - it changes a decision, so
    it is allowed to be seen, and it is still not a modal. */

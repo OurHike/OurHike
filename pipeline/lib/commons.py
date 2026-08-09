@@ -44,6 +44,28 @@ _EXIF_DATE_RE = re.compile(r"(\d{4}):(\d{2}):(\d{2})")
 
 _TAG_RE = re.compile(r"<[^>]*>")
 
+# Commons' File namespace holds far more than photographs, and a geosearch
+# returns whatever is geotagged near the point - including PDFs and DjVu
+# scans of old survey maps, which carry coordinates precisely because they
+# depict a place. Those are multipage documents, and imageinfo cannot
+# normalize a width-based thumbnail request (iiurlwidth) for one: it answers
+# `urlparamnormal` and fails the WHOLE batched call, so a single geotagged PDF
+# near a single POI aborts the crawl and takes the eligible JPEGs batched
+# alongside it. Filtering by extension before the request is what keeps that
+# request formable.
+#
+# This is a pre-filter, not the rule. eligible_photo() still decides on the
+# file's declared mime type - a .jpg that is really something else is rejected
+# there, as it always was.
+_JPEG_TITLE_RE = re.compile(r"\.jpe?g$", re.IGNORECASE)
+
+
+def may_be_a_jpeg(title: str) -> bool:
+    """Whether a File: title could be the JPEG eligible_photo() requires -
+    cheap enough to apply before asking the API anything, and the only thing
+    standing between a geotagged PDF and a dead crawl (see _JPEG_TITLE_RE)."""
+    return _JPEG_TITLE_RE.search(title.strip()) is not None
+
 
 def meta_value(extmetadata: dict, key: str) -> str:
     """One extmetadata field as a stripped string - the API wraps each in

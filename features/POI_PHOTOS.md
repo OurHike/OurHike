@@ -10,14 +10,17 @@ Companion to [FEATURES.md](../FEATURES.md), [WIREFRAMES.md](../WIREFRAMES.md) (t
 
 ## The precedence ladder
 
-One slot, four possible occupants, in this order:
+One slot, five possible occupants, in this order:
 
 | | what fills the slot | where it lives | works offline |
 |---|---|---|---|
 | 1 | **Your own photo** of this place | your device | always |
-| 2 | **The community default** — a shared photo a moderator promoted | backend | when cached |
-| 3 | **A Commons photo** — openly licensed, recent, nearest | our bucket, `photos/` | when cached |
-| 4 | **The category silhouette** | the app itself | always |
+| 2 | **The club's pick**, else the newest community photo | backend | when cached |
+| 3 | **ATC's own facility photo** — the maintaining organisation's documentation | our bucket, `photos/` | when cached |
+| 4 | **A Commons photo** — openly licensed, recent, nearest | our bucket, `photos/` | when cached |
+| 5 | **The category silhouette** | the app itself | always |
+
+**Rung 3 was added once Commons was measured** and found to cover zero of 280 shelters while ATC's own layers covered 270. It sits above Commons rather than below it for the reason the measurement made obvious: ATC's is a photograph *of the shelter*, taken by the people who maintain it, where a Commons hit is the nearest openly-licensed file to a coordinate and is very often a photograph of a plant. It sits below the community rungs because a club's or a hiker's current photo beats a decade-old inventory shot of the same structure.
 
 **Your own photo always wins, and nothing can displace it.** Not a better-composed community photo, not a fresher one, not a moderator. This is the whole point of the feature and it is value #1 stated as a render rule: a hiker's memory of a place outranks the app's opinion about it. The ladder falls through only downward, and rung 4 is a floor rather than a failure — it is what the slot has always shown and the honest answer when nothing better is true.
 
@@ -41,11 +44,73 @@ Commons is the one large photo corpus where every file carries machine-readable 
 - **Proximity is the match, and its limit is disclosed by design.** The nearest eligible file within a per-type radius wins. This will occasionally pick a photo of the view *from* the shelter rather than *of* it. The credit line linking to the file page keeps provenance one tap away; anything smarter (name matching, depicts-statements) is future refinement.
 - **Never the original file — a sized thumbnail or nothing.** A Commons original is a full-resolution camera file, routinely 3–15 MB; the card's slot is 264 CSS pixels wide. The fetch asks for a 640px-wide rendering (`iiurlwidth`), downloads those bytes, and stores our own copy of them (see "Where the bytes live"). There is deliberately **no fallback to the original**: filling a thumbnail-sized box with a multi-megabyte download on a hiker's data plan is value #8's exact argument against itself.
 
-### Expect very little of it
+### Measured, 2026-08-08: it is worse than thin, and the number that looks fine is the misleading one
 
-Desk research suggests A.T. coverage on Commons is thin — likely **well under 1% of corridor POIs**, possibly none, once the freshness bar and the 4.0+ licence floor both apply. That estimate has never been measured against the live API and should be, before anyone counts on this source. Either way the design holds: partial coverage is the intended state, the placeholder is the everyday case, and nothing implies completeness. The alternative — loosening the bar to inflate coverage — trades trustworthiness for decoration, which is value #4 backwards.
+This section used to carry a desk estimate — *well under 1% of corridor POIs, possibly none* — with a note that it had never been measured against the live API and should be. It has now been measured: a full first pass of `fetch_poi_images.py` over all **817 corridor POIs**, every one queried, nothing carried forward.
 
-**This is also the argument for the other two sources.** Commons was never going to photograph a spring in Maine. Hikers walk past every one of these places every season.
+| type | with a photo | total | coverage |
+|---|---|---|---|
+| shelter | 5 | 280 | 1.8% |
+| campsite | 5 | 232 | 2.2% |
+| water | 13 | 174 | 7.5% |
+| resupply | 53 | 131 | 40.5% |
+| **all** | **76** | **817** | **9.3%** |
+
+**Do not quote the 9.3%.** Of those 76 photos, **35 are iNaturalist species observations** — a plant, photographed where it grows. Three were verified against the API rather than inferred from filenames: `Commelina communis 573573501.jpg` is "Asiatic dayflower, in the United States", categorised *Media from iNaturalist*, and it is the photo the card would put on **Gravel Springs Hut Shelter**. `Hydrophyllum virginianum 564000033.jpg` (Virginia waterleaf) is what **Byrds Nest 3 Hut** gets.
+
+**This is the freshness proxy meeting a corpus that satisfies it perfectly by accident, and it is the finding that matters here.** An iNaturalist upload is a real camera JPEG, with a real EXIF capture date days old, licensed CC BY 4.0, with a creditable author, geotagged to a few metres. It passes every bar in `lib/commons.py` — not by evading them, but by genuinely being all the things those bars test for. "Recent, openly licensed, geotagged photograph" describes a dayflower exactly as well as it describes a shelter. Proximity was always known to be a weak match, and this doc already conceded it *"will occasionally pick a photo of the view from the shelter rather than of it"*. The measurement says the real failure is not a near miss, it is a different subject entirely, and it is now the plurality of what the source returns.
+
+Discounting species uploads and requiring a photo to share a distinctive word with its POI's name (a crude proxy for "plausibly depicts this place", but the cheap one available):
+
+- **0 of 280 shelters** and **0 of 232 campsites** have a usable photo. The only non-species shelter match is a photo of two named people at Killington Summit, 232 m from Cooper Lodge Shelter.
+- **Water is effectively zero** — 7 of its 13 are species uploads and the rest are a bridge, a redoubt and a museum.
+- **Resupply is the one category that works**: 23 of 131 towns (~18%) matched something like the Hanover Inn or a county courthouse. A town is a big subject, so proximity is a much better match for it than for a spring.
+
+**Loosening the bars would not help, and the miss diagnosis is what proves it.** Across a 240-POI stratified sample, **72% of POIs have no Commons file within radius at all** — 92% of shelters, 90% of campsites, 85% of water. Only 3 of 60 sampled shelters had nearby files that were all rejected. The licence floor and the freshness window do reject plenty where files *do* exist (of 672 candidate files: 31% too old, 26% licence, and 175 of those 176 licence rejections are the pre-4.0 CC suite) — but that rejection is concentrated around towns, which is the one place coverage already works. **For shelters the corpus is simply empty**, so relaxing the 4.0 floor or the four-year window buys close to nothing where it is actually needed, while letting in more of exactly what is already wrong.
+
+The design still holds, and holds harder than before: partial coverage is the intended state, the placeholder is the everyday case, nothing implies completeness. What the measurement changes is that **the placeholder is not the everyday case for shelters — it is the only case**, and the few photos that do appear are the ones most likely to be wrong.
+
+### One thing the measurement makes urgent: nothing moderates the Commons path
+
+`David Rudmin, 2024.jpg` is what the card would show for **Front Royal, Virginia**. Its Commons categories are *User page images* and *Self-published work*: it is somebody's self-portrait, uploaded for their user page, CC0, geotagged near the town. It passes every bar.
+
+"Photos of identifiable people are a moderation matter and a share-sheet warning" is already this doc's rule, but it was written for **shared** photos and the queue it names only exists on that path. The Commons rung has no moderation step of any kind — the fetch runs by hand, the nearest eligible file wins, and it ships. A photograph of a private individual's face, rendered as a town's illustration with their name in the credit line, is a worse failure than a wrong shelter, and there is currently nothing between it and a hiker.
+
+### Openly-licensed alternatives, checked the same day
+
+Both were measured against the same 817 POIs rather than reasoned about, because "somebody must have photographed these" is exactly the intuition that produced the estimate this section had to replace.
+
+- **OpenStreetMap: essentially nothing.** OSM hosts no images, so the question is whether it carries *pointers* — `image`, `wikimedia_commons`, `mapillary`, `panoramax`, `wikipedia` — on features near our POIs, queried through Overpass at the same per-type radii. Across all 817: `image` 6, `wikimedia_commons` 6, `panoramax` 2, `mapillary` 1. **For the 280 shelters, OSM offers two pointers in total**, both `image=` URLs to third-party sites (wikitrail.org, appalachiantrailhistory.org) with no licence metadata, which fails CONTRIBUTING.md's establish-the-licence-first rule before anything is fetched. The `wikimedia_commons` tags are almost all Helen, GA storefronts and point back into the corpus already crawled. `wikipedia` looks better at 70 POIs (8.6%) but is 55 towns having encyclopedia articles — the resupply coverage that already works, reached a second way. *(Route relations are excluded: the A.T. relation itself carries `wikipedia` and passes within metres of every shelter on it, so counting it would manufacture 100% coverage out of one tag.)*
+- **The "Appalachian Trail Shelter" Flickr group** ([908185@N20](https://www.flickr.com/groups/908185@N20/pool/), 527 photos, 105 members, est. 2008) is the most promising corpus found and cannot be used as-is. Its content is right where Commons is wrong: photos titled with the shelter's actual name, many inside the freshness window — the matching problem solved by the filing rather than by proximity. But **a group pool carries no licence**; pool membership is a filing decision, not a grant, so the licence stays per photo. One photo checked directly is *All rights reserved*, and every one of the 20 items in the group's public feed is by that same photographer. The pool feed does not expose the licence field, so the CC-and-fresh subset is unmeasured; measuring it needs a Flickr API key and one `flickr.groups.pools.getPhotos` call with `extras=license,date_taken`. Even then, Flickr's CC picker is dominated by the 2.0 suite this doc rejects wholesale, so the realistic route is asking the handful of prolific contributors to relicense under the CC BY-SA 4.0 already chosen for shared photos — a conversation, not a crawl.
+
+### The source that was in the repository the whole time: ATC's own inventory photos
+
+**Measured 2026-08-08, and it changes the shape of this feature.** The ATC facilities layers this pipeline already fetches carry `Photo1`–`Photo10` attribute fields. Nobody had looked at them. They are populated, and they are populated well:
+
+| layer | features with a real photo URL | |
+|---|---|---|
+| shelters | 270 / 280 | **96.4%** |
+| privies | 301 / 316 | 95.3% |
+| campsites | 219 / 232 | 94.4% |
+| parking | 278 / 482 | 57.7% |
+| bridges | 193 / 409 | 47.2% |
+| viewpoints | 456 / 1223 | 37.3% |
+
+Against Commons' **0 usable shelter photos out of 280**, this is not an incremental improvement, it is the difference between the feature existing and not existing. And unlike every automated match above, the photographs are *of the thing*: they were taken by ATC's own crews during the 2015–2017 trail inventory, framed as facility documentation. The first one checked — Chairback Gap Lean-to — is a clean, square-on photograph of the lean-to, its sleeping platform and its fire ring.
+
+Four things verified rather than assumed:
+
+- **The links resolve without credentials.** They are Google Drive file links, many in the `drive.google.com/a/appalachiantrail.org/...` Workspace form that usually implies a domain login; checked, and they are world-readable. Three of three `view` links returned 200 and three of three direct downloads returned real JPEGs.
+- **A sized rendering is available, so this needs no image pipeline of our own** — the constraint "Reduce on the phone, never on a server" sets. `drive.google.com/thumbnail?id=<id>&sz=w640` returns a 640×427 JPEG at ~114 KB, exactly the role Wikimedia's thumbnailer plays for Commons. Originals are 0.2–6.8 MB (median ~1.9 MB), so the rendering is not optional.
+- **Hotlinking is still out** and for the same reason as #362: these would be mirrored into `photos/<digest>.jpg` like Commons files, not linked live to Google.
+- **They are old.** A sample of 18 shelter photos dated by EXIF: 2 from 2007, 8 from 2015, 6 from 2016, 1 from 2017. **The newest is 2017-06-06 — nine years past, and every single one fails `MAX_PHOTO_AGE_DAYS`.** Nothing here squeaks under the bar; the whole corpus is on the far side of it.
+
+**So this source is blocked on two decisions, and neither is a technical problem.**
+
+1. **The freshness bar, which this is exactly the case it was written to be re-argued against.** `fetch_poi_images.py` says so in as many words: *"the bar is a judgement about how stale a picture may be, not a constant with a right answer, so it lives here in one place and moves when the measured coverage says it should."* The measured coverage now says something. The honest comparison is not "2016 photo versus fresh photo" — no fresh photo is coming — it is **a 2016 photograph of the actual lean-to, captioned September 2016 on the card, versus a category glyph**, which is what 280 of 280 shelters show today. The card already prints the capture month precisely so a hiker can discount an old picture themselves. Against that sits the real risk the bar exists for: a decade is long enough that some of these shelters have burned, been rebuilt or been moved, and a confident photograph of a structure that is no longer there is the "small lie with a frame around it" this doc refuses elsewhere. A per-source bar is likely the shape of the answer — proximity-matched strangers' photos and the trail-managing organisation's own documentation do not deserve the same freshness rule — but that is a maintainer's call, not a fetch's.
+2. **The licence, which is the harder one and is already an open question.** These are ATC's photographs. ATC's redistribution and attribution terms are unresolved ([#98](https://github.com/OurHike/OurHike/issues/98), SOURCE_REGISTRY.md) — the same hole the trail geometry sits in, and the reason `MapAttribution.tsx` has no ATC credit string to render. Carrying a photo *reference* through the export is arguably no different from carrying `Year_Built`, since it is one more attribute of data this project already redistributes. **Mirroring the bytes into our bucket and putting them on a card is a different act**: a photograph is a creative work in a way a build year is not. CONTRIBUTING.md's rule is not ambiguous — *establish the licence first and record it* — so no fetcher for this source should be built, and certainly none run, until there is an answer. The good news is that it is one conversation with one organisation that already publishes these links publicly, and it is a conversation the project needs to have for the trail geometry regardless.
+
+**All of which is the argument for the other two sources, now with numbers behind it.** Commons was never going to photograph a spring in Maine, and neither was OSM. Hikers walk past every one of these places every season — and ATC's crews already did, once, in 2016.
 
 ---
 
@@ -111,9 +176,26 @@ A photo is private when added. Sharing is a second decision, taken per photo, th
 
 Sharing queues in the existing outbox (`lib/outbox.ts`) like every other write, so tapping it on a ridge is fine — it leaves when there is signal.
 
+### The shape of a POI's gallery: 3 pinned, 12 rolling, one per person
+
+**Decided 2026-08-09.** A POI holds **at most 15 shared photos**. The club that maintains the area may pin **3**; the remaining **12** are the most recent community photos. **One photo per person per POI.**
+
+Each rule is doing a specific job, and the interactions between them are the point:
+
+- **One per person is the anti-domination rule, and it is the one to keep even if the rest changes.** One enthusiastic photographer cannot own a shelter's gallery; contributor diversity comes free rather than being engineered; and — the part that matters most here — it is a cap that cannot be gamed. There is no leaderboard to climb by uploading more, which keeps this on the right side of [DATA_NUDGES.md](DATA_NUDGES.md) rather than quietly reintroducing the contribution scoreboard that document rules out.
+- **A hiker's second photo replaces their first rather than being refused.** Without this, someone who shot a shelter in flat light in 2027 is locked out by their own past self forever — and the person most likely to come back with a better photograph is exactly the person who already cared enough to take one. Self-replacement is free and needs no moderator.
+- **The 12 roll by recency; the pinned 3 do not.** A hard first-come cap has a failure mode that is precisely the one the freshness bar exists to prevent: a shelter photographed heavily in 2027 is full by 2028, and when it burns and is rebuilt in 2032 the gallery still shows fifteen photographs of a building that is no longer there, with no slot free for the truth. A rolling window self-heals within a season. The club's 3 are exempt because they are an editorial judgement, not a queue position.
+
+**The binding constraint is moderation, not storage, and the design has to admit that.** Fifteen photos across ~3,000 POIs is ~2 GB — free, per the cost table below. It is also **45,000 human decisions** at saturation, on volunteer time, which is the limit this document already named. So the moderation posture splits:
+
+- **The pinned 3 are pre-moderated.** They are what a hiker with no photo of their own sees, so they earn the scrutiny — and they are a bounded number of decisions per POI, which is what makes them affordable.
+- **The rolling 12 are report-driven, not pre-approved.** Pre-moderating 45,000 photographs is not something a volunteer club can do, and designing as though it were is how a queue becomes a graveyard and the feature stalls with a backlog nobody can clear.
+
+**One per person applies to the shared gallery only.** What a hiker keeps privately on their own device is untouched by this — "several per place, one on the card" above still holds, because that is storage on their phone rather than a public surface with a moderation cost.
+
 ### Becoming the community default
 
-A shared photo enters the **existing moderation queue** ([REPORT_A_PROBLEM.md](REPORT_A_PROBLEM.md)'s `submitted | verified | resolved | dismissed`), and a moderator can promote one to the **community default** for that POI: rung 2 of the ladder, what a hiker with no photo of their own sees.
+A shared photo enters the **existing moderation queue** ([REPORT_A_PROBLEM.md](REPORT_A_PROBLEM.md)'s `submitted | verified | resolved | dismissed`), and a moderator can pin one of the 3 for that POI: rung 2 of the ladder, what a hiker with no photo of their own sees. Where a club has pinned nothing, rung 2 falls through to the newest community photo, and where there are none of those it falls through to ATC.
 
 **Who decides is the whole question, and it is deliberately not a popularity contest.** No likes, no votes, no top-contributor list — the same prohibition DATA_NUDGES.md applies to freshness prompts, for the same reason. Votes would also answer the wrong question: the card needs the photo that best shows what the place *is like now*, and a crowd reliably prefers the prettiest sunset.
 
@@ -211,6 +293,22 @@ Checked against `lib/r2_keys.py` rather than assumed. It refused both, which is 
 Neither is a blocker; both are the gate doing its job. R2_LAYOUT.md anticipates exactly this — *"Adding a format is one line in the validator, reviewed alongside the artifact that needs it"* — so mirroring photos means adding `jpg` to `ALLOWED_EXTENSIONS` and declaring a photo prefix with its retention rule, in the PR that needs them. **The prefix must not be `releases/`**: release folders are written once and never overwritten, and a community photo that lands in one could never be withdrawn, which is the consent requirement above. Photos live under a mutable prefix the backend can delete from.
 
 Note also what "everything in R2" does and does not mean. R2 holds **bytes**; photo metadata, moderation state and the withdrawal flag stay in Postgres, because those are records to query, not objects to serve.
+
+### Keeping the originals, which is a preservation question and not a storage-tier one
+
+**Decided 2026-08-09: full-resolution originals of the photos OurHike is licensed to hold are archived under an `originals/` prefix, never served to a client.**
+
+The prompt for this was cold storage, and the first finding is that **there is no cost problem to solve.** R2 is $0.015/GB-month with 10 GB free and zero egress; the 489 ATC originals are ~1 GB, and every photo field across all six ATC layers is roughly 5 GB. A Glacier-style tier buys a discount on a bill that is already $0 and pays for it in retrieval latency and a second storage path to maintain. Cost is not the reason to do this.
+
+**The reason is that mirroring only the 640px rendering creates a real fragility, and the ATC fetch just created it.** Those are Google Workspace links on another organisation's Drive. Files get moved, re-shared and re-permissioned; the `/a/appalachiantrail.org/` links are one admin policy change from returning 404. If that happens, what survives of an irreplaceable 2015–2017 trail inventory is a set of 640×427 thumbnails. That is a preservation argument, and it is a good one.
+
+**This does not reverse the not-an-archive decision, and the boundary is worth stating precisely** because it looks adjacent to it:
+
+- **ATC's and clubs' licensed photos: archived.** They have no other home this project controls, they are the app's own data, and nobody's memories are at stake.
+- **Hikers' *shared* photos: archived.** Sharing is already an irrevocable CC BY-SA 4.0 grant, so holding the full file changes no promise — though the withdrawal rule above still applies to what is *served*.
+- **Hikers' *personal, unshared* photos: never.** This is the thing decided against on 2026-08-07 and the reasoning is unchanged: their library is the home, and a duty never to lose someone's memories is one this project must not take on.
+
+The prefix is mutable and unserved, so it needs its own line in [R2_LAYOUT.md](../pipeline/R2_LAYOUT.md) rather than riding on `photos/`.
 
 ### Reduce on the phone, never on a server
 

@@ -208,20 +208,33 @@ def test_collect_gathers_every_background_archive_that_exists(tmp_path, monkeypa
 
 
 def test_collect_gathers_published_conditions_under_their_own_prefix(tmp_path, monkeypatch):
-    """features/CONDITIONS_DELIVERY.md. An ordinary artifact so it gets the
+    """features/CONDITIONS_DELIVERY.md. Ordinary artifacts so they get the
     same sha256 diffing as everything else - which is what makes a daily bake
-    cheap, since a day with no closure changes uploads nothing at all."""
+    cheap, since a day with no condition changes uploads nothing at all."""
     monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
-    closures = tmp_path / "conditions" / "closures.json"
-    closures.parent.mkdir()
+    conditions_dir = tmp_path / "conditions"
+    conditions_dir.mkdir()
+    closures = conditions_dir / "closures.json"
     closures.write_text('{"generated_at": "2026-08-08T06:00:00Z", "closures": []}')
-    (tmp_path / "conditions_manifest.json").write_text(json.dumps({"path": str(closures), "sha256": "abc123", "count": 0}))
+    reports = conditions_dir / "reports.json"
+    reports.write_text('{"generated_at": "2026-08-08T06:00:00Z", "reports": []}')
+    (tmp_path / "conditions_manifest.json").write_text(
+        json.dumps(
+            {
+                "artifacts": {
+                    "closures": {"path": str(closures), "sha256": "abc123", "count": 0},
+                    "reports": {"path": str(reports), "sha256": "def456", "count": 0},
+                }
+            }
+        )
+    )
 
     artifacts = publish.collect_artifacts()
 
-    # The key is the prefixed one, not a bare `closures.json` at the root -
-    # a key in this bucket can never be renamed, only abandoned in place.
+    # The keys are the prefixed ones, not bare names at the root - a key in
+    # this bucket can never be renamed, only abandoned in place.
     assert artifacts["conditions/closures.json"]["sha256"] == "abc123"
+    assert artifacts["conditions/reports.json"]["sha256"] == "def456"
 
 
 def test_collect_ignores_conditions_that_have_not_been_exported(tmp_path, monkeypatch):
@@ -229,7 +242,9 @@ def test_collect_ignores_conditions_that_have_not_been_exported(tmp_path, monkey
     an absence, not an error - same rule as a background tier."""
     monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
 
-    assert "conditions/closures.json" not in publish.collect_artifacts()
+    collected = publish.collect_artifacts()
+    assert "conditions/closures.json" not in collected
+    assert "conditions/reports.json" not in collected
 
 
 def test_collect_skips_a_tier_that_has_not_been_built_yet(tmp_path, monkeypatch):
@@ -482,3 +497,58 @@ def test_an_illegal_photo_key_fails_the_run_before_anything_uploads(s3_client, l
         )
 
     assert "Contents" not in s3_client.list_objects_v2(Bucket=BUCKET)
+
+
+def test_a_successful_publish_does_not_also_report_that_nothing_changed(
+    monkeypatch, capsys, s3_client, local_artifacts, tmp_path
+):
+    """The log is the only signal a scheduled publish gives.
+
+    `main()`'s "Nothing changed" branch used to hang off the *photos* check, so
+    a run that wrote a version and uploaded no photos printed both "Published
+    version <id>" and "Nothing changed ... No new version written". The first
+    real publish-conditions.yml run did exactly that (2026-08-08) - and on a
+    job whose purpose is getting safety data to a hiker, a log claiming it did
+    nothing sends somebody hunting a fault that is not there.
+    """
+    monkeypatch.setattr(publish, "collect_artifacts", lambda: local_artifacts)
+    monkeypatch.setattr(publish, "collect_sidecars", dict)
+    monkeypatch.setattr(publish, "collect_photos", dict)
+    monkeypatch.setattr(publish.boto3, "client", lambda *a, **k: s3_client)
+    # All four, not just the bucket: `publish()` reads the other three while
+    # *building* the boto3 call's arguments, so they are needed even though
+    # the stub above ignores every one of them.
+    monkeypatch.setenv("R2_BUCKET", BUCKET)
+    monkeypatch.setenv("R2_ENDPOINT_URL", "https://unused.invalid")
+    monkeypatch.setenv("R2_ACCESS_KEY_ID", "unused")
+    monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "unused")
+
+    publish.main()
+
+    out = capsys.readouterr().out
+    assert "Published version" in out
+    assert "Nothing changed" not in out
+
+
+def test_a_run_with_nothing_to_do_still_says_so(monkeypatch, capsys, s3_client, local_artifacts):
+    """The other half: the message has to survive, or a genuinely idle run
+    prints nothing at all and reads as a job that did not run."""
+    monkeypatch.setattr(publish, "collect_artifacts", lambda: local_artifacts)
+    monkeypatch.setattr(publish, "collect_sidecars", dict)
+    monkeypatch.setattr(publish, "collect_photos", dict)
+    monkeypatch.setattr(publish.boto3, "client", lambda *a, **k: s3_client)
+    # All four, not just the bucket: `publish()` reads the other three while
+    # *building* the boto3 call's arguments, so they are needed even though
+    # the stub above ignores every one of them.
+    monkeypatch.setenv("R2_BUCKET", BUCKET)
+    monkeypatch.setenv("R2_ENDPOINT_URL", "https://unused.invalid")
+    monkeypatch.setenv("R2_ACCESS_KEY_ID", "unused")
+    monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "unused")
+
+    publish.main()  # first run publishes
+    capsys.readouterr()
+    publish.main()  # second run has nothing to do
+
+    out = capsys.readouterr().out
+    assert "Nothing changed" in out
+    assert "Published version" not in out

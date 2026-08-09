@@ -82,6 +82,20 @@ export interface DownloadCardProps {
    * rank a fact that is not about transferring against five that are.
    */
   notDrawing?: boolean
+  /**
+   * The tap has landed and the trail data is being fetched, before a byte of
+   * this sheet is asked for (App.tsx's `ensureTrailData`).
+   *
+   * A separate input from `status` for the same reason `notDrawing` is: this
+   * is not the transfer's story. No archive of this sheet is in any state yet
+   * - that is precisely what is being waited for - so there is nothing for
+   * lib/backgroundStatus.ts to combine, and a state in that union would be
+   * one no archive could ever hold.
+   *
+   * It outranks every resting state below and none of the moving ones, which
+   * cannot collide anyway: the transfer starts only once this is over.
+   */
+  preparing?: boolean
   /** This download's levels, its chosen one, and how to report a change.
    *  Every level the app knows comes through, with a null size where this
    *  download has none of it, so the picker is the same shape under every
@@ -111,6 +125,16 @@ function lockedNote(status: DownloadStatus): string {
     : 'A download is under way. Its detail is fixed until it finishes.'
 }
 
+/** The canary, in the words of what it buys rather than of what it is. Nobody
+ *  chose to download "trail data" - they tapped a map - so this says why the
+ *  map is not moving yet and roughly how long that lasts, in the only unit
+ *  that means anything here: against the size of the thing behind it. */
+const PREPARING_NOTE =
+  'Fetching the trail itself first — the line, its waypoints and its profile. ' +
+  'A few megabytes, and it comes first on purpose: whatever would stop it ' +
+  'would stop the map too, and finding that out here costs no data worth ' +
+  'counting. The map starts the moment it lands.'
+
 function formatDay(date: Date): string {
   return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
 }
@@ -120,6 +144,7 @@ export function DownloadCard({
   status,
   error = null,
   notDrawing = false,
+  preparing = false,
   detail,
   persistence = null,
   onStart,
@@ -142,7 +167,10 @@ export function DownloadCard({
       value={detail.value}
       onChange={detail.onChange}
       name={detail.name}
-      locked={!facingFullDownload(status)}
+      // Locked while the canary is in flight too: the transfer starts the
+      // moment it lands, so a level chosen now is a level chosen for bytes
+      // already on their way.
+      locked={preparing || !facingFullDownload(status)}
       lockedNote={lockedNote(status)}
     />
   )
@@ -161,7 +189,30 @@ export function DownloadCard({
         </p>
       )}
 
-      {status.state === 'not-downloaded' && (
+      {/* Before the resting states below, and instead of them. The tap has
+          happened, no archive has been asked for yet, and each of those blocks
+          would describe a phone that is doing nothing - the "Download the map"
+          button worst of all, since it is the button that was just pressed.
+          That silence is the bug this state exists for: on a first run the
+          wait is 12 MB of trail data long, and the card said nothing for the
+          whole of it.
+
+          The two MOVING states are deliberately not guarded, because they
+          cannot be true at the same time as this one - the transfer starts
+          only once this is over, and a guard against a state that cannot
+          arise would read as defensive while testing nothing.
+
+          role="status" rather than "alert": this is expected, it is the tap
+          working, and it should not interrupt whatever is being read. */}
+      {preparing && (
+        <div className="downloads__progress" role="status">
+          <p className="downloads__preparing">Getting the trail…</p>
+          <p className="downloads__note">{PREPARING_NOTE}</p>
+          {picker}
+        </div>
+      )}
+
+      {!preparing && status.state === 'not-downloaded' && (
         <>
           {picker}
           <button type="button" className="downloads__primary" onClick={onStart}>
@@ -170,7 +221,7 @@ export function DownloadCard({
         </>
       )}
 
-      {status.state === 'evicted' && (
+      {!preparing && status.state === 'evicted' && (
         <div className="downloads__evicted">
           {/* The one sentence #190 exists for. "No map downloaded" here would
               be false - one WAS downloaded, and the phone removed it - and on
@@ -257,7 +308,7 @@ export function DownloadCard({
         </div>
       )}
 
-      {status.state === 'failed' && (
+      {!preparing && status.state === 'failed' && (
         <div className="downloads__failed">
           <p className="downloads__bytes">
             {`Stopped at ${formatBytesLive(status.receivedBytes)} of ${formatBytes(
@@ -274,7 +325,7 @@ export function DownloadCard({
         </div>
       )}
 
-      {status.state === 'hash-mismatch' && (
+      {!preparing && status.state === 'hash-mismatch' && (
         <div className="downloads__mismatch">
           {/* Every other failure on this card keeps what arrived; this one
               kept nothing, on purpose - the bytes were the right length and
@@ -293,7 +344,7 @@ export function DownloadCard({
         </div>
       )}
 
-      {status.state === 'downloaded' && (
+      {!preparing && status.state === 'downloaded' && (
         <div className="downloads__done">
           {/* Above the byte count, because it changes what that line means.
               #314 gave the map screen the words for this - "Downloaded map

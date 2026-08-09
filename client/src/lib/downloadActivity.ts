@@ -29,24 +29,31 @@ import type { DownloadStatus } from '../screens/DownloadCard'
 type Downloading = Extract<DownloadStatus, { state: 'downloading' }>
 type Checking = Extract<DownloadStatus, { state: 'checking' }>
 
-export interface DownloadActivity {
-  /**
-   * Which wait this is.
-   *
-   * Bytes coming over the network, or bytes already here being read back to
-   * catch their hash up (#197) - kept apart for the same reason the card keeps
-   * them apart: only one of the two is spending signal, and they ask opposite
-   * things of someone standing in a dead spot.
-   */
-  kind: 'downloading' | 'checking'
-  /** How much of `totalBytes` is behind it - received, or checked. */
-  doneBytes: number
-  totalBytes: number
-}
+/**
+ * What is being waited on, and how far along it is where that is knowable.
+ *
+ * A union rather than one shape with optional numbers, because the first kind
+ * genuinely has none and a `0 of 0` would be a figure invented to fill a slot.
+ * The trail data is four fetches of unequal, unannounced size (lib/
+ * trailData.ts), and the honest thing to say about it is that it is happening.
+ *
+ * The two that DO carry numbers are kept apart from each other for the reason
+ * the card keeps them apart: bytes coming over the network and bytes already
+ * here being read back to catch their hash up (#197) look identical and are
+ * not - only one is spending signal, and they ask opposite things of someone
+ * standing in a dead spot.
+ */
+export type DownloadActivity =
+  /** The canary before the transfer: the trail's own data, which has to land
+   *  before several hundred megabytes are spent finding out the bucket was
+   *  misconfigured (App.tsx's `ensureTrailData`). */
+  | { kind: 'preparing' }
+  | { kind: 'downloading'; doneBytes: number; totalBytes: number }
+  | { kind: 'checking'; doneBytes: number; totalBytes: number }
 
 function combine(
   statuses: readonly (Downloading | Checking)[],
-  kind: DownloadActivity['kind'],
+  kind: 'downloading' | 'checking',
 ): DownloadActivity {
   return {
     kind,
@@ -66,9 +73,16 @@ function combine(
  * is waiting on both, and two bars in a footer is a footer nobody reads. The
  * sum jumps when a second download is started - which is true, and is the
  * hiker's own doing.
+ *
+ * `preparing` is passed alongside rather than found among the statuses because
+ * it is not one: no archive is ever in that state, it is the step before any
+ * archive has been asked for (App.tsx). It ranks LAST, under both figures,
+ * which is the right way round whenever both are true - a second sheet fetching
+ * a canary must not replace a live transfer's percentage with a word.
  */
 export function activeDownload(
   statuses: readonly DownloadStatus[],
+  preparing = false,
 ): DownloadActivity | null {
   const downloading = statuses.filter(
     (status): status is Downloading => status.state === 'downloading',
@@ -80,7 +94,7 @@ export function activeDownload(
   )
   if (checking.length > 0) return combine(checking, 'checking')
 
-  return null
+  return preparing ? { kind: 'preparing' } : null
 }
 
 /**

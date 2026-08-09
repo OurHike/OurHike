@@ -109,6 +109,19 @@ describe('DownloadsLink', () => {
     expect(onOpen).toHaveBeenCalledTimes(1)
   })
 
+  it('says the canary is running, without a bar it could not fill honestly', () => {
+    // Before the transfer there is no total to be a percentage of, so the
+    // word goes out on its own. A 0% bar here would be a figure invented to
+    // fill the slot - and it is precisely a bar stuck at 0 that this state
+    // exists to stop looking like.
+    const { container } = render(
+      <DownloadsLink onOpen={vi.fn()} downloadActivity={{ kind: 'preparing' }} />,
+    )
+
+    expect(screen.getByText('Getting trail data…')).toBeVisible()
+    expect(container.querySelector('.downloads-link__bar')).toBeNull()
+  })
+
   it('says nothing at all when nothing is moving', () => {
     // Which is nearly always. A footer holding room for a bar would spend that
     // room on every screen for the sake of the few minutes a year one runs.

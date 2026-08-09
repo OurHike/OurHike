@@ -74,6 +74,22 @@ describe('activeDownload', () => {
     ).toEqual({ kind: 'downloading', doneBytes: 50, totalBytes: 400 })
   })
 
+  it('reports the canary before any archive has been asked for', () => {
+    // The step the whole tap used to disappear into: 12 MB of trail data, no
+    // archive in any state yet, and so nothing at all to report. It carries
+    // no figure on purpose - four fetches of unannounced size have no honest
+    // percentage, and inventing one would be worse than the word.
+    expect(activeDownload([{ state: 'not-downloaded' }], true)).toEqual({
+      kind: 'preparing',
+    })
+  })
+
+  it('lets a live transfer outrank a canary', () => {
+    // Two sheets, one already moving: a word must not replace a percentage.
+    expect(activeDownload([DOWNLOADING], true)?.kind).toBe('downloading')
+    expect(activeDownload([CHECKING], true)?.kind).toBe('checking')
+  })
+
   it('counts a finished piece of a sheet that is still arriving', () => {
     // Not this module's doing - lib/backgroundStatus.ts has already folded the
     // archives of one sheet into one figure, which is exactly why this is fed

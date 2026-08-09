@@ -31,11 +31,13 @@
 
 import { downloadPercent, type DownloadActivity } from '../lib/downloadActivity'
 
-/** What the footer calls each wait. One word, because it sits beside a label
- *  it must not outweigh - and the difference between them matters enough to
- *  say: one is spending signal and the other is the phone reading its own
- *  disk (#197). The window is where each is explained in full. */
+/** What the footer calls each wait. Two words at most, because this sits
+ *  beside a label it must not outweigh - and the differences matter enough to
+ *  say: one is spending signal, one is the phone reading its own disk (#197),
+ *  and one is the trail data that has to arrive before either. The window is
+ *  where each is explained in full. */
 const ACTIVITY_WORD: Record<DownloadActivity['kind'], string> = {
+  preparing: 'Getting trail data',
   downloading: 'Downloading',
   checking: 'Checking',
 }
@@ -68,9 +70,13 @@ export function DownloadsLink({
   hasDownload = false,
   downloadActivity = null,
 }: DownloadsLinkProps) {
+  // Null while the trail data is still coming, and that is the honest answer
+  // rather than a placeholder 0%: those are four fetches of unannounced size,
+  // so there is no figure to round. The word alone carries it, and the bar
+  // arrives with the transfer it measures.
   const percent =
-    downloadActivity === null
-      ? 0
+    downloadActivity === null || downloadActivity.kind === 'preparing'
+      ? null
       : downloadPercent(downloadActivity.doneBytes, downloadActivity.totalBytes)
 
   return (
@@ -89,11 +95,13 @@ export function DownloadsLink({
         </span>
         {downloadActivity !== null && (
           <span className="downloads-link__status">
-            {`${ACTIVITY_WORD[downloadActivity.kind]} ${percent}%`}
+            {ACTIVITY_WORD[downloadActivity.kind]}
+            {percent !== null && ` ${percent}%`}
+            {percent === null && '…'}
           </span>
         )}
       </span>
-      {downloadActivity !== null && (
+      {percent !== null && (
         <span className="downloads-link__bar" aria-hidden="true">
           <span className="downloads-link__bar-fill" style={{ width: `${percent}%` }} />
         </span>

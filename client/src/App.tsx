@@ -692,6 +692,23 @@ function App() {
     ),
   )
 
+  /**
+   * Which sheets are in the step BEFORE their transfer - fetching the trail
+   * data that has to land first (`ensureTrailData`).
+   *
+   * State, and rendered, because it used to be neither. The canary is 12.3 MB
+   * of trails.geojson, and until it finished nothing on the card changed at
+   * all: the button a hiker had just pressed sat there unchanged, no status,
+   * no figure, for as long as that took on their connection. The download had
+   * genuinely started; the app simply had no way to say so, which is the same
+   * complaint the footer bar exists to answer, one step earlier in the flow.
+   *
+   * Per sheet rather than one flag because the card that reports it is per
+   * sheet - and the trail data being shared is exactly why two sheets tapped
+   * together can both be in this step off one fetch.
+   */
+  const [preparingSheets, setPreparingSheets] = useState<readonly string[]>([])
+
   // What is arriving right now, across every sheet, for the link that says so
   // (lib/downloadActivity.ts). Decided here rather than on either screen for
   // the reason the transfer itself lives here: the download outlives the
@@ -699,7 +716,10 @@ function App() {
   // Settings alike, which are never both mounted. Off the SHEET statuses the
   // cards already render, so the footer's figure and the card's cannot
   // disagree about the same download.
-  const downloadActivity = activeDownload(backgroundSheets.map(sheetStatus))
+  const downloadActivity = activeDownload(
+    backgroundSheets.map(sheetStatus),
+    preparingSheets.length > 0,
+  )
 
   // Whether the hiking sheet's TILES are on the phone - the basemap package
   // alone, not the sheet as a whole. The DEM beside it is the same sheet's
@@ -751,11 +771,50 @@ function App() {
   }, [])
 
   /**
-   * Whether a trail-data fetch is already in flight or has already succeeded,
-   * so that re-renders and connectivity flapping cannot start a second one.
-   * A ref rather than state because nothing renders from it.
+   * The trail-data fetch that is in flight, so that re-renders, connectivity
+   * flapping and a tapped download cannot start a second one. A ref rather
+   * than state because nothing renders from it.
+   *
+   * THE PROMISE, not a boolean, and that is the whole point of it. It was a
+   * flag, which only the launch fetch below ever read - so a hiker who tapped
+   * Download while that fetch was still running got `loadTrailData()` back as
+   * null (nothing committed yet), and pulled the same 12.3 MB of
+   * trails.geojson a second time, against the same connection, ahead of the
+   * archive they were actually waiting for. Sharing the attempt means the tap
+   * waits for the bytes already coming rather than racing them.
+   *
+   * Cleared when it settles, either way: a fetch that failed must be
+   * retryable when signal returns, and one that succeeded leaves
+   * `loadTrailData()` answering from the phone, which is cheaper than any
+   * flag.
    */
-  const trailDataFetch = useRef(false)
+  const trailDataFetch = useRef<Promise<void> | null>(null)
+
+  /**
+   * The trail's own data on the phone, fetched at most once at a time.
+   *
+   * Rejects with whatever the fetch rejected with - both callers report it,
+   * differently: the launch fetch nobody asked for reports through the status
+   * strip, a tapped download reports on the card that was tapped.
+   */
+  const fetchTrailDataOnce = useCallback(() => {
+    const inFlight = trailDataFetch.current
+    if (inFlight !== null) return inFlight
+
+    const attempt = (async () => {
+      // Asked directly rather than assumed: a phone that already has the
+      // lines needs no network at all.
+      if ((await loadTrailData()) !== null) return
+      await downloadTrailData()
+      await refreshTrailData()
+    })()
+    trailDataFetch.current = attempt
+    const clear = () => {
+      if (trailDataFetch.current === attempt) trailDataFetch.current = null
+    }
+    attempt.then(clear, clear)
+    return attempt
+  }, [refreshTrailData])
 
   // The trail lines load themselves, rather than waiting for someone to tap
   // Download.
@@ -799,37 +858,27 @@ function App() {
   }, [refreshTrailData])
 
   useEffect(() => {
-    if (!DATA_CONFIGURED || !online || trailDataFetch.current) return
+    if (!DATA_CONFIGURED || !online) return
 
     let cancelled = false
-    trailDataFetch.current = true
 
-    void (async () => {
-      try {
-        // Asked directly rather than inferred from the effect above, which is
-        // racing this one and reports through state either way. A phone that
-        // already has the lines needs no network at all.
-        if ((await loadTrailData()) !== null) return
-        await downloadTrailData()
-        if (cancelled) return
-        await refreshTrailData()
-      } catch (error) {
-        // Cleared rather than left set, so coming back into signal can try
-        // again. Nothing is stored either way - downloadTrailData commits all
-        // four files or none.
-        trailDataFetch.current = false
-        // Not reported if the effect was torn down under us: by then this is a
-        // fetch nobody is waiting on, and a notice about it would outlive the
-        // screen that could act on it.
-        if (cancelled) return
-        setDataError(describeTrailDataError(error))
-      }
-    })()
+    // Deduplicated inside fetchTrailDataOnce rather than by a flag here, so
+    // that a download tapped while this is still running joins it instead of
+    // fetching the same megabytes alongside it.
+    void fetchTrailDataOnce().catch((error: unknown) => {
+      // Not reported if the effect was torn down under us: by then this is a
+      // fetch nobody is waiting on, and a notice about it would outlive the
+      // screen that could act on it. Nothing is stored either way -
+      // downloadTrailData commits all four files or none - so coming back
+      // into signal can simply try again.
+      if (cancelled) return
+      setDataError(describeTrailDataError(error))
+    })
 
     return () => {
       cancelled = true
     }
-  }, [refreshTrailData, online])
+  }, [fetchTrailDataOnce, online])
 
   // Revoking belongs here rather than inside the setTrailsUrl updater it used
   // to live in. A state updater has to be pure: React may run it more than
@@ -1184,17 +1233,16 @@ function App() {
   const ensureTrailData = useCallback(async () => {
     setDataError(null)
     try {
-      // Already here is already done. Re-fetching on every tap spent signal
-      // on bytes the phone was holding.
-      if ((await loadTrailData()) !== null) return true
-      await downloadTrailData()
-      await refreshTrailData()
+      // Shares whatever is already coming, and asks the phone first - both
+      // inside fetchTrailDataOnce, so that a tap during the launch fetch
+      // waits on it rather than duplicating it.
+      await fetchTrailDataOnce()
       return true
     } catch (error) {
       setDataError(describeTrailDataError(error))
       return false
     }
-  }, [refreshTrailData])
+  }, [fetchTrailDataOnce])
 
   /** One sheet: every archive it is made of, in one tap. Archives already on
    *  the phone are left alone rather than re-fetched. */
@@ -1204,7 +1252,22 @@ function App() {
         .map((pkg) => pkg.idbKey)
         .filter((key) => archiveStatusFor(key).state !== 'downloaded')
       if (missing.length === 0) return
-      if (!(await ensureTrailData())) return
+
+      // Said before the wait rather than after it, which is the point: this
+      // is the first thing the tap does and it used to be the silent thing.
+      setPreparingSheets((current) =>
+        current.includes(sheet.id) ? current : [...current, sheet.id],
+      )
+      try {
+        if (!(await ensureTrailData())) return
+      } finally {
+        // In `finally` so a refused canary puts the card back to a state with
+        // a button in it. Leaving this sheet "preparing" after a failure
+        // would be a phone claiming to be working with nothing in flight -
+        // and the error the catch above set would have nothing to sit under.
+        setPreparingSheets((current) => current.filter((id) => id !== sheet.id))
+      }
+
       // Whatever these sources did to the LAST copy of these bytes is not true
       // of the one now arriving. Scoped to `missing` rather than to the whole
       // sheet (#352): fetching the DEM half of the hiking sheet says nothing
@@ -1625,6 +1688,9 @@ function App() {
             sheet,
             sheetStatus(sheet).state === 'downloaded',
           ),
+          // The step before this sheet's transfer, so the tap has something
+          // to show for itself while the canary is in flight.
+          preparing: preparingSheets.includes(sheet.id),
           // Each sheet's picker carries its own level set and writes its own
           // preference (#276) - the USGS raster's tiers and the hiking
           // sheet's cuts are separate dials. The `as` casts are safe because

@@ -75,7 +75,19 @@ export const POI_PRIORITY: readonly string[] = [
   'shelter',
   'campsite',
   'resupply',
+  // Parking above the rest of the tail because it is the way off the trail:
+  // the pin a hiker looks for when the weather turns or an ankle goes, which
+  // is the same argument water and shelter win on.
+  'parking',
+  'privy',
   'crossing',
+  // Last, and the ordering earns its keep here for the first time. Vistas are
+  // the densest layer ATC publishes - 1,223 of them, half again as many as
+  // every other POI put together - so at any zoom where pins collide, they
+  // are what would win by sheer count if nothing decided otherwise. A hiker
+  // losing a spring to an overlook is the exact trade this list exists to
+  // refuse.
+  'viewpoint',
 ]
 
 function iconMatch(confidence: PoiConfidence): unknown[] {

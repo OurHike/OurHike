@@ -9,6 +9,7 @@ from datetime import date, timedelta
 
 import pytest
 
+import export_poi
 import fetch_atc_photos as atc
 from lib.photo_store import local_photo_path, photo_digest
 
@@ -36,10 +37,16 @@ def _feature(global_id="glob-1", name="Test Shelter", **photos):
     return {"type": "Feature", "properties": props, "geometry": {"type": "Point", "coordinates": [-73.9, 41.0]}}
 
 
-def _write_layers(tmp_path, monkeypatch, shelters=(), campsites=()):
+def _write_layers(tmp_path, monkeypatch, shelters=(), campsites=(), viewpoints=(), parking=(), privies=()):
     monkeypatch.setattr(atc, "RAW_DIR", tmp_path)
     monkeypatch.setattr(atc, "OUT_PATH", tmp_path / "poi_images_atc.json")
-    for stem, feats in (("shelters", shelters), ("campsites", campsites)):
+    for stem, feats in (
+        ("shelters", shelters),
+        ("campsites", campsites),
+        ("viewpoints", viewpoints),
+        ("parking", parking),
+        ("privies", privies),
+    ):
         (tmp_path / f"{stem}.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": list(feats)}))
 
 
@@ -291,6 +298,49 @@ def test_ids_match_what_export_poi_will_write(tmp_path, monkeypatch, requests_mo
     atc.main()
 
     assert set(_saved(tmp_path)) == {"atc_shelters:sh-9", "atc_campsites:cs-4"}
+
+
+def test_every_photo_layer_is_wired_to_the_source_name_the_export_publishes():
+    """The layer list and export_poi.DIRECT_SOURCES must agree, name for name.
+
+    The mechanism is the same silence test_ids_match_what_export_poi_will_write
+    covers, reached the other way: that test proves the id SHAPE is right for
+    the layers this fixture happens to write, and would pass just as happily
+    with a layer wired to "atc_vistas" while the export publishes
+    "atc_viewpoints". Nothing would raise - the photos would simply attach to
+    no POI, and the export would print a smaller number nobody has a
+    reference for.
+    """
+    export_sources = {stem: source for stem, _poi_type, source, _fields in export_poi.DIRECT_SOURCES}
+
+    for stem, source in atc.PHOTO_LAYERS:
+        assert stem in export_sources, f"{stem} carries photos but export_poi.py publishes no such layer"
+        assert export_sources[stem] == source, f"{stem}: photos keyed {source!r}, export publishes {export_sources[stem]!r}"
+
+
+def test_every_atc_layer_carrying_photos_is_fetched_for_every_poi_type_that_has_one(tmp_path, monkeypatch, requests_mock):
+    """The three layers that joined shelters and campsites when they became
+    POI types (#POI vistas/parking/privies).
+
+    They are the whole photo story for those categories: fetch_poi_images.py
+    deliberately does not crawl Commons for them, so a layer quietly dropped
+    from PHOTO_LAYERS is a category whose cards all fall back to the glyph
+    placeholder with nothing anywhere reporting a loss.
+    """
+    _no_sleep(monkeypatch)
+    _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
+    _write_layers(
+        tmp_path,
+        monkeypatch,
+        viewpoints=[_feature(global_id="vp-1", name="Test Vista", Photo1=DRIVE_URL)],
+        parking=[_feature(global_id="pk-1", name="Test Rd Parking Area", Photo1=DRIVE_URL)],
+        privies=[_feature(global_id="pv-1", name="Test Shelter Privy", Photo1=DRIVE_URL)],
+    )
+    _serve(requests_mock)
+
+    atc.main()
+
+    assert set(_saved(tmp_path)) == {"atc_viewpoints:vp-1", "atc_parking:pk-1", "atc_privies:pv-1"}
 
 
 def test_a_feature_with_no_photo_reference_is_not_recorded_at_all(tmp_path, monkeypatch, requests_mock):

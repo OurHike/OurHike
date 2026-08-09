@@ -157,6 +157,24 @@ describe('PoiCard', () => {
     expect(screen.getByText(/A\.T\. Community towns/)).toBeInTheDocument()
   })
 
+  it('names each of the ATC facility layers as the kind of data it is', () => {
+    // Three layers, three sentences, because the card's job here is to let a
+    // hiker weigh the claim - and "the ATC's privy data" and "the ATC's list
+    // of A.T. Community towns" are not the same kind of statement. The raw
+    // id would be a fourth thing again: honest, and unreadable.
+    const sources = [
+      ['atc_viewpoints', /vista data/],
+      ['atc_parking', /parking data/],
+      ['atc_privies', /privy data/],
+    ] as const
+
+    for (const [source, wording] of sources) {
+      const { unmount } = renderCard({ ...SHELTER, source })
+      expect(screen.getByText(wording)).toBeInTheDocument()
+      unmount()
+    }
+  })
+
   it('shows a source it has no wording for rather than hiding the POI’s origin', () => {
     // A release that adds a source should reach a hiker as something, the same
     // call the map makes when it draws an unknown POI type as a neutral pin.

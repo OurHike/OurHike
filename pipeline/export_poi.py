@@ -1,6 +1,7 @@
 """Export the unified POI schema (ROADMAP.md Phase 1 "Unified POI schema",
 TECHNICAL_ARCHITECTURE.md's Export step): join ATC shelters/campsites/
-Communities and opentrail.org's water/resupply tags into one schema per
+vistas/parking/privies/Communities and opentrail.org's water/resupply tags
+into one schema per
 lib/poi_schema.py, clip to the 30-mile corridor, and write one GeoJSON +
 one FlatGeobuf per poi_type under data/processed/poi/, with a SHA256 content
 hash per artifact in a manifest (matching the "content hash per artifact"
@@ -20,6 +21,27 @@ Sources and what they feed (see README.md's source tables + real-feature
 inspection, 2026-07-28):
   - shelters.geojson / campsites.geojson: ATC's own facility data, ~1:1
     with poi_type shelter/campsite. CONFIDENCE_HIGH - direct facility data.
+  - viewpoints.geojson / parking.geojson / privies.geojson: three more of
+    ATC's own facility layers, ~1:1 with poi_type viewpoint/parking/privy,
+    CONFIDENCE_HIGH for the same reason shelters and campsites are - it is
+    the maintaining organisation's inventory of things it maintains, not a
+    proxy for them. Registered in sources.json since 2026-07-25 and fetched
+    by fetch_all.py ever since; until this change nothing downstream read
+    them. Together they roughly double the published POI count: 1,223
+    vistas, 482 parking areas and 316 privies against the 2,532 already
+    shipping (live counts, SOURCE_SURVEY.md 2026-08-09).
+    Two things checked against the real layers rather than assumed
+    (2026-08-09, all 2,021 features): `Name` is populated on 2,020 of them,
+    so a nameless pin is the rare exception rather than the rule; and
+    `Descriptio` is the same club-acronym-plus-name string lib/atc_notes.py
+    already found unusable on shelters ("TBD" on every vista sampled), so
+    these three carry no `description` - see attach_descriptions.
+    Not filtered by ATC's own `Status`, which on vistas takes values like
+    "Primary View" (522), "Secondary View" (605), "Bypass" (23) and "OLD?"
+    (4). Publishing all of them matches what every other layer here does -
+    the corridor clip is the only filter - and the alternative would be
+    inventing a meaning for codes ATC has not documented. Worth revisiting
+    with ATC rather than by guessing.
   - communities.geojson: ATC's "official A.T. Community" towns, folded in
     as poi_type resupply at CONFIDENCE_LOW - a town being designated an
     A.T. Community isn't the same confidence as an actual tagged resupply
@@ -57,7 +79,8 @@ partial and deliberately so: a shelter the source lists only as half of a
 pair exports no capacity rather than a guessed one, and the client shows
 nothing rather than a number nobody stands behind.
 
-Description: shelter and campsite features carry `description`, one sentence
+Description: shelter and campsite features carry `description` - and only
+those two, see the viewpoints/parking/privies note above - one sentence
 about the place - "Two-storey clapboard shelter, sleeps 14, with a fireplace,
 a fire ring and a porch. Built 1915." It is composed by lib/poi_description.py
 from ATC's own inventory columns rather than copied from a text field,
@@ -180,10 +203,21 @@ ATC_NOTE_FIELD = "Comments"
 SHELTER_SOURCE = "atc_shelters"
 
 # (raw filename stem, poi_type, source name used in unified ids, field_map)
-# - the three ATC sources that map ~1:1 onto one poi_type each.
+# - the ATC sources that map ~1:1 onto one poi_type each.
+#
+# The five facility layers share a field_map exactly, because they share a
+# schema exactly: every layer on ATC's ANST_Facilities service carries the
+# same `GlobalID`/`Name` pair (checked against the live service 2026-08-09).
+# Spelled out per source rather than collapsed to a loop, so a layer that
+# turns out to differ can differ here instead of somewhere clever.
+ATC_FACILITY_FIELDS = {"id_field": "GlobalID", "name_field": "Name", "confidence": CONFIDENCE_HIGH}
+
 DIRECT_SOURCES = (
-    ("shelters", "shelter", SHELTER_SOURCE, {"id_field": "GlobalID", "name_field": "Name", "confidence": CONFIDENCE_HIGH}),
-    ("campsites", "campsite", "atc_campsites", {"id_field": "GlobalID", "name_field": "Name", "confidence": CONFIDENCE_HIGH}),
+    ("shelters", "shelter", SHELTER_SOURCE, ATC_FACILITY_FIELDS),
+    ("campsites", "campsite", "atc_campsites", ATC_FACILITY_FIELDS),
+    ("viewpoints", "viewpoint", "atc_viewpoints", ATC_FACILITY_FIELDS),
+    ("parking", "parking", "atc_parking", ATC_FACILITY_FIELDS),
+    ("privies", "privy", "atc_privies", ATC_FACILITY_FIELDS),
     (
         "communities",
         "resupply",

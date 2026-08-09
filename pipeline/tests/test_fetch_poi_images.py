@@ -163,6 +163,35 @@ def test_search_radius_follows_the_poi_type(tmp_path, monkeypatch, requests_mock
     assert requests_mock.last_request.qs["gsradius"] == [str(fetch_poi_images.SEARCH_RADIUS_M["water"])]
 
 
+def test_a_poi_type_with_no_radius_is_not_crawled_at_all(tmp_path, monkeypatch, requests_mock):
+    """A missing radius means "this source is not searched for that type", and
+    it has to mean it in behaviour rather than in a comment.
+
+    Vistas, parking and privies are the three: features/POI_PHOTOS.md
+    measured Commons at zero usable photos for 280 shelters, ATC's own
+    inventory covers these three instead, and fetch_atc_photos.py wins any
+    overlap - so crawling them would be ~2,000 POIs of requests to be
+    overruled. This used to be a KeyError waiting for whoever added the
+    fourth type.
+    """
+    _no_sleep(monkeypatch)
+    _use_pois(
+        monkeypatch,
+        tmp_path,
+        [_poi(), _poi(poi_id="atc_privies:glob-9", poi_type="privy", name="Test Shelter Privy")],
+    )
+    requests_mock.get(fetch_poi_images.API_URL, json=_geosearch())
+
+    fetch_poi_images.main()
+
+    saved = _saved(tmp_path)
+    assert "atc_shelters:glob-1" in saved
+    # Absent, not recorded as a miss: "checked, nothing there" is a claim
+    # this run has no basis for.
+    assert "atc_privies:glob-9" not in saved
+    assert requests_mock.call_count == 1  # the shelter's geosearch, and nothing for the privy
+
+
 def test_a_prior_outcome_is_carried_forward_without_any_api_calls(tmp_path, monkeypatch, requests_mock):
     """The change-aware core: a full crawl is thousands of requests, and the
     per-POI outcome file is what makes every later run cheap. A recorded
@@ -526,6 +555,9 @@ def test_corridor_pois_derives_exactly_the_ids_export_poi_will_write(tmp_path, m
         "atc_shelters:shelter-glob-1",
         "atc_campsites:campsite-glob-1",
         "atc_communities:community-glob-1",
+        "atc_viewpoints:viewpoint-glob-1",
+        "atc_parking:parking-glob-1",
+        "atc_privies:privy-glob-1",
         "opentrail_at:100",
         "opentrail_at:101",
         "opentrail_at:102",

@@ -50,7 +50,7 @@ def _write_fc(path, features):
 
 
 def _write_fixture_sources(raw_dir):
-    """Tiny synthetic stand-ins for the four real raw sources, all placed
+    """Tiny synthetic stand-ins for the seven real raw sources, all placed
     near CENTERLINE_COORDS so they land inside a 30-mile corridor built from
     it. Field names match the real ones found by inspecting the actual raw
     ATC/opentrail.org files (GlobalID/Name for ATC, dbid/title/icon for
@@ -92,6 +92,51 @@ def _write_fixture_sources(raw_dir):
     _write_fc(
         raw_dir / "communities.geojson",
         [_point_feature(1, -73.93, 41.03, {"GlobalID": "community-glob-1", "FID": 1, "NAME": "Test Town"})],
+    )
+    # The three facility layers that share ATC's ANST_Facilities schema with
+    # shelters and campsites - same GlobalID/Name pair, no inventory columns
+    # this export composes anything from. `Descriptio` is here on the vista
+    # holding ATC's real value for it ("TBD" on every one sampled), so a
+    # future description step cannot be written against a fixture that is
+    # cleaner than the data.
+    _write_fc(
+        raw_dir / "viewpoints.geojson",
+        [
+            _point_feature(
+                1,
+                -73.96,
+                41.06,
+                {
+                    "GlobalID": "viewpoint-glob-1",
+                    "OBJECTID": 1,
+                    "Name": "Test Vista",
+                    "Status": "Primary View",
+                    "Descriptio": "TBD",
+                },
+            )
+        ],
+    )
+    _write_fc(
+        raw_dir / "parking.geojson",
+        [
+            _point_feature(
+                1,
+                -73.97,
+                41.07,
+                {"GlobalID": "parking-glob-1", "OBJECTID": 1, "Name": "Test Rd Parking Area", "Surface": "3"},
+            )
+        ],
+    )
+    _write_fc(
+        raw_dir / "privies.geojson",
+        [
+            _point_feature(
+                1,
+                -73.98,
+                41.08,
+                {"GlobalID": "privy-glob-1", "OBJECTID": 1, "Name": "Test Shelter Privy", "Enclosure": "1"},
+            )
+        ],
     )
     _write_fc(
         raw_dir / "opentrail_at.geojson",
@@ -639,6 +684,67 @@ def test_export_poi_communities_and_opentrail_resupply_carry_different_confidenc
 
     assert by_name["Test Town"] == CONFIDENCE_LOW  # ATC Community proxy
     assert by_name["Test Outfitter"] == CONFIDENCE_HIGH  # real opentrail.org resupply tag
+
+
+def test_export_poi_publishes_atcs_vistas_parking_and_privies_as_their_own_types(tmp_path, monkeypatch, con):
+    """The three facility layers sources.json has carried since 2026-07-25.
+
+    Asserted through the real export rather than through DIRECT_SOURCES,
+    because the failure this guards against is not a missing tuple - it is a
+    layer wired up under a source name the ids are not composed from, which
+    reads as working right up until a Report or a spur destination tries to
+    resolve one.
+    """
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+
+    export_poi.main()
+
+    expected = {
+        "viewpoint": ("Test Vista", "atc_viewpoints:viewpoint-glob-1"),
+        "parking": ("Test Rd Parking Area", "atc_parking:parking-glob-1"),
+        "privy": ("Test Shelter Privy", "atc_privies:privy-glob-1"),
+    }
+    for poi_type, (name, poi_id) in expected.items():
+        features = json.loads((out_dir / f"{poi_type}.geojson").read_text())["features"]
+        assert len(features) == 1, poi_type
+        properties = features[0]["properties"]
+        assert properties["id"] == poi_id
+        assert properties["name"] == name
+        assert properties["poi_type"] == poi_type
+        # ATC's own inventory of what ATC maintains, the same standing its
+        # shelters and campsites have - not the Communities-layer proxy.
+        assert properties["confidence"] == CONFIDENCE_HIGH
+
+
+def test_export_poi_leaves_the_new_atc_types_without_a_composed_description(tmp_path, monkeypatch, con):
+    """`description` stays a shelter/campsite field.
+
+    Not an oversight and not laziness: ATC's `Descriptio` column on these
+    layers is the club acronym plus the feature's own name (and literally
+    "TBD" on the vistas sampled), which lib/atc_notes.py already measured as
+    unusable - so there is nothing to copy, and nothing has been composed to
+    replace it. A blank is the honest export; a sentence assembled from
+    columns nobody has read would not be.
+    """
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+
+    export_poi.main()
+
+    for poi_type in ("viewpoint", "parking", "privy"):
+        features = json.loads((out_dir / f"{poi_type}.geojson").read_text())["features"]
+        assert features[0]["properties"].get("description") is None, poi_type
 
 
 def test_export_poi_publishes_every_photo_as_json_alongside_the_flat_card_fields(tmp_path, monkeypatch, con):

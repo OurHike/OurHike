@@ -58,11 +58,24 @@ OUT_PATH = RAW_DIR / "poi_images_atc.json"
 SOURCES_PATH = ROOT / "sources.json"
 
 # (raw filename stem, unified source name) for the ATC layers whose features
-# become POIs export_poi.py writes. Deliberately not every layer carrying photo
-# fields: privies, parking, bridges and viewpoints are well covered too, but
-# none of them is a POI type today, so fetching their photos would download
-# bytes nothing can render.
-PHOTO_LAYERS = (("shelters", "atc_shelters"), ("campsites", "atc_campsites"))
+# become POIs export_poi.py writes. Still not every layer carrying photo
+# fields - `bridges` is well covered (47%) and is not a POI type, so fetching
+# its photos would download bytes nothing can render.
+#
+# Vistas, parking and privies were in that same sentence until they became
+# POI types; their coverage (37%, 58%, 95% - features/POI_PHOTOS.md) is now
+# renderable, and this is the only source that has any of it, because
+# fetch_poi_images.py deliberately does not crawl Commons for them. The
+# source pairs must stay exactly export_poi.DIRECT_SOURCES' names or the
+# keys here resolve to nothing on export - test_fetch_atc_photos.py pins
+# that rather than trusting the two lists to be edited together.
+PHOTO_LAYERS = (
+    ("shelters", "atc_shelters"),
+    ("campsites", "atc_campsites"),
+    ("viewpoints", "atc_viewpoints"),
+    ("parking", "atc_parking"),
+    ("privies", "atc_privies"),
+)
 
 # ATC's own documentation of its own structures, so the window is long. See the
 # module docstring: it is long rather than absent because ten years is enough

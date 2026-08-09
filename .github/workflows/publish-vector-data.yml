@@ -233,6 +233,7 @@ jobs:
           import json
           from pathlib import Path
 
+          from lib.poi_schema import POI_TYPES
           from publish import collect_photos
 
           photos = collect_photos()
@@ -248,8 +249,14 @@ jobs:
               found = sum(1 for r in records.values() if r.get("status") == "found")
               print(f"  {name}: {found} found of {len(records)} checked")
 
+          # Every published type, read from the schema rather than listed
+          # here: this block used to name four, which was every type that
+          # could carry a photo when it was written. The day vistas, parking
+          # and privies started publishing - three categories ATC has its own
+          # photographs for - they would have been silently outside both the
+          # count and the missing-bytes check below.
           referenced = set()
-          for poi_type in ("shelter", "campsite", "water", "resupply"):
+          for poi_type in POI_TYPES:
               exported = Path("data/processed/poi") / f"{poi_type}.geojson"
               if not exported.exists():
                   continue

@@ -126,6 +126,21 @@ describe('density', () => {
     // future water-adjacent category is the wrong answer by default.
     for (const type of POI_TYPES) expect(POI_PRIORITY).toContain(type)
   })
+
+  it('places a vista behind every other category, however many of them there are', () => {
+    // The densest layer ATC publishes: 1,223 vistas against 2,532 POIs of
+    // every other kind put together. Ranked anywhere but last, the pins that
+    // survive a crowded ridge are decided by how many of them there are
+    // rather than by what a hiker needs - and losing a spring to an overlook
+    // is exactly the trade this ordering exists to refuse.
+    const viewpoint = evaluate(POI_SORT_KEY_EXPRESSION, poi('viewpoint')) as number
+
+    for (const type of POI_TYPES) {
+      if (type !== 'viewpoint') {
+        expect(evaluate(POI_SORT_KEY_EXPRESSION, poi(type))).toBeLessThan(viewpoint)
+      }
+    }
+  })
 })
 
 describe('the pin layer', () => {

@@ -13,6 +13,11 @@ export const TYPE_LABELS: Record<string, string> = {
   town: 'Town',
   parking: 'Parking',
   crossing: 'Crossing',
+  viewpoint: 'Viewpoint',
+  // "Privy" rather than "Toilet" or "Restroom": it is what the sign on the
+  // trail says, what ATC calls the layer, and what a hiker asking for one
+  // will say out loud.
+  privy: 'Privy',
   closure: 'Closure',
   'serious-warning': 'Serious warning',
 }

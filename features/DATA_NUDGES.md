@@ -1,6 +1,6 @@
 # OurHike — Data Nudges (Feature Design Draft v1)
 
-Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](../OurHikeValues.md). Builds directly on [REPORT_A_PROBLEM.md](REPORT_A_PROBLEM.md) (the "still a problem?" check reuses its existing `status` field; the new check-in model is a lighter sibling to its `Report`, not a replacement) and [MAP_OPTIONS.md](MAP_OPTIONS.md) (reuses its normalize-then-`match` rendering pattern and legend). Also closes a loop FEATURES.md left open - see "What this actually feeds" below.
+Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](../OurHikeValues.md). Builds directly on [REPORT_A_PROBLEM.md](REPORT_A_PROBLEM.md) (the "still a problem?" check reuses its existing `status` field; the check-in model is a lighter sibling to its `Report`, not a replacement) and [MAP_OPTIONS.md](MAP_OPTIONS.md) (reuses its normalize-then-`match` rendering pattern and legend). Also closes a loop FEATURES.md left open - see "What this actually feeds" below. **[FIELD_NOTES.md](FIELD_NOTES.md) (2026-08-09) now owns the record a contribution becomes**, and this doc owns when to ask for one; the split is described under "Data model sketch".
 
 **Terminology, pinned down before anything else, because it changes the whole design:** "nudge" here means **visual prominence on the map only** - a distinct pin treatment inviting a tap. Confirmed directly while scoping this doc, specifically because [HIKER_SAFETY.md](HIKER_SAFETY.md) already scoped the wrong-way alert as "the only notification we ever send." This feature adds **no push, no in-app banner, no alert, no message** - so it doesn't touch that rule at all, rather than becoming a second exception to it.
 
@@ -41,6 +41,8 @@ Every interaction above is a single tap for the common case, with an optional no
 
 ## New: `ConditionConfirmation` - a lighter sibling to Report a Problem's `Report`, not a replacement
 
+**Superseded 2026-08-09 — the record moved to [FIELD_NOTES.md](FIELD_NOTES.md), the reasoning below did not.** A confirmation turned out to be a field note with a tag and no text, and shipping both models would have left two near-identical things for a later reader to reconcile. Everything this section argues - that a confirmation is not a problem report, that routing it through the moderation queue would be overhead for nothing to verify, that it escalates into a real `Report` when the quick answer indicates a problem - is why `FieldNote` publishes without a queue and hands off to Report a Problem for anything safety-shaped. Read on for the argument; read that doc for the model.
+
 A "water's flowing fine" or "shelter was fine" check-in is a **confirmation**, not a problem report - routing it through the same moderation queue Report a Problem uses for accusations/hazards would be real overhead for no reason (there's nothing to verify about "someone confirmed normal conditions"). So it's a separate, lighter model that writes directly to the POI's `last_confirmed_at` with no moderation step. **It can still escalate into a real `Report`** when the quick answer actually indicates a problem (tapping "dry" or "full" prompts "want to report this?") - reusing Report a Problem's machinery exactly where it's actually needed, rather than duplicating problem-handling logic here too.
 
 ## What this actually feeds - closing a loop FEATURES.md already left open
@@ -76,21 +78,15 @@ The write path (submitting a check-in, or reconfirming/resolving a report) needs
 
 ## Data model sketch
 
-```
-ConditionConfirmation                  (new - lighter sibling to Report a Problem's Report)
-  id
-  poi reference (water source | shelter/campsite | resupply point)
-  category: water_conditions | overnight_conditions
-  quick_value (category-specific: flowing/trickling/dry, available/crowded/full, etc.)
-  note (optional)
-  reporter_type
-  timestamp
-  -> writes poi.last_confirmed_at directly, no moderation queue
-  -> can escalate into a real Report a Problem entry if quick_value indicates an issue
+**The record lives in [FIELD_NOTES.md](FIELD_NOTES.md) as of 2026-08-09** - `ConditionConfirmation` became `FieldNote`, which is the same thing with room for free text and a dispute value. What a quick tap writes is unchanged: an observation, a `reporter_type`, and the timestamp that `last_confirmed_at` is derived from. This doc owns *when to ask*; that one owns *what is stored*.
 
-POI                                (water/shelter/resupply - extends existing pipeline schema)
-  + last_confirmed_at
-  + staleness tier, computed at render time: fresh | could_use_an_update | stale
+What this feature still needs from that model, and what remains its own:
+
+```
+POI                                (water/shelter/resupply - derived, stored nowhere)
+  last_confirmed_at                max(observed_at) over visible FieldNotes
+  staleness tier                   computed at render time: fresh | could_use_an_update | stale
+                                     -> drives this doc's pin prominence
 
 Report                             (REPORT_A_PROBLEM.md's existing model, one addition)
   + last_reconfirmed_at            (distinct from the original timestamp - "still there as of X",

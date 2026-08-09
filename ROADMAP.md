@@ -20,7 +20,7 @@ The checklists this file used to carry are gone, for a reason worth recording: b
 
 ## Feature design docs
 
-Twenty-two docs in [features/](features/) — twenty-one features and one consolidated reference. Design is written before code here; that convention is the reason most issues can link to a doc instead of restating it.
+Twenty-six docs in [features/](features/) — twenty-five features and one consolidated reference. Design is written before code here; that convention is the reason most issues can link to a doc instead of restating it. The table below is three rows short of the directory: CONDITIONS_DELIVERY.md, MAP_STYLE_SPEC.md and POI_PHOTOS.md are written and unlisted.
 
 A cross-feature alignment review on 2026-07-28 moved **Authentication**, **Report a Problem**, Map Options' **closures**, and Hiker Safety's **warnings and wrong-way alert** into the v1 MVP — see TECHNICAL_ARCHITECTURE.md's revised Backend section. The scope column reflects that revision, not the scope each doc originally launched with.
 
@@ -44,6 +44,7 @@ A cross-feature alignment review on 2026-07-28 moved **Authentication**, **Repor
 | [TRIP_PLANNING.md](features/TRIP_PLANNING.md) | Post-MVP. Builds on Segments: waypoint planning, bulk date shifts, POI-aware assistance. |
 | [HIKE_PLANNING.md](features/HIKE_PLANNING.md) | **v2, first feature — a spike, not yet a build.** The route builder, multi-day plans, the day/section/trail roll-up, zero days and resupply, the timeline and its food carry, the auto-generated plan, and what happens to the rest of the plan when today changes. Draws Segments and Trip Planning together rather than restating either. |
 | [VOLUNTEERING.md](features/VOLUNTEERING.md) | **v2, second feature.** The Volunteer tab: contributing conditions, a fourteen-day map of work projects with in-app signup, Ridge Runner At-Large, logged hours, and a private impact record. Club work-project management is now the last of six pieces rather than the whole doc. |
+| [FIELD_NOTES.md](features/FIELD_NOTES.md) | **v2, third feature.** What the app does when upstream data and the field disagree: upstream owns identity, the field owns condition, and the two layer rather than merge so nobody has to adjudicate. Dated observations on a POI, the roll-up that gives the staleness tiers a producer at last, and a disputed pin that files the correction upstream instead of forking ATC's data. |
 | [SOURCE_REGISTRY.md](features/SOURCE_REGISTRY.md) | Post-MVP. How an outside organization registers its own map layers and a contact to notify. Registration is a form; the build input stays a reviewed file, so nothing self-service can change a hiker's map without a merge. |
 | [DATA_NUDGES.md](features/DATA_NUDGES.md) | Post-MVP. Non-gamified prompts to keep POI data fresh — no notifications, just map prominence for stale data, self-limiting the moment anyone contributes. |
 | [COMMUNITY_BUILDING.md](features/COMMUNITY_BUILDING.md) | Post-MVP. Tramily formation, check-ins, mentions. The project's sharpest privacy-vs-connection tension, resolved as a scoped exception rather than a loosened stance. |
@@ -128,3 +129,15 @@ Three things it settled that reach beyond it:
 - **The anti-gamification guardrail now has a stated boundary.** Four docs had said "no per-hiker contribution counts shown anywhere" and a personal impact record is, on its face, exactly that. The resolution — the guardrail targets *comparison and pressure*, not *memory* — is written down with the four rules that keep it honest, so the next feature to hit this does not have to relitigate it.
 - **[PRICING_MODEL.md](features/PRICING_MODEL.md)'s volunteer exemption is unblocked**, and now has a named phase to wait for rather than an open dependency on a design that did not exist.
 - **[DATA_NUDGES.md](features/DATA_NUDGES.md), designed in July and never built, is Phase A.** It is the piece that touches every hiker rather than the few who attend a workday, and it is worth building whether or not the rest follows.
+
+## v2 — field notes
+
+**Scoped 2026-08-09 as v2's third feature: [features/FIELD_NOTES.md](features/FIELD_NOTES.md).** Volunteering asks a hiker to contribute; this is what the app does with what they contribute, once it disagrees with what ATC published. Upstream is authoritative about what exists and where, and structurally silent about what a place is like today — its edit dates are the ceiling on its freshness, and trail data ships a few times a year. The field runs on the other clock entirely.
+
+The design refuses the obvious move. Merging the two into one current-truth record needs an adjudicator, and that is a standing job nobody will hold — so the two layer instead: upstream owns identity, the field owns condition, and a hiker reads both with their dates attached. Nothing overwrites anything, so nothing needs adjudicating.
+
+Three things it settled that reach beyond it:
+
+- **[#256](https://github.com/OurHike/OurHike/issues/256) finally has an answer.** `client/src/lib/staleness.ts` has shipped the tiers since spring with, in that issue's words, "no consumer… no producer." The roll-up over field notes is the producer, and it is the first honest freshness signal the map has ever had.
+- **A correction goes upstream rather than into a private layer.** A disputed POI routes to [SOURCE_REGISTRY.md](features/SOURCE_REGISTRY.md)'s steward for that source, so the fix lands in ATC's own data where every other consumer gets it too. The app becomes ATC's field reporting channel instead of a fork of ATC's data — which is what keeps the correction layer from becoming a maintenance burden that outlives whoever started it.
+- **The unmoderated-contribution question is settled once, for two features.** Publishing first and removing on flags is what [SAYING_THANKS.md](features/SAYING_THANKS.md) needed and deferred, and the flag-and-hide path answers both rather than being built twice.

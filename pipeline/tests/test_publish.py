@@ -482,3 +482,58 @@ def test_an_illegal_photo_key_fails_the_run_before_anything_uploads(s3_client, l
         )
 
     assert "Contents" not in s3_client.list_objects_v2(Bucket=BUCKET)
+
+
+def test_a_successful_publish_does_not_also_report_that_nothing_changed(
+    monkeypatch, capsys, s3_client, local_artifacts, tmp_path
+):
+    """The log is the only signal a scheduled publish gives.
+
+    `main()`'s "Nothing changed" branch used to hang off the *photos* check, so
+    a run that wrote a version and uploaded no photos printed both "Published
+    version <id>" and "Nothing changed ... No new version written". The first
+    real publish-conditions.yml run did exactly that (2026-08-08) - and on a
+    job whose purpose is getting safety data to a hiker, a log claiming it did
+    nothing sends somebody hunting a fault that is not there.
+    """
+    monkeypatch.setattr(publish, "collect_artifacts", lambda: local_artifacts)
+    monkeypatch.setattr(publish, "collect_sidecars", dict)
+    monkeypatch.setattr(publish, "collect_photos", dict)
+    monkeypatch.setattr(publish.boto3, "client", lambda *a, **k: s3_client)
+    # All four, not just the bucket: `publish()` reads the other three while
+    # *building* the boto3 call's arguments, so they are needed even though
+    # the stub above ignores every one of them.
+    monkeypatch.setenv("R2_BUCKET", BUCKET)
+    monkeypatch.setenv("R2_ENDPOINT_URL", "https://unused.invalid")
+    monkeypatch.setenv("R2_ACCESS_KEY_ID", "unused")
+    monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "unused")
+
+    publish.main()
+
+    out = capsys.readouterr().out
+    assert "Published version" in out
+    assert "Nothing changed" not in out
+
+
+def test_a_run_with_nothing_to_do_still_says_so(monkeypatch, capsys, s3_client, local_artifacts):
+    """The other half: the message has to survive, or a genuinely idle run
+    prints nothing at all and reads as a job that did not run."""
+    monkeypatch.setattr(publish, "collect_artifacts", lambda: local_artifacts)
+    monkeypatch.setattr(publish, "collect_sidecars", dict)
+    monkeypatch.setattr(publish, "collect_photos", dict)
+    monkeypatch.setattr(publish.boto3, "client", lambda *a, **k: s3_client)
+    # All four, not just the bucket: `publish()` reads the other three while
+    # *building* the boto3 call's arguments, so they are needed even though
+    # the stub above ignores every one of them.
+    monkeypatch.setenv("R2_BUCKET", BUCKET)
+    monkeypatch.setenv("R2_ENDPOINT_URL", "https://unused.invalid")
+    monkeypatch.setenv("R2_ACCESS_KEY_ID", "unused")
+    monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "unused")
+
+    publish.main()  # first run publishes
+    capsys.readouterr()
+    publish.main()  # second run has nothing to do
+
+    out = capsys.readouterr().out
+    assert "Nothing changed" in out
+    assert "Published version" not in out

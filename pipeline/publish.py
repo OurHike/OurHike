@@ -399,7 +399,16 @@ def main() -> dict:
         # the manifest, so a run that uploads only photos legitimately writes
         # no version and would otherwise print "nothing changed".
         print(f"{len(result['photos_uploaded'])} new POI photo(s) uploaded.")
-    else:
+
+    # Both conditions, not just the photos one. This `else` used to hang off
+    # the `if` above, so a run that published a version and uploaded no photos
+    # printed "Published version <id>" and "Nothing changed ... No new version
+    # written" one after the other. The first real publish-conditions.yml run
+    # did exactly that (2026-08-08), and on a job whose whole purpose is
+    # getting safety data to a hiker, a log that says it did nothing is worse
+    # than a quiet one - somebody reading it concludes the bake is broken and
+    # goes looking for a fault that is not there.
+    if not result["version_written"] and not result["photos_uploaded"]:
         print(f"Nothing changed - all {len(result['skipped'])} artifacts already up to date. No new version written.")
     return result
 

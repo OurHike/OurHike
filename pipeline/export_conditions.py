@@ -239,8 +239,33 @@ def build_document(closures: list[dict], generated_at: datetime) -> dict:
     }
 
 
+def connect():
+    """Connect, and turn one confusing failure into an actionable one.
+
+    Supabase's pooler routes on a tenant-qualified username -
+    `<role>.<project-ref>` - and rejects a bare role with
+    `FATAL: (ENOTFOUND) tenant/user ... not found`. That message reads like
+    the role was never created, which sends you back to the SQL to check
+    something that is already correct. It is a URL format problem, and the
+    first real run of publish-conditions.yml failed on exactly it
+    (2026-08-08), so it is worth catching by name rather than documenting and
+    hoping.
+    """
+    try:
+        return psycopg.connect(connection_url())
+    except psycopg.OperationalError as exc:
+        if "tenant" in str(exc).lower() or "ENOTFOUND" in str(exc):
+            raise SystemExit(
+                f"The database refused the connection with:\n\n{exc}\n\n"
+                "This usually means the username is not tenant-qualified. Supabase's pooler wants "
+                f"`{READER_ROLE}.<project-ref>`, not the bare role name - the role itself is probably fine. "
+                "See features/CONDITIONS_DELIVERY.md."
+            ) from exc
+        raise
+
+
 def main() -> dict:
-    with psycopg.connect(connection_url()) as conn:
+    with connect() as conn:
         assert_reader_permissions(conn)
         closures = read_closures(conn)
 

@@ -69,6 +69,8 @@ export interface MapScreenProps {
   online: boolean
   hasGpsFix: boolean
   lastSyncedAt: Date | null
+  /** Passed straight to StatusStrip; see its prop for what it means. */
+  conditionsAge?: string | null
 
   /**
    * The closure a hiker is about to walk into, already rendered to one line
@@ -250,6 +252,7 @@ export function MapScreen({
   online,
   hasGpsFix,
   lastSyncedAt,
+  conditionsAge = null,
   closureAhead = null,
   warningsAhead = null,
   closures,
@@ -330,6 +333,7 @@ export function MapScreen({
           online={online}
           hasGpsFix={hasGpsFix}
           lastSyncedAt={lastSyncedAt}
+          conditionsAge={conditionsAge}
           backgroundProblem={backgroundProblem}
           backgroundOverride={backgroundOverride}
           belowArchiveZoom={belowArchiveZoom}

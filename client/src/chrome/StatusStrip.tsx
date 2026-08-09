@@ -33,6 +33,22 @@ export interface StatusStripProps {
   /** When the on-device data last synced; null if it never has. */
   lastSyncedAt: Date | null
   /**
+   * How old the closures on screen are, or null when they came from a live
+   * read and there is nothing to caveat (lib/closureState.ts).
+   *
+   * Distinct from `lastSyncedAt` above, which is about the app's conversation
+   * with the backend. This is about the closures themselves, and the two
+   * genuinely differ: a phone that cannot reach the backend at all still has
+   * a published baseline to draw, and saying "never synced" while showing
+   * yesterday's closures would describe the connection rather than the
+   * warnings a hiker is about to act on.
+   *
+   * The string is composed rather than derived here because "unavailable" and
+   * "as of 6h ago" are the same decision made from the same state, and
+   * splitting them across two modules is how they drift apart.
+   */
+  conditionsAge?: string | null
+  /**
    * Why the background is not on screen, or null when it is - decided by
    * lib/backgroundHealth.ts from what the map's sources reported and what is
    * actually downloaded.
@@ -91,6 +107,7 @@ export function StatusStrip({
   online,
   hasGpsFix,
   lastSyncedAt,
+  conditionsAge = null,
   backgroundProblem = null,
   backgroundOverride = null,
   belowArchiveZoom = false,
@@ -118,6 +135,12 @@ export function StatusStrip({
             hiker told only "No live map" would reasonably conclude the trail
             is under it somewhere. */}
         {trailLinesMissing && <span className="status-strip__flag">No trail line</span>}
+        {/* Silent when the closures are live, which is the ordinary case with
+            a reachable backend. It appears exactly when there is something a
+            hiker would want to know before trusting a clear header. */}
+        {conditionsAge !== null && (
+          <span className="status-strip__flag">{conditionsAge}</span>
+        )}
         {/* Two reasons, opposite in kind: one says the app is withholding the
             live sheet, the other that it is supplying it against a preference
             that has no download to honour yet. One word of the wrong one is a

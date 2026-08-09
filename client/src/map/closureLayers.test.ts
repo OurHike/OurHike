@@ -3,6 +3,7 @@ import type { Feature, FeatureCollection } from 'geojson'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { buildTrailIndex } from '../lib/trailPosition'
 import type { Closure } from '../lib/closureBanner'
+import { MAX_BAND_MILES } from '../lib/closureSpan'
 import {
   attachClosureData,
   buildClosureSource,
@@ -32,17 +33,30 @@ function collection(features: Feature[]): FeatureCollection {
   return { type: 'FeatureCollection', features }
 }
 
+function straightTrail(miles: number) {
+  return buildTrailIndex(
+    collection([
+      line(
+        Array.from({ length: miles + 1 }, (_, i): [number, number] => [
+          -77,
+          39 + i * MILE_IN_DEGREES_LAT,
+        ]),
+      ),
+    ]),
+  )
+}
+
 /** Ten miles of trail with a vertex every mile, so a mile is an index. */
-const INDEX = buildTrailIndex(
-  collection([
-    line(
-      Array.from({ length: 11 }, (_, i): [number, number] => [
-        -77,
-        39 + i * MILE_IN_DEGREES_LAT,
-      ]),
-    ),
-  ]),
-)
+const INDEX = straightTrail(10)
+
+/**
+ * Long enough that a closure over the band ceiling is still PLACEABLE.
+ *
+ * Needed to tell the ceiling apart from the centerline index simply running
+ * out: against `INDEX` a 60-mile closure is dropped either way, and a test that
+ * cannot distinguish the two would pass with the ceiling removed.
+ */
+const LONG_INDEX = straightTrail(120)
 
 function closure(overrides: Partial<Closure> = {}): Closure {
   return {
@@ -87,6 +101,29 @@ describe('closureBands', () => {
     const off = closure({ start_mile_marker: 400, end_mile_marker: 402 })
 
     expect(closureBands([off], INDEX)).toEqual([])
+  })
+
+  it('draws nothing for a closure too long to be a band, even where it fits', () => {
+    // #462. A 398-mile advisory drawn along the centerline paints a fifth of
+    // the trail as closed at every zoom, and buries the nine-mile closure a
+    // hiker has to walk around. The hiker still gets it: the banner needs only
+    // a mile number.
+    //
+    // Placed against LONG_INDEX so this is the ceiling talking and not the
+    // index running out - the assertion below proves the same index draws a
+    // shorter closure happily.
+    const broad = closure({
+      start_mile_marker: 1,
+      end_mile_marker: 1 + MAX_BAND_MILES + 10,
+    })
+
+    expect(closureBands([broad], LONG_INDEX)).toEqual([])
+    expect(
+      closureBands(
+        [closure({ start_mile_marker: 1, end_mile_marker: 10.2 })],
+        LONG_INDEX,
+      ),
+    ).toHaveLength(1)
   })
 
   it('keeps each closure its own feature, so two are never merged into one', () => {

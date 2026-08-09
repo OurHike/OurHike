@@ -110,6 +110,11 @@ band.** Where exactly that ceiling sits is an open question below; that there mu
 not. This is the same instinct as `HIKER_SAFETY.md`'s conservative wrong-way alert — a
 warning that fires too broadly trains people to ignore warnings.
 
+The ceiling now exists in code, as `MAX_BAND_MILES` in `client/src/lib/closureSpan.ts` — one
+constant, provisional, with the reasoning for its current value beside it (#462). It governs
+OurHike's own closures too, not only ATC's: nothing stops a moderator entering a 300-mile
+range, and ATC's data only made that certain rather than hypothetical.
+
 ## The design
 
 ### 1. Extract facts, link for prose
@@ -285,9 +290,16 @@ Steps 3 and 4 are the useful ones and neither waits on step 1.
 
 ## Open questions
 
-- **The band-length ceiling.** Above what span does an update stop being a band and become a
-  list entry? 398 miles is clearly over it and 9 miles clearly under. Worth setting against
-  what the map looks like at real zooms, not by picking a number here.
+- **The band-length ceiling — the number, not the mechanism.** The mechanism is built
+  (`MAX_BAND_MILES`, above), so an update over the ceiling is already no longer drawn as a
+  band. What is still open is the value: 398 miles is clearly over it and 9 miles clearly
+  under, and everything between is unconstrained by the data ATC publishes — their nine
+  updates measure 0, 0, 0, 4.2, 9.2 and 398.4 miles, so more updates would not settle it
+  either. Worth setting against what the map looks like at real zooms. The current value errs
+  toward drawing, because a suppressed band buries nothing while the hiker keeps the banner.
+- **Where the suppressed ones go.** "List entry" has no surface yet; today an over-ceiling
+  update simply keeps its banner and loses its band. Step 4 below is where the list would be
+  built if it is built.
 - **Whether "reopened" updates should be ingested at all**, or whether ATC removing an update
   is the signal. An update that disappears from their page is not the same as one marked
   reopened, and `discover_sources.py`'s precedent — a vanished source is "kept, not deleted,

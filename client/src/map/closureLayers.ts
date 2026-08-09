@@ -16,6 +16,7 @@
 import type { GeoJSONSourceSpecification } from '@maplibre/maplibre-gl-style-spec'
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
 import type { Closure } from '../lib/closureBanner'
+import { isBroadAdvisory } from '../lib/closureSpan'
 import { trailSlice, type TrailIndex } from '../lib/trailPosition'
 import { whenStyleReady } from './styleReady'
 
@@ -53,17 +54,24 @@ export interface ClosureFeatureCollection {
 /**
  * The closures that can actually be drawn, in map coordinates.
  *
- * Two closures are dropped here, and the difference between them matters:
+ * Three closures are dropped here, and the differences between them matter:
  *
  *  - `status: 'open'` is a REOPENED closure, and drawing a barrier across a
  *    trail somebody has just reopened is the same class of false statement as
  *    not drawing one that is shut. lib/closureBanner.ts makes the identical
  *    call on the identical field, deliberately - the band and the banner must
  *    not disagree about what is closed.
+ *  - A closure too long to be a band (lib/closureSpan.ts). A 398-mile advisory
+ *    drawn along the centerline paints a fifth of the trail as closed and
+ *    buries the nine-mile closure a hiker has to walk around. Unlike the other
+ *    two this is a DECISION rather than a limit, and #462 is where the number
+ *    it turns on gets settled.
  *  - A range the centerline index cannot place yields no coordinates. That is
- *    a gap in what this build knows, not a decision, and it is why the BANNER
- *    is the load-bearing warning: it needs only a mile number, so a closure
- *    this function cannot draw is still one a hiker is told about.
+ *    a gap in what this build knows, not a decision.
+ *
+ * All three are safe to drop here for the same reason: the BANNER is the
+ * load-bearing warning and needs only a mile number, so a closure this function
+ * declines to draw is still one a hiker is told about.
  */
 export function closureBands(
   closures: readonly Closure[],
@@ -71,6 +79,7 @@ export function closureBands(
 ): ClosureBand[] {
   return closures.flatMap((closure) => {
     if (closure.status === 'open') return []
+    if (isBroadAdvisory(closure)) return []
 
     const lines = trailSlice(index, closure.start_mile_marker, closure.end_mile_marker)
     if (lines.length === 0) return []

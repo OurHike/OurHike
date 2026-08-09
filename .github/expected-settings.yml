@@ -246,8 +246,8 @@ settings:
     required: false
     why: >-
       Production's Postgres again, read-only, for publish-conditions.yml to
-      bake verified closures into the artifact the client reads as its
-      baseline (features/CONDITIONS_DELIVERY.md). A third database URL rather
+      bake verified closures and public reports into the artifacts the client
+      reads as its baseline (features/CONDITIONS_DELIVERY.md). A third database URL rather
       than a reuse of either MIGRATION one, for the reason those two are
       already separate from the DATABASE_URL the app holds: this connects as
       `ourhike_conditions_reader`, whose only privilege is SELECT on

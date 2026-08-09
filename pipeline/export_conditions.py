@@ -1,16 +1,29 @@
-"""Publish verified closures as a static artifact, so reading one needs no server.
+"""Publish verified closures and reports as static artifacts, needing no server.
 
 [features/CONDITIONS_DELIVERY.md](../features/CONDITIONS_DELIVERY.md) is the
-design and the reasoning; this is step 1 of its order of work. The short
-version: `moderation_status == verified` is already the public/private line,
-`GET /closures` already needs no account, and public read-mostly data is the
-shape this pipeline already serves as static bytes with free egress. Serving
-it from a running container makes the safety read path depend on the single
-most fragile component in the system.
+design and the reasoning; this covers steps 1 and 3 of its order of work. The
+short version: the moderation gate is already the public/private line,
+`GET /closures` and `GET /reports` already need no account, and public
+read-mostly data is the shape this pipeline already serves as static bytes
+with free egress. Serving it from a running container makes the safety read
+path depend on the single most fragile component in the system.
 
-Closures only, deliberately. Reports are step 3 of that document's ordering,
-and they carry a different predicate (`status` + `visibility`, not
-`moderation_status`) which is worth landing on its own.
+Two artifacts, two predicates, and the difference is the whole risk (#436):
+
+    conditions/closures.json   moderation_status = 'verified'
+    conditions/reports.json    status IN ('verified', 'resolved')
+                               AND visibility = 'public'
+
+Reports gate on two columns because two different things are being decided.
+`status` mirrors `_MODERATED_STATUSES` in `backend/app/routers/reports.py` -
+`resolved` stays public deliberately, because a blowdown someone has since
+cleared reads as "Fixed" and is information rather than noise, while
+`submitted` must not leak or verification stops being a gate. `visibility`
+excludes the two audiences that are not hikers: `internal_only` is where
+`bad_hikers` reports go - the one type that reports on *people* - and
+`club_only` is `thanks`. A key in this bucket cannot be renamed, only
+abandoned in place and served forever, so publishing either would be
+irreversible.
 
 WHY THIS LIVES IN THE PIPELINE AND NOT THE BACKEND
 
@@ -21,34 +34,45 @@ and the layout rules, keeps it from drifting with the ORM. The cost is this
 file's one dependency the rest of the pipeline does not share - psycopg,
 added to requirements.in for this script alone.
 
-THE SHAPE MATCHES `ClosureOut` EXACTLY, AND THAT IS THE POINT
+THE SHAPES MATCH THE ANONYMOUS API RESPONSES, AND THAT IS THE POINT
 
-The client reads this artifact as a baseline and then, when it can reach the
-backend, overlays a live `GET /closures` on top. Those two have to be the same
-shape or the overlay is a conversion. So the column list below tracks
-`backend/app/schemas/closure.py`, including `moderation_status` even though
-every row here is verified by construction, and timestamps are stamped `...Z`
-the way `app/core/time.py`'s `_stamp_utc` stamps them - a naive timestamp is
-read as *local* by `new Date()`, which would move "Closed since August 1" by
-the reader's offset.
+The client reads these artifacts as a baseline and then, when it can reach the
+backend, overlays the live endpoints on top. Those two have to be the same
+shape or the overlay is a conversion. So the closures column list tracks
+`backend/app/schemas/closure.py`, and the reports one tracks what
+`ReportOut.for_viewer` sends an anonymous caller - which is why it has no
+`reporter_id`, `received_at`, `maintainer_id` or `club_id`: those are withheld
+from anonymous responses (#252), so the baseline never holds them at all
+rather than holding them as nulls. `verified_by`/`verified_at` are absent from
+the public report schema entirely, and the reader role is not granted
+`profiles`, so this script could not resolve a person even if a future edit
+tried to (#430).
 
-`reported_by` and `verified_by` are absent because they are absent from
-`ClosureOut` too (#430). The reader role is not granted `profiles` at all, so
-this script could not resolve a person even if a future edit tried to.
+`photo_url` is deliberately absent from the reports artifact, and that is a
+decision rather than an omission (#436). The live endpoint answers it with a
+short-lived presigned URL against a private bucket; a baked artifact is
+rewritten daily, so a published signature would be broken by the time it was
+read, and a long-lived one would defeat the private bucket. The live tier
+supplies photos; the baseline supplies the warning.
+
+Timestamps are stamped `...Z` the way `app/core/time.py`'s `_stamp_utc`
+stamps them - a naive timestamp is read as *local* by `new Date()`, which
+would move "Closed since August 1" by the reader's offset.
 
 THE FAILURE MODE THIS FILE IS MOSTLY ABOUT
 
 Row-level security is on for every table, with no policies, and the backend is
 unaffected only because it connects as the owner. The reader role is not the
 owner, so `GRANT SELECT` alone returns **zero rows rather than an error**.
-Published unchecked, that is an empty closures artifact, a client that treats
-it as a valid baseline, and hikers shown no closure warnings - a permissions
-mistake wearing the costume of "no closures exist".
+Published unchecked, that is an empty artifact, a client that treats it as a
+valid baseline, and hikers shown no warnings - a permissions mistake wearing
+the costume of "nothing to report".
 
 `assert_reader_permissions` is what makes zero trustworthy. It asks the
-catalog whether the grant and the policy are actually in place, and refuses to
-write anything if they are not. After it passes, an empty result is a real
-answer about the trail.
+catalog whether the grant and the policy are actually in place - for each
+table, before anything is written, so a half-configured database publishes
+nothing rather than one artifact of two. After it passes, an empty result is
+a real answer about the trail.
 
     CONDITIONS_DATABASE_URL=postgresql://... python export_conditions.py
 """
@@ -65,7 +89,8 @@ import psycopg
 
 ROOT = Path(__file__).resolve().parent
 OUT_DIR = ROOT / "data" / "processed" / "conditions"
-OUT_PATH = OUT_DIR / "closures.json"
+CLOSURES_OUT_PATH = OUT_DIR / "closures.json"
+REPORTS_OUT_PATH = OUT_DIR / "reports.json"
 MANIFEST_PATH = ROOT / "data" / "processed" / "conditions_manifest.json"
 
 URL_ENV_VAR = "CONDITIONS_DATABASE_URL"
@@ -99,10 +124,43 @@ PUBLIC_CLOSURES_SQL = """
      ORDER BY start_mile_marker, id
 """
 
+# Same stance for reports, with the two-column predicate the module docstring
+# walks through. `"timestamp"` is quoted because it is also a type name and
+# this is the one place a bare spelling could ever read as one. Ordered by
+# authoring time then id so the bytes are deterministic - publish.py diffs
+# sha256 per artifact, and a day with no report changes must upload nothing.
+PUBLIC_REPORTS_SQL = """
+    SELECT id,
+           type,
+           poi_id,
+           lat,
+           lon,
+           mile,
+           reporter_type,
+           "timestamp",
+           note,
+           follow_up,
+           status,
+           visibility,
+           severity
+      FROM public.reports
+     WHERE status IN ('verified', 'resolved')
+       AND visibility = 'public'
+     ORDER BY "timestamp", id
+"""
+
 # Which of the columns above are timestamps, and so need stamping on the way
 # out. Listed rather than detected, so adding a column is a decision about its
 # wire form rather than something type inference makes quietly.
-TIMESTAMP_FIELDS = ("reported_at", "verified_at", "closed_since", "expected_reopen")
+CLOSURE_TIMESTAMP_FIELDS = ("reported_at", "verified_at", "closed_since", "expected_reopen")
+REPORT_TIMESTAMP_FIELDS = ("timestamp",)
+
+# What each table's policy must let through - quoted back at whoever has to
+# write the missing CREATE POLICY, so the refusal carries its own fix.
+POLICY_PREDICATES = {
+    "closures": "moderation_status = 'verified'",
+    "reports": "status IN ('verified', 'resolved') AND visibility = 'public'",
+}
 
 
 def sha256_file(path: Path) -> str:
@@ -132,11 +190,13 @@ def connection_url() -> str:
     return url.replace("postgresql+psycopg://", "postgresql://", 1)
 
 
-# The catalog questions `assert_reader_permissions` asks. Separated from the
-# decision they feed so the decision can be tested without a second database
-# role - the local Postgres role deliberately has no CREATEROLE, matching
-# production's, so a test cannot mint a reader to be refused as.
-MAY_SELECT_SQL = "SELECT has_table_privilege(current_user, 'public.closures', 'SELECT')"
+# The catalog questions `assert_reader_permissions` asks, parameterised by
+# table because closures and reports are checked one after the other.
+# Separated from the decision they feed so the decision can be tested without
+# a second database role - the local Postgres role deliberately has no
+# CREATEROLE, matching production's, so a test cannot mint a reader to be
+# refused as.
+MAY_SELECT_SQL = "SELECT has_table_privilege(current_user, %s, 'SELECT')"
 
 # `pg_policies.roles` is a name[] of the roles a policy is FOR. A policy
 # granted to PUBLIC lands as {public}, which covers this role too, so both
@@ -145,17 +205,17 @@ POLICY_COUNT_SQL = """
     SELECT count(*)
       FROM pg_policies
      WHERE schemaname = 'public'
-       AND tablename = 'closures'
+       AND tablename = %s
        AND (current_user = ANY(roles) OR 'public' = ANY(roles))
 """
 
 # Whether RLS is on at all. Off means the grant alone is sufficient and no
 # policy is needed - which is the local-development and CI case, where the
 # suite owns its own table and never turns RLS on.
-RLS_ENABLED_SQL = "SELECT relrowsecurity FROM pg_class WHERE oid = 'public.closures'::regclass"
+RLS_ENABLED_SQL = "SELECT relrowsecurity FROM pg_class WHERE oid = %s::regclass"
 
 
-def permission_problem(may_select: bool, rls_enabled: bool, policies: int) -> str | None:
+def permission_problem(table: str, may_select: bool, rls_enabled: bool, policies: int) -> str | None:
     """The decision, as a pure function. Returns the reason to stop, or None.
 
     Two failures, because they fail differently and the fixes are different
@@ -166,34 +226,34 @@ def permission_problem(may_select: bool, rls_enabled: bool, policies: int) -> st
     """
     if not may_select:
         return (
-            f"{READER_ROLE} has no SELECT on public.closures, so this would publish nothing. "
-            "GRANT SELECT ON public.closures TO the reader role - see features/CONDITIONS_DELIVERY.md."
+            f"{READER_ROLE} has no SELECT on public.{table}, so this would publish nothing. "
+            f"GRANT SELECT ON public.{table} TO the reader role - see features/CONDITIONS_DELIVERY.md."
         )
     if rls_enabled and not policies:
         return (
-            f"public.closures has row-level security on and no policy {READER_ROLE} can read through, "
+            f"public.{table} has row-level security on and no policy {READER_ROLE} can read through, "
             "so every query would return zero rows and this would publish an empty artifact. "
-            "CREATE POLICY ... FOR SELECT ... USING (moderation_status = 'verified') - "
+            f"CREATE POLICY ... FOR SELECT ... USING ({POLICY_PREDICATES[table]}) - "
             "see features/CONDITIONS_DELIVERY.md."
         )
     return None
 
 
-def assert_reader_permissions(conn) -> None:
-    """Refuse to run unless the reader can actually see verified closures.
+def assert_reader_permissions(conn, table: str) -> None:
+    """Refuse to run unless the reader can actually see the table's public rows.
 
     Without this, a missing policy publishes an empty artifact instead of
     failing, and empty is indistinguishable from a quiet trail.
     """
     with conn.cursor() as cur:
-        cur.execute(MAY_SELECT_SQL)
+        cur.execute(MAY_SELECT_SQL, (f"public.{table}",))
         (may_select,) = cur.fetchone()
-        cur.execute(RLS_ENABLED_SQL)
+        cur.execute(RLS_ENABLED_SQL, (f"public.{table}",))
         (rls_enabled,) = cur.fetchone()
-        cur.execute(POLICY_COUNT_SQL)
+        cur.execute(POLICY_COUNT_SQL, (table,))
         (policies,) = cur.fetchone()
 
-    problem = permission_problem(bool(may_select), bool(rls_enabled), int(policies))
+    problem = permission_problem(table, bool(may_select), bool(rls_enabled), int(policies))
     if problem:
         raise SystemExit(problem)
 
@@ -212,19 +272,27 @@ def _stamp_utc(value: datetime | None) -> str | None:
     return aware.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def read_closures(conn) -> list[dict]:
+def _read_rows(conn, sql: str, timestamp_fields: tuple[str, ...]) -> list[dict]:
     with conn.cursor() as cur:
-        cur.execute(PUBLIC_CLOSURES_SQL)
+        cur.execute(sql)
         columns = [description.name for description in cur.description]
         rows = [dict(zip(columns, row)) for row in cur.fetchall()]
 
     for row in rows:
-        for field in TIMESTAMP_FIELDS:
+        for field in timestamp_fields:
             row[field] = _stamp_utc(row[field])
     return rows
 
 
-def build_document(closures: list[dict], generated_at: datetime) -> dict:
+def read_closures(conn) -> list[dict]:
+    return _read_rows(conn, PUBLIC_CLOSURES_SQL, CLOSURE_TIMESTAMP_FIELDS)
+
+
+def read_reports(conn) -> list[dict]:
+    return _read_rows(conn, PUBLIC_REPORTS_SQL, REPORT_TIMESTAMP_FIELDS)
+
+
+def build_document(key: str, rows: list[dict], generated_at: datetime) -> dict:
     """Wrap the rows with the one fact the rows cannot carry.
 
     `generated_at` is not decoration. The client renders it as "as of <date>",
@@ -232,10 +300,13 @@ def build_document(closures: list[dict], generated_at: datetime) -> dict:
     (OurHikeValues.md #4), and it is also the only thing that would reveal a
     bake job that silently stopped running - the artifact would age visibly
     instead of looking current forever.
+
+    `key` names the payload - "closures" or "reports" - so each document says
+    what it holds the way the live endpoints' paths do.
     """
     return {
         "generated_at": _stamp_utc(generated_at),
-        "closures": closures,
+        key: rows,
     }
 
 
@@ -266,23 +337,44 @@ def connect():
 
 def main() -> dict:
     with connect() as conn:
-        assert_reader_permissions(conn)
+        # Both tables checked before either read, so a half-configured
+        # database - the closures policy applied, the reports one forgotten -
+        # publishes nothing rather than one artifact of two. Half a baseline
+        # would look exactly like a day with no reports.
+        for table in ("closures", "reports"):
+            assert_reader_permissions(conn, table)
         closures = read_closures(conn)
+        reports = read_reports(conn)
 
-    document = build_document(closures, datetime.now(timezone.utc))
+    # One clock for both documents: they came from one read of one database,
+    # and two timestamps would invite the client to reason about a skew that
+    # does not exist.
+    generated_at = datetime.now(timezone.utc)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    OUT_PATH.write_text(json.dumps(document, indent=2) + "\n")
+    CLOSURES_OUT_PATH.write_text(json.dumps(build_document("closures", closures, generated_at), indent=2) + "\n")
+    REPORTS_OUT_PATH.write_text(json.dumps(build_document("reports", reports, generated_at), indent=2) + "\n")
 
     manifest = {
-        "path": str(OUT_PATH),
-        "sha256": sha256_file(OUT_PATH),
-        "count": len(closures),
-        "generated_at": document["generated_at"],
+        "artifacts": {
+            "closures": {
+                "path": str(CLOSURES_OUT_PATH),
+                "sha256": sha256_file(CLOSURES_OUT_PATH),
+                "count": len(closures),
+                "generated_at": _stamp_utc(generated_at),
+            },
+            "reports": {
+                "path": str(REPORTS_OUT_PATH),
+                "sha256": sha256_file(REPORTS_OUT_PATH),
+                "count": len(reports),
+                "generated_at": _stamp_utc(generated_at),
+            },
+        }
     }
     MANIFEST_PATH.write_text(json.dumps(manifest, indent=2) + "\n")
 
-    print(f"Wrote {len(closures)} verified closure(s) to {OUT_PATH}.")
+    print(f"Wrote {len(closures)} verified closure(s) to {CLOSURES_OUT_PATH}.")
+    print(f"Wrote {len(reports)} public report(s) to {REPORTS_OUT_PATH}.")
     return manifest
 
 

@@ -30,6 +30,7 @@ This repository keeps two different kinds of writing, and the difference is wort
 | [RELEASING.md](RELEASING.md) | How a release is versioned, named, gated and shipped, and the three environments it moves through |
 | [pipeline/DBT.md](pipeline/DBT.md), [pipeline/DATA_RELEASES.md](pipeline/DATA_RELEASES.md) | Data platform designs |
 | [pipeline/R2_LAYOUT.md](pipeline/R2_LAYOUT.md) | Where an artifact goes in the bucket and what it may be called |
+| [pipeline/SOURCE_SURVEY.md](pipeline/SOURCE_SURVEY.md) | Upstream A.T. data sources, surveyed and qualified (dated snapshot) |
 
 **Issues track the delta between that and reality** — anything with a state, an owner or a date. Open work, bugs, decisions still to make.
 

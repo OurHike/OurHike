@@ -218,6 +218,74 @@ def test_a_policy_missing_if_range_fails_and_explains_what_breaks(mock):
     assert "RESUME" in report["detail"]
 
 
+def test_a_preflight_refused_outright_names_the_header_responsible(mock):
+    """What the real bucket actually does, measured 2026-08-09 against
+    `pub-31203373f21e449194a97b681bc24b91.r2.dev`.
+
+    R2 answers a preflight naming a disallowed header with a bare **403 and no
+    CORS headers at all** - not a 200 listing the subset it permits. The first
+    version of this check read the empty allow-list off that 403 and reported
+    every requested header as refused, which said `range` was disallowed when
+    `range` is allowed and only `if-range` is not. An alarm that names the
+    wrong header is worse than one that names none.
+
+    So a refusal is re-asked header by header. Here `range` alone is answered
+    normally and `if-range` alone is refused, exactly as production behaves.
+    """
+
+    def by_header(request, context):
+        asked = request.headers.get("Access-Control-Request-Headers", "")
+        if "if-range" in asked:
+            context.status_code = 403
+            return ""
+        context.headers["Access-Control-Allow-Headers"] = asked
+        return ""
+
+    mock.options(f"{BASE}/latest.json", text=by_header)
+
+    report = check_preflight(BASE, PRODUCTION, MANIFEST["request_headers"])
+
+    assert report["state"] == FAILED
+    assert "403" in report["detail"]
+    assert "if-range is why" in report["detail"]
+    # The header that is genuinely fine must not be blamed.
+    assert "range, if-range is why" not in report["detail"]
+
+
+def test_a_bucket_refusing_every_preflight_blames_every_header(mock):
+    """CORS off entirely, or a rule matching no origin. Every header really is
+    refused here, so naming them all is the true answer rather than an
+    over-broad one."""
+    mock.options(f"{BASE}/latest.json", status_code=403)
+
+    report = check_preflight(BASE, PRODUCTION, MANIFEST["request_headers"])
+
+    assert report["state"] == FAILED
+    assert "range, if-range is why" in report["detail"]
+
+
+def test_a_refusal_no_single_header_explains_is_not_blamed_on_one(mock):
+    """Each header is fine alone and the combination is still refused - some
+    limit on the request rather than on any one name. Naming a header here
+    would send somebody to edit a policy that is already correct, so it
+    doesn't."""
+
+    def only_combinations_fail(request, context):
+        asked = request.headers.get("Access-Control-Request-Headers", "")
+        if "," in asked:
+            context.status_code = 403
+            return ""
+        context.headers["Access-Control-Allow-Headers"] = asked
+        return ""
+
+    mock.options(f"{BASE}/latest.json", text=only_combinations_fail)
+
+    report = check_preflight(BASE, PRODUCTION, MANIFEST["request_headers"])
+
+    assert report["state"] == FAILED
+    assert "no single header explains it" in report["detail"]
+
+
 def test_allowed_headers_are_compared_case_insensitively(mock):
     """Header names are case-insensitive, so a bucket answering `If-Range` is
     correct and failing it would be this check inventing a rule."""

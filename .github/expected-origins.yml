@@ -55,6 +55,11 @@
 # copy carried `if-match` - a header nothing in this repository has ever sent -
 # and not `if-range`. That is the drift this file exists to end.
 #
+# Measured against the live bucket on 2026-08-09, rather than inferred: a
+# preflight for `if-match` is answered 204, and one for `if-range` is answered
+# **403 Forbidden**. The bucket has not been re-pasted from this file yet, so
+# until it is, the daily check reports exactly this.
+#
 # `content-type` was in the old hand-kept copy and is deliberately not here:
 # every request to this bucket is a GET or a HEAD with no body, and a request
 # with no body sends no `Content-Type`. Allowing a header nothing sends is not

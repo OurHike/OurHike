@@ -164,6 +164,25 @@ def check_origin_allowed(base: str, origin: dict, session: requests.Session | No
     }
 
 
+def _ask_preflight(base: str, probe: str, asked: list[str], session: requests.Session | None):
+    """One `OPTIONS`, returning (status, allowed-headers) or None if it could
+    not be made at all."""
+    options = (session or requests).options
+    try:
+        response = options(
+            f"{base}/{MANIFEST_KEY}",
+            headers={
+                "Origin": probe,
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": ", ".join(asked),
+            },
+            timeout=HTTP_TIMEOUT,
+        )
+    except requests.RequestException:
+        return None
+    return response.status_code, _header_list(response.headers.get("Access-Control-Allow-Headers"))
+
+
 def check_preflight(base: str, origin: dict, request_headers: list[str], session: requests.Session | None = None) -> dict:
     """Would the browser's preflight for a RESUME succeed?
 
@@ -173,43 +192,66 @@ def check_preflight(base: str, origin: dict, request_headers: list[str], session
     assertion that separates "downloads work" from "resumes work", and the
     second one only ever fails on a phone, mid-download, in a place with bad
     signal.
+
+    TWO WAYS TO BE REFUSED, and they had to be told apart after the first run
+    against the real bucket said something untrue. R2 answers a preflight
+    naming a disallowed header with a bare **403 and no CORS headers at all** -
+    not a 200 listing the subset it permits. Reading the empty
+    `Access-Control-Allow-Headers` off that 403 made every requested header
+    look disallowed, so the check reported `range` as refused when `range` is
+    in fact allowed and only `if-range` is not.
+
+    So a refused preflight is re-asked one header at a time to find which ones
+    are actually the problem. That costs a round trip per header, only on the
+    failing path, and it is the difference between "the preflight was refused"
+    and "add `if-range`" - which is the whole difference between an alarm
+    somebody acts on and one they have to go and investigate.
     """
-    options = (session or requests).options
     probe = origin["probe"]
     asked = ", ".join(request_headers)
-    try:
-        response = options(
-            f"{base}/{MANIFEST_KEY}",
-            headers={
-                "Origin": probe,
-                "Access-Control-Request-Method": "GET",
-                "Access-Control-Request-Headers": asked,
-            },
-            timeout=HTTP_TIMEOUT,
-        )
-    except requests.RequestException as exc:
+
+    answer = _ask_preflight(base, probe, request_headers, session)
+    if answer is None:
         return {
             "check": "preflight",
             "origin": origin["pattern"],
             "state": UNREACHABLE,
-            "detail": f"could not ask: {exc.__class__.__name__}",
+            "detail": "could not ask: RequestException",
         }
 
-    allowed = _header_list(response.headers.get("Access-Control-Allow-Headers"))
-    missing = sorted({header.lower() for header in request_headers} - allowed)
-    if not missing:
-        return {"check": "preflight", "origin": origin["pattern"], "state": OK, "detail": f"may send {asked}"}
+    status, allowed = answer
+    if status < 400:
+        missing = sorted({header.lower() for header in request_headers} - allowed)
+        if not missing:
+            return {"check": "preflight", "origin": origin["pattern"], "state": OK, "detail": f"may send {asked}"}
+        refused, refusal = missing, f"a browser on {probe} may not send {', '.join(missing)}"
+    else:
+        # Bisect: ask for each header alone, and keep the ones that are still
+        # refused. A header the bucket accepts on its own was never the
+        # problem, however the combined request was answered.
+        refused = []
+        for header in request_headers:
+            single = _ask_preflight(base, probe, [header], session)
+            if single is None:
+                continue
+            single_status, single_allowed = single
+            if single_status >= 400 or header.lower() not in single_allowed:
+                refused.append(header.lower())
+        refusal = f"the preflight from {probe} was refused outright ({status})" + (
+            f", and {', '.join(refused)} is why" if refused else " - no single header explains it"
+        )
 
     return {
         "check": "preflight",
         "origin": origin["pattern"],
         "state": FAILED,
         "detail": (
-            f"a browser on {probe} may not send {', '.join(missing)}. "
+            refusal
+            + ". "
             + (
                 "`if-range` is what every RESUMED archive download sends, so this breaks resuming a "
                 "1.18 GB download rather than starting one - invisible until it matters most. "
-                if "if-range" in missing
+                if "if-range" in refused
                 else ""
             )
             + "Add it to the bucket's AllowedHeaders."

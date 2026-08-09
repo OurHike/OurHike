@@ -178,7 +178,19 @@ So the monitor sends one, for every origin declared in [`.github/expected-origin
 4. **Artifacts** — every key `latest.json` names answers `HEAD` 200, with a non-zero `Content-Length` and `Accept-Ranges: bytes`.
 5. **Range** — a one-byte range comes back `206` with a `Content-Range`.
 
-**The preflight assertion found a live defect the day it was written**, which is the clearest possible argument for it. `range` is CORS-safelisted for simple byte ranges, so a *first* download needs no preflight and works against a wrong policy. **`if-range` is not safelisted**, and `client/src/lib/archiveDownload.ts` sends it on every *resume* — it is what makes the server itself arbitrate a stale partial rather than splicing old bytes onto new (§1). The policy documented in `LAUNCH_CHECKLIST.md` allowed `if-match`, which nothing in this repository has ever sent, and **not** `if-range`. So resuming an interrupted 1.18 GB download would have been refused by the browser, invisibly, and only ever on a phone in the place where resuming matters most.
+**The preflight assertion found a live defect the day it was written**, which is the clearest possible argument for it. `range` is CORS-safelisted for simple byte ranges, so a *first* download needs no preflight and works against a wrong policy. **`if-range` is not safelisted**, and `client/src/lib/archiveDownload.ts` sends it on every *resume* — it is what makes the server itself arbitrate a stale partial rather than splicing old bytes onto new (§1). The policy documented in `LAUNCH_CHECKLIST.md` allowed `if-match`, which nothing in this repository has ever sent, and **not** `if-range`.
+
+**Measured against the live bucket, 2026-08-09**, rather than argued from the spec:
+
+| `Access-Control-Request-Headers` | answer |
+|---|---|
+| `if-match` | `204`, `Access-Control-Allow-Headers: if-match` |
+| `range` | `204`, `Access-Control-Allow-Headers: range` |
+| **`if-range`** | **`403 Forbidden`, no CORS headers at all** |
+
+So resuming an interrupted 1.18 GB download is refused by the browser **today**, invisibly, and only ever on a phone in the place where resuming matters most. The same run confirmed the policy is genuinely enforced on the `r2.dev` subdomain rather than permissive — an undeclared origin gets no `Access-Control-Allow-Origin` at all — so the origin assertion discriminates rather than always passing.
+
+**That run also corrected the check itself**, which is worth recording because the first version was confidently wrong in a way only real data exposed. R2 answers a preflight naming a disallowed header with a bare `403` and *no* `Access-Control-Allow-Headers`, not a `200` listing the subset it permits. Reading the empty allow-list off that `403` made every requested header look refused, so the check reported `range` as disallowed when `range` is allowed and only `if-range` is not. A refused preflight is now re-asked one header at a time, so the alarm names the header to add instead of the whole list.
 
 **Three constraints, each of which changes what the check may do:**
 

@@ -9,7 +9,15 @@ from datetime import date
 
 import pytest
 
-from lib.commons import eligible_photo, license_allows_reuse, meta_value, parse_date_taken, pick_photo, strip_html
+from lib.commons import (
+    eligible_photo,
+    license_allows_reuse,
+    may_be_a_jpeg,
+    meta_value,
+    parse_date_taken,
+    pick_photo,
+    strip_html,
+)
 
 CUTOFF = date(2024, 8, 7)
 
@@ -246,3 +254,28 @@ def test_pick_photo_breaks_a_distance_tie_toward_the_newest_capture_date():
 
 def test_pick_photo_returns_none_for_no_candidates():
     assert pick_photo([]) is None
+
+
+@pytest.mark.parametrize("title", ["File:Blood Mountain Shelter.jpg", "File:Spring.JPG", "File:View.jpeg"])
+def test_may_be_a_jpeg_accepts_the_extensions_a_camera_photo_arrives_under(title):
+    assert may_be_a_jpeg(title) is True
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        # The one that matters: a geotagged PDF makes the batched imageinfo
+        # call unformable, and the API fails the whole batch rather than the
+        # one file (see _JPEG_TITLE_RE).
+        "File:Survey of the Presidency of Bengal (IA b33090993).pdf",
+        "File:Old trail map.djvu",
+        "File:Shelter walkthrough.webm",
+        "File:Trail map.svg",
+        "File:Screenshot.png",
+        # A file merely *mentioning* jpg is not one - the extension is the end
+        # of the title or it is nothing.
+        "File:How to convert jpg to png.pdf",
+    ],
+)
+def test_may_be_a_jpeg_rejects_what_cannot_be_a_camera_photo(title):
+    assert may_be_a_jpeg(title) is False

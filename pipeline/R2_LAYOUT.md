@@ -64,6 +64,7 @@ data a phone is pinned to.
 | `releases/` | one immutable folder per dated release, plus `index.json` and `pinned.json` | written once, never overwritten | yes |
 | `_internal/` | build intermediates, keyed by release | rewritten per build | no |
 | `photos/` | POI photos, one object per image, content-addressed | mutable: objects are added and deleted, never rewritten | yes |
+| `originals/` | full-resolution originals of the photos above, content-addressed | mutable: objects are added and deleted, never rewritten | **no** |
 | `conditions/` | published safety data — verified closures now, verified reports later | mutable: rewritten in place, daily | yes |
 
 `releases/` and `_internal/` are the layout [DATA_RELEASES.md](DATA_RELEASES.md) designs and
@@ -84,6 +85,22 @@ not live under `releases/`.
 Retention is therefore trivial and needs no prune job: one object per artifact, overwritten
 in place, never accumulating. That is the exemption to DATA_RELEASES.md's rule that a new
 prefix needs a retention clock written for it — there is nothing to retain.
+
+`originals/` is a preservation copy and never a download. `photos/` holds the 640px
+rendering a card actually shows; this holds the full-resolution file it was reduced from,
+so that losing an upstream does not also lose the photograph. The prompt was ATC's
+photos, whose upstream is another organisation's Google Drive: those links are one
+sharing-policy change away from 404, and without this the surviving copy of a 2015–2017
+trail inventory would be a set of 640&times;427 thumbnails
+([../features/POI_PHOTOS.md](../features/POI_PHOTOS.md)). "Served: no" is load-bearing
+rather than descriptive — a multi-megabyte camera original is exactly what value #8 says
+never to put on a hiker's data plan, and the client has no key shape that would reach one.
+
+It shares `photos/`'s retention rule and its content-addressing, so the same digest names
+both the rendering and the original it came from. It does **not** share the "never
+personal photos" exemption: what may be archived here is what OurHike is licensed to hold
+— ATC's and clubs' photos, and hikers' *shared* ones — never a hiker's private library,
+which POI_PHOTOS.md keeps off this project's disks entirely.
 
 `_internal/` is named to be obvious rather than to hide: on a public r2.dev bucket it is
 readable by anyone. It means "nothing here is a download", not "nobody can see this".

@@ -46,7 +46,7 @@ import duckdb
 import requests
 
 import export_poi
-from lib.commons import eligible_photo, pick_photo
+from lib.commons import eligible_photo, may_be_a_jpeg, pick_photo
 from lib.completeness import fail_if_incomplete
 from lib.corridor import build_corridor
 from lib.photo_store import local_photo_path, photo_digest
@@ -201,7 +201,15 @@ def file_details(session: requests.Session, titles: list[str]) -> dict[str, dict
     """imageinfo for up to 50 File: titles in one batched call, keyed by the
     title as *requested* - the API answers under normalized titles and says
     so in a `normalized` list, which is mapped back here so callers can join
-    against their geosearch hits without knowing normalization rules."""
+    against their geosearch hits without knowing normalization rules.
+
+    Titles that cannot be the JPEG the eligibility rule wants are dropped
+    before the request rather than after the answer: the sized-thumbnail
+    parameter this asks for is unformable for a multipage file, and the API
+    rejects the entire batch over one of them (lib/commons.may_be_a_jpeg)."""
+    titles = [title for title in titles if may_be_a_jpeg(title)]
+    if not titles:
+        return {}
     payload = api_get(
         session,
         {

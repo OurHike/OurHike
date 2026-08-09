@@ -64,7 +64,14 @@ ALLOWED_EXTENSIONS = frozenset({"geojson", "fgb", "pmtiles", "json", "tif", "jpg
 # monthly-ish event about a large immutable dataset; this is a daily rewrite
 # of a small one, and the freshness a hiker needs is inside the document
 # (`generated_at`) rather than in which folder it came from.
-TOP_LEVEL_PREFIXES = frozenset({"releases", "_internal", "photos", "conditions"})
+#
+# `originals/` is the preservation copy behind `photos/` - the full-resolution
+# file each 640px rendering was reduced from, kept so that losing an upstream
+# does not also lose the photograph (R2_LAYOUT.md, features/POI_PHOTOS.md).
+# Declared here rather than when something first writes to it, because the
+# declaration is what makes writing there legal: a script must never be able
+# to invent a prefix on its first upload, which is the whole job of this set.
+TOP_LEVEL_PREFIXES = frozenset({"releases", "_internal", "photos", "conditions", "originals"})
 
 # Keys that mean something specific and are therefore spelled exactly one
 # way. `latest.json` is the mutable pointer at the bucket root; the two under

@@ -540,3 +540,46 @@ def test_a_run_with_no_corridor_pois_fails_loudly_instead_of_writing_an_empty_fi
 
     assert exc_info.value.code == 1
     assert not (tmp_path / "poi_images.json").exists()
+
+
+def test_a_geotagged_pdf_beside_a_real_photo_does_not_abort_the_crawl(tmp_path, monkeypatch, requests_mock):
+    """Measured against the live API (2026-08-08): asking imageinfo for a
+    sized thumbnail of a multipage file answers `urlparamnormal` and fails
+    the WHOLE batched call, not just that title. Since api_get raises on any
+    non-maxlag error, one geotagged PDF - a scanned survey map carries
+    coordinates precisely because it depicts a place - would abort the crawl
+    and lose the eligible JPEG batched next to it. So the PDF must never
+    reach the request."""
+    _no_sleep(monkeypatch)
+    _use_pois(monkeypatch, tmp_path, [_poi()])
+    requests_mock.get(
+        fetch_poi_images.API_URL,
+        [
+            {"json": _geosearch(("File:Old survey of the gap.pdf", 10.0), ("File:Test Shelter.jpg", 40.0))},
+            {"json": {"query": {"pages": _imageinfo_page(1, "File:Test Shelter.jpg")}}},
+        ],
+    )
+    _serve_image(requests_mock)
+
+    fetch_poi_images.main()
+
+    assert _saved(tmp_path)["atc_shelters:glob-1"]["status"] == "found"
+    imageinfo_request = requests_mock.request_history[1]
+    assert imageinfo_request.qs["titles"] == ["file:test shelter.jpg"]  # the PDF was never asked about
+
+
+def test_a_poi_whose_only_nearby_files_are_unusable_types_skips_the_imageinfo_call(tmp_path, monkeypatch, requests_mock):
+    """Nothing shippable nearby means nothing to ask about - and an
+    all-filtered batch must not send `titles=` empty, which the API answers
+    as an error rather than an empty result."""
+    _no_sleep(monkeypatch)
+    _use_pois(monkeypatch, tmp_path, [_poi()])
+    requests_mock.get(
+        fetch_poi_images.API_URL,
+        json=_geosearch(("File:Trail map.svg", 10.0), ("File:Scan.djvu", 20.0)),
+    )
+
+    fetch_poi_images.main()
+
+    assert _saved(tmp_path)["atc_shelters:glob-1"] == {"status": "none", "checked": date.today().isoformat()}
+    assert requests_mock.call_count == 1  # geosearch only

@@ -39,6 +39,7 @@ from pathlib import Path
 
 from lib.arcgis import get_field_coded_domain
 from lib.feature_id import resolve_feature_id
+from lib.poi_schema import poi_output_name
 from lib.spurs import (
     SPUR_TYPE_CODE,
     build_centerline_index,
@@ -101,7 +102,7 @@ def load_destination_pois(poi_dir: Path | None = None, types=None) -> list[dict]
 
     pois: list[dict] = []
     for poi_type in types:
-        for feature in load_features(poi_dir / f"poi_{poi_type}.geojson"):
+        for feature in load_features(poi_dir / poi_output_name(poi_type)):
             properties = feature.get("properties") or {}
             if properties.get("id"):
                 pois.append(properties)
@@ -210,7 +211,19 @@ def main() -> dict:
         # Not fatal, and not silent. Every spur would resolve to no
         # destination, which looks exactly like a trail network where nothing
         # leads anywhere - a result worth refusing to publish quietly.
-        print("WARNING: no published POIs found under data/processed/poi - run export_poi.py first.")
+        #
+        # It says what it looked for and what is actually there, because the
+        # earlier version said only "run export_poi.py first" and that was
+        # false: export_poi.py HAD run, one step earlier and green, and the
+        # files it wrote were sitting in this directory under names this
+        # function was not asking for (#469). A reader who trusts the advice
+        # checks the workflow ordering, finds it correct, and stops - so the
+        # guard meant to expose the fault was the thing concealing it. A
+        # warning that names both sides cannot mislead that way.
+        print(f"WARNING: no published POIs found under {POI_DIR} - run export_poi.py first.")
+        print(f"  looked for: {', '.join(poi_output_name(t) for t in DESTINATION_POI_TYPES)}")
+        found = sorted(p.name for p in POI_DIR.glob("*.geojson")) if POI_DIR.is_dir() else []
+        print(f"  found: {', '.join(found) if found else '(nothing - directory is empty or absent)'}")
 
     coded_domain = type_coded_domain(source_url(SIDE_TRAILS_KEY))
     records = build_spur_records(side_trails, centerline_features, pois, coded_domain)

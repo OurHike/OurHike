@@ -65,6 +65,23 @@ export const POI_COLORS: Record<PoiType, string> = {
   campsite: '#47784b',
   resupply: '#994e15',
   crossing: '#6a4a8f',
+  // The three added with ATC's vista/parking/privy layers, and the first
+  // accents here that are not lifted verbatim from tokens/colors.css. Not for
+  // want of looking: a pin's disc has to clear 4.5:1 against the near-white
+  // halo drawn on it, which rules out every remaining light token
+  // (blaze-yellow is 2.5:1, moss-400 3.5:1), and the dark ones that do clear
+  // it are either already spoken for (pine-700 is shelter, stone-700 is the
+  // fallback pin) or a second orange within a degree of resupply's hue -
+  // which is exactly the "one colour in glare" failure this palette is built
+  // to avoid.
+  //
+  // So these fill the three gaps left on the wheel - teal, indigo, plum -
+  // each measured against the same bars the tokens were: AA on the halo, a
+  // hue of its own, and well clear of the closure red. poiIcons.test.ts
+  // computes all three rather than taking this comment's word for it.
+  viewpoint: '#12615c',
+  parking: '#3f4d8a',
+  privy: '#7a2f66',
 }
 
 /**
@@ -237,6 +254,63 @@ const GLYPHS: Record<string, Glyph> = {
   // Running water, as two bands - a stream to be crossed, not a stream to drink
   // from, which is what the droplet says.
   crossing: [chevron(0.1, 0.14, 0.15), chevron(0.52, 0.14, 0.15)],
+  // Two peaks with a valley between them, and a sun clear of the left one.
+  //
+  // The peaks alone are the obvious drawing and were not enough: a solid
+  // range sits almost entirely inside the resupply bag's body, which the
+  // subset check caught at 6% outside it. The sun is what breaks the
+  // containment - it is the one part of this glyph in a corner nothing else
+  // reaches - and it happens to be the difference between a mountain and a
+  // view of one, which is what this category actually means.
+  viewpoint: [
+    [
+      [0.02, 0.93],
+      [0.31, 0.3],
+      [0.5, 0.62],
+      [0.7, 0.15],
+      [0.98, 0.93],
+    ],
+    arc(0.19, 0.17, 0.13, 0, 360),
+  ],
+  // The letter P, the one waypoint here that is a letter rather than a
+  // picture - and it earns the exception, because it is the sign a driver
+  // has been reading at every car park for sixty years. A drawn car would be
+  // less legible at 38px and less recognised at any size.
+  parking: [
+    [
+      [0.22, 0.04],
+      [0.55, 0.04],
+      ...arc(0.55, 0.3, 0.26, -90, 90),
+      [0.42, 0.56],
+      [0.42, 0.96],
+      [0.22, 0.96],
+    ],
+    // The counter, cut out even-odd exactly as the shelter's doorway is -
+    // without it the P is a lollipop.
+    arc(0.55, 0.3, 0.11, 0, 360),
+  ],
+  // An outhouse: a wide roof over a narrow box, with the crescent cut into
+  // the door. The crescent is the whole reason this is not read as a small
+  // shelter at a glance, which at 38px in sun is a real confusion and an
+  // embarrassing one - it is also the mark actually carved into privy doors.
+  //
+  // Drawn as A-minus-B rather than as two rings, because two overlapping
+  // circles under an even-odd fill would leave a second, unwanted hole where
+  // B sits outside A. The arc endpoints are the two circles' real
+  // intersection points, so the ring closes on itself exactly.
+  privy: [
+    [
+      [0.14, 0.16],
+      [0.86, 0.16],
+      [0.86, 0.3],
+      [0.72, 0.3],
+      [0.72, 0.96],
+      [0.28, 0.96],
+      [0.28, 0.3],
+      [0.14, 0.3],
+    ],
+    [...arc(0.485, 0.56, 0.12, 51.6, 308.4), ...arc(0.545, 0.56, 0.093, 278.8, 81.2)],
+  ],
   // Diamond: deliberately not any of the above, and obviously a placeholder.
   [UNKNOWN_POI_TYPE]: [
     [

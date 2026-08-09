@@ -90,6 +90,18 @@ function radius(x: number, y: number): number {
 }
 
 /**
+ * Rasterised pins, kept between calls.
+ *
+ * The two comparisons below are every ordered pair of categories, so the
+ * rasteriser is asked for the same handful of pins n² times - and each pin is
+ * a supersampled 76×76 draw. At five categories that was merely wasteful; the
+ * three added with ATC's vista/parking/privy layers took it past the 5s
+ * per-test budget, which is a fact about this loop rather than about the pins.
+ * Caching makes the cost linear in categories again.
+ */
+const MASK_CACHE = new Map<string, Set<string>>()
+
+/**
  * The glyph as a set of "x,y" keys: the near-white pixels well inside the
  * disc, which is the shape and nothing else.
  *
@@ -97,6 +109,9 @@ function radius(x: number, y: number): number {
  * halo out of the set, so this measures the glyph and not the pin.
  */
 function glyphMask(type: string, confidence: PoiConfidence = 'high'): Set<string> {
+  const cached = MASK_CACHE.get(`${type}:${confidence}`)
+  if (cached !== undefined) return cached
+
   const { data } = buildPoiIcon(type, confidence)
   const mask = new Set<string>()
 
@@ -108,6 +123,7 @@ function glyphMask(type: string, confidence: PoiConfidence = 'high'): Set<string
     }
   }
 
+  MASK_CACHE.set(`${type}:${confidence}`, mask)
   return mask
 }
 

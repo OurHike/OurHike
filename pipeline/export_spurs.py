@@ -64,9 +64,16 @@ TYPE_FIELD = "Type"
 # features/SPUR_TRAILS.md leaves this deliberately open, and the restraint it
 # argues for is worth keeping: a privy is a real destination but a strange
 # thing to name as one, and parking is an Access (`Type=0`) concern rather
-# than a spur one. These four are the ones a hiker is deciding about when they
+# than a spur one. These are the ones a hiker is deciding about when they
 # stand at a junction wondering whether the walk is worth it.
-DESTINATION_POI_TYPES = ("shelter", "water", "campsite", "resupply")
+#
+# `viewpoint` joined them when the vistas layer started publishing. It is the
+# case the doc's own title sentence names first - *"the blue-blazed offshoots
+# that lead from the AT to a water source, a shelter, a privy, a viewpoint or
+# a parking area"* - and ATC codes the spur type as "Spur (eg View, Camp)",
+# so a view is half of what their own domain says a spur leads to. "Is the
+# walk worth it" is exactly the question a named overlook answers.
+DESTINATION_POI_TYPES = ("shelter", "water", "campsite", "resupply", "viewpoint")
 
 # And which may not - the same decision, written down instead of left as an
 # absence (#492).
@@ -94,7 +101,20 @@ DESTINATION_POI_TYPES = ("shelter", "water", "campsite", "resupply")
 # trail leading to one is not the thing a hiker is weighing at a junction.
 # (It is also empty today, but that is a fact about the current export and
 # would be the wrong reason: this list is about what a destination MEANS.)
-NOT_A_DESTINATION_POI_TYPES = ("crossing",)
+#
+# `privy` and `parking` are here for the two reasons the doc gives above,
+# and they survived the layers actually shipping rather than being carried
+# over unexamined. A privy is real, walked to, and now drawn on the map -
+# what it is not is the answer to "where does this trail go". 272 of ATC's
+# 316 privies are named for the shelter or campsite they stand behind ("Hurd
+# Brook Lean-to Privy", "Mt. Algo Shelter Privy"; counted 2026-08-09), and
+# that neighbour is the destination a hiker recognises - naming the privy
+# would replace it with its outbuilding. Parking is
+# an approach: ATC files those side trails as `Type=0` Access, which this
+# export already filters out before a destination is looked for at all, so
+# admitting parking here would mostly name a car park at the end of a spur
+# that leads somewhere else.
+NOT_A_DESTINATION_POI_TYPES = ("crossing", "privy", "parking")
 
 
 def sha256_file(path: Path) -> str:

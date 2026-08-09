@@ -1,14 +1,30 @@
 """Unified POI schema (ROADMAP.md Phase 1 "Unified POI schema"): one shape
 for every point-of-interest source instead of source-specific ones - ATC
-shelters/campsites, ATC Communities (a resupply proxy), opentrail.org's
-water/resupply tags, and eventually NHD stream crossings (see ROADMAP.md's
-still-exploratory NHD investigation).
+shelters/campsites/vistas/parking/privies, ATC Communities (a resupply proxy),
+opentrail.org's water/resupply tags, and eventually NHD stream crossings (see
+ROADMAP.md's still-exploratory NHD investigation).
 
 Pure module - no I/O, no DuckDB, no network. export_poi.py is what wires
 this up against real raw GeoJSON and the corridor clip.
 """
 
-POI_TYPES = ("shelter", "campsite", "water", "resupply", "crossing")
+# The published categories. `viewpoint`, `parking` and `privy` joined the
+# first five in one change, from ATC facility layers `sources.json` has
+# carried since 2026-07-25 and `fetch_all.py` has been downloading ever since
+# - the data was on disk and nothing read it.
+#
+# Adding a type here is not a one-line change, and deliberately so. Three
+# other places are keyed on exactly this tuple:
+#   - export_spurs.DESTINATION_POI_TYPES / NOT_A_DESTINATION_POI_TYPES, a
+#     partition asserted against this tuple, so a new category fails a test
+#     naming itself rather than being quietly ineligible (#492);
+#   - the client's own POI_TYPES (client/src/lib/config.ts), which
+#     verify_release.py parses to know which artifacts a release must serve,
+#     so a type missing there is a layer that never reaches a phone;
+#   - fetch_poi_images.SEARCH_RADIUS_M, the one that stays silent on purpose
+#     - an absent radius means the Commons crawl skips that category, which
+#     is a decision the map records rather than an error.
+POI_TYPES = ("shelter", "campsite", "water", "resupply", "crossing", "viewpoint", "parking", "privy")
 
 # Two tiers is enough for the one real distinction this schema needs to make
 # today: ATC's Communities layer (a town being an "official A.T. Community"

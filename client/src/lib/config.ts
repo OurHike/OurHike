@@ -70,7 +70,26 @@ export const ELEVATION_KEY = 'elevation_profile.json'
 // 'crossing' is published but is currently an empty FeatureCollection; it is
 // listed anyway so it starts working the day the pipeline fills it, rather
 // than needing a client release to notice.
-export const POI_TYPES = ['shelter', 'water', 'campsite', 'resupply', 'crossing'] as const
+//
+// This list is the download list, so it is also the size of a hiker's first
+// fetch. 'viewpoint', 'parking' and 'privy' roughly double the POI count
+// (2,021 more features from ATC's own facility layers) - real weight, and
+// still small beside trails.geojson's 12 MB, which is the artifact that
+// decides whether a download over a hostel's wifi is comfortable.
+//
+// Keep it in step with pipeline/lib/poi_schema.POI_TYPES: verify_release.py
+// parses THIS array to know which artifacts a release must serve, so a type
+// published but missing here is a layer that silently never reaches a phone.
+export const POI_TYPES = [
+  'shelter',
+  'water',
+  'campsite',
+  'resupply',
+  'crossing',
+  'viewpoint',
+  'parking',
+  'privy',
+] as const
 
 export type PoiType = (typeof POI_TYPES)[number]
 

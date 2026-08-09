@@ -74,6 +74,23 @@ MAX_PHOTO_AGE_DAYS = 1461  # four years, including one leap day
 # Springs are point-precise and drown in near-miss trail/vista shots at any
 # generous radius; a resupply point is a town whose photos legitimately
 # spread over its blocks.
+#
+# **A poi_type absent from this map is not crawled at all**, and that is a
+# decision rather than an oversight - `crawled_types()` below is what makes
+# it one. `viewpoint`, `parking` and `privy` are the absences today:
+#
+#  - features/POI_PHOTOS.md measured this source and found 0 usable photos
+#    for 280 shelters, with species uploads the plurality of what proximity
+#    returns. Nothing about a vista or a car park makes proximity work
+#    better; a Commons file near a privy is essentially never a photograph
+#    of the privy.
+#  - ATC's own inventory photographs cover exactly these three (95% of
+#    privies, 58% of parking, 37% of vistas - same doc), and
+#    fetch_atc_photos.py wins any overlap anyway, so a Commons crawl over
+#    them would spend ~2,000 POIs' worth of API requests to be overruled.
+#
+# Adding a type here is how that gets revisited - with a measurement, the way
+# the ATC source was.
 SEARCH_RADIUS_M = {"shelter": 300, "campsite": 300, "water": 120, "resupply": 500, "crossing": 300}
 
 GEOSEARCH_LIMIT = 30
@@ -378,16 +395,30 @@ def drop_problems(lost_fresh: int, fresh_prior: int) -> list[str]:
     return []
 
 
+def crawled_types() -> set[str]:
+    """The poi_types this source is searched for - see SEARCH_RADIUS_M.
+
+    Derived from the radius map rather than kept as a second list, so "has a
+    radius" and "is crawled" cannot drift apart: that pair is the whole reason
+    a missing radius is a decision instead of the KeyError it used to be.
+    """
+    return set(SEARCH_RADIUS_M)
+
+
 def main(recheck: bool = False) -> None:
     cutoff = date.today() - timedelta(days=MAX_PHOTO_AGE_DAYS)
     print(f"Freshness cutoff: photos taken on or after {cutoff.isoformat()}")
 
-    pois = corridor_pois()
+    all_pois = corridor_pois()
     fail_if_incomplete(
-        [] if pois else ["no corridor POIs to look up - run fetch_all.py and fetch_opentrail.py first"],
+        [] if all_pois else ["no corridor POIs to look up - run fetch_all.py and fetch_opentrail.py first"],
         label="Nothing to fetch photos for",
     )
-    print(f"{len(pois)} corridor POIs to check.")
+    # Filtered here rather than skipped inside the loop, so the count printed
+    # below is the work this run will actually do.
+    pois = [poi for poi in all_pois if poi["poi_type"] in crawled_types()]
+    skipped = len(all_pois) - len(pois)
+    print(f"{len(pois)} corridor POIs to check ({skipped} in poi_types this source is not crawled for).")
 
     prior = load_prior(OUT_PATH)
 

@@ -19,6 +19,9 @@
 export const SOURCE_LABELS: Record<string, string> = {
   atc_shelters: 'the Appalachian Trail Conservancy’s shelter data',
   atc_campsites: 'the Appalachian Trail Conservancy’s campsite data',
+  atc_viewpoints: 'the Appalachian Trail Conservancy’s vista data',
+  atc_parking: 'the Appalachian Trail Conservancy’s parking data',
+  atc_privies: 'the Appalachian Trail Conservancy’s privy data',
   atc_communities: 'the Appalachian Trail Conservancy’s list of A.T. Community towns',
   opentrail_at: 'opentrail.org, tagged by hikers',
 }

@@ -175,6 +175,50 @@ def test_the_real_exporter_writes_what_the_real_reader_looks_for(tmp_path, monke
     )
 
 
+def test_a_spur_ending_at_a_vista_names_it(tmp_path):
+    """The category the classification below admitted, exercised end to end.
+
+    ATC's own coded domain calls a `Type=3` side trail "Spur (eg View, Camp)",
+    so a view is half of what their data says a spur leads to - and "is the
+    walk worth it" is precisely what a named overlook answers. This runs
+    through the real reader (no `types` argument) so the answer comes from
+    DESTINATION_POI_TYPES rather than from what the test asked for.
+    """
+    poi_dir = tmp_path / "poi"
+    poi_dir.mkdir()
+    (poi_dir / poi_output_name("viewpoint")).write_text(
+        json.dumps({"features": [{"properties": {"id": "atc_viewpoints:lunch-rocks", "lat": north(300), "lon": TRAIL_LON}}]})
+    )
+
+    records = export_spurs.build_spur_records(
+        [side_trail("abc-123", "3")], CENTERLINE, export_spurs.load_destination_pois(poi_dir), TYPE_DOMAIN
+    )
+
+    assert records["side_trails:abc-123"]["destination_poi_id"] == "atc_viewpoints:lunch-rocks"
+
+
+def test_a_spur_ending_at_a_privy_publishes_no_destination(tmp_path):
+    """And the other half of the same decision.
+
+    A privy is real, walked to, and now drawn on the map. What it is not is
+    the answer to "where does this trail go": ATC's own names for them are
+    "Hurd Brook Lean-to Privy", "Mt. Algo Shelter Privy", so naming one would
+    replace the destination a hiker recognises with its outbuilding. Null
+    here is the honest publish, not a gap - the line still draws.
+    """
+    poi_dir = tmp_path / "poi"
+    poi_dir.mkdir()
+    (poi_dir / poi_output_name("privy")).write_text(
+        json.dumps({"features": [{"properties": {"id": "atc_privies:hurd-brook", "lat": north(300), "lon": TRAIL_LON}}]})
+    )
+
+    records = export_spurs.build_spur_records(
+        [side_trail("abc-123", "3")], CENTERLINE, export_spurs.load_destination_pois(poi_dir), TYPE_DOMAIN
+    )
+
+    assert records["side_trails:abc-123"]["destination_poi_id"] is None
+
+
 def test_a_poi_type_that_was_never_exported_is_skipped_not_fatal(tmp_path):
     """A partial export is a state this pipeline supports. The honest cost is
     fewer resolved spurs, not a failed run."""

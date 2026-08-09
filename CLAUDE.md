@@ -4,6 +4,31 @@
 expectations, the "one home per item" rule for docs and issues. This file covers only
 what is specific to an agent working here, and does not restate the rest.
 
+## Claim the issue before you branch
+
+Sessions run concurrently and unsupervised, and nothing stops two of them from picking up
+the same GitHub issue at the same time. That has already happened once, caught only
+because a human noticed two branches doing the same work — not because anything in the
+repository would have caught it on its own.
+
+Before opening a branch for an issue:
+
+- Read the issue's timeline, not just its body. Check the "Development" sidebar for a
+  linked pull request, and read the comments for one saying work has already started —
+  a comment is a claim even before a branch or PR exists to back it up.
+- Check `scripts/threads.sh --fetch` for a branch already carrying that issue's subject.
+  Branch names encode the topic, not the issue number, so this means reading what each
+  branch is about, not grepping for `#N`.
+- If either turns up a live claim, stop. Do not open a second branch or a second PR for
+  the same issue — say so to whoever asked, and either pick a different issue or work the
+  dependency where the existing branch already lives ([BRANCHING.md](BRANCHING.md) §3).
+
+If nothing turns up, claim the issue immediately, before writing any code: leave a comment
+on the issue naming the branch you are about to push. This is the only signal that works —
+every session authenticates as the same GitHub identity (see below), so assigning the issue
+proves nothing and self-assignment cannot distinguish one session from another. A plain,
+timestamped comment is what the next session checking this issue will actually find.
+
 ## Never merge into `main`
 
 **Landing work on `main` is the maintainer's decision, not yours.** No `merge_pull_request`

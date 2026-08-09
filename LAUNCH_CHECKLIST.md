@@ -197,14 +197,15 @@ Prefer the **publishable** key (`sb_publishable_…`) over the legacy `anon` JWT
 
 **4.3b Allow the app's own URLs back** (Authentication → URL Configuration). The client redirects to the path it was served from, not the bare origin — a redirect to the origin lands on the project site with the code in its URL and no app there to read it.
 
-That means more than one origin. GitHub Pages serves the app at `/OurHike/app/`, and every PR preview gets a hostname of its own on Cloudflare (3a). Supabase's allow-list takes glob patterns, where `**` matches across `/` and `*` matches a subdomain, so three entries cover everything:
+That means more than one origin. GitHub Pages serves the app at `/OurHike/app/`, and every PR preview gets a hostname of its own on Cloudflare (3a). Supabase's allow-list takes glob patterns, where `**` matches across `/` and `*` matches a subdomain.
+
+**Do not hand-keep the list here.** It is generated from `.github/expected-origins.yml`, the same declaration the R2 CORS policy comes from — which is the point of that file, and the reason 1.4's embedded JSON is gone too. Run:
 
 ```
-https://<user>.github.io/OurHike/**
-https://*.<project>.pages.dev/**
-http://localhost:5173/**
-http://localhost:4173/**
+python pipeline/check_auth_redirects.py --print-redirects
 ```
+
+and paste what it prints. It covers **both** Supabase projects — production and UA (3b) — whose lists are deliberately different: UA names its own hostname exactly and does *not* take the preview wildcard, because PR previews sign in against production's project and should not reach the UA user pool.
 
 Both local ports, because they are different servers: `npm run dev` is Vite on **5173**, and `npm run preview` serves the *built* bundle on **4173**. The second is the one you reach for to check something behaves the same after a production build, which makes it exactly the wrong one to have working differently from the others.
 
@@ -223,7 +224,9 @@ Adding an entry per PR by hand is not a plan, and without a matching entry every
 - whether every provider in `AUTH_PROVIDERS` is actually enabled in the dashboard — a mismatch there is a button that reaches an error page, and nothing else in the system compares those two lists;
 - whether the anon key is the legacy JWT rather than the publishable key.
 
-Read-only, and safe to run any time. It does **not** check the redirect allow-list — the public API does not expose it, so 4.3b stays a manual step.
+Read-only, and safe to run any time. It does not itself check the redirect allow-list — that is not in the settings document it reads — but **the allow-list is no longer unchecked**: `.github/workflows/supabase-config-check.yml`'s `redirects` job runs `pipeline/check_auth_redirects.py` daily and opens a tracking issue when a sign-in cannot come back to the app.
+
+It reads a list the public API does not publish by asking for the behaviour instead of the document: `GET /auth/v1/verify` with a junk token redirects to the requested URL when that URL is allowed, and falls back to the project's Site URL when it is not. **That check found production's allow-list and Site URL still naming the pre-org-migration Pages host** — which by then answered 404 — so every sign-in from production was redirecting to a dead host with the auth code in the URL, while the map and the bucket were both fine.
 
 **4.6 The free plan pauses a project nobody touches — handled.** Supabase pauses a Free plan project that shows too little activity over a rolling seven-day window, and restoring one is a manual click in the dashboard. For a trail app that is a hiker who cannot sign in, on a Saturday, because nothing happened all week — the failure arrives precisely when the project is least used and nobody is looking.
 

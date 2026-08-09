@@ -164,10 +164,13 @@ def main() -> int:
     else:
         check_signing_keys({key.get("alg") for key in jwks.get("keys", []) if key.get("alg")}, report)
 
-    # Deliberately not checked: the redirect allow-list, which the public API
-    # does not expose. Getting it wrong sends a hiker to the Site URL instead
-    # of the app, so it stays a manual step - LAUNCH_CHECKLIST.md 4.3b.
-    print("\nNot checked here: the redirect allow-list (see LAUNCH_CHECKLIST.md 4.3b).")
+    # Not checked HERE, but no longer unchecked. The redirect allow-list is
+    # not in the settings document this script reads - the public API does not
+    # publish it - but it is observable in behaviour, and
+    # pipeline/check_auth_redirects.py asks it that way, daily. It found the
+    # allow-list still naming the pre-org-migration Pages host on its first
+    # run, which is what stopped this being a manual step.
+    print("\nNot checked here: the redirect allow-list - pipeline/check_auth_redirects.py asks it, daily.")
 
     print("\nFAILED - see above." if report.failed else "\nAll checks passed.")
     return 1 if report.failed else 0

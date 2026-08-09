@@ -639,3 +639,198 @@ def test_export_poi_communities_and_opentrail_resupply_carry_different_confidenc
 
     assert by_name["Test Town"] == CONFIDENCE_LOW  # ATC Community proxy
     assert by_name["Test Outfitter"] == CONFIDENCE_HIGH  # real opentrail.org resupply tag
+
+
+# --- Every photo a POI has, not just the first (#471) ---
+
+
+def test_export_poi_carries_every_atc_photo_with_the_first_still_flat(tmp_path, monkeypatch, con):
+    """#471: 433 of 489 POIs carry more than one photo and 812 were being
+    discarded. They travel as a JSON-encoded `photos` property, and the flat
+    `photo_*` fields keep meaning the FIRST one - which is what makes this
+    additive: a client built before this renders exactly what it did.
+
+    JSON-encoded rather than a nested array because FlatGeobuf properties are
+    scalar, and both exports have to describe the same feature.
+    """
+    second = photo_digest(b"\xff\xd8 the second shelter photo")
+    third = photo_digest(b"\xff\xd8 the third shelter photo")
+
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    (raw_dir / "poi_images_atc.json").write_text(
+        json.dumps(
+            {
+                "pois": {
+                    "atc_shelters:shelter-glob-1": {
+                        "status": "found",
+                        "checked": "2026-08-09",
+                        "photos": [
+                            {
+                                "page_url": "https://drive.google.com/one",
+                                "author": "Appalachian Trail Conservancy",
+                                "license": "© ATC, used with permission",
+                                "taken": "2016-09-12",
+                                "digest": SHELTER_DIGEST,
+                            },
+                            {
+                                "page_url": "https://drive.google.com/two",
+                                "author": "Appalachian Trail Conservancy",
+                                "license": "© ATC, used with permission",
+                                "taken": "2016-09-13",
+                                "digest": second,
+                            },
+                            # No digest: nothing names it in our bucket, so it
+                            # must not reach a card even in the middle of a list.
+                            {"page_url": "https://drive.google.com/undownloaded", "taken": "2016-09-14"},
+                            {
+                                "page_url": "https://drive.google.com/three",
+                                "author": "Appalachian Trail Conservancy",
+                                "license": "© ATC, used with permission",
+                                "taken": "2016-09-15",
+                                "digest": third,
+                            },
+                        ],
+                    }
+                }
+            }
+        )
+    )
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+
+    export_poi.main()
+
+    props = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
+
+    # Unchanged for an older client: the flat fields are photo one.
+    assert props["photo_key"] == f"photos/{SHELTER_DIGEST}.jpg"
+    assert props["photo_taken"] == "2016-09-12"
+
+    photos = json.loads(props["photos"])
+    assert [photo["photo_key"] for photo in photos] == [
+        f"photos/{SHELTER_DIGEST}.jpg",
+        f"photos/{second}.jpg",
+        f"photos/{third}.jpg",
+    ]
+    # Per-photo provenance, because the credit line changes as a hiker pages.
+    assert [photo["photo_taken"] for photo in photos] == ["2016-09-12", "2016-09-13", "2016-09-15"]
+    assert all(photo["photo_license"] == "© ATC, used with permission" for photo in photos)
+    # The digest-less one is gone rather than carried as a hole.
+    assert "undownloaded" not in props["photos"]
+
+
+def test_export_poi_writes_a_single_photo_as_a_one_entry_list(tmp_path, monkeypatch, con):
+    """So the client has one shape to read rather than "the list, or rebuild
+    it from the flat fields". Covers the 56 POIs that genuinely have one, and
+    every photo fetch_poi_images.py writes."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    (raw_dir / "poi_images.json").write_text(
+        json.dumps(
+            {
+                "pois": {
+                    "atc_shelters:shelter-glob-1": {
+                        "status": "found",
+                        "checked": "2026-08-09",
+                        "photo": {
+                            "page_url": "https://commons.wikimedia.org/wiki/File:Test_Shelter.jpg",
+                            "author": "Jane Doe",
+                            "license": "CC BY-SA 4.0",
+                            "taken": "2025-06-18",
+                            "digest": SHELTER_DIGEST,
+                        },
+                    }
+                }
+            }
+        )
+    )
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+
+    export_poi.main()
+
+    props = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
+
+    assert json.loads(props["photos"]) == [
+        {
+            "photo_key": f"photos/{SHELTER_DIGEST}.jpg",
+            "photo_page_url": "https://commons.wikimedia.org/wiki/File:Test_Shelter.jpg",
+            "photo_author": "Jane Doe",
+            "photo_license": "CC BY-SA 4.0",
+            "photo_taken": "2025-06-18",
+        }
+    ]
+
+
+def test_export_poi_a_photo_less_feature_has_no_photo_list_rather_than_an_empty_one(tmp_path, monkeypatch, con):
+    """`[]` would be a different claim from "no photos" - it reads as a
+    gallery that exists and is empty."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+
+    export_poi.main()
+
+    props = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
+
+    assert props.get("photos") is None
+
+
+def test_export_poi_both_formats_describe_the_photo_list_identically(tmp_path, monkeypatch, con):
+    """GDAL's GeoJSON driver re-emits JSON-looking strings as native JSON by
+    default, and FlatGeobuf - whose properties are scalar - cannot. Measured
+    while building #471, that default produced an array in one artifact and a
+    string in the other: two files describing the same feature differently,
+    and a client written against one quietly wrong against the other.
+
+    `AUTODETECT_JSON_STRINGS=NO` pins it. This is the test that notices if a
+    GDAL upgrade or a dropped layer-creation option lets them drift apart
+    again, which nothing else would.
+    """
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    (raw_dir / "poi_images_atc.json").write_text(
+        json.dumps(
+            {
+                "pois": {
+                    "atc_shelters:shelter-glob-1": {
+                        "status": "found",
+                        "checked": "2026-08-09",
+                        "photos": [
+                            {"page_url": "https://drive.google.com/one", "taken": "2016-09-12", "digest": SHELTER_DIGEST},
+                            {
+                                "page_url": "https://drive.google.com/two",
+                                "taken": "2016-09-13",
+                                "digest": photo_digest(b"\xff\xd8 second"),
+                            },
+                        ],
+                    }
+                }
+            }
+        )
+    )
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+
+    export_poi.main()
+
+    from_geojson = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]["photos"]
+    from_fgb = con.execute(f"SELECT photos FROM ST_Read('{(out_dir / 'shelter.fgb').as_posix()}')").fetchone()[0]
+
+    assert isinstance(from_geojson, str), "GeoJSON re-emitted the list as native JSON; FlatGeobuf cannot follow"
+    assert from_geojson == from_fgb
+    assert len(json.loads(from_geojson)) == 2

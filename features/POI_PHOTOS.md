@@ -193,6 +193,22 @@ Each rule is doing a specific job, and the interactions between them are the poi
 
 **One per person applies to the shared gallery only.** What a hiker keeps privately on their own device is untouched by this — "several per place, one on the card" above still holds, because that is storage on their phone rather than a public surface with a moderation cost.
 
+### The gallery is the union of the rungs, not fifteen slots
+
+**Decided 2026-08-09, forced by measurement** ([#471](https://github.com/OurHike/OurHike/issues/471)). This document made rung 3 "ATC's own facility photo", **singular**, and specified 3-pinned/12-rolling for rung 2. Then the ATC layers were counted: **433 of 489 POIs carry more than one photo**, `Photo1`–`Photo10`, and 812 of them were being discarded because the card had one slot. Those two statements had to be reconciled, and this is the reconciliation.
+
+**A POI's gallery is every photo available for it, in ladder order** — the hiker's own, then the shared ones, then ATC's, then Commons. It is not a fixed number of slots that different rungs compete for.
+
+Three consequences, each of which is the reason a slot model would have been wrong:
+
+- **The 15 cap and one-per-person govern the shared rung only.** They always did — the paragraph above already scopes one-per-person that way — and they exist to stop *contribution* dynamics going wrong: domination by one photographer, a gallery that fills in 2027 and cannot show a 2032 rebuild. Neither risk exists for an inventory ATC published once. Applying the cap across rungs would mean community photos evicting ATC's, which is the ladder running backwards.
+- **ATC's extras are never evicted by recency.** The rolling window is a queue-position fix for a rung where people keep adding; ATC's ten are a fixed set, and a recency rule would delete documentation to make room for nothing.
+- **Ten fits.** ATC's maximum is 10 against a 15-photo shared cap, so even the worst case is a gallery a hiker can page through rather than a list to get lost in.
+
+**The card photo is unchanged by any of this.** It is still rung-topmost, still one photo, and still what an older build renders — the published artifacts keep the flat `photo_*` fields meaning the first photo precisely so that stays true (#471). What changed is that the card can now be paged past.
+
+**Per-photo provenance is not negotiable across the union.** Author, licence and capture month all differ between rungs — a hiker's own photo, a club's pin and a 2016 ATC inventory shot have three different credit lines — so the rule that the slot never shows a photo whose provenance it cannot state applies to each photo, not to the POI. Bundling stays as "Only the card photo is ever a candidate", below.
+
 ### Becoming the community default
 
 A shared photo enters the **existing moderation queue** ([REPORT_A_PROBLEM.md](REPORT_A_PROBLEM.md)'s `submitted | verified | resolved | dismissed`), and a moderator can pin one of the 3 for that POI: rung 2 of the ladder, what a hiker with no photo of their own sees. Where a club has pinned nothing, rung 2 falls through to the newest community photo, and where there are none of those it falls through to ATC.

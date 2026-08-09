@@ -149,11 +149,17 @@ POI_COLUMNS = (
     # One sentence about the place, composed from ATC's own inventory by
     # lib/poi_description.py. Shelters and campsites only; NULL elsewhere.
     ("description", "VARCHAR"),
+    # The FIRST photo, kept flat exactly as it was before #471 so a client
+    # built against the old shape keeps working unchanged.
     ("photo_key", "VARCHAR"),
     ("photo_page_url", "VARCHAR"),
     ("photo_author", "VARCHAR"),
     ("photo_license", "VARCHAR"),
     ("photo_taken", "VARCHAR"),
+    # Every publishable photo for this POI, JSON-encoded, first one included.
+    # A string and not a list because FlatGeobuf properties are scalar and
+    # both exports have to describe the same feature - see attach_photos.
+    ("photos", "VARCHAR"),
 )
 
 TRAIL_ID = "AT"
@@ -206,17 +212,34 @@ def load_features(path: Path) -> list[dict]:
     return data.get("features", [])
 
 
-def load_photo_records(path: Path) -> dict[str, dict]:
-    """fetch_poi_images.py's found photos keyed by unified POI id, or {}
-    when that script hasn't run - which is a normal, exportable state, not
-    an error. Only "found" outcomes matter here; a recorded miss and an
-    unchecked POI both export the same way, photo-less."""
+def load_photo_records(path: Path) -> dict[str, list[dict]]:
+    """Found photos keyed by unified POI id, or {} when the fetch hasn't run -
+    which is a normal, exportable state, not an error. Only "found" outcomes
+    matter here; a recorded miss and an unchecked POI both export the same
+    way, photo-less.
+
+    A **list** per POI since #471. Both outcome shapes are read - the ATC
+    fetch now writes `photos`, fetch_poi_images.py still writes a single
+    `photo` - so the two sources need no coordinated change and an outcomes
+    file written before #471 keeps exporting exactly what it did.
+    """
     if not path.exists():
         return {}
     outcomes = json.loads(path.read_text(encoding="utf-8")).get("pois", {})
-    return {
-        poi_id: record["photo"] for poi_id, record in outcomes.items() if record.get("status") == "found" and "photo" in record
-    }
+
+    found: dict[str, list[dict]] = {}
+    for poi_id, record in outcomes.items():
+        if record.get("status") != "found":
+            continue
+        if isinstance(record.get("photos"), list):
+            photos = [photo for photo in record["photos"] if isinstance(photo, dict)]
+        elif isinstance(record.get("photo"), dict):
+            photos = [record["photo"]]
+        else:
+            continue
+        if photos:
+            found[poi_id] = photos
+    return found
 
 
 def load_capacities(path: Path) -> dict[str, int]:
@@ -285,31 +308,65 @@ def attach_descriptions(records: list[dict]) -> int:
     return attached
 
 
-def attach_photos(records: list[dict], photos: dict[str, dict]) -> int:
-    """Copy each matched photo's PHOTO_FIELDS onto its unified POI record as
-    photo_* keys, returning how many matched. Unmatched records are left
-    without the keys entirely - write_poi_type reads them with .get(), and a
-    NULL column is the honest export of "no photo", the same shape the
-    client's card treats as its placeholder.
+def _publishable(photo: dict) -> bool:
+    """A photo with a `digest` is one the bucket actually holds.
 
-    A photo with no `digest` is skipped rather than exported: since #362 the
-    image is served from our own bucket, and the digest is the only thing
-    that names it there. A record without one predates the download step, so
-    there is nothing for a card to point at - and exporting the Commons URL
-    instead would silently reintroduce the hotlink that change removed.
+    Skipped rather than exported since #362: the image is served from our own
+    bucket and the digest is the only thing that names it there. A record
+    without one predates the download step, so there is nothing for a card to
+    point at - and exporting the Commons URL instead would silently
+    reintroduce the hotlink that change removed.
+    """
+    return bool(photo.get("digest"))
+
+
+def photo_property(photo: dict) -> dict:
+    """One photo as the client reads it.
+
+    The bucket KEY, not a URL: the host a hiker fetches from is the client's
+    build-time `VITE_DATA_BASE_URL`, and baking one into published data would
+    break every card the day the bucket or the CDN in front of it changes.
+    Every other artifact is named the same way.
+    """
+    entry = {f"photo_{field}": photo.get(field) for field in PHOTO_FIELDS}
+    entry["photo_key"] = photo_key(photo["digest"])
+    return entry
+
+
+def attach_photos(records: list[dict], photos: dict[str, list[dict]]) -> int:
+    """Attach every publishable photo to its unified POI record, returning how
+    many records matched. Unmatched records are left without the keys entirely
+    - write_poi_type reads them with .get(), and a NULL column is the honest
+    export of "no photo", the same shape the client's card treats as its
+    placeholder.
+
+    **The flat `photo_*` fields stay, and they stay meaning the FIRST photo**
+    (#471). That is what makes this additive rather than a break: a client
+    built before this renders exactly what it rendered before, because the
+    fields it reads still say the same thing. The rest arrive alongside in
+    `photos`.
+
+    `photos` is a JSON-encoded string rather than a nested array because
+    **FlatGeobuf properties are scalar** - there is no column type that would
+    carry a list, and both exports have to describe the same feature. So the
+    list travels as text and the client parses it, which costs one
+    `JSON.parse` on a card and keeps the two formats honest with each other.
     """
     attached = 0
     for record in records:
-        photo = photos.get(record["id"])
-        if photo is None or not photo.get("digest"):
+        publishable = [photo for photo in photos.get(record["id"], []) if _publishable(photo)]
+        if not publishable:
             continue
+
+        first = publishable[0]
         for field in PHOTO_FIELDS:
-            record[f"photo_{field}"] = photo.get(field)
-        # The bucket key, not a URL: the host a hiker fetches from is the
-        # client's build-time VITE_DATA_BASE_URL, and baking one into
-        # published data would break every card the day the bucket or CDN
-        # in front of it changes. Every other artifact is named the same way.
-        record["photo_key"] = photo_key(photo["digest"])
+            record[f"photo_{field}"] = first.get(field)
+        record["photo_key"] = photo_key(first["digest"])
+
+        # Written even for a single photo, so the client has one shape to read
+        # rather than "the list, or reconstruct it from the flat fields". The
+        # cost is ~150 bytes on the 56 POIs that have exactly one.
+        record["photos"] = json.dumps([photo_property(photo) for photo in publishable], separators=(",", ":"))
         attached += 1
     return attached
 
@@ -412,6 +469,10 @@ def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[
                     r.get("photo_author"),
                     r.get("photo_license"),
                     r.get("photo_taken"),
+                    # The whole list as JSON (#471). NULL wherever the flat
+                    # fields above are NULL: a photo-less POI has no list
+                    # either, and an empty `[]` would be a different claim.
+                    r.get("photos"),
                 )
                 for r in records
             ],
@@ -425,7 +486,22 @@ def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[
     geojson_path.unlink(missing_ok=True)
     fgb_path.unlink(missing_ok=True)
 
-    con.execute(f"COPY poi_geom TO '{geojson_path.as_posix()}' WITH (FORMAT GDAL, DRIVER 'GeoJSON')")
+    # AUTODETECT_JSON_STRINGS=NO, and it is load-bearing rather than tidy.
+    #
+    # GDAL's GeoJSON driver defaults to YES: a string property whose contents
+    # parse as JSON is re-emitted as native JSON. Measured here, the `photos`
+    # column (#471) came out as a real array in GeoJSON and stayed a string in
+    # FlatGeobuf - two artifacts describing the same feature differently, and
+    # a client written against one silently wrong against the other.
+    #
+    # Pinning it off makes both formats carry exactly the string this export
+    # wrote. It also closes a latent bug that predates the photo list: a POI
+    # whose *name* happened to parse as JSON - `[1,2]`, `null`, `{}` - was
+    # already being exported as a native value rather than as its own text.
+    con.execute(
+        f"COPY poi_geom TO '{geojson_path.as_posix()}' "
+        "WITH (FORMAT GDAL, DRIVER 'GeoJSON', LAYER_CREATION_OPTIONS 'AUTODETECT_JSON_STRINGS=NO')"
+    )
     con.execute(f"COPY poi_geom TO '{fgb_path.as_posix()}' WITH (FORMAT GDAL, DRIVER 'FlatGeobuf')")
 
     return {

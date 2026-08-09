@@ -127,9 +127,9 @@ def test_the_inventory_era_photos_this_source_exists_for_are_inside_its_window(t
 
     record = _saved(tmp_path)["atc_shelters:glob-1"]
     assert record["status"] == "found"
-    assert record["photo"]["taken"] == INVENTORY_ERA.isoformat()
-    assert record["photo"]["author"] == "Appalachian Trail Conservancy"
-    assert record["photo"]["license"] == "© ATC, used with permission"
+    assert record["photos"][0]["taken"] == INVENTORY_ERA.isoformat()
+    assert record["photos"][0]["author"] == "Appalachian Trail Conservancy"
+    assert record["photos"][0]["license"] == "© ATC, used with permission"
 
 
 def test_a_photo_older_than_this_sources_own_window_is_still_rejected(tmp_path, monkeypatch, requests_mock):
@@ -204,7 +204,7 @@ def test_the_rendering_is_cached_under_its_own_digest(tmp_path, monkeypatch, req
     atc.main()
 
     digest = photo_digest(JPEG_BYTES)
-    assert _saved(tmp_path)["atc_shelters:glob-1"]["photo"]["digest"] == digest
+    assert _saved(tmp_path)["atc_shelters:glob-1"]["photos"][0]["digest"] == digest
     assert local_photo_path(tmp_path, digest).read_bytes() == JPEG_BYTES
 
 
@@ -267,7 +267,7 @@ def test_a_found_photo_whose_bytes_are_gone_is_refetched(tmp_path, monkeypatch, 
 
     atc.main()
 
-    assert _saved(tmp_path)["atc_shelters:glob-1"]["photo"]["digest"] == photo_digest(JPEG_BYTES)
+    assert _saved(tmp_path)["atc_shelters:glob-1"]["photos"][0]["digest"] == photo_digest(JPEG_BYTES)
 
 
 # --- ids, layers, flags ---
@@ -320,3 +320,141 @@ def test_an_unknown_flag_is_rejected_rather_than_silently_ignored(monkeypatch):
         atc.run(["--rechek"])
 
     assert excinfo.value.code == 2
+
+
+# --- Every eligible photo, not just the first (#471) ---
+
+
+def _url(file_id: str) -> str:
+    return f"https://drive.google.com/file/d/{file_id}/view?usp=drivesdk"
+
+
+def _serve_per_id(requests_mock, ids: dict[str, date], image_for=None):
+    """Distinct bytes per Drive id, so digests differ and order is provable.
+
+    `_serve` answers every id identically, which is fine when there is one
+    photo and useless when the question is which ones came back and in what
+    order.
+    """
+
+    def exif(request, context):
+        return _exif_header(ids[request.qs["id"][0]])
+
+    def rendering(request, context):
+        file_id = request.qs["id"][0]
+        return (image_for or (lambda fid: JPEG_BYTES + fid.encode()))(file_id)
+
+    requests_mock.get(atc.DOWNLOAD_URL, content=exif)
+    requests_mock.get(atc.THUMBNAIL_URL, content=rendering)
+
+
+def test_every_eligible_photo_is_kept_in_atcs_own_order(tmp_path, monkeypatch, requests_mock):
+    """The finding behind #471: 433 of 489 POIs carry more than one photo and
+    812 were being discarded. ATC's Photo1..Photo10 order is its judgement
+    about which picture best shows the facility, so it is preserved rather
+    than re-ranked."""
+    _no_sleep(monkeypatch)
+    _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
+    _write_layers(
+        tmp_path,
+        monkeypatch,
+        shelters=[_feature(Photo1=_url("aaa1111111"), Photo2=_url("bbb2222222"), Photo3=_url("ccc3333333"))],
+    )
+    _serve_per_id(requests_mock, {"aaa1111111": INVENTORY_ERA, "bbb2222222": INVENTORY_ERA, "ccc3333333": INVENTORY_ERA})
+
+    atc.main()
+
+    photos = _saved(tmp_path)["atc_shelters:glob-1"]["photos"]
+    assert [photo["url"] for photo in photos] == [_url("aaa1111111"), _url("bbb2222222"), _url("ccc3333333")]
+    assert len({photo["digest"] for photo in photos}) == 3
+
+
+def test_the_first_eligible_photo_is_still_the_card_photo(tmp_path, monkeypatch, requests_mock):
+    """Photo1 being unusable used to mean Photo2 became the single record.
+    It still becomes the first of the list, so the card is unchanged by this."""
+    _no_sleep(monkeypatch)
+    _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
+    _write_layers(
+        tmp_path,
+        monkeypatch,
+        shelters=[_feature(Photo1="NoInfo", Photo2=_url("bbb2222222"), Photo3=_url("ccc3333333"))],
+    )
+    _serve_per_id(requests_mock, {"bbb2222222": INVENTORY_ERA, "ccc3333333": INVENTORY_ERA})
+
+    photos = (atc.main(), _saved(tmp_path)["atc_shelters:glob-1"]["photos"])[1]
+
+    assert photos[0]["url"] == _url("bbb2222222")
+    assert len(photos) == 2
+
+
+def test_an_undated_slot_is_skipped_without_ending_the_scan(tmp_path, monkeypatch, requests_mock):
+    """A middle slot failing the bar must not truncate the ones after it -
+    that would be the old early-return wearing a different shape."""
+    _no_sleep(monkeypatch)
+    _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
+    _write_layers(
+        tmp_path,
+        monkeypatch,
+        shelters=[_feature(Photo1=_url("aaa1111111"), Photo2=_url("bbb2222222"), Photo3=_url("ccc3333333"))],
+    )
+    # The middle one predates even this source's long window.
+    _serve_per_id(
+        requests_mock,
+        {"aaa1111111": INVENTORY_ERA, "bbb2222222": date(1999, 1, 1), "ccc3333333": INVENTORY_ERA},
+    )
+
+    atc.main()
+
+    photos = _saved(tmp_path)["atc_shelters:glob-1"]["photos"]
+    assert [photo["url"] for photo in photos] == [_url("aaa1111111"), _url("ccc3333333")]
+
+
+def test_a_prior_record_in_the_old_single_photo_shape_is_still_understood(tmp_path, monkeypatch, requests_mock):
+    """This file is the next run's SKIP input. Refusing to read the shape
+    written before #471 would re-fetch all 489 POIs and ~1,600 slots to learn
+    what is already on disk."""
+    _no_sleep(monkeypatch)
+    _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
+    _write_layers(tmp_path, monkeypatch, shelters=[_feature(Photo1=DRIVE_URL)])
+    digest = photo_digest(JPEG_BYTES)
+    path = local_photo_path(tmp_path, digest)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(JPEG_BYTES)
+    (tmp_path / "poi_images_atc.json").write_text(
+        json.dumps({"pois": {"atc_shelters:glob-1": {"status": "found", "checked": "2026-08-08", "photo": {"digest": digest}}}})
+    )
+
+    atc.main()
+
+    assert requests_mock.call_count == 0
+    assert atc.record_photos(_saved(tmp_path)["atc_shelters:glob-1"]) == [{"digest": digest}]
+
+
+def test_one_missing_digest_among_several_refetches_the_whole_poi(tmp_path, monkeypatch, requests_mock):
+    """Otherwise the export ships references to objects publish.py never
+    uploaded, and a hiker paging through the card reaches a broken image."""
+    _no_sleep(monkeypatch)
+    _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
+    _write_layers(tmp_path, monkeypatch, shelters=[_feature(Photo1=DRIVE_URL)])
+    present = photo_digest(JPEG_BYTES)
+    path = local_photo_path(tmp_path, present)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(JPEG_BYTES)
+    (tmp_path / "poi_images_atc.json").write_text(
+        json.dumps(
+            {
+                "pois": {
+                    "atc_shelters:glob-1": {
+                        "status": "found",
+                        "checked": "2026-08-08",
+                        "photos": [{"digest": present}, {"digest": "beef"}],
+                    }
+                }
+            }
+        )
+    )
+    _serve(requests_mock)
+
+    atc.main()
+
+    assert requests_mock.call_count > 0

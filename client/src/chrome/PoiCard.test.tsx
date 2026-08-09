@@ -431,3 +431,149 @@ describe('anchoring to the pin', () => {
     expect(card.style.transform).toBe('')
   })
 })
+
+describe('moving between a waypoint’s photos (#471)', () => {
+  // ATC's layers carry Photo1..Photo10 and most POIs use several - 433 of
+  // 489, with 812 photos previously discarded because the card had one slot.
+  const THREE = [
+    {
+      url: 'blob:one',
+      page: 'https://drive.google.com/one',
+      author: 'Appalachian Trail Conservancy',
+      license: '© ATC, used with permission',
+      taken: '2016-09-12',
+    },
+    {
+      url: 'blob:two',
+      author: 'Appalachian Trail Conservancy',
+      license: '© ATC, used with permission',
+      taken: '2016-09-13',
+    },
+    {
+      url: 'blob:three',
+      author: 'Appalachian Trail Conservancy',
+      license: '© ATC, used with permission',
+      taken: '2017-05-04',
+    },
+  ]
+
+  const withPhotos = (photos: typeof THREE) => ({
+    ...SHELTER,
+    photoUrl: photos[0].url,
+    photoAuthor: photos[0].author,
+    photoLicense: photos[0].license,
+    photoTaken: photos[0].taken,
+    photos,
+  })
+
+  it('offers no controls when there is only one photo', () => {
+    // 56 of 489 POIs have exactly one. A pair of dead arrows on those is
+    // chrome that teaches a hiker the controls mean nothing.
+    renderCard({ ...SHELTER, photoUrl: 'blob:only', photos: [{ url: 'blob:only' }] })
+
+    expect(screen.queryByRole('button', { name: 'Next photo' })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('poi-card-photo-count')).not.toBeInTheDocument()
+  })
+
+  it('shows which photo of how many, and steps to the next', () => {
+    renderCard(withPhotos(THREE))
+
+    expect(screen.getByTestId('poi-card-photo-count')).toHaveTextContent('1/3')
+    expect(screen.getByTestId('poi-card-photo')).toHaveAttribute('src', 'blob:one')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next photo' }))
+
+    expect(screen.getByTestId('poi-card-photo-count')).toHaveTextContent('2/3')
+    expect(screen.getByTestId('poi-card-photo')).toHaveAttribute('src', 'blob:two')
+  })
+
+  it('re-credits every photo as it is shown, because the facts change', () => {
+    // The rule that the slot never shows a photo whose provenance it cannot
+    // state has to hold for every one of them, not just the first - author,
+    // licence and capture month all move as a hiker pages.
+    renderCard(withPhotos(THREE))
+
+    expect(
+      screen.getByRole('link', {
+        name: 'Photo: Appalachian Trail Conservancy · © ATC, used with permission · Sep 2016',
+      }),
+    ).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next photo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Next photo' }))
+
+    // The third was taken in a different year, and says so. It also has no
+    // file page, so the credit is plain text rather than a link.
+    expect(
+      screen.getByText(
+        'Photo: Appalachian Trail Conservancy · © ATC, used with permission · May 2017',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('wraps at both ends rather than dead-ending', () => {
+    // A handful of pictures, not a list to get lost in. A control that
+    // sometimes does nothing is worse in gloves than one that always does.
+    renderCard(withPhotos(THREE))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Previous photo' }))
+
+    expect(screen.getByTestId('poi-card-photo-count')).toHaveTextContent('3/3')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next photo' }))
+
+    expect(screen.getByTestId('poi-card-photo-count')).toHaveTextContent('1/3')
+  })
+
+  it('starts again at the first photo when the card becomes another waypoint', () => {
+    // Paging to the fifth photo of one shelter and tapping a shelter with two
+    // would otherwise index past the end.
+    const { rerender } = render(
+      <PoiCard poi={withPhotos(THREE)} map={null} onClose={vi.fn()} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Next photo' }))
+    expect(screen.getByTestId('poi-card-photo-count')).toHaveTextContent('2/3')
+
+    const other = {
+      ...withPhotos(THREE.slice(0, 2)),
+      id: 'atc_shelters:another',
+      name: 'Another Lean-to',
+    }
+    rerender(<PoiCard poi={other} map={null} onClose={vi.fn()} />)
+
+    expect(screen.getByTestId('poi-card-photo-count')).toHaveTextContent('1/2')
+  })
+
+  it('lets a hiker page past a photo that will not load', () => {
+    // Offline-first: one URL the cache no longer holds must not condemn the
+    // rest of the gallery to the placeholder.
+    renderCard(withPhotos(THREE))
+    fireEvent.error(screen.getByTestId('poi-card-photo'))
+
+    expect(screen.getByTestId('poi-card-placeholder')).toBeInTheDocument()
+
+    // The controls stay reachable precisely so this is recoverable.
+    fireEvent.click(screen.getByRole('button', { name: 'Next photo' }))
+
+    expect(screen.getByTestId('poi-card-photo')).toHaveAttribute('src', 'blob:two')
+  })
+
+  it('shows a photo stored before this feature existed, with no controls', () => {
+    // A phone that downloaded its map before #471 holds the flat fields and
+    // no list. Forcing a 1.18 GB re-download to see a second photo is the
+    // exact cost #374 exists to prevent.
+    renderCard({
+      ...SHELTER,
+      photoUrl: 'blob:stored-before-471',
+      photoAuthor: 'A. Hiker',
+      photoLicense: 'CC BY-SA 4.0',
+      photoTaken: '2025-06-18',
+    })
+
+    expect(screen.getByTestId('poi-card-photo')).toHaveAttribute(
+      'src',
+      'blob:stored-before-471',
+    )
+    expect(screen.queryByRole('button', { name: 'Next photo' })).not.toBeInTheDocument()
+  })
+})

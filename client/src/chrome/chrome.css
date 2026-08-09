@@ -871,6 +871,57 @@ a.poi-card__credit:hover {
   text-decoration: underline;
 }
 
+/* Photo paging (#471). Vertically centred over the media box rather than
+   docked to a corner, because the credit already owns the bottom edge and a
+   control stacked on it would sit on the licence text the photo is shown
+   under.
+
+   Sized to --min-touch-target for the same reason every other control here
+   is: this gets used one-handed, in gloves, in the cold. The count between
+   the arrows is what makes a wrap-around comprehensible - without it,
+   stepping past the last photo back to the first reads as the control being
+   broken rather than as a loop. */
+.poi-card__photo-nav {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.poi-card__photo-step {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--min-touch-target);
+  min-height: var(--min-touch-target);
+  padding: 0;
+  font-size: 22px;
+  line-height: 1;
+  color: rgb(255 255 255 / 95%);
+  text-shadow: 0 1px 3px rgb(0 0 0 / 80%);
+  cursor: pointer;
+  background: none;
+  border: 0;
+  pointer-events: auto;
+}
+
+/* The count is a label, not a target - the arrows either side are. */
+.poi-card__photo-count {
+  padding: 2px 8px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: rgb(255 255 255 / 95%);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 75%);
+  background: rgb(0 0 0 / 35%);
+  border-radius: 10px;
+}
+
 /* Same drawn/hit split as the close button above the photo: the visible
    strip stays one small line, the hit area grows upward to the 44px
    minimum. Nothing else is tappable in the bottom half of the media box,

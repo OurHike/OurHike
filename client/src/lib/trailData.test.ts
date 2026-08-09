@@ -4,6 +4,7 @@ import {
   downloadTrailData,
   loadTrailData,
   deleteTrailData,
+  poiPhotos,
   ELEVATION_STORE_KEY,
   POIS_KEY,
   SPURS_STORE_KEY,
@@ -833,5 +834,161 @@ describe('holding the trail data to its published hash (#197)', () => {
     await downloadTrailData()
 
     expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
+  })
+})
+
+describe('every photo a waypoint has (#471)', () => {
+  // ATC's layers carry Photo1..Photo10; 433 of 489 POIs use more than one and
+  // 812 photos were previously discarded. They arrive as a JSON-encoded
+  // string because FlatGeobuf properties are scalar and both artifacts have
+  // to describe the same feature.
+  const withPhotos = (photos: string | null) => ({
+    id: 'atc_shelters:abc',
+    poi_type: 'shelter',
+    name: 'Chairback Gap Lean-to',
+    lat: 45.45,
+    lon: -69.26,
+    confidence: 'high',
+    photo_key: 'photos/one.jpg',
+    photo_author: 'Appalachian Trail Conservancy',
+    photo_license: '© ATC, used with permission',
+    photo_taken: '2016-09-12',
+    photos,
+  })
+
+  const THREE = JSON.stringify([
+    {
+      photo_key: 'photos/one.jpg',
+      photo_author: 'Appalachian Trail Conservancy',
+      photo_license: '© ATC, used with permission',
+      photo_taken: '2016-09-12',
+    },
+    {
+      photo_key: 'photos/two.jpg',
+      photo_author: 'Appalachian Trail Conservancy',
+      photo_license: '© ATC, used with permission',
+      photo_taken: '2016-09-13',
+    },
+    {
+      photo_key: 'photos/three.jpg',
+      photo_author: 'Appalachian Trail Conservancy',
+      photo_license: '© ATC, used with permission',
+      photo_taken: '2017-05-04',
+    },
+  ])
+
+  it('parses the list and resolves every key through the data base', async () => {
+    serve(poiCollection([withPhotos(THREE)]))
+    await downloadTrailData()
+
+    const [poi] = store.get(POIS_KEY) as StoredPoi[]
+    expect(poi.photos?.map((photo) => photo.url)).toEqual([
+      dataUrl('photos/one.jpg'),
+      dataUrl('photos/two.jpg'),
+      dataUrl('photos/three.jpg'),
+    ])
+    // Per-photo provenance: the credit line changes as a hiker pages.
+    expect(poi.photos?.map((photo) => photo.taken)).toEqual([
+      '2016-09-12',
+      '2016-09-13',
+      '2017-05-04',
+    ])
+  })
+
+  it('keeps the flat fields meaning the first photo, so an older build is unaffected', async () => {
+    serve(poiCollection([withPhotos(THREE)]))
+    await downloadTrailData()
+
+    const [poi] = store.get(POIS_KEY) as StoredPoi[]
+    expect(poi.photoUrl).toBe(dataUrl('photos/one.jpg'))
+    expect(poi.photoTaken).toBe('2016-09-12')
+  })
+
+  it('falls back to the single photo rather than throwing on a malformed list', async () => {
+    // A card that does not render is worse than a card with one photo. Bytes
+    // that are actually wrong are caught by the SHA-256 check, not here.
+    serve(poiCollection([withPhotos('{not json at all')]))
+    await downloadTrailData()
+
+    const [poi] = store.get(POIS_KEY) as StoredPoi[]
+    expect(poi).not.toHaveProperty('photos')
+    expect(poi.photoUrl).toBe(dataUrl('photos/one.jpg'))
+    expect(poiPhotos(poi).map((photo) => photo.url)).toEqual([dataUrl('photos/one.jpg')])
+  })
+
+  it('drops an entry with no key rather than carrying a hole to page into', async () => {
+    serve(
+      poiCollection([
+        withPhotos(
+          JSON.stringify([
+            { photo_key: 'photos/one.jpg' },
+            { photo_page_url: 'https://drive.google.com/undownloaded' },
+            { photo_key: 'photos/three.jpg' },
+          ]),
+        ),
+      ]),
+    )
+    await downloadTrailData()
+
+    const [poi] = store.get(POIS_KEY) as StoredPoi[]
+    expect(poi.photos?.map((photo) => photo.url)).toEqual([
+      dataUrl('photos/one.jpg'),
+      dataUrl('photos/three.jpg'),
+    ])
+  })
+
+  it('leaves the list off entirely when the artifact carries none', async () => {
+    // A release built before #471, which is every release published so far.
+    serve(poiCollection([withPhotos(null)]))
+    await downloadTrailData()
+
+    const [poi] = store.get(POIS_KEY) as StoredPoi[]
+    expect(poi).not.toHaveProperty('photos')
+  })
+})
+
+describe('poiPhotos, the compatibility seam (#471)', () => {
+  const base = {
+    id: 'atc_shelters:abc',
+    type: 'shelter',
+    name: 'Chairback Gap Lean-to',
+    lat: 45.45,
+    lon: -69.26,
+    confidence: 'low' as const,
+  }
+
+  it('rebuilds a one-entry gallery from a POI stored before the list existed', () => {
+    // This is what keeps a phone that downloaded its map before #471 working
+    // without a 1.18 GB re-download - the cost #374 exists to prevent.
+    expect(
+      poiPhotos({
+        ...base,
+        photoUrl: 'blob:one',
+        photoAuthor: 'A. Hiker',
+        photoLicense: 'CC BY-SA 4.0',
+        photoTaken: '2025-06-18',
+      }),
+    ).toEqual([
+      {
+        url: 'blob:one',
+        author: 'A. Hiker',
+        license: 'CC BY-SA 4.0',
+        taken: '2025-06-18',
+      },
+    ])
+  })
+
+  it('prefers the stored list when there is one', () => {
+    expect(
+      poiPhotos({
+        ...base,
+        photoUrl: 'blob:one',
+        photos: [{ url: 'blob:one' }, { url: 'blob:two' }],
+      }).map((photo) => photo.url),
+    ).toEqual(['blob:one', 'blob:two'])
+  })
+
+  it('is empty for a waypoint with no photo at all', () => {
+    expect(poiPhotos(base)).toEqual([])
   })
 })

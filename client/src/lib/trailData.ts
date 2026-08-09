@@ -106,6 +106,56 @@ export interface StoredPoi {
   /** EXIF capture date, ISO "YYYY-MM-DD" - the card shows the month, because
    *  a two-year-old photo presented as current would be a quiet lie. */
   photoTaken?: string
+  /**
+   * Every photo this POI has, the flat one above included as the first (#471).
+   *
+   * ATC's layers carry `Photo1`..`Photo10` and most POIs use several - 433 of
+   * 489, with 812 photos previously discarded. The flat `photo*` fields stay
+   * because they are what a build before this reads, and because a POI still
+   * has one card photo; this is the rest of them.
+   *
+   * Absent, never `[]`, on a POI with no photos - and absent on anything
+   * stored by a build older than #471, which is why `poiPhotos` exists rather
+   * than callers reading this directly.
+   */
+  photos?: PoiPhoto[]
+}
+
+/** One photo and what the licence obliges us to say about it. Per photo
+ *  rather than per POI: author, licence and capture month all change as a
+ *  hiker moves through them, and the rule that the slot never shows a photo
+ *  whose provenance it cannot state has to hold for every one. */
+export interface PoiPhoto {
+  /** Resolved through dataUrl(), same as `photoUrl`. */
+  url: string
+  page?: string
+  author?: string
+  license?: string
+  taken?: string
+}
+
+/**
+ * Every photo to show for a POI, whichever shape it was stored in.
+ *
+ * **The compatibility seam, and the reason nothing reads `poi.photos`
+ * directly.** `StoredPoi` lives in IndexedDB, so a phone that downloaded its
+ * map before #471 holds POIs with the flat fields and no list - and forcing a
+ * re-download to see a second photo would be the exact cost #374 exists to
+ * prevent. A one-photo POI from an older build is a one-entry gallery here,
+ * which is what it always meant.
+ */
+export function poiPhotos(poi: StoredPoi): PoiPhoto[] {
+  if (poi.photos !== undefined && poi.photos.length > 0) return poi.photos
+  if (poi.photoUrl === undefined) return []
+  return [
+    {
+      url: poi.photoUrl,
+      ...(poi.photoPage !== undefined ? { page: poi.photoPage } : {}),
+      ...(poi.photoAuthor !== undefined ? { author: poi.photoAuthor } : {}),
+      ...(poi.photoLicense !== undefined ? { license: poi.photoLicense } : {}),
+      ...(poi.photoTaken !== undefined ? { taken: poi.photoTaken } : {}),
+    },
+  ]
 }
 
 export interface TrailData {
@@ -136,6 +186,54 @@ interface PoiProperties {
   photo_author?: unknown
   photo_license?: unknown
   photo_taken?: unknown
+  photos?: unknown
+}
+
+/**
+ * The published photo list, or [] when there is not a usable one.
+ *
+ * A JSON-encoded string, not a nested array: FlatGeobuf properties are
+ * scalar, so export_poi.py writes text and pins GDAL's GeoJSON driver to
+ * leave it as text - otherwise the two artifacts describe the same feature
+ * differently. Parsing is the client's half of that bargain.
+ *
+ * **Never throws.** A malformed or truncated value yields [], and the caller
+ * falls back to the flat fields, which is a card with one photo rather than a
+ * card that does not render. A download whose bytes are wrong is caught by
+ * the SHA-256 check, not by a card.
+ */
+function photoListProp(value: unknown): PoiPhoto[] {
+  if (typeof value !== 'string' || value === '') return []
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(value)
+  } catch {
+    return []
+  }
+  if (!Array.isArray(parsed)) return []
+
+  const photos: PoiPhoto[] = []
+  for (const entry of parsed) {
+    if (typeof entry !== 'object' || entry === null) continue
+    const record = entry as Record<string, unknown>
+    // Same gate as the flat fields: the key is what names the bytes in our
+    // bucket, so an entry without one has nothing to show and is dropped
+    // rather than carried as a hole a hiker can page into.
+    const key = stringProp(record.photo_key)
+    if (key === undefined) continue
+    const page = stringProp(record.photo_page_url)
+    const author = stringProp(record.photo_author)
+    const license = stringProp(record.photo_license)
+    const taken = stringProp(record.photo_taken)
+    photos.push({
+      url: dataUrl(key),
+      ...(page !== undefined ? { page } : {}),
+      ...(author !== undefined ? { author } : {}),
+      ...(license !== undefined ? { license } : {}),
+      ...(taken !== undefined ? { taken } : {}),
+    })
+  }
+  return photos
 }
 
 /** The property when it is a non-empty string, else nothing - the artifact
@@ -174,6 +272,7 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
     const photoAuthor = stringProp(props.photo_author)
     const photoLicense = stringProp(props.photo_license)
     const photoTaken = stringProp(props.photo_taken)
+    const photos = photoListProp(props.photos)
     const capacity = capacityProp(props.capacity)
     const description = stringProp(props.description)
 
@@ -208,6 +307,11 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
             ...(photoAuthor !== undefined ? { photoAuthor } : {}),
             ...(photoLicense !== undefined ? { photoLicense } : {}),
             ...(photoTaken !== undefined ? { photoTaken } : {}),
+            // Gated on the flat photo for the same reason those are gated on
+            // each other: a list with no card photo would be a gallery whose
+            // first entry the rest of the app cannot see. Omitted rather than
+            // stored empty when a release publishes no list at all.
+            ...(photos.length > 0 ? { photos } : {}),
           }
         : {}),
     })

@@ -169,6 +169,18 @@ describe('a stored phone from the baseline release', () => {
     expect(older?.source).toBeUndefined()
   })
 
+  // The same case one field later. Every shelter in this baseline predates
+  // `capacity`, and none of them should gain a zero on the way out - "Sleeps
+  // 0" at a shelter that sleeps eight is the failure this guards.
+  it('still reads a shelter stored before `capacity` existed', async () => {
+    const data = await loadTrailData()
+    const shelter = data?.pois.find((poi) => poi.id === 'atc_shelter_0421')
+
+    expect(shelter).toBeDefined()
+    expect(shelter?.name).toBe('Tricorner Knob Shelter')
+    expect(shelter?.capacity).toBeUndefined()
+  })
+
   it('still reads a spur record with every optional field absent', async () => {
     const data = await loadTrailData()
 

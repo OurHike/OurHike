@@ -989,6 +989,17 @@ a.poi-card__credit::after {
   color: var(--fg-3);
 }
 
+/* Body text, and the only prose on the card. Sits between the meta line and
+   the unverified block at a size between the two: it is worth reading, and it
+   is not the headline. Leading is looser than the rest because this is the one
+   element here that can run to three lines. */
+.poi-card__description {
+  margin: var(--space-1, 4px) 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
 /* Called out rather than set in fine print. This is the line that says the app
    cannot vouch for the pin someone just tapped, and it earns the same weight as
    the sunken block the closure sheet uses to say what it will not do. */

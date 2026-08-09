@@ -298,3 +298,37 @@ class TestTheReleaseWorkflows:
         text = _text("release-gate.yml")
 
         assert "Reported, never failed" in text
+
+    def test_the_battery_is_never_automatic(self):
+        """It downloads ~1.6 GB to answer a question somebody is waiting on.
+        On a schedule it would spend that daily on a question nobody asked -
+        and check-deployment.yml already answers the daily one for no bytes."""
+        assert list(_triggers(_workflow("verify-release.yml"))) == ["workflow_dispatch"]
+
+    def test_the_battery_fails_the_run_rather_than_reporting(self):
+        """Its daily siblings are reporters with a tracking issue, because a
+        real outage emailing every morning is how an alarm gets filtered. This
+        one is dispatched by a person waiting for the answer, so the answer is
+        the exit code - which means no `--exit-zero` and no `continue-on-error`."""
+        text = _text("verify-release.yml")
+
+        assert "--exit-zero" not in text
+        assert "continue-on-error" not in text
+
+    def test_the_battery_can_be_pointed_at_a_candidate_rather_than_production(self):
+        """Once #500 exists, a release is verified BEFORE it is promoted. A
+        workflow that could only read the live base would verify the thing
+        hikers already have."""
+        inputs = _triggers(_workflow("verify-release.yml"))["workflow_dispatch"]["inputs"]
+
+        assert "base" in inputs
+        assert "strict" in inputs
+
+    def test_the_battery_holds_no_credentials(self):
+        """Public HTTPS only is the property that makes it test what a phone
+        fetches, through the same CDN and CORS policy. A credential here would
+        let it read something a hiker cannot, and pass where they would fail."""
+        workflow = _workflow("verify-release.yml")
+
+        assert workflow["permissions"] == {"contents": "read"}
+        assert "secrets." not in _text("verify-release.yml")

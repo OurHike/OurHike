@@ -1,0 +1,125 @@
+# Runs the release verification battery against a published release.
+# RELEASING.md §8 gate 6, and DATA_RELEASES.md §3 is the design.
+#
+# WHY THIS IS DISPATCH-ONLY AND ITS SIBLINGS ARE DAILY
+#
+#   check-deployment.yml     daily   can a browser REACH the data      no bytes
+#   check-deployed-app.yml   daily   does the APP draw a trail         one page
+#   smoke-published.yml      weekly  has what is published ROTTED      ~18 MB
+#   this                     on ask  is this candidate fit to promote  ~1.6 GB
+#
+# It is a gate, asked once while somebody is deciding whether to ship. On a
+# schedule it would download 1.6 GB a day to answer a question nobody asked,
+# and the daily question is already answered for free by the first two.
+#
+# IT FAILS THE RUN, unlike those siblings. They are reporters with a tracking
+# issue behind them, because a real outage emailing daily is how an alarm gets
+# filtered. This one is dispatched by a person who is waiting for the answer,
+# so the answer is the exit code.
+#
+# IT HOLDS NO CREDENTIALS. The battery reads a public HTTPS base and nothing
+# else - that is the property that makes it test the artifact a hiker's phone
+# actually fetches, through the same CDN, CORS policy and range machinery,
+# rather than a file on the runner's disk.
+
+name: Verify release
+
+on:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: "Public base URL of the release to verify. Defaults to the DATA_BASE_URL variable."
+        type: string
+        required: false
+      strict:
+        description: "Treat a SKIPPED check as a failure. Turn this on once #500 lands and checks 3/17/19 can run."
+        type: boolean
+        default: false
+      hash:
+        description: "Stream and SHA-256 every artifact (check 5, ~1.6 GB). The only proof the published bytes are the built bytes."
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    # Check 5 streams every artifact. The default 360 is generous enough that
+    # a slow CDN morning does not read as a broken release.
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: pipeline
+
+    steps:
+      - name: Is there a release to verify
+        id: can
+        working-directory: .
+        env:
+          OVERRIDE: ${{ inputs.base }}
+          CONFIGURED: ${{ vars.DATA_BASE_URL }}
+        run: |
+          BASE="${OVERRIDE:-$CONFIGURED}"
+          if [ -z "$BASE" ]; then
+            echo "::error::No base URL. Pass one, or set the DATA_BASE_URL variable - see LAUNCH_CHECKLIST.md step 2."
+            exit 1
+          fi
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          echo "Verifying $BASE"
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      # The battery's own imports only. It deliberately does not need the
+      # build's dependency tree - it reads a bucket over HTTP and opens
+      # PMTiles headers, and nothing it does requires GDAL or DuckDB.
+      - name: Install dependencies
+        run: python -m pip install --quiet requests pyyaml pmtiles
+
+      - name: Run the battery
+        env:
+          BASE: ${{ steps.can.outputs.base }}
+          STRICT: ${{ inputs.strict }}
+          HASH: ${{ inputs.hash }}
+        run: |
+          ARGS=(--base "$BASE" --json verify-release.json)
+          [ "$STRICT" = "true" ] && ARGS+=(--strict)
+          [ "$HASH" = "false" ] && ARGS+=(--no-hash)
+          python verify_release.py "${ARGS[@]}" | tee verify-release.txt
+
+      - name: Write the job summary
+        if: always()
+        run: |
+          {
+            echo "## Release verification"
+            echo
+            echo "Base: \`${{ steps.can.outputs.base }}\`"
+            echo
+            if [ -f verify-release.txt ]; then
+              echo '```'
+              cat verify-release.txt
+              echo '```'
+            else
+              echo "The battery did not produce a report. See the step log above."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Kept because a release decision is worth an artifact somebody can read
+      # later, and because #500 will want a previous run's verdict to diff
+      # against once release-over-release checks can run.
+      - name: Keep the verdict
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-release
+          path: pipeline/verify-release.json
+          if-no-files-found: warn

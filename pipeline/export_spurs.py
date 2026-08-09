@@ -68,6 +68,34 @@ TYPE_FIELD = "Type"
 # stand at a junction wondering whether the walk is worth it.
 DESTINATION_POI_TYPES = ("shelter", "water", "campsite", "resupply")
 
+# And which may not - the same decision, written down instead of left as an
+# absence (#492).
+#
+# The two together must cover lib/poi_schema.POI_TYPES exactly, which
+# tests/test_export_spurs.py asserts. That is the whole point of declaring
+# this at all: a subset by OMISSION means adding a sixth POI category leaves
+# it silently ineligible here, with no error, no warning and no failing test
+# - the spurs leading to it publish `destination_poi_id: null` and the line
+# detail sheet says nothing about where that trail goes.
+#
+# It is the shape of #469 through a different hole. There, export wrote
+# `shelter.geojson` and this module read `poi_shelter.geojson`; 784 spurs
+# published with a null destination and the run went green, because a missing
+# POI file is a legal empty result. `poi_output_name()` closed that by giving
+# the two ends one home. A category nobody remembered to classify reaches the
+# same silence without anyone spelling anything differently.
+#
+# Being a partition rather than a filter is what makes the next category a
+# decision somebody has to make, in a test that names the type it is waiting
+# on, rather than a default nobody notices taking effect.
+#
+# `crossing` is here because it is a place the trail crosses water, not a
+# place a spur goes to - it sits ON the centerline, so a blue-blazed side
+# trail leading to one is not the thing a hiker is weighing at a junction.
+# (It is also empty today, but that is a fact about the current export and
+# would be the wrong reason: this list is about what a destination MEANS.)
+NOT_A_DESTINATION_POI_TYPES = ("crossing",)
+
 
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()

@@ -33,7 +33,7 @@ import pytest
 
 import export_poi
 import export_spurs
-from lib.poi_schema import poi_output_name
+from lib.poi_schema import POI_TYPES, poi_output_name
 
 TRAIL_LAT, TRAIL_LON = 40.0, -75.0
 TYPE_DOMAIN = {"0": "Access (eg Parking)", "1": "Alternate Route", "3": "Spur (eg View, Camp)"}
@@ -182,6 +182,76 @@ def test_a_poi_type_that_was_never_exported_is_skipped_not_fatal(tmp_path):
     poi_dir.mkdir()
 
     assert export_spurs.load_destination_pois(poi_dir, ("shelter", "water")) == []
+
+
+# --- Which POI types count as a destination --------------------------------
+#
+# The list is a subset of POI_TYPES and should stay one - features/
+# SPUR_TRAILS.md's restraint is real, and "everything is a destination" would
+# put a privy on the line detail sheet. What it must not be is a subset by
+# OMISSION, which is what it was until #492: a sixth POI category would have
+# been silently ineligible, and the spurs leading to it would publish a null
+# destination with no error, no warning and nothing failing.
+#
+# That silence is the shape of #469 reached through a different hole. So the
+# two lists are asserted to PARTITION POI_TYPES, and the failure names the
+# type nobody has classified.
+
+
+def test_every_poi_type_is_classified_as_a_destination_or_explicitly_not():
+    """The partition, which is what turns a new category into a decision.
+
+    Both directions are a defect. A type in neither list is the silent
+    ineligibility this exists to stop. A type in a list that POI_TYPES does
+    not have is a classification for something nothing publishes, which reads
+    as coverage while resolving nothing.
+    """
+    classified = set(export_spurs.DESTINATION_POI_TYPES) | set(export_spurs.NOT_A_DESTINATION_POI_TYPES)
+    published = set(POI_TYPES)
+
+    assert classified == published, (
+        "export_spurs.py and lib/poi_schema.POI_TYPES disagree about the POI "
+        "categories. A type in neither list is not an error anywhere - the "
+        "spurs leading to it just publish a null destination, and the line "
+        "detail sheet says nothing about where that trail goes.\n"
+        f"  published but unclassified: {sorted(published - classified)}\n"
+        f"  classified but not published: {sorted(classified - published)}"
+    )
+
+
+def test_the_two_lists_do_not_overlap():
+    """A type in both is not a partition, and the reader would win silently -
+    `load_destination_pois` iterates DESTINATION_POI_TYPES and never consults
+    the other list, so the exclusion would be documentation rather than fact."""
+    both = set(export_spurs.DESTINATION_POI_TYPES) & set(export_spurs.NOT_A_DESTINATION_POI_TYPES)
+
+    assert not both, f"classified as both a destination and not one: {sorted(both)}"
+
+
+def test_an_excluded_type_is_not_read_even_when_its_file_is_there(tmp_path):
+    """The classification has to be the one that actually runs.
+
+    `load_destination_pois` takes a `types` argument that every test above
+    supplies, so its DEFAULT is the only place the decision reaches the real
+    export - and a default that drifted from the constant would make the
+    partition above a statement about a list nothing uses.
+
+    Asserted by putting a file there for every published type, including the
+    excluded one, and calling with no `types` at all. A `crossing` id coming
+    back would mean the exclusion is documentation rather than behaviour.
+    """
+    poi_dir = tmp_path / "poi"
+    poi_dir.mkdir()
+    for poi_type in POI_TYPES:
+        (poi_dir / poi_output_name(poi_type)).write_text(
+            json.dumps({"features": [{"properties": {"id": f"{poi_type}:one", "lat": 40.0, "lon": -75.0}}]})
+        )
+
+    found = {poi["id"] for poi in export_spurs.load_destination_pois(poi_dir)}
+
+    assert found == {f"{poi_type}:one" for poi_type in export_spurs.DESTINATION_POI_TYPES}
+    for poi_type in export_spurs.NOT_A_DESTINATION_POI_TYPES:
+        assert f"{poi_type}:one" not in found
 
 
 # --- Which side trails count -----------------------------------------------

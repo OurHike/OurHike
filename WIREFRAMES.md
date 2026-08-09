@@ -222,7 +222,9 @@ A third visual channel, independent of confidence:
 | Ageing        | ~14–60 days      | pin, no ring                                       |
 | Stale / never | months, or never | pin faded to ~50%, dotted border, grey dotted ring |
 
-Confidence stays separate: a dashed pin means _never verified to exist_; staleness means _when a human last said it was fine_. Always state it in words too: "Last confirmed in May · 78 days ago." A one-tap "Was it flowing?" updates the date, needs no account, changes nothing else — this is `DATA_NUDGES.md`'s `ConditionConfirmation` model. **Boosting** stale POIs' prominence to solicit confirmations is Data Nudges — Post-MVP; today staleness is described, never amplified.
+Confidence stays separate, and carries three values rather than two: a solid pin is upstream data nobody disputes, a dashed pin means _never verified to exist_, and a dashed pin with a distinct marker means _reported missing_ — corroborated field reports that the thing upstream published is not there. Staleness means _when a human last said it was fine_, which is a different question from all three. Always state it in words too: "Last confirmed in May · 78 days ago", "2 hikers reported this missing, most recently 4 days ago."
+
+A one-tap "Was it flowing?" updates the date and changes nothing else — this is `FIELD_NOTES.md`'s `FieldNote` (2026-08-09; `DATA_NUDGES.md`'s `ConditionConfirmation` is the same model under its earlier name). **It does need an account**, which this section previously said it did not: that predates Authentication moving into MVP, and the "distinct accounts on distinct days" rule behind _reported missing_ cannot be counted without one. **Boosting** stale POIs' prominence to solicit confirmations is Data Nudges — Post-MVP; today staleness is described, never amplified.
 
 ### 12. Other states already wireframed
 

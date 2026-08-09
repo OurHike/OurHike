@@ -513,15 +513,39 @@ describe('PoiCard photo gallery', () => {
   it('lets a hiker past a photo that failed to load', () => {
     // Offline-first: photo 2 of 5 missing from the cache must not trap
     // someone on a broken slot with the rest unreachable.
+    //
+    // This test asserted the opposite until #481 - that the controls
+    // DISAPPEAR when a photo fails - while its own comment said they must
+    // not trap anyone. The controls were gated on the current photo having
+    // rendered, on the reasoning that paging a placeholder leads nowhere;
+    // true when every photo has failed, and this fires when the displayed
+    // one has, which on a freshly opened card is always the first.
     renderCard({ ...SHELTER, photoUrl: 'blob:one', photos: GALLERY })
 
     fireEvent.click(screen.getByTestId('poi-card-photo-next'))
     fireEvent.error(screen.getByTestId('poi-card-photo'))
     expect(screen.getByTestId('poi-card-placeholder')).toBeInTheDocument()
 
-    // The controls ride the photo, so reaching photo 3 goes back the way we
-    // came - and the failure must not stick to it.
-    expect(screen.queryByTestId('poi-card-photo-next')).not.toBeInTheDocument()
+    // The way out of a bad image, which is the whole point.
+    fireEvent.click(screen.getByTestId('poi-card-photo-next'))
+
+    expect(screen.getByTestId('poi-card-photo')).toHaveAttribute('src', 'blob:three')
+    expect(screen.getByTestId('poi-card-photo-count')).toHaveTextContent('3 of 3')
+  })
+
+  it('keeps the controls reachable when the very first photo will not load', () => {
+    // The common shape of the bug: nothing has been tapped yet, photo 1 is
+    // missing from the cache, and every other photograph of the shelter was
+    // unreachable behind a placeholder.
+    renderCard({ ...SHELTER, photoUrl: 'blob:one', photos: GALLERY })
+
+    fireEvent.error(screen.getByTestId('poi-card-photo'))
+
+    expect(screen.getByTestId('poi-card-placeholder')).toBeInTheDocument()
+    expect(screen.getByTestId('poi-card-photo-count')).toHaveTextContent('1 of 3')
+    fireEvent.click(screen.getByTestId('poi-card-photo-next'))
+
+    expect(screen.getByTestId('poi-card-photo')).toHaveAttribute('src', 'blob:two')
   })
 
   it('starts a different waypoint at its own first photo', () => {

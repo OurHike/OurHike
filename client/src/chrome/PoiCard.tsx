@@ -390,12 +390,23 @@ export function PoiCard({ poi, map, onClose }: PoiCardProps) {
             <span className="poi-card__credit">{credit}</span>
           ))}
 
-        {/* Only when there is more than one photo, and only over a photo -
-            paging a placeholder leads nowhere. The count is the honest part:
-            "2 of 7" says how much more there is without making anyone tap to
-            find out, and it is what tells a hiker on a ridge whether the
-            gallery is worth the data. */}
-        {hasGallery && showPhoto && (
+        {/* Only when there is more than one photo. The count is the honest
+            part: "2 of 7" says how much more there is without making anyone
+            tap to find out, and it is what tells a hiker on a ridge whether
+            the gallery is worth the data.
+
+            This used to require `showPhoto` too, on the reasoning that paging
+            a placeholder leads nowhere (#481). That is true when EVERY photo
+            has failed, and the gate fired when the CURRENT one had - which for
+            a freshly opened card is always the first. So a shelter whose photo
+            1 was missing from the cache showed a placeholder with no controls,
+            and its other six photographs were unreachable. Offline-first makes
+            that routine rather than rare: a URL the cache no longer holds is
+            the ordinary condition here, not an error.
+
+            Gated on the list instead, so the arrows over a placeholder are the
+            way out of a bad image rather than chrome over a blank. */}
+        {hasGallery && (
           <div className="poi-card__gallery">
             <button
               type="button"

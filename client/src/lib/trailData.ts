@@ -72,6 +72,16 @@ export interface StoredPoi {
    */
   capacity?: number
   /**
+   * One sentence about the place, for shelters and campsites.
+   *
+   * Composed by the pipeline from ATC's own inventory columns rather than
+   * copied from a text field - ATC has no prose description (see
+   * pipeline/lib/poi_description.py). Optional for the same backward-compat
+   * reason as `source`: a phone that downloaded before this existed has POIs
+   * without one, and water and resupply POIs never have one at all.
+   */
+  description?: string
+  /**
    * A photo of the place, with what the licence obliges us to say about it.
    *
    * The pipeline's fetch_poi_images.py matches openly-licensed Wikimedia
@@ -120,6 +130,7 @@ interface PoiProperties {
   confidence?: unknown
   source?: unknown
   capacity?: unknown
+  description?: unknown
   photo_key?: unknown
   photo_page_url?: unknown
   photo_author?: unknown
@@ -164,6 +175,7 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
     const photoLicense = stringProp(props.photo_license)
     const photoTaken = stringProp(props.photo_taken)
     const capacity = capacityProp(props.capacity)
+    const description = stringProp(props.description)
 
     pois.push({
       id: String(props.id ?? `${fallbackType}:${props.lat},${props.lon}`),
@@ -186,6 +198,7 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
       // as a zero, so the card can tell "sleeps nobody knows how many" from
       // a number.
       ...(capacity !== undefined ? { capacity } : {}),
+      ...(description !== undefined ? { description } : {}),
       // Photo fields ride only behind a photo URL: an author or licence with
       // no photo is a credit for nothing, and would render as one.
       ...(photoUrl !== undefined

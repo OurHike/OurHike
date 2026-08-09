@@ -80,6 +80,23 @@ That `--provider` label is as far as this registry currently goes toward being m
 
 **Licensing is unconfirmed**, and worth saying plainly. The capacity numbers come from [greenbelly.co's A.T. shelter list](https://www.greenbelly.co/pages/appalachian-trail-shelters), which credits Whiteblaze, the Appalachian Trail Conservancy and TNlandforums, and which states no licence at all - the same position as opentrail.org above ([#98](https://github.com/OurHike/OurHike/issues/98)), recorded here rather than discovered later. Two things narrow what is taken: only the capacity column, not the mileages or elevations or ordering, and it is re-keyed onto ATC GlobalIDs, so what ships is a set of facts about shelters this project already knows about rather than a copy of somebody's table. That is a better position than a scrape, not a settled one. Confirming terms with Greenbelly is the honest next step, and until then this carries the same caveat opentrail.org does.
 
+## Shelter and campsite descriptions
+
+Shelter and campsite features carry a `description` — one sentence the waypoint card shows under the name:
+
+> Two-storey clapboard shelter, sleeps 14, with a fireplace, a fire ring and a porch. Built 1915.
+
+**It is composed, not copied, because ATC has no prose description.** Both text fields were read in full (2026-08-09):
+
+| field | what it actually holds |
+|---|---|
+| `Descriptio`, aliased **"Description"** | The club acronym followed by the feature's own name — "MATC Chairback Gap Lean-to Shelter" — on 488 of the 510 features that have it. The rest are spelling variants of the same thing, or literally "NA". Published, it would render directly under a heading already saying the name. |
+| `Comments` | The real free text, and a surveyor's notebook: populated on 81 of 280 shelters and 65 of 232 campsites, ranging from useful ("Has a loft", "Not an accessible shelter") through construction detail ("Shiplap siding") to notes the survey wrote to itself — "Not sure about spatial info" on twenty-four campsites, "GIS CS629-CS635", "Added based on existing GIS data". |
+
+What ATC does have is the inventory, and it is complete: `Stories`, `Chimneys`, the fire-ring and food-storage counts, `Deck_Lengt`, `Exterior_M` and `Year_Built` are non-null on **all 280 shelters**, and `Site_Num` on 231 of 232 campsites. [`lib/poi_description.py`](lib/poi_description.py) assembles the sentence from those, so every clause is a fact ATC states and coverage is **280/280 shelters and 232/232 campsites** rather than the 26% the free text manages. Which columns are worth a clause is one list, `FEATURES`, so disagreeing with the selection is a one-line change — the line drawn is *what changes a hiker's decision* (food storage, a fire, a porch), which is why the window and skylight counts are left out.
+
+Where ATC did write a usable comment it is appended as **"ATC notes: …"** — attributed rather than blended in, because that half is a person's prose and the rest is assembled from columns. [`lib/atc_notes.py`](lib/atc_notes.py) is what decides "usable": it drops the survey's own bookkeeping **sentence by sentence**, never rewording, so Cable Gap's "Log and mortar exterior. Majority of structure is log. Please see photos." keeps its first two sentences instead of being thrown away whole. 74 shelters and 29 campsites end up with a note.
+
 ## Fetching opentrail.org (water sources + resupply)
 
 `fetch_opentrail.py` pulls AT waypoints from opentrail.org's public API (`/api/getData?trail=AT`) - 1,840 features, of which 142 are tagged water sources (`w`), 72 resupply (`r`), and 103 towns (`t`), the gap ATC's own data leaves. **Licensing isn't formally confirmed** (no LICENSE file in their repo; the maintainer reportedly called it "open data" in a Reddit post - [#98](https://github.com/OurHike/OurHike/issues/98) tracks following up directly), so this deliberately excludes their user comments (personal contributions from named individuals - a separate consent question from licensing).

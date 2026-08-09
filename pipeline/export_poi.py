@@ -57,6 +57,18 @@ partial and deliberately so: a shelter the source lists only as half of a
 pair exports no capacity rather than a guessed one, and the client shows
 nothing rather than a number nobody stands behind.
 
+Description: shelter and campsite features carry `description`, one sentence
+about the place - "Two-storey clapboard shelter, sleeps 14, with a fireplace,
+a fire ring and a porch. Built 1915." It is composed by lib/poi_description.py
+from ATC's own inventory columns rather than copied from a text field,
+because ATC has no prose description: the field aliased "Description" is the
+club acronym plus the feature's own name, and `Comments` is a surveyor's
+notebook populated on under a third of features (lib/atc_notes.py measures
+both). Composing instead of copying is what makes the coverage 280/280
+shelters and 232/232 campsites. Where ATC did write a usable comment it is
+appended as "ATC notes: ..." - attributed, not blended in, since that half is
+a person's prose and the rest is assembled from columns.
+
 Photo enrichment: when fetch_poi_images.py has run, data/raw/poi_images.json
 holds per-POI photo records (Wikimedia Commons; author, licence, capture date
 and the digest of the downloaded image) keyed by the same unified ids this
@@ -76,9 +88,11 @@ from pathlib import Path
 
 import duckdb
 
+from lib.atc_notes import clean_note
 from lib.completeness import count_problems, fail_if_incomplete
 from lib.corridor import build_corridor
 from lib.photo_store import photo_key
+from lib.poi_description import describe_campsite, describe_shelter
 from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES, unify_poi
 
 ROOT = Path(__file__).parent
@@ -123,6 +137,9 @@ POI_COLUMNS = (
     # How many people the shelter sleeps; NULL on every other poi_type and on
     # shelters nobody has published a usable number for.
     ("capacity", "INTEGER"),
+    # One sentence about the place, composed from ATC's own inventory by
+    # lib/poi_description.py. Shelters and campsites only; NULL elsewhere.
+    ("description", "VARCHAR"),
     ("photo_key", "VARCHAR"),
     ("photo_page_url", "VARCHAR"),
     ("photo_author", "VARCHAR"),
@@ -131,6 +148,17 @@ POI_COLUMNS = (
 )
 
 TRAIL_ID = "AT"
+
+# Where unify_all_sources parks a feature's own ATC attributes so
+# attach_descriptions can compose from them. Underscored because it is
+# scaffolding between two steps of this module, not part of the schema:
+# write_poi_type reads POI_COLUMNS and never sees it.
+RAW_PROPERTIES_KEY = "_source_properties"
+
+# ATC's free-text column on the shelter and campsite layers. Named `Comments`,
+# not `Descriptio` - see lib/atc_notes.py for why the field actually aliased
+# "Description" is unusable (it is the club acronym plus the feature's name).
+ATC_NOTE_FIELD = "Comments"
 
 # The source name ATC shelters get in unified ids. Named rather than repeated
 # because shelter_capacity.json stores bare ATC GlobalIDs, and the id it must
@@ -219,6 +247,35 @@ def attach_capacity(records: list[dict], capacities: dict[str, int]) -> int:
     return attached
 
 
+def attach_descriptions(records: list[dict]) -> int:
+    """Compose `description` for every shelter and campsite, returning how
+    many got one.
+
+    Runs after attach_capacity, because "sleeps 8" is a clause in the
+    sentence and the number is not ATC's - it comes from
+    reference/shelter_capacity.json. A shelter with no capacity gets the
+    same sentence without that clause rather than a gap.
+
+    Other poi_types are left alone: water and resupply come from
+    opentrail.org, which carries no inventory to compose from.
+    """
+    attached = 0
+    for record in records:
+        properties = record.get(RAW_PROPERTIES_KEY) or {}
+        note = clean_note(properties.get(ATC_NOTE_FIELD))
+        if record["poi_type"] == "shelter":
+            description = describe_shelter(properties, record.get("capacity"), note)
+        elif record["poi_type"] == "campsite":
+            description = describe_campsite(properties, note)
+        else:
+            continue
+        if description is None:
+            continue
+        record["description"] = description
+        attached += 1
+    return attached
+
+
 def attach_photos(records: list[dict], photos: dict[str, dict]) -> int:
     """Copy each matched photo's PHOTO_FIELDS onto its unified POI record as
     photo_* keys, returning how many matched. Unmatched records are left
@@ -256,7 +313,14 @@ def unify_all_sources(trail_id: str = TRAIL_ID) -> list[dict]:
     unified = []
     for stem, poi_type, source, field_map in DIRECT_SOURCES:
         for feature in load_features(RAW_DIR / f"{stem}.geojson"):
-            unified.append(unify_poi(feature, poi_type, source, trail_id, field_map))
+            record = unify_poi(feature, poi_type, source, trail_id, field_map)
+            # The source feature's own attributes, kept for attach_descriptions
+            # to compose from. Underscored and dropped before write_poi_type -
+            # nothing here is published. It rides on the record rather than
+            # being returned alongside because fetch_poi_images.py calls this
+            # function for its POI list and would break on a new return shape.
+            record[RAW_PROPERTIES_KEY] = feature.get("properties") or {}
+            unified.append(record)
 
     for feature in load_features(RAW_DIR / "opentrail_at.geojson"):
         icon = (feature.get("properties") or {}).get("icon")
@@ -330,6 +394,7 @@ def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[
                     # POI arrives without one both when nothing matched and
                     # when a caller never ran the attach step.
                     r.get("capacity"),
+                    r.get("description"),
                     # .get, not [] - records arrive photo-less both when
                     # attach_photos found no match and when a caller (or an
                     # older test) never ran the attach step at all.
@@ -382,6 +447,9 @@ def main() -> dict:
         print(f"  {attached} shelters carry a capacity (from {CAPACITY_PATH.name}).")
     else:
         print(f"  No {CAPACITY_PATH.name} - exporting without shelter capacities.")
+
+    described = attach_descriptions(clipped)
+    print(f"  {described} shelters/campsites carry a description.")
 
     photos = load_photo_records(RAW_DIR / IMAGES_FILENAME)
     if photos:

@@ -83,6 +83,17 @@ export interface PoiDetail {
    */
   capacity?: number
   /**
+   * One sentence about the place - what it is built of, what it has, when it
+   * went up - for shelters and campsites.
+   *
+   * The pipeline composes it from ATC's inventory columns, so it is a run of
+   * stated facts rather than anybody's prose, and where ATC's maintainers
+   * wrote a note of their own it is quoted as theirs. Optional: no other
+   * waypoint type has one, and a phone that downloaded before it existed has
+   * none at all.
+   */
+  description?: string
+  /**
    * A photo of the place, when one exists.
    *
    * Published as photo_* properties on the POI artifacts (pipeline
@@ -350,6 +361,10 @@ export function PoiCard({ poi, map, onClose }: PoiCardProps) {
             </>
           )}
         </p>
+
+        {poi.description !== undefined && (
+          <p className="poi-card__description">{poi.description}</p>
+        )}
 
         {poi.confidence === 'low' && (
           <p className="poi-card__unverified" role="note">

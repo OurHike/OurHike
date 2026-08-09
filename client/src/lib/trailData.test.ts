@@ -271,6 +271,35 @@ describe('trail data', () => {
     expect(pois[0]).not.toHaveProperty('capacity')
   })
 
+  it('keeps the composed description, so the card can say what the place is', async () => {
+    serve(
+      poiCollection([
+        {
+          id: 'atc_shelters:abc',
+          poi_type: 'shelter',
+          name: 'Chairback Gap Lean-to',
+          lat: 45.45,
+          lon: -69.26,
+          description: 'Log shelter, sleeps 6. Built 1954.',
+        },
+      ]),
+    )
+    await downloadTrailData()
+
+    const pois = store.get(POIS_KEY) as StoredPoi[]
+    expect(pois[0].description).toBe('Log shelter, sleeps 6. Built 1954.')
+  })
+
+  it('leaves the description off when the artifact carries none', async () => {
+    // Water and resupply POIs never have one - opentrail.org has no inventory
+    // to compose from - so its absence is the normal case, not a gap to fill.
+    serve(poiCollection([{ id: 'x', poi_type: 'water', name: 'Spring', lat: 1, lon: 2 }]))
+    await downloadTrailData()
+
+    const pois = store.get(POIS_KEY) as StoredPoi[]
+    expect(pois[0]).not.toHaveProperty('description')
+  })
+
   it('carries a photo and its attribution facts, so the card can pay for showing it', async () => {
     // The photo_* properties are how export_poi.py publishes the Wikimedia
     // Commons match. The credit fields are not decoration: CC BY/BY-SA make

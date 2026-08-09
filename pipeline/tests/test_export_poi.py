@@ -59,11 +59,35 @@ def _write_fixture_sources(raw_dir):
 
     _write_fc(
         raw_dir / "shelters.geojson",
-        [_point_feature(1, -73.95, 41.05, {"GlobalID": "shelter-glob-1", "OBJECTID": 1, "Name": "Test Shelter"})],
+        [
+            _point_feature(
+                1,
+                -73.95,
+                41.05,
+                # The ATC inventory columns lib/poi_description.py composes
+                # from ride alongside the identity ones.
+                {
+                    "GlobalID": "shelter-glob-1",
+                    "OBJECTID": 1,
+                    "Name": "Test Shelter",
+                    "Stories": 2,
+                    "Exterior_M": "5",
+                    "Chimneys": 1,
+                    "Year_Built": 1954,
+                },
+            )
+        ],
     )
     _write_fc(
         raw_dir / "campsites.geojson",
-        [_point_feature(1, -73.94, 41.04, {"GlobalID": "campsite-glob-1", "OBJECTID": 1, "Name": "Test Campsite"})],
+        [
+            _point_feature(
+                1,
+                -73.94,
+                41.04,
+                {"GlobalID": "campsite-glob-1", "OBJECTID": 1, "Name": "Test Campsite", "Type": "0", "Site_Num": 3},
+            )
+        ],
     )
     _write_fc(
         raw_dir / "communities.geojson",
@@ -502,6 +526,101 @@ def test_export_poi_exported_properties_are_exactly_the_declared_columns(tmp_pat
     assert props["photo_author"] == "Jane Doe"
     assert props["name"] == "Test Shelter"
     assert props["source"] == export_poi.SHELTER_SOURCE
+
+
+def test_export_poi_composes_a_description_for_shelters_and_campsites(tmp_path, monkeypatch, con):
+    """ATC publishes no prose description, so the export assembles one from
+    its inventory columns (lib/poi_description.py) and folds in the capacity
+    the reference file supplies. Water and resupply come from opentrail.org,
+    which has no inventory to compose from, and get none."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    capacity_path = tmp_path / "shelter_capacity.json"
+    _write_capacity_file(capacity_path, [{"atc_global_id": "shelter-glob-1", "atc_name": "Test Shelter", "capacity": 8}])
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+    monkeypatch.setattr(export_poi, "CAPACITY_PATH", capacity_path)
+
+    export_poi.main()
+
+    shelter_props = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
+    # The capacity clause proves the ordering that matters: descriptions are
+    # composed after attach_capacity, because the number is not ATC's.
+    assert shelter_props["description"] == "Two-storey log shelter, sleeps 8, with a fireplace. Built 1954."
+
+    campsite_props = json.loads((out_dir / "campsite.geojson").read_text())["features"][0]["properties"]
+    assert campsite_props["description"] == "Designated campsite, 3 sites."
+
+    water_fc = json.loads((out_dir / "water.geojson").read_text())
+    for feature in water_fc["features"]:
+        assert feature["properties"].get("description") is None
+
+
+def test_export_poi_folds_atcs_own_comment_into_the_description(tmp_path, monkeypatch, con):
+    """Where ATC wrote something worth reading it is published as theirs.
+    Where they wrote a note to the survey it is dropped, and the composed
+    sentence stands alone - the shelter does not inherit "Not sure about
+    spatial info"."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    _write_fc(
+        raw_dir / "shelters.geojson",
+        [
+            _point_feature(
+                1,
+                -73.95,
+                41.05,
+                {"GlobalID": "s1", "Name": "Noted Shelter", "Stories": 1, "Exterior_M": "5", "Comments": "Has a loft"},
+            ),
+            _point_feature(
+                2,
+                -73.95,
+                41.06,
+                {
+                    "GlobalID": "s2",
+                    "Name": "Surveyed Shelter",
+                    "Stories": 1,
+                    "Exterior_M": "5",
+                    "Comments": "Not sure about spatial info",
+                },
+            ),
+        ],
+    )
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+
+    export_poi.main()
+
+    by_name = {
+        f["properties"]["name"]: f["properties"] for f in json.loads((out_dir / "shelter.geojson").read_text())["features"]
+    }
+    assert by_name["Noted Shelter"]["description"] == "Log shelter. ATC notes: Has a loft."
+    assert by_name["Surveyed Shelter"]["description"] == "Log shelter."
+
+
+def test_export_poi_does_not_publish_the_raw_source_properties(tmp_path, monkeypatch, con):
+    """unify_all_sources parks each feature's own ATC attributes on the record
+    for attach_descriptions to read. That is scaffolding between two steps,
+    and none of ATC's 135 columns may reach the artifact through it."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+
+    export_poi.main()
+
+    props = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
+    assert export_poi.RAW_PROPERTIES_KEY not in props
+    assert set(props) == {name for name, _ in export_poi.POI_COLUMNS}
 
 
 def test_export_poi_communities_and_opentrail_resupply_carry_different_confidence(tmp_path, monkeypatch, con):

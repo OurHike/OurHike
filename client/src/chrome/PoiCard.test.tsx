@@ -88,6 +88,26 @@ describe('PoiCard', () => {
     expect(screen.getByRole('heading', { name: SHELTER.name })).toBeInTheDocument()
   })
 
+  it('says what the place is', () => {
+    renderCard({
+      ...SHELTER,
+      description: 'Two-storey log shelter, sleeps 8, with a fireplace. Built 1954.',
+    })
+
+    expect(
+      screen.getByText('Two-storey log shelter, sleeps 8, with a fireplace. Built 1954.'),
+    ).toBeInTheDocument()
+  })
+
+  it('omits the description rather than showing an empty line', () => {
+    // Only shelters and campsites have one, and a phone that downloaded
+    // before the field existed has none at all.
+    renderCard({ ...SHELTER, description: undefined })
+
+    expect(screen.getByRole('heading', { name: SHELTER.name })).toBeInTheDocument()
+    expect(screen.queryByText(/shelter, sleeps/)).not.toBeInTheDocument()
+  })
+
   it('omits the mile rather than guessing one when the trail lines are missing', () => {
     // The centerline index is a separate download and can legitimately be
     // absent. A shelter with no mile is still worth a card - it just cannot

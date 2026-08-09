@@ -10,14 +10,17 @@ Companion to [FEATURES.md](../FEATURES.md), [WIREFRAMES.md](../WIREFRAMES.md) (t
 
 ## The precedence ladder
 
-One slot, four possible occupants, in this order:
+One slot, five possible occupants, in this order:
 
 | | what fills the slot | where it lives | works offline |
 |---|---|---|---|
 | 1 | **Your own photo** of this place | your device | always |
-| 2 | **The community default** — a shared photo a moderator promoted | backend | when cached |
-| 3 | **A Commons photo** — openly licensed, recent, nearest | our bucket, `photos/` | when cached |
-| 4 | **The category silhouette** | the app itself | always |
+| 2 | **The club's pick**, else the newest community photo | backend | when cached |
+| 3 | **ATC's own facility photo** — the maintaining organisation's documentation | our bucket, `photos/` | when cached |
+| 4 | **A Commons photo** — openly licensed, recent, nearest | our bucket, `photos/` | when cached |
+| 5 | **The category silhouette** | the app itself | always |
+
+**Rung 3 was added once Commons was measured** and found to cover zero of 280 shelters while ATC's own layers covered 270. It sits above Commons rather than below it for the reason the measurement made obvious: ATC's is a photograph *of the shelter*, taken by the people who maintain it, where a Commons hit is the nearest openly-licensed file to a coordinate and is very often a photograph of a plant. It sits below the community rungs because a club's or a hiker's current photo beats a decade-old inventory shot of the same structure.
 
 **Your own photo always wins, and nothing can displace it.** Not a better-composed community photo, not a fresher one, not a moderator. This is the whole point of the feature and it is value #1 stated as a render rule: a hiker's memory of a place outranks the app's opinion about it. The ladder falls through only downward, and rung 4 is a floor rather than a failure — it is what the slot has always shown and the honest answer when nothing better is true.
 
@@ -173,9 +176,26 @@ A photo is private when added. Sharing is a second decision, taken per photo, th
 
 Sharing queues in the existing outbox (`lib/outbox.ts`) like every other write, so tapping it on a ridge is fine — it leaves when there is signal.
 
+### The shape of a POI's gallery: 3 pinned, 12 rolling, one per person
+
+**Decided 2026-08-09.** A POI holds **at most 15 shared photos**. The club that maintains the area may pin **3**; the remaining **12** are the most recent community photos. **One photo per person per POI.**
+
+Each rule is doing a specific job, and the interactions between them are the point:
+
+- **One per person is the anti-domination rule, and it is the one to keep even if the rest changes.** One enthusiastic photographer cannot own a shelter's gallery; contributor diversity comes free rather than being engineered; and — the part that matters most here — it is a cap that cannot be gamed. There is no leaderboard to climb by uploading more, which keeps this on the right side of [DATA_NUDGES.md](DATA_NUDGES.md) rather than quietly reintroducing the contribution scoreboard that document rules out.
+- **A hiker's second photo replaces their first rather than being refused.** Without this, someone who shot a shelter in flat light in 2027 is locked out by their own past self forever — and the person most likely to come back with a better photograph is exactly the person who already cared enough to take one. Self-replacement is free and needs no moderator.
+- **The 12 roll by recency; the pinned 3 do not.** A hard first-come cap has a failure mode that is precisely the one the freshness bar exists to prevent: a shelter photographed heavily in 2027 is full by 2028, and when it burns and is rebuilt in 2032 the gallery still shows fifteen photographs of a building that is no longer there, with no slot free for the truth. A rolling window self-heals within a season. The club's 3 are exempt because they are an editorial judgement, not a queue position.
+
+**The binding constraint is moderation, not storage, and the design has to admit that.** Fifteen photos across ~3,000 POIs is ~2 GB — free, per the cost table below. It is also **45,000 human decisions** at saturation, on volunteer time, which is the limit this document already named. So the moderation posture splits:
+
+- **The pinned 3 are pre-moderated.** They are what a hiker with no photo of their own sees, so they earn the scrutiny — and they are a bounded number of decisions per POI, which is what makes them affordable.
+- **The rolling 12 are report-driven, not pre-approved.** Pre-moderating 45,000 photographs is not something a volunteer club can do, and designing as though it were is how a queue becomes a graveyard and the feature stalls with a backlog nobody can clear.
+
+**One per person applies to the shared gallery only.** What a hiker keeps privately on their own device is untouched by this — "several per place, one on the card" above still holds, because that is storage on their phone rather than a public surface with a moderation cost.
+
 ### Becoming the community default
 
-A shared photo enters the **existing moderation queue** ([REPORT_A_PROBLEM.md](REPORT_A_PROBLEM.md)'s `submitted | verified | resolved | dismissed`), and a moderator can promote one to the **community default** for that POI: rung 2 of the ladder, what a hiker with no photo of their own sees.
+A shared photo enters the **existing moderation queue** ([REPORT_A_PROBLEM.md](REPORT_A_PROBLEM.md)'s `submitted | verified | resolved | dismissed`), and a moderator can pin one of the 3 for that POI: rung 2 of the ladder, what a hiker with no photo of their own sees. Where a club has pinned nothing, rung 2 falls through to the newest community photo, and where there are none of those it falls through to ATC.
 
 **Who decides is the whole question, and it is deliberately not a popularity contest.** No likes, no votes, no top-contributor list — the same prohibition DATA_NUDGES.md applies to freshness prompts, for the same reason. Votes would also answer the wrong question: the card needs the photo that best shows what the place *is like now*, and a crowd reliably prefers the prettiest sunset.
 
@@ -273,6 +293,22 @@ Checked against `lib/r2_keys.py` rather than assumed. It refused both, which is 
 Neither is a blocker; both are the gate doing its job. R2_LAYOUT.md anticipates exactly this — *"Adding a format is one line in the validator, reviewed alongside the artifact that needs it"* — so mirroring photos means adding `jpg` to `ALLOWED_EXTENSIONS` and declaring a photo prefix with its retention rule, in the PR that needs them. **The prefix must not be `releases/`**: release folders are written once and never overwritten, and a community photo that lands in one could never be withdrawn, which is the consent requirement above. Photos live under a mutable prefix the backend can delete from.
 
 Note also what "everything in R2" does and does not mean. R2 holds **bytes**; photo metadata, moderation state and the withdrawal flag stay in Postgres, because those are records to query, not objects to serve.
+
+### Keeping the originals, which is a preservation question and not a storage-tier one
+
+**Decided 2026-08-09: full-resolution originals of the photos OurHike is licensed to hold are archived under an `originals/` prefix, never served to a client.**
+
+The prompt for this was cold storage, and the first finding is that **there is no cost problem to solve.** R2 is $0.015/GB-month with 10 GB free and zero egress; the 489 ATC originals are ~1 GB, and every photo field across all six ATC layers is roughly 5 GB. A Glacier-style tier buys a discount on a bill that is already $0 and pays for it in retrieval latency and a second storage path to maintain. Cost is not the reason to do this.
+
+**The reason is that mirroring only the 640px rendering creates a real fragility, and the ATC fetch just created it.** Those are Google Workspace links on another organisation's Drive. Files get moved, re-shared and re-permissioned; the `/a/appalachiantrail.org/` links are one admin policy change from returning 404. If that happens, what survives of an irreplaceable 2015–2017 trail inventory is a set of 640×427 thumbnails. That is a preservation argument, and it is a good one.
+
+**This does not reverse the not-an-archive decision, and the boundary is worth stating precisely** because it looks adjacent to it:
+
+- **ATC's and clubs' licensed photos: archived.** They have no other home this project controls, they are the app's own data, and nobody's memories are at stake.
+- **Hikers' *shared* photos: archived.** Sharing is already an irrevocable CC BY-SA 4.0 grant, so holding the full file changes no promise — though the withdrawal rule above still applies to what is *served*.
+- **Hikers' *personal, unshared* photos: never.** This is the thing decided against on 2026-08-07 and the reasoning is unchanged: their library is the home, and a duty never to lose someone's memories is one this project must not take on.
+
+The prefix is mutable and unserved, so it needs its own line in [R2_LAYOUT.md](../pipeline/R2_LAYOUT.md) rather than riding on `photos/`.
 
 ### Reduce on the phone, never on a server
 

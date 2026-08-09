@@ -100,6 +100,21 @@ THROTTLE_SECONDS = 0.2
 RETRY_BACKOFF_SECONDS = (5, 30)
 RETRYABLE_STATUSES = (429, 500, 502, 503, 504)
 
+# A photo reference that Drive will not serve: the file is deleted, or its
+# sharing was changed, or the id in ATC's column was never right. Not a
+# transport failure and not worth retrying - it is a fact about one slot in
+# one feature's Photo1..Photo10, and the honest handling is the same as an
+# undated photo's: skip it and take the next.
+#
+# This is not hypothetical. The first run after vistas, parking and privies
+# became POI types died on
+# `Annapolis Rock (US 40) Parking Area`'s Photo2 after 30 minutes and ~1,050
+# POIs, and took the whole data release with it - every export, the quality
+# gate and the publish step were skipped behind it. A sample of 80 links
+# across the new layers found no other dead one, which is exactly the shape
+# of failure worth guarding: too rare to design around, fatal when it lands.
+MISSING_PHOTO_STATUSES = (403, 404, 410)
+
 USER_AGENT = "OurHike-pipeline/1.0 (https://github.com/OurHike/OurHike; contact via repository issues)"
 
 # A Drive share link carries the file id between /d/ and the next slash, in
@@ -278,8 +293,20 @@ def collect_candidates() -> list[dict]:
     return candidates
 
 
-def eligible_photos(session: requests.Session, candidate: dict, cutoff: date, credit: dict) -> list[dict]:
+def eligible_photos(
+    session: requests.Session,
+    candidate: dict,
+    cutoff: date,
+    credit: dict,
+    unresolved: list[str] | None = None,
+) -> list[dict]:
     """Every shippable photo for a POI, in ATC's own Photo1..Photo10 order.
+
+    `unresolved`, when given, collects the photo URLs Drive would not serve
+    (see MISSING_PHOTO_STATUSES) so the run can report how much of ATC's
+    column no longer resolves. A list the caller owns rather than a return
+    value, because a slowly rotting corpus is a thing to notice across a whole
+    run and not a fact about any one POI.
 
     All of them, not the first: 433 of the 489 features carrying a photo carry
     more than one, and taking only the first discarded 812 real photographs of
@@ -298,8 +325,23 @@ def eligible_photos(session: requests.Session, candidate: dict, cutoff: date, cr
         file_id = drive_file_id(url)
         if file_id is None:
             continue
-        taken = capture_date(session, file_id)
-        if taken is None or taken < cutoff:
+        try:
+            taken = capture_date(session, file_id)
+            if taken is None or taken < cutoff:
+                continue
+            digest = store_rendering(session, file_id)
+        except requests.exceptions.HTTPError as error:
+            # Both calls are wrapped, not just the first: a file can answer a
+            # Range request and then refuse the rendering, and either way this
+            # slot has no photo to ship. Any other status still raises - a 500
+            # from Drive is Drive being broken, and finishing a crawl by
+            # quietly dropping every photo is the failure this pipeline's
+            # drop guards exist to catch.
+            status = error.response.status_code if error.response is not None else None
+            if status not in MISSING_PHOTO_STATUSES:
+                raise
+            if unresolved is not None:
+                unresolved.append(url)
             continue
         photos.append(
             {
@@ -309,7 +351,7 @@ def eligible_photos(session: requests.Session, candidate: dict, cutoff: date, cr
                 "author": credit["author"],
                 "license": credit["license"],
                 "taken": taken.isoformat(),
-                "digest": store_rendering(session, file_id),
+                "digest": digest,
             }
         )
     return photos
@@ -342,6 +384,7 @@ def main(recheck: bool = False) -> None:
 
     today = date.today().isoformat()
     records: dict[str, dict] = {}
+    unresolved: list[str] = []
     kept = fetched = 0
     for index, candidate in enumerate(candidates, start=1):
         prior_record = prior.get(candidate["id"])
@@ -349,7 +392,7 @@ def main(recheck: bool = False) -> None:
             records[candidate["id"]] = prior_record
             kept += 1
         else:
-            photos = eligible_photos(session, candidate, cutoff, credit)
+            photos = eligible_photos(session, candidate, cutoff, credit, unresolved)
             records[candidate["id"]] = (
                 {"status": "none", "checked": today} if not photos else {"status": "found", "checked": today, "photos": photos}
             )
@@ -364,6 +407,11 @@ def main(recheck: bool = False) -> None:
     images = sum(len(record_photos(r)) for r in found)
     print(f"Saved -> {OUT_PATH} ({kept} carried forward, {fetched} fetched)")
     print(f"{len(found)}/{len(candidates)} ATC features have a shippable photo; {images} images in total.")
+    if unresolved:
+        # Said out loud rather than swallowed: these are references in ATC's
+        # own column that no longer resolve, and a number that grows run over
+        # run is worth telling them about.
+        print(f"{len(unresolved)} photo reference(s) Drive would not serve, skipped - e.g. {unresolved[0]}")
 
 
 def run(argv: list[str]) -> None:

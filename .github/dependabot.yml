@@ -11,6 +11,29 @@
 #
 # This is the same reasoning check-upstream-freshness.yml applies to data:
 # a signal that fires constantly is not a signal.
+#
+# THE `no-issue` LABEL IS PART OF THE BUMP, NOT PAPERWORK ABOUT IT.
+# pr-issue-link.yml fails any pull request that closes no issue, and a
+# dependency bump has none to close - it is the first example CONTRIBUTING.md
+# gives of a change the `no-issue` exemption exists for. Until these `labels:`
+# lines, nothing applied it: every bump opened red and stayed red until a human
+# labelled it by hand, five to seven times a week. That failed in the expensive
+# direction, because it taught everyone to read a red Dependabot check as
+# normal - the same reflex the grouping above exists to prevent, arriving by a
+# different door.
+#
+# `labels:` REPLACES Dependabot's defaults rather than adding to them, which is
+# why `dependencies` and the ecosystem label are written out again below. Drop
+# them and the bump arrives carrying only its exemption, which is the one label
+# nothing else in the repository searches by.
+#
+# The exemption is also a changelog decision, and that is the reason it is
+# spelled this way rather than as an author check inside pr-issue-link.yml.
+# release_notes.py reads `no-issue` as INTERNAL_ONLY, so a labelled bump stays
+# out of the hiker-facing section of the notes. Exempting `dependabot[bot]` by
+# name would turn the check green and quietly file every weekly bump under
+# things a hiker can observe - green CI, wrong release notes, and nothing
+# anywhere to say why.
 
 version: 2
 
@@ -22,6 +45,7 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    labels: [dependencies, javascript, "no-issue"]
     groups:
       client-minor-and-patch:
         patterns: ["*"]
@@ -40,6 +64,7 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    labels: [dependencies, python, "no-issue"]
     groups:
       pipeline-minor-and-patch:
         patterns: ["*"]
@@ -52,6 +77,7 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    labels: [dependencies, python, "no-issue"]
     groups:
       backend-minor-and-patch:
         patterns: ["*"]
@@ -64,6 +90,7 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 3
+    labels: [dependencies, python, "no-issue"]
     groups:
       repo-tests-minor-and-patch:
         patterns: ["*"]
@@ -79,6 +106,7 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 3
+    labels: [dependencies, github_actions, "no-issue"]
     groups:
       actions-minor-and-patch:
         patterns: ["*"]

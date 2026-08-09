@@ -1,0 +1,140 @@
+# Answers the release gates that an API can answer, so they stop being
+# procedure. RELEASING.md §8 is the gate table; this is gate 11.
+#
+# WHY GATE 11 NEEDS A MACHINE AND NOT A HABIT
+#
+# Gate 11 is "no open issue labelled `release-blocker`", marked **hard**, and
+# its enforcement column said "procedure, checkable by API". A hard gate whose
+# enforcement is a person remembering to run a search is a hard gate in name
+# only - and this particular search has a failure mode that reads as success.
+#
+# **A query for a label that does not exist returns no issues.** On a tracker
+# without the label, "are there any blockers?" answers "no" for the same reason
+# it would on a tracker with none: an empty list. RELEASING.md and #375 both
+# name that trap, which is why the first thing below is asserting the labels
+# are really there, and why a missing label FAILS this job rather than being
+# treated as a clean board.
+#
+# WHAT THIS DOES NOT DO
+#
+# It does not tag, release, or promote anything - RELEASING.md §12 keeps all
+# three as the maintainer's action, and nothing here changes that. It reads
+# issues and says what it found. Run it before cutting a release; it answers
+# one gate of fourteen, and the other thirteen are still yours.
+#
+# It is also not the whole of #375. Gates 1 and 5's enforcement is branch
+# protection and a `production` environment reviewer - repository settings that
+# no API this repository can reach will set, and that an agent session must not
+# set even if it could, since it authenticates as the repository owner.
+# `.github/expected-protections.yml` declares them and `protections-check.yml`
+# notices whether they are on. Turning them on stays a human action.
+
+name: Release gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The version being gated, e.g. v1.2.0. Recorded in the summary; nothing is tagged."
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: release-gate
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Gate 11 - no open release-blocker
+        uses: actions/github-script@v7
+        env:
+          VERSION: ${{ inputs.version }}
+        with:
+          script: |
+            const BLOCKER = 'release-blocker'
+            const FOLLOWUP = 'release-followup'
+
+            // The labels first, and this order is the whole point. An empty
+            // issue list means "nothing is blocking" only if the label exists
+            // to be applied; on a tracker without it, the same empty list
+            // means "this question was never askable". Those must not look
+            // alike at the moment somebody is deciding whether to ship.
+            const missing = []
+            for (const name of [BLOCKER, FOLLOWUP]) {
+              try {
+                await github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name,
+                })
+              } catch (error) {
+                if (error.status === 404) missing.push(name)
+                else throw error
+              }
+            }
+
+            const lines = []
+            const version = process.env.VERSION
+            lines.push(`## Release gate${version ? ` — ${version}` : ''}`, '')
+
+            if (missing.length > 0) {
+              lines.push(
+                `**Gate 11 cannot be answered.** ${missing.map(n => `\`${n}\``).join(' and ')} ` +
+                  'does not exist on this repository, and a query for a label that does not exist returns ' +
+                  'no issues — which reads exactly like a clean gate. Create it before trusting this check ' +
+                  '(`.github/expected-protections.yml` declares both, and RELEASING.md §8 explains why the ' +
+                  'pair matters rather than just the blocking half).',
+              )
+              await core.summary.addRaw(lines.join('\n')).write()
+              core.setFailed(`Missing label(s): ${missing.join(', ')}`)
+              return
+            }
+
+            const blockers = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: BLOCKER,
+              per_page: 100,
+            })
+            const followups = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: FOLLOWUP,
+              per_page: 100,
+            })
+
+            // Reported, never failed. RELEASING.md §8b's rule is that a
+            // safety-critical finding cannot BE a follow-up; a follow-up that
+            // exists and is labelled as one is the rule working, not a fault.
+            if (followups.length > 0) {
+              lines.push(`${followups.length} open \`${FOLLOWUP}\` issue(s) — the next release carries these:`, '')
+              for (const issue of followups) lines.push(`- #${issue.number} ${issue.title}`)
+              lines.push('')
+            }
+
+            if (blockers.length === 0) {
+              lines.push(`**Gate 11 passes.** No open \`${BLOCKER}\` issue, and the label exists, so that answer means something.`)
+              await core.summary.addRaw(lines.join('\n')).write()
+              core.info('Gate 11 passes.')
+              return
+            }
+
+            lines.push(`**Gate 11 fails.** ${blockers.length} open \`${BLOCKER}\` issue(s) — this release does not go out:`, '')
+            for (const issue of blockers) lines.push(`- #${issue.number} ${issue.title}`)
+            lines.push(
+              '',
+              'RELEASING.md §8b: a finding in the safety-critical set cannot become a follow-up. Either it is ' +
+                'fixed and the label comes off, or the release waits.',
+            )
+            await core.summary.addRaw(lines.join('\n')).write()
+            core.setFailed(`${blockers.length} open ${BLOCKER} issue(s).`)

@@ -257,3 +257,44 @@ class TestTheReleaseWorkflows:
         """Re-releasing a version would move a tag that installed builds and
         retention policy are both pinned to."""
         assert "already tagged" in _text("release-notes.yml")
+
+    def test_the_release_gate_is_never_automatic(self):
+        """Gate 11 is a question asked while deciding whether to ship. On a
+        schedule it would ask on a day nobody is shipping, and the answer would
+        be noise the next real run is read past."""
+        assert list(_triggers(_workflow("release-gate.yml"))) == ["workflow_dispatch"]
+
+    def test_the_release_gate_confirms_the_label_exists_before_trusting_an_empty_answer(self):
+        """The trap RELEASING.md §8 names, and the reason gate 11 could not
+        simply be a saved search: a query for a label that does not exist
+        returns no issues, which reads exactly like a clean board. Asserting the
+        label is there is what makes "no blockers" mean something."""
+        text = _text("release-gate.yml")
+
+        assert "getLabel" in text
+        assert "reads exactly like a clean gate" in text
+
+    def test_the_release_gate_fails_rather_than_reports(self):
+        """Gate 11 is `hard` in RELEASING.md §8. A job that printed the blockers
+        and exited green would leave the gate exactly as enforced as the
+        procedure it replaces."""
+        assert "core.setFailed" in _text("release-gate.yml")
+
+    def test_the_release_gate_cannot_ship_anything(self):
+        """RELEASING.md §12 and CLAUDE.md both reserve tagging, publishing and
+        promoting for a human. A gate that could act on its own answer would be
+        the one place that rule could be undone without anybody deciding to."""
+        workflow = _workflow("release-gate.yml")
+        text = _text("release-gate.yml")
+
+        assert workflow["permissions"] == {"contents": "read", "issues": "read"}
+        for forbidden in ("createRelease", "createRef", "git tag", "merge_pull_request"):
+            assert forbidden not in text
+
+    def test_a_follow_up_label_does_not_fail_the_gate(self):
+        """`release-followup` existing and being applied is the §8b rule
+        working. Failing on it would teach whoever runs this to stop applying
+        the label, which is how `release-blocker` stops meaning anything."""
+        text = _text("release-gate.yml")
+
+        assert "Reported, never failed" in text

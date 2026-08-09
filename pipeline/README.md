@@ -50,7 +50,7 @@ That `--provider` label is as far as this registry currently goes toward being m
 | `centerline` | A.T. Centerline | 3,025 | Line | The trail itself, segmented; `Trail_Club`/`Acronym` fields identify maintainer per segment |
 | `side_trails` | A.T. Side Trails | 1,200 | Line | Blue-blazed and other connector trails |
 | `campsites` | A.T. Campsites | 232 | Point | Detailed facility attributes (tent pads, food storage, etc.) |
-| `shelters` | A.T. Shelters | 280 | Point | Detailed facility/construction attributes |
+| `shelters` | A.T. Shelters | 280 | Point | Detailed facility/construction attributes - but no capacity, see below |
 | `parking` | A.T. Parking | 482 | Point | Trailhead parking areas |
 | `viewpoints` | A.T. Viewpoints | 1,223 | Point | Scenic overlooks |
 | `communities` | A.T. Communities | 59 | Point | Designated "A.T. Community" towns - partial resupply proxy |
@@ -60,6 +60,42 @@ That `--provider` label is as far as this registry currently goes toward being m
 | `at_treadway` | A.T. Treadway | 30 | ? | Found via the FeatureServer root - not yet checked how this differs from `centerline` |
 
 **Gap, now partially filled:** ATC's own data has no dedicated water-source or general resupply layer. `communities` is a partial resupply proxy; `fetch_opentrail.py` (below) is the real fill for both water and resupply.
+
+**A second gap, and no ATC source fills it:** nothing says how many people a shelter sleeps. Searched rather than assumed (2026-08-09) — all twelve registered sources above, `ANST_Facilities`' three unregistered asset tables (a maintenance inventory in EA/LF/SF; its `Sleeping Platform` rows are 6 across the whole trail, all in square feet), the shelter layer's free text on all 280 features (every "sleeping" mention is a dimension, not a person count), and the sibling A.T. services in the same NPS org. The shelter layer's own 135 fields are an FMSS asset inventory, and `FMSS_QTY` is floor area, not people: 15.6 × 15.6 = 243.36 exactly. `build_shelter_capacity.py` (below) is the fill.
+
+## Shelter capacity
+
+`build_shelter_capacity.py` writes [`reference/shelter_capacity.json`](reference/shelter_capacity.json): how many people each A.T. shelter sleeps, keyed to ATC's own GlobalIDs. `export_poi.py` reads that file and publishes `capacity` on shelter features, where the client's waypoint card renders it as "Sleeps 8".
+
+```
+.venv/Scripts/python build_shelter_capacity.py            # rebuild and review the diff
+.venv/Scripts/python build_shelter_capacity.py --check    # confirm the checked-in file still matches
+```
+
+**The output is checked in, not fetched at build time**, which is the opposite of every other source here and deliberate. The join is by *name* between two lists that disagree about them - ATC's "Doc's Knob Shelter" against the source's "Docs Knob Shelter", ATC's "Winturri" against its "Wintturi", and ATC's "Rocky Run Shelter 1"/"2" against a single "Rocky Run Shelters" row. A fuzzy join running unsupervised inside a data build is a join nobody ever reads; a checked-in file makes each of those a reviewable line in a diff, and keeps a release build off the network for it.
+
+**262 of 280 shelters resolve; the other 18 publish nothing, on purpose.** Each carries a stated reason in the file - a pair listed under one number that could be each or the total, an old and a new structure with different numbers, a capacity written "xxx" or "A lot". Capacity is a number a hiker plans an evening around, so a blank beats an invention, and the card omits the line rather than showing a zero.
+
+**One independent check exists, and it passes.** `GRSM_BACKCOUNTRY_SHELTERS`, a park layer in the same NPS org, is the one A.T.-adjacent source with a real capacity field. It covers 15 shelters, 12 of them in ATC's — a twentieth of the trail, so not worth a second join, a second provenance and a precedence rule. It is worth comparing against, and it agrees with this file on all 12, exactly.
+
+**Licensing is unconfirmed**, and worth saying plainly. The capacity numbers come from [greenbelly.co's A.T. shelter list](https://www.greenbelly.co/pages/appalachian-trail-shelters), which credits Whiteblaze, the Appalachian Trail Conservancy and TNlandforums, and which states no licence at all - the same position as opentrail.org above ([#98](https://github.com/OurHike/OurHike/issues/98)), recorded here rather than discovered later. Two things narrow what is taken: only the capacity column, not the mileages or elevations or ordering, and it is re-keyed onto ATC GlobalIDs, so what ships is a set of facts about shelters this project already knows about rather than a copy of somebody's table. That is a better position than a scrape, not a settled one. Confirming terms with Greenbelly is the honest next step, and until then this carries the same caveat opentrail.org does.
+
+## Shelter and campsite descriptions
+
+Shelter and campsite features carry a `description` — one sentence the waypoint card shows under the name:
+
+> Two-storey clapboard shelter, sleeps 14, with a fireplace, a fire ring and a porch. Built 1915.
+
+**It is composed, not copied, because ATC has no prose description.** Both text fields were read in full (2026-08-09):
+
+| field | what it actually holds |
+|---|---|
+| `Descriptio`, aliased **"Description"** | The club acronym followed by the feature's own name — "MATC Chairback Gap Lean-to Shelter" — on 488 of the 510 features that have it. The rest are spelling variants of the same thing, or literally "NA". Published, it would render directly under a heading already saying the name. |
+| `Comments` | The real free text, and a surveyor's notebook: populated on 81 of 280 shelters and 65 of 232 campsites, ranging from useful ("Has a loft", "Not an accessible shelter") through construction detail ("Shiplap siding") to notes the survey wrote to itself — "Not sure about spatial info" on twenty-four campsites, "GIS CS629-CS635", "Added based on existing GIS data". |
+
+What ATC does have is the inventory, and it is complete: `Stories`, `Chimneys`, the fire-ring and food-storage counts, `Deck_Lengt`, `Exterior_M` and `Year_Built` are non-null on **all 280 shelters**, and `Site_Num` on 231 of 232 campsites. [`lib/poi_description.py`](lib/poi_description.py) assembles the sentence from those, so every clause is a fact ATC states and coverage is **280/280 shelters and 232/232 campsites** rather than the 26% the free text manages. Which columns are worth a clause is one list, `FEATURES`, so disagreeing with the selection is a one-line change — the line drawn is *what changes a hiker's decision* (food storage, a fire, a porch), which is why the window and skylight counts are left out.
+
+Where ATC did write a usable comment it is appended as **"ATC notes: …"** — attributed rather than blended in, because that half is a person's prose and the rest is assembled from columns. [`lib/atc_notes.py`](lib/atc_notes.py) is what decides "usable": it drops the survey's own bookkeeping **sentence by sentence**, never rewording, so Cable Gap's "Log and mortar exterior. Majority of structure is log. Please see photos." keeps its first two sentences instead of being thrown away whole. 74 shelters and 29 campsites end up with a note.
 
 ## Fetching opentrail.org (water sources + resupply)
 

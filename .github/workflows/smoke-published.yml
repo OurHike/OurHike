@@ -1,0 +1,238 @@
+# Fetches what a hiker's phone fetches, from the bucket it fetches it from.
+#
+# pipeline/DATA_RELEASES.md §3b is the design; this closes #94. Everything else
+# in this repository verifies against local files and mocks - nothing had ever
+# pulled a real PMTiles archive over real HTTP range requests from R2 and read
+# a tile out of it.
+#
+# WHY THIS IS WEEKLY AND check-deployment.yml IS DAILY. They ask different
+# questions and cost different amounts:
+#
+#   check-deployment.yml   daily, no downloads   "can a browser REACH it"
+#   this                   weekly, ~18 MB        "is what is there CORRECT"
+#
+# A hash cannot be checked without reading the bytes, so this one downloads -
+# but only artifacts under a size budget, which is ~18 MB of the ~2.9 GB
+# published. The archives above that budget are covered structurally instead:
+# their header, root directory and first tile are read over range requests,
+# which costs 3-4 requests and under 103 KB even for the 1.18 GB tier.
+#
+# Daily would be the wrong trade against a rate-limited r2.dev subdomain, and
+# #395 is about putting a ceiling on the bill. Never is how #94 stayed open for
+# five weeks after there was something to check.
+#
+# IT HOLDS NO CREDENTIALS. Same posture as check-upstream-freshness.yml and
+# check-deployment.yml: its whole input is public HTTPS reads of the same
+# objects a phone reads, so it is structurally incapable of changing anyone's
+# map.
+#
+# IT DOES NOT FAIL THE RUN, for the reason check-deployment.yml records at
+# length: GitHub emails on every scheduled failure, so a persistent fault would
+# send a weekly identical email until it was filtered. The tracking issue is
+# the signal.
+
+name: Smoke test published data
+
+on:
+  schedule:
+    # 09:40 UTC on Mondays. Off the hour, and after check-deployment.yml at
+    # 09:15 - if CORS is broken, that is the job that should say so, and this
+    # one reporting the same outage differently would be noise.
+    - cron: "40 9 * * 1"
+  workflow_dispatch:
+    inputs:
+      base:
+        description: "Bucket base to check. Defaults to the DATA_BASE_URL variable."
+        type: string
+        required: false
+      max_hash_bytes:
+        description: "Largest artifact to download and hash. Raise to cover the archives; expect GBs."
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: smoke-published
+  cancel-in-progress: false
+
+env:
+  ISSUE_TITLE: "Published data smoke test"
+  ISSUE_LABEL: deployment-health
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: pipeline
+
+    steps:
+      - name: Is there a bucket to check
+        id: can
+        working-directory: .
+        env:
+          OVERRIDE: ${{ inputs.base }}
+          CONFIGURED: ${{ vars.DATA_BASE_URL }}
+        run: |
+          BASE="${OVERRIDE:-$CONFIGURED}"
+          if [ -z "$BASE" ]; then
+            echo "::warning::No DATA_BASE_URL is set, so there is no published data to smoke test. See LAUNCH_CHECKLIST.md step 2."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+            echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.can.outputs.go == 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.can.outputs.go == 'true'
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        if: steps.can.outputs.go == 'true'
+        run: pip install -r requirements.txt
+
+      # BASE and MAX arrive via env rather than ${{ }} inside the script: both
+      # can come verbatim from a workflow_dispatch input, and an expression
+      # expansion is pasted into the shell as literal text before bash parses
+      # it. pages.yml documents the same rule.
+      - name: Fetch what a phone fetches
+        id: smoke
+        if: steps.can.outputs.go == 'true'
+        env:
+          BASE: ${{ steps.can.outputs.base }}
+          MAX: ${{ inputs.max_hash_bytes }}
+        run: |
+          python smoke_published.py \
+            --base "$BASE" \
+            ${MAX:+--max-hash-bytes "$MAX"} \
+            --json smoke.json \
+            --exit-zero | tee smoke.txt
+
+      - name: Write the job summary
+        if: always() && steps.can.outputs.go == 'true'
+        run: |
+          {
+            echo "## Published data smoke test"
+            echo
+            if [ -f smoke.txt ]; then
+              echo '```'
+              cat smoke.txt
+              echo '```'
+            else
+              echo "The check did not produce a report. See the step log above."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Shares ISSUE_LABEL with check-deployment.yml but not ISSUE_TITLE, so
+      # the two never fight over one issue: they can be red for unrelated
+      # reasons, and a single issue would have each run overwrite the other's
+      # findings. The shared label is what makes both findable at once.
+      - name: Open, update, or close the tracking issue
+        if: steps.can.outputs.go == 'true'
+        uses: actions/github-script@v7
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const fs = require('fs')
+            const verdict = JSON.parse(fs.readFileSync('pipeline/smoke.json', 'utf8'))
+            const title = process.env.ISSUE_TITLE
+            const label = process.env.ISSUE_LABEL
+
+            const existing = (await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: label,
+              per_page: 100,
+            })).find(issue => issue.title === title)
+
+            const failed = verdict.failed ?? []
+            const unreachable = verdict.unreachable ?? []
+            const skipped = verdict.skipped ?? []
+
+            if (failed.length === 0) {
+              if (existing) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  body: `What the bucket serves matches what the manifest promises again, as of ${verdict.checked_at}. Closing.\n\n---\n_Generated by [Claude Code](https://claude.ai/code)_`,
+                })
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  state: 'closed',
+                  state_reason: 'completed',
+                })
+              }
+              core.info('Published data matches the manifest; no issue needed.')
+              return
+            }
+
+            const firstSeen = {}
+            if (existing) {
+              for (const [, key, since] of (existing.body ?? '').matchAll(/^\| `([^`]+)` \| [^|]+ \| ([\d-]+) \|/gm)) {
+                firstSeen[key] = since
+              }
+            }
+
+            const cell = value => String(value).replace(/\r?\n/g, ' ').replace(/\|/g, '\\|')
+            const keyOf = r => `${r.check}:${r.key}`
+
+            const row = r => {
+              const k = keyOf(r)
+              return `| \`${k}\` | ${r.check} | ${firstSeen[k] ?? verdict.checked_at} | ${cell(r.detail)} |`
+            }
+
+            const body = [
+              `${failed.length} check(s) failed against \`${verdict.base}\`.`,
+              '',
+              '**What this means that a reachability check cannot say:** these artifacts are being *served*, and what is served is not what `latest.json` promises. A phone downloading one holds it to the published SHA-256 and discards it on a mismatch, so this is a map that will not install rather than a map that is merely slow to reach.',
+              '',
+              '| check | kind | first seen | detail |',
+              '|---|---|---|---|',
+              ...failed.map(row),
+              '',
+              unreachable.length
+                ? `${unreachable.length} check(s) could not be made at all and are not counted as failures.`
+                : '',
+              skipped.length
+                ? `${skipped.length} check(s) were skipped — artifacts over the hash budget, and objects too small for a mid-file range probe. Skipped is not passed.`
+                : '',
+              '',
+              `Last checked ${verdict.checked_at} · [run](${process.env.RUN_URL})`,
+              '',
+              '---',
+              '_Generated by [Claude Code](https://claude.ai/code)_',
+            ].join('\n')
+
+            if (existing) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body,
+              })
+              core.info(`Updated #${existing.number}.`)
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: [label],
+              })
+              core.info(`Opened #${created.data.number}.`)
+            }

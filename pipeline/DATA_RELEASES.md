@@ -162,6 +162,76 @@ This inverts today's `check_output_quality.py`-then-`publish.py` order, and that
 
 Unit tests for all of the above go in `pipeline/tests/test_verify_release.py`, synthetic fixtures + `requests-mock`/`moto`, per [TESTING.md](../TESTING.md). The battery itself runs as a workflow step rather than a pytest test, consistent with TESTING.md's standing position that real-data end-to-end verification is a documented procedure, not part of the suite.
 
+## 3a. The standing monitor
+
+**Built** — `pipeline/check_deployment.py` and `.github/workflows/check-deployment.yml`, daily. This is tier 1 of [#431](https://github.com/OurHike/OurHike/issues/431).
+
+**It is not the battery above, and the difference is the whole reason it exists.** §3 is a *release-time* gate: it verifies a staged candidate before promotion. What happened in [#427](https://github.com/OurHike/OurHike/issues/427) was a **good release quietly stopping being reachable** — the R2 bucket's CORS allow-list lost `https://ourhike.github.io`, days after a release that was and stayed correct, so the deployed app drew a topo sheet with no Appalachian Trail on it for eight days. A release gate catches bad releases. Both are needed and they are different checks.
+
+**Why every check we already had was green.** Check 8 above names this in advance: *"A CORS regression silently disarms check 7 on real devices while CI, which is not a browser, would never notice."* That is not a metaphor — it is what happened. `check_freshness.py`, `r2-credentials-check.yml`, and every `curl` anyone typed send **no `Origin` header**, and the bucket answered all of them perfectly throughout: a ranged `GET` returned `206` with `Content-Range`, `ETag` and `Accept-Ranges` intact. One header decides whether a browser may read those bytes, and nothing sent it.
+
+So the monitor sends one, for every origin declared in [`.github/expected-origins.yml`](../.github/expected-origins.yml):
+
+1. **Origin** — `Access-Control-Allow-Origin` comes back matching. A wildcard pattern is probed with a *concrete* hostname it should match, since `*` is not something a browser sends and a rule covering no real hostname covers nothing.
+2. **Preflight** — an `OPTIONS` asking for the request headers the client actually sends is answered with all of them in `Access-Control-Allow-Headers`.
+3. **Exposed headers** — `Access-Control-Expose-Headers` covers `etag`, `content-length`, `content-range`, `accept-ranges`. Present and *readable* are different things, and only a browser can tell.
+4. **Artifacts** — every key `latest.json` names answers `HEAD` 200, with a non-zero `Content-Length` and `Accept-Ranges: bytes`.
+5. **Range** — a one-byte range comes back `206` with a `Content-Range`.
+
+**The preflight assertion found a live defect the day it was written**, which is the clearest possible argument for it. `range` is CORS-safelisted for simple byte ranges, so a *first* download needs no preflight and works against a wrong policy. **`if-range` is not safelisted**, and `client/src/lib/archiveDownload.ts` sends it on every *resume* — it is what makes the server itself arbitrate a stale partial rather than splicing old bytes onto new (§1). The policy documented in `LAUNCH_CHECKLIST.md` allowed `if-match`, which nothing in this repository has ever sent, and **not** `if-range`.
+
+**Measured against the live bucket, 2026-08-09**, rather than argued from the spec:
+
+| `Access-Control-Request-Headers` | answer |
+|---|---|
+| `if-match` | `204`, `Access-Control-Allow-Headers: if-match` |
+| `range` | `204`, `Access-Control-Allow-Headers: range` |
+| **`if-range`** | **`403 Forbidden`, no CORS headers at all** |
+
+So resuming an interrupted 1.18 GB download is refused by the browser **today**, invisibly, and only ever on a phone in the place where resuming matters most. The same run confirmed the policy is genuinely enforced on the `r2.dev` subdomain rather than permissive — an undeclared origin gets no `Access-Control-Allow-Origin` at all — so the origin assertion discriminates rather than always passing.
+
+**That run also corrected the check itself**, which is worth recording because the first version was confidently wrong in a way only real data exposed. R2 answers a preflight naming a disallowed header with a bare `403` and *no* `Access-Control-Allow-Headers`, not a `200` listing the subset it permits. Reading the empty allow-list off that `403` made every requested header look refused, so the check reported `range` as disallowed when `range` is allowed and only `if-range` is not. A refused preflight is now re-asked one header at a time, so the alarm names the header to add instead of the whole list.
+
+**Three constraints, each of which changes what the check may do:**
+
+- **It must not download the artifacts.** `HEAD` and one-byte ranges answer every question above; pulling the real files would be ~1.6 GB of egress a day against a rate-limited `r2.dev` subdomain to learn what one byte already said. Proving the *bytes* is check 5's job, at release time, once.
+- **It must not fail the run.** GitHub emails on a scheduled workflow's failure every run, so a week-long outage would send seven identical emails and the eighth would be filtered. The tracking issue is the signal: opening it notifies, updating its body does not, the all-clear comment notifies once. Same discipline `check-upstream-freshness.yml` already keeps, for the same reason.
+- **A request that never completed is not a refusal.** "Could not ask" says nothing about the CORS policy, and a flaky third party must not be able to declare an outage. Those are reported and never open the issue.
+
+**What it cannot check, stated rather than implied.** `latest.json` publishes a sha256 per artifact and **no size**, so "exists at its published size" is not a question this can ask — it asserts each artifact is present, non-empty and rangeable, which is what makes it fetchable and resumable, not that it is the length anyone intended. A truncated-but-served artifact is caught by the client's own per-chunk hashing and by check 5, not here.
+
+**One declaration, several readers.** The origins file is the single home for the list; the CORS policy pasted into Cloudflare is *generated* from it (`check_deployment.py --print-cors-policy`) rather than kept as a second copy, because the second copy is precisely what drifted. Supabase's redirect allow-list wants the same list in its own spelling and is the next reader — #431's tier 3. The browser-level check that the app *draws a trail* is tier 2, still unbuilt.
+
+## 3b. The published-data smoke test
+
+**Built** — `pipeline/smoke_published.py` and `.github/workflows/smoke-published.yml`, weekly. This closes [#94](https://github.com/OurHike/OurHike/issues/94).
+
+**Three checks now overlap in name and not in question**, which is worth stating once rather than rediscovering:
+
+| | when | cost | asks |
+|---|---|---|---|
+| `check_deployment.py` (§3a) | daily | no downloads | can a browser **reach** it |
+| `smoke_published.py` (here) | weekly | ~18 MB | is what is there **correct** |
+| `verify_release.py` (§3) | per release | ~1.6 GB | is a **candidate** fit to promote |
+
+The first two watch a *published* release quietly going wrong; the third gates a *new* one. A hash cannot be checked without reading bytes, which is why this one downloads and §3a's never does.
+
+**Over the manifest, never a hardcoded list.** #94's own follow-up is emphatic, and it is the easiest thing to get wrong: `publish.py` has grown `quad_sheet_z14.pmtiles`, a vector basemap package and a DEM package since the issue was filed. A test naming `background.pmtiles` would pass while the packages a hiker navigates by went unchecked.
+
+Per artifact: headers (present, rangeable, **no `Content-Encoding`**), a **mid-file** range, the SHA-256 against `latest.json`, and for `.pmtiles` an actual read.
+
+**The PMTiles read is the part #94 was really asking for.** `traverse` — the library's own directory walk, the same code `extract_package.py` runs against local files — is pointed at an HTTP byte source, so the archive is opened the way MapLibre opens it: header, root directory, then a real tile, each a `Range` against a file far too large to download. Measured against the live bucket 2026-08-09: **3–4 requests and under 103 KB per archive, including the 1.18 GB tier.** The tile's first bytes are then held to what the header promised — WebP is `RIFF`, a gzipped vector tile is `\x1f\x8b` — because "bytes arrived" and "a tile arrived" are different claims and only the second one is a map.
+
+**Three deliberate choices worth not re-litigating:**
+
+- **A mid-file range, not a prefix one.** A prefix range is the case a server that half-understands ranges is most likely to get right, so asking for one proves the least — and the client resumes from wherever it got to, which is by definition not the start.
+- **`Content-Encoding` is a failure, not a note.** If the bucket transparently re-encodes, a `Range` applies to the *encoded* bytes while `archiveDownload.ts` counts decoded ones, so a resume reads from the wrong offset and surfaces as a hash mismatch naming nothing about encoding.
+- **Skipped is reported as skipped.** An artifact over the hash budget is not one whose hash was verified. Rolling that into a pass is how a green run comes to mean less than a reader assumes.
+
+**A missing `Content-Type` is noted and not failed.** R2 currently sends none at all for these keys; `fetch().json()` ignores it and MapLibre reads bytes, so failing on it would be inventing a rule the app does not have.
+
+**First real run, 2026-08-09: 66 checks, 0 failed, 48 ok, 18 skipped** — every artifact present, every hash under budget matching, all six archives opening over ranges and yielding a tile.
+
 ## 4. Release only by a code change
 
 New `client/src/lib/dataRelease.ts`:

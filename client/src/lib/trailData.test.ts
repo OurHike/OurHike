@@ -222,6 +222,84 @@ describe('trail data', () => {
     expect(pois[0]).not.toHaveProperty('source')
   })
 
+  it('keeps a shelter capacity, so the card can say how many it sleeps', async () => {
+    serve(
+      poiCollection([
+        {
+          id: 'atc_shelters:abc',
+          poi_type: 'shelter',
+          name: 'Chairback Gap Lean-to',
+          lat: 45.45,
+          lon: -69.26,
+          confidence: 'high',
+          capacity: 8,
+        },
+      ]),
+    )
+    await downloadTrailData()
+
+    const pois = store.get(POIS_KEY) as StoredPoi[]
+    expect(pois[0].capacity).toBe(8)
+  })
+
+  it.each([
+    [
+      'null, which is what the artifact writes for a shelter with no published number',
+      null,
+    ],
+    ['zero, which is the absence of a capacity rather than a very small one', 0],
+    ['a string, which no arithmetic here would survive', '8'],
+    ['a fraction, which is not a count of people', 6.5],
+  ])('leaves the capacity off when the artifact carries %s', async (_why, capacity) => {
+    // The alternative is a card reading "Sleeps 0" at a shelter that sleeps
+    // eight, which is worse than a card that says nothing.
+    serve(
+      poiCollection([
+        {
+          id: 'atc_shelters:abc',
+          poi_type: 'shelter',
+          name: 'Shelter',
+          lat: 1,
+          lon: 2,
+          capacity,
+        },
+      ]),
+    )
+    await downloadTrailData()
+
+    const pois = store.get(POIS_KEY) as StoredPoi[]
+    expect(pois[0]).not.toHaveProperty('capacity')
+  })
+
+  it('keeps the composed description, so the card can say what the place is', async () => {
+    serve(
+      poiCollection([
+        {
+          id: 'atc_shelters:abc',
+          poi_type: 'shelter',
+          name: 'Chairback Gap Lean-to',
+          lat: 45.45,
+          lon: -69.26,
+          description: 'Log shelter, sleeps 6. Built 1954.',
+        },
+      ]),
+    )
+    await downloadTrailData()
+
+    const pois = store.get(POIS_KEY) as StoredPoi[]
+    expect(pois[0].description).toBe('Log shelter, sleeps 6. Built 1954.')
+  })
+
+  it('leaves the description off when the artifact carries none', async () => {
+    // Water and resupply POIs never have one - opentrail.org has no inventory
+    // to compose from - so its absence is the normal case, not a gap to fill.
+    serve(poiCollection([{ id: 'x', poi_type: 'water', name: 'Spring', lat: 1, lon: 2 }]))
+    await downloadTrailData()
+
+    const pois = store.get(POIS_KEY) as StoredPoi[]
+    expect(pois[0]).not.toHaveProperty('description')
+  })
+
   it('carries a photo and its attribution facts, so the card can pay for showing it', async () => {
     // The photo_* properties are how export_poi.py publishes the Wikimedia
     // Commons match. The credit fields are not decoration: CC BY/BY-SA make

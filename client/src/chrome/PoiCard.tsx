@@ -71,6 +71,29 @@ export interface PoiDetail {
    */
   mile?: number
   /**
+   * How many people the shelter sleeps, when the pipeline could publish a
+   * number for it.
+   *
+   * Optional twice over: only shelters have one at all, and ATC's layer does
+   * not carry capacity, so the figure comes from a list joined on by
+   * pipeline/build_shelter_capacity.py that leaves some shelters blank on
+   * purpose. Absent means unknown - the line is omitted rather than shown
+   * empty, because a hiker deciding whether to push on to the next shelter
+   * is better served by no answer than by a made-up one.
+   */
+  capacity?: number
+  /**
+   * One sentence about the place - what it is built of, what it has, when it
+   * went up - for shelters and campsites.
+   *
+   * The pipeline composes it from ATC's inventory columns, so it is a run of
+   * stated facts rather than anybody's prose, and where ATC's maintainers
+   * wrote a note of their own it is quoted as theirs. Optional: no other
+   * waypoint type has one, and a phone that downloaded before it existed has
+   * none at all.
+   */
+  description?: string
+  /**
    * A photo of the place, when one exists.
    *
    * Published as photo_* properties on the POI artifacts (pipeline
@@ -407,9 +430,9 @@ export function PoiCard({ poi, map, onClose }: PoiCardProps) {
       <div className="poi-card__body">
         <h2 className="poi-card__name">{poi.name}</h2>
 
-        {/* One line, two facts, separate elements: the mile stays mono like
-            every other mile on this screen, and the dot between them is
-            punctuation for eyes only. */}
+        {/* One line, up to three facts, separate elements: the mile stays
+            mono like every other mile on this screen, and the dots between
+            them are punctuation for eyes only. */}
         <p className="poi-card__meta">
           <span>{typeLabel(poi.type)}</span>
           {poi.mile !== undefined && (
@@ -418,7 +441,19 @@ export function PoiCard({ poi, map, onClose }: PoiCardProps) {
               <span className="poi-card__mile">{`mi ${mile(poi.mile)}`}</span>
             </>
           )}
+          {poi.capacity !== undefined && (
+            <>
+              <span aria-hidden="true">·</span>
+              {/* "Sleeps 8", not "8": the bare number beside a mile reads as
+                  another distance. */}
+              <span>{`Sleeps ${poi.capacity}`}</span>
+            </>
+          )}
         </p>
+
+        {poi.description !== undefined && (
+          <p className="poi-card__description">{poi.description}</p>
+        )}
 
         {poi.confidence === 'low' && (
           <p className="poi-card__unverified" role="note">

@@ -309,20 +309,22 @@ What must be true before a tag is pushed. **Hard** means the release does not ha
 | 8 | Backwards-compatibility checks (§8) | hard | tests |
 | 9 | `check_freshness.py` — all four upstreams unchanged or knowingly changed | hard | LAUNCH_CHECKLIST.md 7 |
 | 10 | Release review complete, findings triaged (§9) | hard | procedure |
-| 11 | No open issue labelled `release-blocker` | hard | procedure, checkable by API — `protections-check.yml` asserts the labels exist, without which the query answers "clean" |
+| 11 | No open issue labelled `release-blocker` | hard | `.github/workflows/release-gate.yml` — dispatch it before shipping. It asserts the labels exist *first*, because a query for a missing label answers "clean"; `protections-check.yml` notices the same absence day to day |
 | 12 | Notes written, name assigned, figure cited | hard | `pages.yml` refuses a tag with no `releases/<version>-*.md` |
 | 13 | Field-validated thresholds actually field-validated | **soft** | stated in the notes — see §8d |
 | 14 | Real-device pass on iOS and Android | **soft** until Phase 3 | stated in the notes |
 
-Two of these need a repository setting that does not exist yet. TESTING.md records
+Two of these — gates 1 and 5 — need a repository setting that does not exist yet. TESTING.md records
 that **none of the suites is a required check** — "a red run doesn't currently block
 merging, it's just visible on the PR" — and the scoping was deliberately built so they
 *can* be made required without any other change. Gate 1 is that change.
 
-Gate 11 needs two new labels: `release-blocker` (this release does not go out) and
-`release-followup` (the next one carries it).
+Gate 11 needed two labels — `release-blocker` (this release does not go out) and
+`release-followup` (the next one carries it). **Both now exist**, so the gate is
+answerable, and `release-gate.yml` is what answers it rather than a search somebody
+remembers to run.
 
-**Both are still clicks, and both are now checked.** Nothing this repository can reach
+**The remaining two are still clicks, and all of them are now checked.** Nothing this repository can reach
 will make a repository setting — that asymmetry is why
 [#375](https://github.com/OurHike/OurHike/issues/375) is open. What is automatable is
 noticing, so [`.github/expected-protections.yml`](.github/expected-protections.yml)

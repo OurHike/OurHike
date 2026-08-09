@@ -27,6 +27,49 @@ The frame for qualifying a source, in order:
 
 ---
 
+## 0. The complete candidate list
+
+Everything examined, one line each — the sections that follow are the qualification.
+"Structured" means fetchable as data (REST/GeoJSON/GPX/CSV/API), not a page to scrape.
+
+| source | maps | hikes | shelters | structured | last known change | verdict |
+|---|:-:|:-:|:-:|:-:|---|---|
+| NPS APPA GIS (ANST_* layers) | ✓ | | ✓ | ✓ | 2026-08-04 | in use; §1 corrects whose it is |
+| ATC ArcGIS org — half-mile points | ✓ | | | ✓ | 2026-04-07 | in use |
+| ATC org — `ATX_Ratings` overnight sites | | | **✓ capacity** | ✓ | 2025-10-01 | **best capacity source found** — §3a, ask ATC |
+| ATC org — `Campsite_Sustainability_Index` | | | ✓ | ✓ | 2026-06-02 | rich, hazardous — §3b, ask ATC |
+| ATC org — `Helene_Status` (+NPS twin) | | | | ✓ | 2026-08-06 | live closures — §3c |
+| ATC org — other ~40 services | | | | ✓ | various | internal ops; catalogued §3d |
+| ATC interactive map / website / A.T. Guide products | ✓ | ✓ | | | current | discovery chain in use; prose restrictively licensed — §4 |
+| NPS `ANST_Administrative_Features`, 500ft buffer, SHEN copy | ✓ | | | ✓ | 2024–2026 | niche; §2 |
+| NPS IRMA DataStore; NPS_Public_Trails; NRCA hub | ✓ | | | ✓ | 2022–2026 | catalog/fragments/ecology; §2 |
+| USFS EDW trails + rec sites | ✓ | | | ✓ | maintained | cross-check on NFS land; §2 |
+| USGS US Topo + 3DEP | ✓ | | | ✓ | multi-year cycles | in use (background/DEM) |
+| Recreation.gov RIDB | | | | ✓ | live | frontcountry only; §2 |
+| data.gov | | | | ✓ | — | aggregator; API unreachable from sandbox; §2 |
+| **PATC** (240 mi) | ✓ | ✓ | ✓ | **✓ ArcGIS** | trails **2026-08-08** | standout club; terms unstated — §5 |
+| **TEHCC** (134 mi) | ✓ | ✓ | **✓ capacity** | **✓ wiki APIs + GeoJSON** | 2026-08-08 | standout club; no licence — §5 |
+| **NYNJTC** (160 mi) | ✓ sold | ✓ | | org exists, A.T. withheld | 2025–2026 | agreement path, Phase 5 — §5 |
+| GATC (79 mi) | ✓ free PDF + CalTopo | ✓ | ✓ | CalTopo export | water PDF 2026-03 | best free club map set — §5 |
+| CMC (93 mi) | | ✓ database | | wp-json unprobed | 2026 | hike DB; §5 |
+| RATC (120 mi) | | ✓ 14 hikes | ✓ capacity table | scrapeable | 2024 | §5 |
+| BMECC (65 mi) | | | ✓ capacity table | scrapeable | undated | §5 |
+| AMC + AMC-WMA + AMC-CT | ✓ sold | ✓ | ✓ capacity tables | scrapeable | WMA 2026-07-17 | §5 |
+| GMC (VT) | ✓ sold | ✓ | ✓ prose | | updates 2026-08-07 | live conditions feed; §5 |
+| MATC (267 mi) | ✓ sold | | unpublished inventory | | 2021–22 | ask for Appendix G; §5 |
+| MRATC, NHC, SMHC, ODATC, NBATC, PATH, OCVT, TATC, DOC, RMC, KTA, SATC, CVATC, AHC, YHC, MCOMD, AMC-DV, Batona | varies | varies | varies | mostly none | varies | complete inventory §5; several blocked sites flagged §10 |
+| VCGI (Vermont) | ✓ | | | ✓ | 2026-07-27 | VT trails; §6 |
+| Trail Finder (VT/NH) | | ✓ | | ✓ GPX/KML | 2026 | terms ask; §6 |
+| PASDA NPS mirror | ✓ | | ✓ capacity (81) | ✓ | **2003** | historical only; §6 |
+| **OpenStreetMap** | ✓ | | **✓ capacity ~153** | ✓ Overpass | live (May 2026 edit) | only *open* capacity source — §7 |
+| Waymarked Trails | ✓ | | | ✓ API | live | convenience mirror; §7 |
+| opentrail.org | | | | ✓ API | commits 2026-06 | in use; licence still open, now OSM-blended — §7 |
+| tnlandforms.us | | | ✓ no capacity | GPX/KMZ | table 2026-03, coords 2009 | cross-check only; §7 |
+| WhiteBlaze shelter PDF | | | ✓ 249 capacities | parseable PDF | 2024-02 | permission-gated cross-check; §7 |
+| Postholer | ✓ | | | WFS defunct | 2026 site | nothing to take; §7 |
+| FarOut / A.T. Guide / AllTrails / Hiking Project / Gaia | ✓ | ✓ | ✓ | closed | current | context only; §8 |
+| Avenza store | ✓ | | | | **closing (April 2026 merger)** | strategic, not a source; §8 |
+
 ## 1. The correction first: "ATC" is two organizations, and mostly the NPS
 
 Everything in `sources.json` says `provider: "ATC"`. Probing the item metadata behind the
@@ -275,7 +318,7 @@ each site itself showed on 2026-08-09:
 | club | A.T. miles | what they publish | structured? | recency / flags |
 |---|---|---|---|---|
 | Maine A.T. Club (MATC) | 267 | 7 paper/Avenza topo maps (2021), *Guide to Maine* (2021); no public shelter table — but their Local Management Plan (2022 PDF) references a campsite inventory in an unpublished appendix | none | **NEEDS REVIEW**: asking MATC for the Appendix G campsite inventory could yield structured campsite data |
-| Randolph Mountain Club (RMC) | 2.2 | *Randolph Paths* guide + map (2016); 4 year-round camps (Crag 20, Gray Knob 15, Log Cabin 10, The Perch 8 — off the A.T. proper); network map lives in Trailforks | Trailforks (proprietary) | site dated 2023; **NEEDS REVIEW** if RMC camps matter: Trailforks licence unexamined |
+| Randolph Mountain Club (RMC) | 2.2 | *Randolph Paths* guide + map (2016); 4 year-round camps off the A.T. proper (Crag 20, Gray Knob 15, Log Cabin 10, The Perch 8 — capacities per search results, unverified); network map lives in Trailforks | Trailforks (proprietary) | site dated 2023; **NEEDS REVIEW** if RMC camps matter: Trailforks licence unexamined |
 | Appalachian Mountain Club (AMC) | White Mtns region + W. Maine | Tyvek maps + *White Mountain Guide* (31st ed. 2022, Avenza); **backcountry-campsites page: 14 sites with shelter/platform counts, $15 caretaker fees, 2026 bear-canister rule** — best free NH shelter data | scrapeable HTML | campsites page actively maintained (2026 policy text) |
 | Dartmouth Outing Club (DOC) | 54 | essentially nothing online; legacy pages disagree with ATC on section length (50 vs 54 mi) | none | stale `.shtml` pages |
 | Green Mountain Club (GMC) | ~150 (LT overlap + Maine Jct–Norwich) | *Long Trail Map* 7th ed. (new; Avenza still 6th ed. 2021); ~70 overnight sites described but no master table; **Trail Updates page is a genuine live feed** (entries 2026-08-07, incl. two A.T. bridge removals with mileposts) | none | own `/hiking/maps/` page still advertises the 5th ed. — internally stale; caretaker fees ended 2023 |
@@ -366,6 +409,144 @@ properties (harvesting means parsing wikitext, a solved problem but real work), 
 | **Trailforks** (RMC network), **CalTopo** (GATC maps), **HikingUpward** (linked by VA clubs for hike pages) | third-party platforms clubs lean on | varies | varies | platform terms, not club terms, govern — treat as leads to the club, not as sources |
 
 
-<!-- SPLICE: §6 community + §7 commercial (community agent) -->
+## 7. Community sources
 
-<!-- SPLICE: §8 summary tables + recommendations -->
+**OpenStreetMap** — the A.T. is superrelation **156553** (`operator=Appalachian Trail
+Conservancy`, `network:type=US:NST`), containing 14 state-section relations; last edited
+~May 2026. Shelters along it are `amenity=shelter` (+`shelter_type=lean_to`), and a live
+Overpass query (2026-08-09) found **181 shelter nodes within 500 m of the trail, 153 of
+them carrying a `capacity` tag** — a floor, not a total: shelters mapped as building
+*ways* weren't counted (the follow-up query wouldn't complete through the sandbox proxy —
+**NEEDS REVIEW**: re-run as `nwr` to get the true coverage). ODbL: attribution +
+share-alike, the licence the basemap already complies with. This is the only **openly
+licensed** shelter-capacity source found anywhere, and the crowd's numbers would want
+verifying against §3a's before either ships.
+
+**Waymarked Trails** (hiking.waymarkedtrails.org) — OSM-derived route service;
+`api/v1/details/relation/156553?geometry=geojson` returns the assembled A.T. geometry in
+one 5.8 MB response (verified live). Convenience mirror of data we could assemble
+ourselves; no stated usage policy for the hosted API, so treat as a reference
+implementation rather than infrastructure to lean on.
+
+**opentrail.org** — already ingested (`fetch_opentrail.py`); confirmed alive (API 200
+with ETag, 1,840 A.T. features, commits to June 2026). Two licence facts that sharpen
+[#98](https://github.com/OurHike/OurHike/issues/98): the repo still has **no LICENSE
+file** (re-checked at raw.githubusercontent on `main`, 2026-08-09), and a May 2026 commit
+added `scripts/import-osm.js`, which pulls Overpass data (water, shelters, campsites…)
+into their database **with no ODbL attribution handling** — so their dataset is now
+partly OSM-derivative. That both compounds the question and suggests its natural answer:
+ODbL treatment. Worth stating in the #98 conversation.
+
+**tnlandforms.us** (Tom Dunigan's A.T. page) — a shelter table *revised 2026-03-10*
+(mileages tracked to the 2026 Companion) sitting on **2009-era ATC coordinates**, no
+capacity column, personal copyright inheriting old ATC conditions. A labor of love and a
+good mileage cross-check; not an ingestion source.
+
+**WhiteBlaze** — forum is active (May 2026 front-page articles). The community's real
+data artifact is the annual **shelter listing PDF** ("courtesy of WhiteBlaze Pages ©"):
+the 2024 edition (newest verifiable — 2025/2026 URLs don't exist) parses to ~245 shelters
+with **249 sleeps-capacity values**, shelter *and water source* GPS, water reliability,
+tenting, privies, bear boxes. Richest single shelter attribute set found; PDF-shaped,
+copyright a commercial guidebook, updated 2024-02. Permission-gated cross-check material,
+not a pipeline source. (The forum's live shelter database at `at-shelters.php` needs a
+real browser — **NEEDS REVIEW** if anyone wants its field list.)
+
+**Postholer** — the documented WMS/WFS at `gis.postholer.com` now redirects to the
+homepage (verified with an on-trail coordinate); no downloadable GIS found; map data
+credited to ATC anyway. Nothing to take.
+
+## 8. Commercial guides — context, not sources
+
+None of these is ingestable; all shape what hikers expect and what the capacity/water
+data ecosystem looks like:
+
+- **FarOut** (Atlas Guides) — ATC's **official app** since Aug 2024. ToS verified:
+  scraping prohibited, no API, commercial reuse only by written agreement. ATC's CSI
+  layer literally tracks which of its sites appear in FarOut — that is who OurHike's data
+  quality gets compared against.
+- **The A.T. Guide** (AWOL, theatguide.com) — 2026 edition on sale; the reference for
+  landmark/water completeness (1,127 water sources claimed). Traditional copyright.
+- **AllTrails / Hiking Project / Gaia** — Hiking Project's public API has been dead since
+  2020 (owner onX still declining requests, verified on their data page); AllTrails is
+  bot-protected and enforces; Gaia's topo is OSM-derived — its trail data is the same
+  ODbL data available directly. No path, and no loss.
+- **Avenza — the strategic headline.** Per NYNJTC's June 2026 news article (verified):
+  Avenza merged with Blue Marble Geographics in **April 2026**; vendors can no longer add
+  or update maps; **the Map Store will close**, timeline unannounced, fate of purchased
+  maps unclear. Every Avenza-exclusive club edition (PATC Maps 9/11's newest editions,
+  MATC's digital set, NYNJTC's 50+ maps, GMC's) is exposed. This is the exact scenario
+  OurHike was founded on, now happening to the whole store at once — both a validation
+  and, handled respectfully, the opening for club partnerships (§10).
+
+## 9. Licensing, summarized
+
+| licence reality | sources | what it means for the pipeline |
+|---|---|---|
+| **Public domain (US federal work)** | NPS APPA layers (10 of our 12), USFS EDW, USGS topo/3DEP, NPS_Public_Trails | Ship freely; attribution as courtesy. The survey's provider correction moves most of our current data *into* this row |
+| **ODbL** | OSM (incl. shelter capacities), Waymarked Trails, Geofabrik extracts (already used) | Attribution + share-alike on derivative databases — already complied with for the basemap |
+| **Unstated — org would need to answer** | ATC's own org layers (half-mile points, ATX overnight sites §3a, CSI §3b, Helene §3c), PATC's GIS, TEHCC's wiki, NYNJTC's services, club HTML pages, Trail Finder | Public ≠ licensed. One conversation each with ATC, PATC, TEHCC covers everything worth having in this row |
+| **Unresolved, now compounded** | opentrail.org (#98) | No LICENSE file + now imports OSM without attribution; raise both in the same ask |
+| **Copyrighted, permission-gated** | WhiteBlaze shelter PDF, club paper/Avenza maps, MATC's unpublished campsite inventory appendix | Cross-check/validation material, or a direct ask |
+| **Closed, no path** | FarOut, A.T. Guide, AllTrails, Hiking Project (API dead), Gaia | Context only |
+| **Restrictive site terms** | appalachiantrail.org website content (suggested-hikes prose) | Don't scrape; hike *generation* from data (HIKE_PLANNING.md) is the better design anyway |
+
+## 10. What to do with all this, ranked
+
+Each of these is a candidate follow-up, deliberately **not** done in this survey — the
+registry file stays untouched until licences are answered (the #98 lesson, applied in
+advance):
+
+1. **Ask ATC one combined question.** Their own org hosts four things worth shipping —
+   half-mile points (already shipped, terms never confirmed), **ATX overnight sites with
+   shelter capacity (§3a — closes [#444](https://github.com/OurHike/OurHike/issues/444)'s
+   source hunt)**, Helene closure status (§3c), and possibly a vetted subset of CSI
+   (§3b). One conversation, via info@appalachiantrail.org / the interactive-map team,
+   settles the whole ATC column of §9. The FMSS-ID join between ATX sites and the NPS
+   shelters layer should be tested while that conversation happens.
+2. **Correct `sources.json`'s provider story** — ten layers are NPS's, not ATC's
+   (§1). A small change; SOURCE_REGISTRY.md's `steward` field is its eventual home.
+3. **OSM shelter capacities as the openly licensed fallback** (§7): if the ATC ask
+   stalls, 153+ capacity tags under ODbL are shippable today, verified against club pages
+   (§5's five capacity tables) — with the `nwr` re-query done first.
+4. **Register the Helene status layer for CONDITIONS_DELIVERY.md** once ATC blesses it —
+   140 club-section polygons, edited three days before this survey, is a real closure
+   feed no other source offers.
+5. **PATC and TEHCC conversations, in ROADMAP order not ahead of it** — PATC's trails
+   layer (edited the day before this survey) and cabins-with-capacity, TEHCC's GeoJSON +
+   shelter infoboxes. Both are exactly SOURCE_REGISTRY.md's `arcgis_feature_layer` /
+   `http_file` registrants-in-waiting; neither has stated terms.
+6. **NYNJTC is an agreement, not a scrape** — their GIS program is real and their A.T.
+   network deliberately unpublished; Phase 5's onboarding path runs through their Trail
+   Planner / Professional Services channel. The Avenza store closing (§8) is the shared
+   problem that makes that conversation timely for every club in §5.
+7. **Update #98 with the OSM-import fact** (§7) — it materially changes the licence
+   question's shape.
+
+### Marked for maintainer review, collected
+
+Things found but not resolvable without a human (or a real browser):
+
+| item | why it needs eyes | where |
+|---|---|---|
+| `ATX_Ratings` / VUM services on ATC's org | internal planning product carrying the best shelter-capacity data; is it meant to be public? | §3a |
+| `Campsite_Sustainability_Index` | 2,333 user-created campsites — publishing locations may be actively harmful; established-sites subset is the askable part | §3b |
+| `Helene_Status` + survey layers | closure feed scoped to one recovery program; lifetime unclear | §3c |
+| ATC org's ~40 `survey123_*`/`Chart_*`/`service_*` services | opaque names, form outputs; catalogued and skipped — spot-check only if something specific goes missing | §3d |
+| NBATC interactive-map data layer | loads by script; needs a browser look to find the underlying file | §5 |
+| CMC `wp-json` | whether the hike database is exposed as a post type — one probe answers it | §5 |
+| KTA / SATC / CVATC sites; Batona; Wilmington | Weebly 429s and JS shells blocked automated checking | §5 |
+| `potomactrailclub.org` | DNS dead but linked from patc.net — new domain not yet live, or rot? | §5 |
+| SMHC 2026 handbook PDF | unparsed; may contain the year's structured hike schedule | §5 |
+| GATC CalTopo maps; RMC Trailforks | platform terms govern bulk export; unexamined | §5, §6 |
+| VCGI's retired GMNF "Long Trail and A.T." dataset | whether the SCORP layer substitutes for VT A.T. geometry | §6 |
+| OSM way-mapped shelters (`nwr` re-query) | capacity coverage floor vs. true total | §7 |
+| WhiteBlaze live shelter DB (`at-shelters.php`) | vBulletin, needs a session; field list unknown | §7 |
+| data.gov CKAN API | 404s from this sandbox; only matters if wanted as a discovery channel | §2 |
+
+---
+
+*Method note for whoever refreshes this: every ArcGIS claim above is one
+`<layer-url>?f=pjson` away (`editingInfo.dataLastEditDate`, epoch ms) and one
+`/query?where=1=1&returnCountOnly=true&f=json` away from re-verification — the same two
+requests `check_freshness.py` and `fetch_all.py` already make. Club sites rot faster than
+federal servers; re-date the club table before trusting it a season later.*

@@ -424,6 +424,52 @@ def check_all(base: str, manifest: dict | None = None, session: requests.Session
     rangeable = next((key for key in artifacts if key.endswith(".pmtiles")), None)
     reports.append(check_range_request(base, rangeable or MANIFEST_KEY, session))
 
+    reports.extend(check_advertised_sizes(base, artifacts, session))
+
+    return reports
+
+
+def check_advertised_sizes(base: str, artifacts: list[str], session: requests.Session | None = None) -> list[dict]:
+    """Does each tier still weigh what the app tells a hiker it weighs?
+
+    Asked DAILY rather than only at release time, which is the difference
+    between noticing in a day and noticing at the next release. `#505` is how
+    that gap was found: the advertised Standard tier said 300.3 MB while the
+    published archive was 315.1 MB - 14.8 MB larger, in the direction that
+    strands somebody who freed up exactly enough space - and nothing was
+    comparing the two, so it drifted quietly through several builds.
+
+    `verify_release.py` asks the identical question at release time as its
+    check 18. Both read `client/src/lib/downloadDetail.ts`, so there is one
+    home for the figure and two checkers, the same shape
+    `.github/expected-origins.yml` already has.
+
+    A `HEAD` per tier: three requests, no bytes. It costs the same as noticing
+    a year later.
+    """
+    # Imported here rather than at module scope: this is the daily reachability
+    # check and it must keep running even if the release gate cannot be
+    # imported at all. A missing size comparison is worth strictly less than
+    # the CORS assertions above.
+    try:
+        from verify_release import advertised_sizes, archive_keys, check_advertised_size
+    except Exception as exc:  # noqa: BLE001
+        return [{"check": "advertised-size", "state": UNREACHABLE, "detail": f"could not be asked: {exc.__class__.__name__}"}]
+
+    sizes = advertised_sizes()
+    reports = []
+    for tier, key in archive_keys().items():
+        if key not in artifacts or tier not in sizes:
+            continue
+        verdict = check_advertised_size(base, key, tier, sizes[tier], session)
+        reports.append(
+            {
+                "check": "advertised-size",
+                "key": key,
+                "state": verdict["state"],
+                "detail": verdict["detail"],
+            }
+        )
     return reports
 
 

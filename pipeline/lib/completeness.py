@@ -38,6 +38,19 @@ def fail_if_incomplete(problems, *, label="Incomplete"):
     sys.exit(1)
 
 
+# How far an artifact's size or feature count may fall between two builds
+# before it is treated as a regression rather than as noise.
+#
+# It lives here, in a module whose only import is `sys`, because two very
+# different readers need it: check_output_quality.py, which has DuckDB and GDAL
+# behind it, and verify_release.py, which deliberately has neither - it reads a
+# bucket over HTTP and must run with three pure-Python packages installed.
+# Importing the heavy module for one float made the release gate unable to
+# start at all (#514), and a second copy of the number would be the drift this
+# repository keeps finding.
+DROP_THRESHOLD = 0.10
+
+
 def count_problems(counts, minimums=None, default_minimum=1):
     """Problem strings for any name in `counts` whose count is below its
     expected minimum - e.g. export_poi.py's per-poi_type feature counts,

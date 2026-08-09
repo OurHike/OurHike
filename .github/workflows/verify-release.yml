@@ -85,7 +85,13 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --quiet requests pyyaml pmtiles
 
+      # `shell: bash` rather than the default, and it is load-bearing: it runs
+      # with `-o pipefail`, and the default does not. `python ... | tee` takes
+      # its exit status from `tee`, so the first dispatch of this workflow went
+      # GREEN on a run where the battery crashed on an import and hashed
+      # nothing (#514). A gate that cannot fail is a document.
       - name: Run the battery
+        shell: bash
         env:
           BASE: ${{ steps.can.outputs.base }}
           STRICT: ${{ inputs.strict }}

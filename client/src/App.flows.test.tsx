@@ -890,6 +890,65 @@ describe('when the trail data cannot be downloaded', () => {
   })
 })
 
+describe('a download left running', () => {
+  it('is still visible from the map after its window is shut', async () => {
+    // The download belongs to the shell, not to the window it was started
+    // from, so shutting that window used to leave an app that looked
+    // completely idle while it pulled several hundred megabytes over a
+    // connection somebody is paying for by the mile. The only way to find out
+    // was to open the window again and hope.
+    //
+    // Driven through the real transfer rather than by handing the legend a
+    // prop, because the wiring is the part that was missing: every piece of
+    // this existed except the line joining them.
+    const user = userEvent.setup()
+    hikerOnTrail()
+
+    // A body that arrives and then simply does not end - which is what a
+    // download in progress IS. Held open deliberately: a stream that closes
+    // races the assertions to 'downloaded', and the state under test would be
+    // gone before anything could look at it.
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: new Headers({ 'content-length': '10' }),
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array([1, 2, 3, 4]))
+        },
+      }),
+    } as unknown as Response)
+
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await openDownloads(user)
+    const usgsCard = await usgsSheetCard(user)
+    await user.click(within(usgsCard).getByRole('button', { name: /download the map/i }))
+
+    // The window's own bar first: proof the transfer really is running, so
+    // that what the footer says next is a report and not a coincidence.
+    await waitFor(() =>
+      expect(within(usgsCard).getByRole('progressbar')).toHaveAttribute(
+        'aria-valuenow',
+        '40',
+      ),
+    )
+
+    // Away: window shut, back to the map, legend open again - the walk a
+    // hiker actually takes.
+    await user.click(screen.getByRole('button', { name: /close/i }))
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: /offline map/i })).toBeNull(),
+    )
+    await user.click(screen.getByRole('button', { name: /legend/i }))
+
+    const legend = await screen.findByRole('dialog', { name: 'Legend' })
+    expect(within(legend).getByText('Downloading 40%')).toBeVisible()
+  })
+})
+
 describe('resuming an interrupted download', () => {
   it('picks up where it left off rather than starting again', async () => {
     // WIREFRAMES.md 7a. Re-pulling 300 MB from zero because a connection

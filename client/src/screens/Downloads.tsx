@@ -66,6 +66,10 @@ export interface SheetDownload {
    *  transfer that failed; this one is a transfer that SUCCEEDED and left an
    *  archive the map cannot read (#334). */
   notDrawing?: boolean
+  /** Whether this sheet's tap has landed and the trail data that has to
+   *  arrive first is still coming (App.tsx). Before the transfer, not part of
+   *  it - see DownloadCard. */
+  preparing?: boolean
   /** This sheet's levels, its chosen one, and how to report a change. Every
    *  level the app knows comes through, with a null size where this sheet
    *  has none of it, so the picker is the same shape under every tab
@@ -166,6 +170,7 @@ export function Downloads({ sheets, persistence = null }: DownloadsProps) {
           status={sheet.status}
           error={sheet.error ?? null}
           notDrawing={sheet.notDrawing ?? false}
+          preparing={sheet.preparing ?? false}
           detail={sheet.detail}
           persistence={persistence}
           onStart={sheet.onStart}

@@ -29,6 +29,7 @@ import type {
   UserPreferences,
 } from '../lib/userPreferences'
 import { backgroundOverride } from '../lib/dataSaver'
+import type { DownloadActivity } from '../lib/downloadActivity'
 import type { BuildInfo } from '../lib/buildInfo'
 import { AboutBuild } from './AboutBuild'
 import { BackgroundPicker } from '../chrome/BackgroundPicker'
@@ -89,6 +90,10 @@ export interface SettingsProps {
    * change, and a link telling them to choose one would be wrong.
    */
   hasDownload?: boolean
+  /** What is downloading right now, if anything - drawn on that same link
+   *  (lib/downloadActivity.ts). This screen is where someone who left a
+   *  download running and came back later goes looking for it. */
+  downloadActivity?: DownloadActivity | null
   /**
    * Opens the download window, from the link at the foot of the screen.
    *
@@ -120,6 +125,7 @@ export function Settings({
   dataSaver = false,
   archiveDownloaded = false,
   hasDownload = false,
+  downloadActivity = null,
   onOpenDownloads,
   build,
 }: SettingsProps) {
@@ -396,7 +402,11 @@ export function Settings({
           scrolls looking for it, and not in the way of the rows that get used.
           The same component sits at the foot of the legend. */}
       {onOpenDownloads !== undefined && (
-        <DownloadsLink onOpen={onOpenDownloads} hasDownload={hasDownload} />
+        <DownloadsLink
+          onOpen={onOpenDownloads}
+          hasDownload={hasDownload}
+          downloadActivity={downloadActivity}
+        />
       )}
     </main>
   )

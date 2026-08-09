@@ -240,4 +240,22 @@ describe('legend as a persistent panel', () => {
 
     expect(screen.queryByRole('button', { name: /download/i })).toBeNull()
   })
+
+  it('admits a download still running with its window shut', () => {
+    // The panel a hiker is one tap from while they walk, and since the
+    // download window closes over a transfer that keeps going, the only place
+    // on the map that says so. Asserted here rather than left to
+    // DownloadsLink's own tests because what is at stake is the wiring: an
+    // unpassed prop draws a link that is silent about a download in flight,
+    // which is exactly the app this was built to stop shipping.
+    render(
+      <Legend
+        {...PROPS}
+        onOpenDownloads={vi.fn()}
+        downloadActivity={{ kind: 'downloading', doneBytes: 1, totalBytes: 4 }}
+      />,
+    )
+
+    expect(screen.getByText('Downloading 25%')).toBeVisible()
+  })
 })

@@ -211,6 +211,20 @@ describe('Settings', () => {
     expect(onOpenDownloads).toHaveBeenCalledTimes(1)
   })
 
+  it('admits a download still running with its window shut', () => {
+    // The other home of the same link, and the screen someone comes back to
+    // an hour later to ask whether the thing they started ever finished.
+    render(
+      <Settings
+        {...PROPS}
+        onOpenDownloads={vi.fn()}
+        downloadActivity={{ kind: 'downloading', doneBytes: 1, totalBytes: 4 }}
+      />,
+    )
+
+    expect(screen.getByText('Downloading 25%')).toBeVisible()
+  })
+
   it('puts it at the foot of the screen, below every group', async () => {
     // A once-a-season errand, so it is findable by anyone who scrolls looking
     // for it and out of the way of the rows that get used.

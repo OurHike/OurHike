@@ -1238,7 +1238,9 @@ a.poi-card__credit::after {
    panel" from "one more legend row". 44px tall despite reading as text,
    because a cold thumb still has to hit it. */
 .downloads-link {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
   width: 100%;
   min-height: var(--min-touch-target, 44px);
   margin-top: var(--space-4, 16px);
@@ -1251,6 +1253,49 @@ a.poi-card__credit::after {
   color: var(--brand-primary);
   background: none;
   cursor: pointer;
+}
+
+/* The label, and - only while something is moving - what it is doing, pushed
+   to the far end so the label keeps the place the eye already looks for it.
+   The two never swap sides and the label never shifts, because a footer that
+   rearranged itself when a download started would be read as a new control
+   rather than as the same one with news. */
+.downloads-link__line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2, 8px);
+  width: 100%;
+}
+
+/* Quieter than the label it sits beside: this is a reminder that something is
+   happening, not the thing the footer is for. Mono and right-aligned for the
+   reason the download window's counter is - the percent grows a digit as it
+   climbs, and a figure anchored to its right edge does not shuffle the line
+   sideways on the way past 10%. */
+.downloads-link__status {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+
+/* The same bar the download window draws (screens/downloads.css), at half its
+   height. One visual language for progress across the app, at the weight a
+   footer earns - 8px in a legend footer would read as a control. */
+.downloads-link__bar {
+  display: block;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-sunken);
+  overflow: hidden;
+}
+.downloads-link__bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--brand-primary);
 }
 
 /* The safety alert strip (#232), between the status strip and the header.

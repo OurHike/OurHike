@@ -439,6 +439,60 @@ describe('a refused download, said plainly (#238)', () => {
   })
 })
 
+describe('the step before the transfer', () => {
+  // The tap used to vanish into this. `ensureTrailData` fetches 12.3 MB of
+  // trails.geojson before a byte of the map is requested, and the card said
+  // nothing whatever for the whole of it - the button just pressed still
+  // sitting there, offering to start a download that had already started.
+
+  it('says the tap landed, rather than re-offering the button that was pressed', () => {
+    render(<DownloadCard {...PROPS} preparing />)
+
+    expect(screen.getByText(/getting the trail/i)).toBeVisible()
+    expect(screen.queryByRole('button', { name: /download the map/i })).toBeNull()
+  })
+
+  it('says why the map is not moving yet', () => {
+    // Nobody chose to download "trail data" - they tapped a map. The note has
+    // to answer "why is nothing happening", and the canary ordering is the
+    // whole answer.
+    render(<DownloadCard {...PROPS} preparing />)
+
+    expect(screen.getByRole('status')).toHaveTextContent(/trail itself first/i)
+  })
+
+  it('draws no bar it could not fill honestly', () => {
+    // A bar at 0% here would look exactly like the stalled download this
+    // state exists to distinguish itself from, and there is no total to be a
+    // percentage of yet.
+    render(<DownloadCard {...PROPS} preparing />)
+
+    expect(screen.queryByRole('progressbar')).toBe(null)
+  })
+
+  it('greys the levels, since the transfer starts the moment this lands', () => {
+    render(<DownloadCard {...PROPS} preparing />)
+
+    for (const radio of screen.getAllByRole('radio')) expect(radio).toBeDisabled()
+  })
+
+  it('replaces an eviction notice too, not only the fresh-phone offer', () => {
+    // Reachable from every state with a start button, so every one of them
+    // has to give way - an "is no longer on this phone" notice above a
+    // download already fetching is a card describing two different moments.
+    render(
+      <DownloadCard
+        {...PROPS}
+        preparing
+        status={{ state: 'evicted', completedAt: null }}
+      />,
+    )
+
+    expect(screen.queryByText(/no longer on this phone/i)).toBeNull()
+    expect(screen.getByText(/getting the trail/i)).toBeVisible()
+  })
+})
+
 describe('a download that finished and cannot be read (#334)', () => {
   const DOWNLOADED = {
     ...PROPS,

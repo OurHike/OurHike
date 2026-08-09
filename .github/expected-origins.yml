@@ -1,0 +1,125 @@
+# Every origin the app is served from, and the CORS contract the data bucket
+# has to honour for each of them.
+#
+# THE FAILURE THIS EXISTS TO PREVENT (#427, #431). The R2 bucket's CORS
+# allow-list held the preview origins and `localhost` but not
+# `https://ourhike.github.io`. Every data fetch from production was refused by
+# the browser, so the deployed app drew a topo sheet with no Appalachian Trail
+# on it - for eight days, while the published data was correct the whole time
+# and every check in this repository stayed green.
+#
+# They stayed green because none of them is a browser. `Origin` is the single
+# header that decides whether a browser may read a response, and no check
+# anywhere sent one: a ranged GET with no `Origin` returned 206 with
+# `Content-Range`, `ETag` and `Accept-Ranges` intact throughout the outage.
+# pipeline/DATA_RELEASES.md had already written down that "a CORS regression
+# silently disarms check 7 on real devices while CI, which is not a browser,
+# would never notice." It named this blind spot in advance and we shipped past
+# it.
+#
+# WHY A FILE HERE AND NOT PROSE IN LAUNCH_CHECKLIST.md. The rule that the R2
+# and Supabase allow-lists have to move together was written down, in prose,
+# before the outage - and prose is what got us here: previews moved to
+# `pages.dev`, both lists gained the wildcard, one of them lost production, and
+# nothing disagreed. `.github/expected-settings.yml` is the precedent for the
+# fix. It turned "here is what should be on the settings page" into something a
+# test reads, and this is the same move for configuration that lives in
+# Cloudflare and Supabase rather than on GitHub's settings page.
+#
+# ONE HOME PER ITEM (CONTRIBUTING.md). This file is the declaration;
+# LAUNCH_CHECKLIST.md §1.4 and §4.3b stay the prose instructions for pasting it
+# into each dashboard. The policy JSON that used to be embedded in
+# LAUNCH_CHECKLIST.md is now generated from this file - run
+# `python pipeline/check_deployment.py --print-cors-policy` and paste what it
+# prints, rather than hand-editing a copy that can drift from the copy the
+# check reads.
+#
+# WHO READS THIS: `pipeline/check_deployment.py` (the daily origin-aware
+# reachability check) today. Supabase's redirect allow-list wants the same list
+# in its own spelling and is the next reader - see #431's tier 3.
+
+# The request headers the client actually sends to the data bucket, which is a
+# different list from the one a reader would guess, and getting it wrong breaks
+# something that only breaks on a phone.
+#
+# `range` is CORS-safelisted for simple byte ranges, so a FIRST download needs
+# no preflight and works even if this list is wrong. `if-range` is NOT
+# safelisted: a browser sending it must pass an `OPTIONS` preflight whose
+# `Access-Control-Allow-Headers` names it. The client sends `If-Range` on every
+# RESUME (client/src/lib/archiveDownload.ts) - it is what makes the server
+# itself arbitrate a stale partial rather than splicing old bytes onto new.
+#
+# So a missing `if-range` here is invisible until a hiker resumes an
+# interrupted 1.18 GB download, which is precisely the case the resume exists
+# for and precisely where it cannot be debugged. LAUNCH_CHECKLIST.md's embedded
+# copy carried `if-match` - a header nothing in this repository has ever sent -
+# and not `if-range`. That is the drift this file exists to end.
+#
+# `content-type` was in the old hand-kept copy and is deliberately not here:
+# every request to this bucket is a GET or a HEAD with no body, and a request
+# with no body sends no `Content-Type`. Allowing a header nothing sends is not
+# harmful, but it is one more line that reads as load-bearing to the next
+# person deciding what is safe to remove.
+request_headers:
+  - range
+  - if-range
+
+# The response headers a browser must be allowed to READ. Not the same thing as
+# the headers being present: R2 sent all four throughout the outage, and a
+# browser still could not see them.
+#
+# `content-range` and `etag` are load-bearing rather than informational. The
+# resumable download reads `content-range` to know whether the server honoured
+# a range request at all, and treats a missing one as "start over" rather than
+# corrupting the file; `etag` is what `if-range` is compared against.
+expose_headers:
+  - accept-ranges
+  - content-length
+  - content-range
+  - etag
+
+# The methods the app uses. It never writes to this bucket - publishing is a
+# workflow holding credentials no browser has - so anything beyond these two
+# would be a widening nobody asked for.
+methods:
+  - GET
+  - HEAD
+
+# How long a browser may cache a preflight. Low enough that fixing a bad policy
+# is not followed by an hour of stale refusals.
+max_age_seconds: 3600
+
+origins:
+  - pattern: https://ourhike.github.io
+    probe: https://ourhike.github.io
+    serves: The deployed app and landing page, on GitHub Pages.
+    # The one whose absence is an outage rather than an inconvenience: it is
+    # the origin every hiker is on. It is also the one that went missing.
+    hiker_facing: true
+
+  - pattern: https://*.ourhike-preview.pages.dev
+    # A wildcard cannot be probed as itself - `*` is not a hostname a browser
+    # would ever send. So the check sends a CONCRETE origin the wildcard is
+    # supposed to match, which is the only way to learn whether the rule
+    # actually covers a pull request that does not exist yet. `pr-1` is chosen
+    # for being permanent in shape and meaningless in particular.
+    probe: https://pr-1.ourhike-preview.pages.dev
+    serves: Pull-request previews, on Cloudflare Pages.
+    # Losing this costs reviewers a preview, not hikers a map. It is still
+    # checked, because a preview that cannot download is how a change gets
+    # reviewed as working when it is not.
+    hiker_facing: false
+
+  - pattern: http://localhost:5173
+    probe: http://localhost:5173
+    serves: "`npm run dev` - Vite's dev server."
+    hiker_facing: false
+
+  - pattern: http://localhost:4173
+    probe: http://localhost:4173
+    # A different server from 5173, not a second guess at the same one:
+    # `npm run preview` serves the BUILT bundle. It is the one you reach for to
+    # check something behaves the same after a production build, which makes it
+    # exactly the wrong one to have working differently from the others.
+    serves: "`npm run preview` - the built bundle."
+    hiker_facing: false

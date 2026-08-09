@@ -1,0 +1,259 @@
+# Asks daily, as a browser would, whether a hiker can still download the map.
+#
+# features/../pipeline/DATA_RELEASES.md §3a is the design; this is tier 1 of
+# #431. The failure it exists for is #427: the R2 bucket's CORS allow-list lost
+# `https://ourhike.github.io`, so the deployed app drew a topo sheet with no
+# Appalachian Trail on it for eight days, while the published data was correct
+# the whole time and every check in this repository stayed green.
+#
+# THE ONE HEADER THAT MAKES THIS DIFFERENT. Every other check sends no
+# `Origin`, and the bucket answered all of them perfectly throughout the
+# outage - a ranged GET returned 206 with `Content-Range`, `ETag` and
+# `Accept-Ranges` intact. `Origin` is the single header that decides whether a
+# browser may read the response, so this job sends one for every declared
+# origin. That alone would have caught #427 on the first run after the policy
+# changed.
+#
+# THE SEPARATION IS THE SAME AS check-upstream-freshness.yml's. This job holds
+# no credentials at all - not "chooses not to write", cannot. Its whole input
+# is public HTTPS requests to the same bucket a hiker's phone reads, so it is
+# structurally incapable of changing anyone's map even if something went badly
+# wrong inside it.
+#
+# IT DOES NOT FAIL THE RUN, and that is deliberate rather than lax. GitHub
+# emails on a scheduled workflow's failure, every run, so a genuine outage
+# lasting a week would send seven identical emails and the eighth would be
+# filtered. #431 is explicit: alert on transitions, not on runs. The tracking
+# issue below is the signal - opening it notifies, updating its body does not,
+# and the all-clear comment notifies once. The run itself fails only if the
+# check crashed.
+
+name: Check deployment
+
+on:
+  schedule:
+    # 09:15 UTC daily. Off the hour because GitHub queues everything submitted
+    # at :00, and clear of the other scheduled jobs - freshness at 07:20,
+    # settings at 07:35, schema-drift at 08:10, publish-conditions at 08:40.
+    # Deliberately AFTER publish-conditions: if a publish breaks something,
+    # this is the job that should notice, and noticing on the same day is the
+    # whole point.
+    - cron: "15 9 * * *"
+  workflow_dispatch:
+    inputs:
+      base:
+        description: "Bucket base to check. Defaults to the DATA_BASE_URL variable."
+        type: string
+        required: false
+
+# Read the repo, write the one tracking issue. Nothing that could reach R2.
+permissions:
+  contents: read
+  issues: write
+
+# One at a time, and never cancel a run in flight: a half-finished check that
+# got cancelled would leave the tracking issue describing a comparison that
+# never completed.
+concurrency:
+  group: check-deployment
+  cancel-in-progress: false
+
+env:
+  ISSUE_TITLE: "Deployed app reachability"
+  ISSUE_LABEL: deployment-health
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: pipeline
+
+    steps:
+      - name: Is there a bucket to check
+        id: can
+        # Before the checkout, so not in pipeline/ - publish-conditions.yml's
+        # gate has the reasoning for testing the setting this way rather than
+        # letting the check fail with something less legible.
+        working-directory: .
+        env:
+          OVERRIDE: ${{ inputs.base }}
+          CONFIGURED: ${{ vars.DATA_BASE_URL }}
+        run: |
+          BASE="${OVERRIDE:-$CONFIGURED}"
+          if [ -z "$BASE" ]; then
+            echo "::warning::No DATA_BASE_URL is set, so there is no deployment to check. See LAUNCH_CHECKLIST.md step 2."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+            echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.can.outputs.go == 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.can.outputs.go == 'true'
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        if: steps.can.outputs.go == 'true'
+        run: pip install -r requirements.txt
+
+      # BASE arrives via env rather than ${{ }} inside the script: the value
+      # can come verbatim from the workflow_dispatch input, and an expression
+      # expansion is pasted into the shell as literal text before bash parses
+      # it. pages.yml documents the same rule.
+      #
+      # --exit-zero is what keeps a real outage from emailing daily; see the
+      # header. The step still fails on a non-zero exit, which --exit-zero
+      # reserves for the check itself crashing.
+      - name: Ask the bucket as a browser would
+        id: check
+        if: steps.can.outputs.go == 'true'
+        env:
+          BASE: ${{ steps.can.outputs.base }}
+        run: |
+          python check_deployment.py \
+            --base "$BASE" \
+            --json deployment.json \
+            --exit-zero | tee deployment.txt
+
+      - name: Write the job summary
+        if: always() && steps.can.outputs.go == 'true'
+        run: |
+          {
+            echo "## Deployed app reachability"
+            echo
+            if [ -f deployment.txt ]; then
+              echo '```'
+              cat deployment.txt
+              echo '```'
+            else
+              echo "The check did not produce a report. See the step log above."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ONE issue, updated in place - never a second issue, never a comment per
+      # run. Opening notifies the codeowners; updating a body does not, which is
+      # what makes a week-long outage cost one email rather than seven; the
+      # all-clear comment notifies once and closes.
+      #
+      # Only REFUSALS open it. A request that never completed says nothing about
+      # the CORS policy, and #431 is explicit that a flaky third party must not
+      # be able to declare an outage.
+      - name: Open, update, or close the tracking issue
+        if: steps.can.outputs.go == 'true'
+        uses: actions/github-script@v7
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const fs = require('fs')
+            const verdict = JSON.parse(fs.readFileSync('pipeline/deployment.json', 'utf8'))
+            const title = process.env.ISSUE_TITLE
+            const label = process.env.ISSUE_LABEL
+
+            const existing = (await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: label,
+              per_page: 100,
+            })).find(issue => issue.title === title)
+
+            const failed = verdict.failed ?? []
+            const blocking = verdict.hiker_facing_failures ?? []
+            const unreachable = verdict.unreachable ?? []
+
+            if (failed.length === 0) {
+              if (existing) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  body: `A browser can download the map from every declared origin again, as of ${verdict.checked_at}. Closing.\n\n---\n_Generated by [Claude Code](https://claude.ai/code)_`,
+                })
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  state: 'closed',
+                  state_reason: 'completed',
+                })
+              }
+              core.info('Reachable from every declared origin; no issue needed.')
+              return
+            }
+
+            // "First seen" survives across runs by being parsed back out of the
+            // body this job itself wrote. Without it every update would reset
+            // the clock, and how long the map has been unreachable is the
+            // number that decides how urgent this is. The body is guarded
+            // because a matching issue somebody opened by hand can legally
+            // have no body at all.
+            const firstSeen = {}
+            if (existing) {
+              for (const [, key, since] of (existing.body ?? '').matchAll(/^\| `([^`]+)` \| [^|]+ \| ([\d-]+) \|/gm)) {
+                firstSeen[key] = since
+              }
+            }
+
+            // Bucket-derived text goes into table cells, and a stray pipe or
+            // newline in a header value would break both the table and the
+            // first-seen parse above.
+            const cell = value => String(value).replace(/\r?\n/g, ' ').replace(/\|/g, '\\|')
+            const keyOf = report => `${report.check}:${report.origin ?? report.key ?? ''}`
+
+            const row = report => {
+              const key = keyOf(report)
+              const since = firstSeen[key] ?? verdict.checked_at
+              const stops = blocking.some(b => keyOf(b) === key) ? '**yes**' : 'no'
+              return `| \`${key}\` | ${stops} | ${since} | ${cell(report.detail)} |`
+            }
+
+            const body = [
+              blocking.length
+                ? `**A hiker cannot download the map.** ${blocking.length} of ${failed.length} failing check(s) block the deployed app.`
+                : `${failed.length} check(s) failed, none of which stop a hiker - previews or local development only.`,
+              '',
+              `Checked \`${verdict.base}\`.`,
+              '',
+              '| check | stops a hiker | first seen | detail |',
+              '|---|---|---|---|',
+              ...failed.map(row),
+              '',
+              unreachable.length
+                ? `${unreachable.length} check(s) could not be made at all and are not counted as refusals - a flaky third party must not declare an outage.`
+                : '',
+              '',
+              'The CORS policy to paste into Cloudflare is generated from `.github/expected-origins.yml` — run `python pipeline/check_deployment.py --print-cors-policy`. Do not hand-edit a copy.',
+              '',
+              `Last checked ${verdict.checked_at} · [run](${process.env.RUN_URL})`,
+              '',
+              '---',
+              '_Generated by [Claude Code](https://claude.ai/code)_',
+            ].join('\n')
+
+            if (existing) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body,
+              })
+              core.info(`Updated #${existing.number}.`)
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: [label],
+              })
+              core.info(`Opened #${created.data.number}.`)
+            }

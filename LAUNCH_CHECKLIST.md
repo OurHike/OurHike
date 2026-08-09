@@ -49,28 +49,25 @@ Whether they're still *there* is checked continuously after that: `.github/expec
 
 **1.4 Configure CORS — this one is easy to miss and fails confusingly.** The client reads PMTiles via HTTP **range requests**. Without CORS exposing the right headers, the map fails in a way that looks like a corrupt archive rather than a permissions problem.
 
-R2 → `your-hike` → Settings → CORS policy. The app is hosted on GitHub Pages (see step 3 — that's settled now, unlike when this list was first written), and its previews on Cloudflare Pages (3a), so there are **two** origins to allow plus local dev:
+R2 → `your-hike` → Settings → CORS policy. The app is hosted on GitHub Pages (see step 3 — that's settled now, unlike when this list was first written), and its previews on Cloudflare Pages (3a), so there are **two** origins to allow plus local dev.
 
-```json
-[{
-  "AllowedOrigins": [
-    "https://ourhike.github.io",
-    "https://*.ourhike-preview.pages.dev",
-    "http://localhost:5173",
-    "http://localhost:4173"
-  ],
-  "AllowedMethods": ["GET", "HEAD"],
-  "AllowedHeaders": ["range", "if-match", "content-type"],
-  "ExposeHeaders": ["content-length", "content-range", "etag", "accept-ranges"],
-  "MaxAgeSeconds": 3600
-}]
+**Do not copy a policy out of this document.** The origins and the headers are declared once, in [`.github/expected-origins.yml`](.github/expected-origins.yml), and the policy to paste is generated from that declaration:
+
 ```
+python pipeline/check_deployment.py --print-cors-policy
+```
+
+Paste what it prints. This used to be a JSON block right here, and that copy **drifted in a way that broke resuming a download**: it allowed `if-match`, which nothing in this repository has ever sent, and not `if-range`, which `client/src/lib/archiveDownload.ts` sends on every resume. `range` is CORS-safelisted so a *first* download worked regardless — the failure only ever appeared on a phone resuming an interrupted 1.18 GB archive, which is the one place it could not be debugged. The generated policy is what the daily **Check deployment** workflow asserts against the live bucket, so the bucket and the check now agree by construction.
 
 **The `pages.dev` wildcard is not optional, and its absence is easy to misread.** Every pull request previews from a hostname of its own, so each one is a distinct origin as far as a browser is concerned — a wildcard is the only entry that can cover a pull request that does not exist yet. Without it the preview renders but the download fails with `NetworkError when attempting to fetch resource`, which looks like R2 being down rather than R2 declining to answer this particular origin.
 
 This was missed when previews moved off GitHub Pages, and the reason is worth keeping: previews used to be served from the *same* GitHub Pages origin as production, so the one entry covered both and there was nothing here that looked origin-specific. Moving previews to their own hostnames split one origin into many. Supabase's redirect allow-list (4.3b) needed the identical change for the identical reason — if one of these two lists is ever updated for a new origin, the other one needs it too.
 
 `ExposeHeaders` matters as much as `AllowedHeaders`: the resumable download reads `content-range` to know whether the server honoured a range request, and treats a missing/200 response as "start over" rather than corrupting the file.
+
+**⚠️ The live bucket needs this re-pasted, once.** The policy currently on `your-hike` is the drifted one described above — it is missing `if-range`, so resuming an interrupted archive download is refused by the browser today. Run the command above and paste the result over the existing policy. Nothing else about the bucket changes, and the daily **Check deployment** workflow will confirm it (or keep saying so until it is done).
+
+**Whether the policy is still *right* is now checked daily**, not just whether it was set once. `.github/workflows/check-deployment.yml` sends a real `Origin` header for every declared origin and asserts the bucket answers — the one thing no previous check did, and the reason [#427](https://github.com/OurHike/OurHike/issues/427) ran for eight days with every check green. It opens one tracking issue when a browser cannot get the map and closes it when that recovers. See [pipeline/DATA_RELEASES.md](pipeline/DATA_RELEASES.md) §3a.
 
 **1.5 Enable public read access**, either R2's public bucket URL or a custom domain. A custom domain is worth it — the URL ends up baked into the client build as `DATA_BASE_URL` (step 2 below).
 

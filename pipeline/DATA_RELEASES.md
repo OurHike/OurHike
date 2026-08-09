@@ -162,6 +162,34 @@ This inverts today's `check_output_quality.py`-then-`publish.py` order, and that
 
 Unit tests for all of the above go in `pipeline/tests/test_verify_release.py`, synthetic fixtures + `requests-mock`/`moto`, per [TESTING.md](../TESTING.md). The battery itself runs as a workflow step rather than a pytest test, consistent with TESTING.md's standing position that real-data end-to-end verification is a documented procedure, not part of the suite.
 
+## 3a. The standing monitor
+
+**Built** — `pipeline/check_deployment.py` and `.github/workflows/check-deployment.yml`, daily. This is tier 1 of [#431](https://github.com/OurHike/OurHike/issues/431).
+
+**It is not the battery above, and the difference is the whole reason it exists.** §3 is a *release-time* gate: it verifies a staged candidate before promotion. What happened in [#427](https://github.com/OurHike/OurHike/issues/427) was a **good release quietly stopping being reachable** — the R2 bucket's CORS allow-list lost `https://ourhike.github.io`, days after a release that was and stayed correct, so the deployed app drew a topo sheet with no Appalachian Trail on it for eight days. A release gate catches bad releases. Both are needed and they are different checks.
+
+**Why every check we already had was green.** Check 8 above names this in advance: *"A CORS regression silently disarms check 7 on real devices while CI, which is not a browser, would never notice."* That is not a metaphor — it is what happened. `check_freshness.py`, `r2-credentials-check.yml`, and every `curl` anyone typed send **no `Origin` header**, and the bucket answered all of them perfectly throughout: a ranged `GET` returned `206` with `Content-Range`, `ETag` and `Accept-Ranges` intact. One header decides whether a browser may read those bytes, and nothing sent it.
+
+So the monitor sends one, for every origin declared in [`.github/expected-origins.yml`](../.github/expected-origins.yml):
+
+1. **Origin** — `Access-Control-Allow-Origin` comes back matching. A wildcard pattern is probed with a *concrete* hostname it should match, since `*` is not something a browser sends and a rule covering no real hostname covers nothing.
+2. **Preflight** — an `OPTIONS` asking for the request headers the client actually sends is answered with all of them in `Access-Control-Allow-Headers`.
+3. **Exposed headers** — `Access-Control-Expose-Headers` covers `etag`, `content-length`, `content-range`, `accept-ranges`. Present and *readable* are different things, and only a browser can tell.
+4. **Artifacts** — every key `latest.json` names answers `HEAD` 200, with a non-zero `Content-Length` and `Accept-Ranges: bytes`.
+5. **Range** — a one-byte range comes back `206` with a `Content-Range`.
+
+**The preflight assertion found a live defect the day it was written**, which is the clearest possible argument for it. `range` is CORS-safelisted for simple byte ranges, so a *first* download needs no preflight and works against a wrong policy. **`if-range` is not safelisted**, and `client/src/lib/archiveDownload.ts` sends it on every *resume* — it is what makes the server itself arbitrate a stale partial rather than splicing old bytes onto new (§1). The policy documented in `LAUNCH_CHECKLIST.md` allowed `if-match`, which nothing in this repository has ever sent, and **not** `if-range`. So resuming an interrupted 1.18 GB download would have been refused by the browser, invisibly, and only ever on a phone in the place where resuming matters most.
+
+**Three constraints, each of which changes what the check may do:**
+
+- **It must not download the artifacts.** `HEAD` and one-byte ranges answer every question above; pulling the real files would be ~1.6 GB of egress a day against a rate-limited `r2.dev` subdomain to learn what one byte already said. Proving the *bytes* is check 5's job, at release time, once.
+- **It must not fail the run.** GitHub emails on a scheduled workflow's failure every run, so a week-long outage would send seven identical emails and the eighth would be filtered. The tracking issue is the signal: opening it notifies, updating its body does not, the all-clear comment notifies once. Same discipline `check-upstream-freshness.yml` already keeps, for the same reason.
+- **A request that never completed is not a refusal.** "Could not ask" says nothing about the CORS policy, and a flaky third party must not be able to declare an outage. Those are reported and never open the issue.
+
+**What it cannot check, stated rather than implied.** `latest.json` publishes a sha256 per artifact and **no size**, so "exists at its published size" is not a question this can ask — it asserts each artifact is present, non-empty and rangeable, which is what makes it fetchable and resumable, not that it is the length anyone intended. A truncated-but-served artifact is caught by the client's own per-chunk hashing and by check 5, not here.
+
+**One declaration, several readers.** The origins file is the single home for the list; the CORS policy pasted into Cloudflare is *generated* from it (`check_deployment.py --print-cors-policy`) rather than kept as a second copy, because the second copy is precisely what drifted. Supabase's redirect allow-list wants the same list in its own spelling and is the next reader — #431's tier 3. The browser-level check that the app *draws a trail* is tier 2, still unbuilt.
+
 ## 4. Release only by a code change
 
 New `client/src/lib/dataRelease.ts`:

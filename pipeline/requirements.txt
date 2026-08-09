@@ -60,6 +60,8 @@ pyproj==3.7.2
     # via -r pipeline/requirements.in
 python-dateutil==2.9.0.post0
     # via botocore
+pyyaml==6.0.3
+    # via -r pipeline/requirements.in
 rasterio==1.4.4 ; python_full_version < '3.12'
     # via -r pipeline/requirements.in
 rasterio==1.5.0 ; python_full_version >= '3.12'

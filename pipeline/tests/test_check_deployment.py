@@ -1,0 +1,490 @@
+"""Tests for check_deployment.py.
+
+The centrepiece is `test_the_outage_that_started_this_is_caught`: it stands up
+a bucket that behaves exactly the way R2 behaved during #427 - answering
+everything perfectly to a caller that sends no `Origin`, and refusing the
+production origin - and asserts this check calls it. Every other check in the
+repository was green against that bucket for eight days, so a test that only
+proved the happy path would be proving the wrong thing.
+
+`requests_mock` throughout rather than a live bucket: this file is about what
+the script concludes from a set of responses, and the responses are the input.
+Whether the real bucket is configured correctly is what the scheduled workflow
+asks, daily, and no test can answer it from a checkout.
+"""
+
+from __future__ import annotations
+
+import json
+
+import pytest
+import requests
+
+import check_deployment
+from check_deployment import (
+    FAILED,
+    OK,
+    UNREACHABLE,
+    check_all,
+    check_artifact_present,
+    check_exposed_headers,
+    check_origin_allowed,
+    check_preflight,
+    check_range_request,
+    cors_policy,
+    hiker_facing_failures,
+    load_manifest,
+    verdict_document,
+)
+
+BASE = "https://data.example.org"
+
+PRODUCTION = {
+    "pattern": "https://ourhike.github.io",
+    "probe": "https://ourhike.github.io",
+    "serves": "production",
+    "hiker_facing": True,
+}
+PREVIEW = {
+    "pattern": "https://*.ourhike-preview.pages.dev",
+    "probe": "https://pr-1.ourhike-preview.pages.dev",
+    "serves": "previews",
+    "hiker_facing": False,
+}
+
+MANIFEST = {
+    "request_headers": ["range", "if-range"],
+    "expose_headers": ["accept-ranges", "content-length", "content-range", "etag"],
+    "methods": ["GET", "HEAD"],
+    "max_age_seconds": 3600,
+    "origins": [PRODUCTION, PREVIEW],
+}
+
+# What the bucket sends when it is behaving. Header names spelled the way R2
+# spells them, which is not the way the manifest lists them - see the
+# case-folding test.
+GOOD_CORS = {
+    "Access-Control-Allow-Origin": PRODUCTION["probe"],
+    "Access-Control-Expose-Headers": "content-length, content-range, etag, accept-ranges",
+}
+
+PUBLISHED = {
+    "version": "abc",
+    "artifacts": {
+        "background.pmtiles": {"sha256": "aaa"},
+        "trails.geojson": {"sha256": "bbb"},
+    },
+}
+
+
+@pytest.fixture
+def mock(requests_mock):
+    return requests_mock
+
+
+# ------------------------------------------------------- the declared manifest
+
+
+def test_the_real_manifest_declares_the_headers_the_client_actually_sends():
+    """The drift that made #431 worth building. LAUNCH_CHECKLIST.md's embedded
+    copy allowed `if-match` - which nothing in this repository has ever sent -
+    and not `if-range`, which every resumed archive download sends.
+
+    A resume is the only thing that sends it, so a policy missing it works
+    perfectly until a hiker's 1.18 GB download is interrupted, which is exactly
+    when it cannot be debugged.
+    """
+    manifest = load_manifest()
+
+    assert "if-range" in manifest["request_headers"]
+    assert "if-match" not in manifest["request_headers"]
+
+
+def test_the_real_manifest_declares_production_as_the_hiker_facing_origin():
+    """The origin that went missing. If this list ever loses it again, the
+    daily check has nothing to notice."""
+    manifest = load_manifest()
+    hiker_facing = [origin["pattern"] for origin in manifest["origins"] if origin.get("hiker_facing")]
+
+    assert hiker_facing == ["https://ourhike.github.io"]
+
+
+def test_every_declared_origin_has_a_concrete_probe():
+    """A wildcard cannot be sent as an `Origin` - no browser would ever send
+    `*.pages.dev` - so every pattern needs a real hostname to test it with, or
+    the rule covering pull requests that do not exist yet is never exercised.
+    """
+    for origin in load_manifest()["origins"]:
+        assert "*" not in origin["probe"], origin["pattern"]
+
+
+def test_the_cors_policy_is_generated_from_the_declaration():
+    """One home per item. The policy pasted into Cloudflare and the policy this
+    check enforces are the same object, so they cannot drift the way the
+    hand-kept copy did."""
+    [policy] = cors_policy(MANIFEST)
+
+    assert policy["AllowedOrigins"] == [PRODUCTION["pattern"], PREVIEW["pattern"]]
+    assert policy["AllowedHeaders"] == ["range", "if-range"]
+    assert policy["ExposeHeaders"] == ["accept-ranges", "content-length", "content-range", "etag"]
+    assert policy["AllowedMethods"] == ["GET", "HEAD"]
+    assert policy["MaxAgeSeconds"] == 3600
+
+
+# ------------------------------------------------------------ the origin check
+
+
+def test_an_allowed_origin_passes(mock):
+    mock.get(f"{BASE}/latest.json", headers=GOOD_CORS)
+
+    assert check_origin_allowed(BASE, PRODUCTION)["state"] == OK
+
+
+def test_a_refused_origin_fails_and_says_what_to_do(mock):
+    """#427 in one assertion: the bucket answers 200 with the body intact and
+    simply does not say the origin may read it."""
+    mock.get(f"{BASE}/latest.json", headers={})
+
+    report = check_origin_allowed(BASE, PRODUCTION)
+
+    assert report["state"] == FAILED
+    assert "may not read this bucket" in report["detail"]
+    assert "--print-cors-policy" in report["detail"]
+
+
+def test_an_origin_allowed_for_somebody_else_is_still_a_failure(mock):
+    """The precise shape of #427: the policy was not empty, it covered the
+    previews and localhost. A check that only asked "is there a CORS header"
+    would have passed throughout the outage."""
+    mock.get(f"{BASE}/latest.json", headers={"Access-Control-Allow-Origin": PREVIEW["probe"]})
+
+    report = check_origin_allowed(BASE, PRODUCTION)
+
+    assert report["state"] == FAILED
+    assert PREVIEW["probe"] in report["detail"]
+
+
+def test_a_wildcard_answer_is_accepted(mock):
+    """`*` is a legal way to allow everyone. Refusing it would be this check
+    enforcing a tightening nobody asked for."""
+    mock.get(f"{BASE}/latest.json", headers={"Access-Control-Allow-Origin": "*"})
+
+    assert check_origin_allowed(BASE, PRODUCTION)["state"] == OK
+
+
+def test_a_wildcard_pattern_is_probed_with_a_concrete_hostname(mock):
+    """The only way to learn whether the rule covers a pull request that does
+    not exist yet."""
+    mock.get(f"{BASE}/latest.json", headers={"Access-Control-Allow-Origin": PREVIEW["probe"]})
+
+    report = check_origin_allowed(BASE, PREVIEW)
+
+    assert report["state"] == OK
+    assert mock.last_request.headers["Origin"] == "https://pr-1.ourhike-preview.pages.dev"
+
+
+def test_a_bucket_that_cannot_be_reached_is_not_reported_as_a_refusal(mock):
+    """#431: a flaky third party must not be able to declare an outage. "Could
+    not ask" and "was told no" are different answers and only one of them is
+    about the CORS policy."""
+    mock.get(f"{BASE}/latest.json", exc=requests.ConnectionError)
+
+    assert check_origin_allowed(BASE, PRODUCTION)["state"] == UNREACHABLE
+
+
+# --------------------------------------------------------- the preflight check
+
+
+def test_a_preflight_allowing_the_resume_headers_passes(mock):
+    mock.options(f"{BASE}/latest.json", headers={"Access-Control-Allow-Headers": "range, if-range"})
+
+    report = check_preflight(BASE, PRODUCTION, MANIFEST["request_headers"])
+
+    assert report["state"] == OK
+    assert mock.last_request.headers["Access-Control-Request-Headers"] == "range, if-range"
+
+
+def test_a_policy_missing_if_range_fails_and_explains_what_breaks(mock):
+    """The live defect this file found. `range` alone is CORS-safelisted, so a
+    FIRST download works against this policy and only a RESUME breaks - which
+    is why nothing noticed, and why the message has to say so rather than
+    naming a header and leaving the reader to work it out."""
+    mock.options(f"{BASE}/latest.json", headers={"Access-Control-Allow-Headers": "range, if-match, content-type"})
+
+    report = check_preflight(BASE, PRODUCTION, MANIFEST["request_headers"])
+
+    assert report["state"] == FAILED
+    assert "if-range" in report["detail"]
+    assert "RESUME" in report["detail"]
+
+
+def test_allowed_headers_are_compared_case_insensitively(mock):
+    """Header names are case-insensitive, so a bucket answering `If-Range` is
+    correct and failing it would be this check inventing a rule."""
+    mock.options(f"{BASE}/latest.json", headers={"Access-Control-Allow-Headers": "Range, If-Range"})
+
+    assert check_preflight(BASE, PRODUCTION, MANIFEST["request_headers"])["state"] == OK
+
+
+# ---------------------------------------------------- the exposed-header check
+
+
+def test_exposed_headers_are_checked_for_readability_not_presence(mock):
+    """R2 sent all four of these throughout the outage and a browser still
+    could not see them. curl cannot tell the difference; this is the assertion
+    that can."""
+    mock.get(f"{BASE}/latest.json", headers={"Access-Control-Expose-Headers": "content-length, etag"})
+
+    report = check_exposed_headers(BASE, PRODUCTION, MANIFEST["expose_headers"])
+
+    assert report["state"] == FAILED
+    assert "accept-ranges" in report["detail"]
+    assert "content-range" in report["detail"]
+
+
+def test_all_exposed_headers_present_passes(mock):
+    mock.get(f"{BASE}/latest.json", headers=GOOD_CORS)
+
+    assert check_exposed_headers(BASE, PRODUCTION, MANIFEST["expose_headers"])["state"] == OK
+
+
+# -------------------------------------------------------------- the range check
+
+
+def test_a_honoured_range_passes(mock):
+    mock.get(f"{BASE}/background.pmtiles", status_code=206, headers={"Content-Range": "bytes 0-0/1000"})
+
+    assert check_range_request(BASE, "background.pmtiles")["state"] == OK
+
+
+def test_a_range_answered_with_the_whole_object_fails(mock):
+    """A 200 in reply to a Range request means the server ignored it. On a
+    1.18 GB archive that is the difference between resuming and starting
+    again."""
+    mock.get(f"{BASE}/background.pmtiles", status_code=200)
+
+    report = check_range_request(BASE, "background.pmtiles")
+
+    assert report["state"] == FAILED
+    assert "cannot resume" in report["detail"]
+
+
+def test_the_range_check_asks_for_one_byte(mock):
+    """It must not download the artifacts. ~1.6 GB of egress a day against a
+    rate-limited subdomain, to learn what one byte already said."""
+    mock.get(f"{BASE}/background.pmtiles", status_code=206, headers={"Content-Range": "bytes 0-0/1000"})
+
+    check_range_request(BASE, "background.pmtiles")
+
+    assert mock.last_request.headers["Range"] == "bytes=0-0"
+
+
+# ----------------------------------------------------------- the artifact check
+
+
+def test_a_present_artifact_passes(mock):
+    mock.head(f"{BASE}/trails.geojson", headers={"Content-Length": "12345", "Accept-Ranges": "bytes"})
+
+    report = check_artifact_present(BASE, "trails.geojson")
+
+    assert report["state"] == OK
+    assert "12345 bytes" in report["detail"]
+
+
+def test_a_deleted_artifact_fails(mock):
+    """The lifecycle rule, the accidental delete, the permissions change - the
+    ways a good release stops being reachable with nobody publishing
+    anything."""
+    mock.head(f"{BASE}/trails.geojson", status_code=404)
+
+    report = check_artifact_present(BASE, "trails.geojson")
+
+    assert report["state"] == FAILED
+    assert "404" in report["detail"]
+
+
+def test_an_artifact_that_cannot_be_ranged_fails(mock):
+    mock.head(f"{BASE}/trails.geojson", headers={"Content-Length": "12345"})
+
+    report = check_artifact_present(BASE, "trails.geojson")
+
+    assert report["state"] == FAILED
+    assert "cannot be resumed" in report["detail"]
+
+
+def test_a_zero_length_artifact_fails(mock):
+    """Served, and empty. A 200 is not the same as an answer."""
+    mock.head(f"{BASE}/trails.geojson", headers={"Content-Length": "0", "Accept-Ranges": "bytes"})
+
+    assert check_artifact_present(BASE, "trails.geojson")["state"] == FAILED
+
+
+def test_the_artifact_check_never_downloads_anything(mock):
+    """HEAD, not GET. The whole cost argument rests on this."""
+    mock.head(f"{BASE}/trails.geojson", headers={"Content-Length": "1", "Accept-Ranges": "bytes"})
+
+    check_artifact_present(BASE, "trails.geojson")
+
+    assert mock.last_request.method == "HEAD"
+
+
+# ------------------------------------------------------------- the whole battery
+
+
+def _healthy_bucket(mock, *, allow_origins=True):
+    """A bucket behaving correctly, or behaving correctly to everyone except a
+    browser - which is the distinction this whole module exists to draw.
+
+    The allow-origin header is ECHOED from the request rather than fixed,
+    because that is what S3-compatible storage actually does when a rule
+    matches: a wildcard rule answers with the concrete origin that matched it,
+    never with the pattern. A fixture returning one hard-coded origin would
+    pass the production check and fail every other declared origin, which is a
+    bucket nobody has ever run.
+    """
+
+    def latest(request, context):
+        origin = request.headers.get("Origin")
+        if allow_origins and origin:
+            context.headers["Access-Control-Allow-Origin"] = origin
+        context.headers["Access-Control-Expose-Headers"] = "content-length, content-range, etag, accept-ranges"
+        return PUBLISHED
+
+    mock.get(f"{BASE}/latest.json", json=latest)
+    mock.options(f"{BASE}/latest.json", headers={"Access-Control-Allow-Headers": "range, if-range"})
+    for key in PUBLISHED["artifacts"]:
+        mock.head(f"{BASE}/{key}", headers={"Content-Length": "999", "Accept-Ranges": "bytes"})
+    mock.get(f"{BASE}/background.pmtiles", status_code=206, headers={"Content-Range": "bytes 0-0/999"})
+    return mock
+
+
+def test_the_outage_that_started_this_is_caught(mock):
+    """#427, reproduced rather than argued.
+
+    The bucket answers everything perfectly to a caller that sends no `Origin`:
+    `latest.json` parses, every artifact HEADs 200 with a length and
+    `Accept-Ranges`, a one-byte range comes back 206 with `Content-Range`. That
+    is precisely the bucket every existing check saw, green, for eight days.
+
+    The one thing it does not do is tell a browser on `ourhike.github.io` that
+    it may read any of it. This check has to be the one that says so.
+    """
+    _healthy_bucket(mock, allow_origins=False)
+
+    reports = check_all(BASE, MANIFEST)
+    document = verdict_document(BASE, reports, MANIFEST, published=True)
+
+    # Every non-CORS assertion passes, exactly as it did during the outage.
+    assert [r for r in reports if r["check"] == "artifact" and r["state"] != OK] == []
+    assert [r for r in reports if r["check"] == "range" and r["state"] != OK] == []
+
+    # And the map is still unreachable, which is the answer that matters.
+    assert document["hiker_facing_failures"]
+    assert any(r["check"] == "origin" and r["origin"] == PRODUCTION["pattern"] for r in document["hiker_facing_failures"])
+
+
+def test_a_healthy_bucket_reports_nothing(mock):
+    _healthy_bucket(mock)
+
+    document = verdict_document(BASE, check_all(BASE, MANIFEST), MANIFEST, published=True)
+
+    assert document["failed"] == []
+    assert document["hiker_facing_failures"] == []
+
+
+def test_every_published_artifact_is_checked(mock):
+    _healthy_bucket(mock)
+
+    reports = check_all(BASE, MANIFEST)
+
+    checked = {r["key"] for r in reports if r["check"] == "artifact"}
+    assert checked == set(PUBLISHED["artifacts"])
+
+
+def test_a_bucket_with_nothing_published_checks_cors_and_says_so(mock):
+    """The state this repository is in until LAUNCH_CHECKLIST.md 1.6 runs.
+    Failing daily until then is how an alarm gets muted, so the absence of a
+    publish is reported as an absence rather than as a fault."""
+    mock.get(f"{BASE}/latest.json", status_code=404)
+    mock.options(f"{BASE}/latest.json", headers={"Access-Control-Allow-Headers": "range, if-range"})
+
+    reports = check_all(BASE, MANIFEST)
+
+    assert not any(r["check"] == "artifact" for r in reports)
+    assert any(r["check"] == "origin" for r in reports)
+
+
+def test_a_preview_only_failure_is_not_a_hiker_facing_one(mock):
+    """#431's discipline: fail on "a browser cannot get the map", never on "a
+    tile host was slow". A preview losing CORS costs a reviewer a preview."""
+    reports = [
+        {"check": "origin", "origin": PREVIEW["pattern"], "state": FAILED, "detail": "nope"},
+        {"check": "origin", "origin": PRODUCTION["pattern"], "state": OK, "detail": "fine"},
+    ]
+
+    assert hiker_facing_failures(reports, MANIFEST) == []
+
+
+def test_an_artifact_failure_is_always_hiker_facing():
+    """There is no such thing as an artifact only a developer downloads."""
+    reports = [{"check": "artifact", "key": "trails.geojson", "state": FAILED, "detail": "404"}]
+
+    assert len(hiker_facing_failures(reports, MANIFEST)) == 1
+
+
+def test_the_verdict_is_json_serialisable(mock):
+    """The workflow reads this back with JSON.parse, and the status page will
+    too."""
+    _healthy_bucket(mock)
+
+    document = verdict_document(BASE, check_all(BASE, MANIFEST), MANIFEST, published=True)
+
+    assert json.loads(json.dumps(document))["base"] == BASE
+
+
+# ------------------------------------------------------------------ the CLI
+
+
+def test_print_cors_policy_asks_nothing_and_prints_the_policy(capsys):
+    """Runnable on a laptop with no network, because its whole job is to
+    produce something to paste into a dashboard."""
+    assert check_deployment.main(["--print-cors-policy"]) == 0
+
+    [policy] = json.loads(capsys.readouterr().out)
+    assert "if-range" in policy["AllowedHeaders"]
+
+
+def test_no_base_is_reported_as_nothing_to_check_rather_than_a_failure(capsys, monkeypatch):
+    monkeypatch.delenv("DATA_BASE_URL", raising=False)
+
+    assert check_deployment.main([]) == 2
+
+
+def test_exit_zero_reports_without_failing(mock, monkeypatch, tmp_path):
+    """The reporter posture the sibling check-upstream-freshness.yml already
+    keeps: the tracking issue is the signal, not a red X that arrives daily
+    and teaches people to ignore it."""
+    _healthy_bucket(mock, allow_origins=False)
+    monkeypatch.setenv("DATA_BASE_URL", BASE)
+    out = tmp_path / "deployment.json"
+
+    assert check_deployment.main(["--exit-zero", "--json", str(out)]) == 0
+
+    assert json.loads(out.read_text())["hiker_facing_failures"]
+
+
+def test_without_exit_zero_a_failure_is_a_failure(mock, monkeypatch):
+    _healthy_bucket(mock, allow_origins=False)
+    monkeypatch.setenv("DATA_BASE_URL", BASE)
+
+    assert check_deployment.main([]) == 1
+
+
+def test_a_trailing_slash_on_the_base_does_not_double_up(mock, monkeypatch):
+    """`DATA_BASE_URL` is pasted by hand into a settings page, so it arrives
+    both ways. config.ts strips it for the same reason."""
+    _healthy_bucket(mock)
+    monkeypatch.setenv("DATA_BASE_URL", f"{BASE}/")
+
+    assert check_deployment.main([]) == 0
+    assert all("//latest.json" not in request.url for request in mock.request_history)

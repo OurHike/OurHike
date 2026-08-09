@@ -90,7 +90,7 @@ Everything in 1.1–1.6 is *published* data, and 1.5 turns public read on for ex
 
 1. **Create the bucket.** R2 → Create bucket, e.g. `your-hike-photos`. **Leave public access off** — do not do 1.5 for this one. **No CORS entry either, and that is still true now that the moderation queue renders these photos** ([#385](https://github.com/OurHike/OurHike/issues/385)): what reaches the bucket is an `<img src>` holding a signed URL the backend authorised, and images are exempt from CORS. The alternative — a cross-origin `fetch` of the bytes — would have needed a policy here, which is why it is not what got built.
 2. **Create a second API token**, Object Read & Write, **scoped to this bucket alone.** Same reason 1.2's is scoped to `your-hike`: a token that can reach both buckets is one bug away from writing a photo of a person into the public one.
-3. **Set five variables on the backend's host, not in GitHub Actions** (the backend deploys to Fly.io — `backend/README.md`'s Deployment section):
+3. **Set five variables on the backend's host, not in GitHub Actions** (see `backend/README.md`'s Deployment section for which host, and 6 below):
 
 ```
 R2_PHOTO_ENDPOINT_URL=https://<accountid>.r2.cloudflarestorage.com
@@ -270,7 +270,7 @@ After that: UA follows `main` automatically whenever a revision lands, and produ
 | **Session pooler — `aws-<region>.pooler.supabase.com:5432`** | IPv4 | **This one.** One backend per connection for its whole life, which is the property the direct endpoint was wanted for. |
 | Transaction pooler — same host, `:6543` | IPv4 | **Wrong.** A different backend per transaction, so `CREATE TABLE`, `ALTER TABLE` and Alembic's advisory lock stop sharing a session. This is the string the *running app* wants (see 6.2), and the backend is built for it. |
 
-That is why these two settings are `*_MIGRATION_DATABASE_URL` and not the `DATABASE_URL` Fly holds — two different values, both correct for their own job, the same reason the report-photo credentials carry an `R2_PHOTO_` prefix (1.7). Supabase's own guidance is the same: direct connections are best for long-lived sessions, and *"if IPv4 is required for those sessions, Supavisor session mode can be used as an alternative."*
+That is why these two settings are `*_MIGRATION_DATABASE_URL` and not the `DATABASE_URL` the running service holds — two different values, both correct for their own job, the same reason the report-photo credentials carry an `R2_PHOTO_` prefix (1.7). Supabase's own guidance is the same: direct connections are best for long-lived sessions, and *"if IPv4 is required for those sessions, Supavisor session mode can be used as an alternative."*
 
 **What still is not automatic, on purpose:** *when*. §8c of [RELEASING.md](RELEASING.md) requires expand-and-contract across two releases because the previous release is still serving traffic during a rollout, so a migration that drops a column breaks it. No workflow can know when that is safe, which is why production is dispatched and reviewed rather than applied on merge. What has been removed is the hand-typed connection string, not the judgement.
 
@@ -325,24 +325,27 @@ See [#279](https://github.com/OurHike/OurHike/issues/279) — `verifyOtp` is alr
 
 ## 6. Host the backend
 
-The host is picked and the config is written: `backend/Dockerfile` and `backend/fly.toml` target **Fly.io**, keeping `min_machines_running = 1` so the first request after quiet does not pay a cold start, with `primary_region = "iad"` the closest major Fly region to the trail's own corridor. [backend/HOSTING.md](backend/HOSTING.md) is the reasoning and the costed comparison against every alternative considered — including the two vendors already in this stack, both of which turn out to add configuration rather than remove it.
+The host type is picked and there is no config file to write: `backend/Dockerfile` is the whole of it, and it reads `PORT` from the environment so any Dockerfile host runs it unchanged. [backend/HOSTING.md](backend/HOSTING.md) is the reasoning — **a free scale-to-zero tier, revised 2026-08-09**, after [features/CONDITIONS_DELIVERY.md](features/CONDITIONS_DELIVERY.md) moved the safety read off this service and the always-on requirement that had ruled out every free tier went with it. Fly was the previous answer, nothing was ever deployed to it, and `fly.toml` is gone.
 
-What is left is running it, in this order:
+What is left is account work, in this order:
 
-1. **`fly apps create`** with a real, globally-unique name. `fly.toml`'s `app = "ourhike-backend"` is a placeholder — update it to match whatever the name ends up being.
-2. **`fly secrets set`** the runtime environment. Never committed, never baked into the image:
+1. **Create the service** on the chosen host, pointed at `backend/`'s Dockerfile. Deploys happen on push from the connected repository; there is no CLI to install.
+2. **Set the runtime environment** in the host's own secret store. Never committed, never baked into the image:
    ```
-   fly secrets set DATABASE_URL=postgresql://...   # the POOLED string, port 6543
-   fly secrets set SUPABASE_URL=... SUPABASE_ANON_KEY=...
+   DATABASE_URL=postgresql://...   # the POOLED string, port 6543
+   SUPABASE_URL=...  SUPABASE_ANON_KEY=...
    ```
    `SUPABASE_JWT_SECRET` is **not** in that list for a hosted project — see 4.4. Set it only against a self-hosted Supabase.
 
    **The pooled string is deliberate here, and the app is built for it.** A transaction pooler hands each transaction whatever backend is free, which breaks anything a driver leaves on a connection — psycopg's automatic prepared statements above all, and that failure appears only in production and only once an endpoint is warm. `backend/app/db/session.py` turns them off, and `backend/tests/test_pooler.py` proves it against a real transaction pooler rather than asserting it. If you use the direct string instead, nothing breaks; you can set `DATABASE_PREPARED_STATEMENTS=true` to get the plan caching back.
-3. **`fly deploy`** from `backend/`.
-4. **Apply the migration** — dispatch **Migrate** (step 5), then **confirm RLS is on** (step 5a — the migration does it, but check rather than assume). Deliberately separate from deploying, and it stays that way now that a workflow does it: a migration is a reviewed action, not something that fires on every container start. Note that the secret this job holds is the **session** pooler (port 5432), while the `DATABASE_URL` you set on Fly above is the **transaction** pooler (6543) — two different values on the same host, and both are correct for their own job.
-5. **Point the client at it** and add its origin to Supabase's allowed redirect URLs (4.3b).
+3. **Apply the migration** — dispatch **Migrate** (step 5), then **confirm RLS is on** (step 5a — the migration does it, but check rather than assume). Deliberately separate from deploying, and it stays that way now that a workflow does it: a migration is a reviewed action, not something that fires on every container start. Note that the secret this job holds is the **session** pooler (port 5432), while the `DATABASE_URL` above is the **transaction** pooler (6543) — two different values on the same host, both correct for their own job.
+4. **Point the client at it** and add its origin to Supabase's allowed redirect URLs (4.3b).
 
-**None of this has been run against a real Fly.io account or Docker daemon.** The Dockerfile follows a standard FastAPI/uvicorn pattern and `fly.toml` matches Fly's documented format, but "should work" is not "confirmed working" — budget for the first real `fly deploy` to surface something no local check could. See [backend/README.md](backend/README.md) for the reasoning behind each choice.
+**Expect a cold start.** The service sleeps when idle and the first request after that takes 30-60 seconds. Every remaining caller tolerates it — reports wait in the outbox, moderation is a person at a desk, and closures do not come from here at all any more — with one visible exception: opening a report photo after a quiet period will wait.
+
+**Do not skip step 3 on the grounds that nothing is filed yet.** `POST /closures/{id}/verify` is the only thing that moves a closure to `verified`, and the published artifact carries verified closures and nothing else — so until this service is running and a moderator can act, `conditions/closures.json` is empty by construction rather than because the trail is clear.
+
+**The image has never been built or run against a real Docker daemon.** It follows a standard FastAPI/uvicorn pattern, but "should work" is not "confirmed working" — budget for the first real deploy to surface something no local check could. See [backend/README.md](backend/README.md) for the reasoning behind each choice.
 
 ---
 

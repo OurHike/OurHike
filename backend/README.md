@@ -122,14 +122,17 @@ Point `DATABASE_URL` at the real Supabase Postgres connection string first. Deli
 
 ## Deployment
 
-`Dockerfile` + `fly.toml` target [Fly.io](https://fly.io), which keeps `min_machines_running = 1` so the first request after an idle period does not pay a cold start. **[HOSTING.md](HOSTING.md) is why that host and why always-on** - it re-examines the choice against Cloudflare Containers, Cloudflare Python Workers, Supabase Edge Functions, Render, Railway, Cloud Run, Koyeb, DigitalOcean and a bare VPS, with costs, and comes out on keeping Fly. Read it before changing hosts; it also records what would make the answer different.
+`Dockerfile` is the whole of it, deliberately - there is no host-specific config file here any more. **[HOSTING.md](HOSTING.md) is which host and why**: a free scale-to-zero tier (Render's), decided 2026-08-09 after `features/CONDITIONS_DELIVERY.md` moved the safety read off this service and the always-on requirement that had ruled out every free tier went with it. That document also records what it costs and what would change the answer back.
+
+The image reads `PORT` from the environment, which is what makes it portable across Render, Railway, Koyeb, Cloud Run and Fly without editing anything.
 
 **Not yet done, and needs real decisions first:**
-1. `fly apps create` (or `fly launch`) with a real, globally-unique app name - `fly.toml`'s `app = "ourhike-backend"` is a placeholder, update it to match.
-2. Set the real secrets Fly.io needs at runtime (`fly secrets set DATABASE_URL=... SUPABASE_JWT_SECRET=... SUPABASE_URL=... SUPABASE_ANON_KEY=...`) - never committed, never baked into the image.
+1. Create the service on the chosen host, pointed at this directory's `Dockerfile`.
+2. Set the real runtime secrets there - never committed, never baked into the image: `DATABASE_URL`, `SUPABASE_JWT_SECRET`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`.
    - Report photos (#234) need five more, and they are **not** the `R2_*` four the pipeline publishes with: `R2_PHOTO_ENDPOINT_URL`, `R2_PHOTO_BUCKET`, `R2_PHOTO_ACCESS_KEY_ID`, `R2_PHOTO_SECRET_ACCESS_KEY`, `R2_PHOTO_WRITE_ENABLED=true`. `R2_PHOTO_BUCKET` must name a **private** bucket - see `../LAUNCH_CHECKLIST.md` 1.7 and the comment in `app/config.py` for what pointing it at the published one would publish. Leaving all five unset is a valid deployment: it simply cannot take or serve photos, and both endpoints answer 503 rather than failing.
-3. `fly deploy` from this directory.
-4. Run the Migrations step above against the real `DATABASE_URL` - not automatic, see why above.
-5. Point the client's API base URL at the deployed app, and add its origin to Supabase's allowed redirect URLs (see `../LAUNCH_CHECKLIST.md`).
+3. Run the Migrations step above against the real `DATABASE_URL` - not automatic, see why above.
+4. Point the client's API base URL at the deployed service, and add its origin to Supabase's allowed redirect URLs (see `../LAUNCH_CHECKLIST.md`).
 
-**Build/deploy config is untested against a real Fly.io account or Docker daemon** - this sandbox has no Fly.io account, and while the Docker CLI is on its PATH, no daemon is running behind it (the same reason `docker-compose.yml` is documented but unexercised here, and why `scripts/local-postgres.sh` uses the container's own Postgres install instead). The Dockerfile follows a standard, well-established FastAPI/uvicorn pattern and `fly.toml`'s shape matches Fly's own documented format, but "should work" isn't the same claim as "confirmed working" - budget for the first real `fly deploy` to surface something this couldn't catch locally.
+**A cold start is now expected rather than designed against.** The host sleeps when idle, and the first request after that pays 30-60 seconds. Every remaining caller tolerates it - reports wait in the outbox, moderation is a person at a desk - with one exception worth knowing before it surprises somebody: opening a report photo after a quiet period will visibly wait. HOSTING.md argues that is affordable now because a photo is not a warning; closures no longer come from here at all.
+
+**The image has never been built or run against a real Docker daemon** - the Docker CLI is on this sandbox's PATH with no daemon behind it, which is also why `docker-compose.yml` is documented but unexercised and why `scripts/local-postgres.sh` uses the container's own Postgres install. It follows a standard FastAPI/uvicorn pattern, but "should work" isn't "confirmed working" - budget for the first real deploy to surface something no local check could.

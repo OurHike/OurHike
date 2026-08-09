@@ -66,6 +66,40 @@ INTERNAL_PATTERNS = (
     r"\b(?:please\s+)?see\s+photos?\b",
     r"\bphotos?\s+taken\b",
     r"\bi\s+(?:took|failed\s+to)\b",
+    # The vista layer's own bookkeeping dialect, which the first three layers
+    # did not have (added 2026-08-09 with viewpoints/parking/privies; measured
+    # to change nothing on shelters or campsites).
+    #
+    # `Improvements = ...` is an inventory form pasted into a free-text field
+    # and is the single most common thing in this column - 133 of the 640
+    # populated vista comments, including "Improvements = none identified",
+    # which is a form saying nothing rather than ATC saying nothing.
+    r"\bimprovements\s*=",
+    # The 2021 Vista Resource Inventory, and the survey's own note about which
+    # points it moved. "adjused" is ATC's typo, alongside the "adusted" the
+    # provenance pattern above already carries.
+    r"\bvri\b",
+    r"\b(?:extent|location|scope)\s+(?:adjus|based\s+on)",
+    r"\badjused\s+based\s+on",
+    # The surveyor's instrument, not the place: "measured bearings 3 times,
+    # each time getting different results", "Will be brining a compass next
+    # time". Honest field notes, and about the survey rather than the view.
+    r"\btrimble\b",
+    r"\bcompass\b",
+    r"\bbearings?\s+(?:measured|were)\b",
+    r"\bmeasured\s+(?:the\s+)?bearings?\b",
+    # The vista review process and its own identifiers: "Preliminary Review
+    # with VARO" is the single most repeated phrase left once the form
+    # language is gone, and `VP1058` is a survey point number the hiker has
+    # no way to resolve ("this is either VP1058 ot 1059").
+    r"\bvaro\b",
+    r"\bpreliminary\s+review\b",
+    r"\bvp\s?\d+",
+    r"\bnot\s+(?:on|in)\b[^.;]{0,30}\blist\b",
+    r"\bneed\s+to\s+determine\b",
+    # The weather on the day somebody stood there, which is a fact about the
+    # visit rather than about the view.
+    r"\bsocked\b",
 )
 
 INTERNAL = re.compile("|".join(INTERNAL_PATTERNS), re.IGNORECASE)
@@ -115,4 +149,9 @@ def clean_note(raw: str | None) -> str | None:
     text = " ".join(kept.split())
     text = re.sub(r"\s+([.;,])", r"\1", text)
     text = text.strip(" ;,")
+    # Punctuation left standing where a dropped sentence used to be is not a
+    # note. One vista comment reduces to exactly "." this way, and "ATC notes:
+    # ." on a card is worse than the silence it is standing in for.
+    if not any(character.isalnum() for character in text):
+        return None
     return text or None

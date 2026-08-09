@@ -94,11 +94,11 @@ def _write_fixture_sources(raw_dir):
         [_point_feature(1, -73.93, 41.03, {"GlobalID": "community-glob-1", "FID": 1, "NAME": "Test Town"})],
     )
     # The three facility layers that share ATC's ANST_Facilities schema with
-    # shelters and campsites - same GlobalID/Name pair, no inventory columns
-    # this export composes anything from. `Descriptio` is here on the vista
-    # holding ATC's real value for it ("TBD" on every one sampled), so a
-    # future description step cannot be written against a fixture that is
-    # cleaner than the data.
+    # shelters and campsites - same GlobalID/Name pair, plus the inventory
+    # columns lib/poi_description.py composes each one's sentence from.
+    # `Descriptio` is here on the vista holding ATC's real value for it
+    # ("TBD" on every one sampled), so nothing can be written against a
+    # fixture that is cleaner than the data.
     _write_fc(
         raw_dir / "viewpoints.geojson",
         [
@@ -112,6 +112,11 @@ def _write_fixture_sources(raw_dir):
                     "Name": "Test Vista",
                     "Status": "Primary View",
                     "Descriptio": "TBD",
+                    # The columns lib/poi_description.py composes from: the
+                    # arc's two bearings and the landform.
+                    "Left_Beari": 40,
+                    "Right_Bear": 220,
+                    "Location": "Mtn/Ridge/Outcrop",
                 },
             )
         ],
@@ -123,7 +128,15 @@ def _write_fixture_sources(raw_dir):
                 1,
                 -73.97,
                 41.07,
-                {"GlobalID": "parking-glob-1", "OBJECTID": 1, "Name": "Test Rd Parking Area", "Surface": "3"},
+                {
+                    "GlobalID": "parking-glob-1",
+                    "OBJECTID": 1,
+                    "Name": "Test Rd Parking Area",
+                    "Type": "0",
+                    "Surface": "3",
+                    "Parking_S": 7,
+                    "ADA_Space": 0,
+                },
             )
         ],
     )
@@ -134,7 +147,14 @@ def _write_fixture_sources(raw_dir):
                 1,
                 -73.98,
                 41.08,
-                {"GlobalID": "privy-glob-1", "OBJECTID": 1, "Name": "Test Shelter Privy", "Enclosure": "1"},
+                {
+                    "GlobalID": "privy-glob-1",
+                    "OBJECTID": 1,
+                    "Name": "Test Shelter Privy",
+                    "Type": "1",
+                    "Enclosure": "1",
+                    "Year_Built": 2003,
+                },
             )
         ],
     )
@@ -722,15 +742,15 @@ def test_export_poi_publishes_atcs_vistas_parking_and_privies_as_their_own_types
         assert properties["confidence"] == CONFIDENCE_HIGH
 
 
-def test_export_poi_leaves_the_new_atc_types_without_a_composed_description(tmp_path, monkeypatch, con):
-    """`description` stays a shelter/campsite field.
+def test_export_poi_composes_a_description_for_every_atc_facility_type(tmp_path, monkeypatch, con):
+    """`description` is composed for all five ATC layers, not copied.
 
-    Not an oversight and not laziness: ATC's `Descriptio` column on these
-    layers is the club acronym plus the feature's own name (and literally
-    "TBD" on the vistas sampled), which lib/atc_notes.py already measured as
-    unusable - so there is nothing to copy, and nothing has been composed to
-    replace it. A blank is the honest export; a sentence assembled from
-    columns nobody has read would not be.
+    ATC's `Descriptio` column on these is the club acronym plus the feature's
+    own name (and literally "TBD" on the vistas), which lib/atc_notes.py
+    measured as unusable - so each sentence is assembled from the inventory
+    columns instead, and the assertion is on the sentence rather than on the
+    field being non-empty: a wiring mistake that composed a vista's sentence
+    for a privy would pass the weaker check.
     """
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()
@@ -742,9 +762,36 @@ def test_export_poi_leaves_the_new_atc_types_without_a_composed_description(tmp_
 
     export_poi.main()
 
-    for poi_type in ("viewpoint", "parking", "privy"):
+    expected = {
+        "viewpoint": "A 180° view south-east from a ridge or rock outcrop.",
+        "parking": "Gravel parking area, room for 7 cars.",
+        "privy": "Moldering privy. Built 2003.",
+    }
+    for poi_type, sentence in expected.items():
         features = json.loads((out_dir / f"{poi_type}.geojson").read_text())["features"]
-        assert features[0]["properties"].get("description") is None, poi_type
+        assert features[0]["properties"]["description"] == sentence
+
+
+def test_export_poi_leaves_the_types_with_no_inventory_behind_them_undescribed(tmp_path, monkeypatch, con):
+    """Water and resupply compose nothing, and that is the honest export.
+
+    They come from opentrail.org's tags and ATC's Communities layer, neither
+    of which carries an inventory to assemble a sentence from. A describer
+    added for them would have to invent its material.
+    """
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+
+    export_poi.main()
+
+    for poi_type in ("water", "resupply"):
+        features = json.loads((out_dir / f"{poi_type}.geojson").read_text())["features"]
+        assert all(feature["properties"].get("description") is None for feature in features), poi_type
 
 
 def test_export_poi_publishes_every_photo_as_json_alongside_the_flat_card_fields(tmp_path, monkeypatch, con):

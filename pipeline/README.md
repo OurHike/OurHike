@@ -84,11 +84,17 @@ What exists upstream *beyond* the registry - the maintaining clubs, the federal 
 
 **Licensing is unconfirmed**, and worth saying plainly. The capacity numbers come from [greenbelly.co's A.T. shelter list](https://www.greenbelly.co/pages/appalachian-trail-shelters), which credits Whiteblaze, the Appalachian Trail Conservancy and TNlandforums, and which states no licence at all - the same position as opentrail.org above ([#98](https://github.com/OurHike/OurHike/issues/98)), recorded here rather than discovered later. Two things narrow what is taken: only the capacity column, not the mileages or elevations or ordering, and it is re-keyed onto ATC GlobalIDs, so what ships is a set of facts about shelters this project already knows about rather than a copy of somebody's table. That is a better position than a scrape, not a settled one. Confirming terms with Greenbelly is the honest next step, and until then this carries the same caveat opentrail.org does.
 
-## Shelter and campsite descriptions
+## POI descriptions
 
-Shelter and campsite features carry a `description` — one sentence the waypoint card shows under the name:
+Every POI from one of ATC's own facility layers carries a `description` — one sentence the waypoint card shows under the name:
 
 > Two-storey clapboard shelter, sleeps 14, with a fireplace, a fire ring and a porch. Built 1915.
+>
+> A 100° view south-east from a ridge or rock outcrop.
+>
+> Gravel parking area, room for 12 cars.
+>
+> Multi-seat moldering privy. Built 2019.
 
 **It is composed, not copied, because ATC has no prose description.** Both text fields were read in full (2026-08-09):
 
@@ -100,6 +106,16 @@ Shelter and campsite features carry a `description` — one sentence the waypoin
 What ATC does have is the inventory, and it is complete: `Stories`, `Chimneys`, the fire-ring and food-storage counts, `Deck_Lengt`, `Exterior_M` and `Year_Built` are non-null on **all 280 shelters**, and `Site_Num` on 231 of 232 campsites. [`lib/poi_description.py`](lib/poi_description.py) assembles the sentence from those, so every clause is a fact ATC states and coverage is **280/280 shelters and 232/232 campsites** rather than the 26% the free text manages. Which columns are worth a clause is one list, `FEATURES`, so disagreeing with the selection is a one-line change — the line drawn is *what changes a hiker's decision* (food storage, a fire, a porch), which is why the window and skylight counts are left out.
 
 Where ATC did write a usable comment it is appended as **"ATC notes: …"** — attributed rather than blended in, because that half is a person's prose and the rest is assembled from columns. [`lib/atc_notes.py`](lib/atc_notes.py) is what decides "usable": it drops the survey's own bookkeeping **sentence by sentence**, never rewording, so Cable Gap's "Log and mortar exterior. Majority of structure is log. Please see photos." keeps its first two sentences instead of being thrown away whole. 74 shelters and 29 campsites end up with a note.
+
+### The other three layers (2026-08-09)
+
+Vistas, parking areas and privies compose the same way, and coverage lands at **1,194/1,223 vistas, 480/482 parking areas and 314/316 privies**. Three decisions in them are worth knowing:
+
+- **A vista's direction is derived, not copied.** `Left_Beari` and `Right_Bear` bound the view swept clockwise and are populated on 1,006 of 1,223; `Scope` claims to be that width and disagrees with the bearings on 93 of the 512 features carrying it, so the arc is computed and `Scope` is never published. The width is rounded to 5° because ATC's own field notes say the instrument wandered — *"measured bearings 3 times, each time getting different results"* — and a 62° view claims a precision that measurement does not support. Beyond 300° the sentence says "panoramic" instead of naming one edge of a view you can turn round in.
+- **Nothing maps a free-text value onto a code.** `viewpoints.Type` is a code on 988 of 1,223 and free text (`Unimproved`, `Improved`) on the rest; `parking.Type` on 417 of 482, with `Roadside/Shoulder` on 53 more. `Roadside/Shoulder` is recognised on its own terms, because a shoulder is a different thing to arrive at than a lot. Every other unrecognised value drops its clause, so the sentence is shorter rather than wrong — deciding `Unimproved` "means" code 0 would be guessing at somebody's data entry.
+- **The vista layer brought its own bookkeeping dialect**, and `lib/atc_notes.py` grew patterns for it: `Improvements = none identified` (a form saying nothing, and the most common comment on the layer), the 2021 VRI review, `Preliminary Review with VARO`, survey point ids like `VP1058`, and the surveyor's trouble with a compass. Measured against the shelter and campsite layers, those patterns change nothing there — the same 74 and 29 notes survive.
+
+`Type` on a vista (Improved/Unimproved) is deliberately not in the sentence: it says whether ATC has built decking or railings at the spot, which is a maintenance distinction rather than a hiker's. `Year_Built` is out for vistas too — on a viewpoint it is ambiguous between when a structure went up and when the view was cleared — and out for parking, where the age of a car park changes nothing anyone does. It stays on privies, where 308 of 316 carry one and a rebuild three years ago is a different proposition from 1965.
 
 ## Fetching opentrail.org (water sources + resupply)
 

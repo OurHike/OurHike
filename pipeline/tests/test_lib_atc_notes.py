@@ -108,3 +108,40 @@ def test_the_longest_real_note_survives_whole():
     )
 
     assert clean_note(raw) == raw
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        # The vista layer's own dialect, all verbatim from the live layer.
+        # `Improvements = ...` alone is 133 of its 640 populated comments.
+        "Improvements = none identified",
+        "Improvements = Trees cut",
+        "Location adjused based on 2021 VRI",
+        "Preliminary Review with VARO",
+        "Need To Determine Central Bearing And Scope Of View",
+        "measured bearings 3 times, each time getting different results",
+        "Will be brining a compass next time",
+        "Completely Socked When I Was There",
+        "Mountaineer Falls: Not on Scenic Vista List",
+        "Extent adjusted around cars",
+    ],
+)
+def test_the_vista_surveys_own_bookkeeping_is_dropped_too(raw):
+    """The three layers added in 2026-08 brought a second bookkeeping
+    vocabulary with them - an inventory form pasted into free text, a review
+    process, and the surveyor's own trouble with a compass. Same rule as the
+    shelter layer's: what reaches a hiker is about the place."""
+    assert clean_note(raw) is None
+
+
+def test_the_place_still_survives_a_comment_that_is_mostly_process():
+    """Verbatim from a vista. Dropping the whole comment would lose the one
+    fact in it, which is the reason this module works sentence by sentence."""
+    assert clean_note("Hang gliding site; Improvements = Mowed / Brushed") == "Hang gliding site"
+
+
+def test_punctuation_left_standing_where_a_sentence_was_is_not_a_note():
+    """One vista comment reduces to exactly "." once its bookkeeping is gone,
+    and "ATC notes: ." is worse than the silence it stands in for."""
+    assert clean_note(". Improvements = Trees cut") is None

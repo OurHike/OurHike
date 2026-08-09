@@ -61,6 +61,17 @@ export interface StoredPoi {
    */
   source?: string
   /**
+   * How many people the shelter sleeps.
+   *
+   * Shelters only, and not all of them: ATC's own layer has no capacity
+   * field, so the pipeline joins a hiker-maintained list onto it by name
+   * (pipeline/build_shelter_capacity.py) and publishes nothing for the
+   * shelters that list covers in pairs or writes as "xxx". Absent therefore
+   * means "nobody has published a number", never "small" and never zero -
+   * the card omits the line rather than guessing at one.
+   */
+  capacity?: number
+  /**
    * A photo of the place, with what the licence obliges us to say about it.
    *
    * The pipeline's fetch_poi_images.py matches openly-licensed Wikimedia
@@ -108,6 +119,7 @@ interface PoiProperties {
   lon?: unknown
   confidence?: unknown
   source?: unknown
+  capacity?: unknown
   photo_key?: unknown
   photo_page_url?: unknown
   photo_author?: unknown
@@ -120,6 +132,16 @@ interface PoiProperties {
  *  storing. */
 function stringProp(value: unknown): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined
+}
+
+/** A whole count of people, or nothing. Anything else the artifact could
+ *  hold - null for a shelter with no published number, a non-finite value, a
+ *  zero or a fraction from a source that meant something other than people -
+ *  is not a capacity, and rendering "Sleeps 0" would be worse than silence. */
+function capacityProp(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0
+    ? value
+    : undefined
 }
 
 function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
@@ -141,6 +163,7 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
     const photoAuthor = stringProp(props.photo_author)
     const photoLicense = stringProp(props.photo_license)
     const photoTaken = stringProp(props.photo_taken)
+    const capacity = capacityProp(props.capacity)
 
     pois.push({
       id: String(props.id ?? `${fallbackType}:${props.lat},${props.lon}`),
@@ -159,6 +182,10 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
       ...(typeof props.source === 'string' && props.source !== ''
         ? { source: props.source }
         : {}),
+      // Same rule as the source line: left off entirely rather than stored
+      // as a zero, so the card can tell "sleeps nobody knows how many" from
+      // a number.
+      ...(capacity !== undefined ? { capacity } : {}),
       // Photo fields ride only behind a photo URL: an author or licence with
       // no photo is a credit for nothing, and would render as one.
       ...(photoUrl !== undefined

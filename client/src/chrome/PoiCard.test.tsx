@@ -68,6 +68,26 @@ describe('PoiCard', () => {
     expect(screen.getByText('mi 2,078.4')).toBeInTheDocument()
   })
 
+  it('says how many the shelter sleeps', () => {
+    renderCard({ ...SHELTER, capacity: 8 })
+
+    // "Sleeps 8", not a bare 8: beside a mile, a lone number reads as
+    // another distance.
+    expect(screen.getByText('Sleeps 8')).toBeInTheDocument()
+  })
+
+  it('omits the capacity rather than implying nobody fits', () => {
+    // Most POI types have no capacity at all, and ATC's shelter layer does
+    // not carry one - the pipeline joins it from a list that leaves some
+    // shelters blank on purpose (build_shelter_capacity.py). Absent means
+    // unknown, and a hiker choosing whether to push on to the next shelter
+    // is better served by silence than by a figure nobody published.
+    renderCard({ ...SHELTER, capacity: undefined })
+
+    expect(screen.queryByText(/Sleeps/)).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: SHELTER.name })).toBeInTheDocument()
+  })
+
   it('omits the mile rather than guessing one when the trail lines are missing', () => {
     // The centerline index is a separate download and can legitimately be
     // absent. A shelter with no mile is still worth a card - it just cannot

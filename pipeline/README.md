@@ -50,7 +50,7 @@ That `--provider` label is as far as this registry currently goes toward being m
 | `centerline` | A.T. Centerline | 3,025 | Line | The trail itself, segmented; `Trail_Club`/`Acronym` fields identify maintainer per segment |
 | `side_trails` | A.T. Side Trails | 1,200 | Line | Blue-blazed and other connector trails |
 | `campsites` | A.T. Campsites | 232 | Point | Detailed facility attributes (tent pads, food storage, etc.) |
-| `shelters` | A.T. Shelters | 280 | Point | Detailed facility/construction attributes |
+| `shelters` | A.T. Shelters | 280 | Point | Detailed facility/construction attributes - but no capacity, see below |
 | `parking` | A.T. Parking | 482 | Point | Trailhead parking areas |
 | `viewpoints` | A.T. Viewpoints | 1,223 | Point | Scenic overlooks |
 | `communities` | A.T. Communities | 59 | Point | Designated "A.T. Community" towns - partial resupply proxy |
@@ -60,6 +60,23 @@ That `--provider` label is as far as this registry currently goes toward being m
 | `at_treadway` | A.T. Treadway | 30 | ? | Found via the FeatureServer root - not yet checked how this differs from `centerline` |
 
 **Gap, now partially filled:** ATC's own data has no dedicated water-source or general resupply layer. `communities` is a partial resupply proxy; `fetch_opentrail.py` (below) is the real fill for both water and resupply.
+
+**A second gap, in the shelter layer itself:** it does not say how many people a shelter sleeps. Its 135 fields are an FMSS asset inventory - exterior length and width, roof area, door and window counts, `FMSS_QTY` (floor area, not people: 15.6 x 15.6 = 243.36 exactly) - and none of them is a capacity. `build_shelter_capacity.py` (below) is the fill.
+
+## Shelter capacity
+
+`build_shelter_capacity.py` writes [`reference/shelter_capacity.json`](reference/shelter_capacity.json): how many people each A.T. shelter sleeps, keyed to ATC's own GlobalIDs. `export_poi.py` reads that file and publishes `capacity` on shelter features, where the client's waypoint card renders it as "Sleeps 8".
+
+```
+.venv/Scripts/python build_shelter_capacity.py            # rebuild and review the diff
+.venv/Scripts/python build_shelter_capacity.py --check    # confirm the checked-in file still matches
+```
+
+**The output is checked in, not fetched at build time**, which is the opposite of every other source here and deliberate. The join is by *name* between two lists that disagree about them - ATC's "Doc's Knob Shelter" against the source's "Docs Knob Shelter", ATC's "Winturri" against its "Wintturi", and ATC's "Rocky Run Shelter 1"/"2" against a single "Rocky Run Shelters" row. A fuzzy join running unsupervised inside a data build is a join nobody ever reads; a checked-in file makes each of those a reviewable line in a diff, and keeps a release build off the network for it.
+
+**262 of 280 shelters resolve; the other 18 publish nothing, on purpose.** Each carries a stated reason in the file - a pair listed under one number that could be each or the total, an old and a new structure with different numbers, a capacity written "xxx" or "A lot". Capacity is a number a hiker plans an evening around, so a blank beats an invention, and the card omits the line rather than showing a zero.
+
+**Licensing is unconfirmed**, and worth saying plainly. The capacity numbers come from [greenbelly.co's A.T. shelter list](https://www.greenbelly.co/pages/appalachian-trail-shelters), which credits Whiteblaze, the Appalachian Trail Conservancy and TNlandforums, and which states no licence at all - the same position as opentrail.org above ([#98](https://github.com/OurHike/OurHike/issues/98)), recorded here rather than discovered later. Two things narrow what is taken: only the capacity column, not the mileages or elevations or ordering, and it is re-keyed onto ATC GlobalIDs, so what ships is a set of facts about shelters this project already knows about rather than a copy of somebody's table. That is a better position than a scrape, not a settled one. Confirming terms with Greenbelly is the honest next step, and until then this carries the same caveat opentrail.org does.
 
 ## Fetching opentrail.org (water sources + resupply)
 

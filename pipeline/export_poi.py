@@ -47,6 +47,16 @@ inspection, 2026-07-28):
     layer (rather than omitting the poi_type, or inventing fake crossings)
     keeps the schema honest about what's actually populated.
 
+Capacity enrichment: shelter features carry `capacity`, how many people the
+shelter sleeps, from reference/shelter_capacity.json. That file is checked in
+rather than fetched, because ATC's shelter layer has no capacity field at all
+and the numbers come from a hiker-maintained list joined to ATC's shelters by
+name - a join worth reviewing in a diff. build_shelter_capacity.py builds it
+and its docstring holds the provenance and the licence position. Coverage is
+partial and deliberately so: a shelter the source lists only as half of a
+pair exports no capacity rather than a guessed one, and the client shows
+nothing rather than a number nobody stands behind.
+
 Photo enrichment: when fetch_poi_images.py has run, data/raw/poi_images.json
 holds per-POI photo records (Wikimedia Commons; author, licence, capture date
 and the digest of the downloaded image) keyed by the same unified ids this
@@ -75,6 +85,11 @@ ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
 OUT_DIR = ROOT / "data" / "processed" / "poi"
 
+# build_shelter_capacity.py's output. Under reference/, not data/raw/, because
+# it is reviewed source rather than a fetch artifact - see that script's
+# docstring for why the join it encodes is checked in.
+CAPACITY_PATH = ROOT / "reference" / "shelter_capacity.json"
+
 # fetch_poi_images.py's output, read relative to RAW_DIR at call time (not a
 # frozen module constant) so redirecting RAW_DIR - as every test here does -
 # redirects this with it.
@@ -89,12 +104,44 @@ IMAGES_FILENAME = "poi_images.json"
 # attach_photos, derived from the digest rather than copied.
 PHOTO_FIELDS = ("page_url", "author", "license", "taken")
 
+# The published column list, in order, as (name, DuckDB type). One list
+# rather than a DDL string beside a hand-counted row of `?` placeholders,
+# which is what this was until capacity needed adding to all three places at
+# once. The reason to collapse them is that the mismatch does not raise: add
+# a column to the DDL and forget the value tuple and every column after it
+# shifts by one, exporting a photo credit as a capacity in valid GeoJSON.
+POI_COLUMNS = (
+    ("id", "VARCHAR"),
+    ("poi_type", "VARCHAR"),
+    ("trail_id", "VARCHAR"),
+    ("source", "VARCHAR"),
+    ("source_feature_id", "VARCHAR"),
+    ("name", "VARCHAR"),
+    ("lat", "DOUBLE"),
+    ("lon", "DOUBLE"),
+    ("confidence", "VARCHAR"),
+    # How many people the shelter sleeps; NULL on every other poi_type and on
+    # shelters nobody has published a usable number for.
+    ("capacity", "INTEGER"),
+    ("photo_key", "VARCHAR"),
+    ("photo_page_url", "VARCHAR"),
+    ("photo_author", "VARCHAR"),
+    ("photo_license", "VARCHAR"),
+    ("photo_taken", "VARCHAR"),
+)
+
 TRAIL_ID = "AT"
+
+# The source name ATC shelters get in unified ids. Named rather than repeated
+# because shelter_capacity.json stores bare ATC GlobalIDs, and the id it must
+# be joined on is composed from this - in one place, the way unify_poi
+# composes every other id.
+SHELTER_SOURCE = "atc_shelters"
 
 # (raw filename stem, poi_type, source name used in unified ids, field_map)
 # - the three ATC sources that map ~1:1 onto one poi_type each.
 DIRECT_SOURCES = (
-    ("shelters", "shelter", "atc_shelters", {"id_field": "GlobalID", "name_field": "Name", "confidence": CONFIDENCE_HIGH}),
+    ("shelters", "shelter", SHELTER_SOURCE, {"id_field": "GlobalID", "name_field": "Name", "confidence": CONFIDENCE_HIGH}),
     ("campsites", "campsite", "atc_campsites", {"id_field": "GlobalID", "name_field": "Name", "confidence": CONFIDENCE_HIGH}),
     (
         "communities",
@@ -133,6 +180,43 @@ def load_photo_records(path: Path) -> dict[str, dict]:
     return {
         poi_id: record["photo"] for poi_id, record in outcomes.items() if record.get("status") == "found" and "photo" in record
     }
+
+
+def load_capacities(path: Path) -> dict[str, int]:
+    """shelter_capacity.json's known capacities, keyed by the same unified
+    POI id this export writes.
+
+    Only records that state a capacity are returned. The file lists every ATC
+    shelter, most of the blanks carrying a reason the source could not be
+    split or read (see build_shelter_capacity.py); to this export a blank and
+    an absent record are the same thing - no capacity to publish.
+
+    A missing file is a normal state, not an error, for the same reason
+    load_photo_records tolerates one: the export's job is to ship what exists.
+    """
+    if not path.exists():
+        return {}
+    document = json.loads(path.read_text(encoding="utf-8"))
+    return {
+        f"{SHELTER_SOURCE}:{record['atc_global_id']}": record["capacity"]
+        for record in document.get("shelters", [])
+        if record.get("capacity") is not None
+    }
+
+
+def attach_capacity(records: list[dict], capacities: dict[str, int]) -> int:
+    """Copy each matched shelter's capacity onto its unified POI record,
+    returning how many matched. Unmatched records are left without the key -
+    write_poi_type reads it with .get(), and NULL is the honest export of
+    "nobody has said", which is not the same as a small shelter."""
+    attached = 0
+    for record in records:
+        capacity = capacities.get(record["id"])
+        if capacity is None:
+            continue
+        record["capacity"] = capacity
+        attached += 1
+    return attached
 
 
 def attach_photos(records: list[dict], photos: dict[str, dict]) -> int:
@@ -220,17 +304,18 @@ def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[
     manifest entry: per-artifact path/sha256/feature_count."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    con.execute("""
-        CREATE OR REPLACE TABLE poi_out (
-            id VARCHAR, poi_type VARCHAR, trail_id VARCHAR, source VARCHAR,
-            source_feature_id VARCHAR, name VARCHAR, lat DOUBLE, lon DOUBLE, confidence VARCHAR,
-            photo_key VARCHAR, photo_page_url VARCHAR, photo_author VARCHAR, photo_license VARCHAR, photo_taken VARCHAR
-        )
-    """)
+    columns = ", ".join(f"{name} {sql_type}" for name, sql_type in POI_COLUMNS)
+    con.execute(f"CREATE OR REPLACE TABLE poi_out ({columns})")
     if records:
+        placeholders = ", ".join("?" * len(POI_COLUMNS))
         con.executemany(
-            "INSERT INTO poi_out VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            f"INSERT INTO poi_out VALUES ({placeholders})",
             [
+                # Same order as POI_COLUMNS, which is what the placeholders
+                # were counted from - a value added here and not there is a
+                # column shift rather than an error, so
+                # test_export_poi_exported_properties_are_exactly_the_declared_columns
+                # pins the pair.
                 (
                     r["id"],
                     r["poi_type"],
@@ -241,6 +326,10 @@ def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[
                     r["lat"],
                     r["lon"],
                     r["confidence"],
+                    # .get for the same reason as the photo fields below: a
+                    # POI arrives without one both when nothing matched and
+                    # when a caller never ran the attach step.
+                    r.get("capacity"),
                     # .get, not [] - records arrive photo-less both when
                     # attach_photos found no match and when a caller (or an
                     # older test) never ran the attach step at all.
@@ -284,6 +373,15 @@ def main() -> dict:
 
     clipped = clip_to_corridor(con, unified)
     print(f"  {len(clipped)}/{len(unified)} within the corridor.")
+
+    # CAPACITY_PATH read here rather than defaulted in the signature, so that
+    # redirecting the module constant - as the tests do - redirects the read.
+    capacities = load_capacities(CAPACITY_PATH)
+    if capacities:
+        attached = attach_capacity(clipped, capacities)
+        print(f"  {attached} shelters carry a capacity (from {CAPACITY_PATH.name}).")
+    else:
+        print(f"  No {CAPACITY_PATH.name} - exporting without shelter capacities.")
 
     photos = load_photo_records(RAW_DIR / IMAGES_FILENAME)
     if photos:

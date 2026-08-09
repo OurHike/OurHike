@@ -71,6 +71,18 @@ export interface PoiDetail {
    */
   mile?: number
   /**
+   * How many people the shelter sleeps, when the pipeline could publish a
+   * number for it.
+   *
+   * Optional twice over: only shelters have one at all, and ATC's layer does
+   * not carry capacity, so the figure comes from a list joined on by
+   * pipeline/build_shelter_capacity.py that leaves some shelters blank on
+   * purpose. Absent means unknown - the line is omitted rather than shown
+   * empty, because a hiker deciding whether to push on to the next shelter
+   * is better served by no answer than by a made-up one.
+   */
+  capacity?: number
+  /**
    * A photo of the place, when one exists.
    *
    * Published as photo_* properties on the POI artifacts (pipeline
@@ -318,15 +330,23 @@ export function PoiCard({ poi, map, onClose }: PoiCardProps) {
       <div className="poi-card__body">
         <h2 className="poi-card__name">{poi.name}</h2>
 
-        {/* One line, two facts, separate elements: the mile stays mono like
-            every other mile on this screen, and the dot between them is
-            punctuation for eyes only. */}
+        {/* One line, up to three facts, separate elements: the mile stays
+            mono like every other mile on this screen, and the dots between
+            them are punctuation for eyes only. */}
         <p className="poi-card__meta">
           <span>{typeLabel(poi.type)}</span>
           {poi.mile !== undefined && (
             <>
               <span aria-hidden="true">·</span>
               <span className="poi-card__mile">{`mi ${mile(poi.mile)}`}</span>
+            </>
+          )}
+          {poi.capacity !== undefined && (
+            <>
+              <span aria-hidden="true">·</span>
+              {/* "Sleeps 8", not "8": the bare number beside a mile reads as
+                  another distance. */}
+              <span>{`Sleeps ${poi.capacity}`}</span>
             </>
           )}
         </p>

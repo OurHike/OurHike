@@ -99,6 +99,15 @@ def con():
     return c
 
 
+@pytest.fixture(autouse=True)
+def no_real_capacity_file(tmp_path, monkeypatch):
+    """Point CAPACITY_PATH away from the checked-in reference/ file for every
+    test here, so a suite of synthetic fixtures cannot quietly start reading
+    280 real ATC shelters (TESTING.md - never the real data). Tests that want
+    capacities write their own file and patch this again."""
+    monkeypatch.setattr(export_poi, "CAPACITY_PATH", tmp_path / "no-capacity-file.json")
+
+
 def test_export_poi_clips_features_outside_the_corridor(tmp_path, con):
     """A synthetic feature far from the trail should not appear in output -
     mirrors spike_corridor.py's own clip step, on tiny synthetic data rather
@@ -343,6 +352,156 @@ def test_export_poi_exports_photo_less_when_no_images_file_exists(tmp_path, monk
     assert manifest["shelter"]["geojson"]["feature_count"] == 1
     shelter_fc = json.loads((out_dir / "shelter.geojson").read_text())
     assert shelter_fc["features"][0]["properties"].get("photo_key") is None
+
+
+def _write_capacity_file(path, records):
+    """A stand-in for reference/shelter_capacity.json, same shape
+    build_shelter_capacity.py writes."""
+    path.write_text(json.dumps({"shelters": records}))
+
+
+def test_export_poi_carries_shelter_capacity_onto_the_shelter_feature(tmp_path, monkeypatch, con):
+    """shelter_capacity.json's numbers reach the exported shelter features,
+    keyed by the ATC GlobalID the unified id is built from - and reach
+    nothing else. Capacity is a shelter fact; a campsite or a spring
+    carrying one would be a column shift, not a feature."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    capacity_path = tmp_path / "shelter_capacity.json"
+    _write_capacity_file(
+        capacity_path,
+        [
+            {"atc_global_id": "shelter-glob-1", "atc_name": "Test Shelter", "capacity": 8},
+            # A shelter that is not in this corridor: present in the file,
+            # absent from the export, and no reason for either to complain.
+            {"atc_global_id": "shelter-glob-absent", "atc_name": "Elsewhere Shelter", "capacity": 12},
+        ],
+    )
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+    monkeypatch.setattr(export_poi, "CAPACITY_PATH", capacity_path)
+
+    export_poi.main()
+
+    shelter_fc = json.loads((out_dir / "shelter.geojson").read_text())
+    assert shelter_fc["features"][0]["properties"]["capacity"] == 8
+
+    campsite_fc = json.loads((out_dir / "campsite.geojson").read_text())
+    assert campsite_fc["features"][0]["properties"].get("capacity") is None
+    water_fc = json.loads((out_dir / "water.geojson").read_text())
+    for feature in water_fc["features"]:
+        assert feature["properties"].get("capacity") is None
+
+
+def test_export_poi_publishes_no_capacity_where_the_reference_file_states_none(tmp_path, monkeypatch, con):
+    """A shelter the source could not be read for exports NULL, not 0 and not
+    a guess. build_shelter_capacity.py leaves 18 of ATC's 280 shelters this
+    way on purpose - a pair listed under one number, a capacity written
+    "xxx" - and every one of them must reach a hiker as a card that says
+    nothing rather than a number nobody stands behind."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    capacity_path = tmp_path / "shelter_capacity.json"
+    _write_capacity_file(
+        capacity_path,
+        [
+            {
+                "atc_global_id": "shelter-glob-1",
+                "atc_name": "Test Shelter",
+                "capacity": None,
+                "unresolved": "the source gives 'xxx', which is not a number",
+            }
+        ],
+    )
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+    monkeypatch.setattr(export_poi, "CAPACITY_PATH", capacity_path)
+
+    export_poi.main()
+
+    shelter_props = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
+    assert shelter_props.get("capacity") is None
+
+
+def test_export_poi_exports_without_capacity_when_the_reference_file_is_absent(tmp_path, monkeypatch, con):
+    """Same posture as a missing images file: the export ships. A checkout
+    that has not got the reference file loses the capacity line, not the
+    waypoints."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+    monkeypatch.setattr(export_poi, "CAPACITY_PATH", tmp_path / "does-not-exist.json")
+
+    manifest = export_poi.main()
+
+    assert manifest["shelter"]["geojson"]["feature_count"] == 1
+    shelter_props = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
+    assert shelter_props.get("capacity") is None
+
+
+def test_export_poi_exported_properties_are_exactly_the_declared_columns(tmp_path, monkeypatch, con):
+    """POI_COLUMNS is the one list the DDL, the `?` placeholders and the row
+    tuple are all built from, and this is what keeps it honest.
+
+    The failure it guards is not a crash. Add a column to the DDL and forget
+    the value tuple and every column after it shifts by one - a photo licence
+    published as a capacity, valid GeoJSON the whole way. So this pins both
+    ends: the property names the driver writes, and that each value landed
+    under its own name rather than its neighbour's."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    capacity_path = tmp_path / "shelter_capacity.json"
+    _write_capacity_file(capacity_path, [{"atc_global_id": "shelter-glob-1", "atc_name": "Test Shelter", "capacity": 8}])
+    (raw_dir / "poi_images.json").write_text(
+        json.dumps(
+            {
+                "pois": {
+                    "atc_shelters:shelter-glob-1": {
+                        "status": "found",
+                        "checked": "2026-08-07",
+                        "photo": {
+                            "digest": SHELTER_DIGEST,
+                            "page_url": "https://commons.wikimedia.org/wiki/File:Test_Shelter.jpg",
+                            "author": "Jane Doe",
+                            "license": "CC BY-SA 4.0",
+                            "taken": "2025-06-18",
+                        },
+                    }
+                }
+            }
+        )
+    )
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+    monkeypatch.setattr(export_poi, "CAPACITY_PATH", capacity_path)
+
+    export_poi.main()
+
+    props = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
+    assert set(props) == {name for name, _ in export_poi.POI_COLUMNS}
+
+    # Every column distinguishable from its neighbours, so a one-place shift
+    # cannot pass: the capacity sits between `confidence` and `photo_key`,
+    # which is exactly where an off-by-one would land the wrong value.
+    assert props["confidence"] == CONFIDENCE_HIGH
+    assert props["capacity"] == 8
+    assert props["photo_key"] == f"photos/{SHELTER_DIGEST}.jpg"
+    assert props["photo_author"] == "Jane Doe"
+    assert props["name"] == "Test Shelter"
+    assert props["source"] == export_poi.SHELTER_SOURCE
 
 
 def test_export_poi_communities_and_opentrail_resupply_carry_different_confidence(tmp_path, monkeypatch, con):

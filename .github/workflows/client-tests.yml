@@ -60,10 +60,24 @@ jobs:
         uses: ./.github/actions/changed-paths
         with:
           # client/ carries its own package.json and lockfile, and nothing
-          # outside it is imported by the client - checked, not assumed. The
-          # workflow and the action are in the list so a change to the gate
-          # itself still proves the suite it gates.
-          paths: client/ .github/workflows/client-tests.yml .github/actions/changed-paths/
+          # outside it is IMPORTED by the client - checked, not assumed.
+          # The workflow and the action are in the list so a change to the
+          # gate itself still proves the suite it gates.
+          #
+          # Imported is not the same as read, and the difference was a real
+          # hole (TESTING.md's "Redundancy" audit, 2026-08-06). Two suites
+          # read files outside client/ at runtime:
+          #
+          #   pipeline/reference/gain_vectors.json  lib/elevationGain.test.ts
+          #   site/index.html                       test/siteLayout.test.ts
+          #
+          # Scoped to client/ alone, a pull request editing the shared gain
+          # vectors ran only the Python half of a drift guard whose whole
+          # point is that both halves read the same file - and only the
+          # unscoped run on `main` closed it, after the merge. The rule that
+          # keeps this honest: **a suite's scope list includes every file its
+          # tests read.**
+          paths: client/ pipeline/reference/ site/ .github/workflows/client-tests.yml .github/actions/changed-paths/
 
       - uses: actions/setup-node@v4
         if: steps.scope.outputs.run == 'true'

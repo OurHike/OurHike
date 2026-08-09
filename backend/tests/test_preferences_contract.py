@@ -28,7 +28,17 @@ from pathlib import Path
 
 import pytest
 
-from app.schemas.preferences import PreferencesIn, PreferencesOut
+from app.schemas.preferences import (
+    BackgroundSource,
+    HikingDetailLevel,
+    LayerDetailLevel,
+    MapStyle,
+    MaxBackgroundZoom,
+    PreferencesIn,
+    PreferencesOut,
+    Theme,
+    UnitSystem,
+)
 
 CLIENT_MODEL = Path(__file__).resolve().parents[2] / "client" / "src" / "lib" / "userPreferences.ts"
 
@@ -153,3 +163,125 @@ def test_a_row_stored_before_the_key_existed_reads_back_as_the_safety_default():
     restored = PreferencesOut(**older_blob, updated_at=datetime.now(timezone.utc))
 
     assert restored.wrong_way_alert_enabled is True
+
+
+# --- The values, not only the field names ----------------------------------
+#
+# The comparison above is about KEYS, and it caught the drift #242 was about.
+# It cannot see the other half. `PreferencesIn` validates every enum field, so
+# a value the client can store and the schema does not accept fails exactly
+# the way an unknown key does: a 422 on a full-blob PUT, which is not one
+# preference lost but the entire sync refused, on every attempt, for as long
+# as the hiker holds that setting.
+#
+# The client's own comments already promise this. `MAP_STYLE_VALUES` says
+# "the backend's enum mirrors this exactly", `BACKGROUND_SOURCES` says "a
+# value nothing can render is also a value nothing can sync", and
+# `HIKING_DETAIL_LEVEL_VALUES` says "the backend's `HikingDetailLevel`
+# mirrors this exactly". Three promises, none of them checked - and the map
+# styles are the likely first break, because adding one is a client-side
+# design change that has no reason to open a Python file.
+#
+# Both directions fail, as with the keys. A value only the server knows is a
+# setting nobody can choose, which is how a half-landed feature looks finished
+# from either file alone.
+#
+# `reporter_type` is deliberately absent here: it is shared with the report
+# wire format as well, so all three copies are compared together in
+# tests/test_client_report_contract.py rather than twice, differently.
+
+_VALUES_CONST = r"export const {name} = \[(.*?)\] as const"
+_TYPE_UNION = r"export type {name} =([^\n]*)"
+
+
+def client_values(name: str) -> set[str]:
+    """One client-side vocabulary, however that file happens to spell it.
+
+    Two spellings are in use and both are deliberate: a `const [...] as const`
+    where something needs the list at RUNTIME (the pickers, and
+    `preferences.ts` dropping stored values this build does not know), and a
+    bare union where only the type is wanted. This reads either, and fails
+    loudly rather than returning an empty set if it recognises neither -
+    an empty set would compare equal to nothing and green for ever.
+    """
+    source = CLIENT_MODEL.read_text()
+
+    for pattern in (_VALUES_CONST, _TYPE_UNION):
+        found = re.search(pattern.format(name=name), source, re.DOTALL)
+        if found is not None and (values := set(re.findall(r"'([^']+)'", found.group(1)))):
+            return values
+
+    raise AssertionError(
+        f"Could not read the values of `{name}` from {CLIENT_MODEL}. If it was "
+        "renamed or reformatted, fix the pattern here - do not delete this "
+        "test, which is the only thing comparing the two vocabularies."
+    )
+
+
+@pytest.mark.parametrize(
+    ("client_name", "server_enum"),
+    [
+        ("THEME_VALUES", Theme),
+        ("UnitSystem", UnitSystem),
+        ("MAP_STYLE_VALUES", MapStyle),
+        ("BACKGROUND_SOURCES", BackgroundSource),
+        ("LayerDetailLevel", LayerDetailLevel),
+        ("HIKING_DETAIL_LEVEL_VALUES", HikingDetailLevel),
+    ],
+    ids=lambda item: item if isinstance(item, str) else item.__name__,
+)
+def test_the_two_halves_offer_the_same_values(client_name, server_enum):
+    client = client_values(client_name)
+    server = {member.value for member in server_enum}
+
+    assert client == server, (
+        f"client/src/lib/userPreferences.ts's {client_name} and "
+        f"app/schemas/preferences.py's {server_enum.__name__} have drifted. "
+        "The sync is a full-blob PUT, so a value only the client knows is "
+        "every sync failing for whoever chose it.\n"
+        f"  only in the client: {sorted(client - server)}\n"
+        f"  only in the schema: {sorted(server - client)}"
+    )
+
+
+def test_the_background_zoom_ceilings_match():
+    """The one vocabulary written as numbers rather than strings.
+
+    Its own test because the values ARE the zoom levels - `max_background_zoom`
+    stores the ceiling rather than a tier name (`detailLevelForZoom` in
+    lib/downloadDetail.ts reads the choice back out of it) - so a mismatch
+    here is a hiker's downloaded detail silently changing, not just a refused
+    sync.
+    """
+    declaration = re.search(r"export type MaxBackgroundZoom = ([\d |]+)\n", CLIENT_MODEL.read_text())
+    assert declaration is not None, "Could not find `export type MaxBackgroundZoom = ...`"
+
+    client = {int(value) for value in re.findall(r"\d+", declaration.group(1))}
+    server = {member.value for member in MaxBackgroundZoom}
+
+    assert client == server, f"MaxBackgroundZoom: client {sorted(client)}, schema {sorted(server)}"
+
+
+def test_the_value_reader_is_actually_reading_the_client():
+    """Guards the guard above, the way the field reader already has one."""
+    assert "auto" in client_values("THEME_VALUES")
+    assert "night_hike" in client_values("MAP_STYLE_VALUES")
+    assert len(client_values("MAP_STYLE_VALUES")) >= 5
+
+    with pytest.raises(AssertionError):
+        client_values("NoSuchVocabularyExistsHere")
+
+
+def test_a_value_the_client_invents_is_refused_by_the_schema():
+    """What drift costs, asserted rather than described - the value-level
+    twin of `test_a_key_the_client_invents_is_still_refused`."""
+    with pytest.raises(Exception) as refused:
+        PreferencesIn(
+            background_source="hiking_topo_live",
+            max_background_zoom=12,
+            layer_detail_level="standard",
+            anonymity_window_days=0,
+            map_style="aurora",
+        )
+
+    assert "map_style" in str(refused.value)

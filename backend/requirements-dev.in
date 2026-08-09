@@ -8,3 +8,10 @@ ruff
 # convention (pipeline/requirements-dev.in asks for the same thing for
 # publish.py's tests).
 moto[s3]
+
+# Read by tests/test_ci_scope.py, which parses .github/workflows/backend-tests.yml
+# to check the suite's CI scope list still covers every client file the contract
+# tests read. Declared rather than leaned on: pyyaml arrives transitively through
+# pydantic-settings and uvicorn today, and a test that would break on somebody
+# else's dependency bump is not a test anybody should have to debug.
+PyYAML

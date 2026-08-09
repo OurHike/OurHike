@@ -1,0 +1,222 @@
+# Loads the deployed app in a real browser and asks whether it draws a trail.
+#
+# Tier 2 of #431, tracked in #467. `check-deployment.yml` (tier 1) proves the
+# bucket will answer a browser; only this proves the APP works with it.
+#
+#   check-deployment.yml    daily, no downloads   can a browser REACH the data
+#   this                    daily, one page load  does the APP draw a trail
+#   smoke-published.yml     weekly, ~18 MB        is what is published CORRECT
+#
+# WHY IT IS NOT REDUNDANT WITH TIER 1. Tier 1 cannot see a build that shipped
+# without its data URL, a service worker serving a stale shell, a bundle that
+# throws before its first fetch, or a CORS rule that passes a bare GET and
+# fails the app's real request. Every one of those is "the map is broken" and
+# none is visible to anything that is not a browser.
+#
+# AND WHY THE CHECK IS NOT ONLY THE TWO ASSERTIONS #431 ASKED FOR. Measured
+# while building it: with the data source made unreachable, "no *No trail
+# line* flag" and "no data-error notice" BOTH still passed, because the app
+# raises them only once a download has failed and nothing had got far enough
+# to fail. So the script also asserts the page really received the data, and
+# that nothing it asked the bucket for was refused - the second is the #427
+# shape seen from the app's side.
+#
+# IT HOLDS NO CREDENTIALS. Same posture as its two siblings: public HTTPS
+# reads of the deployed site and the public bucket, nothing that could change
+# what a hiker gets.
+#
+# IT DOES NOT FAIL THE RUN. GitHub emails on every scheduled failure, so a
+# real outage would send one a day until it was filtered. The tracking issue
+# is the signal - opened green->red, closed red->green.
+
+name: Check deployed app
+
+on:
+  schedule:
+    # 09:30 UTC daily - after tier 1 at 09:15, so if the bucket is refusing
+    # browsers that job says so first and this one is not a second alarm for
+    # the same fault.
+    - cron: "30 9 * * *"
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "App URL to load. Defaults to the GitHub Pages deployment."
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: check-deployed-app
+  cancel-in-progress: false
+
+env:
+  ISSUE_TITLE: "Deployed app does not draw a trail"
+  ISSUE_LABEL: deployment-health
+  DEFAULT_URL: https://ourhike.github.io/OurHike/app/
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: client
+
+    steps:
+      - name: Is there a deployment to check
+        id: can
+        working-directory: .
+        env:
+          OVERRIDE: ${{ inputs.url }}
+          CONFIGURED: ${{ vars.DATA_BASE_URL }}
+        run: |
+          BASE="${CONFIGURED}"
+          if [ -z "$BASE" ]; then
+            echo "::warning::No DATA_BASE_URL is set, so the deployed app has no data source to load. See LAUNCH_CHECKLIST.md step 2."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+            echo "base=$BASE" >> "$GITHUB_OUTPUT"
+            echo "url=${OVERRIDE:-$DEFAULT_URL}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.can.outputs.go == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.can.outputs.go == 'true'
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install dependencies
+        if: steps.can.outputs.go == 'true'
+        run: npm ci
+
+      # Playwright pins a Chromium build per release and refuses to launch a
+      # different one, so the browser is installed rather than assumed. Only
+      # chromium: the check is about one deployment, not cross-browser
+      # behaviour, and the other two would triple the install for nothing.
+      - name: Install Chromium
+        if: steps.can.outputs.go == 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Load the deployed app
+        if: steps.can.outputs.go == 'true'
+        env:
+          APP_URL: ${{ steps.can.outputs.url }}
+          DATA_BASE_URL: ${{ steps.can.outputs.base }}
+        run: |
+          node scripts/check-deployed-app.mjs \
+            --url "$APP_URL" \
+            --data-base "$DATA_BASE_URL" \
+            --json deployed-app.json \
+            --exit-zero | tee deployed-app.txt
+
+      - name: Write the job summary
+        if: always() && steps.can.outputs.go == 'true'
+        run: |
+          {
+            echo "## Deployed app"
+            echo
+            if [ -f deployed-app.txt ]; then
+              echo '```'
+              cat deployed-app.txt
+              echo '```'
+            else
+              echo "The check did not produce a report. See the step log above."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Its own issue title, sharing the label with the other two health
+      # checks: they can be red for unrelated reasons and would otherwise
+      # overwrite each other's findings, while the shared label keeps all
+      # three findable at once.
+      - name: Open, update, or close the tracking issue
+        if: steps.can.outputs.go == 'true'
+        uses: actions/github-script@v7
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const fs = require('fs')
+            const verdict = JSON.parse(fs.readFileSync('client/deployed-app.json', 'utf8'))
+            const title = process.env.ISSUE_TITLE
+            const label = process.env.ISSUE_LABEL
+
+            const existing = (await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: label,
+              per_page: 100,
+            })).find(issue => issue.title === title)
+
+            const failed = verdict.failed ?? []
+
+            if (failed.length === 0) {
+              if (existing) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  body: `The deployed app loads its map data again, as of ${verdict.checked_at}. Closing.\n\n---\n_Generated by [Claude Code](https://claude.ai/code)_`,
+                })
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  state: 'closed',
+                  state_reason: 'completed',
+                })
+              }
+              core.info('The deployed app draws a trail; no issue needed.')
+              return
+            }
+
+            const firstSeen = {}
+            if (existing) {
+              for (const [, key, since] of (existing.body ?? '').matchAll(/^\| `([^`]+)` \| ([\d-]+) \|/gm)) {
+                firstSeen[key] = since
+              }
+            }
+
+            const cell = value => String(value).replace(/\r?\n/g, ' ').replace(/\|/g, '\\|')
+
+            const body = [
+              `**A browser loading ${verdict.url} does not get a working map.** ${failed.length} check(s) failed.`,
+              '',
+              'This is the app rather than the bucket. If "Check deployment" is also red, fix that one first — it is the same fault seen earlier in the chain.',
+              '',
+              '| check | first seen | detail |',
+              '|---|---|---|',
+              ...failed.map(f => `| \`${f.check}\` | ${firstSeen[f.check] ?? verdict.checked_at} | ${cell(f.detail)} |`),
+              '',
+              `Last checked ${verdict.checked_at} · [run](${process.env.RUN_URL})`,
+              '',
+              '---',
+              '_Generated by [Claude Code](https://claude.ai/code)_',
+            ].join('\n')
+
+            if (existing) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body,
+              })
+              core.info(`Updated #${existing.number}.`)
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: [label],
+              })
+              core.info(`Opened #${created.data.number}.`)
+            }

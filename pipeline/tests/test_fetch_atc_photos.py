@@ -127,9 +127,10 @@ def test_the_inventory_era_photos_this_source_exists_for_are_inside_its_window(t
 
     record = _saved(tmp_path)["atc_shelters:glob-1"]
     assert record["status"] == "found"
-    assert record["photo"]["taken"] == INVENTORY_ERA.isoformat()
-    assert record["photo"]["author"] == "Appalachian Trail Conservancy"
-    assert record["photo"]["license"] == "© ATC, used with permission"
+    assert len(record["photos"]) == 1
+    assert record["photos"][0]["taken"] == INVENTORY_ERA.isoformat()
+    assert record["photos"][0]["author"] == "Appalachian Trail Conservancy"
+    assert record["photos"][0]["license"] == "© ATC, used with permission"
 
 
 def test_a_photo_older_than_this_sources_own_window_is_still_rejected(tmp_path, monkeypatch, requests_mock):
@@ -204,7 +205,7 @@ def test_the_rendering_is_cached_under_its_own_digest(tmp_path, monkeypatch, req
     atc.main()
 
     digest = photo_digest(JPEG_BYTES)
-    assert _saved(tmp_path)["atc_shelters:glob-1"]["photo"]["digest"] == digest
+    assert _saved(tmp_path)["atc_shelters:glob-1"]["photos"][0]["digest"] == digest
     assert local_photo_path(tmp_path, digest).read_bytes() == JPEG_BYTES
 
 
@@ -267,7 +268,7 @@ def test_a_found_photo_whose_bytes_are_gone_is_refetched(tmp_path, monkeypatch, 
 
     atc.main()
 
-    assert _saved(tmp_path)["atc_shelters:glob-1"]["photo"]["digest"] == photo_digest(JPEG_BYTES)
+    assert _saved(tmp_path)["atc_shelters:glob-1"]["photos"][0]["digest"] == photo_digest(JPEG_BYTES)
 
 
 # --- ids, layers, flags ---
@@ -320,3 +321,82 @@ def test_an_unknown_flag_is_rejected_rather_than_silently_ignored(monkeypatch):
         atc.run(["--rechek"])
 
     assert excinfo.value.code == 2
+
+
+# --- every photo, not just the first ---
+
+
+def test_every_eligible_photo_is_kept_in_atcs_own_order(tmp_path, monkeypatch, requests_mock):
+    """The whole point of #471: 433 of 489 features carry more than one photo,
+    and taking only the first discarded 812 real photographs. ATC's
+    Photo1..Photo10 order is their judgement about which best shows the
+    facility, so it is preserved rather than re-ranked."""
+    _no_sleep(monkeypatch)
+    _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
+    second = "https://drive.google.com/file/d/2bbbbbbbbbbbbbbbbbbb/view"
+    third = "https://drive.google.com/a/appalachiantrail.org/file/d/3ccccccccccccccccccc/view"
+    _write_layers(tmp_path, monkeypatch, shelters=[_feature(Photo1=DRIVE_URL, Photo2=second, Photo3=third)])
+    requests_mock.get(atc.DOWNLOAD_URL, content=_exif_header(INVENTORY_ERA))
+    requests_mock.get(
+        atc.THUMBNAIL_URL, [{"content": b"\xff\xd8 one"}, {"content": b"\xff\xd8 two"}, {"content": b"\xff\xd8 three"}]
+    )
+
+    atc.main()
+
+    photos = _saved(tmp_path)["atc_shelters:glob-1"]["photos"]
+    assert [p["url"] for p in photos] == [DRIVE_URL, second, third]
+    assert [p["digest"] for p in photos] == [photo_digest(b) for b in (b"\xff\xd8 one", b"\xff\xd8 two", b"\xff\xd8 three")]
+
+
+def test_an_ineligible_slot_is_skipped_without_disturbing_the_order_of_the_rest(tmp_path, monkeypatch, requests_mock):
+    """A POI whose Photo1 is undated still shows Photo2 first - the survivors
+    keep their relative order rather than the whole POI being lost."""
+    _no_sleep(monkeypatch)
+    _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
+    second = "https://drive.google.com/file/d/2bbbbbbbbbbbbbbbbbbb/view"
+    _write_layers(tmp_path, monkeypatch, shelters=[_feature(Photo1=DRIVE_URL, Photo2=second)])
+    requests_mock.get(atc.DOWNLOAD_URL, [{"content": b"\xff\xd8" + b"\x00" * 900}, {"content": _exif_header(INVENTORY_ERA)}])
+    requests_mock.get(atc.THUMBNAIL_URL, content=JPEG_BYTES)
+
+    photos = _saved_after(atc, tmp_path)
+
+    assert [p["url"] for p in photos] == [second]
+
+
+def _saved_after(module, tmp_path):
+    module.main()
+    return _saved(tmp_path)["atc_shelters:glob-1"]["photos"]
+
+
+def test_every_photos_bytes_must_be_present_or_the_poi_is_refetched(tmp_path, monkeypatch):
+    """A POI's photos are fetched and recorded together, so a half-present set
+    is not a usable outcome - publish.py would upload some of a list the
+    artifact claims in full, and the card's later slots would 404."""
+    monkeypatch.setattr(atc, "RAW_DIR", tmp_path)
+    present = _cache(tmp_path, b"\xff\xd8 here")
+
+    intact = {"status": "found", "photos": [{"digest": present}]}
+    partial = {"status": "found", "photos": [{"digest": present}, {"digest": "absent"}]}
+
+    assert atc.cached_photo_missing(intact) is False
+    assert atc.cached_photo_missing(partial) is True
+
+
+def _cache(tmp_path, content):
+    digest = photo_digest(content)
+    path = local_photo_path(tmp_path, digest)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    return digest
+
+
+def test_an_outcome_file_written_before_galleries_is_still_read(tmp_path, monkeypatch):
+    """Runs before #471 wrote a single `photo` object. Failing to read that
+    shape would make the first run after upgrading re-fetch every image it
+    already holds - ~450 downloads to learn nothing."""
+    monkeypatch.setattr(atc, "RAW_DIR", tmp_path)
+    digest = _cache(tmp_path, JPEG_BYTES)
+    old_shape = {"status": "found", "checked": "2026-08-08", "photo": {"digest": digest}}
+
+    assert atc.record_photos(old_shape) == [{"digest": digest}]
+    assert atc.cached_photo_missing(old_shape) is False

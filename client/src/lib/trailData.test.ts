@@ -258,6 +258,133 @@ describe('trail data', () => {
     expect(pois[0].photoTaken).toBe('2025-06-18')
   })
 
+  it('carries every photo when the artifact publishes a list, in published order', async () => {
+    // ATC's layers give up to ten photos per POI and 89% of them use more
+    // than one (#471). The card shows the first and steps through the rest,
+    // so the whole list has to survive the round trip into IndexedDB.
+    serve(
+      poiCollection([
+        {
+          id: 'atc_shelters:abc',
+          poi_type: 'shelter',
+          name: 'Chairback Gap Lean-to',
+          lat: 45.45,
+          lon: -69.26,
+          photo_key: 'photos/one.jpg',
+          photo_taken: '2016-09-12',
+          photos: [
+            {
+              key: 'photos/one.jpg',
+              author: 'ATC',
+              license: '© ATC',
+              taken: '2016-09-12',
+            },
+            {
+              key: 'photos/two.jpg',
+              author: 'ATC',
+              license: '© ATC',
+              taken: '2016-09-13',
+            },
+          ],
+        },
+      ]),
+    )
+    await downloadTrailData()
+
+    const photos = (store.get(POIS_KEY) as StoredPoi[])[0].photos
+    expect(photos?.map((p) => p.url)).toEqual([
+      dataUrl('photos/one.jpg'),
+      dataUrl('photos/two.jpg'),
+    ])
+    // Per photo, not per card: the licence obliges attribution for whichever
+    // one is on screen, so each carries its own.
+    expect(photos?.[1].taken).toBe('2016-09-13')
+    expect(photos?.[1].author).toBe('ATC')
+  })
+
+  it('accepts the photo list as a JSON string, which is the shape the .fgb carries', async () => {
+    // Same export, two wire types: GDAL emits the pipeline's JSON string as
+    // real JSON in GeoJSON and leaves it a string in FlatGeobuf (measured
+    // 2026-08-09). Reading only one shape would return nothing for every POI
+    // in the other.
+    serve(
+      poiCollection([
+        {
+          id: 'atc_shelters:abc',
+          poi_type: 'shelter',
+          name: 'Shelter',
+          lat: 1,
+          lon: 2,
+          photo_key: 'photos/one.jpg',
+          photos: '[{"key":"photos/one.jpg"},{"key":"photos/two.jpg"}]',
+        },
+      ]),
+    )
+    await downloadTrailData()
+
+    expect((store.get(POIS_KEY) as StoredPoi[])[0].photos).toHaveLength(2)
+  })
+
+  it('stores no photo list for a single photo, so no controls appear with nowhere to go', async () => {
+    serve(
+      poiCollection([
+        {
+          id: 'atc_shelters:abc',
+          poi_type: 'shelter',
+          name: 'Shelter',
+          lat: 1,
+          lon: 2,
+          photo_key: 'photos/one.jpg',
+          photos: [{ key: 'photos/one.jpg' }],
+        },
+      ]),
+    )
+    await downloadTrailData()
+
+    const poi = (store.get(POIS_KEY) as StoredPoi[])[0]
+    expect(poi.photoUrl).toBe(dataUrl('photos/one.jpg'))
+    expect(poi).not.toHaveProperty('photos')
+  })
+
+  it('drops a malformed photo list rather than making the waypoint unopenable', async () => {
+    // A published artifact one version ahead of this build must degrade to
+    // "no gallery", never to a parse error that loses the whole download.
+    serve(
+      poiCollection([
+        {
+          id: 'a',
+          poi_type: 'shelter',
+          name: 'A',
+          lat: 1,
+          lon: 2,
+          photo_key: 'photos/one.jpg',
+          photos: 'not json at all',
+        },
+        {
+          id: 'b',
+          poi_type: 'shelter',
+          name: 'B',
+          lat: 3,
+          lon: 4,
+          photo_key: 'photos/two.jpg',
+          photos: [{ nokey: true }, { key: 'photos/three.jpg' }],
+        },
+      ]),
+    )
+    await downloadTrailData()
+
+    // Every poi_type artifact is served the same body by this harness, so
+    // pick the two by id rather than counting rows.
+    const pois = store.get(POIS_KEY) as StoredPoi[]
+    const malformed = pois.find((p) => p.id === 'a')
+    const partlyUsable = pois.find((p) => p.id === 'b')
+    expect(malformed).not.toHaveProperty('photos')
+    // The entry with no key is dropped; one usable photo left is not a
+    // gallery, so no list is stored.
+    expect(partlyUsable).not.toHaveProperty('photos')
+    expect(partlyUsable?.photoUrl).toBe(dataUrl('photos/two.jpg'))
+  })
+
   it('leaves photo fields off entirely when the artifact carries none', async () => {
     // The artifact writes null for every photo property of a photo-less POI
     // (the export's columns exist either way). Null is not a photo, and a

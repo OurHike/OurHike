@@ -217,16 +217,34 @@ def load_prior(path: Path) -> dict[str, dict]:
     return json.loads(path.read_text(encoding="utf-8")).get("pois", {})
 
 
+def record_photos(record: dict) -> list[dict]:
+    """The photo list on an outcome record, reading both shapes.
+
+    Runs before this one wrote a single `photo` object, because a POI got one
+    photo. It gets all of them now (ATC fills Photo1..Photo10 and 89% of these
+    features use more than one), so the record holds a `photos` list - and an
+    outcome file written by the older shape must still be readable, or the
+    first run after upgrading re-fetches every image it already has."""
+    if "photos" in record:
+        return record.get("photos") or []
+    photo = record.get("photo")
+    return [photo] if photo else []
+
+
 def cached_photo_missing(record: dict) -> bool:
-    """Whether a prior "found" outcome has lost the bytes it recorded - a
-    cleared data/ tree leaves the outcomes file pointing at images publish.py
-    would never upload."""
+    """Whether a prior "found" outcome has lost any of the bytes it recorded -
+    a cleared data/ tree leaves the outcomes file pointing at images publish.py
+    would never upload.
+
+    Any one missing re-fetches the POI's whole set rather than the single gap:
+    the photos are fetched together, the outcome is recorded together, and a
+    partial repair would leave the record claiming a list it cannot back."""
     if record.get("status") != "found":
         return False
-    digest = record.get("photo", {}).get("digest")
-    if digest is None:
+    photos = record_photos(record)
+    if not photos:
         return True
-    return not local_photo_path(RAW_DIR, digest).exists()
+    return any(photo.get("digest") is None or not local_photo_path(RAW_DIR, photo["digest"]).exists() for photo in photos)
 
 
 def collect_candidates() -> list[dict]:
@@ -247,13 +265,22 @@ def collect_candidates() -> list[dict]:
     return candidates
 
 
-def best_photo(session: requests.Session, candidate: dict, cutoff: date, credit: dict) -> dict | None:
-    """The one shippable photo record for a POI, or None.
+def eligible_photos(session: requests.Session, candidate: dict, cutoff: date, credit: dict) -> list[dict]:
+    """Every shippable photo for a POI, in ATC's own Photo1..Photo10 order.
 
-    Photo1 first, falling through to later slots only when an earlier one has
-    no Drive id or no parseable date - ATC's ordering is its own judgement
-    about which picture best shows the facility, and second-guessing it with
-    our own would be inventing a preference we have no basis for."""
+    All of them, not the first: 433 of the 489 features carrying a photo carry
+    more than one, and taking only the first discarded 812 real photographs of
+    real shelters (measured 2026-08-09). The card shows one and the rest sit
+    behind it.
+
+    **The order is ATC's and is preserved exactly.** Photo1 is their judgement
+    about which picture best shows the facility, so it becomes the card photo;
+    re-ranking by date or file size would be substituting a preference we have
+    no basis for. A slot with no Drive id or no parseable capture date is
+    skipped without disturbing the rest - the survivors keep their relative
+    order, so a POI whose Photo1 is undated still shows Photo2 first.
+    """
+    photos = []
     for url in candidate["urls"]:
         file_id = drive_file_id(url)
         if file_id is None:
@@ -261,16 +288,18 @@ def best_photo(session: requests.Session, candidate: dict, cutoff: date, credit:
         taken = capture_date(session, file_id)
         if taken is None or taken < cutoff:
             continue
-        return {
-            "title": candidate["name"],
-            "url": url,
-            "page_url": url,
-            "author": credit["author"],
-            "license": credit["license"],
-            "taken": taken.isoformat(),
-            "digest": store_rendering(session, file_id),
-        }
-    return None
+        photos.append(
+            {
+                "title": candidate["name"],
+                "url": url,
+                "page_url": url,
+                "author": credit["author"],
+                "license": credit["license"],
+                "taken": taken.isoformat(),
+                "digest": store_rendering(session, file_id),
+            }
+        )
+    return photos
 
 
 def persist(records: dict[str, dict]) -> None:
@@ -307,20 +336,21 @@ def main(recheck: bool = False) -> None:
             records[candidate["id"]] = prior_record
             kept += 1
         else:
-            photo = best_photo(session, candidate, cutoff, credit)
+            photos = eligible_photos(session, candidate, cutoff, credit)
             records[candidate["id"]] = (
-                {"status": "none", "checked": today} if photo is None else {"status": "found", "checked": today, "photo": photo}
+                {"status": "none", "checked": today} if not photos else {"status": "found", "checked": today, "photos": photos}
             )
             fetched += 1
         if index % 50 == 0:
             found = sum(1 for r in records.values() if r.get("status") == "found")
-            print(f"  {index}/{len(candidates)} ({kept} carried forward), {found} photos")
+            print(f"  {index}/{len(candidates)} ({kept} carried forward), {found} POIs with photos")
             persist(records)
 
     persist(records)
-    found = sum(1 for r in records.values() if r.get("status") == "found")
+    found = [r for r in records.values() if r.get("status") == "found"]
+    images = sum(len(record_photos(r)) for r in found)
     print(f"Saved -> {OUT_PATH} ({kept} carried forward, {fetched} fetched)")
-    print(f"{found}/{len(candidates)} ATC features have a shippable photo.")
+    print(f"{len(found)}/{len(candidates)} ATC features have a shippable photo; {images} images in total.")
 
 
 def run(argv: list[str]) -> None:

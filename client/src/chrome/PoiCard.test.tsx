@@ -391,3 +391,123 @@ describe('anchoring to the pin', () => {
     expect(card.style.transform).toBe('')
   })
 })
+
+describe('PoiCard photo gallery', () => {
+  // Three photos of one shelter, the way ATC's layers actually publish them:
+  // same author and licence, different capture dates. 89% of POIs carrying a
+  // photo carry more than one (#471).
+  const GALLERY = [
+    { url: 'blob:one', author: 'ATC', license: '© ATC', taken: '2016-09-12' },
+    { url: 'blob:two', author: 'ATC', license: '© ATC', taken: '2016-09-13' },
+    { url: 'blob:three', author: 'ATC', license: '© ATC', taken: '2017-06-06' },
+  ]
+
+  it('shows no controls for a single photo, because there is nowhere to go', () => {
+    renderCard({ ...SHELTER, photoUrl: 'blob:only' })
+
+    expect(screen.queryByTestId('poi-card-photo-next')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('poi-card-photo-count')).not.toBeInTheDocument()
+  })
+
+  it('steps to the next photo and says where you are', () => {
+    renderCard({ ...SHELTER, photoUrl: 'blob:one', photos: GALLERY })
+
+    expect(screen.getByTestId('poi-card-photo')).toHaveAttribute('src', 'blob:one')
+    expect(screen.getByTestId('poi-card-photo-count')).toHaveTextContent('1 of 3')
+
+    fireEvent.click(screen.getByTestId('poi-card-photo-next'))
+
+    expect(screen.getByTestId('poi-card-photo')).toHaveAttribute('src', 'blob:two')
+    expect(screen.getByTestId('poi-card-photo-count')).toHaveTextContent('2 of 3')
+  })
+
+  it('wraps at both ends rather than offering a control that does nothing', () => {
+    renderCard({ ...SHELTER, photoUrl: 'blob:one', photos: GALLERY })
+
+    fireEvent.click(screen.getByTestId('poi-card-photo-prev'))
+    expect(screen.getByTestId('poi-card-photo')).toHaveAttribute('src', 'blob:three')
+
+    fireEvent.click(screen.getByTestId('poi-card-photo-next'))
+    expect(screen.getByTestId('poi-card-photo')).toHaveAttribute('src', 'blob:one')
+  })
+
+  it('moves the credit with the photo, because the licence is owed per photograph', () => {
+    // The card must never show one photo over another photo's credit line.
+    renderCard({ ...SHELTER, photoUrl: 'blob:one', photos: GALLERY })
+
+    expect(screen.getByText(/Sep 2016/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('poi-card-photo-next'))
+    fireEvent.click(screen.getByTestId('poi-card-photo-next'))
+
+    expect(screen.getByText(/Jun 2017/)).toBeInTheDocument()
+    expect(screen.queryByText(/Sep 2016/)).not.toBeInTheDocument()
+  })
+
+  it('links the credit to the photo on screen, not to the first one', () => {
+    renderCard({
+      ...SHELTER,
+      photoUrl: 'blob:one',
+      photos: [
+        {
+          url: 'blob:one',
+          author: 'ATC',
+          page: 'https://drive.google.com/file/d/one/view',
+        },
+        {
+          url: 'blob:two',
+          author: 'ATC',
+          page: 'https://drive.google.com/file/d/two/view',
+        },
+      ],
+    })
+
+    fireEvent.click(screen.getByTestId('poi-card-photo-next'))
+
+    expect(screen.getByRole('link', { name: /Photo:/ })).toHaveAttribute(
+      'href',
+      'https://drive.google.com/file/d/two/view',
+    )
+  })
+
+  it('lets a hiker past a photo that failed to load', () => {
+    // Offline-first: photo 2 of 5 missing from the cache must not trap
+    // someone on a broken slot with the rest unreachable.
+    renderCard({ ...SHELTER, photoUrl: 'blob:one', photos: GALLERY })
+
+    fireEvent.click(screen.getByTestId('poi-card-photo-next'))
+    fireEvent.error(screen.getByTestId('poi-card-photo'))
+    expect(screen.getByTestId('poi-card-placeholder')).toBeInTheDocument()
+
+    // The controls ride the photo, so reaching photo 3 goes back the way we
+    // came - and the failure must not stick to it.
+    expect(screen.queryByTestId('poi-card-photo-next')).not.toBeInTheDocument()
+  })
+
+  it('starts a different waypoint at its own first photo', () => {
+    const { rerender } = render(
+      <PoiCard
+        poi={{ ...SHELTER, photoUrl: 'blob:one', photos: GALLERY }}
+        map={null}
+        onClose={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByTestId('poi-card-photo-next'))
+    expect(screen.getByTestId('poi-card-photo-count')).toHaveTextContent('2 of 3')
+
+    rerender(
+      <PoiCard
+        poi={{
+          ...SHELTER,
+          id: 'atc_shelters:other',
+          photoUrl: 'blob:one',
+          photos: GALLERY,
+        }}
+        map={null}
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId('poi-card-photo-count')).toHaveTextContent('1 of 3')
+  })
+})

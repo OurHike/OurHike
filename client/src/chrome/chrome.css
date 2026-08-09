@@ -921,6 +921,56 @@ a.poi-card__credit::after {
 /* Drawn at 32px over the photo's corner, hit at 44px - the same drawn/hit
    split the header buttons use, made up with an invisible expanded area
    rather than by inflating the visible circle. */
+/* Top-left, which is the one corner of the media box that is free: the close
+   button owns top-right, and the credit is a full-width strip along the
+   bottom whose hit area already reaches 44px upward. Putting the gallery
+   anywhere else would overlap something already tappable. */
+.poi-card__gallery {
+  position: absolute;
+  top: var(--space-2, 8px);
+  left: var(--space-2, 8px);
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-surface);
+  border-radius: 999px;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 30%);
+}
+
+.poi-card__gallery-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--fg-2);
+  background: none;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+/* Vertically only. The two buttons sit side by side, so growing the hit area
+   horizontally would have each one swallow the other's edge - the count
+   between them is the spacer that keeps the two targets distinct. */
+.poi-card__gallery-step::after {
+  content: '';
+  position: absolute;
+  top: calc((32px - var(--min-touch-target)) / 2);
+  bottom: calc((32px - var(--min-touch-target)) / 2);
+  width: 32px;
+}
+
+.poi-card__gallery-count {
+  padding: 0 2px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+
 .poi-card__close {
   position: absolute;
   top: var(--space-2, 8px);

@@ -91,6 +91,14 @@ export interface PoiDetail {
   /** EXIF capture date, ISO "YYYY-MM-DD". Shown as a month: a photo's age
    *  is a fact the hiker gets, same rule as the unverified sentence. */
   photoTaken?: string
+  /**
+   * Every photo of this place, card photo first, when there is more than one.
+   *
+   * ATC's facility layers carry up to ten per POI. Absent for a single photo
+   * and for any release published before galleries existed - the flat fields
+   * above are then the whole story, and the card renders exactly as it did.
+   */
+  photos?: CardPhoto[]
 }
 
 export interface PoiCardProps {
@@ -152,12 +160,44 @@ function photoMonth(taken: string | undefined): string | null {
  * honesty rule applied to the photo. A photo can legitimately have no
  * author (public domain) - the line simply shortens.
  */
-function photoCredit(poi: PoiDetail): string | null {
-  const parts = [poi.photoAuthor, poi.photoLicense, photoMonth(poi.photoTaken)].filter(
+function photoCredit(photo: CardPhoto): string | null {
+  const parts = [photo.author, photo.license, photoMonth(photo.taken)].filter(
     (part): part is string => typeof part === 'string' && part !== '',
   )
   if (parts.length === 0) return null
   return `Photo: ${parts.join(' · ')}`
+}
+
+/** One photo as the card renders it, whichever shape the POI carried. */
+interface CardPhoto {
+  url: string
+  page?: string
+  author?: string
+  license?: string
+  taken?: string
+}
+
+/**
+ * Every photo this card can show, in order, card photo first.
+ *
+ * Two shapes converge here. A POI published before galleries existed has only
+ * the flat `photo*` fields; one published after also carries `photos`, whose
+ * first entry describes the same image. Normalising to one list means the
+ * render path has a single shape and the controls appear exactly when there
+ * is somewhere to go.
+ */
+function cardPhotos(poi: PoiDetail): CardPhoto[] {
+  if (poi.photos !== undefined && poi.photos.length > 0) return poi.photos
+  if (poi.photoUrl === undefined) return []
+  return [
+    {
+      url: poi.photoUrl,
+      ...(poi.photoPage !== undefined ? { page: poi.photoPage } : {}),
+      ...(poi.photoAuthor !== undefined ? { author: poi.photoAuthor } : {}),
+      ...(poi.photoLicense !== undefined ? { license: poi.photoLicense } : {}),
+      ...(poi.photoTaken !== undefined ? { taken: poi.photoTaken } : {}),
+    },
+  ]
 }
 
 /**
@@ -235,16 +275,34 @@ export function PoiCard({ poi, map, onClose }: PoiCardProps) {
   const placement = usePinAnchor(map, poi, cardRef)
   const source = sourceLabel(poi.source)
 
+  const photos = cardPhotos(poi)
+
+  // Which photo of this place is on screen. Reset when the card changes to a
+  // different waypoint - opening a shelter after paging to photo 4 of the
+  // last one must start at its own first photo, not its fourth.
+  const [photoIndex, setPhotoIndex] = useState(0)
+  useEffect(() => setPhotoIndex(0), [poi.id])
+
+  // Guarded rather than trusted: a re-render with a shorter list (a fresh
+  // download of the same waypoint) must not index off the end.
+  const current = photos[Math.min(photoIndex, photos.length - 1)]
+
   // A photo that 404s becomes the placeholder, not a broken-image glyph over
   // the name. State resets when the URL changes: a fresh download pointing at
-  // a working photo should get to show it.
+  // a working photo should get to show it, and so should stepping to the next
+  // photo after a broken one.
   const [photoFailed, setPhotoFailed] = useState(false)
-  useEffect(() => setPhotoFailed(false), [poi.photoUrl])
+  useEffect(() => setPhotoFailed(false), [current?.url])
 
   const accent =
     poi.type in POI_COLORS ? POI_COLORS[poi.type as PoiType] : POI_FALLBACK_COLOR
-  const showPhoto = poi.photoUrl !== undefined && !photoFailed
-  const credit = photoCredit(poi)
+  const showPhoto = current !== undefined && !photoFailed
+  const credit = current === undefined ? null : photoCredit(current)
+  // Controls only where they lead somewhere. Wrapping rather than disabling at
+  // the ends: two photos and a dead "next" is a worse answer than a loop.
+  const hasGallery = photos.length > 1
+  const step = (delta: number) =>
+    setPhotoIndex((i) => (i + delta + photos.length) % photos.length)
 
   return (
     <div
@@ -269,7 +327,7 @@ export function PoiCard({ poi, map, onClose }: PoiCardProps) {
           <img
             className="poi-card__photo"
             data-testid="poi-card-photo"
-            src={poi.photoUrl}
+            src={current.url}
             // Empty on purpose: the app knows nothing about the photo beyond
             // which waypoint it belongs to, and the name is the next line
             // down. Announcing "photo of {name}" would say the name twice.
@@ -296,10 +354,10 @@ export function PoiCard({ poi, map, onClose }: PoiCardProps) {
             either way. */}
         {showPhoto &&
           credit !== null &&
-          (poi.photoPage !== undefined ? (
+          (current.page !== undefined ? (
             <a
               className="poi-card__credit"
-              href={poi.photoPage}
+              href={current.page}
               target="_blank"
               rel="noreferrer"
             >
@@ -308,6 +366,37 @@ export function PoiCard({ poi, map, onClose }: PoiCardProps) {
           ) : (
             <span className="poi-card__credit">{credit}</span>
           ))}
+
+        {/* Only when there is more than one photo, and only over a photo -
+            paging a placeholder leads nowhere. The count is the honest part:
+            "2 of 7" says how much more there is without making anyone tap to
+            find out, and it is what tells a hiker on a ridge whether the
+            gallery is worth the data. */}
+        {hasGallery && showPhoto && (
+          <div className="poi-card__gallery">
+            <button
+              type="button"
+              className="poi-card__gallery-step"
+              data-testid="poi-card-photo-prev"
+              onClick={() => step(-1)}
+            >
+              <span className="visually-hidden">Previous photo</span>
+              <span aria-hidden="true">‹</span>
+            </button>
+            <span className="poi-card__gallery-count" data-testid="poi-card-photo-count">
+              {Math.min(photoIndex, photos.length - 1) + 1} of {photos.length}
+            </span>
+            <button
+              type="button"
+              className="poi-card__gallery-step"
+              data-testid="poi-card-photo-next"
+              onClick={() => step(1)}
+            >
+              <span className="visually-hidden">Next photo</span>
+              <span aria-hidden="true">›</span>
+            </button>
+          </div>
+        )}
 
         <button type="button" className="poi-card__close" onClick={onClose}>
           <span className="visually-hidden">Close waypoint details</span>

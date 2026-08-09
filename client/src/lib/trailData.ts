@@ -85,6 +85,30 @@ export interface StoredPoi {
   /** EXIF capture date, ISO "YYYY-MM-DD" - the card shows the month, because
    *  a two-year-old photo presented as current would be a quiet lie. */
   photoTaken?: string
+  /**
+   * Every photo of this place, card photo first.
+   *
+   * ATC's facility layers carry up to ten photographs per POI and 89% of them
+   * use more than one, so the card shows `photos[0]` and lets a hiker step
+   * through the rest. The five fields above describe that first photo and are
+   * kept because a release published before galleries existed has only them -
+   * `photos` is absent there, and one photo is still the honest reading.
+   *
+   * Each entry carries its own credit: the licence obliges attribution per
+   * photograph, not per card, so moving to photo 3 moves its author, licence
+   * and month with it.
+   */
+  photos?: PoiPhoto[]
+}
+
+/** One photo on a waypoint card, with what the licence obliges us to say
+ *  about it. `url` is the bucket key already resolved through dataUrl(). */
+export interface PoiPhoto {
+  url: string
+  page?: string
+  author?: string
+  license?: string
+  taken?: string
 }
 
 export interface TrailData {
@@ -109,6 +133,7 @@ interface PoiProperties {
   confidence?: unknown
   source?: unknown
   photo_key?: unknown
+  photos?: unknown
   photo_page_url?: unknown
   photo_author?: unknown
   photo_license?: unknown
@@ -120,6 +145,58 @@ interface PoiProperties {
  *  storing. */
 function stringProp(value: unknown): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined
+}
+
+/**
+ * The `photos` property as a usable list, or [] for anything unexpected.
+ *
+ * **It arrives as an array here and as a string in the .fgb, from the same
+ * export.** The pipeline writes one JSON string, because FlatGeobuf property
+ * values are scalars and a nested array cannot be a column at all - but GDAL
+ * recognises a JSON-shaped string when writing GeoJSON and emits it as real
+ * JSON, so the two artifacts genuinely disagree about this field's type
+ * (measured 2026-08-09). Accepting both is not defensive padding: assuming
+ * the string would return nothing for every POI in the format the client
+ * actually reads.
+ *
+ * Every other failure mode - absent, malformed, not an array, an entry with
+ * no key - degrades to "no gallery" rather than throwing: a published
+ * artifact one version ahead of this build must never make a waypoint
+ * unopenable.
+ */
+function readPhotoList(value: unknown): PoiPhoto[] {
+  let parsed: unknown = value
+  if (typeof value === 'string') {
+    if (value === '') return []
+    try {
+      parsed = JSON.parse(value)
+    } catch {
+      return []
+    }
+  }
+  if (!Array.isArray(parsed)) return []
+
+  const photos: PoiPhoto[] = []
+  for (const entry of parsed) {
+    if (typeof entry !== 'object' || entry === null) continue
+    const record = entry as Record<string, unknown>
+    const key = stringProp(record.key)
+    // No key, no photo. The other fields are a credit for something, and a
+    // credit with nothing to credit is what the placeholder is for.
+    if (key === undefined) continue
+    const page = stringProp(record.page_url)
+    const author = stringProp(record.author)
+    const license = stringProp(record.license)
+    const taken = stringProp(record.taken)
+    photos.push({
+      url: dataUrl(key),
+      ...(page !== undefined ? { page } : {}),
+      ...(author !== undefined ? { author } : {}),
+      ...(license !== undefined ? { license } : {}),
+      ...(taken !== undefined ? { taken } : {}),
+    })
+  }
+  return photos
 }
 
 function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
@@ -141,6 +218,7 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
     const photoAuthor = stringProp(props.photo_author)
     const photoLicense = stringProp(props.photo_license)
     const photoTaken = stringProp(props.photo_taken)
+    const photoList = readPhotoList(props.photos)
 
     pois.push({
       id: String(props.id ?? `${fallbackType}:${props.lat},${props.lon}`),
@@ -168,6 +246,10 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
             ...(photoAuthor !== undefined ? { photoAuthor } : {}),
             ...(photoLicense !== undefined ? { photoLicense } : {}),
             ...(photoTaken !== undefined ? { photoTaken } : {}),
+            // Only when there is more than one: a single-photo gallery is
+            // the card as it already is, and storing a one-entry list would
+            // put next/previous controls on every photo that has no next.
+            ...(photoList.length > 1 ? { photos: photoList } : {}),
           }
         : {}),
     })

@@ -35,8 +35,15 @@
 # check reads.
 #
 # WHO READS THIS: `pipeline/check_deployment.py` (the daily origin-aware
-# reachability check) today. Supabase's redirect allow-list wants the same list
-# in its own spelling and is the next reader - see #431's tier 3.
+# reachability check) and `pipeline/check_auth_redirects.py` (the same question
+# asked of Supabase's redirect allow-list). Two readers is the point of the
+# declaration - #431 tier 3 - and the second one earned it immediately: on its
+# first run it found production's allow-list and Site URL still naming
+# `jaimito-asuntos-gringuenos.github.io`, the pre-org-migration Pages host,
+# which by then answered 404. Every sign-in from production was redirecting to
+# a dead host carrying the auth code. Exactly #427's shape - an allow-list that
+# did not move when the origin did - on the auth surface rather than the data
+# one.
 
 # The request headers the client actually sends to the data bucket, which is a
 # different list from the one a reader would guess, and getting it wrong breaks
@@ -94,9 +101,50 @@ methods:
 # is not followed by an hour of stale refusals.
 max_age_seconds: 3600
 
+# The Supabase projects whose redirect allow-lists have to agree with the
+# origins below, and how each one is reached.
+#
+# TWO PROJECTS, TWO GENUINELY DIFFERENT LISTS - which is why this is a mapping
+# rather than one list reused twice. Production allows the Pages origin, the
+# preview wildcard and both localhost ports. UA allows only its own exact
+# hostname and the localhosts: pull-request previews build against
+# PRODUCTION's Supabase project, so putting the preview wildcard on UA's list
+# would let any preview hostname complete a sign-in against the UA user pool
+# and buy nothing in exchange.
+#
+# `site_url_origin` names which origin is that project's Site URL - the single
+# exact URL Supabase falls back to when a redirect is refused. It is worth
+# checking precisely because it is the *fallback*: a wrong one turns "this
+# redirect is not allowed" into a silent trip to somewhere else, which is how
+# the pre-migration host went unnoticed. `check_auth_redirects.py` reads it
+# back for free, since a deliberately-refused probe lands there.
+supabase_projects:
+  production:
+    url_var: SUPABASE_URL
+    key_var: SUPABASE_ANON_KEY
+    site_url_origin: https://ourhike.github.io
+    serves: The project hikers sign in to.
+
+  ua:
+    url_var: UA_SUPABASE_URL
+    key_var: UA_SUPABASE_ANON_KEY
+    site_url_origin: https://ua.ourhike-preview.pages.dev
+    # `ua.yml` uses the UA_ pair or neither: with them unset UA signs in
+    # against production's project instead, which is a supported fallback
+    # (RELEASING.md 3d) and the reason this project being unconfigured is a
+    # skip rather than a failure.
+    serves: The release candidate's project, so a UA tester is not a hiker.
+
 origins:
   - pattern: https://ourhike.github.io
     probe: https://ourhike.github.io
+    # Where the app itself is served on this origin - `VITE_BASE_PATH` in the
+    # workflow that builds for it. Not decoration: an auth redirect targets the
+    # app rather than the origin root, and a redirect to the bare origin lands
+    # on the project's landing page with the code in its URL and nothing there
+    # to read it. It is also what makes the probe concrete.
+    app_path: /OurHike/app/
+    supabase: [production]
     serves: The deployed app and landing page, on GitHub Pages.
     # The one whose absence is an outage rather than an inconvenience: it is
     # the origin every hiker is on. It is also the one that went missing.
@@ -109,19 +157,38 @@ origins:
     # actually covers a pull request that does not exist yet. `pr-1` is chosen
     # for being permanent in shape and meaningless in particular.
     probe: https://pr-1.ourhike-preview.pages.dev
+    app_path: /
+    supabase: [production]
     serves: Pull-request previews, on Cloudflare Pages.
     # Losing this costs reviewers a preview, not hikers a map. It is still
     # checked, because a preview that cannot download is how a change gets
     # reviewed as working when it is not.
     hiker_facing: false
 
+  - pattern: https://ua.ourhike-preview.pages.dev
+    probe: https://ua.ourhike-preview.pages.dev
+    app_path: /
+    supabase: [ua]
+    # Deliberately absent from the bucket policy: the preview wildcard above
+    # already covers this hostname, and `ua.yml` says so as the reason UA needs
+    # no new CORS entry. Listing it again would be a second entry for one fact.
+    # Supabase is the opposite case - UA's project must name this host exactly,
+    # because it must NOT carry the wildcard.
+    cors: false
+    serves: The release candidate, on the previews' Pages project.
+    hiker_facing: false
+
   - pattern: http://localhost:5173
     probe: http://localhost:5173
+    app_path: /
+    supabase: [production, ua]
     serves: "`npm run dev` - Vite's dev server."
     hiker_facing: false
 
   - pattern: http://localhost:4173
     probe: http://localhost:4173
+    app_path: /
+    supabase: [production, ua]
     # A different server from 5173, not a second guess at the same one:
     # `npm run preview` serves the BUILT bundle. It is the one you reach for to
     # check something behaves the same after a production build, which makes it

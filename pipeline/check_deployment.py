@@ -87,6 +87,18 @@ def load_manifest(path: Path | None = None) -> dict:
     return yaml.safe_load((path or ORIGINS_MANIFEST).read_text())
 
 
+def cors_origins(manifest: dict) -> list[dict]:
+    """The origins the BUCKET has to allow.
+
+    Not every declared origin: one of them (`ua.`) is a real origin the app is
+    served from and is already covered by the preview wildcard, so naming it
+    here would put a second entry in the policy for a fact the first one
+    already carries. It is declared for Supabase's sake, where the wildcard is
+    deliberately not wanted - see the file's own note.
+    """
+    return [origin for origin in manifest["origins"] if origin.get("cors", True)]
+
+
 def cors_policy(manifest: dict) -> list[dict]:
     """The policy to paste into Cloudflare, generated from the declaration.
 
@@ -98,7 +110,7 @@ def cors_policy(manifest: dict) -> list[dict]:
     """
     return [
         {
-            "AllowedOrigins": [origin["pattern"] for origin in manifest["origins"]],
+            "AllowedOrigins": [origin["pattern"] for origin in cors_origins(manifest)],
             "AllowedMethods": list(manifest["methods"]),
             "AllowedHeaders": list(manifest["request_headers"]),
             "ExposeHeaders": list(manifest["expose_headers"]),
@@ -391,7 +403,7 @@ def check_all(base: str, manifest: dict | None = None, session: requests.Session
     base = base.rstrip("/")
 
     reports: list[dict] = []
-    for origin in manifest["origins"]:
+    for origin in cors_origins(manifest):
         reports.append(check_origin_allowed(base, origin, session))
         reports.append(check_preflight(base, origin, manifest["request_headers"], session))
         reports.append(check_exposed_headers(base, origin, manifest["expose_headers"], session))

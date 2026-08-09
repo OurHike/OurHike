@@ -8,6 +8,7 @@ import json
 from datetime import date, timedelta
 
 import pytest
+import requests
 
 import export_poi
 import fetch_atc_photos as atc
@@ -450,3 +451,90 @@ def test_an_outcome_file_written_before_galleries_is_still_read(tmp_path, monkey
 
     assert atc.record_photos(old_shape) == [{"digest": digest}]
     assert atc.cached_photo_missing(old_shape) is False
+
+
+# --- a photo reference Drive will not serve --------------------------------
+
+
+def test_a_dead_photo_link_skips_that_slot_instead_of_killing_the_run(tmp_path, monkeypatch, requests_mock):
+    """The failure that took a whole data release down.
+
+    One of the 1,524 references - `Annapolis Rock (US 40) Parking Area`'s
+    Photo2 - 404s, and `raise_for_status` turned that into an unhandled
+    HTTPError 30 minutes and ~1,050 POIs into the crawl. Every export, the
+    quality gate and the publish step were skipped behind it, so a single
+    deleted file in somebody else's Drive folder meant no data release at all.
+
+    A file Drive will not serve is a fact about that slot, not a broken run,
+    and it is handled the way an undated photo already was: skip it, take the
+    next one.
+    """
+    _no_sleep(monkeypatch)
+    _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
+    second = "https://drive.google.com/file/d/2bbbbbbbbbbbbbbbbbb/view"
+    _write_layers(tmp_path, monkeypatch, parking=[_feature(global_id="pk-1", Photo1=DRIVE_URL, Photo2=second)])
+    requests_mock.get(atc.DOWNLOAD_URL, [{"status_code": 404}, {"content": _exif_header(INVENTORY_ERA)}])
+    requests_mock.get(atc.THUMBNAIL_URL, content=JPEG_BYTES)
+
+    atc.main()
+
+    record = _saved(tmp_path)["atc_parking:pk-1"]
+    assert record["status"] == "found"
+    assert [photo["url"] for photo in record["photos"]] == [second]
+
+
+@pytest.mark.parametrize("status", [403, 404, 410])
+def test_every_way_drive_says_no_such_file_is_treated_the_same(status, tmp_path, monkeypatch, requests_mock):
+    """Deleted, sharing changed, or an id that was never right - one slot with
+    no photo behind it, whichever way Drive words it."""
+    _no_sleep(monkeypatch)
+    _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
+    _write_layers(tmp_path, monkeypatch, privies=[_feature(global_id="pv-1", Photo1=DRIVE_URL)])
+    requests_mock.get(atc.DOWNLOAD_URL, status_code=status)
+
+    atc.main()
+
+    assert _saved(tmp_path)["atc_privies:pv-1"]["status"] == "none"
+
+
+def test_a_rendering_that_disappears_between_the_two_calls_is_skipped_too(tmp_path, monkeypatch, requests_mock):
+    """Both fetches are wrapped, not just the first. A file can answer the
+    Range request for its EXIF and then refuse the thumbnail, and the slot has
+    no photo either way."""
+    _no_sleep(monkeypatch)
+    _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
+    _write_layers(tmp_path, monkeypatch, viewpoints=[_feature(global_id="vp-1", Photo1=DRIVE_URL)])
+    requests_mock.get(atc.DOWNLOAD_URL, content=_exif_header(INVENTORY_ERA))
+    requests_mock.get(atc.THUMBNAIL_URL, status_code=404)
+
+    atc.main()
+
+    assert _saved(tmp_path)["atc_viewpoints:vp-1"]["status"] == "none"
+
+
+def test_drive_being_broken_still_stops_the_run(tmp_path, monkeypatch, requests_mock):
+    """The other half of the decision, and the one that keeps this narrow. A
+    500 after its retries is Drive failing, not a file that is gone - and a
+    crawl that finished by quietly dropping every photo is exactly what this
+    pipeline's drop guards exist to catch."""
+    _no_sleep(monkeypatch)
+    _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
+    _write_layers(tmp_path, monkeypatch, shelters=[_feature(Photo1=DRIVE_URL)])
+    requests_mock.get(atc.DOWNLOAD_URL, status_code=500)
+
+    with pytest.raises(requests.exceptions.HTTPError):
+        atc.main()
+
+
+def test_the_skipped_references_are_reported_rather_than_swallowed(tmp_path, monkeypatch, requests_mock, capsys):
+    """A corpus rotting quietly is the thing to notice: these are references
+    in ATC's own column that no longer resolve, and the count is what would
+    tell them."""
+    _no_sleep(monkeypatch)
+    _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
+    _write_layers(tmp_path, monkeypatch, parking=[_feature(global_id="pk-1", Photo1=DRIVE_URL)])
+    requests_mock.get(atc.DOWNLOAD_URL, status_code=404)
+
+    atc.main()
+
+    assert "1 photo reference(s) Drive would not serve" in capsys.readouterr().out

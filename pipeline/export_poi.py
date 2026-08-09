@@ -35,7 +35,8 @@ inspection, 2026-07-28):
     so a nameless pin is the rare exception rather than the rule; and
     `Descriptio` is the same club-acronym-plus-name string lib/atc_notes.py
     already found unusable on shelters ("TBD" on every vista sampled), so
-    these three carry no `description` - see attach_descriptions.
+    their `description` is composed from the inventory columns like every
+    other ATC layer's - see attach_descriptions and lib/poi_description.py.
     Not filtered by ATC's own `Status`, which on vistas takes values like
     "Primary View" (522), "Secondary View" (605), "Bypass" (23) and "OLD?"
     (4). Publishing all of them matches what every other layer here does -
@@ -79,18 +80,26 @@ partial and deliberately so: a shelter the source lists only as half of a
 pair exports no capacity rather than a guessed one, and the client shows
 nothing rather than a number nobody stands behind.
 
-Description: shelter and campsite features carry `description` - and only
-those two, see the viewpoints/parking/privies note above - one sentence
-about the place - "Two-storey clapboard shelter, sleeps 14, with a fireplace,
-a fire ring and a porch. Built 1915." It is composed by lib/poi_description.py
-from ATC's own inventory columns rather than copied from a text field,
-because ATC has no prose description: the field aliased "Description" is the
-club acronym plus the feature's own name, and `Comments` is a surveyor's
-notebook populated on under a third of features (lib/atc_notes.py measures
-both). Composing instead of copying is what makes the coverage 280/280
-shelters and 232/232 campsites. Where ATC did write a usable comment it is
-appended as "ATC notes: ..." - attributed, not blended in, since that half is
-a person's prose and the rest is assembled from columns.
+Description: every ATC facility layer carries `description`, one sentence
+about the place -
+
+    "Two-storey clapboard shelter, sleeps 14, with a fireplace, a fire ring
+     and a porch. Built 1915."
+    "A 100° view south-east from a ridge or rock outcrop."
+    "Gravel parking area, room for 12 cars."
+    "Multi-seat moldering privy. Built 2019."
+
+It is composed by lib/poi_description.py from ATC's own inventory columns
+rather than copied from a text field, because ATC has no prose description:
+the field aliased "Description" is the club acronym plus the feature's own
+name, and `Comments` is a surveyor's notebook populated on under a third of
+features (lib/atc_notes.py measures both). Composing instead of copying is
+what makes the coverage 280/280 shelters, 232/232 campsites, 1,194/1,223
+vistas, 480/482 parking areas and 314/316 privies. Where ATC did write a
+usable comment it is appended as "ATC notes: ..." - attributed, not blended
+in, since that half is a person's prose and the rest is assembled from
+columns. Which types compose one is DESCRIBERS below; water and resupply do
+not, having no inventory behind them.
 
 Photo enrichment: when fetch_poi_images.py has run, data/raw/poi_images.json
 holds per-POI photo records (Wikimedia Commons; author, licence, capture date
@@ -115,7 +124,7 @@ from lib.atc_notes import clean_note
 from lib.completeness import count_problems, fail_if_incomplete
 from lib.corridor import build_corridor
 from lib.photo_store import photo_key
-from lib.poi_description import describe_campsite, describe_shelter
+from lib.poi_description import describe_campsite, describe_parking, describe_privy, describe_shelter, describe_viewpoint
 from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES, poi_output_name, unify_poi
 
 ROOT = Path(__file__).parent
@@ -304,28 +313,40 @@ def attach_capacity(records: list[dict], capacities: dict[str, int]) -> int:
     return attached
 
 
+# Which poi_types compose a `description`, and with what. Every ATC facility
+# layer is here; water and resupply are absent because they come from
+# opentrail.org and ATC's Communities layer, neither of which carries an
+# inventory to compose from.
+#
+# One signature - (properties, capacity, note) - so the dispatch is a lookup
+# rather than a chain of branches. Only the shelter needs the capacity, and it
+# is not ATC's number (reference/shelter_capacity.json), which is why it is
+# passed rather than read from the properties.
+DESCRIBERS = {
+    "shelter": lambda properties, capacity, note: describe_shelter(properties, capacity, note),
+    "campsite": lambda properties, _capacity, note: describe_campsite(properties, note),
+    "viewpoint": lambda properties, _capacity, note: describe_viewpoint(properties, note),
+    "parking": lambda properties, _capacity, note: describe_parking(properties, note),
+    "privy": lambda properties, _capacity, note: describe_privy(properties, note),
+}
+
+
 def attach_descriptions(records: list[dict]) -> int:
-    """Compose `description` for every shelter and campsite, returning how
+    """Compose `description` for every POI type that has one, returning how
     many got one.
 
     Runs after attach_capacity, because "sleeps 8" is a clause in the
-    sentence and the number is not ATC's - it comes from
+    shelter sentence and the number is not ATC's - it comes from
     reference/shelter_capacity.json. A shelter with no capacity gets the
     same sentence without that clause rather than a gap.
-
-    Other poi_types are left alone: water and resupply come from
-    opentrail.org, which carries no inventory to compose from.
     """
     attached = 0
     for record in records:
-        properties = record.get(RAW_PROPERTIES_KEY) or {}
-        note = clean_note(properties.get(ATC_NOTE_FIELD))
-        if record["poi_type"] == "shelter":
-            description = describe_shelter(properties, record.get("capacity"), note)
-        elif record["poi_type"] == "campsite":
-            description = describe_campsite(properties, note)
-        else:
+        describe = DESCRIBERS.get(record["poi_type"])
+        if describe is None:
             continue
+        properties = record.get(RAW_PROPERTIES_KEY) or {}
+        description = describe(properties, record.get("capacity"), clean_note(properties.get(ATC_NOTE_FIELD)))
         if description is None:
             continue
         record["description"] = description
@@ -525,7 +546,7 @@ def main() -> dict:
     # After the capacity attach, not before: "sleeps 8" is a clause in the
     # composed sentence and that number is not ATC's.
     described = attach_descriptions(clipped)
-    print(f"  {described} shelters/campsites carry a description.")
+    print(f"  {described} POIs carry a description (of the {len(DESCRIBERS)} types that compose one).")
 
     commons_photos = load_photo_records(RAW_DIR / IMAGES_FILENAME)
     atc_photos = load_photo_records(RAW_DIR / ATC_IMAGES_FILENAME)

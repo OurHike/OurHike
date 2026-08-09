@@ -72,13 +72,16 @@ export interface StoredPoi {
    */
   capacity?: number
   /**
-   * One sentence about the place, for shelters and campsites.
+   * One sentence about the place, for every POI type ATC's own facility
+   * layers feed - shelters, campsites, viewpoints, parking areas, privies.
    *
    * Composed by the pipeline from ATC's own inventory columns rather than
    * copied from a text field - ATC has no prose description (see
    * pipeline/lib/poi_description.py). Optional for the same backward-compat
    * reason as `source`: a phone that downloaded before this existed has POIs
-   * without one, and water and resupply POIs never have one at all.
+   * without one, and water and resupply never have one at all - they come
+   * from opentrail.org's tags and ATC's Communities layer, which carry no
+   * inventory to compose from.
    */
   description?: string
   /**

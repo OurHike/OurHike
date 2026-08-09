@@ -1,5 +1,5 @@
-"""Tests for lib/poi_description.py - assembling a shelter's or campsite's
-one-line description from ATC's inventory columns.
+"""Tests for lib/poi_description.py - assembling a POI's one-line
+description from ATC's inventory columns.
 
 The attribute dicts here mirror real ATC features (read 2026-08-09), with the
 columns the composer reads and nothing else, so a test says which facts drive
@@ -8,7 +8,13 @@ which clause.
 
 import pytest
 
-from lib.poi_description import describe_campsite, describe_shelter
+from lib.poi_description import (
+    describe_campsite,
+    describe_parking,
+    describe_privy,
+    describe_shelter,
+    describe_viewpoint,
+)
 
 # Upper Goose Pond Cabin: two storeys, clapboard, fireplace, fire ring, porch.
 CABIN = {
@@ -128,3 +134,143 @@ def test_a_missing_or_junk_count_reads_as_none_of_them(value):
     described = describe_shelter({**LEAN_TO, "Chimneys": value, "Deck_Lengt": value}, capacity=6)
 
     assert described == "Log shelter, sleeps 6. Built 1954."
+
+
+# --- vistas, parking and privies -------------------------------------------
+#
+# The same shape as above: real column values (read 2026-08-09), the ones the
+# composer reads and nothing else.
+
+# Bake Oven Knob (East) Vista: a 180° arc opening east, on a ridge.
+VISTA = {"Left_Beari": 40, "Right_Bear": 220, "Location": "Mtn/Ridge/Outcrop"}
+
+# Fox Gap (PA Rte 191): gravel, seven cars, no accessible spaces.
+PARKING = {"Type": "0", "Surface": "3", "Parking_S": 7, "ADA_Space": 0}
+
+# Bromley Summit Privy: moldering, single enclosure, rebuilt 2003.
+PRIVY = {"Type": "1", "Enclosure": "1", "Year_Built": 2003}
+
+
+def test_a_vista_says_how_wide_the_view_is_which_way_it_faces_and_what_from():
+    """The three things a hiker has a question about before walking to one."""
+    assert describe_viewpoint(VISTA) == "A 180° view south-east from a ridge or rock outcrop."
+
+
+def test_the_arc_is_swept_clockwise_from_left_to_right():
+    """Not the smaller of the two angles between the bearings. Wolf Rocks (PA)
+    runs 280 -> 10, which is a 90° view over the north-west, and reading it
+    the other way round would publish 270° facing south-east - the opposite
+    direction and three times the view."""
+    assert describe_viewpoint({"Left_Beari": 280, "Right_Bear": 10}) == "A 90° view north-west."
+
+
+def test_a_view_of_almost_everything_is_called_panoramic_rather_than_aimed():
+    """98 vistas sweep 300° or more. "A 340° view north-east" names one edge
+    of a place you can turn round in."""
+    assert describe_viewpoint({"Left_Beari": 10, "Right_Bear": 350, "Location": "Summit"}) == ("A panoramic view from a summit.")
+
+
+def test_two_bearings_that_coincide_are_the_whole_horizon_not_nothing():
+    assert describe_viewpoint({"Left_Beari": 90, "Right_Bear": 90}) == "A panoramic view."
+
+
+def test_both_bearings_reading_zero_is_an_unsurveyed_vista_not_one_facing_north():
+    """217 of 1,223 carry 0/0, which is the blank this layer writes. Read as a
+    bearing it would publish a zero-degree view due north on every one of
+    them."""
+    assert describe_viewpoint({"Left_Beari": 0, "Right_Bear": 0, "Location": "Summit"}) == "A view from a summit."
+
+
+def test_the_arc_is_rounded_because_atc_says_its_own_bearings_wander():
+    """ATC's own comment on one vista: "measured bearings 3 times, each time
+    getting different results". 62° published as 62° claims a precision the
+    instrument did not have."""
+    assert describe_viewpoint({"Left_Beari": 90, "Right_Bear": 152}) == "A 60° view south-east."
+
+
+def test_a_narrow_view_survives_the_rounding_rather_than_becoming_zero():
+    assert describe_viewpoint({"Left_Beari": 90, "Right_Bear": 92}) == "A 5° view east."
+
+
+def test_the_number_gets_the_article_it_would_be_read_with():
+    assert describe_viewpoint({"Left_Beari": 40, "Right_Bear": 120}).startswith("An 80°")
+    assert describe_viewpoint({"Left_Beari": 40, "Right_Bear": 220}).startswith("A 180°")
+
+
+def test_a_landform_atc_did_not_recognise_drops_the_clause_rather_than_guessing():
+    """`Location` is free text: `TBD` on 90 features, and values like `Side
+    Trail` that say where the surveyor stood rather than what the view is
+    from."""
+    assert describe_viewpoint({**VISTA, "Location": "TBD"}) == "A 180° view south-east."
+    assert describe_viewpoint({**VISTA, "Location": "Side Trail"}) == "A 180° view south-east."
+
+
+def test_a_multi_value_location_is_read_from_its_first_entry():
+    """ "Summit; Lookout Tower" on 13 features. Matching the whole string would
+    drop every one of them."""
+    assert describe_viewpoint({**VISTA, "Location": "Summit; Lookout Tower"}).endswith("from a summit.")
+
+
+def test_a_vista_with_no_arc_and_no_landform_gets_no_description():
+    """The card's own type line already says "Viewpoint"."""
+    assert describe_viewpoint({"Location": "TBD"}) is None
+
+
+def test_a_vista_with_only_a_note_still_publishes_the_note():
+    """ "No view beyond foreground; bald rock" is the most useful thing ATC
+    says about that feature, and it would be silence if a note needed a
+    sentence to hang off."""
+    assert describe_viewpoint({}, note="No view beyond foreground") == "ATC notes: No view beyond foreground."
+
+
+def test_parking_says_what_you_park_on_and_whether_there_is_room():
+    assert describe_parking(PARKING) == "Gravel parking area, room for 7 cars."
+
+
+def test_a_single_space_is_not_pluralised():
+    assert describe_parking({**PARKING, "Parking_S": 1}) == "Gravel parking area, room for 1 car."
+
+
+def test_accessible_spaces_are_named_separately_when_atc_counted_any():
+    assert describe_parking({**PARKING, "ADA_Space": 2}) == "Gravel parking area, room for 7 cars and 2 accessible spaces."
+
+
+def test_a_wide_spot_on_the_shoulder_is_not_called_a_parking_area():
+    """`Roadside/Shoulder` is on 53 features and is not in ATC's own coded
+    domain for the field - it is still the one `Type` value worth saying,
+    because arriving at a shoulder in the dark is a different thing from
+    arriving at a lot."""
+    assert describe_parking({**PARKING, "Type": "Roadside/Shoulder"}) == "Roadside parking, room for 7 cars."
+
+
+def test_an_unrecognised_surface_shortens_the_sentence_rather_than_guessing():
+    assert describe_parking({**PARKING, "Surface": "Unknown"}) == "Parking area, room for 7 cars."
+
+
+def test_a_parking_area_atc_states_nothing_about_gets_no_description():
+    assert describe_parking({"Type": "Unknown", "Surface": "Unknown"}) is None
+
+
+def test_a_privy_names_the_type_because_it_changes_how_it_is_used():
+    assert describe_privy(PRIVY) == "Moldering privy. Built 2003."
+
+
+def test_a_multi_seat_privy_says_so():
+    assert describe_privy({**PRIVY, "Enclosure": "2"}) == "Multi-seat moldering privy. Built 2003."
+
+
+def test_a_privy_with_no_building_round_it_says_so_in_plain_words():
+    """ATC's own term for this is "chum", which is trail vocabulary rather
+    than English, and 8 of the 316 are one."""
+    assert describe_privy({**PRIVY, "Enclosure": "0"}) == ("Moldering privy, open to the air with no enclosure. Built 2003.")
+
+
+def test_an_unrecognised_privy_type_still_describes_the_privy():
+    """One feature reads `Cool Composting`, which is not in ATC's domain.
+    Mapping it onto a code would be this pipeline guessing at somebody's data
+    entry."""
+    assert describe_privy({**PRIVY, "Type": "Cool Composting"}) == "Privy. Built 2003."
+
+
+def test_a_privy_atc_states_nothing_about_gets_no_description():
+    assert describe_privy({"Type": "5", "Enclosure": "3"}) is None

@@ -16,7 +16,7 @@ One slot, five possible occupants, in this order:
 |---|---|---|---|
 | 1 | **Your own photo** of this place | your device | always |
 | 2 | **The club's pick**, else the newest community photo | backend | when cached |
-| 3 | **ATC's own facility photo** — the maintaining organisation's documentation | our bucket, `photos/` | when cached |
+| 3 | **ATC's own facility photos** — the maintaining organisation's documentation, up to ten | our bucket, `photos/` | when cached |
 | 4 | **A Commons photo** — openly licensed, recent, nearest | our bucket, `photos/` | when cached |
 | 5 | **The category silhouette** | the app itself | always |
 
@@ -192,6 +192,19 @@ Each rule is doing a specific job, and the interactions between them are the poi
 - **The rolling 12 are report-driven, not pre-approved.** Pre-moderating 45,000 photographs is not something a volunteer club can do, and designing as though it were is how a queue becomes a graveyard and the feature stalls with a backlog nobody can clear.
 
 **One per person applies to the shared gallery only.** What a hiker keeps privately on their own device is untouched by this — "several per place, one on the card" above still holds, because that is storage on their phone rather than a public surface with a moderation cost.
+
+### ATC's photos are a gallery too, and they are not part of the 15
+
+**Decided 2026-08-09**, once the coverage was measured: **433 of the 489 POIs ATC photographs carry more than one photo, and its layers hold up to ten** (`Photo1`–`Photo10`). Taking only the first discarded 812 real photographs of real shelters, so the pipeline now keeps them all and the card steps through them.
+
+They sit on rung 3 and **do not count against the shared gallery's 15**, for the reason the rolling window exists at all:
+
+- **Nothing evicts them.** The rolling 12 is a recency window over *community submissions*, where the newest photo of a rebuilt shelter should push out the oldest. ATC's set is a fixed body of documentation from a dated inventory; ageing it out by recency would delete the only authoritative photo of a place to make room for a hiker's snapshot, which inverts the ladder.
+- **They are already ordered by someone with standing.** `Photo1` is ATC's judgement about which picture best shows the facility, so it becomes the card photo and the rest follow in their order. Re-ranking by capture date would substitute a preference this project has no basis for.
+
+So a POI's gallery is **the card photo, then everything else available for it** — the club's pins, then community photos under the 15 cap, then ATC's set. The cap governs what hikers may add, not how much documentation a place already has.
+
+**The credit line moves with the photo**, because attribution is owed per photograph rather than per card. Stepping to photo 3 brings its author, licence and capture month with it, and the rule that the slot never shows a photo whose provenance it cannot state holds for every one of them, not just the first.
 
 ### Becoming the community default
 

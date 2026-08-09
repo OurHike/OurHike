@@ -154,6 +154,10 @@ POI_COLUMNS = (
     ("photo_author", "VARCHAR"),
     ("photo_license", "VARCHAR"),
     ("photo_taken", "VARCHAR"),
+    # Every photo for this POI as JSON, card photo first. A string rather than
+    # a nested array because FlatGeobuf property values are scalars - see
+    # attach_photos, and note GDAL re-expands it to real JSON in the .geojson.
+    ("photos", "VARCHAR"),
 )
 
 TRAIL_ID = "AT"
@@ -206,17 +210,27 @@ def load_features(path: Path) -> list[dict]:
     return data.get("features", [])
 
 
-def load_photo_records(path: Path) -> dict[str, dict]:
-    """fetch_poi_images.py's found photos keyed by unified POI id, or {}
-    when that script hasn't run - which is a normal, exportable state, not
-    an error. Only "found" outcomes matter here; a recorded miss and an
-    unchecked POI both export the same way, photo-less."""
+def load_photo_records(path: Path) -> dict[str, list[dict]]:
+    """A fetch's found photos keyed by unified POI id, or {} when that script
+    hasn't run - which is a normal, exportable state, not an error. Only
+    "found" outcomes matter here; a recorded miss and an unchecked POI both
+    export the same way, photo-less.
+
+    Always a list, whichever shape the outcome file uses. fetch_poi_images.py
+    records one `photo` per POI (Commons gives one nearest match);
+    fetch_atc_photos.py records a `photos` list (ATC gives up to ten). Reading
+    both here means the rest of the export has one shape to think about."""
     if not path.exists():
         return {}
     outcomes = json.loads(path.read_text(encoding="utf-8")).get("pois", {})
-    return {
-        poi_id: record["photo"] for poi_id, record in outcomes.items() if record.get("status") == "found" and "photo" in record
-    }
+    found = {}
+    for poi_id, record in outcomes.items():
+        if record.get("status") != "found":
+            continue
+        photos = record["photos"] if "photos" in record else ([record["photo"]] if "photo" in record else [])
+        if photos:
+            found[poi_id] = photos
+    return found
 
 
 def load_capacities(path: Path) -> dict[str, int]:
@@ -285,31 +299,45 @@ def attach_descriptions(records: list[dict]) -> int:
     return attached
 
 
-def attach_photos(records: list[dict], photos: dict[str, dict]) -> int:
-    """Copy each matched photo's PHOTO_FIELDS onto its unified POI record as
-    photo_* keys, returning how many matched. Unmatched records are left
-    without the keys entirely - write_poi_type reads them with .get(), and a
-    NULL column is the honest export of "no photo", the same shape the
-    client's card treats as its placeholder.
+def attach_photos(records: list[dict], photos: dict[str, list[dict]]) -> int:
+    """Copy each matched POI's photos onto its unified record, returning how
+    many POIs matched. Unmatched records are left without the keys entirely -
+    write_poi_type reads them with .get(), and a NULL column is the honest
+    export of "no photo", the same shape the client's card treats as its
+    placeholder.
+
+    Two shapes go out, and the duplication is deliberate:
+
+    - **The flat `photo_*` fields describe the first photo**, exactly as they
+      always have. A client built before galleries existed keeps rendering the
+      card photo instead of breaking on a shape it has never seen.
+    - **`photos` is the whole list, JSON-encoded.** FlatGeobuf property values
+      are scalars, so a nested array cannot be a column at all; a JSON string
+      is what fits through both .fgb and .geojson unchanged.
 
     A photo with no `digest` is skipped rather than exported: since #362 the
-    image is served from our own bucket, and the digest is the only thing
-    that names it there. A record without one predates the download step, so
-    there is nothing for a card to point at - and exporting the Commons URL
-    instead would silently reintroduce the hotlink that change removed.
+    image is served from our own bucket, and the digest is the only thing that
+    names it there. A record without one predates the download step, so there
+    is nothing for a card to point at - and exporting the upstream URL instead
+    would silently reintroduce the hotlink that change removed.
     """
     attached = 0
     for record in records:
-        photo = photos.get(record["id"])
-        if photo is None or not photo.get("digest"):
+        usable = [photo for photo in photos.get(record["id"], []) if photo.get("digest")]
+        if not usable:
             continue
+        first = usable[0]
         for field in PHOTO_FIELDS:
-            record[f"photo_{field}"] = photo.get(field)
+            record[f"photo_{field}"] = first.get(field)
         # The bucket key, not a URL: the host a hiker fetches from is the
         # client's build-time VITE_DATA_BASE_URL, and baking one into
         # published data would break every card the day the bucket or CDN
         # in front of it changes. Every other artifact is named the same way.
-        record["photo_key"] = photo_key(photo["digest"])
+        record["photo_key"] = photo_key(first["digest"])
+        record["photos"] = json.dumps(
+            [{"key": photo_key(photo["digest"]), **{field: photo.get(field) for field in PHOTO_FIELDS}} for photo in usable],
+            separators=(",", ":"),
+        )
         attached += 1
     return attached
 
@@ -412,6 +440,9 @@ def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[
                     r.get("photo_author"),
                     r.get("photo_license"),
                     r.get("photo_taken"),
+                    # The whole list as JSON - see attach_photos. Scalar-only
+                    # FlatGeobuf properties are why this is a string column.
+                    r.get("photos"),
                 )
                 for r in records
             ],

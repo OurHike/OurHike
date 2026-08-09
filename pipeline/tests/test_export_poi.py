@@ -639,3 +639,145 @@ def test_export_poi_communities_and_opentrail_resupply_carry_different_confidenc
 
     assert by_name["Test Town"] == CONFIDENCE_LOW  # ATC Community proxy
     assert by_name["Test Outfitter"] == CONFIDENCE_HIGH  # real opentrail.org resupply tag
+
+
+def test_export_poi_publishes_every_photo_as_json_alongside_the_flat_card_fields(tmp_path, monkeypatch, con):
+    """A POI with several photos exports the whole list, and still exports the
+    first one through the flat photo_* fields.
+
+    Both shapes, deliberately. FlatGeobuf property values are scalars, so the
+    list can only travel as a JSON string - and a client built before
+    galleries existed reads only the flat fields, so dropping them would blank
+    the card on every already-installed app instead of adding to it."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    second_digest = "b" * 64
+    (raw_dir / "poi_images_atc.json").write_text(
+        json.dumps(
+            {
+                "pois": {
+                    "atc_shelters:shelter-glob-1": {
+                        "status": "found",
+                        "checked": "2026-08-09",
+                        "photos": [
+                            {
+                                "digest": SHELTER_DIGEST,
+                                "page_url": "https://drive.google.com/file/d/one/view",
+                                "author": "Appalachian Trail Conservancy",
+                                "license": "© ATC, used with permission",
+                                "taken": "2016-09-12",
+                            },
+                            {
+                                "digest": second_digest,
+                                "page_url": "https://drive.google.com/file/d/two/view",
+                                "author": "Appalachian Trail Conservancy",
+                                "license": "© ATC, used with permission",
+                                "taken": "2016-09-13",
+                            },
+                            # No digest: nothing names it in the bucket, so it
+                            # must not reach the artifact even inside a list.
+                            {"page_url": "https://drive.google.com/file/d/three/view", "taken": "2016-09-14"},
+                        ],
+                    }
+                }
+            }
+        )
+    )
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+    export_poi.main()
+
+    shelters = json.loads((out_dir / "shelter.geojson").read_text())["features"]
+    props = next(f["properties"] for f in shelters if f["properties"]["id"] == "atc_shelters:shelter-glob-1")
+
+    assert props["photo_key"] == f"photos/{SHELTER_DIGEST}.jpg"
+    assert props["photo_taken"] == "2016-09-12"
+
+    # GDAL emits the pipeline's JSON string as real JSON when writing GeoJSON
+    # and leaves it a string in the .fgb - same export, two shapes (measured
+    # 2026-08-09), which is why the client accepts both.
+    photos = props["photos"] if isinstance(props["photos"], list) else json.loads(props["photos"])
+    assert [p["key"] for p in photos] == [f"photos/{SHELTER_DIGEST}.jpg", f"photos/{second_digest}.jpg"]
+    assert photos[0]["author"] == "Appalachian Trail Conservancy"
+    assert photos[1]["taken"] == "2016-09-13"
+
+
+def test_export_poi_reads_the_single_photo_shape_the_commons_fetch_writes(tmp_path, monkeypatch, con):
+    """fetch_poi_images.py records one `photo` per POI and fetch_atc_photos.py
+    records a `photos` list. Both must export, or the Commons source silently
+    stops filling water and resupply."""
+    records = export_poi.load_photo_records.__wrapped__ if hasattr(export_poi.load_photo_records, "__wrapped__") else None
+    assert records is None  # plain function, no decorator - guard against a silent refactor
+
+    path = tmp_path / "poi_images.json"
+    path.write_text(
+        json.dumps(
+            {
+                "pois": {
+                    "a": {"status": "found", "photo": {"digest": "a" * 64, "taken": "2025-01-01"}},
+                    "b": {"status": "found", "photos": [{"digest": "b" * 64}, {"digest": "c" * 64}]},
+                    "c": {"status": "none"},
+                }
+            }
+        )
+    )
+
+    loaded = export_poi.load_photo_records(path)
+
+    assert [p["digest"] for p in loaded["a"]] == ["a" * 64]
+    assert [p["digest"] for p in loaded["b"]] == ["b" * 64, "c" * 64]
+    assert "c" not in loaded
+
+
+def test_the_photo_list_survives_both_artifact_formats(tmp_path, monkeypatch, con):
+    """The two formats disagree about this field's type, and that is the whole
+    reason this test exists.
+
+    The pipeline writes one JSON *string*, because FlatGeobuf property values
+    are scalars and a nested array cannot be a column. GDAL then recognises a
+    JSON-shaped string when writing GeoJSON and emits real JSON, while the
+    .fgb keeps the string. Measured 2026-08-09; the client accepts both
+    because of it. If a GDAL upgrade ever makes the two agree, this test says
+    so out loud rather than the client quietly reading nothing."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    second_digest = "d" * 64
+    (raw_dir / "poi_images_atc.json").write_text(
+        json.dumps(
+            {
+                "pois": {
+                    "atc_shelters:shelter-glob-1": {
+                        "status": "found",
+                        "photos": [
+                            {"digest": SHELTER_DIGEST, "taken": "2016-09-12"},
+                            {"digest": second_digest, "taken": "2016-09-13"},
+                        ],
+                    }
+                }
+            }
+        )
+    )
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+    export_poi.main()
+
+    geojson_value = next(
+        f["properties"]["photos"]
+        for f in json.loads((out_dir / "shelter.geojson").read_text())["features"]
+        if f["properties"]["id"] == "atc_shelters:shelter-glob-1"
+    )
+    fgb_value = con.execute(
+        f"SELECT photos FROM st_read('{out_dir / 'shelter.fgb'}') WHERE id = 'atc_shelters:shelter-glob-1'"
+    ).fetchone()[0]
+
+    from_geojson = geojson_value if isinstance(geojson_value, list) else json.loads(geojson_value)
+    from_fgb = fgb_value if isinstance(fgb_value, list) else json.loads(fgb_value)
+
+    # Whatever the wire types, both artifacts must describe the same photos.
+    assert [p["key"] for p in from_geojson] == [f"photos/{SHELTER_DIGEST}.jpg", f"photos/{second_digest}.jpg"]
+    assert from_geojson == from_fgb

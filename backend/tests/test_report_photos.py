@@ -27,6 +27,7 @@ import pytest
 import requests
 from fastapi import HTTPException, Request
 from moto import mock_aws
+from pydantic import ValidationError
 
 from app.config import Settings, settings
 from app.core.photos import MAX_PHOTO_BYTES, PHOTO_URL_TTL_SECONDS, photo_key
@@ -851,3 +852,65 @@ def test_the_link_says_so_rather_than_404ing_when_no_bucket_is_configured(client
     report = _report(db_session, reporter, status=ReportStatus.verified, photo_url="reports/x/1.jpg")
 
     assert _link(client, report.id, reporter.id).status_code == 503
+
+
+def test_a_photo_bucket_pointed_at_the_published_one_refuses_to_start(monkeypatch):
+    """The half the separate names cannot cover: a deliberate wrong paste.
+
+    `R2_PHOTO_` stops the publishing variables from configuring this backend by
+    accident. It cannot stop somebody typing the published bucket's name into
+    `R2_PHOTO_BUCKET`, and the outcome is identical - a `bad_hikers` photo is a
+    photo of a person, and that bucket answers anybody.
+
+    #395 names misconfiguration as the largest realistic risk in the system and
+    asks for an alarm on it. Refusing to construct is the loudest one available:
+    the process that should not be able to do this cannot, rather than merely
+    being unlikely to.
+    """
+    monkeypatch.setenv("R2_BUCKET", "your-hike")
+    monkeypatch.setenv("R2_PHOTO_BUCKET", "your-hike")
+
+    with pytest.raises(ValidationError) as caught:
+        Settings()
+
+    message = str(caught.value)
+    assert "published" in message
+    assert "LAUNCH_CHECKLIST.md 1.7" in message
+
+
+def test_a_photo_token_that_is_the_publishing_token_refuses_to_start(monkeypatch):
+    """A token scoped to the published bucket is wrong here whichever way it
+    fails. Either it cannot write to the photo bucket - so every upload 503s
+    for a reason nobody can see from the outside - or it is broader than
+    LAUNCH_CHECKLIST.md 1.2 says and can write to the public one."""
+    monkeypatch.setenv("R2_ACCESS_KEY_ID", "publishing-key")
+    monkeypatch.setenv("R2_PHOTO_BUCKET", "your-hike-photos")
+    monkeypatch.setenv("R2_PHOTO_ACCESS_KEY_ID", "publishing-key")
+
+    with pytest.raises(ValidationError):
+        Settings()
+
+
+def test_a_correctly_separated_deployment_is_silent(monkeypatch):
+    """The guard must not fire on the arrangement LAUNCH_CHECKLIST.md 1.7
+    actually asks for - two buckets, two tokens, both sets present because one
+    host happens to carry both."""
+    monkeypatch.setenv("R2_BUCKET", "your-hike")
+    monkeypatch.setenv("R2_ACCESS_KEY_ID", "publishing-key")
+    monkeypatch.setenv("R2_PHOTO_BUCKET", "your-hike-photos")
+    monkeypatch.setenv("R2_PHOTO_ACCESS_KEY_ID", "photo-key")
+
+    fresh = Settings()
+
+    assert fresh.r2_photo_bucket == "your-hike-photos"
+
+
+def test_the_guard_stays_quiet_where_there_is_nothing_to_collide_with(monkeypatch):
+    """Every developer machine and every CI run: photo variables set, no
+    publishing variables present. There is nothing to compare against, so there
+    is nothing to say."""
+    monkeypatch.delenv("R2_BUCKET", raising=False)
+    monkeypatch.delenv("R2_ACCESS_KEY_ID", raising=False)
+    monkeypatch.setenv("R2_PHOTO_BUCKET", "your-hike-photos")
+
+    assert Settings().r2_photo_bucket == "your-hike-photos"

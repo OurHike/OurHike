@@ -10,6 +10,9 @@ required setting raises on startup) is better than silently running with
 an empty string standing in for a real credential.
 """
 
+import os
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -112,6 +115,56 @@ class Settings(BaseSettings):
     # a deployment told to stop accepting uploads should still be able to show
     # a moderator the photo attached to the report they are deciding on.
     r2_photo_write_enabled: bool = False
+
+    @model_validator(mode="after")
+    def _photos_do_not_go_in_the_published_bucket(self) -> "Settings":
+        """Refuse to start rather than publish a photo of a person.
+
+        The separate `R2_PHOTO_` names above stop the publishing variables from
+        CONFIGURING this backend by accident. They cannot stop somebody pasting
+        the published bucket's name into `R2_PHOTO_BUCKET` on purpose, and that
+        is the same outcome by a different route: a `bad_hikers` photo is a
+        photo of a person, and LAUNCH_CHECKLIST.md 1.5 turns public read on for
+        the bucket this would put it in.
+
+        #395 calls misconfiguration the largest realistic risk in this system -
+        larger than traffic - and asks for an alarm on it. This is the loudest
+        available: a process that should not be able to do this is made unable
+        to, rather than merely unlikely to, which is the same argument
+        `r2_photo_write_enabled` above makes for uploads generally.
+
+        It reads `os.environ` directly, deliberately, and it is the only place
+        in this file that does. `R2_BUCKET` and `R2_ACCESS_KEY_ID` are not
+        fields here precisely because this backend must never be configured by
+        them - adding them as fields to compare against would undo the
+        separation the comment above spends its length on. What is being asked
+        is not "what is my published bucket" but "is this environment also
+        carrying the publishing variables, and have the two been pointed at the
+        same place", and only the environment can answer that.
+
+        Silent when the publishing variables are absent, which is every
+        developer machine, every CI run, and a correctly separated production
+        backend. There is nothing to collide with, so there is nothing to say.
+        """
+        published_bucket = (os.environ.get("R2_BUCKET") or "").strip()
+        if published_bucket and self.r2_photo_bucket.strip() == published_bucket:
+            raise ValueError(
+                f"R2_PHOTO_BUCKET is {published_bucket!r}, which is also R2_BUCKET - the PUBLISHED "
+                "bucket, which has public read turned on. Report photos are not published data: a "
+                "bad_hikers report is a photo of a person and its report stays private. Create a "
+                "second, private bucket (LAUNCH_CHECKLIST.md 1.7) and point R2_PHOTO_BUCKET at it."
+            )
+
+        published_key = (os.environ.get("R2_ACCESS_KEY_ID") or "").strip()
+        if published_key and self.r2_photo_access_key_id.strip() == published_key:
+            raise ValueError(
+                "R2_PHOTO_ACCESS_KEY_ID is the same token as R2_ACCESS_KEY_ID, which is scoped to "
+                "the published bucket (LAUNCH_CHECKLIST.md 1.2). Either it cannot write here - so "
+                "every upload 503s - or it is broader than it should be and can write there. "
+                "Create a token scoped to the photo bucket alone (LAUNCH_CHECKLIST.md 1.7.2)."
+            )
+
+        return self
 
 
 settings = Settings()

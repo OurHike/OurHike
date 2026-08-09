@@ -136,7 +136,7 @@ Offline is what makes a blank screen worse here than on an ordinary web app. A r
 |---|---|
 | **The tab bar stays** under the map fallback. | A fallback you cannot navigate out of is a white screen with words on it. |
 | **No reload button.** | See the offline note above. Switching tabs remounts the screen for free, and the boundary resets on the active tab so that is a real retry rather than the fallback again. |
-| **Nothing is recorded.** | There is no telemetry in this client, and adding some carries its own privacy weight — [IDENTITY_AND_PRIVACY.md](features/IDENTITY_AND_PRIVACY.md). Errors reach `console.error` and stop there. A deliberate no, revisitable if a real need appears. |
+| **Nothing is recorded.** | There is no telemetry in this client, and adding some carries its own privacy weight — [IDENTITY_AND_PRIVACY.md](features/IDENTITY_AND_PRIVACY.md). Errors reach `console.error` and stop there. A deliberate no, revisitable if a real need appears. **The need appeared, and was answered narrowly** — [EVENTING.md](features/EVENTING.md) adds a v2 count, `screen_crashed{screen}`, carrying no message and no stack, because a screen that turns white for some hikers and is never heard about is the failure this row cannot see. A count is enough to go looking; a stack trace is the unbounded string that design keeps out. Nothing changes for v1. |
 
 The fallback copy names which screen went and says the rest still works, because both are true and "something went wrong" understates what is available. It also says the downloaded map and the outbox are untouched — the two things worth fearing for when a screen goes blank.
 

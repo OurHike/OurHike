@@ -79,6 +79,8 @@ Two layers, not one, because they serve different moments:
 
 ## 6. Evidence: what to track, and where results show up
 
+> **Superseded 2026-08-09 by [EVENTING.md](EVENTING.md), which owns the taxonomy now.** The open question at the bottom of this doc — "how to minimize the privacy footprint of the event taxonomy above" — got its pass, and the answer replaced the shape rather than trimming it. The starting taxonomy below attaches `user_id` to `segment_id` and a timestamp on every event: a stable identifier next to a trail position and a time, which is precisely the pair [#252](https://github.com/OurHike/OurHike/issues/252) removed from the public report API three days before that review. Every question this section wanted answered is answered there without any identifier at all, and §5 of that doc covers what an experiment specifically needs. **The four event kinds below are still the right four questions** — exposure, view, action, fallback-fired — so they are kept here as the questions; their fields are not the fields to build.
+
 **A starting event taxonomy** (answers what to log without over-specifying before real features exist to measure against - expect this to evolve once there's a first real experiment):
 
 - `feature_gate_exposed` - a user was evaluated by the gate (the raw exposure count experiments are measured against).
@@ -87,6 +89,13 @@ Two layers, not one, because they serve different moments:
 - `feature_gate_error` - evaluation fell through to the fallback default (this is the signal that tells you section 1's safety net is firing in practice, not just in theory - worth its own dashboard panel from day one).
 
 Each event carries `feature_key`, `variant`, `user_id`/anonymous id, `club_id`, relevant hike/segment context, `app_version`, and a timestamp - written to Postgres, which is what GrowthBook's warehouse-native analysis queries directly (section 3). **What to measure first**, once there's a real experiment running: adoption/engagement for the gated feature, the `feature_gate_error` rate specifically, chapter-level differences, and any usability regression - in that order of priority, safety signal before growth signal.
+
+**Two consequences of the supersession above, for whoever builds this.** Neither touches sections 1-5, which stand as written.
+
+- **No `user_id`, no hike or segment context, no timestamp finer than a date**, and every breakdown suppressed below a k-anonymity floor. Exposure and outcome counts per variant are what the analysis reads. [EVENTING.md](EVENTING.md) §5 has the shapes.
+- **GrowthBook's analysis half goes unused at first, and that is a deliberate cost of the row above, not an oversight.** Warehouse-native analysis expects a row per user per metric and there are no such rows. The flagging half - manifest, targeting rules, per-chapter rules in section 4, local evaluation - is unaffected and still the recommendation in section 3. The arithmetic it would have run is a two-proportion test over four integers, which is a short script against the DuckDB the data platform already runs. If a metric later genuinely needs per-unit data, EVENTING.md §5's experiment-scoped id is the escape hatch, taken per experiment with a written reason and destroyed with the experiment.
+
+One rule that belongs in the manifest rather than in a reviewer's memory: **a flag marked `safety_surface` cannot be given an experiment.** Closures, serious warnings and the wrong-way alert are never the off arm of anything, and presentation variants may not show a hiker less than control, or later than control.
 
 ## Data model additions
 
@@ -126,4 +135,4 @@ Three phases, deliberately ordered so the safety net exists before anything depe
 - **Sync cadence and "recent enough" threshold** for FlagEvaluation's staleness check - needs to balance getting hikers onto new experiments promptly against not treating a hiker who's been offline for a multi-day stretch as suddenly ineligible for cached flags they were already correctly assigned to. A field-testing question, similar to the wrong-way alert's thresholds.
 - **Who administers flags day to day** - a full admin UI is real scope; a minimal v1 (a maintainer editing GrowthBook's own dashboard directly, backend just proxies/caches) is probably enough to start, with a proper in-app "chapter admin" surface as later work once multi-club tooling exists for real.
 - **Self-hosting GrowthBook alongside the existing backend** - same host as FastAPI, or a separate small service (which also decides whether the new MongoDB requirement rides alongside it or lives separately)? An infra/ops choice for whoever sets up hosting, not a data-model question.
-- **How to minimize the privacy footprint of the event taxonomy above** while still preserving useful experiment signal - this project has a consistently privacy-conscious stance elsewhere (IDENTITY_AND_PRIVACY.md); worth a real pass once real events exist, not assumed safe by default.
+- ~~**How to minimize the privacy footprint of the event taxonomy above** while still preserving useful experiment signal - this project has a consistently privacy-conscious stance elsewhere (IDENTITY_AND_PRIVACY.md); worth a real pass once real events exist, not assumed safe by default.~~ **Answered 2026-08-09 by [EVENTING.md](EVENTING.md)** - see the note in section 6. The pass happened before real events existed rather than after, which is why it could change the shape instead of having to migrate one.

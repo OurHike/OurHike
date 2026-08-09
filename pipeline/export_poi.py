@@ -69,7 +69,7 @@ import duckdb
 from lib.completeness import count_problems, fail_if_incomplete
 from lib.corridor import build_corridor
 from lib.photo_store import photo_key
-from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES, unify_poi
+from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES, poi_output_name, unify_poi
 
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
@@ -264,8 +264,8 @@ def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[
         )
     con.execute("CREATE OR REPLACE TABLE poi_geom AS SELECT *, ST_Point(lon, lat) AS geom FROM poi_out")
 
-    geojson_path = OUT_DIR / f"{poi_type}.geojson"
-    fgb_path = OUT_DIR / f"{poi_type}.fgb"
+    geojson_path = OUT_DIR / poi_output_name(poi_type, "geojson")
+    fgb_path = OUT_DIR / poi_output_name(poi_type, "fgb")
     # COPY TO refuses to overwrite an existing file for these drivers, and
     # this needs to be safely re-runnable.
     geojson_path.unlink(missing_ok=True)

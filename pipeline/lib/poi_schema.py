@@ -20,6 +20,32 @@ CONFIDENCE_HIGH = "high"
 CONFIDENCE_LOW = "low"
 CONFIDENCE_RANK = {CONFIDENCE_LOW: 1, CONFIDENCE_HIGH: 2}
 
+# The two files export_poi.py writes per poi_type.
+POI_OUTPUT_KINDS = ("geojson", "fgb")
+
+
+def poi_output_name(poi_type: str, kind: str = "geojson") -> str:
+    """What one poi_type's export is called on disk.
+
+    A naming convention rather than I/O, so it belongs in the pure module -
+    and it needs a single home because the two ends spelled it separately
+    once and disagreed. export_poi.py wrote `shelter.geojson`; export_spurs.py
+    read `poi_shelter.geojson`, which is the *R2 key* publish.py builds when
+    it flattens this directory into a bucket namespace. Both spellings are
+    correct in their own place, which is exactly why neither end looked wrong.
+
+    A missing POI file is a legal empty result (a partial export is a state
+    this pipeline supports), so the disagreement raised nothing: 784 spurs
+    published with a null destination and the run went green (#469). Reading
+    the name from here means the next divergence is a failed import rather
+    than a quiet zero.
+    """
+    if poi_type not in POI_TYPES:
+        raise ValueError(f"Unknown poi_type {poi_type!r} - expected one of {POI_TYPES}")
+    if kind not in POI_OUTPUT_KINDS:
+        raise ValueError(f"Unknown output kind {kind!r} - expected one of {POI_OUTPUT_KINDS}")
+    return f"{poi_type}.{kind}"
+
 
 def unify_poi(feature: dict, poi_type: str, source: str, trail_id: str, field_map: dict) -> dict:
     """Map one raw GeoJSON Feature (from any source) into the unified POI

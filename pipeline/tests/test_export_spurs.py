@@ -8,19 +8,32 @@ artifacts having to agree:
 
 - The spur record's key must be the id `trails.geojson` uses, or the app holds
   two files that cannot be joined.
-- The destination id must be the id `poi_*.geojson` publishes, or the link
+- The destination id must be the id export_poi.py publishes, or the link
   points at a POI the device has never heard of.
 
 Both are silent when wrong. A mismatched key produces a perfectly valid file
 in which nothing resolves, which looks identical to a trail network where
 nothing leads anywhere.
+
+That is not hypothetical, and this file is why it survived. Every fixture
+below used to hand-spell the POI filename as `poi_shelter.geojson` - the R2
+key, not the name on disk - which is precisely the mistake export_spurs.py
+was making, so the suite agreed with the bug and 784 spurs shipped with a
+null destination (#469). A fixture that restates the reader's assumption can
+only ever confirm it. So the filename is now asked for once, from
+lib/poi_schema.py, and the contract test at the bottom of this section runs
+the real writer into a directory and the real reader back out of it - the
+only arrangement here in which a disagreement between the two ends fails.
 """
 
 import json
 
+import duckdb
 import pytest
 
+import export_poi
 import export_spurs
+from lib.poi_schema import poi_output_name
 
 TRAIL_LAT, TRAIL_LON = 40.0, -75.0
 TYPE_DOMAIN = {"0": "Access (eg Parking)", "1": "Alternate Route", "3": "Spur (eg View, Camp)"}
@@ -104,13 +117,62 @@ def test_destination_pois_are_read_from_the_published_files_not_the_raw_ones(tmp
     points would publish ids that match nothing on the device."""
     poi_dir = tmp_path / "poi"
     poi_dir.mkdir()
-    (poi_dir / "poi_shelter.geojson").write_text(
+    (poi_dir / poi_output_name("shelter")).write_text(
         json.dumps({"features": [{"properties": {"id": "shelter:rocky-run", "lat": 40.0, "lon": -75.0}}]})
     )
 
     pois = export_spurs.load_destination_pois(poi_dir, ("shelter",))
 
     assert [p["id"] for p in pois] == ["shelter:rocky-run"]
+
+
+def test_the_real_exporter_writes_what_the_real_reader_looks_for(tmp_path, monkeypatch):
+    """The one test here that could have caught #469, and the only one that
+    can catch its successor.
+
+    Every other test in this file supplies the POI file itself, so it proves
+    what load_destination_pois does with a directory the test invented. This
+    one never names a file: export_poi.write_poi_type puts it there and
+    load_destination_pois goes looking, and if those two ever disagree about
+    the spelling again the assert below returns an empty list. That is what
+    an integration point deserves when both sides of it fail silently -
+    a missing POI file is a legal empty result, so nothing else in this
+    pipeline will raise when the contract breaks.
+
+    Deliberately not parameterised over every poi_type: the failure mode is a
+    naming convention, which is either right for all of them or wrong for all
+    of them, and one round trip through DuckDB's GDAL writer is enough to
+    prove it while staying cheap.
+    """
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    poi_dir = tmp_path / "poi"
+    poi_dir.mkdir()
+    monkeypatch.setattr(export_poi, "OUT_DIR", poi_dir)
+
+    export_poi.write_poi_type(
+        con,
+        "shelter",
+        [
+            {
+                "id": "atc_shelters:rocky-run",
+                "poi_type": "shelter",
+                "trail_id": "AT",
+                "source": "atc_shelters",
+                "source_feature_id": "rocky-run",
+                "name": "Rocky Run",
+                "lat": TRAIL_LAT,
+                "lon": TRAIL_LON,
+                "confidence": "high",
+            }
+        ],
+    )
+
+    pois = export_spurs.load_destination_pois(poi_dir, ("shelter",))
+
+    assert [p["id"] for p in pois] == ["atc_shelters:rocky-run"], (
+        f"export_poi wrote {sorted(p.name for p in poi_dir.iterdir())}, export_spurs read {poi_dir / poi_output_name('shelter')}"
+    )
 
 
 def test_a_poi_type_that_was_never_exported_is_skipped_not_fatal(tmp_path):
@@ -212,7 +274,7 @@ def test_the_output_is_keyed_by_id_so_the_client_can_look_one_up(tmp_path, monke
     (tmp_path / "raw" / "side_trails.geojson").write_text(json.dumps({"features": [side_trail("abc", "3")]}))
     (tmp_path / "raw" / "centerline.geojson").write_text(json.dumps({"features": CENTERLINE}))
     (tmp_path / "poi").mkdir()
-    (tmp_path / "poi" / "poi_shelter.geojson").write_text(
+    (tmp_path / "poi" / poi_output_name("shelter")).write_text(
         json.dumps({"features": [{"properties": shelter("shelter:rocky-run")}]})
     )
 

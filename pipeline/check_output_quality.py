@@ -163,7 +163,9 @@ BBOX_ABSOLUTE_TOLERANCE_DEG = 1e-6
 # Revisit once real runs give this a measured basis, the same way
 # SAMPLE_INTERVAL_METERS/etc. elsewhere in this pipeline are backed by real
 # measurements rather than guesses.
-DROP_THRESHOLD = 0.10
+# Defined in lib/completeness.py so a reader without DuckDB can have it too
+# (#514). Imported rather than redefined - one home, two readers.
+from lib.completeness import DROP_THRESHOLD  # noqa: E402
 
 # How many topo quads' readability gets re-checked per run - see
 # topo_readability_sample(). Same order of magnitude as check_freshness.py's

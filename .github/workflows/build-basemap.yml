@@ -136,6 +136,10 @@ jobs:
       # the log AND the summary - a number that exists only in a rendered
       # summary cannot be quoted by anything reading the logs later.
       - name: Measure
+        # `shell: bash` for `-o pipefail`: `| tee` below would otherwise take
+        # this step's exit status from `tee`, so a crashed measurement would
+        # report success on a build that produced nothing (#514).
+        shell: bash
         run: |
           python -c "
           from pathlib import Path

@@ -64,8 +64,7 @@ from pathlib import Path
 
 import requests
 
-from check_output_quality import DROP_THRESHOLD
-from lib.completeness import count_problems
+from lib.completeness import DROP_THRESHOLD, count_problems
 from smoke_published import (
     HTTP_TIMEOUT,
     HttpRangeSource,

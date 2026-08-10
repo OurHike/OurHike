@@ -51,6 +51,10 @@ jobs:
       # summary cannot be quoted by anything reading the logs later, which
       # is how the DEM build's own per-zoom table nearly went unrecorded.
       - name: Measure the overlap
+        # `shell: bash` for `-o pipefail`: `| tee` below would otherwise take
+        # this step's exit status from `tee`, so a crashed measurement would
+        # report success on a build that produced nothing (#514).
+        shell: bash
         env:
           DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
           # Empty on a push firing (the temporary trigger above); the script's

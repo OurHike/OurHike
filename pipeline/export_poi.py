@@ -397,14 +397,45 @@ def attach_photos(records: list[dict], photos: dict[str, list[dict]]) -> int:
     return attached
 
 
-def unify_all_sources(trail_id: str = TRAIL_ID) -> list[dict]:
+def has_geometry(feature: dict) -> bool:
+    """Whether a raw feature carries a location at all.
+
+    ATC's layers contain the occasional empty row - one parking feature
+    (`ebb7706f-ed9a-432e-87b1-8d949917f66c`) has no geometry, no name and no
+    attributes, and is the only one of the 2,533 features across all five
+    facility layers. A row like that is not a POI: it cannot be drawn, found
+    by search, or reported against, and verify_release.py fails a release
+    that publishes a feature with no geometry.
+
+    Skipped rather than fatal, which is the distinction unify_poi cannot
+    make on its own. **A feature with no geometry is bad data upstream; a
+    feature with a non-Point geometry is a wiring mistake here** - the wrong
+    layer plugged into a point source - so that one still raises. Before
+    this split, the empty parking row took down the whole export, and with
+    it every artifact of the release behind it.
+    """
+    return bool((feature.get("geometry") or {}).get("type"))
+
+
+def unify_all_sources(trail_id: str = TRAIL_ID, skipped: list[str] | None = None) -> list[dict]:
     """Load and unify every configured source (reading RAW_DIR at call
     time, not a pre-baked path, so tests can point it at a tmp_path fixture
     dir) into one flat list of unified POI dicts - no corridor clip applied
-    yet, see clip_to_corridor."""
+    yet, see clip_to_corridor.
+
+    Features with no geometry are skipped and counted - see has_geometry.
+    The count is returned to the caller through `skipped`, a list it owns,
+    because a source that starts shedding rows is a thing to notice across a
+    whole run and this function's return shape is load-bearing (
+    fetch_poi_images.py and fetch_atc_photos.py both call it).
+    """
     unified = []
     for stem, poi_type, source, field_map in DIRECT_SOURCES:
         for feature in load_features(RAW_DIR / f"{stem}.geojson"):
+            if not has_geometry(feature):
+                if skipped is not None:
+                    skipped.append(f"{source}:{(feature.get('properties') or {}).get('GlobalID')}")
+                continue
             record = unify_poi(feature, poi_type, source, trail_id, field_map)
             # The source feature's own attributes, kept for attach_descriptions
             # to compose from. Underscored and dropped before write_poi_type -
@@ -418,6 +449,14 @@ def unify_all_sources(trail_id: str = TRAIL_ID) -> list[dict]:
         icon = (feature.get("properties") or {}).get("icon")
         mapping = OPENTRAIL_ICON_MAP.get(icon)
         if mapping is None:
+            continue
+        # Same guard as the ATC layers above. opentrail.org has no empty row
+        # today, and "today" is exactly the qualifier that made this an
+        # outage: the shelter and campsite layers had none either, right up
+        # until three more layers were added beside them.
+        if not has_geometry(feature):
+            if skipped is not None:
+                skipped.append(f"{OPENTRAIL_SOURCE}:{(feature.get('properties') or {}).get('dbid')}")
             continue
         poi_type, confidence = mapping
         field_map = {**OPENTRAIL_FIELD_MAP_BASE, "confidence": confidence}
@@ -528,8 +567,14 @@ def main() -> dict:
     build_corridor(con, RAW_DIR / "centerline.geojson")
 
     print("Unifying POI sources...")
-    unified = unify_all_sources(TRAIL_ID)
+    skipped: list[str] = []
+    unified = unify_all_sources(TRAIL_ID, skipped)
     print(f"  {len(unified)} POIs unified across all sources (pre-clip).")
+    if skipped:
+        # Said out loud: a row upstream lost its geometry, and a count that
+        # grows run over run is a source going wrong rather than one empty
+        # record ATC has always had.
+        print(f"  {len(skipped)} source row(s) had no geometry and were skipped: {', '.join(skipped[:5])}")
 
     clipped = clip_to_corridor(con, unified)
     print(f"  {len(clipped)}/{len(unified)} within the corridor.")

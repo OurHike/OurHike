@@ -934,3 +934,85 @@ def test_the_photo_list_survives_both_artifact_formats(tmp_path, monkeypatch, co
     # Whatever the wire types, both artifacts must describe the same photos.
     assert [p["key"] for p in from_geojson] == [f"photos/{SHELTER_DIGEST}.jpg", f"photos/{second_digest}.jpg"]
     assert from_geojson == from_fgb
+
+
+def test_export_poi_skips_a_source_row_that_has_no_geometry(tmp_path, monkeypatch, con):
+    """The outage this guards against, and it is not hypothetical.
+
+    ATC's parking layer carries exactly one empty row - GlobalID
+    ebb7706f-ed9a-432e-87b1-8d949917f66c, no name, no attributes, no
+    geometry - out of 2,533 features across all five facility layers. Before
+    this, `unify_poi` raised on it and the whole export died, taking every
+    artifact of the release behind it: a single blank row upstream meant no
+    data release at all.
+
+    A feature with no geometry is not a POI. It cannot be drawn, found by
+    search or reported against, and verify_release.py fails a release that
+    publishes one. Skipping it is the honest handling; the rest of the layer
+    still ships.
+    """
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    _write_fc(
+        raw_dir / "parking.geojson",
+        [
+            _point_feature(1, -73.97, 41.07, {"GlobalID": "parking-glob-1", "Name": "Test Rd Parking Area", "Surface": "3"}),
+            {"type": "Feature", "id": 2, "geometry": None, "properties": {"GlobalID": "parking-empty"}},
+        ],
+    )
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+
+    manifest = export_poi.main()
+
+    assert manifest["parking"]["geojson"]["feature_count"] == 1
+    features = json.loads((out_dir / "parking.geojson").read_text())["features"]
+    assert [f["properties"]["id"] for f in features] == ["atc_parking:parking-glob-1"]
+
+
+def test_export_poi_reports_which_rows_it_skipped(tmp_path, monkeypatch):
+    """Counted and named rather than dropped quietly: one empty row is ATC's
+    long-standing data, and a number that grows is a source going wrong."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    _write_fc(
+        raw_dir / "privies.geojson",
+        [{"type": "Feature", "id": 1, "geometry": None, "properties": {"GlobalID": "privy-empty"}}],
+    )
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    skipped: list[str] = []
+
+    export_poi.unify_all_sources("AT", skipped)
+
+    assert skipped == ["atc_privies:privy-empty"]
+
+
+def test_export_poi_still_refuses_a_geometry_that_is_the_wrong_shape(tmp_path, monkeypatch):
+    """The other half of the split. A missing geometry is bad data upstream;
+    a polygon where points were expected is the wrong layer wired into a
+    point source, and that must not be absorbed as "one row skipped" - it
+    would empty a whole poi_type silently."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    _write_fc(
+        raw_dir / "privies.geojson",
+        [
+            {
+                "type": "Feature",
+                "id": 1,
+                "geometry": {"type": "Polygon", "coordinates": [[[-73.9, 41.0], [-73.8, 41.0], [-73.8, 41.1]]]},
+                "properties": {"GlobalID": "privy-polygon"},
+            }
+        ],
+    )
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+
+    with pytest.raises(ValueError, match="only supports Point geometries"):
+        export_poi.unify_all_sources("AT", [])

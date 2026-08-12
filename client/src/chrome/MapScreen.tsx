@@ -241,6 +241,9 @@ export interface MapScreenProps {
    *  straight to the legend, which is where both are said. */
   drawnCounts?: ReadonlyMap<string, number>
   belowPoiZoom?: boolean
+  /** Zooms in until most of what did not fit does (#528). Passed to the legend
+   *  and to the canvas count, which are the two places the drop is reported. */
+  onZoomToFit?: () => void
   /**
    * Whether the map is drawing no trail line at all - see StatusStrip, which
    * is the only thing that reads it.
@@ -318,6 +321,7 @@ export function MapScreen({
   belowArchiveZoom = false,
   drawnCounts,
   belowPoiZoom = false,
+  onZoomToFit,
   trailLinesMissing = false,
   archiveZooms = null,
 }: MapScreenProps) {
@@ -444,11 +448,26 @@ export function MapScreen({
                 either true or not - and a number that changes on every pinch
                 does not belong beside them. It sits over the map instead,
                 where the thing it is about is. */}
-            {droppedSummary !== null && (
-              <p className="map-screen__dropped" aria-live="polite">
-                {droppedSummary.drawn} of {droppedSummary.present} waypoints fit
-              </p>
-            )}
+            {droppedSummary !== null &&
+              (onZoomToFit === undefined ? (
+                <p className="map-screen__dropped" aria-live="polite">
+                  {droppedSummary.drawn} of {droppedSummary.present} waypoints fit
+                </p>
+              ) : (
+                // A control rather than a caption, so the answer to "I am not
+                // seeing everything" is one tap away without opening the panel.
+                // Still announces politely, because the COUNT changing is the
+                // news; the button is how it gets acted on.
+                <button
+                  type="button"
+                  className="map-screen__dropped"
+                  aria-live="polite"
+                  onClick={onZoomToFit}
+                >
+                  {droppedSummary.drawn} of {droppedSummary.present} waypoints fit
+                  <span className="map-screen__dropped-action"> · Zoom to fit</span>
+                </button>
+              ))}
 
             {/* Inline above the desktop breakpoint, where the whole list fits
                 on one line - the same `isDesktop` the legend uses, so the two
@@ -489,6 +508,7 @@ export function MapScreen({
             belowArchiveZoom={belowArchiveZoom}
             drawnCounts={drawnCounts}
             belowPoiZoom={belowPoiZoom}
+            onZoomToFit={onZoomToFit}
             onOpenDownloads={onOpenDownloads}
             hasDownload={hasDownload}
             downloadActivity={downloadActivity}

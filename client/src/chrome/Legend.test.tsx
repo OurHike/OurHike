@@ -396,3 +396,82 @@ describe('below the zoom waypoints are drawn at', () => {
     expect(screen.getByText(/pan or zoom out/i)).toBeInTheDocument()
   })
 })
+
+// The other half of reporting a drop: a way out of it (#528). Telling a hiker
+// they are not seeing everything and leaving them to find the zoom that fixes it
+// by pinching is half a feature - the zoom is computable (lib/zoomToFit.ts).
+//
+// Deliberately a camera move and not a fan-out of the hidden pins:
+// features/POI_SITES.md refuses displacing them, because it draws every one at a
+// position it is not at.
+describe('offering a way to see the rest', () => {
+  const bbox = { west: -1, south: -1, east: 1, north: 1 }
+  const points = [
+    { id: 'w1', type: 'water', lat: 0, lon: 0, confidence: 'high' as const },
+    { id: 'w2', type: 'water', lat: 0, lon: 0.001, confidence: 'high' as const },
+  ]
+
+  function renderLegend(onZoomToFit?: () => void) {
+    return render(
+      <Legend
+        open
+        bbox={bbox}
+        points={points}
+        blazeCounts={[]}
+        hiddenTypes={new Set()}
+        onToggleType={() => {}}
+        onClose={() => {}}
+        drawnCounts={new Map([['water::high', 1]])}
+        onZoomToFit={onZoomToFit}
+      />,
+    )
+  }
+
+  it('offers a control that goes there', async () => {
+    const onZoomToFit = vi.fn()
+    renderLegend(onZoomToFit)
+
+    await userEvent.click(screen.getByRole('button', { name: /zoom in to fit them/i }))
+
+    expect(onZoomToFit).toHaveBeenCalledTimes(1)
+  })
+
+  it('still says what is being dropped beside the control', () => {
+    // The count is the news; the button is how it gets acted on. Replacing the
+    // sentence with a bare button would lose the number that makes it matter.
+    renderLegend(vi.fn())
+
+    expect(screen.getByText(/1 of 2 waypoints fit at this zoom/i)).toBeInTheDocument()
+  })
+
+  it('falls back to saying so when there is nowhere to send anyone', () => {
+    // A legend rendered without a map to move - and a control that cannot move
+    // the camera is worse than none, so the sentence stands on its own.
+    renderLegend(undefined)
+
+    expect(
+      screen.queryByRole('button', { name: /zoom in to fit/i }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByText(/zoom in to see the rest/i)).toBeInTheDocument()
+  })
+
+  it('offers nothing when everything fits', () => {
+    render(
+      <Legend
+        open
+        bbox={bbox}
+        points={points}
+        blazeCounts={[]}
+        hiddenTypes={new Set()}
+        onToggleType={() => {}}
+        onClose={() => {}}
+        drawnCounts={new Map([['water::high', 2]])}
+        onZoomToFit={vi.fn()}
+      />,
+    )
+
+    expect(
+      screen.queryByRole('button', { name: /zoom in to fit/i }),
+    ).not.toBeInTheDocument()
+  })
+})

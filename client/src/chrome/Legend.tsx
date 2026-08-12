@@ -69,6 +69,13 @@ export interface LegendProps {
    */
   drawnCounts?: ReadonlyMap<string, number>
   /**
+   * Zooms in far enough that most of what did not fit does (#528,
+   * lib/zoomToFit.ts). Omitted, the panel still SAYS what is being dropped and
+   * simply offers no button - a control that cannot move the camera is worse
+   * than none, and the sentence is true either way.
+   */
+  onZoomToFit?: () => void
+  /**
    * Whether the camera is below POI_MIN_ZOOM, where the pin layer is not drawn
    * at all.
    *
@@ -107,6 +114,7 @@ export function Legend({
   belowArchiveZoom = false,
   drawnCounts,
   belowPoiZoom = false,
+  onZoomToFit,
   onOpenDownloads,
   hasDownload = false,
   downloadActivity = null,
@@ -173,8 +181,19 @@ export function Legend({
           is the privies, and a single averaged line would hide exactly that. */}
       {dropped !== null && (
         <p className="legend__dropped">
-          {dropped.drawn} of {dropped.present} waypoints fit at this zoom. Zoom in to see
-          the rest.
+          {dropped.drawn} of {dropped.present} waypoints fit at this zoom.{' '}
+          {onZoomToFit === undefined ? (
+            'Zoom in to see the rest.'
+          ) : (
+            // The remedy, rather than an instruction to go and find it. The zoom
+            // it goes to is computed from what is actually colliding, so pressing
+            // it recovers most of the missing pins AT THEIR REAL COORDINATES -
+            // which is why this is a camera move and not a fan-out of displaced
+            // pins (features/POI_SITES.md refuses that, and gives the reason).
+            <button type="button" className="legend__zoom-to-fit" onClick={onZoomToFit}>
+              Zoom in to fit them
+            </button>
+          )}
         </p>
       )}
 

@@ -155,10 +155,30 @@ PAGE_SIZE = 1000
 # default ladder on purpose (#536): this call is made once per corridor cell,
 # 51 times, and it runs after fetching sources, exporting trail lines, POIs
 # and spurs - so the cost of giving up is the whole publish, not one request.
-# A 504 from tnmaccess.nationalmap.gov threw away exactly that, on the FIRST
-# cell, 35 seconds in. Roughly two minutes of waiting spread over four
-# attempts is cheap against an hour of build.
-TNM_BACKOFF_SECONDS = (5, 15, 45, 60)
+#
+# WHAT THE 504s ACTUALLY ARE, measured against the live endpoint on
+# 2026-08-12 with ten sequential requests for one 1-degree cell:
+#
+#     504 30.09s   504 30.35s   504 29.96s   200 18.49s   504 30.39s
+#     200 16.58s   200 12.68s   200  8.78s   200  5.90s   200  3.78s
+#
+# Every failure came back at almost exactly **30 seconds**. That is TNM's own
+# gateway giving up on its upstream, not our client giving up on TNM - so
+# raising OUR timeout cannot help, and 60 seconds is already twice their
+# ceiling. A cold query for a dense cell simply costs them more than 30s.
+#
+# The successes are the useful half: 18.5s, then 16.6, 12.7, 8.8, 5.9, 3.8.
+# **Repeating the same query warms their cache**, so persistence converges
+# rather than merely rolling the dice - which is why the answer is a longer
+# ladder rather than a bigger timeout or a lower request rate. The failures
+# and successes interleaved, so this is per-query cost, not rate limiting;
+# a throttle would slow the run down without making a cell more likely to
+# answer.
+#
+# Seven attempts, ~5.5 minutes of waiting, plus ~30s burned per failed try.
+# An unlucky cell can therefore cost ~9 minutes - paid once, because the
+# answer is then cached to disk and a re-dispatch skips it entirely.
+TNM_BACKOFF_SECONDS = (5, 15, 30, 60, 90, 120)
 
 CELL_DEGREES = 1.0
 
@@ -195,7 +215,7 @@ def compute_grid_cells() -> list[tuple[float, float, float, float]]:
     return cells
 
 
-def list_products_for_cell(cell: tuple[float, float, float, float]) -> list[dict]:
+def list_products_for_cell(cell: tuple[float, float, float, float], *, sleep=time.sleep) -> list[dict]:
     """Query the TNM Access API for every real 1m DEM tile whose bbox
     intersects this cell. Pages via offset/total explicitly rather than
     trusting a single response - a cell dense enough to exceed PAGE_SIZE
@@ -216,6 +236,10 @@ def list_products_for_cell(cell: tuple[float, float, float, float]) -> list[dict
             timeout=60,
             backoff=TNM_BACKOFF_SECONDS,
             label=f"TNM cell {xmin:.2f},{ymin:.2f}",
+            # Injected rather than patched globally, matching lib/http_retry.py's
+            # own convention, so a test can assert the ladder without waiting
+            # out five minutes of it.
+            sleep=sleep,
         )
         data = resp.json()
         batch = data.get("items", [])

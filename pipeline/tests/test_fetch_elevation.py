@@ -314,3 +314,37 @@ def test_two_cells_do_not_share_a_cache_file(tmp_path, monkeypatch):
     other = (-83.73, 34.19, -82.73, 35.19)
 
     assert fetch_elevation.cell_cache_path(CELL) != fetch_elevation.cell_cache_path(other)
+
+
+def test_the_ladder_outlasts_a_bad_patch_at_tnm(requests_mock):
+    """Measured 2026-08-12: one cell answered 504 three times, then 200, then
+    504 again, before settling. Four attempts was not enough for that pattern,
+    which is what killed run 31595636184 seventeen minutes in.
+
+    The waits are asserted rather than slept through - a test that actually
+    waited 320 seconds would be a test nobody runs.
+    """
+    slept = []
+    requests_mock.get(
+        fetch_elevation.TNM_API_URL,
+        [
+            {"status_code": 504},
+            {"status_code": 504},
+            {"status_code": 504},
+            {"status_code": 504},
+            {"json": {"items": [{"downloadURL": "https://example/a.tif"}], "total": 1}},
+        ],
+    )
+
+    items = fetch_elevation.list_products_for_cell(CELL, sleep=slept.append)
+
+    assert items == [{"downloadURL": "https://example/a.tif"}]
+    assert slept == [5, 15, 30, 60]
+
+
+def test_the_ladder_is_long_enough_to_be_worth_having():
+    """Guards the number rather than the mechanism. Each failed attempt burns
+    ~30s against TNM's own gateway ceiling before the wait even starts, so a
+    short ladder gives a struggling cell very few real chances."""
+    assert len(fetch_elevation.TNM_BACKOFF_SECONDS) + 1 >= 7
+    assert sum(fetch_elevation.TNM_BACKOFF_SECONDS) >= 300

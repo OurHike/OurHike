@@ -136,6 +136,7 @@ def client_keys() -> dict[str, str]:
         _string_const(config, "ELEVATION_KEY"): "config.ts ELEVATION_KEY",
         _string_const(conditions, "PUBLISHED_CLOSURES_KEY"): "publishedConditions.ts",
         _string_const(conditions, "PUBLISHED_REPORTS_KEY"): "publishedConditions.ts",
+        _string_const(conditions, "PUBLISHED_ATC_UPDATES_KEY"): "publishedConditions.ts",
     }
 
     for poi_type in client_poi_types():
@@ -187,6 +188,12 @@ def published(tmp_path, monkeypatch) -> set[str]:
     conditions_dir.mkdir()
     (tmp_path / "conditions_manifest.json").write_text(
         json.dumps({"artifacts": {kind: manifest_entry(f"conditions/{kind}.json") for kind in ("closures", "reports")}})
+    )
+    # Its own manifest, from export_atc_updates.py rather than
+    # export_conditions.py - the two legs run under different conditions and
+    # each rewrites its manifest whole (see publish.py's conditions block).
+    (tmp_path / "atc_updates_manifest.json").write_text(
+        json.dumps({"artifacts": {"atc_updates": manifest_entry("conditions/atc_updates.json")}})
     )
 
     for name in (*publish.BACKGROUND_ARCHIVES.values(), *publish.OFFLINE_SHEET_ARCHIVES.values()):

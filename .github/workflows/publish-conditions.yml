@@ -1,8 +1,12 @@
-# Publishes verified closures and reports to R2, so reading one needs no
-# running server.
+# Publishes verified closures, verified reports and the ATC's own trail
+# updates to R2, so reading any of them needs no running server.
 #
 # features/CONDITIONS_DELIVERY.md is the design; this is steps 1 and 3 of its
-# order of work. Daily rather than continuous because that is the staleness the
+# order of work. The third artifact is features/ATC_TRAIL_UPDATES.md's, and
+# it arrives by a different road: closures and reports are queried out of the
+# database, while ATC's notices are baked from a file in git that a person
+# reviewed (#460). Same bucket prefix, same daily clock, same publish step -
+# and no credential, which is why the two legs are gated separately below. Daily rather than continuous because that is the staleness the
 # maintainer accepted (2026-08-08): "a closure can be latent by a day. we
 # won't be adjusting minute by minute." The artifact carries its own
 # `generated_at` and the client renders it, so a hiker is told how old the
@@ -58,23 +62,33 @@ jobs:
         working-directory: .
         run: |
           if [ -z "${{ secrets.PRODUCTION_CONDITIONS_DATABASE_URL }}" ]; then
-            echo "::warning::No conditions database is configured, so nothing was published. See features/CONDITIONS_DELIVERY.md and #429."
+            echo "::warning::No conditions database is configured, so no closures or reports were published. The ATC trail-updates leg does not need one and still ran. See features/CONDITIONS_DELIVERY.md and #429."
             echo "go=false" >> "$GITHUB_OUTPUT"
           else
             echo "go=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # No longer gated on the database, because half this job no longer
+      # needs one. ATC's Trail Updates are baked from a reviewed file in git
+      # (features/ATC_TRAIL_UPDATES.md, #460) - no query, no credential - and
+      # gating the checkout on a secret that leg never uses would have made
+      # the ATC layer wait on Supabase account work it has nothing to do with.
       - uses: actions/checkout@v4
-        if: steps.can.outputs.go == 'true'
 
       - uses: actions/setup-python@v5
-        if: steps.can.outputs.go == 'true'
         with:
           python-version: "3.14"
 
       - name: Install dependencies
-        if: steps.can.outputs.go == 'true'
         run: pip install -r requirements.txt
+
+      # Before the database leg, and unconditionally. Writes nothing at all
+      # while nobody has reviewed reference/atc_updates.json, and says so on
+      # stdout rather than failing: "we have not looked yet" is a true
+      # statement about this feature, and a red X for it would be noise on a
+      # job that is working.
+      - name: Export the ATC's reviewed trail updates
+        run: python export_atc_updates.py
 
       - name: Export verified conditions
         id: export
@@ -86,17 +100,26 @@ jobs:
       # Printed before publishing, because "it read something" and "it
       # published something" are different facts and only the first one
       # explains an empty upload.
+      #
+      # Both manifests, and neither is required to exist: the conditions one
+      # is absent until the database secret is configured, the ATC one until
+      # somebody reviews the file. A run that produced neither prints nothing
+      # here and "Nothing changed" below, which is the honest pair.
       - name: Say what was read
-        if: steps.can.outputs.go == 'true'
         run: |
           python -c "
-          import json
-          for kind, entry in json.load(open('data/processed/conditions_manifest.json'))['artifacts'].items():
-              print(f\"{entry['count']} {kind} row(s), generated {entry['generated_at']}\")
+          import json, pathlib
+          for name in ('conditions_manifest.json', 'atc_updates_manifest.json'):
+              path = pathlib.Path('data/processed') / name
+              if not path.exists():
+                  continue
+              for kind, entry in json.loads(path.read_text())['artifacts'].items():
+                  reviewed = entry.get('reviewed_at')
+                  when = f\", reviewed {reviewed}\" if reviewed else ''
+                  print(f\"{entry['count']} {kind} row(s), generated {entry['generated_at']}{when}\")
           "
 
       - name: Publish to R2
-        if: steps.can.outputs.go == 'true'
         env:
           # The gate publish.py checks. Set only on this step, so every other
           # step here is structurally incapable of writing to the bucket -

@@ -35,6 +35,7 @@ import type { TerrainUrls } from './terrain'
 import { attachMapChrome, type ScaleUnits } from './mapChrome'
 import type { ResolvedTheme } from '../lib/theme'
 import { attachHiddenPoiTypes, attachPoiData, attachPoiIcons } from './poiLayers'
+import { attachAtcUpdateData, attachAtcUpdateTaps } from './atcUpdateLayers'
 import { attachClosureData, type ClosureBand } from './closureLayers'
 import { attachWarningData, attachWarningIcon, type WarningPoint } from './warningLayers'
 import { attachPoiTaps } from './poiTaps'
@@ -83,6 +84,16 @@ export interface MapViewProps {
    * closureLayers.ts's `closureBands`.
    */
   closures?: readonly ClosureBand[]
+  /**
+   * The ATC's own trail updates, in the same coordinates and drawn at the
+   * same weight - a second band source rather than more features in
+   * `closures`, because the two carry different rhythms and a tap has to be
+   * able to say which kind it landed on (map/atcUpdateLayers.ts, #461).
+   */
+  atcUpdates?: readonly ClosureBand[]
+  /** A tap landed on an ATC band, by band id. The shell decides what to show
+   *  - this component deliberately does not know what a sheet is. */
+  onSelectAtcUpdate?: (bandId: string) => void
   /**
    * Moderator-escalated warnings, as points. NEVER a notification - see the
    * header of warningLayers.ts.
@@ -201,6 +212,7 @@ const FIT_PADDING = 24
 const NO_POIS: readonly MapPoint[] = []
 const NOTHING_HIDDEN: ReadonlySet<string> = new Set()
 const NO_CLOSURES: readonly ClosureBand[] = []
+const NO_ATC_UPDATES: readonly ClosureBand[] = []
 const NO_WARNINGS: readonly WarningPoint[] = []
 
 export function MapView({
@@ -210,6 +222,8 @@ export function MapView({
   pois = NO_POIS,
   hiddenTypes = NOTHING_HIDDEN,
   closures = NO_CLOSURES,
+  atcUpdates = NO_ATC_UPDATES,
+  onSelectAtcUpdate,
   warnings = NO_WARNINGS,
   onSelectPoi,
   center,
@@ -486,6 +500,11 @@ export function MapView({
 
   useEffect(() => {
     if (map === null) return
+    return attachAtcUpdateData(map, atcUpdates)
+  }, [map, atcUpdates])
+
+  useEffect(() => {
+    if (map === null) return
     return attachWarningData(map, warnings)
   }, [map, warnings])
 
@@ -496,6 +515,11 @@ export function MapView({
     if (map === null || onSelectPoi === undefined) return
     return attachPoiTaps(map, onSelectPoi)
   }, [map, onSelectPoi])
+
+  useEffect(() => {
+    if (map === null || onSelectAtcUpdate === undefined) return
+    return attachAtcUpdateTaps(map, onSelectAtcUpdate)
+  }, [map, onSelectAtcUpdate])
 
   useEffect(() => {
     if (map === null || onViewportChange === undefined) return

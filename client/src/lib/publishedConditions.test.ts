@@ -169,3 +169,106 @@ describe('fetchPublishedReports', () => {
     expect(published?.items).toEqual([])
   })
 })
+
+// The third artifact (features/ATC_TRAIL_UPDATES.md, #461). Its own key and
+// its own payload name like the other two, plus the one field neither of them
+// has: `reviewed_at`, which is when a PERSON last checked ATC's page rather
+// than when the bake ran. Both are real, they differ, and a daily bake
+// stamping a daily `generated_at` on a three-month-old review would claim a
+// freshness nobody has.
+
+const AN_ATC_UPDATES_DOCUMENT = {
+  generated_at: '2026-08-12T08:40:00Z',
+  reviewed_at: '2026-08-12',
+  atc_updates: [
+    {
+      atc_id: 'va-creeper-trail-closure-detour',
+      title: 'SW Virginia: VA Creeper Trail Closure/Detour',
+      category: 'Closure',
+      states: ['VA'],
+      start_mile_marker: 476.6,
+      end_mile_marker: 485.8,
+      updated_at: '2026-07-17T00:00:00Z',
+      source_url: 'https://appalachiantrail.org/trail-updates/va-creeper/',
+    },
+  ],
+}
+
+describe('fetchPublishedAtcUpdates', () => {
+  it('reads its own artifact, under its own key', async () => {
+    const fetchSpy = mockResponse(AN_ATC_UPDATES_DOCUMENT)
+    const { fetchPublishedAtcUpdates, PUBLISHED_ATC_UPDATES_KEY } =
+      await loadWithBase(BASE)
+
+    const published = await fetchPublishedAtcUpdates()
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      `${BASE}/${PUBLISHED_ATC_UPDATES_KEY}`,
+      expect.anything(),
+    )
+    expect(published?.items).toHaveLength(1)
+  })
+
+  it('carries the review date alongside the bake date', async () => {
+    mockResponse(AN_ATC_UPDATES_DOCUMENT)
+    const { fetchPublishedAtcUpdates } = await loadWithBase(BASE)
+
+    const published = await fetchPublishedAtcUpdates()
+
+    expect(published?.generatedAt.toISOString()).toBe('2026-08-12T08:40:00.000Z')
+    expect(published?.reviewedAt?.toISOString()).toBe('2026-08-12T00:00:00.000Z')
+  })
+
+  it('still reads a document that has no review date', async () => {
+    // Lenient where `generated_at` is strict, because the two carry different
+    // weight: a missing review date costs a line of provenance on a sheet,
+    // not the age of the data.
+    mockResponse({ generated_at: '2026-08-12T08:40:00Z', atc_updates: [] })
+    const { fetchPublishedAtcUpdates } = await loadWithBase(BASE)
+
+    const published = await fetchPublishedAtcUpdates()
+
+    expect(published).not.toBeNull()
+    expect(published?.reviewedAt).toBeUndefined()
+  })
+
+  it('drops an unparseable review date rather than carrying an Invalid Date', async () => {
+    mockResponse({ ...AN_ATC_UPDATES_DOCUMENT, reviewed_at: 'sometime in May' })
+    const { fetchPublishedAtcUpdates } = await loadWithBase(BASE)
+
+    expect((await fetchPublishedAtcUpdates())?.reviewedAt).toBeUndefined()
+  })
+
+  it('answers null for the 404 served while nobody has reviewed the file', async () => {
+    // The pipeline publishes nothing at all in that state, deliberately: "we
+    // have not looked" and "ATC reports nothing" are different claims, and
+    // only one of them is safe to draw as an empty map.
+    mockResponse('', { status: 404 })
+    const { fetchPublishedAtcUpdates } = await loadWithBase(BASE)
+
+    expect(await fetchPublishedAtcUpdates()).toBeNull()
+  })
+
+  it('refuses a document whose payload is under the wrong name', async () => {
+    mockResponse(A_CLOSURES_DOCUMENT)
+    const { fetchPublishedAtcUpdates } = await loadWithBase(BASE)
+
+    expect(await fetchPublishedAtcUpdates()).toBeNull()
+  })
+
+  it('accepts an empty list, which a reviewer can honestly produce', async () => {
+    // "We looked, and ATC has nothing placeable" - the reviewed-but-empty
+    // case, which is a real answer and distinct from the 404 above.
+    mockResponse({
+      generated_at: '2026-08-12T08:40:00Z',
+      reviewed_at: '2026-08-12',
+      atc_updates: [],
+    })
+    const { fetchPublishedAtcUpdates } = await loadWithBase(BASE)
+
+    const published = await fetchPublishedAtcUpdates()
+
+    expect(published).not.toBeNull()
+    expect(published?.items).toEqual([])
+  })
+})

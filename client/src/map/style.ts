@@ -64,7 +64,9 @@
 
 import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec'
 import { BLAZE_MATCH_EXPRESSION } from '../lib/blaze'
+import { buildAtcUpdateLayers } from '../lib/atcUpdateStyle'
 import { buildClosureLayers } from '../lib/closureStyle'
+import { buildAtcUpdateSource, ATC_UPDATE_SOURCE_ID } from './atcUpdateLayers'
 import { buildClosureSource, CLOSURE_SOURCE_ID } from './closureLayers'
 import { buildPoiLayer, buildPoiSource, POI_SOURCE_ID } from './poiLayers'
 import { buildWarningLayer, buildWarningSource, WARNING_SOURCE_ID } from './warningLayers'
@@ -667,6 +669,14 @@ export function buildMapStyle({
       // over a closure somebody walked up to and photographed would be a false
       // statement about where it came from.
       [CLOSURE_SOURCE_ID]: buildClosureSource(),
+      // The ATC's notices, and this one DOES have a third party to credit -
+      // which is why it is a separate source rather than more features in the
+      // one above. No `attribution` here either, though: a corner credit is
+      // the wrong surface for it. What a hiker needs is not "© ATC" under the
+      // whole map but the organisation's name on the specific claim, with the
+      // date they last edited it and a link to their page, which is what
+      // chrome/AtcUpdateSheet.tsx renders (#461).
+      [ATC_UPDATE_SOURCE_ID]: buildAtcUpdateSource(),
       [WARNING_SOURCE_ID]: buildWarningSource(),
       // Each of these carries its own credit (OpenFreeMap's terms, the AWS
       // Terrain Tiles requirement), like the three above - a source names the
@@ -777,6 +787,14 @@ export function buildMapStyle({
       // lib/closureStyle.ts for why the band differs from a blaze in width,
       // rhythm and casing weight rather than only in colour.
       ...buildClosureLayers(CLOSURE_SOURCE_ID),
+      // The ATC's bands directly after, for the same reason and at the same
+      // weight. Which of the two sits on top where they overlap is not a
+      // statement about which is more true - features/SOURCE_REGISTRY.md's
+      // rule for two organisations describing the same ground is show one and
+      // disclose the other, and disclosing is the sheet's job. They are drawn
+      // second only because the ATC is the upstream authority on the A.T.,
+      // and something had to be.
+      ...buildAtcUpdateLayers(ATC_UPDATE_SOURCE_ID),
       // Then the pins, so one is never buried under the trail line it sits on.
       // See poiLayers.ts for why this is one layer rather than one per
       // category.

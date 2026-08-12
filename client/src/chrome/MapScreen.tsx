@@ -14,7 +14,7 @@
 // can see - which background is drawn, and whether the raster archive it may
 // be drawn over is actually on the phone.
 
-import { useCallback, useState } from 'react'
+import { useCallback, useState, type ReactNode } from 'react'
 import { StatusStrip } from './StatusStrip'
 import { Header } from './Header'
 import { TabBar } from './TabBar'
@@ -98,6 +98,15 @@ export interface MapScreenProps {
    * its mind.
    */
   closures?: readonly ClosureBand[]
+  /** The ATC's own notices, drawn at the same weight as a closure and read
+   *  from the same geometry path (features/ATC_TRAIL_UPDATES.md, #461). */
+  atcUpdates?: readonly ClosureBand[]
+  /** An ATC band was tapped, by band id. */
+  onSelectAtcUpdate?: (bandId: string) => void
+  /** The tapped update's sheet, or null. Rendered by the shell for the same
+   *  reason `selectedPoi` is: the map draws bands, and the app is what knows
+   *  whose notice a band belongs to. */
+  atcUpdateSheet?: ReactNode
   warnings?: readonly WarningPoint[]
 
   activeTab: TabId
@@ -261,6 +270,9 @@ export function MapScreen({
   closureAhead = null,
   warningsAhead = null,
   closures,
+  atcUpdates,
+  onSelectAtcUpdate,
+  atcUpdateSheet,
   warnings,
   activeTab,
   onSelectTab,
@@ -400,6 +412,8 @@ export function MapScreen({
               pois={viewportPoints}
               hiddenTypes={hiddenTypes}
               closures={closures}
+              atcUpdates={atcUpdates}
+              onSelectAtcUpdate={onSelectAtcUpdate}
               warnings={warnings}
               onSelectPoi={onSelectPoi}
               showZoomButtons={showZoomButtons}
@@ -433,6 +447,12 @@ export function MapScreen({
             {selectedPoi !== null && (
               <PoiCard poi={selectedPoi} map={liveMap} onClose={onClosePoi} />
             )}
+
+            {/* Beside the card rather than placed like one. The waypoint card
+                positions itself in canvas pixels because it points at a pin;
+                this is about a stretch of trail, so it sits where the search
+                sheet does and needs none of that. */}
+            {atcUpdateSheet}
 
             <Search
               open={searchOpen}

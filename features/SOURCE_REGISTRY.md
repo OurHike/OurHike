@@ -284,6 +284,8 @@ The subset worth doing well before any form exists, because it costs little and 
 
 **Give the twelve existing entries a real steward, a licence field and a contact.** ATC is already the de facto registered organization; recording it in the shape above turns [#98](https://github.com/OurHike/OurHike/issues/98) and the unconfirmed ATC terms from two one-off unknowns into two rows with an empty required field — which is a question someone can answer, rather than a thing everyone remembers is unresolved. It also proves the schema against real data before an outsider depends on it.
 
+**Still to do, and no longer blocked.** A thirteenth entry now carries `kind`, `trust`, `steward`, `licence` and `freshness` on real data — ATC's Trail Updates ([ATC_TRAIL_UPDATES.md](ATC_TRAIL_UPDATES.md), [#459](https://github.com/OurHike/OurHike/issues/459)) — which is the schema proved against a source that is deliberately unlike the other twelve rather than a fourteenth ArcGIS layer. Doing the same for the twelve was, until 2026-08-12, quietly impossible to keep: `discover_sources.py` rebuilt each rediscovered entry from the layer metadata and carried forward only `notes`, so a steward or a licence added by hand survived until the next discovery run and then vanished with nothing said. It now keeps every field it did not write itself. The same bug was deleting the top-level `photo_licence` block on every run.
+
 ## Open questions (for you, not decided here)
 
 - **Who reviews.** The gate is a human merge, and today that is whoever runs this repository. That does not scale past a handful of organizations, and per-region or per-trail reviewers tied to `Profile.role` are the obvious direction — but that is a governance decision about the project, not a data model.

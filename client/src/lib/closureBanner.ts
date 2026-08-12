@@ -111,28 +111,46 @@ function distanceAhead(
 }
 
 /**
- * One banner for a whole trail's worth of closures: the one a hiker is about
- * to walk into, or null if the way ahead is clear.
+ * The closure a hiker is about to walk into, and how far ahead it is.
  *
  * Nearest wins, and a closure the hiker is standing in wins outright. The
  * header has room for one line, and the closure two hundred miles north is
  * not the one that changes what they do next - showing it instead of the one
  * at mile 3 would be actively worse than showing nothing.
+ *
+ * The distance rides out with the closure because that one line now has two
+ * sources competing for it: OurHike's verified closures and the ATC's own
+ * notices (lib/atcUpdates.ts, #461). Neither source outranks the other -
+ * an ATC notice is authoritative, a verified closure was checked by a
+ * moderator - so the tie is broken the same way it is broken *within* this
+ * list, by which one the hiker reaches first. Returning only a string would
+ * have meant inventing a precedence rule instead.
+ */
+export function nearestClosure(
+  closures: readonly Closure[],
+  currentMile: number,
+  direction: HikeDirection | undefined,
+): { closure: Closure; distance: number } | null {
+  let best: { closure: Closure; distance: number } | null = null
+
+  for (const closure of closures) {
+    const ahead = distanceAhead(closure, currentMile, direction)
+    if (ahead === null) continue
+    if (best === null || ahead < best.distance) best = { closure, distance: ahead }
+  }
+
+  return best
+}
+
+/**
+ * One banner for a whole trail's worth of closures, or null if the way ahead
+ * is clear.
  */
 export function nearestClosureBanner(
   closures: readonly Closure[],
   currentMile: number,
   direction: HikeDirection | undefined,
 ): string | null {
-  let best: Closure | null = null
-  let bestDistance = Infinity
-
-  for (const closure of closures) {
-    const ahead = distanceAhead(closure, currentMile, direction)
-    if (ahead === null || ahead >= bestDistance) continue
-    best = closure
-    bestDistance = ahead
-  }
-
-  return best === null ? null : closureBanner(best, currentMile, direction)
+  const best = nearestClosure(closures, currentMile, direction)
+  return best === null ? null : closureBanner(best.closure, currentMile, direction)
 }

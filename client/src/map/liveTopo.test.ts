@@ -43,6 +43,7 @@ import {
 } from './terrain'
 import { POI_LAYER_ID } from './poiLayers'
 import { WARNING_LAYER_ID } from './warningLayers'
+import { ATC_UPDATE_CASING_LAYER_ID, ATC_UPDATE_LAYER_ID } from '../lib/atcUpdateStyle'
 import { CLOSURE_CASING_LAYER_ID, CLOSURE_LAYER_ID } from '../lib/closureStyle'
 
 // The live background exists because a raster mosaic of pre-rendered US Topo
@@ -545,6 +546,12 @@ describe('the offline-only background', () => {
       'trail-blaze',
       CLOSURE_CASING_LAYER_ID,
       CLOSURE_LAYER_ID,
+      // The ATC's own notices survive the subtraction for the same reason the
+      // closures do, and arguably more so: their band is baked into a
+      // published artifact rather than fetched live, so it is exactly the
+      // warning a hiker with no signal still has (#461).
+      ATC_UPDATE_CASING_LAYER_ID,
+      ATC_UPDATE_LAYER_ID,
       POI_LAYER_ID,
       WARNING_LAYER_ID,
     ])

@@ -113,3 +113,46 @@ def test_zero_feature_response_is_treated_as_a_failure(tmp_path, monkeypatch, re
     # An incomplete run must not leave behind a manifest that looks
     # authoritative.
     assert not manifest_path.exists()
+
+
+def test_a_source_that_is_not_a_feature_layer_is_never_fetched(tmp_path, monkeypatch, requests_mock):
+    """ATC's Trail Updates are prose on a website, registered in the same
+    file as the twelve ArcGIS layers (#459). Left in this loop they would
+    fail their metadata check, fetch nothing, and land in the completeness
+    gate as a zero-feature source - which is the gate's signal for "something
+    is broken", raised on every single run for a source that was never
+    supposed to be here. No mock is registered for the notices URL, so a
+    request to it fails this test loudly rather than passing silently."""
+    sources = {
+        "sources": [
+            {"key": "fake", "title": "Fake Layer", "url": LAYER_URL},
+            {
+                "key": "atc_trail_updates",
+                "title": "A.T. Trail Updates",
+                "kind": "published_notices",
+                "url": "https://appalachiantrail.org/trail-updates/",
+            },
+        ]
+    }
+    (tmp_path / "sources.json").write_text(json.dumps(sources))
+    raw_dir = tmp_path / "data" / "raw"
+    raw_dir.mkdir(parents=True)
+    manifest_path = raw_dir / "manifest.json"
+    monkeypatch.setattr(fetch_all, "SOURCES_PATH", tmp_path / "sources.json")
+    monkeypatch.setattr(fetch_all, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(fetch_all, "MANIFEST_PATH", manifest_path)
+
+    requests_mock.get(LAYER_URL, json={"editingInfo": {"dataLastEditDate": 42}})
+    requests_mock.get(
+        LAYER_URL + "/query",
+        [
+            {"json": {"features": [{"type": "Feature", "properties": {}, "geometry": None}]}},
+            {"json": {"features": []}},
+        ],
+    )
+
+    fetch_all.main()
+
+    manifest = json.loads(manifest_path.read_text())
+    assert "atc_trail_updates" not in manifest
+    assert manifest["fake"]["feature_count"] == 1

@@ -85,3 +85,107 @@ def test_two_titles_slugifying_to_the_same_key_are_flagged_not_silently_duplicat
     bridges_entries = [s for s in registry["sources"] if s["key"] == "bridges"]
     assert len(bridges_entries) == 1  # not two entries silently sharing one key
     assert bridges_entries[0]["url"] == BRIDGES_OLD_URL  # first-discovered layer wins the key
+
+
+def _discovering_one_layer(tmp_path, monkeypatch, requests_mock, prior_registry: dict):
+    """Run discovery over a registry that already exists, and hand back what
+    it wrote. One layer, rediscovered - the ordinary case, and the one where
+    fields written by a person get thrown away."""
+    (tmp_path / "sources.json").write_text(json.dumps(prior_registry))
+    monkeypatch.setattr(discover_sources, "SOURCES_PATH", tmp_path / "sources.json")
+    monkeypatch.setattr(sys, "argv", ["discover_sources.py", ITEM_ID])
+
+    requests_mock.get(
+        APP_CONFIG_URL,
+        json={"dataSources": {"ds0": {"type": "WEB_MAP", "portalUrl": "https://www.arcgis.com", "itemId": WEBMAP_ID}}},
+    )
+    requests_mock.get(
+        WEBMAP_DATA_URL,
+        json={"operationalLayers": [{"title": "A.T. Bridges", "url": BRIDGES_NEW_URL}]},
+    )
+
+    discover_sources.main()
+    return json.loads((tmp_path / "sources.json").read_text())
+
+
+def test_rediscovery_keeps_fields_a_person_wrote_on_an_entry(tmp_path, monkeypatch, requests_mock):
+    """features/SOURCE_REGISTRY.md asks for a steward, a licence and a
+    contact on every source. This used to carry `notes` forward and nothing
+    else, so any such field survived until the next discovery run and then
+    vanished - on a run whose output nobody re-reads line by line, because it
+    is supposed to be mechanical. #459 adds exactly those fields."""
+    registry = _discovering_one_layer(
+        tmp_path,
+        monkeypatch,
+        requests_mock,
+        {
+            "sources": [
+                {
+                    "key": "bridges",
+                    "title": "A.T. Bridges",
+                    "url": BRIDGES_OLD_URL,
+                    "trust": "authoritative",
+                    "steward": "Appalachian Trail Conservancy",
+                    "licence": "unconfirmed - see #98",
+                }
+            ]
+        },
+    )
+
+    bridges = next(s for s in registry["sources"] if s["key"] == "bridges")
+    assert bridges["trust"] == "authoritative"
+    assert bridges["steward"] == "Appalachian Trail Conservancy"
+    assert bridges["licence"] == "unconfirmed - see #98"
+
+
+def test_rediscovery_still_takes_the_url_from_the_layer(tmp_path, monkeypatch, requests_mock):
+    """The other half of the same rule: discovery owns what it re-reads. A
+    prior URL must not win, or a moved layer would be pinned to its old
+    address forever."""
+    registry = _discovering_one_layer(
+        tmp_path,
+        monkeypatch,
+        requests_mock,
+        {"sources": [{"key": "bridges", "title": "A.T. Bridges", "url": BRIDGES_OLD_URL}]},
+    )
+
+    assert next(s for s in registry["sources"] if s["key"] == "bridges")["url"] == BRIDGES_NEW_URL
+
+
+def test_rediscovery_keeps_the_registry_s_other_top_level_blocks(tmp_path, monkeypatch, requests_mock):
+    """`photo_licence` records the basis on which ATC's photos may be served
+    at all - a question CONTRIBUTING.md says must be recorded rather than
+    assumed. Rebuilding the document from `_comment` + `sources` deleted it
+    on every discovery run."""
+    registry = _discovering_one_layer(
+        tmp_path,
+        monkeypatch,
+        requests_mock,
+        {
+            "photo_licence": {"license": "© ATC, used with permission"},
+            "sources": [{"key": "bridges", "title": "A.T. Bridges", "url": BRIDGES_OLD_URL}],
+        },
+    )
+
+    assert registry["photo_licence"]["license"] == "© ATC, used with permission"
+
+
+def test_a_hand_registered_source_survives_a_discovery_run(tmp_path, monkeypatch, requests_mock, capsys):
+    """ATC's Trail Updates are not in the Experience Builder app and never
+    will be, so every discovery run finds them missing. Kept-not-deleted is
+    what makes hand-registering a source viable at all (#459)."""
+    registry = _discovering_one_layer(
+        tmp_path,
+        monkeypatch,
+        requests_mock,
+        {
+            "sources": [
+                {"key": "bridges", "title": "A.T. Bridges", "url": BRIDGES_OLD_URL},
+                {"key": "atc_trail_updates", "title": "A.T. Trail Updates", "kind": "published_notices"},
+            ]
+        },
+    )
+
+    kept = next(s for s in registry["sources"] if s["key"] == "atc_trail_updates")
+    assert kept["kind"] == "published_notices"
+    assert "WARNING" in capsys.readouterr().out

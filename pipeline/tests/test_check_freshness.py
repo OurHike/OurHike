@@ -171,8 +171,10 @@ def test_a_null_recorded_atc_marker_rolls_up_as_unknown_not_a_false_fresh(tmp_pa
     monkeypatch.setattr(check_freshness, "OPENTRAIL_STATE", tmp_path / "absent_opentrail.json")
     monkeypatch.setattr(check_freshness, "TOPO_MANIFEST", tmp_path / "absent_topo.json")
     monkeypatch.setattr(check_freshness, "ELEVATION_INDEX", tmp_path / "absent_elevation.json")
+    monkeypatch.setattr(check_freshness, "ATC_UPDATES_FILE", tmp_path / "absent_atc_updates.json")
     monkeypatch.setattr(check_freshness, "upstream_opentrail_marker", lambda: None)
     monkeypatch.setattr(check_freshness, "upstream_elevation_marker", lambda: None)
+    monkeypatch.setattr(check_freshness, "upstream_atc_updates_marker", lambda: None)
 
     requests_mock.get(
         "https://example.com/centerline?f=json",

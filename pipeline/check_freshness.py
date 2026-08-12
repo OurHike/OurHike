@@ -19,6 +19,18 @@ Each upstream exposes a different freshness marker, so this normalises them:
     Elevation     the set of edition dates TNM currently publishes, since
                   3DEP has no per-file timestamp worth trusting but does
                   embed an edition date in every filename
+    ATC updates   HTTP ETag on ATC's trail-updates feed, compared against
+                  what a human recorded in reference/atc_updates.json when
+                  they last reviewed it (#459)
+
+The fifth one is the odd one and worth reading the difference off: the other
+four say *the pipeline should refetch*, and it says *a person should go and
+look*. Nothing fetches ATC's Trail Updates on a schedule - they are prose on
+a website, reviewed into a file in git and released by a merged pull request
+(features/ATC_TRAIL_UPDATES.md) - so no automated run can clear a STALE here.
+Its recorded side is therefore in git rather than in gitignored `data/raw/`,
+which also means it is the one source this check can answer from a bare
+checkout.
 
 THE FAILURE THAT MATTERS is a false "fresh". Reporting stale data as current
 means the map quietly keeps showing a closed trail or a moved shelter, so
@@ -73,12 +85,18 @@ from lib.freshness_state import (
     state_age_days,
     summarise,
 )
+from lib.source_registry import find_source, load_registry
 
 ROOT = Path(__file__).parent
 ATC_MANIFEST = ROOT / "data" / "raw" / "manifest.json"
 TOPO_MANIFEST = ROOT / "data" / "raw" / "topo_quads" / "manifest.json"
 OPENTRAIL_STATE = ROOT / "data" / "raw" / "opentrail_state.json"
 ELEVATION_INDEX = ROOT / "data" / "raw" / "elevation" / "tile_index.json"
+
+# The one recorded marker that is checked in rather than fetched - see the
+# module docstring's fifth row. `data/raw/` is gitignored; this is not.
+ATC_UPDATES_FILE = ROOT / "reference" / "atc_updates.json"
+SOURCES_PATH = ROOT / "sources.json"
 
 OPENTRAIL_URL = "https://opentrail.org/api/getData?trail=AT"
 HTTP_TIMEOUT = 30
@@ -118,6 +136,7 @@ def recorded_state() -> dict:
         opentrail_state=OPENTRAIL_STATE,
         topo_manifest=TOPO_MANIFEST,
         elevation_index=ELEVATION_INDEX,
+        atc_updates_file=ATC_UPDATES_FILE,
     )
 
 
@@ -142,6 +161,10 @@ def recorded_elevation_marker() -> str | None:
     return freshness_state.elevation_marker(ELEVATION_INDEX)
 
 
+def recorded_atc_updates_marker() -> str | None:
+    return freshness_state.atc_updates_marker(ATC_UPDATES_FILE)
+
+
 # --- Upstream markers ------------------------------------------------------
 
 
@@ -160,6 +183,49 @@ def upstream_atc_marker(url: str) -> str | None:
 def upstream_opentrail_marker() -> str | None:
     try:
         response = requests.head(OPENTRAIL_URL, timeout=HTTP_TIMEOUT)
+        return response.headers.get("ETag")
+    except requests.RequestException:
+        return None
+
+
+def atc_updates_feed_url() -> str | None:
+    """Where to ask about ATC's Trail Updates, from sources.json.
+
+    Read from the registry rather than written here, which is the point of
+    registering the source at all (#459): the URL, the licence and the trust
+    tier are one entry a person can read, not three facts scattered across
+    the scripts that happen to use them. A registry that cannot be reached or
+    has no such entry answers None, which the caller turns into UNKNOWN.
+    """
+    try:
+        registry = load_registry(SOURCES_PATH)
+    except (OSError, ValueError):
+        return None
+    entry = find_source(registry, "atc_trail_updates") or {}
+    return (entry.get("freshness") or {}).get("url")
+
+
+def upstream_atc_updates_marker(url: str | None = None) -> str | None:
+    """The ETag on ATC's trail-updates feed, or None if it cannot be had.
+
+    HEAD, and the feed rather than the listing page, for two measured
+    reasons. The feed answers a HEAD with the same strong ETag it puts on a
+    GET, so the change signal costs no body at all. The listing page answers
+    a scripted request with 403 (measured 2026-08-12), so asking it would
+    report UNKNOWN forever - which is the honest verdict for "could not ask",
+    and exactly why it is not the thing to ask.
+
+    Using the feed here is not the mistake features/ATC_TRAIL_UPDATES.md
+    warns about. That warning is about *content*: the feed held 3 items while
+    the page showed 9, so building the artifact from it would silently drop
+    the closures that matter most. As a "did anything move?" signal it is
+    fine, and the design names it as exactly that.
+    """
+    url = url or atc_updates_feed_url()
+    if not url:
+        return None
+    try:
+        response = requests.head(url, timeout=HTTP_TIMEOUT)
         return response.headers.get("ETag")
     except requests.RequestException:
         return None
@@ -329,6 +395,9 @@ def gather_upstream(state: dict, *, local: bool = True) -> dict:
         # so that it reads the tile index itself. A published state has no local
         # index to read, so its recorded marker is handed in instead.
         upstream["elevation"] = upstream_elevation_marker() if local else upstream_elevation_marker(state.get("elevation"))
+
+    if "atc_trail_updates" in state:
+        upstream["atc_trail_updates"] = upstream_atc_updates_marker()
 
     return upstream
 

@@ -274,19 +274,34 @@ already keeps `STALE` and `UNKNOWN` apart. A fifth marker here is a row, not a m
 
 ## Order of work
 
-1. **Ask ATC.** Not a blocker for the facts-only version, and the right thing to do first
-   anyway — SOURCE_REGISTRY.md's whole diagnosis is that this question gets asked too late.
-   A `steward`/`licence` entry for ATC in `sources.json` is where the answer lands.
-2. **Register the source.** ATC Trail Updates as a `sources.json` entry with `kind`,
-   `trust: authoritative`, and a freshness marker — proving SOURCE_REGISTRY.md's schema
-   against a thirteenth source that is not an ArcGIS layer.
-3. **Bake `conditions/atc_updates.json`** from a reviewed file in git, published by the
-   existing machinery.
-4. **Render it**, with ATC attribution, the outbound link, both dates, and the band-length
-   ceiling.
+1. ~~**Ask ATC.**~~ **Not done, and closed as such** (#458). The maintainer settled the
+   conservative version on their own judgement as an ATC trail volunteer, which is what the
+   `licence` field on `atc_trail_updates` now records: facts and a link, and no mirroring of
+   ATC's prose. The broader question — may we carry their body text, and what attribution
+   string do they want — is still unasked, and SOURCE_REGISTRY.md's diagnosis still applies
+   to it.
+2. ~~**Register the source.**~~ **Built.** The thirteenth `sources.json` entry and the first
+   that is not an ArcGIS layer, with `kind`, `trust: authoritative`, a `licence`, a steward,
+   and a freshness marker — the feed's ETag, compared against what the reviewer recorded, so
+   a STALE verdict means *go and re-read ATC's page* rather than *refetch*. `lib/source_registry.py`
+   is what reads `kind`; `fetch_all.py` skips anything that is not a feature layer.
+3. ~~**Bake `conditions/atc_updates.json`**~~ **Built.** `export_atc_updates.py` reads
+   `reference/atc_updates.json`, validates every row, and publishes through the existing
+   machinery. It refuses two ways, differently on purpose: an *unreviewed* file publishes
+   nothing and exits 0, and a *reviewed* file with a bad row publishes nothing and fails.
+4. ~~**Render it**~~ **Built.** `lib/atcUpdates.ts` adapts an update into the shared
+   `Closure` shape for geometry alone; `chrome/AtcUpdateSheet.tsx` carries ATC's name, both
+   dates and the outbound link; the banner names the ATC before anything else; the
+   band-length ceiling comes free with the shared path.
 5. **Then** the proposing job, once the reviewed-file path is proven by hand.
 
-Steps 3 and 4 are the useful ones and neither waits on step 1.
+**What is left before a hiker sees anything is the rows themselves.**
+`reference/atc_updates.json` ships empty and unreviewed, because its contents are a claim
+about where the Appalachian Trail is shut and this document is explicit that no such claim
+reaches a hiker without a person confirming it against ATC's own sentence. Filling it in is
+that person's pull request. Until then the artifact is not published at all, the client reads
+a 404, and no ATC layer is drawn — which is the honest rendering of "we have not looked yet"
+and deliberately not the same as an empty document saying ATC reports nothing.
 
 ## Open questions
 
@@ -297,9 +312,14 @@ Steps 3 and 4 are the useful ones and neither waits on step 1.
   updates measure 0, 0, 0, 4.2, 9.2 and 398.4 miles, so more updates would not settle it
   either. Worth setting against what the map looks like at real zooms. The current value errs
   toward drawing, because a suppressed band buries nothing while the hiker keeps the banner.
-- **Where the suppressed ones go.** "List entry" has no surface yet; today an over-ceiling
-  update simply keeps its banner and loses its band. Step 4 below is where the list would be
-  built if it is built.
+- **Where the suppressed ones go.** "List entry" still has no surface: an update that loses
+  its band keeps its banner and nothing more. Two things now reach that state rather than
+  one — an over-ceiling advisory, and a category that does not obstruct the trail. The
+  second is a decision this build made and worth flagging as one: a barred band's sentence
+  is "go around", so **only `Closure` and `Detour` are drawn**, and an `Alert`, a `Parking`
+  notice or a `Hiking Safety` notice reaches a hiker through the banner alone. That keeps a
+  barrier meaning a barrier, at the cost of making the missing list surface matter more than
+  it did.
 - **Whether "reopened" updates should be ingested at all**, or whether ATC removing an update
   is the signal. An update that disappears from their page is not the same as one marked
   reopened, and `discover_sources.py`'s precedent — a vanished source is "kept, not deleted,

@@ -1,8 +1,22 @@
-"""Fetch every ATC data source listed in sources.json and write a manifest.
+"""Fetch every ATC feature layer listed in sources.json and write a manifest.
 
 Usage: python fetch_all.py
 
-Each source is written to data/raw/<key>.geojson. Before doing the full
+**Every ArcGIS feature layer, not every source.** sources.json has held one
+kind of thing since it was written, and now holds two: ATC's Trail Updates
+are published as prose on a website rather than as a data layer
+(features/ATC_TRAIL_UPDATES.md, #459), so there is no layer here to query and
+no `data/raw/<key>.geojson` for one to produce. lib/source_registry.py owns
+that distinction; this script asks it rather than reading `kind` itself.
+
+Skipping is not a courtesy to the other source - it is what keeps the
+completeness gate below meaningful. A non-layer entry left in this loop would
+fail its metadata check, fetch nothing, and land in `counts` as 0 features,
+which is exactly the signal that gate exists to treat as a broken run. The
+gate would then be red on every single run, for a source that was never
+supposed to be here, and a gate that is always red is one nobody reads.
+
+Each fetched source is written to data/raw/<key>.geojson. Before doing the full
 (potentially paginated, slower) feature fetch, this checks each layer's
 dataLastEditDate (a cheap metadata-only request) against the last value
 recorded in the manifest - if unchanged and the output file still exists,
@@ -26,6 +40,7 @@ from pathlib import Path
 
 from lib.arcgis import fetch_layer_to_file, get_layer_edit_date
 from lib.completeness import count_problems, fail_if_incomplete
+from lib.source_registry import arcgis_sources, load_registry
 
 ROOT = Path(__file__).parent
 SOURCES_PATH = ROOT / "sources.json"
@@ -34,8 +49,8 @@ MANIFEST_PATH = RAW_DIR / "manifest.json"
 
 
 def main():
-    registry = json.loads(SOURCES_PATH.read_text())
-    sources = registry["sources"]
+    registry = load_registry(SOURCES_PATH)
+    sources = arcgis_sources(registry)
     prior_manifest = json.loads(MANIFEST_PATH.read_text()) if MANIFEST_PATH.exists() else {}
 
     results = {}
@@ -80,7 +95,7 @@ def main():
     fail_if_incomplete(count_problems(counts), label="Incomplete fetch")
 
     MANIFEST_PATH.write_text(json.dumps(results, indent=2))
-    print(f"\nAll {len(sources)} sources up to date. Manifest -> {MANIFEST_PATH}")
+    print(f"\nAll {len(sources)} feature layers up to date. Manifest -> {MANIFEST_PATH}")
 
 
 if __name__ == "__main__":

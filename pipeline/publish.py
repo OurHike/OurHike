@@ -239,11 +239,19 @@ def collect_artifacts() -> dict[str, dict]:
     # and each becomes `conditions/<name>.json`; a manifest from before #436
     # has no "artifacts" key at all, and a KeyError here beats quietly
     # publishing a stale shape (re-running export_conditions.py rewrites it).
-    conditions_manifest = PROCESSED_DIR / "conditions_manifest.json"
-    if conditions_manifest.exists():
-        manifest = json.loads(conditions_manifest.read_text())
-        for kind, entry in manifest["artifacts"].items():
-            artifacts[f"conditions/{kind}.json"] = {"path": entry["path"], "sha256": entry["sha256"]}
+    # Two manifests rather than one, because two scripts produce them:
+    # export_conditions.py reads the database, export_atc_updates.py reads a
+    # reviewed file in git, and they run under different conditions - the
+    # first needs a credential that may not exist yet, the second never needs
+    # one. Sharing a manifest file would make the published set depend on
+    # which ran last, since each rewrites its own manifest whole, and the
+    # artifact that lost would vanish from the upload with nothing said.
+    for name in ("conditions_manifest.json", "atc_updates_manifest.json"):
+        conditions_manifest = PROCESSED_DIR / name
+        if conditions_manifest.exists():
+            manifest = json.loads(conditions_manifest.read_text())
+            for kind, entry in manifest["artifacts"].items():
+                artifacts[f"conditions/{kind}.json"] = {"path": entry["path"], "sha256": entry["sha256"]}
 
     for name in (*BACKGROUND_ARCHIVES.values(), *OFFLINE_SHEET_ARCHIVES.values()):
         path = PROCESSED_DIR / name

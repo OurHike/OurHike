@@ -354,11 +354,18 @@ def test_markers_compare_as_strings_so_a_json_round_trip_cannot_manufacture_a_ch
 
 
 def test_every_source_gets_a_verdict_even_when_none_can_be_checked():
-    """Silence about a source is how stale data survives. Four sources in,
-    four verdicts out, always."""
+    """Silence about a source is how stale data survives. Every source in,
+    the same number of verdicts out, always."""
     reports = compare_state({}, {})
 
-    assert [r["source"] for r in reports] == ["atc", "opentrail", "topo_quads", "elevation"]
+    assert [r["source"] for r in reports] == [
+        "atc",
+        "opentrail",
+        "topo_quads",
+        "elevation",
+        "atc_trail_updates",
+    ]
+    assert set(freshness_state.SOURCES) == {r["source"] for r in reports}
 
 
 # --- State age -------------------------------------------------------------

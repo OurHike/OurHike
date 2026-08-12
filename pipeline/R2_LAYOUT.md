@@ -65,7 +65,7 @@ data a phone is pinned to.
 | `_internal/` | build intermediates, keyed by release | rewritten per build | no |
 | `photos/` | POI photos, one object per image, content-addressed | mutable: objects are added and deleted, never rewritten | yes |
 | `originals/` | full-resolution originals of the photos above, content-addressed | mutable: objects are added and deleted, never rewritten | **no** |
-| `conditions/` | published safety data — verified closures now, verified reports later | mutable: rewritten in place, daily | yes |
+| `conditions/` | published safety data — verified closures, verified reports, and the ATC's own trail updates | mutable: rewritten in place, daily | yes |
 
 `releases/` and `_internal/` are the layout [DATA_RELEASES.md](DATA_RELEASES.md) designs and
 is rolling out; the root keys are what is live today and stay frozen when it lands. That

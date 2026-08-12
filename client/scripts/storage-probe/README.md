@@ -25,6 +25,7 @@ node scripts/storage-probe/run.mjs --size 1184700000   # one size, in bytes
 node scripts/storage-probe/run.mjs --unlimited         # quota taken out of the way
 node scripts/storage-probe/run.mjs --store-only        # no network, the store alone
 node scripts/storage-probe/run.mjs --watch             # what is on disk mid-transfer
+node scripts/storage-probe/run.mjs --reclaim           # when a delete gives the space back
 ```
 
 `CHROMIUM_EXECUTABLE_PATH` overrides the browser, for an environment that has
@@ -66,7 +67,7 @@ Four things this ruled OUT as causes, each a plausible suspect beforehand:
 | `content-length` absent, service worker interfering        | Neither is in the path                                                                |
 
 Two findings this turned up, both visible from `--store-only` and `--watch`.
-The first is fixed; the second is still open:
+Both are now closed — the first by #553, the second by #554:
 
 - ~~**Nothing is checkpointed during a transfer.**~~ **Fixed by #553.** Every
   record was `null` eight seconds into an eleven-second download, with `usage` at
@@ -85,6 +86,30 @@ The first is fixed; the second is still open:
   `new Blob([accumulated, chunk])`, which no longer exists. Nothing is
   accumulated in memory now, so per-chunk cost cannot grow with what is held.
 
-- **A delete does not return the quota promptly.** Usage stayed at 524 MB
-  through a `clear()`, so "delete the Standard sheet, download the Fine one" can
-  fail on a phone that has just been made room on.
+- ~~**A delete does not return the quota promptly.**~~ **Measured and worked
+  around by #554.** The original observation was that usage stayed at 524 MB
+  through a `clear()`. `--reclaim` now answers the three questions #554 asked,
+  storing 200 MiB as the seven segment records a real download leaves and
+  deleting it through the app's own `deleteArchive`:
+
+  |                           |                                                  |
+  | ------------------------- | ------------------------------------------------ |
+  | usage after storing       | 209,717,908                                      |
+  | delete completed in       | 10 ms, and the archive is unreadable immediately |
+  | usage 10 s later          | 209,718,780 — unmoved                            |
+  | usage after a page reload | 209,718,780 — unmoved                            |
+
+  So **the bytes are gone and the accounting is not**, and it is not a flush or a
+  transaction boundary that settles on its own: a page load does not shift it
+  either. That is what decides where the fix belongs. Nothing `deleteArchive` can
+  do reclaims harder, because there is nothing left to reclaim — so
+  `estimateAvailableBytes` credits back the part of a release the browser has not
+  yet accounted for, and the room check stops refusing on a figure it can prove
+  is stale. The same run now reports both numbers, and the gap between them is
+  the fix: `browserSaysFree` 637,729,630 against `appSaysFree` 847,444,830, which
+  is the deleted 209,715,200 exactly.
+
+  The credit cannot double-count — it decays as `usage` falls and is zero once
+  the browser catches up — and it expires after a day, so a note that outlived
+  its truth costs a download that starts and runs out partway, keeping every byte
+  that arrived (#553), rather than one that is refused outright.

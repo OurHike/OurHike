@@ -1,11 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
+  RELEASED_KEY,
   clearCompleted,
+  clearReleased,
   completedMarker,
   completedMarkerKeyFor,
   estimateAvailableBytes,
+  estimateUsageBytes,
   readPersistence,
   recordCompleted,
+  recordReleased,
   requestPersistence,
 } from './storageHealth'
 
@@ -115,5 +119,104 @@ describe('the completion marker', () => {
 
     // No eviction claim gets made that cannot be backed.
     expect(completedMarker(KEY)).toBeNull()
+  })
+})
+
+// Crediting space this app deleted that the browser still counts as used
+// (#554). Measured in Chromium with `scripts/storage-probe/run.mjs --reclaim`:
+// 200 MiB stored as seven segment records, deleted through `deleteArchive` in
+// 10 ms and immediately unreadable, and `usage` unmoved at 209,718,780 ten
+// seconds later AND after a page reload. So the bytes are free and the
+// accounting is not - and "delete this sheet and download again" is the app's
+// own printed remedy, which it would otherwise refuse to honour.
+describe('crediting a delete the browser has not accounted for', () => {
+  it('adds back what was released while usage still counts it', () => {
+    stubStorage({ estimate: () => Promise.resolve({ quota: 1_000_000, usage: 800_000 }) })
+    // 300k deleted; usage did not budge, exactly as measured.
+    recordReleased(300_000, 800_000)
+
+    // 200k by the browser's arithmetic, 500k in truth.
+    return expect(estimateAvailableBytes()).resolves.toBe(500_000)
+  })
+
+  it('credits nothing once the browser has caught up', async () => {
+    // A browser that reclaims promptly needs no help and must not be
+    // double-counted: usage fell by the whole release, so the plain estimate is
+    // already right.
+    stubStorage({ estimate: () => Promise.resolve({ quota: 1_000_000, usage: 500_000 }) })
+    recordReleased(300_000, 800_000)
+
+    expect(await estimateAvailableBytes()).toBe(500_000)
+  })
+
+  it('credits only the part not yet given back', async () => {
+    // Half returned, half still miscounted. The credit decays with usage rather
+    // than being all-or-nothing, which is what keeps it from ever exceeding the
+    // truth.
+    stubStorage({ estimate: () => Promise.resolve({ quota: 1_000_000, usage: 650_000 }) })
+    recordReleased(300_000, 800_000)
+
+    expect(await estimateAvailableBytes()).toBe(500_000)
+  })
+
+  it('cannot be inflated by usage rising for an unrelated reason', async () => {
+    // Another tab filled the origin after the delete. The credit is capped at
+    // what was released, so this reports less free space, never more.
+    stubStorage({ estimate: () => Promise.resolve({ quota: 1_000_000, usage: 900_000 }) })
+    recordReleased(300_000, 800_000)
+
+    expect(await estimateAvailableBytes()).toBe(400_000)
+  })
+
+  it('stops crediting a release older than a day', async () => {
+    stubStorage({ estimate: () => Promise.resolve({ quota: 1_000_000, usage: 800_000 }) })
+    localStorage.setItem(
+      RELEASED_KEY,
+      JSON.stringify({
+        bytes: 300_000,
+        usageAfter: 800_000,
+        at: Date.now() - 25 * 60 * 60 * 1000,
+      }),
+    )
+
+    // Back to the browser's own answer, and the dead note is cleared rather
+    // than re-read on every estimate for the life of the installation.
+    expect(await estimateAvailableBytes()).toBe(200_000)
+    expect(localStorage.getItem(RELEASED_KEY)).toBeNull()
+  })
+
+  it('ignores a garbled note rather than crediting nonsense', async () => {
+    stubStorage({ estimate: () => Promise.resolve({ quota: 1_000_000, usage: 800_000 }) })
+    localStorage.setItem(RELEASED_KEY, '{"bytes":"lots"}')
+
+    expect(await estimateAvailableBytes()).toBe(200_000)
+  })
+
+  it('credits nothing when nothing was deleted', async () => {
+    stubStorage({ estimate: () => Promise.resolve({ quota: 1_000_000, usage: 800_000 }) })
+
+    expect(await estimateAvailableBytes()).toBe(200_000)
+  })
+
+  it('forgets a release once it is cleared', async () => {
+    stubStorage({ estimate: () => Promise.resolve({ quota: 1_000_000, usage: 800_000 }) })
+    recordReleased(300_000, 800_000)
+    clearReleased()
+
+    expect(await estimateAvailableBytes()).toBe(200_000)
+  })
+
+  it('reports raw usage unadjusted, since that is the credit’s own baseline', async () => {
+    // If this applied the credit, the note would decay against itself.
+    stubStorage({ estimate: () => Promise.resolve({ quota: 1_000_000, usage: 800_000 }) })
+    recordReleased(300_000, 800_000)
+
+    expect(await estimateUsageBytes()).toBe(800_000)
+  })
+
+  it('says nothing about usage where the browser will not', async () => {
+    stubStorage({})
+
+    expect(await estimateUsageBytes()).toBeNull()
   })
 })

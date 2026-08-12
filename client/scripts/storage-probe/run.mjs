@@ -19,6 +19,7 @@
 //   node scripts/storage-probe/run.mjs --unlimited         # quota out of the way
 //   node scripts/storage-probe/run.mjs --store-only        # no network, store only
 //   node scripts/storage-probe/run.mjs --watch             # is anything checkpointed?
+//   node scripts/storage-probe/run.mjs --reclaim           # when does a delete give the space back?
 //
 // `--unlimited` passes Chromium's --unlimited-storage, which separates "this
 // code cannot do it" from "this phone has no room": with it, 1.18 GB downloads,
@@ -97,6 +98,27 @@ async function inFreshPage(body) {
 for (const { label, bytes } of sizes) {
   console.log(`--- ${label} (${bytes} bytes) ---`)
   await inFreshPage(async (page, context) => {
+    if (has('--reclaim')) {
+      // Deliberately NOT in a fresh page for the delete itself: the question is
+      // whether the space comes back inside one session, because that is the
+      // session in which a hiker deletes one sheet and taps download on
+      // another (#554).
+      await page.evaluate((n) => window.reclaim(n), bytes)
+
+      // The issue's other candidate: "or the next page load?". A new page in the
+      // SAME context, so it is the same origin and the same IndexedDB - a new
+      // context would be a fresh store and would answer nothing.
+      const reopened = await context.newPage()
+      reopened.on('console', (message) => {
+        const text = message.text()
+        if (text.startsWith('{')) console.log(`[after-reload] ${text}`)
+      })
+      await reopened.goto(url, { waitUntil: 'load' })
+      await reopened.evaluate(() => window.estimate())
+      await new Promise((resolve) => setTimeout(resolve, 3000))
+      await reopened.evaluate(() => window.estimate())
+      return
+    }
     if (has('--store-only')) {
       await page.evaluate((n) => window.storeProbe(n), bytes)
       return

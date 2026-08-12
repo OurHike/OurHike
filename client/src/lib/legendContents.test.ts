@@ -59,7 +59,12 @@ describe('computeLegendContents', () => {
     expect(after.find((r) => r.type === 'water')?.count).toBe(1)
   })
 
-  it('splits low-confidence points into their own row, labeled Unverified, per WIREFRAMES.md copy', () => {
+  it('counts verified and unverified points of a type as one row, not two', () => {
+    // This used to split, giving "Water 1" and "Water · Unverified 1". Two
+    // rows per category doubled a panel about 116px wide per column and spent
+    // the room on a distinction nobody can act on from a viewport count. The
+    // map still draws the broken rim per pin, and PoiCard still says it in
+    // words on the waypoint somebody is deciding about.
     const points = [
       point({ id: 'a', confidence: 'high' }),
       point({ id: 'b', confidence: 'low' }),
@@ -67,8 +72,8 @@ describe('computeLegendContents', () => {
 
     const rows = computeLegendContents(BBOX, points)
 
-    expect(rows.find((r) => r.type === 'water' && r.confidence === 'high')?.count).toBe(1)
-    expect(rows.find((r) => r.type === 'water' && r.confidence === 'low')?.count).toBe(1)
+    expect(rows.filter((r) => r.type === 'water')).toHaveLength(1)
+    expect(rows.find((r) => r.type === 'water')?.count).toBe(2)
   })
 
   it('marks the closure row as not hideable, always shown', () => {
@@ -99,4 +104,41 @@ describe('computeLegendContents', () => {
 
     expect(rows.find((r) => r.type === 'shelter')).toBeUndefined()
   })
+})
+
+describe('the "Verified?" filter', () => {
+  it('leaves the counts alone while it is off', () => {
+    const points = [point({ id: 'a' }), point({ id: 'b', confidence: 'low' })]
+
+    expect(computeLegendContents(BBOX, points, false)[0].count).toBe(2)
+  })
+
+  it('stops counting unverified points while it is on', () => {
+    // The count has to move with the filter. The panel's whole promise is that
+    // it says what is on screen right now, so "Water 2" over a map drawing one
+    // is the exact lie it exists to prevent.
+    const points = [point({ id: 'a' }), point({ id: 'b', confidence: 'low' })]
+
+    const rows = computeLegendContents(BBOX, points, true)
+
+    expect(rows.find((r) => r.type === 'water')?.count).toBe(1)
+  })
+
+  it('drops a row whose every point is unverified', () => {
+    const rows = computeLegendContents(BBOX, [point({ confidence: 'low' })], true)
+
+    expect(rows).toHaveLength(0)
+  })
+
+  it.each(['closure', 'serious-warning'])(
+    'never filters a %s, however unverified it is',
+    (type) => {
+      // "No off switch for a safety layer" has to mean every switch. A filter
+      // that happens to take a closure off the panel is the same failure as a
+      // button that does, and easier to ship without noticing.
+      const rows = computeLegendContents(BBOX, [point({ type, confidence: 'low' })], true)
+
+      expect(rows.find((r) => r.type === type)?.count).toBe(1)
+    },
+  )
 })

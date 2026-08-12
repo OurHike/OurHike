@@ -250,19 +250,23 @@
     border-top-right-radius: 0;
     border-left: 1px solid var(--border-1);
     box-shadow: none;
-    /* A column, so the download link at the end of it can be pushed to the
+    /* A column, so the download block at the end of it can be pushed to the
        foot of the panel below. On a phone the legend is a sheet that ends
-       where its content ends and the link is already the bottom of it; here
-       the panel is full height, and left in normal flow the link would sit
-       against the pin list with a screen of empty paper under it. */
+       where its content ends and that block is already the bottom of it; here
+       the panel is full height, and left in normal flow it would sit against
+       the pin list with a screen of empty paper under it. */
     display: flex;
     flex-direction: column;
   }
 
-  /* The rule that does the pushing. It collapses to nothing the moment the
-     content is taller than the panel, which is the right answer then too -
-     the link goes back to being the last thing you scroll to. */
-  .legend--persistent .downloads-link {
+  /* The rule that does the pushing. The block, not the link inside it: the
+     background choice and the way to the download are one thing at the foot of
+     this panel (chrome.css), and pushing only the link would put the panel's
+     full height between them - which is the arrangement they were moved out of.
+     It collapses to nothing the moment the content is taller than the panel,
+     which is the right answer then too - the block goes back to being the last
+     thing you scroll to. */
+  .legend--persistent .legend__downloads {
     margin-top: auto;
   }
 

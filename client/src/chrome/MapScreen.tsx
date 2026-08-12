@@ -134,6 +134,11 @@ export interface MapScreenProps {
   blazeCounts: BlazeCount[]
   hiddenTypes: Set<string>
   onToggleType: (type: string) => void
+  /** The legend's "Verified?" filter. Handed to the legend and to the map from
+   *  here, so the counts in the panel and the pins on the canvas are one
+   *  decision rather than two that can drift. */
+  verifiedOnly: boolean
+  onToggleVerifiedOnly: () => void
 
   /**
    * The tapped pin's detail, or null when nothing is selected.
@@ -289,6 +294,8 @@ export function MapScreen({
   blazeCounts,
   hiddenTypes,
   onToggleType,
+  verifiedOnly,
+  onToggleVerifiedOnly,
   selectedPoi,
   onSelectPoi,
   onClosePoi,
@@ -411,6 +418,7 @@ export function MapScreen({
               background={background}
               pois={viewportPoints}
               hiddenTypes={hiddenTypes}
+              verifiedOnly={verifiedOnly}
               closures={closures}
               atcUpdates={atcUpdates}
               onSelectAtcUpdate={onSelectAtcUpdate}
@@ -470,6 +478,8 @@ export function MapScreen({
             blazeCounts={blazeCounts}
             hiddenTypes={hiddenTypes}
             onToggleType={onToggleType}
+            verifiedOnly={verifiedOnly}
+            onToggleVerifiedOnly={onToggleVerifiedOnly}
             onClose={onCloseLegend}
             backgroundChoice={backgroundChoice}
             onChangeBackground={onChangeBackground}

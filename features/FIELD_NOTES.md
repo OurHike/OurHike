@@ -157,8 +157,11 @@ question. So existence takes a third value rather than the map taking a fourth c
 | unverified | `confidence: low` — never confirmed to exist | dashed pin |
 | **reported missing** | corroborated `not_found` notes | dashed pin, distinct marker |
 
-The legend already carries confidence variants (*"Unverified · 1"*, `WIREFRAMES.md` §5), so
-this is a row in a family that exists, not a new section. And the card always says it in
+The legend already treats confidence as something a hiker filters on (its *"Verified?"* toggle,
+`WIREFRAMES.md` §2 — it carried *"Unverified · 1"* rows until
+[#572](https://github.com/OurHike/OurHike/issues/572) found them to be twice the panel for a
+distinction a viewport count cannot act on), so this is a tier in a family that exists, not a
+new section. And the card always says it in
 words as well as pixels — *"2 hikers reported this missing, most recently 4 days ago"* —
 because §11's own rule is that the visual channel never carries the meaning alone.
 

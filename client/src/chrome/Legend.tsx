@@ -9,13 +9,25 @@
 // Not defaulted-on, not disabled - absent. A safety layer having no off switch
 // is a rule that holds across the whole app (features/MAP_OPTIONS.md,
 // features/HIKER_SAFETY.md), and the surest way to keep it is to never build
-// the affordance.
+// the affordance. That rule is why the row is not uniformly a button: a
+// hideable row IS one, edge to edge, and a safety row is plain text with an
+// "Always shown" tag beside it.
+//
+// Every row carries the icon the map draws for it, from map/MapIcon.tsx and
+// therefore from the map's own geometry rather than from a second drawing of
+// it - a legend that approximates the map teaches a symbol the map does not
+// use, which is worse than a legend with no pictures in it.
+//
+// One row per category, never one per category per confidence: the reasoning
+// is on lib/legendContents.ts's LegendRow, and the consequence here is that
+// the pin drawn is the solid-rimmed one.
 
 import {
   computeLegendContents,
   type BoundingBox,
   type MapPoint,
 } from '../lib/legendContents'
+import { MapIcon } from '../map/MapIcon'
 import { blazePaintColor } from '../lib/blaze'
 import { typeLabel } from './legendLabels'
 import { BackgroundPicker } from './BackgroundPicker'
@@ -44,6 +56,18 @@ export interface LegendProps {
   blazeCounts: BlazeCount[]
   hiddenTypes: Set<string>
   onToggleType: (type: string) => void
+  /**
+   * Draw only waypoints somebody has confirmed exist.
+   *
+   * This is what became of the "Unverified" rows. They doubled the length of
+   * the grid to carry a distinction a viewport count cannot act on; one
+   * checkbox carries the same fact as a decision instead, and the counts above
+   * it move with it so the panel never claims more than the map is drawing.
+   *
+   * Never applies to closures or serious warnings - see legendContents.ts.
+   */
+  verifiedOnly?: boolean
+  onToggleVerifiedOnly?: () => void
   onClose: () => void
   /**
    * The stored background preference, and how to change it.
@@ -83,6 +107,8 @@ export function Legend({
   blazeCounts,
   hiddenTypes,
   onToggleType,
+  verifiedOnly = false,
+  onToggleVerifiedOnly,
   onClose,
   backgroundChoice,
   onChangeBackground,
@@ -94,8 +120,21 @@ export function Legend({
 }: LegendProps) {
   if (!open && !persistent) return null
 
-  const rows = computeLegendContents(bbox, points)
+  const rows = computeLegendContents(bbox, points, verifiedOnly)
   const isEmpty = rows.length === 0 && blazeCounts.length === 0
+
+  // An empty grid has two quite different causes and one of them is this
+  // panel's own doing. "Nothing here yet, pan or zoom out" is a false claim
+  // about a stretch with six unconfirmed springs on it, and it sends a hiker
+  // walking away from the water. Costs a second pass over the same points,
+  // only while the filter is on.
+  const emptiedByFilter =
+    verifiedOnly && rows.length === 0 && computeLegendContents(bbox, points).length > 0
+
+  // Gates the wrapper only. The picker's own two props are re-checked where it
+  // is drawn, because that is what narrows them from optional to present - and
+  // an empty block would still take the desktop panel's `margin-top: auto`.
+  const hasPicker = backgroundChoice !== undefined && onChangeBackground !== undefined
 
   return (
     <div
@@ -118,22 +157,16 @@ export function Legend({
         )}
       </div>
 
-      {/* First, above the counts. The background is the largest thing on the
-          screen and the counts describe what is drawn on top of it, so the
-          question "what am I looking at" is answered in that order. */}
-      {backgroundChoice !== undefined && onChangeBackground !== undefined && (
-        <BackgroundPicker
-          value={backgroundChoice}
-          onChange={onChangeBackground}
-          override={backgroundOverride}
-          belowArchiveZoom={belowArchiveZoom}
-          idPrefix="legend"
-        />
-      )}
-
-      {isEmpty && (
+      {isEmpty && !emptiedByFilter && (
         <p className="legend__empty">
           Nothing on this part of the map yet — pan or zoom out to see more.
+        </p>
+      )}
+
+      {emptiedByFilter && (
+        <p className="legend__empty">
+          Nothing here has been confirmed yet — turn Verified? off to see what is
+          reported.
         </p>
       )}
 
@@ -156,35 +189,66 @@ export function Legend({
       {rows.length > 0 && (
         <ul className="legend__pins">
           {rows.map((row) => {
-            const name = typeLabel(row.type)
-            const unverified = row.confidence === 'low'
-            const label = unverified ? `${name} · Unverified` : name
+            const label = typeLabel(row.type)
+            const hidden = row.hideable && hiddenTypes.has(row.type)
+
+            // The pin, the name and the count, in that order. On a hideable
+            // row all three go inside the button, which is the whole point:
+            // WIREFRAMES.md §2 has said "rows are tappable to hide" since
+            // before this panel was built, and what shipped was a 20px dot at
+            // the end of a 44px row that looked tappable across its width.
+            // A tap on the word "Water" did nothing and said nothing.
+            const face = (
+              <>
+                {/* No confidence passed, so this is the solid-rimmed pin. A key
+                    says what a category's symbol IS, and a symbol that changed
+                    its rim as you panned - broken here because the two springs
+                    in view happen to be unconfirmed, solid a mile later - would
+                    not be a key. The rim still means what it means on the map,
+                    one pin at a time, which is where it is a fact about
+                    something rather than about a rectangle. */}
+                <MapIcon className="legend__icon" type={row.type} />
+                <span className="legend__label">{label}</span>
+                <span className="legend__count">{row.count}</span>
+              </>
+            )
 
             return (
               <li
-                key={`${row.type}::${row.confidence}`}
-                className="legend__row"
+                key={row.type}
+                className={[
+                  'legend__row',
+                  // A safety row is wider than a column, because it carries an
+                  // "Always shown" tag on top of what every other row carries.
+                  row.hideable ? null : 'legend__row--always',
+                  hidden ? 'legend__row--hidden' : null,
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
                 aria-label={label}
               >
-                <span className="legend__label">{label}</span>
-                <span className="legend__count">{row.count}</span>
-
                 {row.hideable ? (
                   <button
                     type="button"
                     className="legend__toggle"
-                    aria-pressed={hiddenTypes.has(row.type)}
+                    /* Pressed means SHOWN, which is the opposite of what this
+                       said while the control was a separate dot. That button
+                       was a "hide" action and pressed meant the action was
+                       engaged; the row is now the category itself, and it
+                       greys out when the category is off. Leaving the old
+                       polarity would have a row that plainly reads as off
+                       announcing itself as pressed - the screen and the
+                       screen reader disagreeing about one control. */
+                    aria-pressed={!hidden}
                     onClick={() => onToggleType(row.type)}
                   >
-                    <span className="visually-hidden">
-                      {hiddenTypes.has(row.type) ? `Show ${name}` : `Hide ${name}`}
-                    </span>
-                    <span aria-hidden="true">
-                      {hiddenTypes.has(row.type) ? '◌' : '●'}
-                    </span>
+                    {face}
                   </button>
                 ) : (
-                  <span className="legend__always">Always shown</span>
+                  <>
+                    {face}
+                    <span className="legend__always">Always shown</span>
+                  </>
                 )}
               </li>
             )
@@ -192,17 +256,61 @@ export function Legend({
         </ul>
       )}
 
-      {/* Last in the panel, and last on purpose. It is the only way to the
-          download (chrome/DownloadsLink.tsx), which makes it worth having
-          here and does not make it worth the top of a panel someone opens all
-          day to answer a different question. On a desktop the panel is full
-          height and this is pushed to the foot of it - see desktop.css. */}
-      {onOpenDownloads !== undefined && (
-        <DownloadsLink
-          onOpen={onOpenDownloads}
-          hasDownload={hasDownload}
-          downloadActivity={downloadActivity}
-        />
+      {/* Under the grid rather than in it, because it is not a category: it
+          cuts across every row at once. Rendered whenever the shell offers the
+          handler and never gated on there being rows - a filter that empties
+          the panel and then disappears with it is a trap, and this one can
+          empty the panel. */}
+      {onToggleVerifiedOnly !== undefined && (
+        <label className="legend__verified">
+          <span className="legend__verified-name">Verified?</span>
+          <input
+            type="checkbox"
+            name="verified_only"
+            checked={verifiedOnly}
+            onChange={onToggleVerifiedOnly}
+          />
+        </label>
+      )}
+
+      {/* THE DOWNLOADED MAP, ALL OF IT, IN ONE BLOCK AT THE FOOT.
+          The background choice used to open the panel and the way to the
+          download has always closed it, which put the two ends of one question
+          at the two ends of the panel: "Downloaded" draws the corridor archive
+          and nothing else, and the link below is where a corridor archive comes
+          from. Choosing a background this phone has no map to honour meant
+          reading the note that says so, then scrolling past every legend row to
+          reach the only control that fixes it. They are one errand and they sit
+          together now, with the picker's own notes - "nothing is downloaded
+          yet", "your download starts closer in than this" - landing directly
+          above the link that answers them.
+
+          Last, and the legend rows start the panel because of it. A hiker opens
+          this all day to ask what is around them and a handful of times ever to
+          change what is on the phone, so the daily question keeps the top. On a
+          desktop the panel is full height and this whole block is pushed to the
+          bottom of it - see desktop.css, which pushes the block rather than the
+          link precisely so the two do not come apart again. */}
+      {(hasPicker || onOpenDownloads !== undefined) && (
+        <div className="legend__downloads">
+          {backgroundChoice !== undefined && onChangeBackground !== undefined && (
+            <BackgroundPicker
+              value={backgroundChoice}
+              onChange={onChangeBackground}
+              override={backgroundOverride}
+              belowArchiveZoom={belowArchiveZoom}
+              idPrefix="legend"
+            />
+          )}
+
+          {onOpenDownloads !== undefined && (
+            <DownloadsLink
+              onOpen={onOpenDownloads}
+              hasDownload={hasDownload}
+              downloadActivity={downloadActivity}
+            />
+          )}
+        </div>
       )}
     </div>
   )

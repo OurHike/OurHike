@@ -8,7 +8,7 @@ import { LIVE_TOPO_LAYER_IDS, TOPO_PALETTE_RED } from './liveTopo'
 import { poiIconId } from './poiIcons'
 import {
   poiFeatureCollection,
-  poiTypeFilter,
+  poiFilter,
   POI_ID_PROPERTY,
   POI_LAYER_ID,
   POI_SOURCE_ID,
@@ -388,7 +388,30 @@ describe('POI pins', () => {
 
     loadStyle(map)
 
-    expect(map.filters.get(POI_LAYER_ID)).toEqual(poiTypeFilter(new Set(['water'])))
+    expect(map.filters.get(POI_LAYER_ID)).toEqual(poiFilter(new Set(['water'])))
+  })
+
+  it('filters out unverified pins when the legend asks for verified only', () => {
+    render(<MapView {...PROPS} pois={POIS} verifiedOnly />)
+    const [map] = MockMap.live
+
+    loadStyle(map)
+
+    expect(map.filters.get(POI_LAYER_ID)).toEqual(poiFilter(new Set(), true))
+  })
+
+  it('turns the "Verified?" filter back off without rebuilding the map', () => {
+    // Same argument as the category toggle below: it is a filter change, and
+    // rebuilding for it would drop the WebGL context mid-walk.
+    const { rerender } = render(<MapView {...PROPS} pois={POIS} verifiedOnly />)
+    const [map] = MockMap.live
+    loadStyle(map)
+    const builtInitially = MockMap.instances.length
+
+    rerender(<MapView {...PROPS} pois={POIS} verifiedOnly={false} />)
+
+    expect(MockMap.instances).toHaveLength(builtInitially)
+    expect(map.filters.get(POI_LAYER_ID)).toEqual(poiFilter(new Set(), false))
   })
 
   it('hides a category without rebuilding the map underneath the hiker', () => {
@@ -406,7 +429,7 @@ describe('POI pins', () => {
 
     expect(MockMap.instances).toHaveLength(builtInitially)
     expect(MockMap.live).toHaveLength(1)
-    expect(map.filters.get(POI_LAYER_ID)).toEqual(poiTypeFilter(new Set(['water'])))
+    expect(map.filters.get(POI_LAYER_ID)).toEqual(poiFilter(new Set(['water'])))
   })
 
   it('takes POIs arriving after the map was built, which is the normal case', () => {

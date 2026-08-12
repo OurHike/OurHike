@@ -84,6 +84,18 @@ export interface MapScreenProps {
    * than anywhere else on the screen.
    */
   closureAhead?: string | null
+  /**
+   * The broad advisory the hiker is inside or heading toward, already rendered
+   * to one line, or null.
+   *
+   * Its own prop rather than folded into `closureAhead` because the two are
+   * different kinds of statement and #485 is what happens when they share a line:
+   * a region-sized advisory scores "inside" and buries the specific closure three
+   * miles ahead for as long as the hiker is in it. This one is a standing
+   * condition — it does not change for hundreds of miles — so it is drawn under
+   * the actionable line and quieter than it.
+   */
+  advisoryAhead?: string | null
   /** "N serious warnings on your route", or null (lib/seriousWarnings.ts). */
   warningsAhead?: string | null
 
@@ -283,6 +295,7 @@ export function MapScreen({
   lastSyncedAt,
   conditionsAge = null,
   closureAhead = null,
+  advisoryAhead = null,
   warningsAhead = null,
   closures,
   atcUpdates,
@@ -391,7 +404,7 @@ export function MapScreen({
             role="alert" for the same reason More.tsx's stuck reports use it -
             this is not ambient status, it is a thing that changes what
             someone does next. */}
-        {(closureAhead !== null || warningsAhead !== null) && (
+        {(closureAhead !== null || advisoryAhead !== null || warningsAhead !== null) && (
           <div className="map-screen__alerts" role="alert">
             {closureAhead !== null && (
               <p className="map-screen__alert map-screen__alert--closure">
@@ -401,6 +414,18 @@ export function MapScreen({
             {warningsAhead !== null && (
               <p className="map-screen__alert map-screen__alert--warning">
                 {warningsAhead}
+              </p>
+            )}
+            {/* Last, and quieter than both, because it is the only one of the
+                three that is not about the next few miles (#485). A hiker inside
+                ATC's Helene advisory is inside it for 398 miles; whatever is
+                three miles ahead has to be read first. Still inside the same
+                alert region rather than demoted to the status strip - that strip
+                is narrow flags about connectivity, GPS and data age, and a
+                warning about the trail is not app status. */}
+            {advisoryAhead !== null && (
+              <p className="map-screen__alert map-screen__alert--advisory">
+                {advisoryAhead}
               </p>
             )}
           </div>

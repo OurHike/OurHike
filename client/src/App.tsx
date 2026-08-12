@@ -171,14 +171,15 @@ import {
   fetchPublishedClosures,
   fetchPublishedReports,
 } from './lib/publishedConditions'
-import { closureBanner, nearestClosure } from './lib/closureBanner'
+import { closureBanner, closureLanes, type RankedClosure } from './lib/closureBanner'
 import {
   atcBandCandidates,
   atcPointNotices,
   atcUpdateBanner,
   atcUpdateForBandId,
-  nearestAtcUpdate,
+  atcUpdateLanes,
   type AtcUpdate,
+  type RankedAtcUpdate,
 } from './lib/atcUpdates'
 import { atcUpdatePoints } from './map/atcUpdateLayers'
 import { AtcUpdateSheet } from './chrome/AtcUpdateSheet'
@@ -1076,32 +1077,53 @@ function App() {
    * silent for exactly the first quarter mile of a closed section, which is
    * where the warning matters most. closureBanner.ts owns that split.
    */
-  const closureAhead = useMemo(() => {
-    if (fix === null) return null
+  const { closureAhead, advisoryAhead } = useMemo(() => {
+    if (fix === null) return { closureAhead: null, advisoryAhead: null }
 
-    // Two sources now compete for the header's one line: OurHike's verified
-    // closures and the ATC's own notices (#461). Nearest wins, which is the
-    // rule closureBanner.ts already applies WITHIN the closure list - "the
-    // closure two hundred miles north is not the one that changes what they
-    // do next" - extended across both rather than replaced by a precedence
-    // between the sources. Neither deserves one: an ATC notice is
-    // authoritative about the trail they maintain, and a verified closure was
-    // checked by a moderator, so ranking them would be inventing a claim
-    // about which organisation is more right. Which one is in front of the
-    // hiker is a fact, and it is the fact that decides what they do next.
+    // Two sources compete for each line: OurHike's verified closures and the
+    // ATC's own notices (#461). Nearest wins, which is the rule the two lane
+    // functions already apply WITHIN their own list - "the closure two hundred
+    // miles north is not the one that changes what they do next" - extended
+    // across both rather than replaced by a precedence between the sources.
+    // Neither deserves one: an ATC notice is authoritative about the trail they
+    // maintain, and a verified closure was checked by a moderator, so ranking
+    // them would be inventing a claim about which organisation is more right.
+    // Which one is in front of the hiker is a fact, and it is the fact that
+    // decides what they do next.
     //
     // The winner is then written in its OWN voice - "Trail closed 2.1 mi
     // ahead" for ours, "ATC · Closure 2.1 mi ahead · <their headline>" for
     // theirs. That is the whole of #461's requirement in the one place a
     // hiker reads without tapping anything.
-    const closure = closures === null ? null : nearestClosure(closures, fix.mile, heading)
-    const atc = nearestAtcUpdate(atcUpdates, fix.mile, heading)
+    //
+    // TWO LINES, NOT ONE (#485). A closure that is a stretch of trail and an
+    // advisory that is a region answer different questions - "what do I do next"
+    // against "what country am I in" - so they do not compete. Ranked together,
+    // standing inside a 398-mile advisory scored 0 and buried the nine-mile
+    // closure three miles ahead for 398 miles of walking. The rule is written
+    // once per source (`closureLanes`, `atcUpdateLanes`) and the source tie is
+    // broken here, the same way, for each lane.
+    const closureLane = closureLanes(closures ?? [], fix.mile, heading)
+    const atcLane = atcUpdateLanes(atcUpdates, fix.mile, heading)
 
-    if (closure !== null && (atc === null || closure.distance <= atc.distance)) {
-      return closureBanner(closure.closure, fix.mile, heading)
+    // Whichever source the hiker reaches first, in that source's own voice.
+    // `<=` keeps ours first on an exact tie, which is arbitrary and has to be
+    // something; it matters only when both name the same mile.
+    const pick = (
+      closure: RankedClosure | null,
+      atc: RankedAtcUpdate | null,
+    ): string | null => {
+      if (closure !== null && (atc === null || closure.distance <= atc.distance)) {
+        return closureBanner(closure.closure, fix.mile, heading)
+      }
+      if (atc !== null) return atcUpdateBanner(atc.update, fix.mile, heading)
+      return null
     }
-    if (atc !== null) return atcUpdateBanner(atc.update, fix.mile, heading)
-    return null
+
+    return {
+      closureAhead: pick(closureLane.specific, atcLane.specific),
+      advisoryAhead: pick(closureLane.broad, atcLane.broad),
+    }
   }, [closures, atcUpdates, fix, heading])
 
   /**
@@ -2129,6 +2151,7 @@ function App() {
           // permission prompt behind this preference's back.
           locationEnabled={locationAllowed}
           closureAhead={closureAhead}
+          advisoryAhead={advisoryAhead}
           warningsAhead={warningsAhead}
           closures={closureBandsOnMap}
           atcUpdates={atcBandsOnMap}

@@ -1093,3 +1093,81 @@ def test_an_unknown_flag_is_rejected_rather_than_silently_exporting(monkeypatch,
 
     assert exc_info.value.code == 2
     assert "Unknown flag" in capsys.readouterr().out
+
+
+def test_export_poi_publishes_the_site_grouping_on_the_features(tmp_path, monkeypatch, con):
+    """A shelter and its privy are published as one place with parts (#523).
+
+    The fixture privy sits 3.8 km from the fixture shelter - far outside both
+    gates - so the shared fixtures produce no site at all. The privy is
+    re-written 42 m out, which is the corridor's measured median privy-to-shelter
+    distance, so this exercises the grouping rather than the empty case.
+    """
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    _write_fc(
+        raw_dir / "privies.geojson",
+        [
+            _point_feature(
+                1,
+                -73.95,
+                # 42 m north of the shelter at 41.05.
+                41.05 + 42 / 111_320.0,
+                {
+                    "GlobalID": "privy-glob-1",
+                    "OBJECTID": 1,
+                    "Name": "Test Shelter Privy",
+                    "Type": "1",
+                    "Enclosure": "1",
+                    "Year_Built": 2003,
+                },
+            )
+        ],
+    )
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+
+    export_poi.main()
+
+    shelter = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
+    privy = json.loads((out_dir / "privy.geojson").read_text())["features"][0]["properties"]
+
+    # The anchor's own id is the site id - never a minted one, because a site is
+    # what a report or a closure references.
+    assert shelter["site_id"] == f"{export_poi.SHELTER_SOURCE}:shelter-glob-1"
+    assert shelter["site_role"] == "anchor"
+    assert shelter["site_name"] == "Test Shelter"
+
+    # The privy rides the shelter's pin, and carries the shelter's name so the
+    # client can label the site without joining anything.
+    assert privy["site_id"] == shelter["site_id"]
+    assert privy["site_role"] == "member"
+    assert privy["site_name"] == "Test Shelter"
+
+
+def test_export_poi_leaves_the_site_properties_null_outside_a_site(tmp_path, monkeypatch, con):
+    """Additive, which is the whole reason these are properties on the existing
+    features rather than a second artifact: a POI in no site carries NULL, and a
+    client built before #523 ignores the columns and behaves exactly as it does
+    today - the same rule `mile`, `capacity`, `description` and `photos` are
+    held to."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+
+    export_poi.main()
+
+    # A viewpoint can never be a site member at all, and the shared fixtures'
+    # privy is kilometres from its shelter, so neither is in one.
+    for poi_type in ("viewpoint", "privy"):
+        for feature in json.loads((out_dir / f"{poi_type}.geojson").read_text())["features"]:
+            assert feature["properties"].get("site_id") is None
+            assert feature["properties"].get("site_role") is None
+            assert feature["properties"].get("site_name") is None

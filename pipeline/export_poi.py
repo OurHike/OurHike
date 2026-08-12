@@ -112,6 +112,26 @@ is a normal state, not an error - the export ships photo-less features and
 the client card shows its category placeholder. Per-photo licensing is why
 attribution travels per-feature instead of as one registry line (see
 CONTRIBUTING.md "A note on data and licences").
+
+Site grouping (#523, features/POI_SITES.md): a shelter, its privy and its
+campsites are one place with parts, and this export used to publish them as
+unrelated points. The map then resolved the crowding by DELETING all but one -
+`icon-allow-overlap: false` drops the pin that loses POI_PRIORITY, and at zoom
+14 that left 3% of the corridor's 316 privies drawn anywhere on the trail. A
+hiker saw a clean map and concluded there was no privy.
+
+lib/poi_sites.py resolves the grouping from ATC's own naming convention
+("Mt. Algo Shelter Privy") gated on proximity, and `attach_sites` writes it onto
+the features as `site_id`, `site_role` and `site_name`. Measured over the live
+corridor: 428 POIs fold into 291 sites, 90% of privies and 62% of campsites stop
+competing for a pin and start riding one that is actually drawn. The properties
+are additive, so a client built before this ignores them and behaves exactly as
+it does today.
+
+The cost, stated where the code is rather than only in the design doc: a wrong
+grouping is baked into the artifacts and a hiker cannot undo it. The rule needs
+name agreement AND proximity for exactly that reason - see lib/poi_sites.py for
+what each gate is holding up, and what a name-only rule ships.
 """
 
 import hashlib
@@ -127,6 +147,7 @@ from lib.corridor import build_corridor
 from lib.photo_store import photo_key
 from lib.poi_description import describe_campsite, describe_parking, describe_privy, describe_shelter, describe_viewpoint
 from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES, poi_output_name, unify_poi
+from lib.poi_sites import group_sites, site_properties
 
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
@@ -191,6 +212,17 @@ POI_COLUMNS = (
     # a nested array because FlatGeobuf property values are scalars - see
     # attach_photos, and note GDAL re-expands it to real JSON in the .geojson.
     ("photos", "VARCHAR"),
+    # Which SITE this POI belongs to - a shelter with its privy and campsites,
+    # modelled as one place with parts (#523, lib/poi_sites.py). The anchor's own
+    # id, its `anchor`/`member` role, and the anchor's display name.
+    #
+    # NULL on every POI that is not in a site, which is most of them: 719 of the
+    # corridor's points carry these and the rest do not. Additive on purpose - a
+    # client built before this ignores them and behaves exactly as it does today,
+    # the same rule `mile`, `capacity`, `description` and `photos` are held to.
+    ("site_id", "VARCHAR"),
+    ("site_role", "VARCHAR"),
+    ("site_name", "VARCHAR"),
 )
 
 TRAIL_ID = "AT"
@@ -330,6 +362,28 @@ DESCRIBERS = {
     "parking": lambda properties, _capacity, note: describe_parking(properties, note),
     "privy": lambda properties, _capacity, note: describe_privy(properties, note),
 }
+
+
+def attach_sites(records: list[dict]) -> tuple[int, int]:
+    """Group co-located waypoints into sites and write the three site
+    properties onto every anchor and member (#523, lib/poi_sites.py).
+
+    Returns (sites, folded members) for the run log, because a count that moves
+    between releases is the thing to notice: this grouping is baked into the
+    artifacts and a hiker cannot undo it, so a jump in either number means ATC's
+    naming changed under us.
+
+    Runs before the capacity, description and photo attaches, and that is not
+    arbitrary. The grouping depends on exactly two fields - `name` and the
+    position - both of which exist the moment the sources are unified, so
+    nothing any enrichment step does can perturb it. Placing it first is what
+    makes that independence visible rather than merely true today.
+    """
+    sites = group_sites(records)
+    properties = site_properties(sites)
+    for record in records:
+        record.update(properties.get(record["id"], {}))
+    return len(sites), sum(len(site.members) for site in sites)
 
 
 def attach_descriptions(records: list[dict]) -> int:
@@ -538,6 +592,11 @@ def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[
                     # The whole list as JSON - see attach_photos. Scalar-only
                     # FlatGeobuf properties are why this is a string column.
                     r.get("photos"),
+                    # .get for the same reason as every optional above: NULL on
+                    # a POI in no site, which is most of them.
+                    r.get("site_id"),
+                    r.get("site_role"),
+                    r.get("site_name"),
                 )
                 for r in records
             ],
@@ -634,6 +693,9 @@ def main() -> dict:
     con.execute("INSTALL spatial; LOAD spatial;")
 
     clipped = read_sources(con)
+
+    sites, folded = attach_sites(clipped)
+    print(f"  {folded} POIs fold into {sites} sites (a shelter with its privy and campsites - #523).")
 
     # CAPACITY_PATH read here rather than defaulted in the signature, so that
     # redirecting the module constant - as the tests do - redirects the read.

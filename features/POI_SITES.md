@@ -132,17 +132,38 @@ And the membership is restricted, not universal:
 - **Members** are `privy`, `campsite`, `water`.
 - `viewpoint`, `parking` and `resupply` are **never** members in v1. They are co-located with each other and with shelters, but they are not *parts of* a facility — the 64 viewpoint pairs above are the proof, and "parking + resupply" is a trailhead, which is a different feature with a different card.
 
-Running that rule over the real corridor:
+Running that rule over the real corridor. The first column is what this document projected from the naive matcher; the second is what `pipeline/lib/poi_sites.py` actually produces, measured 2026-08-12 against all 828 shelters, campsites and privies on the live service:
 
-```
-427 POIs fold into 287 sites (249 shelter-anchored, 38 campsite-anchored)
-  folded: 281 privies, 137 campsites, 9 water
-  sizes:  159 sites of 2, 119 of 3, 6 of 4, 3 of 5
-  150 sites are shelter + privy
-  119 sites are shelter + campsite + privy
-```
+| | projected | measured |
+|---|---|---|
+| POIs folded | 427 | **428** — 284 privies, 144 campsites (water excluded, see below) |
+| sites | 287 | **291** (250 shelter-anchored, 41 campsite-anchored) |
+| privies folded | 281 / 316 (89%) | **284 / 316 (90%)** |
+| campsites folded | 137 / 232 (59%) | **144 / 232 (62%)** |
+| sizes | 159 of 2, 119 of 3, 6 of 4, 3 of 5 | **166 of 2, 116 of 3, 6 of 4, 3 of 5** |
+| furthest member | — | **143 m** — the 150 m gate binds, and nothing like the 903 km match survives |
 
-**281 of 316 privies (89%) stop competing for a pin and start riding one that is drawn** — a shelter pin, which places at 91% at z14 and 95% at z15. Against the 3% drawn today, that is the whole of the fix.
+Measured compositions: 115 shelter + privy, 113 shelter + campsite + privy, 40 campsite + privy, 11 shelter + campsite.
+
+The measured figures come out slightly *better* than projected, for one normalisation reason this document did not predict — §2a. **The water row is excluded from the measurement rather than reported as zero**: those 9 points come from opentrail.org, whose API needs more than a bare GET, so they were not in the measured set. `water` is an ordinary member type in the rule and unit tests cover it.
+
+**284 of 316 privies (90%) stop competing for a pin and start riding one that is drawn** — a shelter pin, which places at 91% at z14 and 95% at z15. Against the 3% drawn today, that is the whole of the fix.
+
+### 2a. Which normalisation steps earn their place
+
+Recovering the parent's name from the child's is where this gets subtly wrong, and #523 asked for it to be measured rather than assumed. Each candidate below was added *alone* on top of `{privy, campsite, shelter}` and run over all 828 points:
+
+| step | worth |
+|---|---|
+| strip a trailing sibling number | **privies 86% → 89%.** The largest single win. 53 of the 828 names end in a digit: `"Mt. Wilcox South Shelter 2"`, `"Grafton Notch Parking Area Privy 2"` |
+| strip a trailing `group` | **+4 privies, +7 campsites, +4 sites.** `"Eckville Shelter Group Campsite"` → `Eckville Shelter`; and `"Osgood Tentsite Privy"` → `"Osgood Tentsite Group Campsite"`, which is 60.5 m away and so needs the name gate, the distance gate having just missed it |
+| strip a trailing plural `shelters` | **+2 campsites, +1 site.** ATC names a campsite after a *pair*: `"Tumbling Run Shelters Campsite"` |
+| fold `Lean-to` / `Lean to` | **nothing.** Punctuation is collapsed to spaces before the type-word list is consulted, so both already spell `lean to`. The folding code was written, measured at zero, and deleted |
+| strip `tentsite`, `campground`, `leanto`, `hut`, `cabin`, `site`, `privies`, `campsites` | **nothing, each.** `"Osgood Tentsite Privy"`'s parent is `"Osgood Tentsite Group Campsite"`, so `tentsite` is on *both* sides and stripping it from one would break the match |
+
+Two of the three hypotheses in #523 were wrong, and the one it got right — the trailing digits — is the one that mattered most.
+
+`group` also introduced the only ambiguity worth a tie-break. It makes `"Laurel Ridge Campsite"` and `"Laurel Ridge Group Campsite"` reduce alike, so `"Laurel Ridge Campsite Privy"` matches both — and nearest-wins picked the group site: 10 m closer, and not what the privy is called. **An anchor whose whole name the child's name contains beats one that merely reduces alike**, which picks the one ATC named it after.
 
 ### 3. What publishes
 
@@ -223,5 +244,5 @@ Nearly every A.T. shelter has water in reality. The app does not know where it i
 1. **Two shelters, one site.** Horns Pond has two lean-tos ~40 m apart and is genuinely one place; elsewhere two shelters that close would be a data error. v1 keeps one anchor per site and lets the second shelter keep its own pin, which is safe and slightly wrong at Horns Pond. Is that the right trade, or should anchor-to-anchor merging be in scope?
 2. **Trailheads.** `parking + resupply` (26 clusters) and `parking + privy` (13) are a real second grouping with a different card. Deliberately out of v1 — is it v1.1 or v2?
 3. **The pin badge.** Glyph strip or `+N`, settled on a real screen rather than here.
-4. **The 35 unmatched privies.** Named for something that is not a shelter or campsite — `"Kennebec Privy"`, `"Grafton Notch Parking Area Privy 2"`. They keep their own pins, which is honest. Worth a second pass, or leave them?
+4. **The 32 unmatched privies** (35 as projected; `group` found three of them). Named for something that is not a shelter or campsite — `"Kennebec Privy"`, `"Bromley Summit Privy"`, `"Guilder Pond Parking Area Privy"` — or distinguished by a word the rule has no reading of: `"Backpacker Campsite Upper Privy"` and `"...Lower Privy"` are two privies at one campsite, and `"501 Shelter Winter Privy"` is a seasonal second one. They keep their own pins, which is honest. Worth a second pass, or leave them?
 5. **Site names.** A site anchored on `"Chairback Gap Lean-to Shelter"` shows that name. Does the card say "Chairback Gap" once at the top and let the chips carry the rest, or repeat the full name per member?

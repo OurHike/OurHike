@@ -43,6 +43,22 @@ export interface AtcUpdate {
   states: string[]
   start_mile_marker: number
   end_mile_marker: number
+  /**
+   * Whether a hiker is stopped from walking through, as the reviewer read it.
+   *
+   * NOT derivable from `category`, which is the thing this field replaced. ATC
+   * files a closed shelter and a closed footbridge under the same word,
+   * `Closure`, and they are opposite answers to the only question a band asks:
+   * "Connecticut: Limestone Spring Shelter Closed" leaves the trail open and
+   * the shelter shut, while "Harpers Ferry: Footbridge Closure" means the way
+   * across the Potomac is gone. Keying the band on the category drew a barrier
+   * across the treadway for the shelter - a barrier a hiker walks straight
+   * past, which is exactly what teaches them the barriers can be ignored.
+   *
+   * So it is the reviewer's judgement, recorded per row, which is where
+   * features/ATC_TRAIL_UPDATES.md puts every other judgement this data needs.
+   */
+  obstructs_trail: boolean
   /** ATC's `dateModified`, as an ISO string. The age a hiker cares about. */
   updated_at: string
   source_url: string
@@ -54,28 +70,27 @@ export interface AtcUpdate {
 export type AtcCategory = 'Detour' | 'Alert' | 'Closure' | 'Parking' | 'Hiking Safety'
 
 /**
- * The categories that mean the trail itself is obstructed.
+ * Whether this update gets a band, rather than only a banner.
  *
- * Only these get a band. A band's sentence is "do not walk down there, go
- * around" - it is a barrier drawn across the treadway - and an Alert about
- * bear activity or a notice about a closed car park does not say that. Drawing
- * one for those would be the same mistake `MAX_BAND_MILES` guards against from
- * the other direction: a barrier that turns out not to be a barrier is what
- * teaches a hiker that the barriers can be walked past.
+ * A band's sentence is "do not walk down there, go around" - a barrier drawn
+ * across the treadway. A bear warning, a closed car park and a closed shelter
+ * are all real information and none of them says that, so none of them is
+ * drawn as one. Getting this wrong is the same mistake `MAX_BAND_MILES` guards
+ * against from the other direction: a barrier that turns out not to be a
+ * barrier is what teaches a hiker that the barriers can be walked past.
  *
- * The suppressed ones are not dropped. They keep the banner, which needs only
- * a mile number, exactly as an over-long advisory does - so a hiker is still
+ * This reads the reviewer's answer rather than inferring one from ATC's
+ * category - see `obstructs_trail` above for the live case that proved the
+ * inference wrong.
+ *
+ * The undrawn ones are not dropped. They keep the banner, which needs only a
+ * mile number, exactly as an over-long advisory does - so a hiker is still
  * told, in ATC's own words, that ATC has posted something about where they are
  * walking. features/ATC_TRAIL_UPDATES.md leaves "where the suppressed ones go"
  * an open question, and this is that answer for now rather than a new screen.
  */
-const OBSTRUCTING_CATEGORIES: ReadonlySet<AtcCategory> = new Set<AtcCategory>([
-  'Closure',
-  'Detour',
-])
-
 export function obstructsTheTrail(update: AtcUpdate): boolean {
-  return OBSTRUCTING_CATEGORIES.has(update.category)
+  return update.obstructs_trail
 }
 
 /** How a band's id says which update it is, and that it is ATC's.

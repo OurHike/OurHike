@@ -34,6 +34,7 @@ def row(**overrides) -> dict:
         "states": ["VA"],
         "start_mile_marker": 476.6,
         "end_mile_marker": 485.8,
+        "obstructs_trail": True,
         "updated_at": "2026-07-17T00:00:00Z",
         "source_url": "https://appalachiantrail.org/trail-updates/va-creeper/",
         **overrides,
@@ -177,6 +178,7 @@ def test_only_the_published_fields_reach_the_artifact():
         "states",
         "start_mile_marker",
         "end_mile_marker",
+        "obstructs_trail",
         "updated_at",
         "source_url",
     }
@@ -197,3 +199,51 @@ def test_the_shipped_reviewed_file_has_no_unpublishable_rows():
     pass. This is the test that fails on the pull request that adds the rows,
     which is the moment it is worth failing."""
     assert file_problems(json.loads(REVIEWED_FILE.read_text())) == []
+
+
+# --- The field ATC's own categories cannot answer -------------------------
+
+
+def test_obstructs_trail_is_required():
+    """Not defaulted, because the default would be a guess about whether a
+    hiker can walk through."""
+    missing = row()
+    del missing["obstructs_trail"]
+
+    assert any("missing obstructs_trail" in problem for problem in row_problems(missing))
+
+
+def test_obstructs_trail_must_be_a_real_boolean():
+    problems = row_problems(row(obstructs_trail="yes"))
+
+    assert any("must be true or false" in problem for problem in problems)
+
+
+def test_two_closures_can_disagree_about_obstructing_the_trail():
+    """The live case that removed the category-based rule (2026-08-12). ATC
+    files both of these as `Closure`, and they are opposite answers to the only
+    question a band asks - the trail past Limestone Spring is open and the
+    shelter is shut, while the way across the Potomac is gone."""
+    shelter = row(
+        atc_id="connecticut-limestone-spring-shelter-closed",
+        title="Connecticut: Limestone Spring Shelter Closed",
+        category="Closure",
+        states=["CT"],
+        start_mile_marker=1503.6,
+        end_mile_marker=1503.6,
+        obstructs_trail=False,
+    )
+    footbridge = row(
+        atc_id="harpers-ferry-footbridge-closure",
+        title="Harpers Ferry: Footbridge Closure",
+        category="Closure",
+        states=["WV"],
+        start_mile_marker=1026.7,
+        end_mile_marker=1026.7,
+        obstructs_trail=True,
+    )
+
+    assert row_problems(shelter) == []
+    assert row_problems(footbridge) == []
+    assert shelter["category"] == footbridge["category"]
+    assert shelter["obstructs_trail"] != footbridge["obstructs_trail"]

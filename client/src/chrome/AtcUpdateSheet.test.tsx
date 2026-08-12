@@ -16,6 +16,7 @@ const UPDATE: AtcUpdate = {
   states: ['VA'],
   start_mile_marker: 476.6,
   end_mile_marker: 485.8,
+  obstructs_trail: true,
   updated_at: '2026-07-17T00:00:00Z',
   source_url: 'https://appalachiantrail.org/trail-updates/va-creeper/',
 }

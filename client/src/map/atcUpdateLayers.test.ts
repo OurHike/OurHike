@@ -51,6 +51,7 @@ function update(overrides: Partial<AtcUpdate> = {}): AtcUpdate {
     states: ['VA'],
     start_mile_marker: 4,
     end_mile_marker: 8,
+    obstructs_trail: true,
     updated_at: '2026-07-17T00:00:00Z',
     source_url: 'https://appalachiantrail.org/trail-updates/va-creeper/',
     ...overrides,
@@ -116,9 +117,11 @@ describe('the bands', () => {
   })
 
   it('draws nothing for a notice that does not obstruct the trail', () => {
-    const parking = update({ category: 'Parking' })
+    // A closed shelter is a `Closure` on ATC's page and leaves the trail open,
+    // which is why the band asks the reviewer rather than the category.
+    const shelter = update({ category: 'Closure', obstructs_trail: false })
 
-    expect(closureBands(atcBandCandidates([parking]), straightTrail(20))).toHaveLength(0)
+    expect(closureBands(atcBandCandidates([shelter]), straightTrail(20))).toHaveLength(0)
   })
 
   it('pushes the bands onto a live map', () => {

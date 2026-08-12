@@ -58,6 +58,7 @@ REQUIRED_FIELDS = (
     "states",
     "start_mile_marker",
     "end_mile_marker",
+    "obstructs_trail",
     "updated_at",
     "source_url",
 )
@@ -124,6 +125,18 @@ def row_problems(row: dict) -> list[str]:
             # take the absolute value and draw a band that looks right while
             # having been entered wrong.
             problems.append(f"end_mile_marker {end} is before start_mile_marker {start}")
+
+    # Required as a real boolean rather than defaulted, because the default
+    # would be a guess about whether a hiker can walk through. ATC files a
+    # closed shelter and a closed footbridge under one category, `Closure`,
+    # and they are opposite answers - so this cannot be inferred from anything
+    # else in the row and has to be a reviewer's decision, recorded.
+    if "obstructs_trail" in row and not isinstance(row.get("obstructs_trail"), bool):
+        problems.append(
+            "obstructs_trail must be true or false - whether a hiker is stopped from walking "
+            "through, which is not the same question as ATC's category (a closed shelter is a "
+            "`Closure` and leaves the trail open)"
+        )
 
     updated_at = row.get("updated_at")
     if "updated_at" in row and (not isinstance(updated_at, str) or not updated_at.strip()):

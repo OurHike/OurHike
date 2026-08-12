@@ -31,6 +31,7 @@ function update(overrides: Partial<AtcUpdate> = {}): AtcUpdate {
     states: ['VA'],
     start_mile_marker: 476.6,
     end_mile_marker: 485.8,
+    obstructs_trail: true,
     updated_at: '2026-07-17T00:00:00Z',
     source_url: 'https://appalachiantrail.org/trail-updates/va-creeper/',
     ...overrides,
@@ -38,27 +39,41 @@ function update(overrides: Partial<AtcUpdate> = {}): AtcUpdate {
 }
 
 describe('which updates become bands', () => {
-  it('draws a band for a closure and for a detour', () => {
-    expect(obstructsTheTrail(update({ category: 'Closure' }))).toBe(true)
-    expect(obstructsTheTrail(update({ category: 'Detour' }))).toBe(true)
+  it('draws a band only where a hiker is actually stopped', () => {
+    // A barred band's sentence is "do not walk down there, go around", and a
+    // barrier that turns out not to be a barrier teaches a hiker that the
+    // barriers can be walked past.
+    expect(obstructsTheTrail(update({ obstructs_trail: true }))).toBe(true)
+    expect(obstructsTheTrail(update({ obstructs_trail: false }))).toBe(false)
   })
 
-  it('draws no band for a notice that does not obstruct the trail', () => {
-    // A barred band's sentence is "do not walk down there, go around". A
-    // closed car park does not say that, and a barrier that turns out not to
-    // be a barrier teaches a hiker that the barriers can be walked past.
-    expect(obstructsTheTrail(update({ category: 'Parking' }))).toBe(false)
-    expect(obstructsTheTrail(update({ category: 'Alert' }))).toBe(false)
-    expect(obstructsTheTrail(update({ category: 'Hiking Safety' }))).toBe(false)
+  it('does not read the answer off ATC’s category', () => {
+    // The live case that removed the category-based rule (2026-08-12). ATC
+    // files both of these as `Closure` and they are opposite answers: the
+    // trail past Limestone Spring is open and the shelter is shut, while the
+    // way across the Potomac is gone.
+    const shelter = update({
+      atc_id: 'connecticut-limestone-spring-shelter-closed',
+      category: 'Closure',
+      obstructs_trail: false,
+    })
+    const footbridge = update({
+      atc_id: 'harpers-ferry-footbridge-closure',
+      category: 'Closure',
+      obstructs_trail: true,
+    })
+
+    expect(obstructsTheTrail(shelter)).toBe(false)
+    expect(obstructsTheTrail(footbridge)).toBe(true)
   })
 
   it('still warns about a notice it will not draw', () => {
-    // The suppressed ones keep the banner, exactly as an over-long advisory
+    // The undrawn ones keep the banner, exactly as an over-long advisory
     // does. Losing the band must not mean losing the warning.
-    const alert = update({ category: 'Alert' })
+    const bears = update({ category: 'Alert', obstructs_trail: false })
 
-    expect(atcBandCandidates([alert])).toHaveLength(0)
-    expect(atcUpdateBanner(alert, 480, 'NOBO')).not.toBeNull()
+    expect(atcBandCandidates([bears])).toHaveLength(0)
+    expect(atcUpdateBanner(bears, 480, 'NOBO')).not.toBeNull()
   })
 })
 

@@ -313,13 +313,25 @@ and deliberately not the same as an empty document saying ATC reports nothing.
   either. Worth setting against what the map looks like at real zooms. The current value errs
   toward drawing, because a suppressed band buries nothing while the hiker keeps the banner.
 - **Where the suppressed ones go.** "List entry" still has no surface: an update that loses
-  its band keeps its banner and nothing more. Two things now reach that state rather than
-  one — an over-ceiling advisory, and a category that does not obstruct the trail. The
-  second is a decision this build made and worth flagging as one: a barred band's sentence
-  is "go around", so **only `Closure` and `Detour` are drawn**, and an `Alert`, a `Parking`
-  notice or a `Hiking Safety` notice reaches a hiker through the banner alone. That keeps a
-  barrier meaning a barrier, at the cost of making the missing list surface matter more than
-  it did.
+  its band keeps its banner and nothing more. Two things reach that state rather than one —
+  an over-ceiling advisory, and an update that does not actually stop a hiker walking
+  through.
+
+  **The second was nearly got wrong, and the mistake is worth recording.** It was first
+  built as a rule over ATC's `category`: draw `Closure` and `Detour`, banner the rest. Live
+  data on 2026-08-12 killed that. ATC files these two under the same word:
+
+  | Update | Category | Is the trail passable? |
+  |---|---|---|
+  | Connecticut: Limestone Spring Shelter Closed | `Closure` | **yes** — the shelter is shut, the trail is not |
+  | Harpers Ferry: Footbridge Closure | `Closure` | **no** — the way across the Potomac is gone |
+
+  A band drawn for the first is a barrier a hiker walks straight past, which is how they
+  learn the barriers can be ignored — the exact failure the rule existed to prevent, arriving
+  through the one case nobody thought to check. So it is now `obstructs_trail`, a field the
+  reviewer sets per row, and it sits with every other judgement this data needs rather than
+  being inferred. Which is the argument this document already makes about the mile ranges,
+  landing a second time somewhere nobody expected it.
 - **Whether "reopened" updates should be ingested at all**, or whether ATC removing an update
   is the signal. An update that disappears from their page is not the same as one marked
   reopened, and `discover_sources.py`'s precedent — a vanished source is "kept, not deleted,

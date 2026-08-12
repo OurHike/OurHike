@@ -36,6 +36,8 @@ That `--provider` label is as far as this registry currently goes toward being m
 
 What exists upstream *beyond* the registry - the maintaining clubs, the federal servers, the community datasets, and what each is worth - is surveyed and qualified in [SOURCE_SURVEY.md](SOURCE_SURVEY.md) (snapshot dated 2026-08-09; it also corrects who actually hosts the layers above).
 
+Elevation is surveyed separately in [ELEVATION_SOURCES.md](ELEVATION_SOURCES.md) (2026-08-12), because a DEM is qualified on different terms than a feature layer - what a source does to *cumulative ascent* matters more than its nominal resolution, and the finest DEM tested is not the most truthful one.
+
 ## Fetching ATC sources
 
 `fetch_all.py` reads `sources.json` and downloads each layer (paginating past ArcGIS's per-request record cap via `lib/arcgis.py`) to `data/raw/<key>.geojson`. It's change-aware: before doing the full paginated fetch, it checks each layer's `editingInfo.dataLastEditDate` (one cheap metadata request) against the value recorded in `data/raw/manifest.json` from the last run, and skips the source entirely if unchanged. Only writes the manifest if **every** registered source succeeded or was confirmed up to date - if any layer fails or goes missing, it exits non-zero instead of silently producing a partial dataset.

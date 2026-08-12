@@ -127,8 +127,15 @@ export function poiIconId(type: string, confidence: PoiConfidence): string {
  * because there is now a second pin at a second size - the serious-warning pin
  * at 44px (map/warningPin.ts). Sharing this is the whole reason that pin is a
  * variant of the waypoint spec rather than a visual language of its own.
+ *
+ * Exported for the third caller, which wants no pixels at all: map/MapIcon.tsx
+ * draws these same pins as SVG for the legend, and asks for `pinGeometry(1)` to
+ * get every proportion as a fraction of a unit viewBox. That is the whole
+ * reason the numbers below are ratios - a legend pin whose rim thickness was
+ * typed out a second time in a stylesheet would drift from the map's the first
+ * time either moved.
  */
-function pinGeometry(pixels: number) {
+export function pinGeometry(pixels: number) {
   const center = pixels / 2
   const rOuter = center
   const edgeWidth = rOuter / 15
@@ -154,8 +161,12 @@ function pinGeometry(pixels: number) {
 }
 
 /** Dash count around the rim of an unverified pin. Even, so the pattern closes
- *  cleanly where the last gap meets the first dash. */
-const RIM_DASHES = 8
+ *  cleanly where the last gap meets the first dash.
+ *
+ *  Exported for the same reason {@link pinGeometry} is: map/MapIcon.tsx spends
+ *  it on an SVG `stroke-dasharray`, and a legend pin dashed to a different
+ *  rhythm from the map's would be teaching the wrong rhythm. */
+export const RIM_DASHES = 8
 
 /** Sub-samples per axis. 3x3 is enough to take the stair-stepping off a 60px
  *  circle without making icon generation something to think about. */
@@ -334,7 +345,16 @@ const GLYPHS: Record<string, Glyph> = {
  * for a POI the map is already drawing as a neutral pin.
  */
 export function poiGlyphPath(type: string): string {
-  const glyph = GLYPHS[type] ?? GLYPHS[UNKNOWN_POI_TYPE]
+  return glyphPath(GLYPHS[type] ?? GLYPHS[UNKNOWN_POI_TYPE])
+}
+
+/**
+ * Any glyph as SVG path data, for the ones that are not keyed by POI type -
+ * the hazard triangle (map/warningPin.ts) is the customer, and it is spelled
+ * out there rather than in {@link GLYPHS} because a serious warning is not a
+ * waypoint.
+ */
+export function glyphPath(glyph: Glyph): string {
   return glyph
     .map(
       (ring) =>
@@ -345,6 +365,15 @@ export function poiGlyphPath(type: string): string {
           .join('L')}Z`,
     )
     .join('')
+}
+
+/**
+ * The disc colour for a POI type, falling back for one this build has never
+ * heard of - the same pairing {@link buildPoiIcon} draws with, so a pin and
+ * anything drawn to match it cannot disagree about the accent.
+ */
+export function poiColor(type: string): string {
+  return type in POI_COLORS ? POI_COLORS[type as PoiType] : POI_FALLBACK_COLOR
 }
 
 /** Even-odd crossing count, which is what gives the tent its doorway. */
@@ -483,7 +512,7 @@ export function buildPoiIcon(type: string, confidence: PoiConfidence): PoiIconIm
     sizePx: POI_PIN_SIZE,
     pixelRatio: POI_PIN_PIXEL_RATIO,
     glyph: GLYPHS[type] ?? GLYPHS[UNKNOWN_POI_TYPE],
-    color: type in POI_COLORS ? POI_COLORS[type as PoiType] : POI_FALLBACK_COLOR,
+    color: poiColor(type),
     confidence,
   })
 }

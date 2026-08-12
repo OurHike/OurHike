@@ -52,8 +52,10 @@ can cost somebody water.
 ### 3. The type filter — deliberate, and the only one a hiker can see
 
 `attachHiddenPoiTypes` applies the legend's hide toggles as a layer filter. This is the
-honest case: a hiker turned it off, the legend row still shows the count with a "Show" control
-beside it, and nothing is claimed. It is also the *only* control that exists, it is ephemeral
+honest case: a hiker turned it off, the legend row still shows the count and still reads as the
+control that turns it back on, and nothing is claimed. (Since
+[#572](https://github.com/OurHike/OurHike/issues/572) that control is the whole row rather than
+a "Show" dot beside it.) It is also the *only* control that exists, it is ephemeral
 (`useState` in [`App.tsx`](../client/src/App.tsx), lost on reload), and it can only be reached
 for a type that has points inside the current viewport.
 

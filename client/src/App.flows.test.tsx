@@ -278,6 +278,13 @@ describe('the legend', () => {
   })
 
   it('hides a type when it is toggled off, and shows it again when toggled back', async () => {
+    // Found by pressed state rather than by name. The control used to be a dot
+    // labelled "Hide Water"; since #572 the row itself is the button, and a
+    // category is on or off according to whether it reports itself pressed.
+    //
+    // The version this replaces looked the button up by /hide|show/, read an
+    // `aria-label` that control never had, and then asserted no button was
+    // named `''` - which was true before the click as well. It could not fail.
     const user = userEvent.setup()
     hikerOnTrail()
     render(<App />)
@@ -285,19 +292,27 @@ describe('the legend', () => {
 
     await user.click(screen.getByRole('button', { name: /legend/i }))
     const legend = await screen.findByRole('dialog', { name: /legend/i })
-    const hide = within(legend).getAllByRole('button', { name: /hide|show/i })[0]
-    const label = hide.getAttribute('aria-label') ?? ''
 
-    await user.click(hide)
-    expect(within(legend).queryByRole('button', { name: label })).not.toBeInTheDocument()
+    // queryAll, not getAll: this fixture puts one category in the viewport, so
+    // the count after the click is legitimately zero and getAll would throw
+    // rather than report it.
+    const shown = () => within(legend).queryAllByRole('button', { pressed: true })
+    const before = shown().length
+    expect(before).toBeGreaterThan(0)
+
+    await user.click(shown()[0])
+
+    expect(shown()).toHaveLength(before - 1)
+    // Still on screen, still counted - hiding a category takes its pins off
+    // the map without taking the row out of the legend, which is the only
+    // thing left to turn it back on with.
+    expect(within(legend).getAllByRole('button', { pressed: false })).toHaveLength(1)
 
     // Toggling back is the half that a Set-based toggle gets wrong if it only
     // ever adds.
-    const restore = within(legend).getAllByRole('button', { name: /hide|show/i })[0]
-    await user.click(restore)
-    expect(
-      within(legend).getAllByRole('button', { name: /hide|show/i }).length,
-    ).toBeGreaterThan(0)
+    await user.click(within(legend).getByRole('button', { pressed: false }))
+
+    expect(shown()).toHaveLength(before)
   })
 })
 

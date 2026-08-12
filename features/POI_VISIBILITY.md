@@ -274,9 +274,24 @@ What ships:
   "all", exactly as it does today.
 - **A full category list in Settings**, beside the detail picker, which is where the wireframe
   already put it.
-- **"Only this" from a legend row** — one tap to show a single category. At a crowded zoom this
-  is the difference between four water pins drawn and forty, and it answers *where is the next
-  water* in two taps rather than by zooming in and panning along the trail.
+- **One picker under the legend's rows** — *Showing [ All types ▾ ]* — to draw a single category
+  and nothing else. At a crowded zoom this is the difference between four water pins drawn and
+  forty, and it answers *where is the next water* in two taps rather than by zooming in and
+  panning along the trail.
+
+  This asked for *"Only this" from a legend row*, and that is what shipped first. It was wrong
+  twice over. A control on every row costs N controls for one global action, on a line that
+  already carries an icon, a label and a count; and a row cannot hold the state anyway — from
+  *only water*, a tap on the privy row has no defined meaning, because privy is already undrawn
+  and what changed was never privy's own state. The picker also reaches a category with nothing
+  in the viewport, which the second consequence above says a per-row control cannot.
+
+  The picker **displays** the filter rather than describing it: its value is `Water`, or
+  `All types`, or `3 of 8 types` where rows were toggled individually. A first attempt put a
+  placeholder in it (*Show one only…*) with a sentence and a `Show all` button beside it, and
+  that is three things saying one thing — at the 272px the desktop panel actually is, the line
+  wrapped and orphaned its separator. `All types` is the way out, so there is no second control
+  to appear and disappear with the filter.
 
 The last point is what makes the control worth having rather than tidy: **hiding a category
 hands its collision budget to the ones left.** With Option 1 shipped, that is visible as it

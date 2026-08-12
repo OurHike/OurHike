@@ -116,6 +116,7 @@ CONTRIBUTING.md "A note on data and licences").
 
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 import duckdb
@@ -559,10 +560,18 @@ def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[
     }
 
 
-def main() -> dict:
-    con = duckdb.connect()
-    con.execute("INSTALL spatial; LOAD spatial;")
+def read_sources(con: duckdb.DuckDBPyConnection) -> list[dict]:
+    """Every source read, unified and clipped to the corridor - the whole of
+    this export that depends on the raw data and none of what depends on the
+    photo fetches.
 
+    Split out so `--check` can run exactly this and nothing else. That is the
+    point of it: the two defects that cost this pipeline an hour each landed
+    here, in the reading, while the step sits behind ~55 minutes of photo
+    fetching it has no need of. Sharing the function rather than
+    reimplementing it is what makes the preflight a real rehearsal - a check
+    that read the sources its own way could pass while the export failed.
+    """
     print("Building 30-mile corridor from centerline...")
     build_corridor(con, RAW_DIR / "centerline.geojson")
 
@@ -578,6 +587,53 @@ def main() -> dict:
 
     clipped = clip_to_corridor(con, unified)
     print(f"  {len(clipped)}/{len(unified)} within the corridor.")
+    return clipped
+
+
+def poi_counts(records: list[dict]) -> dict[str, int]:
+    """How many records each declared poi_type has, including the zeroes.
+
+    Built from POI_TYPES rather than from what the records happen to contain,
+    so a type that vanished entirely counts 0 and fails the gate below
+    instead of quietly not appearing in the tally.
+    """
+    return {poi_type: sum(1 for record in records if record["poi_type"] == poi_type) for poi_type in POI_TYPES}
+
+
+def fail_if_any_type_is_empty(counts: dict[str, int], label: str) -> None:
+    """Every poi_type must produce at least one feature - a genuinely broken
+    source (e.g. shelter silently returning 0 after an upstream schema
+    change) would otherwise be structurally indistinguishable from crossing's
+    expected, intentional emptiness (see module docstring) and ship silently.
+    crossing is the only poi_type allowed to be 0."""
+    fail_if_incomplete(count_problems(counts, minimums={"crossing": 0}), label=label)
+
+
+def check_sources() -> dict[str, int]:
+    """Read the sources, clip them, and gate on the counts - writing nothing.
+
+    The preflight the publish workflow runs BEFORE the photo fetches. It
+    costs seconds and catches the whole class of failure that has actually
+    bitten this pipeline: a row ATC left empty, a source that came back
+    without the layer, a schema change that empties a type. Discovering any
+    of those after the fetches costs an hour and a photo cache.
+    """
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+
+    counts = poi_counts(read_sources(con))
+    for poi_type, count in counts.items():
+        print(f"  {poi_type}: {count} features")
+    fail_if_any_type_is_empty(counts, label="POI sources are not exportable")
+    print("Sources read cleanly - the export has what it needs.")
+    return counts
+
+
+def main() -> dict:
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+
+    clipped = read_sources(con)
 
     # CAPACITY_PATH read here rather than defaulted in the signature, so that
     # redirecting the module constant - as the tests do - redirects the read.
@@ -603,20 +659,15 @@ def main() -> dict:
         print(f"  No {IMAGES_FILENAME} or {ATC_IMAGES_FILENAME} - exporting without photos.")
 
     manifest = {}
-    counts = {}
     for poi_type in POI_TYPES:
         records = [r for r in clipped if r["poi_type"] == poi_type]
-        counts[poi_type] = len(records)
         manifest[poi_type] = write_poi_type(con, poi_type, records)
         print(f"  {poi_type}: {len(records)} features -> {OUT_DIR / poi_type}.{{geojson,fgb}}")
 
-    # Completeness check: every poi_type must produce at least one feature -
-    # a genuinely broken source (e.g. shelter silently returning 0 after an
-    # upstream schema change) would otherwise be structurally indistinguishable
-    # from crossing's expected, intentional emptiness (see module docstring)
-    # and ship silently. crossing is the only poi_type allowed to be 0.
-    problems = count_problems(counts, minimums={"crossing": 0})
-    fail_if_incomplete(problems, label="Incomplete POI export")
+    # The same gate `--check` ran before any of the fetching, run again on
+    # what was actually written. Not redundant: the preflight can only speak
+    # for the data as it was read, and this one speaks for the artifacts.
+    fail_if_any_type_is_empty(poi_counts(clipped), label="Incomplete POI export")
 
     manifest_path = OUT_DIR / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2))
@@ -625,5 +676,18 @@ def main() -> dict:
     return manifest
 
 
-if __name__ == "__main__":
+def run(argv: list[str]) -> None:
+    """Flag handling split from main() so tests can drive each side alone -
+    same shape as fetch_atc_photos.py's, including refusing a flag it does
+    not know rather than silently exporting when a preflight was asked for."""
+    if argv == ["--check"]:
+        check_sources()
+        return
+    if argv:
+        print(f"Unknown flag {argv[0]!r} - usage: python export_poi.py [--check]")
+        raise SystemExit(2)
     main()
+
+
+if __name__ == "__main__":
+    run(sys.argv[1:])

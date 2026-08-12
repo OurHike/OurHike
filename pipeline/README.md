@@ -321,6 +321,20 @@ The quad sheet is not yet in the client's detail catalog - whether it ships
 as a fourth choice there or as its own optional package is #193's shape
 decision, and its size waits in this table either way.
 
+## Checking the POI sources before anything expensive
+
+`export_poi.py --check` reads and clips every POI source, gates on the per-type counts, and writes nothing. The publish workflow runs it **before the photo fetches**, and it costs seconds.
+
+```
+.venv/Scripts/python export_poi.py --check
+```
+
+It exists because the ordering below it cannot change: `export_poi.py` attaches photos, so it has to run *after* fetches that take the better part of an hour — which meant every defect in the raw data surfaced an hour into a run. That happened twice in one release (2026-08-09): a dead Google Drive photo link, then a parking row ATC left with no geometry. Each cost a full run, and each threw away the photo cache with it.
+
+The check runs the export's **own** reading code rather than a copy, so a source it passes is a source the export can read. What it cannot speak for is the enrichment, which needs the fetches — so the same completeness gate runs again inside the export proper.
+
+The photo cache is saved by its own step now, with `if: always()`, for the other half of the same problem: `actions/cache`'s bundled post-step only runs on success, so a failure late in the job discarded an hour of downloading that was already on disk and already correct.
+
 ## Checking output quality before publish (done)
 
 `check_output_quality.py` is the gate between Export and Publish. It runs after `export_trails.py`, `export_poi.py`, `export_elevation.py`, and the raster assemble (`assemble_raster.py`) have all produced their output, and before `publish.py` ships any of it to R2:

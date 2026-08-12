@@ -215,6 +215,42 @@ describe('the closure banner', () => {
     expect(banner).toHaveTextContent(/storm damage/i)
   })
 
+  // #485, end to end through the shell. The lane rule is unit-tested in
+  // lib/closureBanner.test.ts; what only this file can catch is App.tsx handing
+  // one lane's winner to the other line, or dropping a lane on the floor.
+  it('does not let a region-wide advisory bury the closure inside it', async () => {
+    // A 60-mile advisory (over MAX_BAND_MILES) with a specific closure inside
+    // it, which is ATC's Helene against the Creeper Trail at this harness's
+    // scale. Ranked into one line, the advisory scores "inside" and wins - so
+    // the closure a mile and a half ahead never reached the header at all.
+    vi.mocked(fetchClosures).mockResolvedValue([closure(0, 60), closure(6.5, 7.5)])
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await establishNobo(5)
+
+    // The actionable line is the nine-mile closure ahead...
+    const specific = await screen.findByText(/trail closed .* ahead/i)
+    expect(specific).toHaveTextContent(/mi 6\.5 – 7\.5/)
+    // ...and the advisory is still said, on its own line, without claiming the
+    // trail is closed underfoot.
+    const advisory = screen.getByText(/advisory along 60 mi of trail/i)
+    expect(advisory).toHaveTextContent(/mi 0\.0 – 60\.0/)
+    expect(screen.queryByText(/trail closed here/i)).toBeNull()
+  })
+
+  it('still says an advisory alone when the way ahead is otherwise clear', async () => {
+    vi.mocked(fetchClosures).mockResolvedValue([closure(0, 60)])
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await establishNobo(5)
+
+    expect(await screen.findByText(/advisory along 60 mi of trail/i)).toBeInTheDocument()
+  })
+
   it('stays silent when the closures read fails, and keeps the map', async () => {
     // A failed read and an empty list draw the same map and mean opposite
     // things on the ground. The banner must not invent an all-clear - and

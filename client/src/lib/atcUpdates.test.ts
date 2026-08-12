@@ -7,7 +7,8 @@ import {
   atcUpdateBanner,
   atcUpdateDistanceAhead,
   atcUpdateForBandId,
-  nearestAtcUpdate,
+  atcUpdateLanes,
+  isBroadAtcAdvisory,
   obstructsTheTrail,
   type AtcUpdate,
 } from './atcUpdates'
@@ -179,7 +180,7 @@ describe('picking the nearest', () => {
     const near = update({ atc_id: 'near', start_mile_marker: 480, end_mile_marker: 481 })
     const far = update({ atc_id: 'far', start_mile_marker: 600, end_mile_marker: 601 })
 
-    expect(nearestAtcUpdate([far, near], 470, 'NOBO')?.update.atc_id).toBe('near')
+    expect(atcUpdateLanes([far, near], 470, 'NOBO').specific?.update.atc_id).toBe('near')
   })
 
   it('lets one the hiker is standing in win outright', () => {
@@ -195,17 +196,77 @@ describe('picking the nearest', () => {
     })
 
     // Both are "ahead" by the raw arithmetic; only one is underfoot.
-    expect(nearestAtcUpdate([ahead, inside], 475, 'NOBO')?.update.atc_id).toBe('inside')
+    expect(atcUpdateLanes([ahead, inside], 475, 'NOBO').specific?.update.atc_id).toBe(
+      'inside',
+    )
   })
 
   it('answers null when everything is behind', () => {
-    expect(nearestAtcUpdate([update()], 490, 'NOBO')).toBeNull()
+    expect(atcUpdateLanes([update()], 490, 'NOBO').specific).toBeNull()
   })
 
   it('reports a distance the header can compare against a closure', () => {
     // The whole reason this returns a distance rather than a string: App.tsx
-    // has one banner line and two sources competing for it.
+    // has two sources competing for each line.
     expect(atcUpdateDistanceAhead(update(), 470, 'NOBO')).toBeCloseTo(6.6, 5)
     expect(atcUpdateDistanceAhead(update(), 480, 'NOBO')).toBe(0)
+  })
+})
+
+// The ATC path is the one #485's case actually travels. Since #461 the Helene
+// advisory arrives as an `AtcUpdate` and never as a `Closure`, so a fix confined
+// to lib/closureBanner.ts would have left the reported bug in place.
+describe('a region-wide ATC advisory', () => {
+  const HELENE = update({
+    atc_id: 'helene',
+    category: 'Alert',
+    title: 'Hurricane Helene damage',
+    start_mile_marker: 239.4,
+    end_mile_marker: 637.8,
+  })
+  const CREEPER = update({
+    atc_id: 'creeper',
+    category: 'Closure',
+    title: 'Virginia Creeper Trail',
+    start_mile_marker: 245,
+    end_mile_marker: 254,
+  })
+
+  it('is broad by the same ceiling the band uses', () => {
+    // Read through the shared `Closure` shape rather than a second number, so
+    // the map and the header cannot disagree about which notices are regions.
+    expect(isBroadAtcAdvisory(HELENE)).toBe(true)
+    expect(isBroadAtcAdvisory(CREEPER)).toBe(false)
+  })
+
+  it('leaves the actionable line to the nine-mile closure', () => {
+    const lanes = atcUpdateLanes([HELENE, CREEPER], 242, 'NOBO')
+
+    expect(lanes.specific?.update.atc_id).toBe('creeper')
+    expect(lanes.broad?.update.atc_id).toBe('helene')
+  })
+
+  it('stops saying the notice is "here" when here is 398 miles long', () => {
+    const banner = atcUpdateBanner(HELENE, 242, 'NOBO')
+
+    expect(banner).not.toContain('Alert here')
+    expect(banner).toContain('ATC · Alert along 398 mi of trail')
+    // ATC's category and headline stay verbatim - only OurHike's word for WHERE
+    // the hiker is has changed.
+    expect(banner).toContain('Hurricane Helene damage')
+    expect(banner).toContain('mi 239.4 – 637.8')
+  })
+
+  it('still says "here" for a notice that is actually here', () => {
+    // Five of the seven placeable notices live on 2026-08-12 were a single mile
+    // marker, so this is the common case and it must not change.
+    const shelter = update({
+      category: 'Closure',
+      title: 'Shelter closed',
+      start_mile_marker: 1503.6,
+      end_mile_marker: 1503.6,
+    })
+
+    expect(atcUpdateBanner(shelter, 1503.6, 'NOBO')).toContain('Closure here')
   })
 })

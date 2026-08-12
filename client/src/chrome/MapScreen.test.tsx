@@ -447,6 +447,57 @@ describe('MapScreen safety alerts', () => {
     expect(alerts).not.toBeNull()
     expect(strip!.compareDocumentPosition(alerts!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
   })
+
+  // The third row (#485). A region-wide advisory is a standing condition, not a
+  // next action, so it appears without competing for the line above it.
+  it('shows a broad advisory under the closure rather than instead of it', () => {
+    // THE CASE #485 REPORTS. Ranked into one line, the advisory scored "inside"
+    // and the nine-mile closure three miles ahead never appeared at all.
+    const { container } = render(
+      <MapScreen
+        {...PROPS}
+        closureAhead="Trail closed 3.0 mi ahead · Storm damage · mi 245.0 – 254.0"
+        advisoryAhead="Advisory along 398 mi of trail · Storm damage · mi 239.4 – 637.8"
+      />,
+    )
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent('Trail closed 3.0 mi ahead')
+    expect(alert).toHaveTextContent('Advisory along 398 mi of trail')
+
+    // Order is the point, not merely presence: the actionable line is read
+    // first on a screen glanced at while walking.
+    const closure = container.querySelector('.map-screen__alert--closure')
+    const advisory = container.querySelector('.map-screen__alert--advisory')
+    expect(closure!.compareDocumentPosition(advisory!)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+  })
+
+  it('shows an advisory on its own when nothing specific is ahead', () => {
+    // Otherwise the fix would trade one silence for another: a hiker inside an
+    // advisory on an otherwise clear stretch has to still be told.
+    render(
+      <MapScreen
+        {...PROPS}
+        advisoryAhead="Advisory along 398 mi of trail · Storm damage · mi 239.4 – 637.8"
+      />,
+    )
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Advisory along 398 mi of trail')
+  })
+
+  it('marks the advisory as its own kind of row', () => {
+    // The class is what makes it quieter than the two above it (chrome.css).
+    // Same colour and size - weight only - because this is still a safety line
+    // on a screen read in direct sun.
+    const { container } = render(
+      <MapScreen {...PROPS} advisoryAhead="Advisory along 398 mi of trail" />,
+    )
+
+    expect(container.querySelector('.map-screen__alert--advisory')).not.toBeNull()
+    expect(container.querySelector('.map-screen__alert--closure')).toBeNull()
+  })
 })
 
 // --- The same two facts on the canvas -------------------------------------

@@ -331,6 +331,19 @@ decoration.
   an over-ceiling advisory, and an update that does not actually stop a hiker walking
   through.
 
+  **For the first of those, "keeps its banner" was not enough, and [#485](https://github.com/OurHike/OurHike/issues/485)
+  is what it cost.** An update the hiker is standing inside scores zero distance and wins the
+  header outright, so Helene's 398 miles held the line for 398 miles of walking while the
+  nine-mile Creeper Trail closure three miles ahead never appeared — the same burying this
+  document describes on the map, moved to the one surface the advisory still had. An
+  over-ceiling advisory now gets its **own** header line, under the actionable one and quieter
+  than it (`atcUpdateLanes`, `closureLanes`), and it stops saying *"here"* about a region:
+  *"ATC · Alert along 398 mi of trail"*. The band ceiling decides both, so there is one
+  constant and not two.
+
+  That leaves the second case — an update that keeps its banner because it does not stop
+  anyone walking — as the part still wanting a surface.
+
   **The second was nearly got wrong, and the mistake is worth recording.** It was first
   built as a rule over ATC's `category`: draw `Closure` and `Detour`, banner the rest. Live
   data on 2026-08-12 killed that:

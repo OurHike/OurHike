@@ -1509,9 +1509,33 @@ a.poi-card__credit::after {
 
 /* The safety alert strip (#232), between the status strip and the header.
  *
- * Two rows at most, and both are one line each: this sits above the map on a
- * phone, so every pixel it takes is map a hiker cannot see. A closure and a
- * warning count are worth that; a third thing would not be.
+ * This sits above the map on a phone, so every pixel it takes is map a hiker
+ * cannot see. One STATEMENT per row, which is not the same as one line: at 390px
+ * a full closure sentence already wraps to two, and it did before #485 too. The
+ * comment here used to claim one line each, which was never true at phone width.
+ *
+ * THREE ROWS AT MOST, WHICH THIS USED TO SAY WAS TWO. The rule was "a closure and
+ * a warning count are worth that; a third thing would not be", and #485 is the
+ * case that overturned it - not because a third row got cheaper, but because the
+ * alternative turned out to cost more than a row.
+ *
+ * Measured in Chromium at 390px rather than argued: two rows 64px, the reported
+ * case (closure + advisory) 79px, the worst case of all three 96px. So the third
+ * row costs about 32px of map, and only when three separate things are true at
+ * once.
+ *
+ * A broad advisory (lib/closureSpan.ts's MAX_BAND_MILES) and a specific closure
+ * were ranked against each other for one line, and standing inside scores 0. So a
+ * hiker inside ATC's 398-mile Helene advisory read it for 398 miles of walking
+ * while the nine-mile closure three miles ahead never appeared. The saving was
+ * one row; the price was the warning that changes what they do next. #462 had
+ * already taken the advisory's BAND away as too broad to draw, which leaves this
+ * strip as the only place it appears at all.
+ *
+ * So the third row exists, and it costs a row only when three separate things are
+ * true at once - a closure ahead, warnings on route, AND a region-wide advisory.
+ * In the case #485 reports it is two rows, the same as before, with the right one
+ * on top.
  *
  * Same --danger treatment as .settings__locked and .more__stuck, for the same
  * reason - a second visual language for "this changes what you do next" is a
@@ -1529,4 +1553,17 @@ a.poi-card__credit::after {
   font-size: 13px;
   font-weight: 600;
   color: var(--danger);
+}
+
+/* The advisory row, subordinate to the two above it (#485).
+ *
+ * Weight rather than colour or size. It is the one row in this strip that is not
+ * about the next few miles - a region-wide advisory does not change for hundreds
+ * of miles, so whatever is three miles ahead has to be read first - but it is
+ * still a safety statement on a screen read at arm's length in direct sun, and
+ * dimming the hue or shrinking the type would spend contrast to say so. Regular
+ * against semibold is legible as a hierarchy at the same contrast ratio, which is
+ * what src/test/mapChromeContrast.test.ts is there to keep. */
+.map-screen__alert--advisory {
+  font-weight: 400;
 }

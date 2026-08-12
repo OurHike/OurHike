@@ -27,6 +27,7 @@
 // its absence is rendered as no ATC layer rather than as a clear trail.
 
 import type { Closure, HikeDirection } from './closureBanner'
+import { isBroadAdvisory } from './closureSpan'
 
 /** One notice, exactly as `pipeline/export_atc_updates.py` publishes it.
  *
@@ -222,7 +223,17 @@ export function atcUpdateBanner(
   const inside = currentMile >= start && currentMile <= end
 
   if (inside) {
-    return `ATC · ${update.category} here · ${update.title} · ${range}`
+    // "here" is false when "inside" spans a fifth of the trail (#485). ATC's
+    // Helene advisory runs NOBO 239.4 to 637.8, so a hiker read `Alert here` for
+    // 398 miles of walking - and their own text says the damage is patchy. The
+    // extent replaces the position claim, in whole miles because a span this size
+    // does not need tenths. ATC's category and headline are still theirs
+    // verbatim; only OurHike's word for WHERE they are changes.
+    const where = isBroadAtcAdvisory(update)
+      ? `along ${Math.round(Math.abs(end - start)).toLocaleString('en-US')} mi of trail`
+      : 'here'
+
+    return `ATC · ${update.category} ${where} · ${update.title} · ${range}`
   }
 
   if (direction === undefined) return null
@@ -258,19 +269,68 @@ export function atcUpdateDistanceAhead(
   return ahead < 0 ? null : ahead
 }
 
-/** The nearest ATC update ahead, and its distance - or null if none is. */
-export function nearestAtcUpdate(
+/** An update and how far ahead of the hiker it is. */
+export interface RankedAtcUpdate {
+  update: AtcUpdate
+  distance: number
+}
+
+/** The nearest ATC update matching `wanted`, and its distance - or null. */
+function nearestWhere(
   updates: readonly AtcUpdate[],
   currentMile: number,
   direction: HikeDirection | undefined,
-): { update: AtcUpdate; distance: number } | null {
-  let best: { update: AtcUpdate; distance: number } | null = null
+  wanted: (update: AtcUpdate) => boolean,
+): RankedAtcUpdate | null {
+  let best: RankedAtcUpdate | null = null
 
   for (const update of updates) {
+    if (!wanted(update)) continue
     const distance = atcUpdateDistanceAhead(update, currentMile, direction)
     if (distance === null) continue
     if (best === null || distance < best.distance) best = { update, distance }
   }
 
   return best
+}
+
+/**
+ * Whether ATC named a region rather than a stretch of trail.
+ *
+ * Read through the shared `Closure` shape on purpose, so this is the SAME
+ * ceiling `closureBands` applies rather than a second number that could drift
+ * from it - the point `atcUpdateAsClosure` above is written for. Of the seven
+ * placeable updates live on 2026-08-12, exactly one answered true: Helene.
+ */
+export function isBroadAtcAdvisory(update: AtcUpdate): boolean {
+  return isBroadAdvisory(atcUpdateAsClosure(update))
+}
+
+/**
+ * The two updates that matter right now, one per line of the header.
+ *
+ * The mirror of `closureLanes` in lib/closureBanner.ts, and it exists for the
+ * same reason (#485): an update the hiker is inside scores 0 and would win the
+ * urgent line outright, which is right for a footbridge and wrong for a
+ * 398-mile advisory. The reasoning is written once, over there.
+ *
+ * Two lanes here as well rather than only on the closure side, because since
+ * #461 the ATC path is the one the Helene advisory actually travels - it arrives
+ * as an `AtcUpdate`, never as a `Closure`. Fixing only `closureBanner.ts` would
+ * have left the exact case #485 reports still broken.
+ */
+export function atcUpdateLanes(
+  updates: readonly AtcUpdate[],
+  currentMile: number,
+  direction: HikeDirection | undefined,
+): { specific: RankedAtcUpdate | null; broad: RankedAtcUpdate | null } {
+  return {
+    specific: nearestWhere(
+      updates,
+      currentMile,
+      direction,
+      (update) => !isBroadAtcAdvisory(update),
+    ),
+    broad: nearestWhere(updates, currentMile, direction, isBroadAtcAdvisory),
+  }
 }

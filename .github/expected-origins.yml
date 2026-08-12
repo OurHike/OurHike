@@ -63,9 +63,17 @@
 # and not `if-range`. That is the drift this file exists to end.
 #
 # Measured against the live bucket on 2026-08-09, rather than inferred: a
-# preflight for `if-match` is answered 204, and one for `if-range` is answered
-# **403 Forbidden**. The bucket has not been re-pasted from this file yet, so
-# until it is, the daily check reports exactly this.
+# preflight for `if-match` was answered 204, and one for `if-range` **403
+# Forbidden**. The bucket has since been re-pasted from this file - re-measured
+# 2026-08-12 on all four origins below, `if-range` is answered 204 and
+# `if-match` is the one refused, which is this file's list exactly.
+#
+# Being ALLOWED to send `If-Range` is not the same as the server obeying it,
+# and this bucket does the first and not the second (#506): a stale validator
+# is answered 206 with the range served, where RFC 9110 requires 200. That is
+# `verify_release.py` check 7's subject rather than this file's - nothing in a
+# CORS policy can fix it - and `archiveDownload.ts` makes the comparison
+# client-side because of it.
 #
 # `content-type` was in the old hand-kept copy and is deliberately not here:
 # every request to this bucket is a GET or a HEAD with no body, and a request

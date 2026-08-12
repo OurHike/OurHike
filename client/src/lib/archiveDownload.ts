@@ -40,6 +40,20 @@
 // A verified hash is also kept beside the archive (`readArchiveVersion`), so
 // which build a phone holds is a question the app can now answer at all.
 //
+// A RESUME DOES NOT TRUST THE 206 IT IS GIVEN (#506).
+//
+// `If-Range` exists so the SERVER refuses a stale resume, and this sends it.
+// The r2.dev endpoint ignores it - measured against the live bucket, a stale
+// validator is answered 206 with the range served - so the 206 is no evidence
+// that the object is still the one the held bytes came from. The ETag on that
+// response is, and it is compared against the one those bytes were recorded
+// under before any of the body is read.
+//
+// That comparison is deliberately not the same defence as the published hash,
+// and covers what the hash cannot: the hash moves only when `publish.py`
+// rewrites `latest.json`, so an object overwritten before that write, or any
+// resume where the manifest is unreachable, leaves it nothing to compare.
+//
 // ROOM IS CHECKED BEFORE THE BODY IS READ, NOT AFTER THE LAST BYTE (#544).
 //
 // The completed bytes are stored in ONE `set()` at the end, and the Blob being
@@ -102,7 +116,14 @@ export interface DownloadProgress {
  */
 interface PartialSource {
   url: string
-  /** Absent when the bucket does not expose ETag; the url check still applies. */
+  /**
+   * The strong validator these bytes were served under.
+   *
+   * Read back on every resume and compared against the ETag the `206` states,
+   * because the bucket will not make that comparison itself (#506). Absent
+   * where the bucket exposes no ETag, or states only a weak one; the url check
+   * and the published hash still apply.
+   */
   etag?: string
   /**
    * The published SHA-256 these bytes are being accumulated toward, when the
@@ -261,6 +282,24 @@ export class ArchiveTooLargeError extends Error {
     this.requiredBytes = requiredBytes
     this.availableBytes = availableBytes
   }
+}
+
+/**
+ * The held bytes cannot be finished, and have been discarded.
+ *
+ * Two different discoveries end here: the server reporting an object shorter
+ * than the partial (the 416 below), and the server serving a range of an
+ * object that is no longer the one those bytes came from (the ETag check
+ * below). They are one event to the hiker — what was held is gone, the map
+ * they already have is not, and tapping again starts a fresh copy — so they
+ * get one sentence rather than two that can drift apart.
+ */
+function stalePartialError(): Error {
+  return new Error(
+    `The part of the map already on this phone no longer matches what the server ` +
+      `has, so it was cleared. Anything already downloaded is untouched, and the ` +
+      `next attempt starts a fresh copy.`,
+  )
 }
 
 /** How much of a held partial is read at a time when its hash has to be
@@ -485,10 +524,16 @@ export async function downloadArchive(
   const headers: Record<string, string> = {}
   if (heldBytes > 0) {
     headers.Range = `bytes=${heldBytes}-`
-    // If-Range makes the server itself arbitrate: the range is honoured only
+    // If-Range asks the server itself to arbitrate: the range is honoured only
     // while the object still matches, and a republished archive comes back 200
     // with the whole body instead. The 206 check below already treats that as
     // "start clean", so the correct behaviour is code that already exists.
+    //
+    // Still sent although the current bucket ignores it (#506), for two
+    // reasons: it costs one header, and it is the BETTER mechanism where it
+    // works - the server refuses the splice before spending a byte on it, and
+    // a move to a custom domain may well restore that. Where it is ignored,
+    // the ETag comparison below catches the same case from the response.
     if (storedSource?.etag !== undefined) headers['If-Range'] = storedSource.etag
   }
 
@@ -533,11 +578,7 @@ export async function downloadArchive(
     // forever - and said plainly, because a hiker who taps Resume is owed the
     // reason the button changed.
     await discardPartial(packageKey)
-    throw new Error(
-      `The part of the map already on this phone no longer matches what the server ` +
-        `has, so it was cleared. Anything already downloaded is untouched, and the ` +
-        `next attempt starts a fresh copy.`,
-    )
+    throw stalePartialError()
   }
 
   if (!response.ok) {
@@ -563,6 +604,60 @@ export async function downloadArchive(
   // below, instead of needing a second `&& heldBlob` there that no input could
   // ever make false.
   const resumed = heldBlob !== undefined && response.status === 206
+
+  // What the server says this object is NOW. A weak ETag is dropped, for the
+  // reason RFC 9110 §13.1.5 will not let one validate a range either: it
+  // promises semantic equivalence, not the byte-for-byte identity an append
+  // depends on.
+  const responseEtag = response.headers.get('etag') ?? undefined
+  const strongEtag =
+    responseEtag !== undefined && !responseEtag.startsWith('W/')
+      ? responseEtag
+      : undefined
+
+  // THE ARBITRATION THE BUCKET DECLINES TO MAKE (#506).
+  //
+  // The `If-Range` sent above asks the SERVER to refuse a stale resume, and a
+  // conforming one answers 200 with the whole body - which the 206 test above
+  // already treats as "start clean". The r2.dev endpoint does not: measured
+  // 2026-08-12, a stale ETag, a wrong-but-valid-shaped one and a long-past
+  // HTTP-date are all answered 206 with the range served, on a 70-byte JSON
+  // object and on the 532 MB archive alike. So a 206 is NOT evidence that the
+  // object is still the one these bytes came from, and every line below here
+  // used to assume it was.
+  //
+  // The ETag still is that evidence. R2 states the object's current one on the
+  // 206 - the same value its HEAD gives, multipart archives included - and
+  // `.github/expected-origins.yml` requires `etag` to stay readable by a
+  // browser, which `check_deployment.py` re-asserts daily against every origin.
+  // So the comparison is made here instead, before a byte of the body is read.
+  //
+  // This is the second defence #506 asks for, and it is the one the published
+  // hash structurally cannot be. That hash moves only when `publish.py`
+  // rewrites `latest.json`, so an object overwritten before that write - or any
+  // resume where the manifest is unreachable, which is every field-test server
+  // and every older release - leaves the hash check with nothing to compare
+  // against. The ETag moves with the OBJECT, so it is right in precisely the
+  // window the manifest is wrong.
+  //
+  // Nothing here is salvageable, unlike the 200 case: what is on the wire is a
+  // range of a DIFFERENT object, so there is no prefix worth keeping and no
+  // whole file to fall back to. The partial goes and the next attempt starts
+  // clean - the same disposal, and deliberately the same sentence, as the 416.
+  if (
+    resumed &&
+    storedSource?.etag !== undefined &&
+    strongEtag !== undefined &&
+    strongEtag !== storedSource.etag
+  ) {
+    // Closed rather than left to garbage collection, for the reason the quota
+    // check below closes it: an unread response keeps the bytes coming, and
+    // these are bytes that can only ever be thrown away.
+    void response.body?.cancel()
+    await discardPartial(packageKey)
+    throw stalePartialError()
+  }
+
   let accumulated: Blob = resumed ? heldBlob : new Blob([])
 
   const declared = Number(response.headers.get('content-length') ?? 0)
@@ -608,16 +703,10 @@ export async function downloadArchive(
   }
 
   // Taken from the response actually being read, so a partial is always
-  // labelled with the version it came from. A weak ETag is dropped: it only
-  // promises semantic equivalence, which is not the byte-for-byte identity a
-  // range append depends on.
-  const responseEtag = response.headers.get('etag') ?? undefined
-  const etag =
-    responseEtag !== undefined && !responseEtag.startsWith('W/')
-      ? responseEtag
-      : resumed
-        ? storedSource?.etag
-        : undefined
+  // labelled with the version it came from. Where the response states no strong
+  // ETag, a resume keeps the one already recorded - those bytes are unchanged,
+  // and the check above has just established that nothing contradicts it.
+  const etag = strongEtag ?? (resumed ? storedSource?.etag : undefined)
 
   // The expectation these bytes will be held to. A stored one applies only to
   // the bytes it was recorded against, so it carries forward on a resume and

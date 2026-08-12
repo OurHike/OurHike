@@ -173,9 +173,11 @@ class TestIfRange:
 
     def test_a_bucket_that_ignores_it_fails_and_says_what_is_left(self, requests_mock):
         """Measured against the real r2.dev endpoint: a stale ETag is answered
-        206 with the range served. The message must not overstate it - the
-        client's published-hash check still drops the partial - but it must say
-        that hash check is now the only thing standing there."""
+        206 with the range served. It stays a FAILURE (#506) - a gate taught to
+        expect the breakage cannot notice it was fixed - but the message must
+        not overstate what is at risk. `archiveDownload.ts` makes the same
+        comparison client-side against the ETag on the 206, so what is missing
+        is the server-side half of a defence rather than the whole of one."""
         requests_mock.head(f"{BASE}/a.pmtiles", headers=_headers())
         requests_mock.get(f"{BASE}/a.pmtiles", [{"status_code": 206}, {"status_code": 206}])
 
@@ -183,7 +185,8 @@ class TestIfRange:
 
         assert verdict["state"] == FAILED
         assert "ignoring If-Range" in verdict["detail"]
-        assert "not defenceless" in verdict["detail"]
+        assert "does not depend on it" in verdict["detail"]
+        assert "server-side half" in verdict["detail"]
 
     def test_no_etag_means_the_question_cannot_be_asked(self, requests_mock):
         requests_mock.head(f"{BASE}/a.pmtiles", headers=_headers(etag=None))

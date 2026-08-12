@@ -180,15 +180,17 @@ So the monitor sends one, for every origin declared in [`.github/expected-origin
 
 **The preflight assertion found a live defect the day it was written**, which is the clearest possible argument for it. `range` is CORS-safelisted for simple byte ranges, so a *first* download needs no preflight and works against a wrong policy. **`if-range` is not safelisted**, and `client/src/lib/archiveDownload.ts` sends it on every *resume* — it is what makes the server itself arbitrate a stale partial rather than splicing old bytes onto new (§1). The policy documented in `LAUNCH_CHECKLIST.md` allowed `if-match`, which nothing in this repository has ever sent, and **not** `if-range`.
 
-**Measured against the live bucket, 2026-08-09**, rather than argued from the spec:
+**Measured against the live bucket**, rather than argued from the spec — and the answer has since changed, which is the case for keeping both columns:
 
-| `Access-Control-Request-Headers` | answer |
-|---|---|
-| `if-match` | `204`, `Access-Control-Allow-Headers: if-match` |
-| `range` | `204`, `Access-Control-Allow-Headers: range` |
-| **`if-range`** | **`403 Forbidden`, no CORS headers at all** |
+| `Access-Control-Request-Headers` | 2026-08-09 | 2026-08-12, after the re-paste |
+|---|---|---|
+| `range` | `204`, `Access-Control-Allow-Headers: range` | `204`, unchanged |
+| **`if-range`** | **`403 Forbidden`, no CORS headers at all** | **`204`, `Access-Control-Allow-Headers: if-range`** |
+| `if-match` | `204`, `Access-Control-Allow-Headers: if-match` | `403 Forbidden` — correctly, nothing here sends it |
 
-So resuming an interrupted 1.18 GB download is refused by the browser **today**, invisibly, and only ever on a phone in the place where resuming matters most. The same run confirmed the policy is genuinely enforced on the `r2.dev` subdomain rather than permissive — an undeclared origin gets no `Access-Control-Allow-Origin` at all — so the origin assertion discriminates rather than always passing.
+So resuming an interrupted 1.18 GB download **was** refused by the browser, invisibly, and only ever on a phone in the place where resuming matters most. The policy generated from `expected-origins.yml` has now been pasted over it, and `check_deployment.py` reports `may send range, if-range` for all four declared origins. The 2026-08-09 run also confirmed the policy is genuinely enforced on the `r2.dev` subdomain rather than permissive — an undeclared origin gets no `Access-Control-Allow-Origin` at all — so the origin assertion discriminates rather than always passing.
+
+**Being allowed to send `If-Range` is not the same as it being obeyed**, and the bucket does the first and not the second ([#506](https://github.com/OurHike/OurHike/issues/506)). Check 7 below is what measures that, and it fails today. The resume is not left one-defence-deep on the published hash because of it: `archiveDownload.ts` compares the ETag on the `206` against the one its held bytes were recorded under, which is the arbitration `If-Range` asks the server to perform, made client-side where no server has to cooperate.
 
 **That run also corrected the check itself**, which is worth recording because the first version was confidently wrong in a way only real data exposed. R2 answers a preflight naming a disallowed header with a bare `403` and *no* `Access-Control-Allow-Headers`, not a `200` listing the subset it permits. Reading the empty allow-list off that `403` made every requested header look refused, so the check reported `range` as disallowed when `range` is allowed and only `if-range` is not. A refused preflight is now re-asked one header at a time, so the alarm names the header to add instead of the whole list.
 

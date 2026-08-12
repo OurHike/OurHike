@@ -126,6 +126,8 @@ Read those two rows together, because between them they settle the rule.
 
 So: **join on normalised-name agreement within 150 m, or on distance alone within 60 m of an anchor.** Neither gate on its own; the name gate is loose because the name is carrying the argument, the distance-only gate is tight because geometry is all it has.
 
+**And a hard ceiling of one mile on a site's radius, whatever gate admitted the member.** It cannot bind today and that is the point of it: the widest gate is 150 m and the furthest member measured is 143 m, so every real pairing clears it by a factor of ten. What it guards is the next edit to those gates — nothing else stops someone raising the name radius to 2 km on a hunch, and the failure that reappears the moment they do is the 903 km match, published into artifacts a hiker cannot undo. It is applied as `min()` against each gate rather than as a separate check, so widening a gate cannot bypass it.
+
 And the membership is restricted, not universal:
 
 - **Anchors** are `shelter`, then `campsite`. Exactly one per site.

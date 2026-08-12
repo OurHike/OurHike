@@ -12,7 +12,9 @@ so carry the measurement.
 
 import pytest
 
+import lib.poi_sites as poi_sites
 from lib.poi_sites import (
+    MAX_SITE_RADIUS_M,
     NAME_MATCH_RADIUS_M,
     PROXIMITY_RADIUS_M,
     ROLE_ANCHOR,
@@ -303,3 +305,65 @@ class TestStability:
         [reversed_site] = group_sites(list(reversed(records)))
 
         assert [m["id"] for m in site.members] == [m["id"] for m in reversed_site.members]
+
+
+class TestTheAbsoluteCeiling:
+    """A site's radius may never exceed a mile, whatever gate admitted the
+    member (requested on the #523 pull request).
+
+    Asserting this against the corridor as it stands would prove nothing: the
+    widest gate is 150 m and the furthest member measured is 143 m, so the
+    ceiling clears every real pairing by a factor of ten. What it guards is the
+    NEXT edit to those gates, so that is what these test - by widening a gate the
+    way a future change would and checking the ceiling still refuses.
+    """
+
+    def test_it_is_a_mile(self):
+        assert MAX_SITE_RADIUS_M == pytest.approx(1609.344)
+
+    def test_it_is_looser_than_every_gate_it_backs_up(self):
+        # If this ever fails, the ceiling has started deciding real pairings and
+        # the numbers in POI_SITES.md are no longer describing what ships.
+        assert MAX_SITE_RADIUS_M > NAME_MATCH_RADIUS_M
+        assert MAX_SITE_RADIUS_M > PROXIMITY_RADIUS_M
+
+    def test_a_widened_name_gate_still_cannot_group_across_the_trail(self, monkeypatch):
+        # THE 903 km MATCH, which is what a name-only rule ships and what this
+        # ceiling exists to keep out no matter how the gates are edited. Two
+        # miles apart, names in perfect agreement, and the name gate opened wide
+        # enough to admit it.
+        monkeypatch.setattr(poi_sites, "NAME_MATCH_RADIUS_M", 5_000.0)
+        shelter = poi("s1", "shelter", "Sawmill Shelter")
+        privy = poi("p1", "privy", "Sawmill Shelter Privy", north_of=3_200)
+
+        assert group_sites([shelter, privy]) == []
+
+    def test_a_widened_proximity_gate_still_cannot_either(self, monkeypatch):
+        monkeypatch.setattr(poi_sites, "PROXIMITY_RADIUS_M", 5_000.0)
+        shelter = poi("s1", "shelter", "Sawmill Shelter")
+        privy = poi("p1", "privy", "Some Other Privy", north_of=3_200)
+
+        assert group_sites([shelter, privy]) == []
+
+    def test_a_widened_gate_still_groups_inside_the_ceiling(self, monkeypatch):
+        # The discrimination, or the two above would pass on a rule that had
+        # simply stopped grouping anything: half a mile is inside the ceiling and
+        # inside the widened gate, so it must still fold.
+        monkeypatch.setattr(poi_sites, "NAME_MATCH_RADIUS_M", 5_000.0)
+        shelter = poi("s1", "shelter", "Sawmill Shelter")
+        privy = poi("p1", "privy", "Sawmill Shelter Privy", north_of=800)
+
+        [site] = group_sites([shelter, privy])
+
+        assert [m["id"] for m in site.members] == ["p1"]
+
+    def test_no_site_on_the_real_corridor_comes_near_it(self):
+        # Documents the headroom rather than guarding it: every pairing the
+        # shipped gates make is a tenth of the ceiling or less.
+        shelter = poi("s1", "shelter", "Mt. Algo Shelter")
+        privy = poi("p1", "privy", "Mt. Algo Shelter Privy", north_of=143)
+
+        [site] = group_sites([shelter, privy])
+
+        assert len(site.members) == 1
+        assert NAME_MATCH_RADIUS_M * 10 < MAX_SITE_RADIUS_M * 1.1

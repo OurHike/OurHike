@@ -66,6 +66,25 @@ NAME_MATCH_RADIUS_M = 150.0
 # the far end of the trail - which is why neither gate stands alone.
 PROXIMITY_RADIUS_M = 60.0
 
+# An absolute ceiling on a site's radius, whatever gate admitted the member.
+# One mile, requested on the #523 pull request.
+#
+# IT CANNOT BIND TODAY, AND THAT IS THE POINT OF IT. The widest gate above is
+# 150 m, and the furthest member measured over the whole corridor is 143 m, so
+# every real pairing clears this by a factor of ten. What it guards is the next
+# edit: nothing else here stops someone raising NAME_MATCH_RADIUS_M to 2 km on a
+# hunch, and the failure that reappears the moment they do is the 903 km match -
+# a privy attached to a shelter at the other end of the Appalachian Trail,
+# published into artifacts, with a hiker unable to undo it.
+#
+# So it is applied as `min()` against each gate rather than as a separate check
+# further down. A guard the gates are compared against cannot be bypassed by
+# widening a gate, which is the one way this particular mistake gets made.
+#
+# A mile is far looser than the evidence would justify as a working radius, and
+# deliberately: this is a backstop, not the rule. The rule is the two gates.
+MAX_SITE_RADIUS_M = 1609.344
+
 # The trailing words ATC appends to a child's name, stripped to recover the
 # parent's: "Mt. Algo Shelter Privy" -> "mt algo".
 #
@@ -179,7 +198,7 @@ def _candidate_anchors(member: dict, anchors: list[dict], by_base_name: dict[str
         if candidate["id"] == member["id"]:
             continue
         metres = distance_m(member["lat"], member["lon"], candidate["lat"], candidate["lon"])
-        if metres <= NAME_MATCH_RADIUS_M:
+        if metres <= min(NAME_MATCH_RADIUS_M, MAX_SITE_RADIUS_M):
             candidate_full = normalise_name(candidate.get("name"))
             contained = bool(candidate_full) and member_full.startswith(candidate_full)
             named.append((0 if contained else 1, metres, candidate))
@@ -191,7 +210,7 @@ def _candidate_anchors(member: dict, anchors: list[dict], by_base_name: dict[str
         if candidate["id"] == member["id"]:
             continue
         metres = distance_m(member["lat"], member["lon"], candidate["lat"], candidate["lon"])
-        if metres <= PROXIMITY_RADIUS_M:
+        if metres <= min(PROXIMITY_RADIUS_M, MAX_SITE_RADIUS_M):
             nearby.append((1, metres, candidate))
     return sorted(nearby, key=lambda entry: (entry[0], entry[1]))
 

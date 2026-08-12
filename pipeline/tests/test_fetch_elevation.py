@@ -20,6 +20,7 @@ no network/DuckDB involved, unlike everything else in this file.
 """
 
 import json
+import time
 
 import pytest
 
@@ -218,3 +219,98 @@ def test_env_flag_set_is_false_when_unset(monkeypatch):
     monkeypatch.delenv(fetch_elevation.ALLOW_SHRINK_ENV_VAR, raising=False)
 
     assert fetch_elevation._env_flag_set(fetch_elevation.ALLOW_SHRINK_ENV_VAR) is False
+
+
+# ---------------------------------------------------------------------------
+# The per-cell catalogue cache (#536).
+#
+# The publish that prompted it died on the FIRST of 51 cells. Had it died on
+# the 37th, the previous 36 answers would have been thrown away too - so the
+# assertions that matter are that an answer is written before the next cell is
+# asked, and that a second run makes no request at all.
+# ---------------------------------------------------------------------------
+
+CELL = (-84.73, 34.19, -83.73, 35.19)
+
+
+def _tnm(requests_mock, items, **kwargs):
+    requests_mock.get(
+        fetch_elevation.TNM_API_URL,
+        json={"items": items, "total": len(items)},
+        **kwargs,
+    )
+
+
+def test_a_cells_answer_is_written_before_the_next_cell_is_asked(tmp_path, monkeypatch, requests_mock):
+    """Resumability, which is the whole point. The failure lost 12 completed
+    steps because nothing durable existed until every cell had answered."""
+    monkeypatch.setattr(fetch_elevation, "CELL_CACHE_DIR", tmp_path)
+    _tnm(requests_mock, [{"downloadURL": "https://example/a.tif"}])
+
+    items, cached = fetch_elevation.cell_products(CELL)
+
+    assert cached is False
+    assert items == [{"downloadURL": "https://example/a.tif"}]
+    assert fetch_elevation.cell_cache_path(CELL).exists()
+
+
+def test_a_second_run_asks_tnm_nothing(tmp_path, monkeypatch, requests_mock):
+    """3DEP revises on a multi-year cycle. Rediscovering 51 cells every publish
+    is 51 chances to meet a 504 in order to learn what we already knew."""
+    monkeypatch.setattr(fetch_elevation, "CELL_CACHE_DIR", tmp_path)
+    _tnm(requests_mock, [{"downloadURL": "https://example/a.tif"}])
+    fetch_elevation.cell_products(CELL)
+    calls_after_first = requests_mock.call_count
+
+    items, cached = fetch_elevation.cell_products(CELL)
+
+    assert cached is True
+    assert items == [{"downloadURL": "https://example/a.tif"}]
+    assert requests_mock.call_count == calls_after_first
+
+
+def test_a_stale_entry_is_asked_again(tmp_path, monkeypatch, requests_mock):
+    """Bounded rather than trusted forever, so the cache cannot hide a real
+    3DEP revision indefinitely."""
+    monkeypatch.setattr(fetch_elevation, "CELL_CACHE_DIR", tmp_path)
+    _tnm(requests_mock, [{"downloadURL": "https://example/a.tif"}])
+    fetch_elevation.cell_products(CELL)
+
+    much_later = time.time() + (fetch_elevation.CELL_CACHE_MAX_AGE_DAYS + 1) * 86400
+    _, cached = fetch_elevation.cell_products(CELL, now=much_later)
+
+    assert cached is False
+
+
+def test_refresh_ignores_a_fresh_entry(tmp_path, monkeypatch, requests_mock):
+    monkeypatch.setattr(fetch_elevation, "CELL_CACHE_DIR", tmp_path)
+    _tnm(requests_mock, [{"downloadURL": "https://example/a.tif"}])
+    fetch_elevation.cell_products(CELL)
+
+    _, cached = fetch_elevation.cell_products(CELL, refresh=True)
+
+    assert cached is False
+
+
+def test_a_truncated_cache_file_is_re_asked_rather_than_fatal(tmp_path, monkeypatch, requests_mock):
+    """A file half-written by a killed run is a reason to ask again, not a
+    reason to stop. The cost of being wrong here is one request."""
+    monkeypatch.setattr(fetch_elevation, "CELL_CACHE_DIR", tmp_path)
+    path = fetch_elevation.cell_cache_path(CELL)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"queried_at": 1, "items": [')
+    _tnm(requests_mock, [{"downloadURL": "https://example/a.tif"}])
+
+    items, cached = fetch_elevation.cell_products(CELL)
+
+    assert cached is False
+    assert items == [{"downloadURL": "https://example/a.tif"}]
+
+
+def test_two_cells_do_not_share_a_cache_file(tmp_path, monkeypatch):
+    """A collision would serve one cell's tiles as another's, which the
+    corridor-intersection filter would not necessarily catch."""
+    monkeypatch.setattr(fetch_elevation, "CELL_CACHE_DIR", tmp_path)
+    other = (-83.73, 34.19, -82.73, 35.19)
+
+    assert fetch_elevation.cell_cache_path(CELL) != fetch_elevation.cell_cache_path(other)

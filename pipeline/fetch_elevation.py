@@ -78,13 +78,14 @@ import argparse
 import json
 import os
 import re
+import time
 from pathlib import Path
 
 import duckdb
-import requests
 
 from lib.completeness import fail_if_incomplete
 from lib.corridor import build_corridor
+from lib.http_retry import request_with_retry
 
 ROOT = Path(__file__).parent
 # The source line build_corridor() buffers into the 'corridor' table fresh
@@ -95,6 +96,28 @@ OUT_DIR = ROOT / "data" / "raw" / "elevation"
 # A small JSON list of {url, bounds} - NOT downloaded rasters. See
 # build_tile_index for why nothing is downloaded.
 INDEX_PATH = OUT_DIR / "tile_index.json"
+
+# One file per corridor cell holding that cell's TNM answer, so a run that
+# dies on cell 37 keeps cells 1-36 (#536).
+#
+# WHY CACHING THIS IS SAFE, WHICH IS THE ONLY REASON TO DO IT. What is cached
+# is USGS's CATALOGUE of which 1/3 arc-second tiles cover a cell - not the
+# elevation data itself, and not anything a hiker sees. 3DEP re-flies a region
+# on a cycle measured in years, so a run that rediscovers all 51 cells every
+# time is making 51 requests to learn what it already knew. The publish that
+# prompted this died on the FIRST of those 51, having already fetched sources
+# and exported trails, POIs and spurs.
+#
+# Freshness is bounded rather than trusted forever: past CELL_CACHE_MAX_AGE_DAYS
+# a cell is asked again, and `--refresh` ignores the cache entirely. The
+# existing shrink gate still runs over the assembled index either way, so a
+# cache that somehow went wrong cannot quietly publish a smaller corridor.
+CELL_CACHE_DIR = OUT_DIR / "tnm_cells"
+
+# A month. Far shorter than 3DEP's actual revision cycle, so the cache cannot
+# hide a real change for long, and far longer than the gap between publishes,
+# so a normal run makes no catalogue requests at all.
+CELL_CACHE_MAX_AGE_DAYS = 30
 
 # Write-gate tolerances for the final tile_index.json write (see
 # write_gate_problems). Expressed as a fraction of the PREVIOUS run's count,
@@ -127,6 +150,15 @@ TNM_API_URL = "https://tnmaccess.nationalmap.gov/api/v1/products"
 # directly. A move back to 1 m is a ~40x change and should be deliberate.
 DATASET = "National Elevation Dataset (NED) 1/3 arc-second"
 PAGE_SIZE = 1000
+
+# How patient to be with USGS's catalogue. Longer than lib/http_retry.py's
+# default ladder on purpose (#536): this call is made once per corridor cell,
+# 51 times, and it runs after fetching sources, exporting trail lines, POIs
+# and spurs - so the cost of giving up is the whole publish, not one request.
+# A 504 from tnmaccess.nationalmap.gov threw away exactly that, on the FIRST
+# cell, 35 seconds in. Roughly two minutes of waiting spread over four
+# attempts is cheap against an hour of build.
+TNM_BACKOFF_SECONDS = (5, 15, 45, 60)
 
 CELL_DEGREES = 1.0
 
@@ -172,7 +204,7 @@ def list_products_for_cell(cell: tuple[float, float, float, float]) -> list[dict
     items = []
     offset = 0
     while True:
-        resp = requests.get(
+        resp = request_with_retry(
             TNM_API_URL,
             params={
                 "bbox": f"{xmin},{ymin},{xmax},{ymax}",
@@ -182,8 +214,9 @@ def list_products_for_cell(cell: tuple[float, float, float, float]) -> list[dict
                 "offset": offset,
             },
             timeout=60,
+            backoff=TNM_BACKOFF_SECONDS,
+            label=f"TNM cell {xmin:.2f},{ymin:.2f}",
         )
-        resp.raise_for_status()
         data = resp.json()
         batch = data.get("items", [])
         items.extend(batch)
@@ -191,6 +224,65 @@ def list_products_for_cell(cell: tuple[float, float, float, float]) -> list[dict
         if not batch or offset >= data.get("total", 0):
             break
     return items
+
+
+def cell_cache_path(cell: tuple[float, float, float, float]) -> Path:
+    """Where this cell's TNM answer is kept.
+
+    Named from the bbox to three decimals, which is finer than CELL_DEGREES
+    ever moves and so cannot collide, and stable across runs so a cache
+    written by one run is found by the next.
+    """
+    xmin, ymin, xmax, ymax = cell
+    return CELL_CACHE_DIR / f"{xmin:.3f}_{ymin:.3f}_{xmax:.3f}_{ymax:.3f}.json"
+
+
+def cached_cell_items(path: Path, max_age_days: int, now: float) -> list[dict] | None:
+    """This cell's remembered TNM items, or None if absent, stale or unreadable.
+
+    Unreadable counts as absent rather than fatal: a truncated file from a run
+    killed mid-write is a reason to ask TNM again, not a reason to stop. The
+    cost of being wrong here is one request.
+    """
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text())
+        queried_at = float(payload["queried_at"])
+        items = payload["items"]
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError, OSError):
+        return None
+    if now - queried_at > max_age_days * 86400:
+        return None
+    return items
+
+
+def cell_products(
+    cell: tuple[float, float, float, float],
+    *,
+    refresh: bool = False,
+    max_age_days: int = CELL_CACHE_MAX_AGE_DAYS,
+    now: float | None = None,
+) -> tuple[list[dict], bool]:
+    """(items, came_from_cache) for one cell.
+
+    Writes the answer to disk IMMEDIATELY on a fetch, before the next cell is
+    asked. That is what makes a run resumable: the failure this exists for hit
+    cell 1 of 51, but had it hit cell 37, the previous 36 would have been
+    thrown away too.
+    """
+    path = cell_cache_path(cell)
+    stamp = time.time() if now is None else now
+
+    if not refresh:
+        cached = cached_cell_items(path, max_age_days, stamp)
+        if cached is not None:
+            return cached, True
+
+    items = list_products_for_cell(cell)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"queried_at": stamp, "items": items}))
+    return items, False
 
 
 def build_tile_index(items: list[dict], corridor_hit) -> list[dict]:
@@ -288,7 +380,7 @@ def write_gate_problems(
     return []
 
 
-def main(allow_shrink: bool = False):
+def main(allow_shrink: bool = False, refresh: bool = False):
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
@@ -299,8 +391,10 @@ def main(allow_shrink: bool = False):
 
     seen_urls = set()
     candidates = []
+    from_cache = 0
     for i, cell in enumerate(cells, 1):
-        items = list_products_for_cell(cell)
+        items, cached = cell_products(cell, refresh=refresh)
+        from_cache += 1 if cached else 0
         new_here = 0
         for item in items:
             url = item.get("downloadURL")
@@ -321,7 +415,10 @@ def main(allow_shrink: bool = False):
             seen_urls.add(url)
             candidates.append(item)
             new_here += 1
-        print(f"  cell {i}/{len(cells)}: {len(items)} candidate(s) from TNM, {new_here} new corridor-intersecting tile(s)")
+        where = "cache" if cached else "TNM"
+        print(f"  cell {i}/{len(cells)}: {len(items)} candidate(s) from {where}, {new_here} new corridor-intersecting tile(s)")
+
+    print(f"{from_cache}/{len(cells)} cell(s) answered from cache; {len(cells) - from_cache} asked of TNM.")
 
     index = build_tile_index(candidates, corridor_hit=lambda _bbox: True)
     new_count = len(index)
@@ -368,5 +465,14 @@ if __name__ == "__main__":
             f"instead of refusing it (also settable via {ALLOW_SHRINK_ENV_VAR}=1)."
         ),
     )
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help=(
+            "Ask TNM for every cell again, ignoring the per-cell cache. The cache exists because "
+            f"3DEP revises on a multi-year cycle and a warm run needs no catalogue requests at all; "
+            f"entries older than {CELL_CACHE_MAX_AGE_DAYS} days are refreshed anyway."
+        ),
+    )
     args = parser.parse_args()
-    main(allow_shrink=args.allow_shrink)
+    main(allow_shrink=args.allow_shrink, refresh=args.refresh)

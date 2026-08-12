@@ -71,10 +71,17 @@ describe('IndexedDbArchiveSource', () => {
     const source = new IndexedDbArchiveSource()
 
     await source.getBytes(0, 4)
+    // What one lookup costs is archiveStore.ts's business - since #553 it reads
+    // the completion marker and may fall through to the legacy whole-archive
+    // record. What matters here is that it does not happen again per range read:
+    // pmtiles issues one of these for every tile, and a re-read per tile would
+    // put an IndexedDB round trip in the middle of every camera move.
+    const afterFirstRead = mockedGet.mock.calls.length
+
     await source.getBytes(100, 4)
     await source.getBytes(500, 4)
 
-    expect(mockedGet).toHaveBeenCalledTimes(1)
+    expect(mockedGet.mock.calls.length).toBe(afterFirstRead)
   })
 
   it('exposes a stable key, which is what pmtiles caches decoded directories against', () => {

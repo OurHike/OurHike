@@ -12,9 +12,22 @@
 // good map on their phone who taps download and loses signal should still
 // have their good map.
 //
-// Blobs are appended rather than buffered: `new Blob([previous, chunk])`
-// references its parts rather than copying them, so a 300 MB archive is never
-// held in memory as one contiguous allocation.
+// BYTES REACH THE DISK AS THEY ARRIVE, IN APPEND-ONLY SEGMENTS (#553).
+//
+// The claim above used to be true only of a transfer that FAILED. Nothing was
+// written during a healthy one - `persistPartial` was called from two error
+// paths and nowhere else - so the bytes lived in the renderer's blob store
+// until the last one arrived. An app the OS kills throws no error, so no error
+// path runs, and on Android a backgrounded tab holding a gigabyte is a prime
+// candidate for the low-memory killer. The whole transfer was lost and the next
+// launch started from zero, which is the most likely way for a 1.18 GB download
+// to fail and the opposite of what WIREFRAMES.md `7a` promises.
+//
+// So the read loop checkpoints every SEGMENT_BYTES into a numbered record
+// (lib/archiveStore.ts owns that layout), each byte written exactly once, and a
+// kill costs at most the last unflushed segment. Nothing is accumulated in
+// memory at all any more: what used to be a growing `new Blob([previous,
+// chunk])` is now a byte count and a handful of pending chunks.
 //
 // Verified here, since #197: the completed bytes are checked against the
 // SHA-256 publish.py records for that artifact in `latest.json`. This used to
@@ -56,14 +69,20 @@
 //
 // ROOM IS CHECKED BEFORE THE BODY IS READ, NOT AFTER THE LAST BYTE (#544).
 //
-// The completed bytes are stored in ONE `set()` at the end, and the Blob being
-// accumulated before that is not charged against the origin's quota - so
-// without a check, a phone that cannot hold the Fine tier accepts all 1.18 GB
-// of it and only then refuses to store it. Measured in Chromium: 45 seconds of
-// transfer, then a QuotaExceededError with an empty message, nothing kept and
-// nothing resumable. `shortfall()` asks the browser the same question for the
-// price of one set of response headers. See it for why this refuses where
-// Downloads.tsx's identical warning does not.
+// A phone that cannot hold the Fine tier used to accept all 1.18 GB of it and
+// only then refuse to store it, because the completed bytes went in as one
+// `set()` at the end and the Blob accumulated before that was not charged
+// against the origin's quota. Measured in Chromium: 45 seconds of transfer,
+// then a QuotaExceededError with an empty message, nothing kept and nothing
+// resumable. `shortfall()` asks the browser the same question for the price of
+// one set of response headers. See it for why this refuses where Downloads.tsx's
+// identical warning does not.
+//
+// Segmented storage does not retire that check, it sharpens it: the bytes are
+// charged against the quota as they arrive now, so a phone with room for 800 MB
+// of a 1.18 GB archive fails at 800 MB instead of at the end. Refusing up front
+// is still the only answer that costs nobody their data allowance. What it does
+// retire is the DOUBLE requirement a resume used to carry - see `shortfall`.
 
 import { get, set, del } from 'idb-keyval'
 import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
@@ -71,6 +90,27 @@ import { clearCompleted, estimateAvailableBytes, recordCompleted } from './stora
 import { publishedHash } from './dataManifest'
 import { formatBytes } from './formatBytes'
 import { Sha256, type Sha256State } from './sha256'
+import {
+  deleteArchiveRecords,
+  deleteGeneration,
+  markComplete,
+  readComplete,
+  readSegmentRun,
+  writeSegment,
+  type ArchiveComplete,
+} from './archiveStore'
+
+/**
+ * How much arrives before it is written down.
+ *
+ * The trade is bytes-at-risk against writes: a kill costs whatever has not
+ * reached a segment yet, and every checkpoint is a record. 32 MiB is the step
+ * #553 measured append-only storage at - 400 MB in 32 MB segments wrote 692 ms
+ * against 3,287 ms for the rewrite-the-whole-blob approach, with `usage` landing
+ * at 1x - and it puts a 1.18 GB Fine-tier archive in 36 records while risking
+ * about eight seconds of a slow connection.
+ */
+const SEGMENT_BYTES = 32 * 1024 * 1024
 
 /**
  * Every function here takes the PACKAGE key - the IndexedDB key the finished
@@ -145,6 +185,26 @@ interface PartialSource {
    * that write can fail), simply means hashing the held bytes again.
    */
   hash?: Sha256State
+  /**
+   * Which generation (archiveStore.ts) these bytes are accumulating in.
+   *
+   * A resume has to write into the run its own bytes are already in, so this is
+   * read back rather than recomputed: recomputing picks the generation the
+   * COMPLETED archive is not in, which is the right answer when a transfer
+   * starts and the wrong one once it is under way and something else has
+   * completed since.
+   */
+  generation?: number
+  /**
+   * How many segment records the partial had been written as.
+   *
+   * Read back only by the delete path, and only as a floor: segments are probed
+   * contiguously, which stops at the first gap, and a gap is reachable because a
+   * segment write can fail on quota while earlier ones stand. Someone deleting a
+   * map to free room must get every byte back, so the count that was claimed is
+   * deleted through whatever answers (#554).
+   */
+  segments?: number
 }
 
 /** How far through re-reading the bytes already held this attempt has got. */
@@ -183,6 +243,20 @@ export interface DownloadOptions {
    */
   onChecking?: (progress: CheckProgress) => void
   signal?: AbortSignal
+  /**
+   * How much arrives before it is checkpointed to disk. Defaults to
+   * SEGMENT_BYTES, which is what the app uses.
+   *
+   * It is here so that checkpointing can be EXERCISED rather than asserted
+   * about: at 32 MiB, any test small enough to run in milliseconds flushes once
+   * at the end and would pass whether the segment loop worked or not. The
+   * storage probe wants the same knob for the opposite reason - to measure the
+   * write pattern at sizes it can drive in a browser.
+   *
+   * Not a tuning dial for callers in the app. `SEGMENT_BYTES` is the measured
+   * value and the reason it is that number is written there.
+   */
+  segmentBytes?: number
 }
 
 export class ArchiveSizeMismatchError extends Error {
@@ -236,16 +310,20 @@ export class ArchiveHashMismatchError extends Error {
  * out (#544).
  *
  * The failure this replaces was the worst one in this module. The finished
- * bytes are stored in a single `set()` at the very END of the transfer, and
- * everything before that lives in the renderer's blob store, which is not
- * charged against the origin's quota - measured in Chromium: usage does not
- * move while a 1.18 GB Blob is being accumulated, and moves by the whole
- * archive at the moment it is stored. So a phone that cannot hold the Fine
- * tier accepts all 1.18 GB of it over the network, spends the hiker's entire
- * allowance, and then rejects the store with a `QuotaExceededError` whose
- * `message` is the empty string. Nothing is kept, nothing is resumable, the
- * next attempt does exactly the same thing, and the card had nothing to show
- * but an empty alert.
+ * bytes used to be stored in a single `set()` at the very END of the transfer,
+ * and everything before that lived in the renderer's blob store, which is not
+ * charged against the origin's quota - measured in Chromium: usage did not move
+ * while a 1.18 GB Blob was being accumulated, and moved by the whole archive at
+ * the moment it was stored. So a phone that cannot hold the Fine tier accepted
+ * all 1.18 GB of it over the network, spent the hiker's entire allowance, and
+ * then rejected the store with a `QuotaExceededError` whose `message` is the
+ * empty string. Nothing was kept, nothing was resumable, the next attempt did
+ * exactly the same thing, and the card had nothing to show but an empty alert.
+ *
+ * Segmented storage (#553) changes where that lands rather than removing the
+ * need for the check: bytes are charged as they arrive now, so an unchecked
+ * transfer would fail partway instead of at the end. Still 800 MB of somebody's
+ * data to learn something one set of response headers answers for free.
  *
  * `navigator.storage.estimate()` answers this in a millisecond, and the app
  * already reads it - Downloads.tsx warns with it before the tap. This is the
@@ -262,16 +340,15 @@ export class ArchiveTooLargeError extends Error {
 
   constructor(requiredBytes: number, availableBytes: number, heldBytes: number) {
     // Two sentences and a way out. The resumed case needs its own, because the
-    // number is otherwise inexplicable: finishing a resume needs room for the
-    // whole archive WHILE the partial is still held, since the partial is only
-    // released once the finished bytes are safely stored.
+    // number is otherwise inexplicable: what it asks for is the room the REST of
+    // the map needs, and someone refused over 200 MB on a map they can see is
+    // half downloaded is owed a statement of which figure is which.
     super(
       (heldBytes > 0
-        ? `There is not enough room on this phone to finish this map. It needs about ` +
-          `${formatBytes(requiredBytes)} free — the finished map plus the ` +
-          `${formatBytes(heldBytes)} already here, which is only released once the ` +
-          `finished copy is stored — and about ${formatBytes(availableBytes)} is free ` +
-          `for the app.`
+        ? `There is not enough room on this phone to finish this map. The rest of it ` +
+          `needs about ${formatBytes(requiredBytes)} free — the ` +
+          `${formatBytes(heldBytes)} already downloaded is kept and counts toward the ` +
+          `finished map — and about ${formatBytes(availableBytes)} is free for the app.`
         : `There is not enough room on this phone for this map. It needs about ` +
           `${formatBytes(requiredBytes)} and about ${formatBytes(availableBytes)} is ` +
           `free for the app.`) +
@@ -372,25 +449,34 @@ function totalFromContentRange(header: string | null): number | null {
 }
 
 /**
- * The room this attempt needs before it can succeed, against the room the
+ * The room this attempt still needs before it can succeed, against the room the
  * browser says it has - null where either is unanswerable.
  *
- * `held` is counted ON TOP of the archive, and that is not defensive
- * arithmetic: the finished bytes are stored under the package key BEFORE the
- * partial is discarded, so both records exist at once, and a resume of a large
- * archive genuinely needs room for two copies of what it is finishing. The
- * held bytes are already inside the browser's `usage`, so they have to be added
- * to the requirement rather than subtracted from it.
+ * WHAT IS ASKED FOR IS THE REMAINDER, NOT THE ARCHIVE (#553).
+ *
+ * The held bytes used to be counted ON TOP of the archive, because the finished
+ * bytes were stored under the package key before the partial was discarded, so
+ * both existed at once and finishing a resume genuinely needed room for two
+ * copies of what it was finishing. Segments retire that: the bytes already on
+ * disk ARE part of the finished archive, completion is a marker rather than a
+ * copy, and nothing is ever stored twice.
+ *
+ * So the requirement is what is not yet here. The held bytes are already inside
+ * the browser's `usage` - and therefore already excluded from `available` - so
+ * they are neither added nor subtracted; they simply are not asked for again.
+ *
+ * This is a real widening, not bookkeeping. A phone with 300 MB free and 980 MB
+ * of a 1.18 GB archive already downloaded used to be refused a resume it could
+ * comfortably finish, and told the reason was a second copy nothing would have
+ * made.
  */
 async function shortfall(
-  archiveBytes: number,
-  heldBytes: number,
+  remainingBytes: number,
 ): Promise<{ required: number; available: number } | null> {
-  if (archiveBytes <= 0) return null
+  if (remainingBytes <= 0) return null
   const available = await estimateAvailableBytes()
   if (available === null) return null
-  const required = archiveBytes + heldBytes
-  return required > available ? { required, available } : null
+  return remainingBytes > available ? { required: remainingBytes, available } : null
 }
 
 /**
@@ -404,10 +490,9 @@ async function shortfall(
 async function finish(
   packageKey: string,
   artifactKey: string,
-  archive: Blob,
+  stored: ArchiveComplete,
   expected: string | null,
   hash: Sha256 | null,
-  heldBytes: number,
   signal?: AbortSignal,
 ): Promise<void> {
   // What these bytes were finally verified as, which is not always what the
@@ -431,20 +516,24 @@ async function finish(
       if (republished !== null && republished === actual) {
         verified = actual
       } else {
-        // Nothing is stored and nothing is kept: these bytes are the right
-        // length and the wrong file, so a resume onto them would only rebuild
-        // the same wrong archive. What is discarded is an unusable download,
-        // never a map anyone is navigating by - any previously-completed
-        // archive under the package key is left exactly where it was, so a
-        // hiker with a working map who tried to update it still has it.
-        await discardPartial(packageKey)
+        // Nothing is kept: these bytes are the right length and the wrong file,
+        // so a resume onto them would only rebuild the same wrong archive. What
+        // is discarded is an unusable download, never a map anyone is
+        // navigating by - the completed archive lives in the OTHER generation
+        // (archiveStore.ts) and is left exactly where it was, so a hiker with a
+        // working map who tried to update it still has it.
+        await discardPartial(packageKey, stored.generation, stored.segments)
         throw new ArchiveHashMismatchError(expected, actual)
       }
     }
   }
 
   try {
-    await set(packageKey, archive)
+    // The bytes are already on disk - this swings the marker onto them and
+    // frees whatever they replace. No archive-sized write happens here, which
+    // is the point: the old single `set()` needed room for a second copy of
+    // the whole archive at the worst possible moment (#553).
+    await markComplete(packageKey, stored)
   } catch (error) {
     // The quota answer, arriving at the only moment this module could not
     // avoid asking: the room check before the transfer is an ESTIMATE, and a
@@ -453,37 +542,58 @@ async function finish(
     // browser throws here carries no message at all - Chromium's
     // QuotaExceededError has an empty one, which the Downloads card rendered
     // as an empty alert (#544).
+    //
+    // Reachable but no longer expensive, and no longer a size problem worth
+    // quoting figures at: what failed is a marker of a few bytes, and the
+    // archive it names is intact underneath. `ArchiveTooLargeError` would have
+    // to name a requirement, and every number available here is a lie - the
+    // bytes are already stored, so "it needs 1.18 GB" is false and "it needs
+    // 0 MB" is nonsense. What is true is that nothing was lost.
     if (isQuotaError(error)) {
-      throw new ArchiveTooLargeError(
-        archive.size + heldBytes,
-        (await estimateAvailableBytes()) ?? 0,
-        heldBytes,
+      throw new Error(
+        `The map finished downloading, but this phone would not record it as ` +
+          `complete — it is out of room for even a small write. Nothing was lost: ` +
+          `freeing up a little space and tapping again finishes from what is ` +
+          `already here, with nothing left to download.`,
       )
     }
     throw error
   }
 
-  // Which build is on this phone. Written after the blob, never before: a
-  // version record for bytes that failed to store would be a claim about an
-  // archive nobody has. Cleared rather than left standing when the archive
-  // could not be verified, because a stale hash beside unverified bytes says
-  // something false with more confidence than saying nothing.
+  // Which build is on this phone. Written after the marker, never before: a
+  // version record for an archive that is not yet finished would be a claim
+  // about bytes nobody can read. Cleared rather than left standing when the
+  // archive could not be verified, because a stale hash beside unverified bytes
+  // says something false with more confidence than saying nothing.
   if (verified !== null) await set(versionKeyFor(packageKey), verified)
   else await del(versionKeyFor(packageKey))
-  // After the blob is really stored, and in a different storage mechanism on
-  // purpose: this is what later distinguishes "the archive was evicted" from
+  // After the archive is really readable, and in a different storage mechanism
+  // on purpose: this is what later distinguishes "the archive was evicted" from
   // "no archive was ever downloaded" (storageHealth.ts, #190).
   recordCompleted(packageKey)
-  await discardPartial(packageKey)
+  // The transfer's bookkeeping, not its bytes. The segments stay exactly where
+  // they are - they ARE the archive now - so only the records describing an
+  // in-flight download are cleared.
+  await clearTransferRecords(packageKey)
 }
 
 export async function downloadArchive(
   packageKey: string,
   url: string,
-  { artifactKey, onProgress, onChecking, signal }: DownloadOptions,
+  { artifactKey, onProgress, onChecking, signal, segmentBytes }: DownloadOptions,
 ): Promise<void> {
-  const storedBlob = (await get(partialKeyFor(packageKey))) as Blob | undefined
   const storedSource = (await get(sourceKeyFor(packageKey))) as PartialSource | undefined
+  const completed = await readComplete(packageKey)
+
+  // Which generation this attempt writes into (archiveStore.ts): the one the
+  // finished archive is not in, so a re-download cannot damage the map the
+  // hiker is navigating by. A resume stays in the generation its own bytes are
+  // already in, whatever has completed since.
+  const generation =
+    storedSource?.generation ?? (completed === null ? 0 : 1 - completed.generation)
+
+  const held = await readSegmentRun(packageKey, generation)
+  const storedBlob = held.blob
 
   // What the bucket currently says this artifact hashes to. Fetched per
   // attempt rather than cached, so a republish moves the expectation instead
@@ -516,10 +626,28 @@ export async function downloadArchive(
     storedSource?.sha256 !== undefined &&
     storedSource.sha256 !== publishedSha256
   const usable = storedBlob !== undefined && storedSource?.url === url && !republished
-  if (storedBlob !== undefined && !usable) await discardPartial(packageKey)
+  if (storedBlob !== undefined && !usable)
+    await discardPartial(packageKey, generation, storedSource?.segments)
+
+  // A partial written by a build before segments existed cannot be resumed onto:
+  // its bytes are one record with no generation and no segment index, and the
+  // ways to adopt them are all worse than restarting. Copying it into segment 0
+  // needs room for a second copy of a partial that can be most of a gigabyte -
+  // the exact failure #544 is about - and keeping it as a permanent base part
+  // would mean a finished archive whose contents include a record named
+  // ':partial' forever, to serve a case that exists only during this upgrade.
+  //
+  // So it is reclaimed rather than read. The cost is one interrupted transfer,
+  // once, for a tester who was mid-download when the app updated. What #553 and
+  // lib/packages.ts require to survive is a COMPLETED archive, and that does -
+  // archiveStore.ts serves the legacy whole-archive record untouched.
+  await del(partialKeyFor(packageKey))
 
   const heldBlob = usable ? storedBlob : undefined
   const heldBytes = heldBlob?.size ?? 0
+  // Where the next segment goes. Segments are contiguous from 0, so the count
+  // of held ones is the next index.
+  let nextSegment = usable ? held.count : 0
 
   const headers: Record<string, string> = {}
   if (heldBytes > 0) {
@@ -568,7 +696,14 @@ export async function downloadArchive(
           ? null
           : await resumeHash(heldBlob, storedSource?.hash, onChecking)
       onProgress?.({ receivedBytes: heldBytes, totalBytes: heldBytes })
-      await finish(packageKey, artifactKey, heldBlob, expected, hash, heldBytes, signal)
+      await finish(
+        packageKey,
+        artifactKey,
+        { generation, segments: nextSegment, totalBytes: heldBytes },
+        expected,
+        hash,
+        signal,
+      )
       return
     }
 
@@ -577,7 +712,7 @@ export async function downloadArchive(
     // next attempt starts clean instead of asking the same impossible question
     // forever - and said plainly, because a hiker who taps Resume is owed the
     // reason the button changed.
-    await discardPartial(packageKey)
+    await discardPartial(packageKey, generation, nextSegment)
     throw stalePartialError()
   }
 
@@ -642,7 +777,7 @@ export async function downloadArchive(
   //
   // Nothing here is salvageable, unlike the 200 case: what is on the wire is a
   // range of a DIFFERENT object, so there is no prefix worth keeping and no
-  // whole file to fall back to. The partial goes and the next attempt starts
+  // whole file to fall back to. The segments go and the next attempt starts
   // clean - the same disposal, and deliberately the same sentence, as the 416.
   if (
     resumed &&
@@ -654,11 +789,21 @@ export async function downloadArchive(
     // check below closes it: an unread response keeps the bytes coming, and
     // these are bytes that can only ever be thrown away.
     void response.body?.cancel()
-    await discardPartial(packageKey)
+    // `nextSegment` is the held count on a resume, so this reclaims exactly the
+    // segments those stale bytes are in - and nothing in the other generation,
+    // where a working archive may be sitting (#553).
+    await discardPartial(packageKey, generation, nextSegment)
     throw stalePartialError()
   }
 
-  let accumulated: Blob = resumed ? heldBlob : new Blob([])
+  // Held segments this attempt is not resuming onto are in the way rather than
+  // useful: the transfer restarts at index 0, and segments left past its end
+  // would be read back as part of the archive and corrupt it. Reclaimed before
+  // the first write, not after, since the write is what would overlap them.
+  if (!resumed && held.count > 0) {
+    await discardPartial(packageKey, generation, held.count)
+    nextSegment = 0
+  }
 
   const declared = Number(response.headers.get('content-length') ?? 0)
   const totalBytes = resumed ? heldBytes + declared : declared
@@ -689,17 +834,23 @@ export async function downloadArchive(
   //
   // A browser with no estimate to give (`null`) refuses nothing, which is the
   // same posture every other best-effort answer in storageHealth.ts takes.
-  // `heldBytes`, not `resumed ? heldBytes : 0`: what occupies the quota is the
-  // partial RECORD, which is on disk whenever those bytes were usable - whether
-  // or not this attempt resumed onto them. A server that ignored the range is
-  // rebuilding the archive from zero with the old partial still sitting there.
-  const tooLarge = await shortfall(totalBytes, heldBytes)
+  //
+  // What is asked for is the DECLARED remainder rather than the whole archive,
+  // because that is what is not yet on disk: a resume's held segments are part
+  // of the finished archive now, and `available` already excludes them. `declared`
+  // says the same thing as `totalBytes - heldBytes` on a resume and is the honest
+  // spelling of it - it is the number of bytes about to be written.
+  const tooLarge = await shortfall(resumed ? declared : totalBytes)
   if (tooLarge !== null) {
     // Closed rather than left to garbage collection: the body is already on its
     // way, and an unread response holds the connection open and keeps the bytes
     // coming - which is the cost this whole check exists to avoid.
     void response.body?.cancel()
-    throw new ArchiveTooLargeError(tooLarge.required, tooLarge.available, heldBytes)
+    throw new ArchiveTooLargeError(
+      tooLarge.required,
+      tooLarge.available,
+      resumed ? heldBytes : 0,
+    )
   }
 
   // Taken from the response actually being read, so a partial is always
@@ -726,10 +877,74 @@ export async function downloadArchive(
     etag,
     sha256: expected ?? undefined,
     hash: hash?.toState(),
+    generation,
+    segments: nextSegment,
   })
 
-  let receivedBytes = accumulated.size
+  // Bytes that have arrived but are not yet in a segment record. This is the
+  // only thing held in memory now, and SEGMENT_BYTES bounds it - what used to
+  // be a Blob growing to the size of the whole archive.
+  let pending: BlobPart[] = []
+  let pendingBytes = 0
+  // On disk, in segments. What a resume would find, and therefore what the
+  // progress record must say - not `receivedBytes`, which counts bytes the
+  // renderer is still holding and an OS kill would take with it.
+  let flushedBytes = resumed ? heldBytes : 0
+  let receivedBytes = flushedBytes
   onProgress?.({ receivedBytes, totalBytes })
+
+  /**
+   * Writes the pending bytes as the next segment, and records the transfer's
+   * position.
+   *
+   * The order is the same invariant `persistPartial` has always kept, for the
+   * same reason: identity first, so the dangerous combination (bytes on disk,
+   * nothing saying what they are) is never reachable. Here it also carries the
+   * hash state, which at this instant covers exactly the bytes about to be
+   * written - every arrived chunk has been folded in, and pending is all of
+   * them since the last flush. A segment write that fails after it leaves a
+   * source claiming more bytes than are held, which `resumeHash` already treats
+   * as "hash the held bytes again".
+   */
+  const flush = async (): Promise<void> => {
+    if (pendingBytes === 0) return
+    const segment = new Blob(pending)
+    // Cleared before the awaits, so a failure cannot write the same bytes twice
+    // if the caller flushes again on its way out.
+    pending = []
+    pendingBytes = 0
+
+    try {
+      await set(sourceKeyFor(packageKey), sourceRecord())
+      await writeSegment(packageKey, generation, nextSegment, segment)
+    } catch (error) {
+      // The quota answer, now arriving mid-transfer rather than after the last
+      // byte. Translated for the same reason it always was - what a browser
+      // throws here carries no message at all (#544) - and with the numbers the
+      // sentence needs: what is left to write, and what is already safe.
+      if (isQuotaError(error)) {
+        throw new ArchiveTooLargeError(
+          Math.max(totalBytes - flushedBytes, segment.size),
+          (await estimateAvailableBytes()) ?? 0,
+          flushedBytes,
+        )
+      }
+      throw error
+    }
+    nextSegment += 1
+    flushedBytes += segment.size
+    await set(progressKeyFor(packageKey), { receivedBytes: flushedBytes, totalBytes })
+  }
+
+  /** Everything on disk and labelled, pending bytes included. */
+  const persist = async (): Promise<void> => {
+    await flush()
+    // Written even with nothing pending: the next attempt reads these to decide
+    // whether the held segments are usable at all, and a transfer that failed
+    // before its first checkpoint has none of them yet.
+    await set(sourceKeyFor(packageKey), sourceRecord())
+    await set(progressKeyFor(packageKey), { receivedBytes: flushedBytes, totalBytes })
+  }
 
   const reader = response.body?.getReader()
   if (reader === undefined)
@@ -742,33 +957,53 @@ export async function downloadArchive(
     for (;;) {
       const { done, value } = await reader.read()
       if (done) break
+
+      // Taken in BEFORE the abort is acted on. These bytes really arrived, and
+      // an abort that lands while they are in hand is no reason to make the next
+      // attempt fetch them again - the catch below writes them down. Checking
+      // first dropped the chunk that had just been read, which is what made
+      // "keeps what arrived when interrupted" hold for an EMPTY partial.
+      pending.push(value)
+      pendingBytes += value.byteLength
+      hash?.update(value)
+      receivedBytes += value.byteLength
+      onProgress?.({ receivedBytes, totalBytes })
+
       if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
 
-      accumulated = new Blob([accumulated, value])
-      hash?.update(value)
-      receivedBytes = accumulated.size
-      onProgress?.({ receivedBytes, totalBytes })
+      // The checkpoint. Everything before it is durable, so a kill here costs
+      // this segment rather than the transfer.
+      if (pendingBytes >= (segmentBytes ?? SEGMENT_BYTES)) await flush()
     }
+    await flush()
   } catch (error) {
-    // Everything received so far is kept. The next attempt picks up here
-    // rather than starting again.
-    await keepPartial(packageKey, accumulated, totalBytes, sourceRecord())
+    // Everything received so far is kept, including the bytes that had not
+    // reached a segment yet - this is a live failure with a live renderer, so
+    // there is still a chance to write them.
+    await keepQuietly(persist)
     throw error
   }
 
-  if (totalBytes > 0 && accumulated.size !== totalBytes) {
+  if (totalBytes > 0 && receivedBytes !== totalBytes) {
     // Truncation: a short PMTiles archive opens fine and then returns nothing
     // for tiles past the cut, which looks like missing map rather than a
-    // failed download. Keep the bytes so a resume can finish the job.
-    await keepPartial(packageKey, accumulated, totalBytes, sourceRecord())
-    throw new ArchiveSizeMismatchError(totalBytes, accumulated.size)
+    // failed download. The bytes are already kept, so a resume finishes the job.
+    await keepQuietly(persist)
+    throw new ArchiveSizeMismatchError(totalBytes, receivedBytes)
   }
 
-  await finish(packageKey, artifactKey, accumulated, expected, hash, heldBytes, signal)
+  await finish(
+    packageKey,
+    artifactKey,
+    { generation, segments: nextSegment, totalBytes: receivedBytes },
+    expected,
+    hash,
+    signal,
+  )
 }
 
 /**
- * `persistPartial`, for the two callers that are already carrying a failure.
+ * Persistence for the two callers that are already carrying a failure.
  *
  * Keeping the bytes is a best effort by nature - the failure being reported is
  * often quota, and quota is exactly what stops a partial being written. What
@@ -776,14 +1011,9 @@ export async function downloadArchive(
  * dropped connection surfaced as an empty-message QuotaExceededError tells the
  * hiker nothing about either problem, and the news here is the transfer.
  */
-async function keepPartial(
-  packageKey: string,
-  blob: Blob,
-  totalBytes: number,
-  source: PartialSource,
-): Promise<void> {
+async function keepQuietly(persist: () => Promise<void>): Promise<void> {
   try {
-    await persistPartial(packageKey, blob, totalBytes, source)
+    await persist()
   } catch {
     // Nothing to add - see the docstring. The next attempt discards a partial
     // it cannot identify, so a half-written one costs the resume, never
@@ -791,25 +1021,37 @@ async function keepPartial(
   }
 }
 
-async function persistPartial(
-  packageKey: string,
-  blob: Blob,
-  totalBytes: number,
-  source: PartialSource,
-): Promise<void> {
-  // Source first. Every later write can fail - quota is exactly the situation
-  // that produces a partial - and a partial with no source record is discarded
-  // on the next attempt rather than resumed onto blindly. Writing the identity
-  // last would leave the dangerous combination (bytes, no identity) reachable.
-  await set(sourceKeyFor(packageKey), source)
-  await set(partialKeyFor(packageKey), blob)
-  await set(progressKeyFor(packageKey), { receivedBytes: blob.size, totalBytes })
-}
-
-async function discardPartial(packageKey: string): Promise<void> {
-  await del(partialKeyFor(packageKey))
+/**
+ * Clears the records that describe an in-flight transfer, leaving any bytes
+ * alone.
+ *
+ * What `finish` uses, because the segments are the finished archive by then and
+ * deleting them would delete the download. Every caller that means "throw the
+ * bytes away too" says so through `discardPartial`.
+ */
+async function clearTransferRecords(packageKey: string): Promise<void> {
   await del(progressKeyFor(packageKey))
   await del(sourceKeyFor(packageKey))
+}
+
+/**
+ * Throws away an unfinished transfer: its segments and its bookkeeping.
+ *
+ * `segments` is the count the source record claimed, passed through to
+ * archiveStore.ts so a gap left by a failed write cannot strand later segments
+ * on the phone (#554). The completed archive in the other generation is never
+ * touched - that is what generations are for.
+ */
+async function discardPartial(
+  packageKey: string,
+  generation: number,
+  segments = 0,
+): Promise<void> {
+  await deleteGeneration(packageKey, generation, segments)
+  // The pre-segment record. Nothing writes it any more; a build that did may
+  // have left one behind.
+  await del(partialKeyFor(packageKey))
+  await clearTransferRecords(packageKey)
 }
 
 /**
@@ -846,7 +1088,12 @@ export async function readDownloadProgress(
  *  partials are untouched by construction: every record touched here derives
  *  from this one key. */
 export async function deleteArchive(packageKey: string): Promise<void> {
-  await del(packageKey)
+  // Every generation's segments, the completion marker, and any legacy
+  // whole-archive record. The source record's segment count is passed in as a
+  // floor so a gap left by a failed write cannot strand later segments on a
+  // phone whose owner is deleting a map precisely to free the space (#554).
+  const source = (await get(sourceKeyFor(packageKey))) as PartialSource | undefined
+  await deleteArchiveRecords(packageKey, source?.segments ?? 0)
   // The marker goes with the archive the hiker asked to remove - an absent
   // blob with a live marker would otherwise read as an eviction, and "the
   // phone removed your map" about a deletion they performed is exactly the
@@ -856,5 +1103,9 @@ export async function deleteArchive(packageKey: string): Promise<void> {
   // them - otherwise the next unverifiable download under this key would
   // inherit a build number belonging to an archive nobody has any more.
   await del(versionKeyFor(packageKey))
-  await discardPartial(packageKey)
+  // The bookkeeping. `deleteArchiveRecords` above already took every byte in
+  // both generations, so this is the pre-segment record and the progress/source
+  // pair rather than anything the hiker was storing.
+  await del(partialKeyFor(packageKey))
+  await clearTransferRecords(packageKey)
 }

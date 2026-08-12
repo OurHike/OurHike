@@ -13,6 +13,7 @@
 
 import {
   computeLegendContents,
+  legendDropSummary,
   type BoundingBox,
   type MapPoint,
 } from '../lib/legendContents'
@@ -61,6 +62,22 @@ export interface LegendProps {
   backgroundOverride?: BackgroundOverride | null
   /** Whether the view is zoomed out past what the download covers (#216). */
   belowArchiveZoom?: boolean
+  /**
+   * How many waypoints of each `type::confidence` the map actually drew
+   * (map/drawnPois.ts). Omitted where nobody measured, and then the rows read
+   * exactly as they did before #528.
+   */
+  drawnCounts?: ReadonlyMap<string, number>
+  /**
+   * Whether the camera is below POI_MIN_ZOOM, where the pin layer is not drawn
+   * at all.
+   *
+   * Its own flag rather than inferred from an empty row list, because the two
+   * are different facts with opposite remedies: nothing here, or everything
+   * here and none of it drawable yet. The panel said the wrong one at the
+   * opening view (#528).
+   */
+  belowPoiZoom?: boolean
   /** Opens the download window, from the link at the foot of the panel.
    *  Passed straight through: this panel has no opinion about downloads, it is
    *  just the piece of chrome the link ended up in. Omitted, no link is drawn
@@ -88,13 +105,16 @@ export function Legend({
   onChangeBackground,
   backgroundOverride = null,
   belowArchiveZoom = false,
+  drawnCounts,
+  belowPoiZoom = false,
   onOpenDownloads,
   hasDownload = false,
   downloadActivity = null,
 }: LegendProps) {
   if (!open && !persistent) return null
 
-  const rows = computeLegendContents(bbox, points)
+  const rows = computeLegendContents(bbox, points, drawnCounts)
+  const dropped = legendDropSummary(rows)
   const isEmpty = rows.length === 0 && blazeCounts.length === 0
 
   return (
@@ -131,9 +151,30 @@ export function Legend({
         />
       )}
 
-      {isEmpty && (
+      {/* Below the pin zoom the panel used to render the empty sentence, which
+          at the opening view is false in both halves: there is plenty here, and
+          zooming OUT is the wrong direction (#528). This is the same panel
+          telling the truth about the same camera. */}
+      {belowPoiZoom && rows.length === 0 && (
+        <p className="legend__empty">
+          Waypoints are drawn from a closer zoom. Zoom in to see what is along this
+          stretch.
+        </p>
+      )}
+
+      {isEmpty && !belowPoiZoom && (
         <p className="legend__empty">
           Nothing on this part of the map yet — pan or zoom out to see more.
+        </p>
+      )}
+
+      {/* The summary, above the rows it summarises. Second-order on purpose -
+          the per-row figures are where a hiker learns that the category missing
+          is the privies, and a single averaged line would hide exactly that. */}
+      {dropped !== null && (
+        <p className="legend__dropped">
+          {dropped.drawn} of {dropped.present} waypoints fit at this zoom. Zoom in to see
+          the rest.
         </p>
       )}
 
@@ -158,7 +199,17 @@ export function Legend({
           {rows.map((row) => {
             const name = typeLabel(row.type)
             const unverified = row.confidence === 'low'
-            const label = unverified ? `${name} · Unverified` : name
+            const base = unverified ? `${name} · Unverified` : name
+            // Only where it differs, which keeps the panel quiet at the zooms
+            // where nothing is being dropped. `Water · 14` and
+            // `Water · 14 · 4 shown` are the same row saying as much as is true.
+            const short = row.drawnCount !== undefined && row.drawnCount < row.count
+            // Into the row's accessible name, not only the visible text: a
+            // screen-reader user gets "Privy, 6, 0 shown" rather than a bare
+            // count that is wrong about what is on the map.
+            const label = short
+              ? `${base} · ${row.count} · ${row.drawnCount} shown`
+              : base
 
             return (
               <li
@@ -166,8 +217,9 @@ export function Legend({
                 className="legend__row"
                 aria-label={label}
               >
-                <span className="legend__label">{label}</span>
+                <span className="legend__label">{base}</span>
                 <span className="legend__count">{row.count}</span>
+                {short && <span className="legend__shown">{row.drawnCount} shown</span>}
 
                 {row.hideable ? (
                   <button

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeLegendContents, type MapPoint } from './legendContents'
+import { computeLegendContents, legendDropSummary, type MapPoint } from './legendContents'
 
 // WIREFRAMES.md's Legend section: lists only what's in the current
 // viewport, with counts. Rows are tappable to hide - except the closure row
@@ -98,5 +98,116 @@ describe('computeLegendContents', () => {
     const rows = computeLegendContents(BBOX, [point({ type: 'water' })])
 
     expect(rows.find((r) => r.type === 'shelter')).toBeUndefined()
+  })
+})
+
+// What is DRAWN, as against what is present (#528). The panel's promise is
+// "what am I looking at right now", and since collision culling arrived it had
+// been answering "what is inside this rectangle" - a row reading `Privy · 6` on
+// a map with no privy pin, because 3% of privies place at z14.
+describe('the drawn count', () => {
+  const bbox = { west: -1, south: -1, east: 1, north: 1 }
+  const at = (id: string, type: string, confidence: 'high' | 'low' = 'high') => ({
+    id,
+    type,
+    lat: 0,
+    lon: 0,
+    confidence,
+  })
+
+  it('carries how many of each row the map actually drew', () => {
+    const rows = computeLegendContents(
+      bbox,
+      [at('w1', 'water'), at('w2', 'water'), at('p1', 'privy')],
+      new Map([
+        ['water::high', 1],
+        ['privy::high', 0],
+      ]),
+    )
+
+    expect(rows).toEqual([
+      { type: 'water', confidence: 'high', count: 2, hideable: true, drawnCount: 1 },
+      { type: 'privy', confidence: 'high', count: 1, hideable: true, drawnCount: 0 },
+    ])
+  })
+
+  it('is undefined, not zero, when nobody measured', () => {
+    // The layer is absent on a cold start. "0 shown" then would claim a drop
+    // that has not happened.
+    const [row] = computeLegendContents(bbox, [at('w1', 'water')])
+
+    expect(row.drawnCount).toBeUndefined()
+  })
+
+  it('is zero for a category the measurement did not mention', () => {
+    // The whole map was measured, so a missing key is an answer rather than a
+    // gap - this is exactly the privy row at a hiking zoom.
+    const [row] = computeLegendContents(bbox, [at('p1', 'privy')], new Map())
+
+    expect(row.drawnCount).toBe(0)
+  })
+
+  it('never reports more drawn than present', () => {
+    // A drawn figure over the rectangle's own count can only be a duplicate the
+    // probe failed to fold, and `Water · 1 · 3 shown` would discredit every
+    // other row on the panel.
+    const [row] = computeLegendContents(
+      bbox,
+      [at('w1', 'water')],
+      new Map([['water::high', 3]]),
+    )
+
+    expect(row.drawnCount).toBe(1)
+  })
+
+  it('counts only what is inside the viewport, as it always did', () => {
+    const rows = computeLegendContents(
+      bbox,
+      [at('w1', 'water'), { ...at('w2', 'water'), lat: 40 }],
+      new Map([['water::high', 1]]),
+    )
+
+    expect(rows[0].count).toBe(1)
+  })
+})
+
+describe('legendDropSummary', () => {
+  const row = (
+    type: string,
+    count: number,
+    drawnCount?: number,
+  ): ReturnType<typeof computeLegendContents>[number] => ({
+    type,
+    confidence: 'high',
+    count,
+    hideable: true,
+    drawnCount,
+  })
+
+  it('adds up what is in view against what fits', () => {
+    expect(legendDropSummary([row('water', 14, 4), row('privy', 6, 0)])).toEqual({
+      present: 20,
+      drawn: 4,
+    })
+  })
+
+  it('says nothing when everything present is drawn', () => {
+    // "112 of 112 fit" is noise on a panel someone opens all day to answer a
+    // different question.
+    expect(legendDropSummary([row('water', 14, 14)])).toBeNull()
+  })
+
+  it('says nothing when nothing was measured', () => {
+    expect(legendDropSummary([row('water', 14)])).toBeNull()
+  })
+
+  it('says nothing about an empty viewport', () => {
+    expect(legendDropSummary([])).toBeNull()
+  })
+
+  it('ignores rows nobody measured rather than counting them as dropped', () => {
+    // Mixing a measured row with an unmeasured one must not turn the unmeasured
+    // one's whole count into a claimed drop.
+    expect(legendDropSummary([row('water', 14, 14), row('privy', 6)])).toBeNull()
   })
 })

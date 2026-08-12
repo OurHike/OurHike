@@ -259,3 +259,140 @@ describe('legend as a persistent panel', () => {
     expect(screen.getByText('Downloading 25%')).toBeVisible()
   })
 })
+
+// Saying what is not drawn (#528). Before this the panel counted the viewport
+// rectangle and called it "what am I looking at", which at hiking zooms is a row
+// reading `Privy · 6` over a map with no privy pin on it.
+describe('reporting waypoints that did not fit', () => {
+  const bbox = { west: -1, south: -1, east: 1, north: 1 }
+  const point = (id: string, type: string) => ({
+    id,
+    type,
+    lat: 0,
+    lon: 0,
+    confidence: 'high' as const,
+  })
+  const points = [
+    point('w1', 'water'),
+    point('w2', 'water'),
+    point('p1', 'privy'),
+    point('p2', 'privy'),
+  ]
+
+  function renderLegend(drawnCounts?: ReadonlyMap<string, number>, belowPoiZoom = false) {
+    return render(
+      <Legend
+        open
+        bbox={bbox}
+        points={points}
+        blazeCounts={[]}
+        hiddenTypes={new Set()}
+        onToggleType={() => {}}
+        onClose={() => {}}
+        drawnCounts={drawnCounts}
+        belowPoiZoom={belowPoiZoom}
+      />,
+    )
+  }
+
+  it('shows the drawn count beside the present one where they differ', () => {
+    renderLegend(
+      new Map([
+        ['water::high', 1],
+        ['privy::high', 0],
+      ]),
+    )
+
+    expect(screen.getByText('1 shown')).toBeInTheDocument()
+    expect(screen.getByText('0 shown')).toBeInTheDocument()
+  })
+
+  it('says nothing extra on a row that is fully drawn', () => {
+    // The panel stays quiet at the zooms where nothing is being dropped.
+    renderLegend(
+      new Map([
+        ['water::high', 2],
+        ['privy::high', 2],
+      ]),
+    )
+
+    expect(screen.queryByText(/shown/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/fit at this zoom/)).not.toBeInTheDocument()
+  })
+
+  it('puts the drawn figure in the row’s accessible name', () => {
+    // A screen-reader user gets "Privy, 2, 0 shown" rather than a bare count
+    // that is wrong about what is on the map.
+    renderLegend(new Map([['privy::high', 0]]))
+
+    expect(
+      screen.getByRole('listitem', { name: /privy · 2 · 0 shown/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('summarises the drop at the head of the panel', () => {
+    renderLegend(
+      new Map([
+        ['water::high', 1],
+        ['privy::high', 0],
+      ]),
+    )
+
+    expect(screen.getByText(/1 of 4 waypoints fit at this zoom/i)).toBeInTheDocument()
+  })
+
+  it('reads exactly as it did before when nothing was measured', () => {
+    renderLegend(undefined)
+
+    expect(screen.queryByText(/shown/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/fit at this zoom/)).not.toBeInTheDocument()
+  })
+
+  it('keeps the hide control on a row that did not fit', () => {
+    // A category being culled is exactly when a hiker might want to hide
+    // something else, so the affordance has to survive the new figure.
+    renderLegend(new Map([['privy::high', 0]]))
+
+    expect(screen.getByRole('button', { name: /hide privy/i })).toBeInTheDocument()
+  })
+})
+
+describe('below the zoom waypoints are drawn at', () => {
+  const bbox = { west: -1, south: -1, east: 1, north: 1 }
+
+  it('says so, instead of claiming there is nothing here', () => {
+    // The old sentence was false in both halves at the opening view: there is
+    // plenty here, and zooming OUT is the wrong direction (#528).
+    render(
+      <Legend
+        open
+        bbox={bbox}
+        points={[]}
+        blazeCounts={[]}
+        hiddenTypes={new Set()}
+        onToggleType={() => {}}
+        onClose={() => {}}
+        belowPoiZoom
+      />,
+    )
+
+    expect(screen.getByText(/drawn from a closer zoom/i)).toBeInTheDocument()
+    expect(screen.queryByText(/pan or zoom out/i)).not.toBeInTheDocument()
+  })
+
+  it('still says "nothing here" when that is the true one', () => {
+    render(
+      <Legend
+        open
+        bbox={bbox}
+        points={[]}
+        blazeCounts={[]}
+        hiddenTypes={new Set()}
+        onToggleType={() => {}}
+        onClose={() => {}}
+      />,
+    )
+
+    expect(screen.getByText(/pan or zoom out/i)).toBeInTheDocument()
+  })
+})

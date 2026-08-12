@@ -75,6 +75,7 @@ import {
   type DetailLevel,
 } from './lib/downloadDetail'
 import { useArchiveDownloads } from './lib/useArchiveDownload'
+import { useDrawnPoiCounts } from './lib/useDrawnPoiCounts'
 import { useAvailableBytes } from './lib/useAvailableBytes'
 import { useArchiveZooms } from './lib/useArchiveZooms'
 import { archiveCoversZoom } from './lib/archiveCoverage'
@@ -1422,6 +1423,11 @@ function App() {
 
   const handleMapReady = useCallback((next: MapLibreMap | null) => setMap(next), [])
 
+  // How many of the waypoints in view the map actually drew (#528). Measured on
+  // `idle` rather than derived, because the collision engine decides it and only
+  // MapLibre knows what it decided - see lib/useDrawnPoiCounts.ts.
+  const { counts: drawnPoiCounts, belowPoiZoom } = useDrawnPoiCounts(map)
+
   // One thing open at a time. The waypoint card floats by its pin rather than
   // at the bottom where the legend sits, but the rule survives the move: two
   // dialogs at once means a screen-reader user in one with the other still
@@ -2029,6 +2035,8 @@ function App() {
           waypoints={waypoints}
           viewportPoints={viewportPoints}
           blazeCounts={[]}
+          drawnCounts={drawnPoiCounts}
+          belowPoiZoom={belowPoiZoom}
           hiddenTypes={hiddenTypes}
           onToggleType={handleToggleType}
           selectedPoi={selectedPoi}

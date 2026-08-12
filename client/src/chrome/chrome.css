@@ -633,6 +633,41 @@
   font-size: 12px;
   color: var(--fg-2);
 }
+/* How many of that count are actually drawn, where fewer are (#528). Sits
+   immediately after the present count because the two are one statement -
+   "14, of which 4" - and it carries the emphasis, since the surprising half is
+   the one a hiker has no other way to learn. Not red: nothing is broken, the
+   pins do not fit, and the remedy is in the header line. */
+.legend__shown {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+/* The count over the canvas (#528). Bottom-left, clear of the zoom buttons and
+   the attribution, so it is legible without covering the trail line the hiker is
+   reading. Small and unemphatic: it is a standing fact about the zoom, not an
+   alert - the panel is where the per-category detail lives. */
+.map-screen__dropped {
+  position: absolute;
+  bottom: var(--space-3, 12px);
+  left: var(--space-3, 12px);
+  z-index: 2;
+  margin: 0;
+  padding: 2px var(--space-2, 8px);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-raised) 82%, transparent);
+  color: var(--fg-2);
+  font-size: 11px;
+  pointer-events: none;
+}
+
+/* The header summary. Deliberately quieter than the rows it summarises. */
+.legend__dropped {
+  margin: var(--space-3, 12px) 0 0;
+  color: var(--fg-2);
+  font-size: 13px;
+}
 
 .legend__toggle {
   min-width: var(--min-touch-target);

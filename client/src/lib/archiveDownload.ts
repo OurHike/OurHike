@@ -39,10 +39,21 @@
 //
 // A verified hash is also kept beside the archive (`readArchiveVersion`), so
 // which build a phone holds is a question the app can now answer at all.
+//
+// ROOM IS CHECKED BEFORE THE BODY IS READ, NOT AFTER THE LAST BYTE (#544).
+//
+// The completed bytes are stored in ONE `set()` at the end, and the Blob being
+// accumulated before that is not charged against the origin's quota - so
+// without a check, a phone that cannot hold the Fine tier accepts all 1.18 GB
+// of it and only then refuses to store it. Measured in Chromium: 45 seconds of
+// transfer, then a QuotaExceededError with an empty message, nothing kept and
+// nothing resumable. `shortfall()` asks the browser the same question for the
+// price of one set of response headers. See it for why this refuses where
+// Downloads.tsx's identical warning does not.
 
 import { get, set, del } from 'idb-keyval'
 import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
-import { clearCompleted, recordCompleted } from './storageHealth'
+import { clearCompleted, estimateAvailableBytes, recordCompleted } from './storageHealth'
 import { publishedHash } from './dataManifest'
 import { formatBytes } from './formatBytes'
 import { Sha256, type Sha256State } from './sha256'
@@ -199,6 +210,59 @@ export class ArchiveHashMismatchError extends Error {
   }
 }
 
+/**
+ * The phone has no room for this archive, said before a byte is spent finding
+ * out (#544).
+ *
+ * The failure this replaces was the worst one in this module. The finished
+ * bytes are stored in a single `set()` at the very END of the transfer, and
+ * everything before that lives in the renderer's blob store, which is not
+ * charged against the origin's quota - measured in Chromium: usage does not
+ * move while a 1.18 GB Blob is being accumulated, and moves by the whole
+ * archive at the moment it is stored. So a phone that cannot hold the Fine
+ * tier accepts all 1.18 GB of it over the network, spends the hiker's entire
+ * allowance, and then rejects the store with a `QuotaExceededError` whose
+ * `message` is the empty string. Nothing is kept, nothing is resumable, the
+ * next attempt does exactly the same thing, and the card had nothing to show
+ * but an empty alert.
+ *
+ * `navigator.storage.estimate()` answers this in a millisecond, and the app
+ * already reads it - Downloads.tsx warns with it before the tap. This is the
+ * same question asked at the one moment it can still save the data, against
+ * the size the SERVER declares rather than the figure kept by hand in
+ * downloadDetail.ts.
+ *
+ * Both counts ride along, because "not enough room" is only actionable next to
+ * the two numbers it is a comparison of.
+ */
+export class ArchiveTooLargeError extends Error {
+  readonly requiredBytes: number
+  readonly availableBytes: number
+
+  constructor(requiredBytes: number, availableBytes: number, heldBytes: number) {
+    // Two sentences and a way out. The resumed case needs its own, because the
+    // number is otherwise inexplicable: finishing a resume needs room for the
+    // whole archive WHILE the partial is still held, since the partial is only
+    // released once the finished bytes are safely stored.
+    super(
+      (heldBytes > 0
+        ? `There is not enough room on this phone to finish this map. It needs about ` +
+          `${formatBytes(requiredBytes)} free — the finished map plus the ` +
+          `${formatBytes(heldBytes)} already here, which is only released once the ` +
+          `finished copy is stored — and about ${formatBytes(availableBytes)} is free ` +
+          `for the app.`
+        : `There is not enough room on this phone for this map. It needs about ` +
+          `${formatBytes(requiredBytes)} and about ${formatBytes(availableBytes)} is ` +
+          `free for the app.`) +
+        ` Nothing was downloaded, so none of your data was spent. Freeing up space, ` +
+        `or choosing a lighter detail level, makes room for it.`,
+    )
+    this.name = 'ArchiveTooLargeError'
+    this.requiredBytes = requiredBytes
+    this.availableBytes = availableBytes
+  }
+}
+
 /** How much of a held partial is read at a time when its hash has to be
  *  recomputed. Big enough that a gigabyte is not ten thousand reads, small
  *  enough that it is never one gigabyte-sized ArrayBuffer. */
@@ -244,6 +308,134 @@ async function resumeHash(
       : new Sha256()
   await hashBlobFrom(hash, held, hash.bytesHashed, onChecking)
   return hash
+}
+
+/**
+ * Whether a storage write failed because the browser has no room.
+ *
+ * Matched by name rather than by `instanceof DOMException`, for the reason
+ * dataManifest.ts matches AbortError the same way: the name is the part the
+ * platform specifies, and what a rejected IndexedDB request carries differs
+ * between engines and test environments. The legacy numeric code is accepted
+ * too - older WebKit throws a DOMException with code 22 and a name that is not
+ * always spelled the same way.
+ */
+function isQuotaError(error: unknown): boolean {
+  const { name, code } = (error ?? {}) as { name?: unknown; code?: unknown }
+  return name === 'QuotaExceededError' || code === 22
+}
+
+/** The object's total length out of a `Content-Range`, or null where the header
+ *  is absent or does not state one (`bytes 0-1/*`). */
+function totalFromContentRange(header: string | null): number | null {
+  const match = /\/\s*(\d+)\s*$/.exec(header ?? '')
+  return match === null ? null : Number(match[1])
+}
+
+/**
+ * The room this attempt needs before it can succeed, against the room the
+ * browser says it has - null where either is unanswerable.
+ *
+ * `held` is counted ON TOP of the archive, and that is not defensive
+ * arithmetic: the finished bytes are stored under the package key BEFORE the
+ * partial is discarded, so both records exist at once, and a resume of a large
+ * archive genuinely needs room for two copies of what it is finishing. The
+ * held bytes are already inside the browser's `usage`, so they have to be added
+ * to the requirement rather than subtracted from it.
+ */
+async function shortfall(
+  archiveBytes: number,
+  heldBytes: number,
+): Promise<{ required: number; available: number } | null> {
+  if (archiveBytes <= 0) return null
+  const available = await estimateAvailableBytes()
+  if (available === null) return null
+  const required = archiveBytes + heldBytes
+  return required > available ? { required, available } : null
+}
+
+/**
+ * The last act of a successful attempt: hold the bytes to the published hash,
+ * store them, and record what they are.
+ *
+ * Shared by the ordinary path and by the one where the server reports that the
+ * partial already covers the whole object (the 416 below), so that the rule
+ * about what may be stored has exactly one home.
+ */
+async function finish(
+  packageKey: string,
+  artifactKey: string,
+  archive: Blob,
+  expected: string | null,
+  hash: Sha256 | null,
+  heldBytes: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  // What these bytes were finally verified as, which is not always what the
+  // attempt set out to match - see the republish case below.
+  let verified = expected
+
+  if (expected !== null && hash !== null) {
+    const actual = hash.digest()
+    if (actual !== expected) {
+      // Before throwing anything away: a mismatch has an innocent cause. The
+      // bucket can be republished between the manifest read at the start of
+      // this attempt and the last byte arriving, in which case what arrived
+      // is a WHOLE, correct, newer archive that simply is not the build we
+      // asked about. Discarding a gigabyte of good map over that would be a
+      // real loss on a trailhead connection, so the manifest gets one more
+      // read, and bytes that match what the bucket publishes NOW are kept.
+      //
+      // This does not soften the splice defence: a spliced file matches no
+      // published hash at all, so it still ends up in the branch below.
+      const republished = await publishedHash(artifactKey, { signal })
+      if (republished !== null && republished === actual) {
+        verified = actual
+      } else {
+        // Nothing is stored and nothing is kept: these bytes are the right
+        // length and the wrong file, so a resume onto them would only rebuild
+        // the same wrong archive. What is discarded is an unusable download,
+        // never a map anyone is navigating by - any previously-completed
+        // archive under the package key is left exactly where it was, so a
+        // hiker with a working map who tried to update it still has it.
+        await discardPartial(packageKey)
+        throw new ArchiveHashMismatchError(expected, actual)
+      }
+    }
+  }
+
+  try {
+    await set(packageKey, archive)
+  } catch (error) {
+    // The quota answer, arriving at the only moment this module could not
+    // avoid asking: the room check before the transfer is an ESTIMATE, and a
+    // browser that rounds it generously, or another tab that filled the origin
+    // meanwhile, lands here. Translated rather than rethrown, because what a
+    // browser throws here carries no message at all - Chromium's
+    // QuotaExceededError has an empty one, which the Downloads card rendered
+    // as an empty alert (#544).
+    if (isQuotaError(error)) {
+      throw new ArchiveTooLargeError(
+        archive.size + heldBytes,
+        (await estimateAvailableBytes()) ?? 0,
+        heldBytes,
+      )
+    }
+    throw error
+  }
+
+  // Which build is on this phone. Written after the blob, never before: a
+  // version record for bytes that failed to store would be a claim about an
+  // archive nobody has. Cleared rather than left standing when the archive
+  // could not be verified, because a stale hash beside unverified bytes says
+  // something false with more confidence than saying nothing.
+  if (verified !== null) await set(versionKeyFor(packageKey), verified)
+  else await del(versionKeyFor(packageKey))
+  // After the blob is really stored, and in a different storage mechanism on
+  // purpose: this is what later distinguishes "the archive was evicted" from
+  // "no archive was ever downloaded" (storageHealth.ts, #190).
+  recordCompleted(packageKey)
+  await discardPartial(packageKey)
 }
 
 export async function downloadArchive(
@@ -305,6 +497,49 @@ export async function downloadArchive(
     headers: heldBytes > 0 ? headers : undefined,
   })
 
+  // 416 means the range asked for is not inside the object, and for a resume
+  // there is exactly one innocent reading of that: the partial already holds
+  // every byte there is, so `bytes=<size>-` starts one past the end.
+  //
+  // This was a permanent dead end (#544). A transfer that drops after the last
+  // byte but before the stream closes - or that is aborted at the tail, or
+  // whose body ran longer than the declared length - leaves a partial holding
+  // the whole file. Every resume from then on asked for a range past the end,
+  // got 416, fell into the generic failure below, and left the card offering
+  // "Resume" over bytes that could never complete. On the Fine tier that is
+  // 1.18 GB of correct map, on the phone, unreachable, with delete as the only
+  // way forward.
+  //
+  // So the held bytes are finished from here rather than thrown away: the
+  // server has just stated the object's length, and where that equals what is
+  // held, the hash check below is what decides whether they are the right
+  // bytes. Nothing is trusted that a completed transfer would not have been.
+  if (response.status === 416 && heldBlob !== undefined) {
+    const objectBytes = totalFromContentRange(response.headers.get('content-range'))
+    if (objectBytes === heldBytes) {
+      const expected = publishedSha256 ?? storedSource?.sha256 ?? null
+      const hash =
+        expected === null
+          ? null
+          : await resumeHash(heldBlob, storedSource?.hash, onChecking)
+      onProgress?.({ receivedBytes: heldBytes, totalBytes: heldBytes })
+      await finish(packageKey, artifactKey, heldBlob, expected, hash, heldBytes, signal)
+      return
+    }
+
+    // The other readings are all "these bytes cannot be finished": the object
+    // is shorter than the partial, or its length is unstated. Discarded, so the
+    // next attempt starts clean instead of asking the same impossible question
+    // forever - and said plainly, because a hiker who taps Resume is owed the
+    // reason the button changed.
+    await discardPartial(packageKey)
+    throw new Error(
+      `The part of the map already on this phone no longer matches what the server ` +
+        `has, so it was cleared. Anything already downloaded is untouched, and the ` +
+        `next attempt starts a fresh copy.`,
+    )
+  }
+
   if (!response.ok) {
     // The message is what the download card shows, so it is written for the
     // hiker holding the phone, not the developer reading a log. The status
@@ -332,6 +567,45 @@ export async function downloadArchive(
 
   const declared = Number(response.headers.get('content-length') ?? 0)
   const totalBytes = resumed ? heldBytes + declared : declared
+
+  // ASKED HERE BECAUSE HERE IS WHERE IT IS STILL FREE (#544).
+  //
+  // The server has just declared how big this archive is, and no part of the
+  // body has been read yet, so a phone that cannot hold it can be told so for
+  // the price of one set of response headers instead of 1.18 GB of somebody's
+  // data allowance. Measured in Chromium: a Fine-tier download on an origin
+  // whose quota could not take it transferred all 1,184,700,000 bytes over 45
+  // seconds and then failed the store, keeping nothing.
+  //
+  // Against the DECLARED length, which is the one that matters - the figure in
+  // downloadDetail.ts is kept by hand and has drifted from the bucket before
+  // (#505), and this comparison is exactly where being 15 MB optimistic strands
+  // somebody who freed up just enough space.
+  //
+  // Downloads.tsx warns on this same estimate and deliberately does not refuse:
+  // "a hiker at a trailhead deciding to try anyway is making an informed call."
+  // That reasoning holds where it is - a warning costs nothing to ignore
+  // because nothing has been spent yet. It stops holding once the transfer is
+  // the thing being decided about, and the browser's own answer is the only one
+  // available: no amount of trying makes a store succeed that the quota
+  // forbids, so the choice on offer would be between an honest sentence and the
+  // same sentence after a gigabyte. Refusing keeps the remedy in the message
+  // rather than in a log.
+  //
+  // A browser with no estimate to give (`null`) refuses nothing, which is the
+  // same posture every other best-effort answer in storageHealth.ts takes.
+  // `heldBytes`, not `resumed ? heldBytes : 0`: what occupies the quota is the
+  // partial RECORD, which is on disk whenever those bytes were usable - whether
+  // or not this attempt resumed onto them. A server that ignored the range is
+  // rebuilding the archive from zero with the old partial still sitting there.
+  const tooLarge = await shortfall(totalBytes, heldBytes)
+  if (tooLarge !== null) {
+    // Closed rather than left to garbage collection: the body is already on its
+    // way, and an unread response holds the connection open and keeps the bytes
+    // coming - which is the cost this whole check exists to avoid.
+    void response.body?.cancel()
+    throw new ArchiveTooLargeError(tooLarge.required, tooLarge.available, heldBytes)
+  }
 
   // Taken from the response actually being read, so a partial is always
   // labelled with the version it came from. A weak ETag is dropped: it only
@@ -389,7 +663,7 @@ export async function downloadArchive(
   } catch (error) {
     // Everything received so far is kept. The next attempt picks up here
     // rather than starting again.
-    await persistPartial(packageKey, accumulated, totalBytes, sourceRecord())
+    await keepPartial(packageKey, accumulated, totalBytes, sourceRecord())
     throw error
   }
 
@@ -397,56 +671,35 @@ export async function downloadArchive(
     // Truncation: a short PMTiles archive opens fine and then returns nothing
     // for tiles past the cut, which looks like missing map rather than a
     // failed download. Keep the bytes so a resume can finish the job.
-    await persistPartial(packageKey, accumulated, totalBytes, sourceRecord())
+    await keepPartial(packageKey, accumulated, totalBytes, sourceRecord())
     throw new ArchiveSizeMismatchError(totalBytes, accumulated.size)
   }
 
-  // What these bytes were finally verified as, which is not always what the
-  // attempt set out to match - see the republish case below.
-  let verified = expected
+  await finish(packageKey, artifactKey, accumulated, expected, hash, heldBytes, signal)
+}
 
-  if (expected !== null && hash !== null) {
-    const actual = hash.digest()
-    if (actual !== expected) {
-      // Before throwing anything away: a mismatch has an innocent cause. The
-      // bucket can be republished between the manifest read at the start of
-      // this attempt and the last byte arriving, in which case what arrived
-      // is a WHOLE, correct, newer archive that simply is not the build we
-      // asked about. Discarding a gigabyte of good map over that would be a
-      // real loss on a trailhead connection, so the manifest gets one more
-      // read, and bytes that match what the bucket publishes NOW are kept.
-      //
-      // This does not soften the splice defence: a spliced file matches no
-      // published hash at all, so it still ends up in the branch below.
-      const republished = await publishedHash(artifactKey, { signal })
-      if (republished !== null && republished === actual) {
-        verified = actual
-      } else {
-        // Nothing is stored and nothing is kept: these bytes are the right
-        // length and the wrong file, so a resume onto them would only rebuild
-        // the same wrong archive. What is discarded is an unusable download,
-        // never a map anyone is navigating by - any previously-completed
-        // archive under the package key is left exactly where it was, so a
-        // hiker with a working map who tried to update it still has it.
-        await discardPartial(packageKey)
-        throw new ArchiveHashMismatchError(expected, actual)
-      }
-    }
+/**
+ * `persistPartial`, for the two callers that are already carrying a failure.
+ *
+ * Keeping the bytes is a best effort by nature - the failure being reported is
+ * often quota, and quota is exactly what stops a partial being written. What
+ * must not happen is the write's own error replacing the one being reported: a
+ * dropped connection surfaced as an empty-message QuotaExceededError tells the
+ * hiker nothing about either problem, and the news here is the transfer.
+ */
+async function keepPartial(
+  packageKey: string,
+  blob: Blob,
+  totalBytes: number,
+  source: PartialSource,
+): Promise<void> {
+  try {
+    await persistPartial(packageKey, blob, totalBytes, source)
+  } catch {
+    // Nothing to add - see the docstring. The next attempt discards a partial
+    // it cannot identify, so a half-written one costs the resume, never
+    // correctness.
   }
-
-  await set(packageKey, accumulated)
-  // Which build is on this phone. Written after the blob, never before: a
-  // version record for bytes that failed to store would be a claim about an
-  // archive nobody has. Cleared rather than left standing when the archive
-  // could not be verified, because a stale hash beside unverified bytes says
-  // something false with more confidence than saying nothing.
-  if (verified !== null) await set(versionKeyFor(packageKey), verified)
-  else await del(versionKeyFor(packageKey))
-  // After the blob is really stored, and in a different storage mechanism on
-  // purpose: this is what later distinguishes "the archive was evicted" from
-  // "no archive was ever downloaded" (storageHealth.ts, #190).
-  recordCompleted(packageKey)
-  await discardPartial(packageKey)
 }
 
 async function persistPartial(

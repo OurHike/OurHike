@@ -182,8 +182,15 @@ export function DownloadCard({
     <section className="downloads__item" aria-label={title}>
       {/* The failure that belongs to THIS package, beside this package's
           button. Which download failed is half of what the sentence has to
-          say once there is more than one. */}
-      {error !== null && (
+          say once there is more than one.
+
+          An empty string is not a failure worth a box: a browser error with no
+          message (Chromium's QuotaExceededError has none) used to render as an
+          empty red alert with nothing in it, which reads as the app breaking
+          rather than as the phone being full (#544). The hook has a sentence
+          for that case now; this guard is what keeps the shape unrenderable
+          whatever else ever reaches it. */}
+      {error !== null && error.trim() !== '' && (
         <p role="alert" className="downloads__error">
           {error}
         </p>

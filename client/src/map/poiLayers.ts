@@ -218,14 +218,26 @@ export function poiFeatureCollection(pois: readonly MapPoint[]): PoiFeatureColle
 }
 
 /**
- * The legend's hide toggles, as a layer filter.
+ * The legend's filters, as one layer filter.
  *
- * Always the same expression shape, with an empty list when nothing is hidden,
- * so "showing everything" is not a separate code path that could drift from
- * the one that does the hiding.
+ * Always the same expression shape - an empty hidden list, and a literal
+ * `true` where the confidence clause is not wanted - so "showing everything"
+ * is not a separate code path that could drift from the one doing the hiding.
+ *
+ * `verifiedOnly` is the legend's "Verified?" toggle: waypoints nobody has
+ * confirmed exist come off the map entirely. It is a filter and not a
+ * restyling because the broken rim already says "unconfirmed" for a hiker who
+ * wants to see them; this is for the hiker who does not.
  */
-export function poiTypeFilter(hiddenTypes: ReadonlySet<string>): unknown[] {
-  return ['!', ['in', ['get', 'poi_type'], ['literal', [...hiddenTypes].sort()]]]
+export function poiFilter(
+  hiddenTypes: ReadonlySet<string>,
+  verifiedOnly = false,
+): unknown[] {
+  return [
+    'all',
+    ['!', ['in', ['get', 'poi_type'], ['literal', [...hiddenTypes].sort()]]],
+    verifiedOnly ? ['==', ['get', 'confidence'], 'high'] : true,
+  ]
 }
 
 /** Registers every pin image on a live map, and returns a detach function. */
@@ -267,17 +279,18 @@ export function attachPoiData(map: MapLibreMap, pois: readonly MapPoint[]): () =
   )
 }
 
-/** Applies the legend's hidden set to the pin layer, and returns a detach. */
-export function attachHiddenPoiTypes(
+/** Applies the legend's filters to the pin layer, and returns a detach. */
+export function attachPoiFilter(
   map: MapLibreMap,
   hiddenTypes: ReadonlySet<string>,
+  verifiedOnly = false,
 ): () => void {
   return whenStyleReady(
     map,
     // setFilter throws outright on a layer the style does not hold, so the
     // layer's presence is exactly the precondition.
     () => map.getLayer(POI_LAYER_ID) !== undefined,
-    () => map.setFilter(POI_LAYER_ID, poiTypeFilter(hiddenTypes) as never),
+    () => map.setFilter(POI_LAYER_ID, poiFilter(hiddenTypes, verifiedOnly) as never),
     'POI visibility',
   )
 }

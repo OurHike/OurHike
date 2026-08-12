@@ -323,6 +323,12 @@ function App() {
   // app no longer holds.
   const [selectedPoiId, setSelectedPoiId] = useState<string | null>(null)
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set())
+  // The legend's "Verified?" filter. Off by default: an unconfirmed spring is
+  // still the best information anyone has about that spring, and a first run
+  // that quietly withheld it would be the app deciding for a hiker what they
+  // are allowed to know about. Ephemeral, exactly like hiddenTypes - both are
+  // #530's problem, not this one's.
+  const [verifiedOnly, setVerifiedOnly] = useState(false)
   const [bbox, setBbox] = useState<BoundingBox>(EMPTY_BBOX)
 
   const [trailIndex, setTrailIndex] = useState<TrailIndex | null>(null)
@@ -1458,6 +1464,10 @@ function App() {
     })
   }, [])
 
+  const handleToggleVerifiedOnly = useCallback(() => {
+    setVerifiedOnly((current) => !current)
+  }, [])
+
   /**
    * Ask who is reporting, at most once a session and never twice over.
    *
@@ -2039,6 +2049,8 @@ function App() {
           belowPoiZoom={belowPoiZoom}
           hiddenTypes={hiddenTypes}
           onToggleType={handleToggleType}
+          verifiedOnly={verifiedOnly}
+          onToggleVerifiedOnly={handleToggleVerifiedOnly}
           selectedPoi={selectedPoi}
           onSelectPoi={handleSelectPoi}
           onClosePoi={handleClosePoi}

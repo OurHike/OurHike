@@ -33,20 +33,19 @@ describe('drawnPoiCounts', () => {
 
     expect(drawnPoiCounts(map)).toEqual(
       new Map([
-        ['water::high', 2],
-        ['shelter::high', 1],
-        ['resupply::low', 1],
+        ['water', 2],
+        ['shelter', 1],
+        ['resupply', 1],
       ]),
     )
   })
 
-  it('keys exactly as the legend keys its rows', () => {
-    // The two are joined on this string. A mismatch would split one category
-    // into a row that never finds its drawn figure, which reads as "0 shown" on
-    // a map that is drawing them all.
-    expect([...drawnPoiCounts(mapWith([pin('w1', 'water')])).keys()]).toEqual([
-      'water::high',
-    ])
+  it('keys exactly as the legend keys its rows - by type alone', () => {
+    // The two are joined on this string. A mismatch would split one category into
+    // a row that never finds its drawn figure, which reads as "0 shown" on a map
+    // that is drawing them all. #580 folded the confidence split out of the
+    // legend, so this folded with it.
+    expect([...drawnPoiCounts(mapWith([pin('w1', 'water')])).keys()]).toEqual(['water'])
   })
 
   it('counts one waypoint once, however many tiles return it', () => {
@@ -55,16 +54,19 @@ describe('drawnPoiCounts', () => {
     // present, and `Water · 14 · 17 shown` would discredit every other row.
     const map = mapWith([pin('w1', 'water'), pin('w1', 'water'), pin('w2', 'water')])
 
-    expect(drawnPoiCounts(map).get('water::high')).toBe(2)
+    expect(drawnPoiCounts(map).get('water')).toBe(2)
   })
 
-  it('treats anything that is not "low" as high, exactly as the legend does', () => {
+  it('counts a verified and an unverified spring as two springs', () => {
+    // Which is what the legend does since #580 - one row per category, because
+    // which particular spring is unconfirmed is a question about one spring and
+    // the map already says it per pin.
     const map = mapWith([
-      { properties: { [POI_ID_PROPERTY]: 'a', poi_type: 'water' } },
-      { properties: { [POI_ID_PROPERTY]: 'b', poi_type: 'water', confidence: null } },
+      { properties: { [POI_ID_PROPERTY]: 'a', poi_type: 'water', confidence: 'high' } },
+      { properties: { [POI_ID_PROPERTY]: 'b', poi_type: 'water', confidence: 'low' } },
     ])
 
-    expect(drawnPoiCounts(map).get('water::high')).toBe(2)
+    expect(drawnPoiCounts(map).get('water')).toBe(2)
   })
 
   it('is empty when the pin layer is not in the style', () => {
@@ -107,6 +109,6 @@ describe('drawnPoiCounts', () => {
       pin('w1', 'water'),
     ])
 
-    expect(drawnPoiCounts(map)).toEqual(new Map([['water::high', 1]]))
+    expect(drawnPoiCounts(map)).toEqual(new Map([['water', 1]]))
   })
 })

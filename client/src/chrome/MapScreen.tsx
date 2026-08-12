@@ -130,6 +130,11 @@ export interface MapScreenProps {
   blazeCounts: BlazeCount[]
   hiddenTypes: Set<string>
   onToggleType: (type: string) => void
+  /** The legend's "Verified?" filter. Handed to the legend and to the map from
+   *  here, so the counts in the panel and the pins on the canvas are one
+   *  decision rather than two that can drift. */
+  verifiedOnly: boolean
+  onToggleVerifiedOnly: () => void
 
   /**
    * The tapped pin's detail, or null when nothing is selected.
@@ -287,6 +292,8 @@ export function MapScreen({
   blazeCounts,
   hiddenTypes,
   onToggleType,
+  verifiedOnly,
+  onToggleVerifiedOnly,
   selectedPoi,
   onSelectPoi,
   onClosePoi,
@@ -340,10 +347,13 @@ export function MapScreen({
     [onMapReady],
   )
 
-  // The same rows the legend builds, so the canvas count and the panel can never
-  // disagree - one arithmetic, two places it is said (#528).
+  // The same rows the legend builds, from the same arguments, so the canvas count
+  // and the panel can never disagree - one arithmetic, two places it is said
+  // (#528). `verifiedOnly` is passed for exactly that reason: with the filter on,
+  // the legend counts fewer points, and a canvas figure computed without it would
+  // contradict the panel it is standing next to.
   const droppedSummary = legendDropSummary(
-    computeLegendContents(bbox, viewportPoints, drawnCounts),
+    computeLegendContents(bbox, viewportPoints, verifiedOnly, drawnCounts),
   )
 
   return (
@@ -417,6 +427,7 @@ export function MapScreen({
               background={background}
               pois={viewportPoints}
               hiddenTypes={hiddenTypes}
+              verifiedOnly={verifiedOnly}
               closures={closures}
               warnings={warnings}
               onSelectPoi={onSelectPoi}
@@ -482,6 +493,8 @@ export function MapScreen({
             blazeCounts={blazeCounts}
             hiddenTypes={hiddenTypes}
             onToggleType={onToggleType}
+            verifiedOnly={verifiedOnly}
+            onToggleVerifiedOnly={onToggleVerifiedOnly}
             onClose={onCloseLegend}
             backgroundChoice={backgroundChoice}
             onChangeBackground={onChangeBackground}

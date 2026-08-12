@@ -59,7 +59,12 @@ describe('computeLegendContents', () => {
     expect(after.find((r) => r.type === 'water')?.count).toBe(1)
   })
 
-  it('splits low-confidence points into their own row, labeled Unverified, per WIREFRAMES.md copy', () => {
+  it('counts verified and unverified points of a type as one row, not two', () => {
+    // This used to split, giving "Water 1" and "Water · Unverified 1". Two
+    // rows per category doubled a panel about 116px wide per column and spent
+    // the room on a distinction nobody can act on from a viewport count. The
+    // map still draws the broken rim per pin, and PoiCard still says it in
+    // words on the waypoint somebody is deciding about.
     const points = [
       point({ id: 'a', confidence: 'high' }),
       point({ id: 'b', confidence: 'low' }),
@@ -67,8 +72,8 @@ describe('computeLegendContents', () => {
 
     const rows = computeLegendContents(BBOX, points)
 
-    expect(rows.find((r) => r.type === 'water' && r.confidence === 'high')?.count).toBe(1)
-    expect(rows.find((r) => r.type === 'water' && r.confidence === 'low')?.count).toBe(1)
+    expect(rows.filter((r) => r.type === 'water')).toHaveLength(1)
+    expect(rows.find((r) => r.type === 'water')?.count).toBe(2)
   })
 
   it('marks the closure row as not hideable, always shown', () => {
@@ -101,10 +106,47 @@ describe('computeLegendContents', () => {
   })
 })
 
-// What is DRAWN, as against what is present (#528). The panel's promise is
-// "what am I looking at right now", and since collision culling arrived it had
-// been answering "what is inside this rectangle" - a row reading `Privy · 6` on
-// a map with no privy pin, because 3% of privies place at z14.
+describe('the "Verified?" filter', () => {
+  it('leaves the counts alone while it is off', () => {
+    const points = [point({ id: 'a' }), point({ id: 'b', confidence: 'low' })]
+
+    expect(computeLegendContents(BBOX, points, false)[0].count).toBe(2)
+  })
+
+  it('stops counting unverified points while it is on', () => {
+    // The count has to move with the filter. The panel's whole promise is that
+    // it says what is on screen right now, so "Water 2" over a map drawing one
+    // is the exact lie it exists to prevent.
+    const points = [point({ id: 'a' }), point({ id: 'b', confidence: 'low' })]
+
+    const rows = computeLegendContents(BBOX, points, true)
+
+    expect(rows.find((r) => r.type === 'water')?.count).toBe(1)
+  })
+
+  it('drops a row whose every point is unverified', () => {
+    const rows = computeLegendContents(BBOX, [point({ confidence: 'low' })], true)
+
+    expect(rows).toHaveLength(0)
+  })
+
+  it.each(['closure', 'serious-warning'])(
+    'never filters a %s, however unverified it is',
+    (type) => {
+      // "No off switch for a safety layer" has to mean every switch. A filter
+      // that happens to take a closure off the panel is the same failure as a
+      // button that does, and easier to ship without noticing.
+      const rows = computeLegendContents(BBOX, [point({ type, confidence: 'low' })], true)
+
+      expect(rows.find((r) => r.type === type)?.count).toBe(1)
+    },
+  )
+})
+
+// What is DRAWN, as against what is present (#528). The panel's promise is "what
+// am I looking at right now", and since collision culling arrived it had been
+// answering "what is inside this rectangle" - a row reading `Privy 6` on a map
+// with no privy pin, because 3% of privies place at z14.
 describe('the drawn count', () => {
   const bbox = { west: -1, south: -1, east: 1, north: 1 }
   const at = (id: string, type: string, confidence: 'high' | 'low' = 'high') => ({
@@ -119,20 +161,21 @@ describe('the drawn count', () => {
     const rows = computeLegendContents(
       bbox,
       [at('w1', 'water'), at('w2', 'water'), at('p1', 'privy')],
+      false,
       new Map([
-        ['water::high', 1],
-        ['privy::high', 0],
+        ['water', 1],
+        ['privy', 0],
       ]),
     )
 
     expect(rows).toEqual([
-      { type: 'water', confidence: 'high', count: 2, hideable: true, drawnCount: 1 },
-      { type: 'privy', confidence: 'high', count: 1, hideable: true, drawnCount: 0 },
+      { type: 'water', count: 2, hideable: true, drawnCount: 1 },
+      { type: 'privy', count: 1, hideable: true, drawnCount: 0 },
     ])
   })
 
   it('is undefined, not zero, when nobody measured', () => {
-    // The layer is absent on a cold start. "0 shown" then would claim a drop
+    // The pin layer is absent on a cold start. "0 shown" then would claim a drop
     // that has not happened.
     const [row] = computeLegendContents(bbox, [at('w1', 'water')])
 
@@ -140,45 +183,57 @@ describe('the drawn count', () => {
   })
 
   it('is zero for a category the measurement did not mention', () => {
-    // The whole map was measured, so a missing key is an answer rather than a
-    // gap - this is exactly the privy row at a hiking zoom.
-    const [row] = computeLegendContents(bbox, [at('p1', 'privy')], new Map())
+    // The whole map was measured, so a missing key is an answer rather than a gap
+    // - this is exactly the privy row at a hiking zoom.
+    const [row] = computeLegendContents(bbox, [at('p1', 'privy')], false, new Map())
 
     expect(row.drawnCount).toBe(0)
   })
 
   it('never reports more drawn than present', () => {
     // A drawn figure over the rectangle's own count can only be a duplicate the
-    // probe failed to fold, and `Water · 1 · 3 shown` would discredit every
-    // other row on the panel.
+    // probe failed to fold, and `Water 1 · 3 shown` would discredit every other
+    // row on the panel.
     const [row] = computeLegendContents(
       bbox,
       [at('w1', 'water')],
-      new Map([['water::high', 3]]),
+      false,
+      new Map([['water', 3]]),
     )
 
     expect(row.drawnCount).toBe(1)
   })
 
-  it('counts only what is inside the viewport, as it always did', () => {
+  it('counts a verified and an unverified spring in one row, as the rows do', () => {
+    // #580 folded the confidence split out, so the drawn figure folds with it -
+    // keying this the old way would produce a count that never matched a row.
     const rows = computeLegendContents(
       bbox,
-      [at('w1', 'water'), { ...at('w2', 'water'), lat: 40 }],
-      new Map([['water::high', 1]]),
+      [at('w1', 'water'), at('w2', 'water', 'low')],
+      false,
+      new Map([['water', 1]]),
     )
 
-    expect(rows[0].count).toBe(1)
+    expect(rows).toEqual([{ type: 'water', count: 2, hideable: true, drawnCount: 1 }])
+  })
+
+  it('agrees with the verified-only filter rather than fighting it', () => {
+    // With the toggle on, the counts exclude unverified points and the MAP has
+    // filtered them out too, so both halves shrink together.
+    const rows = computeLegendContents(
+      bbox,
+      [at('w1', 'water'), at('w2', 'water', 'low')],
+      true,
+      new Map([['water', 1]]),
+    )
+
+    expect(rows).toEqual([{ type: 'water', count: 1, hideable: true, drawnCount: 1 }])
   })
 })
 
 describe('legendDropSummary', () => {
-  const row = (
-    type: string,
-    count: number,
-    drawnCount?: number,
-  ): ReturnType<typeof computeLegendContents>[number] => ({
+  const row = (type: string, count: number, drawnCount?: number) => ({
     type,
-    confidence: 'high',
     count,
     hideable: true,
     drawnCount,
@@ -206,8 +261,6 @@ describe('legendDropSummary', () => {
   })
 
   it('ignores rows nobody measured rather than counting them as dropped', () => {
-    // Mixing a measured row with an unmeasured one must not turn the unmeasured
-    // one's whole count into a claimed drop.
     expect(legendDropSummary([row('water', 14, 14), row('privy', 6)])).toBeNull()
   })
 })

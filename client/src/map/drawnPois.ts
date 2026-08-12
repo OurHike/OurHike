@@ -35,8 +35,13 @@ import { POI_ID_PROPERTY, POI_LAYER_ID } from './poiLayers'
 export type DrawnPoiMap = MapLibreMap
 
 /**
- * Drawn waypoints per `type::confidence`, keyed exactly as `computeLegendContents`
- * keys its rows so the two join without a translation step in between.
+ * Drawn waypoints per category, keyed exactly as `computeLegendContents` keys its
+ * rows - by TYPE ALONE - so the two join without a translation step in between.
+ *
+ * Type alone rather than `type::confidence` because #580 folded the confidence
+ * split out of the legend: a verified and an unverified spring are two springs
+ * rather than two rows. Keying this the old way would have produced counts that
+ * never matched a row, which reads as "0 shown" on a map drawing them all.
  *
  * Empty where the layer is not in the style yet - which is a real state on a
  * cold start, and reads correctly downstream as "not measured" rather than as
@@ -70,13 +75,7 @@ export function drawnPoiCounts(map: DrawnPoiMap): Map<string, number> {
       seen.add(id)
     }
 
-    // Anything that is not the string 'low' counts as high, which is what
-    // legendContents.ts's own cast does. Keeping the two the same way round
-    // matters more than either being clever: a mismatch here would split one
-    // category into two rows that never join.
-    const confidence = properties.confidence === 'low' ? 'low' : 'high'
-    const key = `${type}::${confidence}`
-    counts.set(key, (counts.get(key) ?? 0) + 1)
+    counts.set(type, (counts.get(type) ?? 0) + 1)
   }
 
   return counts

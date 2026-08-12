@@ -2,6 +2,9 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Legend } from './Legend'
+import { glyphPath, poiGlyphPath } from '../map/poiIcons'
+import { WARNING_GLYPH } from '../map/warningPin'
+import { CLOSURE_COLOR } from '../lib/closureStyle'
 
 // WIREFRAMES.md §2 (Legend) plus TESTING.md item 7. Two rules carry real
 // weight beyond layout:
@@ -46,8 +49,9 @@ const PROPS = {
   onClose: vi.fn(),
 }
 
-// Exact accessible names throughout: "Water" and "Water · Unverified" are two
-// separate rows, and a loose regex would match both.
+// Exact accessible names throughout. A loose regex would match "Water" against
+// a row for any category whose label contains it, and the whole point of these
+// assertions is which row is which.
 function rowFor(name: string) {
   return screen.getByRole('listitem', { name })
 }
@@ -71,9 +75,11 @@ describe('Legend', () => {
   })
 
   it('counts what is in the viewport', () => {
+    // Three: two verified springs and the unverified one, which is counted
+    // here rather than split off into a row of its own.
     render(<Legend {...PROPS} />)
 
-    expect(rowFor('Water')).toHaveTextContent('2')
+    expect(rowFor('Water')).toHaveTextContent('3')
   })
 
   it('leaves out what is outside the viewport entirely', () => {
@@ -94,10 +100,18 @@ describe('Legend', () => {
     expect(screen.queryByRole('listitem', { name: 'Shelter' })).not.toBeInTheDocument()
   })
 
-  it('splits low-confidence points into their own "Unverified" row', () => {
+  it('folds unverified points into their category row instead of adding a second one', () => {
+    // The legend used to carry "Water · Unverified 1" beside "Water 2". Two
+    // rows per category doubled a panel whose columns are about 116px wide,
+    // wrapping half the labels onto a second line, and spent that room on a
+    // distinction a viewport count cannot act on. The map still draws the
+    // broken rim per pin and the waypoint card still says it in words.
     render(<Legend {...PROPS} />)
 
-    expect(rowFor('Water · Unverified')).toHaveTextContent('1')
+    expect(
+      screen.queryByRole('listitem', { name: /unverified/i }),
+    ).not.toBeInTheDocument()
+    expect(screen.getAllByRole('listitem', { name: 'Water' })).toHaveLength(1)
   })
 
   it('lists the blaze colours in view, with counts', () => {
@@ -132,10 +146,33 @@ describe('Legend', () => {
     expect(rowFor(label)).toHaveTextContent(/always shown/i)
   })
 
+  it.each(['Closure', 'Serious warning'])(
+    'gives the %s row the whole grid width to say it in',
+    (label) => {
+      // Caught by rendering the panel rather than by a test: a safety row
+      // carries the "Always shown" tag on top of everything an ordinary row
+      // carries, and once the icon took its 24px the tag was clipped mid-word
+      // in a ~116px column - on the two rows that must never look like a
+      // rendering accident.
+      render(<Legend {...PROPS} />)
+
+      expect(rowFor(label)).toHaveClass('legend__row--always')
+      expect(rowFor('Water')).not.toHaveClass('legend__row--always')
+    },
+  )
+
   it('shows an ordinary row as hidden once it has been toggled off', () => {
+    // Pressed means SHOWN. The control used to be a separate "hide" dot, where
+    // pressed sensibly meant the hide action was engaged; the row is now the
+    // category itself and greys out when it is off, so the old polarity would
+    // have a row that plainly reads as off announcing itself as pressed.
     render(<Legend {...PROPS} hiddenTypes={new Set(['water'])} />)
 
     expect(within(rowFor('Water')).getByRole('button')).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    expect(within(rowFor('Shelter')).getByRole('button')).toHaveAttribute(
       'aria-pressed',
       'true',
     )
@@ -154,6 +191,217 @@ describe('Legend', () => {
     render(<Legend {...PROPS} points={[]} blazeCounts={[]} />)
 
     expect(screen.getByText(/nothing on this part of the map/i)).toBeInTheDocument()
+  })
+})
+
+// --- The map's own icons (#572) -------------------------------------------
+//
+// The legend named categories the map draws as pins and drew none of them.
+// What is asserted here is not "an icon is present" but that it is THE icon -
+// the same glyph data, the same broken rim, the same barred band - because a
+// legend drawing its own approximation of a pin is worse than one drawing
+// none: it teaches a symbol the map does not use.
+
+function iconIn(row: HTMLElement): Element | null {
+  return row.querySelector('.legend__icon')
+}
+
+describe('legend icons are the map’s icons', () => {
+  it('gives a row the silhouette the map draws for that type', () => {
+    render(<Legend {...PROPS} />)
+
+    expect(iconIn(rowFor('Water'))?.querySelector('.map-icon__glyph')).toHaveAttribute(
+      'd',
+      poiGlyphPath('water'),
+    )
+  })
+
+  it('draws the solid-rimmed pin even where the row counts an unverified point', () => {
+    // A key says what a category's symbol IS. Now that a row counts both
+    // confidences, a rim that broke whenever the points in view happened to be
+    // unconfirmed would change the symbol as the hiker panned - and this
+    // fixture's water row holds an unverified spring, so the assertion has
+    // something to catch. The broken rim still means what it means on the map,
+    // one pin at a time, where it is a fact about a place.
+    render(<Legend {...PROPS} />)
+
+    expect(iconIn(rowFor('Water'))?.querySelector('.map-icon__edge')).not.toHaveAttribute(
+      'stroke-dasharray',
+    )
+  })
+
+  it('draws a closure as the barred band it is, not as a pin it never was', () => {
+    render(<Legend {...PROPS} />)
+    const icon = iconIn(rowFor('Closure'))
+
+    expect(icon?.querySelector('.map-icon__closure-band')).toHaveAttribute(
+      'stroke',
+      CLOSURE_COLOR,
+    )
+    expect(icon?.querySelector('.map-icon__disc')).toBeNull()
+  })
+
+  it('draws a serious warning as the hazard triangle', () => {
+    render(<Legend {...PROPS} />)
+
+    expect(
+      iconIn(rowFor('Serious warning'))?.querySelector('.map-icon__glyph'),
+    ).toHaveAttribute('d', glyphPath(WARNING_GLYPH))
+  })
+
+  it('gives a safety row its icon too, without giving it a control', () => {
+    render(<Legend {...PROPS} />)
+    const row = rowFor('Closure')
+
+    expect(iconIn(row)).not.toBeNull()
+    expect(within(row).queryByRole('button')).not.toBeInTheDocument()
+  })
+})
+
+// --- The row is the control (#572) ----------------------------------------
+//
+// WIREFRAMES.md §2 has said "rows are tappable to hide" since before this
+// panel was built. What shipped was a 20px dot at the end of a 44px row, so a
+// tap on the word "Water" did nothing and said nothing about having done
+// nothing. Each of these taps used to miss.
+
+describe('the whole legend row is the hide control', () => {
+  it('turns a category off from a tap on its name', async () => {
+    const user = userEvent.setup()
+    render(<Legend {...PROPS} />)
+
+    await user.click(within(rowFor('Water')).getByText('Water'))
+
+    expect(PROPS.onToggleType).toHaveBeenCalledWith('water')
+  })
+
+  it('turns a category off from a tap on its icon', async () => {
+    const user = userEvent.setup()
+    render(<Legend {...PROPS} />)
+
+    await user.click(iconIn(rowFor('Water')) as Element)
+
+    expect(PROPS.onToggleType).toHaveBeenCalledWith('water')
+  })
+
+  it('turns a category off from a tap on its count', async () => {
+    const user = userEvent.setup()
+    render(<Legend {...PROPS} />)
+
+    await user.click(within(rowFor('Water')).getByText('3'))
+
+    expect(PROPS.onToggleType).toHaveBeenCalledWith('water')
+  })
+
+  it('holds the icon, the name and the count in one button', () => {
+    render(<Legend {...PROPS} />)
+    const button = within(rowFor('Water')).getByRole('button')
+
+    expect(button.querySelector('.legend__icon')).not.toBeNull()
+    expect(button).toHaveTextContent('Water')
+    expect(button).toHaveTextContent('3')
+  })
+
+  it('greys the row out while its category is off', () => {
+    // The channel a sighted hiker reads, and the reason aria-pressed had to
+    // flip with it - see the polarity note above.
+    render(<Legend {...PROPS} hiddenTypes={new Set(['water'])} />)
+
+    expect(rowFor('Water')).toHaveClass('legend__row--hidden')
+    expect(rowFor('Shelter')).not.toHaveClass('legend__row--hidden')
+  })
+
+  it('never greys a safety row, whatever the hidden set says', () => {
+    // hiddenTypes is the shell's state and nothing in this panel can put a
+    // closure in it - but if something ever did, the row must not read as off
+    // while the map goes on drawing it. What is on the map and what this panel
+    // says about it cannot be allowed to disagree about a closure.
+    render(<Legend {...PROPS} hiddenTypes={new Set(['closure'])} />)
+
+    expect(rowFor('Closure')).not.toHaveClass('legend__row--hidden')
+  })
+})
+
+// --- The "Verified?" filter -----------------------------------------------
+//
+// What became of the "Unverified" rows. They doubled the grid to carry a
+// distinction a viewport count cannot act on; this carries the same fact as
+// one decision, under the rows rather than inside them.
+
+describe('the "Verified?" toggle', () => {
+  const FILTERED = { ...PROPS, onToggleVerifiedOnly: vi.fn() }
+
+  it('is not drawn at all where the shell offers no handler for it', () => {
+    // Same rule the downloads link follows: a control that does nothing is
+    // worse than one that is not there.
+    render(<Legend {...PROPS} />)
+
+    expect(screen.queryByRole('checkbox', { name: /verified/i })).not.toBeInTheDocument()
+  })
+
+  it('offers it under the rows, unchecked, when the shell can act on it', () => {
+    render(<Legend {...FILTERED} />)
+
+    expect(screen.getByRole('checkbox', { name: 'Verified?' })).not.toBeChecked()
+  })
+
+  it('asks the shell to flip it when tapped', async () => {
+    const user = userEvent.setup()
+    render(<Legend {...FILTERED} />)
+
+    await user.click(screen.getByRole('checkbox', { name: 'Verified?' }))
+
+    expect(FILTERED.onToggleVerifiedOnly).toHaveBeenCalledTimes(1)
+  })
+
+  it('takes unverified points out of the counts while it is on', () => {
+    // Three springs in this fixture, one of them unconfirmed. The count has to
+    // move with the filter or the panel is claiming a spring the map is not
+    // drawing.
+    render(<Legend {...FILTERED} verifiedOnly />)
+
+    expect(rowFor('Water')).toHaveTextContent('2')
+  })
+
+  it('still counts a safety row it cannot filter', () => {
+    render(<Legend {...FILTERED} verifiedOnly />)
+
+    expect(rowFor('Closure')).toBeInTheDocument()
+  })
+
+  it('says the filter emptied the panel, rather than that the map is empty', async () => {
+    // "Nothing here yet, pan or zoom out" is a false claim about a stretch
+    // with six unconfirmed springs on it, and it sends a hiker walking away
+    // from water.
+    render(
+      <Legend
+        {...FILTERED}
+        verifiedOnly
+        blazeCounts={[]}
+        points={[{ id: 'u', type: 'water', lat: 39.5, lon: -77.5, confidence: 'low' }]}
+      />,
+    )
+
+    expect(screen.getByText(/nothing here has been confirmed/i)).toBeInTheDocument()
+    expect(screen.queryByText(/pan or zoom out/i)).not.toBeInTheDocument()
+  })
+
+  it('stays on screen when it has emptied the panel, so it can be turned back off', async () => {
+    // A filter that hides itself along with everything else is a trap - the
+    // same trap a close button on a panel nothing reopens would be.
+    const user = userEvent.setup()
+    render(
+      <Legend
+        {...FILTERED}
+        verifiedOnly
+        blazeCounts={[]}
+        points={[{ id: 'u', type: 'water', lat: 39.5, lon: -77.5, confidence: 'low' }]}
+      />,
+    )
+
+    await user.click(screen.getByRole('checkbox', { name: 'Verified?' }))
+
+    expect(FILTERED.onToggleVerifiedOnly).toHaveBeenCalled()
   })
 })
 
@@ -192,24 +440,15 @@ describe('legend as a persistent panel', () => {
   it('still hides nothing safety-relevant', () => {
     // The rule that holds across the whole app: a safety layer has no off
     // switch, and a different layout is not a reason to grow one.
-    render(
-      <Legend
-        {...PROPS}
-        open
-        persistent
-        points={[
-          {
-            id: 'c9',
-            type: 'closure',
-            lat: 39.5,
-            lon: -77.5,
-            confidence: 'high' as const,
-          },
-        ]}
-      />,
-    )
+    //
+    // Asserted against a water row in the same render rather than against the
+    // absence of a button named /hide/i, which is what this used to do: once
+    // the row itself became the control no button is named "hide" at all, so
+    // that assertion had stopped being able to fail.
+    render(<Legend {...PROPS} open persistent />)
 
-    expect(screen.queryByRole('button', { name: /hide/i })).not.toBeInTheDocument()
+    expect(within(rowFor('Closure')).queryByRole('button')).not.toBeInTheDocument()
+    expect(within(rowFor('Water')).getByRole('button')).toBeInTheDocument()
   })
 
   it('is still a dismissable dialog on a phone', () => {
@@ -298,8 +537,8 @@ describe('reporting waypoints that did not fit', () => {
   it('shows the drawn count beside the present one where they differ', () => {
     renderLegend(
       new Map([
-        ['water::high', 1],
-        ['privy::high', 0],
+        ['water', 1],
+        ['privy', 0],
       ]),
     )
 
@@ -311,8 +550,8 @@ describe('reporting waypoints that did not fit', () => {
     // The panel stays quiet at the zooms where nothing is being dropped.
     renderLegend(
       new Map([
-        ['water::high', 2],
-        ['privy::high', 2],
+        ['water', 2],
+        ['privy', 2],
       ]),
     )
 
@@ -323,7 +562,7 @@ describe('reporting waypoints that did not fit', () => {
   it('puts the drawn figure in the row’s accessible name', () => {
     // A screen-reader user gets "Privy, 2, 0 shown" rather than a bare count
     // that is wrong about what is on the map.
-    renderLegend(new Map([['privy::high', 0]]))
+    renderLegend(new Map([['privy', 0]]))
 
     expect(
       screen.getByRole('listitem', { name: /privy · 2 · 0 shown/i }),
@@ -333,8 +572,8 @@ describe('reporting waypoints that did not fit', () => {
   it('summarises the drop at the head of the panel', () => {
     renderLegend(
       new Map([
-        ['water::high', 1],
-        ['privy::high', 0],
+        ['water', 1],
+        ['privy', 0],
       ]),
     )
 
@@ -348,12 +587,17 @@ describe('reporting waypoints that did not fit', () => {
     expect(screen.queryByText(/fit at this zoom/)).not.toBeInTheDocument()
   })
 
-  it('keeps the hide control on a row that did not fit', () => {
+  it('keeps the row tappable as the hide control on a row that did not fit', () => {
     // A category being culled is exactly when a hiker might want to hide
-    // something else, so the affordance has to survive the new figure.
-    renderLegend(new Map([['privy::high', 0]]))
+    // something else, so the affordance has to survive the new figure. Since #580
+    // the ROW is that control - there is no separate "Hide privy" button - so what
+    // this checks is that the row is still a pressed-state button carrying the
+    // figure rather than a plain span.
+    renderLegend(new Map([['privy', 0]]))
 
-    expect(screen.getByRole('button', { name: /hide privy/i })).toBeInTheDocument()
+    // The figure is on the row's own accessible name; the button is inside it.
+    const row = screen.getByRole('listitem', { name: /privy · 2 · 0 shown/i })
+    expect(within(row).getByRole('button')).toHaveAttribute('aria-pressed', 'true')
   })
 })
 

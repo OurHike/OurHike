@@ -58,7 +58,7 @@ describe('useDrawnPoiCounts', () => {
 
     const { result } = renderHook(() => useDrawnPoiCounts(map))
 
-    expect(result.current.counts).toEqual(new Map([['water::high', 1]]))
+    expect(result.current.counts).toEqual(new Map([['water', 1]]))
   })
 
   it('re-measures when the map settles', () => {
@@ -68,7 +68,7 @@ describe('useDrawnPoiCounts', () => {
     setFeatures([pin('w1', 'water'), pin('w2', 'water')])
     act(() => fireIdle())
 
-    expect(result.current.counts).toEqual(new Map([['water::high', 2]]))
+    expect(result.current.counts).toEqual(new Map([['water', 2]]))
   })
 
   it('subscribes to idle and not to move', () => {

@@ -725,6 +725,20 @@
   grid-column: 1 / -1;
 }
 
+/* Everything about the downloaded map, in one block at the foot of the panel:
+   the background choice and the way to the download (Legend.tsx says why they
+   belong together). It exists to be moved as one thing - on a desktop the whole
+   block takes the `margin-top: auto` that used to be on the link alone, so the
+   two cannot be separated by a screen of empty paper. See desktop.css.
+
+   The gap above it is the block's, not the picker's: .bg-picker is shared with
+   Settings, where it sits under a heading and needs no top margin of its own.
+   Inside, the picker's 16px bottom margin and the link's 16px top margin
+   collapse to the one gap the link has always had above it. */
+.legend__downloads {
+  margin-top: var(--space-4, 16px);
+}
+
 /* Deliberately a plain label, not a disabled button. There is no off switch
    for a safety layer, so there is no control here to disable. */
 .legend__always {

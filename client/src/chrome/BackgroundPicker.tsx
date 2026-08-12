@@ -4,8 +4,16 @@
 // the wrong place for it: the background is the most visible thing on the
 // screen, and the state someone most wants to change it from - "why is there
 // nothing here" - is the state where hunting through Settings is least
-// appealing. It is now the first thing in the legend, which is one tap from
-// the map and already the panel that answers "what am I looking at."
+// appealing. It is in the legend now, which is one tap from the map and
+// already the panel that answers "what am I looking at."
+//
+// At the FOOT of that panel, beside the way to the download, rather than at
+// the top of it where it first landed. One tap from the map was the whole
+// point and the foot of a panel is still one tap; what the top cost was the
+// company. Half of what this control says is about the downloaded corridor -
+// the "Downloaded" segment, its description, and both notes below - and the
+// only control that changes what is downloaded was at the other end of the
+// panel. See Legend.tsx.
 //
 // Two radio inputs rather than a select, and real inputs rather than buttons
 // with aria-checked: arrow keys move between radios in a group for free, the
@@ -24,8 +32,8 @@
 // that reports the choice. Worth knowing from here all the same, because it is
 // why this component does not need a download button of its own: the one
 // moment someone picks a background this phone cannot draw is already handled,
-// and the link for every other moment is at the foot of the panel
-// (chrome/DownloadsLink.tsx).
+// and the link for every other moment is immediately below this control in the
+// legend and at the foot of Settings (chrome/DownloadsLink.tsx).
 //
 // The choice is saved either way. It takes effect the moment a download lands
 // (lib/dataSaver.ts), and the note below says so meanwhile.

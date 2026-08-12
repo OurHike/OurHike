@@ -7,12 +7,18 @@
 // structurally cannot answer (TESTING.md, "Storage has one layer").
 
 import { clear, get, set } from 'idb-keyval'
-import { downloadArchive, readDownloadProgress } from '../../src/lib/archiveDownload'
+import {
+  deleteArchive,
+  downloadArchive,
+  readDownloadProgress,
+} from '../../src/lib/archiveDownload'
 import { readArchive, readComplete, segmentKeyFor } from '../../src/lib/archiveStore'
+import { estimateAvailableBytes } from '../../src/lib/storageHealth'
 
 declare global {
   interface Window {
     probe: (bytes: number) => Promise<Record<string, unknown>>
+    reclaim: (bytes: number) => Promise<Record<string, unknown>>
     storeProbe: (bytes: number) => Promise<Record<string, unknown>>
     survey: (packageKey: string) => Promise<Record<string, unknown>>
     estimate: () => Promise<Record<string, unknown>>
@@ -40,6 +46,13 @@ const report = (result: Record<string, unknown>) => {
 
 async function usage(): Promise<number> {
   return (await navigator.storage.estimate()).usage ?? -1
+}
+
+/** What storageHealth.ts's estimateAvailableBytes computes, and therefore what
+ *  archiveDownload.ts's room check refuses on. */
+async function available(): Promise<number> {
+  const { quota, usage: used } = await navigator.storage.estimate()
+  return quota === undefined || used === undefined ? -1 : quota - used
 }
 
 /**
@@ -136,6 +149,101 @@ window.storeProbe = async (bytes) => {
     before,
     afterBuild,
     afterSet: await usage(),
+  })
+}
+
+/**
+ * When the space a deleted archive occupied comes back (#554).
+ *
+ * The app's own recommended remedy is "delete the Standard sheet, then download
+ * the Fine one" - DownloadCard's locked detail picker says so, and #544's
+ * refusal message says "freeing up space... makes room for it". If the quota is
+ * not reclaimed by the time the next transfer's room check runs, the app refuses
+ * a download the phone genuinely has room for, having just told the hiker to do
+ * the thing that would make room. On a trailhead connection that is a wasted
+ * trip.
+ *
+ * Three questions, and they want different fixes (#554):
+ *
+ *   1. WHEN does usage drop - a flush, a transaction boundary, a timer, the next
+ *      page load? Polled below, with the elapsed time on every sample.
+ *   2. Is `estimate()` LAGGING, or are the bytes genuinely still held? The store
+ *      is read back empty first, so any usage still reported after that is the
+ *      ACCOUNTING rather than the data - which makes the room check the thing
+ *      that should stop refusing, not the delete the thing that should try
+ *      harder.
+ *   3. Can `deleteArchive` force reclamation at all?
+ *
+ * Deletes through `deleteArchive`, not `clear()`, because the app path is the
+ * subject - and since #553 that path removes a run of segment records plus a
+ * marker rather than one blob, which is a different shape to reclaim.
+ */
+window.reclaim = async (bytes) => {
+  await clear()
+  const idle = await usage()
+
+  // Stored as the segments a real download leaves behind, at the real segment
+  // size, so the reclamation is measured against the shape the app produces.
+  const SEGMENT = 32 * 1024 * 1024
+  let segments = 0
+  for (let at = 0; at < bytes; at += SEGMENT) {
+    const size = Math.min(SEGMENT, bytes - at)
+    const parts: Uint8Array[] = []
+    for (let filled = 0; filled < size; filled += PART) {
+      parts.push(filler(Math.min(PART, size - filled)))
+    }
+    await set(segmentKeyFor(KEY, 0, segments), new Blob(parts))
+    segments += 1
+  }
+  await set(`${KEY}:complete`, { generation: 0, segments, totalBytes: bytes })
+  const afterStore = await usage()
+
+  const started = performance.now()
+  await deleteArchive(KEY)
+  const deleteMs = Math.round(performance.now() - started)
+
+  // Question 2, answered before any polling: the store really is empty. If usage
+  // still counts the bytes after this, it is the accounting that is behind.
+  const stillReadable = (await readArchive(KEY)) !== undefined
+  const marker = await readComplete(KEY)
+
+  // Question 1. Sampled rather than waited on, so the ANSWER is the curve and
+  // not a single number that happens to have been taken after it settled.
+  const samples: { atMs: number; usage: number }[] = []
+  const settled = idle + Math.max(0, bytes * 0.05)
+  let reclaimedAtMs: number | null = null
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const now = await usage()
+    samples.push({ atMs: Math.round(performance.now() - started), usage: now })
+    if (now <= settled) {
+      reclaimedAtMs = samples[samples.length - 1].atMs
+      break
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+
+  return report({
+    bytes,
+    segments,
+    idle,
+    afterStore,
+    deleteMs,
+    // Both must be false/null for the usage figures below to be about
+    // accounting rather than about data still on disk.
+    stillReadable,
+    markerLeft: marker !== null,
+    reclaimedAtMs,
+    finalUsage: samples[samples.length - 1]?.usage ?? null,
+    // The browser's own arithmetic, which is what the app refused on before
+    // #554: quota - usage, still counting the deleted bytes.
+    browserSaysFree: await available(),
+    // What the app computes NOW - estimateAvailableBytes credits a release the
+    // accounting has not returned, so this is the number `shortfall` refuses on
+    // and the one that decides whether the printed remedy works.
+    appSaysFree: await estimateAvailableBytes(),
+    samples: samples.filter(
+      (_, index) => index % 4 === 0 || index === samples.length - 1,
+    ),
   })
 }
 

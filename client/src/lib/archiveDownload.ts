@@ -86,7 +86,14 @@
 
 import { get, set, del } from 'idb-keyval'
 import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
-import { clearCompleted, estimateAvailableBytes, recordCompleted } from './storageHealth'
+import {
+  clearCompleted,
+  clearReleased,
+  estimateAvailableBytes,
+  estimateUsageBytes,
+  recordCompleted,
+  recordReleased,
+} from './storageHealth'
 import { publishedHash } from './dataManifest'
 import { formatBytes } from './formatBytes'
 import { Sha256, type Sha256State } from './sha256'
@@ -94,6 +101,7 @@ import {
   deleteArchiveRecords,
   deleteGeneration,
   markComplete,
+  readArchiveSize,
   readComplete,
   readSegmentRun,
   writeSegment,
@@ -571,6 +579,10 @@ async function finish(
   // on purpose: this is what later distinguishes "the archive was evicted" from
   // "no archive was ever downloaded" (storageHealth.ts, #190).
   recordCompleted(packageKey)
+  // Whatever a recent delete freed has now been spent on this archive, so the
+  // credit in estimateAvailableBytes must stop applying - otherwise the next
+  // download is offered room that has been taken (#554).
+  clearReleased()
   // The transfer's bookkeeping, not its bytes. The segments stay exactly where
   // they are - they ARE the archive now - so only the records describing an
   // in-flight download are cleared.
@@ -1093,6 +1105,11 @@ export async function deleteArchive(packageKey: string): Promise<void> {
   // floor so a gap left by a failed write cannot strand later segments on a
   // phone whose owner is deleting a map precisely to free the space (#554).
   const source = (await get(sourceKeyFor(packageKey))) as PartialSource | undefined
+  // Counted BEFORE the delete, because afterwards there is nothing to measure.
+  // Both halves: someone reclaiming space is reclaiming the finished archive and
+  // any stalled attempt's segments alongside it.
+  const archiveBytes = (await readArchiveSize(packageKey)) ?? 0
+  const partialBytes = (await readDownloadProgress(packageKey))?.receivedBytes ?? 0
   await deleteArchiveRecords(packageKey, source?.segments ?? 0)
   // The marker goes with the archive the hiker asked to remove - an absent
   // blob with a live marker would otherwise read as an eviction, and "the
@@ -1108,4 +1125,16 @@ export async function deleteArchive(packageKey: string): Promise<void> {
   // pair rather than anything the hiker was storing.
   await del(partialKeyFor(packageKey))
   await clearTransferRecords(packageKey)
+
+  // What the browser still thinks is in use, noted against what was actually
+  // released (#554). Chromium's `usage` does not move when these records go -
+  // measured unmoved over 10 s and across a page reload - and the app's own
+  // advice is to delete one sheet and download another, so the room check has
+  // to know these bytes are free even while the estimate says otherwise. See
+  // estimateAvailableBytes for why this cannot double-count.
+  const released = archiveBytes + partialBytes
+  if (released > 0) {
+    const usageAfter = await estimateUsageBytes()
+    if (usageAfter !== null) recordReleased(released, usageAfter)
+  }
 }

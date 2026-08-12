@@ -727,22 +727,20 @@
 
 /* Deliberately a plain label, not a disabled button. There is no off switch
    for a safety layer, so there is no control here to disable. */
-/* "Only this" (#530). A word rather than an icon: there is no glyph for "show
-   only this one" that a hiker reads correctly first time, and the row already
-   carries a pin, a name and a count competing for the same line. Sized to
-   --min-touch-target like the toggle it sits beside, because it is aimed at the
-   same gloved thumb. */
-.legend__only {
-  min-width: var(--min-touch-target);
+/* Showing one category alone (#530). ONE control under the rows rather than a
+   button on each of them: the action is global, so it costs one line here where
+   it cost N inline. Native select, so it is a single line at rest and opens to
+   the full list without any of that being styled. */
+.legend__only-one {
+  display: inline-flex;
+}
+.legend__only-select {
   min-height: var(--min-touch-target);
-  padding: 0 var(--space-2, 8px);
+  padding: 0 var(--space-1, 4px);
   border: 0;
   background: none;
   color: var(--brand-primary);
-  font-family: inherit;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font: inherit;
   cursor: pointer;
 }
 

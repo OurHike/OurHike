@@ -530,30 +530,44 @@ describe('showing one category alone', () => {
     )
   }
 
-  it('offers "only this" on a hideable row', async () => {
+  it('offers one chooser rather than a button per row', async () => {
+    // The whole point of the shape: the action is global, so it costs ONE line
+    // here where it cost one control per row inline.
     const onOnlyType = vi.fn()
     renderLegend({ onOnlyType })
 
-    await userEvent.click(screen.getByRole('button', { name: /show only water/i }))
+    const chooser = screen.getByRole('combobox', { name: /show one waypoint type only/i })
+    await userEvent.selectOptions(chooser, 'water')
 
     expect(onOnlyType).toHaveBeenCalledWith('water')
   })
 
-  it('never offers it on a safety row', () => {
+  it('never offers a safety layer in the chooser', () => {
     // The rule is kept by not building the affordance, which is how
     // HIKER_SAFETY.md and MAP_OPTIONS.md §4 say to keep it - not by building it
     // and disabling it.
     renderLegend({ onOnlyType: vi.fn() })
 
+    const chooser = screen.getByRole('combobox', { name: /show one waypoint type only/i })
     expect(
-      screen.queryByRole('button', { name: /show only closure/i }),
+      within(chooser).queryByRole('option', { name: /closure/i }),
     ).not.toBeInTheDocument()
+  })
+
+  it('lists categories that have no row in this viewport', () => {
+    // The second consequence #530 lists: the legend's rows are per-viewport, so a
+    // category with nothing in view has no row and could not otherwise be reached
+    // from this panel at all.
+    renderLegend({ onOnlyType: vi.fn() })
+
+    const chooser = screen.getByRole('combobox', { name: /show one waypoint type only/i })
+    expect(within(chooser).getByRole('option', { name: /shelter/i })).toBeInTheDocument()
   })
 
   it('offers nothing where there is nowhere to write the preference', () => {
     renderLegend({})
 
-    expect(screen.queryByRole('button', { name: /show only/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: /show one/i })).not.toBeInTheDocument()
   })
 
   it('says what is filtered and offers the way back', async () => {
@@ -566,10 +580,12 @@ describe('showing one category alone', () => {
     expect(onShowAllTypes).toHaveBeenCalledTimes(1)
   })
 
-  it('says nothing when nothing is filtered', () => {
-    renderLegend({ typesShown: [], onShowAllTypes: vi.fn() })
+  it('says the map is unfiltered rather than saying nothing', () => {
+    // The line is the one place the mode lives, so it states the mode either way -
+    // and there is no exit to offer when there is nothing to exit from.
+    renderLegend({ typesShown: [], onShowAllTypes: vi.fn(), onOnlyType: vi.fn() })
 
-    expect(screen.queryByText(/showing/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/showing all waypoints/i)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /show all/i })).not.toBeInTheDocument()
   })
 

@@ -29,7 +29,7 @@ import {
 } from '../lib/legendContents'
 import { MapIcon } from '../map/MapIcon'
 import { blazePaintColor } from '../lib/blaze'
-import { filterSummary } from '../lib/waypointVisibility'
+import { HIDEABLE_TYPES, filterSummary } from '../lib/waypointVisibility'
 import { typeLabel } from './legendLabels'
 import { BackgroundPicker } from './BackgroundPicker'
 import { DownloadsLink } from './DownloadsLink'
@@ -280,27 +280,6 @@ export function Legend({
                     <span className="legend__always">Always shown</span>
                   </>
                 )}
-
-                {/* A sibling of the row button, never inside it: the whole row
-                    is already the hide control, and a button within a button is
-                    invalid and unreachable by keyboard.
-
-                    Hiding one category and showing only one are different
-                    intents, and the second is the one a crowded zoom calls for -
-                    so this sits beside the toggle rather than replacing it.
-                    Never on a safety row: `hideable` is the same guard the
-                    toggle uses, so the affordance is not built there rather than
-                    built and disabled. */}
-                {row.hideable && onOnlyType !== undefined && (
-                  <button
-                    type="button"
-                    className="legend__only"
-                    onClick={() => onOnlyType(row.type)}
-                  >
-                    <span className="visually-hidden">{`Show only ${label}`}</span>
-                    <span aria-hidden="true">Only</span>
-                  </button>
-                )}
               </li>
             )
           })}
@@ -322,15 +301,57 @@ export function Legend({
           drawn, so one that dissolved on the first pan would undo itself exactly
           when it started being useful. The price of persisting is that the state
           is always on screen with an exit beside it. */}
-      {filterNote !== null && (
+      {(filterNote !== null || onOnlyType !== undefined) && (
         <p className="legend__filtered">
-          {filterNote}
-          {onShowAllTypes !== undefined && (
+          {filterNote ?? 'Showing all waypoints'}
+          {filterNote !== null && onShowAllTypes !== undefined && (
             <>
               {' · '}
               <button type="button" className="legend__show-all" onClick={onShowAllTypes}>
                 Show all
               </button>
+            </>
+          )}
+          {onOnlyType !== undefined && (
+            <>
+              {' · '}
+              {/* ONE control rather than one per row, which is what makes this
+                  slimmer than the buttons it replaced AND slimmer than cycling a
+                  row through a third state.
+
+                  Showing one category alone is a GLOBAL state. Hiding a category
+                  is a per-row one. Putting the global action on every row is what
+                  made it cost N controls, and cycling a row through it would have
+                  been worse than either: from "only water", a tap on the privy
+                  row has no defined meaning - privy is already undrawn, and what
+                  changed was never privy's own state. It would also break the
+                  row's `aria-pressed`, which #580 made binary, leaving a
+                  screen-reader user with a control whose state cannot be
+                  predicted.
+
+                  A native select because it is one line at rest, opens to the
+                  full list, and is reachable by keyboard without any of that
+                  being written here. It lists every hideable category rather than
+                  only those in view, which also answers the second consequence
+                  #530 lists: a category with no points in the viewport has no row
+                  here, and could not otherwise be reached from this panel. */}
+              <label className="legend__only-one">
+                <span className="visually-hidden">Show one waypoint type only</span>
+                <select
+                  className="legend__only-select"
+                  value=""
+                  onChange={(event) => {
+                    if (event.target.value !== '') onOnlyType(event.target.value)
+                  }}
+                >
+                  <option value="">Show one only…</option>
+                  {HIDEABLE_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {typeLabel(type)}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </>
           )}
         </p>

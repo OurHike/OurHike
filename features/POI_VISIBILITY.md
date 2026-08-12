@@ -61,29 +61,63 @@ for a type that has points inside the current viewport.
 
 ## How much is actually being dropped
 
-**Arithmetic from documented inputs, not a measurement.** Making the real measurement is the
-first task in the issue this doc's honesty work hangs off, and the numbers below should be
-replaced by measured ones rather than quoted afterwards.
-
 | input | value | source |
 |---|---|---|
 | corridor length | 2,197 mi | [../WIREFRAMES.md](../WIREFRAMES.md) |
-| waypoints shipping | ~4,553 | fb73359 — 2,532 plus 2,021 ATC facility features |
-| of which vistas | 1,223 (1,194 in corridor) | [../pipeline/README.md](../pipeline/README.md) |
+| waypoints published | **2,778** | measured against the live ATC FeatureServer and opentrail.org, 2026-08-12 ([POI_SITES.md](POI_SITES.md)) |
+| of which vistas | 1,194 in corridor, of 1,223 | [../pipeline/README.md](../pipeline/README.md) |
 | pin size at z9 | 38 px × 0.6 = 23 px, +2 px padding | `POI_PIN_SIZE`, `POI_ICON_SIZE_EXPRESSION`, `icon-padding` |
+
+**Corrected 2026-08-12.** This table said ~4,553, reasoned from fb73359's commit message
+rather than from a corridor-clipped count, and [POI_SITES.md](POI_SITES.md) measured 2,778 four
+minutes after this doc landed. The measurement is right and the reasoning was sloppy in a way
+that was avoidable from the same desk: POI_PHOTOS.md's *"all 817 corridor POIs"* plus the 1,988
+corridor-clipped facility features is 2,805, which is the measurement, near enough. Everything
+derived below moved with it.
+
+### Across a viewport, which is what this doc owns
 
 At z9 and 40°N, one CSS pixel is `40,075,017 × cos(40°) / (512 × 2⁹)` ≈ **117 m**. A 390 × 700
 px map area is therefore about 28 × 51 miles of ground — and because the trail meanders inside
-that box, something like 55–70 *trail* miles. At the corridor's mean of roughly two waypoints
-per mile, that is **110–140 waypoints inside the viewport.**
+that box, something like 55–70 *trail* miles. At 2,778 over 2,197 miles — **1.26 waypoints per
+mile** — that is **70–90 waypoints inside the viewport**.
 
 A 700 px column of screen divided by ~25 px of pin-plus-padding holds **about 26 pins** where
 the trail runs straight down it, somewhat more where it wanders sideways.
 
 So at the very zoom where pins first appear at all, the map is drawing on the order of
-**20–30 of 110–140** — and the number it reports is zero.
+**26 of 70–90** — and the number it reports is zero. Below z9 the ratio is not "worse", it is
+categorical: 2,778 held, 0 drawn, nothing said.
 
-Below z9 the ratio is not "worse", it is categorical: 4,553 held, 0 drawn, nothing said.
+### At one place, which POI_SITES.md owns — and it is the bigger half
+
+The open question this section used to carry — *nobody has counted* — has been answered, by
+[POI_SITES.md](POI_SITES.md), which simulates MapLibre's placement over the whole corridor.
+**The loss is not uniform, and the shape of it is not what the arithmetic above predicts:**
+
+| zoom | water | shelter | campsite | parking | privy | viewpoint |
+|---|---|---|---|---|---|---|
+| 12 | 85% | 82% | 21% | 67% | **1%** | 43% |
+| 14 | 95% | 91% | 31% | 81% | **3%** | 75% |
+| 16 | 98% | 96% | 61% | 92% | 50% | 90% |
+
+Two things follow, and both are load-bearing for everything below.
+
+**`POI_PRIORITY` is working.** At the zooms an offline hiker actually has —
+`BASEMAP_MAX_ZOOM` is 14 — water and shelters place at 91–95%. The categories being destroyed
+are the ones the ordering deliberately ranks last, which is the ordering doing its job rather
+than failing at it.
+
+**The dominant cause at those zooms is co-location, not viewport density.** 37% of every
+published waypoint sits within 60 m of another; a privy sits a median 42 m from its shelter and
+therefore cannot be drawn beside it until z16. That is a different problem with a different fix
+— model the place, draw one pin, put the parts on the card — and it is
+[POI_SITES.md](POI_SITES.md)'s, not this doc's.
+
+**This doc's problem is what is left after that fix**, and it does not go away: a corridor view
+holding 70–90 waypoints on a screen with room for 26 is a density problem no grouping rule
+touches, and the silence about it is the same silence either way. The two are complementary,
+and neither is a reason to defer the other.
 
 ---
 
@@ -110,10 +144,11 @@ sheets actually on screen, `positionLine.ts`'s eight distinct reasons for a miss
   geometry; a hiker who never wants to see a privy should be able to give those slots back to
   water.
 
-"Make all POIs visible" is worth stating plainly as impossible in the literal form: 4,553 pins
-needing 25 px of clearance each want about 2.8 million px² of exclusion area, and a 390 × 700
-phone screen has 273,000. What is achievable is that **nothing is ever hidden without being
-counted, and the hiker chooses what occupies the space.** Everything below serves that.
+"Make all POIs visible" is worth stating plainly as impossible in the literal form: 2,778 pins
+needing 25 px of clearance each want about 1.7 million px² of exclusion area, and a 390 × 700
+phone screen has 273,000 — six times short, before a single pin is placed badly. What is
+achievable is that **nothing is ever hidden without being counted, and the hiker chooses what
+occupies the space.** Everything below serves that.
 
 ---
 
@@ -193,11 +228,17 @@ with the hide filter repeated inside each branch. Discovering that from a CI fai
 full round trip; it is written here instead.
 
 The second is the honest limit: **this option does not make a low-zoom map truthful, and must
-not be mistaken for doing so.** At z7 there are ~142 water sources on a screen that holds ~26
-pins, so what appears is still a sample, still collision-ordered, still a claim. Option 2 makes
-the sample *better chosen*; only Option 1 makes it *labelled*. They ship together or Option 2
-makes things worse, by putting confident-looking springs on a corridor view that previously
-admitted it was showing nothing.
+not be mistaken for doing so.** The corridor carries 142 water sources; a z7 view holds a large
+share of the trail on a screen with room for ~26 pins, so what appears is still a sample, still
+collision-ordered, still a claim. Option 2 makes the sample *better chosen*; only Option 1 makes
+it *labelled*. They ship together or Option 2 makes things worse, by putting confident-looking
+springs on a corridor view that previously admitted it was showing nothing.
+
+The zoom tiers in the table are also the part of this doc most exposed to
+[POI_SITES.md](POI_SITES.md)'s measurement, and they have not been re-derived against it. That
+table stops at z12; these tiers live at z7–z11, where nothing has been simulated. **The
+simulation method now exists, which is the change** — these four numbers should be produced by
+it rather than argued into place.
 
 Note also that Option 2 is very nearly free in a cruder form — lowering `POI_MIN_ZOOM` from 9
 to 7 would let `symbol-sort-key` produce a roughly water-first result on its own, since the
@@ -340,26 +381,49 @@ camera move.
 
 ## Open questions (real ones, not decided here)
 
-- **The measured drop rate.** The arithmetic above says 20–30 of 110–140 at z9. Nobody has
-  counted. `queryRenderedFeatures` against a real data release makes this a number rather than
-  an estimate, and it should be one before the zoom tiers in Option 2 are tuned.
+- ~~**The measured drop rate.**~~ **Answered 2026-08-12 by [POI_SITES.md](POI_SITES.md)** — see
+  "How much is actually being dropped" above. It measured z12–z17 per category, and the answer
+  reshaped this doc rather than confirming it: the loss is concentrated in the categories
+  `POI_PRIORITY` ranks last, and co-location rather than viewport density is what destroys them
+  at the zooms an offline hiker has. What survives as a live question is the z7–z11 band, which
+  nothing has simulated.
 - **The zoom tiers themselves.** z7 / z8 / z10 / z11 are reasoned from the priority list and
-  from what fits, not validated. They are four numbers in one table and cheap to move, which is
-  the argument for the explicit table over the emergent version.
+  from what fits, not validated, and they sit in exactly the unsimulated band above. Produce
+  them from POI_SITES.md's method rather than moving them by argument. They are four numbers in
+  one table and cheap to change, which is the argument for the explicit table over the emergent
+  version.
 - **Whether the count chip belongs on the canvas at all.** It is one more thing over a map whose
   every pixel is contested, and the legend is one tap away. A real screen answers this;
   [#105](https://github.com/OurHike/OurHike/issues/105)'s outdoor pass is where it would be
   asked.
 - **Default `waypoint_types_shown`** — all-on (today's implicit behaviour) vs. a curated subset.
   Inherited unchanged from [UX_CUSTOMIZATION.md](UX_CUSTOMIZATION.md)'s own open list; the
-  visibility argument gives it new weight, since 1,223 vistas are a quarter of everything
-  shipping and are last in the priority order for exactly that reason.
+  visibility argument gives it real weight, since the 1,194 in-corridor vistas are **43% of
+  every waypoint published** and are last in the priority order for exactly that reason. One
+  toggle hands nearly half the map's pin budget back.
 - **Whether "only this" should survive a pan.** A momentary lookup and a persistent preference
   are different things ([UX_CUSTOMIZATION.md](UX_CUSTOMIZATION.md) makes the same distinction
   about search); "only water" probably wants to be momentary and probably wants an obvious way
   out, and the difference is worth a real opinion rather than a default.
 
 ## Related
+
+**[POI_SITES.md](POI_SITES.md) is the sibling, and the boundary between them is worth stating
+once so neither grows into the other.** Both were written on 2026-08-12, four minutes apart, by
+sessions that could not see each other; both are about pins that do not get drawn. They are not
+the same problem:
+
+| | POI_SITES.md | this doc |
+|---|---|---|
+| the crowding | several waypoints at **one place** — 37% within 60 m | many places across **one viewport** |
+| the fix | model the place, draw one pin, parts on the card | count what is dropped, let the hiker choose, admit by priority |
+| where it lands | the pipeline, mostly | the client, entirely |
+| what it cannot fix | a corridor view with 90 waypoints and room for 26 | a privy 42 m from its shelter |
+
+That doc's measurement is this doc's evidence, and its site model **reduces the pressure this
+one operates under without removing it** — grouping 1,027 stacked points into 435 sites hands
+real budget back at hiking zooms and changes nothing about z9. Neither is a reason to defer the
+other.
 
 [MAP_OPTIONS.md](MAP_OPTIONS.md) §5 owns the legend as a piece of chrome and the rule this doc
 inherits — the legend is a view onto categories that already exist, never a second taxonomy.

@@ -279,13 +279,18 @@ def check_if_range(base: str, key: str, session=None) -> dict:
     ETag and a long-past HTTP-date all answer 206 with the range served, where
     RFC 9110 requires the Range to be ignored and 200 returned.
 
-    That is a real failure of the bucket and this reports it as one. It is not
-    a live hazard to a hiker, and the message says so rather than overstating:
-    `archiveDownload.ts` carries a second, independent defence - the published
-    SHA-256 - and its own comment calls that "the defence that does not depend
-    on the bucket's CORS policy", built for precisely the case where `If-Range`
-    is unavailable. What this check establishes is that the second defence is
-    load-bearing rather than a backup.
+    That is a real failure of the bucket and this reports it as one. It stays a
+    FAILURE rather than becoming an expected result (#506): a gate taught to
+    expect the current breakage cannot notice it was fixed, and the move to a
+    custom domain may fix it - re-run this against `data.ourhike.app` before
+    assuming either way.
+
+    It is not a live hazard to a hiker, and the message says so rather than
+    overstating. `archiveDownload.ts` performs this same comparison itself, on
+    the ETag the 206 carries, so what the bucket declines to arbitrate is
+    arbitrated client-side before any body is read - and the published SHA-256
+    remains behind that. What this check establishes is that the resume's
+    server-side defence is absent, not that the resume is undefended.
     """
     getter = (session or requests).get
     try:
@@ -311,9 +316,10 @@ def check_if_range(base: str, key: str, session=None) -> dict:
             key,
             FAILED,
             f"a STALE ETag answered {stale.status_code}, not 200 - the bucket is ignoring If-Range, so it "
-            "will not arbitrate a stale partial. The client is not defenceless: archiveDownload.ts drops a "
-            "partial whose published SHA-256 has moved. But that hash check is then the ONLY thing standing "
-            "between a republished artifact and a spliced download, rather than the second of two.",
+            "will not arbitrate a stale partial. The client does not depend on it: archiveDownload.ts "
+            "compares the ETag on the 206 against the one its held bytes were recorded under and refuses "
+            "the resume itself, with the published SHA-256 behind that. What is missing is the server-side "
+            "half, so a conforming endpoint - a custom domain - would restore a defence rather than add one.",
         )
     return _report(7, key, OK, "current ETag -> 206, stale ETag -> 200")
 

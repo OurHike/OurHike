@@ -575,6 +575,130 @@ describe('downloadArchive — refusing to splice two different archives', () => 
     expect(new Uint8Array(await stored.arrayBuffer())).toEqual(bytes(1, 2, 3, 4))
   })
 
+  it('refuses a 206 whose ETag is not the one those bytes came from', async () => {
+    // THE CASE THE r2.dev BUCKET ACTUALLY PRODUCES (#506). The test above has
+    // the server arbitrating correctly - stale If-Range, 200, whole body. This
+    // one has it ignoring If-Range and serving the range anyway, which is what
+    // was measured against the live bucket: a stale validator is answered 206.
+    //
+    // The 206 is therefore worthless as evidence and the ETag is the only thing
+    // left saying which object these bytes are from. Without the comparison,
+    // bytes 4,5,6 of a DIFFERENT archive get appended to a held 1,2,3 and the
+    // result is a 6-byte file of exactly the expected length - the splice that
+    // renders a wrong map past the seam with no network to correct it.
+    const store = withStore({
+      ...partialOf(new Blob([bytes(1, 2, 3)])),
+      [ARCHIVE_PROGRESS_KEY]: { receivedBytes: 3, totalBytes: 6 },
+      [ARCHIVE_SOURCE_KEY]: { url: URL_, etag: '"v1"', generation: 0, segments: 1 },
+    })
+    mockFetch({ chunks: [bytes(4, 5, 6)], status: 206, etag: '"v2"' })
+
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow(/no longer matches what the server has/)
+
+    // Nothing spliced was stored, and the unusable segments are gone rather than
+    // left for the next attempt to append to all over again.
+    expect(storedArchive(store)).toBeUndefined()
+    expect(heldPartial(store)).toBeUndefined()
+    expect(store[ARCHIVE_SOURCE_KEY]).toBeUndefined()
+    expect(store[ARCHIVE_PROGRESS_KEY]).toBeUndefined()
+  })
+
+  it('leaves a previously-downloaded map alone when it refuses a stale 206', async () => {
+    // The rule the whole module is built around: someone with a good map who
+    // taps update and hits a republished archive still has their good map.
+    // The good map is a completed archive in generation 0, so the interrupted
+    // transfer is in generation 1 - which is what #553's generations are for,
+    // and what makes "refusing the stale 206 does not touch it" a real claim
+    // rather than one the fixture arranges by using a different record name.
+    const store = withStore({
+      ...completedOf(new Blob([bytes(7, 7, 7, 7, 7, 7)]), 0),
+      ...partialOf(new Blob([bytes(1, 2, 3)]), 1),
+      [ARCHIVE_PROGRESS_KEY]: { receivedBytes: 3, totalBytes: 6 },
+      [ARCHIVE_SOURCE_KEY]: { url: URL_, etag: '"v1"', generation: 1, segments: 1 },
+    })
+    mockFetch({ chunks: [bytes(4, 5, 6)], status: 206, etag: '"v2"' })
+
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow(/no longer matches what the server has/)
+
+    const good = storedArchive(store) as Blob
+    expect(good.size).toBe(6)
+    expect(new Uint8Array(await good.arrayBuffer())).toEqual(bytes(7, 7, 7, 7, 7, 7))
+  })
+
+  it('resumes onto a 206 that states the same strong ETag', async () => {
+    // The other half of the discrimination: the check must refuse a CHANGED
+    // object without refusing the ordinary resume, which is the case the
+    // WIREFRAMES 7a promise is made of.
+    const store = withStore({
+      ...partialOf(new Blob([bytes(1, 2, 3)])),
+      [ARCHIVE_PROGRESS_KEY]: { receivedBytes: 3, totalBytes: 6 },
+      [ARCHIVE_SOURCE_KEY]: { url: URL_, etag: '"v1"', generation: 0, segments: 1 },
+    })
+    mockFetch({ chunks: [bytes(4, 5, 6)], status: 206, etag: '"v1"' })
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
+
+    const stored = storedArchive(store) as Blob
+    expect(new Uint8Array(await stored.arrayBuffer())).toEqual(bytes(1, 2, 3, 4, 5, 6))
+  })
+
+  it('resumes when the 206 states no ETag at all, leaving the hash to decide', async () => {
+    // A bucket that exposes no ETag is the case PartialSource.etag is optional
+    // for. There is nothing to compare, so this must not become a refusal to
+    // resume - the published-hash check is what covers that configuration, and
+    // it still runs at the end.
+    const store = withStore({
+      ...partialOf(new Blob([bytes(1, 2, 3)])),
+      [ARCHIVE_PROGRESS_KEY]: { receivedBytes: 3, totalBytes: 6 },
+      [ARCHIVE_SOURCE_KEY]: { url: URL_, etag: '"v1"', generation: 0, segments: 1 },
+    })
+    mockFetch({ chunks: [bytes(4, 5, 6)], status: 206 })
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
+
+    expect(storedArchive(store)?.size).toBe(6)
+  })
+
+  it('resumes when the 206 states only a weak ETag, which cannot validate a range', async () => {
+    // A weak validator promises semantic equivalence, not byte identity, so it
+    // is not evidence the object CHANGED any more than it is evidence it did
+    // not. Refusing on one would strand a resume on a server that sends them.
+    const store = withStore({
+      ...partialOf(new Blob([bytes(1, 2, 3)])),
+      [ARCHIVE_PROGRESS_KEY]: { receivedBytes: 3, totalBytes: 6 },
+      [ARCHIVE_SOURCE_KEY]: { url: URL_, etag: '"v1"', generation: 0, segments: 1 },
+    })
+    mockFetch({ chunks: [bytes(4, 5, 6)], status: 206, etag: 'W/"v2"' })
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
+
+    expect(storedArchive(store)?.size).toBe(6)
+  })
+
+  it('keeps the strong ETag it was holding when a resume is interrupted under a weak one', async () => {
+    // The label a partial carries has to stay the strong validator those bytes
+    // were held against. Overwriting it with a weak one would leave the next
+    // attempt comparing against something that cannot arbitrate a range, which
+    // is the check above quietly disarmed. Asserted on an interrupted transfer
+    // because a completed one discards the record it would be read from.
+    const store = withStore({
+      ...partialOf(new Blob([bytes(1, 2, 3)])),
+      [ARCHIVE_PROGRESS_KEY]: { receivedBytes: 3, totalBytes: 9 },
+      [ARCHIVE_SOURCE_KEY]: { url: URL_, etag: '"v1"', generation: 0, segments: 1 },
+    })
+    mockFetch({ chunks: [bytes(4, 5)], status: 206, totalBytes: 99, etag: 'W/"v2"' })
+
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow(ArchiveSizeMismatchError)
+
+    expect(store[ARCHIVE_SOURCE_KEY]).toMatchObject({ etag: '"v1"' })
+  })
+
   it('records the source alongside the bytes when a transfer is interrupted', async () => {
     const store = withStore()
     mockFetch({ chunks: [bytes(1, 2)], totalBytes: 99, etag: '"v1"' })

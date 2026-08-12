@@ -28,6 +28,7 @@
 // must actually have received the trail artifact over the network. A CORS
 // refusal surfaces here as a failed request, which is exactly the #427 shape.
 
+import * as nodeFs from 'node:fs'
 import { chromium } from 'playwright'
 
 const DEFAULT_URL = 'https://ourhike.github.io/OurHike/app/'
@@ -62,6 +63,48 @@ const exitZero = argv.includes('--exit-zero')
 
 const report = []
 const add = (check, state, detail) => report.push({ check, state, detail })
+
+/**
+ * The artifact keys the client treats a 404 on as "this release has no such
+ * file" rather than as a failure.
+ *
+ * Read out of `lib/trailData.ts` and `lib/config.ts` rather than listed here.
+ * The check and the app have to agree about which downloads are optional, and
+ * a copy in this file is exactly the kind of second home that goes stale
+ * without anybody noticing - which is how a by-design 404 on
+ * `elevation_profile.json` was reported for three days as "the deployed app
+ * does not draw a trail" (#520).
+ *
+ * Throws rather than returning an empty list: a regex that quietly stopped
+ * matching would make every optional 404 look like an outage again, which is
+ * the bug this function exists to end.
+ */
+function optionalArtifactKeys() {
+  const { readFileSync } = nodeFs
+  const dir = new URL('../src/lib/', import.meta.url)
+  const trailData = readFileSync(new URL('trailData.ts', dir), 'utf8')
+  const config = readFileSync(new URL('config.ts', dir), 'utf8')
+
+  // `await` is what distinguishes a CALL from the declaration - without it the
+  // pattern also matches `async function fetchOptionalArtifact(artifactKey`
+  // and captures the parameter name, which resolves to no key and trips the
+  // guard below. Found by running it rather than by reading it.
+  const names = [...trailData.matchAll(/await fetchOptionalArtifact\(\s*(\w+)/g)].map(
+    (m) => m[1],
+  )
+  const keys = names
+    .map((name) => config.match(new RegExp(`${name}\\s*=\\s*'([^']+)'`))?.[1])
+    .filter(Boolean)
+
+  if (keys.length === 0 || keys.length !== names.length) {
+    throw new Error(
+      'could not read the optional-artifact contract out of src/lib/trailData.ts and src/lib/config.ts. ' +
+        'They have been restructured, and this check must be updated rather than left treating every ' +
+        '404 as an outage.',
+    )
+  }
+  return keys
+}
 
 const browser = await chromium.launch({
   args: ['--no-sandbox'],
@@ -215,8 +258,40 @@ try {
     } else {
       add('fetched-data', 'ok', `${ok.length} successful response(s) from the bucket`)
     }
-    if (bad.length > 0) {
-      add('bucket-errors', 'failed', bad.map((r) => `${r.status} ${r.url}`).join(', '))
+    // A 404 on an OPTIONAL artifact is not an error, and treating it as one is
+    // how this check spent three days claiming the app did not draw a trail
+    // while it drew one perfectly (#520).
+    //
+    // `lib/trailData.ts` fetches `spurs.json` and `elevation_profile.json`
+    // through `fetchOptionalArtifact`, which returns null on 404 with the
+    // reasoning written out: "an artifact a release may predate […] a phone
+    // pointed at an older release should still get its trails and POIs rather
+    // than an error". The bucket genuinely does not publish
+    // `elevation_profile.json` today, so the app asks, gets a 404, and carries
+    // on exactly as designed.
+    //
+    // Read from the client's own source rather than restated here, for the
+    // reason verify_release.py gives about the same class of contract: a
+    // hand-kept copy is a second home for the fact, and this check exists
+    // because the two drifting apart is invisible from either side.
+    const optional = optionalArtifactKeys()
+    const expected = bad.filter(
+      (r) => r.status === 404 && optional.some((key) => r.url.endsWith(`/${key}`)),
+    )
+    const real = bad.filter((r) => !expected.includes(r))
+
+    if (real.length > 0) {
+      add('bucket-errors', 'failed', real.map((r) => `${r.status} ${r.url}`).join(', '))
+    } else if (expected.length > 0) {
+      // Said out loud rather than silently passed. The app working without it
+      // is by design; the artifact being absent is still worth somebody
+      // knowing, because it means a feature ships dark.
+      add(
+        'bucket-errors',
+        'noted',
+        `${expected.length} optional artifact(s) not published, which the app handles by design: ` +
+          expected.map((r) => r.url.split('/').pop()).join(', '),
+      )
     }
   }
 

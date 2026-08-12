@@ -1016,3 +1016,80 @@ def test_export_poi_still_refuses_a_geometry_that_is_the_wrong_shape(tmp_path, m
 
     with pytest.raises(ValueError, match="only supports Point geometries"):
         export_poi.unify_all_sources("AT", [])
+
+
+# --- the preflight ---------------------------------------------------------
+
+
+def test_check_reads_the_sources_and_writes_nothing(tmp_path, monkeypatch, con):
+    """`--check` is what the publish workflow runs before an hour of photo
+    fetching. It must exercise the real reading path and leave no artifact
+    behind - an export that half-wrote its output on a preflight would be
+    worse than no preflight."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+
+    counts = export_poi.check_sources()
+
+    assert counts == {
+        "shelter": 1,
+        "campsite": 1,
+        "water": 2,
+        "resupply": 2,
+        "crossing": 0,
+        "viewpoint": 1,
+        "parking": 1,
+        "privy": 1,
+    }
+    assert not out_dir.exists()
+
+
+def test_check_fails_on_the_defect_that_would_otherwise_surface_an_hour_later(tmp_path, monkeypatch):
+    """A source that came back without its features. Caught here, it costs
+    seconds; caught in the export, it costs the photo fetch that ran in
+    between - which is the whole argument for the step existing."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    _write_fc(raw_dir / "viewpoints.geojson", [])
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+
+    with pytest.raises(SystemExit) as exc_info:
+        export_poi.check_sources()
+
+    assert exc_info.value.code == 1
+
+
+def test_check_and_the_export_gate_on_the_same_rule(tmp_path, monkeypatch, con):
+    """The preflight would be worth little if it were more lenient than the
+    export it stands in for. Both call fail_if_any_type_is_empty, and
+    `crossing` is the one type allowed to be empty in both."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+
+    # crossing is empty in the fixtures, and neither side objects.
+    assert export_poi.check_sources()["crossing"] == 0
+    assert export_poi.main()["crossing"]["geojson"]["feature_count"] == 0
+
+
+def test_an_unknown_flag_is_rejected_rather_than_silently_exporting(monkeypatch, capsys):
+    """A typo'd `--check` must not run the full export in a step that asked
+    for a preflight - it would write artifacts from unfetched photos."""
+    monkeypatch.setattr(export_poi, "main", lambda: pytest.fail("main() ran for an unknown flag"))
+
+    with pytest.raises(SystemExit) as exc_info:
+        export_poi.run(["--chekc"])
+
+    assert exc_info.value.code == 2
+    assert "Unknown flag" in capsys.readouterr().out

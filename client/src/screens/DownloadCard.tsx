@@ -105,6 +105,11 @@ export interface DownloadCardProps {
     value: string
     onChange: (id: string) => void
     name?: string
+    /** What the browser says is still storable, so a level this phone cannot
+     *  hold greys out where it is chosen instead of being refused after the
+     *  tap (#555). Null where the browser will not say, which offers
+     *  everything. */
+    availableBytes?: number | null
   }
   /** What asking for durable storage came to - null while unanswered. Drives
    *  wording only: best-effort storage is stated, never silently assumed
@@ -172,6 +177,7 @@ export function DownloadCard({
       // already on their way.
       locked={preparing || !facingFullDownload(status)}
       lockedNote={lockedNote(status)}
+      availableBytes={detail.availableBytes}
     />
   )
 

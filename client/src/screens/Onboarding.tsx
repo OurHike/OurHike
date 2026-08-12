@@ -55,6 +55,7 @@ import { ONBOARDING_STEPS, buildOnboardingProgress } from '../lib/onboardingStep
 import type { HikingDetailLevel } from '../lib/userPreferences'
 import { HIKING_SHEET, USGS_SHEET } from '../lib/packages'
 import { DetailPicker, hikingDetailOptions, rasterDetailOptions } from './DetailPicker'
+import { useAvailableBytes } from '../lib/useAvailableBytes'
 import { Tabs } from './Tabs'
 import './onboarding.css'
 
@@ -85,6 +86,9 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   const [hikingLevel, setHikingLevel] = useState<HikingDetailLevel>('standard')
   // Opens on the sheet this step is actually sizing (#277).
   const [openSheetId, setOpenSheetId] = useState(HIKING_SHEET.id)
+  // So a level this phone cannot hold is greyed before it is chosen, rather
+  // than refused after the newcomer has committed to it (#555).
+  const { bytes: availableBytes } = useAvailableBytes()
 
   const step = ONBOARDING_STEPS[stepIndex]
   const progress = buildOnboardingProgress({
@@ -149,6 +153,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                     value={hikingLevel}
                     onChange={(level) => setHikingLevel(level as HikingDetailLevel)}
                     name="onboarding-detail"
+                    availableBytes={availableBytes}
                   />
                 </>
               ) : (
@@ -164,6 +169,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                     name="onboarding-usgs-detail"
                     locked
                     lockedNote="Chosen in Downloads, any time. This step is sizing the map you navigate by."
+                    availableBytes={availableBytes}
                   />
                 </>
               )}

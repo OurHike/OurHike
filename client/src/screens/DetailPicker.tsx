@@ -26,6 +26,29 @@
 // cannot be chosen right now, because bytes are already on the phone or on
 // their way. `locked` is that one, and it comes with a note saying what
 // would have to happen instead - see DownloadCard.
+//
+// AND A THIRD: A LEVEL THIS PHONE HAS NO ROOM FOR (#555).
+//
+// Every browser on iOS is WebKit, whose per-origin allowance starts around a
+// gigabyte and prompts beyond it. The Fine raster tier is 1.18 GB and the hiking
+// sheet at Fine is 1.14 GB, so both are over before the origin is holding
+// anything else - and nothing in the download path branched on platform, so the
+// rung was offered with a size and a radio button on a phone that could never
+// store it. #547 made the tap a truthful refusal in about 30 ms instead of a
+// wasted transfer, which is a real improvement over spending someone's data and
+// still worse than not offering a rung that cannot work.
+//
+// It gets its OWN sentence rather than reusing "Not offered", and the distinction
+// is the point: "not offered" is a fact about the map, this is a fact about the
+// phone, and a hiker who reads the wrong one goes looking for a different map
+// instead of freeing up space. The size stays visible for the same reason - what
+// it would cost is exactly what they need in order to decide what to delete.
+//
+// Never a platform check. The comparison is against what the browser reports as
+// free (lib/useAvailableBytes.ts), so it is true on an Android phone with a full
+// disk and false on an iPad with room - both of which a UA sniff gets wrong. An
+// unknown allowance refuses nothing, which is dataSaver.ts's posture for an
+// absent API.
 
 import { DOWNLOAD_DETAIL_LEVELS, type DetailLevel } from '../lib/downloadDetail'
 import { HIKING_DETAIL_LEVELS } from '../lib/hikingDetail'
@@ -120,6 +143,15 @@ export interface DetailPickerProps {
   /** Distinguishes the radio group when two pickers share a page - and two
    *  do, now that both sheets' cards carry one. */
   name?: string
+  /**
+   * What the browser says this origin can still store, or null where it will
+   * not say (lib/useAvailableBytes.ts).
+   *
+   * Null offers everything. It means "unknown", and a level greyed out on an
+   * unknown allowance would be a claim about the phone that nothing supports -
+   * the same reason Downloads.tsx warns rather than refuses on a tight estimate.
+   */
+  availableBytes?: number | null
 }
 
 export function DetailPicker({
@@ -129,6 +161,7 @@ export function DetailPicker({
   locked = false,
   lockedNote,
   name = 'map-detail',
+  availableBytes = null,
 }: DetailPickerProps) {
   return (
     <fieldset className="detail-picker">
@@ -136,7 +169,14 @@ export function DetailPicker({
 
       {options.map((option) => {
         const offered = option.sizeBytes !== null
-        const disabled = locked || !offered
+        // Published, and larger than the phone says it can hold. Deliberately
+        // not folded into `offered`: the two read differently to a hiker and the
+        // rung says which.
+        const noRoom =
+          option.sizeBytes !== null &&
+          availableBytes !== null &&
+          option.sizeBytes > availableBytes
+        const disabled = locked || !offered || noRoom
 
         return (
           <label
@@ -150,7 +190,10 @@ export function DetailPicker({
               value={option.id}
               // Never pre-selected where the level does not exist: a checked
               // "Light" on a sheet that has no Light cut would state a size
-              // this download is not.
+              // this download is not. A level the phone has no room for stays
+              // shown as chosen if it already was - the preference is the
+              // hiker's, and silently re-pointing it at a smaller map would
+              // change what they asked for without telling them.
               checked={offered && value === option.id}
               disabled={disabled}
               onChange={() => onChange(option.id)}
@@ -159,7 +202,13 @@ export function DetailPicker({
             <span className="detail-picker__size">
               {option.sizeBytes === null ? 'Not offered' : formatBytes(option.sizeBytes)}
             </span>
-            {option.recommended && offered && (
+            {noRoom && (
+              // Names the phone, not the map, and stays beside the size rather
+              // than replacing it: what it would cost is what a hiker needs in
+              // order to decide what to free up.
+              <span className="detail-picker__no-room">No room on this phone</span>
+            )}
+            {option.recommended && offered && !noRoom && (
               <span className="detail-picker__recommended">Recommended</span>
             )}
           </label>

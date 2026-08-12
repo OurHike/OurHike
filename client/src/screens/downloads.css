@@ -258,6 +258,17 @@
   letter-spacing: 0.04em;
   color: var(--brand-primary);
 }
+/* A level this phone has no room for (#555). Sits where "Recommended" would,
+   because it is answering the same question - is this the rung to pick - and
+   the two are mutually exclusive. Not styled as an error: nothing has gone
+   wrong, the map is simply bigger than the space, and the remedy is the
+   hiker's to take. */
+.detail-picker__no-room {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-2);
+}
 
 /* Install prompt (InstallPrompt.tsx). Sits above the download because
    installing and downloading are one decision - make this work offline - not

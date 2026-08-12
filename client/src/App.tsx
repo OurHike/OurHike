@@ -75,6 +75,7 @@ import {
   type DetailLevel,
 } from './lib/downloadDetail'
 import { useArchiveDownloads } from './lib/useArchiveDownload'
+import { useAvailableBytes } from './lib/useAvailableBytes'
 import { useArchiveZooms } from './lib/useArchiveZooms'
 import { archiveCoversZoom } from './lib/archiveCoverage'
 import { HEALTHY, type LiveSourceHealth, type SourceReport } from './map/liveSourceHealth'
@@ -718,6 +719,12 @@ function App() {
     remove: removePackage,
     persistence: archivePersistence,
   } = useArchiveDownloads(downloadRequests)
+
+  // What the phone can still hold, so a level it cannot is greyed where it is
+  // chosen rather than refused after the tap (#555). Re-read after a delete
+  // below: freeing space is the app's own printed remedy, and #554 measured
+  // that the browser's accounting may never notice on its own.
+  const { bytes: availableBytes, refresh: refreshAvailableBytes } = useAvailableBytes()
 
   /** One sheet as one state, however many archives are behind it. */
   const sheetStatus = useCallback(
@@ -1384,8 +1391,12 @@ function App() {
   const handleDeleteSheet = useCallback(
     async (sheet: BackgroundSheet) => {
       await Promise.all(offeredPackages(sheet).map((pkg) => removePackage(pkg.idbKey)))
+      // The moment a greyed rung should come back (#555). Awaited before this
+      // rather than fired alongside it, so the re-read sees the space the
+      // delete released instead of racing it.
+      refreshAvailableBytes()
     },
-    [removePackage],
+    [removePackage, refreshAvailableBytes],
   )
 
   // Every move is also where the camera would have to be put back, so this is
@@ -1775,6 +1786,7 @@ function App() {
                   options: rasterDetailOptions(),
                   value: detailLevel,
                   name: 'usgs-detail',
+                  availableBytes,
                   onChange: (level: string) =>
                     updatePreferences({
                       max_background_zoom: getDownloadDetail(level as DetailLevel).zoom,
@@ -1785,6 +1797,7 @@ function App() {
                     options: hikingDetailOptions(),
                     value: hikingLevel,
                     name: 'hiking-detail',
+                    availableBytes,
                     onChange: (level: string) =>
                       updatePreferences({
                         hiking_detail_level: level as HikingDetailLevel,

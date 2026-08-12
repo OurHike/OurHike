@@ -288,6 +288,8 @@ Two properties are asserted rather than assumed, in both directions: nothing the
 
 **Extended by [UX_CUSTOMIZATION.md](UX_CUSTOMIZATION.md):** the compass in `NavigationControl` above gets a real reset-to-north behavior once auto-rotate exists, and the legend's job grows to also reflect that doc's `layer_detail_level` and `waypoint_types_shown` settings - same legend, same "read from schemes that already exist" principle, not a second one.
 
+**Extended again by [POI_VISIBILITY.md](POI_VISIBILITY.md) (2026-08-12):** the legend gains a second job this section did not anticipate, because it turns out to be the only surface that can do it. It counts what is in the viewport; the map draws a fraction of that and says nothing about the difference. Waypoint counts, the hide toggles and what the panel says below the pin floor all move there - this section keeps the legend as a piece of *chrome* (where it sits, what it is made of, that it reads from existing schemes) and stops owning what it says about density.
+
 ## 6. Map appearance: style, mode, and detail (built 2026-08-07)
 
 Built to MAP_STYLE_SPEC.md - a PR-shaped spec reviewed against live mockups (the design project's `Map Styles.html`, which renders every palette on the real stack). Three preferences, all display-only: none of them ever rebuilds the map, the same rule the unit switch and the theme already keep.

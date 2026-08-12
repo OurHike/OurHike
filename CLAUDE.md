@@ -4,6 +4,41 @@
 expectations, the "one home per item" rule for docs and issues. This file covers only
 what is specific to an agent working here, and does not restate the rest.
 
+## Name an issue or PR, don't just number it
+
+**Every reference to an issue or pull request carries its number *and* its title** — in chat,
+in pull request bodies, in issue comments, in anything reporting what was done. Write:
+
+> **#555 — The Fine tier is offered on iOS, where WebKit will not hold it** and
+> **#554 — Deleting a map does not give the space back in time to download a bigger one**
+> are both storage headroom, and only one of them is a platform question.
+
+not "#555 and #554 are both storage headroom, and only one is a platform question." The
+second version is shorter and tells the reader nothing — they have to open two tabs before
+they can judge whether any of it is theirs to care about.
+
+A bare number is worse in this repository than in most, because `#N` here is not reliably an
+issue at all. [FEATURES.md](FEATURES.md) numbers the *values* that way — "Community reporting
+*(#2, #4)*" means values two and four — while [pipeline/README.md](pipeline/README.md) uses
+the same notation for issues (`#184/#185/#186`) and
+[features/MAP_STYLE_SPEC.md](features/MAP_STYLE_SPEC.md) for a pull request (`PR #345`). The
+title is the only thing that separates them on sight.
+
+The habit is already here, applied unevenly. **#558 — Let a hiker take the stretch they are
+walking, without picking it off a list** opens by declaring itself "Blocked on #552 (which
+unit)": the gloss got added because the bare number would not have carried the sentence, and
+the six other issues that body cites went without one. Write the title rather than a
+parenthetical, and write it for every reference — not only the one that felt ambiguous while
+you were typing it.
+
+One form stays bare, because GitHub parses it rather than reads it: the closing line in a
+pull request body is exactly `Closes #42`, the linking mechanism
+[CONTRIBUTING.md](CONTRIBUTING.md) describes and CI enforces as **PR has a linked issue**.
+Leave that line alone and name the issue in full in the prose above it.
+
+This governs what you write. It is not a licence to go retitling references in files you are
+not otherwise touching.
+
 ## Claim the issue before you branch
 
 Sessions run concurrently and unsupervised, and nothing stops two of them from picking up

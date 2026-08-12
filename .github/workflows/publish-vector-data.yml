@@ -93,6 +93,23 @@ jobs:
       - name: Fetch opentrail.org POIs
         run: python fetch_opentrail.py
 
+      # Read the POI sources and clip them BEFORE any of the fetching below,
+      # and fail here if they are not exportable. Writes nothing.
+      #
+      # This step exists because the ordering underneath it is unavoidable
+      # and expensive: `export_poi.py` attaches photos, so it has to run
+      # after the fetches, which means every defect in the DATA got
+      # discovered an hour into a run. It happened twice in one release - a
+      # row ATC left with no geometry, and before that a dead photo link -
+      # each costing a full run and the photo cache with it.
+      #
+      # `--check` runs the export's own reading code, not a copy of it, so a
+      # source this passes is a source the export can read. What it cannot
+      # speak for is the enrichment, which needs the fetches; the same gate
+      # therefore runs again inside the export proper.
+      - name: Check POI sources are exportable
+        run: python export_poi.py --check
+
       # Photos live outside the repository - pipeline/.gitignore excludes
       # data/ entirely - so a fresh runner has neither the outcome files nor
       # the image bytes, and without this step export_poi.py takes its
@@ -120,23 +137,6 @@ jobs:
       # If it ever needs to be cheap, the fix is not a longer-lived cache -
       # it is teaching the fetch that bytes already in R2 need not be
       # downloaded again to be published.
-      # Read the POI sources and clip them BEFORE any of the fetching below,
-      # and fail here if they are not exportable. Writes nothing.
-      #
-      # This step exists because the ordering underneath it is unavoidable
-      # and expensive: `export_poi.py` attaches photos, so it has to run
-      # after the fetches, which means every defect in the DATA got
-      # discovered an hour into a run. It happened twice in one release - a
-      # row ATC left with no geometry, and before that a dead photo link -
-      # each costing a full run and the photo cache with it.
-      #
-      # `--check` runs the export's own reading code, not a copy of it, so a
-      # source this passes is a source the export can read. What it cannot
-      # speak for is the enrichment, which needs the fetches; the same gate
-      # therefore runs again inside the export proper.
-      - name: Check POI sources are exportable
-        run: python export_poi.py --check
-
       - name: Restore POI photo cache
         if: inputs.include_photos
         id: photo-cache

@@ -43,8 +43,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl'
 import { typeLabel } from './legendLabels'
 import { sourceLabel } from './poiSources'
 import { placePoiCard, type CardPlacement } from './poiCardPlacement'
-import { POI_COLORS, POI_FALLBACK_COLOR, poiGlyphPath } from '../map/poiIcons'
-import type { PoiType } from '../lib/config'
+import { poiColor, poiGlyphPath } from '../map/poiIcons'
 
 export interface PoiDetail {
   id: string
@@ -317,8 +316,7 @@ export function PoiCard({ poi, map, onClose }: PoiCardProps) {
   const [photoFailed, setPhotoFailed] = useState(false)
   useEffect(() => setPhotoFailed(false), [current?.url])
 
-  const accent =
-    poi.type in POI_COLORS ? POI_COLORS[poi.type as PoiType] : POI_FALLBACK_COLOR
+  const accent = poiColor(poi.type)
   const showPhoto = current !== undefined && !photoFailed
   const credit = current === undefined ? null : photoCredit(current)
   // Controls only where they lead somewhere. Wrapping rather than disabling at

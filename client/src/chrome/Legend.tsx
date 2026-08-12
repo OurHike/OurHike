@@ -9,13 +9,21 @@
 // Not defaulted-on, not disabled - absent. A safety layer having no off switch
 // is a rule that holds across the whole app (features/MAP_OPTIONS.md,
 // features/HIKER_SAFETY.md), and the surest way to keep it is to never build
-// the affordance.
+// the affordance. That rule is why the row is not uniformly a button: a
+// hideable row IS one, edge to edge, and a safety row is plain text with an
+// "Always shown" tag beside it.
+//
+// Every row carries the icon the map draws for it, from map/MapIcon.tsx and
+// therefore from the map's own geometry rather than from a second drawing of
+// it. This panel is where a hiker learns that a dashed rim means nobody has
+// checked, so it is the one place the pin has to be the real pin.
 
 import {
   computeLegendContents,
   type BoundingBox,
   type MapPoint,
 } from '../lib/legendContents'
+import { MapIcon } from '../map/MapIcon'
 import { blazePaintColor } from '../lib/blaze'
 import { typeLabel } from './legendLabels'
 import { BackgroundPicker } from './BackgroundPicker'
@@ -159,32 +167,54 @@ export function Legend({
             const name = typeLabel(row.type)
             const unverified = row.confidence === 'low'
             const label = unverified ? `${name} · Unverified` : name
+            const hidden = row.hideable && hiddenTypes.has(row.type)
+
+            // The pin, the name and the count, in that order. On a hideable
+            // row all three go inside the button, which is the whole point:
+            // WIREFRAMES.md §2 has said "rows are tappable to hide" since
+            // before this panel was built, and what shipped was a 20px dot at
+            // the end of a 44px row that looked tappable across its width.
+            // A tap on the word "Water" did nothing and said nothing.
+            const face = (
+              <>
+                <MapIcon
+                  className="legend__icon"
+                  type={row.type}
+                  confidence={row.confidence}
+                />
+                <span className="legend__label">{label}</span>
+                <span className="legend__count">{row.count}</span>
+              </>
+            )
 
             return (
               <li
                 key={`${row.type}::${row.confidence}`}
-                className="legend__row"
+                className={hidden ? 'legend__row legend__row--hidden' : 'legend__row'}
                 aria-label={label}
               >
-                <span className="legend__label">{label}</span>
-                <span className="legend__count">{row.count}</span>
-
                 {row.hideable ? (
                   <button
                     type="button"
                     className="legend__toggle"
-                    aria-pressed={hiddenTypes.has(row.type)}
+                    /* Pressed means SHOWN, which is the opposite of what this
+                       said while the control was a separate dot. That button
+                       was a "hide" action and pressed meant the action was
+                       engaged; the row is now the category itself, and it
+                       greys out when the category is off. Leaving the old
+                       polarity would have a row that plainly reads as off
+                       announcing itself as pressed - the screen and the
+                       screen reader disagreeing about one control. */
+                    aria-pressed={!hidden}
                     onClick={() => onToggleType(row.type)}
                   >
-                    <span className="visually-hidden">
-                      {hiddenTypes.has(row.type) ? `Show ${name}` : `Hide ${name}`}
-                    </span>
-                    <span aria-hidden="true">
-                      {hiddenTypes.has(row.type) ? '◌' : '●'}
-                    </span>
+                    {face}
                   </button>
                 ) : (
-                  <span className="legend__always">Always shown</span>
+                  <>
+                    {face}
+                    <span className="legend__always">Always shown</span>
+                  </>
                 )}
               </li>
             )

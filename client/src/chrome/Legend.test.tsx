@@ -2,6 +2,9 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Legend } from './Legend'
+import { glyphPath, poiGlyphPath } from '../map/poiIcons'
+import { WARNING_GLYPH } from '../map/warningPin'
+import { CLOSURE_COLOR } from '../lib/closureStyle'
 
 // WIREFRAMES.md §2 (Legend) plus TESTING.md item 7. Two rules carry real
 // weight beyond layout:
@@ -133,9 +136,17 @@ describe('Legend', () => {
   })
 
   it('shows an ordinary row as hidden once it has been toggled off', () => {
+    // Pressed means SHOWN. The control used to be a separate "hide" dot, where
+    // pressed sensibly meant the hide action was engaged; the row is now the
+    // category itself and greys out when it is off, so the old polarity would
+    // have a row that plainly reads as off announcing itself as pressed.
     render(<Legend {...PROPS} hiddenTypes={new Set(['water'])} />)
 
     expect(within(rowFor('Water')).getByRole('button')).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    expect(within(rowFor('Shelter')).getByRole('button')).toHaveAttribute(
       'aria-pressed',
       'true',
     )
@@ -154,6 +165,139 @@ describe('Legend', () => {
     render(<Legend {...PROPS} points={[]} blazeCounts={[]} />)
 
     expect(screen.getByText(/nothing on this part of the map/i)).toBeInTheDocument()
+  })
+})
+
+// --- The map's own icons (#572) -------------------------------------------
+//
+// The legend named categories the map draws as pins and drew none of them.
+// What is asserted here is not "an icon is present" but that it is THE icon -
+// the same glyph data, the same broken rim, the same barred band - because a
+// legend drawing its own approximation of a pin is worse than one drawing
+// none: it teaches a symbol the map does not use.
+
+function iconIn(row: HTMLElement): Element | null {
+  return row.querySelector('.legend__icon')
+}
+
+describe('legend icons are the map’s icons', () => {
+  it('gives a row the silhouette the map draws for that type', () => {
+    render(<Legend {...PROPS} />)
+
+    expect(iconIn(rowFor('Water'))?.querySelector('.map-icon__glyph')).toHaveAttribute(
+      'd',
+      poiGlyphPath('water'),
+    )
+  })
+
+  it('breaks the rim on an unverified row, which is how the map says it', () => {
+    // The row already says "Unverified" in words. The map says the same thing
+    // with a dashed rim and nothing on screen connected the two, which left
+    // this panel teaching half of its own vocabulary.
+    render(<Legend {...PROPS} />)
+
+    expect(
+      iconIn(rowFor('Water · Unverified'))?.querySelector('.map-icon__edge'),
+    ).toHaveAttribute('stroke-dasharray')
+  })
+
+  it('leaves a verified rim unbroken', () => {
+    render(<Legend {...PROPS} />)
+
+    expect(iconIn(rowFor('Water'))?.querySelector('.map-icon__edge')).not.toHaveAttribute(
+      'stroke-dasharray',
+    )
+  })
+
+  it('draws a closure as the barred band it is, not as a pin it never was', () => {
+    render(<Legend {...PROPS} />)
+    const icon = iconIn(rowFor('Closure'))
+
+    expect(icon?.querySelector('.map-icon__closure-band')).toHaveAttribute(
+      'stroke',
+      CLOSURE_COLOR,
+    )
+    expect(icon?.querySelector('.map-icon__disc')).toBeNull()
+  })
+
+  it('draws a serious warning as the hazard triangle', () => {
+    render(<Legend {...PROPS} />)
+
+    expect(
+      iconIn(rowFor('Serious warning'))?.querySelector('.map-icon__glyph'),
+    ).toHaveAttribute('d', glyphPath(WARNING_GLYPH))
+  })
+
+  it('gives a safety row its icon too, without giving it a control', () => {
+    render(<Legend {...PROPS} />)
+    const row = rowFor('Closure')
+
+    expect(iconIn(row)).not.toBeNull()
+    expect(within(row).queryByRole('button')).not.toBeInTheDocument()
+  })
+})
+
+// --- The row is the control (#572) ----------------------------------------
+//
+// WIREFRAMES.md §2 has said "rows are tappable to hide" since before this
+// panel was built. What shipped was a 20px dot at the end of a 44px row, so a
+// tap on the word "Water" did nothing and said nothing about having done
+// nothing. Each of these taps used to miss.
+
+describe('the whole legend row is the hide control', () => {
+  it('turns a category off from a tap on its name', async () => {
+    const user = userEvent.setup()
+    render(<Legend {...PROPS} />)
+
+    await user.click(within(rowFor('Water')).getByText('Water'))
+
+    expect(PROPS.onToggleType).toHaveBeenCalledWith('water')
+  })
+
+  it('turns a category off from a tap on its icon', async () => {
+    const user = userEvent.setup()
+    render(<Legend {...PROPS} />)
+
+    await user.click(iconIn(rowFor('Water')) as Element)
+
+    expect(PROPS.onToggleType).toHaveBeenCalledWith('water')
+  })
+
+  it('turns a category off from a tap on its count', async () => {
+    const user = userEvent.setup()
+    render(<Legend {...PROPS} />)
+
+    await user.click(within(rowFor('Water')).getByText('2'))
+
+    expect(PROPS.onToggleType).toHaveBeenCalledWith('water')
+  })
+
+  it('holds the icon, the name and the count in one button', () => {
+    render(<Legend {...PROPS} />)
+    const button = within(rowFor('Water')).getByRole('button')
+
+    expect(button.querySelector('.legend__icon')).not.toBeNull()
+    expect(button).toHaveTextContent('Water')
+    expect(button).toHaveTextContent('2')
+  })
+
+  it('greys the row out while its category is off', () => {
+    // The channel a sighted hiker reads, and the reason aria-pressed had to
+    // flip with it - see the polarity note above.
+    render(<Legend {...PROPS} hiddenTypes={new Set(['water'])} />)
+
+    expect(rowFor('Water')).toHaveClass('legend__row--hidden')
+    expect(rowFor('Shelter')).not.toHaveClass('legend__row--hidden')
+  })
+
+  it('never greys a safety row, whatever the hidden set says', () => {
+    // hiddenTypes is the shell's state and nothing in this panel can put a
+    // closure in it - but if something ever did, the row must not read as off
+    // while the map goes on drawing it. What is on the map and what this panel
+    // says about it cannot be allowed to disagree about a closure.
+    render(<Legend {...PROPS} hiddenTypes={new Set(['closure'])} />)
+
+    expect(rowFor('Closure')).not.toHaveClass('legend__row--hidden')
   })
 })
 
@@ -192,24 +336,15 @@ describe('legend as a persistent panel', () => {
   it('still hides nothing safety-relevant', () => {
     // The rule that holds across the whole app: a safety layer has no off
     // switch, and a different layout is not a reason to grow one.
-    render(
-      <Legend
-        {...PROPS}
-        open
-        persistent
-        points={[
-          {
-            id: 'c9',
-            type: 'closure',
-            lat: 39.5,
-            lon: -77.5,
-            confidence: 'high' as const,
-          },
-        ]}
-      />,
-    )
+    //
+    // Asserted against a water row in the same render rather than against the
+    // absence of a button named /hide/i, which is what this used to do: once
+    // the row itself became the control no button is named "hide" at all, so
+    // that assertion had stopped being able to fail.
+    render(<Legend {...PROPS} open persistent />)
 
-    expect(screen.queryByRole('button', { name: /hide/i })).not.toBeInTheDocument()
+    expect(within(rowFor('Closure')).queryByRole('button')).not.toBeInTheDocument()
+    expect(within(rowFor('Water')).getByRole('button')).toBeInTheDocument()
   })
 
   it('is still a dismissable dialog on a phone', () => {

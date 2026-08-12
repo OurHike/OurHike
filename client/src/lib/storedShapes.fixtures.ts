@@ -232,3 +232,101 @@ export function storedElevation(): {
     elevationFt: new Float32Array([4210, 4488, 4702, 4655, 4901]),
   }
 }
+
+// --- The downloaded archive itself (#586) ---------------------------------
+//
+// The records above are a download's RESUME state. The archive is the thing
+// §8c's sentence is actually about - "orphans a downloaded archive" - and it
+// was missing from this file entirely, so nothing ran a reader over a stored
+// archive of any shape. Breaking `readArchive`'s legacy branch left the compat
+// suite 18/18 green; only one unit test noticed.
+//
+// TWO SHAPES, BECAUSE #553 CHANGED THE LAYOUT. No release is tagged yet, so
+// today the older shape is on testers' phones rather than hikers' - which is
+// precisely why it is worth capturing now, while the evidence of what it looked
+// like still exists. Once releases are tagged, #374 §2's window (three releases
+// plus ninety days) puts #553 inside it, and by then nobody will be able to
+// reconstruct the pre-#553 records from the code, because the code no longer
+// writes them.
+//
+// Keys are LITERAL STRINGS here rather than built with `segmentKeyFor` and
+// friends, unlike the resume records above. That is not an inconsistency: a
+// phone holds literal strings, and deriving them from the app's own builder
+// would make a rename invisible exactly where it costs a gigabyte. The compat
+// test pins the builders against these literals instead, which catches the
+// rename and keeps the coverage.
+//
+// The blobs are a handful of bytes. A real corridor archive is 1.18 GB in 36
+// segments of 32 MiB (archiveDownload.ts's SEGMENT_BYTES), and none of these
+// readers care about the size - they care about assembly order, the marker's
+// agreement with what is on disk, and which record wins. `totalBytes` below is
+// honest to the fixture's own bytes rather than copying the real figure, so a
+// reader that reports the marker instead of the archive cannot pass by
+// coincidence.
+
+/** Segment bytes, per index, for the corridor package's current-shape fixture.
+ *  Distinct per segment so a reader that concatenates them out of order, or
+ *  drops one, produces a different Blob rather than the same length. */
+const SEGMENT_BYTES = [
+  [0x50, 0x4d, 0x54, 0x69, 0x6c, 0x65, 0x73], // "PMTiles", as segment 0 really starts
+  [0x01, 0x02, 0x03, 0x04],
+  [0xfe, 0xff],
+] as const
+
+/**
+ * A phone that finished its download BEFORE #553: one whole-archive Blob under
+ * the bare package key, and no marker.
+ *
+ * `archiveStore.ts` promises this "keeps resolving" and is served "untouched".
+ * That promise is why a hiker who updates the app at a resupply stop with one
+ * bar is not asked for 1.18 GB again, and it is the single most expensive thing
+ * in this file to get wrong.
+ */
+export function storedLegacyArchive(): Record<string, unknown> {
+  return {
+    'ourhike:corridor-archive': new Blob([new Uint8Array(SEGMENT_BYTES.flat())], {
+      type: 'application/octet-stream',
+    }),
+  }
+}
+
+/**
+ * A phone that finished its download AFTER #553: segments in generation 0 plus
+ * the completion marker that says which generation is whole.
+ *
+ * Generation 0 rather than 1 because a first download writes there - a phone
+ * only reaches generation 1 by re-downloading over a working archive.
+ */
+export function storedSegmentedArchive(): Record<string, unknown> {
+  return {
+    'ourhike:corridor-archive:g0:0': new Blob([new Uint8Array(SEGMENT_BYTES[0])]),
+    'ourhike:corridor-archive:g0:1': new Blob([new Uint8Array(SEGMENT_BYTES[1])]),
+    'ourhike:corridor-archive:g0:2': new Blob([new Uint8Array(SEGMENT_BYTES[2])]),
+    'ourhike:corridor-archive:complete': {
+      generation: 0,
+      segments: 3,
+      totalBytes: SEGMENT_BYTES.flat().length,
+    },
+  }
+}
+
+/**
+ * A phone caught mid-download before #553: bytes under `:partial`, with the
+ * resume records above pointing at them.
+ *
+ * Kept as a fixture even though the app deliberately DISCARDS this rather than
+ * adopting it - `archiveDownload.ts` argues that at length, and the short of it
+ * is that copying up to a gigabyte into segment 0 needs room for a second copy,
+ * which is the headroom failure #544 is about. What has to be true is that it is
+ * reclaimed rather than left behind: an orphaned 412 MB record that nothing will
+ * ever read is #554's failure wearing different clothes.
+ */
+export function storedLegacyPartial(): Record<string, unknown> {
+  return {
+    'ourhike:corridor-archive:partial': new Blob([new Uint8Array(SEGMENT_BYTES[0])]),
+  }
+}
+
+/** How many bytes the two finished-archive fixtures hold, so a test can assert
+ *  a size without restating the byte table. */
+export const STORED_ARCHIVE_BYTES = SEGMENT_BYTES.flat().length

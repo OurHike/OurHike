@@ -50,6 +50,26 @@ function absentStatus(packageKey: string): DownloadStatus {
 
 const NOT_DOWNLOADED: DownloadStatus = { state: 'not-downloaded' }
 
+/**
+ * What to put on the card for a failure, never nothing.
+ *
+ * `thrown.message` on its own was not enough, and the case that proved it is
+ * the one this whole path exists for: Chromium's `QuotaExceededError` carries
+ * an EMPTY message, so a Fine-tier download that the phone had no room for set
+ * the error to `''` - and the card rendered an empty alert above a button
+ * offering the same doomed download again (#544). archiveDownload.ts now
+ * translates that particular failure into a sentence with the numbers in it,
+ * but "an Error whose message says nothing" is a shape the platform can hand
+ * over from anywhere, so the fallback belongs here too.
+ */
+function describeFailure(thrown: unknown): string {
+  const message = thrown instanceof Error ? thrown.message.trim() : ''
+  return message === ''
+    ? 'The map download failed, and the phone gave no reason. Anything already ' +
+        'downloaded is untouched, and trying again is safe.'
+    : message
+}
+
 /** One package to hold state for: its store key, and where its bytes come
  *  from right now (the corridor sheet's URL follows the detail level, so
  *  this is not a constant). */
@@ -242,10 +262,7 @@ export function useArchiveDownloads(requests: readonly ArchiveDownloadRequest[])
         // map" with no explanation at all. "Nothing happened" is the one
         // answer that leaves someone with no idea whether to retry, wait, or
         // check their signal.
-        setError(
-          packageKey,
-          thrown instanceof Error ? thrown.message : 'The map download failed.',
-        )
+        setError(packageKey, describeFailure(thrown))
         const partial = await readDownloadProgress(packageKey)
         // absentStatus rather than a bare not-downloaded: a download that
         // failed before its first byte, on a phone whose previous archive was

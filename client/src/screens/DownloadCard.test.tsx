@@ -290,6 +290,16 @@ describe('a failure belongs to the download it happened to (#192)', () => {
     expect(screen.queryByRole('alert')).toBe(null)
   })
 
+  it('renders no alert for an error with nothing in it (#544)', () => {
+    // A browser error with no message - Chromium's QuotaExceededError has none
+    // - put an empty red box on the card, which reads as the app breaking
+    // rather than as the phone being full.
+    render(<DownloadCard {...PROPS} error="" />)
+
+    expect(screen.queryByRole('alert')).toBe(null)
+    expect(screen.getByRole('button', { name: /download the map/i })).toBeInTheDocument()
+  })
+
   it('keeps offering the button the failure was about', () => {
     // "Nothing happened" is the one answer that leaves someone with no idea
     // whether to retry: the reason is stated, and retrying stays one tap.

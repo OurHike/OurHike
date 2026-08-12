@@ -276,7 +276,29 @@ describe('useArchiveDownload when the download fails', () => {
       await result.current.start()
     })
 
-    expect(result.current.error).toBe('The map download failed.')
+    expect(result.current.error).toContain('The map download failed')
+    expect(result.current.error).toContain('trying again is safe')
+  })
+
+  it('says something when the browser throws an error with no message at all', async () => {
+    // The Fine-tier failure (#544): Chromium's QuotaExceededError carries an
+    // EMPTY message, so `thrown.message` set the card's error to '' and the
+    // card rendered an empty alert - a red box with nothing in it, over a
+    // button offering the same download again.
+    vi.mocked(downloadArchive).mockRejectedValue(
+      new DOMException('', 'QuotaExceededError'),
+    )
+
+    const { result } = renderHook(() =>
+      useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
+    )
+    await waitFor(() => expect(result.current.status.state).toBe('not-downloaded'))
+    await act(async () => {
+      await result.current.start()
+    })
+
+    expect(result.current.error).not.toBe('')
+    expect(result.current.error).toContain('gave no reason')
   })
 
   it('keeps the partial bytes visible as resumable', async () => {

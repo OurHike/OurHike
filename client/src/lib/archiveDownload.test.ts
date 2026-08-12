@@ -9,6 +9,7 @@ import {
   ARCHIVE_VERSION_KEY,
   ArchiveSizeMismatchError,
   ArchiveHashMismatchError,
+  ArchiveTooLargeError,
   readArchiveVersion,
 } from './archiveDownload'
 import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
@@ -1194,5 +1195,303 @@ describe('the artifact key is given, never guessed (#197)', () => {
     expect(mockedPublishedHash).toHaveBeenCalledWith('background_z13.pmtiles', {
       signal: undefined,
     })
+  })
+})
+
+// The failure a hiker reported against the Fine tier: 1.18 GB transferred, then
+// nothing saved (#544). Measured in real Chromium before any of this existed -
+// the archive is stored in ONE `set()` at the very end, and the Blob being
+// accumulated before that is not charged against the origin's quota, so the
+// browser has no reason to refuse until the last byte has arrived. What it
+// throws then is a QuotaExceededError with an EMPTY message, so the card
+// rendered a blank alert over a button offering the same doomed download again.
+//
+// Nothing here branches on platform, and neither did the failure: Chrome on
+// Android is where it was seen, and iOS Safari (where every browser is WebKit,
+// the per-origin allowance is around a gigabyte and `persist()` is not
+// implemented at all) reaches it sooner.
+describe('when the phone has no room for the archive (#544)', () => {
+  /** A quota rejection shaped like the platform's: no message at all. */
+  function quotaError(): DOMException {
+    return new DOMException('', 'QuotaExceededError')
+  }
+
+  function stubEstimate(quota: number, usage: number): void {
+    vi.stubGlobal('navigator', {
+      ...globalThis.navigator,
+      storage: { estimate: () => Promise.resolve({ quota, usage }) },
+    })
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('refuses before reading the body, so the data is never spent', async () => {
+    const store = withStore()
+    // 1.18 GB declared against 600 MB free - the reported case, in miniature.
+    stubEstimate(1_000_000_000, 400_000_000)
+    const fetchSpy = mockFetch({ chunks: [bytes(1, 2, 3)], totalBytes: 1_184_700_000 })
+
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow(ArchiveTooLargeError)
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    // Nothing stored, nothing half-kept: the transfer never started.
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
+    expect(store[ARCHIVE_PARTIAL_KEY]).toBeUndefined()
+  })
+
+  it('says both numbers and the way out, in a hiker’s units', async () => {
+    const error = new ArchiveTooLargeError(1_184_700_000, 400_000_000, 0)
+
+    expect(error.message).toContain('1.18 GB')
+    expect(error.message).toContain('400 MB')
+    expect(error.message).toContain('none of your data was spent')
+    expect(error.message).toContain('lighter detail level')
+    expect(error.requiredBytes).toBe(1_184_700_000)
+    expect(error.availableBytes).toBe(400_000_000)
+  })
+
+  it('counts the held partial on top, since both records exist at once', async () => {
+    // The finished archive is stored BEFORE the partial is discarded, so
+    // finishing a resume needs room for two copies of what it is finishing.
+    // 3 held + 3 remaining = 6, and the store has to hold 6 + 3 while the
+    // partial is still there.
+    withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([bytes(1, 2, 3)]),
+      [ARCHIVE_SOURCE_KEY]: { url: URL_ },
+    })
+    stubEstimate(100, 92) // 8 free: enough for the archive, not for both
+    mockFetch({ chunks: [bytes(4, 5, 6)], status: 206, totalBytes: 3 })
+
+    const thrown = await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, {
+      artifactKey: ARTIFACT,
+    }).catch((error: unknown) => error)
+
+    expect(thrown).toBeInstanceOf(ArchiveTooLargeError)
+    expect((thrown as ArchiveTooLargeError).requiredBytes).toBe(9)
+  })
+
+  it('goes ahead when the room is there', async () => {
+    const store = withStore()
+    stubEstimate(1_000_000_000, 0)
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeInstanceOf(Blob)
+  })
+
+  it('refuses nothing when the browser will not say how much room there is', async () => {
+    // No Storage API at all - old WebKit, and jsdom. Best-effort answers do not
+    // become refusals here, the same way they do not anywhere in storageHealth.
+    const store = withStore()
+    vi.stubGlobal('navigator', { ...globalThis.navigator, storage: undefined })
+    mockFetch({ chunks: [bytes(1, 2, 3)], totalBytes: 3 })
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeInstanceOf(Blob)
+  })
+
+  it('turns a quota refusal at the store into the same explained failure', async () => {
+    // The estimate is an estimate: a browser that rounds it generously, or a
+    // second tab that filled the origin meanwhile, still lands on the store -
+    // and an empty-message DOMException must not be what the hiker is shown.
+    withStore()
+    stubEstimate(1_000_000_000, 0)
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedSet.mockRejectedValueOnce(quotaError())
+
+    const thrown = await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, {
+      artifactKey: ARTIFACT,
+    }).catch((error: unknown) => error)
+
+    expect(thrown).toBeInstanceOf(ArchiveTooLargeError)
+    expect((thrown as Error).message).toContain('not enough room')
+  })
+
+  it('leaves a real failure at the store alone rather than blaming space', async () => {
+    withStore()
+    mockFetch({ chunks: [bytes(1, 2, 3)] })
+    mockedSet.mockRejectedValueOnce(new Error('the database is corrupt'))
+
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow('the database is corrupt')
+  })
+
+  it('reports the transfer’s own failure even when the partial cannot be kept', async () => {
+    // Quota is exactly the situation that produces a partial, so the write that
+    // keeps it can fail too - and its empty-message error must not replace the
+    // dropped connection the hiker actually needs to hear about.
+    withStore()
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(bytes(1, 2, 3))
+          controller.error(new Error('the connection dropped'))
+        },
+      })
+      return new Response(body, { status: 200, headers: new Headers() })
+    })
+    mockedSet.mockRejectedValue(quotaError())
+
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow('the connection dropped')
+  })
+})
+
+// A partial that holds the whole object was a permanent dead end (#544): every
+// resume asked for `bytes=<size>-`, every answer was 416, and the card offered
+// Resume forever over bytes that could never complete. Reachable three ways -
+// a drop after the last byte but before the stream closed, an abort at the
+// tail, or a body that ran longer than the declared length.
+describe('a resume the server answers 416 to (#544)', () => {
+  const WHOLE = bytes(1, 2, 3, 4)
+
+  it('finishes from the held bytes when they are the whole object', async () => {
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([WHOLE]),
+      [ARCHIVE_PROGRESS_KEY]: { receivedBytes: 4, totalBytes: 4 },
+      [ARCHIVE_SOURCE_KEY]: { url: URL_ },
+    })
+    mockedPublishedHash.mockResolvedValue(sha256Hex(WHOLE))
+    mockFetch({ chunks: [], status: 416, contentRange: 'bytes */4' })
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
+
+    const stored = store[CORRIDOR_ARCHIVE_KEY] as Blob
+    expect(new Uint8Array(await stored.arrayBuffer())).toEqual(WHOLE)
+    expect(store[ARCHIVE_PARTIAL_KEY]).toBeUndefined()
+    expect(await readArchiveVersion(CORRIDOR_ARCHIVE_KEY)).toBe(sha256Hex(WHOLE))
+  })
+
+  it('reports progress as complete rather than leaving the bar where it stopped', async () => {
+    withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([WHOLE]),
+      [ARCHIVE_SOURCE_KEY]: { url: URL_ },
+    })
+    mockFetch({ chunks: [], status: 416, contentRange: 'bytes */4' })
+    const onProgress = vi.fn()
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, {
+      artifactKey: ARTIFACT,
+      onProgress,
+    })
+
+    expect(onProgress).toHaveBeenLastCalledWith({ receivedBytes: 4, totalBytes: 4 })
+  })
+
+  it('keeps nothing when the held bytes are not the published archive', async () => {
+    // The length is right and the content is wrong, which is the one case where
+    // resuming onto what is held could only rebuild the same wrong file.
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([WHOLE]),
+      [ARCHIVE_SOURCE_KEY]: { url: URL_ },
+    })
+    mockedPublishedHash.mockResolvedValue(sha256Hex(bytes(9, 9, 9, 9)))
+    mockFetch({ chunks: [], status: 416, contentRange: 'bytes */4' })
+
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow(ArchiveHashMismatchError)
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
+    expect(store[ARCHIVE_PARTIAL_KEY]).toBeUndefined()
+  })
+
+  it('clears a partial longer than the object, so the next attempt is not stuck', async () => {
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([WHOLE]),
+      [ARCHIVE_PROGRESS_KEY]: { receivedBytes: 4, totalBytes: 4 },
+      [ARCHIVE_SOURCE_KEY]: { url: URL_ },
+    })
+    mockFetch({ chunks: [], status: 416, contentRange: 'bytes */3' })
+
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow('starts a fresh copy')
+
+    expect(store[ARCHIVE_PARTIAL_KEY]).toBeUndefined()
+    expect(store[ARCHIVE_PROGRESS_KEY]).toBeUndefined()
+    expect(store[ARCHIVE_SOURCE_KEY]).toBeUndefined()
+  })
+
+  it('clears a partial the server states no length for', async () => {
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([WHOLE]),
+      [ARCHIVE_SOURCE_KEY]: { url: URL_ },
+    })
+    mockFetch({ chunks: [], status: 416 })
+
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow('starts a fresh copy')
+
+    expect(store[ARCHIVE_PARTIAL_KEY]).toBeUndefined()
+  })
+
+  it('still fails plainly on a 416 with nothing held', async () => {
+    // Nothing was asked for by range, so this is the server being odd rather
+    // than a resume to rescue: the generic message is the honest one.
+    withStore()
+    mockFetch({ chunks: [], status: 416, contentRange: 'bytes */4' })
+
+    await expect(
+      downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT }),
+    ).rejects.toThrow('it answered 416')
+  })
+})
+
+describe('the room needed counts every record that will exist at once (#544)', () => {
+  function stubEstimate(quota: number, usage: number): void {
+    vi.stubGlobal('navigator', {
+      ...globalThis.navigator,
+      storage: { estimate: () => Promise.resolve({ quota, usage }) },
+    })
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('counts a partial the server ignored the range for, which is still on disk', async () => {
+    // 200 in reply to a Range request means the whole file is coming and the
+    // archive is rebuilt from zero - but the partial RECORD is not discarded
+    // until the finished bytes are stored, so its bytes are still occupying the
+    // quota when that write happens. Judged on the record being there, not on
+    // whether this attempt resumed onto it.
+    withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([bytes(1, 2, 3)]),
+      [ARCHIVE_SOURCE_KEY]: { url: URL_ },
+    })
+    stubEstimate(100, 92) // 8 free: room for the 6-byte archive, not for both
+    mockFetch({ chunks: [bytes(1, 2, 3, 4, 5, 6)], status: 200, totalBytes: 6 })
+
+    const thrown = await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, {
+      artifactKey: ARTIFACT,
+    }).catch((error: unknown) => error)
+
+    expect(thrown).toBeInstanceOf(ArchiveTooLargeError)
+    expect((thrown as ArchiveTooLargeError).requiredBytes).toBe(9)
+  })
+
+  it('counts nothing extra once an unusable partial has been discarded', async () => {
+    // A partial from a different URL is dropped before a byte is requested, so
+    // its bytes are not in the way of anything.
+    const store = withStore({
+      [ARCHIVE_PARTIAL_KEY]: new Blob([bytes(1, 2, 3)]),
+      [ARCHIVE_SOURCE_KEY]: { url: 'https://cdn.example.org/other.pmtiles' },
+    })
+    stubEstimate(100, 92) // 8 free, and the archive is 6
+    mockFetch({ chunks: [bytes(1, 2, 3, 4, 5, 6)], totalBytes: 6 })
+
+    await downloadArchive(CORRIDOR_ARCHIVE_KEY, URL_, { artifactKey: ARTIFACT })
+
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeInstanceOf(Blob)
   })
 })

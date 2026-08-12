@@ -265,9 +265,10 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
       lat: props.lat,
       lon: props.lon,
       // Only an explicit 'high' counts as verified. Anything else - a missing
-      // field, a value this build does not know - reads as low, which the
-      // legend shows as "Unverified". Guessing the other way would vouch for
-      // a water source nobody checked.
+      // field, a value this build does not know - reads as low, which the map
+      // draws with a broken rim, the waypoint card says in words, and the
+      // legend's "Verified?" filter takes off the screen. Guessing the other
+      // way would vouch for a water source nobody checked.
       confidence: props.confidence === 'high' ? 'high' : 'low',
       // Left off entirely when the artifact has none, rather than stored as a
       // placeholder string: the detail sheet decides whether to name a source

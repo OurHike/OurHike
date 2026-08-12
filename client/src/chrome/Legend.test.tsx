@@ -49,8 +49,9 @@ const PROPS = {
   onClose: vi.fn(),
 }
 
-// Exact accessible names throughout: "Water" and "Water · Unverified" are two
-// separate rows, and a loose regex would match both.
+// Exact accessible names throughout. A loose regex would match "Water" against
+// a row for any category whose label contains it, and the whole point of these
+// assertions is which row is which.
 function rowFor(name: string) {
   return screen.getByRole('listitem', { name })
 }
@@ -74,9 +75,11 @@ describe('Legend', () => {
   })
 
   it('counts what is in the viewport', () => {
+    // Three: two verified springs and the unverified one, which is counted
+    // here rather than split off into a row of its own.
     render(<Legend {...PROPS} />)
 
-    expect(rowFor('Water')).toHaveTextContent('2')
+    expect(rowFor('Water')).toHaveTextContent('3')
   })
 
   it('leaves out what is outside the viewport entirely', () => {
@@ -97,10 +100,18 @@ describe('Legend', () => {
     expect(screen.queryByRole('listitem', { name: 'Shelter' })).not.toBeInTheDocument()
   })
 
-  it('splits low-confidence points into their own "Unverified" row', () => {
+  it('folds unverified points into their category row instead of adding a second one', () => {
+    // The legend used to carry "Water · Unverified 1" beside "Water 2". Two
+    // rows per category doubled a panel whose columns are about 116px wide,
+    // wrapping half the labels onto a second line, and spent that room on a
+    // distinction a viewport count cannot act on. The map still draws the
+    // broken rim per pin and the waypoint card still says it in words.
     render(<Legend {...PROPS} />)
 
-    expect(rowFor('Water · Unverified')).toHaveTextContent('1')
+    expect(
+      screen.queryByRole('listitem', { name: /unverified/i }),
+    ).not.toBeInTheDocument()
+    expect(screen.getAllByRole('listitem', { name: 'Water' })).toHaveLength(1)
   })
 
   it('lists the blaze colours in view, with counts', () => {
@@ -134,6 +145,21 @@ describe('Legend', () => {
 
     expect(rowFor(label)).toHaveTextContent(/always shown/i)
   })
+
+  it.each(['Closure', 'Serious warning'])(
+    'gives the %s row the whole grid width to say it in',
+    (label) => {
+      // Caught by rendering the panel rather than by a test: a safety row
+      // carries the "Always shown" tag on top of everything an ordinary row
+      // carries, and once the icon took its 24px the tag was clipped mid-word
+      // in a ~116px column - on the two rows that must never look like a
+      // rendering accident.
+      render(<Legend {...PROPS} />)
+
+      expect(rowFor(label)).toHaveClass('legend__row--always')
+      expect(rowFor('Water')).not.toHaveClass('legend__row--always')
+    },
+  )
 
   it('shows an ordinary row as hidden once it has been toggled off', () => {
     // Pressed means SHOWN. The control used to be a separate "hide" dot, where
@@ -190,18 +216,13 @@ describe('legend icons are the map’s icons', () => {
     )
   })
 
-  it('breaks the rim on an unverified row, which is how the map says it', () => {
-    // The row already says "Unverified" in words. The map says the same thing
-    // with a dashed rim and nothing on screen connected the two, which left
-    // this panel teaching half of its own vocabulary.
-    render(<Legend {...PROPS} />)
-
-    expect(
-      iconIn(rowFor('Water · Unverified'))?.querySelector('.map-icon__edge'),
-    ).toHaveAttribute('stroke-dasharray')
-  })
-
-  it('leaves a verified rim unbroken', () => {
+  it('draws the solid-rimmed pin even where the row counts an unverified point', () => {
+    // A key says what a category's symbol IS. Now that a row counts both
+    // confidences, a rim that broke whenever the points in view happened to be
+    // unconfirmed would change the symbol as the hiker panned - and this
+    // fixture's water row holds an unverified spring, so the assertion has
+    // something to catch. The broken rim still means what it means on the map,
+    // one pin at a time, where it is a fact about a place.
     render(<Legend {...PROPS} />)
 
     expect(iconIn(rowFor('Water'))?.querySelector('.map-icon__edge')).not.toHaveAttribute(
@@ -267,7 +288,7 @@ describe('the whole legend row is the hide control', () => {
     const user = userEvent.setup()
     render(<Legend {...PROPS} />)
 
-    await user.click(within(rowFor('Water')).getByText('2'))
+    await user.click(within(rowFor('Water')).getByText('3'))
 
     expect(PROPS.onToggleType).toHaveBeenCalledWith('water')
   })
@@ -278,7 +299,7 @@ describe('the whole legend row is the hide control', () => {
 
     expect(button.querySelector('.legend__icon')).not.toBeNull()
     expect(button).toHaveTextContent('Water')
-    expect(button).toHaveTextContent('2')
+    expect(button).toHaveTextContent('3')
   })
 
   it('greys the row out while its category is off', () => {
@@ -298,6 +319,89 @@ describe('the whole legend row is the hide control', () => {
     render(<Legend {...PROPS} hiddenTypes={new Set(['closure'])} />)
 
     expect(rowFor('Closure')).not.toHaveClass('legend__row--hidden')
+  })
+})
+
+// --- The "Verified?" filter -----------------------------------------------
+//
+// What became of the "Unverified" rows. They doubled the grid to carry a
+// distinction a viewport count cannot act on; this carries the same fact as
+// one decision, under the rows rather than inside them.
+
+describe('the "Verified?" toggle', () => {
+  const FILTERED = { ...PROPS, onToggleVerifiedOnly: vi.fn() }
+
+  it('is not drawn at all where the shell offers no handler for it', () => {
+    // Same rule the downloads link follows: a control that does nothing is
+    // worse than one that is not there.
+    render(<Legend {...PROPS} />)
+
+    expect(screen.queryByRole('checkbox', { name: /verified/i })).not.toBeInTheDocument()
+  })
+
+  it('offers it under the rows, unchecked, when the shell can act on it', () => {
+    render(<Legend {...FILTERED} />)
+
+    expect(screen.getByRole('checkbox', { name: 'Verified?' })).not.toBeChecked()
+  })
+
+  it('asks the shell to flip it when tapped', async () => {
+    const user = userEvent.setup()
+    render(<Legend {...FILTERED} />)
+
+    await user.click(screen.getByRole('checkbox', { name: 'Verified?' }))
+
+    expect(FILTERED.onToggleVerifiedOnly).toHaveBeenCalledTimes(1)
+  })
+
+  it('takes unverified points out of the counts while it is on', () => {
+    // Three springs in this fixture, one of them unconfirmed. The count has to
+    // move with the filter or the panel is claiming a spring the map is not
+    // drawing.
+    render(<Legend {...FILTERED} verifiedOnly />)
+
+    expect(rowFor('Water')).toHaveTextContent('2')
+  })
+
+  it('still counts a safety row it cannot filter', () => {
+    render(<Legend {...FILTERED} verifiedOnly />)
+
+    expect(rowFor('Closure')).toBeInTheDocument()
+  })
+
+  it('says the filter emptied the panel, rather than that the map is empty', async () => {
+    // "Nothing here yet, pan or zoom out" is a false claim about a stretch
+    // with six unconfirmed springs on it, and it sends a hiker walking away
+    // from water.
+    render(
+      <Legend
+        {...FILTERED}
+        verifiedOnly
+        blazeCounts={[]}
+        points={[{ id: 'u', type: 'water', lat: 39.5, lon: -77.5, confidence: 'low' }]}
+      />,
+    )
+
+    expect(screen.getByText(/nothing here has been confirmed/i)).toBeInTheDocument()
+    expect(screen.queryByText(/pan or zoom out/i)).not.toBeInTheDocument()
+  })
+
+  it('stays on screen when it has emptied the panel, so it can be turned back off', async () => {
+    // A filter that hides itself along with everything else is a trap - the
+    // same trap a close button on a panel nothing reopens would be.
+    const user = userEvent.setup()
+    render(
+      <Legend
+        {...FILTERED}
+        verifiedOnly
+        blazeCounts={[]}
+        points={[{ id: 'u', type: 'water', lat: 39.5, lon: -77.5, confidence: 'low' }]}
+      />,
+    )
+
+    await user.click(screen.getByRole('checkbox', { name: 'Verified?' }))
+
+    expect(FILTERED.onToggleVerifiedOnly).toHaveBeenCalled()
   })
 })
 

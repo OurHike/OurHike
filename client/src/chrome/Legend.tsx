@@ -15,8 +15,12 @@
 //
 // Every row carries the icon the map draws for it, from map/MapIcon.tsx and
 // therefore from the map's own geometry rather than from a second drawing of
-// it. This panel is where a hiker learns that a dashed rim means nobody has
-// checked, so it is the one place the pin has to be the real pin.
+// it - a legend that approximates the map teaches a symbol the map does not
+// use, which is worse than a legend with no pictures in it.
+//
+// One row per category, never one per category per confidence: the reasoning
+// is on lib/legendContents.ts's LegendRow, and the consequence here is that
+// the pin drawn is the solid-rimmed one.
 
 import {
   computeLegendContents,
@@ -52,6 +56,18 @@ export interface LegendProps {
   blazeCounts: BlazeCount[]
   hiddenTypes: Set<string>
   onToggleType: (type: string) => void
+  /**
+   * Draw only waypoints somebody has confirmed exist.
+   *
+   * This is what became of the "Unverified" rows. They doubled the length of
+   * the grid to carry a distinction a viewport count cannot act on; one
+   * checkbox carries the same fact as a decision instead, and the counts above
+   * it move with it so the panel never claims more than the map is drawing.
+   *
+   * Never applies to closures or serious warnings - see legendContents.ts.
+   */
+  verifiedOnly?: boolean
+  onToggleVerifiedOnly?: () => void
   onClose: () => void
   /**
    * The stored background preference, and how to change it.
@@ -91,6 +107,8 @@ export function Legend({
   blazeCounts,
   hiddenTypes,
   onToggleType,
+  verifiedOnly = false,
+  onToggleVerifiedOnly,
   onClose,
   backgroundChoice,
   onChangeBackground,
@@ -102,8 +120,16 @@ export function Legend({
 }: LegendProps) {
   if (!open && !persistent) return null
 
-  const rows = computeLegendContents(bbox, points)
+  const rows = computeLegendContents(bbox, points, verifiedOnly)
   const isEmpty = rows.length === 0 && blazeCounts.length === 0
+
+  // An empty grid has two quite different causes and one of them is this
+  // panel's own doing. "Nothing here yet, pan or zoom out" is a false claim
+  // about a stretch with six unconfirmed springs on it, and it sends a hiker
+  // walking away from the water. Costs a second pass over the same points,
+  // only while the filter is on.
+  const emptiedByFilter =
+    verifiedOnly && rows.length === 0 && computeLegendContents(bbox, points).length > 0
 
   return (
     <div
@@ -139,9 +165,16 @@ export function Legend({
         />
       )}
 
-      {isEmpty && (
+      {isEmpty && !emptiedByFilter && (
         <p className="legend__empty">
           Nothing on this part of the map yet — pan or zoom out to see more.
+        </p>
+      )}
+
+      {emptiedByFilter && (
+        <p className="legend__empty">
+          Nothing here has been confirmed yet — turn Verified? off to see what is
+          reported.
         </p>
       )}
 
@@ -164,9 +197,7 @@ export function Legend({
       {rows.length > 0 && (
         <ul className="legend__pins">
           {rows.map((row) => {
-            const name = typeLabel(row.type)
-            const unverified = row.confidence === 'low'
-            const label = unverified ? `${name} · Unverified` : name
+            const label = typeLabel(row.type)
             const hidden = row.hideable && hiddenTypes.has(row.type)
 
             // The pin, the name and the count, in that order. On a hideable
@@ -177,11 +208,14 @@ export function Legend({
             // A tap on the word "Water" did nothing and said nothing.
             const face = (
               <>
-                <MapIcon
-                  className="legend__icon"
-                  type={row.type}
-                  confidence={row.confidence}
-                />
+                {/* No confidence passed, so this is the solid-rimmed pin. A key
+                    says what a category's symbol IS, and a symbol that changed
+                    its rim as you panned - broken here because the two springs
+                    in view happen to be unconfirmed, solid a mile later - would
+                    not be a key. The rim still means what it means on the map,
+                    one pin at a time, which is where it is a fact about
+                    something rather than about a rectangle. */}
+                <MapIcon className="legend__icon" type={row.type} />
                 <span className="legend__label">{label}</span>
                 <span className="legend__count">{row.count}</span>
               </>
@@ -189,8 +223,16 @@ export function Legend({
 
             return (
               <li
-                key={`${row.type}::${row.confidence}`}
-                className={hidden ? 'legend__row legend__row--hidden' : 'legend__row'}
+                key={row.type}
+                className={[
+                  'legend__row',
+                  // A safety row is wider than a column, because it carries an
+                  // "Always shown" tag on top of what every other row carries.
+                  row.hideable ? null : 'legend__row--always',
+                  hidden ? 'legend__row--hidden' : null,
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
                 aria-label={label}
               >
                 {row.hideable ? (
@@ -220,6 +262,23 @@ export function Legend({
             )
           })}
         </ul>
+      )}
+
+      {/* Under the grid rather than in it, because it is not a category: it
+          cuts across every row at once. Rendered whenever the shell offers the
+          handler and never gated on there being rows - a filter that empties
+          the panel and then disappears with it is a trap, and this one can
+          empty the panel. */}
+      {onToggleVerifiedOnly !== undefined && (
+        <label className="legend__verified">
+          <span className="legend__verified-name">Verified?</span>
+          <input
+            type="checkbox"
+            name="verified_only"
+            checked={verifiedOnly}
+            onChange={onToggleVerifiedOnly}
+          />
+        </label>
       )}
 
       {/* Last in the panel, and last on purpose. It is the only way to the

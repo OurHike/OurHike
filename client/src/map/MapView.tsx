@@ -34,7 +34,7 @@ import { attachElevationLabelUnits } from './liveTopo'
 import type { TerrainUrls } from './terrain'
 import { attachMapChrome, type ScaleUnits } from './mapChrome'
 import type { ResolvedTheme } from '../lib/theme'
-import { attachHiddenPoiTypes, attachPoiData, attachPoiIcons } from './poiLayers'
+import { attachPoiData, attachPoiFilter, attachPoiIcons } from './poiLayers'
 import { attachClosureData, type ClosureBand } from './closureLayers'
 import { attachWarningData, attachWarningIcon, type WarningPoint } from './warningLayers'
 import { attachPoiTaps } from './poiTaps'
@@ -73,6 +73,12 @@ export interface MapViewProps {
    * on the pin layer, so hiding a category costs a filter, not a rebuild.
    */
   hiddenTypes?: ReadonlySet<string>
+  /**
+   * The legend's "Verified?" toggle: draw only waypoints somebody has
+   * confirmed exist. Rides the same filter as {@link hiddenTypes} rather than
+   * a second one, so the two cannot fight over the layer.
+   */
+  verifiedOnly?: boolean
   /**
    * Closed stretches of trail, already in map coordinates.
    *
@@ -209,6 +215,7 @@ export function MapView({
   background = 'hiking_topo_live',
   pois = NO_POIS,
   hiddenTypes = NOTHING_HIDDEN,
+  verifiedOnly = false,
   closures = NO_CLOSURES,
   warnings = NO_WARNINGS,
   onSelectPoi,
@@ -466,8 +473,8 @@ export function MapView({
 
   useEffect(() => {
     if (map === null) return
-    return attachHiddenPoiTypes(map, hiddenTypes)
-  }, [map, hiddenTypes])
+    return attachPoiFilter(map, hiddenTypes, verifiedOnly)
+  }, [map, hiddenTypes, verifiedOnly])
 
   // The safety overlays, on the same three-clocks reasoning as the POIs above:
   // the warning pin image is built once, and the two datasets arrive from the

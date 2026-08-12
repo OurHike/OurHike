@@ -50,6 +50,8 @@ const PROPS = {
   blazeCounts: [{ blaze: 'White', count: 12 }],
   hiddenTypes: new Set<string>(),
   onToggleType: vi.fn(),
+  verifiedOnly: false,
+  onToggleVerifiedOnly: vi.fn(),
 
   searchOpen: false,
   onCloseSearch: vi.fn(),

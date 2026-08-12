@@ -4,12 +4,12 @@ import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { POI_TYPES } from '../lib/config'
 import { buildPoiIcons, poiIconId, UNKNOWN_POI_TYPE } from './poiIcons'
 import {
-  attachHiddenPoiTypes,
+  attachPoiFilter,
   attachPoiData,
   attachPoiIcons,
   buildPoiLayer,
   poiFeatureCollection,
-  poiTypeFilter,
+  poiFilter,
   POI_ICON_EXPRESSION,
   POI_ICON_SIZE_EXPRESSION,
   POI_ID_PROPERTY,
@@ -226,7 +226,7 @@ describe('poiFeatureCollection', () => {
 describe('hiding a category', () => {
   function passes(hidden: string[], type: string): boolean {
     const { filter } = featureFilter(
-      poiTypeFilter(new Set(hidden)) as never,
+      poiFilter(new Set(hidden)) as never,
       'layers[0].filter',
     )
     return filter(
@@ -255,9 +255,58 @@ describe('hiding a category', () => {
     // The filter is handed to MapLibre on every toggle; two orderings of the
     // same set producing two different filters would re-evaluate every feature
     // for no reason.
-    expect(poiTypeFilter(new Set(['water', 'campsite']))).toEqual(
-      poiTypeFilter(new Set(['campsite', 'water'])),
+    expect(poiFilter(new Set(['water', 'campsite']))).toEqual(
+      poiFilter(new Set(['campsite', 'water'])),
     )
+  })
+})
+
+describe('the "Verified?" filter', () => {
+  function passes(
+    confidence: 'high' | 'low',
+    verifiedOnly: boolean,
+    hidden: string[] = [],
+  ): boolean {
+    const { filter } = featureFilter(
+      poiFilter(new Set(hidden), verifiedOnly) as never,
+      'layers[0].filter',
+    )
+    return filter(
+      { zoom: 14 } as never,
+      { properties: poi('water', confidence), type: 1 } as never,
+      null as never,
+    )
+  }
+
+  it('draws both confidences while it is off', () => {
+    // Off is the default, and deliberately: an unconfirmed spring is still the
+    // best information anyone has about that spring.
+    expect(passes('high', false)).toBe(true)
+    expect(passes('low', false)).toBe(true)
+  })
+
+  it('drops exactly the unverified pins while it is on', () => {
+    expect(passes('high', true)).toBe(true)
+    expect(passes('low', true)).toBe(false)
+  })
+
+  it('composes with the hidden categories rather than replacing them', () => {
+    // Two controls, one filter. A verified spring in a hidden category stays
+    // hidden - if these were two filters the second write would win and the
+    // legend's category toggles would silently stop working.
+    expect(passes('high', true, ['water'])).toBe(false)
+    expect(passes('high', false, ['water'])).toBe(false)
+  })
+
+  it('keeps one expression shape whether it is on or off', () => {
+    // Same reasoning as the empty hidden set above: "showing everything" must
+    // not be a second code path that can drift from the one doing the work.
+    const off = poiFilter(new Set(), false) as unknown[]
+    const on = poiFilter(new Set(), true) as unknown[]
+
+    expect(off[0]).toBe('all')
+    expect(on[0]).toBe('all')
+    expect(off).toHaveLength(on.length)
   })
 })
 
@@ -383,9 +432,17 @@ describe('pushing all of it onto a live map', () => {
   it('applies the hidden set as a filter on the pin layer', () => {
     map.styleLoaded = true
 
-    attachHiddenPoiTypes(map as never, new Set(['water']))
+    attachPoiFilter(map as never, new Set(['water']))
 
-    expect(map.filters.get(POI_LAYER_ID)).toEqual(poiTypeFilter(new Set(['water'])))
+    expect(map.filters.get(POI_LAYER_ID)).toEqual(poiFilter(new Set(['water'])))
+  })
+
+  it('carries the "Verified?" toggle onto the same layer filter', () => {
+    map.styleLoaded = true
+
+    attachPoiFilter(map as never, new Set(['water']), true)
+
+    expect(map.filters.get(POI_LAYER_ID)).toEqual(poiFilter(new Set(['water']), true))
   })
 
   it('keeps the map alive when a write fails, and says so', () => {
@@ -400,7 +457,7 @@ describe('pushing all of it onto a live map', () => {
       throw new Error('style replaced mid-write')
     })
 
-    expect(() => attachHiddenPoiTypes(map as never, new Set(['water']))).not.toThrow()
+    expect(() => attachPoiFilter(map as never, new Set(['water']))).not.toThrow()
     expect(warn).toHaveBeenCalled()
   })
 
@@ -408,7 +465,7 @@ describe('pushing all of it onto a live map', () => {
     for (const detach of [
       attachPoiIcons(map as never),
       attachPoiData(map as never, []),
-      attachHiddenPoiTypes(map as never, new Set()),
+      attachPoiFilter(map as never, new Set()),
     ]) {
       detach()
     }

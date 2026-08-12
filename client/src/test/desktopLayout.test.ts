@@ -152,6 +152,18 @@ describe('desktop layout contract', () => {
     expect(block).toMatch(/display:\s*flex/)
   })
 
+  it('pushes the whole download block to the foot, not the link inside it', () => {
+    // The background choice and the way to the download are one block at the
+    // foot of the legend (chrome/Legend.tsx). Pushing only .downloads-link -
+    // which is what this rule used to do, back when the picker opened the
+    // panel - would put the full height of a desktop panel between the two
+    // halves of one question, which is the arrangement they were moved out of.
+    expect(css).toMatch(
+      /\.legend--persistent \.legend__downloads\s*\{[^}]*margin-top:\s*auto/,
+    )
+    expect(css).not.toMatch(/\.legend--persistent \.downloads-link\s*\{/)
+  })
+
   it('does not hide the legend close button without the component also dropping it', () => {
     // Belt and braces, and the test says so: the CSS hides the control and the
     // component omits it. Either alone would leave a release where a panel

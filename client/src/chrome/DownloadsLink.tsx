@@ -8,14 +8,20 @@
 // goes: present, not competing.
 //
 // It began directly under the background picker, on the grounds that the
-// picker is the only control in the app that mentions the downloaded map. The
-// reasoning was right and the placement was not: the picker is the FIRST thing
-// in the legend, so a link beneath it sat near the top of the panel - prime
-// space for a rare errand. What that placement was buying is kept in words
-// instead. The picker's own note already says a download is what makes
-// "downloaded only" mean anything, and choosing that background with an empty
-// phone opens the window on its own (App.tsx), so nobody has to find this link
-// to get there.
+// picker is the only other control in the app that mentions the downloaded
+// map. The pairing was right and the position was not: the picker was the
+// FIRST thing in the legend then, so a link beneath it sat near the top of the
+// panel - prime space for a rare errand. Separating them cost the pairing, and
+// for a while the legend answered "which background" at one end and "how do I
+// get one" at the other. The picker came down to meet it instead: in the
+// legend the two are one block at the foot (chrome/Legend.tsx), which is the
+// arrangement this comment first described, at the end of the panel rather
+// than the start of it.
+//
+// In Settings they are still apart - the picker belongs to "The map" group
+// there, under a heading, and the screen scrolls - and that is fine, because a
+// settings screen is read top to bottom by someone already looking for a
+// setting.
 //
 // One component in two homes - the legend and Settings - rather than a copy in
 // each, for the same reason BackgroundPicker is one component: two copies of a

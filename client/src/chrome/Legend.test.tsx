@@ -471,7 +471,55 @@ describe('legend as a persistent panel', () => {
     )
 
     const link = screen.getByRole('button', { name: /choose what to download/i })
-    expect(container.querySelector('.legend')?.lastElementChild).toBe(link)
+    const foot = container.querySelector('.legend')?.lastElementChild
+    expect(foot).toHaveClass('legend__downloads')
+    expect(foot?.lastElementChild).toBe(link)
+  })
+
+  it('keeps the background choice with the download, not at the top of the panel', () => {
+    // The two ends of one question: "Downloaded" draws the corridor archive,
+    // and that link is where a corridor archive comes from. The picker used to
+    // open the panel, so a hiker who chose a background this phone had no map
+    // for read the note saying so and then had to scroll past every legend row
+    // to do anything about it. Asserted as adjacency inside one block, because
+    // "both are somewhere in the panel" is what was already true.
+    const { container } = render(
+      <Legend
+        {...PROPS}
+        onOpenDownloads={vi.fn()}
+        backgroundChoice="usgs_topo_offline"
+        onChangeBackground={vi.fn()}
+      />,
+    )
+
+    const foot = container.querySelector('.legend__downloads')
+    expect(
+      within(foot as HTMLElement).getByRole('radio', { name: /downloaded/i }),
+    ).toBeVisible()
+    expect(
+      within(foot as HTMLElement).getByRole('button', {
+        name: /choose what to download/i,
+      }),
+    ).toBeVisible()
+  })
+
+  it('starts the panel with what is in view, not with a control', () => {
+    // The daily question gets the top. A hiker opens this all day to ask what
+    // is around them and a handful of times ever to change what is on the
+    // phone. Asserted against the pin grid rather than the head, since the
+    // heading is not what moved.
+    const { container } = render(
+      <Legend
+        {...PROPS}
+        onOpenDownloads={vi.fn()}
+        backgroundChoice="hiking_topo_live"
+        onChangeBackground={vi.fn()}
+      />,
+    )
+
+    const pins = container.querySelector('.legend__pins')
+    const picker = container.querySelector('.bg-picker')
+    expect(pins!.compareDocumentPosition(picker!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
   })
 
   it('draws no such link where there is no window to open', () => {

@@ -150,6 +150,11 @@ export function Legend({
   const emptiedByFilter =
     verifiedOnly && rows.length === 0 && computeLegendContents(bbox, points).length > 0
 
+  // Gates the wrapper only. The picker's own two props are re-checked where it
+  // is drawn, because that is what narrows them from optional to present - and
+  // an empty block would still take the desktop panel's `margin-top: auto`.
+  const hasPicker = backgroundChoice !== undefined && onChangeBackground !== undefined
+
   return (
     <div
       className={persistent ? 'legend legend--persistent' : 'legend'}
@@ -171,23 +176,14 @@ export function Legend({
         )}
       </div>
 
-      {/* First, above the counts. The background is the largest thing on the
-          screen and the counts describe what is drawn on top of it, so the
-          question "what am I looking at" is answered in that order. */}
-      {backgroundChoice !== undefined && onChangeBackground !== undefined && (
-        <BackgroundPicker
-          value={backgroundChoice}
-          onChange={onChangeBackground}
-          override={backgroundOverride}
-          belowArchiveZoom={belowArchiveZoom}
-          idPrefix="legend"
-        />
-      )}
-
       {/* Below the pin zoom this panel used to render the sentence below, which
           at the opening view is false in both halves: there is plenty here, and
           zooming OUT is the wrong direction (#528). Checked first, so the true
-          sentence wins over the general one. */}
+          sentence wins over the general one.
+
+          The background picker used to sit above this and now sits at the foot of
+          the panel with the downloads link (#583) - the daily question keeps the
+          top. Nothing here moved it back. */}
       {belowPoiZoom && rows.length === 0 && (
         <p className="legend__empty">
           Waypoints are drawn from a closer zoom. Zoom in to see what is along this
@@ -331,17 +327,44 @@ export function Legend({
         </label>
       )}
 
-      {/* Last in the panel, and last on purpose. It is the only way to the
-          download (chrome/DownloadsLink.tsx), which makes it worth having
-          here and does not make it worth the top of a panel someone opens all
-          day to answer a different question. On a desktop the panel is full
-          height and this is pushed to the foot of it - see desktop.css. */}
-      {onOpenDownloads !== undefined && (
-        <DownloadsLink
-          onOpen={onOpenDownloads}
-          hasDownload={hasDownload}
-          downloadActivity={downloadActivity}
-        />
+      {/* THE DOWNLOADED MAP, ALL OF IT, IN ONE BLOCK AT THE FOOT.
+          The background choice used to open the panel and the way to the
+          download has always closed it, which put the two ends of one question
+          at the two ends of the panel: "Downloaded" draws the corridor archive
+          and nothing else, and the link below is where a corridor archive comes
+          from. Choosing a background this phone has no map to honour meant
+          reading the note that says so, then scrolling past every legend row to
+          reach the only control that fixes it. They are one errand and they sit
+          together now, with the picker's own notes - "nothing is downloaded
+          yet", "your download starts closer in than this" - landing directly
+          above the link that answers them.
+
+          Last, and the legend rows start the panel because of it. A hiker opens
+          this all day to ask what is around them and a handful of times ever to
+          change what is on the phone, so the daily question keeps the top. On a
+          desktop the panel is full height and this whole block is pushed to the
+          bottom of it - see desktop.css, which pushes the block rather than the
+          link precisely so the two do not come apart again. */}
+      {(hasPicker || onOpenDownloads !== undefined) && (
+        <div className="legend__downloads">
+          {backgroundChoice !== undefined && onChangeBackground !== undefined && (
+            <BackgroundPicker
+              value={backgroundChoice}
+              onChange={onChangeBackground}
+              override={backgroundOverride}
+              belowArchiveZoom={belowArchiveZoom}
+              idPrefix="legend"
+            />
+          )}
+
+          {onOpenDownloads !== undefined && (
+            <DownloadsLink
+              onOpen={onOpenDownloads}
+              hasDownload={hasDownload}
+              downloadActivity={downloadActivity}
+            />
+          )}
+        </div>
       )}
     </div>
   )

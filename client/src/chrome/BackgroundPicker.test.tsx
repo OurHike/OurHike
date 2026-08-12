@@ -126,11 +126,14 @@ describe('BackgroundPicker', () => {
   })
 
   it('carries no download control of its own', () => {
-    // It briefly did, on the grounds that this is the only control that
+    // It briefly did, on the grounds that this is the only other control that
     // mentions the downloaded map - which put a once-a-season errand at the
-    // top of the legend. The link moved to the foot of the panel
-    // (chrome/DownloadsLink.tsx); what is left here is a background choice and
-    // nothing else.
+    // top of the legend, where this picker then sat. Both are at the foot of
+    // that panel now and still two controls: the link is its own component
+    // (chrome/DownloadsLink.tsx), rendered beside this one by the legend, and
+    // what is left here is a background choice and nothing else. A picker that
+    // grew its own download button would be a second route to the window for
+    // Settings to draw as well.
     render(<BackgroundPicker value="usgs_topo_offline" onChange={vi.fn()} />)
 
     expect(screen.queryByRole('button')).toBeNull()

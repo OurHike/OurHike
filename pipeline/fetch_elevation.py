@@ -81,10 +81,10 @@ import re
 from pathlib import Path
 
 import duckdb
-import requests
 
 from lib.completeness import fail_if_incomplete
 from lib.corridor import build_corridor
+from lib.http_retry import request_with_retry
 
 ROOT = Path(__file__).parent
 # The source line build_corridor() buffers into the 'corridor' table fresh
@@ -127,6 +127,15 @@ TNM_API_URL = "https://tnmaccess.nationalmap.gov/api/v1/products"
 # directly. A move back to 1 m is a ~40x change and should be deliberate.
 DATASET = "National Elevation Dataset (NED) 1/3 arc-second"
 PAGE_SIZE = 1000
+
+# How patient to be with USGS's catalogue. Longer than lib/http_retry.py's
+# default ladder on purpose (#536): this call is made once per corridor cell,
+# 51 times, and it runs after fetching sources, exporting trail lines, POIs
+# and spurs - so the cost of giving up is the whole publish, not one request.
+# A 504 from tnmaccess.nationalmap.gov threw away exactly that, on the FIRST
+# cell, 35 seconds in. Roughly two minutes of waiting spread over four
+# attempts is cheap against an hour of build.
+TNM_BACKOFF_SECONDS = (5, 15, 45, 60)
 
 CELL_DEGREES = 1.0
 
@@ -172,7 +181,7 @@ def list_products_for_cell(cell: tuple[float, float, float, float]) -> list[dict
     items = []
     offset = 0
     while True:
-        resp = requests.get(
+        resp = request_with_retry(
             TNM_API_URL,
             params={
                 "bbox": f"{xmin},{ymin},{xmax},{ymax}",
@@ -182,8 +191,9 @@ def list_products_for_cell(cell: tuple[float, float, float, float]) -> list[dict
                 "offset": offset,
             },
             timeout=60,
+            backoff=TNM_BACKOFF_SECONDS,
+            label=f"TNM cell {xmin:.2f},{ymin:.2f}",
         )
-        resp.raise_for_status()
         data = resp.json()
         batch = data.get("items", [])
         items.extend(batch)

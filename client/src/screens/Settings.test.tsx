@@ -3,6 +3,7 @@ import { render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Settings } from './Settings'
 import { BACKGROUND_SOURCES, DEFAULT_PREFERENCES } from '../lib/userPreferences'
+import { HIDEABLE_TYPES } from '../lib/waypointVisibility'
 
 // WIREFRAMES.md §10. Five groups, one canonical UserPreferences model.
 //
@@ -38,6 +39,12 @@ afterEach(() => {
   cleanup()
   vi.clearAllMocks()
 })
+
+/** Settings with the props overridden, for the tests that care about one of
+ *  them - the file otherwise spreads PROPS directly. */
+function renderSettings(overrides: Partial<typeof PROPS>) {
+  return render(<Settings {...PROPS} {...overrides} />)
+}
 
 describe('Settings', () => {
   it('lays out the groups WIREFRAMES.md names', () => {
@@ -534,5 +541,67 @@ describe('the location switch (#312)', () => {
     await user.click(screen.getByRole('checkbox', { name: /use my location/i }))
 
     expect(PROPS.onChange).toHaveBeenCalledWith({ location_permission_requested: false })
+  })
+})
+
+// The full category list (#530). WIREFRAMES.md §2 has always put it here rather
+// than in the legend, and the reason is one of the three consequences that issue
+// lists: the legend's rows are per-viewport by design, so a category with no
+// points in view has no row there and could not be turned back on.
+describe('waypoints shown', () => {
+  it('lists every hideable category', () => {
+    renderSettings({ preferences: { ...DEFAULT_PREFERENCES, waypoint_types_shown: [] } })
+
+    const group = within(screen.getByRole('group', { name: /waypoints shown/i }))
+    expect(group.getAllByRole('checkbox').length).toBe(HIDEABLE_TYPES.length)
+  })
+
+  it('shows every category as on when the preference is empty', () => {
+    // `[]` means all, which is what a fresh install has.
+    renderSettings({ preferences: { ...DEFAULT_PREFERENCES, waypoint_types_shown: [] } })
+
+    const group = within(screen.getByRole('group', { name: /waypoints shown/i }))
+    for (const box of group.getAllByRole('checkbox')) expect(box).toBeChecked()
+  })
+
+  it('writes the preference when a category is turned off', async () => {
+    const onChange = vi.fn()
+    renderSettings({
+      preferences: { ...DEFAULT_PREFERENCES, waypoint_types_shown: [] },
+      onChange,
+    })
+
+    const group = within(screen.getByRole('group', { name: /waypoints shown/i }))
+    await userEvent.click(group.getByRole('checkbox', { name: /privy/i }))
+
+    // Through the same `onChange` path every other preference here uses, so it
+    // persists and syncs rather than being the one control that forgets.
+    const patch = onChange.mock.calls[0][0] as { waypoint_types_shown: string[] }
+    expect(patch.waypoint_types_shown).not.toContain('privy')
+    expect(patch.waypoint_types_shown).toContain('water')
+  })
+
+  it('offers no way to hide a safety layer', () => {
+    // Absent rather than listed-and-disabled, which is how the rule is kept.
+    renderSettings({ preferences: { ...DEFAULT_PREFERENCES, waypoint_types_shown: [] } })
+
+    const group = within(screen.getByRole('group', { name: /waypoints shown/i }))
+    expect(group.queryByRole('checkbox', { name: /closure/i })).not.toBeInTheDocument()
+    expect(
+      group.queryByRole('checkbox', { name: /serious warning/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('reflects a category that is already hidden', () => {
+    renderSettings({
+      preferences: {
+        ...DEFAULT_PREFERENCES,
+        waypoint_types_shown: HIDEABLE_TYPES.filter((type) => type !== 'privy'),
+      },
+    })
+
+    const group = within(screen.getByRole('group', { name: /waypoints shown/i }))
+    expect(group.getByRole('checkbox', { name: /privy/i })).not.toBeChecked()
+    expect(group.getByRole('checkbox', { name: /water/i })).toBeChecked()
   })
 })

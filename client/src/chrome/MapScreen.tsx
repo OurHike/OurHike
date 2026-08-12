@@ -130,6 +130,13 @@ export interface MapScreenProps {
   blazeCounts: BlazeCount[]
   hiddenTypes: Set<string>
   onToggleType: (type: string) => void
+  /** One tap to show a single category, and the way back from it (#530). Passed
+   *  to the legend, where the rows are. */
+  onOnlyType?: (type: string) => void
+  onShowAllTypes?: () => void
+  /** The stored preference itself, so the panel can say what is filtered - the
+   *  price of the filter persisting across a pan. */
+  typesShown?: readonly string[]
   /** The legend's "Verified?" filter. Handed to the legend and to the map from
    *  here, so the counts in the panel and the pins on the canvas are one
    *  decision rather than two that can drift. */
@@ -292,6 +299,9 @@ export function MapScreen({
   blazeCounts,
   hiddenTypes,
   onToggleType,
+  onOnlyType,
+  onShowAllTypes,
+  typesShown,
   verifiedOnly,
   onToggleVerifiedOnly,
   selectedPoi,
@@ -493,6 +503,9 @@ export function MapScreen({
             blazeCounts={blazeCounts}
             hiddenTypes={hiddenTypes}
             onToggleType={onToggleType}
+            onOnlyType={onOnlyType}
+            onShowAllTypes={onShowAllTypes}
+            typesShown={typesShown}
             verifiedOnly={verifiedOnly}
             onToggleVerifiedOnly={onToggleVerifiedOnly}
             onClose={onCloseLegend}

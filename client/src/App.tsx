@@ -63,6 +63,12 @@ import { CORRIDOR_ARCHIVE_URL } from './map/protocol'
 import { DATA_CONFIGURED } from './lib/config'
 import { loadPreferences, savePreferences } from './lib/preferences'
 import {
+  hiddenTypesFrom,
+  onlyType,
+  showAllTypes,
+  toggleType,
+} from './lib/waypointVisibility'
+import {
   DEFAULT_PREFERENCES,
   type BackgroundSource,
   type HikingDetailLevel,
@@ -322,7 +328,15 @@ function App() {
   // or closes itself, instead of the card going on showing a copy of data the
   // app no longer holds.
   const [selectedPoiId, setSelectedPoiId] = useState<string | null>(null)
-  const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set())
+  // Derived from the STORED preference rather than held in a `useState` (#530).
+  // `waypoint_types_shown` had been declared in the preferences model, in the
+  // backend schema and in IDENTITY_AND_PRIVACY.md's canonical model since long
+  // before this control, and was read by nothing - so hiding privies lasted
+  // until the next reload and never reached an account.
+  const hiddenTypes = useMemo(
+    () => hiddenTypesFrom(preferences.waypoint_types_shown),
+    [preferences.waypoint_types_shown],
+  )
   // The legend's "Verified?" filter. Off by default: an unconfirmed spring is
   // still the best information anyone has about that spring, and a first run
   // that quietly withheld it would be the app deciding for a hiker what they
@@ -1455,14 +1469,32 @@ function App() {
 
   const handleClosePoi = useCallback(() => setSelectedPoiId(null), [])
 
-  const handleToggleType = useCallback((type: string) => {
-    setHiddenTypes((current) => {
-      const next = new Set(current)
-      if (next.has(type)) next.delete(type)
-      else next.add(type)
-      return next
-    })
-  }, [])
+  // Through the same `updatePreferences` path every other map preference uses,
+  // so this one persists and syncs like the rest of them rather than being the
+  // one control that forgets (#530).
+  const handleToggleType = useCallback(
+    (type: string) => {
+      updatePreferences({
+        waypoint_types_shown: toggleType(preferences.waypoint_types_shown, type),
+      })
+    },
+    [preferences.waypoint_types_shown, updatePreferences],
+  )
+
+  /** One tap to show a single category - the control this issue is worth
+   *  building for. At a crowded zoom it is the difference between four water
+   *  pins drawn and forty, and it answers "where is the next water" in two taps
+   *  rather than by zooming in and panning along the trail. */
+  const handleOnlyType = useCallback(
+    (type: string) => updatePreferences({ waypoint_types_shown: onlyType(type) }),
+    [updatePreferences],
+  )
+
+  /** The way out, which is what makes persisting the filter honest. */
+  const handleShowAllTypes = useCallback(
+    () => updatePreferences({ waypoint_types_shown: showAllTypes() }),
+    [updatePreferences],
+  )
 
   const handleToggleVerifiedOnly = useCallback(() => {
     setVerifiedOnly((current) => !current)
@@ -2049,6 +2081,9 @@ function App() {
           belowPoiZoom={belowPoiZoom}
           hiddenTypes={hiddenTypes}
           onToggleType={handleToggleType}
+          onOnlyType={handleOnlyType}
+          onShowAllTypes={handleShowAllTypes}
+          typesShown={preferences.waypoint_types_shown}
           verifiedOnly={verifiedOnly}
           onToggleVerifiedOnly={handleToggleVerifiedOnly}
           selectedPoi={selectedPoi}

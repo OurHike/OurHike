@@ -54,8 +54,9 @@ ALLOWED_EXTENSIONS = frozenset({"geojson", "fgb", "pmtiles", "json", "tif", "jpg
 # down, and withdrawal is a promise made to the hiker who shared it
 # (features/POI_PHOTOS.md). This prefix is mutable for exactly that reason.
 #
-# `conditions` holds the published safety data - verified closures now,
-# verified reports later (features/CONDITIONS_DELIVERY.md). Mutable and
+# `conditions` holds the published safety data - verified closures, verified
+# reports, and the ATC's own trail updates
+# (features/CONDITIONS_DELIVERY.md, features/ATC_TRAIL_UPDATES.md). Mutable and
 # overwritten in place, for the opposite reason to `photos`: a closure that
 # has reopened must stop being served, and a release folder written once and
 # never overwritten could only ever add a second answer beside the first.

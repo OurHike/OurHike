@@ -58,9 +58,15 @@ A new artifact family published by the existing pipeline, alongside the trail ex
 ```
 conditions/closures.json      verified closures
 conditions/reports.json       verified, publicly-visible reports
+conditions/atc_updates.json   the ATC's own trail notices
 ```
 
-Both referenced from `latest.json` with a sha256, exactly like every other artifact —
+The third arrives by a different road and [ATC_TRAIL_UPDATES.md](ATC_TRAIL_UPDATES.md) owns
+why: it is baked from a file in git that a person reviewed, not queried out of the database,
+so it needs no credential and carries a `reviewed_at` alongside the `generated_at` the other
+two make do with. Everything below about delivery applies to it unchanged.
+
+All three referenced from `latest.json` with a sha256, exactly like every other artifact —
 `pipeline/publish.py` (399 lines, with `lib/r2_keys.py` enforcing the key rules) already
 does this and needs an artifact added, not a mechanism built. That matters for **value #8's
 preference for boring technology**: this is not new machinery.

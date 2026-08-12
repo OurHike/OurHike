@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { closureBanner, nearestClosureBanner, closureReasonLabel } from './closureBanner'
+import {
+  closureBanner,
+  nearestClosure,
+  nearestClosureBanner,
+  closureReasonLabel,
+  type Closure,
+} from './closureBanner'
 
 // WIREFRAMES.md §7's header banner: "Trail closed 1.4 mi ahead · Storm damage
 // · mi 1,408.6 – 1,411.0".
@@ -199,5 +205,65 @@ describe('nearestClosureBanner', () => {
     }
 
     expect(nearestClosureBanner([reroute], 100, 'NOBO')).toContain('5.0 mi ahead')
+  })
+})
+
+function closure(overrides: Partial<Closure> = {}): Closure {
+  return { ...CLOSURE, ...overrides }
+}
+
+describe('nearestClosure', () => {
+  // Exported so the header's one banner line can be shared with the ATC's own
+  // notices (lib/atcUpdates.ts, #461). Comparing distances is what lets the
+  // nearer warning win without either source being ranked above the other.
+
+  it('reports how far ahead the winner is, not just which it is', () => {
+    const near = closure({ id: 'near', start_mile_marker: 12, end_mile_marker: 13 })
+    const far = closure({ id: 'far', start_mile_marker: 40, end_mile_marker: 41 })
+
+    const best = nearestClosure([far, near], 10, 'NOBO')
+
+    expect(best?.closure.id).toBe('near')
+    expect(best?.distance).toBeCloseTo(2, 5)
+  })
+
+  it('reports zero for a closure the hiker is standing in', () => {
+    // Zero has to sort ahead of every closure further up the trail, which a
+    // plain subtraction would lose to a negative number.
+    const best = nearestClosure(
+      [closure({ start_mile_marker: 10, end_mile_marker: 20 })],
+      15,
+      'NOBO',
+    )
+
+    expect(best?.distance).toBe(0)
+  })
+
+  it('answers null when everything is behind', () => {
+    expect(
+      nearestClosure([closure({ start_mile_marker: 1, end_mile_marker: 2 })], 10, 'NOBO'),
+    ).toBeNull()
+  })
+
+  it('ignores a reopened closure, exactly as the banner does', () => {
+    // The band and the banner must not disagree about what is closed.
+    const reopened = closure({
+      status: 'open',
+      start_mile_marker: 12,
+      end_mile_marker: 13,
+    })
+
+    expect(nearestClosure([reopened], 10, 'NOBO')).toBeNull()
+  })
+
+  it('agrees with the banner about which closure won', () => {
+    const near = closure({ id: 'near', start_mile_marker: 12, end_mile_marker: 13 })
+    const far = closure({ id: 'far', start_mile_marker: 40, end_mile_marker: 41 })
+
+    const best = nearestClosure([far, near], 10, 'NOBO')
+
+    expect(nearestClosureBanner([far, near], 10, 'NOBO')).toBe(
+      closureBanner(best!.closure, 10, 'NOBO'),
+    )
   })
 })

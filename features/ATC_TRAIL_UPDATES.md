@@ -274,19 +274,48 @@ already keeps `STALE` and `UNKNOWN` apart. A fifth marker here is a row, not a m
 
 ## Order of work
 
-1. **Ask ATC.** Not a blocker for the facts-only version, and the right thing to do first
-   anyway — SOURCE_REGISTRY.md's whole diagnosis is that this question gets asked too late.
-   A `steward`/`licence` entry for ATC in `sources.json` is where the answer lands.
-2. **Register the source.** ATC Trail Updates as a `sources.json` entry with `kind`,
-   `trust: authoritative`, and a freshness marker — proving SOURCE_REGISTRY.md's schema
-   against a thirteenth source that is not an ArcGIS layer.
-3. **Bake `conditions/atc_updates.json`** from a reviewed file in git, published by the
-   existing machinery.
-4. **Render it**, with ATC attribution, the outbound link, both dates, and the band-length
-   ceiling.
+1. ~~**Ask ATC.**~~ **Not done, and closed as such** (#458). The maintainer settled the
+   conservative version on their own judgement as an ATC trail volunteer, which is what the
+   `licence` field on `atc_trail_updates` now records: facts and a link, and no mirroring of
+   ATC's prose. The broader question — may we carry their body text, and what attribution
+   string do they want — is still unasked, and SOURCE_REGISTRY.md's diagnosis still applies
+   to it.
+2. ~~**Register the source.**~~ **Built.** The thirteenth `sources.json` entry and the first
+   that is not an ArcGIS layer, with `kind`, `trust: authoritative`, a `licence`, a steward,
+   and a freshness marker — the feed's ETag, compared against what the reviewer recorded, so
+   a STALE verdict means *go and re-read ATC's page* rather than *refetch*. `lib/source_registry.py`
+   is what reads `kind`; `fetch_all.py` skips anything that is not a feature layer.
+3. ~~**Bake `conditions/atc_updates.json`**~~ **Built.** `export_atc_updates.py` reads
+   `reference/atc_updates.json`, validates every row, and publishes through the existing
+   machinery. It refuses two ways, differently on purpose: an *unreviewed* file publishes
+   nothing and exits 0, and a *reviewed* file with a bad row publishes nothing and fails.
+4. ~~**Render it**~~ **Built.** `lib/atcUpdates.ts` adapts an update into the shared
+   `Closure` shape for geometry alone; `chrome/AtcUpdateSheet.tsx` carries ATC's name, both
+   dates and the outbound link; the banner names the ATC before anything else; the
+   band-length ceiling comes free with the shared path.
 5. **Then** the proposing job, once the reviewed-file path is proven by hand.
 
-Steps 3 and 4 are the useful ones and neither waits on step 1.
+**The rows are in**, reviewed 2026-08-12 against ATC's live page. Nine updates were posted
+and six are in `reference/atc_updates.json`; the three left out are Iron Mtn Gap
+(**reopened**, and stating five ranges accumulated over months of edits), the eleven-state
+severe-weather advisory, and the law-enforcement request — none of which is a place. A merged
+pull request is what releases them, which is where the human gate this document argues for
+actually sits.
+
+**What the map draws from that is mostly dots, and that is the second thing this build got
+wrong.** Five of the six name a single mile marker — a shelter, a footbridge, two bear
+warnings, a flooded section — and `trailSlice` widens a zero-length range to the two
+centerline vertices that bracket it, which at any zoom a hiker uses is a few dozen feet of
+invisible line. Drawn only as bands, the feature rendered nothing. So a point notice is now a
+dot (`trailPointAtMile`, and the circle layer in `lib/atcUpdateStyle.ts`) and only a real
+range becomes a band. **Exactly one of the six obstructs the trail** — the Harpers Ferry
+footbridge — so the map is one barrier and five dots, which is an honest picture of what the
+ATC is currently saying.
+
+**The VA Creeper closure this document quotes throughout was gone from ATC's page by
+2026-08-12.** Three days. That is the staleness argument here arriving as a measurement
+rather than as a caution, and it is why `reviewed_at` and the freshness marker are not
+decoration.
 
 ## Open questions
 
@@ -297,9 +326,33 @@ Steps 3 and 4 are the useful ones and neither waits on step 1.
   updates measure 0, 0, 0, 4.2, 9.2 and 398.4 miles, so more updates would not settle it
   either. Worth setting against what the map looks like at real zooms. The current value errs
   toward drawing, because a suppressed band buries nothing while the hiker keeps the banner.
-- **Where the suppressed ones go.** "List entry" has no surface yet; today an over-ceiling
-  update simply keeps its banner and loses its band. Step 4 below is where the list would be
-  built if it is built.
+- **Where the suppressed ones go.** "List entry" still has no surface: an update that loses
+  its band keeps its banner and nothing more. Two things reach that state rather than one —
+  an over-ceiling advisory, and an update that does not actually stop a hiker walking
+  through.
+
+  **The second was nearly got wrong, and the mistake is worth recording.** It was first
+  built as a rule over ATC's `category`: draw `Closure` and `Detour`, banner the rest. Live
+  data on 2026-08-12 killed that:
+
+  | Update | ATC's category | Is the trail passable? |
+  |---|---|---|
+  | Connecticut: Limestone Spring Shelter Closed | `Closure` | **yes** — the shelter is shut, the trail is not |
+  | Harpers Ferry: Footbridge Closure | `Detour` | **no** — the way across the Potomac is gone |
+
+  The only notice ATC files as `Closure` leaves the trail open, and the one thing that
+  genuinely stops a hiker is filed as `Detour`. The rule was wrong in both directions at
+  once: it would have drawn a barrier across open trail at Limestone Spring — a barrier a
+  hiker walks straight past, which is how they learn the barriers can be ignored — and it
+  caught the real obstruction only by luck. So it is now `obstructs_trail`, a field the
+  reviewer sets per row, and it sits with every other judgement this data needs rather than
+  being inferred. Which is the argument this document already makes about the mile ranges,
+  landing a second time somewhere nobody expected it.
+
+  A sixth category turned up in the same pass — **`Animal`**, carrying two live bear
+  warnings and absent from the five measured on 2026-08-09. The bake refused it, a person
+  looked, and the word was added. That is the "their HTML is not an API" cost above, arriving
+  as a one-line reviewed change rather than as a broken parse.
 - **Whether "reopened" updates should be ingested at all**, or whether ATC removing an update
   is the signal. An update that disappears from their page is not the same as one marked
   reopened, and `discover_sources.py`'s precedent — a vanished source is "kept, not deleted,

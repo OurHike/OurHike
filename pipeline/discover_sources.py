@@ -93,6 +93,7 @@ def main():
     layers, item_id = discover_layers(args.experience)
     print(f"Found {len(layers)} layers.")
 
+    registry = {}
     existing = {}
     if SOURCES_PATH.exists():
         registry = json.loads(SOURCES_PATH.read_text())
@@ -141,8 +142,22 @@ def main():
             "discovered_via": (f"Experience Builder app {item_id} -> Web Map item {layer['webmap_item']} -> operationalLayers"),
             "discovered_date": today,
         }
-        if "notes" in prior:
-            entry["notes"] = prior["notes"]
+        # Everything else the entry already carried, kept.
+        #
+        # This used to name `notes` and only `notes`, which quietly capped
+        # what a registry entry could hold at what discovery happened to know
+        # about: a field added by hand survived until the next discovery run
+        # and then vanished, with nothing said. features/SOURCE_REGISTRY.md
+        # asks for exactly such fields - a steward, a licence, a contact - on
+        # all twelve of these, so the old behaviour would have deleted the
+        # thing that document is for, on a run whose output nobody re-reads
+        # line by line because it is supposed to be mechanical (#459).
+        #
+        # Discovery owns the six keys above because it re-reads them from the
+        # layer, and only those. Anything else was written by a person and
+        # discovery has no opinion about it.
+        for field, value in prior.items():
+            entry.setdefault(field, value)
         new_sources.append(entry)
 
     missing_keys = set(existing) - seen_keys
@@ -150,7 +165,14 @@ def main():
         print(f"  WARNING: previously registered source '{key}' was not found in this app - kept as-is, check manually")
         new_sources.append(existing[key])
 
-    SOURCES_PATH.write_text(json.dumps({"_comment": REGISTRY_COMMENT, "sources": new_sources}, indent=2) + "\n")
+    # The registry's other top-level blocks, kept for the same reason the
+    # per-entry fields above are. `photo_licence` records the basis on which
+    # ATC's photos may be served at all - the answer to a question
+    # CONTRIBUTING.md says must be recorded rather than assumed - and it was
+    # being dropped on every discovery run, because this line named the two
+    # keys it wrote and rebuilt the document from those alone.
+    document = {key: value for key, value in registry.items() if key not in ("_comment", "sources")}
+    SOURCES_PATH.write_text(json.dumps({"_comment": REGISTRY_COMMENT, **document, "sources": new_sources}, indent=2) + "\n")
     print(f"Wrote {len(new_sources)} sources -> {SOURCES_PATH}")
 
 

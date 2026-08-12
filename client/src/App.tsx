@@ -76,7 +76,6 @@ import {
 } from './lib/downloadDetail'
 import { useArchiveDownloads } from './lib/useArchiveDownload'
 import { useDrawnPoiCounts } from './lib/useDrawnPoiCounts'
-import { zoomToFit } from './lib/zoomToFit'
 import { useAvailableBytes } from './lib/useAvailableBytes'
 import { useArchiveZooms } from './lib/useArchiveZooms'
 import { archiveCoversZoom } from './lib/archiveCoverage'
@@ -1429,18 +1428,6 @@ function App() {
   // MapLibre knows what it decided - see lib/useDrawnPoiCounts.ts.
   const { counts: drawnPoiCounts, belowPoiZoom } = useDrawnPoiCounts(map)
 
-  /** The other half of reporting a drop: going to a zoom where it stops being
-   *  one (#528). `easeTo` rather than `jumpTo` so the hiker keeps their bearings
-   *  - the point is a closer look at the stretch they were reading, not arrival
-   *  somewhere new. Reads the camera at press time rather than from state,
-   *  because the answer depends on where the map is NOW. */
-  const handleZoomToFit = useCallback(() => {
-    if (map === null) return
-    const target = zoomToFit(viewportPoints, map.getZoom(), map.getCenter().lat)
-    if (target === null) return
-    map.easeTo({ zoom: target })
-  }, [map, viewportPoints])
-
   // One thing open at a time. The waypoint card floats by its pin rather than
   // at the bottom where the legend sits, but the rule survives the move: two
   // dialogs at once means a screen-reader user in one with the other still
@@ -2050,7 +2037,6 @@ function App() {
           blazeCounts={[]}
           drawnCounts={drawnPoiCounts}
           belowPoiZoom={belowPoiZoom}
-          onZoomToFit={handleZoomToFit}
           hiddenTypes={hiddenTypes}
           onToggleType={handleToggleType}
           selectedPoi={selectedPoi}

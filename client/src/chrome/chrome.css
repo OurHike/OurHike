@@ -659,30 +659,7 @@
   background: color-mix(in srgb, var(--bg-raised) 82%, transparent);
   color: var(--fg-2);
   font-size: 11px;
-  border: 0;
-  font-family: inherit;
-  text-align: left;
-  /* A control now, so it must be tappable - the `pointer-events: none` this
-     carried while it was a caption would have made the button dead (#528). */
-  cursor: pointer;
-}
-.map-screen__dropped-action {
-  color: var(--brand-primary);
-  font-weight: 600;
-}
-
-/* The remedy in the header line (#528). A link rather than a boxed button: it
-   sits inside a sentence, and a 44 px control mid-paragraph would break the line
-   it belongs to. The whole line is the touch target on the canvas version, which
-   is the one a gloved thumb is aimed at. */
-.legend__zoom-to-fit {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--brand-primary);
-  font: inherit;
-  text-decoration: underline;
-  cursor: pointer;
+  pointer-events: none;
 }
 
 /* The header summary. Deliberately quieter than the rows it summarises. */

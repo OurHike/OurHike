@@ -1,17 +1,22 @@
 // Lets pmtiles read the downloaded corridor archive out of IndexedDB.
 //
 // The archive is one whole-corridor package (WIREFRAMES.md Known Deviations #1
-// - not a per-section list), stored as a Blob and read as byte ranges. Slicing
-// a Blob does not pull it into memory, so range reads stay cheap even against
-// the 1.18 GB Fine archive.
+// - not a per-section list), read as byte ranges. Slicing a Blob does not pull
+// it into memory, so range reads stay cheap even against the 1.18 GB Fine
+// archive.
+//
+// Where those bytes actually live is lib/archiveStore.ts's business, not this
+// file's: since #553 an archive is stored as append-only segment records, and
+// `readArchive` assembles them by reference into the same Blob this always
+// sliced. That is the whole reason the tile path did not have to change.
 //
 // This never falls back to the network. OurHike's premise is that the map works
 // with no signal at all (TECHNICAL_ARCHITECTURE.md), so a missing archive is a
 // real, reportable state - not something to paper over with empty bytes, which
 // would render a convincingly blank map and hide the actual problem.
 
-import { get } from 'idb-keyval'
 import type { RangeResponse, Source } from 'pmtiles'
+import { readArchive } from '../lib/archiveStore'
 
 export const CORRIDOR_ARCHIVE_KEY = 'ourhike:corridor-archive'
 
@@ -47,7 +52,7 @@ export class IndexedDbArchiveSource implements Source {
   private archive(): Promise<Blob> {
     if (this.handle !== null) return this.handle
 
-    this.handle = get(this.key)
+    this.handle = readArchive(this.key)
       .then((stored) => {
         if (!(stored instanceof Blob)) throw new ArchiveNotDownloadedError(this.key)
         return stored

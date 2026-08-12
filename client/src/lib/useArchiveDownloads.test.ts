@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { get, set, del } from 'idb-keyval'
 import { useArchiveDownloads } from './useArchiveDownload'
-import { partialKeyFor, progressKeyFor, sourceKeyFor } from './archiveDownload'
+import { progressKeyFor, sourceKeyFor } from './archiveDownload'
+import { readArchive, segmentKeyFor } from './archiveStore'
 
 // #192's acceptance, as tests: two packages downloaded, one deleted, one
 // resumed after an interrupted download - every state correct and reported
@@ -115,7 +116,7 @@ describe('holding several packages at once', () => {
   })
 
   it('deletes one package without touching the other’s bytes', async () => {
-    const store = withStore()
+    withStore()
     mockFetch({ [SHEET.url]: SHEET_BYTES, [TERRAIN.url]: TERRAIN_BYTES })
 
     const { result } = renderHook(() => useArchiveDownloads(BOTH))
@@ -130,8 +131,8 @@ describe('holding several packages at once', () => {
       await result.current.remove(SHEET.packageKey)
     })
 
-    expect(store[SHEET.packageKey]).toBeUndefined()
-    expect(store[TERRAIN.packageKey]).toBeInstanceOf(Blob)
+    expect(await readArchive(SHEET.packageKey)).toBeUndefined()
+    expect(await readArchive(TERRAIN.packageKey)).toBeInstanceOf(Blob)
     await waitFor(() => {
       expect(result.current.statusFor(SHEET.packageKey)).toEqual({
         state: 'not-downloaded',
@@ -145,10 +146,16 @@ describe('holding several packages at once', () => {
     // dropped. Resuming asks for the rest - it never starts again from zero,
     // which is the whole promise of WIREFRAMES.md `7a`.
     const held = new Blob([TERRAIN_BYTES.slice(0, 2)])
+    // Held as a segment record, which is where an interrupted transfer leaves
+    // its bytes since #553 - the checkpoints it wrote as they arrived.
     const store = withStore({
-      [partialKeyFor(TERRAIN.packageKey)]: held,
+      [segmentKeyFor(TERRAIN.packageKey, 0, 0)]: held,
       [progressKeyFor(TERRAIN.packageKey)]: { receivedBytes: 2, totalBytes: 6 },
-      [sourceKeyFor(TERRAIN.packageKey)]: { url: TERRAIN.url },
+      [sourceKeyFor(TERRAIN.packageKey)]: {
+        url: TERRAIN.url,
+        generation: 0,
+        segments: 1,
+      },
     })
     mockFetch({ [SHEET.url]: SHEET_BYTES, [TERRAIN.url]: TERRAIN_BYTES })
 
@@ -171,12 +178,16 @@ describe('holding several packages at once', () => {
       await result.current.resume(TERRAIN.packageKey)
     })
 
-    // The finished archive is the full six bytes: the four requested,
-    // appended to the two that were already here.
-    const finished = store[TERRAIN.packageKey] as Blob
-    expect(finished.size).toBe(TERRAIN_BYTES.length)
-    expect(new Uint8Array(await finished.arrayBuffer())).toEqual(TERRAIN_BYTES)
-    expect(store[partialKeyFor(TERRAIN.packageKey)]).toBeUndefined()
+    // The finished archive is the full six bytes: the four requested, appended
+    // to the two that were already here. Read through the accessor the map uses,
+    // because the archive is a run of segments named by a marker rather than one
+    // record.
+    const finished = await readArchive(TERRAIN.packageKey)
+    expect(finished?.size).toBe(TERRAIN_BYTES.length)
+    expect(new Uint8Array(await (finished as Blob).arrayBuffer())).toEqual(TERRAIN_BYTES)
+    // Nothing is left describing an in-flight transfer.
+    expect(store[progressKeyFor(TERRAIN.packageKey)]).toBeUndefined()
+    expect(store[sourceKeyFor(TERRAIN.packageKey)]).toBeUndefined()
   })
 
   it('reports a failure against the package that failed, and only that one', async () => {

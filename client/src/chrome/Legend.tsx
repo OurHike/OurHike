@@ -29,6 +29,7 @@ import {
 } from '../lib/legendContents'
 import { MapIcon } from '../map/MapIcon'
 import { blazePaintColor } from '../lib/blaze'
+import { filterSummary } from '../lib/waypointVisibility'
 import { typeLabel } from './legendLabels'
 import { BackgroundPicker } from './BackgroundPicker'
 import { DownloadsLink } from './DownloadsLink'
@@ -56,6 +57,23 @@ export interface LegendProps {
   blazeCounts: BlazeCount[]
   hiddenTypes: Set<string>
   onToggleType: (type: string) => void
+  /**
+   * Show this one category and nothing else (#530).
+   *
+   * The control that makes this preference worth having rather than tidy: hiding
+   * a category hands its collision budget to the ones left, so at a crowded zoom
+   * this is the difference between four water pins drawn and forty, and it
+   * answers "where is the next water" in two taps instead of by zooming in and
+   * panning along the trail.
+   *
+   * Omitted, no row offers it - a legend rendered without a shell to write the
+   * preference back to must not offer a control that goes nowhere.
+   */
+  onOnlyType?: (type: string) => void
+  /** Back to every category. */
+  onShowAllTypes?: () => void
+  /** The stored preference, which is what decides whether the way out shows. */
+  typesShown?: readonly string[]
   /**
    * Draw only waypoints somebody has confirmed exist.
    *
@@ -107,6 +125,9 @@ export function Legend({
   blazeCounts,
   hiddenTypes,
   onToggleType,
+  onOnlyType,
+  onShowAllTypes,
+  typesShown,
   verifiedOnly = false,
   onToggleVerifiedOnly,
   onClose,
@@ -121,6 +142,7 @@ export function Legend({
   if (!open && !persistent) return null
 
   const rows = computeLegendContents(bbox, points, verifiedOnly)
+  const filterNote = typesShown === undefined ? null : filterSummary(typesShown)
   const isEmpty = rows.length === 0 && blazeCounts.length === 0
 
   // An empty grid has two quite different causes and one of them is this
@@ -258,6 +280,27 @@ export function Legend({
                     <span className="legend__always">Always shown</span>
                   </>
                 )}
+
+                {/* A sibling of the row button, never inside it: the whole row
+                    is already the hide control, and a button within a button is
+                    invalid and unreachable by keyboard.
+
+                    Hiding one category and showing only one are different
+                    intents, and the second is the one a crowded zoom calls for -
+                    so this sits beside the toggle rather than replacing it.
+                    Never on a safety row: `hideable` is the same guard the
+                    toggle uses, so the affordance is not built there rather than
+                    built and disabled. */}
+                {row.hideable && onOnlyType !== undefined && (
+                  <button
+                    type="button"
+                    className="legend__only"
+                    onClick={() => onOnlyType(row.type)}
+                  >
+                    <span className="visually-hidden">{`Show only ${label}`}</span>
+                    <span aria-hidden="true">Only</span>
+                  </button>
+                )}
               </li>
             )
           })}
@@ -269,6 +312,30 @@ export function Legend({
           handler and never gated on there being rows - a filter that empties
           the panel and then disappears with it is a trap, and this one can
           empty the panel. */}
+      {/* What is filtered, and the way out. NOT gated on there being rows, for
+          exactly the reason the verified control below is not: "Only privies" in
+          a stretch with no privies empties this panel, and an exit that
+          disappears along with the rows is the trap that leaves.
+
+          The filter persists on purpose (lib/waypointVisibility.ts) - "where is
+          the next water" is answered by panning ALONG the trail with water alone
+          drawn, so one that dissolved on the first pan would undo itself exactly
+          when it started being useful. The price of persisting is that the state
+          is always on screen with an exit beside it. */}
+      {filterNote !== null && (
+        <p className="legend__filtered">
+          {filterNote}
+          {onShowAllTypes !== undefined && (
+            <>
+              {' · '}
+              <button type="button" className="legend__show-all" onClick={onShowAllTypes}>
+                Show all
+              </button>
+            </>
+          )}
+        </p>
+      )}
+
       {onToggleVerifiedOnly !== undefined && (
         <label className="legend__verified">
           <span className="legend__verified-name">Verified?</span>

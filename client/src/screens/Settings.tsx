@@ -36,6 +36,8 @@ import { BackgroundPicker } from '../chrome/BackgroundPicker'
 import { DownloadsLink } from '../chrome/DownloadsLink'
 import { REPORTER_TYPES } from '../lib/contributionFlow'
 import { MapDetailPicker } from './MapDetailPicker'
+import { typeLabel } from '../chrome/legendLabels'
+import { HIDEABLE_TYPES, hiddenTypesFrom, toggleType } from '../lib/waypointVisibility'
 import { MapStylePicker } from './MapStylePicker'
 import { ThemePicker } from './ThemePicker'
 import './settings.css'
@@ -263,6 +265,45 @@ export function Settings({
           value={preferences.layer_detail_level}
           onChange={(layer_detail_level) => onChange({ layer_detail_level })}
         />
+
+        {/* The full category list, which WIREFRAMES.md §2 has always put here
+            rather than in the legend: "Full 10-category list lives in Settings,
+            not here." The legend shows what is in the VIEWPORT, so a category
+            with no points in view has no row there and could not be turned back
+            on - which is the second of the three consequences #530 lists.
+
+            The safety layers are absent rather than listed-and-disabled, which is
+            how HIKER_SAFETY.md and MAP_OPTIONS.md §4 say to keep that rule:
+            lib/waypointVisibility.ts's HIDEABLE_TYPES excludes them, so there is
+            nothing here to build an affordance from. */}
+        <fieldset className="settings__waypoints">
+          <legend className="settings__label">Waypoints shown</legend>
+          {HIDEABLE_TYPES.map((type) => {
+            const shown = !hiddenTypesFrom(preferences.waypoint_types_shown).has(type)
+            return (
+              <label key={type} className="settings__row">
+                <span className="settings__label">{typeLabel(type)}</span>
+                <input
+                  type="checkbox"
+                  name={`waypoint-${type}`}
+                  checked={shown}
+                  onChange={() =>
+                    onChange({
+                      waypoint_types_shown: toggleType(
+                        preferences.waypoint_types_shown,
+                        type,
+                      ),
+                    })
+                  }
+                />
+              </label>
+            )
+          })}
+          <p className="settings__note">
+            Hiding a category hands its space on the map to the ones left, so the crowded
+            zooms draw more of what you did keep.
+          </p>
+        </fieldset>
 
         <label className="settings__row settings__row--later">
           <span className="settings__label">Roads &amp; walkability</span>

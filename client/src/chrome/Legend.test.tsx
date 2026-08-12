@@ -498,3 +498,100 @@ describe('legend as a persistent panel', () => {
     expect(screen.getByText('Downloading 25%')).toBeVisible()
   })
 })
+
+// Showing one category alone, and the stored preference behind it (#530). The
+// control is what makes `waypoint_types_shown` worth wiring rather than tidy:
+// hiding a category hands its collision budget to the ones left, so at a crowded
+// zoom this is four water pins drawn against forty.
+describe('showing one category alone', () => {
+  const bbox = { west: -1, south: -1, east: 1, north: 1 }
+  const points = [
+    { id: 'w1', type: 'water', lat: 0, lon: 0, confidence: 'high' as const },
+    { id: 'p1', type: 'privy', lat: 0, lon: 0.1, confidence: 'high' as const },
+    { id: 'c1', type: 'closure', lat: 0, lon: 0.2, confidence: 'high' as const },
+  ]
+
+  function renderLegend(props: {
+    onOnlyType?: (type: string) => void
+    onShowAllTypes?: () => void
+    typesShown?: readonly string[]
+  }) {
+    return render(
+      <Legend
+        open
+        bbox={bbox}
+        points={points}
+        blazeCounts={[]}
+        hiddenTypes={new Set()}
+        onToggleType={() => {}}
+        onClose={() => {}}
+        {...props}
+      />,
+    )
+  }
+
+  it('offers "only this" on a hideable row', async () => {
+    const onOnlyType = vi.fn()
+    renderLegend({ onOnlyType })
+
+    await userEvent.click(screen.getByRole('button', { name: /show only water/i }))
+
+    expect(onOnlyType).toHaveBeenCalledWith('water')
+  })
+
+  it('never offers it on a safety row', () => {
+    // The rule is kept by not building the affordance, which is how
+    // HIKER_SAFETY.md and MAP_OPTIONS.md §4 say to keep it - not by building it
+    // and disabling it.
+    renderLegend({ onOnlyType: vi.fn() })
+
+    expect(
+      screen.queryByRole('button', { name: /show only closure/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('offers nothing where there is nowhere to write the preference', () => {
+    renderLegend({})
+
+    expect(screen.queryByRole('button', { name: /show only/i })).not.toBeInTheDocument()
+  })
+
+  it('says what is filtered and offers the way back', async () => {
+    const onShowAllTypes = vi.fn()
+    renderLegend({ typesShown: ['water'], onShowAllTypes })
+
+    expect(screen.getByText(/showing water only/i)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /show all/i }))
+
+    expect(onShowAllTypes).toHaveBeenCalledTimes(1)
+  })
+
+  it('says nothing when nothing is filtered', () => {
+    renderLegend({ typesShown: [], onShowAllTypes: vi.fn() })
+
+    expect(screen.queryByText(/showing/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /show all/i })).not.toBeInTheDocument()
+  })
+
+  it('keeps the way out on screen even when the filter empties the panel', () => {
+    // THE TRAP THIS AVOIDS. "Only privies" in a stretch with no privies leaves no
+    // rows at all, and an exit gated on rows existing would disappear with them -
+    // the same reasoning the verified-only control already carries.
+    render(
+      <Legend
+        open
+        bbox={bbox}
+        points={[]}
+        blazeCounts={[]}
+        hiddenTypes={new Set()}
+        onToggleType={() => {}}
+        onClose={() => {}}
+        typesShown={['privy']}
+        onShowAllTypes={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /show all/i })).toBeInTheDocument()
+    expect(screen.getByText(/showing privy only/i)).toBeInTheDocument()
+  })
+})

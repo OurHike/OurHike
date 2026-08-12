@@ -41,7 +41,12 @@ export interface LegendRow {
   hideable: boolean
 }
 
-const NEVER_HIDEABLE = new Set(['closure', 'serious-warning'])
+/** The one guard on the safety layers, exported so lib/waypointVisibility.ts
+ *  filters every stored preference through the SAME set rather than a second
+ *  copy of it (#530). Closures and serious warnings have no hide affordance
+ *  anywhere in the app, and the way that rule is kept is that it is never
+ *  built (features/HIKER_SAFETY.md, features/MAP_OPTIONS.md §4). */
+export const NEVER_HIDEABLE = new Set(['closure', 'serious-warning'])
 
 function isWithin(point: MapPoint, bbox: BoundingBox): boolean {
   return (

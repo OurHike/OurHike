@@ -727,6 +727,42 @@
 
 /* Deliberately a plain label, not a disabled button. There is no off switch
    for a safety layer, so there is no control here to disable. */
+/* "Only this" (#530). A word rather than an icon: there is no glyph for "show
+   only this one" that a hiker reads correctly first time, and the row already
+   carries a pin, a name and a count competing for the same line. Sized to
+   --min-touch-target like the toggle it sits beside, because it is aimed at the
+   same gloved thumb. */
+.legend__only {
+  min-width: var(--min-touch-target);
+  min-height: var(--min-touch-target);
+  padding: 0 var(--space-2, 8px);
+  border: 0;
+  background: none;
+  color: var(--brand-primary);
+  font-family: inherit;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+/* What is filtered, and the way back. Above the verified control and under the
+   rows, and never hidden with them - see the comment in Legend.tsx. */
+.legend__filtered {
+  margin: var(--space-3, 12px) 0 0;
+  color: var(--fg-2);
+  font-size: 13px;
+}
+.legend__show-all {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--brand-primary);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .legend__always {
   font-size: 10px;
   color: var(--fg-3);

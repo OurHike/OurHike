@@ -288,3 +288,14 @@
   opacity: 0.5;
   cursor: default;
 }
+
+/* The full waypoint-category list (#530). A fieldset rather than a run of rows,
+   because the rows are one decision with many parts and a screen reader should
+   hear the group name before the first of them. Borderless: the section heading
+   above already frames it, and a second box inside a box reads as a nested
+   setting rather than a list. */
+.settings__waypoints {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}

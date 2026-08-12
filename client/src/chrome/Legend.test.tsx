@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Legend } from './Legend'
+import { HIDEABLE_TYPES } from '../lib/waypointVisibility'
 import { glyphPath, poiGlyphPath } from '../map/poiIcons'
 import { WARNING_GLYPH } from '../map/warningPin'
 import { CLOSURE_COLOR } from '../lib/closureStyle'
@@ -530,27 +531,34 @@ describe('showing one category alone', () => {
     )
   }
 
+  const wired = (extra: Parameters<typeof renderLegend>[0] = {}) => ({
+    onOnlyType: vi.fn(),
+    onShowAllTypes: vi.fn(),
+    ...extra,
+  })
+
+  /** The one control, by the name a screen reader gives it. */
+  const picker = () => screen.getByRole('combobox', { name: /showing waypoint types/i })
+
   it('offers one chooser rather than a button per row', async () => {
     // The whole point of the shape: the action is global, so it costs ONE line
     // here where it cost one control per row inline.
-    const onOnlyType = vi.fn()
-    renderLegend({ onOnlyType })
+    const props = wired()
+    renderLegend(props)
 
-    const chooser = screen.getByRole('combobox', { name: /show one waypoint type only/i })
-    await userEvent.selectOptions(chooser, 'water')
+    await userEvent.selectOptions(picker(), 'water')
 
-    expect(onOnlyType).toHaveBeenCalledWith('water')
+    expect(props.onOnlyType).toHaveBeenCalledWith('water')
   })
 
   it('never offers a safety layer in the chooser', () => {
     // The rule is kept by not building the affordance, which is how
     // HIKER_SAFETY.md and MAP_OPTIONS.md §4 say to keep it - not by building it
     // and disabling it.
-    renderLegend({ onOnlyType: vi.fn() })
+    renderLegend(wired())
 
-    const chooser = screen.getByRole('combobox', { name: /show one waypoint type only/i })
     expect(
-      within(chooser).queryByRole('option', { name: /closure/i }),
+      within(picker()).queryByRole('option', { name: /closure/i }),
     ).not.toBeInTheDocument()
   })
 
@@ -558,35 +566,80 @@ describe('showing one category alone', () => {
     // The second consequence #530 lists: the legend's rows are per-viewport, so a
     // category with nothing in view has no row and could not otherwise be reached
     // from this panel at all.
-    renderLegend({ onOnlyType: vi.fn() })
+    renderLegend(wired())
 
-    const chooser = screen.getByRole('combobox', { name: /show one waypoint type only/i })
-    expect(within(chooser).getByRole('option', { name: /shelter/i })).toBeInTheDocument()
+    expect(within(picker()).getByRole('option', { name: /shelter/i })).toBeInTheDocument()
   })
 
   it('offers nothing where there is nowhere to write the preference', () => {
     renderLegend({})
 
-    expect(screen.queryByRole('combobox', { name: /show one/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: /showing/i })).not.toBeInTheDocument()
   })
 
-  it('says what is filtered and offers the way back', async () => {
-    const onShowAllTypes = vi.fn()
-    renderLegend({ typesShown: ['water'], onShowAllTypes })
+  it('offers nothing when it could enter a filter but not leave one', () => {
+    // Both handlers are halves of ONE picker now: "All types" is the exit. Half
+    // a picker is the trap this issue is most able to build - a map filtered
+    // down to privies with nothing on the panel that undoes it.
+    renderLegend({ onOnlyType: vi.fn() })
 
-    expect(screen.getByText(/showing water only/i)).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: /show all/i }))
+    expect(screen.queryByRole('combobox', { name: /showing/i })).not.toBeInTheDocument()
+  })
 
-    expect(onShowAllTypes).toHaveBeenCalledTimes(1)
+  it('displays the filter rather than describing it beside a placeholder', () => {
+    // THE BUG THIS REPLACES. The control read "Show one only…" whatever the map
+    // was drawing, with a sentence next to it carrying the actual state - so the
+    // panel said the same thing twice, in two places, and the control's own value
+    // disowned it. A selected value cannot disagree with itself.
+    renderLegend(wired({ typesShown: ['water'] }))
+
+    expect(picker()).toHaveValue('water')
+    expect(
+      within(picker()).getByRole('option', { name: 'Water', selected: true }),
+    ).toBeInTheDocument()
+  })
+
+  it('offers the way back as the picker itself', async () => {
+    const props = wired({ typesShown: ['water'] })
+    renderLegend(props)
+
+    await userEvent.selectOptions(picker(), 'All types')
+
+    expect(props.onShowAllTypes).toHaveBeenCalledTimes(1)
+    expect(props.onOnlyType).not.toHaveBeenCalled()
   })
 
   it('says the map is unfiltered rather than saying nothing', () => {
-    // The line is the one place the mode lives, so it states the mode either way -
-    // and there is no exit to offer when there is nothing to exit from.
-    renderLegend({ typesShown: [], onShowAllTypes: vi.fn(), onOnlyType: vi.fn() })
+    // The control is the one place the mode lives, so it states the mode either
+    // way. "All types" is both the readout and the exit, which is why there is no
+    // second control to appear and disappear.
+    renderLegend(wired({ typesShown: [] }))
 
-    expect(screen.getByText(/showing all waypoints/i)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /show all/i })).not.toBeInTheDocument()
+    expect(
+      within(picker()).getByRole('option', { name: 'All types', selected: true }),
+    ).toBeInTheDocument()
+  })
+
+  it('reads several categories as a count rather than as one of them', async () => {
+    // Reachable only by toggling rows, so it is a readout and not a choice: there
+    // is no single tap that means "these three". Naming them would not fit the
+    // 272px panel either.
+    const props = wired({ typesShown: ['water', 'privy'] })
+    renderLegend(props)
+
+    const shown = within(picker()).getByRole('option', { selected: true })
+    expect(shown).toHaveTextContent(`2 of ${HIDEABLE_TYPES.length} types`)
+
+    // And it is not a category, so it must never reach the preference.
+    await userEvent.selectOptions(picker(), 'privy')
+    expect(props.onOnlyType).toHaveBeenCalledWith('privy')
+    expect(props.onOnlyType).not.toHaveBeenCalledWith(expect.stringContaining('of'))
+  })
+
+  it('drops the count readout once the map is back to one category', () => {
+    renderLegend(wired({ typesShown: ['water'] }))
+
+    expect(within(picker()).queryByText(/of \d+ types/)).not.toBeInTheDocument()
   })
 
   it('keeps the way out on screen even when the filter empties the panel', () => {
@@ -603,11 +656,13 @@ describe('showing one category alone', () => {
         onToggleType={() => {}}
         onClose={() => {}}
         typesShown={['privy']}
-        onShowAllTypes={vi.fn()}
+        {...wired()}
       />,
     )
 
-    expect(screen.getByRole('button', { name: /show all/i })).toBeInTheDocument()
-    expect(screen.getByText(/showing privy only/i)).toBeInTheDocument()
+    expect(picker()).toHaveValue('privy')
+    expect(
+      within(picker()).getByRole('option', { name: 'All types' }),
+    ).toBeInTheDocument()
   })
 })

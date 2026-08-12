@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import {
   HIDEABLE_TYPES,
-  filterSummary,
   hiddenTypesFrom,
   isFiltered,
   onlyType,
   showAllTypes,
+  shownSelection,
   toggleType,
 } from './waypointVisibility'
 import { NEVER_HIDEABLE } from './legendContents'
@@ -123,23 +123,43 @@ describe('the way back', () => {
   })
 })
 
-describe('filterSummary', () => {
-  it('says nothing when nothing is filtered', () => {
-    expect(filterSummary([])).toBeNull()
+describe('shownSelection', () => {
+  it('is "all" when nothing is filtered', () => {
+    expect(shownSelection([])).toEqual({ kind: 'all' })
+  })
+
+  it('is "all" when every category is listed out', () => {
+    // The state the control DISPLAYS, so this matters on screen and not only in
+    // storage: read off `shown.length` instead, a hiker who toggled the last
+    // category back on would be looking at a picker reading "8 of 8 types".
+    expect(shownSelection([...HIDEABLE_TYPES])).toEqual({ kind: 'all' })
   })
 
   it('names the one category on a single-type filter', () => {
-    // The standing sentence is the price of the filter PERSISTING. It survives a
+    // The standing readout is the price of the filter PERSISTING. It survives a
     // pan on purpose - "where is the next water" is answered by panning along
     // the trail with water alone drawn - so the state has to stay visible or a
     // hiker forgets they set it.
-    expect(filterSummary(['water'])).toBe('Showing water only')
+    expect(shownSelection(['water'])).toEqual({ kind: 'one', type: 'water' })
   })
 
   it('counts them when several are shown', () => {
-    expect(filterSummary(['water', 'shelter'])).toBe(
-      `Showing 2 of ${HIDEABLE_TYPES.length} waypoint types`,
-    )
+    expect(shownSelection(['water', 'shelter'])).toEqual({
+      kind: 'some',
+      shown: 2,
+      of: HIDEABLE_TYPES.length,
+    })
+  })
+
+  it('ignores a safety layer in the stored value rather than naming it', () => {
+    // `['closure']` hides every hideable category, and the safety layers are
+    // drawn regardless (NEVER_HIDEABLE). "0 of 8" is the honest readout; "closure
+    // only" would claim a control the app does not have.
+    expect(shownSelection(['closure'])).toEqual({
+      kind: 'some',
+      shown: 0,
+      of: HIDEABLE_TYPES.length,
+    })
   })
 })
 

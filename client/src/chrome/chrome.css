@@ -727,37 +727,55 @@
 
 /* Deliberately a plain label, not a disabled button. There is no off switch
    for a safety layer, so there is no control here to disable. */
-/* Showing one category alone (#530). ONE control under the rows rather than a
-   button on each of them: the action is global, so it costs one line here where
-   it cost N inline. Native select, so it is a single line at rest and opens to
-   the full list without any of that being styled. */
-.legend__only-one {
-  display: inline-flex;
-}
-.legend__only-select {
+/* Which categories are drawn (#530), and what is filtered, in one control.
+   Deliberately the same shape as the verified row below - a name, then its
+   control, on one touch-target line - because it is the same kind of thing: one
+   switch that cuts across every row above it.
+
+   THE SHAPE IS THE FIX. This was an inline `<select>` in a paragraph of prose,
+   between a sentence and a "Show all" button joined by middots. Two things went
+   wrong with that and both were visible in a screenshot at the widths the panel
+   actually has:
+
+   - Inline, a control with `min-height: var(--min-touch-target)` makes a 13px
+     line box 47px tall and aligns on its own baseline, so the words beside it
+     sat where nothing else on the panel sits. As a flex ITEM it sets the row
+     height instead, exactly as the verified checkbox does, and nothing is
+     realigned.
+   - `border: 0; background: none` on a select in the middle of a sentence
+     leaves its text indistinguishable from the sentence - the same size, the
+     same line, a colour apart. It reads as prose that happens to be a link.
+     Bounded below, so it reads as the control it is. */
+.legend__shown {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2, 8px);
   min-height: var(--min-touch-target);
-  padding: 0 var(--space-1, 4px);
-  border: 0;
-  background: none;
-  color: var(--brand-primary);
-  font: inherit;
+  margin-top: var(--space-2, 8px);
+  padding-top: var(--space-2, 8px);
+  border-top: 1px solid var(--border-1);
+  color: var(--fg-2);
+  font-size: 13px;
   cursor: pointer;
 }
 
-/* What is filtered, and the way back. Above the verified control and under the
-   rows, and never hidden with them - see the comment in Legend.tsx. */
-.legend__filtered {
-  margin: var(--space-3, 12px) 0 0;
-  color: var(--fg-2);
-  font-size: 13px;
+.legend__shown-name {
+  flex: 1;
 }
-.legend__show-all {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--brand-primary);
+
+.legend__shown-select {
+  /* Capped, so a long category name crushes itself rather than the label. A
+     select sizes to its widest option and will not wrap or ellipsise, so
+     without this the one thing saying what the control IS goes first. */
+  max-width: 60%;
+  min-height: var(--min-touch-target);
+  padding: 0 var(--space-1, 4px);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-s, 4px);
+  background: var(--bg-surface);
+  color: var(--fg-1);
   font: inherit;
-  text-decoration: underline;
   cursor: pointer;
 }
 

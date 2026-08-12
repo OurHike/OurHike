@@ -104,7 +104,7 @@ export function isFiltered(shown: readonly string[]): boolean {
 }
 
 /**
- * The standing sentence for a map that is filtered, or null where it is not.
+ * The filter as one of three states, for a control that DISPLAYS it.
  *
  * Its existence is the answer to the open question the issue raised about "Only
  * this": the filter PERSISTS - it writes the preference, so it survives a pan, a
@@ -112,11 +112,33 @@ export function isFiltered(shown: readonly string[]): boolean {
  * pan would undo itself exactly when it started being useful ("where is the next
  * water" is answered by panning along the trail with water alone drawn). What
  * that risks is a hiker forgetting they set it, so the price of persisting is
- * that the state is always visible and always has a way out.
+ * that the state is always on screen.
+ *
+ * This returns the state rather than a sentence about it because the sentence
+ * was the bug. "Showing water only · Show all · Show one only…" put a
+ * description, an exit and a menu in one run-on line, and at the 272px the
+ * desktop panel actually is (desktop.css) the line wrapped and orphaned its
+ * separator - photographed, not guessed. A control whose selected value IS the
+ * state needs no sentence beside it, so there is one thing on that row instead
+ * of three.
+ *
+ * `some` is reachable only by toggling rows, never by this control - which is
+ * why it reports counts rather than a list. Naming three of eight categories
+ * takes more room than the panel has, and the rows above already say which.
  */
-export function filterSummary(shown: readonly string[]): string | null {
-  if (!isFiltered(shown)) return null
+export type ShownSelection =
+  | { kind: 'all' }
+  | { kind: 'one'; type: string }
+  | { kind: 'some'; shown: number; of: number }
+
+export function shownSelection(shown: readonly string[]): ShownSelection {
+  // Asked of `hiddenTypesFrom` rather than of `shown.length`, so "every type,
+  // listed out" is `all` - the same collapse `toggleType` does in storage, and
+  // the reason a filter turned off by hand does not leave the control claiming
+  // "8 of 8 types".
+  if (!isFiltered(shown)) return { kind: 'all' }
+
   const showing = HIDEABLE_TYPES.filter((type) => shown.includes(type))
-  if (showing.length === 1) return `Showing ${showing[0]} only`
-  return `Showing ${showing.length} of ${HIDEABLE_TYPES.length} waypoint types`
+  if (showing.length === 1) return { kind: 'one', type: showing[0] }
+  return { kind: 'some', shown: showing.length, of: HIDEABLE_TYPES.length }
 }

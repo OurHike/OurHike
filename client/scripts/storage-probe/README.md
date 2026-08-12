@@ -65,14 +65,26 @@ Four things this ruled OUT as causes, each a plausible suspect beforehand:
 | A per-record IndexedDB ceiling                             | 1.18 GB stores in one record with `--unlimited`; 734 MB stores inside a 1.05 GB quota |
 | `content-length` absent, service worker interfering        | Neither is in the path                                                                |
 
-Two findings that are still open, both visible from `--store-only` and
-`--watch`:
+Two findings this turned up, both visible from `--store-only` and `--watch`.
+The first is fixed; the second is still open:
 
-- **Nothing is checkpointed during a transfer.** Every record is `null` eight
-  seconds into an eleven-second download, and `usage` is 1,016 bytes. The bytes
-  exist only in the renderer, so a tab the OS kills loses all of them —
-  contradicting `useArchiveDownload.ts`'s claim that a download interrupted by
-  the app closing resumes on the next launch.
+- ~~**Nothing is checkpointed during a transfer.**~~ **Fixed by #553.** Every
+  record was `null` eight seconds into an eleven-second download, with `usage` at
+  1,016 bytes: the bytes existed only in the renderer, so a tab the OS killed
+  lost all of them — contradicting `useArchiveDownload.ts`'s claim that a
+  download interrupted by the app closing resumes on the next launch.
+
+  The bytes are now written as they arrive, in append-only segment records
+  (`src/lib/archiveStore.ts`), and completion is a marker rather than a second
+  copy of the archive. `--watch` shows this directly: `survey` reports the
+  segments per generation (`…:g0` → `0:33554432 1:33554432 …`) alongside the
+  records it always did, so what is on disk mid-transfer is observed rather than
+  assumed. A killed transfer now costs at most the last unflushed segment, 32 MiB.
+
+  Note for anyone re-running the ruled-out table above: the second row measured
+  `new Blob([accumulated, chunk])`, which no longer exists. Nothing is
+  accumulated in memory now, so per-chunk cost cannot grow with what is held.
+
 - **A delete does not return the quota promptly.** Usage stayed at 524 MB
   through a `clear()`, so "delete the Standard sheet, download the Fine one" can
   fail on a phone that has just been made room on.

@@ -9,6 +9,12 @@
 // progress on mount: a download interrupted by the app being closed is
 // resumable on the next launch, not just within one session.
 //
+// That was false when it was written, and #553 made it true. Nothing reached
+// the disk during a healthy transfer, so the progress this reads on mount only
+// ever existed if the download had failed in a way that threw - and an app the
+// OS kills throws nothing. The bytes are checkpointed into segment records as
+// they arrive now (lib/archiveStore.ts), so what this reads back is real.
+//
 // PLURAL, since #192. The offline map program (#184) puts several archives
 // on the same phone - raster sheet, vector basemap, DEM - and each has its
 // own independent lifecycle. They are held in ONE hook rather than one hook
@@ -21,7 +27,6 @@
 // view of the same machinery.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { get } from 'idb-keyval'
 import {
   ArchiveHashMismatchError,
   deleteArchive,
@@ -30,6 +35,7 @@ import {
   type CheckProgress,
   type DownloadProgress,
 } from './archiveDownload'
+import { readArchiveSize } from './archiveStore'
 import {
   completedMarker,
   readPersistence,
@@ -135,12 +141,16 @@ export function useArchiveDownloads(requests: readonly ArchiveDownloadRequest[])
     for (const packageKey of packageKeys) {
       void (async () => {
         try {
-          const finished = (await get(packageKey)) as Blob | undefined
+          // The marker's own byte count, not an assembled Blob: this runs for
+          // every package on every mount, and since #553 an archive is a run of
+          // segment records that would otherwise all be read to learn a number
+          // the completion marker already holds.
+          const finishedBytes = await readArchiveSize(packageKey)
           if (cancelled) return
-          if (finished !== undefined) {
+          if (finishedBytes !== null) {
             setStatus(packageKey, {
               state: 'downloaded',
-              totalBytes: finished.size,
+              totalBytes: finishedBytes,
               completedAt: new Date(),
             })
             return
@@ -228,10 +238,10 @@ export function useArchiveDownloads(requests: readonly ArchiveDownloadRequest[])
           onChecking,
           signal: controller.signal,
         })
-        const finished = (await get(packageKey)) as Blob | undefined
+        const finishedBytes = await readArchiveSize(packageKey)
         setStatus(packageKey, {
           state: 'downloaded',
-          totalBytes: finished?.size ?? 0,
+          totalBytes: finishedBytes ?? 0,
           completedAt: new Date(),
         })
       } catch (thrown) {

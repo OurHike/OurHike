@@ -7,6 +7,7 @@ import { PREFERENCES_KEY } from './lib/preferences'
 import { DEFAULT_PREFERENCES } from './lib/userPreferences'
 import { ELEVATION_STORE_KEY, POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 import { CORRIDOR_ARCHIVE_KEY } from './map/pmtilesSource'
+import { readArchive, segmentKeyFor } from './lib/archiveStore'
 import { POI_ID_PROPERTY, POI_LAYER_ID } from './map/poiLayers'
 import { archiveUrl } from './lib/config'
 import { MockMap, resetMapLibreMock } from './test/mocks/maplibre-gl'
@@ -526,7 +527,11 @@ describe('downloading everything', () => {
     await user.click(within(usgsCard).getByRole('button', { name: /download the map/i }))
 
     await waitFor(() => expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob))
-    await waitFor(() => expect(store.get(CORRIDOR_ARCHIVE_KEY)).toBeInstanceOf(Blob))
+    // Read through the accessor the map uses: since #553 a finished archive is a
+    // run of segment records named by a completion marker, not one record.
+    await waitFor(async () =>
+      expect(await readArchive(CORRIDOR_ARCHIVE_KEY)).toBeInstanceOf(Blob),
+    )
   })
 
   it('deletes the background and keeps the trail (#192)', async () => {
@@ -955,12 +960,21 @@ describe('resuming an interrupted download', () => {
     // dropped at 90% is the failure that promise exists to prevent.
     const user = userEvent.setup()
     hikerOnTrail()
-    store.set('ourhike:corridor-archive:partial', new Blob([new Uint8Array([1, 2, 3])]))
+    // Held as a segment record - where an interrupted transfer leaves its bytes
+    // since #553, checkpointed as they arrived.
+    store.set(
+      segmentKeyFor(CORRIDOR_ARCHIVE_KEY, 0, 0),
+      new Blob([new Uint8Array([1, 2, 3])]),
+    )
     store.set('ourhike:corridor-archive:progress', { receivedBytes: 3, totalBytes: 6 })
     // Must be the URL this build would request. VITE_DATA_BASE_URL is unset
     // under test, so that is a bare '/background.pmtiles' - and a partial
     // recorded against any other URL is deliberately discarded, not resumed.
-    store.set('ourhike:corridor-archive:source', { url: archiveUrl('standard') })
+    store.set('ourhike:corridor-archive:source', {
+      url: archiveUrl('standard'),
+      generation: 0,
+      segments: 1,
+    })
 
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
@@ -1279,9 +1293,18 @@ describe('a remembered failure that stopped being true (#352)', () => {
     // telling the hiker to spend signal fetching what they already had.
     const user = userEvent.setup()
     hikerOnTrail()
-    store.set('ourhike:corridor-archive:partial', new Blob([new Uint8Array([1, 2, 3])]))
+    // Held as a segment record - where an interrupted transfer leaves its bytes
+    // since #553, checkpointed as they arrived.
+    store.set(
+      segmentKeyFor(CORRIDOR_ARCHIVE_KEY, 0, 0),
+      new Blob([new Uint8Array([1, 2, 3])]),
+    )
     store.set('ourhike:corridor-archive:progress', { receivedBytes: 3, totalBytes: 6 })
-    store.set('ourhike:corridor-archive:source', { url: archiveUrl('standard') })
+    store.set('ourhike:corridor-archive:source', {
+      url: archiveUrl('standard'),
+      generation: 0,
+      segments: 1,
+    })
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
 
@@ -1307,7 +1330,9 @@ describe('a remembered failure that stopped being true (#352)', () => {
     } as unknown as Response)
     await user.click(within(usgsCard).getByRole('button', { name: /resume/i }))
 
-    await waitFor(() => expect(store.get(CORRIDOR_ARCHIVE_KEY)).toBeInstanceOf(Blob))
+    await waitFor(async () =>
+      expect(await readArchive(CORRIDOR_ARCHIVE_KEY)).toBeInstanceOf(Blob),
+    )
     await waitFor(() =>
       expect(within(usgsCard).queryByRole('alert')).not.toBeInTheDocument(),
     )

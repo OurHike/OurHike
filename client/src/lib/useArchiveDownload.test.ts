@@ -7,7 +7,17 @@ import {
   ARCHIVE_PROGRESS_KEY,
   ARCHIVE_SOURCE_KEY,
 } from './archiveDownload'
+import { segmentKeyFor } from './archiveStore'
 import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
+
+/** Every Blob byte the store holds, across however many records. What "the
+ *  space was really freed" means once an archive is a run of segments (#553). */
+function storedBytes(store: Record<string, unknown>): number {
+  return Object.values(store).reduce<number>(
+    (total, value) => total + (value instanceof Blob ? value.size : 0),
+    0,
+  )
+}
 
 // The hook exists to keep Downloads.tsx a pure render of the status it is
 // handed, so what is worth testing here is the part the screen cannot see: the
@@ -55,12 +65,18 @@ function mockHangingFetch() {
         body: new ReadableStream<Uint8Array>({
           start(controller) {
             controller.enqueue(new Uint8Array([1, 2, 3, 4]))
-            releaseStreaming()
             // Never closed: the transfer is still in flight until the signal
             // aborts it, which is the state the buttons act on.
             init?.signal?.addEventListener('abort', () =>
               controller.error(new DOMException('Aborted', 'AbortError')),
             )
+          },
+          // Released here rather than in `start`, because `pull` is called only
+          // once the consumer has TAKEN the chunk. Releasing on enqueue let the
+          // interruption land before the download had read a single byte, and
+          // "keeps what arrived" was then satisfied by an empty partial.
+          pull() {
+            releaseStreaming()
           },
         }),
       }) as unknown as Response,
@@ -98,6 +114,11 @@ describe('useArchiveDownload', () => {
       await result.current.remove()
     })
 
+    // Not a key-by-key check: the bytes are what the hiker asked to get back,
+    // and they are spread over segment records now. A partial left behind under
+    // any name is several hundred megabytes still held on a phone that was just
+    // told they were gone.
+    expect(storedBytes(store)).toBe(0)
     expect(store[ARCHIVE_PARTIAL_KEY]).toBeUndefined()
     expect(store[ARCHIVE_PROGRESS_KEY]).toBeUndefined()
     expect(store[ARCHIVE_SOURCE_KEY]).toBeUndefined()
@@ -144,8 +165,15 @@ describe('useArchiveDownload', () => {
     await attempt.catch(() => undefined)
 
     await waitFor(() => {
-      expect(store[ARCHIVE_PARTIAL_KEY]).toBeInstanceOf(Blob)
+      // Checkpointed into a segment record on the way out, which is where an
+      // interrupted transfer's bytes live since #553.
+      expect(store[segmentKeyFor(CORRIDOR_ARCHIVE_KEY, 0, 0)]).toBeInstanceOf(Blob)
     })
-    expect(store[ARCHIVE_SOURCE_KEY]).toEqual({ url: URL_, etag: undefined })
+    expect(store[ARCHIVE_SOURCE_KEY]).toEqual({
+      url: URL_,
+      etag: undefined,
+      generation: 0,
+      segments: 1,
+    })
   })
 })

@@ -8,6 +8,7 @@
 
 import { clear, get, set } from 'idb-keyval'
 import { downloadArchive, readDownloadProgress } from '../../src/lib/archiveDownload'
+import { readArchive, readComplete, segmentKeyFor } from '../../src/lib/archiveStore'
 
 declare global {
   interface Window {
@@ -68,7 +69,9 @@ window.probe = async (bytes) => {
   }
 
   const elapsed = performance.now() - started
-  const stored = (await get(KEY)) as Blob | undefined
+  // Through the accessor, not the bare key: since #553 a finished archive is a
+  // run of segment records named by a marker (src/lib/archiveStore.ts).
+  const stored = await readArchive(KEY)
 
   /** Throughput over a slice of the transfer, in MB/s - the first quarter
    *  against the last is what would show a per-chunk cost that grows with what
@@ -141,15 +144,41 @@ window.storeProbe = async (bytes) => {
  *  how "nothing is checkpointed" is observed rather than assumed. */
 window.survey = async (packageKey) => {
   const out: Record<string, unknown> = {}
-  for (const suffix of ['', ':partial', ':progress', ':source', ':version']) {
-    const value = await get(`${packageKey}${suffix}`)
-    out[`${packageKey}${suffix}`] =
-      value instanceof Blob
-        ? `Blob(${value.size})`
-        : value === undefined
-          ? null
-          : JSON.stringify(value).slice(0, 100)
+  const show = (value: unknown) =>
+    value instanceof Blob
+      ? `Blob(${value.size})`
+      : value === undefined
+        ? null
+        : JSON.stringify(value).slice(0, 100)
+
+  for (const suffix of [
+    '',
+    ':partial',
+    ':progress',
+    ':source',
+    ':version',
+    ':complete',
+  ]) {
+    out[`${packageKey}${suffix}`] = show(await get(`${packageKey}${suffix}`))
   }
+
+  // The segments themselves, which are where the bytes are during a transfer
+  // and after one (#553). Reported per generation and per record rather than as
+  // a total, because "which of these is on disk right now" is the question this
+  // probe exists to answer - the original run of it showed every record null
+  // eight seconds into an eleven-second download.
+  for (const generation of [0, 1]) {
+    const present: string[] = []
+    for (let index = 0; ; index += 1) {
+      const value = await get(segmentKeyFor(packageKey, generation, index))
+      if (!(value instanceof Blob)) break
+      present.push(`${index}:${value.size}`)
+    }
+    out[`${packageKey}:g${generation}`] = present.length === 0 ? null : present.join(' ')
+  }
+
+  out.archiveBytes = (await readArchive(packageKey))?.size ?? null
+  out.complete = await readComplete(packageKey)
   out.usage = await usage()
   out.completedMarker = localStorage.getItem(`${packageKey}:completed`)
   return report(out)

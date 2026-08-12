@@ -168,6 +168,18 @@ jobs:
 
       # Elevation has its own fetch too, and it is the slow one - it streams
       # USGS 3DEP tiles, which is why the whole leg is opt-in.
+      # The TNM catalogue answers, not the elevation data. 3DEP revises on a
+      # multi-year cycle, so a warm run asks USGS nothing at all - which is
+      # what stopped a single 504 on the first of 51 cells from throwing away
+      # an entire publish (#536). A miss just means asking again.
+      - name: Restore the TNM catalogue cache
+        if: inputs.include_elevation
+        uses: actions/cache@v4
+        with:
+          path: pipeline/data/raw/elevation/tnm_cells
+          key: tnm-cells-${{ github.run_id }}
+          restore-keys: tnm-cells-
+
       - name: Fetch elevation tiles
         if: inputs.include_elevation
         run: python fetch_elevation.py

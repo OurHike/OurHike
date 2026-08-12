@@ -28,6 +28,7 @@ import { PoiCard, type PoiDetail } from './PoiCard'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapView } from '../map/MapView'
 import type { ClosureBand } from '../map/closureLayers'
+import type { AtcUpdatePoint } from '../map/atcUpdateLayers'
 import type { WarningPoint } from '../map/warningLayers'
 import type { SourceReport } from '../map/liveSourceHealth'
 import type { BackgroundProblem } from '../lib/backgroundHealth'
@@ -101,6 +102,8 @@ export interface MapScreenProps {
   /** The ATC's own notices, drawn at the same weight as a closure and read
    *  from the same geometry path (features/ATC_TRAIL_UPDATES.md, #461). */
   atcUpdates?: readonly ClosureBand[]
+  /** The single-mile notices, drawn as dots rather than bands. */
+  atcUpdatePoints?: readonly AtcUpdatePoint[]
   /** An ATC band was tapped, by band id. */
   onSelectAtcUpdate?: (bandId: string) => void
   /** The tapped update's sheet, or null. Rendered by the shell for the same
@@ -276,6 +279,7 @@ export function MapScreen({
   warningsAhead = null,
   closures,
   atcUpdates,
+  atcUpdatePoints,
   onSelectAtcUpdate,
   atcUpdateSheet,
   warnings,
@@ -421,6 +425,7 @@ export function MapScreen({
               verifiedOnly={verifiedOnly}
               closures={closures}
               atcUpdates={atcUpdates}
+              atcUpdatePoints={atcUpdatePoints}
               onSelectAtcUpdate={onSelectAtcUpdate}
               warnings={warnings}
               onSelectPoi={onSelectPoi}

@@ -35,7 +35,11 @@ import type { TerrainUrls } from './terrain'
 import { attachMapChrome, type ScaleUnits } from './mapChrome'
 import type { ResolvedTheme } from '../lib/theme'
 import { attachPoiData, attachPoiFilter, attachPoiIcons } from './poiLayers'
-import { attachAtcUpdateData, attachAtcUpdateTaps } from './atcUpdateLayers'
+import {
+  attachAtcUpdateData,
+  attachAtcUpdateTaps,
+  type AtcUpdatePoint,
+} from './atcUpdateLayers'
 import { attachClosureData, type ClosureBand } from './closureLayers'
 import { attachWarningData, attachWarningIcon, type WarningPoint } from './warningLayers'
 import { attachPoiTaps } from './poiTaps'
@@ -97,6 +101,9 @@ export interface MapViewProps {
    * able to say which kind it landed on (map/atcUpdateLayers.ts, #461).
    */
   atcUpdates?: readonly ClosureBand[]
+  /** The same notices that name a single mile rather than a stretch, drawn as
+   *  dots. Most of what the ATC publishes is one of these. */
+  atcUpdatePoints?: readonly AtcUpdatePoint[]
   /** A tap landed on an ATC band, by band id. The shell decides what to show
    *  - this component deliberately does not know what a sheet is. */
   onSelectAtcUpdate?: (bandId: string) => void
@@ -219,6 +226,7 @@ const NO_POIS: readonly MapPoint[] = []
 const NOTHING_HIDDEN: ReadonlySet<string> = new Set()
 const NO_CLOSURES: readonly ClosureBand[] = []
 const NO_ATC_UPDATES: readonly ClosureBand[] = []
+const NO_ATC_POINTS: readonly AtcUpdatePoint[] = []
 const NO_WARNINGS: readonly WarningPoint[] = []
 
 export function MapView({
@@ -230,6 +238,7 @@ export function MapView({
   verifiedOnly = false,
   closures = NO_CLOSURES,
   atcUpdates = NO_ATC_UPDATES,
+  atcUpdatePoints = NO_ATC_POINTS,
   onSelectAtcUpdate,
   warnings = NO_WARNINGS,
   onSelectPoi,
@@ -507,8 +516,8 @@ export function MapView({
 
   useEffect(() => {
     if (map === null) return
-    return attachAtcUpdateData(map, atcUpdates)
-  }, [map, atcUpdates])
+    return attachAtcUpdateData(map, atcUpdates, atcUpdatePoints)
+  }, [map, atcUpdates, atcUpdatePoints])
 
   useEffect(() => {
     if (map === null) return

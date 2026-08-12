@@ -42,11 +42,17 @@ from urllib.parse import urlparse
 TRAIL_MILE_MIN = 0.5
 TRAIL_MILE_MAX = 2197.5
 
-# ATC's own categories, as published on their Trail Updates page (measured
-# 2026-08-09). A closed set: a category this does not know is a page ATC has
-# changed the shape of, which is a thing to look at rather than to pass
-# through to a hiker as an unrecognised word.
-CATEGORIES = frozenset({"Detour", "Alert", "Closure", "Parking", "Hiking Safety"})
+# ATC's own categories, as published on their Trail Updates page. A closed
+# set: a category this does not know is a page ATC has changed the shape of,
+# which is a thing to look at rather than to pass through to a hiker as an
+# unrecognised word.
+#
+# `Animal` was not in the five measured on 2026-08-09 and was carrying two
+# live bear warnings on 2026-08-12. That is this list working rather than
+# failing - the reviewer met a refusal, looked, and added a word ATC had
+# started using. It is the cheap version of the cost
+# features/ATC_TRAIL_UPDATES.md names as "their HTML is not an API".
+CATEGORIES = frozenset({"Detour", "Alert", "Closure", "Parking", "Hiking Safety", "Animal"})
 
 # Every field a published row carries. Facts and a link - deliberately not
 # ATC's body text, which is theirs (features/ATC_TRAIL_UPDATES.md, and the
@@ -127,10 +133,12 @@ def row_problems(row: dict) -> list[str]:
             problems.append(f"end_mile_marker {end} is before start_mile_marker {start}")
 
     # Required as a real boolean rather than defaulted, because the default
-    # would be a guess about whether a hiker can walk through. ATC files a
-    # closed shelter and a closed footbridge under one category, `Closure`,
-    # and they are opposite answers - so this cannot be inferred from anything
-    # else in the row and has to be a reviewer's decision, recorded.
+    # would be a guess about whether a hiker can walk through, and ATC's own
+    # category cannot answer it. Measured against their live page on
+    # 2026-08-12: the only notice filed as `Closure` is a closed SHELTER, with
+    # the trail past it open, while the one thing that genuinely stops a hiker
+    # - the Harpers Ferry footbridge - is filed as `Detour`. A rule reading
+    # the category would be wrong in both directions at once.
     if "obstructs_trail" in row and not isinstance(row.get("obstructs_trail"), bool):
         problems.append(
             "obstructs_trail must be true or false - whether a hiker is stopped from walking "

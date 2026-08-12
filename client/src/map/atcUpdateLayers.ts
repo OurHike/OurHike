@@ -16,7 +16,14 @@
 //
 // Everything else is closureLayers.ts's shape, on purpose - the geometry path
 // is shared (`trailSlice` -> `closureBands`), and only the source id and the
-// layer it is queried against differ.
+// layers it is queried against differ.
+//
+// ONE SOURCE, TWO GEOMETRIES. Within that source a notice is a line or a
+// point, because most of what ATC publishes is a single mile marker rather
+// than a stretch and `trailSlice` renders those as a few dozen feet of
+// invisible line. A `line` layer ignores Point features and a `circle` layer
+// ignores lines, so both draw from one source - which is also what keeps the
+// tap below asking one question instead of two.
 
 import type { GeoJSONSourceSpecification } from '@maplibre/maplibre-gl-style-spec'
 import type {
@@ -25,7 +32,9 @@ import type {
   MapMouseEvent,
   PointLike,
 } from 'maplibre-gl'
-import { ATC_UPDATE_LAYER_ID } from '../lib/atcUpdateStyle'
+import { ATC_UPDATE_LAYER_ID, ATC_UPDATE_POINT_LAYER_ID } from '../lib/atcUpdateStyle'
+import { atcBandId, type AtcUpdate } from '../lib/atcUpdates'
+import { trailPointAtMile, type TrailIndex } from '../lib/trailPosition'
 import { closureFeatureCollection, type ClosureBand } from './closureLayers'
 import { whenStyleReady } from './styleReady'
 
@@ -47,10 +56,62 @@ export function buildAtcUpdateSource(): GeoJSONSourceSpecification {
   return { type: 'geojson', data: { type: 'FeatureCollection', features: [] } }
 }
 
-/** Pushes ATC bands onto the live map's source, and returns a detach. */
+/** One notice at a single mile, placed on the centerline. */
+export interface AtcUpdatePoint {
+  id: string
+  at: [number, number]
+}
+
+/**
+ * The point notices that can actually be placed, in map coordinates.
+ *
+ * An update whose mile falls outside this build's centerline yields nothing -
+ * a gap in what the build knows rather than a decision, exactly as
+ * `closureBands` treats an unplaceable range. It is still not lost: the banner
+ * needs only a mile number, so a hiker is told about it either way.
+ */
+export function atcUpdatePoints(
+  updates: readonly AtcUpdate[],
+  index: TrailIndex,
+): AtcUpdatePoint[] {
+  return updates.flatMap((update) => {
+    const at = trailPointAtMile(index, update.start_mile_marker)
+    return at === null ? [] : [{ id: atcBandId(update), at }]
+  })
+}
+
+/**
+ * Bands and points as one FeatureCollection.
+ *
+ * Both geometries in one source, which is what lets a `line` layer and a
+ * `circle` layer draw from it without either seeing the other's features -
+ * and, more usefully, what lets a tap ask one source what it hit.
+ */
+export function atcFeatureCollection(
+  bands: readonly ClosureBand[],
+  points: readonly AtcUpdatePoint[],
+) {
+  const lines = closureFeatureCollection(bands)
+  return {
+    type: 'FeatureCollection' as const,
+    features: [
+      ...lines.features,
+      ...points.map((point) => ({
+        type: 'Feature' as const,
+        id: point.id,
+        geometry: { type: 'Point' as const, coordinates: point.at },
+        properties: { [ATC_UPDATE_ID_PROPERTY]: point.id },
+      })),
+    ],
+  }
+}
+
+/** Pushes ATC bands and points onto the live map's source, and returns a
+ *  detach. */
 export function attachAtcUpdateData(
   map: MapLibreMap,
   bands: readonly ClosureBand[],
+  points: readonly AtcUpdatePoint[] = [],
 ): () => void {
   return whenStyleReady(
     map,
@@ -59,7 +120,7 @@ export function attachAtcUpdateData(
       const source = map.getSource<GeoJSONSource>(ATC_UPDATE_SOURCE_ID)
       if (source === undefined || typeof source.setData !== 'function') return
 
-      source.setData(closureFeatureCollection(bands) as never)
+      source.setData(atcFeatureCollection(bands, points) as never)
     },
     'ATC update bands',
   )
@@ -87,14 +148,17 @@ export function atcBandIdAt(
   map: MapLibreMap,
   point: { x: number; y: number },
 ): string | null {
-  // Before the style has parsed, querying a layer it does not hold fires an
-  // error event rather than throwing - a touch on a map with no bands on it
-  // yet should be silent, not a warning in the console.
-  if (map.getLayer(ATC_UPDATE_LAYER_ID) === undefined) return null
+  // Both layers, because both draw ATC notices and a hiker aiming at one does
+  // not know which geometry it happens to be. Only the ones the style actually
+  // holds are queried: asking for a layer it does not have fires an error
+  // event rather than throwing, so a touch on a map whose style has not parsed
+  // should be silent rather than a warning in the console.
+  const layers = [ATC_UPDATE_LAYER_ID, ATC_UPDATE_POINT_LAYER_ID].filter(
+    (layer) => map.getLayer(layer) !== undefined,
+  )
+  if (layers.length === 0) return null
 
-  const [feature] = map.queryRenderedFeatures(atcTapBox(point), {
-    layers: [ATC_UPDATE_LAYER_ID],
-  })
+  const [feature] = map.queryRenderedFeatures(atcTapBox(point), { layers })
   if (feature === undefined) return null
 
   const id = feature.properties?.[ATC_UPDATE_ID_PROPERTY]

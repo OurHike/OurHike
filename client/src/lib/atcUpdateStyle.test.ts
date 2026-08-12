@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import {
   ATC_UPDATE_BAR_RHYTHM,
+  ATC_UPDATE_CASING_COLOR,
   ATC_UPDATE_CASING_LAYER_ID,
   ATC_UPDATE_CASING_WIDTH,
   ATC_UPDATE_COLOR,
   ATC_UPDATE_LAYER_ID,
   ATC_UPDATE_LINE_WIDTH,
+  ATC_UPDATE_POINT_LAYER_ID,
+  ATC_UPDATE_POINT_RADIUS,
   buildAtcUpdateLayers,
 } from './atcUpdateStyle'
 import {
@@ -79,13 +82,14 @@ describe('and is still distinguishable', () => {
 describe('the layers themselves', () => {
   it('draws the casing before the band', () => {
     // Otherwise the casing paints over the thing it is meant to outline.
-    expect(buildAtcUpdateLayers('atc-updates').map((layer) => layer.id)).toEqual([
-      ATC_UPDATE_CASING_LAYER_ID,
-      ATC_UPDATE_LAYER_ID,
-    ])
+    expect(
+      buildAtcUpdateLayers('atc-updates')
+        .map((layer) => layer.id)
+        .slice(0, 2),
+    ).toEqual([ATC_UPDATE_CASING_LAYER_ID, ATC_UPDATE_LAYER_ID])
   })
 
-  it('binds both to the source it was given', () => {
+  it('binds them all to the source it was given', () => {
     for (const layer of buildAtcUpdateLayers('atc-updates')) {
       expect((layer as { source: string }).source).toBe('atc-updates')
     }
@@ -94,5 +98,48 @@ describe('the layers themselves', () => {
   it('does not collide with the closure layer ids', () => {
     expect(ATC_UPDATE_LAYER_ID).not.toBe('closure-band')
     expect(ATC_UPDATE_CASING_LAYER_ID).not.toBe('closure-casing')
+  })
+})
+
+describe('a point notice', () => {
+  // Most of what ATC publishes is a single mile marker, and `trailSlice`
+  // renders those as a few dozen feet of line - which is not a small band, it
+  // is an invisible one. The circle layer is what makes them show up at all.
+
+  it('is drawn as thick as the band it replaces', () => {
+    // A dot as thick as the barrier is a barrier seen end-on, which is the
+    // point: the two are one treatment at two geometries.
+    expect(ATC_UPDATE_POINT_RADIUS * 2).toBe(ATC_UPDATE_LINE_WIDTH)
+    expect(paintOf(ATC_UPDATE_POINT_LAYER_ID)['circle-radius']).toBe(
+      ATC_UPDATE_POINT_RADIUS,
+    )
+  })
+
+  it('carries the band’s colour and its casing', () => {
+    const paint = paintOf(ATC_UPDATE_POINT_LAYER_ID)
+
+    expect(paint['circle-color']).toBe(ATC_UPDATE_COLOR)
+    expect(paint['circle-stroke-color']).toBe(ATC_UPDATE_CASING_COLOR)
+    expect(paint['circle-stroke-width']).toBe(ATC_UPDATE_CASING_WIDTH)
+  })
+
+  it('draws from the same source as the bands', () => {
+    // A `line` layer ignores Point features and a `circle` layer ignores
+    // lines, so one source carries both - and the tap has one place to look.
+    const layers = buildAtcUpdateLayers('atc-updates')
+
+    expect(layers.map((layer) => (layer as { source: string }).source)).toEqual([
+      'atc-updates',
+      'atc-updates',
+      'atc-updates',
+    ])
+  })
+
+  it('is drawn last, over the bands', () => {
+    expect(buildAtcUpdateLayers('atc-updates').map((layer) => layer.id)).toEqual([
+      ATC_UPDATE_CASING_LAYER_ID,
+      ATC_UPDATE_LAYER_ID,
+      ATC_UPDATE_POINT_LAYER_ID,
+    ])
   })
 })

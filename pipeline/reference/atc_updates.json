@@ -39,15 +39,15 @@
     "records why this file stops at the facts.",
     "",
     "  {",
-    "    \"atc_id\": \"va-creeper-trail-closure-detour\",",
-    "    \"title\": \"SW Virginia: VA Creeper Trail Closure/Detour\",",
-    "    \"category\": \"Closure\",",
-    "    \"states\": [\"VA\"],",
-    "    \"start_mile_marker\": 476.6,",
-    "    \"end_mile_marker\": 485.8,",
+    "    \"atc_id\": \"harpers-ferry-footbridge-closure\",",
+    "    \"title\": \"Harpers Ferry: Footbridge Closure\",",
+    "    \"category\": \"Detour\",",
+    "    \"states\": [\"MD\", \"WV\"],",
+    "    \"start_mile_marker\": 1026.7,",
+    "    \"end_mile_marker\": 1026.7,",
     "    \"obstructs_trail\": true,",
-    "    \"updated_at\": \"2026-07-17T00:00:00Z\",",
-    "    \"source_url\": \"https://appalachiantrail.org/trail-updates/<slug>/\"",
+    "    \"updated_at\": \"2026-07-31T19:54:12Z\",",
+    "    \"source_url\": \"https://appalachiantrail.org/trail-updates/harpers-ferry-footbridge-closure/\"",
     "  }",
     "",
     "A POINT rather than a range - a shelter, a footbridge - is the same mile",
@@ -59,15 +59,18 @@
     "through here? Only rows where that is true get drawn as a band across the",
     "trail; the rest still reach a hiker as a banner naming the ATC.",
     "",
-    "It cannot be read off `category`, and the live page is why. ATC files",
-    "these two under the same word:",
+    "It cannot be read off `category`, and the live page is why. Measured",
+    "2026-08-12:",
     "",
     "  Connecticut: Limestone Spring Shelter Closed   Closure   obstructs: NO",
-    "  Harpers Ferry: Footbridge Closure              Closure   obstructs: YES",
+    "  Harpers Ferry: Footbridge Closure              Detour    obstructs: YES",
     "",
-    "The trail past Limestone Spring is open and the shelter is shut; the way",
-    "across the Potomac is gone. A band drawn for the first is a barrier a",
-    "hiker walks straight past, which is how they learn the barriers can be",
+    "The only notice ATC files as `Closure` is a closed SHELTER, with the trail",
+    "past it open - and the one thing that genuinely stops a hiker, the way",
+    "across the Potomac, is filed as `Detour`. A rule reading the category is",
+    "wrong in both directions at once. When in doubt, false: losing the band",
+    "keeps the banner, and a warning that is only a banner is a smaller failure",
+    "than a barrier that is not there.",
     "ignored. When in doubt, false: losing the band keeps the banner, and a",
     "warning that is only a banner is a smaller failure than a barrier that",
     "is not there.",
@@ -95,12 +98,31 @@
     "",
     "  curl -sI https://appalachiantrail.org/trail-updates/feed/ | grep -i etag",
     "",
-    "THIS FILE SHIPS EMPTY AND UNREVIEWED, DELIBERATELY. The machinery around",
-    "it - the registration, the bake, the artifact, the rendering - is what",
-    "#459/#460/#461 build. The rows are a claim about where the Appalachian",
-    "Trail is shut, and the design is explicit that no such claim reaches a",
-    "hiker without a person confirming it against ATC's own sentence. Filling",
-    "this in is that person's pull request, not the machinery's."
+    "WHAT IS IN HERE NOW, reviewed 2026-08-12 against ATC's live page. Nine",
+    "updates were posted; six are here. The three that are not are not",
+    "omissions:",
+    "",
+    "  NC/TN: Iron Mtn Gap Reopened     the trail is OPEN again, and it states",
+    "                                   five different ranges accumulated over",
+    "                                   months of edits. An ingest that only",
+    "                                   ever adds closures would have barred a",
+    "                                   trail people are walking.",
+    "  NC - VT: Severe Weather          eleven states, no mile reference. Real",
+    "                                   information with no place on a map.",
+    "  New York: Help Identifying...    a law-enforcement request. Not a place",
+    "                                   at all, and pinning it to one would be",
+    "                                   actively wrong.",
+    "",
+    "Of the six that are here, exactly ONE obstructs the trail: the Harpers",
+    "Ferry footbridge. Two bear warnings, a closed shelter, a yearly flooding",
+    "reminder and the Helene advisory are all real and none of them stops a",
+    "hiker walking through, so they are dots on the map and a banner rather",
+    "than barriers across it.",
+    "",
+    "The VA Creeper closure that features/ATC_TRAIL_UPDATES.md quotes",
+    "throughout was gone from ATC's page by 2026-08-12. That is the staleness",
+    "argument in this document arriving in three days rather than in theory,",
+    "and it is why `reviewed_at` and `source_marker` are not decoration."
   ],
   "source": {
     "key": "atc_trail_updates",
@@ -110,8 +132,91 @@
     "attribution": "Appalachian Trail Conservancy",
     "licence": "Facts and a link only - see sources.json's `atc_trail_updates` entry for the full statement and #458 for how it was settled."
   },
-  "reviewed_at": null,
-  "reviewed_by": null,
-  "source_marker": null,
-  "updates": []
+  "reviewed_at": "2026-08-12",
+  "reviewed_by": "Claude Code, against appalachiantrail.org/trail-updates - confirmed at merge",
+  "source_marker": "\"3d304d545f77af86936a9b3e6704f029\"",
+  "updates": [
+    {
+      "atc_id": "great-smoky-mtns-np-bear-warning-for-silers-bald",
+      "title": "Great Smoky Mtns NP: Bear Warning for Silers Bald",
+      "category": "Animal",
+      "states": [
+        "NC",
+        "TN"
+      ],
+      "start_mile_marker": 195.8,
+      "end_mile_marker": 195.8,
+      "obstructs_trail": false,
+      "updated_at": "2026-08-12T13:00:04Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/great-smoky-mtns-np-bear-warning-for-silers-bald/"
+    },
+    {
+      "atc_id": "sw-va-bear-activity-at-rhododendron-gap",
+      "title": "SW VA: Bear Activity at Rhododendron Gap",
+      "category": "Animal",
+      "states": [
+        "VA"
+      ],
+      "start_mile_marker": 500.2,
+      "end_mile_marker": 500.2,
+      "obstructs_trail": false,
+      "updated_at": "2026-08-11T16:30:29Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/sw-va-bear-activity-at-rhododendron-gap/"
+    },
+    {
+      "atc_id": "harpers-ferry-footbridge-closure",
+      "title": "Harpers Ferry: Footbridge Closure",
+      "category": "Detour",
+      "states": [
+        "MD",
+        "WV"
+      ],
+      "start_mile_marker": 1026.7,
+      "end_mile_marker": 1026.7,
+      "obstructs_trail": true,
+      "updated_at": "2026-07-31T19:54:12Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/harpers-ferry-footbridge-closure/"
+    },
+    {
+      "atc_id": "vernie-swamp-area-trail-flooding-standing-update",
+      "title": "Vernie Swamp Area: Trail Flooding, Yearly Reminder",
+      "category": "Detour",
+      "states": [
+        "NJ"
+      ],
+      "start_mile_marker": 1346.3,
+      "end_mile_marker": 1346.3,
+      "obstructs_trail": false,
+      "updated_at": "2026-07-20T17:55:27Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/vernie-swamp-area-trail-flooding-standing-update/"
+    },
+    {
+      "atc_id": "connecticut-limestone-spring-shelter-closed",
+      "title": "Connecticut: Limestone Spring Shelter Closed",
+      "category": "Closure",
+      "states": [
+        "CT"
+      ],
+      "start_mile_marker": 1503.6,
+      "end_mile_marker": 1503.6,
+      "obstructs_trail": false,
+      "updated_at": "2026-07-24T13:06:50Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/connecticut-limestone-spring-shelter-closed/"
+    },
+    {
+      "atc_id": "helene-storm-damage",
+      "title": "Hurricane Helene Storm Damage",
+      "category": "Alert",
+      "states": [
+        "NC",
+        "TN",
+        "VA"
+      ],
+      "start_mile_marker": 239.4,
+      "end_mile_marker": 637.8,
+      "obstructs_trail": false,
+      "updated_at": "2025-09-23T17:51:09Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/helene-storm-damage/"
+    }
+  ]
 }

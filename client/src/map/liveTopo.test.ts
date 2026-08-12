@@ -43,7 +43,11 @@ import {
 } from './terrain'
 import { POI_LAYER_ID } from './poiLayers'
 import { WARNING_LAYER_ID } from './warningLayers'
-import { ATC_UPDATE_CASING_LAYER_ID, ATC_UPDATE_LAYER_ID } from '../lib/atcUpdateStyle'
+import {
+  ATC_UPDATE_CASING_LAYER_ID,
+  ATC_UPDATE_LAYER_ID,
+  ATC_UPDATE_POINT_LAYER_ID,
+} from '../lib/atcUpdateStyle'
 import { CLOSURE_CASING_LAYER_ID, CLOSURE_LAYER_ID } from '../lib/closureStyle'
 
 // The live background exists because a raster mosaic of pre-rendered US Topo
@@ -552,6 +556,9 @@ describe('the offline-only background', () => {
       // warning a hiker with no signal still has (#461).
       ATC_UPDATE_CASING_LAYER_ID,
       ATC_UPDATE_LAYER_ID,
+      // And the dots, which is what most ATC notices actually are - five of
+      // the six reviewed on 2026-08-12 name a single mile marker.
+      ATC_UPDATE_POINT_LAYER_ID,
       POI_LAYER_ID,
       WARNING_LAYER_ID,
     ])

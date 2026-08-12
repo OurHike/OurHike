@@ -1,17 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { Feature } from 'geojson'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
-import { buildTrailIndex } from '../lib/trailPosition'
+import { buildTrailIndex, trailPointAtMile } from '../lib/trailPosition'
 import { closureBands } from './closureLayers'
-import { atcBandCandidates, type AtcUpdate } from '../lib/atcUpdates'
+import { atcBandCandidates, atcPointNotices, type AtcUpdate } from '../lib/atcUpdates'
 import { MAX_BAND_MILES } from '../lib/closureSpan'
-import { ATC_UPDATE_LAYER_ID } from '../lib/atcUpdateStyle'
+import { ATC_UPDATE_LAYER_ID, ATC_UPDATE_POINT_LAYER_ID } from '../lib/atcUpdateStyle'
 import {
   ATC_UPDATE_ID_PROPERTY,
   ATC_UPDATE_SOURCE_ID,
   ATC_TAP_SLOP_PX,
   atcBandIdAt,
+  atcFeatureCollection,
   atcTapBox,
+  atcUpdatePoints,
   attachAtcUpdateData,
   attachAtcUpdateTaps,
   buildAtcUpdateSource,
@@ -226,5 +228,101 @@ describe('tapping one', () => {
     map.emit('click', { point: { x: 1, y: 1 } })
 
     expect(onSelect).not.toHaveBeenCalled()
+  })
+})
+
+describe('points, which is most of what ATC publishes', () => {
+  // Five of the six reviewed updates live on 2026-08-12 name a single mile:
+  // a shelter, a footbridge, two bear warnings, a flooded section. Drawn as
+  // bands they were a few dozen feet of invisible line, which is why the
+  // circle layer exists at all.
+
+  it('places a single-mile notice on the centerline', () => {
+    const shelter = update({ start_mile_marker: 6, end_mile_marker: 6 })
+
+    const index = straightTrail(20)
+    const points = atcUpdatePoints([shelter], index)
+
+    expect(points).toHaveLength(1)
+    expect(points[0].id).toBe('atc:va-creeper-trail-closure-detour')
+    // Bracketed rather than compared against a flat-earth constant: the index
+    // measures real distances, so its Nth vertex is not exactly at mile N.
+    // What matters is that mile 6 lands between the vertices either side of
+    // it, which is the interpolation actually doing its job.
+    const [before, after] = [trailPointAtMile(index, 5.5), trailPointAtMile(index, 6.5)]
+    expect(points[0].at[1]).toBeGreaterThan(before![1])
+    expect(points[0].at[1]).toBeLessThan(after![1])
+  })
+
+  it('interpolates rather than snapping to the nearest vertex', () => {
+    // The centerline's vertex spacing is coarser than the tenth of a mile ATC
+    // quotes, so snapping would move a footbridge to wherever the survey
+    // happened to put a point.
+    const index = straightTrail(20)
+
+    const tenths = [6.0, 6.1, 6.2, 6.3].map((mile) => trailPointAtMile(index, mile)![1])
+
+    expect(new Set(tenths).size).toBe(4)
+    expect([...tenths].sort((a, b) => a - b)).toEqual(tenths)
+  })
+
+  it('draws a point for a notice that does not obstruct the trail', () => {
+    // Unlike the bands. A dot makes no claim about passability - it says the
+    // ATC has posted something here - so a bear warning belongs on the map
+    // and is not the barrier a band would have made it.
+    const bears = update({
+      obstructs_trail: false,
+      start_mile_marker: 6,
+      end_mile_marker: 6,
+    })
+
+    expect(atcBandCandidates([bears])).toHaveLength(0)
+    expect(atcUpdatePoints(atcPointNotices([bears]), straightTrail(20))).toHaveLength(1)
+  })
+
+  it('drops one the centerline cannot place', () => {
+    // A gap in what this build knows rather than a decision. The banner needs
+    // only a mile number, so the hiker is told either way.
+    const offTrail = update({ start_mile_marker: 900, end_mile_marker: 900 })
+
+    expect(atcUpdatePoints([offTrail], straightTrail(20))).toHaveLength(0)
+  })
+
+  it('carries bands and points in one collection', () => {
+    // One source, so a line layer and a circle layer draw from it without
+    // either seeing the other's features - and the tap asks one question.
+    const collection = atcFeatureCollection(
+      [{ id: 'atc:band', lines: [[[-77, 39]]] }],
+      [{ id: 'atc:point', at: [-80, 35] }],
+    )
+
+    const types = collection.features.map((feature) => feature.geometry.type)
+    expect(types).toEqual(['MultiLineString', 'Point'])
+    expect(collection.features[1].properties[ATC_UPDATE_ID_PROPERTY]).toBe('atc:point')
+  })
+
+  it('pushes both onto a live map', () => {
+    const map = new MockMap({})
+    map.sourceIds = [ATC_UPDATE_SOURCE_ID]
+    map.styleLoaded = true
+
+    attachAtcUpdateData(
+      map as never,
+      [{ id: 'atc:band', lines: [[[-77, 39]]] }],
+      [{ id: 'atc:point', at: [-80, 35] }],
+    )
+
+    const data = map.sourceData.get(ATC_UPDATE_SOURCE_ID) as { features: unknown[] }
+    expect(data.features).toHaveLength(2)
+  })
+
+  it('reports a tapped point, not only a tapped band', () => {
+    // A hiker aiming at a notice does not know which geometry it happens to
+    // be, so the tap queries both layers.
+    const map = new MockMap({})
+    map.layerIds = [ATC_UPDATE_POINT_LAYER_ID]
+    map.renderedFeatures.set(ATC_UPDATE_POINT_LAYER_ID, [band('atc:shelter')])
+
+    expect(atcBandIdAt(map as never, { x: 10, y: 10 })).toBe('atc:shelter')
   })
 })

@@ -168,11 +168,13 @@ import {
 import { closureBanner, nearestClosure } from './lib/closureBanner'
 import {
   atcBandCandidates,
+  atcPointNotices,
   atcUpdateBanner,
   atcUpdateForBandId,
   nearestAtcUpdate,
   type AtcUpdate,
 } from './lib/atcUpdates'
+import { atcUpdatePoints } from './map/atcUpdateLayers'
 import { AtcUpdateSheet } from './chrome/AtcUpdateSheet'
 import { HikePicker } from './screens/HikePicker'
 import {
@@ -1171,6 +1173,19 @@ function App() {
     return closureBands(atcBandCandidates(atcUpdates), trailIndex)
   }, [atcUpdates, trailIndex])
 
+  /**
+   * The same notices that name one mile rather than a stretch, as dots.
+   *
+   * Not filtered by `obstructsTheTrail`, unlike the bands. A dot makes no
+   * claim about passability - it says the ATC has posted something here - so a
+   * bear warning and a closed shelter both belong on the map, and neither is
+   * the barrier a band would have made them.
+   */
+  const atcPointsOnMap = useMemo(() => {
+    if (trailIndex === null) return []
+    return atcUpdatePoints(atcPointNotices(atcUpdates), trailIndex)
+  }, [atcUpdates, trailIndex])
+
   /** The tapped update, resolved from the band id the map reported. */
   const selectedAtcUpdate = useMemo(() => {
     if (selectedAtcBandId === null) return null
@@ -2085,6 +2100,7 @@ function App() {
           warningsAhead={warningsAhead}
           closures={closureBandsOnMap}
           atcUpdates={atcBandsOnMap}
+          atcUpdatePoints={atcPointsOnMap}
           onSelectAtcUpdate={setSelectedAtcBandId}
           atcUpdateSheet={
             selectedAtcUpdate === null ? null : (

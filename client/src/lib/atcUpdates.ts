@@ -46,14 +46,13 @@ export interface AtcUpdate {
   /**
    * Whether a hiker is stopped from walking through, as the reviewer read it.
    *
-   * NOT derivable from `category`, which is the thing this field replaced. ATC
-   * files a closed shelter and a closed footbridge under the same word,
-   * `Closure`, and they are opposite answers to the only question a band asks:
-   * "Connecticut: Limestone Spring Shelter Closed" leaves the trail open and
-   * the shelter shut, while "Harpers Ferry: Footbridge Closure" means the way
-   * across the Potomac is gone. Keying the band on the category drew a barrier
-   * across the treadway for the shelter - a barrier a hiker walks straight
-   * past, which is exactly what teaches them the barriers can be ignored.
+   * NOT derivable from `category`, which is the thing this field replaced,
+   * and ATC's live page on 2026-08-12 is why. The only notice they file as
+   * `Closure` is a closed SHELTER - the trail past Limestone Spring is open -
+   * while the one thing that genuinely stops a hiker, the Harpers Ferry
+   * footbridge, is filed as `Detour`. A rule reading the category was wrong in
+   * both directions at once: a barrier drawn across open trail for the
+   * shelter, and the real obstruction included only by luck.
    *
    * So it is the reviewer's judgement, recorded per row, which is where
    * features/ATC_TRAIL_UPDATES.md puts every other judgement this data needs.
@@ -67,7 +66,15 @@ export interface AtcUpdate {
 /** The categories ATC publishes, verbatim. Not mapped onto `ClosureReason`:
  *  that enum's labels would render an "Alert" as "Closed", which is a claim
  *  ATC did not make. */
-export type AtcCategory = 'Detour' | 'Alert' | 'Closure' | 'Parking' | 'Hiking Safety'
+export type AtcCategory =
+  | 'Detour'
+  | 'Alert'
+  | 'Closure'
+  | 'Parking'
+  | 'Hiking Safety'
+  /** Bear warnings and the like. Not among the five measured on 2026-08-09;
+   *  ATC was using it for two live notices on 2026-08-12. */
+  | 'Animal'
 
 /**
  * Whether this update gets a band, rather than only a banner.
@@ -143,9 +150,44 @@ export function atcUpdateAsClosure(update: AtcUpdate): Closure {
   }
 }
 
-/** The updates that may be drawn as bands, in the shared shape. */
+/**
+ * Whether ATC named a place rather than a stretch.
+ *
+ * Most of what they publish is a place: of the seven placeable updates live on
+ * 2026-08-12, five were a single mile marker - a shelter, a footbridge, two
+ * bear warnings, a flooded section. Only Hurricane Helene was a real range,
+ * and it is over the band ceiling. So this is the common case, not the edge
+ * one, and it is why the map draws points at all (lib/atcUpdateStyle.ts).
+ */
+export function isPointNotice(update: AtcUpdate): boolean {
+  return update.start_mile_marker === update.end_mile_marker
+}
+
+/**
+ * The updates drawn as a band along the trail, in the shared shape.
+ *
+ * Ranges only. A point goes to `atcPointNotices` instead, because `trailSlice`
+ * would widen it to the two vertices that bracket it and draw a few dozen feet
+ * of line - which is not a small band, it is an invisible one.
+ */
 export function atcBandCandidates(updates: readonly AtcUpdate[]): Closure[] {
-  return updates.filter(obstructsTheTrail).map(atcUpdateAsClosure)
+  return updates
+    .filter((update) => obstructsTheTrail(update) && !isPointNotice(update))
+    .map(atcUpdateAsClosure)
+}
+
+/**
+ * The updates drawn as a dot at a single mile.
+ *
+ * Unlike the bands, this is NOT limited to the ones that obstruct the trail.
+ * A dot makes no claim about passability - it says "the ATC has posted
+ * something here" - so a bear warning at mile 195.8 and a closed shelter at
+ * mile 1,503.6 both belong on the map, and neither is the barrier a band
+ * would have made them. That difference is the whole reason the two
+ * geometries are decided separately rather than by one filter.
+ */
+export function atcPointNotices(updates: readonly AtcUpdate[]): AtcUpdate[] {
+  return updates.filter(isPointNotice)
 }
 
 function mile(value: number): string {

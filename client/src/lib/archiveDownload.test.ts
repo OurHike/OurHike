@@ -1820,13 +1820,16 @@ describe('bytes reach the disk as they arrive (#553)', () => {
 
     expect(storedBytes(store)).toBe(12)
     expect(segmentsIn(store, 0).map((part) => part.size)).toEqual([4, 4, 4])
-    // Completion is the marker, not a whole-archive write.
-    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
+    // Completion is the marker, not a whole-archive write. `priorSegments: 0`
+    // because a first download replaced nothing - the field exists so a later
+    // delete can sweep a replaced generation to a known floor (#648).
     expect(store[`${CORRIDOR_ARCHIVE_KEY}:complete`]).toEqual({
       generation: 0,
       segments: 3,
       totalBytes: 12,
+      priorSegments: 0,
     })
+    expect(store[CORRIDOR_ARCHIVE_KEY]).toBeUndefined()
     expect(new Uint8Array(await (storedArchive(store) as Blob).arrayBuffer())).toEqual(
       bytes(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12),
     )

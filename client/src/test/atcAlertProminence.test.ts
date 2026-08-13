@@ -58,18 +58,29 @@ describe('the ATC’s point notice outsizes every pin on the map', () => {
     expect(ATC_UPDATE_POINT_DIAMETER).toBeGreaterThan(POI_PIN_SIZE)
   })
 
-  it('is larger than a serious-warning pin', () => {
-    // 44px, and poiIcons.ts calls it "the biggest thing on the map". It is not
-    // any more, and that is a deliberate demotion rather than a drift - see
-    // ATC_UPDATE_POINT_DIAMETER, which records it.
-    expect(ATC_UPDATE_POINT_DIAMETER).toBeGreaterThan(WARNING_PIN.sizePx)
+  it('does NOT outgrow the serious-warning pin as a disc', () => {
+    // 44px, and poiIcons.ts calls it "the biggest thing on the map". A first
+    // pass took the dot past it at `--space-12` and the result read as a wound
+    // rather than a notice, so the disc now stops short - the dot only has to
+    // out-read the pins it sits among, and being drawn over all of them is
+    // what does the rest.
+    expect(ATC_UPDATE_POINT_DIAMETER).toBeLessThan(WARNING_PIN.sizePx)
   })
 
   it('carries a glow that reaches past every one of them', () => {
     // Size alone is what a hiker sees once they are already looking at that
-    // part of the screen. The glow is for the rest of the time.
+    // part of the screen. The glow is for the rest of the time - and it is
+    // where the ATC notice does end up the widest mark on the map, in the one
+    // form that cannot hide anything: an edgeless gradient fading to zero.
     expect(ATC_UPDATE_HALO_RADIUS * 2).toBeGreaterThan(WARNING_PIN.sizePx)
     expect(ATC_UPDATE_HALO_RADIUS * 2).toBeGreaterThan(POI_PIN_SIZE)
+  })
+
+  it('keeps the glow tighter than the dot is wide, so it reads as a rim', () => {
+    // The other half of the first pass being too big: at scale 2 the glow was
+    // a 96px circle of red per notice, most of a phone's width for one mile
+    // marker. The dot says where; the glow only says look.
+    expect(ATC_UPDATE_HALO_RADIUS).toBeLessThan(ATC_UPDATE_POINT_DIAMETER)
   })
 })
 

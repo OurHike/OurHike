@@ -26,7 +26,7 @@
 // WHAT CHANGED, AND WHY IT IS NOT A SECOND SEVERITY EITHER. The point notice
 // used to be a 10px dot drawn under the waypoint pins, which made the ATC's
 // own word about the trail the smallest and most easily covered mark on the
-// map. It is now 48px, it carries a glow that fades out to nothing, and
+// map. It is now 40px, it carries a glow that fades out to nothing, and
 // map/style.ts draws this whole group last of all so nothing can sit on top
 // of it. All three are SIZE and ORDER, not hue: the band and the dot are
 // still the closure's exact red, so none of it says "this barrier is harder
@@ -65,17 +65,23 @@ export const ATC_UPDATE_HALO_LAYER_ID = 'atc-update-halo'
  * trail was the smallest thing on it, and drawn UNDER both of them besides
  * (map/style.ts).
  *
- * `--space-12`, which is the next step up the spacing scale from the biggest
- * pin on the map rather than a number picked to win. That derivation is the
- * whole content of the size: an ATC notice must outrank a shelter and a
- * warning pin, and one step is what outranking costs.
+ * `--space-10`, which is the SMALLEST step on the spacing scale that still
+ * clears a waypoint pin. That is the derivation, and the word doing the work
+ * in it is "smallest": this dot is drawn over every other mark on the map now
+ * (map/style.ts), so it only has to out-read the pins it sits among - it does
+ * not have to dominate them, and a first pass at `--space-12` did, looking
+ * like a wound on the map rather than a notice on the trail.
  *
- * THIS DOES DEMOTE THE WARNING PIN from "the biggest thing on the map", which
- * poiIcons.ts's POI_PIN_SIZE comment and WIREFRAMES.md both state as a rule.
- * Recorded rather than smoothed over: the rule was written when nothing else
- * on the canvas was a safety mark, and it should be re-read now that two are.
+ * Being covered was the larger half of the original fault and it is fixed by
+ * the layer order, not by pixels. Size only has to carry the smaller half:
+ * that a hiker's eye lands on the dot rather than on the shelter pin beside
+ * it. Two pixels of clearance does that once nothing can be drawn on top.
+ *
+ * It still edges past the 44px serious-warning pin only in the halo, not in
+ * the disc, so poiIcons.ts's "the biggest thing on the map" survives at the
+ * one measurement it actually names.
  */
-export const ATC_UPDATE_POINT_DIAMETER = 48
+export const ATC_UPDATE_POINT_DIAMETER = 40
 
 /** Half of {@link ATC_UPDATE_POINT_DIAMETER}, which is what MapLibre wants. */
 export const ATC_UPDATE_POINT_RADIUS = ATC_UPDATE_POINT_DIAMETER / 2
@@ -83,13 +89,17 @@ export const ATC_UPDATE_POINT_RADIUS = ATC_UPDATE_POINT_DIAMETER / 2
 /**
  * How far the glow reaches past the dot, as a multiple of its radius.
  *
- * Two, so the halo is the dot's own width of fading red on every side of it -
- * enough to catch an eye that is not looking at that part of the screen, and
- * short enough that five of them on the whole-corridor view are five marks
- * rather than one wash. The fade is what keeps that true: see
- * {@link ATC_UPDATE_HALO_BLUR}.
+ * Half the dot's radius of fading red on every side - enough to catch an eye
+ * that is not looking at that part of the screen, and short enough that five
+ * of them on the whole-corridor view are five marks rather than one wash.
+ *
+ * It was 2, and that was the half of the first pass that actually read as too
+ * big: a 96px circle of red around every notice is most of a phone's width
+ * for one mile marker, and five of them on a 390px screen is a rash. The dot
+ * is what says WHERE; the glow only has to say LOOK, and saying it louder
+ * than the dot inverts the two.
  */
-export const ATC_UPDATE_HALO_SCALE = 2
+export const ATC_UPDATE_HALO_SCALE = 1.5
 
 export const ATC_UPDATE_HALO_RADIUS = ATC_UPDATE_POINT_RADIUS * ATC_UPDATE_HALO_SCALE
 
@@ -107,12 +117,12 @@ export const ATC_UPDATE_HALO_BLUR = 1
 /**
  * The glow's opacity at its centre, which is under the dot and never seen.
  *
- * What is actually visible starts where the dot ends, at half the radius, and
- * the blur has already taken it to about half of this - roughly a quarter
- * opacity fading to zero. Deliberately that faint: this layer sits over the
- * waypoint pins (map/style.ts), and a glow that hid a water source to announce
- * a bear warning two hundred feet away would have traded one safety mark for
- * another.
+ * What is actually visible starts where the dot ends, at two thirds of the
+ * radius, and the blur has already taken it to about a third of this by then -
+ * fading to zero over the last ten pixels. Deliberately that faint: this layer
+ * sits over the waypoint pins (map/style.ts), and a glow that hid a water
+ * source to announce a bear warning two hundred feet away would have traded
+ * one safety mark for another.
  */
 export const ATC_UPDATE_HALO_OPACITY = 0.55
 

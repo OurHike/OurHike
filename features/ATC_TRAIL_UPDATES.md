@@ -318,11 +318,22 @@ both pin layers. Against the pins it actually competes with, that is a losing ha
 over: a waypoint pin is 38px (`POI_PIN_SIZE`, itself `--space-9`) and a serious-warning pin
 is 44px, so the single mark carrying the trail maintainer's own word about the trail was the
 smallest thing on the map and could be covered by OurHike's pin for the very shelter ATC had
-just closed. It is now 48px (`--space-12`, one step up the scale from the biggest pin), it
-carries a fully-blurred halo that fades to nothing rather than a second ring — a gradient has
-no edge, and an edge here would draw a boundary around ground ATC said nothing about — and
-`map/style.ts` draws the whole ATC group **last of all**, so nothing on the canvas can sit on
-top of it.
+just closed. It is now 40px (`--space-10`), it carries a fully-blurred halo reaching half its
+radius again — a gradient rather than a second ring, because a gradient has no edge and an
+edge here would draw a boundary around ground ATC said nothing about — and `map/style.ts`
+draws the whole ATC group **last of all**, so nothing on the canvas can sit on top of it.
+
+**The first attempt overcorrected, and the correction is the part worth keeping.** It went to
+48px (`--space-12`) with a halo at twice the radius, on the reasoning that an ATC notice
+should outrank every pin on the map. On a 390px phone that is a 96px circle of red per
+notice, and five of them is a rash rather than five marks — it read as a wound on the map
+rather than a notice on the trail. The mistake was treating size as the fix for both halves
+of the fault when it is only the fix for one: **being covered is solved by the layer order,
+and pixels only have to make an eye land on the dot rather than on the shelter pin beside
+it.** Two pixels of clearance over a waypoint pin does that once nothing can be drawn on top.
+So the disc is the *smallest* step on the scale that clears a waypoint pin, and the halo is
+where the notice ends up the widest mark on the map — in the one form that cannot hide
+anything underneath it.
 
 All three changes are size and stacking order, never hue. `lib/atcUpdateStyle.ts` refuses a
 second barrier colour at length, and the reasoning survives intact: on a safety map two reds
@@ -330,12 +341,13 @@ read as two severities rather than as two organisations, and both of these still
 trail is shut. What the size says is only "there is something here", which is the one thing a
 mark cannot say at all if nobody sees it.
 
-**This does demote the serious-warning pin from "the biggest thing on the map"**, which
-`map/poiIcons.ts` and WIREFRAMES.md both state as a rule. Written down rather than smoothed
-over: that rule dates from when nothing else on the canvas was a safety mark, and it is worth
-re-reading now that two are. `client/src/test/atcAlertProminence.test.ts` is where the
-comparison is actually held — against the pins' own constants, so shrinking the dot or
-appending a layer over it fails a test rather than quietly restoring the bug.
+**The serious-warning pin keeps "the biggest thing on the map"** at the one measurement
+`map/poiIcons.ts` and WIREFRAMES.md actually name: 44px of drawn pin, against the ATC dot's
+40px disc. The 48px version did take it, and giving that back was most of what the
+overcorrection cost was buying. `client/src/test/atcAlertProminence.test.ts` holds both
+bounds — the dot clears a waypoint pin and stops short of a warning pin — against those
+files' own constants, so a later drift in either direction fails a test rather than quietly
+restoring one bug or introducing the other.
 
 **The VA Creeper closure this document quotes throughout was gone from ATC's page by
 2026-08-12.** Three days. That is the staleness argument here arriving as a measurement

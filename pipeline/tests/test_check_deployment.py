@@ -479,14 +479,51 @@ def test_every_published_artifact_is_checked(mock):
 def test_a_bucket_with_nothing_published_checks_cors_and_says_so(mock):
     """The state this repository is in until LAUNCH_CHECKLIST.md 1.6 runs.
     Failing daily until then is how an alarm gets muted, so the absence of a
-    publish is reported as an absence rather than as a fault."""
+    publish is reported as an absence rather than as a fault. Since #651 the
+    absence has a second witness: no manifest AND no release index."""
     mock.get(f"{BASE}/latest.json", status_code=404)
+    mock.get(f"{BASE}/releases/index.json", status_code=404)
     mock.options(f"{BASE}/latest.json", headers={"Access-Control-Allow-Headers": "range, if-range"})
 
     reports = check_all(BASE, MANIFEST)
 
     assert not any(r["check"] == "artifact" for r in reports)
     assert any(r["check"] == "origin" for r in reports)
+    assert not any(r["check"] == "manifest" for r in reports)
+
+
+def test_a_missing_manifest_after_a_release_is_the_outage_not_the_calm(mock):
+    """#651: delete latest.json from a bucket that has served hikers for
+    months, and every check above this one carries on green - a 404 wears
+    CORS headers too, and the artifact checks simply never run. The release
+    index is the witness that separates that day from a genuinely unpublished
+    one: every real release appends to it, and nothing deletes it."""
+    mock.get(f"{BASE}/latest.json", status_code=404)
+    mock.get(
+        f"{BASE}/releases/index.json",
+        json={"releases": [{"release": "2026-08-06", "version": "v", "created_at": "2026-08-06T00:00:00+00:00"}]},
+    )
+    mock.options(f"{BASE}/latest.json", headers={"Access-Control-Allow-Headers": "range, if-range"})
+
+    reports = check_all(BASE, MANIFEST)
+
+    [gone] = [r for r in reports if r["check"] == "manifest"]
+    assert gone["state"] == FAILED
+    assert "has published" in gone["detail"]
+    # And it stops a hiker - the pointer every client fetches first is gone -
+    # so the tracking issue opens rather than the run reporting a healthy day.
+    assert gone in hiker_facing_failures(reports, MANIFEST)
+
+
+def test_an_unreadable_release_index_reads_as_the_calm_absence(mock):
+    """No evidence is not evidence of an outage: a 404 or an error on the
+    index leaves the missing manifest reported exactly as before #651 - as an
+    absence, not a fault - so pre-launch days stay quiet."""
+    mock.get(f"{BASE}/latest.json", status_code=404)
+    mock.get(f"{BASE}/releases/index.json", status_code=404)
+    mock.options(f"{BASE}/latest.json", headers={"Access-Control-Allow-Headers": "range, if-range"})
+
+    assert not any(r["check"] == "manifest" for r in check_all(BASE, MANIFEST))
 
 
 def test_a_preview_only_failure_is_not_a_hiker_facing_one(mock):

@@ -452,7 +452,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.exit_zero:
         return 0
-    return 1 if failed else 0
+    # Unreachable is not passed (#651). A run that could not ask has no
+    # business exiting like one that asked and was answered well - this
+    # module's own rule is that a green run must not claim more than it
+    # checked, and the exit code is the claim a gate reads.
+    return 1 if failed or unreachable else 0
 
 
 if __name__ == "__main__":

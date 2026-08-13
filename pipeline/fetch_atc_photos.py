@@ -49,6 +49,7 @@ from pathlib import Path
 
 import requests
 
+from lib import fetch_receipts
 from lib.completeness import fail_if_incomplete
 from lib.photo_store import local_photo_path, photo_digest
 
@@ -403,6 +404,11 @@ def main(recheck: bool = False) -> None:
             persist(records)
 
     persist(records)
+    # OUT_PATH alone, not the photo store beside it. The images are
+    # content-addressed bytes whose count publish.py reports separately (the
+    # workflow's "How many photos would be published" step); this index is
+    # the thing an export reads and the thing worth re-hashing.
+    fetch_receipts.record("fetch_atc_photos", [OUT_PATH])
     found = [r for r in records.values() if r.get("status") == "found"]
     images = sum(len(record_photos(r)) for r in found)
     print(f"Saved -> {OUT_PATH} ({kept} carried forward, {fetched} fetched)")

@@ -10,6 +10,7 @@ pipeline output - per TESTING.md.
 """
 
 import json
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pytest
@@ -18,6 +19,7 @@ from rasterio.transform import from_bounds
 
 import check_output_quality
 from check_output_quality import Verdict
+from lib import fetch_receipts
 
 # --- Shared fixtures ---------------------------------------------------------
 
@@ -834,7 +836,15 @@ def test_check_all_returns_one_report_per_check(tmp_path, monkeypatch):
 
     reports = check_output_quality.check_all()
 
-    assert {r["check"] for r in reports} == {"trails", "poi", "elevation", "corridor", "topo_quads", "baseline"}
+    assert {r["check"] for r in reports} == {
+        "trails",
+        "poi",
+        "elevation",
+        "corridor",
+        "topo_quads",
+        "baseline",
+        "fetches",
+    }
 
 
 def test_check_all_topo_quads_and_baseline_are_skipped_not_problem_when_nothing_has_run_yet(tmp_path, monkeypatch):
@@ -850,6 +860,172 @@ def test_check_all_topo_quads_and_baseline_are_skipped_not_problem_when_nothing_
     assert by_check["topo_quads"] is Verdict.SKIPPED
     assert by_check["baseline"] is Verdict.SKIPPED
     assert by_check["trails"] is Verdict.PROBLEM
+
+
+# --- check 5: fetch receipts (#542) ------------------------------------------
+
+
+def _write_receipts(root, fetchers, *, now=None):
+    """Give `root` a real receipt per fetcher, each standing behind a real
+    file. Built through fetch_receipts.record() rather than by writing the
+    JSON by hand, so these tests exercise the same writer the fetchers use -
+    a hand-rolled fixture would keep passing after the format moved."""
+    written = {}
+    for name in fetchers:
+        output = root / "data" / "raw" / f"{name}_output.json"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(f'{{"from": "{name}"}}')
+        written[name] = output
+        fetch_receipts.record(name, [output], root=root, now=now)
+    return written
+
+
+def test_fetches_verdict_is_ok_when_the_required_pair_left_receipts(tmp_path):
+    _write_receipts(tmp_path, ["fetch_all", "fetch_opentrail"])
+
+    report = check_output_quality.fetches_verdict(root=tmp_path)
+
+    assert report["verdict"] is Verdict.OK
+    assert report["problems"] == []
+
+
+def test_fetches_verdict_fails_when_a_required_fetcher_never_ran(tmp_path):
+    """The failure this check exists for. Every export can still be perfect -
+    they will have been built from whatever the last run left on disk."""
+    _write_receipts(tmp_path, ["fetch_all"])
+
+    report = check_output_quality.fetches_verdict(root=tmp_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert len(report["problems"]) == 1
+    assert "fetch_opentrail" in report["problems"][0]
+
+
+def test_fetches_verdict_fails_when_an_output_changed_since_it_was_fetched(tmp_path):
+    outputs = _write_receipts(tmp_path, ["fetch_all", "fetch_opentrail"])
+    outputs["fetch_all"].write_text('{"truncated": true}')
+
+    report = check_output_quality.fetches_verdict(root=tmp_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert "changed since it was fetched" in report["problems"][0]
+
+
+def test_fetches_verdict_does_not_ask_for_elevation_unless_the_run_did(tmp_path):
+    """Elevation is a workflow_dispatch input, so a run without it is a
+    deliberate subset rather than a broken run - the same reasoning
+    --optional already applies to the export side."""
+    _write_receipts(tmp_path, ["fetch_all", "fetch_opentrail"])
+
+    assert check_output_quality.fetches_verdict(root=tmp_path)["verdict"] is Verdict.OK
+    assert check_output_quality.fetches_verdict(fetched={"fetch_elevation"}, root=tmp_path)["verdict"] is Verdict.PROBLEM
+
+
+def test_fetches_verdict_asks_for_atc_photos_when_the_run_fetched_photos(tmp_path):
+    """ATC photos have no continue-on-error: the workflow says an outage
+    there means the release "has bigger problems than missing photos"."""
+    _write_receipts(tmp_path, ["fetch_all", "fetch_opentrail"])
+
+    report = check_output_quality.fetches_verdict(fetched={"fetch_atc_photos"}, root=tmp_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert "fetch_atc_photos" in report["problems"][0]
+
+
+def test_a_missing_commons_receipt_is_reported_but_never_fails(tmp_path):
+    """fetch_poi_images.py carries continue-on-error because Commons is a
+    third party this project has no relationship with. A gate that failed on
+    its absence would contradict the step that produces it - but silence is
+    how a release ships with no photos and nobody notices, so it is still
+    said out loud."""
+    _write_receipts(tmp_path, ["fetch_all", "fetch_opentrail"])
+
+    report = check_output_quality.fetches_verdict(fetched={"fetch_poi_images"}, root=tmp_path)
+
+    assert report["verdict"] is Verdict.OK
+    assert "fetch_poi_images never" in report["detail"]
+
+
+def test_a_stale_receipt_passes_and_says_how_stale(tmp_path):
+    """#542 is explicit: "a release built while poi_images.json is a week old
+    is a legitimate release". Staleness is something packaging reports so a
+    reader can judge it, not something it decides for them."""
+    _write_receipts(
+        tmp_path,
+        ["fetch_all", "fetch_opentrail"],
+        now=datetime.now(timezone.utc) - timedelta(days=30),
+    )
+
+    report = check_output_quality.fetches_verdict(root=tmp_path)
+
+    assert report["verdict"] is Verdict.OK
+    assert "fetch_all 30.0d" in report["detail"]
+
+
+def test_a_corrupt_receipt_fails_rather_than_reading_as_absent(tmp_path):
+    _write_receipts(tmp_path, ["fetch_all", "fetch_opentrail"])
+    fetch_receipts.receipt_path("fetch_all", tmp_path).write_text("{ half a file")
+
+    report = check_output_quality.fetches_verdict(root=tmp_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert "not readable JSON" in report["problems"][0]
+
+
+def test_a_corrupt_receipt_fails_even_for_the_advisory_fetcher(tmp_path):
+    """Commons is allowed not to have run. It is not allowed to leave a torn
+    file where a completion record belongs - that is something going wrong
+    locally, not a third party being down."""
+    _write_receipts(tmp_path, ["fetch_all", "fetch_opentrail"])
+    fetch_receipts.receipts_dir(tmp_path).mkdir(parents=True, exist_ok=True)
+    fetch_receipts.receipt_path("fetch_poi_images", tmp_path).write_text("{ torn")
+
+    report = check_output_quality.fetches_verdict(root=tmp_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+
+
+def test_the_fetches_check_is_never_excused_by_optional(tmp_path, monkeypatch):
+    """--optional's excuse is keyed on "the manifest was absent, so this was
+    never built". The fetches check has the opposite polarity - an absent
+    receipt IS the finding - so it must not be reachable through the same
+    door, whatever a caller passes."""
+    monkeypatch.setattr(check_output_quality, "RECEIPTS_ROOT", tmp_path)
+    for attr in ("TRAILS_MANIFEST", "POI_MANIFEST", "ELEVATION_MANIFEST"):
+        monkeypatch.setattr(check_output_quality, attr, tmp_path / "absent.json")
+    monkeypatch.setattr(check_output_quality, "CENTERLINE_PATH", tmp_path / "absent.geojson")
+    monkeypatch.setattr(check_output_quality, "TOPO_QUADS_MANIFEST", tmp_path / "absent_topo.json")
+    monkeypatch.setattr(check_output_quality, "BASELINE_PATH", tmp_path / "absent_baseline.json")
+
+    reports = check_output_quality.check_all(optional={"trails", "poi", "elevation", "fetches"})
+
+    by_check = {r["check"]: r["verdict"] for r in reports}
+    assert by_check["fetches"] is Verdict.PROBLEM
+
+
+def test_main_fails_when_a_required_fetch_left_no_receipt(passing_pipeline, tmp_path):
+    """End to end through the process exit code: everything else is green and
+    the release still stops."""
+    assert check_output_quality.main() == 0
+
+    fetch_receipts.receipt_path("fetch_opentrail", tmp_path).unlink()
+
+    assert check_output_quality.main() != 0
+
+
+def test_main_accepts_the_fetched_flag_for_a_conditional_fetcher(passing_pipeline, tmp_path):
+    assert check_output_quality.main(["--fetched", "fetch_elevation"]) != 0
+
+    _write_receipts(tmp_path, ["fetch_elevation"])
+
+    assert check_output_quality.main(["--fetched", "fetch_elevation"]) == 0
+
+
+def test_the_fetched_flag_rejects_a_fetcher_that_is_always_required():
+    """fetch_all and fetch_opentrail are not optional and never need naming,
+    so accepting them would imply a run could choose not to need them."""
+    with pytest.raises(SystemExit):
+        check_output_quality.parse_args(["--fetched", "fetch_all"])
 
 
 @pytest.fixture
@@ -890,6 +1066,15 @@ def passing_pipeline(tmp_path, monkeypatch):
     centerline_path = tmp_path / "centerline.geojson"
     _write_centerline(centerline_path)
 
+    # The two always-required fetch receipts (#542). Added here rather than
+    # excused in the check, because "a complete, passing set" genuinely now
+    # includes them: a run whose exports are perfect but whose inputs were
+    # never fetched this time is the case fetches_verdict() exists to catch,
+    # so a fixture that passed without them would be asserting the opposite
+    # of what the check is for.
+    _write_receipts(tmp_path, ["fetch_all", "fetch_opentrail"])
+
+    monkeypatch.setattr(check_output_quality, "RECEIPTS_ROOT", tmp_path)
     monkeypatch.setattr(check_output_quality, "TRAILS_MANIFEST", trails_manifest)
     monkeypatch.setattr(check_output_quality, "POI_MANIFEST", poi_manifest)
     monkeypatch.setattr(check_output_quality, "ELEVATION_MANIFEST", elevation_manifest)

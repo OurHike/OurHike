@@ -73,6 +73,7 @@ from pathlib import Path
 import duckdb
 import requests
 
+from lib import fetch_receipts
 from lib.completeness import fail_if_incomplete
 from lib.corridor import build_corridor
 
@@ -384,6 +385,9 @@ def main(allow_shrink: bool = False):
 
     INDEX_PATH.write_text(json.dumps(index, indent=2))
     print(f"Tile index -> {INDEX_PATH}")
+    # After the write gate above, so an index this run refused to overwrite
+    # never gets a receipt saying it did.
+    fetch_receipts.record("fetch_elevation", [INDEX_PATH])
     print(
         "No rasters downloaded: these are Cloud-Optimized GeoTIFFs, and "
         "export_elevation.py reads only the blocks the trail crosses."

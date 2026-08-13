@@ -73,11 +73,12 @@ jobs:
       # Production deploys from a tag, and both sanctioned dispatch uses -
       # republishing after a variable change, rolling back (RELEASING.md §11b)
       # - are dispatches against a tag that already shipped. The two tag gates
-      # below *skip* on a non-tag ref rather than failing, deliberately, so a
-      # rollback does not re-assert paperwork - which left the default dispatch
-      # (the Run workflow button offers the default branch first) building
-      # main and pushing it to production with every gate silently skipped
-      # (#644). Refused here by name instead.
+      # below skip on a non-tag ref rather than failing, which left the
+      # default dispatch (the Run workflow button offers the default branch
+      # first) building main and pushing it to production with every gate
+      # silently skipped (#644). Refused here by name instead. After this
+      # step the only dispatch that proceeds is a tag's, where the gates run
+      # - and pass, because every tag that ever shipped passed them to ship.
       - name: Refuse a dispatch that is not a tag
         if: github.event_name == 'workflow_dispatch' && !startsWith(github.ref, 'refs/tags/')
         run: |

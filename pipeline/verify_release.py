@@ -32,12 +32,14 @@ never silent - `--strict` turns every one of them into a failure, because
 "the check did not run" reading like "the check passed" is the exact shape of
 failure this repository keeps finding.
 
-  3, 17, 19  need the `releases/` layout (#500). R2_LAYOUT.md declares it;
-             the bucket does not have it. Measured: `releases/index.json` 404
-             while `latest.json` answers 206. Without a previous release there
-             is nothing to compare against and no released folder to re-verify,
-             which is check 19 - the headline "the releases hikers are already
-             on still work".
+  3, 17, 19  compare this release against previous ones. The `releases/`
+             layout they need was missing when this was written - measured
+             2026-08-09, `releases/index.json` 404 while `latest.json` answered
+             206 - and #500 has since made `publish.py` write it, so the first
+             publish after that gives these checks something to read. They are
+             still skipped because they are still unwritten: they belong to
+             #490's battery, and check 19 is #374's item 3 - the headline "the
+             releases hikers are already on still work".
   10         needs the tile count the build reported. `latest.json` carries a
              sha256 per artifact and nothing else, so there is no published
              figure to match against.
@@ -96,7 +98,16 @@ CORRIDOR_BBOX = (-85.0, 33.5, -66.5, 46.5)
 # real problem, not a rounding detail"; 2% is DATA_RELEASES.md §3's figure.
 ADVERTISED_TOLERANCE = 0.02
 
-_NEEDS_RELEASES = "needs the releases/ layout (#500), which the bucket does not have yet"
+# The blocker moved rather than cleared. `publish.py` writes `releases/<id>/`
+# and `releases/index.json` since #500, so the layout these three checks need
+# is no longer missing - what is missing is the checks themselves, which are
+# #490's battery and #374's item 3.
+#
+# Worth keeping the reason accurate rather than letting it read "the bucket
+# does not have it" once the bucket does: a skip whose stated cause is false
+# is how "the check did not run" starts looking like "the check passed",
+# which is the failure this module's own header is about.
+_NEEDS_RELEASES = "the releases/ layout exists since #500, but this check is not written yet (#490)"
 
 
 def _report(check: int, key: str, state: str, detail: str) -> dict:

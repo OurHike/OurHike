@@ -68,10 +68,24 @@ data a phone is pinned to.
 | `conditions/` | published safety data — verified closures, verified reports, and the ATC's own trail updates | mutable: rewritten in place, daily | yes |
 | `environments/` | one subtree per non-production environment, each holding a whole copy of this layout | as whatever it holds | to that environment's audience |
 
-`releases/` and `_internal/` are the layout [DATA_RELEASES.md](DATA_RELEASES.md) designs and
-is rolling out; the root keys are what is live today and stay frozen when it lands. That
-document owns the tree, the retention clocks and the migration — this one only says what
-the segments may be called.
+`releases/` and `_internal/` are the layout [DATA_RELEASES.md](DATA_RELEASES.md) designs.
+That document owns the tree, the retention clocks and the migration — this one only says
+what the segments may be called, which is why no prune rule is restated here.
+
+**`releases/` is written now** (#500). Every publish that writes a new `latest.json`
+version also copies that version's artifacts into `releases/<id>/`, writes a
+`manifest.json` describing the folder, and appends to `releases/index.json`. The copies
+are server-side, so a complete folder costs one `copy_object` per artifact rather than a
+second upload of 1.6 GB. `latest.json` gained a `release` field naming the folder that
+holds the same bytes, and is otherwise unchanged: **the root keys stay live and stay the
+thing every client in the field reads.** That is deliberate rather than transitional —
+`DATA_RELEASE` is compiled into app-store builds that cannot be forced forward, so moving
+the flat keys is a change no phone already in the field could survive.
+
+`_internal/` is still not written by anything. It holds build intermediates keyed by
+release — per-cell mosaics and their state — whose producer is the raster build, and
+creating the prefix without that would be a prefix a prune job knows to spare and nothing
+ever puts anything in.
 
 `conditions/` is the one prefix that is neither versioned nor content-addressed, and both
 are deliberate ([../features/CONDITIONS_DELIVERY.md](../features/CONDITIONS_DELIVERY.md)).

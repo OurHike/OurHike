@@ -278,10 +278,12 @@ class TestVectorContent:
 
 class TestASkipIsNeverAPass:
     def test_the_checks_that_cannot_run_are_listed_by_number(self):
-        """One, down from four. 3, 17 and 19 stopped being skipped BY
-        CONSTRUCTION when #374's item 3 wrote them - they now run, or skip with
-        a reason specific to what the bucket holds (`release_checks`)."""
-        assert {report["check"] for report in skipped_checks()} == {10}
+        """Three: 10, and since #653, 6 and 11. The two newcomers were not
+        skipped before - they were ABSENT, unmentioned by a file whose header
+        says a skip is never silent, and this very test pinned the absence in
+        place by asserting the set was exactly {10}. The set is the honest
+        roster now; shrinking it means BUILDING a check, not deleting a row."""
+        assert {report["check"] for report in skipped_checks()} == {6, 10, 11}
 
     def test_each_one_says_why_rather_than_just_being_absent(self):
         for report in skipped_checks():
@@ -313,8 +315,9 @@ class TestTheWholeRun:
         assert reports[0]["state"] == FAILED
         # 3, 17 and 19 read a release out of the manifest, so they cannot run
         # either - and must still APPEAR rather than vanishing, or a reader
-        # counting checks finds a short clean run.
-        assert {r["check"] for r in reports if r["state"] == SKIPPED} == {3, 10, 17, 19}
+        # counting checks finds a short clean run. 6 and 11 are the standing
+        # skips (#653), present in every run until somebody builds them.
+        assert {r["check"] for r in reports if r["state"] == SKIPPED} == {3, 6, 10, 11, 17, 19}
 
 
 # ---------------------------------------------------------------------------

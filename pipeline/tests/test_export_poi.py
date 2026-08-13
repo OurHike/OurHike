@@ -197,6 +197,13 @@ def no_real_capacity_file(tmp_path, monkeypatch):
     monkeypatch.setattr(export_poi, "CAPACITY_PATH", tmp_path / "no-capacity-file.json")
 
 
+@pytest.fixture(autouse=True)
+def no_real_water_distance_file(tmp_path, monkeypatch):
+    """WATER_DISTANCE_PATH gets the same treatment as CAPACITY_PATH above,
+    for the same reason."""
+    monkeypatch.setattr(export_poi, "WATER_DISTANCE_PATH", tmp_path / "no-water-distance-file.json")
+
+
 def test_export_poi_clips_features_outside_the_corridor(tmp_path, con):
     """A synthetic feature far from the trail should not appear in output -
     mirrors spike_corridor.py's own clip step, on tiny synthetic data rather
@@ -538,6 +545,118 @@ def test_export_poi_exports_without_capacity_when_the_reference_file_is_absent(t
     assert shelter_props.get("capacity") is None
 
 
+def _write_water_distance_file(path, records):
+    """A stand-in for reference/water_distance.json, same shape
+    build_water_distance.py writes."""
+    path.write_text(json.dumps({"sites": records}))
+
+
+def test_export_poi_carries_water_distance_onto_shelters_and_campsites(tmp_path, monkeypatch, con):
+    """water_distance.json's numbers reach both layers' features - keyed by
+    layer + GlobalID, because the file covers shelters AND campsites - and the
+    close one reaches the composed sentence as the Nearby clause's water
+    entry, so the card answers "is there water" without a water point in the
+    data (#668). 120 ft is ~37 m: inside NEARBY_WATER_MAX_M."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    water_path = tmp_path / "water_distance.json"
+    _write_water_distance_file(
+        water_path,
+        [
+            {"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 120},
+            {"layer": "campsites", "atc_global_id": "campsite-glob-1", "distance_ft": 100},
+            # A refusal row, exactly as build_water_distance.py writes one:
+            # null distance, reason stated. Must publish nothing.
+            {
+                "layer": "shelters",
+                "atc_global_id": "shelter-glob-absent",
+                "distance_ft": None,
+                "unresolved": "no CSI row within 150 m",
+            },
+        ],
+    )
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+    monkeypatch.setattr(export_poi, "WATER_DISTANCE_PATH", water_path)
+
+    export_poi.main()
+
+    shelter_props = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
+    assert shelter_props["water_distance_ft"] == 120
+    # 120 ft -> 36.576 m -> "37 m", spliced through the same nearby_clause a
+    # folded water point would use, so one card cannot say it two ways.
+    assert shelter_props["description"].endswith("Nearby: water 37 m away.")
+
+    campsite_props = json.loads((out_dir / "campsite.geojson").read_text())["features"][0]["properties"]
+    assert campsite_props["water_distance_ft"] == 100
+    assert campsite_props["description"].endswith("Nearby: water 30 m away.")
+
+    # Water POIs themselves never carry the column - it is a fact about a
+    # shelter or campsite, not about the water.
+    water_fc = json.loads((out_dir / "water.geojson").read_text())
+    for feature in water_fc["features"]:
+        assert feature["properties"].get("water_distance_ft") is None
+
+
+def test_export_poi_keeps_far_water_out_of_the_nearby_sentence(tmp_path, monkeypatch, con):
+    """Blood Mtn Shelter's real number is 1,648 ft - about 500 m. The column
+    publishes it (a far distance is exactly what a hiker at a famously dry
+    shelter needs), but "Nearby" is a word the site vocabulary already
+    defines as within NAME_MATCH_RADIUS_M, and this sentence must not stretch
+    it. WATER_SOURCES.md's honesty rule: true silence beats a false comfort."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    water_path = tmp_path / "water_distance.json"
+    _write_water_distance_file(water_path, [{"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 1648}])
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+    monkeypatch.setattr(export_poi, "WATER_DISTANCE_PATH", water_path)
+
+    export_poi.main()
+
+    shelter_props = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
+    assert shelter_props["water_distance_ft"] == 1648
+    assert "water" not in shelter_props["description"]
+
+
+def test_export_poi_never_says_water_twice_when_a_real_point_already_folded(tmp_path, monkeypatch, con):
+    """A site whose Nearby clause already names an actual folded water point
+    keeps that measured distance - the CSI estimate stays off the sentence,
+    because one sentence naming two water distances reads as two waters and
+    is really one disagreement. The column still publishes; the two numbers
+    remain distinguishable by where they appear."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    # A water point ~44 m from Test Shelter: inside PROXIMITY_RADIUS_M, so it
+    # folds into the shelter's site as a member and the clause names it.
+    _write_fc(
+        raw_dir / "opentrail_at.geojson",
+        [_point_feature(0, -73.95, 41.0504, {"title": "Test Spring", "icon": "w", "dbid": 100})],
+    )
+    water_path = tmp_path / "water_distance.json"
+    _write_water_distance_file(water_path, [{"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 120}])
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+    monkeypatch.setattr(export_poi, "WATER_DISTANCE_PATH", water_path)
+
+    export_poi.main()
+
+    shelter_props = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
+    assert shelter_props["water_distance_ft"] == 120
+    assert shelter_props["description"].count("water") == 1
+    # The folded point's measured ~45 m, not the reference file's 37 m.
+    assert "water 45 m" in shelter_props["description"]
+
+
 def test_export_poi_exported_properties_are_exactly_the_declared_columns(tmp_path, monkeypatch, con):
     """POI_COLUMNS is the one list the DDL, the `?` placeholders and the row
     tuple are all built from, and this is what keeps it honest.
@@ -587,6 +706,9 @@ def test_export_poi_exported_properties_are_exactly_the_declared_columns(tmp_pat
     # which is exactly where an off-by-one would land the wrong value.
     assert props["confidence"] == CONFIDENCE_HIGH
     assert props["capacity"] == 8
+    # The column between capacity and description: present as a key, NULL
+    # with no reference file - so a one-place shift cannot hide in it.
+    assert props.get("water_distance_ft") is None
     assert props["photo_key"] == f"photos/{SHELTER_DIGEST}.jpg"
     assert props["photo_author"] == "Jane Doe"
     assert props["name"] == "Test Shelter"

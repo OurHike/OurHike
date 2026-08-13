@@ -113,6 +113,17 @@ class HttpRangeSource:
             timeout=HTTP_TIMEOUT,
         )
         response.raise_for_status()
+        # 206 or nothing (#653). A server that ignores Range answers 200 with
+        # the WHOLE body, so every "slice" of a 1.18 GB archive would buffer
+        # the archive into memory - the counters below would record the
+        # blowout with nothing gating on them, and a lucky parse could still
+        # report OK. check_range reports the misconfiguration in its own
+        # verdict; this makes it impossible to read past by accident.
+        if response.status_code != 206:
+            raise ValueError(
+                f"asked for bytes {offset}-{offset + length - 1} and was answered {response.status_code} "
+                "with the whole body - the server is ignoring Range, and reading on would download the archive"
+            )
         self.requests_made += 1
         self.bytes_read += len(response.content)
         return response.content

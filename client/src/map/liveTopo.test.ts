@@ -45,6 +45,7 @@ import { POI_LAYER_ID } from './poiLayers'
 import { WARNING_LAYER_ID } from './warningLayers'
 import {
   ATC_UPDATE_CASING_LAYER_ID,
+  ATC_UPDATE_HALO_LAYER_ID,
   ATC_UPDATE_LAYER_ID,
   ATC_UPDATE_POINT_LAYER_ID,
 } from '../lib/atcUpdateStyle'
@@ -242,9 +243,21 @@ describe('the live topographic background', () => {
     //
     // Move either layer and both guarantees are silently gone, which is why
     // this is asserted rather than left to the ordering in buildMapStyle.
-    const order = ids(live())
+    //
+    // SYMBOL layers, not all of them, and the distinction is the whole
+    // mechanism rather than a narrowing of the test. Placement only ever ranks
+    // symbols against symbols - a `circle` or a `line` takes no part in it, so
+    // the ATC's dots and bands sit above these two in the style (that is
+    // src/test/atcAlertProminence.test.ts's subject) and cannot suppress a
+    // water pin no matter where they are drawn. Asserting on the raw tail
+    // would say the opposite: that appending any non-symbol layer costs the
+    // pins their priority, which is not true and would send the next person
+    // to fix a bug that is not there.
+    const symbols = live()
+      .layers.filter((layer) => layer.type === 'symbol')
+      .map((layer) => layer.id)
 
-    expect(order.slice(-2)).toEqual([POI_LAYER_ID, WARNING_LAYER_ID])
+    expect(symbols.slice(-2)).toEqual([POI_LAYER_ID, WARNING_LAYER_ID])
   })
 
   it('credits every licence the live sheet pulls in', () => {
@@ -550,17 +563,24 @@ describe('the offline-only background', () => {
       'trail-blaze',
       CLOSURE_CASING_LAYER_ID,
       CLOSURE_LAYER_ID,
+      POI_LAYER_ID,
+      WARNING_LAYER_ID,
       // The ATC's own notices survive the subtraction for the same reason the
       // closures do, and arguably more so: their band is baked into a
       // published artifact rather than fetched live, so it is exactly the
       // warning a hiker with no signal still has (#461).
+      //
+      // LAST, over both pin layers, which is where they moved once the dots
+      // were drawn large enough to matter: a closed shelter reported by the
+      // organisation that maintains it, underneath OurHike's own pin for that
+      // shelter, is not a picture anybody wants. src/test/atcAlertProminence.test.ts
+      // holds that ordering as a property; this case only has to agree with it.
+      ATC_UPDATE_HALO_LAYER_ID,
       ATC_UPDATE_CASING_LAYER_ID,
       ATC_UPDATE_LAYER_ID,
       // And the dots, which is what most ATC notices actually are - five of
       // the six reviewed on 2026-08-12 name a single mile marker.
       ATC_UPDATE_POINT_LAYER_ID,
-      POI_LAYER_ID,
-      WARNING_LAYER_ID,
     ])
   })
 })

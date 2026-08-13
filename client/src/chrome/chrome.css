@@ -946,6 +946,103 @@
   color: var(--fg-3);
 }
 
+/* ---------- Every ATC notice (AtcNoticeList.tsx) ---------- */
+
+/* The single-notice sheet's frame, with one difference that is the whole
+   reason it is not just `.closure-sheet`: this one is a LIST, so it is taller
+   and it scrolls. 70% of a phone is under three entries, and a safety list
+   whose first act is to hide most of itself has the same defect as the surface
+   it was written to replace.
+
+   The red top rule is kept. It is the closure and warning sheets' marker for
+   "this changes what you do next", and a list of live trail closures is that
+   whether or not any single one of them is drawn on the map. */
+.atc-notices {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  max-height: 85%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-4, 16px);
+  background: var(--bg-surface);
+  border-top: 3px solid var(--danger-strong);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+.atc-notices__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+}
+
+/* A rule between entries rather than a card each. Nine notices as nine cards
+   is nine boxes to parse before reading a word; a hairline is enough to say
+   where one claim ends and the next begins. */
+.atc-notices__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: var(--space-3, 12px);
+  border-top: 1px solid var(--border-1);
+}
+
+.atc-notices__item:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+/* ATC's own category, and the only place in the entry where their word for the
+   thing appears on its own line. Uppercased in CSS rather than in the string,
+   so what a screen reader announces is still "Detour" and not "D-E-T-O-U-R". */
+.atc-notices__category {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--danger-strong);
+}
+
+.atc-notices__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.atc-notices__passability {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fg-1);
+}
+
+/* Weight, not hue. This line is read at arm's length in direct sun like every
+   other line in this strip, and dimming it to say "aside" would spend contrast
+   to make a point about hierarchy - the same trade .map-screen__alert--advisory
+   refuses, and src/test/mapChromeContrast.test.ts is what keeps it refused. */
+.atc-notices__offmap {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-2);
+}
+
+.atc-notices__empty {
+  margin: 0;
+  font-size: 14px;
+  color: var(--fg-2);
+}
+
 /* ---------- Waypoint card (tapped pin) ---------- */
 
 /* Floats beside the pin it describes rather than docking at the bottom edge -
@@ -1566,4 +1663,43 @@ a.poi-card__credit::after {
  * what src/test/mapChromeContrast.test.ts is there to keep. */
 .map-screen__alert--advisory {
   font-weight: 400;
+}
+
+/* The row that opens every ATC notice.
+ *
+ * Directly under the alert strip and sharing its tint, so the two read as one
+ * band of trail-safety chrome rather than as an alert with an unrelated control
+ * stuck beneath it. Quieter than the alert rows in weight - it is a way to
+ * something, not a thing happening - and NOT quieter in hue, for the reason
+ * .map-screen__alert--advisory gives about spending contrast to signal
+ * hierarchy.
+ *
+ * The alert strip keeps its own bottom rule, so when both render there is a
+ * hairline between them. That is wanted rather than tolerated: "a closure two
+ * miles ahead" and "here is where you can read all nine notices" are different
+ * kinds of statement, and the line is what says the second is not a fourth
+ * alert. When the strip is absent this row carries the band's bottom edge on
+ * its own, which is why the rule is declared on both.
+ *
+ * Full width and one touch target tall, because it is above the map and will be
+ * pressed with a thumb, in gloves, by someone walking. */
+.map-screen__notices {
+  display: flex;
+  padding: 0 var(--space-3, 12px) var(--space-2, 8px);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+}
+
+.map-screen__notices-button {
+  flex: 1;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-2, 8px);
+  font-size: 13px;
+  font-weight: 400;
+  text-align: left;
+  color: var(--danger);
+  background: none;
+  border: none;
+  text-decoration: underline;
+  cursor: pointer;
 }

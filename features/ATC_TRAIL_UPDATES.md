@@ -312,6 +312,31 @@ range becomes a band. **Exactly one of the six obstructs the trail** — the Har
 footbridge — so the map is one barrier and five dots, which is an honest picture of what the
 ATC is currently saying.
 
+**And the dot was then drawn too quietly to do the job, which is the third thing to record.**
+It shipped at 10px across — half the band's width, "a barrier seen end-on" — and *underneath*
+both pin layers. Against the pins it actually competes with, that is a losing hand twice
+over: a waypoint pin is 38px (`POI_PIN_SIZE`, itself `--space-9`) and a serious-warning pin
+is 44px, so the single mark carrying the trail maintainer's own word about the trail was the
+smallest thing on the map and could be covered by OurHike's pin for the very shelter ATC had
+just closed. It is now 48px (`--space-12`, one step up the scale from the biggest pin), it
+carries a fully-blurred halo that fades to nothing rather than a second ring — a gradient has
+no edge, and an edge here would draw a boundary around ground ATC said nothing about — and
+`map/style.ts` draws the whole ATC group **last of all**, so nothing on the canvas can sit on
+top of it.
+
+All three changes are size and stacking order, never hue. `lib/atcUpdateStyle.ts` refuses a
+second barrier colour at length, and the reasoning survives intact: on a safety map two reds
+read as two severities rather than as two organisations, and both of these still mean the
+trail is shut. What the size says is only "there is something here", which is the one thing a
+mark cannot say at all if nobody sees it.
+
+**This does demote the serious-warning pin from "the biggest thing on the map"**, which
+`map/poiIcons.ts` and WIREFRAMES.md both state as a rule. Written down rather than smoothed
+over: that rule dates from when nothing else on the canvas was a safety mark, and it is worth
+re-reading now that two are. `client/src/test/atcAlertProminence.test.ts` is where the
+comparison is actually held — against the pins' own constants, so shrinking the dot or
+appending a layer over it fails a test rather than quietly restoring the bug.
+
 **The VA Creeper closure this document quotes throughout was gone from ATC's page by
 2026-08-12.** Three days. That is the staleness argument here arriving as a measurement
 rather than as a caution, and it is why `reviewed_at` and the freshness marker are not
@@ -326,10 +351,39 @@ decoration.
   updates measure 0, 0, 0, 4.2, 9.2 and 398.4 miles, so more updates would not settle it
   either. Worth setting against what the map looks like at real zooms. The current value errs
   toward drawing, because a suppressed band buries nothing while the hiker keeps the banner.
-- **Where the suppressed ones go.** "List entry" still has no surface: an update that loses
-  its band keeps its banner and nothing more. Two things reach that state rather than one —
-  an over-ceiling advisory, and an update that does not actually stop a hiker walking
-  through.
+- ~~**Where the suppressed ones go.**~~ **Built, and it turned out to be a bigger hole than
+  this heading described.** Two things lost a band and kept only a banner — an over-ceiling
+  advisory, and an update that does not actually stop a hiker walking through — and both are
+  covered below, along with a third set nobody had named.
+
+  "List entry" now has a surface — `client/src/chrome/AtcNoticeList.tsx`,
+  opened from a row under the alert strip that renders whenever the app holds any notices at
+  all. It shows **every** update in the artifact in NOBO order, with ATC's category, their
+  headline, the states, the miles, the reviewer's `obstructs_trail` answer in both
+  directions, ATC's own last-updated date and a link to their page — and it marks the ones
+  the map is not drawing, read off what the canvas actually holds rather than re-derived, so
+  a notice whose mile falls outside this build's centerline is reported honestly too.
+
+  **The hole was not "suppressed" updates, it was all of them.** Writing the list made the
+  real shape visible: the banner shows at most two notices, only the nearest of each lane,
+  and only *ahead* of the hiker — `lib/atcUpdates.ts` is explicit that warning about
+  something behind you is how a warning surface teaches people to ignore it, and that rule is
+  right. A tap on the map needs the notice to be drawn **and** the hiker to already suspect
+  there is something there to tap. So the set with no surface was never just the ones that
+  lost a band: it was every notice not currently the nearest thing in front of you. An
+  update that obstructs nothing, spans a range rather than a point, and sits behind the hiker
+  reached them through *nothing*, and each of the three filters that produced that was a
+  decision about the **map** rather than a decision that a hiker should not be able to read
+  it.
+
+  The list is honest about what it is not. The artifact still carries facts and a link and
+  not ATC's prose, so the note sits at the top of the list rather than under it — a reader
+  who has taken a list this complete-looking for the notices themselves is not repaired by a
+  footnote.
+
+  What is left open here is one narrower question: whether a notice a hiker has walked past
+  should fall off this list, or whether "everything ATC currently says about this trail" is
+  the more useful thing to be able to open. It is currently the second.
 
   **For the first of those, "keeps its banner" was not enough, and [#485](https://github.com/OurHike/OurHike/issues/485)
   is what it cost.** An update the hiker is standing inside scores zero distance and wins the
@@ -341,8 +395,8 @@ decoration.
   *"ATC · Alert along 398 mi of trail"*. The band ceiling decides both, so there is one
   constant and not two.
 
-  That leaves the second case — an update that keeps its banner because it does not stop
-  anyone walking — as the part still wanting a surface.
+  The second case — an update that keeps its banner because it does not stop anyone walking
+  — now reaches the list above like every other one.
 
   **The second was nearly got wrong, and the mistake is worth recording.** It was first
   built as a rule over ATC's `category`: draw `Closure` and `Detour`, banner the rest. Live

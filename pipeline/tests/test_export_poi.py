@@ -217,12 +217,10 @@ def no_real_water_distance_file(tmp_path, monkeypatch):
     monkeypatch.setattr(export_poi, "WATER_DISTANCE_PATH", tmp_path / "no-water-distance-file.json")
 
 
-@pytest.fixture(autouse=True)
-def no_real_trail_water_file(tmp_path, monkeypatch):
-    """TRAIL_WATER_PATH gets the same treatment as the two above, for the
-    same reason - without this, every synthetic corridor here would grow the
-    real trail's stream crossings."""
-    monkeypatch.setattr(export_poi, "TRAIL_WATER_PATH", tmp_path / "no-trail-water-file.json")
+# TRAIL_WATER_PATH is redirected for the whole suite by conftest.py's
+# no_real_trail_water, which is autouse there rather than here because
+# unify_all_sources reads it and every caller of that function needs the
+# same protection - test_fetch_poi_images.py found that out the hard way.
 
 
 def test_export_poi_clips_features_outside_the_corridor(tmp_path, con):

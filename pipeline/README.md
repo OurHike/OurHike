@@ -84,6 +84,27 @@ What exists upstream *beyond* the registry - the maintaining clubs, the federal 
 
 **Licensing is unconfirmed**, and worth saying plainly. The capacity numbers come from [greenbelly.co's A.T. shelter list](https://www.greenbelly.co/pages/appalachian-trail-shelters), which credits Whiteblaze, the Appalachian Trail Conservancy and TNlandforums, and which states no licence at all - the same position as opentrail.org above ([#98](https://github.com/OurHike/OurHike/issues/98)), recorded here rather than discovered later. Two things narrow what is taken: only the capacity column, not the mileages or elevations or ordering, and it is re-keyed onto ATC GlobalIDs, so what ships is a set of facts about shelters this project already knows about rather than a copy of somebody's table. That is a better position than a scrape, not a settled one. Confirming terms with Greenbelly is the honest next step, and until then this carries the same caveat opentrail.org does.
 
+## Water distance at shelters and campsites
+
+`build_water_distance.py` writes [`reference/water_distance.json`](reference/water_distance.json): how far the nearest water source is from each A.T. shelter and campsite, keyed to ATC's own GlobalIDs — the same checked-in-and-reviewed shape as shelter capacity, for the same reason (the join encodes judgement calls a diff should show). `export_poi.py` reads it, publishes `water_distance_ft` on shelter and campsite features, and splices "water N m" into the card sentence's Nearby clause where no actual water point folded into the site and the distance is within the site vocabulary's 150 m.
+
+```
+.venv/Scripts/python build_water_distance.py            # rebuild and review the diff
+.venv/Scripts/python build_water_distance.py --check    # confirm the checked-in file still matches
+```
+
+The distances are ATC's own, from the `Campsite_Sustainability_Index` layer on their ArcGIS org — **official sites only; the layer's 2,333 user-created campsites are never even requested** ([SOURCE_SURVEY.md](SOURCE_SURVEY.md) §3b says why their locations must not ship). Coverage is deliberately narrow: 87 of 512 features publish a distance today, because rows CSI measured against **FarOut's waypoints are held back until ATC blesses them** — [WATER_SOURCES.md](WATER_SOURCES.md) §4 found 42% of CSI's distances derive from that commercial dataset, and its §7 keeps unblessed CSI derivation on the "what not to build" list. The NHD- and field-estimate-derived rows that do ship carry only the ATC-org terms question, answered for now the way `photo_licence` in `sources.json` answers it: maintainer direction, recorded, with the real ask still owed (§10's combined ATC conversation). Every one of the 512 features is listed in the file either way — a blank always carries its reason (no CSI row within 150 m, a 0 ft value nobody can read, or the FarOut holdback).
+
+## Fetching club PDFs (review-only)
+
+`fetch_club_pdfs.py` downloads the PDFs the maintaining clubs publish, as `sources.json` registers them (`kind: "club_pdf"` — [#669](https://github.com/OurHike/OurHike/issues/669)), and parses the ones [`lib/club_pdfs.py`](lib/club_pdfs.py) has a parser for into structured rows beside the PDF under `data/raw/club_pdfs/`. First registrant: **GATC's water-sources PDF** — 65 rows of mile point + entry text covering the approach trail and all of Georgia, reliability notes included ("Typically very low or dry. Use creek at MP 2.9").
+
+```
+.venv/Scripts/python fetch_club_pdfs.py     # needs `pip install pypdf` - deliberately unpinned, requirements.in explains
+```
+
+Change-aware per entry (conditional GET against its own manifest, plus a body-hash check because WordPress does not always honour conditionals), strict on parse (a PDF whose layout changed stops the run and keeps the previous known-good state — `build_shelter_capacity.py`'s posture applied to a fetch), and **review-only by construction: no export reads `data/raw/club_pdfs/`**. Club PDFs state no terms ([SOURCE_SURVEY.md](SOURCE_SURVEY.md) §9), so each registry entry's `licence` field records the ask that has to be answered before anything here reaches a hiker; [WATER_SOURCES.md](WATER_SOURCES.md) §4 sizes GATC's as "a pilot-state candidate after an email". The next club document is one `sources.json` entry and, optionally, one parser — not a new script.
+
 ## POI descriptions
 
 Every POI from one of ATC's own facility layers carries a `description` — one sentence the waypoint card shows under the name:

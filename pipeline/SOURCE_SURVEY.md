@@ -233,6 +233,15 @@ close, and publishing them as places to camp would put OurHike on the wrong side
 partner it depends on. **NEEDS REVIEW** — worth asking ATC whether the
 established-sites subset could be used; do not ingest unilaterally.
 
+*Amended 2026-08-13:* one narrow, maintainer-directed use now exists — **#668 — A
+shelter card says nothing about water, and ATC has measured the distance to it** takes
+`Proximity_Water_ft` for the **official sites only** (the WHERE clause never requests a
+user-created row) and attaches it to the shelters and campsites already published,
+publishing only the NHD- and field-estimate-derived rows and holding the FarOut-derived
+ones pending §10's ATC ask. WATER_SOURCES.md §4 holds the reasoning,
+`build_water_distance.py` the join, `reference/water_distance.json` the reviewable
+result. The sites themselves stay unpublished exactly as this section says.
+
 ### 3c. `Helene_Status` — live-ish closure status per club section
 
 140 polygons, data-edited **2026-08-06** (three days before this survey), fields
@@ -420,7 +429,7 @@ and the same "public ≠ licensed" caveat as every club asset (§9).
 | Carolina Mountain Club (CMC) | 92.7 | **find-a-hike database** (filterable, rich per-hike detail pages, no GPX); A.T.-MST challenge log (15 legs w/ cumulative miles); no shelter content | WordPress; `wp-json` root exists — **NEEDS REVIEW**: whether the hike post type is exposed is untested | hikes scheduled thru Sep 2026 |
 | Smoky Mtns Hiking Club (SMHC) | 102 | 2026 member handbook PDF (Dec 2025); maps page links NPS + historic archives | none | handbook contents unparsed — **NEEDS REVIEW** if hike schedules wanted |
 | Nantahala Hiking Club (NHC) | 58.6 | SOBO-by-sections map/guide PDF (Oct 2025) | none | current |
-| Georgia A.T. Club (GATC) | 78.6 (+8.8 approach) | free map+profile PDFs (Nov 2024), **water-sources PDF (2026-03-02)**, mile-by-mile trail guide (2023), CalTopo maps with GPX/KML export | CalTopo export | **NEEDS REVIEW**: CalTopo terms for bulk reuse; members-only "Districts Sections Mapping" suggests internal GIS |
+| Georgia A.T. Club (GATC) | 78.6 (+8.8 approach) | free map+profile PDFs (Nov 2024), **water-sources PDF (2026-03-02)** — since 2026-08-13 fetched and parsed for review by `fetch_club_pdfs.py` (#669, `kind: club_pdf`; publication still gated on asking GATC), mile-by-mile trail guide (2023), CalTopo maps with GPX/KML export | CalTopo export | **NEEDS REVIEW**: CalTopo terms for bulk reuse; members-only "Districts Sections Mapping" suggests internal GIS |
 
 **TEHCC's wiki** (`tehcc.org/clubwiki`) — re-verified 2026-08-09: MediaWiki 1.43.9 with
 Semantic MediaWiki; Action API + REST API answer anonymously; a `GeoJson:` namespace holds

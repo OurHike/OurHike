@@ -222,6 +222,63 @@ describe('trail data', () => {
     expect(pois[0]).not.toHaveProperty('source')
   })
 
+  // Site grouping (#523/#524). Written against the SHAPE THE BUCKET ACTUALLY
+  // HOLDS, checked after the 2026-08-13 publish rather than imagined: the three
+  // keys are present on every feature, and `null` on the ones not in a site -
+  // 32 of 316 privies, 29 of 280 shelters, 163 of 174 water points.
+  it('reads the site a POI belongs to, so the map can draw one pin for it', async () => {
+    serve(
+      poiCollection([
+        {
+          id: 'atc_privies:abc',
+          poi_type: 'privy',
+          name: 'Mt. Algo Shelter Privy',
+          lat: 41.7,
+          lon: -73.5,
+          confidence: 'high',
+          site_id: 'site_0421',
+          site_role: 'member',
+          site_name: 'Mt. Algo Shelter',
+        },
+      ]),
+    )
+    await downloadTrailData()
+
+    const pois = store.get(POIS_KEY) as StoredPoi[]
+    expect(pois[0].siteId).toBe('site_0421')
+    expect(pois[0].siteRole).toBe('member')
+    expect(pois[0].siteName).toBe('Mt. Algo Shelter')
+  })
+
+  it('treats a null site_id as not in a site, which is how it is published', async () => {
+    // THE REAL SHAPE, not a hypothetical. `attach_sites` writes the keys onto
+    // every feature and leaves them null where nothing matched, so a client that
+    // tested only "key absent" would carry `null` into `composeSites` and ask it
+    // to group POIs by a site called null - one giant site containing every
+    // ungrouped privy on the trail.
+    serve(
+      poiCollection([
+        {
+          id: 'opentrail_water:1188',
+          poi_type: 'water',
+          name: 'Spring below the ridge',
+          lat: 35.6,
+          lon: -83.4,
+          confidence: 'low',
+          site_id: null,
+          site_role: null,
+          site_name: null,
+        },
+      ]),
+    )
+    await downloadTrailData()
+
+    const pois = store.get(POIS_KEY) as StoredPoi[]
+    expect(pois[0]).not.toHaveProperty('siteId')
+    expect(pois[0]).not.toHaveProperty('siteRole')
+    expect(pois[0]).not.toHaveProperty('siteName')
+  })
+
   it('keeps a shelter capacity, so the card can say how many it sleeps', async () => {
     serve(
       poiCollection([

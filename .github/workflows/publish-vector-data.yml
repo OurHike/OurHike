@@ -97,7 +97,7 @@ jobs:
         pipeline/data/raw/poi_photos
         pipeline/data/raw/poi_images.json
         pipeline/data/raw/poi_images_atc.json
-        pipeline/data/processed/elevation/tile_index.json
+        pipeline/data/raw/elevation
 
     steps:
       - uses: actions/checkout@v4
@@ -126,13 +126,18 @@ jobs:
       # the only thing that came back, because the photo cache this step
       # grew out of was the only cache in the job.
       #
-      # THE PATHS MUST COVER EVERY OUTPUT ANY RECEIPT NAMES, which is why
-      # elevation's tile index is here despite living under data/processed/.
-      # Receipts are restored with the files they describe, and
-      # check_output_quality.py re-hashes those files against the receipt -
-      # so a cache that restored a receipt without its output would fail the
-      # gate on its own contents, reporting drift where there was only a
-      # gap in this list.
+      # THE PATHS MUST COVER EVERY OUTPUT ANY RECEIPT NAMES. Receipts are
+      # restored with the files they describe, and check_output_quality.py
+      # re-hashes those files against the receipt - so a cache that restored a
+      # receipt without its output would fail the gate on its own contents,
+      # reporting drift where there was only a gap in this list.
+      #
+      # That is not a hypothetical either: the first version of this list had
+      # elevation's tile index under data/processed/, where it does not live.
+      # tests/test_fetch_cache_paths.py now checks every entry against the
+      # constants the fetchers actually write to, because a hand-kept list
+      # whose whole job is completeness is the drift this repository keeps
+      # finding.
       #
       # Split restore/save rather than `actions/cache`, and `always()` on the
       # save, because the bundled post-step is skipped when the job FAILS -

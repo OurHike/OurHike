@@ -364,6 +364,14 @@ Exits non-zero if any check finds a real problem - `publish.py` shouldn't run af
 
 Publishing artifacts to Cloudflare R2 is intentionally write-disabled by default. Set `R2_WRITE_ENABLED=true` in the trusted environment that is allowed to publish; otherwise `publish.py` refuses to upload anything, so developers with only read access to the bucket cannot accidentally write to it.
 
+**And it will not publish until it is told where: [../features/DATA_ENVIRONMENTS.md](../features/DATA_ENVIRONMENTS.md).** `OURHIKE_DATA_ENV` names one of [../RELEASING.md](../RELEASING.md) §3's three environments, and every key of the run is scoped by it - production is the bucket root, everything else is `environments/<name>/`. There is deliberately no default, because the only value a default could take is the one that overwrites what hikers have already downloaded.
+
+```
+OURHIKE_DATA_ENV=ua R2_WRITE_ENABLED=true .venv/Scripts/python publish.py
+```
+
+`publish.py` is the only thing in this project that writes to the bucket, which is what makes that one variable enough: a run publishing to UA cannot name production's keys rather than merely being expected not to.
+
 **Where an artifact goes in the bucket, and what it may be called: [R2_LAYOUT.md](R2_LAYOUT.md).** A key is a public URL that deployed clients and app-store builds already request, and `publish.py`'s manifest merge is additive-only, so a name that lands wrong cannot be renamed - only joined by a sibling and served alongside the mistake. `lib/r2_keys.py` checks every key of a run before the first upload; read the layout doc before adding an artifact, not after.
 
 **Where this is going, designed 2026-07-31: [DATA_RELEASES.md](DATA_RELEASES.md).** `publish.py` today overwrites live keys at the bucket root, which means a publish can land on top of a download already in progress and gives a hiker no way to pin a dataset or be told one changed. The plan replaces that with immutable dated release folders, a daily upstream check that only flags, a weekly incremental build, a verification battery run against the published bytes, and release only via a merged code change. Nothing in that plan is built yet - everything described below is still how publishing works.

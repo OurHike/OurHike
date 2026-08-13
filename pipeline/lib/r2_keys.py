@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import re
 
+from lib.data_env import ENVIRONMENTS_PREFIX, UnknownEnvironment, split_key
+
 # One path segment that names an object: lowercase, digits, `_` between
 # words, exactly one extension. `-` is deliberately absent - it is reserved
 # for release ids (`2026-08-07`, `2026-08-07-2`), so a date can never appear
@@ -72,11 +74,24 @@ ALLOWED_EXTENSIONS = frozenset({"geojson", "fgb", "pmtiles", "json", "tif", "jpg
 # Declared here rather than when something first writes to it, because the
 # declaration is what makes writing there legal: a script must never be able
 # to invent a prefix on its first upload, which is the whole job of this set.
+#
+# `environments` is deliberately NOT in this set, and it is the one absence
+# worth explaining so nobody adds it as a tidy-up. Every prefix here is a place
+# objects live; `environments/<name>/` is a place this whole layout lives again
+# (features/DATA_ENVIRONMENTS.md), so `validate_key` strips it and then applies
+# every rule below to what is left. Listing it here instead would let the
+# prefix count towards MAX_SEGMENTS, which would make UA's tree two levels
+# shallower than production's and a release folder legal in one environment and
+# illegal in the other.
 TOP_LEVEL_PREFIXES = frozenset({"releases", "_internal", "photos", "conditions", "originals"})
 
 # Keys that mean something specific and are therefore spelled exactly one
 # way. `latest.json` is the mutable pointer at the bucket root; the two under
 # `releases/` are the release index and the do-not-prune list (DATA_RELEASES.md).
+#
+# Spelled once and reserved in every environment: UA's pointer is
+# `environments/ua/latest.json`, which is this same name inside UA's tree
+# rather than a second name to keep in step.
 RESERVED_KEYS = frozenset({"latest.json", "releases/index.json", "releases/pinned.json"})
 
 # Words that describe a *build* rather than a *thing*. Every one of them is a
@@ -137,14 +152,30 @@ def validate_key(key: str) -> str | None:
     reason it is not.
 
     A bare name (no `/`) is a root key - what everything published today is,
-    and what stays frozen when the release layout lands."""
-    if key in RESERVED_KEYS:
-        return None
+    and what stays frozen when the release layout lands.
 
+    An `environments/<name>/` prefix is stripped before any of the rules below
+    are applied, so every rule keeps meaning what it says *within* one
+    environment: `environments/ua/conditions/reports.json` is legal for exactly
+    the reasons `conditions/reports.json` is, and depth is counted from the
+    environment's own root rather than from the bucket's. The alternative -
+    counting the prefix - would make UA's layout two segments shallower than
+    production's, so a key legal in one environment would be illegal in the
+    other and promoting a dataset could fail on its name (DATA_ENVIRONMENTS.md).
+    """
     if key != key.strip() or not key:
         return "A key may not be empty or have leading/trailing whitespace"
     if key.startswith("/") or key.endswith("/") or "//" in key:
         return f"'{key}' has an empty path segment"
+
+    if key.startswith(f"{ENVIRONMENTS_PREFIX}/"):
+        try:
+            _, key = split_key(key)
+        except UnknownEnvironment as exc:
+            return str(exc)
+
+    if key in RESERVED_KEYS:
+        return None
 
     segments = key.split("/")
     if len(segments) > MAX_SEGMENTS:

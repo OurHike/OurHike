@@ -56,7 +56,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import re
 import sys
 from datetime import date
@@ -64,6 +63,7 @@ from pathlib import Path
 
 import requests
 
+from lib import data_env
 from lib.completeness import DROP_THRESHOLD, count_problems
 from smoke_published import (
     HTTP_TIMEOUT,
@@ -576,6 +576,12 @@ def verdict_document(base: str, reports: list[dict], strict: bool) -> dict:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--base", metavar="URL", help="Public base URL of the release. Defaults to $DATA_BASE_URL.")
+    parser.add_argument(
+        "--env",
+        metavar="NAME",
+        choices=data_env.ENVIRONMENTS,
+        help="Verify this environment's release rather than the base as given (features/DATA_ENVIRONMENTS.md).",
+    )
     parser.add_argument("--json", metavar="OUT", type=Path, help="Also write the verdict to OUT as JSON.")
     parser.add_argument(
         "--no-hash",
@@ -592,7 +598,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    base = (args.base or os.environ.get("DATA_BASE_URL", "")).strip().rstrip("/")
+    base = data_env.resolve_base(args.base, args.env)
     if not base:
         print("No release to verify: pass --base or set DATA_BASE_URL.", file=sys.stderr)
         return 2

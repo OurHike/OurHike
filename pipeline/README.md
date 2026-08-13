@@ -212,6 +212,19 @@ Reads already-fetched ATC data (`shelters`, `campsites`, `centerline`) the same 
 
 **It has not been run against real data yet** — the environment it was written in has no route to ATC's servers. Everything in HIKE_PLANNING.md's Finding 3 is arithmetic over the feature counts in the source table above, not a measurement, and closing that gap is the first thing to do with this script. The planner in it is deliberately throwaway: the real one runs on the phone, and what should survive is the shape rather than the code.
 
+## Duplicate spike: how many POIs are the same place twice? (done)
+
+`spike_poi_duplicates.py` is the measurement behind [../features/POI_DEDUPLICATION.md](../features/POI_DEDUPLICATION.md) and **#696 — Nothing stops two sources publishing the same place twice, and the one rule that does is a 25 m constant for a single source pair**.
+
+```
+.venv/Scripts/python spike_poi_duplicates.py
+.venv/Scripts/python spike_poi_duplicates.py --refetch
+```
+
+Unlike the two spikes above it needs no prior `fetch_all.py` run — it pulls the six ATC POI layers and opentrail.org into `data/spike/poi_duplicates/` and re-reads that cache afterwards, so a re-measurement costs upstream nothing. It measures the *published* set rather than a second version of it, by pointing `export_poi.py`'s own `RAW_DIR` at the cache and calling that module's own `unify_all_sources`.
+
+Measured 2026-08-13, over all 2,837 unified points: **48 same-type pairs sit within 25 m of each other, every one of them inside a single source, and 35 of the 48 are two real places** — ATC distinguishes them by a trailing sibling number, a direction token, or an outright different name. The real duplicates are 11 places holding 23 records (0.42% of the map), almost all of them the viewpoint layer carrying one overlook twice, once with a trailing "Vista". And the one cross-source overlap already shipping — ATC's Communities against opentrail's resupply points — has **no pair within 1 km** of each other, which is what says a radius alone cannot be the definition of a duplicate.
+
 ## Raster background: mosaic + clip at real scale (done)
 
 `spike_raster_mosaic.py` mosaics the real 1,654 downloaded US Topo quads into the actual corridor-clipped background raster - the full-scale version of the corridor-clip method proven above.

@@ -26,7 +26,7 @@
 // WHAT CHANGED, AND WHY IT IS NOT A SECOND SEVERITY EITHER. The point notice
 // used to be a 10px dot drawn under the waypoint pins, which made the ATC's
 // own word about the trail the smallest and most easily covered mark on the
-// map. It is now 40px, it carries a glow that fades out to nothing, and
+// map. It is now 40px of ink, it carries a glow that fades out to nothing, and
 // map/style.ts draws this whole group last of all so nothing can sit on top
 // of it. All three are SIZE and ORDER, not hue: the band and the dot are
 // still the closure's exact red, so none of it says "this barrier is harder
@@ -69,19 +69,35 @@ export const ATC_UPDATE_HALO_LAYER_ID = 'atc-update-halo'
  * clears a waypoint pin. That is the derivation, and the word doing the work
  * in it is "smallest": this dot is drawn over every other mark on the map now
  * (map/style.ts), so it only has to out-read the pins it sits among - it does
- * not have to dominate them, and a first pass at `--space-12` did, looking
- * like a wound on the map rather than a notice on the trail.
+ * not have to dominate them. Two passes tried to make size do more than that
+ * and both looked like a wound on the map rather than a notice on the trail.
  *
  * Being covered was the larger half of the original fault and it is fixed by
  * the layer order, not by pixels. Size only has to carry the smaller half:
  * that a hiker's eye lands on the dot rather than on the shelter pin beside
  * it. Two pixels of clearance does that once nothing can be drawn on top.
  *
- * It still edges past the 44px serious-warning pin only in the halo, not in
- * the disc, so poiIcons.ts's "the biggest thing on the map" survives at the
- * one measurement it actually names.
+ * THIS IS THE FULL WIDTH OF THE INK, CASING INCLUDED, and measuring it that
+ * way is the correction the second pass needed. MapLibre draws
+ * `circle-stroke-width` OUTSIDE `circle-radius`, so a dot declared at 40
+ * across actually covers 44 - the same 44 as the serious-warning pin it was
+ * supposed to be staying under, which is why it still read a size too large
+ * after being cut once. A pin's own 38px is its whole circle (`pinGeometry`
+ * spends `rOuter` on the disc, its edge and its halo), so the two numbers are
+ * only comparable when this one includes its edge too.
  */
-export const ATC_UPDATE_POINT_DIAMETER = 40
+export const ATC_UPDATE_POINT_DRAWN_WIDTH = 40
+
+/**
+ * What MapLibre is actually told, which is the ink minus its casing.
+ *
+ * Derived rather than declared, so the thing a reader can see on a screen -
+ * the outer edge of the dot - is the number in the constant above, and the
+ * spec value follows from it. Declared the other way round, the two drift the
+ * moment the casing changes width.
+ */
+export const ATC_UPDATE_POINT_DIAMETER =
+  ATC_UPDATE_POINT_DRAWN_WIDTH - CLOSURE_CASING_WIDTH * 2
 
 /** Half of {@link ATC_UPDATE_POINT_DIAMETER}, which is what MapLibre wants. */
 export const ATC_UPDATE_POINT_RADIUS = ATC_UPDATE_POINT_DIAMETER / 2
@@ -98,6 +114,10 @@ export const ATC_UPDATE_POINT_RADIUS = ATC_UPDATE_POINT_DIAMETER / 2
  * for one mile marker, and five of them on a 390px screen is a rash. The dot
  * is what says WHERE; the glow only has to say LOOK, and saying it louder
  * than the dot inverts the two.
+ *
+ * Measured off the radius rather than off the drawn width, so it tracks the
+ * dot's own size: at 36 across the glow is 54, and it shrinks with the dot
+ * rather than needing a second edit each time.
  */
 export const ATC_UPDATE_HALO_SCALE = 1.5
 

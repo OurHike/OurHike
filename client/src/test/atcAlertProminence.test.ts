@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import {
   ATC_UPDATE_CASING_LAYER_ID,
+  ATC_UPDATE_CASING_WIDTH,
   ATC_UPDATE_HALO_LAYER_ID,
   ATC_UPDATE_HALO_RADIUS,
   ATC_UPDATE_LAYER_ID,
   ATC_UPDATE_POINT_DIAMETER,
+  ATC_UPDATE_POINT_DRAWN_WIDTH,
   ATC_UPDATE_POINT_LAYER_ID,
 } from '../lib/atcUpdateStyle'
 import { POI_LAYER_ID } from '../map/poiLayers'
@@ -50,21 +52,43 @@ function isAboveOnEverySheet(top: string, bottom: string): boolean {
   })
 }
 
-describe('the ATC’s point notice outsizes every pin on the map', () => {
-  it('is larger than a waypoint pin', () => {
-    // 38px, `--space-9`. The dot was 10px, so a closed shelter reported by the
-    // organisation that maintains it was a quarter of the width of OurHike's
-    // own pin for the same shelter.
-    expect(ATC_UPDATE_POINT_DIAMETER).toBeGreaterThan(POI_PIN_SIZE)
+describe('the ATC’s point notice sits just above every pin on the map', () => {
+  // MEASURED AS INK AGAINST INK, which is the comparison that went wrong
+  // twice. MapLibre draws `circle-stroke-width` OUTSIDE `circle-radius`, so
+  // the constant handed to the spec is 4px narrower than what a hiker sees; a
+  // pin's own 38px is its whole circle, disc and edge and halo together
+  // (`pinGeometry`). Comparing the spec value to the pin's drawn size made the
+  // dot a size larger than every assertion here claimed - which is exactly how
+  // a version that had already been cut once still read too big.
+  it('is wider than a waypoint pin, drawn edge to drawn edge', () => {
+    // 38px. The dot was 10px, so a closed shelter reported by the organisation
+    // that maintains it was a quarter of the width of OurHike's own pin for
+    // the same shelter.
+    expect(ATC_UPDATE_POINT_DRAWN_WIDTH).toBeGreaterThan(POI_PIN_SIZE)
+  })
+
+  it('clears it by as little as the scale allows, and no more', () => {
+    // The size is a threshold, not a ranking. Being drawn over everything
+    // (map/style.ts) is what stops a notice being hidden; the pixels only have
+    // to make an eye land here rather than on the pin beside it. Two passes
+    // spent more than that and both looked wrong on a phone.
+    expect(ATC_UPDATE_POINT_DRAWN_WIDTH - POI_PIN_SIZE).toBeLessThanOrEqual(4)
   })
 
   it('does NOT outgrow the serious-warning pin as a disc', () => {
-    // 44px, and poiIcons.ts calls it "the biggest thing on the map". A first
-    // pass took the dot past it at `--space-12` and the result read as a wound
-    // rather than a notice, so the disc now stops short - the dot only has to
-    // out-read the pins it sits among, and being drawn over all of them is
-    // what does the rest.
-    expect(ATC_UPDATE_POINT_DIAMETER).toBeLessThan(WARNING_PIN.sizePx)
+    // 44px, and poiIcons.ts calls it "the biggest thing on the map". The first
+    // pass took the dot past it at `--space-12`; the second still tied it once
+    // the casing was counted. It now stops short with the casing included,
+    // which is the only spelling of this that means anything.
+    expect(ATC_UPDATE_POINT_DRAWN_WIDTH).toBeLessThan(WARNING_PIN.sizePx)
+  })
+
+  it('declares a radius that leaves room for its own casing', () => {
+    // The derivation, held so the two cannot drift apart: what MapLibre is
+    // told, plus the stroke it puts outside that, is the width above.
+    expect(ATC_UPDATE_POINT_DIAMETER + ATC_UPDATE_CASING_WIDTH * 2).toBe(
+      ATC_UPDATE_POINT_DRAWN_WIDTH,
+    )
   })
 
   it('carries a glow that reaches past every one of them', () => {
@@ -80,7 +104,7 @@ describe('the ATC’s point notice outsizes every pin on the map', () => {
     // The other half of the first pass being too big: at scale 2 the glow was
     // a 96px circle of red per notice, most of a phone's width for one mile
     // marker. The dot says where; the glow only says look.
-    expect(ATC_UPDATE_HALO_RADIUS).toBeLessThan(ATC_UPDATE_POINT_DIAMETER)
+    expect(ATC_UPDATE_HALO_RADIUS).toBeLessThan(ATC_UPDATE_POINT_DRAWN_WIDTH)
   })
 })
 

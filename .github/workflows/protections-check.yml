@@ -19,24 +19,41 @@
 # tests can quote it in a failure message. That is why the live half runs the
 # comparison in the open rather than reducing anything to names first.
 #
-# THE TOKEN IS THE FRAGILE PART, and there are three outcomes rather than two.
+# TWO SYSTEMS PROTECT A BRANCH AND BOTH ARE READ (#685). Classic branch
+# protection and rulesets are separate GitHub features with separate endpoints,
+# and neither reports the other's rules. This workflow read only the classic
+# one until #685, while `main` was protected by a ruleset - so it spent its
+# whole life reporting the required checks as unconfigured, and two tests
+# guarding the solo-maintainer lockouts passed by reading nothing at all.
 #
-#   no PROTECTIONS_READ_TOKEN   the labels are checked, the other two sections
-#                               are reported as unseen, and the run is green.
-#                               A declared absence, like an unconfigured UA
-#                               database - not a fault, and not worth turning
-#                               `main` red for something #375 already tracks.
+# The ruleset read is `GET /repos/{owner}/{repo}/rules/branches/{branch}`,
+# which returns the rules that actually apply to the branch already merged
+# across every ruleset. It needs no PAT - measured at HTTP 200 with
+# GITHUB_TOKEN - so the required checks are now verified on every run rather
+# than only when PROTECTIONS_READ_TOKEN happens to be set.
+#
+# THE TOKEN IS STILL THE FRAGILE PART for the environments, and there are three
+# outcomes rather than two.
+#
+#   no PROTECTIONS_READ_TOKEN   the labels, the ruleset and the required checks
+#                               are checked; classic protection and the
+#                               environments are reported as unseen, and the
+#                               run is green. A declared absence, like an
+#                               unconfigured UA database - not a fault, and not
+#                               worth turning `main` red for something #375
+#                               already tracks.
 #   token present, read refused the PAT's scopes are wrong. Fails, naming what
 #                               was refused.
 #   nothing read at all         fails, because a protections check that goes
 #                               green having read nothing answers the question
 #                               wrongly rather than not at all. That is the
 #                               PROTECTIONS_CHECK_LIVE guard, borrowed from
-#                               settings-configured.yml, plus an assertion that the
-#                               labels - readable with GITHUB_TOKEN alone -
-#                               really were.
+#                               settings-configured.yml, plus an assertion that
+#                               the labels and the branch rules - both readable
+#                               with GITHUB_TOKEN alone - really were.
 #
-# NOT ON pull_request, for the same reason settings-configured.yml is not: a fork's run gets no elevated token, so this would fail for every
+# NOT ON pull_request, for the same reason settings-configured.yml is not: a
+# fork's run gets no elevated token, so this would fail for every
 # outside contributor for a reason none of them could fix. The half of the
 # suite that reads only the checkout - which is the half that catches real
 # drift - runs on every pull request through settings-manifest.yml,
@@ -132,17 +149,83 @@ jobs:
             // rather than as configured-correctly or as broken.
             const read = ['labels'];
 
-            let requiredChecks = [];
+            // TWO SYSTEMS PROTECT A BRANCH, AND THIS USED TO READ ONLY ONE
+            // (#685). Classic branch protection and rulesets are separate
+            // features with separate endpoints, and `getBranchProtection`
+            // returns nothing about a rule that came from a ruleset. `main` is
+            // protected by a ruleset, so every run reported the four - later
+            // five - required checks as not configured while they were
+            // configured the whole time.
+            //
+            // Worse than the false alarm: with nothing read, `strict` and the
+            // approval count fell back to defaults that happen to be the
+            // values the manifest wants, so two tests guarding the
+            // solo-maintainer lockouts passed by reading nothing at all.
+            // Hence `null` rather than a default below - a value nobody read
+            // must not be able to satisfy an assertion.
+            //
+            // A repository can carry both systems, and GitHub applies the more
+            // restrictive of the two, so the merge below is union for the
+            // checks, OR for strict, and max for the approval count.
+            let requiredChecks = null;
             let upToDate = null;
-            // Zero both when the branch is unprotected and when it is
-            // protected without a review requirement - the same answer, and
-            // the one that keeps a solo maintainer able to merge.
-            let approvals = 0;
+            let approvals = null;
+            const ruleSources = [];
+
+            const mergeChecks = names => {
+              requiredChecks = [...new Set([...(requiredChecks ?? []), ...names])];
+            };
+
+            // The rules that actually apply to this branch, already merged
+            // across every ruleset, each carrying the ruleset it came from -
+            // so nothing here has to re-implement GitHub's condition matching
+            // against ref-name patterns.
+            //
+            // NEEDS NO PAT, which is why it is tried first and unconditionally.
+            // Measured: HTTP 200 with GITHUB_TOKEN for repository-level
+            // rulesets. That takes branch protection out of the set of things
+            // this workflow can only see when PROTECTIONS_READ_TOKEN happens
+            // to be present - the environments below are still PAT-only.
+            //
+            // Called by path rather than through `github.rest.repos
+            // .getBranchRules` deliberately: a named helper that is absent
+            // from whichever Octokit github-script@v7 happens to bundle would
+            // throw TypeError, land in the catch below, and be reported as a
+            // refused read - which is the same shape of silent-wrong-answer
+            // this whole issue is about. The path is stable and verified.
+            try {
+              const {data} = await github.request('GET /repos/{owner}/{repo}/rules/branches/{branch}', {
+                owner: context.repo.owner, repo: context.repo.repo, branch,
+              });
+              for (const rule of data || []) {
+                const parameters = rule.parameters || {};
+                if (rule.type === 'required_status_checks') {
+                  mergeChecks((parameters.required_status_checks || []).map(c => c.context));
+                  upToDate = Boolean(upToDate) || Boolean(parameters.strict_required_status_checks_policy);
+                } else if (rule.type === 'pull_request') {
+                  approvals = Math.max(approvals ?? 0, parameters.required_approving_review_count || 0);
+                }
+                if (rule.ruleset_id && !ruleSources.includes(rule.ruleset_id)) {
+                  ruleSources.push(rule.ruleset_id);
+                }
+              }
+              // An empty list is a real answer - no ruleset touches this
+              // branch - so the section counts as read either way. What must
+              // not count as read is an error, handled below.
+              requiredChecks = requiredChecks ?? [];
+              upToDate = Boolean(upToDate);
+              approvals = approvals ?? 0;
+              read.push('branch_rules');
+            } catch (error) {
+              failures.push(`branch rules: ${error.status} ${error.message}`);
+            }
+
             if (!hasAdminToken) {
               core.warning(
-                'No PROTECTIONS_READ_TOKEN, so branch protection and the environments were not checked. ' +
-                'GITHUB_TOKEN has no scope for repository administration - a fine-grained PAT with ' +
-                'Administration: read is the only way to read them. See #375.'
+                'No PROTECTIONS_READ_TOKEN, so classic branch protection and the environments were not ' +
+                'checked. GITHUB_TOKEN has no scope for repository administration - a fine-grained PAT ' +
+                'with Administration: read is the only way to read them. The ruleset read above needs no ' +
+                'PAT, so the required checks are still checked. See #375.'
               );
             } else try {
               const {data} = await github.rest.repos.getBranchProtection({
@@ -152,23 +235,32 @@ jobs:
               // `checks` is absent when the branch is protected but requires
               // no status checks, which is a real answer (an empty set) and
               // not a missing one.
-              requiredChecks = checks ? (checks.checks || []).map(c => c.context) : [];
-              upToDate = checks ? Boolean(checks.strict) : false;
-              approvals = data.required_pull_request_reviews
+              mergeChecks(checks ? (checks.checks || []).map(c => c.context) : []);
+              upToDate = Boolean(upToDate) || (checks ? Boolean(checks.strict) : false);
+              approvals = Math.max(approvals ?? 0, data.required_pull_request_reviews
                 ? (data.required_pull_request_reviews.required_approving_review_count || 0)
-                : 0;
-              read.push('branch_protection');
+                : 0);
+              read.push('classic_branch_protection');
             } catch (error) {
               if (error.status === 404) {
-                // Not an error to read - it is the answer. `main` has no
-                // protection at all, which is exactly what #375 describes.
-                requiredChecks = [];
-                upToDate = false;
-                read.push('branch_protection');
-                core.warning(`${branch} has no branch protection at all.`);
+                // Not an error to read - it is the answer. There is no CLASSIC
+                // protection on this branch, which says nothing about whether
+                // a ruleset protects it. Before #685 this was read as "no
+                // protection at all", which is how a fully protected branch
+                // reported as bare.
+                mergeChecks([]);
+                read.push('classic_branch_protection');
+                core.info(`${branch} has no classic branch protection; rulesets are read separately above.`);
               } else {
-                failures.push(`branch protection: ${error.status} ${error.message}`);
+                failures.push(`classic branch protection: ${error.status} ${error.message}`);
               }
+            }
+
+            // `branch_protection` is the name the manifest's tests ask for, and
+            // it means "somebody answered the question", not "one particular
+            // endpoint answered". Either source is enough; neither is not.
+            if (read.includes('branch_rules') || read.includes('classic_branch_protection')) {
+              read.push('branch_protection');
             }
 
             const environments = {};
@@ -215,12 +307,18 @@ jobs:
             }
 
             core.info(`sections read: ${JSON.stringify(read)}`);
+            core.info(`rulesets touching ${branch}: ${JSON.stringify(ruleSources)}`);
             core.info(`required checks on ${branch}: ${JSON.stringify(requiredChecks)}`);
             core.info(`strict (up to date): ${upToDate}`);
             core.info(`environments: ${JSON.stringify(environments)}`);
             core.info(`required approving reviews: ${approvals}`);
+            // The three branch-protection values stay null when nothing was
+            // read. The tests treat null as "unanswered" and fail rather than
+            // comparing it, which is the #685 lesson: a default that happens
+            // to equal the expected value is not evidence.
             core.setOutput('live', JSON.stringify({
               read,
+              ruleset_ids: ruleSources,
               required_status_checks: requiredChecks,
               require_branches_up_to_date: upToDate,
               required_approving_review_count: approvals,

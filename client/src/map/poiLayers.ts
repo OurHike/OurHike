@@ -93,23 +93,30 @@ export const POI_ID_PROPERTY = 'poi_id'
  * question "which of these do I keep" by geometry, when the honest answer at
  * that zoom is "none, you are not looking at a place yet".
  *
- * **9 is provisional.** #593 produces this number as a measurement rather than
- * as arithmetic, by extending features/POI_SITES.md's placement simulation down
- * from z12 over the site-folded point set. The design is written so that moving
- * it is one edit here: nothing below the seam is claimed and nothing above it
- * is hidden, so a wrong value costs a slightly worse screen rather than a
- * missing spring.
+ * **12 is measured, not argued** (#593, landed 2026-08-13).
+ * `pipeline/spike_poi_seam.py` simulates MapLibre's placement over the
+ * site-folded corridor at z10-z17 and reports viewport load centred on a
+ * waypoint: a median of 35 pins wanted at z10, 18 at z11, **9 at z12** on a
+ * 390x700 screen that holds about 16. z12 is the first zoom that is not
+ * oversubscribed. It replaced a z12-z13 bracket this file had reached by
+ * arithmetic, and 9 before that.
+ *
+ * Chosen on the median rather than the p90 deliberately, and the dot rank is
+ * what makes that affordable: above the seam an overfull screen costs dots
+ * rather than deletions, so the question is "is the usual screen readable"
+ * rather than "is every screen guaranteed to fit".
  */
-export const POI_PIN_MIN_ZOOM = 9
+export const POI_PIN_MIN_ZOOM = 12
 
 /**
  * The old name for {@link POI_PIN_MIN_ZOOM}.
  *
- * #597's design renames this constant, and the rename is deferred rather than
- * skipped: #528 is in flight against `map/drawnPois.ts` and
- * `lib/useDrawnPoiCounts.ts`, both of which import the old name, and renaming
- * under a live branch on this file buys a conflict and no behaviour. #593
- * removes this line when it lands the measured value.
+ * features/POI_VISIBILITY.md now says `POI_PIN_MIN_ZOOM` replaces this outright,
+ * and the rename is deferred rather than skipped: #528 is in flight against
+ * `map/drawnPois.ts` and `lib/useDrawnPoiCounts.ts`, both of which import the
+ * old name, and renaming under a live branch on this file buys a conflict and
+ * no behaviour. The alias carries the measured value, so nothing reading it is
+ * wrong meanwhile - only old-fashioned. Delete it once #528 has landed.
  */
 export const POI_MIN_ZOOM = POI_PIN_MIN_ZOOM
 

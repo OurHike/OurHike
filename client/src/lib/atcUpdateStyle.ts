@@ -124,12 +124,16 @@ export const ATC_UPDATE_POINT_RADIUS = ATC_UPDATE_POINT_DIAMETER / 2
  *    a waypoint pin is its whole 38px. This is the comparison every bound in
  *    src/test/atcAlertProminence.test.ts is about, so it has to be the zoom
  *    both are at full size.
- *  - **z9, 0.75.** `POI_PIN_MIN_ZOOM`, where waypoint pins first appear, and
+ *  - **z12, 0.75.** `POI_PIN_MIN_ZOOM`, where waypoint pins first appear, and
  *    `POI_ICON_SIZE_EXPRESSION`'s own lower stop. Matching the fraction rather
  *    than picking one keeps the dot exactly its two pixels clear of a pin at
- *    every zoom where both are drawn, instead of only at the top. It was 0.6
- *    until the pins were asked to come up at the low end (#597's review); the
- *    number moved here in the same commit, because the two are one decision.
+ *    every zoom where both are drawn, instead of only at the top. Both halves
+ *    of this stop have moved since it was written: the zoom followed the seam
+ *    from 9 to 12 when #593 measured it, and the fraction went 0.6 to 0.75 when
+ *    the pins were asked to come up at the low end (#597's review). Neither can
+ *    move here alone - src/test/atcAlertProminence.test.ts asserts this list
+ *    equals POI_ICON_SIZE_EXPRESSION's stops, which is what stops the dot
+ *    becoming the smaller mark at some middle zoom nobody screenshotted.
  *  - **z5, 0.4.** Below the pins entirely, where the only question is whether
  *    a hiker planning a week can see WHERE the ATC has posted something. About
  *    18px of ink answers that. It is deliberately NOT a further shrink to
@@ -146,7 +150,7 @@ export const ATC_UPDATE_POINT_RADIUS = ATC_UPDATE_POINT_DIAMETER / 2
  */
 export const ATC_UPDATE_POINT_ZOOM_STOPS: ReadonlyArray<[zoom: number, scale: number]> = [
   [5, 0.4],
-  [9, 0.75],
+  [12, 0.75],
   [13, 1],
 ]
 

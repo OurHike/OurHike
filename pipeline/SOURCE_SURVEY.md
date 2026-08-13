@@ -112,7 +112,7 @@ Live counts and edit dates — compare against `pipeline/README.md`'s 2026-07-25
 | `bridges` | 409 | 2026-06-29 | |
 | `privies` | 316 | 2026-06-29 | |
 | `at_treadway` | 30 | 2026-06-29 | |
-| `trail_club_sections` | 30 | 2024-08-15 | schema touched 2025-10-09, data two years old |
+| `trail_club_sections` | 30 | 2024-08-15 | schema touched 2025-10-09, data two years old. **Not the club attribution the pipeline uses** — see §3e |
 | `communities` | 59 | 2023-06-13 | the stalest layer we ship |
 | `half_mile_points_from_springer` | 4,395 | 2026-04-07 | ATC org, not NPS |
 
@@ -241,7 +241,7 @@ edited 2026-08-07), is the raw field data behind it — too raw to ship, useful 
 
 | service | what it is | date | verdict |
 |---|---|---|---|
-| `AT_ClubMap` (5 layers) | club section points/lines/polygons for the club map, incl. 35 club-name points | 2025-06/07 | fresher sibling of `trail_club_sections`; the 35-point list includes Randolph Mountain Club, which the 30-polygon layer folds elsewhere |
+| `AT_ClubMap` (5 layers) | club section points/lines/polygons for the club map, incl. 35 club-name points | 2025-06/07 | **the same thirty clubs as `trail_club_sections`, not more** — corrected 2026-08-13, see §3e |
 | `VUM_Clubs` | 52 club *sub*-section polygons with N/S end descriptions | 2025-09-05 | finer-grained club sections than anything registered — useful for SAYING_THANKS/MaintainerAssignment granularity someday |
 | `NERO_ATX_OvernightSites` / `NERO_ATX_Merged` | New-England-region subset of the ATX data | 2024-03 | superseded by the trail-wide layers above |
 | `2022_ATC_Lands_Fee_Parcel_Shapefile` / `…Easement_Parcel_2` | ATC-held land parcels (24 fee + 33 easement) | data 2025-05 | LAND_OWNERSHIP.md material, Post-MVP |
@@ -254,6 +254,48 @@ edited 2026-08-07), is the raw field data behind it — too raw to ship, useful 
 orgs' `rest/services` roots directly — the same move that found `bridges` and `privies`
 last month, one level up. `discover_sources.py` walks the curated public map and can never
 see these. Worth remembering as SOURCE_REGISTRY.md's probe design firms up.
+
+### 3e. Club attribution: the centerline is the source, not the polygons (measured 2026-08-13)
+
+Checked while building #594, and it corrected two things this document previously said.
+
+**The centerline already carries the club.** `ANST_Centerline` has `Trail_Club`, `Acronym`
+and `Reg_Acro` on **every one of its 3,025 features**, and so does `at_treadway`. That is a
+better source than `trail_club_sections` on every axis that matters:
+
+| | `centerline` | `trail_club_sections` |
+|---|---|---|
+| last edited | **2026-08-04** | 2024-08-15 |
+| attribution sits on | the trail line → exact mile ranges | polygons → derived by point-in-polygon |
+
+So `export_club_sections.py` reads the centerline for **which stretch belongs to whom**, and
+the polygon layer for **how a club's name is spelled** and its region. Fresh source decides
+the fact; stale source decides only the wording.
+
+**Correction — the 35-vs-30 discrepancy in §3d was not real.** `AT_ClubMap`'s
+`APPA_TrailClub_secPoints` holds 35 point features but only **31 distinct name strings**, and
+those 31 are the same **30 clubs**: four clubs maintain discontiguous trail and get a label
+point each (AMC-Delaware Valley, Blue Mountain Eagle, Mountain Club of Maryland, Roanoke
+ATC), and one club appears under both `Outdoor Club of Virginia Tech` and the typo
+`Outdoor Club of Virginina Tech`. **Randolph Mountain Club has its own polygon in the
+30-layer**, so the claim that it was "folded elsewhere" was wrong. There is no missing club.
+
+`AT_ClubMap` is also not in the NPS org — it belongs to `jweems_ATConservancy` on
+`services9`, which is why listing `fBc8EJBxQRMcHlei` does not show it.
+
+**What is wrong with the centerline's club fields, so nobody trusts them blindly.** Freshness
+is bought at a cost in cleanliness — 44 distinct `Acronym` values where there are 30 clubs:
+
+- **47 features carry a digit string in both `Trail_Club` and `Acronym`** (`"23"`, `"11"`,
+  `"27"`, …) — an unjoined FID or a shifted column upstream. 41.4 miles, **1.90% of the
+  trail**. The pipeline publishes those miles as *unattributed* rather than backfilling them
+  from the two-year-old polygons.
+- **Two clubs are misspelt in `Trail_Club` and correct in `Acronym`** — `Potomac Appalachain
+  Trail Club` (PATC) and `New York - New Jersey Trail Conference` (NYNJTC, spacing). Every
+  acronym maps to exactly one spelling, which is what makes the **acronym** the safe join key
+  and the name an unsafe one.
+
+Not reported upstream. If that changes, these are the specifics to send.
 
 ---
 

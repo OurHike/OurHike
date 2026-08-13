@@ -139,17 +139,62 @@ The absence of a pin is the strongest statement this map makes about a place. So
 One zoom, `POI_PIN_MIN_ZOOM`, replacing `POI_MIN_ZOOM`. Below it the map is about the trail and
 is [CORRIDOR_VIEW.md](CORRIDOR_VIEW.md)'s; above it the map is about places and is this doc's.
 
-**Expectation z12–z13, produced rather than argued.** The viewport table puts z12 at the edge —
-10–16 waypoints against room for ~16 — and z13 comfortably clear. [POI_SITES.md](POI_SITES.md)'s
-simulation is what should settle it, extended down from z12 and run against the *site*-folded
-point set rather than the raw one, because folding is what changes the answer. That is the same
-thing [#531](https://github.com/OurHike/OurHike/issues/531) was asked for and did not get, and
-this doc should not repeat the mistake of arguing four numbers into a table.
+**`POI_PIN_MIN_ZOOM = 12`. Measured 2026-08-13, not argued** —
+[`pipeline/spike_poi_seam.py`](../pipeline/spike_poi_seam.py), against the live ATC FeatureServer,
+folded by [`lib/poi_sites.py`](../pipeline/lib/poi_sites.py) itself, with MapLibre's placement
+simulated at z10–z17. Re-runnable, which is the point of shipping the script rather than the
+table.
 
-**Getting it wrong is cheap, which is the point.** Under a design that deletes waypoints, the
-floor is where truth turns into fiction and every zoom level matters. Under this one nothing below
-it is claimed and nothing above it is hidden, so the seam is a judgement about what makes a better
-screen, not a threshold protecting anybody from a false map.
+**The criterion is the viewport load, and z12 is where it stops being oversubscribed.** A
+390 × 700 phone map holds about 16 pins down a straight column, and the load below is what a
+screen *centred on a waypoint* actually carries — the screen a hiker has, rather than an average
+over empty stretches of Pennsylvania nobody looks at on purpose:
+
+| zoom | median | p90 | p99 | max | fits? |
+|---|---|---|---|---|---|
+| 10 | 35 | 66 | 92 | 100 | no |
+| 11 | 18 | 35 | 46 | 54 | no |
+| **12** | **9** | 18 | 26 | 30 | **yes** |
+| 13 | 5 | 10 | 16 | 18 | yes |
+| 14 | 3 | 6 | 10 | 13 | yes |
+
+**On the median rather than the p90, deliberately.** Above the seam an oversubscribed screen costs
+*dots*, not deletions, so the question is "is this a better screen than the corridor view" and not
+"is every screen guaranteed to fit". Choosing on the p90 would push the seam to z13 to protect
+against something that is no longer a failure.
+
+Share of each category reaching a pin at the candidate seams, site-folded:
+
+| zoom | shelter | privy | campsite | parking | viewpoint | all |
+|---|---|---|---|---|---|---|
+| 11 | 96% | 84% | 78% | 62% | 22% | 50% |
+| **12** | **97%** | **86%** | **84%** | **80%** | **42%** | **65%** |
+| 13 | 97% | 88% | 85% | 88% | 61% | 76% |
+
+**Two findings from that run matter more than the seam itself.**
+
+**Site folding is worth a flat +15–16 points at every zoom from 10 to 15**, measured against the
+same simulation over the unfolded set. That is [POI_SITES.md](POI_SITES.md) carrying this design
+rather than complementing it, and it means the residue left for the dot rank is materially smaller
+than this doc assumed when it was rewritten.
+
+**Vistas are the only category that behaves badly at any candidate seam.** Everything a hiker
+needs is 80–97% pinned from z12; viewpoints are 42%. In practice the dot rank is *for viewpoints*
+— which is the same conclusion `POI_PRIORITY`'s own comment reached from the other end, that they
+are "the densest layer ATC publishes… what would win by sheer count if nothing decided otherwise."
+
+Two gaps in the measurement, stated rather than smoothed over. **Water is absent** — it comes from
+opentrail.org, whose API needs more than a bare GET, the same gap [POI_SITES.md](POI_SITES.md)
+carried on its own table; 174 points against 2,532, first in `POI_PRIORITY`, so the survivors
+below it look very slightly better than they are. And the fetch is **not corridor-clipped**, so it
+carries 1,223 viewpoints where the corridor holds 1,194 — which cuts the other way. Neither is
+near large enough to move a seam sitting between a median of 18 and a median of 9.
+
+**Getting it wrong would have been cheap, which is why it was worth measuring rather than
+agonising over.** Under a design that deletes waypoints, the floor is where truth turns into
+fiction and every zoom level matters. Under this one nothing below it is claimed and nothing above
+it is hidden, so the seam is a judgement about what makes a better screen, not a threshold
+protecting anybody from a false map.
 
 ### Above the seam: two ranks, and nothing in neither
 
@@ -278,9 +323,11 @@ picture of the current camera is not a preference.
 
 ## Open questions (real ones, not decided here)
 
-- **The seam's zoom.** z12 or z13, from [POI_SITES.md](POI_SITES.md)'s simulation run against the
-  site-folded point set, not from this doc's arithmetic. The one number here that should be
-  measured before it is written into a constant.
+- ~~**The seam's zoom.**~~ **Answered 2026-08-13 — `POI_PIN_MIN_ZOOM = 12`**, by
+  [`pipeline/spike_poi_seam.py`](../pipeline/spike_poi_seam.py), which is the measurement this
+  doc asked for rather than a number argued into place. See "The seam" above. What it turned up
+  along the way reshaped two things here rather than confirming them: site folding is doing more
+  of the work than this doc credited it with, and the dot rank is in practice a vista rank.
 - **Whether the dot rank should extend below the seam.** It would be honest — dots never claim
   completeness — and it would make the corridor view show waypoint *density* under the club
   sections. It also puts 2,778 dots on a 2,197-mile line, which is a texture, which is the

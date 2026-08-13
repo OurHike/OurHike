@@ -411,3 +411,129 @@ def test_the_implausible_step_finder_ignores_nulls_rather_than_crashing(tmp_path
     ]
 
     assert check_elevation_gain.implausible_steps(records) == []
+
+
+# --- part boundaries, once the profile records them (#559) -------------------
+
+
+def _two_part_profile(tmp_path, name, *, marked):
+    """Two centerline pieces with a 3,000 ft jump between them.
+
+    Realistic in the way the earlier spike fixture is not: a piece has many
+    samples, and the seam is the step INTO the first sample of the next piece.
+    A one-sample piece would leave the step back OUT of it looking like
+    ordinary trail, which is not a shape export_elevation.py can produce.
+
+    `marked` is the only difference between the two files, so any change
+    between them is the marker doing its job and nothing else.
+    """
+    records = []
+    mile = 0.0
+    for part, base in enumerate((1000.0, 5000.0)):
+        for step in range(101):
+            record = {"distance_mi": round(mile, 4), "elevation_ft": base + step * 10}
+            if marked and step == 0:
+                record["part_start"] = True
+            records.append(record)
+            mile += 0.01
+    path = tmp_path / name
+    path.write_text(json.dumps(records))
+    return path
+
+
+@pytest.fixture
+def profile_with_a_marked_seam(tmp_path):
+    return _two_part_profile(tmp_path, "marked.json", marked=True)
+
+
+@pytest.fixture
+def profile_with_an_unmarked_seam(tmp_path):
+    return _two_part_profile(tmp_path, "unmarked.json", marked=False)
+
+
+def test_a_profile_without_markers_says_its_figures_are_the_old_ones(profile, reference, capsys):
+    """The failure worth designing against: a fix that silently does nothing on
+    an artifact published before it. Printing the contaminated total under the
+    new code, with no warning, would look corrected."""
+    check_elevation_gain.main(["--profile", str(profile), "--reference", str(reference({}))])
+    out = capsys.readouterr().out
+
+    assert "No part_start markers" in out
+    assert "#559" in out
+
+
+def test_a_profile_with_markers_says_how_many_it_excluded(profile_with_a_marked_seam, reference, capsys):
+    """Two, not one: export_elevation.py marks the first sample of every
+    piece including the first, so a consumer never has to special-case
+    index 0."""
+    check_elevation_gain.main(["--profile", str(profile_with_a_marked_seam), "--reference", str(reference({}))])
+    out = capsys.readouterr().out
+
+    assert "2 centerline seam(s) marked and excluded" in out
+
+
+def test_marking_the_seam_removes_the_phantom_climb_from_the_total(profile_with_an_unmarked_seam, profile_with_a_marked_seam):
+    """The whole point, end to end: the same two files but for the marker, and
+    the 3,000 ft jump between the pieces counted in one and not the other.
+
+    2,000 ft of real climbing remains either way - 1,000 ft up each piece."""
+    unmarked = check_elevation_gain.load_profile(profile_with_an_unmarked_seam)
+    marked = check_elevation_gain.load_profile(profile_with_a_marked_seam)
+    T = check_elevation_gain.DEFAULT_THRESHOLD_FT
+
+    before = check_elevation_gain.gain_over_profile(unmarked, T)
+    after = check_elevation_gain.gain_over_profile(marked, T)
+
+    assert before == pytest.approx(5000)
+    assert after == pytest.approx(2000)
+
+
+def test_an_impossible_step_at_a_marked_seam_is_reported_as_explained(profile_with_a_marked_seam, reference, capsys):
+    """Still reported - it is the regression check that would catch the
+    markers going wrong - but named as already handled rather than as a
+    finding needing action."""
+    check_elevation_gain.main(["--profile", str(profile_with_a_marked_seam), "--reference", str(reference({}))])
+    out = capsys.readouterr().out
+
+    assert "(seam)" in out
+    assert "already excluded from the sums above" in out
+
+
+def test_an_impossible_step_that_is_not_at_a_seam_is_still_called_out(profile, reference, capsys):
+    """The case that survives #559 and matters afterwards: a step nothing
+    walks, somewhere the pipeline calls continuous trail. Nothing excludes it,
+    so it is still summed."""
+    records = json.loads(profile.read_text())
+    records[50]["elevation_ft"] += 5000
+    path = profile.parent / "spiked.json"
+    path.write_text(json.dumps(records))
+
+    check_elevation_gain.main(["--profile", str(path), "--reference", str(reference({}))])
+    out = capsys.readouterr().out
+
+    assert "NOT a seam" in out
+    assert "still summed" in out
+
+
+def test_a_section_spanning_a_marked_seam_is_validated_normally(profile_with_a_marked_seam, reference, capsys):
+    """Once the gain excludes the seam, withholding a verdict would be
+    refusing to validate for a reason that has been fixed."""
+    path = reference(
+        {
+            "sections": [
+                {
+                    "name": "spans a seam",
+                    "start_mi": 0.0,
+                    "end_mi": 2.1,
+                    "published_gain_ft": 2000,
+                    "source": "synthetic",
+                }
+            ]
+        }
+    )
+
+    exit_code = check_elevation_gain.main(["--profile", str(profile_with_a_marked_seam), "--reference", str(path)])
+    out = capsys.readouterr().out
+
+    assert "step too steep to be trail" not in out
+    assert exit_code == 0

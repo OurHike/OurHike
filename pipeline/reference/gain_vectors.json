@@ -16,67 +16,138 @@
     "",
     "Elevations are unitless; each case carries its own threshold in the same",
     "unit. Add a case by adding it here - both suites pick it up with no code",
-    "change in either."
+    "unit. Add a case by adding it here - both suites pick it up with no code",
+    "change in either.",
+    "",
+    "`boundary_cases` are the third kind of break (#559), and they carry",
+    "`samples` rather than `elevations` because the marker lives on a record.",
+    "A centerline part boundary is not a DEM gap: the measurement is fine and",
+    "the TRAIL is discontinuous, so the step across it is not a slope anybody",
+    "walks. The pipeline carries the distance axis straight over that space,",
+    "which is how ~36,800 ft of phantom climb reached the published total."
   ],
-
   "cases": [
     {
       "name": "a single climb counts its whole rise",
-      "elevations": [100, 200, 300, 400],
+      "elevations": [
+        100,
+        200,
+        300,
+        400
+      ],
       "threshold": 3,
       "expected_gain": 300
     },
     {
       "name": "every separate climb in a rolling profile counts",
-      "elevations": [0, 100, 50, 150, 100, 200],
+      "elevations": [
+        0,
+        100,
+        50,
+        150,
+        100,
+        200
+      ],
       "threshold": 3,
       "expected_gain": 300
     },
     {
       "name": "flat ground with DEM jitter has no gain",
-      "elevations": [1000, 1000.4, 999.3, 1000.2, 999.7, 1000.6, 999.5, 1000.1],
+      "elevations": [
+        1000,
+        1000.4,
+        999.3,
+        1000.2,
+        999.7,
+        1000.6,
+        999.5,
+        1000.1
+      ],
       "threshold": 3,
       "expected_gain": 0
     },
     {
       "name": "a swing just under the threshold is dropped whole",
-      "elevations": [100, 102.9, 100, 102.9, 100],
+      "elevations": [
+        100,
+        102.9,
+        100,
+        102.9,
+        100
+      ],
       "threshold": 3,
       "expected_gain": 0
     },
     {
       "name": "a swing just over the threshold is kept whole",
-      "elevations": [100, 103.1, 100, 103.1],
+      "elevations": [
+        100,
+        103.1,
+        100,
+        103.1
+      ],
       "threshold": 3,
       "expected_gain": 6.2
     },
     {
       "name": "a gentle climb below the step size still counts",
-      "elevations": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      "elevations": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
       "threshold": 3,
       "expected_gain": 10
     },
     {
       "name": "a pure descent has no gain",
-      "elevations": [500, 400, 300, 200, 100],
+      "elevations": [
+        500,
+        400,
+        300,
+        200,
+        100
+      ],
       "threshold": 3,
       "expected_gain": 0
     },
     {
       "name": "a climb the profile ends on is counted",
-      "elevations": [0, 100, 50, 400],
+      "elevations": [
+        0,
+        100,
+        50,
+        400
+      ],
       "threshold": 3,
       "expected_gain": 450
     },
     {
       "name": "a climb is measured from the true low, not the first sample",
-      "elevations": [100, 98, 500],
+      "elevations": [
+        100,
+        98,
+        500
+      ],
       "threshold": 3,
       "expected_gain": 402
     },
     {
       "name": "a zero threshold is the raw sum this replaces",
-      "elevations": [100, 101, 100, 101],
+      "elevations": [
+        100,
+        101,
+        100,
+        101
+      ],
       "threshold": 0,
       "expected_gain": 2
     },
@@ -88,30 +159,157 @@
     },
     {
       "name": "one sample cannot have climbed",
-      "elevations": [42],
+      "elevations": [
+        42
+      ],
       "threshold": 3,
       "expected_gain": 0
     }
   ],
-
   "gap_cases": [
     {
       "name": "a DEM gap is not bridged into a climb",
-      "elevations": [100, 110, null, 3000, 3010],
+      "elevations": [
+        100,
+        110,
+        null,
+        3000,
+        3010
+      ],
       "threshold": 3,
       "expected_gain": 20
     },
     {
       "name": "each side of a gap is still measured",
-      "elevations": [0, 500, null, 0, 500],
+      "elevations": [
+        0,
+        500,
+        null,
+        0,
+        500
+      ],
       "threshold": 3,
       "expected_gain": 1000
     },
     {
       "name": "a profile that is entirely nulls has no gain",
-      "elevations": [null, null, null],
+      "elevations": [
+        null,
+        null,
+        null
+      ],
       "threshold": 3,
       "expected_gain": 0
+    }
+  ],
+  "boundary_cases": [
+    {
+      "name": "a part boundary is not summed as a climb",
+      "samples": [
+        {
+          "elevation_ft": 100
+        },
+        {
+          "elevation_ft": 110
+        },
+        {
+          "elevation_ft": 3000,
+          "part_start": true
+        },
+        {
+          "elevation_ft": 3010
+        }
+      ],
+      "threshold": 3,
+      "expected_gain": 20
+    },
+    {
+      "name": "each side of a boundary is still measured on its own",
+      "samples": [
+        {
+          "elevation_ft": 0
+        },
+        {
+          "elevation_ft": 500
+        },
+        {
+          "elevation_ft": 0
+        },
+        {
+          "elevation_ft": 9000,
+          "part_start": true
+        },
+        {
+          "elevation_ft": 9400
+        },
+        {
+          "elevation_ft": 9000
+        }
+      ],
+      "threshold": 3,
+      "expected_gain": 900
+    },
+    {
+      "name": "a marker on the first sample changes nothing",
+      "samples": [
+        {
+          "elevation_ft": 100,
+          "part_start": true
+        },
+        {
+          "elevation_ft": 200
+        },
+        {
+          "elevation_ft": 300
+        }
+      ],
+      "threshold": 3,
+      "expected_gain": 200
+    },
+    {
+      "name": "a profile with no markers is one run, as an older artifact is read",
+      "samples": [
+        {
+          "elevation_ft": 100
+        },
+        {
+          "elevation_ft": 110
+        },
+        {
+          "elevation_ft": 3000
+        }
+      ],
+      "threshold": 3,
+      "expected_gain": 2900
+    },
+    {
+      "name": "a boundary and a DEM gap both break the run",
+      "samples": [
+        {
+          "elevation_ft": 100
+        },
+        {
+          "elevation_ft": 200
+        },
+        {
+          "elevation_ft": null
+        },
+        {
+          "elevation_ft": 5000
+        },
+        {
+          "elevation_ft": 5100
+        },
+        {
+          "elevation_ft": 9000,
+          "part_start": true
+        },
+        {
+          "elevation_ft": 9100
+        }
+      ],
+      "threshold": 3,
+      "expected_gain": 300
     }
   ]
 }

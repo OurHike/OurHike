@@ -37,6 +37,23 @@ Pipeline, mirroring patterns already established elsewhere in this repo:
    distance - main() logs the total and largest single gap so the size of
    the approximation is visible run-over-run, not just described in prose
    here.
+
+   **Every sample records the piece it came from, and the first sample of
+   each piece is written with `part_start: true` (#559).** Naming the seam
+   is not decoration: because the distance axis carries straight across it,
+   the step from the last sample of one piece into the first of the next
+   looks exactly like terrain to anything reading elevations alone, and
+   summing those steps put ~36,800 ft of climbing that nobody did into the
+   published total - the largest a single +2,588 ft "step" across 25 m of
+   ground. lib/elevation_gain.py and client/src/lib/elevationGain.ts both
+   break their runs on it. A profile written before this existed carries no
+   markers and is measured as it always was, which is the only honest
+   reading of a file that does not say where its seams are.
+
+   The ORDERING of the pieces is a separate, open problem - see
+   ORDERING.md, which records what the source geometry actually looks like
+   and why the obvious fixes do not work. Marking the seams is independent
+   of it and stays correct however the ordering is eventually improved.
 5. Each sample point is reprojected back to lon/lat and looked up against
    the indexed DEM tiles via ElevationSampler, which reprojects each
    tile (see fetch_elevation.py's
@@ -233,22 +250,31 @@ def reproject_lines_to_meters(con: duckdb.DuckDBPyConnection, lines: list[LineSt
     return [shapely_wkt.loads(wkt) for _, wkt in rows]
 
 
-def sample_points_along_parts(parts_meters: list[LineString], interval_m: float) -> list[tuple[float, Point]]:
+def sample_points_along_parts(parts_meters: list[LineString], interval_m: float) -> list[tuple[float, Point, int]]:
     """Walk every ordered piece (already reprojected to meters) end to end,
     placing one sample point every interval_m of cumulative distance via
     shapely's .interpolate() - the actual dense along-the-line sampling this
     module exists for, in place of the existing 4,395 sparse half-mile
     markers. See module docstring for the known cross-gap limitation. Robust
     to a degenerate (zero-length) piece - it just contributes no points and
-    no distance, rather than looping forever or crashing."""
-    samples: list[tuple[float, Point]] = []
+    no distance, rather than looping forever or crashing.
+
+    Each sample carries the index of the piece it came from, and that is the
+    whole of #559's fix. The distance axis carries straight across the gap
+    between two pieces as though they touched, so the step between the last
+    sample of one and the first of the next looks exactly like terrain to
+    anything reading elevations alone - which is how ~36,800 ft of phantom
+    climb ended up in the published gain. The walk is the only place that
+    knows where the seams are, so it is the only place that can say.
+    """
+    samples: list[tuple[float, Point, int]] = []
     cumulative_before = 0.0
     pending = 0.0
-    for part in parts_meters:
+    for index, part in enumerate(parts_meters):
         length = part.length
         d = pending
         while d <= length:
-            samples.append((cumulative_before + d, part.interpolate(d)))
+            samples.append((cumulative_before + d, part.interpolate(d), index))
             d += interval_m
         pending = d - length
         cumulative_before += length
@@ -266,8 +292,8 @@ def reproject_points_to_wgs84(
     real performance gap applies here, and matters more: a full corridor run
     means tens of thousands of points, not hundreds of trail pieces."""
     idx = np.arange(len(samples_meters))
-    xs = np.array([pt.x for _, pt in samples_meters])
-    ys = np.array([pt.y for _, pt in samples_meters])
+    xs = np.array([pt.x for _, pt, _part in samples_meters])
+    ys = np.array([pt.y for _, pt, _part in samples_meters])
     con.register("_sample_points_src", {"idx": idx, "x": xs, "y": ys})
     try:
         rows = con.execute(f"""
@@ -469,13 +495,27 @@ def build_profile(centerline_path: Path, elevation_index_path: Path, interval_m:
     finally:
         sampler.close()
 
-    records = [
-        {
+    records = []
+    previous_part = None
+    for (distance_m, _pt, part), elevation_m in zip(samples_meters, elevations_m):
+        record = {
             "distance_mi": round(distance_m / METERS_PER_MILE, 3),
             "elevation_ft": round(elevation_m / METERS_PER_FOOT, 1) if elevation_m is not None else None,
         }
-        for (distance_m, _pt), elevation_m in zip(samples_meters, elevations_m)
-    ]
+        # Only on the first sample of a piece, and absent everywhere else
+        # (#559). A `part` index on all ~139,000 records would say the same
+        # thing and cost about a megabyte on an artifact hikers download over
+        # a trailhead's signal; the seams are 558 of them. A reader that does
+        # not know the key ignores it, which is what makes this additive.
+        #
+        # Including the very first sample, where breaking a run is a no-op.
+        # Uniform is worth more than clever here: a consumer should be able to
+        # write "start a new run at every part_start" without special-casing
+        # index 0.
+        if part != previous_part:
+            record["part_start"] = True
+            previous_part = part
+        records.append(record)
     return records, cross_part_gaps
 
 

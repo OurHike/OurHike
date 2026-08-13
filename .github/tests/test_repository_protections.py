@@ -20,10 +20,19 @@ before reading a green run. **GITHUB_TOKEN has no scope for repository
 administration at all**: `administration: read` is not a key a workflow
 `permissions:` block accepts, and asking for it does not warn - it makes the
 file invalid, so every run is a startup failure with zero jobs. Three of those
-landed on `main` before anyone noticed. Branch protection and the environments
-are therefore readable only with a fine-grained PAT, which is optional, so
-those two sections may be absent while the labels are always present. `_needs`
-is how a test says which section it depends on.
+landed on `main` before anyone noticed. The environments and *classic* branch
+protection are therefore readable only with a fine-grained PAT, which is
+optional, so those sections may be absent while the labels are always present.
+`_needs` is how a test says which section it depends on.
+
+**A branch's RULESETS need no PAT** (#685), which is the one asymmetry worth
+knowing here. Rulesets and classic branch protection are separate GitHub
+features with separate endpoints, and neither reports the other's rules -
+this file's live half spent its whole life reading only the classic one while
+a ruleset was what actually protected `main`, reporting five required checks
+as absent. The rules that apply to a branch are readable with GITHUB_TOKEN, so
+what a run cannot see without the PAT is now the environments and a classic
+protection that, here, does not exist.
 
 **Why the asymmetry with #375 matters.** Making these settings is a human
 action - no API this repository can reach will do it, which is why #375 is
@@ -137,17 +146,39 @@ def _needs(section: str):
 
     Not the same as skipping a refused read, which fails the job instead.
     GITHUB_TOKEN has no scope for repository administration - there is no
-    permissions block that grants it - so branch protection and the
-    environments are readable only with a fine-grained PAT in
-    PROTECTIONS_READ_TOKEN, and that secret is optional. Absent, this reports
-    which sections it could not see rather than turning `main` red for a state
-    that is declared; present but refused, the workflow fails before pytest
-    runs at all.
+    permissions block that grants it - so the environments are readable only
+    with a fine-grained PAT in PROTECTIONS_READ_TOKEN, and that secret is
+    optional. Absent, this reports which sections it could not see rather than
+    turning `main` red for a state that is declared; present but refused, the
+    workflow fails before pytest runs at all.
+
+    Since #685 `branch_protection` is no longer in that PAT-only set. It is
+    reported when EITHER source answered - the ruleset read, which needs no
+    PAT, or classic protection, which does - because the question the manifest
+    asks is "what protects this branch", not "which endpoint answered".
     """
     return pytest.mark.skipif(
         LIVE is not None and section not in LIVE.get("read", []),
-        reason=f"{section} was not read - no PROTECTIONS_READ_TOKEN. See protections-check.yml.",
+        reason=f"{section} was not read. See protections-check.yml.",
     )
+
+
+def _answered(value, what: str):
+    """Fail rather than assert against a value nobody read.
+
+    #685's real damage was not the false alarm, it was this: with the ruleset
+    invisible, `strict` and the approval count fell back to defaults that
+    happened to be the values the manifest wants, so both tests guarding the
+    solo-maintainer lockouts passed having read nothing. protections-check.yml
+    now leaves them null when unread, and this turns that null into a failure
+    instead of a comparison that accidentally succeeds.
+    """
+    assert value is not None, (
+        f"{what} came back null, which means protections-check.yml could not read it from either classic branch "
+        "protection or the branch's rulesets. A test that compares a null against what the manifest expects is the "
+        "#685 failure - passing by reading nothing - so this fails instead. Check the run's `sections read` line."
+    )
+    return value
 
 
 # --- What a checkout can answer -------------------------------------------
@@ -297,13 +328,37 @@ def test_require_branches_up_to_date_is_declared_off():
     )
 
 
+def test_the_checker_reads_both_systems_that_can_protect_a_branch():
+    """The from-a-checkout half of #685, and the reason it is a test rather
+    than a comment.
+
+    Classic branch protection and rulesets are separate GitHub features with
+    separate endpoints, and neither reports the other's rules. Reading only
+    `getBranchProtection` is what let this workflow report `main` as bare for
+    its entire life while a ruleset required five checks on it - and nothing
+    failed, because the values it fell back to happened to be the ones the
+    manifest wanted.
+
+    A live run cannot catch a regression here: dropping the ruleset read would
+    put the workflow straight back to green-and-wrong. So the assertion is
+    about the file, where it can fail on the pull request that proposes it.
+    """
+    source = (WORKFLOW_DIR / "protections-check.yml").read_text(encoding="utf-8")
+    missing = [call for call in ("rules/branches/{branch}", "getBranchProtection") if call not in source]
+    assert not missing, (
+        "protections-check.yml no longer reads every system that can protect a branch, so a branch protected by "
+        "the system it stopped reading would report as unprotected - which is #685, the bug this test exists for. "
+        "Missing: " + ", ".join(missing)
+    )
+
+
 # --- What only a live run can answer ---------------------------------------
 
 
 @live
 @_needs("branch_protection")
 def test_the_required_checks_configured_are_the_ones_declared():
-    configured = set(LIVE["required_status_checks"])
+    configured = set(_answered(LIVE["required_status_checks"], "The set of required status checks"))
     declared = set(REQUIRED)
 
     assert configured == declared, (
@@ -317,7 +372,8 @@ def test_the_required_checks_configured_are_the_ones_declared():
 @live
 @_needs("branch_protection")
 def test_no_never_required_check_is_configured():
-    wrongly_required = sorted(set(LIVE["required_status_checks"]) & set(NEVER_REQUIRED))
+    configured = _answered(LIVE["required_status_checks"], "The set of required status checks")
+    wrongly_required = sorted(set(configured) & set(NEVER_REQUIRED))
     assert not wrongly_required, (
         "These are configured as required checks and must not be - each one hangs a merge queue entry or blocks every "
         "pull request. expected-protections.yml carries the measured reason for each:\n  " + "\n  ".join(wrongly_required)
@@ -327,7 +383,7 @@ def test_no_never_required_check_is_configured():
 @live
 @_needs("branch_protection")
 def test_require_branches_up_to_date_is_actually_off():
-    assert LIVE["require_branches_up_to_date"] is False, (
+    assert _answered(LIVE["require_branches_up_to_date"], "`Require branches to be up to date`") is False, (
         "`Require branches to be up to date before merging` is ON for " + BRANCH + ". BRANCHING.md §1: this "
         "serialises concurrent work and makes the branching strategy unfollowable. Turn it off in Settings -> Rules."
     )
@@ -345,7 +401,7 @@ def test_no_pull_request_approval_is_required():
     maintainer, so GitHub considers those theirs too.
     """
     expected = MANIFEST["settings"]["required_approving_review_count"]["expected"]
-    actual = LIVE["required_approving_review_count"]
+    actual = _answered(LIVE["required_approving_review_count"], "The required approving review count")
 
     assert actual == expected, (
         f"{BRANCH} requires {actual} approving review(s). This repository has one maintainer, and GitHub does not "
@@ -419,7 +475,23 @@ def test_the_live_check_is_not_silently_skipping_where_it_is_meant_to_run():
         "GITHUB_TOKEN, so an empty `read` means the reading step did not run or produced no output - and every live "
         "test below skipped, leaving a green job that checked nothing. (Not a permissions diagnosis: the workflow "
         "token CANNOT request `administration: read` - protections-check.yml's header explains the invalid-key "
-        "startup failures that proved it - which is why branch protection reads ride PROTECTIONS_READ_TOKEN and "
-        "their absence alone is the three-outcome design working. A second assert here used to claim the opposite, "
-        "from a branch no input could reach - #654.)"
+        "startup failures that proved it - which is why the CLASSIC protection and environment reads ride "
+        "PROTECTIONS_READ_TOKEN and their absence alone is the three-outcome design working. A second assert here "
+        "used to claim the opposite, from a branch no input could reach - #654.)"
+    )
+    # `read` is seeded with 'labels' before anything else is attempted, so the
+    # assertion above cannot fail once the step runs at all - which is how the
+    # guard-the-guard came to have the same blind spot as the thing it guards.
+    # #685: branch protection was unreadable for the entire life of this
+    # workflow and every run above was green about it.
+    #
+    # The branch rules need no PAT, so in the live job there is no legitimate
+    # reason for them to be missing. Naming that section specifically is what
+    # makes this assertion able to fail.
+    assert "branch_rules" in LIVE.get("read", []), (
+        "The branch's rulesets were not read, and unlike the classic-protection and environment reads this one "
+        "needs no PAT - `GET /repos/{owner}/{repo}/rules/branches/{branch}` answers to GITHUB_TOKEN. So this is a "
+        "broken read rather than an absent credential, and it is the one that matters: rulesets are what actually "
+        "protect `main`, and #685 is the whole life of this workflow reporting them as absent. "
+        f"Sections read: {LIVE.get('read')}."
     )

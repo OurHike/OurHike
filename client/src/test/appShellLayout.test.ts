@@ -37,4 +37,18 @@ describe('app shell layout contract', () => {
     // overflow back on the page and the tab bar back off the bottom of it.
     expect(rule).toMatch(/min-height:\s*0/)
   })
+
+  it('makes the pane the containing block, so hidden controls cannot stretch the page', () => {
+    // The bug above, back through a different door (#631). The pickers hide
+    // their real radios as `position: absolute` boxes, and an absolute box
+    // belongs to its nearest positioned ancestor - with none anywhere, to the
+    // document, which the pane's overflow cannot clip. Measured in Chromium
+    // at 1280x800: radios below the first viewport-full held the document at
+    // 1271px, a page scrollbar beside the pane's own, and everything under
+    // 100svh blank paper. hiddenInputContainment.test.ts anchors each radio
+    // to its picker; this anchors the pane itself, for whatever is next.
+    const rule = ruleFor('.app__screen > :first-child')
+
+    expect(rule).toMatch(/position:\s*relative/)
+  })
 })

@@ -169,6 +169,12 @@
 .map-style-picker__option,
 .map-detail-picker__option,
 .unit-picker__option {
+  /* Each option is the containing block for its own hidden radio (below).
+     Unanchored, the radio's absolute box resolved against the document -
+     where the screen's scroll pane could not clip it, so the radios of
+     whichever pickers sat below the first viewport-full stretched the PAGE
+     and gave Settings a scrollbar within a scrollbar (#631). */
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;

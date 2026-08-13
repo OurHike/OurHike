@@ -243,7 +243,13 @@
   /* ---------- Legend: a panel, not a sheet ---------- */
 
   .legend--persistent {
-    position: static;
+    /* Relative, not static: in flow exactly the same, but still a containing
+       block. The background picker at this panel's foot hides its real
+       radios with absolute 1px boxes, and the sheet's `position: absolute`
+       was what anchored them on a phone - un-positioning the panel entirely
+       handed them to the document, where a legend long enough to scroll
+       would stretch the page the way Settings' pickers did (#631). */
+    position: relative;
     max-height: none;
     flex: 0 0 17rem;
     border-top-left-radius: 0;

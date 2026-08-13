@@ -1542,6 +1542,12 @@ a.poi-card__credit::after {
 }
 
 .bg-picker__option {
+  /* The containing block for the hidden radio below, so its 1px box stays
+     pinned to this segment instead of resolving against the document and
+     stretching the page - settings.css's options carry the whole of why
+     (#631). The legend being absolute used to contain it by accident on a
+     phone; the desktop panel is not, and Settings never was. */
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;

@@ -14,6 +14,8 @@ bash scripts/local-postgres.sh                      # start the local database
 
 Everything the suite touches lives in `ourhike_test`, which it drops tables from freely - that is why it is a separate database from `ourhike_dev` and why nothing you are working on lives there.
 
+Run it with `-n auto` and each worker gets `ourhike_test_gw0`, `ourhike_test_gw1` and so on, created on demand by `tests/conftest.py` - 16s against 60s, and the `CREATEDB` this script already grants the role is what lets it happen without coming back here. They are the same kind of database as `ourhike_test` and just as disposable; `dropdb` them whenever, the next run makes them again. Sharing one database between workers is what does not work, and does not fail cleanly - see TESTING.md's backend section.
+
 ## Quick start
 
 ```

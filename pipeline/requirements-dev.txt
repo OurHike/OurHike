@@ -58,6 +58,8 @@ duckdb==1.5.4
     # via
     #   -c pipeline/requirements.txt
     #   -r pipeline/requirements.in
+execnet==2.1.2
+    # via pytest-xdist
 idna==3.18
     # via
     #   -c pipeline/requirements.txt
@@ -125,7 +127,10 @@ pytest==9.1.1
     # via
     #   -r pipeline/requirements-dev.in
     #   pytest-cov
+    #   pytest-xdist
 pytest-cov==7.1.0
+    # via -r pipeline/requirements-dev.in
+pytest-xdist==3.8.0
     # via -r pipeline/requirements-dev.in
 python-dateutil==2.9.0.post0
     # via

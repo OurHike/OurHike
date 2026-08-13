@@ -16,6 +16,7 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run --coverage",
+    "test:nocov": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {

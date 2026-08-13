@@ -117,6 +117,8 @@ Built. pytest, 167 tests (measured 2026-08-06), reusing the pipeline's approach 
 
 The isolation model is worth knowing before pointing `DATABASE_URL` anywhere: each test drops every table in whatever database that URL names and recreates the schema. That is what makes the suite recover from a run killed mid-test, and it is also why the URL must never name a database anyone cares about.
 
+That model is also why this suite is the one place in the repository where parallelism had to be bought rather than switched on. "Drop every table between tests" is safe exactly as long as one process is doing it; four `pytest -n` workers sharing one database do not merely fail, they wedge, each blocking on locks held by tables another worker is partway through dropping — measured at 1785s before it was killed, against 60s for the same suite serially. So `tests/conftest.py` gives each worker its own database, created on demand, and the per-test drop is unchanged inside it. Every worker still runs its own tests serially against its own schema, which is the model that was already there; `gw0` simply cannot see `gw1`'s tables to drop them. `tests/test_worker_database.py` is what keeps that true, including one test asserting the rewrite actually took effect in the process running it — a rewrite that silently became a no-op would put every worker back on one database and buy the deadlock back.
+
 Three invariants from the wireframe handoff live here specifically, since they're only meaningfully enforceable server-side:
 
 - `severity: serious` on a `Report` is only ever set by a user with a moderator role; a self-set attempt is rejected server-side, not just hidden client-side.
@@ -209,6 +211,20 @@ The scoping is a pull-request optimisation and deliberately stops there: on a me
 The distinction is which half of the check you want. `settings-check.yml`'s `configured` job carries a job-level `if:` on purpose, and is right to: that check *should* be absent on a pull request, because it cannot pass on one. A test suite is the opposite - it is a check a reviewer expects to see reporting, so it has to report even when the answer is "nothing to do".
 
 The action answers "run" for every case it is unsure about - a push, a PR too large for the files API to list, an API call that failed, an empty path list. Running a suite that did not need to run costs a minute; skipping one that did costs a merge, and does it quietly.
+
+### The same decision, locally
+
+`scripts/test.sh` makes that decision before the push instead of after it. CONTRIBUTING.md asks for every suite before every push and is right to - the round trip it prevents is real, and a quarter of this repository's CI failures were formatting alone. What it costs is the whole four-suite run for a change that could only have broken one part, which is most changes here.
+
+Measured on a four-core machine: the full sequence CONTRIBUTING.md lists takes **294s**. `scripts/test.sh --all` is the same four suites in **174s**, and a change to one of the Python parts is **20 to 50 seconds** because the other three suites do not run at all. A client-only change is about **two minutes**, nearly all of it the client suite itself - that one is large enough that scoping is what helps every *other* change, rather than something that helps it. Three things get those numbers, and only the first is a judgement call:
+
+- **Only the affected suites run.** The scope lists are *read out of the workflow YAML at run time*, not copied into the script - the same parse `test_ci_scope.py` already does, so local and CI cannot disagree by being forgotten. Adding a path to a workflow changes what runs locally in the same edit. Every uncertain case runs everything, for the reason the action gives: a stale `main` ref, no upstream, an unreadable workflow, a detached head.
+- **The suites run across cores.** `pytest-xdist` for the three Python suites; vitest already did. Pipeline 45s to 22s, settings 24s to 12s, backend 60s to 16s.
+- **Coverage is off unless asked for.** It is visibility-only in all four suites by deliberate decision, so leaving it out cannot turn a green run red or the reverse - and it is not free: 148s against 100s for the client. `--coverage` puts it back, and CI measures it on every run regardless, which is where the report is actually read.
+
+The linters and formatters for every selected suite run **before any suite does**, which is the ordering CLAUDE.md asks for and the reason it asks. Ruff and prettier answer in about six seconds against three minutes of tests, and the CI job that catches formatting runs the formatter first - so a formatting-only failure there never ran the tests at all and the log said nothing about the change being made.
+
+What this does *not* do is select individual tests, for the reason the section above gives. Per part is still the whole of the mapping.
 
 ## The long-term strategy
 

@@ -161,7 +161,23 @@ that used to live here.
 
 ## Run what CI runs, before pushing
 
-Every suite CI runs, not only the one you touched:
+```
+scripts/test.sh
+```
+
+That is the whole command. It works out which suites your changes actually
+reach — reading each one's scope list out of its own workflow YAML, so it
+cannot disagree with CI by being forgotten — and runs those, linters and
+formatters first, each suite across every core. A change to one of the Python
+parts finishes in 20 to 50 seconds; `--all` is the full four suites in 174s,
+against 294s for running them by hand. `--list` says what it picked and which
+file decided it, `--all` overrides the scoping, and `--coverage` puts the
+coverage reports back.
+
+Every uncertain case runs everything rather than guessing — a stale `main`
+ref, an unreadable workflow, a detached head — so a wrong answer costs a
+minute, never a missed regression. If you want the long-hand form anyway, or
+the script cannot run:
 
 ```
 cd client        && npm run typecheck && npm run lint && npm run format:check && npm test && npm run build

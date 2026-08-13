@@ -122,12 +122,16 @@ export interface LegendProps {
    */
   drawnCounts?: ReadonlyMap<string, number>
   /**
-   * Whether the camera is below POI_MIN_ZOOM, where the pin layer is not drawn
-   * at all.
+   * Whether the camera is below POI_PIN_MIN_ZOOM, where neither waypoint rank
+   * is drawn at all.
    *
    * Its own flag rather than inferred from an empty row list, because the two are
    * different facts with opposite remedies: nothing here, or everything here and
    * none of it drawable yet. The panel said the wrong one at the opening view.
+   *
+   * "The pin layer" until #597 landed a second rank under it. Below the seam
+   * both are absent, so the sentence this gates is still the true one - but the
+   * reason is now the seam rather than one layer's floor.
    */
   belowPoiZoom?: boolean
   /** Opens the download window, from the link at the foot of the panel.

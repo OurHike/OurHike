@@ -12,7 +12,7 @@
 
 import { useEffect, useState } from 'react'
 import { drawnPoiCounts, type DrawnPoiMap } from '../map/drawnPois'
-import { POI_MIN_ZOOM } from '../map/poiLayers'
+import { POI_PIN_MIN_ZOOM } from '../map/poiLayers'
 
 /** The real MapLibre map - see map/drawnPois.ts for why this is not a
  *  structural stand-in. */
@@ -51,7 +51,7 @@ export function useDrawnPoiCounts(map: IdleMap | null): DrawnPois {
     const measure = () =>
       setDrawn({
         counts: drawnPoiCounts(map),
-        belowPoiZoom: map.getZoom() < POI_MIN_ZOOM,
+        belowPoiZoom: map.getZoom() < POI_PIN_MIN_ZOOM,
       })
 
     // Once up front: the map may already be idle by the time this runs, and

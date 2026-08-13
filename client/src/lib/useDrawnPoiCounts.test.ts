@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { useDrawnPoiCounts } from './useDrawnPoiCounts'
-import { POI_ID_PROPERTY, POI_LAYER_ID, POI_MIN_ZOOM } from '../map/poiLayers'
+import { POI_ID_PROPERTY, POI_LAYER_ID, POI_PIN_MIN_ZOOM } from '../map/poiLayers'
 import { MockMap } from '../test/mocks/maplibre-gl'
 
 // The part a plain read in the render would get wrong: `queryRenderedFeatures`
@@ -93,7 +93,7 @@ describe('useDrawnPoiCounts', () => {
   })
 
   it('reports being below the zoom pins are drawn at', () => {
-    const { map } = mapWith([], POI_MIN_ZOOM - 1)
+    const { map } = mapWith([], POI_PIN_MIN_ZOOM - 1)
 
     const { result } = renderHook(() => useDrawnPoiCounts(map))
 
@@ -101,7 +101,7 @@ describe('useDrawnPoiCounts', () => {
   })
 
   it('does not report that at the zoom pins start at', () => {
-    const { map } = mapWith([pin('w1', 'water')], POI_MIN_ZOOM)
+    const { map } = mapWith([pin('w1', 'water')], POI_PIN_MIN_ZOOM)
 
     const { result } = renderHook(() => useDrawnPoiCounts(map))
 

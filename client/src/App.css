@@ -21,6 +21,14 @@
      stays put if this one is allowed to be shorter than what is inside it. */
   min-height: 0;
   overflow-y: auto;
+  /* The containing block for anything a screen positions absolutely. Without
+     a positioned ancestor those boxes resolve against the document, and
+     overflow cannot clip what it does not contain - the pickers' hidden
+     radios landed past 100svh and handed the PAGE a second scrollbar, which
+     scrolled the whole frame, tab bar and all, up into blank paper (#631).
+     Positioned, this pane scrolls and clips them with the content they
+     belong to. */
+  position: relative;
 }
 
 /* ---------- First run (App.tsx's onboarding branch) ---------- */

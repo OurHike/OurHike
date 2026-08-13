@@ -479,20 +479,30 @@ export function MapView({
     return attachTrailData(map, trailsUrl)
   }, [map, trailsUrl])
 
-  // Three separate effects rather than one, because they change on completely
-  // different clocks: the pin images are built once and never again, the POIs
-  // land once the download finishes, and the hidden set changes every time the
-  // hiker taps a legend row. Folding them together would re-register sixty
-  // rasterised badges on every one of those taps.
+  // Three separate effects rather than one, because they change on different
+  // clocks: the pin images are built once and never again, while the source and
+  // the filter both move when the hiker taps a legend row. Folding them together
+  // would re-register sixty rasterised badges on every one of those taps.
+  //
+  // The images are the one that must NOT re-run - that is the whole of this
+  // split. The other two now share a clock (see below) and are still two
+  // effects, because a POI download landing should not re-run a `setFilter` and
+  // the pair reads as what it is: two different questions about the same tap.
   useEffect(() => {
     if (map === null) return
     return attachPoiIcons(map)
   }, [map])
 
+  // The hidden set is in BOTH of the next two effects, and deliberately. The
+  // filter decides which pins are drawn; the source decides which POIs get a
+  // pin to be drawn at all, and a site folds its members away only behind a pin
+  // the filter is going to keep (#607). So a legend tap rebuilds the features as
+  // well as re-filtering the layer - features/POI_SITES.md §6 asked for exactly
+  // that, and 2,800 points is the cost it weighed.
   useEffect(() => {
     if (map === null) return
-    return attachPoiData(map, pois)
-  }, [map, pois])
+    return attachPoiData(map, pois, { hiddenTypes, verifiedOnly })
+  }, [map, pois, hiddenTypes, verifiedOnly])
 
   useEffect(() => {
     if (map === null) return

@@ -110,12 +110,23 @@ jobs:
         env:
           APP_URL: ${{ steps.can.outputs.url }}
           DATA_BASE_URL: ${{ steps.can.outputs.base }}
+        # set +e / PIPESTATUS rather than trusting the pipe: the step's exit
+        # status is tee's under the default shell, so a crash of the checker
+        # was invisible here (#655, same fix as check-deployment.yml).
+        # --exit-zero reserves non-zero for exactly that crash.
         run: |
+          set +e
           node scripts/check-deployed-app.mjs \
             --url "$APP_URL" \
             --data-base "$DATA_BASE_URL" \
             --json deployed-app.json \
             --exit-zero | tee deployed-app.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "::error::check-deployed-app.mjs exited $status, which --exit-zero reserves for a crash."
+            exit "$status"
+          fi
 
       - name: Write the job summary
         if: always() && steps.can.outputs.go == 'true'

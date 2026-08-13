@@ -110,18 +110,31 @@ jobs:
       # it. pages.yml documents the same rule.
       #
       # --exit-zero is what keeps a real outage from emailing daily; see the
-      # header. The step still fails on a non-zero exit, which --exit-zero
-      # reserves for the check itself crashing.
+      # header. Non-zero is therefore reserved for the check itself crashing -
+      # and seeing that takes machinery, because a pipeline's exit status is
+      # tee's under the default shell (#514's mechanism). This comment used to
+      # promise the step "still fails on a non-zero exit" while the pipe
+      # swallowed every one (#655): a crash after deployment.json was written
+      # would have handed the tracking-issue step a half-written verdict as
+      # the day's truth. The status is read back out of PIPESTATUS, the same
+      # pattern check-upstream-freshness.yml has carried all along.
       - name: Ask the bucket as a browser would
         id: check
         if: steps.can.outputs.go == 'true'
         env:
           BASE: ${{ steps.can.outputs.base }}
         run: |
+          set +e
           python check_deployment.py \
             --base "$BASE" \
             --json deployment.json \
             --exit-zero | tee deployment.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "::error::check_deployment.py exited $status, which --exit-zero reserves for a crash."
+            exit "$status"
+          fi
 
       - name: Write the job summary
         if: always() && steps.can.outputs.go == 'true'

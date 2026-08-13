@@ -111,12 +111,30 @@ jobs:
         env:
           BASE: ${{ steps.can.outputs.base }}
           MAX: ${{ inputs.max_hash_bytes }}
+        # set +e / PIPESTATUS rather than trusting the pipe: the step's exit
+        # status is tee's under the default shell, so both codes --exit-zero
+        # reserves - 2 for "nothing published to test", anything else for a
+        # crash - were invisible here (#655, same fix as check-deployment.yml).
         run: |
+          set +e
           python smoke_published.py \
             --base "$BASE" \
             ${MAX:+--max-hash-bytes "$MAX"} \
             --json smoke.json \
             --exit-zero | tee smoke.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          case "$status" in
+            0) ;;
+            2)
+              echo "::error::Nothing is published at $BASE to smoke test - smoke_published.py exited 2."
+              exit 2
+              ;;
+            *)
+              echo "::error::smoke_published.py exited $status, which --exit-zero reserves for a crash."
+              exit "$status"
+              ;;
+          esac
 
       - name: Write the job summary
         if: always() && steps.can.outputs.go == 'true'

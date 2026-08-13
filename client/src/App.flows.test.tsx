@@ -369,7 +369,8 @@ describe('tapping a pin on the map', () => {
         type: 'privy',
         name: 'Chairback Gap Privy',
         // 0.00036 degrees of latitude is 40 m by the pipeline's own constant,
-        // which is what the chip has to say.
+        // which the chip says as 131 ft - the units this hiker has, since
+        // DEFAULT_PREFERENCES starts at the ones the trail is signed in.
         lat: SHELTER.lat + 0.00036,
         lon: SHELTER.lon,
         confidence: 'low' as const,
@@ -390,7 +391,7 @@ describe('tapping a pin on the map', () => {
     })
     expect(within(strip).getAllByRole('button')).toHaveLength(2)
 
-    await user.click(within(strip).getByRole('button', { name: 'Privy 40 m' }))
+    await user.click(within(strip).getByRole('button', { name: 'Privy 131 ft' }))
 
     expect(
       within(card).getByRole('heading', { name: 'Chairback Gap Privy' }),
@@ -404,6 +405,46 @@ describe('tapping a pin on the map', () => {
     // silently loses its position on the trail. This is the only place that
     // wiring exists to be tested.
     expect(within(card).getByText(/^mi 5\.0$/)).toBeInTheDocument()
+  })
+
+  it('says how far the parts are in the units they chose in Settings (#625)', async () => {
+    // The bug as it was reported: "I've selected ft, but everything still
+    // shows in meters". The chips were the app's one exempt line and the
+    // sentence above them was published prose, so this card answered in metres
+    // whatever the hiker had chosen - and it is the only card that did.
+    //
+    // Both halves, in one assertion pass, because the reason neither could move
+    // alone was that they print the same distances: `Privy · 131 ft` over a
+    // sentence saying 40 m would have been worse than either unit alone.
+    const metricHiker = { ...SHELTER, siteId: 'site_abc', siteRole: 'anchor' }
+    hikerOnTrail({ unit_system: 'metric' })
+    store.set(POIS_KEY, [
+      {
+        ...metricHiker,
+        // What export_poi.py publishes for a privy 0.00036° of latitude away.
+        nearby: [{ phrase: 'a multi-seat moldering privy', distance_ft: 131.48 }],
+      },
+      {
+        id: 'atc_privies:xyz',
+        type: 'privy',
+        name: 'Chairback Gap Privy',
+        lat: SHELTER.lat + 0.00036,
+        lon: SHELTER.lon,
+        confidence: 'low' as const,
+        siteId: 'site_abc',
+        siteRole: 'member',
+      },
+    ])
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await tapPin({ [POI_ID_PROPERTY]: SHELTER.id, poi_type: 'shelter' })
+    const card = await screen.findByRole('dialog', { name: /waypoint/i })
+
+    expect(within(card).getByRole('button', { name: 'Privy 40 m' })).toBeInTheDocument()
+    expect(
+      within(card).getByText('Nearby: a multi-seat moldering privy 40 m away.'),
+    ).toBeInTheDocument()
   })
 
   it('places the waypoint on the trail, at the mile search would give it', async () => {

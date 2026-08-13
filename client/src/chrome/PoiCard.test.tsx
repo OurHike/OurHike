@@ -603,10 +603,11 @@ describe('PoiCard photo gallery', () => {
 // card rather than revealing a second one, and that the two mechanical traps
 // the issue named are actually shut.
 describe('the parts of one site', () => {
-  // Latitude-only offsets, so the metres on the chips are hand-checkable
+  // Latitude-only offsets, so the distances on the chips are hand-checkable
   // against the pipeline's own constant (111,320 m per degree) rather than
   // re-derived from the code under test: 0.00036° is 40.1 m and 0.000225° is
-  // 25.0 m. poiSites.test.ts owns the formula itself.
+  // 25.0 m, which the card shows as 131 ft and 82 ft for a hiker who chose
+  // Feet. poiSites.test.ts owns the formula and the one conversion.
   const PRIVY: PoiDetail = {
     id: 'atc_privies:xyz',
     name: 'Chairback Gap Privy',
@@ -647,8 +648,8 @@ describe('the parts of one site', () => {
 
     expect(chips()).toHaveLength(3)
     expect(screen.getByRole('button', { name: 'Shelter' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Privy 40 m' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Campsite 25 m' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Privy 131 ft' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Campsite 82 ft' })).toBeInTheDocument()
   })
 
   it('puts the pin you tapped first, and says that is where you are', () => {
@@ -679,7 +680,7 @@ describe('the parts of one site', () => {
     // which is false about the structure they are navigating, and taking the
     // site's own name off the card entirely. The heading moves; the strip's
     // label is the one thing here that must not.
-    fireEvent.click(screen.getByRole('button', { name: 'Privy 40 m' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
 
     expect(
       screen.getByRole('heading', { name: 'Chairback Gap Privy' }),
@@ -690,13 +691,118 @@ describe('the parts of one site', () => {
   })
 
   it('says how far each part is, and puts no distance on the pin itself', () => {
-    // "Privy · 40 m" is the design's own chip. The anchor carries no number
-    // because "0 m" from itself is not a fact anybody needed.
+    // "Privy · 131 ft" is the design's own chip, in the units this hiker
+    // chose. The anchor carries no number because zero from itself is not a
+    // fact anybody needed.
     renderSite()
+
+    expect(chips()[1]).toHaveTextContent('131 ft')
+    expect(chips()[2]).toHaveTextContent('82 ft')
+    expect(chips()[0]).not.toHaveTextContent(/\d/)
+  })
+
+  it('says how far in the units the hiker chose', () => {
+    // #625. This strip was the single line in the app exempt from the unit
+    // standard, printing metres at a hiker who had picked Feet in Settings -
+    // held open only because the same distances were also published as prose
+    // in metres, and converting one half would have put "131 ft" on a chip
+    // above a sentence saying 40 m.
+    render(
+      <PoiCard poi={SHELTER} site={SITE} map={null} units="metric" onClose={vi.fn()} />,
+    )
 
     expect(chips()[1]).toHaveTextContent('40 m')
     expect(chips()[2]).toHaveTextContent('25 m')
-    expect(chips()[0]).not.toHaveTextContent(/m$/)
+  })
+
+  it('names what is around the place, in those same units', () => {
+    // The other half of the same fix, and the reason the chip could not move
+    // alone. The parts arrive as structure - a phrase and a distance in feet -
+    // and the card writes the sentence the pipeline used to publish finished.
+    const anchor: PoiDetail = {
+      ...SHELTER,
+      description: 'Two-storey log shelter, sleeps 8, with a fireplace. Built 1954.',
+      nearby: [
+        { phrase: 'a multi-seat moldering privy', distance_ft: 131.5 },
+        { phrase: 'water', distance_ft: 295.3 },
+      ],
+    }
+
+    const { rerender } = render(
+      <PoiCard poi={anchor} site={[anchor, PRIVY]} map={null} onClose={vi.fn()} />,
+    )
+
+    expect(
+      screen.getByText(
+        'Nearby: a multi-seat moldering privy 132 ft away and water 295 ft.',
+      ),
+    ).toBeInTheDocument()
+    // And the description it sits under is untouched by the swap - two
+    // paragraphs, one fact each.
+    expect(screen.getByText(/Two-storey log shelter/)).toBeInTheDocument()
+
+    rerender(
+      <PoiCard
+        poi={anchor}
+        site={[anchor, PRIVY]}
+        map={null}
+        units="metric"
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(
+      screen.getByText('Nearby: a multi-seat moldering privy 40 m away and water 90 m.'),
+    ).toBeInTheDocument()
+  })
+
+  it('puts the same number on the chip and in the sentence for one pair', () => {
+    // The property #625 had to preserve while moving both halves: the chip
+    // measures on the phone (from the pin), the sentence carries the pipeline's
+    // measurement (from the anchor), and where those are the same point the two
+    // must not print two numbers for one privy. Same formula, same constant,
+    // rounded once each in the same unit.
+    const anchor: PoiDetail = {
+      ...SHELTER,
+      // What export_poi.py publishes for this pair: 0.00036° of latitude, in
+      // feet, unrounded.
+      nearby: [{ phrase: 'a multi-seat moldering privy', distance_ft: 131.48 }],
+    }
+
+    render(<PoiCard poi={anchor} site={[anchor, PRIVY]} map={null} onClose={vi.fn()} />)
+
+    expect(chips()[1]).toHaveTextContent('131 ft')
+    expect(
+      screen.getByText('Nearby: a multi-seat moldering privy 131 ft away.'),
+    ).toBeInTheDocument()
+  })
+
+  it('says nothing about what is around a part that has nothing around it', () => {
+    // Most POIs, and every copy downloaded before the field existed. No empty
+    // paragraph either - a gap in the card reads as something failing to load.
+    const { container } = renderSite()
+
+    expect(container.querySelector('.poi-card__nearby')).toBeNull()
+  })
+
+  it('reads the parts off whichever part the card is showing', () => {
+    // A campsite is a member of a shelter's site AND the anchor of its own
+    // where there is no shelter, so tapping a chip can move to a waypoint with
+    // parts of its own. Reading `nearby` off the pin instead would say the
+    // shelter's parts under the campsite's name.
+    const campsite: PoiDetail = {
+      ...CAMPSITE,
+      nearby: [{ phrase: 'a pit privy', distance_ft: 65.6 }],
+    }
+
+    render(
+      <PoiCard poi={SHELTER} site={[SHELTER, campsite]} map={null} onClose={vi.fn()} />,
+    )
+    expect(screen.queryByText(/Nearby:/)).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Campsite 82 ft' }))
+
+    expect(screen.getByText('Nearby: a pit privy 66 ft away.')).toBeInTheDocument()
   })
 
   it('carries the same icon the map draws for each part', () => {
@@ -798,7 +904,7 @@ describe('the parts of one site', () => {
   it('says out loud that the card changed, and what it changed to', () => {
     // `aria-current` is an ARIA PROPERTY: a screen reader announces it on
     // arrival at the chip, not when it flips - unlike aria-pressed. So without a
-    // live region, pressing Enter on "Privy 40 m" moves the heading, the
+    // live region, pressing Enter on "Privy 131 ft" moves the heading, the
     // coordinates, the provenance, the unverified sentence and the photograph
     // while the hiker hears nothing at all. Empty on open, because a reader
     // arriving at the card is about to be read the card.
@@ -811,7 +917,7 @@ describe('the parts of one site', () => {
     // and it does not get a pass for being on the tidy side of it.
     expect(screen.getByRole('status')).toBeEmptyDOMElement()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Privy 40 m' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
 
     expect(screen.getByRole('status')).toHaveTextContent('Chairback Gap Privy')
   })
@@ -824,7 +930,7 @@ describe('the parts of one site', () => {
     // announces the previous waypoint's privy as though it were this one's. The
     // announcement is news about a tap; opening a card is not a tap.
     const { rerender } = renderSite()
-    fireEvent.click(screen.getByRole('button', { name: 'Privy 40 m' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
     expect(screen.getByRole('status')).toHaveTextContent('Chairback Gap Privy')
 
     const other: PoiDetail = {
@@ -857,7 +963,7 @@ describe('the parts of one site', () => {
   it('swaps the card to the part you tapped', () => {
     renderSite()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Privy 40 m' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
 
     // Its own name, its own coordinates, its own provenance, and its own
     // unverified line - the privy's, not the shelter's.
@@ -876,7 +982,7 @@ describe('the parts of one site', () => {
 
     // The row follows: "the one you are on" has to move, or the strip is
     // describing a card that is no longer there.
-    expect(screen.getByRole('button', { name: 'Privy 40 m' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: 'Privy 131 ft' })).toHaveAttribute(
       'aria-current',
       'true',
     )
@@ -893,15 +999,15 @@ describe('the parts of one site', () => {
     // and a change of the strip's own width while a thumb is on it.
     renderSite()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Privy 40 m' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
 
-    expect(screen.getByRole('button', { name: 'Campsite 25 m' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Campsite 82 ft' })).toBeInTheDocument()
   })
 
   it('shows the tapped part in its own accent, placeholder and all', () => {
     renderSite()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Privy 40 m' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
 
     const card = screen.getByRole('dialog', { name: /waypoint/i })
     expect(card.style.getPropertyValue('--poi-accent')).toBe(poiColor('privy'))
@@ -947,7 +1053,7 @@ describe('the parts of one site', () => {
     fireEvent.click(screen.getByTestId('poi-card-photo-next'))
     expect(screen.getByTestId('poi-card-photo')).toHaveAttribute('src', 'blob:s2')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Privy 40 m' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
 
     expect(screen.getByTestId('poi-card-photo-count')).toHaveTextContent('1 of 2')
     expect(screen.getByTestId('poi-card-photo')).toHaveAttribute('src', 'blob:p1')
@@ -958,7 +1064,7 @@ describe('the parts of one site', () => {
     // be a one-way trip, and closing and re-tapping the pin the only way out.
     renderSite()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Privy 40 m' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
     fireEvent.click(screen.getByRole('button', { name: 'Shelter' }))
 
     expect(screen.getByRole('heading', { name: SHELTER.name })).toBeInTheDocument()
@@ -978,7 +1084,7 @@ describe('the parts of one site', () => {
     // where the stale id is not in the new site at all, and it covers it on the
     // very first render rather than one commit later.
     const { rerender } = renderSite()
-    fireEvent.click(screen.getByRole('button', { name: 'Campsite 25 m' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Campsite 82 ft' }))
     expect(
       screen.getByRole('heading', { name: 'Chairback Gap Campsite' }),
     ).toBeInTheDocument()
@@ -1037,7 +1143,7 @@ describe('the parts of one site', () => {
     render(<PoiCard poi={SHELTER} site={SITE} map={map} onClose={vi.fn()} />)
     const projections = mock.projectCalls.length
 
-    fireEvent.click(screen.getByRole('button', { name: 'Privy 40 m' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
 
     expect(mock.projectCalls.length).toBeGreaterThan(projections)
     expect(mock.projectCalls.at(-1)).toEqual([SHELTER.lon, SHELTER.lat])
@@ -1056,7 +1162,8 @@ describe('the parts of one site', () => {
     // median 42 m on the trail: 11 px at z14, 165 px at z18, and the mild form of
     // the spiderfying features/POI_SITES.md refuses. The distances follow for the
     // same reason - they are offsets from the pin the hiker can see - so from the
-    // privy the campsite is 15 m, not the 25 m it is from the shelter.
+    // privy the campsite is 15 m (49 ft), not the 25 m (82 ft) it is from the
+    // shelter.
     //
     // The anchor still names the place, because that is the site's identity
     // rather than a position; the group's label is asserted elsewhere.
@@ -1076,13 +1183,13 @@ describe('the parts of one site', () => {
     expect(
       screen.getByRole('heading', { name: 'Chairback Gap Privy' }),
     ).toBeInTheDocument()
-    // No number on the pin's own chip - "0 m" from itself was never a fact
+    // No number on the pin's own chip - zero from itself was never a fact
     // anybody needed - and the other two measured from it.
     expect(screen.getByRole('button', { name: 'Privy' })).toHaveAttribute(
       'aria-current',
       'true',
     )
-    expect(screen.getByRole('button', { name: 'Shelter 40 m' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Campsite 15 m' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Shelter 131 ft' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Campsite 49 ft' })).toBeInTheDocument()
   })
 })

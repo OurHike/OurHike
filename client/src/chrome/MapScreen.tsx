@@ -558,6 +558,7 @@ export function MapScreen({
                 poi={selectedPoi}
                 site={selectedSite}
                 map={liveMap}
+                units={units}
                 onClose={onClosePoi}
               />
             )}

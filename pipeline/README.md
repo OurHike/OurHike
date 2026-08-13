@@ -86,7 +86,7 @@ What exists upstream *beyond* the registry - the maintaining clubs, the federal 
 
 ## Water distance at shelters and campsites
 
-`build_water_distance.py` writes [`reference/water_distance.json`](reference/water_distance.json): how far the nearest water source is from each A.T. shelter and campsite, keyed to ATC's own GlobalIDs — the same checked-in-and-reviewed shape as shelter capacity, for the same reason (the join encodes judgement calls a diff should show). `export_poi.py` reads it, publishes `water_distance_ft` on shelter and campsite features, and splices "water N m" into the card sentence's Nearby clause where no actual water point folded into the site and the distance is within the site vocabulary's 150 m.
+`build_water_distance.py` writes [`reference/water_distance.json`](reference/water_distance.json): how far the nearest water source is from each A.T. shelter and campsite, keyed to ATC's own GlobalIDs — the same checked-in-and-reviewed shape as shelter capacity, for the same reason (the join encodes judgement calls a diff should show). `export_poi.py` reads it, publishes `water_distance_ft` on shelter and campsite features, and names water among the anchor's `nearby` parts where no actual water point folded into the site and the distance is within the site vocabulary's 150 m — in ATC's own feet, which the card then writes in whichever units the hiker chose.
 
 ```
 .venv/Scripts/python build_water_distance.py            # rebuild and review the diff

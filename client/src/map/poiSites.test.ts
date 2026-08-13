@@ -5,6 +5,7 @@ import {
   SITE_ROLE_ANCHOR,
   SITE_ROLE_MEMBER,
   composeSites,
+  siteDistanceFeet,
   siteDistanceMeters,
   siteMembersKey,
   siteRoster,
@@ -567,6 +568,44 @@ describe('siteDistanceMeters', () => {
 
   it('is zero for a point against itself', () => {
     expect(siteDistanceMeters(SHELTER, SHELTER)).toBe(0)
+  })
+})
+
+describe('siteDistanceFeet', () => {
+  it('is the same measurement in the unit a display takes', () => {
+    // One formula, two units, and the conversion in one place. Feet is what
+    // lib/units.ts formats from - ATC states its own distances in feet - and
+    // metres is what the grouping gates are written in, so both stay.
+    const from = { lat: 35.7, lon: -83.2 }
+    const to = { lat: 35.701, lon: -83.2 }
+
+    expect(siteDistanceFeet(from, to)).toBeCloseTo(111.32 / 0.3048, 6)
+    expect(siteDistanceFeet(from, to)).toBeCloseTo(
+      siteDistanceMeters(from, to) / 0.3048,
+      9,
+    )
+  })
+
+  it('agrees with the feet the pipeline publishes for the same pair', () => {
+    // export_poi.attach_nearby measures a member with the same equirectangular
+    // formula and divides by the same 0.3048 (#625). The chip measures here
+    // because it measures from the PIN, which is not always the anchor - so the
+    // two computations have to land on the same number where they do coincide,
+    // or one card prints two distances for one privy.
+    //
+    // 0.00036° of latitude is the corridor's median privy offset, which
+    // pipeline/tests/test_export_poi.py pins at 137.8 ft for a 42 m pair; this
+    // is the same arithmetic at 40.1 m.
+    const feet = siteDistanceFeet(
+      { lat: 45.4732, lon: -69.1183 },
+      { lat: 45.47356, lon: -69.1183 },
+    )
+
+    expect(feet).toBeCloseTo(131.48, 2)
+  })
+
+  it('is zero for a point against itself', () => {
+    expect(siteDistanceFeet(SHELTER, SHELTER)).toBe(0)
   })
 })
 

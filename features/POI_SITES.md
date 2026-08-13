@@ -181,17 +181,28 @@ A separate `sites.json` was considered and rejected: it would be a second fetch,
 
 The client groups by `site_id` on load. That is a `Map` build over ~2,800 records, once.
 
-**And the anchor's `description` names its parts** *(added 2026-08-13, [#614](https://github.com/OurHike/OurHike/issues/614))*. Folding a privy onto a shelter's pin took away the only place the privy described itself: `lib/poi_description.py` still composes "Multi-seat moldering privy. Built 2019." for it, attached to a feature that now draws nothing. So the anchor's own sentence carries them:
+**And a fourth property, `nearby`, names the anchor's parts** *(added 2026-08-13, [#614](https://github.com/OurHike/OurHike/issues/614); reshaped the same day by [#625](https://github.com/OurHike/OurHike/issues/625))*. Folding a privy onto a shelter's pin took away the only place the privy described itself: `lib/poi_description.py` still composes "Multi-seat moldering privy. Built 2019." for it, attached to a feature that now draws nothing. So the anchor carries them:
 
-> Two-storey clapboard shelter, sleeps 14, with a fireplace, a fire ring and a porch. Built 1915. **Nearby: a multi-seat moldering privy 40 m away, a group campsite 25 m and water 90 m.**
+```json
+[{"phrase": "a multi-seat moldering privy", "distance_ft": 131.2},
+ {"phrase": "a group campsite", "distance_ft": 82.0},
+ {"phrase": "water", "distance_ft": 295.3}]
+```
+
+— which `client/src/lib/nearbyClause.ts` renders under the description, in the units the hiker chose:
+
+> Two-storey clapboard shelter, sleeps 14, with a fireplace, a fire ring and a porch. Built 1915.
+> **Nearby: a multi-seat moldering privy 130 ft away, a group campsite 82 ft and water 295 ft.**
+
+**Structure, not the sentence, and that is the correction #625 made.** This shipped as prose spliced into `description` — the pipeline wrote "40 m away" into the artifact, so every hiker read metres whatever Settings said, and a hiker reported exactly that. Published prose cannot ask a phone a question; it was composed months before the card was opened, and a re-export was the only way to change a word of it. The phrases are still composed in the pipeline, because they are ATC's inventory read aloud and nothing about them depends on the reader. The distance travels as a number, in ATC's own feet.
 
 **A separate sentence, never the `with` clause.** A shelter does not have a privy and a water source *inside* it — "with a fireplace and a porch" lists what the shelter has, and the parts are separate points a short walk away. Three rules fell out of writing it:
 
 - **Each part gets the adjectives that tell one from another, and not its whole card.** "a moldering privy", because §5's own question is *which* privy; not "8 tent pads", which lands a number directly against the distance and stops the sentence being readable. The counts stay on the part's own card, where the chips below reach them.
-- **Metres, whole ones, rounded exactly as the chips round them.** The same fact reading `40 m` on a chip and `131 ft` in the sentence above it is drift on one card.
-- **Ordered by the member order the pin and the chips use** — privy, water, campsite — not nearest-first, so the sentence, the footer strip and the chip row cannot disagree about which part comes first.
+- **One number per pair, whichever unit it is written in.** The sentence carries the pipeline's measurement from the anchor and the chip measures from the pin; where those are the same point — every site the legend has not filtered — both come from the same equirectangular formula and round once, in the same unit. `Privy · 130 ft` over a sentence saying 40 m is drift on one card, and it is why neither half could convert without the other.
+- **Ordered by the member order the pin and the chips use** — privy, water, campsite — not nearest-first, so the sentence, the footer strip and the chip row cannot disagree about which part comes first. The order is published, not re-derived on the phone: a client sorting it again would be a second opinion.
 
-This overlaps the chips below on type and distance, deliberately. The chip is a *control* — its job is to lead somewhere; the sentence is what a hiker skims before deciding whether to tap anything, and it is what a client built before the chips still shows.
+This overlaps the chips below on type and distance, deliberately. The chip is a *control* — its job is to lead somewhere; the sentence is what a hiker skims before deciding whether to tap anything.
 
 ### 4. On the map: one pin, carrying its composition
 
@@ -226,7 +237,7 @@ What this does *not* do is change `icon-allow-overlap`. Sites remove the pins th
 
 ### 5. On the card: chips that are also the tabs
 
-Under the name, a row of chips — `Privy · 40 m`, `Campsite · 25 m`, `Water · 90 m` — and tapping one swaps the card body to that member's own detail: its photo and gallery, its description, its coordinates, its unverified line.
+Under the name, a row of chips — `Privy · 130 ft`, `Campsite · 82 ft`, `Water · 295 ft`, or the same three in metres for a hiker who chose them — and tapping one swaps the card body to that member's own detail: its photo and gallery, its description, its coordinates, its unverified line.
 
 One control doing two jobs, and the reason to prefer it over a plain tab strip: **the chip's existence is usually the whole answer.** A hiker wants to know there is a privy, not to read the privy's card. Tabs hide that behind a tap; chips answer at a glance and still lead somewhere.
 
@@ -245,9 +256,9 @@ Two mechanical gotchas, both already visible in the current code:
 
 What that costs has to be paid separately, because dropping the pattern drops the half of it that tells a screen-reader user the card changed under them. `aria-current` is an ARIA *property*: it is announced on arrival at the chip, not when it flips — unlike `aria-pressed` — so on its own, activating a chip moves the heading, the coordinates, the provenance, the unverified sentence and the photograph in silence. Two things put that back, and neither needs the panel: `aria-controls` on each chip naming **both** regions it swaps, which the objection above does not reach because the attribute takes an ID-reference *list* rather than a wrapper, and a visually-hidden `role="status"` region that names the part now shown, which is what actually produces an announcement.
 
-**The distance is computed on the phone, in metres, from the pin.** Nothing publishes it (§3 is three properties and none of them is a distance), so it is `siteDistanceMeters` in `client/src/map/poiSites.ts` — the pipeline's own equirectangular `distance_m` from `pipeline/lib/spurs.py`, ported rather than re-derived, so the number on the chip is the measurement that admitted the member to the site. Measured from the pin and not from whichever chip was last tapped, so the row's numbers do not rewrite themselves on every tap. Metres because a site is under 150 m across by construction — which does mean this is the one distance in the app's chrome that ignores `UnitSystem`, and it is now the only one.
+**The distance is computed on the phone, from the pin.** The published `nearby` measures from the *anchor*, which is the point the pipeline knows a hiker can see, so the chip cannot read it: since [#607](https://github.com/OurHike/OurHike/issues/607)/[#609](https://github.com/OurHike/OurHike/issues/609) the pin is a member whenever the legend filters the anchor out. So it is `siteDistanceFeet` in `client/src/map/poiSites.ts` — the pipeline's own equirectangular `distance_m` from `pipeline/lib/spurs.py`, ported rather than re-derived, so the number on the chip is the measurement that admitted the member to the site. Measured from the pin and not from whichever chip was last tapped, so the row's numbers do not rewrite themselves on every tap. Where the pin *is* the anchor — every unfiltered site — the two computations are the same formula with the same constant and land on the same number.
 
-**Revisited 2026-08-13, and held open deliberately.** "Worth revisiting if a hiker asks" was the standing note here; a hiker asked, and [#619](https://github.com/OurHike/OurHike/issues/619) made following the hiker's units a standard the whole app keeps ([CONTRIBUTING.md](../CONTRIBUTING.md)). This chip still cannot keep it **alone**, and the reason is the paragraph above rather than a preference about paces: the same distances are printed twice on one card, once here and once inside the description, where the pipeline has already composed them into published prose. Converting only the half the client owns puts `Privy · 130 ft` over a sentence reading 40 m — the drift this section already calls a defect. Both halves move together, the pipeline's half costs a re-export, and [#625](https://github.com/OurHike/OurHike/issues/625) is that work. Until it lands the exception is a named line rather than a habit: `client/src/test/unitDisplay.test.ts` excuses exactly this one, requires the issue number to do it, and fails on a second.
+**Revisited 2026-08-13, and fixed the same day.** "Worth revisiting if a hiker asks" was the standing note here; a hiker asked, and [#619](https://github.com/OurHike/OurHike/issues/619) made following the hiker's units a standard the whole app keeps ([CONTRIBUTING.md](../CONTRIBUTING.md)). This chip could not keep it **alone**, for the reason the paragraph above gives rather than a preference about paces: the same distances were printed twice on one card, once here and once inside the description, where the pipeline had already composed them into published prose. Converting only the half the client owns puts `Privy · 130 ft` over a sentence reading 40 m — the drift this section calls a defect. So both halves moved together in [#625](https://github.com/OurHike/OurHike/issues/625): §3's `nearby` publishes structure instead of prose, the client writes the sentence, and the chip converts. `client/src/test/unitDisplay.test.ts` excuses nothing now, and still requires an issue number for the first line that asks.
 
 **The card hangs off the part carrying the pin, which is not always the anchor.** Three facts on the card are positional — where it is projected, every distance in the strip, and which chip carries no number — and all three follow the *carrier*, meaning whatever point the shell selected. That is a precondition rather than a coincidence: `poiLayers.ts` builds its features from `composeSites().drawn` and writes the carrier's id, and a tap is the only thing that opens a card, so what was selected is by construction what is drawn.
 

@@ -250,6 +250,98 @@ describe('trail data', () => {
     expect(pois[0].siteName).toBe('Mt. Algo Shelter')
   })
 
+  // The anchor's nearby parts (#614, #625). Published as JSON rather than as
+  // the finished sentence it used to be, which is the whole of the fix: prose
+  // composed in the pipeline cannot be in the units a hiker picks afterwards.
+  it('reads the parts around an anchor, so the card can write them in the hiker’s units', async () => {
+    serve(
+      poiCollection([
+        {
+          id: 'atc_shelters:abc',
+          poi_type: 'shelter',
+          name: 'Mt. Algo Shelter',
+          lat: 41.7,
+          lon: -73.5,
+          confidence: 'high',
+          site_id: 'site_0421',
+          site_role: 'anchor',
+          site_name: 'Mt. Algo Shelter',
+          nearby: [
+            { phrase: 'a multi-seat moldering privy', distance_ft: 131.2 },
+            { phrase: 'water', distance_ft: 295.3 },
+          ],
+        },
+      ]),
+    )
+    await downloadTrailData()
+
+    expect((store.get(POIS_KEY) as StoredPoi[])[0].nearby).toEqual([
+      { phrase: 'a multi-seat moldering privy', distance_ft: 131.2 },
+      { phrase: 'water', distance_ft: 295.3 },
+    ])
+  })
+
+  it('accepts the parts as a JSON string, which is the shape the .fgb carries', async () => {
+    // Same export, two wire types - the reason readPhotoList takes both, and
+    // the same GDAL behaviour applied to a second column.
+    serve(
+      poiCollection([
+        {
+          id: 'atc_shelters:abc',
+          poi_type: 'shelter',
+          name: 'Shelter',
+          lat: 1,
+          lon: 2,
+          nearby: '[{"phrase":"a pit privy","distance_ft":65.6}]',
+        },
+      ]),
+    )
+    await downloadTrailData()
+
+    expect((store.get(POIS_KEY) as StoredPoi[])[0].nearby).toEqual([
+      { phrase: 'a pit privy', distance_ft: 65.6 },
+    ])
+  })
+
+  it('stores no parts at all rather than an empty list, and never throws over a bad one', async () => {
+    // A published artifact one version ahead of this build must not make a
+    // waypoint unopenable, and an entry needs both halves to be worth keeping:
+    // a phrase with no distance is a part the card cannot place, and a distance
+    // with no phrase is a number with nothing to attach it to.
+    serve(
+      poiCollection([
+        {
+          id: 'a',
+          poi_type: 'shelter',
+          name: 'A',
+          lat: 1,
+          lon: 2,
+          nearby: 'not json at all',
+        },
+        {
+          id: 'b',
+          poi_type: 'shelter',
+          name: 'B',
+          lat: 1,
+          lon: 2,
+          nearby: [
+            { phrase: 'a privy' },
+            { distance_ft: 40 },
+            { phrase: 'water', distance_ft: 'far' },
+            { phrase: 'a campsite', distance_ft: 82 },
+          ],
+        },
+        { id: 'c', poi_type: 'shelter', name: 'C', lat: 1, lon: 2, nearby: null },
+      ]),
+    )
+    await downloadTrailData()
+
+    const [malformed, partlyUsable, absent] = store.get(POIS_KEY) as StoredPoi[]
+    expect(malformed).not.toHaveProperty('nearby')
+    expect(partlyUsable.nearby).toEqual([{ phrase: 'a campsite', distance_ft: 82 }])
+    expect(absent).not.toHaveProperty('nearby')
+  })
+
   it('treats a null site_id as not in a site, which is how it is published', async () => {
     // THE REAL SHAPE, not a hypothetical. `attach_sites` writes the keys onto
     // every feature and leaves them null where nothing matched, so a client that

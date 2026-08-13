@@ -87,10 +87,9 @@ from reference/water_distance.json - the same checked-in-and-reviewed shape
 as capacity, built by build_water_distance.py, whose docstring holds the
 join, the provenance rule and the licence position. Feet because ATC's
 figure is (CONTRIBUTING.md, "store canonical"). Where the site has no actual
-water point folded in, a close-enough distance also reaches the composed
-sentence as a "water N m" entry in the Nearby clause - see
-attach_descriptions - so the answer to "is there water" stops depending on
-the 9 opentrail points that happen to fold. 305 of 512 features publish one
+water point folded in, a close-enough distance is also named among the nearby
+parts - see attach_nearby - so the answer to "is there water" stops depending
+on the 9 opentrail points that happen to fold. 305 of 512 features publish one
 (the FarOut-measured rows joined on the maintainer's 2026-08-13
 authorisation, sources.json's atc_licence block / #688); the rest have no
 CSI neighbour (most of Maine) or an unreadable value, and publish nothing
@@ -117,18 +116,32 @@ in, since that half is a person's prose and the rest is assembled from
 columns. Which types compose one is DESCRIBERS below; water and resupply do
 not, having no inventory behind them.
 
-A site's anchor also names the parts around it and how far each one is (#614):
+Nearby parts (#614, #625): a site's anchor also carries `nearby`, the parts
+around it as JSON rather than as prose -
 
-    "Two-storey clapboard shelter, sleeps 14, with a fireplace, a fire ring
-     and a porch. Built 1915. Nearby: a multi-seat moldering privy 40 m away,
-     a group campsite 25 m and water 90 m."
+    [{"phrase": "a multi-seat moldering privy", "distance_ft": 131.2},
+     {"phrase": "a group campsite", "distance_ft": 82.0},
+     {"phrase": "water", "distance_ft": 295.3}]
+
+- which the client renders as its own sentence under the description, in the
+units the hiker chose:
+
+    "Nearby: a multi-seat moldering privy 130 ft away, a group campsite 82 ft
+     and water 295 ft."
 
 A separate sentence, never folded into the "with" clause - a shelter does not
 have a privy and a water source inside it, and the parts are separate points a
 short walk away. It exists because the site grouping below took those points
 off the map: they still compose perfectly good sentences of their own, attached
-to features that draw no pin, and until #526 reaches them from the anchor's
-card this clause is the only place they are mentioned.
+to features that draw no pin.
+
+**Published as structure because prose cannot ask the phone a question.** This
+was one composed clause inside `description` until #625: the pipeline wrote
+"40 m away" into it, so a hiker who chose Feet in Settings read metres on the
+one card in the app that could not answer them, and re-exporting the corridor
+was the only way to change a word of it. The noun phrases are still composed
+here - they are ATC's inventory read aloud and nothing about them depends on
+the reader - and the distance now travels as a number in ATC's own feet.
 
 Photo enrichment: when fetch_poi_images.py has run, data/raw/poi_images.json
 holds per-POI photo records (Wikimedia Commons; author, licence, capture date
@@ -161,8 +174,8 @@ The cost, stated where the code is rather than only in the design doc: a wrong
 grouping is baked into the artifacts and a hiker cannot undo it. The rule needs
 name agreement AND proximity for exactly that reason - see lib/poi_sites.py for
 what each gate is holding up, and what a name-only rule ships. Since #614 that
-cost is louder rather than quieter: a mis-grouped privy is now named in prose
-on the wrong shelter's card, where before it was only a pin that went missing.
+cost is louder rather than quieter: a mis-grouped privy is now named on the
+wrong shelter's card, where before it was only a pin that went missing.
 """
 
 import hashlib
@@ -182,7 +195,7 @@ from lib.poi_description import (
     describe_privy,
     describe_shelter,
     describe_viewpoint,
-    nearby_clause,
+    nearby_parts,
 )
 from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES, poi_output_name, unify_poi
 from lib.poi_sites import ANCHOR_TYPES, NAME_MATCH_RADIUS_M, ROLE_ANCHOR, ROLE_MEMBER, group_sites, site_properties
@@ -200,17 +213,23 @@ CAPACITY_PATH = ROOT / "reference" / "shelter_capacity.json"
 # build_water_distance.py's output, under reference/ for the same reason.
 WATER_DISTANCE_PATH = ROOT / "reference" / "water_distance.json"
 
-# ATC states the distance in feet, so feet is what the column stores; this is
-# only for the composed sentence, whose distances are metres (lib/
-# poi_description._metres says why they stay metres regardless of preference).
+# Metres per foot, for the one place the two units meet: a site member's
+# distance is measured in metres (the equirectangular gate that grouped it) and
+# published in feet (what `nearby` states, and what lib/units.ts formats from).
+#
+# ATC's own water distance needs no conversion in either direction now - it is
+# feet in the column and feet in `nearby`. It used to be turned into metres
+# here purely so the pipeline could write "water 90 m" into a sentence, which
+# is the round trip #625 removed: ATC published feet, an imperial hiker asked
+# for feet, and this converted it away in between.
 M_PER_FT = 0.3048
 
-# How far away water may be and still be spliced into the Nearby sentence.
+# How far away water may be and still be named among the nearby parts.
 # lib/poi_sites.py's NAME_MATCH_RADIUS_M is the widest gate that can fold a
 # real member into a site, so it is the furthest distance "Nearby" already
 # claims anywhere - reusing it keeps the word meaning one thing. A distance
 # beyond it still publishes as `water_distance_ft`; it just is not "Nearby".
-NEARBY_WATER_MAX_M = NAME_MATCH_RADIUS_M
+NEARBY_WATER_MAX_FT = NAME_MATCH_RADIUS_M / M_PER_FT
 
 # fetch_poi_images.py's output, read relative to RAW_DIR at call time (not a
 # frozen module constant) so redirecting RAW_DIR - as every test here does -
@@ -262,9 +281,24 @@ POI_COLUMNS = (
     # One sentence about the place, composed from ATC's own inventory by
     # lib/poi_description.py - every ATC facility layer, which is DESCRIBERS
     # below; NULL on water and resupply, which have no inventory to compose
-    # from. On a site's anchor it carries a second sentence naming the parts
-    # around it and how far each one is (#614).
+    # from.
     ("description", "VARCHAR"),
+    # The parts around a site's anchor, as JSON: a noun phrase per part and how
+    # far it is in feet, nearest-first within lib/poi_description.NEARBY_ORDER
+    # (#614, #625). NULL on every POI that anchors no site.
+    #
+    # STRUCTURE, NOT THE SENTENCE. This carried its own prose inside
+    # `description` until a hiker who had chosen Feet in Settings read metres
+    # off it - published prose cannot ask a phone anything. The client composes
+    # the sentence (client/src/lib/nearbyClause.ts) and writes the distance in
+    # the system that hiker chose; the words that do not depend on the reader
+    # are still ATC's inventory, still composed here.
+    #
+    # A string rather than a nested array for the reason `photos` is one:
+    # FlatGeobuf property values are scalars, and GDAL re-expands a JSON-shaped
+    # string into real JSON when it writes the .geojson - so the two artifacts
+    # genuinely disagree about this field's type and the client reads both.
+    ("nearby", "VARCHAR"),
     ("photo_key", "VARCHAR"),
     ("photo_page_url", "VARCHAR"),
     ("photo_author", "VARCHAR"),
@@ -462,18 +496,20 @@ def attach_water_distance(records: list[dict], distances: dict[str, int]) -> int
 # opentrail.org and ATC's Communities layer, neither of which carries an
 # inventory to compose from.
 #
-# One signature - (properties, capacity, note, nearby) - so the dispatch is a
-# lookup rather than a chain of branches. Only the shelter needs the capacity,
-# and it is not ATC's number (reference/shelter_capacity.json), which is why it
-# is passed rather than read from the properties. Only the two ANCHOR_TYPES take
-# `nearby`, because only they can have parts to name; the lambdas absorb the
+# One signature - (properties, capacity, note) - so the dispatch is a lookup
+# rather than a chain of branches. Only the shelter needs the capacity, and it
+# is not ATC's number (reference/shelter_capacity.json), which is why it is
+# passed rather than read from the properties; the lambdas absorb the
 # difference, which is what they are here for.
+#
+# `nearby` was a fourth argument until #625 took the parts out of the sentence.
+# It is attach_nearby's own column now, and no describer knows about it.
 DESCRIBERS = {
-    "shelter": lambda properties, capacity, note, nearby: describe_shelter(properties, capacity, note, nearby),
-    "campsite": lambda properties, _capacity, note, nearby: describe_campsite(properties, note, nearby),
-    "viewpoint": lambda properties, _capacity, note, _nearby: describe_viewpoint(properties, note),
-    "parking": lambda properties, _capacity, note, _nearby: describe_parking(properties, note),
-    "privy": lambda properties, _capacity, note, _nearby: describe_privy(properties, note),
+    "shelter": lambda properties, capacity, note: describe_shelter(properties, capacity, note),
+    "campsite": lambda properties, _capacity, note: describe_campsite(properties, note),
+    "viewpoint": lambda properties, _capacity, note: describe_viewpoint(properties, note),
+    "parking": lambda properties, _capacity, note: describe_parking(properties, note),
+    "privy": lambda properties, _capacity, note: describe_privy(properties, note),
 }
 
 
@@ -523,34 +559,58 @@ def attach_descriptions(records: list[dict]) -> int:
     """Compose `description` for every POI type that has one, returning how
     many got one.
 
-    Runs after attach_capacity and attach_water_distance, because "sleeps 8"
-    and the spliced "water 90 m" are clauses in the composed sentence and
-    neither number is on the feature ATC published - they come from the two
-    reference/ files. A record without either gets the same sentence without
-    that clause rather than a gap.
+    Runs after attach_capacity, because "sleeps 8" is a clause in the composed
+    sentence and that number is not on the feature ATC published - it comes
+    from reference/shelter_capacity.json. A record without one gets the same
+    sentence without that clause rather than a gap.
 
-    And after attach_sites (#614), because an anchor's sentence names the parts
-    around it and how far each one is. Since #524 those parts draw no pin of
-    their own, so until #526's chips land this sentence is the only place the
-    privy at a shelter is mentioned at all. Run without attach_sites, nothing
-    here is reachable and every sentence is what it was before.
+    It no longer needs attach_sites or attach_water_distance to have run: the
+    parts around an anchor are attach_nearby's column since #625, and this
+    sentence says nothing about them.
     """
-    members_by_site = site_members(records)
     attached = 0
     for record in records:
         describe = DESCRIBERS.get(record["poi_type"])
         if describe is None:
             continue
         properties = record.get(RAW_PROPERTIES_KEY) or {}
-        nearby_members = []
+        description = describe(properties, record.get("capacity"), clean_note(properties.get(ATC_NOTE_FIELD)))
+        if description is None:
+            continue
+        record["description"] = description
+        attached += 1
+    return attached
+
+
+def attach_nearby(records: list[dict]) -> int:
+    """Publish `nearby` on every anchor that has parts around it, returning how
+    many got one.
+
+    Runs after attach_sites (#614), because these ARE the site's members, and
+    after attach_water_distance, because ATC's distance-to-water is one of the
+    parts. Run without either and nothing here is reachable: no record carries
+    a site role, the loop writes nothing, and every card is what it was before
+    sites existed.
+
+    Its own pass rather than a branch inside attach_descriptions (#625), and
+    the split is the point rather than tidiness. That function composes a
+    sentence; this one publishes measurements. They were one pass while the
+    measurements WERE part of the sentence, which is exactly the coupling that
+    made a hiker's unit preference unanswerable - the distance could not reach
+    the phone without the words already wrapped around it.
+    """
+    members_by_site = site_members(records)
+    attached = 0
+    for record in records:
+        parts = []
         if record.get("site_role") == ROLE_ANCHOR:
-            nearby_members = [
+            parts = [
                 # Measured from the anchor, which is the one point of this
                 # site a hiker can see - it is the only pin drawn - and so
                 # the only place the distance is a distance from.
                 (
                     member["poi_type"],
-                    distance_m(record["lat"], record["lon"], member["lat"], member["lon"]),
+                    distance_m(record["lat"], record["lon"], member["lat"], member["lon"]) / M_PER_FT,
                     member.get(RAW_PROPERTIES_KEY) or {},
                 )
                 for member in members_by_site.get(record["site_id"], ())
@@ -560,24 +620,25 @@ def attach_descriptions(records: list[dict]) -> int:
         # 9 opentrail points fold over the whole corridor. Anchors and POIs in
         # no site both take it; a member does not, because its site's anchor
         # already answers "is there water" for the one pin a hiker can see.
-        # Never beside a real water member: one sentence, one water distance.
+        # Never beside a real water member: one site, one water distance.
         if (
             record["poi_type"] in ANCHOR_TYPES
             and record.get("site_role") != ROLE_MEMBER
             and record.get("water_distance_ft") is not None
-            and not any(poi_type == "water" for poi_type, _, _ in nearby_members)
+            and not any(poi_type == "water" for poi_type, _, _ in parts)
         ):
-            metres = record["water_distance_ft"] * M_PER_FT
-            # Beyond the widest radius a site can reach, "Nearby" would be a
-            # word meaning something different in this one sentence. The
-            # column still publishes; the clause stays honest.
-            if metres <= NEARBY_WATER_MAX_M:
-                nearby_members.append(("water", metres, {}))
-        nearby = nearby_clause(nearby_members) if nearby_members else ""
-        description = describe(properties, record.get("capacity"), clean_note(properties.get(ATC_NOTE_FIELD)), nearby)
-        if description is None:
+            # Straight through in ATC's own feet. Beyond the widest radius a
+            # site can reach, "Nearby" would be a word meaning something
+            # different on this one card; the column still publishes, the
+            # sentence stays honest.
+            if record["water_distance_ft"] <= NEARBY_WATER_MAX_FT:
+                parts.append(("water", float(record["water_distance_ft"]), {}))
+        if not parts:
             continue
-        record["description"] = description
+        # JSON on the record, for the reason attach_photos writes a string:
+        # FlatGeobuf property values are scalars, so a nested array cannot be a
+        # column at all.
+        record["nearby"] = json.dumps(nearby_parts(parts))
         attached += 1
     return attached
 
@@ -755,6 +816,9 @@ def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[
                     r.get("capacity"),
                     r.get("water_distance_ft"),
                     r.get("description"),
+                    # The parts as JSON - see attach_nearby, and note the same
+                    # scalar-only reason the photo list below is a string.
+                    r.get("nearby"),
                     # .get, not [] - records arrive photo-less both when
                     # attach_photos found no match and when a caller (or an
                     # older test) never ran the attach step at all.
@@ -887,11 +951,16 @@ def main() -> dict:
     else:
         print(f"  No {WATER_DISTANCE_PATH.name} - exporting without water distances.")
 
-    # After the capacity and water attaches, not before: "sleeps 8" and
-    # "water 90 m" are clauses in the composed sentence and neither number
-    # is on the feature ATC published.
+    # After the capacity attach, not before: "sleeps 8" is a clause in the
+    # composed sentence and that number is not on the feature ATC published.
     described = attach_descriptions(clipped)
     print(f"  {described} POIs carry a description (of the {len(DESCRIBERS)} types that compose one).")
+
+    # After the site and water attaches, which are where both kinds of part
+    # come from (#614, #668). Its own line in the log because it is its own
+    # fact: a jump in it means ATC's naming moved a member in or out of a site.
+    nearby = attach_nearby(clipped)
+    print(f"  {nearby} anchors name the parts around them (#625 - the phone writes the sentence).")
 
     commons_photos = load_photo_records(RAW_DIR / IMAGES_FILENAME)
     atc_photos = load_photo_records(RAW_DIR / ATC_IMAGES_FILENAME)

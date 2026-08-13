@@ -276,6 +276,13 @@ def nhd_stream_table(con: duckdb.DuckDBPyConnection, gpkg: Path) -> int:
     out of Esri tooling and keep its name for it. Spelled here rather than
     discovered at runtime, so a layout change fails loudly on the next
     re-run instead of quietly matching nothing.
+
+    And NHD is NAD83 (EPSG:4269) where the centerline is WGS84, so it is
+    transformed on the way in rather than assumed compatible - DuckDB
+    refuses to intersect across coordinate systems, which is the right
+    refusal even though the two differ by about a metre here. `always_xy`
+    for the reason README.md gives at length: without it EPSG:4326's
+    authority-defined lat/lon axis order silently swaps every coordinate.
     """
     fcodes = ", ".join(str(code) for code in NHD_FLOW_BY_FCODE)
     cases = " ".join(
@@ -287,7 +294,7 @@ def nhd_stream_table(con: duckdb.DuckDBPyConnection, gpkg: Path) -> int:
                permanent_identifier AS id,
                gnis_name AS name,
                CASE {cases} ELSE NULL END AS flow,
-               ST_Force2D(SHAPE) AS geom
+               ST_Transform(ST_Force2D(SHAPE), 'EPSG:4269', 'EPSG:4326', always_xy := true) AS geom
         FROM ST_Read('{gpkg.as_posix()}', layer='NHDFlowline')
         WHERE fcode IN ({fcodes})
     """)

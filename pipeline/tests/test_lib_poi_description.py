@@ -9,11 +9,13 @@ which clause.
 import pytest
 
 from lib.poi_description import (
+    NEARBY_ORDER,
     describe_campsite,
     describe_parking,
     describe_privy,
     describe_shelter,
     describe_viewpoint,
+    nearby_clause,
 )
 
 # Upper Goose Pond Cabin: two storeys, clapboard, fireplace, fire ring, porch.
@@ -274,3 +276,139 @@ def test_an_unrecognised_privy_type_still_describes_the_privy():
 
 def test_a_privy_atc_states_nothing_about_gets_no_description():
     assert describe_privy({"Type": "5", "Enclosure": "3"}) is None
+
+
+# --- what an anchor says about its parts (#614) -----------------------------
+#
+# (poi_type, metres, ATC attributes) per member, which is the shape
+# export_poi.attach_descriptions builds from the site properties.
+
+MULTI_SEAT_PRIVY = ("privy", 41.7, {"Type": "1", "Enclosure": "2"})
+GROUP_CAMPSITE = ("campsite", 25.4, {"Type": "1", "Site_Num": 6, "Tent_Pads": 8})
+WATER = ("water", 89.6, {})
+
+
+def test_an_anchor_names_its_parts_and_how_far_each_one_is():
+    assert nearby_clause([GROUP_CAMPSITE, WATER, MULTI_SEAT_PRIVY]) == (
+        " Nearby: a multi-seat moldering privy 42 m away, water 90 m and a group campsite 25 m."
+    )
+
+
+def test_the_parts_are_a_sentence_of_their_own_and_not_something_the_shelter_has():
+    """The whole point of the clause. "with a fireplace, a fire ring and a
+    porch" lists what the shelter HAS; a privy and a water source are separate
+    points a short walk away, and putting them in that list would have this
+    pipeline assert something ATC's data does not say."""
+    sentence = describe_shelter(CABIN, capacity=14, nearby=nearby_clause([MULTI_SEAT_PRIVY, WATER]))
+
+    assert sentence == (
+        "Two-storey clapboard shelter, sleeps 14, with a fireplace, a fire ring and a porch. Built 1915."
+        " Nearby: a multi-seat moldering privy 42 m away and water 90 m."
+    )
+    # Said as an assertion rather than left to the string above, because it is
+    # the one property of this clause that is not a formatting choice.
+    with_clause, _, parts = sentence.partition(". Built")
+    assert "privy" not in with_clause and "water" not in with_clause
+
+
+def test_a_poi_in_no_site_composes_exactly_the_sentence_it_did_before():
+    """Every POI that is not an anchor takes this path, which is most of them -
+    719 of the corridor's points carry site properties and the rest do not. A
+    byte of drift here would rewrite artifacts for nothing, and
+    verify_release.py compares hashes."""
+    assert describe_shelter(CABIN, capacity=14, nearby=nearby_clause([])) == describe_shelter(CABIN, capacity=14)
+    assert describe_campsite(CAMPSITE, nearby=nearby_clause([])) == describe_campsite(CAMPSITE)
+
+
+def test_away_is_said_once_and_carried_across_the_list():
+    """Three of them in a row reads as a sentence explaining its own grammar,
+    and "Nearby" has already said it."""
+    assert nearby_clause([MULTI_SEAT_PRIVY, WATER, GROUP_CAMPSITE]).count(" away") == 1
+
+
+def test_one_part_still_says_away():
+    assert nearby_clause([MULTI_SEAT_PRIVY]) == " Nearby: a multi-seat moldering privy 42 m away."
+
+
+def test_the_parts_are_ordered_the_way_the_pin_and_the_chips_order_them():
+    """NEARBY_ORDER, not nearest-first: features/POI_SITES.md's framing of the
+    question is "is there a privy, and is there water", and the client's
+    SITE_MEMBER_TYPES fixes the same order for the pin's footer glyphs. The
+    campsite here is the NEAREST of the three and is named last."""
+    assert NEARBY_ORDER == ("privy", "water", "campsite")
+
+    named = nearby_clause([GROUP_CAMPSITE, WATER, MULTI_SEAT_PRIVY])
+    assert named.index("privy") < named.index("water") < named.index("campsite")
+
+
+def test_two_parts_of_one_type_come_out_nearest_first():
+    """ "Backpacker Campsite Upper Privy" and "...Lower Privy" are two real
+    privies at one campsite (features/POI_SITES.md open question 4). Which is
+    nearer is the only thing telling them apart that a hiker standing at the
+    anchor can act on."""
+    far = ("privy", 80.0, {"Type": "3"})
+    near = ("privy", 20.0, {"Type": "1"})
+
+    assert nearby_clause([far, near]) == " Nearby: a moldering privy 20 m away and a pit privy 80 m."
+
+
+def test_a_part_carries_the_adjectives_that_tell_one_from_another():
+    """The same facts describe_privy argues for: the type, because a moldering
+    privy is used differently from a pit one, and the missing enclosure,
+    because 8 of the 316 have none."""
+    assert "a multi-seat moldering privy" in nearby_clause([MULTI_SEAT_PRIVY])
+    assert "a pit privy" in nearby_clause([("privy", 30.0, {"Type": "3"})])
+    assert "a moldering privy with no enclosure" in nearby_clause([("privy", 30.0, {"Type": "1", "Enclosure": "0"})])
+
+
+def test_a_part_does_not_carry_its_own_whole_card():
+    """The counts are on the campsite, whose sentence has room for them. Here
+    they would land a number directly against the distance - "a campsite with 8
+    tent pads 25 m" - which is two figures with nothing between them. Group or
+    not is the fact a party of six acts on."""
+    assert nearby_clause([GROUP_CAMPSITE]) == " Nearby: a group campsite 25 m away."
+    assert nearby_clause([("campsite", 25.4, {"Type": "0", "Site_Num": 3})]) == " Nearby: a campsite 25 m away."
+    # And no build year, which is a fact about the privy, read on the privy.
+    assert "2003" not in nearby_clause([("privy", 30.0, {**PRIVY})])
+
+
+def test_water_composes_from_nothing_because_there_is_nothing_to_compose_from():
+    """It is opentrail.org's, not ATC's, so it arrives with no inventory
+    columns at all - and its own free-text title stays off the sentence for the
+    reason every unrecognised value does."""
+    assert nearby_clause([WATER]) == " Nearby: water 90 m away."
+
+
+def test_a_member_type_this_release_has_no_phrase_for_is_still_named():
+    """A fallback rather than a skip: a type a later release publishes would
+    otherwise vanish from the only sentence that mentions it, which is the bug
+    this clause exists to fix, reintroduced by the code that fixed it."""
+    assert nearby_clause([("crossing", 30.0, {})]) == " Nearby: a crossing 30 m away."
+
+
+def test_a_distance_is_whole_metres_and_never_zero():
+    """Whole metres for the reason the view arc is rounded to 5°, and rounded
+    the way #526's chip rounds it so one pair cannot print two numbers. "0 m
+    away" would read as a bug rather than as two survey points sharing a
+    coordinate, which is what it would be."""
+    assert "42 m" in nearby_clause([("privy", 41.7, {})])
+    assert "1 m away" in nearby_clause([("privy", 0.3, {})])
+
+
+def test_the_parts_come_before_atcs_own_words():
+    """The note is a person's prose and stays last, where the attribution reads
+    as covering it and nothing else. A composed clause trailing "ATC notes:
+    ..." would read as part of what ATC wrote."""
+    sentence = describe_shelter(CABIN, capacity=14, note="Bear cables installed 2021", nearby=nearby_clause([WATER]))
+
+    assert sentence.index("Nearby:") < sentence.index("ATC notes:")
+    assert sentence.endswith("Nearby: water 90 m away. ATC notes: Bear cables installed 2021.")
+
+
+def test_a_campsite_anchors_a_site_of_its_own_and_names_its_parts():
+    """A campsite is in both of lib/poi_sites.py's tuples - a member of a
+    shelter's site, and the anchor of its own where there is no shelter. 41 of
+    the corridor's 291 sites are campsite-anchored."""
+    assert describe_campsite(CAMPSITE, nearby=nearby_clause([MULTI_SEAT_PRIVY])) == (
+        "Designated campsite, 3 sites, with bear-proof food storage. Nearby: a multi-seat moldering privy 42 m away."
+    )

@@ -84,23 +84,40 @@ export const POI_ID_PROPERTY = 'poi_id'
  * The seam. Below this the map is the corridor view and carries no waypoints
  * at all; above it every waypoint draws, as a pin or as a dot.
  *
- * MEASURED, not chosen - pipeline/spike_poi_seam.py, 2026-08-13, against the
- * live ATC service with lib/poi_sites.py's own folding applied. A 390x700
- * phone map holds about 16 pins down a column, and the median screen centred
- * on a waypoint carries 35 of them at z10, 18 at z11 and 9 at z12. z12 is the
- * first zoom that is not oversubscribed.
+ * A DAY'S HIKE, AND THE GROUND EITHER SIDE OF IT, HAS TO FIT ON THE SCREEN.
+ * That is the whole criterion. A day on the A.T. is 16-24 miles; a 390x700
+ * phone map covers 50.9 miles of ground at z9 and 25.5 at z10. So z9 is the
+ * tightest zoom that shows a hiker the day they are about to walk AND where
+ * it sits, which is the moment this map is for.
  *
- * On the median rather than the p90 deliberately: above the seam an overfull
- * screen costs DOTS, not deletions, so the question is "is this a better
- * screen than the corridor view" and not "is every screen guaranteed to fit".
+ * The doubling is the point rather than slack. z10 fits a 24-mile day edge to
+ * edge and nothing else, so every question that starts "and then what" costs
+ * a pan. z9 puts the day in the middle of as much ground again.
  *
- * It replaces a floor of 9, whose docstring argued - rightly - that eight
- * hundred POIs on a corridor view "is not a map, it is a texture". That
- * argument was never wrong; what changed is that the corridor view now has
- * something else to show (features/CORRIDOR_VIEW.md), so the floor no longer
- * has to choose between a texture and an empty screen.
+ * MEASURED at that zoom rather than hoped for - pipeline/spike_poi_seam.py,
+ * 2026-08-13, against the live ATC service with lib/poi_sites.py's own folding
+ * applied. What reaches a PIN at z9: shelters 83%, privies 69%, campsites 59%,
+ * parking 14%, viewpoints 2%. The things a day is planned around are mostly
+ * pins; the vistas are almost entirely dots, which is the right way round and
+ * is what the dot rank is for.
+ *
+ * IT WAS z12, THEN z10, BOTH ON THE SAME DAY, and both corrections are worth
+ * recording because the arithmetic was never what was wrong.
+ *
+ * z12 came from asking "at what zoom does the screen stop being oversubscribed
+ * with pins" - a pin-legibility test, when under two ranks an overfull screen
+ * costs DOTS rather than deletions and legibility is a comfort question.
+ *
+ * z10 came from fixing that and then sizing the window to exactly one day,
+ * which is a day with no context around it.
+ *
+ * It replaces a floor of 9 - the same number, reached from the opposite
+ * direction. That floor's docstring argued that eight hundred POIs on a
+ * corridor view "is not a map, it is a texture", and it was right about the
+ * texture and wrong about what to do: it drew nothing rather than drawing the
+ * texture honestly. The dot rank is that texture, labelled.
  */
-export const POI_PIN_MIN_ZOOM = 12
+export const POI_PIN_MIN_ZOOM = 9
 
 // {@link POI_PRIORITY} lives in poiPriority.ts and is imported above. It moved
 // there when site composition needed the same ordering to decide which member
@@ -174,23 +191,48 @@ export const POI_SORT_KEY_EXPRESSION: unknown[] = [
 ]
 
 /**
+ * How small a pin gets at the seam, as a fraction of {@link POI_PIN_SIZE}.
+ *
+ * 0.8, raised from 0.6 when the seam moved out to z9 (#617). A pin at 0.6 is
+ * 22.8 px carrying a 10.6 px glyph; at 0.8 it is 30.4 px carrying 14.2 px,
+ * which is the difference between a mark you can identify and one you can only
+ * locate. `poiIcons.test.ts` holds a 7 px floor on a glyph and neither figure
+ * is near it - this is about comfort at arm's length in sun, not about a
+ * minimum.
+ *
+ * MEASURED, because bigger pins collide more and the fear was that raising it
+ * would cost coverage. It barely does. At z9, per pipeline/spike_poi_seam.py:
+ *
+ *     scale   pin     shelter  privy  campsite
+ *     0.6     22.8px  88%      74%    68%
+ *     0.8     30.4px  83%      69%    59%
+ *     1.0     38.0px  73%      60%    52%
+ *
+ * A third more pin costs shelters five points, because what actually binds at
+ * z9 is the trail's own density rather than the box - and every waypoint that
+ * loses becomes a dot rather than an absence, which is what makes spending the
+ * coverage affordable at all.
+ */
+export const POI_PIN_MIN_SCALE = 0.8
+
+/**
  * Pins grow with zoom rather than sitting at one size.
  *
  * At the far end of {@link POI_PIN_MIN_ZOOM} they are markers saying something
  * is there; by the zoom a hiker actually walks at they are full size and their
  * glyph is legible. One interpolation covers both.
  *
- * The low anchor moved with the seam, which makes the render slightly kinder
- * than the measurement: spike_poi_seam.py simulated full-size 42 px boxes at
- * every zoom, and a pin at 0.6 asks for about 25 px, so z12 fits somewhat more
- * than the run reported. Conservative in the direction that matters.
+ * Both anchors are named constants rather than literals, because
+ * spike_poi_seam.py models this exact ramp to compute the seam - a 0.6 left
+ * behind here would silently make the measurement describe a different map
+ * from the one that ships.
  */
 export const POI_ICON_SIZE_EXPRESSION: unknown[] = [
   'interpolate',
   ['linear'],
   ['zoom'],
   POI_PIN_MIN_ZOOM,
-  0.6,
+  POI_PIN_MIN_SCALE,
   13,
   1,
 ]

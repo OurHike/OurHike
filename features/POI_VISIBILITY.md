@@ -139,56 +139,69 @@ The absence of a pin is the strongest statement this map makes about a place. So
 One zoom, `POI_PIN_MIN_ZOOM`, replacing `POI_MIN_ZOOM`. Below it the map is about the trail and
 is [CORRIDOR_VIEW.md](CORRIDOR_VIEW.md)'s; above it the map is about places and is this doc's.
 
-**`POI_PIN_MIN_ZOOM = 12`. Measured 2026-08-13, not argued** —
-[`pipeline/spike_poi_seam.py`](../pipeline/spike_poi_seam.py), against the live ATC FeatureServer,
-folded by [`lib/poi_sites.py`](../pipeline/lib/poi_sites.py) itself, with MapLibre's placement
-simulated at z10–z17. Re-runnable, which is the point of shipping the script rather than the
-table.
+**`POI_PIN_MIN_ZOOM = 9`, with pins drawn at 0.8 rather than 0.6 to suit it.**
 
-**The criterion is the viewport load, and z12 is where it stops being oversubscribed.** A
-390 × 700 phone map holds about 16 pins down a straight column, and the load below is what a
-screen *centred on a waypoint* actually carries — the screen a hiker has, rather than an average
-over empty stretches of Pennsylvania nobody looks at on purpose:
+A day on the A.T. is 16–24 miles, and the window is **twice that**, so the day has ground around
+it rather than filling the screen edge to edge. A 390 × 700 phone map covers **50.9 miles at z9**
+and 25.5 at z10 — so z9 is the tightest zoom that shows a hiker the day they are about to walk
+*and where it sits*.
 
-| zoom | median | p90 | p99 | max | fits? |
+**The doubling is the point, not slack.** z10 fits a 24-mile day exactly, which means the day
+touches both edges and every question that starts *"and then what"* costs a pan.
+
+Measured at z9 by [`pipeline/spike_poi_seam.py`](../pipeline/spike_poi_seam.py) against the live
+ATC service, with [`lib/poi_sites.py`](../pipeline/lib/poi_sites.py)'s own folding applied:
+
+| zoom | screen | shelter | privy | campsite | parking | viewpoint | all | load / room |
+|---|---|---|---|---|---|---|---|---|
+| 8 | 101.9 mi | 51% | 41% | 32% | 4% | 0% | 26% | 140 / 20 |
+| **9** | **50.9 mi** | **83%** | **69%** | **59%** | **14%** | **2%** | **46%** | **69 / 20** |
+| 10 | 25.5 mi | 93% | 79% | 72% | 38% | 10% | 59% | 35 / 19 |
+| 11 | 12.7 mi | 97% | 84% | 79% | 65% | 24% | 70% | 18 / 18 |
+| 12 | 6.4 mi | 97% | 86% | 84% | 81% | 44% | 78% | 9 / 17 |
+
+**The things a day is planned around are mostly pins; the vistas are almost entirely dots.** The
+screen runs 69 waypoints against room for 20, and that is the design working rather than failing —
+the forty-nine that lose are dots, at their real coordinates, tappable.
+
+### The pins got bigger, and it cost almost nothing
+
+Pushing the seam out to z9 draws pins at the low end of `POI_ICON_SIZE_EXPRESSION`'s ramp, where
+0.6 gives a 22.8 px pin carrying a **10.6 px glyph** — a mark you can locate but not identify. The
+obvious worry is that raising it costs coverage, since bigger pins collide more. Measured at z9:
+
+| min scale | pin | glyph | shelter | privy | campsite |
 |---|---|---|---|---|---|
-| 10 | 35 | 66 | 92 | 100 | no |
-| 11 | 18 | 35 | 46 | 54 | no |
-| **12** | **9** | 18 | 26 | 30 | **yes** |
-| 13 | 5 | 10 | 16 | 18 | yes |
-| 14 | 3 | 6 | 10 | 13 | yes |
+| 0.6 | 22.8 px | 10.6 px | 88% | 74% | 68% |
+| **0.8** | **30.4 px** | **14.2 px** | **83%** | **69%** | **59%** |
+| 1.0 | 38.0 px | 17.7 px | 73% | 60% | 52% |
 
-**On the median rather than the p90, deliberately.** Above the seam an oversubscribed screen costs
-*dots*, not deletions, so the question is "is this a better screen than the corridor view" and not
-"is every screen guaranteed to fit". Choosing on the p90 would push the seam to z13 to protect
-against something that is no longer a failure.
+**A third more pin costs shelters five points**, because what binds at z9 is the trail's own
+density rather than the box. `POI_PIN_MIN_SCALE = 0.8` is the result. `poiIcons.test.ts` holds a
+7 px floor on a glyph and neither figure is near it — this is about comfort at arm's length in
+sun, not about a minimum.
 
-Share of each category reaching a pin at the candidate seams, site-folded:
+### It was z12, then z10, both on the same day
 
-| zoom | shelter | privy | campsite | parking | viewpoint | all |
-|---|---|---|---|---|---|---|
-| 11 | 96% | 84% | 78% | 62% | 22% | 50% |
-| **12** | **97%** | **86%** | **84%** | **80%** | **42%** | **65%** |
-| 13 | 97% | 88% | 85% | 88% | 61% | 76% |
+Both corrections are kept here rather than tidied away, because in neither case was the arithmetic
+wrong.
 
-**Two findings from that run matter more than the seam itself.**
+**z12** came from asking *"at what zoom does the screen stop being oversubscribed with pins?"* —
+a pin-legibility test, when this very document says an oversubscribed screen costs **dots, not
+deletions**. Legibility is a comfort criterion; nothing true or false hangs on it, so it is the
+wrong thing to set a floor with. z12 showed 6.4 miles: a quarter of a day.
 
-**Site folding is worth a flat +15–16 points at every zoom from 10 to 15**, measured against the
-same simulation over the unfolded set. That is [POI_SITES.md](POI_SITES.md) carrying this design
-rather than complementing it, and it means the residue left for the dot rank is materially smaller
-than this doc assumed when it was rewritten.
+**z10** came from fixing that and then sizing the window to *exactly* one day — a day with no
+context around it.
 
-**Vistas are the only category that behaves badly at any candidate seam.** Everything a hiker
-needs is 80–97% pinned from z12; viewpoints are 42%. In practice the dot rank is *for viewpoints*
-— which is the same conclusion `POI_PRIORITY`'s own comment reached from the other end, that they
-are "the densest layer ATC publishes… what would win by sheer count if nothing decided otherwise."
+The failure mode both share is worth naming: a defensible-sounding criterion, correctly computed,
+answering a question nobody was asking. The measurement was never the weak part.
 
-Two gaps in the measurement, stated rather than smoothed over. **Water is absent** — it comes from
-opentrail.org, whose API needs more than a bare GET, the same gap [POI_SITES.md](POI_SITES.md)
-carried on its own table; 174 points against 2,532, first in `POI_PRIORITY`, so the survivors
-below it look very slightly better than they are. And the fetch is **not corridor-clipped**, so it
-carries 1,223 viewpoints where the corridor holds 1,194 — which cuts the other way. Neither is
-near large enough to move a seam sitting between a median of 18 and a median of 9.
+**A third correction, in the simulation rather than the design.** The first run modelled a
+full-size 42 px collision box at every zoom, when the ramp draws pins smaller near the seam. That
+understates what fits exactly where it matters. The spike now models the ramp, and both anchors
+are named constants on both sides so the measurement cannot describe a different map from the one
+that ships.
 
 **Getting it wrong would have been cheap, which is why it was worth measuring rather than
 agonising over.** Under a design that deletes waypoints, the floor is where truth turns into

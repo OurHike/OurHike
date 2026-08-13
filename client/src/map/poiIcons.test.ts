@@ -3,6 +3,7 @@ import { POI_TYPES } from '../lib/config'
 import { CLOSURE_COLOR } from '../lib/closureStyle'
 import { SITE_ANCHOR_TYPES, SITE_MEMBER_TYPES } from './poiSites'
 import {
+  badgeCenters,
   buildPoiIcon,
   buildPoiIcons,
   poiColor,
@@ -10,6 +11,7 @@ import {
   pinGeometry,
   poiIconId,
   siteMemberCombinations,
+  sitePinPadding,
   POI_COLORS,
   POI_FALLBACK_COLOR,
   POI_PIN_PIXEL_RATIO,
@@ -365,37 +367,148 @@ describe('buildPoiIcons', () => {
 
   it('draws a member glyph big enough to read, at every member count', () => {
     // 5.7 CSS px was reported as hard to read on a real screen, which is the
-    // review features/POI_SITES.md said this decision needed. The band's height
-    // was the binding constraint on all three counts, so it is asserted here as
-    // a floor rather than left to whoever next adjusts a fraction.
+    // review features/POI_SITES.md said this decision needed, and 7 is the floor
+    // that came out of it. The badge now clears it by half again, because 7.1
+    // was reported as too quiet on the same screen - so the floor is asserted
+    // here and the ACTUAL size below it, which is what would catch a badge
+    // quietly shrinking back towards the bar it stays clear of.
     //
-    // THREE IS INCLUDED ON PURPOSE. Only 1% of today's sites carry three member
-    // categories, but that is #529's water gap - 97% of shelters have no mapped
-    // water source - not the trail. Sizing this for the current distribution
-    // would build the gap into the artwork.
+    // A badge is the SAME SIZE whatever a pin carries, which is most of what
+    // moving off the band bought: the strip's cell had to divide a fixed span
+    // between the members, so a third member shrank all three. Asserted for all
+    // three counts anyway, because the loop is what would catch a future layout
+    // going back to dividing something.
     const g = pinGeometry(POI_PIN_SIZE * POI_PIN_PIXEL_RATIO)
-    const bandHeight = g.strip.bottom - g.strip.top
-    const span = g.strip.halfWidth * 2
 
     for (const count of [1, 2, 3]) {
-      const cell = Math.min(span / count, bandHeight) * 0.94
-      expect(cell / POI_PIN_PIXEL_RATIO, `${count} member(s)`).toBeGreaterThanOrEqual(7)
+      expect(
+        g.badge.glyphBox / POI_PIN_PIXEL_RATIO,
+        `${count} member(s)`,
+      ).toBeGreaterThanOrEqual(7)
+      expect(badgeCenters(count, g.badge)).toHaveLength(count)
+    }
+
+    // Bigger than the footer strip managed at its most generous (9.6 px at one
+    // member), which is the bar this layout has to beat to have been worth it.
+    expect(g.badge.glyphBox / POI_PIN_PIXEL_RATIO).toBeGreaterThan(9.6)
+  })
+
+  it('leaves the anchor own glyph exactly the size a plain pin draws it', () => {
+    // The whole of #611. The footer band could only be made by shrinking the
+    // anchor's own glyph to 11.1 CSS px, so a shelter carrying a privy was a
+    // less legible shelter than one carrying nothing - and every site pin paid
+    // it, including the 57% carrying a single member.
+    const g = pinGeometry(POI_PIN_SIZE * POI_PIN_PIXEL_RATIO)
+
+    expect(g.glyphBox / POI_PIN_PIXEL_RATIO).toBeCloseTo(17.72, 2)
+    // And still the biggest thing on the pin. The margin has narrowed - 17.7
+    // against 10.7, where the first badge size made it 17.7 against 7.1 - which
+    // is the real cost of a badge a hiker can read: a site pin now says two
+    // things loudly rather than one loudly and one quietly. It is a shelter
+    // first, and this is where that stops being true if a badge grows again.
+    expect(g.glyphBox).toBeGreaterThan(g.badge.glyphBox)
+  })
+
+  it('never lets a badge reach the disc', () => {
+    // The invariant that keeps the anchor's glyph whole, and the one thing the
+    // badge ring distance exists to buy. A badge crossing the disc would sit on
+    // top of the silhouette this pin is mostly there to show.
+    const g = pinGeometry(POI_PIN_SIZE * POI_PIN_PIXEL_RATIO)
+
+    for (const count of [1, 2, 3]) {
+      for (const { x, y } of badgeCenters(count, g.badge)) {
+        expect(Math.hypot(x, y) - g.badge.radius, `${count} member(s)`).toBeGreaterThan(
+          g.rDisc,
+        )
+      }
     }
   })
 
-  it('leaves the anchor own glyph the larger of the two', () => {
-    // The band cannot grow without taking this, and a site pin whose shelter is
-    // less legible than its privy badge has traded the wrong way round.
+  it('keeps two badges off each other', () => {
+    // The fan's pitch is derived from the badge size, so this catches a badge
+    // grown without the spacing following it - which would draw two members as
+    // one smudge and lose a category silently.
     const g = pinGeometry(POI_PIN_SIZE * POI_PIN_PIXEL_RATIO)
-    const memberCell =
-      Math.min(g.strip.halfWidth * 2, g.strip.bottom - g.strip.top) * 0.94
 
-    expect(g.sitedGlyphBox).toBeGreaterThan(memberCell)
+    for (const count of [2, 3]) {
+      const spots = badgeCenters(count, g.badge)
+      for (let i = 1; i < spots.length; i += 1) {
+        const apart = Math.hypot(spots[i].x - spots[i - 1].x, spots[i].y - spots[i - 1].y)
+        expect(apart, `${count} member(s)`).toBeGreaterThan(g.badge.radius * 2)
+      }
+    }
   })
 
-  it('clears WCAG AA between the footer band and every member glyph on it', () => {
-    // The strip's whole colour argument: the band is PIN_HALO_COLOR and each
-    // member glyph is that category's own accent, which is the SAME pair the
+  it('puts the badges in the upper right, however many there are', () => {
+    // Where the maintainer asked for them, and the reason the fan is centred on
+    // the 45 degree axis rather than growing from one end: one member lands
+    // square in the corner, and the rest open out either side of it evenly.
+    //
+    // WHAT THIS DELIBERATELY DOES NOT ASSERT is `x >= 0 && y <= 0` - a badge
+    // strictly inside the quarter turn between twelve and three - which is what
+    // it said while the badge was 14 px across. Three badges half again that
+    // size do not fit in a quarter turn without touching each other, so at three
+    // members the outer two sit about 7 degrees past twelve and past three. That
+    // is a consequence of the size, not a drift: what has to hold is that every
+    // badge stays on the upper-right side of the pin, which is the anti-diagonal
+    // below, and that none of them wanders more than 55 degrees off the corner.
+    const g = pinGeometry(POI_PIN_SIZE * POI_PIN_PIXEL_RATIO)
+    const AXIS = -Math.PI / 4
+
+    // One member is exactly in the corner: as far right as it is up.
+    const only = badgeCenters(1, g.badge)[0]
+    expect(only.x).toBeCloseTo(-only.y, 6)
+
+    for (const count of [1, 2, 3]) {
+      const spots = badgeCenters(count, g.badge)
+
+      for (const { x, y } of spots) {
+        // Upper-right of the anti-diagonal through the pin's centre.
+        expect(x - y, `${count} member(s)`).toBeGreaterThan(0)
+        // And within 55 degrees of the corner itself, which is the room three
+        // badges take. A fourth member category would break this, and should -
+        // it is a layout decision, not a fraction to widen quietly.
+        const off = Math.atan2(y, x) - AXIS
+        expect(Math.abs(off) * (180 / Math.PI), `${count} member(s)`).toBeLessThan(55)
+      }
+
+      // Symmetric about the 45 degree axis: the first and last badge are the
+      // same angle either side of it.
+      const first = Math.atan2(spots[0].y, spots[0].x)
+      const last = Math.atan2(spots[spots.length - 1].y, spots[spots.length - 1].x)
+      expect((first + last) / 2, `${count} member(s)`).toBeCloseTo(AXIS, 6)
+    }
+  })
+
+  it('pads a site pin symmetrically, and pads a plain pin not at all', () => {
+    // Symmetry is what lets map/poiLayers.ts stay as it is: the disc is at the
+    // centre of the image, so MapLibre's default anchor puts it on the hiker's
+    // coordinate without an `icon-offset` to keep in step with the padding.
+    expect(sitePinPadding(0)).toBe(0)
+    expect(buildPoiIcon('shelter', 'high').width).toBe(POI_PIN_SIZE * POI_PIN_PIXEL_RATIO)
+
+    let previous = 0
+    for (const count of [1, 2, 3]) {
+      const pad = sitePinPadding(count)
+      const image = buildPoiIcon('shelter', 'high', SITE_MEMBER_TYPES.slice(0, count))
+
+      expect(image.width, `${count} member(s)`).toBe(image.height)
+      expect(image.width, `${count} member(s)`).toBe(
+        (POI_PIN_SIZE + pad * 2) * POI_PIN_PIXEL_RATIO,
+      )
+      // A pin carrying one member should not be given the collision box of one
+      // carrying three - that is 57% of sites evicting neighbours for room they
+      // are not using.
+      expect(pad, `${count} member(s)`).toBeGreaterThanOrEqual(previous)
+      previous = pad
+    }
+
+    expect(sitePinPadding(1)).toBeLessThan(sitePinPadding(3))
+  })
+
+  it('clears WCAG AA between a badge and the glyph on it', () => {
+    // A badge's whole colour argument: the glyph is PIN_HALO_COLOR and the disc
+    // under it is that category's own accent, which is the SAME pair the
     // disc-versus-glyph assertion above already proves for every type. So this
     // is not a new bar, it is the existing one read the other way round -
     // measured at privy 8.51, water 5.41, campsite 5.09.

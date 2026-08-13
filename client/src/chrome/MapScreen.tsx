@@ -185,6 +185,14 @@ export interface MapScreenProps {
    * from.
    */
   selectedPoi: PoiDetail | null
+  /**
+   * Every part of that waypoint's site, anchor first, for the card's chip strip
+   * (#526) - resolved by the shell for the same reason `selectedPoi` is.
+   *
+   * Optional, because a screen with no site data behaves exactly as it did
+   * before sites existed; this screen adds nothing to it and only hands it on.
+   */
+  selectedSite?: readonly PoiDetail[]
   /** A pin was tapped, by POI id - null for a tap on bare map, which is how
    *  the card is dismissed. Stable across renders - see MapViewProps. */
   onSelectPoi: (id: string | null) => void
@@ -351,6 +359,7 @@ export function MapScreen({
   verifiedOnly,
   onToggleVerifiedOnly,
   selectedPoi,
+  selectedSite,
   onSelectPoi,
   onClosePoi,
   elevation,
@@ -554,7 +563,12 @@ export function MapScreen({
                 must be absolute against exactly the box the canvas fills or
                 every placement would be off by the chrome above the map. */}
             {selectedPoi !== null && (
-              <PoiCard poi={selectedPoi} map={liveMap} onClose={onClosePoi} />
+              <PoiCard
+                poi={selectedPoi}
+                site={selectedSite}
+                map={liveMap}
+                onClose={onClosePoi}
+              />
             )}
 
             {/* Beside the card rather than placed like one. The waypoint card

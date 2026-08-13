@@ -202,6 +202,7 @@ import {
 } from './lib/seriousWarnings'
 import type { BoundingBox, MapPoint } from './lib/legendContents'
 import type { SearchablePoi } from './lib/searchPoi'
+import { siteRoster } from './map/poiSites'
 import './App.css'
 // Last, and entirely inside media queries - see the file header. Nothing in it
 // can match a phone, which is how the WEBSITE.md §8 constraint is kept
@@ -289,6 +290,24 @@ function describeTrailDataError(error: unknown): {
     kind: 'error',
     message: error instanceof Error ? error.message : 'Trail data failed to download.',
   }
+}
+
+/**
+ * One stored POI as the waypoint card takes it.
+ *
+ * Built from both arrays on purpose: the POI itself carries the geometry and the
+ * provenance, and `searchablePois` has already paid for the `locateOnTrail()`
+ * call that places it on the trail, so the mile in the card is the same number
+ * search puts on the same POI rather than a second computation that could
+ * disagree with it.
+ *
+ * One function because there are two callers and the tapped waypoint is in both
+ * of them: it is the card's subject, and it is also the anchor chip of its own
+ * site's strip (#526). Two spots computing this shape is two spots that can put
+ * two different miles on one card.
+ */
+function cardDetail(poi: StoredPoi, searchable: readonly SearchablePoi[]): PoiDetail {
+  return { ...poi, mile: searchable.find((candidate) => candidate.id === poi.id)?.mile }
 }
 
 type ReportingState = null | { step: 'pick' } | { step: 'form'; type: ReportTypeId }
@@ -1300,19 +1319,29 @@ function App() {
     [pois, trailIndex],
   )
 
-  // What the tapped pin's card says. Built from both arrays on purpose: the
-  // POI itself carries the geometry and the provenance, and searchablePois has
-  // already paid for the locateOnTrail() call that places it on the trail, so
-  // the mile in the card is the same number search puts on the same POI rather
-  // than a second computation that could disagree with it.
+  // What the tapped pin's card says - see cardDetail for why it is assembled
+  // from both arrays rather than from the POI alone.
   const selectedPoi: PoiDetail | null = useMemo(() => {
     if (selectedPoiId === null) return null
     const poi = pois.find((candidate) => candidate.id === selectedPoiId)
     if (poi === undefined) return null
-    return {
-      ...poi,
-      mile: searchablePois.find((candidate) => candidate.id === selectedPoiId)?.mile,
-    }
+    return cardDetail(poi, searchablePois)
+  }, [selectedPoiId, pois, searchablePois])
+
+  /**
+   * Every part of the tapped waypoint's site, anchor first, for the card's chip
+   * strip (#526). Empty for a POI that is in no site, which is most of them and
+   * all of them on a phone that downloaded before #523.
+   *
+   * Built here rather than in the card for the same reason `selectedPoi` is: the
+   * card is handed one waypoint, and the shell is the only layer holding the
+   * others. It goes through the same `cardDetail` as the anchor above, which is
+   * what stops one card showing two different miles for the same POI - the
+   * anchor appears in both of these.
+   */
+  const selectedSite: readonly PoiDetail[] = useMemo(() => {
+    if (selectedPoiId === null) return []
+    return siteRoster(pois, selectedPoiId).map((part) => cardDetail(part, searchablePois))
   }, [selectedPoiId, pois, searchablePois])
 
   const viewportPoints: MapPoint[] = useMemo(
@@ -2270,6 +2299,7 @@ function App() {
           verifiedOnly={verifiedOnly}
           onToggleVerifiedOnly={handleToggleVerifiedOnly}
           selectedPoi={selectedPoi}
+          selectedSite={selectedSite}
           onSelectPoi={handleSelectPoi}
           onClosePoi={handleClosePoi}
           // WIREFRAMES.md §1.5: zoom buttons are web-only. Nothing was passing

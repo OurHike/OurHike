@@ -72,6 +72,22 @@ of 1,223. `Scope` claims to be the width and agrees with `(Right - Left) mod
 360` on only 419 of the 512 features carrying it, so the arc is computed from
 the bearings and `Scope` is not published at all. Where the two disagree, one
 of them is wrong and there is no way here to tell which.
+
+## An anchor's sentence names the parts around it (2026-08-13)
+
+Since #524 a site's members draw no pin: 284 privies and 144 campsites ride an
+anchor's pin instead of competing for one. That fixed the map and emptied the
+words - each of those points still composes a perfectly good sentence about
+itself, attached to a feature that renders nowhere. So an anchor's sentence
+carries its parts, and `nearby_clause` is where that is written.
+
+**It is a SEPARATE SENTENCE, never a `with` clause**, and the distinction is
+the whole point of it. "with a fireplace, a fire ring and a porch" lists things
+the shelter HAS. A privy and a water source are not among them - they are
+separate points a short walk away, and folding them into that grammar would
+have this pipeline assert something ATC's data does not say and the ground
+plainly contradicts. They get their own sentence, and every one of them
+carries how far it is.
 """
 
 # Exterior_M's coded domain, as adjectives rather than the inventory's own
@@ -199,6 +215,28 @@ ARC_ROUNDING_DEGREES = 5
 
 COMPASS_POINTS = ("north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west")
 
+# --- sites -----------------------------------------------------------------
+
+# The order an anchor's parts are named in - lib/poi_sites.py's MEMBER_TYPES,
+# but sorted by what a hiker asks first at a shelter rather than alphabetically.
+# features/POI_SITES.md's own framing of the question is "is there a privy, and
+# is there water"; a campsite is the one of the three you can see for yourself
+# once you are standing there.
+#
+# The client's SITE_MEMBER_TYPES (client/src/map/poiSites.ts) fixes the same
+# order for the pin's footer glyphs and #526's chips. Two orders for one site
+# would have the sentence, the pin and the chip strip disagree about which part
+# comes first, which is drift a hiker reads as three different answers.
+NEARBY_ORDER = ("privy", "water", "campsite")
+
+# The word the parts are introduced with. One label rather than repeating
+# "away" on every part: the reader carries it forward across the list, and three
+# of them in a row is the sentence describing its own grammar.
+NEARBY_LEAD = "Nearby"
+
+# ATC's `Type` code for a campsite that is a group site.
+GROUP_CAMPSITE_TYPE = "1"
+
 
 def _count(properties: dict, key: str) -> float:
     """An ATC count column as a number, treating null and non-numeric alike
@@ -251,12 +289,18 @@ def _note_clause(note: str | None) -> str:
     return f" ATC notes: {text}"
 
 
-def describe_shelter(properties: dict, capacity: int | None = None, note: str | None = None) -> str | None:
+def describe_shelter(properties: dict, capacity: int | None = None, note: str | None = None, nearby: str = "") -> str | None:
     """One sentence about a shelter, or None if ATC states nothing usable.
 
     None is reachable in principle - a feature with no material, one storey,
-    no listed feature, no plausible year and no note - and on today's data it
-    never happens, because `Year_Built` alone is populated on all 280.
+    no listed feature, no plausible year, no note and no parts around it - and
+    on today's data it never happens, because `Year_Built` alone is populated
+    on all 280.
+
+    `nearby` is nearby_clause()'s output, spliced BEFORE the note rather than
+    after it. The note is a person's prose and stays last, where the
+    attribution reads as covering it and nothing else; a composed clause
+    trailing "ATC notes: ..." would read as part of what ATC wrote.
     """
     storeys = STOREYS.get(int(_count(properties, "Stories")))
     material = EXTERIOR_MATERIALS.get(str(properties.get("Exterior_M", "")).strip())
@@ -266,8 +310,10 @@ def describe_shelter(properties: dict, capacity: int | None = None, note: str | 
     if capacity is not None:
         head += f", sleeps {capacity}"
 
-    sentence = f"{head}{_with_clause(properties, FEATURES)}.{_built_clause(properties)}{_note_clause(note)}"
+    sentence = f"{head}{_with_clause(properties, FEATURES)}.{_built_clause(properties)}{nearby}{_note_clause(note)}"
     # "Shelter." on its own says nothing the card's own type line does not.
+    # With parts around it, it is the lead-in to the only line that mentions
+    # them, and carries.
     if sentence == "Shelter.":
         return None
     return sentence
@@ -276,6 +322,17 @@ def describe_shelter(properties: dict, capacity: int | None = None, note: str | 
 def _coded(properties: dict, field: str) -> str:
     """One of ATC's coded-domain values as a bare string, for dict lookup."""
     return str(properties.get(field, "")).strip()
+
+
+def _is_group_campsite(properties: dict) -> bool:
+    """Whether ATC has this campsite down as a group site.
+
+    Read in one place because two callers need it - the campsite's own sentence
+    and the nearby clause that names it from a shelter - and a group site is
+    exactly the thing a party of six is deciding on. Two readings of one code
+    is how the card and the sentence about the card end up disagreeing.
+    """
+    return _coded(properties, "Type") == GROUP_CAMPSITE_TYPE
 
 
 def describe_parking(properties: dict, note: str | None = None) -> str | None:
@@ -438,15 +495,19 @@ def describe_viewpoint(properties: dict, note: str | None = None) -> str | None:
     return f"{head}.{_note_clause(note)}"
 
 
-def describe_campsite(properties: dict, note: str | None = None) -> str | None:
+def describe_campsite(properties: dict, note: str | None = None, nearby: str = "") -> str | None:
     """One sentence about a campsite, or None if ATC states nothing usable.
 
     Campsites carry a much thinner inventory than shelters - no storeys, no
     materials, no year - so this leans on the two columns that are populated:
     whether the site is a group site, and how many individual sites it holds.
+
+    A campsite is in both of lib/poi_sites.py's tuples - a member of a
+    shelter's site, and the anchor of its own where there is no shelter - so
+    `nearby` is populated here for the 41 campsite-anchored sites and empty for
+    the 144 campsites that fold into a shelter's.
     """
-    is_group = str(properties.get("Type", "")).strip() == "1"
-    head = "Designated group campsite" if is_group else "Designated campsite"
+    head = "Designated group campsite" if _is_group_campsite(properties) else "Designated campsite"
 
     sites = int(_count(properties, "Site_Num"))
     pads = int(_count(properties, "Tent_Pads"))
@@ -462,9 +523,148 @@ def describe_campsite(properties: dict, note: str | None = None) -> str | None:
     if counted:
         head += f", {_join(counted)}"
 
-    sentence = f"{head}{_with_clause(properties, CAMPSITE_FEATURES)}.{_note_clause(note)}"
+    sentence = f"{head}{_with_clause(properties, CAMPSITE_FEATURES)}.{nearby}{_note_clause(note)}"
     if sentence in ("Designated campsite.", "Designated group campsite."):
         # The type line already says "Campsite"; "Designated" alone is not
         # worth a second line on the card.
         return None
     return sentence
+
+
+# --- what an anchor says about its parts ------------------------------------
+
+
+def _privy_phrase(properties: dict) -> str:
+    """ "a multi-seat moldering privy" - which privy, not the privy's card.
+
+    The adjectives are the ones describe_privy already argues for: type,
+    because a moldering privy is used differently from a pit one, and the
+    missing enclosure, because 8 of the 316 have none and that is the kind of
+    thing a hiker would rather read here than discover on arrival. `Built` is
+    not here - a rebuild date is a fact about the privy, read on the privy.
+    """
+    words = ["a"]
+    if _coded(properties, "Enclosure") == PRIVY_MULTI_SEAT:
+        words.append("multi-seat")
+    kind = PRIVY_TYPES.get(_coded(properties, "Type"))
+    if kind:
+        words.append(kind)
+    words.append("privy")
+    if _coded(properties, "Enclosure") == PRIVY_OPEN_ENCLOSURE:
+        # Not ", open to the air with no enclosure" as the privy's own sentence
+        # has it: a comma inside a comma-joined list reads as another part.
+        words.append("with no enclosure")
+    return " ".join(words)
+
+
+def _campsite_phrase(properties: dict) -> str:
+    """ "a group campsite", or "a campsite".
+
+    The counts describe_campsite carries - sites, tent pads, tent platforms -
+    are deliberately absent, and this is the one place the selection was hard.
+    They are useful, and they land a number directly against the distance:
+    "a campsite with 8 tent pads 25 m" is two figures with nothing between
+    them, and a reader has to stop and work out which belongs to what. Group
+    or not is the fact a party of six acts on; the rest is on the campsite.
+    """
+    return "a group campsite" if _is_group_campsite(properties) else "a campsite"
+
+
+# poi_type -> the noun phrase naming it, article included ("water" takes none).
+# Every one of lib/poi_sites.py's MEMBER_TYPES is here.
+#
+# `water` composes from nothing because there is nothing to compose from: it is
+# opentrail.org's, not ATC's, so it reaches this module with no inventory
+# columns at all. Its own title ("Piped spring", "Seasonal Water Spigot") is
+# free text from a third party and stays off the sentence for the reason the
+# module docstring gives for every other unrecognised value - a shorter
+# sentence rather than a wrong one.
+NEARBY_PHRASES = {
+    "privy": _privy_phrase,
+    "campsite": _campsite_phrase,
+    "water": lambda _properties: "water",
+}
+
+
+def _nearby_part(poi_type: str, properties: dict) -> str:
+    """One part's noun phrase, falling back to its bare type.
+
+    A fallback rather than a skip, and for the reason the client's `memberRank`
+    sorts an unknown category last instead of dropping it: a member type a
+    later release publishes would otherwise vanish from the only sentence that
+    mentions it, which is the bug this whole clause exists to fix, reintroduced
+    by the code that fixed it.
+    """
+    phrase = NEARBY_PHRASES.get(poi_type)
+    if phrase is not None:
+        return phrase(properties)
+    article = "an" if poi_type[:1] in "aeiou" else "a"
+    return f"{article} {poi_type}"
+
+
+def nearby_clause(members: list[tuple[str, float, dict]]) -> str:
+    """What an anchor's sentence says about the parts around it.
+
+        " Nearby: a multi-seat moldering privy 40 m away, a group campsite
+         25 m and water 90 m."
+
+    Takes (poi_type, metres, ATC attributes) per member and returns a clause
+    ready to splice in, or "" when there is nothing to say - so a POI in no
+    site composes exactly the sentence it composed before this existed.
+
+    A SEPARATE SENTENCE, NOT A `with` CLAUSE. A shelter does not have a privy
+    and a water source inside it; they are separate points a short walk away.
+    See the module docstring - this is the one thing about this clause that is
+    not a formatting decision.
+
+    "away" is said once and carried forward across the list. Three of them in
+    a row reads as a sentence explaining its own grammar, and the label at the
+    front has already said it.
+
+    Ordered by NEARBY_ORDER and then by distance, rather than by whatever order
+    the grouping produced. Two privies at one campsite - open question 4's
+    "Backpacker Campsite Upper Privy" and "...Lower Privy" - come out nearest
+    first, which is the only thing distinguishing them that a hiker standing at
+    the anchor can act on.
+    """
+    ranked = sorted(
+        members,
+        key=lambda member: (
+            NEARBY_ORDER.index(member[0]) if member[0] in NEARBY_ORDER else len(NEARBY_ORDER),
+            member[1],
+        ),
+    )
+    parts = [f"{_nearby_part(poi_type, properties or {})} {_metres(metres)}" for poi_type, metres, properties in ranked]
+    if not parts:
+        return ""
+    parts[0] += " away"
+    return f" {NEARBY_LEAD}: {_join(parts)}."
+
+
+def _metres(metres: float) -> str:
+    """A member's distance, in whole metres.
+
+    METRES, AND NOT A HIKER'S UNIT PREFERENCE. features/POI_SITES.md §5 writes
+    these distances in metres and #526's chips render them the same way, so the
+    same fact reading "40 m" on a chip and "131 ft" in the sentence above it
+    would be drift on one card. `unit_system` exists in the client's preferences
+    (lib/userPreferences.ts) and reaches nothing today; when it does, this is
+    published prose and changing it costs a re-export - the honest price of
+    composing sentences in the pipeline rather than on the phone.
+
+    WHOLE METRES, for the reason the view arc is rounded to 5°: a site is under
+    150 m across by construction - that is the gate that grouped it - so this is
+    a how-many-paces number rather than a measurement, and tenths are noise
+    against two points surveyed no finer than this. Rounded the same way #526's
+    `partDistance` rounds it, over the same equirectangular distance, so the
+    chip and the sentence above it cannot print two numbers for one pair.
+
+    Floored at 1 m rather than allowed to round to zero. "0 m away" reads as a
+    bug; two facility points sharing a coordinate to within half a metre is one
+    upstream, and the sentence should not repeat it as though it were a walk.
+
+    Thousands separated, which cannot bind today - the widest gate admitting a
+    member is 150 m - and is there for the same reason MAX_SITE_RADIUS_M is:
+    the next edit to those gates.
+    """
+    return f"{max(1, round(metres)):,} m"

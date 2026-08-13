@@ -1171,3 +1171,117 @@ def test_export_poi_leaves_the_site_properties_null_outside_a_site(tmp_path, mon
             assert feature["properties"].get("site_id") is None
             assert feature["properties"].get("site_role") is None
             assert feature["properties"].get("site_name") is None
+
+
+def test_export_poi_names_a_sites_parts_in_the_anchors_description(tmp_path, monkeypatch, con):
+    """A site's anchor says what is around it and how far (#614).
+
+    Since #524 the privy draws no pin of its own, so its own perfectly good
+    sentence is attached to a feature nothing renders. Until #526 reaches it
+    from the shelter's card, this clause is the only place it is mentioned.
+
+    The shared fixtures' privy sits 3.8 km from the shelter - outside both
+    gates, so no site at all - and is re-written 42 m out, the corridor's
+    measured median privy-to-shelter distance.
+    """
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    _write_fc(
+        raw_dir / "privies.geojson",
+        [
+            _point_feature(
+                1,
+                -73.95,
+                # 42 m north of the shelter at 41.05.
+                41.05 + 42 / 111_320.0,
+                {
+                    "GlobalID": "privy-glob-1",
+                    "OBJECTID": 1,
+                    "Name": "Test Shelter Privy",
+                    "Type": "1",
+                    "Enclosure": "2",
+                    "Year_Built": 2003,
+                },
+            )
+        ],
+    )
+    capacity_path = tmp_path / "shelter_capacity.json"
+    _write_capacity_file(capacity_path, [{"atc_global_id": "shelter-glob-1", "atc_name": "Test Shelter", "capacity": 8}])
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+    monkeypatch.setattr(export_poi, "CAPACITY_PATH", capacity_path)
+
+    export_poi.main()
+
+    shelter = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
+    assert shelter["description"] == (
+        "Two-storey log shelter, sleeps 8, with a fireplace. Built 1954. Nearby: a multi-seat moldering privy 42 m away."
+    )
+
+    # The member keeps its own sentence, unchanged. It is the thing #526's chip
+    # will open, and a member that described itself in terms of its anchor
+    # would say the same fact twice on one card.
+    privy = json.loads((out_dir / "privy.geojson").read_text())["features"][0]["properties"]
+    assert privy["description"] == "Multi-seat moldering privy. Built 2003."
+
+
+def test_export_poi_leaves_a_description_alone_outside_a_site(tmp_path, monkeypatch, con):
+    """Most POIs take this path - 719 of the corridor's points carry site
+    properties and the rest do not - and a byte of drift here would rewrite
+    artifacts for nothing, which verify_release.py compares hashes to catch."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+
+    export_poi.main()
+
+    # The shared fixtures' privy is kilometres from its shelter, so nothing
+    # here is in a site at all.
+    shelter = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
+    assert shelter["description"] == "Two-storey log shelter, with a fireplace. Built 1954."
+    assert "Nearby" not in shelter["description"]
+
+
+def test_export_poi_measures_a_part_from_the_anchor_it_rides():
+    """The same equirectangular distance lib/poi_sites.py gated the grouping
+    on, rounded the way #526's chip rounds it. Two formulas for one pair would
+    print two numbers for it on one card."""
+    anchor = {"id": "a", "poi_type": "shelter", "lat": 41.05, "lon": -73.95, "site_id": "a", "site_role": "anchor"}
+    member = {
+        "id": "b",
+        "poi_type": "privy",
+        "lat": 41.05 + 42 / 111_320.0,
+        "lon": -73.95,
+        "site_id": "a",
+        "site_role": "member",
+    }
+
+    export_poi.attach_descriptions([anchor, member])
+
+    # "Shelter." alone is dropped as saying nothing the card's type line does
+    # not - but as the lead-in to the only line naming the privy it carries,
+    # which is why the emptiness check is made on the whole sentence.
+    assert anchor["description"] == "Shelter. Nearby: a privy 42 m away."
+
+
+def test_export_poi_composes_no_nearby_clause_when_the_grouping_never_ran():
+    """attach_descriptions reads the site properties attach_sites publishes, so
+    a caller that skipped the grouping gets exactly the sentences it got before
+    sites existed rather than an error."""
+    raw = export_poi.RAW_PROPERTIES_KEY
+    records = [
+        {"id": "a", "poi_type": "shelter", "lat": 41.05, "lon": -73.95, raw: {"Stories": 2, "Exterior_M": "5"}},
+        {"id": "b", "poi_type": "privy", "lat": 41.05, "lon": -73.95, raw: {"Type": "1"}},
+    ]
+
+    export_poi.attach_descriptions(records)
+
+    assert records[0]["description"] == "Two-storey log shelter."
+    assert records[1]["description"] == "Moldering privy."

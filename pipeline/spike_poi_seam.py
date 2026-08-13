@@ -81,14 +81,57 @@ LAYER_TYPES = {
 # ordering here can be diffed against that file without a mental step.
 POI_PRIORITY = ["water", "shelter", "campsite", "resupply", "parking", "privy", "crossing", "viewpoint"]
 
-# POI_PIN_SIZE (38) + icon-padding (2) on each side. Two pins collide when
-# their centres are closer than this in BOTH axes - the boxes are axis-aligned
-# and MapLibre tests them as boxes, not as circles.
-PIN_BOX_PX = 42.0
+# client/src/map/poiIcons.ts POI_PIN_SIZE, and poiLayers.ts's icon-padding.
+# Two pins collide when their centres are closer than the box in BOTH axes -
+# the boxes are axis-aligned and MapLibre tests them as boxes, not circles.
+POI_PIN_SIZE_PX = 38.0
+ICON_PADDING_PX = 2.0
+
+# POI_ICON_SIZE_EXPRESSION: pins ramp from 0.6 at the seam to full size at z13.
+#
+# THE FIRST VERSION OF THIS SPIKE IGNORED THE RAMP and used a 42 px box at
+# every zoom, which is the full-size figure. That understates what fits by a
+# lot exactly where it matters: at 0.6 the box is 27 px, so a column holds 25
+# pins rather than 16. The error was conservative, which is why it survived a
+# reading - but "conservative" is the wrong property for a number that decides
+# how far out a hiker can still see their day.
+PIN_MIN_SCALE = 0.8
+PIN_FULL_SCALE_ZOOM = 13
 
 # WIREFRAMES.md's phone map area, which is what the seam is a judgement about.
 VIEWPORT_W_PX = 390.0
 VIEWPORT_H_PX = 700.0
+
+# What the seam is FOR, restated as a number (2026-08-13).
+#
+# The first cut of this spike asked "at what zoom does the screen stop being
+# oversubscribed with pins", answered z12, and was answering the wrong
+# question. Under two ranks an oversubscribed screen costs DOTS, not
+# deletions, so pin legibility is a comfort criterion and not a truth one.
+#
+# The criterion that matters is the hiker's: a day on the A.T. is 16-24 miles,
+# and the map should show a day's worth of waypoints at a glance while they
+# plan it. That is a claim about GROUND COVERED, not about pin density.
+DAY_MILES = 24.0
+
+# And the window is a day PLUS THE GROUND EITHER SIDE OF IT.
+#
+# The correction after the first correction. Sizing the screen to exactly one
+# day puts a 24-mile day edge to edge with no margin: the hiker sees their day
+# and nothing of where it sits, so every question that starts "and then what"
+# needs a pan. z10 is 25.5 miles - a day, and only a day.
+#
+# Doubling it gives z9 at 50.9 miles: the day, and as much again around it.
+# That is the view somebody plans from, and it is what the maintainer asked
+# for on a real screen.
+PLANNING_WINDOW_MILES = DAY_MILES * 2
+
+# Metres per degree at the equator, for the ground-extent arithmetic.
+EARTH_CIRCUMFERENCE_M = 40_075_017.0
+
+# The A.T. runs 34-46 degrees north; 40 is the middle and what every measured
+# table in features/POI_SITES.md is computed at.
+CORRIDOR_LAT = 40.0
 
 # MapLibre uses 512 px tiles, not 256. Getting this wrong is a whole zoom
 # level of error and it looks plausible either way, which is why it is a named
@@ -117,14 +160,41 @@ class ZoomResult:
         return statistics.quantiles(self.loads, n=100)[98]
 
 
-def pin_room() -> int:
+def pin_scale(zoom: float, seam: float) -> float:
+    """What POI_ICON_SIZE_EXPRESSION draws a pin at, at this zoom.
+
+    Clamped at both ends, exactly as MapLibre clamps an `interpolate`.
+    """
+    if zoom <= seam:
+        return PIN_MIN_SCALE
+    if zoom >= PIN_FULL_SCALE_ZOOM:
+        return 1.0
+    along = (zoom - seam) / (PIN_FULL_SCALE_ZOOM - seam)
+    return PIN_MIN_SCALE + along * (1.0 - PIN_MIN_SCALE)
+
+
+def pin_box_px(zoom: float, seam: float) -> float:
+    """The collision box at this zoom, padding included."""
+    return POI_PIN_SIZE_PX * pin_scale(zoom, seam) + ICON_PADDING_PX * 2
+
+
+def metres_per_px(zoom: float) -> float:
+    return EARTH_CIRCUMFERENCE_M * math.cos(math.radians(CORRIDOR_LAT)) / (TILE_PX * 2**zoom)
+
+
+def screen_miles(zoom: float) -> tuple[float, float]:
+    """(width, height) of the phone map in ground miles."""
+    mpp = metres_per_px(zoom)
+    return (VIEWPORT_W_PX * mpp / 1609.344, VIEWPORT_H_PX * mpp / 1609.344)
+
+
+def pin_room(zoom: float, seam: float) -> int:
     """How many pins fit down a straight column of viewport.
 
     The trail wanders sideways, so a real screen holds somewhat more than this
-    - it is the conservative reading, and the seam should be chosen against
-    the conservative one.
+    - it is the conservative reading.
     """
-    return int(VIEWPORT_H_PX / PIN_BOX_PX)
+    return int(VIEWPORT_H_PX / pin_box_px(zoom, seam))
 
 
 def to_pixels(lat: float, lon: float, zoom: int) -> tuple[float, float]:
@@ -145,7 +215,7 @@ def sort_key(record: dict) -> int:
         return len(POI_PRIORITY)
 
 
-def place(records: list[dict], zoom: int) -> set[str]:
+def place(records: list[dict], zoom: int, seam: float) -> set[str]:
     """The ids MapLibre would draw: greedy placement in sort-key order, a box
     skipped when it overlaps one already placed.
 
@@ -157,13 +227,14 @@ def place(records: list[dict], zoom: int) -> set[str]:
     points at eight zooms with an all-pairs test is minutes, and a spike
     nobody wants to run is a spike nobody re-runs.
     """
+    box = pin_box_px(zoom, seam)
     grid: dict[tuple[int, int], list[tuple[float, float]]] = {}
     drawn: set[str] = set()
     for record in sorted(records, key=lambda r: (sort_key(r), r["id"])):
         x, y = to_pixels(record["lat"], record["lon"], zoom)
-        cell_x, cell_y = int(x // PIN_BOX_PX), int(y // PIN_BOX_PX)
+        cell_x, cell_y = int(x // box), int(y // box)
         collides = any(
-            abs(px - x) < PIN_BOX_PX and abs(py - y) < PIN_BOX_PX
+            abs(px - x) < box and abs(py - y) < box
             for gx in (cell_x - 1, cell_x, cell_x + 1)
             for gy in (cell_y - 1, cell_y, cell_y + 1)
             for px, py in grid.get((gx, gy), ())
@@ -193,7 +264,7 @@ def viewport_loads(records: list[dict], zoom: int) -> list[int]:
     return loads
 
 
-def reachable(records: list[dict], zoom: int) -> set[str]:
+def reachable(records: list[dict], zoom: int, seam: float) -> set[str]:
     """Every waypoint a hiker can get to at `zoom`, site-folding included.
 
     A member whose anchor is drawn is reachable - that is the entire claim of
@@ -204,7 +275,7 @@ def reachable(records: list[dict], zoom: int) -> set[str]:
     member_ids = {m["id"] for s in sites for m in s.members}
     anchors_and_singles = [r for r in records if r["id"] not in member_ids]
 
-    drawn = place(anchors_and_singles, zoom)
+    drawn = place(anchors_and_singles, zoom, seam)
     out = set(drawn)
     for site in sites:
         if site.anchor["id"] in drawn:
@@ -243,7 +314,7 @@ def load_records(raw_dir: Path = RAW_DIR) -> list[dict]:
     return records
 
 
-def measure(records: list[dict], zooms: range) -> list[ZoomResult]:
+def measure(records: list[dict], zooms: range, seam: float) -> list[ZoomResult]:
     types = sorted({r["poi_type"] for r in records})
     totals = {t: sum(1 for r in records if r["poi_type"] == t) for t in types}
     sites = group_sites(records)
@@ -252,7 +323,7 @@ def measure(records: list[dict], zooms: range) -> list[ZoomResult]:
 
     results = []
     for zoom in zooms:
-        reach = reachable(records, zoom)
+        reach = reachable(records, zoom, seam)
         results.append(
             ZoomResult(
                 zoom=zoom,
@@ -263,20 +334,32 @@ def measure(records: list[dict], zooms: range) -> list[ZoomResult]:
     return results
 
 
-def seam(results: list[ZoomResult]) -> int | None:
-    """The lowest zoom whose MEDIAN viewport is not oversubscribed.
+def seam(zooms: range = range(4, 18), window_miles: float = PLANNING_WINDOW_MILES) -> int | None:
+    """The lowest zoom that still fits a day's hike on the screen.
 
-    The median rather than the p90, and the reason is the dot rank: above the
-    seam an oversubscribed screen costs dots, not deletions, so the criterion
-    is "is this a better screen than the corridor view" and not "is this
-    screen guaranteed to fit". Choosing on the p90 would push the seam a level
-    deeper to protect against a case that is no longer a failure.
+    THE CRITERION CHANGED ON 2026-08-13 and this is the change. The first cut
+    asked "at what zoom does the screen stop being oversubscribed with pins",
+    answered z12, and was answering a question the two-rank design had already
+    made moot: above the seam an overfull screen costs DOTS, not deletions, so
+    pin density is about comfort and not about truth.
+
+    What the seam is actually for is a hiker looking at the day they are about
+    to walk, AND at where that day sits. A day on the A.T. is 16-24 miles, and
+    the window is twice that so the day has ground around it rather than
+    filling the screen edge to edge. So: the furthest OUT the map can go while
+    that window still fits, because further out than that the waypoints stop
+    being about a hike and start being about a region - which is the corridor
+    view's job (features/CORRIDOR_VIEW.md).
+
+    Returns the HIGHEST such zoom - the TIGHTEST view that still shows a whole
+    day. `min` here is a bug and was one for a run: every wider view also
+    "fits" a day, trivially and uselessly, so taking the lowest walks straight
+    out to z4 and reports the whole corridor as the answer. What is wanted is
+    the point where the screen is ABOUT a day: wider shows a region, tighter
+    shows half a day.
     """
-    room = pin_room()
-    for result in results:
-        if result.median_load <= room:
-            return result.zoom
-    return None
+    fitting = [z for z in zooms if screen_miles(z)[1] >= window_miles]
+    return max(fitting, default=None) if fitting else None
 
 
 def main() -> None:
@@ -289,25 +372,31 @@ def main() -> None:
     records = load_records(args.raw_dir)
     sites = group_sites(records)
     folded = sum(len(s.members) for s in sites)
+    answer = seam()
     print(f"{len(records)} waypoints -> {len(sites)} sites folding {folded} members")
-    print(f"a phone viewport holds about {pin_room()} pins down a straight column\n")
+    print(
+        f"a day is {DAY_MILES:.0f} miles, the planning window {PLANNING_WINDOW_MILES:.0f}; the seam is the tightest view that still fits the window\n"
+    )
 
-    results = measure(records, range(args.min_zoom, args.max_zoom + 1))
+    results = measure(records, range(args.min_zoom, args.max_zoom + 1), answer or args.min_zoom)
     types = sorted(results[0].drawn_share)
 
-    header = "zoom | " + " | ".join(f"{t:>9}" for t in types) + " | median | p90 | p99 | fits?"
-    print("SHARE REACHABLE (site-folded), AND WHAT A 390x700 VIEWPORT HOLDS\n")
+    header = "zoom |   screen   | " + " | ".join(f"{t:>9}" for t in types) + " |  all | median/room"
+    print("WHAT A 390x700 PHONE SHOWS, AND HOW MUCH OF IT REACHES A PIN (site-folded)\n")
     print(header)
     print("-" * len(header))
-    room = pin_room()
     for r in results:
-        row = f"  {r.zoom:>2} | " + " | ".join(f"{r.drawn_share[t]:>8.0%}" for t in types)
-        row += f" | {r.median_load:>6.0f} | {r.p90_load:>3.0f} | {r.p99_load:>3.0f} | "
-        row += "yes" if r.median_load <= room else "NO"
+        _, tall = screen_miles(r.zoom)
+        room = pin_room(r.zoom, answer or args.min_zoom)
+        reach_all = sum(r.drawn_share.values()) / len(r.drawn_share)
+        row = f"  {r.zoom:>2} | {tall:>6.1f} mi | "
+        row += " | ".join(f"{r.drawn_share[t]:>8.0%}" for t in types)
+        row += f" | {reach_all:>4.0%} | {r.median_load:>4.0f}/{room:<3}"
+        if r.zoom == answer:
+            row += "  <- SEAM"
         print(row)
 
-    answer = seam(results)
-    print(f"\nPOI_PIN_MIN_ZOOM = {answer}" if answer else "\nno zoom in range fits - widen --max-zoom")
+    print(f"\nPOI_PIN_MIN_ZOOM = {answer}" if answer else "\nno zoom fits a day - check DAY_MILES")
 
 
 if __name__ == "__main__":

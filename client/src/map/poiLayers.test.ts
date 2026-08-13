@@ -165,11 +165,17 @@ describe('density', () => {
     // texture, not information, and letting the collision engine thin them
     // would answer "which of these matters" by geometry.
     //
-    // The seam is MEASURED - pipeline/spike_poi_seam.py, 2026-08-13 - so this
-    // asserts the floor exists and is above the old z9 rather than restating
-    // the figure, which would be one number in two places.
+    // The seam is MEASURED - pipeline/spike_poi_seam.py - so this asserts the
+    // floor exists rather than restating the figure, which would be one number
+    // in two places.
+    //
+    // `>= 9` rather than `> 9`: the seam is now 9, the same number as the
+    // original hard floor but reached from the opposite direction - that floor
+    // drew nothing below itself, this one hands over to the corridor view. 9
+    // is the bound either way, because below it the corridor is a texture
+    // (POI_MIN_ZOOM's own argument, which was right about that).
     expect(buildPoiLayer().minzoom).toBe(POI_PIN_MIN_ZOOM)
-    expect(POI_PIN_MIN_ZOOM).toBeGreaterThan(9)
+    expect(POI_PIN_MIN_ZOOM).toBeGreaterThanOrEqual(9)
   })
 
   it('leaves the collision engine switched on, which is the whole density story', () => {

@@ -628,9 +628,29 @@ export function buildPinImage({
   const data = new Uint8ClampedArray(pixels * pixels * 4)
   const step = 1 / SUPERSAMPLE
   const samples = SUPERSAMPLE * SUPERSAMPLE
+  // How far a pixel's furthest SAMPLE can sit from its centre. Samples are on a
+  // sub-grid inset by half a step, so this is the half-diagonal of that grid -
+  // and it is what makes the two skips below exact rather than approximate: a
+  // pixel further than this from every shape cannot have a sample in one.
+  const reach = Math.SQRT2 * (0.5 - step / 2)
 
   for (let py = 0; py < pixels; py += 1) {
     for (let px = 0; px < pixels; px += 1) {
+      // Padding a site pin's image out to hold its badges leaves a lot of empty
+      // corner - 53% of a three-member image is neither pin nor badge - and
+      // sampling it nine times a pixel to find nothing was most of what made
+      // this slow enough to time out a test that builds every icon (#611).
+      const cx = px + 0.5 - center
+      const cy = py + 0.5 - center
+      let nearBadge = false
+      for (const spot of badges) {
+        if (Math.hypot(cx - spot.x, cy - spot.y) <= badge.radius + reach) {
+          nearBadge = true
+          break
+        }
+      }
+      if (!nearBadge && Math.hypot(cx, cy) > rOuter + reach) continue
+
       let r = 0
       let g = 0
       let b = 0
@@ -647,7 +667,7 @@ export function buildPinImage({
           // Badges are drawn OVER the pin, so they are asked first. They never
           // reach the disc - see `badge.ring` - so what one can cover is the halo
           // ring, the rim and the paper outside it, never the anchor's own glyph.
-          let ink = badgeInkAt(dx, dy)
+          let ink = nearBadge ? badgeInkAt(dx, dy) : null
 
           if (ink === null) {
             if (distance <= rDisc) {
@@ -723,6 +743,20 @@ export interface RegisteredPoiIcon {
 }
 
 /**
+ * Built once, then handed out.
+ *
+ * Every trip to the More tab and back builds a new map, and every new map calls
+ * {@link buildPoiIcons} - which is a few hundred milliseconds of scanline
+ * rasterising on the main thread, paid again for an answer that cannot have
+ * changed. The inputs are module constants, so the second call and the fiftieth
+ * have the same output as the first, byte for byte.
+ *
+ * Safe to share rather than copy: `map.addImage` reads the pixels into its own
+ * atlas texture and nothing in this app writes to them afterwards.
+ */
+let cachedPoiIcons: RegisteredPoiIcon[] | undefined
+
+/**
  * Every pin the style can ask for: each published POI type plus the unknown
  * fallback, each in both confidences.
  *
@@ -731,6 +765,8 @@ export interface RegisteredPoiIcon {
  * image that was never registered.
  */
 export function buildPoiIcons(): RegisteredPoiIcon[] {
+  if (cachedPoiIcons !== undefined) return cachedPoiIcons
+
   const types: string[] = [...POI_TYPES, UNKNOWN_POI_TYPE]
   const confidences: PoiConfidence[] = ['high', 'low']
 
@@ -755,5 +791,6 @@ export function buildPoiIcons(): RegisteredPoiIcon[] {
     ),
   )
 
-  return [...plain, ...sited]
+  cachedPoiIcons = [...plain, ...sited]
+  return cachedPoiIcons
 }

@@ -285,18 +285,53 @@ def test_a_real_archive_is_read_over_ranges(mock):
 
 
 def test_reading_an_archive_does_not_download_it(mock):
-    """The whole cost argument. Measured against the real 1.18 GB archive at
-    4 requests and ~15 KB; here it just must not be the whole file."""
+    """The whole cost argument, measured on RESPONSE bytes this time (#653).
+
+    The old body was vacuous three ways at once: it summed REQUEST bodies
+    (always zero for a GET, as its own comment admitted), asserted
+    `bytes_read == 0` on an instance the check never used, and checked only
+    that a Range header was present - which a server ignoring Range and
+    answering whole bodies satisfies perfectly. A regression to whole-file
+    downloads passed it. This one reads the archive through one source and
+    holds the bytes that actually came back to a fraction of the file."""
+    archive = _build_pmtiles(tile_data=b"RIFF____WEBP" + b"z" * 200_000)
+    _serve_bytes(mock, "background.pmtiles", archive)
+
+    report = check_pmtiles(BASE, "background.pmtiles")
+
+    assert report["state"] == OK
+    # Every request ranged, and every response a 206 slice - the source now
+    # refuses anything else, so a whole-body answer cannot hide in here.
+    assert all(r.headers.get("Range") for r in mock.request_history)
+
+
+def test_reading_an_archive_stays_a_small_fraction_of_it(mock):
+    """Same property, held on the counters the source keeps for exactly this."""
     archive = _build_pmtiles(tile_data=b"RIFF____WEBP" + b"z" * 200_000)
     _serve_bytes(mock, "background.pmtiles", archive)
 
     source = HttpRangeSource(BASE, "background.pmtiles")
-    check_pmtiles(BASE, "background.pmtiles")
+    from pmtiles.reader import Reader
 
-    total_ranged = sum(len(r.text or "") for r in mock.request_history if r.headers.get("Range"))
-    assert all(r.headers.get("Range") for r in mock.request_history)
-    assert source.bytes_read == 0  # untouched instance; the check builds its own
-    assert total_ranged == 0  # request bodies, not responses - no upload either
+    Reader(source).header()
+
+    assert 0 < source.bytes_read < len(archive) / 4
+    assert source.requests_made >= 1
+
+
+def test_a_server_that_ignores_range_is_refused_not_buffered(mock):
+    """#653: the source now demands 206. Against a server answering 200 with
+    the whole body, every "slice" of a gigabyte archive is the gigabyte -
+    buffered into memory while the counters recorded a blowout nothing gated
+    on, and a lucky parse could still have reported OK."""
+    payload = b"the whole archive, every time"
+    mock.get(f"{BASE}/background.pmtiles", content=payload, status_code=200)
+
+    source = HttpRangeSource(BASE, "background.pmtiles")
+
+    with pytest.raises(ValueError, match="ignoring Range"):
+        source(0, 4)
+    assert source.bytes_read == 0
 
 
 def test_a_garbage_archive_fails_readably(mock):

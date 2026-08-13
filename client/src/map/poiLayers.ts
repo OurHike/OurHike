@@ -210,16 +210,32 @@ export const POI_SORT_KEY_EXPRESSION: unknown[] = [
 /**
  * Pins grow with zoom rather than sitting at one size.
  *
- * At the far end of {@link POI_MIN_ZOOM} they are markers saying something is
- * there; by the zoom a hiker actually walks at they are full size and their
+ * At the far end of {@link POI_PIN_MIN_ZOOM} they are markers saying something
+ * is there; by the zoom a hiker actually walks at they are full size and their
  * glyph is legible. One interpolation covers both without a second layer.
+ *
+ * **The lower stop is 0.75 rather than 0.6**, which is where "make the pins
+ * slightly bigger" landed. The pin's full size cannot move: 38 px is
+ * `--space-9`, and it sits in a deliberate three-mark ladder with the ATC's
+ * notice dot at 40 (`--space-10`, the smallest step that clears a pin) and the
+ * serious-warning pin at 44 (WIREFRAMES.md §8, one full touch target and the
+ * biggest thing on the map). Raising 38 would push a maintainer's own notice
+ * below OurHike's pin for the same shelter, which is the fault #591 spent
+ * three commits fixing.
+ *
+ * What could move is where the ramp STARTS, and that is the half a hiker
+ * actually sees - z9 to z12 is a quarter bigger, and it is the band anyone
+ * looking at this map is in, because #603 means they had to zoom past the seam
+ * to see a waypoint at all. `lib/atcUpdateStyle.ts` takes the same stops, in
+ * the same commit, so the dot keeps its clearance at every zoom rather than
+ * only at the top - src/test/atcAlertProminence.test.ts asserts that pairing.
  */
 export const POI_ICON_SIZE_EXPRESSION: unknown[] = [
   'interpolate',
   ['linear'],
   ['zoom'],
   POI_PIN_MIN_ZOOM,
-  0.6,
+  0.75,
   13,
   1,
 ]

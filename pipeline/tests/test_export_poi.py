@@ -594,11 +594,96 @@ def test_export_poi_carries_water_distance_onto_shelters_and_campsites(tmp_path,
     assert campsite_props["water_distance_ft"] == 100
     assert campsite_props["description"].endswith("Nearby: water 30 m away.")
 
-    # Water POIs themselves never carry the column - it is a fact about a
-    # shelter or campsite, not about the water.
+    # Real water POIs never carry the column - it is a fact about a shelter
+    # or campsite, not about the water point itself. The members synthesized
+    # from those distances (#694) are the one exception: they ARE the number,
+    # carried so the card's chip can print it instead of measuring their
+    # inherited coordinates to zero.
     water_fc = json.loads((out_dir / "water.geojson").read_text())
     for feature in water_fc["features"]:
-        assert feature["properties"].get("water_distance_ft") is None
+        if feature["properties"]["source"] != export_poi.CSI_WATER_SOURCE:
+            assert feature["properties"].get("water_distance_ft") is None
+
+
+def test_export_poi_synthesizes_a_water_member_where_the_sentence_fired(tmp_path, monkeypatch, con):
+    """The card promising "Nearby: water 37 m" gets a water POI riding its
+    site (#694): a member at the anchor's own coordinates - ATC states how
+    far, never where - whose description says the distance, whose measurement
+    it is, and that the spot is unmapped. The anchor becomes a site so the
+    pin has a strip for the glyph, and its own sentence still reads from the
+    splice, never from the member's inherited position ("water 1 m" is the
+    bug this arrangement exists to not have)."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    water_path = tmp_path / "water_distance.json"
+    _write_water_distance_file(water_path, [{"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 120}])
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+    monkeypatch.setattr(export_poi, "WATER_DISTANCE_PATH", water_path)
+
+    export_poi.main()
+
+    shelter_props = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
+    water_fc = json.loads((out_dir / "water.geojson").read_text())
+    [synthesized] = [f["properties"] for f in water_fc["features"] if f["properties"]["source"] == export_poi.CSI_WATER_SOURCE]
+
+    assert synthesized["id"] == "atc_csi:shelter-glob-1"
+    assert synthesized["name"] == "Water near Test Shelter"
+    assert synthesized["confidence"] == "low"
+    assert synthesized["water_distance_ft"] == 120
+    # Inherited coordinates, and a description that says so in place of them.
+    assert (synthesized["lat"], synthesized["lon"]) == (shelter_props["lat"], shelter_props["lon"])
+    assert synthesized["description"] == (
+        "About 37 m from Test Shelter. ATC measured the distance; the spot itself is "
+        "not mapped, so this point sits on the shelter."
+    )
+    # It rides the shelter's site as a member, and the lone shelter became a
+    # site to carry it.
+    assert synthesized["site_id"] == shelter_props["id"]
+    assert synthesized["site_role"] == "member"
+    assert shelter_props["site_role"] == "anchor"
+    assert shelter_props["site_id"] == shelter_props["id"]
+    # The anchor's sentence still speaks the stated distance, not the zero
+    # its member's inherited position would measure.
+    assert shelter_props["description"].endswith("Nearby: water 37 m away.")
+
+
+def test_export_poi_synthesizes_from_the_anchor_only_never_from_a_member(tmp_path, monkeypatch, con):
+    """A campsite folded into a shelter's site carries the column but spawns
+    nothing: the site already answers "is there water" through its anchor,
+    and two synthesized members for one place would be the pin saying water
+    twice."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    # ATC's naming convention, close enough to fold: the campsite becomes a
+    # member of the shelter's site (name gate, well under 150 m).
+    _write_fc(
+        raw_dir / "campsites.geojson",
+        [_point_feature(1, -73.95, 41.0504, {"GlobalID": "campsite-glob-1", "Name": "Test Shelter Campsite", "Site_Num": 3})],
+    )
+    water_path = tmp_path / "water_distance.json"
+    _write_water_distance_file(
+        water_path,
+        [
+            {"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 120},
+            {"layer": "campsites", "atc_global_id": "campsite-glob-1", "distance_ft": 100},
+        ],
+    )
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+    monkeypatch.setattr(export_poi, "WATER_DISTANCE_PATH", water_path)
+
+    export_poi.main()
+
+    water_fc = json.loads((out_dir / "water.geojson").read_text())
+    synthesized = [f["properties"] for f in water_fc["features"] if f["properties"]["source"] == export_poi.CSI_WATER_SOURCE]
+    assert [record["id"] for record in synthesized] == ["atc_csi:shelter-glob-1"]
 
 
 def test_export_poi_keeps_far_water_out_of_the_nearby_sentence(tmp_path, monkeypatch, con):
@@ -623,6 +708,10 @@ def test_export_poi_keeps_far_water_out_of_the_nearby_sentence(tmp_path, monkeyp
     shelter_props = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
     assert shelter_props["water_distance_ft"] == 1648
     assert "water" not in shelter_props["description"]
+    # And no synthesized member either (#694): a site is a sub-150 m place,
+    # and a part half a kilometre off is not a part of it.
+    water_fc = json.loads((out_dir / "water.geojson").read_text())
+    assert not [f for f in water_fc["features"] if f["properties"]["source"] == export_poi.CSI_WATER_SOURCE]
 
 
 def test_export_poi_never_says_water_twice_when_a_real_point_already_folded(tmp_path, monkeypatch, con):
@@ -655,6 +744,10 @@ def test_export_poi_never_says_water_twice_when_a_real_point_already_folded(tmp_
     assert shelter_props["description"].count("water") == 1
     # The folded point's measured ~45 m, not the reference file's 37 m.
     assert "water 45 m" in shelter_props["description"]
+    # And no synthesized member beside the real one (#694): the site already
+    # holds an actual mapped point, and it speaks for water here.
+    water_fc = json.loads((out_dir / "water.geojson").read_text())
+    assert not [f for f in water_fc["features"] if f["properties"]["source"] == export_poi.CSI_WATER_SOURCE]
 
 
 def test_export_poi_exported_properties_are_exactly_the_declared_columns(tmp_path, monkeypatch, con):

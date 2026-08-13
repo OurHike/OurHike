@@ -139,6 +139,9 @@ describe('DownloadCard', () => {
     // "9 MB" growing to "10 MB" must not shuffle "of 314 MB" sideways: the
     // received figure sits right-aligned in a slot as wide as the total will
     // ever make it - ch units, exact because the byte line is monospace.
+    // Read the inline style rather than toHaveStyle: that matcher goes
+    // through getComputedStyle, which jsdom 30 serializes to pixels, and
+    // the claim here is the declared '6ch'.
     render(
       <DownloadCard
         {...PROPS}
@@ -150,7 +153,7 @@ describe('DownloadCard', () => {
       />,
     )
 
-    expect(screen.getByText('9 MB')).toHaveStyle({ minWidth: '6ch' })
+    expect(screen.getByText('9 MB').style.minWidth).toBe('6ch')
   })
 
   it('offers to RESUME a failed download, never to restart it', async () => {

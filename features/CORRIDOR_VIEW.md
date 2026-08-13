@@ -48,34 +48,42 @@ not the subject.
 
 ## What it carries
 
-### 1. The thirty clubs, and the data is already on disk
+### 1. The thirty clubs — built 2026-08-13 ([#594](https://github.com/OurHike/OurHike/issues/594))
 
-The A.T. is maintained by thirty clubs, and ATC publishes one polygon each.
-`trail_club_sections` is **already registered in [`pipeline/sources.json`](../pipeline/sources.json)
-and downloaded by every pipeline run since 2026-07-25** — `pipeline/README.md` records it as
-fetched for "the maintainer attribution" with nothing downstream reading it.
-[SOURCE_REGISTRY.md](SOURCE_REGISTRY.md) opens on the same fact from the other direction.
+The A.T. is maintained by thirty clubs. Below the seam the trail draws as thirty named
+stretches rather than one line, and tapping one says who looks after it — a question this app
+already cares about in three other places ([VOLUNTEERING.md](VOLUNTEERING.md),
+[SAYING_THANKS.md](SAYING_THANKS.md), the backend's `Club` and `MaintainerAssignment` models)
+and has never been able to answer on the map.
 
-So the corridor view's primary content costs one exporter and no new source. Below the seam the
-trail draws as thirty named stretches rather than one line, and tapping one says who looks after
-it — which is a question this app already cares about in three other places
-([VOLUNTEERING.md](VOLUNTEERING.md), [SAYING_THANKS.md](SAYING_THANKS.md), the backend's `Club` and
-`MaintainerAssignment` models) and has never been able to answer on the map.
+**The source is not the one this section originally named**, and the change is worth recording
+because the obvious layer was the worse one. This doc said to export `trail_club_sections` —
+thirty polygons, registered since 2026-07-25 and read by nothing. Checking upstream first
+turned up that **`centerline` already carries the club on every one of its 3,025 features**, in
+`Trail_Club`, `Acronym` and `Reg_Acro`:
 
-**Two data problems to settle before the app states club attribution as fact**, both already
-recorded in [`pipeline/SOURCE_SURVEY.md`](../pipeline/SOURCE_SURVEY.md) and neither discovered
-here:
+| | `centerline` | `trail_club_sections` |
+|---|---|---|
+| last edited | **2026-08-04** | 2024-08-15 |
+| attribution sits on | the trail line → **exact mile ranges** | polygons → derived by point-in-polygon |
+| already fetched | yes, and already exported | fetched, read by nothing |
 
-- That layer's data is dated **2024-08-15** — "two years old", in the survey's own words, with
-  the schema touched 2025-10-09.
-- There is a **fresher sibling**, `AT_ClubMap` (5 layers, 2025-06/07), whose 35 club-name points
-  include Randolph Mountain Club, *which the 30-polygon layer folds into somebody else*. So the
-  two sources disagree about how many clubs there are and about who maintains at least one
-  stretch.
+So `export_club_sections.py` uses the centerline for **which stretch belongs to whom**, and the
+polygon layer for **how a club's name is spelled** and its region. Fresh source decides the
+fact; stale source decides only the wording. That split is what keeps ATC's two misspellings
+(`Potomac Appalachain Trail Club`, `New York - New Jersey Trail Conference`) off a hiker's
+screen while the attribution stays nine days old rather than two years.
 
-Thirty-versus-thirty-five is exactly the kind of disagreement this app must not resolve by
-picking the one that was easier to parse. Whichever is published, the club attribution carries
-its source and date the way every other published claim here does.
+**41 miles of trail have no club, and the app says so.** 47 centerline features carry a digit
+string where a club acronym belongs — 1.90% of the corridor. Those miles publish as
+**unattributed** rather than being backfilled from the older polygons: a stretch the fresh
+source cannot name should say so, not borrow a two-year-old answer and present it as current.
+The published stretches tile the trail exactly, Springer to Katahdin, so "not recorded" is
+visibly different from "no trail here".
+
+The measured output: **30 clubs, 2,197.5 miles tiled with no seams or overlaps** — GATC's 77
+miles in Georgia at one end, MATC's 262 at the other, Randolph Mountain Club's 2.5 in the
+Whites, and 38.5 miles unattributed across 27 runs.
 
 ### 2. Stretches worth going to
 
@@ -226,10 +234,14 @@ No new preference keys.
 
 ## Open questions (for you, not decided here)
 
-- **Thirty clubs or thirty-five.** `trail_club_sections` (30 polygons, 2024-08-15) against
-  `AT_ClubMap` (35 club-name points, 2025-06/07). The newer one is not the same shape — points,
-  not polygons — so it cannot simply replace the older, and Randolph Mountain Club exists in one
-  and not the other. Needs a look at both services before either is published.
+- ~~**Thirty clubs or thirty-five.**~~ **Answered 2026-08-13 — thirty, and the two sources never
+  disagreed.** `AT_ClubMap`'s 35 points are 35 *label* points for the same 30 clubs: four clubs
+  maintain discontiguous trail and get a point each, and one appears under both a correct and a
+  typo'd spelling (`Outdoor Club of Virginina Tech`). Randolph Mountain Club has its own polygon
+  in the 30-layer, so [`pipeline/SOURCE_SURVEY.md`](../pipeline/SOURCE_SURVEY.md)'s claim that it
+  was "folded elsewhere" was wrong; that entry is corrected, and §3e there is the full finding.
+  The question turned out to matter less than it looked, because neither layer supplies the
+  attribution now — the centerline does.
 - **How many `named` stretches, and who writes them.** Twenty is a screen; two hundred is a
   gazetteer and a maintenance burden. And an editorial list in a repository is a thing somebody
   has to own.

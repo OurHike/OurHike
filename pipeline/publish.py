@@ -227,6 +227,16 @@ def collect_artifacts() -> dict[str, dict]:
         manifest = json.loads(spurs_manifest.read_text())
         artifacts["spurs.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
+    # Who maintains which stretch, if export_club_sections.py has run (#594,
+    # features/CORRIDOR_VIEW.md). Same shape and same reasoning as spurs.json
+    # above: a small keyed artifact rather than properties on trails.geojson,
+    # so it gets ordinary sha256 diffing and a run that changes no club
+    # assignment uploads nothing.
+    club_manifest = PROCESSED_DIR / "club_sections_manifest.json"
+    if club_manifest.exists():
+        manifest = json.loads(club_manifest.read_text())
+        artifacts["club_sections.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+
     # Verified closures and reports, if export_conditions.py has run
     # (features/CONDITIONS_DELIVERY.md). Ordinary artifacts rather than a
     # special case: they want the same sha256 diffing every other one gets, and

@@ -202,9 +202,14 @@ This maps onto the existing `CONFIDENCE_HIGH`/`CONFIDENCE_LOW` tiers in `poi_sch
 
 They will. A club's own centerline will disagree with ATC's; two orgs will both put a shelter near the same spot, tens of metres apart.
 
-**Do not average, and do not silently dedupe.** A midpoint between two reported water sources is a location that exists in neither dataset — value #4's exact failure mode, and worse than either input. `unify_poi` already makes ids `source:feature_id`, so both records survive with distinct identities and provenance intact; that part needs no change.
+**Do not average.** A midpoint between two reported water sources is a location that exists in neither dataset — value #4's exact failure mode, and worse than either input. That rule stands, and everything below inherits it.
 
-The precedence rule this recommends: prefer the steward with a `MaintainerAssignment` covering that mile — the app can already answer "who looks after this spot?" from a location and a date, and reusing it here is one query, not a new subsystem. Where there is a real conflict, **show one and disclose the other** ("ATC also maps a shelter 40 m north"), rather than picking silently. The honest-uncertainty pattern this project already uses for water reliability, applied to provenance.
+**This section no longer owns the rest, and one of its recommendations has been superseded.** [POI_DEDUPLICATION.md](POI_DEDUPLICATION.md) owns which record survives when two describe one place, what it inherits from the other, and who may override — tracked as **#696 — Nothing stops two sources publishing the same place twice, and the one rule that does is a 25 m constant for a single source pair**. Two things there differ from what this section originally recommended, and the reasons are measured rather than argued:
+
+- **Both records no longer survive as two published pins.** "Show one and disclose the other" (*"ATC also maps a shelter 40 m north"*) hands a hiker at eight percent battery the adjudication, and publishes the two-pins-for-one-place state deliberately. One id survives carrying every field the other can contribute; the loser retires into [POI_IDENTITY.md](POI_IDENTITY.md)'s ledger with a `superseded_by` pointer. **Disclosure survives as provenance on the one place** — the merged card names every contributing source — rather than as a second pin.
+- **`MaintainerAssignment` is not the whole precedence rule.** It is the right tie-break *within* the club tier, and it is kept there. But precedence turns out to be decided per field rather than per record: the authoritative steward owns the geometry and the name, while a lower-tier source may be the only one carrying a description, a tag or a photo, and discarding those is how a merge loses information it was supposed to combine.
+
+What this section still owns is the input to that: an organization's tier is **declared here at registration and confirmed by a human**, never inferred by a matcher. It cannot be derived from `Organization.kind` alone — ATC is a `nonprofit` by kind and a trail steward by role — which is the same point this document already makes about not being a governance body. It gives that decision a place to be recorded.
 
 ## Data model sketch
 

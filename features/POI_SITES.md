@@ -281,6 +281,15 @@ Nearly every A.T. shelter has water in reality. The app does not know where it i
 ## What this deliberately isn't
 
 - **Not a general clustering layer.** Sites are a modelled fact about facilities, capped at three member types. A crowded ridge of viewpoints is not this doc's problem — it belongs to [POI_VISIBILITY.md](POI_VISIBILITY.md), written the same day as this one by a session that could not see it. *(That doc was rewritten 2026-08-13 and its answer changed: `POI_PRIORITY` decides which of that ridge's viewpoints gets a **pin**, and the ones that lose draw as dots rather than disappearing. The measurements below are what pushed it — at hiking zooms co-location is nearly the whole of the loss, so this doc turns out to be doing most of the work and that one covers the residue.)* **The two are complementary and the boundary is clean: this doc owns several waypoints at one place, that one owns many places across one viewport.** Grouping 1,027 stacked points into 435 sites hands real pin budget back at hiking zooms and changes nothing about a corridor view holding 90 waypoints on a screen with room for 26. That doc's cross-reference table states the split from the other side; this doc's measurements are the evidence under both.
+- **Not deduplication.** A site is several *different* types at one place; two records of the
+  *same* type describing one place is [POI_DEDUPLICATION.md](POI_DEDUPLICATION.md)'s, added
+  2026-08-13. A privy is never a duplicate of its shelter, and two shelters are never parts of
+  each other — which is why open question 1's Horns Pond lean-tos stay two pins under both
+  designs rather than falling between them. That doc's measurement is the evidence for the
+  boundary: of the 48 same-type pairs within 25 m on the corridor, 35 are two real places that
+  ATC distinguishes by a sibling number, a direction or an outright different name, and the
+  Horns Pond pair (11.3 m), The Birches pair (10.1 m) and the two Grafton Notch privies of open
+  question 4 (20.7 m) are all in that 35.
 - **Not a zoom-dependent reveal.** Drawing member pins again above z16, where they would no longer collide, is a coherent idea and a second code path with a second set of failure modes. Left out of v1; noted below.
 - **Not spiderfy.** Fanning members out around the tapped pin on leader lines preserves the count but draws every member at a position it is not at. This app refuses to draw a stale GPS fix like a live one; drawing a privy 80 px from where it is, is the same refusal.
 - **Not a change to `icon-allow-overlap`.** Letting pins overlap is the symptom the complaint started from.

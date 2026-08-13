@@ -129,10 +129,26 @@ emails before the eighth was filtered. Alert on transitions, not on runs.
 | `protections-check.yml` | failing the run | branch protection, environments and labels |
 | `settings-configured.yml` | failing the run | that the secrets and variables really exist |
 
-The four tracking-issue implementations are four copies of one routine, and
-[#678 — One tracking-issue routine, copied into four monitors, with a
-first-seen regex fitted to each table](https://github.com/OurHike/OurHike/issues/678)
-is the plan to make them one.
+**All four share one routine** — `.github/scripts/tracking-issue.js`, required
+from each monitor's `github-script` step. It owns finding the issue by label
+*and* title, opening, updating in place, commenting and closing, and the
+"first seen" map. What stays with each caller is the verdict — whether this run
+is green — and the rendered body.
+
+That line is where it is because of #651, which corrected the all-clear
+condition in two of these monitors and needed a *different* correction for
+each: `check-deployment.yml` must not close on a run that never checked the
+artifacts, `smoke-published.yml` must not let a total outage close the alarm
+its own corruption opened. A shared "is it green" would have to be wrong for
+one of them, so `healthy` is an input and a test asserts the two conditions
+still differ.
+
+First-seen dates live in an HTML-comment marker the module writes and reads.
+Before #678 each copy parsed them back out of the markdown table it had just
+written, with a regex fitted to that file's column count — so adding a column
+would have silently reset that monitor's clock to today, for ever, with the
+body still saying "first seen". `.github/tests/test_tracking_issue.py` drives
+the real module under `node` and asserts the round trip.
 
 Exactly one scheduled workflow may reach the Supabase project —
 `supabase-keepalive.yml` — and `.github/tests/test_supabase_keepalive_workflow.py`

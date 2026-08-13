@@ -97,6 +97,29 @@ export interface StoredPoi {
    * `source`, and this is the gate: the other four are facts about a photo,
    * so none is stored without one.
    */
+  /**
+   * Which SITE this POI belongs to, and whether it is the anchor or a member
+   * (#523, pipeline/lib/poi_sites.py).
+   *
+   * A shelter, its privy and its campsites are one place with parts. The map
+   * draws one pin for the site rather than letting the members lose a collision
+   * they cannot win - map/poiSites.ts has the numbers.
+   *
+   * Optional for the same backward-compat reason as `source`: a phone that
+   * downloaded before #523 published the grouping has POIs without them, and
+   * undefined means "this copy predates the grouping" rather than "this POI is
+   * not in a site". Both draw a plain pin, which is what that phone drew before.
+   */
+  siteId?: string
+  /** `"anchor"` or `"member"`. Not a union type on purpose: a later release
+   *  could publish a third role, and a phone must not fail to parse a POI over
+   *  a word it does not know. map/poiSites.ts treats an unfamiliar role as "not
+   *  in a site", so the pin stays. */
+  siteRole?: string
+  /** The site's own name, e.g. "Mt. Algo Shelter" - what the pipeline's
+   *  normalisation matched on. Carried for the waypoint card (#526) rather than
+   *  for the pin, which shows the anchor's own name. */
+  siteName?: string
   photoUrl?: string
   /** The Commons file page, where the full licence terms and history live. */
   photoPage?: string
@@ -164,6 +187,9 @@ interface PoiProperties {
   photo_author?: unknown
   photo_license?: unknown
   photo_taken?: unknown
+  site_id?: unknown
+  site_role?: unknown
+  site_name?: unknown
 }
 
 /** The property when it is a non-empty string, else nothing - the artifact
@@ -257,6 +283,15 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
     const photoList = readPhotoList(props.photos)
     const capacity = capacityProp(props.capacity)
     const description = stringProp(props.description)
+    // #523's grouping (pipeline/lib/poi_sites.py). Read here rather than
+    // dropped, because these three are what let the map draw one pin for a
+    // shelter and its privy instead of drawing the shelter and DELETING the
+    // privy - see map/poiSites.ts for the 3%-of-privies measurement behind
+    // that. Additive on the artifact, so a phone that downloaded before #523
+    // simply has none of them.
+    const siteId = stringProp(props.site_id)
+    const siteRole = stringProp(props.site_role)
+    const siteName = stringProp(props.site_name)
 
     pois.push({
       id: String(props.id ?? `${fallbackType}:${props.lat},${props.lon}`),
@@ -281,6 +316,13 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
       // a number.
       ...(capacity !== undefined ? { capacity } : {}),
       ...(description !== undefined ? { description } : {}),
+      // All three ride together or not at all: a role with no site to belong
+      // to cannot be acted on, and map/poiSites.ts would treat it as a POI in
+      // no site anyway. Keeping them coupled here means that reading is stated
+      // in one place rather than inferred in two.
+      ...(siteId !== undefined && siteRole !== undefined
+        ? { siteId, siteRole, ...(siteName !== undefined ? { siteName } : {}) }
+        : {}),
       // Photo fields ride only behind a photo URL: an author or licence with
       // no photo is a credit for nothing, and would render as one.
       ...(photoUrl !== undefined

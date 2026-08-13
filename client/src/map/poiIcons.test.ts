@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import { POI_TYPES } from '../lib/config'
 import { CLOSURE_COLOR } from '../lib/closureStyle'
+import { SITE_ANCHOR_TYPES, SITE_MEMBER_TYPES } from './poiSites'
 import {
   buildPoiIcon,
   buildPoiIcons,
+  poiColor,
   poiGlyphPath,
   poiIconId,
+  siteMemberCombinations,
   POI_COLORS,
   POI_FALLBACK_COLOR,
   POI_PIN_PIXEL_RATIO,
@@ -304,10 +307,69 @@ describe('buildPoiIcons', () => {
   it('registers every published type plus the fallback, in both confidences', () => {
     const ids = buildPoiIcons().map((icon) => icon.id)
 
-    expect(ids).toHaveLength(ALL_TYPES.length * 2)
+    // The plain matrix, plus the site variants asserted below. Written as the
+    // sum rather than as 46, so adding a POI type or a member category moves
+    // this by construction instead of by someone remembering to.
+    const sited = SITE_ANCHOR_TYPES.length * 2 * (2 ** SITE_MEMBER_TYPES.length - 1)
+    expect(ids).toHaveLength(ALL_TYPES.length * 2 + sited)
     for (const type of ALL_TYPES) {
       expect(ids).toContain(poiIconId(type, 'high'))
       expect(ids).toContain(poiIconId(type, 'low'))
+    }
+  })
+
+  // Site pins (#524). The style resolves `site_members` straight to an image id,
+  // so an unregistered combination is a pin that draws nothing at all.
+  it('registers every member combination an anchor can carry', () => {
+    const ids = buildPoiIcons().map((icon) => icon.id)
+
+    for (const type of SITE_ANCHOR_TYPES) {
+      for (const members of siteMemberCombinations()) {
+        expect(ids).toContain(poiIconId(type, 'high', members))
+        expect(ids).toContain(poiIconId(type, 'low', members))
+      }
+    }
+  })
+
+  it('builds no site variant for a type that cannot anchor one', () => {
+    // A viewpoint never anchors a site (pipeline ANCHOR_TYPES), so the full
+    // matrix for it would be fourteen images the style can never ask for.
+    const ids = buildPoiIcons().map((icon) => icon.id)
+
+    expect(ids).not.toContain(poiIconId('viewpoint', 'high', ['privy']))
+  })
+
+  it('leaves a plain pin’s id exactly as it was', () => {
+    // The old ids must not move: every existing `match` arm, every test and the
+    // legend's own icon lookup resolve through them.
+    expect(poiIconId('shelter', 'high', [])).toBe('poi-shelter-verified')
+    expect(poiIconId('shelter', 'high')).toBe('poi-shelter-verified')
+  })
+
+  it('names a site pin by what it carries', () => {
+    expect(poiIconId('shelter', 'high', ['privy', 'water'])).toBe(
+      'poi-shelter-verified-privy+water',
+    )
+  })
+
+  it('draws something different when it carries something', () => {
+    // The failure this catches is a strip that computes but never reaches the
+    // pixels - every id registered, every image identical, and a hiker told
+    // nothing.
+    const plain = buildPoiIcon('shelter', 'high')
+    const sited = buildPoiIcon('shelter', 'high', ['privy'])
+
+    expect(sited.data).not.toEqual(plain.data)
+  })
+
+  it('clears WCAG AA between the footer band and every member glyph on it', () => {
+    // The strip's whole colour argument: the band is PIN_HALO_COLOR and each
+    // member glyph is that category's own accent, which is the SAME pair the
+    // disc-versus-glyph assertion above already proves for every type. So this
+    // is not a new bar, it is the existing one read the other way round -
+    // measured at privy 8.51, water 5.41, campsite 5.09.
+    for (const type of SITE_MEMBER_TYPES) {
+      expect(contrastRatio(poiColor(type), PIN_HALO_COLOR)).toBeGreaterThanOrEqual(4.5)
     }
   })
 

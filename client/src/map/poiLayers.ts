@@ -29,8 +29,15 @@ import { POI_TYPES } from '../lib/config'
 // structural instead of a convention two call sites have to keep.
 import type { MapPoint } from '../lib/legendContents'
 import {
+  SITE_ANCHOR_TYPES,
+  SITE_MEMBERS_PROPERTY,
+  composeSites,
+  siteMembersKey,
+} from './poiSites'
+import {
   buildPoiIcons,
   poiIconId,
+  siteMemberCombinations,
   UNKNOWN_POI_TYPE,
   type PoiConfidence,
 } from './poiIcons'
@@ -90,11 +97,21 @@ export const POI_PRIORITY: readonly string[] = [
   'viewpoint',
 ]
 
-function iconMatch(confidence: PoiConfidence): unknown[] {
+function iconMatch(
+  confidence: PoiConfidence,
+  members: readonly string[] = [],
+): unknown[] {
+  // Only the anchor types have site variants built, so only they get an arm
+  // carrying members - asking for `poi-viewpoint-verified-privy` would resolve
+  // to an image nobody registered, which MapLibre draws as nothing at all.
+  const sited = new Set<string>(SITE_ANCHOR_TYPES)
   return [
     'match',
     ['get', 'poi_type'],
-    ...POI_TYPES.flatMap((type) => [type, poiIconId(type, confidence)]),
+    ...POI_TYPES.flatMap((type) => [
+      type,
+      poiIconId(type, confidence, sited.has(type) ? members : []),
+    ]),
     // Every arm above is a type this build knows; anything else lands on the
     // neutral pin rather than on a missing image, which MapLibre draws as
     // nothing at all while logging about it once per tile.
@@ -110,11 +127,32 @@ function iconMatch(confidence: PoiConfidence): unknown[] {
  * source, would work and would move a rendering rule into data preparation,
  * where the next person to add a category would not find it.
  */
+/**
+ * The site pin an anchor asks for, by what it carries (#524).
+ *
+ * A `match` on the whole `site_members` string rather than arithmetic on a list:
+ * MapLibre expressions compare scalars, and map/poiSites.ts writes exactly these
+ * strings for exactly this reason. The empty arm is the fall-through - a pin
+ * carrying nothing, which is every pin that is not a site anchor - so the plain
+ * path and the site path are one expression rather than two that could drift.
+ */
+function siteAwareIconMatch(confidence: PoiConfidence): unknown[] {
+  return [
+    'match',
+    ['get', SITE_MEMBERS_PROPERTY],
+    ...siteMemberCombinations().flatMap((members) => [
+      siteMembersKey(members),
+      iconMatch(confidence, members),
+    ]),
+    iconMatch(confidence),
+  ]
+}
+
 export const POI_ICON_EXPRESSION: unknown[] = [
   'case',
   ['==', ['get', 'confidence'], 'high'],
-  iconMatch('high'),
-  iconMatch('low'),
+  siteAwareIconMatch('high'),
+  siteAwareIconMatch('low'),
 ]
 
 /** Water first, unknown types last. */
@@ -191,7 +229,12 @@ export interface PoiFeatureCollection {
     type: 'Feature'
     id: string
     geometry: { type: 'Point'; coordinates: [number, number] }
-    properties: { poi_type: string; confidence: string; [POI_ID_PROPERTY]: string }
+    properties: {
+      poi_type: string
+      confidence: string
+      [POI_ID_PROPERTY]: string
+      [SITE_MEMBERS_PROPERTY]: string
+    }
   }>
 }
 
@@ -202,9 +245,16 @@ export interface PoiFeatureCollection {
  * draws them - see the note about `glyphs` in {@link buildPoiLayer}.
  */
 export function poiFeatureCollection(pois: readonly MapPoint[]): PoiFeatureCollection {
+  // ONE FEATURE PER SITE, not per POI (#524). The members are removed here
+  // rather than filtered in the style, which is the whole mechanism: a style
+  // filter still hands MapLibre a symbol to place and lose, where a source
+  // without the member never asks for a box at all. See map/poiSites.ts for why
+  // deletion rather than overlap was the problem.
+  const { drawn, membersFor } = composeSites(pois)
+
   return {
     type: 'FeatureCollection',
-    features: pois.map((poi) => ({
+    features: drawn.map((poi) => ({
       type: 'Feature',
       id: poi.id,
       geometry: { type: 'Point', coordinates: [poi.lon, poi.lat] },
@@ -212,6 +262,10 @@ export function poiFeatureCollection(pois: readonly MapPoint[]): PoiFeatureColle
         poi_type: poi.type,
         confidence: poi.confidence,
         [POI_ID_PROPERTY]: poi.id,
+        // Always present, empty where the pin carries nothing, so the style's
+        // `match` needs no `coalesce` and a pin with no site is not a separate
+        // expression path that could drift from the one with.
+        [SITE_MEMBERS_PROPERTY]: siteMembersKey(membersFor.get(poi.id)),
       },
     })),
   }

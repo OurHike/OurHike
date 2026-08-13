@@ -2,7 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createExpression, featureFilter } from '@maplibre/maplibre-gl-style-spec'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { POI_TYPES } from '../lib/config'
-import { buildPoiIcons, poiIconId, UNKNOWN_POI_TYPE } from './poiIcons'
+import {
+  buildPoiIcons,
+  poiIconId,
+  siteMemberCombinations,
+  UNKNOWN_POI_TYPE,
+} from './poiIcons'
+import { SITE_ANCHOR_TYPES, SITE_MEMBERS_PROPERTY, siteMembersKey } from './poiSites'
 import {
   attachPoiFilter,
   attachPoiData,
@@ -181,7 +187,7 @@ describe('poiFeatureCollection', () => {
     expect(first.geometry.coordinates).toEqual([-77.1, 39.3])
   })
 
-  it('carries the two attributes the style matches on, and the id to look up by', () => {
+  it('carries the attributes the style matches on, and the id to look up by', () => {
     const [, shelter] = poiFeatureCollection(pois).features
 
     expect(shelter.id).toBe('s1')
@@ -189,7 +195,111 @@ describe('poiFeatureCollection', () => {
       poi_type: 'shelter',
       confidence: 'low',
       [POI_ID_PROPERTY]: 's1',
+      // Always present, empty where the pin carries nothing (#524). Asserted
+      // exactly rather than loosely, which is why this test had to change when
+      // the property arrived - a `toMatchObject` here would have let a fourth
+      // property appear unnoticed.
+      [SITE_MEMBERS_PROPERTY]: '',
     })
+  })
+
+  // One pin per site (#524). The mechanism lives in map/poiSites.ts and is
+  // tested there; what only this file can catch is the source failing to apply
+  // it, which would leave every member competing for a box exactly as before.
+  it('resolves every site pin to an image that was actually registered', () => {
+    // THE FAILURE THIS CATCHES, and the reason it EVALUATES the expression
+    // rather than reading it: MapLibre draws a missing image as NOTHING, logging
+    // once per tile. A site pin asking for an id nobody built is a shelter that
+    // vanishes from the map entirely - strictly worse than the privy problem
+    // #524 is fixing.
+    for (const type of SITE_ANCHOR_TYPES) {
+      for (const members of siteMemberCombinations()) {
+        for (const confidence of ['high', 'low'] as const) {
+          const resolved = evaluate(POI_ICON_EXPRESSION, {
+            ...poi(type, confidence),
+            [SITE_MEMBERS_PROPERTY]: siteMembersKey(members),
+          })
+
+          const label = `${type}/${confidence}/${members.join('+')}`
+          expect(REGISTERED_ICON_IDS, label).toContain(resolved)
+          // And it must be the SITE image, not merely A registered one. Asserting
+          // only "registered" passed while the expression resolved every site pin
+          // to the PLAIN icon - a shelter carrying a privy drawing a bare shelter
+          // pin and saying nothing, which is the failure this whole change exists
+          // to prevent. Caught by mutating the arm, not by reading it.
+          expect(resolved, label).toBe(poiIconId(type, confidence, members))
+          expect(resolved, label).not.toBe(poiIconId(type, confidence))
+        }
+      }
+    }
+  })
+
+  it('still resolves a pin carrying nothing to the plain image', () => {
+    const resolved = evaluate(POI_ICON_EXPRESSION, {
+      ...poi('shelter', 'high'),
+      [SITE_MEMBERS_PROPERTY]: '',
+    })
+
+    expect(resolved).toBe(poiIconId('shelter', 'high'))
+  })
+
+  it('drops a site member from the source rather than letting it lose a collision', () => {
+    const collection = poiFeatureCollection([
+      {
+        id: 'shelter',
+        type: 'shelter',
+        lat: 39,
+        lon: -77,
+        confidence: 'high',
+        siteId: 'site_1',
+        siteRole: 'anchor',
+      },
+      {
+        id: 'privy',
+        type: 'privy',
+        lat: 39.0004,
+        lon: -77,
+        confidence: 'high',
+        siteId: 'site_1',
+        siteRole: 'member',
+      },
+    ])
+
+    expect(collection.features.map((f) => f.id)).toEqual(['shelter'])
+  })
+
+  it('tells the style what the surviving pin is carrying', () => {
+    const collection = poiFeatureCollection([
+      {
+        id: 'shelter',
+        type: 'shelter',
+        lat: 39,
+        lon: -77,
+        confidence: 'high',
+        siteId: 'site_1',
+        siteRole: 'anchor',
+      },
+      {
+        id: 'privy',
+        type: 'privy',
+        lat: 39.0004,
+        lon: -77,
+        confidence: 'high',
+        siteId: 'site_1',
+        siteRole: 'member',
+      },
+      {
+        id: 'water',
+        type: 'water',
+        lat: 39.0005,
+        lon: -77,
+        confidence: 'low',
+        siteId: 'site_1',
+        siteRole: 'member',
+      },
+    ])
+
+    expect(collection.features[0].properties[SITE_MEMBERS_PROPERTY]).toBe('privy+water')
   })
 
   it('puts the POI id somewhere a tap can still read it', () => {

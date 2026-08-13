@@ -29,6 +29,7 @@
 // last looked at a POI that is known to be real.
 
 import { POI_TYPES, type PoiType } from '../lib/config'
+import { SITE_ANCHOR_TYPES, SITE_MEMBER_TYPES } from './poiSites'
 
 /**
  * Rendered size in CSS pixels.
@@ -110,8 +111,17 @@ export const UNKNOWN_POI_TYPE = 'unknown'
 export type PoiConfidence = 'high' | 'low'
 
 /** Stable image id, and the string the style's `match` expression resolves to. */
-export function poiIconId(type: string, confidence: PoiConfidence): string {
-  return `poi-${type}-${confidence === 'high' ? 'verified' : 'unverified'}`
+export function poiIconId(
+  type: string,
+  confidence: PoiConfidence,
+  members: readonly string[] = [],
+): string {
+  const base = `poi-${type}-${confidence === 'high' ? 'verified' : 'unverified'}`
+  // A site pin's id carries what it is carrying, so the style resolves straight
+  // from the feature's `site_members` property to an image without a lookup
+  // table in between (#524). Empty members give exactly the old id, so every
+  // plain pin keeps the name it already had - nothing re-registers.
+  return members.length === 0 ? base : `${base}-${members.join('+')}`
 }
 
 /**
@@ -157,6 +167,31 @@ export function pinGeometry(pixels: number) {
      * of it leaves the corners some air.
      */
     glyphBox: rDisc * Math.SQRT2 * 0.86,
+    /**
+     * The footer strip a SITE pin carries, saying what rides this pin (#524).
+     *
+     * A band inside the disc rather than in the halo ring: the ring is
+     * `haloWidth + edgeWidth` thick, which is a fifteenth of the pin, and a
+     * glyph in it would be a smudge. Inside the disc there is room, at the price
+     * features/POI_SITES.md names - the anchor's own glyph has to move up and
+     * shrink to make it, which is the "costs legibility at 38 px" this decision
+     * was always going to cost.
+     *
+     * Fractions of `rDisc`, like everything else here, so the site pin survives
+     * a size change the same way the plain pin does.
+     */
+    strip: {
+      /** Vertical span, from the centre downwards. */
+      top: center + rDisc * 0.26,
+      bottom: center + rDisc * 0.74,
+      /** Half-width. The disc clips the corners, which is why this can be
+       *  generous without spilling. */
+      halfWidth: rDisc * 0.78,
+    },
+    /** Where the anchor's glyph sits once a strip is under it: the same box,
+     *  smaller, and lifted clear of the band. */
+    sitedGlyphBox: rDisc * Math.SQRT2 * 0.62,
+    sitedGlyphShift: -rDisc * 0.24,
   }
 }
 
@@ -425,6 +460,14 @@ export interface PinSpec {
   color: string
   /** Solid rim, or the broken one that means "nobody has verified this". */
   confidence: PoiConfidence
+  /**
+   * The categories riding this pin, in the order they are drawn (#524).
+   *
+   * Empty or omitted draws the plain pin, unchanged - which is what every pin
+   * that is not a site anchor gets, and what a phone that downloaded before #523
+   * gets for everything.
+   */
+  members?: readonly string[]
 }
 
 /**
@@ -446,13 +489,25 @@ export function buildPinImage({
   glyph,
   color,
   confidence,
+  members = [],
 }: PinSpec): PoiIconImage {
   const geometry = pinGeometry(sizePx * pixelRatio)
   const disc = parseHex(color)
   const halo = parseHex(PIN_HALO_COLOR)
   const edge = parseHex(PIN_EDGE_COLOR)
 
-  const { pixels, center, rOuter, rDisc, edgeWidth, glyphBox } = geometry
+  const { pixels, center, rOuter, rDisc, edgeWidth, strip } = geometry
+  // A site pin gives room to the footer band by lifting and shrinking the
+  // anchor's own glyph; a plain pin is untouched, so nothing about the existing
+  // pins moves.
+  const sited = members.length > 0
+  const glyphBox = sited ? geometry.sitedGlyphBox : geometry.glyphBox
+  const glyphShift = sited ? geometry.sitedGlyphShift : 0
+  // Each member's own accent, on the halo band. The pair is the SAME pair the
+  // contrast assertion in poiIcons.test.ts already proves for every type - a
+  // type's colour against PIN_HALO_COLOR - so the strip clears WCAG AA by
+  // numbers that were already measured rather than by new ones.
+  const memberInks = members.map((type) => parseHex(poiColor(type)))
   const data = new Uint8ClampedArray(pixels * pixels * 4)
   const step = 1 / SUPERSAMPLE
   const samples = SUPERSAMPLE * SUPERSAMPLE
@@ -475,9 +530,35 @@ export function buildPinImage({
           let ink: readonly [number, number, number] | null = null
 
           if (distance <= rDisc) {
-            const gx = (x - (center - glyphBox / 2)) / glyphBox
-            const gy = (y - (center - glyphBox / 2)) / glyphBox
-            ink = insideGlyph(glyph, gx, gy) ? halo : disc
+            const inStrip =
+              sited &&
+              y >= strip.top &&
+              y <= strip.bottom &&
+              Math.abs(dx) <= strip.halfWidth
+
+            if (inStrip) {
+              // Which cell, and whether this sample is inside that member's
+              // glyph. The band is halo; the glyph in it is the member's accent.
+              const span = strip.halfWidth * 2
+              const cellWidth = span / memberInks.length
+              const offset = x - (center - strip.halfWidth)
+              const cell = Math.min(
+                memberInks.length - 1,
+                Math.max(0, Math.floor(offset / cellWidth)),
+              )
+              const cellBox = Math.min(cellWidth, strip.bottom - strip.top) * 0.82
+              const cx = center - strip.halfWidth + (cell + 0.5) * cellWidth
+              const cy = (strip.top + strip.bottom) / 2
+              const mx = (x - (cx - cellBox / 2)) / cellBox
+              const my = (y - (cy - cellBox / 2)) / cellBox
+              ink = insideGlyph(GLYPHS[members[cell]] ?? GLYPHS[UNKNOWN_POI_TYPE], mx, my)
+                ? memberInks[cell]
+                : halo
+            } else {
+              const gx = (x - (center - glyphBox / 2)) / glyphBox
+              const gy = (y - glyphShift - (center - glyphBox / 2)) / glyphBox
+              ink = insideGlyph(glyph, gx, gy) ? halo : disc
+            }
           } else if (distance <= rOuter && rimHasInk(dx, dy, confidence)) {
             ink = distance <= rOuter - edgeWidth ? halo : edge
           }
@@ -507,14 +588,36 @@ export function buildPinImage({
 }
 
 /** One waypoint pin, at the one size and palette every waypoint uses. */
-export function buildPoiIcon(type: string, confidence: PoiConfidence): PoiIconImage {
+export function buildPoiIcon(
+  type: string,
+  confidence: PoiConfidence,
+  members: readonly string[] = [],
+): PoiIconImage {
   return buildPinImage({
     sizePx: POI_PIN_SIZE,
     pixelRatio: POI_PIN_PIXEL_RATIO,
     glyph: GLYPHS[type] ?? GLYPHS[UNKNOWN_POI_TYPE],
     color: poiColor(type),
     confidence,
+    members,
   })
+}
+
+/**
+ * Every member combination a site pin can carry, as the style will ask for it.
+ *
+ * The non-empty subsets of SITE_MEMBER_TYPES in that array's own order, which is
+ * seven - and the reason the glyph strip is buildable at all where a `+N` badge
+ * is not. Distinct categories are bounded at three, so the whole matrix can be
+ * pre-registered; N is unbounded, and a site with five campsites would want a
+ * "+5" image nobody built.
+ */
+export function siteMemberCombinations(): readonly string[][] {
+  const combinations: string[][] = []
+  for (let mask = 1; mask < 2 ** SITE_MEMBER_TYPES.length; mask += 1) {
+    combinations.push(SITE_MEMBER_TYPES.filter((_, index) => (mask >> index) & 1))
+  }
+  return combinations
 }
 
 export interface RegisteredPoiIcon {
@@ -535,11 +638,26 @@ export function buildPoiIcons(): RegisteredPoiIcon[] {
   const types: string[] = [...POI_TYPES, UNKNOWN_POI_TYPE]
   const confidences: PoiConfidence[] = ['high', 'low']
 
-  return types.flatMap((type) =>
+  const plain = types.flatMap((type) =>
     confidences.map((confidence) => ({
       id: poiIconId(type, confidence),
       image: buildPoiIcon(type, confidence),
       pixelRatio: POI_PIN_PIXEL_RATIO,
     })),
   )
+
+  // Site variants for the ANCHOR types only (#524). A viewpoint never anchors a
+  // site, so building it a footer strip would be 14 images the style can never
+  // ask for - and the matrix is small enough to be worth keeping honest.
+  const sited = SITE_ANCHOR_TYPES.flatMap((type) =>
+    confidences.flatMap((confidence) =>
+      siteMemberCombinations().map((members) => ({
+        id: poiIconId(type, confidence, members),
+        image: buildPoiIcon(type, confidence, members),
+        pixelRatio: POI_PIN_PIXEL_RATIO,
+      })),
+    ),
+  )
+
+  return [...plain, ...sited]
 }

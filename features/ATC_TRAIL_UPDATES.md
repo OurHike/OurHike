@@ -343,7 +343,31 @@ four in the direction nobody wanted.
 So the constant is now `ATC_UPDATE_POINT_DRAWN_WIDTH` — the outer edge of the ink, the thing
 a reader can actually see — and the value handed to the spec is derived *from* it by
 subtracting the casing. Declared the other way round they drift the moment the casing width
-moves, which is the general form of the bug that cost the third pass.
+moves.
+
+**And the third pass found that all of that had been shaving the wrong number.** A screenshot
+of the corridor view settled it: 40px is right in the hand and roughly the width of Maryland
+on a map of Georgia to Maine, so five notices were five craters over four states. The dot was
+**one size at every zoom** — copied from `map/warningLayers.ts`, which argues for exactly that
+("a warning drawn small has stopped outranking the pins around it"). That argument is about a
+mark competing with *other marks*, which is a fixed contest at any zoom. This fault was a
+mark competing with *the ground it is drawn on*, and how much ground a pixel covers is
+precisely what zoom means. No amount of trimming the full-size number reaches it.
+
+`ATC_UPDATE_POINT_ZOOM_STOPS` is the fix — the dot and its glow ramp together:
+
+| Zoom | What is on screen | Dot, drawn width |
+|---|---|---|
+| ≤ 5 | the whole corridor | 18px |
+| 9 | `POI_MIN_ZOOM`, waypoint pins appear | 26px |
+| ≥ 13 | walking | 40px |
+
+The upper two stops are `POI_ICON_SIZE_EXPRESSION`'s own — 0.6 at z9, 1.0 at z13 — matched
+rather than picked, so the dot keeps exactly its clearance over a waypoint pin at *every*
+zoom the two share rather than only at the top. Below z9 the pins are gone and the only
+question is whether someone planning a week can see where the ATC has posted something; it is
+deliberately not a shrink to nothing, because unlike the pins this layer has no minzoom and
+zoomed out is exactly when that question gets asked.
 
 All three changes are size and stacking order, never hue. `lib/atcUpdateStyle.ts` refuses a
 second barrier colour at length, and the reasoning survives intact: on a safety map two reds

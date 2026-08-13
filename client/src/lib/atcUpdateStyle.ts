@@ -85,6 +85,11 @@ export const ATC_UPDATE_HALO_LAYER_ID = 'atc-update-halo'
  * after being cut once. A pin's own 38px is its whole circle (`pinGeometry`
  * spends `rOuter` on the disc, its edge and its halo), so the two numbers are
  * only comparable when this one includes its edge too.
+ *
+ * THIS IS THE SIZE AT WALKING ZOOM, not at every zoom - see
+ * {@link ATC_UPDATE_POINT_RADIUS_EXPRESSION}, which is where the third and
+ * largest mistake in this sequence was. A number that is right in the hand is
+ * absurd on a map of the whole corridor.
  */
 export const ATC_UPDATE_POINT_DRAWN_WIDTH = 40
 
@@ -101,6 +106,62 @@ export const ATC_UPDATE_POINT_DIAMETER =
 
 /** Half of {@link ATC_UPDATE_POINT_DIAMETER}, which is what MapLibre wants. */
 export const ATC_UPDATE_POINT_RADIUS = ATC_UPDATE_POINT_DIAMETER / 2
+
+/**
+ * The zooms the dot grows between, and what fraction of full size it is at
+ * each.
+ *
+ * ONE SIZE AT EVERY ZOOM WAS THE REAL FAULT, and two rounds of shaving pixels
+ * off the full-size number missed it because the number was never wrong in the
+ * place it was chosen for. In the hand, walking, 40px of ink is a mark a hiker
+ * can see and hit. On the whole-corridor view - Georgia to Maine on one screen,
+ * around z5 - the same 40px is roughly the width of Maryland, and five notices
+ * are five craters over four states. A screenshot of that is what settled it.
+ *
+ * The stops are read off the two things this dot shares a screen with:
+ *
+ *  - **z13 and up, full size.** Where map/poiLayers.ts stops interpolating and
+ *    a waypoint pin is its whole 38px. This is the comparison every bound in
+ *    src/test/atcAlertProminence.test.ts is about, so it has to be the zoom
+ *    both are at full size.
+ *  - **z9, 0.6.** `POI_MIN_ZOOM`, where waypoint pins first appear, and
+ *    `POI_ICON_SIZE_EXPRESSION`'s own lower stop. Matching the fraction rather
+ *    than picking one keeps the dot exactly its two pixels clear of a pin at
+ *    every zoom where both are drawn, instead of only at the top.
+ *  - **z5, 0.4.** Below the pins entirely, where the only question is whether
+ *    a hiker planning a week can see WHERE the ATC has posted something. About
+ *    18px of ink answers that. It is deliberately NOT a further shrink to
+ *    nothing: unlike the pins, this layer has no minzoom and never stops being
+ *    drawn, and "zoomed out to plan" is exactly when someone wants to know.
+ *
+ * So this is the opposite of the choice map/warningLayers.ts makes for its pin
+ * ("one size at every zoom, because a warning drawn small has stopped
+ * outranking the pins around it"), and the difference is real rather than an
+ * inconsistency. That argument is about a mark competing with OTHER MARKS,
+ * which is a fixed contest at any zoom. The fault here was a mark competing
+ * with THE GROUND IT IS DRAWN ON, and how much ground a pixel covers is
+ * precisely what zoom means.
+ */
+export const ATC_UPDATE_POINT_ZOOM_STOPS: ReadonlyArray<[zoom: number, scale: number]> = [
+  [5, 0.4],
+  [9, 0.6],
+  [13, 1],
+]
+
+/** A radius that grows with the camera, from a base at full size. */
+function zoomScaledRadius(fullSize: number): unknown[] {
+  return [
+    'interpolate',
+    ['linear'],
+    ['zoom'],
+    ...ATC_UPDATE_POINT_ZOOM_STOPS.flatMap(([zoom, scale]) => [zoom, fullSize * scale]),
+  ]
+}
+
+/** What the circle layer is given instead of a number. */
+export const ATC_UPDATE_POINT_RADIUS_EXPRESSION = zoomScaledRadius(
+  ATC_UPDATE_POINT_RADIUS,
+)
 
 /**
  * How far the glow reaches past the dot, as a multiple of its radius.
@@ -122,6 +183,14 @@ export const ATC_UPDATE_POINT_RADIUS = ATC_UPDATE_POINT_DIAMETER / 2
 export const ATC_UPDATE_HALO_SCALE = 1.5
 
 export const ATC_UPDATE_HALO_RADIUS = ATC_UPDATE_POINT_RADIUS * ATC_UPDATE_HALO_SCALE
+
+/** The glow on the same zoom ramp as the dot it surrounds.
+ *
+ *  Through the same helper rather than its own stops, so the two can never
+ *  come apart - a glow that stayed put while the dot shrank would end up a
+ *  translucent disc with a small mark in the middle of it, which is a
+ *  different drawing entirely. */
+export const ATC_UPDATE_HALO_RADIUS_EXPRESSION = zoomScaledRadius(ATC_UPDATE_HALO_RADIUS)
 
 /**
  * Fully blurred, which in MapLibre means a gradient rather than an edge.
@@ -184,7 +253,7 @@ export function buildAtcUpdateLayers(sourceId: string): LayerSpecification[] {
       source: sourceId,
       paint: {
         'circle-color': ATC_UPDATE_COLOR,
-        'circle-radius': ATC_UPDATE_HALO_RADIUS,
+        'circle-radius': ATC_UPDATE_HALO_RADIUS_EXPRESSION as unknown as number,
         'circle-opacity': ATC_UPDATE_HALO_OPACITY,
         'circle-blur': ATC_UPDATE_HALO_BLUR,
         // No stroke, and that is the whole difference between a glow and a
@@ -223,22 +292,24 @@ export function buildAtcUpdateLayers(sourceId: string): LayerSpecification[] {
     // (map/warningLayers.ts carries that cost for the warning pin). A dot in
     // the band's colour, with the band's casing as its stroke, is the same
     // treatment at a single mile - only much larger than the band is wide,
-    // for the reason ATC_UPDATE_POINT_DIAMETER gives.
+    // for the reason ATC_UPDATE_POINT_DRAWN_WIDTH gives.
     //
-    // One size at every zoom, like the warning pin and unlike the waypoints,
-    // which interpolate down to 0.6 as they approach their minzoom. Zoomed out
-    // to plan a week is exactly when someone wants to know where the ATC has
-    // posted something, and a dot drawn small there has stopped outranking the
-    // pins around it - which is the same argument warningLayers.ts makes, and
-    // it does not weaken for being made twice.
+    // Sized on a zoom ramp rather than fixed, which is the correction
+    // ATC_UPDATE_POINT_ZOOM_STOPS records: the full size is right in the hand
+    // and absurd on a map of the whole corridor, and no amount of shaving the
+    // full-size number fixes a fault that is about the other end of the range.
     {
       id: ATC_UPDATE_POINT_LAYER_ID,
       type: 'circle',
       source: sourceId,
       paint: {
         'circle-color': ATC_UPDATE_COLOR,
-        'circle-radius': ATC_UPDATE_POINT_RADIUS,
+        'circle-radius': ATC_UPDATE_POINT_RADIUS_EXPRESSION as unknown as number,
         'circle-stroke-color': ATC_UPDATE_CASING_COLOR,
+        // Constant while the radius ramps, on purpose. The casing is what
+        // holds the dot legible against pale paper and under red light, and a
+        // 1px outline at corridor zoom would be a dot with no edge at exactly
+        // the size where it needs one most.
         'circle-stroke-width': ATC_UPDATE_CASING_WIDTH,
       },
     },

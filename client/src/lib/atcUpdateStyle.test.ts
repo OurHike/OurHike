@@ -40,6 +40,41 @@ function paintOf(id: string): Record<string, unknown> {
   return (layer as { paint: Record<string, unknown> }).paint
 }
 
+/**
+ * A `circle-radius` read at one zoom.
+ *
+ * The radii are `interpolate` expressions now, so a test that compared the
+ * paint value to a number would be asserting the shape of an expression rather
+ * than the size of a dot. This evaluates the stops the way MapLibre would -
+ * linear between them, clamped outside - which is what lets every case below
+ * go on saying what a hiker sees at a given zoom.
+ */
+function radiusAt(id: string, zoom: number): number {
+  const expression = paintOf(id)['circle-radius'] as unknown[]
+  expect(expression[0]).toBe('interpolate')
+  expect(expression[1]).toEqual(['linear'])
+  expect(expression[2]).toEqual(['zoom'])
+
+  const stops: Array<[number, number]> = []
+  for (let at = 3; at < expression.length; at += 2) {
+    stops.push([expression[at] as number, expression[at + 1] as number])
+  }
+
+  const first = stops[0]
+  const last = stops[stops.length - 1]
+  if (zoom <= first[0]) return first[1]
+  if (zoom >= last[0]) return last[1]
+
+  const upper = stops.findIndex(([stopZoom]) => stopZoom >= zoom)
+  const [lowZoom, lowValue] = stops[upper - 1]
+  const [highZoom, highValue] = stops[upper]
+  const t = (zoom - lowZoom) / (highZoom - lowZoom)
+  return lowValue + (highValue - lowValue) * t
+}
+
+/** The zoom at and above which everything on this map is at full size. */
+const WALKING_ZOOM = 13
+
 describe('an ATC band carries the same weight as a closure', () => {
   it('is exactly as wide', () => {
     // A narrower band would be the severity distinction this module refuses
@@ -119,8 +154,42 @@ describe('a point notice', () => {
     // where that comparison is actually held, against the pins themselves.
     expect(ATC_UPDATE_POINT_DIAMETER).toBeGreaterThan(ATC_UPDATE_LINE_WIDTH)
     expect(ATC_UPDATE_POINT_RADIUS * 2).toBe(ATC_UPDATE_POINT_DIAMETER)
-    expect(paintOf(ATC_UPDATE_POINT_LAYER_ID)['circle-radius']).toBe(
+    expect(radiusAt(ATC_UPDATE_POINT_LAYER_ID, WALKING_ZOOM)).toBe(
       ATC_UPDATE_POINT_RADIUS,
+    )
+  })
+
+  it('shrinks with the camera, because the ground a pixel covers does', () => {
+    // The fault two rounds of shaving the full-size number could not reach: at
+    // z5 the whole corridor is on one screen and a walking-zoom dot is roughly
+    // the width of Maryland. Five notices drawn that way are five craters over
+    // four states.
+    const walking = radiusAt(ATC_UPDATE_POINT_LAYER_ID, WALKING_ZOOM)
+
+    expect(radiusAt(ATC_UPDATE_POINT_LAYER_ID, 5)).toBeLessThan(walking / 2)
+    expect(radiusAt(ATC_UPDATE_POINT_LAYER_ID, 9)).toBeLessThan(walking)
+    expect(radiusAt(ATC_UPDATE_POINT_LAYER_ID, 9)).toBeGreaterThan(
+      radiusAt(ATC_UPDATE_POINT_LAYER_ID, 5),
+    )
+  })
+
+  it('never shrinks to nothing, having no minzoom to hide behind', () => {
+    // Unlike the waypoint pins, this layer is drawn at every zoom there is -
+    // and zoomed out to plan a week is exactly when someone wants to know
+    // where the ATC has posted something. Clamped at the bottom stop, so the
+    // corridor view keeps a mark a hiker can actually find.
+    const smallest = radiusAt(ATC_UPDATE_POINT_LAYER_ID, 0)
+
+    expect(smallest).toBe(radiusAt(ATC_UPDATE_POINT_LAYER_ID, 5))
+    expect(smallest * 2).toBeGreaterThan(ATC_UPDATE_LINE_WIDTH)
+  })
+
+  it('stops growing once everything else has', () => {
+    // z13 is where map/poiLayers.ts stops interpolating too. Past it the
+    // comparison with a waypoint pin is fixed, which is what makes
+    // src/test/atcAlertProminence.test.ts's bounds mean anything.
+    expect(radiusAt(ATC_UPDATE_POINT_LAYER_ID, 18)).toBe(
+      radiusAt(ATC_UPDATE_POINT_LAYER_ID, WALKING_ZOOM),
     )
   })
 
@@ -159,12 +228,22 @@ describe('the glow around a point notice', () => {
   // The half of "more pronounced" that is not size. A dot says where; the glow
   // is what makes an eye that was reading somewhere else look at the dot.
 
-  it('reaches the dot’s own width past it, on every side', () => {
+  it('reaches half the dot’s radius past it again, on every side', () => {
     expect(ATC_UPDATE_HALO_RADIUS).toBe(ATC_UPDATE_POINT_RADIUS * ATC_UPDATE_HALO_SCALE)
     expect(ATC_UPDATE_HALO_RADIUS).toBeGreaterThan(ATC_UPDATE_POINT_RADIUS)
-    expect(paintOf(ATC_UPDATE_HALO_LAYER_ID)['circle-radius']).toBe(
-      ATC_UPDATE_HALO_RADIUS,
-    )
+    expect(radiusAt(ATC_UPDATE_HALO_LAYER_ID, WALKING_ZOOM)).toBe(ATC_UPDATE_HALO_RADIUS)
+  })
+
+  it('rides the dot’s zoom ramp, at every stop on it', () => {
+    // Its own stops would come apart from the dot's the first time either
+    // moved, and what that leaves is a translucent disc with a small mark in
+    // the middle - a different drawing, and one that claims an area.
+    for (const zoom of [0, 5, 7, 9, 11, 13, 18]) {
+      expect(radiusAt(ATC_UPDATE_HALO_LAYER_ID, zoom)).toBeCloseTo(
+        radiusAt(ATC_UPDATE_POINT_LAYER_ID, zoom) * ATC_UPDATE_HALO_SCALE,
+        6,
+      )
+    }
   })
 
   it('is a gradient with no edge, rather than a translucent disc', () => {

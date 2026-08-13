@@ -8,8 +8,9 @@ import {
   ATC_UPDATE_POINT_DIAMETER,
   ATC_UPDATE_POINT_DRAWN_WIDTH,
   ATC_UPDATE_POINT_LAYER_ID,
+  ATC_UPDATE_POINT_ZOOM_STOPS,
 } from '../lib/atcUpdateStyle'
-import { POI_LAYER_ID } from '../map/poiLayers'
+import { POI_ICON_SIZE_EXPRESSION, POI_LAYER_ID, POI_MIN_ZOOM } from '../map/poiLayers'
 import { POI_PIN_SIZE } from '../map/poiIcons'
 import { WARNING_LAYER_ID } from '../map/warningLayers'
 import { WARNING_PIN } from '../lib/seriousWarnings'
@@ -73,6 +74,23 @@ describe('the ATC’s point notice sits just above every pin on the map', () => 
     // to make an eye land here rather than on the pin beside it. Two passes
     // spent more than that and both looked wrong on a phone.
     expect(ATC_UPDATE_POINT_DRAWN_WIDTH - POI_PIN_SIZE).toBeLessThanOrEqual(4)
+  })
+
+  it('keeps that clearance at every zoom a waypoint pin is drawn at', () => {
+    // Both ramp, so "wider than a pin" is a claim about a range rather than a
+    // number. The stops are shared on purpose - z9/0.6 and z13/1 are
+    // POI_ICON_SIZE_EXPRESSION's own - so the ratio is constant across the
+    // whole span where the two compete, and the dot cannot be the smaller mark
+    // at some middle zoom nobody screenshotted.
+    const poiStops = POI_ICON_SIZE_EXPRESSION.slice(3)
+    const atcStops = ATC_UPDATE_POINT_ZOOM_STOPS.filter(([zoom]) => zoom >= POI_MIN_ZOOM)
+
+    expect(atcStops).toEqual(
+      Array.from({ length: poiStops.length / 2 }, (_, at) => [
+        poiStops[at * 2],
+        poiStops[at * 2 + 1],
+      ]),
+    )
   })
 
   it('does NOT outgrow the serious-warning pin as a disc', () => {

@@ -217,6 +217,12 @@ def no_real_water_distance_file(tmp_path, monkeypatch):
     monkeypatch.setattr(export_poi, "WATER_DISTANCE_PATH", tmp_path / "no-water-distance-file.json")
 
 
+# TRAIL_WATER_PATH is redirected for the whole suite by conftest.py's
+# no_real_trail_water, which is autouse there rather than here because
+# unify_all_sources reads it and every caller of that function needs the
+# same protection - test_fetch_poi_images.py found that out the hard way.
+
+
 def test_export_poi_clips_features_outside_the_corridor(tmp_path, con):
     """A synthetic feature far from the trail should not appear in output -
     mirrors spike_corridor.py's own clip step, on tiny synthetic data rather
@@ -1556,3 +1562,225 @@ def test_export_poi_leaves_the_sentence_to_the_describer_and_the_parts_to_the_co
 
     assert "description" not in anchor
     assert json.loads(anchor["nearby"]) == [{"phrase": "a privy", "distance_ft": 137.8}]
+
+
+# --- OSM water points (#529, fetch_osm_water.py) ----------------------------
+
+
+def _osm_water_feature(osm_id, lon, lat, **tags):
+    return _point_feature(None, lon, lat, {"osm_id": str(osm_id), "kind": "spring", **tags})
+
+
+def test_export_poi_osm_water_folds_into_water_at_low_confidence(tmp_path, monkeypatch, con):
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    # ~2 km from the opentrail water point at (-73.92, 41.02) - a real
+    # neighbour, not a twin.
+    _write_fc(raw_dir / "osm_water.geojson", [_osm_water_feature(555, -73.90, 41.03, name="Ridge Spring", intermittent="yes")])
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
+
+    export_poi.main()
+
+    water = json.loads((tmp_path / "processed" / "poi" / "water.geojson").read_text())
+    by_id = {f["properties"]["id"]: f["properties"] for f in water["features"]}
+    spring = by_id["osm_water:555"]
+    assert spring["confidence"] == CONFIDENCE_LOW
+    assert spring["name"] == "Ridge Spring"
+    assert spring["description"] == "Spring, mapped as intermittent. Mapped by OpenStreetMap contributors."
+    # opentrail's own points are untouched beside it, description-less as
+    # they always were.
+    assert by_id["opentrail_at:100"]["description"] is None
+
+
+def test_export_poi_an_absent_osm_water_file_is_a_normal_state(tmp_path, monkeypatch, con):
+    """The fetch is conditional (a multi-gigabyte download), so every run
+    before it - and every run that unticks it - exports opentrail's water
+    alone, exactly as before the source existed."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
+
+    export_poi.main()
+
+    water = json.loads((tmp_path / "processed" / "poi" / "water.geojson").read_text())
+    sources = {f["properties"]["source"] for f in water["features"]}
+    assert sources == {"opentrail_at"}
+
+
+def test_export_poi_an_osm_twin_of_an_opentrail_point_is_dropped(tmp_path, monkeypatch, con):
+    """opentrail imports OSM, so a pair within WATER_DEDUP_RADIUS_M is one
+    node arriving through two doors. The opentrail record is the one kept -
+    its id is already published, so a Report filed against it stays
+    attached."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    # ~11 m north of the opentrail "w" point at (-73.92, 41.02).
+    twin = _osm_water_feature(556, -73.92, 41.0201)
+    # ~44 m north: a neighbour past the measured duplicate cluster - kept,
+    # because by that range the pair is plausibly a spring and a separate
+    # stream access, two facts a hiker wants both of.
+    neighbour = _osm_water_feature(557, -73.92, 41.0204)
+    _write_fc(raw_dir / "osm_water.geojson", [twin, neighbour])
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
+
+    export_poi.main()
+
+    water = json.loads((tmp_path / "processed" / "poi" / "water.geojson").read_text())
+    ids = {f["properties"]["id"] for f in water["features"]}
+    assert "opentrail_at:100" in ids
+    assert "osm_water:556" not in ids
+    assert "osm_water:557" in ids
+
+
+# --- where the trail meets water (#529, build_trail_water.py) ---------------
+
+
+def _write_trail_water(path, crossings=(), sites=()):
+    path.write_text(json.dumps({"crossings": list(crossings), "sites": list(sites)}))
+
+
+def _trail_water_site(global_id, lat, lon, **water):
+    """A site record whose gates passed - `water` null is the refusal shape,
+    and resolve_site's job, not this file's."""
+    return {
+        "layer": "shelters",
+        "atc_global_id": global_id,
+        "atc_name": "Test Shelter",
+        "water": {
+            "sources": ["osm"],
+            "stream_id": "12",
+            "name": "Stony Brook",
+            "flow": None,
+            "flow_source": None,
+            "lat": lat,
+            "lon": lon,
+            **water,
+        },
+    }
+
+
+def test_export_poi_publishes_trail_stream_crossings(tmp_path, monkeypatch, con):
+    """The `crossing` type has shipped declared-and-empty since it was
+    declared; a hiker walking the trail walks through these."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    trail_water = tmp_path / "trail_water.json"
+    _write_trail_water(
+        trail_water,
+        crossings=[
+            {
+                "sources": ["nhd", "osm"],
+                "stream_id": "90662307",
+                "flow": "perennial",
+                "flow_source": "nhd",
+                "name": "Stony Brook",
+                "lat": 41.04,
+                "lon": -73.945,
+            }
+        ],
+    )
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
+    monkeypatch.setattr(export_poi, "TRAIL_WATER_PATH", trail_water)
+
+    export_poi.main()
+
+    crossings = json.loads((tmp_path / "processed" / "poi" / "crossing.geojson").read_text())
+    (crossing,) = crossings["features"]
+    assert crossing["properties"]["name"] == "Stony Brook"
+    assert crossing["properties"]["confidence"] == CONFIDENCE_LOW
+    assert crossing["properties"]["description"] == (
+        "Where the trail crosses Stony Brook. USGS maps it as year-round. Also mapped by OpenStreetMap contributors."
+    )
+    # Identity is WHERE it is: one reach can cross the trail twice, so the
+    # reach id alone would collide.
+    assert crossing["properties"]["id"] == "nhd_crossing:41.04000,-73.94500"
+
+
+def test_export_poi_site_water_folds_onto_the_shelters_pin(tmp_path, monkeypatch, con):
+    """The whole point of publishing a real coordinate rather than a
+    distance: lib/poi_sites.py's proximity fold does the association, so the
+    shelter's pin carries the water and its card can name it."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    trail_water = tmp_path / "trail_water.json"
+    # ~28 m north of the fixture shelter at (-73.95, 41.05) - inside the
+    # 100 ft match gate, and inside poi_sites' 60 m proximity fold.
+    _write_trail_water(trail_water, sites=[_trail_water_site("shelter-glob-1", 41.05025, -73.95)])
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
+    monkeypatch.setattr(export_poi, "TRAIL_WATER_PATH", trail_water)
+
+    export_poi.main()
+
+    water = json.loads((tmp_path / "processed" / "poi" / "water.geojson").read_text())
+    point = next(f["properties"] for f in water["features"] if f["properties"]["source"] == "nhd_stream")
+    assert point["id"] == "nhd_stream:shelter-glob-1"
+    assert point["confidence"] == CONFIDENCE_LOW
+    assert point["description"] == "Stony Brook, where it runs closest to the site. Mapped by OpenStreetMap contributors."
+    # Folded onto the shelter's site, which is what makes it reachable from
+    # the one pin the map draws.
+    shelters = json.loads((tmp_path / "processed" / "poi" / "shelter.geojson").read_text())
+    (shelter,) = shelters["features"]
+    assert point["site_id"] == shelter["properties"]["site_id"]
+    assert point["site_role"] == "member"
+    # And the anchor names it among its parts, in feet for the phone to
+    # convert. Read as-is rather than json.loads'd: GDAL re-expands a
+    # JSON-shaped string into real JSON when it writes the .geojson, which is
+    # the type disagreement between the two artifacts POI_COLUMNS documents.
+    parts = shelter["properties"]["nearby"]
+    assert [part["phrase"] for part in parts] == ["water"]
+
+
+def test_export_poi_publishes_no_water_for_a_site_the_gates_refused(tmp_path, monkeypatch, con):
+    """A site whose nearest stream was too far or down a cliff has `water`
+    null in the reference file, and nothing here invents a point for it -
+    the reason stays in that file for a human to read."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    trail_water = tmp_path / "trail_water.json"
+    _write_trail_water(
+        trail_water,
+        sites=[
+            {
+                "layer": "shelters",
+                "atc_global_id": "shelter-glob-1",
+                "atc_name": "Test Shelter",
+                "water": None,
+                "unresolved": "the ground drops 120 ft over 90 ft - a 133% grade, which is a scramble rather than a walk",
+            }
+        ],
+    )
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
+    monkeypatch.setattr(export_poi, "TRAIL_WATER_PATH", trail_water)
+
+    export_poi.main()
+
+    water = json.loads((tmp_path / "processed" / "poi" / "water.geojson").read_text())
+    assert all(f["properties"]["source"] != "nhd_stream" for f in water["features"])
+
+
+def test_export_poi_an_absent_trail_water_file_is_a_normal_state(tmp_path, monkeypatch, con):
+    """Same tolerance as capacities and photos: the export ships without
+    crossings rather than failing, and `crossing` is empty-but-present as it
+    was before this source existed."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
+    monkeypatch.setattr(export_poi, "TRAIL_WATER_PATH", tmp_path / "no-trail-water.json")
+
+    manifest = export_poi.main()
+
+    assert manifest["crossing"]["geojson"]["feature_count"] == 0

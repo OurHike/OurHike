@@ -159,6 +159,24 @@ collide, which files actually cause the collisions, and what order to land thing
 it before opening a second concurrent branch. It also holds the one-branch-per-issue rule
 that used to live here.
 
+## A build script's output has a home, and it is not the repository
+
+Before running a script that writes a file, decide where that file lives — because
+committing it is the one choice that cannot be undone. [CONTRIBUTING.md](CONTRIBUTING.md)
+has the rule and the reasoning ("Data does not go in commits"); what an agent needs is the
+trigger: **you are about to add a generated file, so pick its shelf first.**
+
+`pipeline/data/` for anything fetched or derived — gitignored, cached between CI runs,
+published to R2 by `publish.py`. `pipeline/reference/` **only** for a join that encodes
+judgement somebody reviews row by row, and it has a line ceiling for exactly that reason.
+
+This is written down because an agent did the wrong one and had a good story for it:
+`reference/` is not gitignored, holds three small checked-in files, and reads as "where
+derived things go", so a 20,099-line derivation went in with a docstring explaining why it
+belonged there. Every sentence of that explanation was about *reproducibility*, and none of
+it noticed that the file was a permanent publication of somebody else's data. The maintainer
+caught it in review. `.github/tests/test_no_committed_data.py` catches it now.
+
 ## Run what CI runs, before pushing
 
 ```

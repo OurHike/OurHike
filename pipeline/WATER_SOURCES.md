@@ -290,7 +290,12 @@ ones; the client work for all of this is already built):
   will not fire for a spring that does not share the shelter's name. Real springs often
   sit 60–250 m out: points alone put pins *near* shelters while most shelter cards stay
   silent. Widening the gate for water specifically is a product decision this document
-  flags and does not make. *(Measured 2026-08-13 while #694 was scoped: against today's
+  flags and does not make.
+  *Amended 2026-08-13:* it stopped being a catch and became the mechanism. The
+  100 ft match radius `build_trail_water.py` uses sits **inside** that 60 m fold
+  deliberately, so a derived water point needs no second association rule — it is
+  published at its real coordinates and the existing grouping puts it on the
+  shelter's pin. A match the map could not draw would be a match in name only. *(Measured 2026-08-13 while #694 was scoped: against today's
   174 opentrail points, widening 60 m → 150 m folds in exactly zero additional water
   members — the decision only becomes live once the OSM points land, and wants
   re-measuring then.)*
@@ -348,6 +353,13 @@ and hiker reports as the only eventual answer to "is it flowing".
    is thinnest. Each pin is a mapped spring or tap — a claim a hiker can verify at
    the spot. The prior session's "don't build it" was answered by its own missing
    sample: at 40% in the south, the fetcher earns its place.
+   *Amended 2026-08-13: built.* `fetch_osm_water.py` reads the same fourteen
+   extracts the basemap build downloads (7,574 point nodes on the first full
+   scan); `export_poi.py` folds them in at `low`, dropping each point within
+   25 m of an opentrail water point as the same OSM node arriving twice — a
+   radius measured before it was chosen (41 of opentrail's 174 water points
+   have a twin inside it; the tail past it is real neighbours). The corridor's
+   water layer goes from 174 features to 1,705.
 2. **The per-shelter nearest-stream sentence from NHD** — *small effort, closes the
    silence for everyone.* A describer entry in `export_poi.py` composing, for every
    shelter, *"Nearest mapped stream: Stony Brook, about 70 m (USGS; mapped as
@@ -358,6 +370,37 @@ and hiker reports as the only eventual answer to "is it flowing".
    assert "there is water here" — §5's error literature is the reason that wording
    is load-bearing. Blood Mtn stays honest: "no mapped stream within 1 km" is also a
    sentence worth printing.
+   *Amended 2026-08-13, and the amendment replaces the option rather than
+   completing it.* This shipped first as a nearest-stream sentence on every
+   shelter card, out to a kilometre. **The maintainer rejected the shape, and
+   was right to**: a stream 700 m away is a true fact about the map that says
+   nothing about the shelter, and a card printing it answers a question
+   nobody asked. What replaced it is narrower and load-bearing —
+   [build_trail_water.py](build_trail_water.py) publishes a water POI for a
+   site only where a hiker could actually reach it: **within 100 ft AND under
+   a 15% grade**, the second gate measured from real 3DEP elevations at both
+   ends, because a stream 90 ft away and 120 ft below is not a water source
+   however close the map says it is. Both numbers are the maintainer's, and
+   the reasoning behind the tight radius is worth recording: **most A.T.
+   shelters have had their own spring built out over decades**, so the water
+   a shelter actually uses is a piped source somebody dug rather than the
+   nearest blue line — which is why ATC's own measured distance (§4, #668)
+   stays the better answer for shelters and this derivation only fills in a
+   real coordinate where geometry can honestly supply one. Rejected candidates keep their numbers
+   in the file so either gate can be re-argued from data. The same script
+   fills `crossing` from exact trail×stream intersections — water a hiker
+   walks straight through — which is the other half of "show the water that
+   meets the trail or a POI". Streams come from **both** hydrographies,
+   merged: USGS classifies flow — the one structured answer anywhere to "will
+   this be dry in August", and §1's whole reason for measuring NHD — while OSM
+   more often carries the local name and is edited by people who walk there.
+   A crossing deduped across the two keeps whichever half each supplied and
+   attributes the flow claim to whoever made it, per
+   [features/POI_DEDUPLICATION.md](../features/POI_DEDUPLICATION.md)'s
+   combine-don't-drop rule. USGS arrives as bulk staged GeoPackages, one
+   subregion at a time: its query service 504s under corridor-scale load (the
+   failure that killed two publish runs, ELEVATION_SOURCES.md), and a
+   derivation nobody can re-run is not one anybody can check.
 3. **The ATC ask, extended by one question** — *no code, unblocks the ceiling.* The
    combined ask SOURCE_SURVEY.md §10 already plans (capacity, Helene, half-mile
    points) should add: CSI shows per-site water distances sourced from FarOut and

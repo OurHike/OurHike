@@ -92,7 +92,17 @@ MAX_PHOTO_AGE_DAYS = 1461  # four years, including one leap day
 #
 # Adding a type here is how that gets revisited - with a measurement, the way
 # the ATC source was.
-SEARCH_RADIUS_M = {"shelter": 300, "campsite": 300, "water": 120, "resupply": 500, "crossing": 300}
+# `crossing` is deliberately absent, and lib/poi_schema.py's POI_TYPES comment
+# is where that silence is documented: an absent radius means this crawl skips
+# the category. It carried 300 while the layer was empty, so nothing was ever
+# skipped in practice; when build_trail_water.py filled it (#529) the choice
+# became real, and the answer is no. A Commons photo matched by proximity to a
+# stream-crossing coordinate is a photograph of whatever somebody uploaded
+# nearby - features/POI_PHOTOS.md measured how often that is a plant - and a
+# trail crossing a stream is the one waypoint type whose own name is the whole
+# description. Paying an API round trip apiece to illustrate that is a cost
+# with no reader.
+SEARCH_RADIUS_M = {"shelter": 300, "campsite": 300, "water": 120, "resupply": 500}
 
 GEOSEARCH_LIMIT = 30
 IMAGE_WIDTH_PX = 640  # thumburl width: 2x the card's 264px slot, still tens of KB

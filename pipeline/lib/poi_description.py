@@ -678,3 +678,123 @@ def nearby_parts(members: list[tuple[str, float, dict]]) -> list[dict]:
         }
         for poi_type, feet, properties in ranked
     ]
+
+
+# fetch_osm_water.py's `kind` values -> the sentence's head. A kind that
+# script grows and this map does not know composes nothing rather than
+# guessing - the same direction every unrecognised ATC code rounds.
+WATER_KINDS = {
+    "spring": "Spring",
+    "drinking_water": "Drinking water point",
+    "water_tap": "Water tap",
+    "water_well": "Well",
+}
+
+
+#: What each source is called in a sentence, and what its flow claim sounds
+#: like. USGS *maps* a class - it is a survey code on a published dataset;
+#: OSM contributors *tag* one - it is what a mapper wrote down. The verbs are
+#: different because the claims are.
+STREAM_SOURCES = {"nhd": "USGS", "osm": "OpenStreetMap contributors"}
+STREAM_CLAIMS = {"nhd": "maps it as", "osm": "tag it as"}
+
+#: A flow class as a hiker reads it. "Year-round" and "seasonal" are the only
+#: two distinctions that change what somebody carries; ephemeral folds into
+#: seasonal because the difference between "flows after rain" and "flows in
+#: spring" is not one this data can be trusted to hold (WATER_SOURCES.md §5's
+#: error literature), and an unclassified reach says nothing at all.
+FLOW_WORDS = {"perennial": "year-round", "intermittent": "seasonal", "ephemeral": "seasonal"}
+
+
+def describe_stream_point(properties: dict) -> str:
+    """One sentence about a point on a stream - the site water and the trail
+    crossings build_trail_water.py derives from USGS's and OSM's hydrography
+    (#529).
+
+    NO DISTANCE IN IT, deliberately (#625). These points sit at real
+    coordinates, so a site's own `nearby` measures the walk and the phone
+    writes it in the hiker's units; a distance composed into this sentence
+    would be the same number twice, in a unit somebody did not choose.
+
+    What it does carry is the derivation, because a hiker deserves to know
+    the difference between a spring somebody mapped and a spot geometry
+    picked: "where it runs closest to the site" is the honest description of
+    a point nobody has stood at.
+
+    THE FLOW CLAIM IS ATTRIBUTED TO WHOEVER MADE IT. A merged point carries
+    both hydrographies, and only one of them usually classified the reach -
+    so the sentence names that one rather than spreading the claim across
+    both. Where nobody classified it, the sentence makes no flow claim at
+    all: silence is not a promise of year-round water, and an untagged reach
+    is silence.
+    """
+    name = properties.get("name")
+    sources = list(properties.get("sources") or [])
+    if properties.get("crossing"):
+        opening = f"Where the trail crosses {name}." if name else "Where the trail crosses a stream."
+    else:
+        subject = name if name else "A stream"
+        opening = f"{subject}, where it runs closest to the site."
+
+    flow_word = FLOW_WORDS.get(properties.get("flow") or "")
+    claimant = properties.get("flow_source") if flow_word else None
+    parts = [opening]
+    if claimant in STREAM_SOURCES:
+        parts.append(f"{STREAM_SOURCES[claimant]} {STREAM_CLAIMS[claimant]} {flow_word}.")
+        others = [STREAM_SOURCES[source] for source in sources if source != claimant and source in STREAM_SOURCES]
+        if others:
+            parts.append(f"Also mapped by {_join(others)}.")
+    else:
+        named = [STREAM_SOURCES[source] for source in sources if source in STREAM_SOURCES]
+        if named:
+            parts.append(f"Mapped by {_join(named)}.")
+    return " ".join(parts)
+
+
+def describe_water(properties: dict) -> str | None:
+    """One sentence about a water point - or None for one with nothing usable
+    behind it (opentrail's, whose properties carry a title and an icon and no
+    facts to compose from).
+
+    Two kinds of water point reach this, and they are told apart by which
+    facts they carry rather than by a source string: OSM's have a `kind` from
+    somebody's tags, and build_trail_water.py's have a `flow` from NHD's
+    FCode. The docstring below is the OSM half; describe_stream_point is the
+    other.
+
+    The head names what was mapped - a spring, a tap, a well, a fountain -
+    because that IS the claim an OSM water pin makes: somebody stood there
+    and mapped a spring. The reliability tags follow only where they exist:
+    the census measured `seasonal` on zero features trail-wide and
+    `intermittent` on a handful (#529), so absence is the normal state and
+    composes NOTHING - "mapped as intermittent" is a fact somebody recorded,
+    while "flows year-round" would be this pipeline strengthening silence
+    into a promise (OurHikeValues.md #4).
+
+    `drinking_water=no` earns its own sentence rather than a clause: a
+    hiker skimming to the comma must not carry "drinking water" away from a
+    point tagged the opposite.
+
+    The attribution sentence is ODbL's courtesy paid where the datum is
+    read; the source field carries `osm_water` for machines and the credits
+    screen already names OpenStreetMap for the app as a whole.
+    """
+    if properties.get("sources"):
+        return describe_stream_point(properties)
+    head = WATER_KINDS.get(properties.get("kind"))
+    if head is None:
+        return None
+    clauses = []
+    if str(properties.get("intermittent", "")).lower() == "yes":
+        clauses.append("mapped as intermittent")
+    seasonal = str(properties.get("seasonal", "")).lower()
+    if seasonal and seasonal != "no":
+        clauses.append("mapped as seasonal")
+    sentence = head
+    if clauses:
+        sentence += ", " + " and ".join(clauses)
+    sentence += "."
+    if str(properties.get("drinking_water", "")).lower() == "no":
+        sentence += " Marked not drinking water."
+    sentence += " Mapped by OpenStreetMap contributors."
+    return sentence

@@ -643,11 +643,23 @@ COUNT_UPSTREAM_SOURCES: dict[str, frozenset[str]] = {
     "poi:shelter": frozenset({"atc"}),
     "poi:campsite": frozenset({"atc"}),
     "poi:resupply": frozenset({"atc", "opentrail"}),  # communities.geojson + opentrail "r" tag
-    # opentrail "w"/"s" tags, plus the members export_poi.py synthesizes from
-    # ATC's CSI distances (#694) - those ride the shelters/campsites layers,
-    # so an ATC change can move this count too.
+    # opentrail "w"/"s" tags + osm_water.geojson, plus the members
+    # export_poi.py synthesizes from ATC's CSI distances (#694) - those ride
+    # the shelters/campsites layers, so an ATC change can move this count
+    # too. "osm" is deliberately NOT a key here: the OSM source has no
+    # check_freshness.py entry (Geofabrik republishes daily, so "changed"
+    # would always be true - see fetch_osm_water.py), which means no
+    # --changed-source flag can ever name it and a water-count drop on the
+    # OSM side always reaches a human. An OSM mass-deletion near the trail
+    # is exactly the drop somebody should look at rather than wave through.
     "poi:water": frozenset({"opentrail", "atc"}),
-    "poi:crossing": frozenset(),  # always 0 today; see module docstring
+    # Filled since #529 from reference/trail_water.json, and empty here on
+    # purpose for `poi:water`'s reason one line up: a checked-in reference
+    # file has no upstream source a --changed-source flag could name, so a
+    # drop in the crossings always reaches a human. That is the right
+    # direction for a layer whose count moving means either the centerline
+    # moved or somebody edited a reviewed file.
+    "poi:crossing": frozenset(),
     "elevation": frozenset({"elevation"}),
 }
 
@@ -931,7 +943,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="append",
         default=[],
         metavar="FETCHER",
-        choices=["fetch_atc_photos", "fetch_poi_images", "fetch_elevation"],
+        choices=["fetch_atc_photos", "fetch_poi_images", "fetch_elevation", "fetch_osm_water", "fetch_trail_water"],
         dest="fetched",
         help=(
             "A conditional fetcher this run was asked to run, repeatable. Its "

@@ -32,7 +32,9 @@ import fetch_all
 import fetch_atc_photos
 import fetch_elevation
 import fetch_opentrail
+import fetch_osm_water
 import fetch_poi_images
+import fetch_trail_water
 from lib import fetch_receipts
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -71,6 +73,11 @@ FETCHER_OUTPUTS = (
     ("fetch_atc_photos", lambda: [fetch_atc_photos.OUT_PATH]),
     ("fetch_poi_images", lambda: [fetch_poi_images.OUT_PATH]),
     ("fetch_elevation", lambda: [fetch_elevation.INDEX_PATH]),
+    # The scan's small output only - the multi-gigabyte state extracts it
+    # reads are deliberately NOT cached (the workflow step says why), so an
+    # unticked run restores the last scan's geojson rather than the inputs.
+    ("fetch_osm_water", lambda: [fetch_osm_water.OUT_PATH]),
+    ("fetch_trail_water", lambda: [fetch_trail_water.OUT_PATH]),
 )
 
 

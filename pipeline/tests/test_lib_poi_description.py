@@ -15,7 +15,9 @@ from lib.poi_description import (
     describe_parking,
     describe_privy,
     describe_shelter,
+    describe_stream_point,
     describe_viewpoint,
+    describe_water,
     nearby_parts,
 )
 
@@ -443,3 +445,101 @@ def test_a_campsite_anchors_a_site_of_its_own_and_publishes_its_parts():
     unchanged by what is around them."""
     assert describe_campsite(CAMPSITE) == "Designated campsite, 3 sites, with bear-proof food storage."
     assert nearby_parts([MULTI_SEAT_PRIVY]) == [{"phrase": "a multi-seat moldering privy", "distance_ft": 136.8}]
+
+
+# --- water points (#529, fetch_osm_water.py) --------------------------------
+
+
+def test_describe_water_names_what_was_mapped():
+    assert describe_water({"kind": "spring"}) == "Spring. Mapped by OpenStreetMap contributors."
+    assert describe_water({"kind": "water_tap"}) == "Water tap. Mapped by OpenStreetMap contributors."
+
+
+def test_describe_water_carries_the_reliability_tags_only_where_they_exist():
+    """The census measured `seasonal` on zero features trail-wide - absence
+    is the normal state and composes NOTHING. 'Flows year-round' from a tag
+    nobody set would be the pipeline strengthening silence into a promise."""
+    assert (
+        describe_water({"kind": "spring", "intermittent": "yes"})
+        == "Spring, mapped as intermittent. Mapped by OpenStreetMap contributors."
+    )
+    assert (
+        describe_water({"kind": "spring", "seasonal": "spring;summer"})
+        == "Spring, mapped as seasonal. Mapped by OpenStreetMap contributors."
+    )
+    assert describe_water({"kind": "spring", "seasonal": "no"}) == "Spring. Mapped by OpenStreetMap contributors."
+
+
+def test_describe_water_gives_not_drinking_water_its_own_sentence():
+    assert (
+        describe_water({"kind": "drinking_water", "drinking_water": "no"})
+        == "Drinking water point. Marked not drinking water. Mapped by OpenStreetMap contributors."
+    )
+
+
+def test_describe_water_composes_nothing_for_a_point_with_no_facts():
+    """opentrail's water points carry an icon and a title - no `kind`, no
+    tags - and compose None, exactly the sentence they had before the water
+    describer existed. An unrecognised kind rounds the same direction every
+    unrecognised ATC code does: shorter, never guessed."""
+    assert describe_water({"icon": "w", "title": "Piped spring"}) is None
+    assert describe_water({"kind": "holy_well"}) is None
+
+
+# --- stream points: site water and trail crossings (#529) -------------------
+
+
+def test_a_stream_point_says_where_it_is_and_who_mapped_it():
+    """No distance in it, deliberately (#625): the point has real
+    coordinates, so the site's own `nearby` measures the walk and the phone
+    writes it in the hiker's units."""
+    sentence = describe_stream_point({"name": "Stony Brook", "sources": ["osm"]})
+
+    assert sentence == "Stony Brook, where it runs closest to the site. Mapped by OpenStreetMap contributors."
+    assert "ft" not in sentence
+
+
+def test_a_crossing_says_the_trail_crosses_it():
+    assert describe_stream_point({"name": "Stony Brook", "sources": ["nhd"], "crossing": True}) == (
+        "Where the trail crosses Stony Brook. Mapped by USGS."
+    )
+
+
+def test_an_unnamed_stream_still_composes():
+    assert describe_stream_point({"sources": ["osm"]}).startswith("A stream, where it runs closest")
+    assert describe_stream_point({"sources": ["nhd"], "crossing": True}).startswith("Where the trail crosses a stream.")
+
+
+def test_a_merged_point_names_both_hydrographies():
+    assert describe_stream_point({"name": "Stony Brook", "sources": ["nhd", "osm"], "crossing": True}) == (
+        "Where the trail crosses Stony Brook. Mapped by USGS and OpenStreetMap contributors."
+    )
+
+
+def test_the_flow_claim_is_attributed_to_whoever_made_it():
+    """A merged point carries both databases and usually only one of them
+    classified the reach, so the sentence names that one rather than
+    spreading the claim over both - and the other is still credited."""
+    assert describe_stream_point(
+        {"name": "Stony Brook", "sources": ["nhd", "osm"], "flow": "perennial", "flow_source": "nhd", "crossing": True}
+    ) == ("Where the trail crosses Stony Brook. USGS maps it as year-round. Also mapped by OpenStreetMap contributors.")
+    assert describe_stream_point({"sources": ["osm"], "flow": "intermittent", "flow_source": "osm"}) == (
+        "A stream, where it runs closest to the site. OpenStreetMap contributors tag it as seasonal."
+    )
+
+
+def test_an_unclassified_reach_claims_nothing_about_flow():
+    """USGS FCode 46000 is a stream nobody classified, and an untagged OSM
+    way is the same silence - which is not a promise of year-round water."""
+    sentence = describe_stream_point({"name": "Matts Creek", "sources": ["nhd"], "flow": None})
+
+    assert "year-round" not in sentence and "seasonal" not in sentence
+    assert sentence.endswith("Mapped by USGS.")
+
+
+def test_describe_water_dispatches_a_stream_point_by_the_facts_it_carries():
+    """Two kinds of water point, told apart by their fields rather than by a
+    source string: OSM's nodes carry `kind`, build_trail_water.py's derived
+    points carry the hydrographies they were merged from."""
+    assert describe_water({"sources": ["nhd"], "name": "Stony Brook"}).startswith("Stony Brook, where it runs closest")
+    assert describe_water({"kind": "spring"}) == "Spring. Mapped by OpenStreetMap contributors."

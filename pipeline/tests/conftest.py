@@ -9,6 +9,7 @@ checked-in blob. See ../../TESTING.md for the philosophy this follows.
 
 import pytest
 
+import export_poi
 from lib import fetch_receipts
 
 
@@ -32,3 +33,27 @@ def receipts_in_a_tmp_dir(tmp_path, monkeypatch):
     receipts_dir() joins it onto the pipeline root and pathlib's `/` keeps an
     absolute right-hand side."""
     monkeypatch.setattr(fetch_receipts, "RECEIPTS_DIR", tmp_path / "receipts")
+
+
+@pytest.fixture(autouse=True)
+def no_real_trail_water(tmp_path, monkeypatch):
+    """Keep the real corridor's water out of every synthetic fixture (#529).
+
+    `reference/trail_water.json` is checked in, and unify_all_sources reads
+    it - so without this a suite of six synthetic points near (-74, 41)
+    quietly gains seventeen real stream crossings from the Hudson Highlands,
+    which is TESTING.md's "never the real data" rule broken by a file the
+    test never mentions.
+
+    Autouse and in conftest rather than in the one suite that noticed,
+    because the tests it protects are the ones with no reason to know: the
+    failure landed in test_fetch_poi_images.py, whose subject is the Commons
+    crawl and which calls unify_all_sources only to derive the ids the export
+    will write. A test author adding another caller has the same blind spot.
+
+    The capacity, water-distance and photo files need no equivalent: those
+    are read in main(), which every test that drives it already redirects.
+    This one is read during unification itself, which is the whole reason it
+    reaches further than its own suite.
+    """
+    monkeypatch.setattr(export_poi, "TRAIL_WATER_PATH", tmp_path / "no-trail-water.json")

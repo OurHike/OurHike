@@ -36,6 +36,18 @@ That `--provider` label is as far as this registry currently goes toward being m
 
 What exists upstream *beyond* the registry - the maintaining clubs, the federal servers, the community datasets, and what each is worth - is surveyed and qualified in [SOURCE_SURVEY.md](SOURCE_SURVEY.md) (snapshot dated 2026-08-09; it also corrects who actually hosts the layers above). The water-source question that survey left open - measured against the shelters for **#529 - 97% of shelters have no water source within 250 m, and the trail is not like that** - has its own dated snapshot in [WATER_SOURCES.md](WATER_SOURCES.md), with the two measurement spikes (`spike_shelter_water.py`, `spike_osm_water_census.py`) beside it.
 
+## Where a script's output goes
+
+Three shelves, and picking the wrong one is the one mistake that cannot be undone — see [../CONTRIBUTING.md](../CONTRIBUTING.md)'s "Data does not go in commits" for why a commit is a permanent publication of somebody else's data.
+
+| shelf | for | tracked? |
+|---|---|---|
+| `data/raw/` | anything fetched or derived — layers, extracts, derivations, caches | no, gitignored and cached between CI runs |
+| `data/processed/` | export output, the artifacts `publish.py` uploads to R2 | no |
+| `reference/` | a join that encodes judgement somebody reviews row by row (`shelter_capacity.json`, `water_distance.json`) | **yes**, and under a line ceiling |
+
+`.github/tests/test_no_committed_data.py` enforces it: a tracked `data/` path fails, a data-shaped file outside a stated allowlist fails, and a reference file past ~8,000 lines fails because "committed so the judgement in it can be reviewed" stops being true once nobody reads the rows.
+
 ## Fetching ATC sources
 
 `fetch_all.py` reads `sources.json` and downloads each layer (paginating past ArcGIS's per-request record cap via `lib/arcgis.py`) to `data/raw/<key>.geojson`. It's change-aware: before doing the full paginated fetch, it checks each layer's `editingInfo.dataLastEditDate` (one cheap metadata request) against the value recorded in `data/raw/manifest.json` from the last run, and skips the source entirely if unchanged. Only writes the manifest if **every** registered source succeeded or was confirmed up to date - if any layer fails or goes missing, it exits non-zero instead of silently producing a partial dataset.
@@ -63,7 +75,7 @@ What exists upstream *beyond* the registry - the maintaining clubs, the federal 
 
 **Which of these reach a hiker as waypoints:** `shelters`, `campsites`, `viewpoints`, `parking` and `privies` each become one `poi_type` in `export_poi.py`, and `communities` folds into `resupply` at low confidence. The other six are fetched for other reasons — `centerline` and `side_trails` are the trail lines, `half_mile_points_from_springer` the mile markers — and `bridges` and `at_treadway` are registered but feed nothing yet. `trail_club_sections` was in that group until 2026-08-13, when `export_club_sections.py` (#594) started reading it; it supplies club *names* and regions, while the club *attribution* comes off `centerline`'s own `Acronym` field, which is two years fresher and sits on the trail line (SOURCE_SURVEY.md §3e). Vistas, parking and privies were in that second group until 2026-08-09: registered on 2026-07-25 and downloaded by every run since, with nothing downstream reading them.
 
-**Gap, now partially filled:** ATC's own data has no dedicated water-source or general resupply layer. `communities` is a partial resupply proxy; `fetch_opentrail.py` (below) is the real fill for both water and resupply.
+**Gap, now partially filled:** ATC's own data has no dedicated water-source or general resupply layer. `communities` is a partial resupply proxy; `fetch_opentrail.py` (below) is the real fill for resupply, and for water it is one of two — `fetch_osm_water.py` (below, [#529](https://github.com/OurHike/OurHike/issues/529)) took the corridor's water layer from 174 points to 1,705.
 
 **A second gap, and no ATC source fills it:** nothing says how many people a shelter sleeps. Searched rather than assumed (2026-08-09) — all twelve registered sources above, `ANST_Facilities`' three unregistered asset tables (a maintenance inventory in EA/LF/SF; its `Sleeping Platform` rows are 6 across the whole trail, all in square feet), the shelter layer's free text on all 280 features (every "sleeping" mention is a dimension, not a person count), and the sibling A.T. services in the same NPS org. The shelter layer's own 135 fields are an FMSS asset inventory, and `FMSS_QTY` is floor area, not people: 15.6 × 15.6 = 243.36 exactly. `build_shelter_capacity.py` (below) is the fill.
 
@@ -94,6 +106,31 @@ What exists upstream *beyond* the registry - the maintaining clubs, the federal 
 ```
 
 The distances are ATC's own, from the `Campsite_Sustainability_Index` layer on their ArcGIS org — **official sites only; the layer's 2,333 user-created campsites are never even requested** ([SOURCE_SURVEY.md](SOURCE_SURVEY.md) §3b says why their locations must not ship). 305 of 512 features publish a distance. The FarOut-measured rows (218 of those 305) first shipped held back — [WATER_SOURCES.md](WATER_SOURCES.md) §4 found 42% of CSI's distances derive from that commercial dataset — and were released on the maintainer's 2026-08-13 authorisation that data ATC publishes is reusable, recorded as the `atc_licence` block in `sources.json` beside `photo_licence` and in its shape (#688); ATC's own written answer stays the ideal (§10's combined ask). The provenance gate outlived the holdback: a `Nearest_Water_Source` value ATC introduces later publishes nothing until a human adds it to `PUBLISHABLE_PROVENANCES` deliberately. Every one of the 512 features is listed in the file either way — a blank always carries its reason (no CSI row within 150 m, a 0 ft value nobody can read, or an unknown provenance).
+
+## Water: OSM points and the stream sentence (#529)
+
+The two halves of [WATER_SOURCES.md](WATER_SOURCES.md) §7's recommendation, built together and honest in different shapes — a pin where a point is true, a sentence where only proximity is:
+
+`fetch_osm_water.py` scans the fourteen Geofabrik state extracts `export_basemap.py` already downloads for OSM's water point sources — `natural=spring`, `amenity=drinking_water`, `man_made=water_tap`, `man_made=water_well`, the census's exact clause set — 7,574 nodes on the first full scan (2026-08-13). `export_poi.py` folds them into poi_type `water` at **low** confidence (a mapped spring is one contributor's observation, which is what the dashed rim and the card's "Unverified" sentence say), drops each point within 25 m of an opentrail water point as the same OSM node arriving twice (measured before choosing: 41 of opentrail's 174 water points have an OSM twin inside that radius, and the tail past it is real neighbours), and composes each point's sentence from its own tags — "Spring, mapped as intermittent." — never strengthening an absent tag into a claim. ODbL; the client's credits screen already names OpenStreetMap, and each description carries "Mapped by OpenStreetMap contributors".
+
+```
+.venv/Scripts/python fetch_osm_water.py             # ~3.5 GB of extracts on a cold machine; skip-if-present
+.venv/Scripts/python fetch_osm_water.py --refetch   # force current extracts
+```
+
+`build_trail_water.py` writes [`reference/trail_water.json`](reference/trail_water.json): **where the trail meets water, and which sites have water they can actually walk to.** Two products from one derivation over **both** hydrographies — USGS's NHD and OpenStreetMap — merged rather than picked between, because they know different things: USGS classifies flow (perennial / intermittent / ephemeral), OSM more often carries the local name and is edited by people who walk there. A crossing deduped across the two keeps whichever half each supplied, records both in `sources`, and attributes the flow claim to whoever made it (`flow_source`) — [features/POI_DEDUPLICATION.md](../features/POI_DEDUPLICATION.md)'s combine-don't-drop rule. USGS arrives as bulk staged GeoPackages, one subregion at a time, downloaded read and deleted: its query service 504s under corridor-scale load, and a derivation nobody can re-run is not one anybody can check. OSM costs no network at all — it is the same Geofabrik extracts the basemap build already downloads:
+
+- **Crossings** — exact geometric intersections of ATC's centerline with the stream lines of **both** hydrographies. The two lines cross, so a hiker walking the trail walks through the water. These fill `crossing`, the poi_type declared in `lib/poi_schema.py` and empty since it was declared.
+**1,125 crossings** land in the corridor, **571 of them corroborated by both databases**, and **39 of 512 shelters and campsites** get water they can walk to.
+
+- **Site water** — for each shelter and campsite, the nearest point on a stream, published **only where a hiker could reach it**: within 100 ft *and* under a 15% grade, the second gate measured from real USGS 3DEP elevations at both ends. A stream 90 ft away and 120 ft below is not a water source however close the map says it is. The radius is deliberately tight: most A.T. shelters have had their own spring built out over decades, so the water a shelter uses is usually a piped source somebody dug rather than the nearest blue line, and ATC's own measured distance (`build_water_distance.py`) stays the better answer there — this fills in a real coordinate only where geometry can honestly supply one. Every rejected candidate keeps its distance, drop and grade in the file, so either gate can be re-argued from the numbers rather than re-run in the dark.
+
+The match radius sits inside `lib/poi_sites.py`'s 60 m proximity fold on purpose: a published point at real coordinates is folded onto the shelter's pin by the grouping that already exists, so there is no second matching rule to keep in step. Nothing composed here carries a distance — the point has coordinates, so the card measures the walk and writes it in the hiker's own units (#625).
+
+```
+.venv/Scripts/python build_trail_water.py            # rebuild and review the diff
+.venv/Scripts/python build_trail_water.py --check    # confirm the checked-in file still matches
+```
 
 ## Fetching club PDFs (review-only)
 

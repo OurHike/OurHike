@@ -396,6 +396,14 @@ describe('tapping a pin on the map', () => {
       within(card).getByRole('heading', { name: 'Chairback Gap Privy' }),
     ).toBeInTheDocument()
     expect(within(card).getByText(/privy data/)).toBeInTheDocument()
+    // And its mile, which is the card's headline fact and the only line saying
+    // where along the A.T. this thing is. The privy arrives from IndexedDB as a
+    // StoredPoi with no mile on it - the number comes from the same
+    // locateOnTrail() call search paid for, through App's `cardDetail` - so the
+    // natural wrong wiring is to hand the card the raw roster, and the privy then
+    // silently loses its position on the trail. This is the only place that
+    // wiring exists to be tested.
+    expect(within(card).getByText(/^mi 5\.0$/)).toBeInTheDocument()
   })
 
   it('places the waypoint on the trail, at the mile search would give it', async () => {

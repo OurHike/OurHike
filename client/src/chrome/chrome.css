@@ -1321,16 +1321,31 @@ a.poi-card__credit::after {
    outright and tabs.css follows for its selected tab: a strip read at arm's
    length in direct sun cannot rest the answer on a colour. An INSET ring rather
    than a border, so marking a chip does not change its width and shuffle the
-   row sideways. */
+   row sideways.
+
+   THE RING FLOATS INSIDE THE CHIP RATHER THAN FILLING ITS EDGE, and the 3px gap
+   is that same rule applied to itself. The focus ring below is drawn in the 2px
+   band at the chip's edge, and the anchor chip is BOTH first in the tab order
+   and the current one when the card opens - so it is exactly where a keyboard
+   user lands first. A marker ring in those pixels left "focused" signalled by
+   hue alone: resolved, --brand-primary against --fg-2 is 1.01:1 in the light
+   theme (forest-600 on stone-700) and 1.65:1 in the dark one, both far under
+   3:1. Two stacked inset shadows rather than one, because a single one can only
+   start at the edge: the first repaints the chip's own background over the band
+   nearest the edge, leaving the second showing as a ring from 3px to 5px in.
+   Still no width of its own, so the row does not shuffle. */
 .poi-card__chip[aria-current='true'] {
   font-weight: 600;
   color: var(--fg-1);
-  box-shadow: inset 0 0 0 2px var(--fg-2);
+  box-shadow:
+    inset 0 0 0 3px var(--bg-sunken),
+    inset 0 0 0 5px var(--fg-2);
 }
 
 /* Inward, because .poi-card sets `overflow: hidden` to round the photo's
    corners with the card's - an outward ring on the first or last chip would be
-   clipped by exactly the rule that makes the card a card. */
+   clipped by exactly the rule that makes the card a card. The band it lands in
+   is kept clear by the rule above; see the reasoning there. */
 .poi-card__chip:focus-visible {
   outline: 2px solid var(--brand-primary);
   outline-offset: -2px;

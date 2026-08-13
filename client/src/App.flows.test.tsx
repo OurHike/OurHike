@@ -354,6 +354,50 @@ describe('tapping a pin on the map', () => {
     expect(within(sheet).getByText('Shelter')).toBeInTheDocument()
   })
 
+  it('reaches the shelter’s privy, which has no pin of its own to tap', async () => {
+    // The whole of #526 end to end, and the reason it is a shell test rather
+    // than a card one: the card is handed a single waypoint, and the shell is
+    // the only layer holding the others. Since #524 gave the site one pin there
+    // is nothing on the canvas to aim at for the privy, so if this row is not
+    // wired through, no gesture in the app reaches it at all.
+    const user = userEvent.setup()
+    hikerOnTrail()
+    store.set(POIS_KEY, [
+      { ...SHELTER, siteId: 'site_abc', siteRole: 'anchor' },
+      {
+        id: 'atc_privies:xyz',
+        type: 'privy',
+        name: 'Chairback Gap Privy',
+        // 0.00036 degrees of latitude is 40 m by the pipeline's own constant,
+        // which is what the chip has to say.
+        lat: SHELTER.lat + 0.00036,
+        lon: SHELTER.lon,
+        confidence: 'low' as const,
+        source: 'atc_privies',
+        siteId: 'site_abc',
+        siteRole: 'member',
+      },
+    ])
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await tapPin({ [POI_ID_PROPERTY]: SHELTER.id, poi_type: 'shelter' })
+    const card = await screen.findByRole('dialog', { name: /waypoint/i })
+
+    // Both parts of the place, named as the site they belong to.
+    const strip = within(card).getByRole('group', {
+      name: 'Parts of Chairback Gap Lean-to',
+    })
+    expect(within(strip).getAllByRole('button')).toHaveLength(2)
+
+    await user.click(within(strip).getByRole('button', { name: 'Privy 40 m' }))
+
+    expect(
+      within(card).getByRole('heading', { name: 'Chairback Gap Privy' }),
+    ).toBeInTheDocument()
+    expect(within(card).getByText(/privy data/)).toBeInTheDocument()
+  })
+
   it('places the waypoint on the trail, at the mile search would give it', async () => {
     // One number from one computation. A second way of working out the mile
     // could disagree with search about the same shelter, which is exactly the

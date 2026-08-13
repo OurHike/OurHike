@@ -49,7 +49,6 @@ def resolve_assignments(
     return [
         MaintainerAssignmentOut(
             id=assignment.id,
-            maintainer_id=assignment.maintainer_id,
             club_id=assignment.club_id,
             club_name=club.name,
             # Opt-in only. Withheld by default rather than filtered out

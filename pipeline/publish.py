@@ -263,9 +263,13 @@ def collect_artifacts() -> dict[str, dict]:
 
     # Verified closures and reports, if export_conditions.py has run
     # (features/CONDITIONS_DELIVERY.md). Ordinary artifacts rather than a
-    # special case: they want the same sha256 diffing every other one gets, and
-    # that diffing is what makes a daily bake cheap - a day with no condition
-    # changes uploads nothing and writes no new version.
+    # special case: they want the same sha256 diffing every other one gets.
+    # What that diffing cannot do is make the daily bake a no-op - the baked
+    # bytes carry generated_at, so their sha moves every run whether or not a
+    # row changed. This comment used to promise "a day with no condition
+    # changes uploads nothing and writes no new version"; that was false from
+    # the day the two met (#646), and the release-staging skip below is what
+    # actually keeps the daily clock from minting a release folder a day.
     #
     # Published under `conditions/` rather than at the root because the whole
     # prefix is rewritten in place on a different clock from the trail data.
@@ -481,14 +485,6 @@ def publish(
     for name, entry in sidecars.items():
         s3_client.upload_file(entry["path"], bucket, f"{prefix}{name}")
 
-    # Which folder this version's bytes are also kept in, taken from the ids
-    # already used so a second publish on one day gets `-2` rather than
-    # overwriting the morning's release. Read before anything under
-    # `releases/` is written, because the answer decides where it is written.
-    index_key = data_env.scope_key(environment, releases.RELEASE_INDEX_KEY)
-    release_index = _load_remote_manifest(s3_client, bucket, index_key)
-    release_id = releases.next_release_id(releases.index_ids(release_index))
-
     # Merge, don't replace: an artifact that's live in remote_artifacts but
     # wasn't produced by this run's collect_artifacts() (e.g. a checkout that
     # only re-ran export_trails.py, with no local elevation_manifest.json or
@@ -510,37 +506,62 @@ def publish(
     if sidecars:
         new_manifest["sidecars"] = {name: {"sha256": entry["sha256"]} for name, entry in sidecars.items()}
 
-    # The same manifest as the pointer's, minus what may not be frozen. See
-    # lib/releases.is_release_artifact: `conditions/` is rewritten in place on
-    # a daily clock, and a reopened closure must stop being served - which an
-    # immutable folder cannot express.
-    release_manifest = {
-        **new_manifest,
-        "release": release_id,
-        "artifacts": {name: entry for name, entry in new_manifest["artifacts"].items() if releases.is_release_artifact(name)},
-    }
-    staged = _stage_release(
-        s3_client,
-        bucket,
-        prefix,
-        release_id,
-        release_manifest,
-        sorted(sidecars),
-    )
+    # A version is not automatically a release (#646). `conditions/` names
+    # are excluded from release folders by design - that prefix rewrites in
+    # place on a daily clock - and the baked bytes carry generated_at, so the
+    # daily run's sha moves even when no row changed. Staging on such a run
+    # would server-side-copy every frozen artifact into a folder
+    # byte-identical to yesterday's: one duplicate folder per environment per
+    # day, an index entry per day, and nothing anywhere that prunes. So a run
+    # whose uploads are all excluded names freezes nothing: the pointer still
+    # moves (fresh conditions hashes are the point of the bake), and it keeps
+    # naming the last real release, because those are still the bytes the
+    # folders hold.
+    release_worthy = any(releases.is_release_artifact(name) for name in uploaded)
+    if release_worthy:
+        # Which folder this version's bytes are also kept in, taken from the
+        # ids already used so a second publish on one day gets `-2` rather
+        # than overwriting the morning's release. Read before anything under
+        # `releases/` is written, because the answer decides where it is
+        # written.
+        index_key = data_env.scope_key(environment, releases.RELEASE_INDEX_KEY)
+        release_index = _load_remote_manifest(s3_client, bucket, index_key)
+        release_id = releases.next_release_id(releases.index_ids(release_index))
 
-    s3_client.put_object(
-        Bucket=bucket,
-        Key=index_key,
-        Body=json.dumps(
-            releases.append_release(
-                release_index,
-                release_id=release_id,
-                version=new_version,
-                created_at=datetime.now(timezone.utc).isoformat(),
-            ),
-            indent=2,
-        ).encode("utf-8"),
-    )
+        # The same manifest as the pointer's, minus what may not be frozen.
+        # See lib/releases.is_release_artifact: `conditions/` is rewritten in
+        # place on a daily clock, and a reopened closure must stop being
+        # served - which an immutable folder cannot express.
+        release_manifest = {
+            **new_manifest,
+            "release": release_id,
+            "artifacts": {name: entry for name, entry in new_manifest["artifacts"].items() if releases.is_release_artifact(name)},
+        }
+        staged = _stage_release(
+            s3_client,
+            bucket,
+            prefix,
+            release_id,
+            release_manifest,
+            sorted(sidecars),
+        )
+
+        s3_client.put_object(
+            Bucket=bucket,
+            Key=index_key,
+            Body=json.dumps(
+                releases.append_release(
+                    release_index,
+                    release_id=release_id,
+                    version=new_version,
+                    created_at=datetime.now(timezone.utc).isoformat(),
+                ),
+                indent=2,
+            ).encode("utf-8"),
+        )
+    else:
+        release_id = remote_manifest.get("release") if remote_manifest else None
+        staged = []
 
     # `latest.json` LAST, after the release folder and the index it is listed
     # in, and the ordering is the same argument the photos make above: this is

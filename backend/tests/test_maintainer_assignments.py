@@ -62,12 +62,14 @@ def _assign(db, *, maintainer, club, start, end, frm, to=None, creditable=False)
 def test_resolve_returns_the_maintainer_covering_that_mile(client, db_session):
     club = _club(db_session)
     pat = _maintainer(db_session, "Pat")
-    _assign(db_session, maintainer=pat, club=club, start=1040, end=1050, frm=date(2026, 1, 1))
+    held = _assign(db_session, maintainer=pat, club=club, start=1040, end=1050, frm=date(2026, 1, 1))
 
     response = client.get("/maintainer-assignments?mile=1043.2")
 
     assert response.status_code == 200
-    assert [a["maintainer_id"] for a in response.json()] == [pat.id]
+    # Assignments are matched by their row id: the response deliberately
+    # carries no maintainer_id for anyone to compare (#641).
+    assert [a["id"] for a in response.json()] == [held.id]
 
 
 def test_resolve_excludes_a_mile_outside_the_assigned_stretch(client, db_session):
@@ -93,12 +95,12 @@ def test_resolve_returns_every_maintainer_on_an_overlapping_stretch(client, db_s
     club = _club(db_session)
     pat = _maintainer(db_session, "Pat")
     sam = _maintainer(db_session, "Sam")
-    _assign(db_session, maintainer=pat, club=club, start=1040, end=1050, frm=date(2026, 1, 1))
-    _assign(db_session, maintainer=sam, club=club, start=1045, end=1055, frm=date(2026, 1, 1))
+    pats = _assign(db_session, maintainer=pat, club=club, start=1040, end=1050, frm=date(2026, 1, 1))
+    sams = _assign(db_session, maintainer=sam, club=club, start=1045, end=1055, frm=date(2026, 1, 1))
 
-    found = {a["maintainer_id"] for a in client.get("/maintainer-assignments?mile=1047").json()}
+    found = {a["id"] for a in client.get("/maintainer-assignments?mile=1047").json()}
 
-    assert found == {pat.id, sam.id}
+    assert found == {pats.id, sams.id}
 
 
 def test_resolve_as_of_a_past_date_returns_who_held_it_then(client, db_session):
@@ -107,7 +109,7 @@ def test_resolve_as_of_a_past_date_returns_who_held_it_then(client, db_session):
     club = _club(db_session)
     pat = _maintainer(db_session, "Pat")
     sam = _maintainer(db_session, "Sam")
-    _assign(
+    pats = _assign(
         db_session,
         maintainer=pat,
         club=club,
@@ -120,7 +122,7 @@ def test_resolve_as_of_a_past_date_returns_who_held_it_then(client, db_session):
 
     june = client.get("/maintainer-assignments?mile=1043&as_of=2026-06-15").json()
 
-    assert [a["maintainer_id"] for a in june] == [pat.id]
+    assert [a["id"] for a in june] == [pats.id]
 
 
 def test_resolve_without_a_date_uses_the_current_assignment(client, db_session):
@@ -136,11 +138,11 @@ def test_resolve_without_a_date_uses_the_current_assignment(client, db_session):
         frm=date(2020, 1, 1),
         to=date(2020, 12, 31),
     )
-    _assign(db_session, maintainer=sam, club=club, start=1040, end=1050, frm=date(2021, 1, 1))
+    sams = _assign(db_session, maintainer=sam, club=club, start=1040, end=1050, frm=date(2021, 1, 1))
 
     current = client.get("/maintainer-assignments?mile=1043").json()
 
-    assert [a["maintainer_id"] for a in current] == [sam.id]
+    assert [a["id"] for a in current] == [sams.id]
 
 
 def test_resolve_excludes_an_assignment_that_had_not_started_yet(client, db_session):
@@ -183,6 +185,11 @@ def test_resolve_withholds_a_maintainer_name_unless_they_opted_in(client, db_ses
 
     assert found["display_name"] is None
     assert found["club_name"] == "Mountain Club"
+    # And not merely the name: the account id is a stable join key tying a
+    # person to a place and a schedule, and it is not in the response at all,
+    # consented or otherwise (#641). Consent gates the label; nothing public
+    # carries the id. Same decision as #252 (reports) and #430 (closures).
+    assert "maintainer_id" not in found
 
 
 def test_resolve_names_a_maintainer_who_opted_in(client, db_session):
@@ -542,6 +549,41 @@ def test_a_named_maintainer_with_no_assignment_still_gets_it(client, db_session)
     filed = _thanks_at(client, 1043, _JUNE, maintainer_id=pat.id)
 
     assert [row["id"] for row in _inbox(client, pat.id)] == [filed["id"]]
+
+
+def test_a_dismissed_thanks_leaves_every_inbox_it_was_delivered_to(client, db_session):
+    """Dismissal is the abuse-removal path - the one moderation action a
+    thanks can receive - and this inbox is the only place a thanks is ever
+    delivered. It used to be a no-op for its only audience (#642): the status
+    changed and the delivery query never read it, so the person the abuse
+    targeted kept it at the top of their inbox forever."""
+    club = _club(db_session)
+    pat = _maintainer(db_session)
+    moderator = Profile(id=str(uuid.uuid4()), role=Role.club_admin, display_name="Mod")
+    db_session.add(moderator)
+    db_session.commit()
+    _assign(db_session, maintainer=pat, club=club, start=1000, end=1100, frm=_JUNE)
+    filed = _thanks_at(client, 1043, _JUNE)
+    assert [row["id"] for row in _inbox(client, pat.id)] == [filed["id"]]
+
+    dismissed = client.post(f"/reports/{filed['id']}/dismiss", headers=auth_headers(moderator.id))
+
+    assert dismissed.status_code == 200
+    assert _inbox(client, pat.id) == []
+
+
+def test_a_club_thanks_does_not_follow_someone_out_of_the_club(client, db_session):
+    """Club delivery is a standing relationship, not a memory (#642). An
+    assignment that ended years ago used to keep delivering the club's mail -
+    club_only content flowing to somebody outside the club. The stretch
+    clause is deliberately untouched: a thanks for their own old work still
+    arrives, because that one is judged by when the work was done."""
+    club = _club(db_session)
+    pat = _maintainer(db_session)
+    _assign(db_session, maintainer=pat, club=club, start=1000, end=1100, frm=date(2019, 1, 1), to=date(2020, 12, 31))
+    _thanks_at(client, 4.2, _JUNE, club_id=club.id)
+
+    assert _inbox(client, pat.id) == []
 
 
 def test_a_hiker_with_no_assignments_gets_an_empty_inbox_not_a_403(client, db_session):

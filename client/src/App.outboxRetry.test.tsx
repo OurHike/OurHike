@@ -137,6 +137,27 @@ describe('Try again, on a report the server refused', () => {
     await waitFor(() => expect(screen.queryByRole('alert')).toBe(null))
   })
 
+  it('sends a report the moment it is filed with signal and an account', async () => {
+    // #640, the submit-path twin of #266: enqueueing changes neither of
+    // useOutboxSync's deps, so on a steady connection nothing flushed and a
+    // freshly filed report sat as "waiting to send" until the connection
+    // flapped - while the submit handler's comment said it would go on its
+    // own. The mount flush below drains an empty queue, so a send can only
+    // have come from the submit itself.
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByRole('tab', { name: 'More' })
+    expect(mockedSend).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+    await user.click(await screen.findByRole('button', { name: /blow down/i }))
+    await user.click(await screen.findByRole('button', { name: /^send$/i }))
+
+    await waitFor(() => expect(mockedSend).toHaveBeenCalledTimes(1))
+    expect(mockedSend.mock.calls[0][0].payload.type).toBe('blowdown')
+  })
+
   it('does not claim the report is waiting when the send failed again', async () => {
     // The honesty case. A retry with no signal has to leave the report
     // readable as waiting - it genuinely is - but must not silently drop the

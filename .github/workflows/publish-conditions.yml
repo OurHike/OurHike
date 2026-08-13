@@ -35,7 +35,9 @@
 # own database and writes its own prefix, so the two never meet: a test closure
 # a UA moderator verified cannot reach a hiker's map, and production's verified
 # rows are not what a tester rehearses moderation against. The matrix jobs write
-# disjoint keys, so they need no concurrency group between them.
+# disjoint keys, so they never race each other - but each still joins the
+# publish-data group below, because the race that matters is with the other
+# four workflows, over the shared latest.json (#645).
 #
 # The ATC leg is deliberately NOT split. Those notices are baked from a file in
 # git that a person reviewed - there is no database behind them and no
@@ -44,6 +46,26 @@
 # rather than an empty one.
 
 name: Publish conditions
+
+# Every writer of latest.json shares this group (publish-vector-data.yml,
+# build-basemap.yml, build-dem.yml, build-raster.yml): publish() reads the
+# manifest, uploads for as long as the artifacts take, and writes the merge
+# last, so two concurrent publishes interleave and whichever writes last
+# reverts the other's entries (#645). This workflow was the one writer
+# outside the group - its header used to argue the matrix legs write
+# disjoint keys, which was true and answered a different question.
+#
+# At the WORKFLOW level, not on the job, and that placement is load-bearing:
+# concurrency groups coalesce rather than queue (one pending entrant; a newer
+# pending run cancels the older), so a job-level group would let the ua leg's
+# arrival cancel the production leg's pending slot whenever another publish
+# held the group - production's closures silently a day older, with no red
+# run. One run taking the group once means both legs publish or the whole
+# run visibly waits/cancels together, and a cancelled daily run is healed by
+# tomorrow's cron.
+concurrency:
+  group: publish-data
+  cancel-in-progress: false
 
 on:
   schedule:

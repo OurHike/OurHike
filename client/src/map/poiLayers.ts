@@ -84,15 +84,26 @@ export const POI_ID_PROPERTY = 'poi_id'
  * The seam. Below this the map is the corridor view and carries no waypoints
  * at all; above it every waypoint draws, as a pin or as a dot.
  *
- * MEASURED, not chosen - pipeline/spike_poi_seam.py, 2026-08-13, against the
- * live ATC service with lib/poi_sites.py's own folding applied. A 390x700
- * phone map holds about 16 pins down a column, and the median screen centred
- * on a waypoint carries 35 of them at z10, 18 at z11 and 9 at z12. z12 is the
- * first zoom that is not oversubscribed.
+ * A DAY'S HIKE HAS TO FIT ON THE SCREEN, and that is the whole criterion.
+ * A day on the A.T. is 16-24 miles; a 390x700 phone map covers 25.5 miles of
+ * ground at z10 and 12.7 at z11. So z10 is the tightest zoom that still shows
+ * a hiker the day they are about to walk, waypoints and all, which is the
+ * moment this map is for.
  *
- * On the median rather than the p90 deliberately: above the seam an overfull
- * screen costs DOTS, not deletions, so the question is "is this a better
- * screen than the corridor view" and not "is every screen guaranteed to fit".
+ * MEASURED at that zoom rather than hoped for -
+ * pipeline/spike_poi_seam.py, 2026-08-13, against the live ATC service with
+ * lib/poi_sites.py's own folding applied. What reaches a PIN at z10: shelters
+ * 95%, privies 82%, campsites 76%, parking 51%, viewpoints 15%. The things a
+ * day is planned around are nearly all pins; the vistas are nearly all dots,
+ * which is the right way round and is what the dot rank is for.
+ *
+ * THIS WAS z12 FOR AN AFTERNOON, and the mistake is worth recording because
+ * the arithmetic was right and the question was wrong. The first pass chose
+ * the seam as "the tightest zoom where the screen is not oversubscribed with
+ * pins" - a pin-legibility test. Under two ranks an overfull screen costs
+ * DOTS, not deletions, so legibility is a comfort criterion and truth is not
+ * at stake. z12 showed 6.4 miles: a quarter of a day, and a hiker planning one
+ * would have had to pan four times to see it.
  *
  * It replaces a floor of 9, whose docstring argued - rightly - that eight
  * hundred POIs on a corridor view "is not a map, it is a texture". That
@@ -100,7 +111,7 @@ export const POI_ID_PROPERTY = 'poi_id'
  * something else to show (features/CORRIDOR_VIEW.md), so the floor no longer
  * has to choose between a texture and an empty screen.
  */
-export const POI_PIN_MIN_ZOOM = 12
+export const POI_PIN_MIN_ZOOM = 10
 
 // {@link POI_PRIORITY} lives in poiPriority.ts and is imported above. It moved
 // there when site composition needed the same ordering to decide which member

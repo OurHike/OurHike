@@ -76,7 +76,7 @@ two targets is a smaller change than the workflow's own header comment.
 | **Client origin** | `localhost:5173` / `:4173`; `pr-<n>.ourhike-preview.pages.dev` | `ua.ourhike-preview.pages.dev` | `ourhike.github.io` |
 | **Backend** | local uvicorn | a UA service on the backend host | a production service on the backend host |
 | **Database** | local Postgres (`backend/scripts/local-postgres.sh`) | UA Supabase project | production Supabase project |
-| **Map data** | local artifacts | the **candidate** `releases/<id>/` | the **released** `releases/<id>/` |
+| **Map data** | local artifacts, or `environments/dev/` | `environments/ua/`; the **candidate** `releases/<id>/` within it | the bucket root; the **released** `releases/<id>/` within it |
 | **Migrations** | applied and reverted freely | applied here **first**, always | applied only after UA |
 | **Who can change it** | anyone | a merged pull request | the maintainer, by tagging |
 | **Lifetime of data in it** | disposable | disposable; may be wiped without notice | never disposable |
@@ -152,6 +152,10 @@ A separate origin is the requirement, and §3b is how to get one for free.
 - **Settings: four or five new names** in `.github/expected-settings.yml`, which is a
   test change as much as a configuration one — the manifest suite fails on a workflow
   reading a setting nothing declares.
+- **Published data: one more copy of it, and about $0.03/month.** UA writes under
+  `environments/ua/` rather than over production's keys —
+  [features/DATA_ENVIRONMENTS.md](features/DATA_ENVIRONMENTS.md) §6 is the sum, and §2 is why
+  every mutable source had to be separated rather than only the ones that looked dangerous.
 
 The line worth holding: **UA is disposable and production is not.** Anything that
 makes UA precious — real hiker accounts, data anyone would miss — has quietly turned
@@ -601,6 +605,7 @@ are asserted rather than remembered, in `.github/tests/test_repository_protectio
 | `pages.yml` | Deploys production from a `v*` tag, not from `main`. Refuses a tag with no notes file (gate 12) or one that disagrees with `client/package.json` (§4), and drafts the GitHub release with the app exactly as deployed, the OpenAPI document and the data manifest attached |
 | `client/src/lib/buildInfo.ts` | The version, commit and build time, inlined at build time and shown at the foot of Settings |
 | `ua.yml` | Deploys `main` to UA on its own Cloudflare origin, with no path to the production backend |
+| `pipeline/lib/data_env.py` | UA's data has somewhere of its own to be. `publish.py` scopes every key by the environment it was told to publish to, and refuses to run when nobody told it ([features/DATA_ENVIRONMENTS.md](features/DATA_ENVIRONMENTS.md)) |
 | `release-notes.yml` | Generates a notes draft and opens it as a pull request, labelled so it can pass CI |
 | `.github/scripts/release_notes.py` | The generator. Pure half tested in `.github/tests/test_release_notes.py`; the git and API half is a thin seam |
 | `releases/` | Where the notes live, canonically |
@@ -645,10 +650,16 @@ home per item, and the reason ROADMAP.md's checklists are gone.
 
 1. **Does the free Supabase tier allow this account a second active project?** §3d.
    The UA design assumes yes and has a stated fallback; the answer changes which.
-2. **Does UA get its own R2 bucket, or only its own prefix?** Designed as prefix-only —
-   UA points at a candidate folder in the same bucket, which is what makes UA a real
-   verification of the bytes production will serve. A separate bucket would verify a
-   copy.
+2. ~~**Does UA get its own R2 bucket, or only its own prefix?**~~ **Answered: its own
+   prefix, and now it has one.** [features/DATA_ENVIRONMENTS.md](features/DATA_ENVIRONMENTS.md)
+   is the design and the build. The reasoning above stands unchanged — one bucket means UA is
+   served through the same CORS policy, host and range machinery a phone uses — and what it
+   turned out to be missing was the other half: every key published today is *mutable*, so two
+   environments sharing one was never verification, it was collision. `environments/ua/` is
+   where UA's data goes, `publish.py` refuses to run without being told which environment it is
+   writing, and the "candidate folder" this question imagined is what happens when
+   `releases/` lands: an environment resolves a release rather than copying one, so the object
+   UA verified stays the object production serves.
 3. ~~**How many releases back does the backend support?**~~ **Answered: three, plus 90
    days from supersession, plus a pin.** §8c's "How far back 'supported' reaches" is
    the rule and `backend/openapi_baselines/retained.json` is its state. This question

@@ -27,6 +27,16 @@ discipline backend/app/config.py already applies to Supabase credentials.
 
 Writes are disabled by default. A trusted environment must explicitly opt in by
 setting R2_WRITE_ENABLED=true before publish.py is allowed to upload anything.
+
+WHICH ENVIRONMENT IS PUBLISHED TO IS ALSO NEVER A DEFAULT. This module is the
+only thing in the project that writes to the bucket, which makes it the one
+place an environment can be enforced rather than remembered: every key it
+touches goes through lib/data_env.scope_key, so a run publishing to UA is
+structurally incapable of writing production's keys rather than merely
+disinclined to. OURHIKE_DATA_ENV must name one of RELEASING.md §3's three
+environments; unset is an error and not production, for the reason
+features/DATA_ENVIRONMENTS.md gives - the wrong guess overwrites what hikers
+have already downloaded.
 """
 
 from __future__ import annotations
@@ -39,6 +49,7 @@ from pathlib import Path
 
 import boto3
 
+from lib import data_env
 from lib.photo_store import PHOTO_EXTENSION, PHOTOS_DIRNAME, photo_key
 from lib.r2_keys import assert_valid_keys
 
@@ -165,24 +176,36 @@ def collect_photos() -> dict[str, str]:
     return {photo_key(path.stem): str(path) for path in sorted(photos_dir.glob(f"*.{PHOTO_EXTENSION}"))}
 
 
-def upload_photos(s3_client, bucket: str, photos: dict[str, str]) -> list[str]:
+def upload_photos(s3_client, bucket: str, photos: dict[str, str], prefix: str = "") -> list[str]:
     """Upload any photo the bucket does not already hold, and return what
-    was uploaded.
+    was uploaded - under `prefix`, which is the publishing environment's
+    (lib/data_env.prefix_for).
 
     Existence is the whole check - no hash comparison, because the key IS
     the hash: an object already at `photos/<digest>.jpg` is by construction
     the bytes we were about to send. One cheap HEAD per photo per run beats
     both re-uploading everything and carrying a manifest of them.
+
+    That check is per environment rather than bucket-wide, which is what makes
+    a non-production environment's first publish pay for the whole corpus
+    (~75 MB, features/POI_PHOTOS.md) and every later one pay for nothing. The
+    duplication is deliberate: `photos/` is the one hiker-facing prefix objects
+    are *deleted* from - a withdrawal is a promise made to whoever shared the
+    photograph - and a shared prefix would let a withdrawal rehearsed in UA
+    take the picture out of production.
+
+    Returned unscoped, because the caller reports what was published and the
+    prefix is a fact about where rather than about what.
     """
     uploaded: list[str] = []
     for key, path in photos.items():
         try:
-            s3_client.head_object(Bucket=bucket, Key=key)
+            s3_client.head_object(Bucket=bucket, Key=f"{prefix}{key}")
             continue
         except Exception as exc:
             if "404" not in str(exc) and "NoSuchKey" not in str(exc) and "Not Found" not in str(exc):
                 raise
-        s3_client.upload_file(path, bucket, key, ExtraArgs={"ContentType": "image/jpeg"})
+        s3_client.upload_file(path, bucket, f"{prefix}{key}", ExtraArgs={"ContentType": "image/jpeg"})
         uploaded.append(key)
     return uploaded
 
@@ -227,6 +250,16 @@ def collect_artifacts() -> dict[str, dict]:
         manifest = json.loads(spurs_manifest.read_text())
         artifacts["spurs.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
+    # Who maintains which stretch, if export_club_sections.py has run (#594,
+    # features/CORRIDOR_VIEW.md). Same shape and same reasoning as spurs.json
+    # above: a small keyed artifact rather than properties on trails.geojson,
+    # so it gets ordinary sha256 diffing and a run that changes no club
+    # assignment uploads nothing.
+    club_manifest = PROCESSED_DIR / "club_sections_manifest.json"
+    if club_manifest.exists():
+        manifest = json.loads(club_manifest.read_text())
+        artifacts["club_sections.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+
     # Verified closures and reports, if export_conditions.py has run
     # (features/CONDITIONS_DELIVERY.md). Ordinary artifacts rather than a
     # special case: they want the same sha256 diffing every other one gets, and
@@ -239,11 +272,19 @@ def collect_artifacts() -> dict[str, dict]:
     # and each becomes `conditions/<name>.json`; a manifest from before #436
     # has no "artifacts" key at all, and a KeyError here beats quietly
     # publishing a stale shape (re-running export_conditions.py rewrites it).
-    conditions_manifest = PROCESSED_DIR / "conditions_manifest.json"
-    if conditions_manifest.exists():
-        manifest = json.loads(conditions_manifest.read_text())
-        for kind, entry in manifest["artifacts"].items():
-            artifacts[f"conditions/{kind}.json"] = {"path": entry["path"], "sha256": entry["sha256"]}
+    # Two manifests rather than one, because two scripts produce them:
+    # export_conditions.py reads the database, export_atc_updates.py reads a
+    # reviewed file in git, and they run under different conditions - the
+    # first needs a credential that may not exist yet, the second never needs
+    # one. Sharing a manifest file would make the published set depend on
+    # which ran last, since each rewrites its own manifest whole, and the
+    # artifact that lost would vanish from the upload with nothing said.
+    for name in ("conditions_manifest.json", "atc_updates_manifest.json"):
+        conditions_manifest = PROCESSED_DIR / name
+        if conditions_manifest.exists():
+            manifest = json.loads(conditions_manifest.read_text())
+            for kind, entry in manifest["artifacts"].items():
+                artifacts[f"conditions/{kind}.json"] = {"path": entry["path"], "sha256": entry["sha256"]}
 
     for name in (*BACKGROUND_ARCHIVES.values(), *OFFLINE_SHEET_ARCHIVES.values()):
         path = PROCESSED_DIR / name
@@ -253,9 +294,9 @@ def collect_artifacts() -> dict[str, dict]:
     return artifacts
 
 
-def _load_remote_manifest(s3_client, bucket: str) -> dict | None:
+def _load_remote_manifest(s3_client, bucket: str, manifest_key: str = MANIFEST_KEY) -> dict | None:
     try:
-        body = s3_client.get_object(Bucket=bucket, Key=MANIFEST_KEY)["Body"].read()
+        body = s3_client.get_object(Bucket=bucket, Key=manifest_key)["Body"].read()
     except s3_client.exceptions.NoSuchKey:
         return None
     except Exception as exc:
@@ -281,6 +322,7 @@ def publish(
     photos: dict[str, str] | None = None,
     s3_client=None,
     bucket: str | None = None,
+    environment: str | None = None,
 ) -> dict:
     """Diff `artifacts` (defaults to collect_artifacts()'s real output)
     against the bucket's current latest.json, upload only what changed, and
@@ -289,9 +331,24 @@ def publish(
     whether a new version was written, and the resulting version id.
 
     `sidecars` (build metadata, see SIDECARS) never affects that decision and
-    is uploaded only when a version is written."""
+    is uploaded only when a version is written.
+
+    `environment` names which of RELEASING.md §3's environments this publishes
+    to, defaulting to `$OURHIKE_DATA_ENV` - which has no default of its own, so
+    a caller that says nothing anywhere gets an error rather than production.
+    Every key below is scoped by it exactly once, on the way out, and the
+    manifest's *contents* are left unscoped: an artifact is `trails.geojson` in
+    every environment, and which bytes that names is decided by the base URL
+    the client was built against (client/src/lib/config.ts). That is what lets
+    a manifest be read, diffed or promoted between environments without
+    rewriting it."""
     if not writes_enabled():
         raise PermissionError(f"R2 writes are disabled. Set {WRITE_ENABLED_ENV_VAR}=true before publishing.")
+
+    # Before the credentials are even read, so a run with the wrong idea of
+    # where it is publishing fails while it still cannot reach the bucket.
+    environment = data_env.resolve(environment)
+    prefix = data_env.prefix_for(environment)
 
     if artifacts is None:
         artifacts = collect_artifacts()
@@ -306,7 +363,12 @@ def publish(
     # It also has to fail *here* rather than in review, because the manifest
     # merge below is additive-only - a key published once cannot be renamed,
     # only abandoned in place and served forever.
-    assert_valid_keys([MANIFEST_KEY, *artifacts, *sidecars, *photos])
+    #
+    # Scoped first and validated after, because the key that gets checked has
+    # to be the key that gets written - an environment prefix that made a legal
+    # name illegal would otherwise be found by the bucket rather than by this.
+    manifest_key = data_env.scope_key(environment, MANIFEST_KEY)
+    assert_valid_keys([manifest_key, *(f"{prefix}{name}" for name in (*artifacts, *sidecars, *photos))])
 
     if s3_client is None:
         s3_client = boto3.client(
@@ -318,7 +380,7 @@ def publish(
     if bucket is None:
         bucket = os.environ["R2_BUCKET"]
 
-    remote_manifest = _load_remote_manifest(s3_client, bucket)
+    remote_manifest = _load_remote_manifest(s3_client, bucket, manifest_key)
     remote_artifacts = remote_manifest["artifacts"] if remote_manifest else {}
 
     # Photos first, before any artifact that names them and well before the
@@ -327,7 +389,7 @@ def publish(
     # nothing references yet - is invisible and harmless. Ordering is the
     # only thing making that safe, since photos are outside the manifest and
     # so cannot be diffed into the same transaction as the artifacts.
-    uploaded_photos = upload_photos(s3_client, bucket, photos)
+    uploaded_photos = upload_photos(s3_client, bucket, photos, prefix)
 
     uploaded: list[str] = []
     skipped: list[str] = []
@@ -336,11 +398,12 @@ def publish(
         if remote_entry is not None and remote_entry["sha256"] == entry["sha256"]:
             skipped.append(name)
             continue
-        s3_client.upload_file(entry["path"], bucket, name)
+        s3_client.upload_file(entry["path"], bucket, f"{prefix}{name}")
         uploaded.append(name)
 
     if not uploaded:
         return {
+            "environment": environment,
             "uploaded": [],
             "skipped": sorted(skipped),
             "sidecars": [],
@@ -354,7 +417,7 @@ def publish(
     # After the decision, never before: a sidecar must never be able to cause
     # a version, and must never describe data that was not published.
     for name, entry in sidecars.items():
-        s3_client.upload_file(entry["path"], bucket, name)
+        s3_client.upload_file(entry["path"], bucket, f"{prefix}{name}")
 
     # Merge, don't replace: an artifact that's live in remote_artifacts but
     # wasn't produced by this run's collect_artifacts() (e.g. a checkout that
@@ -376,9 +439,10 @@ def publish(
     # mistake build metadata for something a hiker downloads.
     if sidecars:
         new_manifest["sidecars"] = {name: {"sha256": entry["sha256"]} for name, entry in sidecars.items()}
-    s3_client.put_object(Bucket=bucket, Key=MANIFEST_KEY, Body=json.dumps(new_manifest, indent=2).encode("utf-8"))
+    s3_client.put_object(Bucket=bucket, Key=manifest_key, Body=json.dumps(new_manifest, indent=2).encode("utf-8"))
 
     return {
+        "environment": environment,
         "uploaded": sorted(uploaded),
         "skipped": sorted(skipped),
         "sidecars": sorted(sidecars),
@@ -389,12 +453,31 @@ def publish(
 
 
 def main() -> dict:
+    # Resolved before the artifacts are collected so that a run with no
+    # environment set says so immediately, rather than after it has hashed
+    # 1.6 GB of PMTiles to discover it has nowhere to put them.
+    environment = data_env.resolve()
+
     artifacts = collect_artifacts()
     if not artifacts:
         print("No exported artifacts found under data/processed/ - run the export scripts first.")
-        return {"uploaded": [], "skipped": [], "photos_uploaded": [], "version_written": False, "version": None}
+        return {
+            "environment": environment,
+            "uploaded": [],
+            "skipped": [],
+            "photos_uploaded": [],
+            "version_written": False,
+            "version": None,
+        }
 
-    result = publish(artifacts)
+    # Named on every run, including the ones that publish nothing. Which
+    # environment a job wrote to is the fact this whole mechanism exists to
+    # keep straight, and a log that omits it leaves the reader inferring it
+    # from the workflow name (features/DATA_ENVIRONMENTS.md).
+    where = data_env.prefix_for(environment) or "the bucket root"
+    print(f"Publishing to the {environment} environment ({where}).")
+
+    result = publish(artifacts, environment=environment)
     if result["version_written"]:
         print(f"Published version {result['version']}: uploaded {result['uploaded']}, skipped {result['skipped']}.")
         if result["sidecars"]:
@@ -421,6 +504,9 @@ def main() -> dict:
 if __name__ == "__main__":
     try:
         main()
-    except PermissionError as exc:
+    except (PermissionError, data_env.UnknownEnvironment) as exc:
+        # Both are refusals to publish rather than faults, and both are worth
+        # reading as a sentence: a traceback for "you did not say where" buries
+        # the one line that says what to type.
         print(exc)
         raise SystemExit(1)

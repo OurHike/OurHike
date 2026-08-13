@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import type { Map as MapLibreMap } from 'maplibre-gl'
-import { POI_ID_PROPERTY, POI_LAYER_ID } from './poiLayers'
-import { attachPoiTaps, POI_TAP_SLOP_PX } from './poiTaps'
+import { POI_DOT_LAYER_ID, POI_ID_PROPERTY, POI_LAYER_ID } from './poiLayers'
+import { attachPoiTaps, poiIdAt, POI_DOT_TAP_SLOP_PX, POI_TAP_SLOP_PX } from './poiTaps'
 
 // The behaviour under test is "a hiker touches a pin and the app knows which
 // POI that was" - so these drive real events through the map rather than
@@ -10,8 +10,16 @@ import { attachPoiTaps, POI_TAP_SLOP_PX } from './poiTaps'
 
 function buildMap(): MockMap {
   const map = new MockMap({})
-  map.layerIds = [POI_LAYER_ID, 'trail-lines']
+  map.layerIds = [POI_LAYER_ID, POI_DOT_LAYER_ID, 'trail-lines']
   return map
+}
+
+/** A dot feature, which unlike a pin carries geometry the rule reads. */
+function dot(id: string, lon: number, lat: number, type = 'viewpoint') {
+  return {
+    properties: { [POI_ID_PROPERTY]: id, poi_type: type, confidence: 'high' },
+    geometry: { type: 'Point', coordinates: [lon, lat] },
+  }
 }
 
 function pin(id: string, type = 'water') {
@@ -78,7 +86,18 @@ describe('tapping a pin', () => {
     map.emit('click', touchAt(50, 50))
 
     expect(onSelect).toHaveBeenCalledWith(null)
-    expect(map.featureQueries.at(-1)?.layers).toEqual([POI_LAYER_ID])
+    // EVERY query, not just the last. There are two ranks now (#597), so a
+    // touch asks about pins and then about dots; asserting on the last one
+    // alone would stop noticing if the first ever widened to the whole style.
+    expect(map.featureQueries.length).toBeGreaterThan(0)
+    for (const query of map.featureQueries) {
+      expect(query.layers).not.toContain('trail-lines')
+      expect(
+        query.layers?.every(
+          (layer) => layer === POI_LAYER_ID || layer === POI_DOT_LAYER_ID,
+        ),
+      ).toBe(true)
+    }
   })
 
   it('allows for a thumb: a touch beside the pin still opens it', () => {
@@ -183,5 +202,81 @@ describe('detaching', () => {
     detach()
 
     expect(map.getCanvas().style.cursor).toBe('')
+  })
+})
+
+describe('the two-rank tap rule (#597)', () => {
+  it('gives a dot a much wider hit area than a pin, because it is much smaller', () => {
+    // A 38px pin needs 3px of slop to reach the 44px touch target; a dot a few
+    // pixels across needs about twenty. That difference is the reason the
+    // ordering below has to be a rule at all - the dot box will routinely hold
+    // more than one waypoint where the pin box almost never did.
+    expect(POI_DOT_TAP_SLOP_PX).toBeGreaterThan(POI_TAP_SLOP_PX * 5)
+  })
+
+  it('RULE 1: a pin under the thumb beats a dot under the thumb', () => {
+    // Resolving to the dot would make a perfectly good pin feel unreliable -
+    // the hiker aimed at the thing they could see.
+    const map = buildMap()
+    map.renderedFeatures.set(POI_LAYER_ID, [pin('the-pin')])
+    map.renderedFeatures.set(POI_DOT_LAYER_ID, [dot('a-dot', 0, 0)])
+
+    expect(poiIdAt(map as unknown as MapLibreMap, { x: 100, y: 100 })).toBe('the-pin')
+  })
+
+  it('RULE 2: among dots, the one nearest the touch wins', () => {
+    // MapLibre's own ordering inside a circle layer is source order, which is
+    // not an answer to "which did they mean". Listing the far one first is
+    // exactly the case `[0]` would get wrong.
+    const map = buildMap()
+    map.projection = ([lon]) => ({ x: lon, y: 100 })
+    map.renderedFeatures.set(POI_LAYER_ID, [])
+    map.renderedFeatures.set(POI_DOT_LAYER_ID, [dot('far', 118, 0), dot('near', 102, 0)])
+
+    expect(poiIdAt(map as unknown as MapLibreMap, { x: 100, y: 100 })).toBe('near')
+  })
+
+  it('falls through to a dot when no pin is under the thumb', () => {
+    const map = buildMap()
+    map.projection = ([lon]) => ({ x: lon, y: 100 })
+    map.renderedFeatures.set(POI_LAYER_ID, [])
+    map.renderedFeatures.set(POI_DOT_LAYER_ID, [dot('only-a-dot', 101, 0)])
+
+    expect(poiIdAt(map as unknown as MapLibreMap, { x: 100, y: 100 })).toBe('only-a-dot')
+  })
+
+  it('is still bare map when neither rank has anything there', () => {
+    // The null is load-bearing: it is how the waypoint card closes.
+    const map = buildMap()
+    map.renderedFeatures.set(POI_LAYER_ID, [])
+    map.renderedFeatures.set(POI_DOT_LAYER_ID, [])
+
+    expect(poiIdAt(map as unknown as MapLibreMap, { x: 100, y: 100 })).toBeNull()
+  })
+
+  it('says bare map rather than throwing when the dot layer is not in the style yet', () => {
+    // A style mid-parse holds one layer and not the other, and a touch then
+    // should be silent rather than an error in the console.
+    const map = buildMap()
+    map.layerIds = [POI_LAYER_ID]
+    map.renderedFeatures.set(POI_LAYER_ID, [])
+
+    expect(() => poiIdAt(map as unknown as MapLibreMap, { x: 100, y: 100 })).not.toThrow()
+    expect(poiIdAt(map as unknown as MapLibreMap, { x: 100, y: 100 })).toBeNull()
+  })
+
+  it('skips a dot carrying no usable id instead of selecting an empty string', () => {
+    const map = buildMap()
+    map.projection = ([lon]) => ({ x: lon, y: 100 })
+    map.renderedFeatures.set(POI_LAYER_ID, [])
+    map.renderedFeatures.set(POI_DOT_LAYER_ID, [
+      {
+        properties: { [POI_ID_PROPERTY]: '' },
+        geometry: { type: 'Point', coordinates: [101, 0] },
+      },
+      dot('real', 104, 0),
+    ])
+
+    expect(poiIdAt(map as unknown as MapLibreMap, { x: 100, y: 100 })).toBe('real')
   })
 })

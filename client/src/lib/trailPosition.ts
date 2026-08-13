@@ -269,6 +269,55 @@ export function trailSlice(
  * answer, and a better one than a mile number measured to a point three states
  * away.
  */
+/**
+ * Where a single mile marker is, as one coordinate - or null if it is not on
+ * this build's centerline.
+ *
+ * The counterpart to {@link trailSlice}, and it exists because a point is not
+ * a short band. `trailSlice` widens a zero-length range to the two vertices
+ * that bracket it, which is the right answer for a *range* too small to draw
+ * and the wrong one for a place: a shelter at mile 1,503.6 became a few dozen
+ * feet of line, invisible at any zoom a hiker uses. Most of what the ATC
+ * publishes is a single mile (map/atcUpdateLayers.ts).
+ *
+ * Interpolated between the two bracketing vertices rather than snapped to the
+ * nearer one, because the centerline's vertex spacing is coarser than the
+ * tenth of a mile ATC quotes, and snapping would move a footbridge to
+ * wherever the survey happened to put a point.
+ *
+ * Pieces are respected the way `trailSlice` respects them: a mile that falls
+ * in the gap *between* two centerline pieces belongs to neither, and answering
+ * with a coordinate there would place a notice on trail this build does not
+ * have.
+ */
+export function trailPointAtMile(
+  index: TrailIndex,
+  mile: number,
+): [number, number] | null {
+  const count = index.lons.length
+  if (count === 0) return null
+
+  for (let p = 0; p < index.partStarts.length; p += 1) {
+    const start = index.partStarts[p]
+    const end = (index.partStarts[p + 1] ?? count) - 1
+    if (mile < index.miles[start] || mile > index.miles[end]) continue
+
+    let i = start
+    while (i < end && index.miles[i + 1] < mile) i += 1
+
+    const span = index.miles[i + 1] - index.miles[i]
+    // Two vertices recorded at the same mile: no gradient to interpolate
+    // along, and either endpoint is as good an answer as the other.
+    const t = span > 0 ? (mile - index.miles[i]) / span : 0
+    return [
+      index.lons[i] + (index.lons[i + 1] - index.lons[i]) * t,
+      index.lats[i] + (index.lats[i + 1] - index.lats[i]) * t,
+    ]
+  }
+
+  return null
+}
+
 export function locateOnTrail(index: TrailIndex, at: LonLat): TrailFix | null {
   if (index.lons.length === 0) return null
 

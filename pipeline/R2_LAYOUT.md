@@ -52,7 +52,7 @@ about generated data), and anything whose licence has not been established
 
 ## Top-level prefixes
 
-There are three places an object can be, and a new one is a design decision — recorded in
+These are the places an object can be, and a new one is a design decision — recorded in
 a design doc and added to `TOP_LEVEL_PREFIXES` — rather than something a script invents on
 its first upload. The reason is retention: prune rules are written per prefix, so a prefix
 nobody declared is a prefix no prune job knows to spare, and the failure mode is deleting
@@ -65,7 +65,8 @@ data a phone is pinned to.
 | `_internal/` | build intermediates, keyed by release | rewritten per build | no |
 | `photos/` | POI photos, one object per image, content-addressed | mutable: objects are added and deleted, never rewritten | yes |
 | `originals/` | full-resolution originals of the photos above, content-addressed | mutable: objects are added and deleted, never rewritten | **no** |
-| `conditions/` | published safety data — verified closures now, verified reports later | mutable: rewritten in place, daily | yes |
+| `conditions/` | published safety data — verified closures, verified reports, and the ATC's own trail updates | mutable: rewritten in place, daily | yes |
+| `environments/` | one subtree per non-production environment, each holding a whole copy of this layout | as whatever it holds | to that environment's audience |
 
 `releases/` and `_internal/` are the layout [DATA_RELEASES.md](DATA_RELEASES.md) designs and
 is rolling out; the root keys are what is live today and stay frozen when it lands. That
@@ -104,6 +105,29 @@ which POI_PHOTOS.md keeps off this project's disks entirely.
 
 `_internal/` is named to be obvious rather than to hide: on a public r2.dev bucket it is
 readable by anyone. It means "nothing here is a download", not "nobody can see this".
+
+`environments/` is the one prefix that holds no objects of its own. `environments/ua/` is this
+whole page again — root keys, `releases/`, `photos/`, `conditions/`, all of it — belonging to
+UA, and the same for any other environment
+([../features/DATA_ENVIRONMENTS.md](../features/DATA_ENVIRONMENTS.md)). Two consequences follow,
+and both are why it is a row here rather than a note:
+
+- **Production is the root, and stays there.** It is not `environments/production/` and never
+  will be, because point 1 above is not recoverable: every key live today is a URL some deployed
+  build goes on requesting, and moving production under a prefix would rename all of them at
+  once. The asymmetry is the rule rather than an exception to it — production is where the data
+  already is.
+- **The prefix is stripped before every rule on this page is applied.** `lib/r2_keys.py` takes
+  `environments/ua/` off the front and then judges what is left exactly as it judges a
+  production key, so the segment limit is counted from the environment's own root. Otherwise
+  `environments/ua/releases/2026-08-13/trails.geojson` would be five deep and illegal while
+  production's identical key was four and fine — a dataset that could not be staged in the place
+  it exists to be verified.
+
+An environment name is not something a script invents either: `lib/data_env.ENVIRONMENTS` is a
+closed set of the three [../RELEASING.md](../RELEASING.md) §3 declares, for the reason this
+table's own preamble gives about prefixes. `environments/uat/` is a typo, and the failure it
+would otherwise produce is a complete, correct dataset in a tree nobody is looking at.
 
 ## Naming rules
 

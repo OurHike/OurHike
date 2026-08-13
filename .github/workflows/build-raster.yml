@@ -50,6 +50,11 @@ on:
         description: "Upload to R2. Ignored unless max_cells is 0, since a partial corridor must never ship."
         type: boolean
         default: false
+      data_environment:
+        description: "Which environment's data this becomes. UA first; production is the promotion."
+        type: choice
+        options: [ua, production, dev]
+        default: ua
 
 concurrency:
   group: build-raster
@@ -310,6 +315,10 @@ jobs:
       - name: Publish to R2
         env:
           R2_WRITE_ENABLED: "true"
+          # Which environment's data this becomes. publish.py scopes every
+          # key by it and refuses to run without one, so a build cannot reach
+          # production's keys by omission (features/DATA_ENVIRONMENTS.md).
+          OURHIKE_DATA_ENV: ${{ inputs.data_environment }}
           R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}

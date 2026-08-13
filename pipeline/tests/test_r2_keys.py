@@ -16,7 +16,7 @@ pass fails here rather than in a bucket nobody can undo.
 import pytest
 
 import publish
-from lib import r2_keys
+from lib import data_env, r2_keys
 
 
 def test_every_artifact_name_publish_can_produce_is_a_legal_key():
@@ -116,6 +116,7 @@ def test_publish_refuses_a_run_carrying_an_illegal_key(monkeypatch, tmp_path):
     """The check runs before any client is built, so an unpublishable name
     costs nothing and leaves nothing half-uploaded."""
     monkeypatch.setenv(publish.WRITE_ENABLED_ENV_VAR, "true")
+    monkeypatch.setenv(data_env.ENVIRONMENT_VAR, data_env.PRODUCTION)
     path = tmp_path / "artifact"
     path.write_text("{}")
 

@@ -17,6 +17,13 @@
 # is a deliberate act: dispatch it, and tick `publish` only when you mean it.
 # Left unticked it builds and gates and uploads nothing, which is the right way
 # to find out whether upstream data still parses.
+#
+# WHICH ENVIRONMENT IT PUBLISHES TO defaults to UA rather than production, and
+# that default is the same argument migrate.yml already makes about schema
+# changes: UA first, always, so that the production run has a precedent instead
+# of being the first attempt. features/DATA_ENVIRONMENTS.md is the design;
+# publish.py refuses to run at all without a value, so the choice is made in the
+# dispatch form rather than inherited from whatever ran last.
 
 name: Publish vector data
 
@@ -27,6 +34,11 @@ on:
         description: "Upload to R2. Leave unticked for a dry run that builds and checks only."
         type: boolean
         default: false
+      data_environment:
+        description: "Which environment's data this becomes. UA first; production is the promotion."
+        type: choice
+        options: [ua, production, dev]
+        default: ua
       include_elevation:
         description: "Also build the elevation profile. Adds ~25 min; no client code reads it yet."
         type: boolean
@@ -208,18 +220,19 @@ jobs:
 
       # Elevation has its own fetch too, and it is the slow one - it streams
       # USGS 3DEP tiles, which is why the whole leg is opt-in.
-      # The TNM catalogue answers, not the elevation data. 3DEP revises on a
-      # multi-year cycle, so a warm run asks USGS nothing at all - which is
-      # what stopped a single 504 on the first of 51 cells from throwing away
-      # an entire publish (#536). A miss just means asking again.
-      - name: Restore the TNM catalogue cache
-        if: inputs.include_elevation
-        uses: actions/cache@v4
-        with:
-          path: pipeline/data/raw/elevation/tnm_cells
-          key: tnm-cells-${{ github.run_id }}
-          restore-keys: tnm-cells-
-
+      #
+      # There is no catalogue cache to restore any more (#550). This step used
+      # to hold `actions/cache@v4` over the per-cell TNM answers, and it went
+      # with the API it cached: the tile list is now computed from the
+      # corridor's bounding box, so this step makes no requests that could 504
+      # and has nothing worth remembering between runs.
+      #
+      # It is worth noting what that cache was actually doing, since it was
+      # added for #536 and is being deleted rather than fixed: `actions/cache`
+      # skips its post-run save when the job FAILS, so the cache built to
+      # rescue a run that died mid-fetch was discarded on exactly those runs.
+      # Computing the list removes the need for either the cache or the
+      # restore/save split that would have fixed it.
       - name: Fetch elevation tiles
         if: inputs.include_elevation
         run: python fetch_elevation.py
@@ -347,6 +360,11 @@ jobs:
           # step in this workflow is structurally incapable of writing to the
           # bucket - see publish.py's writes_enabled().
           R2_WRITE_ENABLED: "true"
+          # The second gate, and the one that decides *where*. publish.py scopes
+          # every key it writes by this, so a UA run cannot reach production's
+          # keys rather than merely being expected not to
+          # (features/DATA_ENVIRONMENTS.md).
+          OURHIKE_DATA_ENV: ${{ inputs.data_environment }}
           R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -356,8 +374,12 @@ jobs:
       - name: Say what happened
         if: always()
         run: |
-          if [ "${{ inputs.publish }}" = "true" ]; then
-            echo "Published. The client needs DATA_BASE_URL set and a Pages redeploy to see it."
-          else
+          if [ "${{ inputs.publish }}" != "true" ]; then
             echo "Dry run - nothing was uploaded. Re-run with 'publish' ticked to upload."
+          elif [ "${{ inputs.data_environment }}" = "production" ]; then
+            echo "Published to production. The client needs DATA_BASE_URL set and a Pages redeploy to see it."
+          else
+            echo "Published to ${{ inputs.data_environment }}, under environments/${{ inputs.data_environment }}/."
+            echo "Production's keys were not touched. UA reads this once UA_DATA_BASE_URL names that prefix"
+            echo "and ua.yml has rebuilt - see features/DATA_ENVIRONMENTS.md."
           fi

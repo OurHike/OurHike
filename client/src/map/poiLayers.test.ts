@@ -1,24 +1,39 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createExpression, featureFilter } from '@maplibre/maplibre-gl-style-spec'
+import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { POI_TYPES } from '../lib/config'
-import { buildPoiIcons, poiIconId, UNKNOWN_POI_TYPE } from './poiIcons'
+import { hiddenTypesFrom, onlyType, showAllTypes } from '../lib/waypointVisibility'
+import {
+  buildPoiIcons,
+  POI_FALLBACK_COLOR,
+  POI_PIN_SIZE,
+  poiColor,
+  poiIconId,
+  siteMemberCombinations,
+  UNKNOWN_POI_TYPE,
+} from './poiIcons'
+import { SITE_ANCHOR_TYPES, SITE_MEMBERS_PROPERTY, siteMembersKey } from './poiSites'
 import {
   attachPoiFilter,
   attachPoiData,
   attachPoiIcons,
+  buildPoiDotLayer,
   buildPoiLayer,
   poiFeatureCollection,
   poiFilter,
+  POI_DOT_COLOR_EXPRESSION,
+  POI_DOT_LAYER_ID,
+  POI_DOT_RADIUS_EXPRESSION,
   POI_ICON_EXPRESSION,
   POI_ICON_SIZE_EXPRESSION,
   POI_ID_PROPERTY,
   POI_LAYER_ID,
-  POI_MIN_ZOOM,
-  POI_PRIORITY,
+  POI_PIN_MIN_ZOOM,
   POI_SORT_KEY_EXPRESSION,
   POI_SOURCE_ID,
 } from './poiLayers'
+import { POI_PRIORITY } from './poiPriority'
 
 // These are EVALUATED rather than shape-asserted wherever MapLibre gives us
 // the means to. An expression can have exactly the right array structure and
@@ -75,13 +90,86 @@ describe('the icon expression', () => {
   })
 })
 
+describe('the dot rank', () => {
+  it('is a CIRCLE layer, which is the entire mechanism', () => {
+    // THE test in this file. MapLibre's collision engine is a property of
+    // symbol layers; a circle participates in no placement pass, so every
+    // feature renders at every camera. Changed to 'symbol' - which would look
+    // like a harmless refactor and would typecheck - this layer starts
+    // colliding, waypoints start disappearing again, and the only symptom is
+    // that the map is quietly lying once more.
+    expect(buildPoiDotLayer().type).toBe('circle')
+  })
+
+  it('starts at the same seam as the pins, so neither rank leads the other', () => {
+    // Below the seam the map is the corridor view (features/CORRIDOR_VIEW.md)
+    // and carries no waypoints in either rank. A dot layer reaching lower
+    // would put 2,778 dots on a 2,197-mile line, which is the texture
+    // POI_PIN_MIN_ZOOM's own docstring refuses.
+    expect(buildPoiDotLayer().minzoom).toBe(POI_PIN_MIN_ZOOM)
+    expect(buildPoiDotLayer().minzoom).toBe(buildPoiLayer().minzoom)
+  })
+
+  it('reads the same source as the pins, which is what makes it site-correct', () => {
+    // poiFeatureCollection already emits one feature per SITE, so sharing the
+    // source means a privy riding its shelter's pin does not also get a dot
+    // 40 m away claiming to be a second place. Nothing else enforces that.
+    // `source` off the union, which also holds background layers that have
+    // none - narrowed rather than asserted away, so this still fails if either
+    // layer ever stops being source-backed.
+    const sourceOf = (layer: LayerSpecification): string | undefined =>
+      'source' in layer ? layer.source : undefined
+
+    expect(sourceOf(buildPoiDotLayer())).toBe(POI_SOURCE_ID)
+    expect(sourceOf(buildPoiDotLayer())).toBe(sourceOf(buildPoiLayer()))
+  })
+
+  it('wears its category accent, from the same table the pin uses', () => {
+    for (const type of POI_TYPES) {
+      expect(evaluate(POI_DOT_COLOR_EXPRESSION, poi(type))).toBe(poiColor(type))
+    }
+  })
+
+  it('lands an unknown type on the fallback rather than on nothing', () => {
+    expect(evaluate(POI_DOT_COLOR_EXPRESSION, poi('yurt'))).toBe(POI_FALLBACK_COLOR)
+  })
+
+  it('stays small enough not to compete with a pin', () => {
+    const atSeam = evaluate(
+      POI_DOT_RADIUS_EXPRESSION,
+      poi('water'),
+      POI_PIN_MIN_ZOOM,
+    ) as number
+
+    // Diameter against the pin's whole 38px. A dot that reads as a small pin
+    // is worse than no dot: it claims to say what is there, which is exactly
+    // what it cannot do.
+    expect(atSeam * 2).toBeLessThan(POI_PIN_SIZE / 2)
+  })
+
+  it('grows with the camera, like the pins do', () => {
+    const far = evaluate(
+      POI_DOT_RADIUS_EXPRESSION,
+      poi('water'),
+      POI_PIN_MIN_ZOOM,
+    ) as number
+    const near = evaluate(POI_DOT_RADIUS_EXPRESSION, poi('water'), 16) as number
+
+    expect(far).toBeLessThan(near)
+  })
+})
+
 describe('density', () => {
   it('draws no pins at all above the whole-corridor view', () => {
     // The opening camera frames 2,197 miles. Eight hundred pins on it is a
     // texture, not information, and letting the collision engine thin them
     // would answer "which of these matters" by geometry.
-    expect(buildPoiLayer().minzoom).toBe(POI_MIN_ZOOM)
-    expect(POI_MIN_ZOOM).toBeGreaterThan(8)
+    //
+    // The seam is MEASURED - pipeline/spike_poi_seam.py, 2026-08-13 - so this
+    // asserts the floor exists and is above the old z9 rather than restating
+    // the figure, which would be one number in two places.
+    expect(buildPoiLayer().minzoom).toBe(POI_PIN_MIN_ZOOM)
+    expect(POI_PIN_MIN_ZOOM).toBeGreaterThan(9)
   })
 
   it('leaves the collision engine switched on, which is the whole density story', () => {
@@ -91,7 +179,11 @@ describe('density', () => {
   })
 
   it('grows the pins as the hiker zooms in', () => {
-    const far = evaluate(POI_ICON_SIZE_EXPRESSION, poi('water'), POI_MIN_ZOOM) as number
+    const far = evaluate(
+      POI_ICON_SIZE_EXPRESSION,
+      poi('water'),
+      POI_PIN_MIN_ZOOM,
+    ) as number
     const near = evaluate(POI_ICON_SIZE_EXPRESSION, poi('water'), 14) as number
 
     expect(far).toBeLessThan(near)
@@ -181,7 +273,7 @@ describe('poiFeatureCollection', () => {
     expect(first.geometry.coordinates).toEqual([-77.1, 39.3])
   })
 
-  it('carries the two attributes the style matches on, and the id to look up by', () => {
+  it('carries the attributes the style matches on, and the id to look up by', () => {
     const [, shelter] = poiFeatureCollection(pois).features
 
     expect(shelter.id).toBe('s1')
@@ -189,7 +281,111 @@ describe('poiFeatureCollection', () => {
       poi_type: 'shelter',
       confidence: 'low',
       [POI_ID_PROPERTY]: 's1',
+      // Always present, empty where the pin carries nothing (#524). Asserted
+      // exactly rather than loosely, which is why this test had to change when
+      // the property arrived - a `toMatchObject` here would have let a fourth
+      // property appear unnoticed.
+      [SITE_MEMBERS_PROPERTY]: '',
     })
+  })
+
+  // One pin per site (#524). The mechanism lives in map/poiSites.ts and is
+  // tested there; what only this file can catch is the source failing to apply
+  // it, which would leave every member competing for a box exactly as before.
+  it('resolves every site pin to an image that was actually registered', () => {
+    // THE FAILURE THIS CATCHES, and the reason it EVALUATES the expression
+    // rather than reading it: MapLibre draws a missing image as NOTHING, logging
+    // once per tile. A site pin asking for an id nobody built is a shelter that
+    // vanishes from the map entirely - strictly worse than the privy problem
+    // #524 is fixing.
+    for (const type of SITE_ANCHOR_TYPES) {
+      for (const members of siteMemberCombinations()) {
+        for (const confidence of ['high', 'low'] as const) {
+          const resolved = evaluate(POI_ICON_EXPRESSION, {
+            ...poi(type, confidence),
+            [SITE_MEMBERS_PROPERTY]: siteMembersKey(members),
+          })
+
+          const label = `${type}/${confidence}/${members.join('+')}`
+          expect(REGISTERED_ICON_IDS, label).toContain(resolved)
+          // And it must be the SITE image, not merely A registered one. Asserting
+          // only "registered" passed while the expression resolved every site pin
+          // to the PLAIN icon - a shelter carrying a privy drawing a bare shelter
+          // pin and saying nothing, which is the failure this whole change exists
+          // to prevent. Caught by mutating the arm, not by reading it.
+          expect(resolved, label).toBe(poiIconId(type, confidence, members))
+          expect(resolved, label).not.toBe(poiIconId(type, confidence))
+        }
+      }
+    }
+  })
+
+  it('still resolves a pin carrying nothing to the plain image', () => {
+    const resolved = evaluate(POI_ICON_EXPRESSION, {
+      ...poi('shelter', 'high'),
+      [SITE_MEMBERS_PROPERTY]: '',
+    })
+
+    expect(resolved).toBe(poiIconId('shelter', 'high'))
+  })
+
+  it('drops a site member from the source rather than letting it lose a collision', () => {
+    const collection = poiFeatureCollection([
+      {
+        id: 'shelter',
+        type: 'shelter',
+        lat: 39,
+        lon: -77,
+        confidence: 'high',
+        siteId: 'site_1',
+        siteRole: 'anchor',
+      },
+      {
+        id: 'privy',
+        type: 'privy',
+        lat: 39.0004,
+        lon: -77,
+        confidence: 'high',
+        siteId: 'site_1',
+        siteRole: 'member',
+      },
+    ])
+
+    expect(collection.features.map((f) => f.id)).toEqual(['shelter'])
+  })
+
+  it('tells the style what the surviving pin is carrying', () => {
+    const collection = poiFeatureCollection([
+      {
+        id: 'shelter',
+        type: 'shelter',
+        lat: 39,
+        lon: -77,
+        confidence: 'high',
+        siteId: 'site_1',
+        siteRole: 'anchor',
+      },
+      {
+        id: 'privy',
+        type: 'privy',
+        lat: 39.0004,
+        lon: -77,
+        confidence: 'high',
+        siteId: 'site_1',
+        siteRole: 'member',
+      },
+      {
+        id: 'water',
+        type: 'water',
+        lat: 39.0005,
+        lon: -77,
+        confidence: 'low',
+        siteId: 'site_1',
+        siteRole: 'member',
+      },
+    ])
+
+    expect(collection.features[0].properties[SITE_MEMBERS_PROPERTY]).toBe('privy+water')
   })
 
   it('puts the POI id somewhere a tap can still read it', () => {
@@ -261,6 +457,84 @@ describe('hiding a category', () => {
   })
 })
 
+// The source and the filter TOGETHER, which is the only place this bug is
+// visible (#607). Neither half can catch it alone: the composition can be right
+// about which POI carries the pin while the filter takes that pin off the map,
+// and the filter can be right about which types survive while the source never
+// offered the privy in the first place. What is asserted here is what reaches
+// the hiker's screen.
+describe('filtering the legend down to one category', () => {
+  const SITE = [
+    {
+      id: 'shelter',
+      type: 'shelter',
+      lat: 39,
+      lon: -77,
+      confidence: 'high' as const,
+      siteId: 'site_1',
+      siteRole: 'anchor',
+    },
+    {
+      id: 'privy',
+      // 42 m from its shelter, which is the median in features/POI_SITES.md and
+      // the reason it cannot be drawn below z16 while it competes for a box.
+      type: 'privy',
+      lat: 39.0004,
+      lon: -77,
+      confidence: 'high' as const,
+      siteId: 'site_1',
+      siteRole: 'member',
+    },
+  ]
+
+  function drawnPins(shown: string[]): string[] {
+    const hiddenTypes = hiddenTypesFrom(shown)
+    const { filter } = featureFilter(poiFilter(hiddenTypes) as never, 'layers[0].filter')
+
+    return poiFeatureCollection(SITE, { hiddenTypes })
+      .features.filter((feature) =>
+        filter(
+          { zoom: 14 } as never,
+          { properties: feature.properties, type: 1 } as never,
+          null as never,
+        ),
+      )
+      .map((feature) => feature.id)
+  }
+
+  it('draws the privy once its shelter has been filtered out', () => {
+    // THE REGRESSION. Before this, both halves fired at once and the map drew
+    // NOTHING: the privy was removed from the source as riding a shelter pin,
+    // and the shelter pin was removed by the filter. Over the real corridor that
+    // is 284 of 316 privies gone from the one control built to find them.
+    expect(drawnPins(onlyType('privy'))).toEqual(['privy'])
+  })
+
+  it('still draws the shelter, and only the shelter, when nothing is hidden', () => {
+    expect(drawnPins(showAllTypes())).toEqual(['shelter'])
+  })
+
+  it('draws the shelter and not the privy when only shelters are asked for', () => {
+    // The other direction, and it must still fold: the privy is not promoted
+    // just because a filter is in force, only because the pin it rides has gone.
+    expect(drawnPins(onlyType('shelter'))).toEqual(['shelter'])
+  })
+
+  it('resolves the promoted pin to an image that was actually registered', () => {
+    // A promoted member is asked for by an expression built for anchors. A privy
+    // is not a SITE_ANCHOR_TYPE, so it has no member variants - and an id nobody
+    // built draws as nothing at all, which would turn this fix into the same
+    // blank map by another route.
+    const hiddenTypes = hiddenTypesFrom(onlyType('privy'))
+    const [promoted] = poiFeatureCollection(SITE, { hiddenTypes }).features
+
+    const resolved = evaluate(POI_ICON_EXPRESSION, promoted.properties)
+
+    expect(REGISTERED_ICON_IDS).toContain(resolved)
+    expect(resolved).toBe(poiIconId('privy', 'high'))
+  })
+})
+
 describe('the "Verified?" filter', () => {
   function passes(
     confidence: 'high' | 'low',
@@ -316,7 +590,10 @@ describe('pushing all of it onto a live map', () => {
   beforeEach(() => {
     resetMapLibreMock()
     map = new MockMap({})
-    map.layerIds = [POI_LAYER_ID]
+    // Both ranks, because the real style carries both (#597) and
+    // attachPoiFilter waits for both before writing. A stub holding only the
+    // pin layer would make every filter test here pass by never running.
+    map.layerIds = [POI_LAYER_ID, POI_DOT_LAYER_ID]
     map.sourceIds = [POI_SOURCE_ID]
   })
 
@@ -443,6 +720,31 @@ describe('pushing all of it onto a live map', () => {
     attachPoiFilter(map as never, new Set(['water']), true)
 
     expect(map.filters.get(POI_LAYER_ID)).toEqual(poiFilter(new Set(['water']), true))
+  })
+
+  it('hides a type on BOTH ranks, so no dot outlives the pin it belonged to', () => {
+    // The failure this exists for is silent: hide privies, the pins go, and a
+    // stipple of privy dots stays behind saying the legend is lying. Nothing
+    // throws, nothing logs, and the only symptom is on a screen.
+    map.styleLoaded = true
+
+    attachPoiFilter(map as never, new Set(['privy']), true)
+
+    const expected = poiFilter(new Set(['privy']), true)
+    expect(map.filters.get(POI_LAYER_ID)).toEqual(expected)
+    expect(map.filters.get(POI_DOT_LAYER_ID)).toEqual(expected)
+  })
+
+  it('waits for both ranks rather than filtering whichever arrived first', () => {
+    // A style mid-reload can hold one layer and not the other. Writing to the
+    // one that exists would leave the two ranks showing different categories
+    // until something else happened to trigger a re-filter.
+    map.styleLoaded = true
+    map.layerIds = [POI_LAYER_ID]
+
+    attachPoiFilter(map as never, new Set(['privy']))
+
+    expect(map.filters.has(POI_LAYER_ID)).toBe(false)
   })
 
   it('keeps the map alive when a write fails, and says so', () => {

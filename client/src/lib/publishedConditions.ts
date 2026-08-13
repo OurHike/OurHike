@@ -28,6 +28,7 @@
 // photo rather than with a broken one.
 
 import type { ClosureSummary, ReportSummary } from './api'
+import type { AtcUpdate } from './atcUpdates'
 import { DATA_CONFIGURED, dataUrl } from './config'
 
 /** The keys `pipeline/publish.py` uploads them under. Must match exactly: a
@@ -35,11 +36,25 @@ import { DATA_CONFIGURED, dataUrl } from './config'
  *  renamed afterwards (pipeline/R2_LAYOUT.md). */
 export const PUBLISHED_CLOSURES_KEY = 'conditions/closures.json'
 export const PUBLISHED_REPORTS_KEY = 'conditions/reports.json'
+export const PUBLISHED_ATC_UPDATES_KEY = 'conditions/atc_updates.json'
 
 export interface PublishedConditions<T> {
   /** When the bake ran. Rendered to the hiker; see lib/conditionState.ts. */
   generatedAt: Date
   items: T[]
+  /**
+   * When a person last checked the source against what it publishes, for the
+   * one artifact where that is a different date from the bake's.
+   *
+   * `undefined` for closures and reports, and that is not an omission: those
+   * are baked straight out of the database, so the bake's own clock is the
+   * only age there is. ATC's updates come from a file a human reviewed
+   * (features/ATC_TRAIL_UPDATES.md), and a daily bake of a three-month-old
+   * review would otherwise render as "conditions as of 2h ago" - fresh
+   * bytes carrying a stale claim, which is the exact failure the
+   * `generated_at` stamp exists to prevent.
+   */
+  reviewedAt?: Date
 }
 
 /**
@@ -58,7 +73,7 @@ export interface PublishedConditions<T> {
  */
 async function fetchPublished<T>(
   key: string,
-  field: 'closures' | 'reports',
+  field: 'closures' | 'reports' | 'atc_updates',
   signal?: AbortSignal,
 ): Promise<PublishedConditions<T> | null> {
   if (!DATA_CONFIGURED) return null
@@ -75,12 +90,26 @@ async function fetchPublished<T>(
     const generatedAt = new Date(document.generated_at)
     if (Number.isNaN(generatedAt.getTime())) return null
 
-    return { generatedAt, items: items as T[] }
+    const reviewedAt = parseReviewedAt(document.reviewed_at)
+    return { generatedAt, items: items as T[], ...(reviewedAt ? { reviewedAt } : {}) }
   } catch {
     // Includes the abort case, which is not an error worth distinguishing:
     // a cancelled read has no baseline to offer either.
     return null
   }
+}
+
+/** `reviewed_at`, or undefined when the document has none or it is unusable.
+ *
+ *  Lenient where `generated_at` is strict, because the two carry different
+ *  weight. A document with no `generated_at` is refused outright - it would
+ *  show day-old conditions with no indication of age. A missing `reviewed_at`
+ *  costs a line of provenance on a sheet, not the age of the data, so an
+ *  artifact baked before this field existed still reads. */
+function parseReviewedAt(value: unknown): Date | undefined {
+  if (typeof value !== 'string') return undefined
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed
 }
 
 export async function fetchPublishedClosures(
@@ -93,4 +122,26 @@ export async function fetchPublishedReports(
   signal?: AbortSignal,
 ): Promise<PublishedConditions<ReportSummary> | null> {
   return fetchPublished(PUBLISHED_REPORTS_KEY, 'reports', signal)
+}
+
+/**
+ * The ATC's own trail updates, or null if there isn't a usable set.
+ *
+ * The one artifact here with no live counterpart, and it never gets one: a
+ * hiker report has a backend endpoint behind it, and an ATC notice has ATC's
+ * website. So this is not a *baseline* for anything - it is the only tier
+ * there is, which is why `lib/atcUpdates.ts` states its own age rather than
+ * borrowing the closures caveat.
+ *
+ * `null` covers the case that matters most on this key: a 404, which is what
+ * the bucket serves while nobody has reviewed `reference/atc_updates.json`.
+ * The pipeline deliberately publishes nothing rather than an empty document
+ * in that state (`pipeline/export_atc_updates.py`), because "we have not
+ * looked" and "ATC reports nothing" are different claims and only one of
+ * them is safe to draw as an empty map.
+ */
+export async function fetchPublishedAtcUpdates(
+  signal?: AbortSignal,
+): Promise<PublishedConditions<AtcUpdate> | null> {
+  return fetchPublished(PUBLISHED_ATC_UPDATES_KEY, 'atc_updates', signal)
 }

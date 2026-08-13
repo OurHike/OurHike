@@ -167,8 +167,24 @@ import {
   worstOf,
   type ConditionState,
 } from './lib/conditionState'
-import { fetchPublishedClosures, fetchPublishedReports } from './lib/publishedConditions'
-import { nearestClosureBanner } from './lib/closureBanner'
+import {
+  fetchPublishedAtcUpdates,
+  fetchPublishedClosures,
+  fetchPublishedReports,
+} from './lib/publishedConditions'
+import { closureBanner, closureLanes, type RankedClosure } from './lib/closureBanner'
+import {
+  atcBandCandidates,
+  atcPointNotices,
+  atcUpdateBanner,
+  atcUpdateForBandId,
+  atcUpdateLanes,
+  type AtcUpdate,
+  type RankedAtcUpdate,
+} from './lib/atcUpdates'
+import { atcUpdatePoints } from './map/atcUpdateLayers'
+import { AtcUpdateSheet } from './chrome/AtcUpdateSheet'
+import { AtcNoticeList } from './chrome/AtcNoticeList'
 import { HikePicker } from './screens/HikePicker'
 import {
   clearPlannedHike,
@@ -406,6 +422,28 @@ function App() {
   const [reportState, setReportState] =
     useState<ConditionState<ReportSummary>>(UNAVAILABLE)
   const reports = itemsOf(reportState)
+  // The ATC's own notices, and deliberately NOT a `ConditionState` (#461).
+  // That machine exists to say which of two tiers a hiker is looking at -
+  // a live backend read or a day-old published baseline - and here there is
+  // only ever one: ATC publishes on their website, not through our API, so
+  // there is no live tier for a baseline to be a fallback from. Wrapping it
+  // anyway would put an "as of" caveat about OUR bake on data whose age is
+  // ATC's own `updated_at`, which is the one number that matters and travels
+  // on each row. `reviewedAt` is the other half of that honesty and rides
+  // beside the list rather than inside the rows, because it is a fact about
+  // the review rather than about any one notice.
+  const [atcUpdates, setAtcUpdates] = useState<readonly AtcUpdate[]>([])
+  const [atcReviewedAt, setAtcReviewedAt] = useState<Date | null>(null)
+  const [selectedAtcBandId, setSelectedAtcBandId] = useState<string | null>(null)
+  /**
+   * Whether the full list of ATC notices is open.
+   *
+   * Separate from `selectedAtcBandId` rather than a third state of it. The two
+   * answer different questions - "which one did they tap" and "did they ask to
+   * read all of them" - and a hiker who opens the list, taps a band behind it
+   * and closes that sheet should find the list still where they left it.
+   */
+  const [atcNoticesOpen, setAtcNoticesOpen] = useState(false)
   // Was a state with no setter until #231 - nothing ever synced, so the status
   // strip said "never synced" on every device forever, which was true and
   // looked like a bug in the strip rather than a missing feature.
@@ -628,6 +666,18 @@ function App() {
       setReportState((current) =>
         withBaseline(current, published.items, published.generatedAt),
       )
+    })
+
+    // The ATC's notices. No `withBaseline` and no race to lose: there is no
+    // live read to be overwritten by, so this is a plain set. `null` covers
+    // the 404 the bucket serves while nobody has reviewed the source file,
+    // and leaving the list empty in that case is the point - the pipeline
+    // publishes nothing rather than an empty document precisely so that "we
+    // have not looked" cannot render as "ATC reports nothing".
+    void fetchPublishedAtcUpdates().then((published) => {
+      if (cancelled || published === null) return
+      setAtcUpdates(published.items)
+      setAtcReviewedAt(published.reviewedAt ?? null)
     })
 
     return () => {
@@ -1038,10 +1088,54 @@ function App() {
    * silent for exactly the first quarter mile of a closed section, which is
    * where the warning matters most. closureBanner.ts owns that split.
    */
-  const closureAhead = useMemo(() => {
-    if (closures === null || fix === null) return null
-    return nearestClosureBanner(closures, fix.mile, heading)
-  }, [closures, fix, heading])
+  const { closureAhead, advisoryAhead } = useMemo(() => {
+    if (fix === null) return { closureAhead: null, advisoryAhead: null }
+
+    // Two sources compete for each line: OurHike's verified closures and the
+    // ATC's own notices (#461). Nearest wins, which is the rule the two lane
+    // functions already apply WITHIN their own list - "the closure two hundred
+    // miles north is not the one that changes what they do next" - extended
+    // across both rather than replaced by a precedence between the sources.
+    // Neither deserves one: an ATC notice is authoritative about the trail they
+    // maintain, and a verified closure was checked by a moderator, so ranking
+    // them would be inventing a claim about which organisation is more right.
+    // Which one is in front of the hiker is a fact, and it is the fact that
+    // decides what they do next.
+    //
+    // The winner is then written in its OWN voice - "Trail closed 2.1 mi
+    // ahead" for ours, "ATC · Closure 2.1 mi ahead · <their headline>" for
+    // theirs. That is the whole of #461's requirement in the one place a
+    // hiker reads without tapping anything.
+    //
+    // TWO LINES, NOT ONE (#485). A closure that is a stretch of trail and an
+    // advisory that is a region answer different questions - "what do I do next"
+    // against "what country am I in" - so they do not compete. Ranked together,
+    // standing inside a 398-mile advisory scored 0 and buried the nine-mile
+    // closure three miles ahead for 398 miles of walking. The rule is written
+    // once per source (`closureLanes`, `atcUpdateLanes`) and the source tie is
+    // broken here, the same way, for each lane.
+    const closureLane = closureLanes(closures ?? [], fix.mile, heading)
+    const atcLane = atcUpdateLanes(atcUpdates, fix.mile, heading)
+
+    // Whichever source the hiker reaches first, in that source's own voice.
+    // `<=` keeps ours first on an exact tie, which is arbitrary and has to be
+    // something; it matters only when both name the same mile.
+    const pick = (
+      closure: RankedClosure | null,
+      atc: RankedAtcUpdate | null,
+    ): string | null => {
+      if (closure !== null && (atc === null || closure.distance <= atc.distance)) {
+        return closureBanner(closure.closure, fix.mile, heading)
+      }
+      if (atc !== null) return atcUpdateBanner(atc.update, fix.mile, heading)
+      return null
+    }
+
+    return {
+      closureAhead: pick(closureLane.specific, atcLane.specific),
+      advisoryAhead: pick(closureLane.broad, atcLane.broad),
+    }
+  }, [closures, atcUpdates, fix, heading])
 
   /**
    * Serious warnings between here and the end of the trail, counted.
@@ -1107,6 +1201,65 @@ function App() {
   }, [closures, trailIndex])
 
   /**
+   * The ATC's notices as bands, through exactly the same geometry.
+   *
+   * `atcBandCandidates` adapts each update into the shared `Closure` shape and
+   * `closureBands` does the rest, so an ATC update inherits `trailSlice`'s
+   * centerline placement and `isBroadAdvisory`'s length ceiling without either
+   * being reimplemented - which is what #461 means by the geometry path
+   * needing no new code, and what keeps ATC's 398-mile Helene advisory from
+   * painting a fifth of the trail (#462).
+   *
+   * The candidate filter is where the two differ: only ATC categories that
+   * mean the trail itself is obstructed become a band, because a barred band
+   * says "go around" and a notice about a closed car park does not. The rest
+   * keep the banner, exactly as an over-long advisory does.
+   */
+  const atcBandsOnMap = useMemo(() => {
+    if (trailIndex === null) return []
+    return closureBands(atcBandCandidates(atcUpdates), trailIndex)
+  }, [atcUpdates, trailIndex])
+
+  /**
+   * The same notices that name one mile rather than a stretch, as dots.
+   *
+   * Not filtered by `obstructsTheTrail`, unlike the bands. A dot makes no
+   * claim about passability - it says the ATC has posted something here - so a
+   * bear warning and a closed shelter both belong on the map, and neither is
+   * the barrier a band would have made them.
+   */
+  const atcPointsOnMap = useMemo(() => {
+    if (trailIndex === null) return []
+    return atcUpdatePoints(atcPointNotices(atcUpdates), trailIndex)
+  }, [atcUpdates, trailIndex])
+
+  /** The tapped update, resolved from the band id the map reported. */
+  const selectedAtcUpdate = useMemo(() => {
+    if (selectedAtcBandId === null) return null
+    return atcUpdateForBandId(atcUpdates, selectedAtcBandId)
+  }, [atcUpdates, selectedAtcBandId])
+
+  /**
+   * Which notices the canvas is ACTUALLY drawing, by band id.
+   *
+   * Read off the two collections above rather than re-derived from the
+   * updates, and that is the whole point of computing it here. The filters
+   * (`atcBandCandidates`, `atcPointNotices`) say what this build INTENDS to
+   * draw; `closureBands` and `atcUpdatePoints` then drop anything whose mile
+   * falls outside this build's centerline, which no predicate over an
+   * `AtcUpdate` can know. AtcNoticeList tells a hiker which notices have no
+   * mark to look for, and it can only be honest about that from the truth.
+   */
+  const atcDrawnIds = useMemo(
+    () =>
+      new Set<string>([
+        ...atcBandsOnMap.map((band) => band.id),
+        ...atcPointsOnMap.map((point) => point.id),
+      ]),
+    [atcBandsOnMap, atcPointsOnMap],
+  )
+
+  /**
    * Serious warnings as points, straight from the report's own lat/lon.
    *
    * No `locateOnTrail` here, unlike `warningsAhead`, which needs a mile to
@@ -1166,6 +1319,13 @@ function App() {
         lat: poi.lat,
         lon: poi.lon,
         confidence: poi.confidence,
+        // Carried through so the map can draw one pin per site (#524). Spread
+        // conditionally rather than assigned as possibly-undefined, so a POI
+        // from a pre-#523 download has no site keys at all rather than keys
+        // holding undefined - which `composeSites` reads identically, but which
+        // would show up in a snapshot as a claim about a site.
+        ...(poi.siteId !== undefined ? { siteId: poi.siteId } : {}),
+        ...(poi.siteRole !== undefined ? { siteRole: poi.siteRole } : {}),
       })),
     [pois],
   )
@@ -2034,8 +2194,33 @@ function App() {
           // permission prompt behind this preference's back.
           locationEnabled={locationAllowed}
           closureAhead={closureAhead}
+          advisoryAhead={advisoryAhead}
           warningsAhead={warningsAhead}
           closures={closureBandsOnMap}
+          atcUpdates={atcBandsOnMap}
+          atcUpdatePoints={atcPointsOnMap}
+          onSelectAtcUpdate={setSelectedAtcBandId}
+          atcUpdateSheet={
+            selectedAtcUpdate === null ? null : (
+              <AtcUpdateSheet
+                update={selectedAtcUpdate}
+                reviewedAt={atcReviewedAt}
+                onClose={() => setSelectedAtcBandId(null)}
+              />
+            )
+          }
+          atcNoticeCount={atcUpdates.length}
+          onOpenAtcNotices={() => setAtcNoticesOpen(true)}
+          atcNoticeList={
+            atcNoticesOpen ? (
+              <AtcNoticeList
+                updates={atcUpdates}
+                drawnIds={atcDrawnIds}
+                reviewedAt={atcReviewedAt}
+                onClose={() => setAtcNoticesOpen(false)}
+              />
+            ) : null
+          }
           warnings={warningPins}
           time={now}
           online={online}

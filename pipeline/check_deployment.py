@@ -55,13 +55,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from datetime import date
 from pathlib import Path
 
 import requests
 import yaml
+
+from lib import data_env
 
 ROOT = Path(__file__).resolve().parent
 ORIGINS_MANIFEST = ROOT.parent / ".github" / "expected-origins.yml"
@@ -505,6 +506,12 @@ def verdict_document(base: str, reports: list[dict], manifest: dict, published: 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--base", metavar="URL", help="Public bucket base to check. Defaults to $DATA_BASE_URL.")
+    parser.add_argument(
+        "--env",
+        metavar="NAME",
+        choices=data_env.ENVIRONMENTS,
+        help="Check this environment's data rather than the base as given (features/DATA_ENVIRONMENTS.md).",
+    )
     parser.add_argument("--json", metavar="OUT", type=Path, help="Also write the verdict to OUT as JSON.")
     parser.add_argument(
         "--origins",
@@ -533,7 +540,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(cors_policy(manifest), indent=2))
         return 0
 
-    base = (args.base or os.environ.get("DATA_BASE_URL", "")).strip().rstrip("/")
+    base = data_env.resolve_base(args.base, args.env)
     if not base:
         print("No bucket to check: pass --base or set DATA_BASE_URL.", file=sys.stderr)
         return 2

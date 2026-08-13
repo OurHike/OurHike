@@ -447,6 +447,57 @@ describe('MapScreen safety alerts', () => {
     expect(alerts).not.toBeNull()
     expect(strip!.compareDocumentPosition(alerts!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
   })
+
+  // The third row (#485). A region-wide advisory is a standing condition, not a
+  // next action, so it appears without competing for the line above it.
+  it('shows a broad advisory under the closure rather than instead of it', () => {
+    // THE CASE #485 REPORTS. Ranked into one line, the advisory scored "inside"
+    // and the nine-mile closure three miles ahead never appeared at all.
+    const { container } = render(
+      <MapScreen
+        {...PROPS}
+        closureAhead="Trail closed 3.0 mi ahead · Storm damage · mi 245.0 – 254.0"
+        advisoryAhead="Advisory along 398 mi of trail · Storm damage · mi 239.4 – 637.8"
+      />,
+    )
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent('Trail closed 3.0 mi ahead')
+    expect(alert).toHaveTextContent('Advisory along 398 mi of trail')
+
+    // Order is the point, not merely presence: the actionable line is read
+    // first on a screen glanced at while walking.
+    const closure = container.querySelector('.map-screen__alert--closure')
+    const advisory = container.querySelector('.map-screen__alert--advisory')
+    expect(closure!.compareDocumentPosition(advisory!)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+  })
+
+  it('shows an advisory on its own when nothing specific is ahead', () => {
+    // Otherwise the fix would trade one silence for another: a hiker inside an
+    // advisory on an otherwise clear stretch has to still be told.
+    render(
+      <MapScreen
+        {...PROPS}
+        advisoryAhead="Advisory along 398 mi of trail · Storm damage · mi 239.4 – 637.8"
+      />,
+    )
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Advisory along 398 mi of trail')
+  })
+
+  it('marks the advisory as its own kind of row', () => {
+    // The class is what makes it quieter than the two above it (chrome.css).
+    // Same colour and size - weight only - because this is still a safety line
+    // on a screen read in direct sun.
+    const { container } = render(
+      <MapScreen {...PROPS} advisoryAhead="Advisory along 398 mi of trail" />,
+    )
+
+    expect(container.querySelector('.map-screen__alert--advisory')).not.toBeNull()
+    expect(container.querySelector('.map-screen__alert--closure')).toBeNull()
+  })
 })
 
 // --- The same two facts on the canvas -------------------------------------
@@ -500,5 +551,80 @@ describe('MapScreen safety overlays', () => {
     expect(
       (map.sourceData.get(CLOSURE_SOURCE_ID) as { features: unknown[] }).features,
     ).toHaveLength(1)
+  })
+})
+
+describe('the way to every ATC notice', () => {
+  // The button is the only route to an update that has no banner line and no
+  // mark on the map - one behind the hiker, or one over the band ceiling. So
+  // what matters about it is that it does NOT depend on either of those.
+
+  it('is not there when the app holds no ATC notices', () => {
+    render(<MapScreen {...PROPS} />)
+
+    expect(screen.queryByRole('button', { name: /ATC trail update/ })).toBe(null)
+  })
+
+  it('appears whenever there are notices, banner or no banner', () => {
+    render(<MapScreen {...PROPS} atcNoticeCount={6} onOpenAtcNotices={vi.fn()} />)
+
+    expect(screen.queryByRole('alert')).toBe(null)
+    expect(
+      screen.getByRole('button', { name: 'Read all 6 ATC trail updates' }),
+    ).toBeInTheDocument()
+  })
+
+  it('counts one notice without pluralising it', () => {
+    render(<MapScreen {...PROPS} atcNoticeCount={1} onOpenAtcNotices={vi.fn()} />)
+
+    expect(
+      screen.getByRole('button', { name: 'Read the 1 ATC trail update' }),
+    ).toBeInTheDocument()
+  })
+
+  it('reports the tap up to the shell, which owns whether the list is open', async () => {
+    const onOpenAtcNotices = vi.fn()
+    render(
+      <MapScreen {...PROPS} atcNoticeCount={6} onOpenAtcNotices={onOpenAtcNotices} />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /ATC trail updates/ }))
+
+    expect(onOpenAtcNotices).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the button out of the alert region', () => {
+    // `role="alert"` is a live region announced on change, and it is reserved
+    // for what changes what a hiker does next. A permanent control inside it
+    // would be re-announced every time a closure row came or went.
+    render(
+      <MapScreen
+        {...PROPS}
+        closureAhead="Trail closed 5.0 mi ahead · Storm damage"
+        atcNoticeCount={6}
+        onOpenAtcNotices={vi.fn()}
+      />,
+    )
+
+    expect(within(screen.getByRole('alert')).queryByRole('button')).toBe(null)
+  })
+
+  it('renders the list the shell hands it, over the canvas', () => {
+    render(
+      <MapScreen
+        {...PROPS}
+        atcNoticeCount={6}
+        onOpenAtcNotices={vi.fn()}
+        atcNoticeList={<div data-testid="atc-notice-list" />}
+      />,
+    )
+
+    expect(screen.getByTestId('atc-notice-list')).toBeInTheDocument()
+  })
+
+  it('shows nothing until the shell says the list is open', () => {
+    render(<MapScreen {...PROPS} atcNoticeCount={6} onOpenAtcNotices={vi.fn()} />)
+
+    expect(screen.queryByTestId('atc-notice-list')).toBe(null)
   })
 })

@@ -35,6 +35,11 @@ import type { TerrainUrls } from './terrain'
 import { attachMapChrome, type ScaleUnits } from './mapChrome'
 import type { ResolvedTheme } from '../lib/theme'
 import { attachPoiData, attachPoiFilter, attachPoiIcons } from './poiLayers'
+import {
+  attachAtcUpdateData,
+  attachAtcUpdateTaps,
+  type AtcUpdatePoint,
+} from './atcUpdateLayers'
 import { attachClosureData, type ClosureBand } from './closureLayers'
 import { attachWarningData, attachWarningIcon, type WarningPoint } from './warningLayers'
 import { attachPoiTaps } from './poiTaps'
@@ -89,6 +94,19 @@ export interface MapViewProps {
    * closureLayers.ts's `closureBands`.
    */
   closures?: readonly ClosureBand[]
+  /**
+   * The ATC's own trail updates, in the same coordinates and drawn at the
+   * same weight - a second band source rather than more features in
+   * `closures`, because the two carry different rhythms and a tap has to be
+   * able to say which kind it landed on (map/atcUpdateLayers.ts, #461).
+   */
+  atcUpdates?: readonly ClosureBand[]
+  /** The same notices that name a single mile rather than a stretch, drawn as
+   *  dots. Most of what the ATC publishes is one of these. */
+  atcUpdatePoints?: readonly AtcUpdatePoint[]
+  /** A tap landed on an ATC band, by band id. The shell decides what to show
+   *  - this component deliberately does not know what a sheet is. */
+  onSelectAtcUpdate?: (bandId: string) => void
   /**
    * Moderator-escalated warnings, as points. NEVER a notification - see the
    * header of warningLayers.ts.
@@ -207,6 +225,8 @@ const FIT_PADDING = 24
 const NO_POIS: readonly MapPoint[] = []
 const NOTHING_HIDDEN: ReadonlySet<string> = new Set()
 const NO_CLOSURES: readonly ClosureBand[] = []
+const NO_ATC_UPDATES: readonly ClosureBand[] = []
+const NO_ATC_POINTS: readonly AtcUpdatePoint[] = []
 const NO_WARNINGS: readonly WarningPoint[] = []
 
 export function MapView({
@@ -217,6 +237,9 @@ export function MapView({
   hiddenTypes = NOTHING_HIDDEN,
   verifiedOnly = false,
   closures = NO_CLOSURES,
+  atcUpdates = NO_ATC_UPDATES,
+  atcUpdatePoints = NO_ATC_POINTS,
+  onSelectAtcUpdate,
   warnings = NO_WARNINGS,
   onSelectPoi,
   center,
@@ -456,20 +479,30 @@ export function MapView({
     return attachTrailData(map, trailsUrl)
   }, [map, trailsUrl])
 
-  // Three separate effects rather than one, because they change on completely
-  // different clocks: the pin images are built once and never again, the POIs
-  // land once the download finishes, and the hidden set changes every time the
-  // hiker taps a legend row. Folding them together would re-register sixty
-  // rasterised badges on every one of those taps.
+  // Three separate effects rather than one, because they change on different
+  // clocks: the pin images are built once and never again, while the source and
+  // the filter both move when the hiker taps a legend row. Folding them together
+  // would re-register sixty rasterised badges on every one of those taps.
+  //
+  // The images are the one that must NOT re-run - that is the whole of this
+  // split. The other two now share a clock (see below) and are still two
+  // effects, because a POI download landing should not re-run a `setFilter` and
+  // the pair reads as what it is: two different questions about the same tap.
   useEffect(() => {
     if (map === null) return
     return attachPoiIcons(map)
   }, [map])
 
+  // The hidden set is in BOTH of the next two effects, and deliberately. The
+  // filter decides which pins are drawn; the source decides which POIs get a
+  // pin to be drawn at all, and a site folds its members away only behind a pin
+  // the filter is going to keep (#607). So a legend tap rebuilds the features as
+  // well as re-filtering the layer - features/POI_SITES.md §6 asked for exactly
+  // that, and 2,800 points is the cost it weighed.
   useEffect(() => {
     if (map === null) return
-    return attachPoiData(map, pois)
-  }, [map, pois])
+    return attachPoiData(map, pois, { hiddenTypes, verifiedOnly })
+  }, [map, pois, hiddenTypes, verifiedOnly])
 
   useEffect(() => {
     if (map === null) return
@@ -493,6 +526,11 @@ export function MapView({
 
   useEffect(() => {
     if (map === null) return
+    return attachAtcUpdateData(map, atcUpdates, atcUpdatePoints)
+  }, [map, atcUpdates, atcUpdatePoints])
+
+  useEffect(() => {
+    if (map === null) return
     return attachWarningData(map, warnings)
   }, [map, warnings])
 
@@ -503,6 +541,11 @@ export function MapView({
     if (map === null || onSelectPoi === undefined) return
     return attachPoiTaps(map, onSelectPoi)
   }, [map, onSelectPoi])
+
+  useEffect(() => {
+    if (map === null || onSelectAtcUpdate === undefined) return
+    return attachAtcUpdateTaps(map, onSelectAtcUpdate)
+  }, [map, onSelectAtcUpdate])
 
   useEffect(() => {
     if (map === null || onViewportChange === undefined) return

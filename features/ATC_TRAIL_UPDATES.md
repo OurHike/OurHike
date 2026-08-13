@@ -274,19 +274,120 @@ already keeps `STALE` and `UNKNOWN` apart. A fifth marker here is a row, not a m
 
 ## Order of work
 
-1. **Ask ATC.** Not a blocker for the facts-only version, and the right thing to do first
-   anyway — SOURCE_REGISTRY.md's whole diagnosis is that this question gets asked too late.
-   A `steward`/`licence` entry for ATC in `sources.json` is where the answer lands.
-2. **Register the source.** ATC Trail Updates as a `sources.json` entry with `kind`,
-   `trust: authoritative`, and a freshness marker — proving SOURCE_REGISTRY.md's schema
-   against a thirteenth source that is not an ArcGIS layer.
-3. **Bake `conditions/atc_updates.json`** from a reviewed file in git, published by the
-   existing machinery.
-4. **Render it**, with ATC attribution, the outbound link, both dates, and the band-length
-   ceiling.
+1. ~~**Ask ATC.**~~ **Not done, and closed as such** (#458). The maintainer settled the
+   conservative version on their own judgement as an ATC trail volunteer, which is what the
+   `licence` field on `atc_trail_updates` now records: facts and a link, and no mirroring of
+   ATC's prose. The broader question — may we carry their body text, and what attribution
+   string do they want — is still unasked, and SOURCE_REGISTRY.md's diagnosis still applies
+   to it.
+2. ~~**Register the source.**~~ **Built.** The thirteenth `sources.json` entry and the first
+   that is not an ArcGIS layer, with `kind`, `trust: authoritative`, a `licence`, a steward,
+   and a freshness marker — the feed's ETag, compared against what the reviewer recorded, so
+   a STALE verdict means *go and re-read ATC's page* rather than *refetch*. `lib/source_registry.py`
+   is what reads `kind`; `fetch_all.py` skips anything that is not a feature layer.
+3. ~~**Bake `conditions/atc_updates.json`**~~ **Built.** `export_atc_updates.py` reads
+   `reference/atc_updates.json`, validates every row, and publishes through the existing
+   machinery. It refuses two ways, differently on purpose: an *unreviewed* file publishes
+   nothing and exits 0, and a *reviewed* file with a bad row publishes nothing and fails.
+4. ~~**Render it**~~ **Built.** `lib/atcUpdates.ts` adapts an update into the shared
+   `Closure` shape for geometry alone; `chrome/AtcUpdateSheet.tsx` carries ATC's name, both
+   dates and the outbound link; the banner names the ATC before anything else; the
+   band-length ceiling comes free with the shared path.
 5. **Then** the proposing job, once the reviewed-file path is proven by hand.
 
-Steps 3 and 4 are the useful ones and neither waits on step 1.
+**The rows are in**, reviewed 2026-08-12 against ATC's live page. Nine updates were posted
+and six are in `reference/atc_updates.json`; the three left out are Iron Mtn Gap
+(**reopened**, and stating five ranges accumulated over months of edits), the eleven-state
+severe-weather advisory, and the law-enforcement request — none of which is a place. A merged
+pull request is what releases them, which is where the human gate this document argues for
+actually sits.
+
+**What the map draws from that is mostly dots, and that is the second thing this build got
+wrong.** Five of the six name a single mile marker — a shelter, a footbridge, two bear
+warnings, a flooded section — and `trailSlice` widens a zero-length range to the two
+centerline vertices that bracket it, which at any zoom a hiker uses is a few dozen feet of
+invisible line. Drawn only as bands, the feature rendered nothing. So a point notice is now a
+dot (`trailPointAtMile`, and the circle layer in `lib/atcUpdateStyle.ts`) and only a real
+range becomes a band. **Exactly one of the six obstructs the trail** — the Harpers Ferry
+footbridge — so the map is one barrier and five dots, which is an honest picture of what the
+ATC is currently saying.
+
+**And the dot was then drawn too quietly to do the job, which is the third thing to record.**
+It shipped at 10px across — half the band's width, "a barrier seen end-on" — and *underneath*
+both pin layers. Against the pins it actually competes with, that is a losing hand twice
+over: a waypoint pin is 38px (`POI_PIN_SIZE`, itself `--space-9`) and a serious-warning pin
+is 44px, so the single mark carrying the trail maintainer's own word about the trail was the
+smallest thing on the map and could be covered by OurHike's pin for the very shelter ATC had
+just closed. It is now **40px of ink** (`--space-10`), it carries a fully-blurred halo
+reaching half its radius again — a gradient rather than a second ring, because a gradient has
+no edge and an edge here would draw a boundary around ground ATC said nothing about — and
+`map/style.ts` draws the whole ATC group **last of all**, so nothing on the canvas can sit on
+top of it.
+
+**It took three passes to land that number, and what went wrong is worth more than the
+number.** The first went to 48px with a halo at twice the radius, on the reasoning that an
+ATC notice should outrank every pin on the map. On a 390px phone that is a 96px circle of red
+per notice, and five of them is a rash rather than five marks. The mistake was treating size
+as the fix for both halves of the fault when it is only the fix for one: **being covered is
+solved by the layer order, and pixels only have to make an eye land on the dot rather than on
+the shelter pin beside it.**
+
+The second pass cut it to 40 and *still* read a size too large, for a reason that had nothing
+to do with taste. **MapLibre draws `circle-stroke-width` outside `circle-radius`**, so a dot
+declared 40 across covers 44 — the same 44 as the serious-warning pin it was supposed to be
+staying under. A waypoint pin's own 38px, by contrast, is its whole circle: `pinGeometry`
+spends `rOuter` on the disc, its edge and its halo together. The two numbers were never
+comparable, and every assertion claiming the dot cleared a pin "by two pixels" was off by
+four in the direction nobody wanted.
+
+So the constant is now `ATC_UPDATE_POINT_DRAWN_WIDTH` — the outer edge of the ink, the thing
+a reader can actually see — and the value handed to the spec is derived *from* it by
+subtracting the casing. Declared the other way round they drift the moment the casing width
+moves.
+
+**And the third pass found that all of that had been shaving the wrong number.** A screenshot
+of the corridor view settled it: 40px is right in the hand and roughly the width of Maryland
+on a map of Georgia to Maine, so five notices were five craters over four states. The dot was
+**one size at every zoom** — copied from `map/warningLayers.ts`, which argues for exactly that
+("a warning drawn small has stopped outranking the pins around it"). That argument is about a
+mark competing with *other marks*, which is a fixed contest at any zoom. This fault was a
+mark competing with *the ground it is drawn on*, and how much ground a pixel covers is
+precisely what zoom means. No amount of trimming the full-size number reaches it.
+
+`ATC_UPDATE_POINT_ZOOM_STOPS` is the fix — the dot and its glow ramp together:
+
+| Zoom | What is on screen | Dot, drawn width |
+|---|---|---|
+| ≤ 5 | the whole corridor | 18px |
+| 9 | `POI_MIN_ZOOM`, waypoint pins appear | 26px |
+| ≥ 13 | walking | 40px |
+
+The upper two stops are `POI_ICON_SIZE_EXPRESSION`'s own — 0.6 at z9, 1.0 at z13 — matched
+rather than picked, so the dot keeps exactly its clearance over a waypoint pin at *every*
+zoom the two share rather than only at the top. Below z9 the pins are gone and the only
+question is whether someone planning a week can see where the ATC has posted something; it is
+deliberately not a shrink to nothing, because unlike the pins this layer has no minzoom and
+zoomed out is exactly when that question gets asked.
+
+All three changes are size and stacking order, never hue. `lib/atcUpdateStyle.ts` refuses a
+second barrier colour at length, and the reasoning survives intact: on a safety map two reds
+read as two severities rather than as two organisations, and both of these still mean the
+trail is shut. What the size says is only "there is something here", which is the one thing a
+mark cannot say at all if nobody sees it.
+
+**The serious-warning pin keeps "the biggest thing on the map"** at the one measurement
+`map/poiIcons.ts` and WIREFRAMES.md actually name: 44px of drawn pin, against the ATC dot's
+40px of ink. The 48px version took it outright and the 40px-declared version tied it, so this
+is the first spelling under which the rule is really true.
+`client/src/test/atcAlertProminence.test.ts` holds both bounds — the dot clears a waypoint
+pin, by no more than one scale step, and stops short of a warning pin — measured edge to
+edge against those files' own constants, so a later drift in either direction fails a test
+rather than quietly restoring one bug or introducing the other.
+
+**The VA Creeper closure this document quotes throughout was gone from ATC's page by
+2026-08-12.** Three days. That is the staleness argument here arriving as a measurement
+rather than as a caution, and it is why `reviewed_at` and the freshness marker are not
+decoration.
 
 ## Open questions
 
@@ -297,9 +398,75 @@ Steps 3 and 4 are the useful ones and neither waits on step 1.
   updates measure 0, 0, 0, 4.2, 9.2 and 398.4 miles, so more updates would not settle it
   either. Worth setting against what the map looks like at real zooms. The current value errs
   toward drawing, because a suppressed band buries nothing while the hiker keeps the banner.
-- **Where the suppressed ones go.** "List entry" has no surface yet; today an over-ceiling
-  update simply keeps its banner and loses its band. Step 4 below is where the list would be
-  built if it is built.
+- ~~**Where the suppressed ones go.**~~ **Built, and it turned out to be a bigger hole than
+  this heading described.** Two things lost a band and kept only a banner — an over-ceiling
+  advisory, and an update that does not actually stop a hiker walking through — and both are
+  covered below, along with a third set nobody had named.
+
+  "List entry" now has a surface — `client/src/chrome/AtcNoticeList.tsx`,
+  opened from a row under the alert strip that renders whenever the app holds any notices at
+  all. It shows **every** update in the artifact in NOBO order, with ATC's category, their
+  headline, the states, the miles, the reviewer's `obstructs_trail` answer in both
+  directions, ATC's own last-updated date and a link to their page — and it marks the ones
+  the map is not drawing, read off what the canvas actually holds rather than re-derived, so
+  a notice whose mile falls outside this build's centerline is reported honestly too.
+
+  **The hole was not "suppressed" updates, it was all of them.** Writing the list made the
+  real shape visible: the banner shows at most two notices, only the nearest of each lane,
+  and only *ahead* of the hiker — `lib/atcUpdates.ts` is explicit that warning about
+  something behind you is how a warning surface teaches people to ignore it, and that rule is
+  right. A tap on the map needs the notice to be drawn **and** the hiker to already suspect
+  there is something there to tap. So the set with no surface was never just the ones that
+  lost a band: it was every notice not currently the nearest thing in front of you. An
+  update that obstructs nothing, spans a range rather than a point, and sits behind the hiker
+  reached them through *nothing*, and each of the three filters that produced that was a
+  decision about the **map** rather than a decision that a hiker should not be able to read
+  it.
+
+  The list is honest about what it is not. The artifact still carries facts and a link and
+  not ATC's prose, so the note sits at the top of the list rather than under it — a reader
+  who has taken a list this complete-looking for the notices themselves is not repaired by a
+  footnote.
+
+  What is left open here is one narrower question: whether a notice a hiker has walked past
+  should fall off this list, or whether "everything ATC currently says about this trail" is
+  the more useful thing to be able to open. It is currently the second.
+
+  **For the first of those, "keeps its banner" was not enough, and [#485](https://github.com/OurHike/OurHike/issues/485)
+  is what it cost.** An update the hiker is standing inside scores zero distance and wins the
+  header outright, so Helene's 398 miles held the line for 398 miles of walking while the
+  nine-mile Creeper Trail closure three miles ahead never appeared — the same burying this
+  document describes on the map, moved to the one surface the advisory still had. An
+  over-ceiling advisory now gets its **own** header line, under the actionable one and quieter
+  than it (`atcUpdateLanes`, `closureLanes`), and it stops saying *"here"* about a region:
+  *"ATC · Alert along 398 mi of trail"*. The band ceiling decides both, so there is one
+  constant and not two.
+
+  The second case — an update that keeps its banner because it does not stop anyone walking
+  — now reaches the list above like every other one.
+
+  **The second was nearly got wrong, and the mistake is worth recording.** It was first
+  built as a rule over ATC's `category`: draw `Closure` and `Detour`, banner the rest. Live
+  data on 2026-08-12 killed that:
+
+  | Update | ATC's category | Is the trail passable? |
+  |---|---|---|
+  | Connecticut: Limestone Spring Shelter Closed | `Closure` | **yes** — the shelter is shut, the trail is not |
+  | Harpers Ferry: Footbridge Closure | `Detour` | **no** — the way across the Potomac is gone |
+
+  The only notice ATC files as `Closure` leaves the trail open, and the one thing that
+  genuinely stops a hiker is filed as `Detour`. The rule was wrong in both directions at
+  once: it would have drawn a barrier across open trail at Limestone Spring — a barrier a
+  hiker walks straight past, which is how they learn the barriers can be ignored — and it
+  caught the real obstruction only by luck. So it is now `obstructs_trail`, a field the
+  reviewer sets per row, and it sits with every other judgement this data needs rather than
+  being inferred. Which is the argument this document already makes about the mile ranges,
+  landing a second time somewhere nobody expected it.
+
+  A sixth category turned up in the same pass — **`Animal`**, carrying two live bear
+  warnings and absent from the five measured on 2026-08-09. The bake refused it, a person
+  looked, and the word was added. That is the "their HTML is not an API" cost above, arriving
+  as a one-line reviewed change rather than as a broken parse.
 - **Whether "reopened" updates should be ingested at all**, or whether ATC removing an update
   is the signal. An update that disappears from their page is not the same as one marked
   reopened, and `discover_sources.py`'s precedent — a vanished source is "kept, not deleted,

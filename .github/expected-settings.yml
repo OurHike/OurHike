@@ -129,14 +129,19 @@ settings:
     where: variable
     required: false
     why: >-
-      Which published dataset UA reads, when that is deliberately not the one
-      production reads - a candidate release staged for verification
-      (pipeline/DATA_RELEASES.md). Optional because unset is the normal state:
-      ua.yml falls back to DATA_BASE_URL, so UA reads exactly what production
-      does until somebody is verifying a new dataset. A prefix in the same
-      bucket rather than a bucket of its own, on purpose - UA checking a copy
-      of the bytes production will serve checks the wrong bytes
-      (RELEASING.md 14.2).
+      Which published data UA reads, when that is deliberately not what
+      production reads. Its value is production's DATA_BASE_URL plus
+      `/environments/ua` - the prefix publish.py writes a UA publish to
+      (features/DATA_ENVIRONMENTS.md), and the whole of the client-side
+      mechanism, since config.ts builds every URL it fetches as
+      `${DATA_BASE_URL}/${key}`. Optional because unset is a supported state
+      and is what is configured today: ua.yml falls back to DATA_BASE_URL, so
+      UA reads production's data until this is set - which is fine for looking
+      at and wrong for testing anything that writes. A prefix in the same
+      bucket rather than a bucket of its own, still, and for the reason
+      RELEASING.md 14.2 gave: one bucket means UA is served through the same
+      CORS policy, host and range machinery a phone uses, so what UA verifies
+      is delivered the way production is delivered.
 
   UA_SUPABASE_URL:
     where: variable
@@ -268,6 +273,23 @@ settings:
       Optional because unset is the current state and the workflow skips with
       a warning rather than failing every night until somebody does the
       account work.
+
+  UA_CONDITIONS_DATABASE_URL:
+    where: secret
+    required: false
+    why: >-
+      UA's Postgres, read-only, for publish-conditions.yml's UA leg to bake
+      UA's own closures and reports from - the same role, grants and RLS the
+      production entry above describes, in UA's project. It exists because
+      conditions are the one published data source built from a *database*:
+      without it there is no way for a tester to verify a closure and see it
+      appear, except by verifying it in the database a club moderates
+      (features/DATA_ENVIRONMENTS.md). Optional, and unset is the current
+      state - the UA Supabase project is account work that has not been done
+      (#371), so the UA leg warns and publishes nothing while the production
+      leg runs normally. UA's ATC trail-updates artifact is published either
+      way, because that one is baked from a reviewed file in git and needs no
+      credential at all.
 
   PROTECTIONS_READ_TOKEN:
     where: secret

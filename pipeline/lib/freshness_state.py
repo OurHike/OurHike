@@ -97,14 +97,30 @@ def summarise(reports: list[dict]) -> dict:
     }
 
 
-def edition_key(url: str) -> str:
-    """`n35w084:20230215` for a conventional 3DEP filename.
+def edition_key(url: str, last_modified: str | None = None) -> str:
+    """`n35w084:20230215` for a conventional 3DEP filename, or
+    `n35w084:Wed, 15 Feb 2023 00:00:00 GMT` once a tile carries its own
+    `Last-Modified`.
+
+    TWO SHAPES BECAUSE THE UPSTREAM CHANGED SHAPE (#550). The dated form is
+    how 3DEP editions arrived through the TNM catalogue: a republished cell
+    appeared as a NEW dated filename, so the date in the name WAS the version
+    and there was no per-file timestamp to ask for. `current/` inverts that -
+    the filename never changes and `Last-Modified` is what moves.
+
+    So a `last_modified` given here wins outright. Without it the dated form
+    still parses, which is what keeps a build_state.json captured before this
+    change readable rather than turning every old state into a false STALE on
+    a key nobody can compare.
 
     An unparseable name still yields a key rather than being skipped: a tile
     silently dropped from the marker would make a real change look like no
     change at all.
     """
     name = url.rsplit("/", 1)[-1]
+    if last_modified is not None:
+        cell = re.search(r"n\d+w\d+", name)
+        return f"{cell.group(0) if cell else name}:{last_modified}"
     match = re.match(r"USGS_1[3m]?_?(?P<cell>n\d+w\d+)_(?P<edition>\d{8})\.tif$", name)
     if match is None:
         return f"{name}:"
@@ -167,16 +183,52 @@ def topo_markers(manifest_path: Path) -> dict[str, str | None]:
 def elevation_marker(index_path: Path) -> str | None:
     """Which tile editions the current index pinned, order-independent.
 
-    TNM returns tiles in no guaranteed order, so a reshuffle must not read as
-    a change - only a genuinely new edition should.
+    Sorted rather than taken in file order, so a reshuffle cannot read as a
+    change - only a genuinely new edition should. That mattered when TNM
+    returned tiles in no guaranteed order; the computed index is sorted at
+    source now (#550), and this stays because "order-independent" is the
+    property wanted rather than a workaround for one producer.
+
+    Reads `last_modified` where the entry carries one - see
+    fetch_elevation.stamp_last_modified() for why the version moved out of the
+    filename and into a header.
     """
     if not Path(index_path).exists():
         return None
     entries = json.loads(Path(index_path).read_text())
-    return "|".join(sorted(edition_key(entry["url"]) for entry in entries))
+    return "|".join(sorted(edition_key(entry["url"], entry.get("last_modified")) for entry in entries))
 
 
-SOURCES = ("atc", "opentrail", "topo_quads", "elevation")
+def atc_updates_marker(reviewed_path: Path) -> str | None:
+    """What ATC's Trail Updates feed said when a human last reviewed them.
+
+    The fifth source, and the only one whose recorded side is **in git**
+    rather than in gitignored `data/raw/` (features/ATC_TRAIL_UPDATES.md,
+    #459). Nothing fetches ATC's notices on a schedule: a person reads them,
+    writes the rows into `reference/atc_updates.json`, and a merged pull
+    request releases that file. So the thing this marker is recorded against
+    is that review, and STALE here has a meaning none of the other four
+    carry - *ATC has published or edited something since a person last looked
+    at our copy*, which is a job for a human rather than for a fetcher.
+
+    That location is a small windfall rather than an inconsistency. The other
+    four can only be captured on a machine that has done a full fetch, which
+    is the whole reason `load_state` and `--state` exist; this one is
+    readable from any checkout, including one that has never fetched
+    anything.
+
+    A file with no marker answers None -> UNKNOWN, never FRESH. That is the
+    honest reading of a reviewed file nobody has yet recorded a marker for,
+    and it is also the state this file ships in.
+    """
+    if not Path(reviewed_path).exists():
+        return None
+    document = json.loads(Path(reviewed_path).read_text())
+    marker = document.get("source_marker")
+    return None if marker is None else str(marker)
+
+
+SOURCES = ("atc", "opentrail", "topo_quads", "elevation", "atc_trail_updates")
 
 
 def capture_state(
@@ -185,14 +237,21 @@ def capture_state(
     opentrail_state: Path,
     topo_manifest: Path,
     elevation_index: Path,
+    atc_updates_file: Path | None = None,
     captured_at: str | None = None,
 ) -> dict:
     """Every upstream freshness marker this checkout currently records.
 
-    All four sources are always present as keys. On a machine that has done
+    All five sources are always present as keys. On a machine that has done
     the fetching, an empty/None value means "never fetched", which is a real
     answer the checking side needs - a source that silently vanished from the
     dict would instead read as one nobody has to worry about.
+
+    `atc_updates_file` is optional where the other four are not, because it
+    is the reviewed file rather than a fetch artifact: a caller that has no
+    opinion about ATC's Trail Updates (every caller that predates them) gets
+    the key present and None, which `drop_unrecorded` then removes from a
+    published state and `compare_state` reads as unchecked.
     """
     return {
         "version": STATE_VERSION,
@@ -201,6 +260,7 @@ def capture_state(
         "opentrail": opentrail_marker(opentrail_state),
         "topo_quads": topo_markers(topo_manifest),
         "elevation": elevation_marker(elevation_index),
+        "atc_trail_updates": atc_updates_marker(atc_updates_file) if atc_updates_file else None,
     }
 
 
@@ -365,6 +425,25 @@ def compare_state(recorded: dict, upstream: dict) -> list[dict]:
                 "source": "elevation",
                 "freshness": compare_marker(recorded.get("elevation"), upstream.get("elevation")),
                 "detail": "3DEP tile editions",
+            }
+        )
+
+    # The fifth signal is a row here rather than a mechanism, which is what
+    # #459 predicted: the ETag comparison is `compare_marker` unchanged, and
+    # what differs is only what a verdict *means*. STALE on the four above
+    # says the pipeline should refetch; STALE here says a person should
+    # re-read ATC's page and update reference/atc_updates.json, because no
+    # amount of fetching will do it (features/ATC_TRAIL_UPDATES.md, "the
+    # parse proposes; a human publishes"). The detail string carries that,
+    # since the rollup is where somebody reads this.
+    if "atc_trail_updates" not in recorded:
+        reports.append({"source": "atc_trail_updates", "freshness": Freshness.UNKNOWN, "detail": "not in this state"})
+    else:
+        reports.append(
+            {
+                "source": "atc_trail_updates",
+                "freshness": compare_marker(recorded.get("atc_trail_updates"), upstream.get("atc_trail_updates")),
+                "detail": "ETag on ATC's trail-updates feed, against the reviewed file - stale means review, not refetch",
             }
         )
 

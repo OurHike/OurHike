@@ -14,7 +14,7 @@
 // can see - which background is drawn, and whether the raster archive it may
 // be drawn over is actually on the phone.
 
-import { useCallback, useState } from 'react'
+import { useCallback, useState, type ReactNode } from 'react'
 import { StatusStrip } from './StatusStrip'
 import { Header } from './Header'
 import { TabBar } from './TabBar'
@@ -28,6 +28,7 @@ import { PoiCard, type PoiDetail } from './PoiCard'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapView } from '../map/MapView'
 import type { ClosureBand } from '../map/closureLayers'
+import type { AtcUpdatePoint } from '../map/atcUpdateLayers'
 import type { WarningPoint } from '../map/warningLayers'
 import type { SourceReport } from '../map/liveSourceHealth'
 import type { BackgroundProblem } from '../lib/backgroundHealth'
@@ -88,6 +89,18 @@ export interface MapScreenProps {
    * than anywhere else on the screen.
    */
   closureAhead?: string | null
+  /**
+   * The broad advisory the hiker is inside or heading toward, already rendered
+   * to one line, or null.
+   *
+   * Its own prop rather than folded into `closureAhead` because the two are
+   * different kinds of statement and #485 is what happens when they share a line:
+   * a region-sized advisory scores "inside" and buries the specific closure three
+   * miles ahead for as long as the hiker is in it. This one is a standing
+   * condition — it does not change for hundreds of miles — so it is drawn under
+   * the actionable line and quieter than it.
+   */
+  advisoryAhead?: string | null
   /** "N serious warnings on your route", or null (lib/seriousWarnings.ts). */
   warningsAhead?: string | null
 
@@ -103,6 +116,32 @@ export interface MapScreenProps {
    * its mind.
    */
   closures?: readonly ClosureBand[]
+  /** The ATC's own notices, drawn at the same weight as a closure and read
+   *  from the same geometry path (features/ATC_TRAIL_UPDATES.md, #461). */
+  atcUpdates?: readonly ClosureBand[]
+  /** The single-mile notices, drawn as dots rather than bands. */
+  atcUpdatePoints?: readonly AtcUpdatePoint[]
+  /** An ATC band was tapped, by band id. */
+  onSelectAtcUpdate?: (bandId: string) => void
+  /** The tapped update's sheet, or null. Rendered by the shell for the same
+   *  reason `selectedPoi` is: the map draws bands, and the app is what knows
+   *  whose notice a band belongs to. */
+  atcUpdateSheet?: ReactNode
+  /**
+   * How many ATC notices the app is holding, for the button that opens all of
+   * them. Zero, or the shell not passing it, renders no button.
+   *
+   * A COUNT RATHER THAN THE NOTICES. This component does not need to read one,
+   * and handing it the array would make it the second place that knows how an
+   * ATC update is rendered - which is how the banner and the sheet would come
+   * to disagree. The list itself arrives as `atcNoticeList` below, already
+   * built, exactly as `atcUpdateSheet` does.
+   */
+  atcNoticeCount?: number
+  /** Opens that list. */
+  onOpenAtcNotices?: () => void
+  /** The full list of ATC notices, or null when it is closed. */
+  atcNoticeList?: ReactNode
   warnings?: readonly WarningPoint[]
 
   activeTab: TabId
@@ -281,8 +320,16 @@ export function MapScreen({
   lastSyncedAt,
   conditionsAge = null,
   closureAhead = null,
+  advisoryAhead = null,
   warningsAhead = null,
   closures,
+  atcUpdates,
+  atcUpdatePoints,
+  onSelectAtcUpdate,
+  atcUpdateSheet,
+  atcNoticeCount = 0,
+  onOpenAtcNotices,
+  atcNoticeList,
   warnings,
   activeTab,
   onSelectTab,
@@ -396,7 +443,7 @@ export function MapScreen({
             role="alert" for the same reason More.tsx's stuck reports use it -
             this is not ambient status, it is a thing that changes what
             someone does next. */}
-        {(closureAhead !== null || warningsAhead !== null) && (
+        {(closureAhead !== null || advisoryAhead !== null || warningsAhead !== null) && (
           <div className="map-screen__alerts" role="alert">
             {closureAhead !== null && (
               <p className="map-screen__alert map-screen__alert--closure">
@@ -408,6 +455,48 @@ export function MapScreen({
                 {warningsAhead}
               </p>
             )}
+            {/* Last, and quieter than both, because it is the only one of the
+                three that is not about the next few miles (#485). A hiker inside
+                ATC's Helene advisory is inside it for 398 miles; whatever is
+                three miles ahead has to be read first. Still inside the same
+                alert region rather than demoted to the status strip - that strip
+                is narrow flags about connectivity, GPS and data age, and a
+                warning about the trail is not app status. */}
+            {advisoryAhead !== null && (
+              <p className="map-screen__alert map-screen__alert--advisory">
+                {advisoryAhead}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* The way to everything the ATC said, and deliberately OUTSIDE the
+            alert region above rather than a fourth row inside it.
+
+            Two reasons, and both are about what `role="alert"` means. It is a
+            live region: a screen reader announces its contents when they
+            change, which is right for three lines that appear because
+            something is ahead and wrong for a control that is simply always
+            there - every change to a sibling row would re-announce it. And it
+            is reserved for what changes what a hiker does NEXT; this button
+            changes nothing, it only opens something.
+
+            Rendered whenever the app holds any notices, including when no
+            banner line is showing at all. That is the case it exists for: an
+            update behind the hiker, or one that obstructs nothing, produces no
+            banner and no map mark, and before this had no surface whatsoever
+            (chrome/AtcNoticeList.tsx opens with the full accounting). */}
+        {atcNoticeCount > 0 && onOpenAtcNotices !== undefined && (
+          <div className="map-screen__notices">
+            <button
+              type="button"
+              className="map-screen__notices-button"
+              onClick={onOpenAtcNotices}
+            >
+              {atcNoticeCount === 1
+                ? 'Read the 1 ATC trail update'
+                : `Read all ${atcNoticeCount} ATC trail updates`}
+            </button>
           </div>
         )}
 
@@ -439,6 +528,9 @@ export function MapScreen({
               hiddenTypes={hiddenTypes}
               verifiedOnly={verifiedOnly}
               closures={closures}
+              atcUpdates={atcUpdates}
+              atcUpdatePoints={atcUpdatePoints}
+              onSelectAtcUpdate={onSelectAtcUpdate}
               warnings={warnings}
               onSelectPoi={onSelectPoi}
               showZoomButtons={showZoomButtons}
@@ -486,6 +578,19 @@ export function MapScreen({
             {selectedPoi !== null && (
               <PoiCard poi={selectedPoi} map={liveMap} onClose={onClosePoi} />
             )}
+
+            {/* Beside the card rather than placed like one. The waypoint card
+                positions itself in canvas pixels because it points at a pin;
+                this is about a stretch of trail, so it sits where the search
+                sheet does and needs none of that. */}
+            {atcUpdateSheet}
+
+            {/* Beside the single-notice sheet, in the same slot and for the
+                same reason - a list about the whole trail anchors to nothing
+                on the canvas. Both can be open at once and the list is
+                rendered second, so it lands on top; that is the right way
+                round, since the list is what a hiker just asked for. */}
+            {atcNoticeList}
 
             <Search
               open={searchOpen}

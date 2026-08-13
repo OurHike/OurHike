@@ -80,10 +80,20 @@ jobs:
         working-directory: client
         run: npm ci
 
-      # UA points at the candidate data where there is one, and at the same
-      # bucket as production otherwise. Prefix-only, never a separate bucket
-      # (RELEASING.md §14.2): UA verifying a copy of the bytes production will
-      # serve verifies the wrong thing.
+      # UA points at its own published data where there is some, and at
+      # production's otherwise. Prefix-only, never a separate bucket
+      # (RELEASING.md §14.2): one bucket means UA is served through the same
+      # CORS policy, host and range machinery a phone uses, so what UA verifies
+      # is delivered the way production is delivered.
+      #
+      # UA_DATA_BASE_URL is production's base plus `/environments/ua` - the
+      # prefix a UA publish writes to (features/DATA_ENVIRONMENTS.md). The
+      # fallback stays production's base rather than becoming that prefix
+      # automatically, because a prefix nothing has published to yet is a UA
+      # that 404s on every artifact, and reading production's published bytes
+      # is harmless in the direction that matters: a read cannot overwrite
+      # anything. What it is NOT good enough for is testing anything that
+      # publishes - which is the line the log below draws out loud.
       - name: Resolve the data source
         if: steps.can.outputs.deploy == 'true'
         id: data
@@ -95,8 +105,11 @@ jobs:
           URL="${UA_URL:-${FROM_VAR:-$FROM_SECRET}}"
           if [ -z "$URL" ]; then
             echo "::warning::No data source is configured, so UA cannot download a map. See LAUNCH_CHECKLIST.md 1.5."
+          elif [ -n "$UA_URL" ]; then
+            echo "Data source: $URL (UA's own)"
           else
-            echo "Data source: $URL"
+            echo "::notice::UA_DATA_BASE_URL is unset, so UA reads production's published data. Fine for looking at, and not a test of anything that publishes - see features/DATA_ENVIRONMENTS.md."
+            echo "Data source: $URL (production's)"
           fi
           echo "url=$URL" >> "$GITHUB_OUTPUT"
 

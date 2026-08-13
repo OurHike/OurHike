@@ -171,8 +171,10 @@ def test_a_null_recorded_atc_marker_rolls_up_as_unknown_not_a_false_fresh(tmp_pa
     monkeypatch.setattr(check_freshness, "OPENTRAIL_STATE", tmp_path / "absent_opentrail.json")
     monkeypatch.setattr(check_freshness, "TOPO_MANIFEST", tmp_path / "absent_topo.json")
     monkeypatch.setattr(check_freshness, "ELEVATION_INDEX", tmp_path / "absent_elevation.json")
+    monkeypatch.setattr(check_freshness, "ATC_UPDATES_FILE", tmp_path / "absent_atc_updates.json")
     monkeypatch.setattr(check_freshness, "upstream_opentrail_marker", lambda: None)
     monkeypatch.setattr(check_freshness, "upstream_elevation_marker", lambda: None)
+    monkeypatch.setattr(check_freshness, "upstream_atc_updates_marker", lambda: None)
 
     requests_mock.get(
         "https://example.com/centerline?f=json",
@@ -245,6 +247,101 @@ def test_elevation_edition_key_survives_an_unconventional_filename(url, expected
     """An unparseable name must not crash the check or silently drop a tile
     from the marker - a dropped tile would read as 'unchanged'."""
     assert check_freshness.edition_key(url) == expected
+
+
+# --- The version moved out of the filename and into a header (#550) --------
+#
+# Under the TNM catalogue a republished cell arrived as a NEW dated filename,
+# so the date in the name WAS the version. Under `current/` the filename never
+# changes and Last-Modified is what moves. The tests above still pass because
+# the dated form still parses - a build_state.json captured before the change
+# has to stay readable - and these cover the shape that replaced it.
+
+
+def test_a_last_modified_wins_over_the_filename():
+    """`current/USGS_13_n35w084.tif` carries no date to read, so without this
+    every cell would key to the same constant forever - the marker would go
+    flat and every comparison would read FRESH. An alarm that is always off is
+    worse than one that is always on, because nobody notices it stopped."""
+    key = check_freshness.edition_key(
+        "https://x/current/n35w084/USGS_13_n35w084.tif",
+        "Wed, 15 Feb 2023 00:00:00 GMT",
+    )
+
+    assert key == "n35w084:Wed, 15 Feb 2023 00:00:00 GMT"
+
+
+def test_a_republished_cell_changes_the_marker(tmp_path, monkeypatch):
+    """The property the whole mechanism exists for, asserted end to end
+    through the index rather than on the key alone."""
+    before = tmp_path / "before.json"
+    after = tmp_path / "after.json"
+    entry = {"url": "https://x/current/n35w084/USGS_13_n35w084.tif", "bounds": [0, 0, 1, 1]}
+    before.write_text(json.dumps([{**entry, "last_modified": "Wed, 15 Feb 2023 00:00:00 GMT"}]))
+    after.write_text(json.dumps([{**entry, "last_modified": "Thu, 21 May 2026 00:00:00 GMT"}]))
+
+    monkeypatch.setattr(check_freshness, "ELEVATION_INDEX", before)
+    first = check_freshness.recorded_elevation_marker()
+    monkeypatch.setattr(check_freshness, "ELEVATION_INDEX", after)
+
+    assert check_freshness.recorded_elevation_marker() != first
+
+
+def test_an_index_with_no_timestamps_still_yields_a_marker(tmp_path, monkeypatch):
+    """A fetch whose HEADs all failed writes a correct index with null
+    timestamps. That must degrade to a comparable marker rather than crash -
+    the profile is unaffected, only the freshness detail is."""
+    index = tmp_path / "tile_index.json"
+    index.write_text(
+        json.dumps([{"url": "https://x/current/n35w084/USGS_13_n35w084.tif", "bounds": [0, 0, 1, 1], "last_modified": None}])
+    )
+    monkeypatch.setattr(check_freshness, "ELEVATION_INDEX", index)
+
+    assert check_freshness.recorded_elevation_marker() is not None
+
+
+def test_the_upstream_marker_heads_the_cells_the_recorded_one_tracks(monkeypatch):
+    """One HEAD per tracked cell, against the same bucket the export streams
+    from - rather than re-running a catalogue query that had to be deduped
+    from 244 rows to 110 and then clipped to the tracked set."""
+    import fetch_elevation
+
+    asked = []
+
+    def fake_head(url):
+        asked.append(url)
+        return "Wed, 15 Feb 2023 00:00:00 GMT"
+
+    monkeypatch.setattr(fetch_elevation, "_head", fake_head)
+
+    marker = check_freshness.upstream_elevation_marker("n35w084:old|n36w084:old")
+
+    assert asked == [fetch_elevation.cell_url("n35w084"), fetch_elevation.cell_url("n36w084")]
+    assert marker == ("n35w084:Wed, 15 Feb 2023 00:00:00 GMT|n36w084:Wed, 15 Feb 2023 00:00:00 GMT")
+
+
+def test_the_upstream_marker_does_not_ask_about_a_legacy_unparseable_key(monkeypatch):
+    """A pre-#550 marker keys an unparseable name as the whole filename.
+    Asking S3 for `odd_name.tif` is a guaranteed 404, which would read as a
+    cell losing coverage rather than as a key that was never a cell."""
+    import fetch_elevation
+
+    asked = []
+    monkeypatch.setattr(fetch_elevation, "_head", lambda url: asked.append(url) or "x")
+
+    check_freshness.upstream_elevation_marker("odd_name.tif:|n35w084:old")
+
+    assert asked == [fetch_elevation.cell_url("n35w084")]
+
+
+def test_the_upstream_marker_is_none_when_nothing_answers(monkeypatch):
+    """Never fresh on a failure to ask - compare_marker turns None into
+    UNKNOWN, which is the module's whole rule about false FRESH."""
+    import fetch_elevation
+
+    monkeypatch.setattr(fetch_elevation, "_head", lambda _url: None)
+
+    assert check_freshness.upstream_elevation_marker("n35w084:old") is None
 
 
 # --- Topo quad sampling -----------------------------------------------------

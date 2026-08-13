@@ -64,9 +64,16 @@
 
 import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec'
 import { BLAZE_MATCH_EXPRESSION } from '../lib/blaze'
+import { buildAtcUpdateLayers } from '../lib/atcUpdateStyle'
 import { buildClosureLayers } from '../lib/closureStyle'
+import { buildAtcUpdateSource, ATC_UPDATE_SOURCE_ID } from './atcUpdateLayers'
 import { buildClosureSource, CLOSURE_SOURCE_ID } from './closureLayers'
-import { buildPoiLayer, buildPoiSource, POI_SOURCE_ID } from './poiLayers'
+import {
+  buildPoiDotLayer,
+  buildPoiLayer,
+  buildPoiSource,
+  POI_SOURCE_ID,
+} from './poiLayers'
 import { buildWarningLayer, buildWarningSource, WARNING_SOURCE_ID } from './warningLayers'
 import type { BackgroundSource, MapStyle, Theme } from '../lib/userPreferences'
 import {
@@ -667,6 +674,14 @@ export function buildMapStyle({
       // over a closure somebody walked up to and photographed would be a false
       // statement about where it came from.
       [CLOSURE_SOURCE_ID]: buildClosureSource(),
+      // The ATC's notices, and this one DOES have a third party to credit -
+      // which is why it is a separate source rather than more features in the
+      // one above. No `attribution` here either, though: a corner credit is
+      // the wrong surface for it. What a hiker needs is not "© ATC" under the
+      // whole map but the organisation's name on the specific claim, with the
+      // date they last edited it and a link to their page, which is what
+      // chrome/AtcUpdateSheet.tsx renders (#461).
+      [ATC_UPDATE_SOURCE_ID]: buildAtcUpdateSource(),
       [WARNING_SOURCE_ID]: buildWarningSource(),
       // Each of these carries its own credit (OpenFreeMap's terms, the AWS
       // Terrain Tiles requirement), like the three above - a source names the
@@ -777,15 +792,49 @@ export function buildMapStyle({
       // lib/closureStyle.ts for why the band differs from a blaze in width,
       // rhythm and casing weight rather than only in colour.
       ...buildClosureLayers(CLOSURE_SOURCE_ID),
-      // Then the pins, so one is never buried under the trail line it sits on.
-      // See poiLayers.ts for why this is one layer rather than one per
-      // category.
+      // Then the waypoints, in their two ranks (#597). The dots go down first
+      // so every pin that wins its collision sits on top of its own dot and
+      // hides it, and every waypoint that loses one still leaves a dot behind.
+      // Reversing these two would put a 2.5 px dot over the middle of a 38 px
+      // pin, which reads as a defect rather than as a rank.
+      //
+      // Both are above the closure bands for the same reason as before: a
+      // waypoint is never buried under the trail line it sits on. See
+      // poiLayers.ts for why the pins are one layer rather than one per
+      // category, and why a non-colliding circle layer beside them does not
+      // undo that argument.
+      buildPoiDotLayer(),
       buildPoiLayer(),
-      // And the serious-warning pins last of all, over every waypoint. The
-      // collision engine already keeps them from being dropped
-      // (warningLayers.ts); this keeps them from being covered, which is the
-      // same guarantee by the other mechanism.
+      // And the serious-warning pins over every waypoint. The collision engine
+      // already keeps them from being dropped (warningLayers.ts); this keeps
+      // them from being covered, which is the same guarantee by the other
+      // mechanism.
       buildWarningLayer(),
+      // The ATC's own notices last of all, so nothing on this map can cover
+      // one.
+      //
+      // THEY USED TO SIT HERE DIRECTLY AFTER THE CLOSURE BANDS, under both pin
+      // layers, and the point notices are what made that untenable. A band is
+      // hundreds of pixels of barred red and a pin cannot hide it; a dot at a
+      // single mile is exactly the size of the thing drawn on top of it, and
+      // most of what ATC publishes is a dot - five of the six reviewed rows on
+      // 2026-08-12. A closed shelter reported by the organisation that
+      // maintains the shelter, drawn underneath OurHike's own pin for that
+      // shelter, is the failure in one sentence.
+      //
+      // Which of the two barrier sources sits on top where they overlap is
+      // still not a statement about which is more true -
+      // features/SOURCE_REGISTRY.md's rule for two organisations describing
+      // the same ground is show one and disclose the other, and disclosing is
+      // the sheet's job. The ATC is second only because it is the upstream
+      // authority on the A.T., and something had to be.
+      //
+      // OurHike's own closure bands are deliberately NOT moved up with them.
+      // Not because they matter less - lib/atcUpdateStyle.ts refuses that
+      // distinction at length - but because a band is not a dot, so it does
+      // not have the problem this move fixes, and re-ordering a layer nobody
+      // reported a fault with is how a fix turns into two.
+      ...buildAtcUpdateLayers(ATC_UPDATE_SOURCE_ID),
     ],
   }
 }

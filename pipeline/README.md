@@ -32,7 +32,7 @@ Not everything in `sources.json` came from the Experience Builder app, though - 
 
 To point the script at a different Experience Builder app (e.g. if the ATC publishes a second public map, or another club/provider uses one), just pass that app's URL and a `--provider` label - nothing else in the script is ATC-specific.
 
-That `--provider` label is as far as this registry currently goes toward being multi-organization: every entry says `"ATC"`, and adding a thirteenth source is still a code change by whoever owns this repository. [../features/SOURCE_REGISTRY.md](../features/SOURCE_REGISTRY.md) is the design for letting an outside organization register its own layers and a contact to notify - including the fields this file would gain (`steward`, `kind`, `licence`, `field_map`, `freshness`, `trust`, `state`) and why the registry stays a reviewed file in git rather than becoming a database table.
+That `--provider` label is as far as this registry currently goes toward being multi-organization: every entry says `"ATC"`, and adding a fourteenth source is still a code change by whoever owns this repository. The thirteenth arrived on 2026-08-12 and is the first that is not an ArcGIS layer — ATC's Trail Updates, read from their website ([../features/ATC_TRAIL_UPDATES.md](../features/ATC_TRAIL_UPDATES.md)). It carries `kind`, `trust`, `steward`, `licence` and `freshness`, so several of the fields below now exist on real data rather than only in the design; `lib/source_registry.py` is what reads `kind`, and `fetch_all.py` fetches only the entries that are feature layers. It is hand-written rather than discovered, which works because `discover_sources.py` keeps entries it did not rediscover — and now keeps hand-added fields on the ones it did. [../features/SOURCE_REGISTRY.md](../features/SOURCE_REGISTRY.md) is the design for letting an outside organization register its own layers and a contact to notify - including the fields this file would gain (`steward`, `kind`, `licence`, `field_map`, `freshness`, `trust`, `state`) and why the registry stays a reviewed file in git rather than becoming a database table.
 
 What exists upstream *beyond* the registry - the maintaining clubs, the federal servers, the community datasets, and what each is worth - is surveyed and qualified in [SOURCE_SURVEY.md](SOURCE_SURVEY.md) (snapshot dated 2026-08-09; it also corrects who actually hosts the layers above).
 
@@ -61,7 +61,7 @@ What exists upstream *beyond* the registry - the maintaining clubs, the federal 
 | `privies` | A.T. Privies | 316 | Point | Found via the FeatureServer root, not the public map |
 | `at_treadway` | A.T. Treadway | 30 | ? | Found via the FeatureServer root - not yet checked how this differs from `centerline` |
 
-**Which of these reach a hiker as waypoints:** `shelters`, `campsites`, `viewpoints`, `parking` and `privies` each become one `poi_type` in `export_poi.py`, and `communities` folds into `resupply` at low confidence. The other six are fetched for other reasons — `centerline` and `side_trails` are the trail lines, `trail_club_sections` the maintainer attribution, `half_mile_points_from_springer` the mile markers — and `bridges` and `at_treadway` are registered but feed nothing yet. Vistas, parking and privies were in that second group until 2026-08-09: registered on 2026-07-25 and downloaded by every run since, with nothing downstream reading them.
+**Which of these reach a hiker as waypoints:** `shelters`, `campsites`, `viewpoints`, `parking` and `privies` each become one `poi_type` in `export_poi.py`, and `communities` folds into `resupply` at low confidence. The other six are fetched for other reasons — `centerline` and `side_trails` are the trail lines, `half_mile_points_from_springer` the mile markers — and `bridges` and `at_treadway` are registered but feed nothing yet. `trail_club_sections` was in that group until 2026-08-13, when `export_club_sections.py` (#594) started reading it; it supplies club *names* and regions, while the club *attribution* comes off `centerline`'s own `Acronym` field, which is two years fresher and sits on the trail line (SOURCE_SURVEY.md §3e). Vistas, parking and privies were in that second group until 2026-08-09: registered on 2026-07-25 and downloaded by every run since, with nothing downstream reading them.
 
 **Gap, now partially filled:** ATC's own data has no dedicated water-source or general resupply layer. `communities` is a partial resupply proxy; `fetch_opentrail.py` (below) is the real fill for both water and resupply.
 
@@ -363,6 +363,14 @@ Exits non-zero if any check finds a real problem - `publish.py` shouldn't run af
 ## Publishing
 
 Publishing artifacts to Cloudflare R2 is intentionally write-disabled by default. Set `R2_WRITE_ENABLED=true` in the trusted environment that is allowed to publish; otherwise `publish.py` refuses to upload anything, so developers with only read access to the bucket cannot accidentally write to it.
+
+**And it will not publish until it is told where: [../features/DATA_ENVIRONMENTS.md](../features/DATA_ENVIRONMENTS.md).** `OURHIKE_DATA_ENV` names one of [../RELEASING.md](../RELEASING.md) §3's three environments, and every key of the run is scoped by it - production is the bucket root, everything else is `environments/<name>/`. There is deliberately no default, because the only value a default could take is the one that overwrites what hikers have already downloaded.
+
+```
+OURHIKE_DATA_ENV=ua R2_WRITE_ENABLED=true .venv/Scripts/python publish.py
+```
+
+`publish.py` is the only thing in this project that writes to the bucket, which is what makes that one variable enough: a run publishing to UA cannot name production's keys rather than merely being expected not to.
 
 **Where an artifact goes in the bucket, and what it may be called: [R2_LAYOUT.md](R2_LAYOUT.md).** A key is a public URL that deployed clients and app-store builds already request, and `publish.py`'s manifest merge is additive-only, so a name that lands wrong cannot be renamed - only joined by a sibling and served alongside the mistake. `lib/r2_keys.py` checks every key of a run before the first upload; read the layout doc before adding an artifact, not after.
 

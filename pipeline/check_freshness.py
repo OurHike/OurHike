@@ -19,6 +19,18 @@ Each upstream exposes a different freshness marker, so this normalises them:
     Elevation     the set of edition dates TNM currently publishes, since
                   3DEP has no per-file timestamp worth trusting but does
                   embed an edition date in every filename
+    ATC updates   HTTP ETag on ATC's trail-updates feed, compared against
+                  what a human recorded in reference/atc_updates.json when
+                  they last reviewed it (#459)
+
+The fifth one is the odd one and worth reading the difference off: the other
+four say *the pipeline should refetch*, and it says *a person should go and
+look*. Nothing fetches ATC's Trail Updates on a schedule - they are prose on
+a website, reviewed into a file in git and released by a merged pull request
+(features/ATC_TRAIL_UPDATES.md) - so no automated run can clear a STALE here.
+Its recorded side is therefore in git rather than in gitignored `data/raw/`,
+which also means it is the one source this check can answer from a bare
+checkout.
 
 THE FAILURE THAT MATTERS is a false "fresh". Reporting stale data as current
 means the map quietly keeps showing a closed trail or a moved shelter, so
@@ -55,6 +67,7 @@ people to ignore the one signal that matters. See pipeline/DATA_RELEASES.md.
 import argparse
 import json
 import random
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -73,12 +86,18 @@ from lib.freshness_state import (
     state_age_days,
     summarise,
 )
+from lib.source_registry import find_source, load_registry
 
 ROOT = Path(__file__).parent
 ATC_MANIFEST = ROOT / "data" / "raw" / "manifest.json"
 TOPO_MANIFEST = ROOT / "data" / "raw" / "topo_quads" / "manifest.json"
 OPENTRAIL_STATE = ROOT / "data" / "raw" / "opentrail_state.json"
 ELEVATION_INDEX = ROOT / "data" / "raw" / "elevation" / "tile_index.json"
+
+# The one recorded marker that is checked in rather than fetched - see the
+# module docstring's fifth row. `data/raw/` is gitignored; this is not.
+ATC_UPDATES_FILE = ROOT / "reference" / "atc_updates.json"
+SOURCES_PATH = ROOT / "sources.json"
 
 OPENTRAIL_URL = "https://opentrail.org/api/getData?trail=AT"
 HTTP_TIMEOUT = 30
@@ -118,6 +137,7 @@ def recorded_state() -> dict:
         opentrail_state=OPENTRAIL_STATE,
         topo_manifest=TOPO_MANIFEST,
         elevation_index=ELEVATION_INDEX,
+        atc_updates_file=ATC_UPDATES_FILE,
     )
 
 
@@ -142,6 +162,10 @@ def recorded_elevation_marker() -> str | None:
     return freshness_state.elevation_marker(ELEVATION_INDEX)
 
 
+def recorded_atc_updates_marker() -> str | None:
+    return freshness_state.atc_updates_marker(ATC_UPDATES_FILE)
+
+
 # --- Upstream markers ------------------------------------------------------
 
 
@@ -160,6 +184,49 @@ def upstream_atc_marker(url: str) -> str | None:
 def upstream_opentrail_marker() -> str | None:
     try:
         response = requests.head(OPENTRAIL_URL, timeout=HTTP_TIMEOUT)
+        return response.headers.get("ETag")
+    except requests.RequestException:
+        return None
+
+
+def atc_updates_feed_url() -> str | None:
+    """Where to ask about ATC's Trail Updates, from sources.json.
+
+    Read from the registry rather than written here, which is the point of
+    registering the source at all (#459): the URL, the licence and the trust
+    tier are one entry a person can read, not three facts scattered across
+    the scripts that happen to use them. A registry that cannot be reached or
+    has no such entry answers None, which the caller turns into UNKNOWN.
+    """
+    try:
+        registry = load_registry(SOURCES_PATH)
+    except (OSError, ValueError):
+        return None
+    entry = find_source(registry, "atc_trail_updates") or {}
+    return (entry.get("freshness") or {}).get("url")
+
+
+def upstream_atc_updates_marker(url: str | None = None) -> str | None:
+    """The ETag on ATC's trail-updates feed, or None if it cannot be had.
+
+    HEAD, and the feed rather than the listing page, for two measured
+    reasons. The feed answers a HEAD with the same strong ETag it puts on a
+    GET, so the change signal costs no body at all. The listing page answers
+    a scripted request with 403 (measured 2026-08-12), so asking it would
+    report UNKNOWN forever - which is the honest verdict for "could not ask",
+    and exactly why it is not the thing to ask.
+
+    Using the feed here is not the mistake features/ATC_TRAIL_UPDATES.md
+    warns about. That warning is about *content*: the feed held 3 items while
+    the page showed 9, so building the artifact from it would silently drop
+    the closures that matter most. As a "did anything move?" signal it is
+    fine, and the design names it as exactly that.
+    """
+    url = url or atc_updates_feed_url()
+    if not url:
+        return None
+    try:
+        response = requests.head(url, timeout=HTTP_TIMEOUT)
         return response.headers.get("ETag")
     except requests.RequestException:
         return None
@@ -245,48 +312,58 @@ def upstream_topo_markers(sample: list[str]) -> dict[str, str | None]:
 
 
 def upstream_elevation_marker(recorded: str | None = None) -> str | None:
-    """Re-run the same TNM discovery the index was built from and compare the
-    edition set. This is the only way to notice 3DEP republishing a cell:
-    there is no per-file timestamp to HEAD, but a new survey arrives as a new
-    dated filename.
+    """HEAD each tracked 3DEP cell and read its `Last-Modified`.
 
-    `recorded` is the marker to restrict the answer to. It defaults to reading
-    the local tile index, which is the only source that exists when this runs
-    beside a real fetch; a run comparing against a *published* state has no
-    local index and passes that state's marker in instead."""
+    This is the only way to notice 3DEP republishing a cell, and the mechanism
+    changed under it (#550). It used to re-run the TNM catalogue query,
+    because a republished cell arrived as a new DATED FILENAME and there was
+    no per-file timestamp to ask for. Reading `current/` there is: the name is
+    stable and the header is what moves.
+
+    That is a better question as well as a cheaper one. The old path asked a
+    gateway that gives up at 30 seconds, then had to dedupe 244 rows down to
+    110 and clip the answer to the cells already tracked - because the query
+    was per 1-degree cell and not corridor-clipped, so comparing the raw sets
+    reported STALE forever. None of that applies to one HEAD per cell.
+
+    `recorded` is the marker whose cells are asked about. It defaults to
+    reading the local tile index, which is the only source that exists when
+    this runs beside a real fetch; a run comparing against a *published* state
+    has no local index and passes that state's marker in instead.
+
+    Limitation, stated rather than hidden and unchanged from before: this
+    notices a new edition of a cell already tracked, not a brand-new cell
+    entering the corridor. The corridor is fixed, so that only arises if 3DEP
+    starts publishing where it never has - rare, and caught by a full
+    fetch_elevation.py run.
+
+    One consequence worth expecting rather than debugging: **the first
+    comparison after this change reads STALE**, once, for every state captured
+    while the marker was still a set of filename dates. The two shapes are not
+    comparable, and the honest report for "the version scheme changed" is not
+    FRESH.
+    """
     try:
         import fetch_elevation
 
-        cells = fetch_elevation.compute_grid_cells()
-        items: list[dict] = []
-        for cell in cells:
-            items.extend(fetch_elevation.list_products_for_cell(cell))
-
-        # Deduplicate exactly the way the index was built - newest edition per
-        # footprint. Comparing the raw catalog (244 rows) against the deduped
-        # index (110) would report STALE forever, which is the same failure as
-        # reporting FRESH wrongly: an alarm that is always on gets ignored.
-        index = fetch_elevation.build_tile_index(items, corridor_hit=lambda _bbox: True)
-
-        # Restrict to the cells the recorded index already covers. The
-        # upstream query is per 1-degree cell and is NOT corridor-clipped
-        # here (that needs the corridor polygon and a DuckDB spatial
-        # connection), so it returns tiles the index legitimately excluded -
-        # comparing the raw sets would report STALE forever, and an alarm
-        # that is always on gets ignored.
-        #
-        # Limitation, stated rather than hidden: this notices a NEW EDITION of
-        # a cell we already track, not a brand-new cell entering the corridor.
-        # The corridor is fixed, so that second case only arises if 3DEP
-        # starts publishing somewhere it never has - rare, and caught by a
-        # full fetch_elevation.py run.
         if recorded is None:
             recorded = recorded_elevation_marker()
         if recorded is None:
             return None
-        tracked_cells = {key.split(":", 1)[0] for key in recorded.split("|")}
 
-        keys = {edition_key(entry["url"]) for entry in index if edition_key(entry["url"]).split(":", 1)[0] in tracked_cells}
+        tracked_cells = sorted({key.split(":", 1)[0] for key in recorded.split("|")})
+        keys = set()
+        for cell in tracked_cells:
+            # Only cells whose name is one this bucket could hold. A legacy
+            # marker's keys are whole filenames where the name did not parse,
+            # and asking S3 about those would be a guaranteed 404 read as a
+            # coverage loss.
+            if not re.fullmatch(r"n\d+w\d+", cell):
+                continue
+            last_modified = fetch_elevation._head(fetch_elevation.cell_url(cell))
+            if last_modified is None:
+                continue
+            keys.add(edition_key(fetch_elevation.cell_url(cell), last_modified))
         return "|".join(sorted(keys)) if keys else None
     except Exception:
         return None
@@ -329,6 +406,9 @@ def gather_upstream(state: dict, *, local: bool = True) -> dict:
         # so that it reads the tile index itself. A published state has no local
         # index to read, so its recorded marker is handed in instead.
         upstream["elevation"] = upstream_elevation_marker() if local else upstream_elevation_marker(state.get("elevation"))
+
+    if "atc_trail_updates" in state:
+        upstream["atc_trail_updates"] = upstream_atc_updates_marker()
 
     return upstream
 

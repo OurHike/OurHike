@@ -1,5 +1,5 @@
 {
-  "_comment": "Registry of upstream data sources for the OurHike pipeline. Generated/updated by discover_sources.py - re-run that script rather than hand-editing urls here.",
+  "_comment": "Registry of upstream data sources for the OurHike pipeline. Generated/updated by discover_sources.py - re-run that script rather than hand-editing urls here. A source discovery cannot see, because it is not an ArcGIS layer behind the Experience Builder app, is registered by hand and marked with a `kind`: discover_sources.py keeps entries it did not rediscover verbatim, so a hand-written entry survives a re-run. lib/source_registry.py is what reads `kind`, and an entry without one is an ArcGIS feature layer.",
   "photo_licence": {
     "_comment": "The basis on which the Photo1..Photo10 images on the ATC facilities layers may be mirrored and served, recorded rather than assumed - CONTRIBUTING.md, 'A note on data and licences'. This is NOT a Creative Commons grant and must not be rendered as one: ATC holds the copyright, and what is recorded here is the permission to use them, not a licence to sublicense them onward. A club inheriting this project needs to re-confirm it in its own name rather than relying on this line.",
     "author": "Appalachian Trail Conservancy",
@@ -110,6 +110,27 @@
       "discovered_via": "Directly listing the ANST_Facilities FeatureServer root (not in the public Experience Builder map's curated layer list)",
       "discovered_date": "2026-07-25",
       "notes": "Added to registry for later - not yet fetched. Unclear yet how this differs from the ANST_Centerline layer already in use - worth checking when fetched."
+    },
+    {
+      "key": "atc_trail_updates",
+      "title": "A.T. Trail Updates",
+      "provider": "ATC",
+      "kind": "published_notices",
+      "url": "https://appalachiantrail.org/trail-updates/",
+      "trust": "authoritative",
+      "steward": "Appalachian Trail Conservancy",
+      "steward_contact": "https://appalachiantrail.org/contact/",
+      "licence": "Facts and a link only, and NOT a grant to mirror ATC's prose. What is published is the mile range, category, states, headline and ATC's own last-updated date, with a link back to their page - facts about the trail, which is a different thing from the paragraphs ATC wrote about them. #458 asked ATC directly what may be republished and was closed without asking, on the maintainer's judgement as an ATC trail volunteer; that decision settles the conservative version and not the broader one, so the body text stays on ATC's own page. A club inheriting this project needs to confirm this in its own name rather than relying on this line - the same footing as `photo_licence` above and the general question in https://github.com/OurHike/OurHike/issues/98.",
+      "attribution": "Appalachian Trail Conservancy",
+      "reviewed_input": "reference/atc_updates.json",
+      "freshness": {
+        "kind": "http_etag",
+        "url": "https://appalachiantrail.org/trail-updates/feed/",
+        "notes": "The RSS feed, used as a change signal and NOT as the content. Measured 2026-08-09: it held 3 items while the page showed 9, so building the artifact from it would silently drop the most consequential closure (features/ATC_TRAIL_UPDATES.md, 'what the feed does not carry'). It does carry a strong ETag that moves when ATC edits, which is all a freshness marker needs. The listing page itself is not usable as the marker: it answers a scripted request with 403 (measured 2026-08-12), so a marker read from it would be UNKNOWN forever."
+      },
+      "discovered_via": "features/ATC_TRAIL_UPDATES.md - read from ATC's public website, not from an ArcGIS service. Registered by hand because discover_sources.py walks the Experience Builder app and this source is not in it.",
+      "discovered_date": "2026-08-12",
+      "notes": "Not fetched by fetch_all.py and has no data/raw/<key>.geojson - the build input is the reviewed file named in `reviewed_input`, which a human edits and a merged pull request releases (#460). The freshness marker is what tells that human ATC has published something since they last looked."
     }
   ]
 }

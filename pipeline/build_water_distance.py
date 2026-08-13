@@ -63,42 +63,40 @@ A `Proximity_Water_ft` of 0 (35 of the 1,013) resolves to nothing published:
 zero reads as at-the-source or as unmeasured, and the row does not say which.
 A distance a hiker plans an evening around has to be a statement, not a shrug.
 
-## The provenance rule: FarOut-derived rows are held back
+## The provenance rule: an allowlist, and how the FarOut rows joined it
 
-CSI's `Nearest_Water_Source` says what each distance was measured against, and
-the answers split into two licence positions. `NHDP_HR_Stream` and
-`NHDP_HR_Pond` rows are measured against USGS hydrography - public domain -
-and `OSA_Field_Estimate` rows are ATC's own stewards' numbers; for those three
-the only question is ATC's own unstated org terms, answered for now the way
-sources.json's `photo_licence` block answers it (below). `FarOut` rows - the
-largest bucket - are measured against the waypoints in ATC's official app,
-which is a commercial dataset ATC has rights to and this project does not.
-WATER_SOURCES.md §4 calls deriving from CSI "blocked twice over (unstated ATC
-terms, and 42% FarOut-derived)" and §7 lists CSI distances without ATC's
-blessing under "what not to build".
+CSI's `Nearest_Water_Source` says what each distance was measured against.
+`NHDP_HR_Stream` and `NHDP_HR_Pond` rows are measured against USGS
+hydrography - public domain - and `OSA_Field_Estimate` rows are ATC's own
+stewards' numbers. `FarOut` rows - the largest bucket - are measured against
+the waypoints in ATC's official app, and #668 first shipped with those 218
+matches held back: WATER_SOURCES.md §4 flagged the derivation from a
+commercial dataset this project has no independent rights to, and §7 kept
+unblessed CSI derivation on "what not to build". The holdback existed to
+leave that call visible for the maintainer rather than make it in code.
 
-So this build publishes a distance only where the provenance is one of
-PUBLISHABLE_PROVENANCES. A matched FarOut row keeps its join evidence and its
-listed value - the number is one public `?f=json` query away on ATC's own
-service either way, and a reviewer of the holdback needs to see what is held -
-but `distance_ft` stays null with the reason stated, so nothing FarOut-derived
-reaches an artifact. When the ATC conversation WATER_SOURCES.md §7 plans
-(their org terms, extended by the CSI question) comes back with a blessing,
-adding "FarOut" to PUBLISHABLE_PROVENANCES and re-running this script is the
-whole change.
+The maintainer made it on 2026-08-13 - "anything from the ATC is reusable",
+then, asked specifically about these rows, "go ahead and include those 218
+rows" (#688). The reading that authorises: the distance is ATC's own derived
+fact, published by ATC in ATC's own public layer, and the maintainer takes
+ATC-published data as reusable on the `photo_licence` footing. sources.json's
+`atc_licence` block records the declaration; WATER_SOURCES.md §4's amendment
+records the release.
+
+PUBLISHABLE_PROVENANCES stays an allowlist all the same. A provenance value
+ATC introduces later publishes nothing until a human reads what it derives
+from and adds it deliberately - a matched row with an unknown provenance
+keeps its join evidence and listed value (the number is one public `?f=json`
+query away on ATC's own service regardless) with the reason stated.
 
 ## Licence, stated rather than discovered later
 
-The CSI layer sits on ATC's own ArcGIS org, whose reuse terms are the standing
-open question SOURCE_SURVEY.md §9 records (the ATC row of the same table #98
-sits in for opentrail.org). Ingestion of the NHD- and field-estimate-derived
-rows is on the maintainer's direction (2026-08-13), on the same footing as
-sources.json's `photo_licence` block - maintainer authorisation on the basis
-of ATC affiliation, recorded rather than assumed, with the broader terms
-conversation still owed to ATC and tracked by that survey section and
-WATER_SOURCES.md §7. The FarOut-derived rows are outside what that direction
-can cover - FarOut's data is not ATC's to authorise second-hand, let alone
-this project's - which is why the provenance rule above exists. A club
+The CSI layer sits on ATC's own ArcGIS org, whose formal reuse terms remain
+unstated - the ATC row of SOURCE_SURVEY.md §9's table, the analogue of #98's
+opentrail question. Ingestion rides sources.json's `atc_licence` block:
+maintainer authorisation on the basis of ATC affiliation, dated, recorded
+rather than assumed. ATC's own written answer stays the ideal - §10's
+combined ask is now a confirmation rather than a blocker - and a club
 inheriting this project should re-confirm all of it in its own name.
 
 ## Why the output is checked in rather than fetched at build time
@@ -153,16 +151,19 @@ OFFICIAL_SITE_TYPES = ("Shelter", "A.T. Club or Agency Created Campsite")
 ATC_LAYERS = ("shelters", "campsites")
 
 # Which `Nearest_Water_Source` provenances may publish a distance - the
-# module docstring's provenance rule. NHD is public domain and a field
-# estimate is ATC's own steward speaking; FarOut is deliberately absent
-# (WATER_SOURCES.md §4/§7), and adding it here after ATC's blessing is the
-# whole change that releases the held rows.
-PUBLISHABLE_PROVENANCES = frozenset({"NHDP_HR_Stream", "NHDP_HR_Pond", "OSA_Field_Estimate"})
+# module docstring's provenance rule. NHD is public domain, a field estimate
+# is ATC's own steward speaking, and the FarOut-measured rows were held back
+# until 2026-08-13, when the maintainer authorised them ("anything from the
+# ATC is reusable", asked again specifically about these 218 rows) - the
+# `atc_licence` block in sources.json records that basis, and #688 the
+# release. Still an allowlist on purpose: a provenance value ATC introduces
+# later refuses until a human reads what it derives from and adds it here
+# deliberately.
+PUBLISHABLE_PROVENANCES = frozenset({"NHDP_HR_Stream", "NHDP_HR_Pond", "OSA_Field_Estimate", "FarOut"})
 
-HELD_BACK = (
-    "measured against FarOut's waypoints - held back until the ATC conversation "
-    "WATER_SOURCES.md §7 plans blesses it (§4: unstated ATC terms, and the "
-    "measurement derives from a commercial dataset this project has no rights to)"
+UNKNOWN_PROVENANCE = (
+    "the CSI row's provenance {provenance!r} is not one this build knows - held back "
+    "until a human reads what it derives from and adds it to PUBLISHABLE_PROVENANCES deliberately"
 )
 
 USER_AGENT = "OurHike-pipeline/1.0 (+https://github.com/OurHike/OurHike)"
@@ -420,7 +421,7 @@ def resolve_layer(layer: str, features: list[dict], csi_rows: list[dict]) -> lis
             # regardless - but nothing here reaches an artifact.
             record["listed_distance_ft"] = listed
             record["provenance"] = provenance
-            record["unresolved"] = HELD_BACK
+            record["unresolved"] = UNKNOWN_PROVENANCE.format(provenance=provenance)
         else:
             record["listed_distance_ft"] = listed
             record["distance_ft"] = max(1, round(listed))
@@ -449,13 +450,13 @@ README = [
     "",
     "A null distance always carries an `unresolved` reason - no CSI row near",
     "the feature (most of Maine), a 0 ft value that reads as at-the-source or",
-    "unmeasured without saying which, or a FarOut-derived measurement held",
-    "back until ATC blesses it (WATER_SOURCES.md §4/§7 - those rows keep",
-    "their join evidence and listed value here, and publish nothing). None",
-    "is a guess: where water is matters more than most numbers here, so a",
-    "blank beats an invention. Every shelter and campsite is listed either",
-    "way, so a match lost on a later run shows up as a changed line rather",
-    "than a vanished one.",
+    "unmeasured without saying which, or a provenance value this build does",
+    "not know (an allowlist: FarOut joined it 2026-08-13 on the maintainer's",
+    "authorisation, #688; anything newer waits for a human). None is a guess:",
+    "where water is matters more than most numbers here, so a blank beats an",
+    "invention. Every shelter and campsite is listed either way, so a match",
+    "lost on a later run shows up as a changed line rather than a vanished",
+    "one.",
 ]
 
 
@@ -478,12 +479,11 @@ def build(csi_rows: list[dict], features_by_layer: dict[str, list[dict]]) -> dic
             "url": CSI_LAYER_URL,
             "provider": "Appalachian Trail Conservancy",
             "licence": (
-                "unstated - the layer sits on ATC's own ArcGIS org, whose reuse terms are the open "
-                "question SOURCE_SURVEY.md §9 records. NHD- and field-estimate-derived rows are "
-                "ingested on maintainer direction 2026-08-13, on the same basis as sources.json's "
-                "photo_licence block; FarOut-derived rows publish nothing until ATC blesses them "
-                "(WATER_SOURCES.md §4/§7). A club inheriting this project should re-confirm all of "
-                "it in its own name."
+                "ATC's formal org terms remain unstated (SOURCE_SURVEY.md §9); reuse rides "
+                "sources.json's atc_licence block - maintainer authorisation on the basis of ATC "
+                "affiliation, 2026-08-13, FarOut-measured rows included on the maintainer's "
+                "specific direction (#688). ATC's own written answer stays the ideal; a club "
+                "inheriting this project should re-confirm all of it in its own name."
             ),
             "note": (
                 "Only Site_Type in ('Shelter', 'A.T. Club or Agency Created Campsite') is ever "

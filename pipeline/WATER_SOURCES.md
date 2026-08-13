@@ -146,14 +146,24 @@ good for: sizing the gap, and validating whatever ships (it joins on `RIMS_ID` a
 *Amended 2026-08-13, same day:* **#668 — A shelter card says nothing about water, and
 ATC has measured the distance to it** ships the provenance-split reading of the above,
 on the maintainer's direction. CSI's **NHD- and field-estimate-derived distances**
-(87 of the 512 registered shelters/campsites resolve to one) publish as
-`water_distance_ft` and as the card sentence's "water N m" — a proximity claim as a
-sentence, exactly the shape §6 argues for, on the `photo_licence` footing for the
-ATC-terms half. The **FarOut-derived rows are held back** in
+publish as `water_distance_ft` and as the card sentence's "water N m" — a proximity
+claim as a sentence, exactly the shape §6 argues for, on the `photo_licence` footing
+for the ATC-terms half. The **FarOut-derived rows shipped held back** in
 [reference/water_distance.json](reference/water_distance.json) with the reason stated
-per row — that half of the block stands until option 3's ask is answered.
+per row, so the call this paragraph flagged stayed a human's.
 [build_water_distance.py](build_water_distance.py) holds the join and the rule;
 "derived points" stay unbuilt as this section concluded.
+
+*Amended again 2026-08-13, hours later:* the human made the call — the maintainer
+declared data ATC publishes reusable ("anything from the ATC is reusable", restated
+specifically for the 218 held rows), recorded as sources.json's `atc_licence` block,
+and **#688 — Release the FarOut-measured water distances ATC already publishes**
+released them: 305 of 512 shelters/campsites now publish a distance. The reading that
+authorises: the distance is ATC's own derived fact in ATC's own public layer. What
+this amendment does **not** move: the allowlist stays (an unknown future provenance
+still refuses until read), the user-created sites stay unpublished (§3b's rule is
+safety, not licensing), and option 3's direct-from-ATC confirmation stays the ideal —
+now a confirmation rather than a blocker.
 
 **Neither ArcGIS org hides a water layer.** All 146 ATC-org services and all 1,440
 NPS-org services were swept for water-ish names; every hit is another park's data
@@ -348,11 +358,13 @@ and hiker reports as the only eventual answer to "is it flowing".
    fetch the 21 HU4 staged files once, keep the FCode attributes for the eventual
    reliability model). It should not be sold as the fix for shelter cards.
 6. **What not to build:** an NHD/GNIS springs fetch (4% / ~54 points — measured
-   dead ends), anything derived from CSI's distances without ATC's blessing — narrowed
-   2026-08-13 by the maintainer-directed carve-out §4's amendment records: the NHD- and
-   field-estimate-derived rows ship (#668), the FarOut-derived rows stay exactly this
-   section's "not without the blessing" — and any scrape of WhiteBlaze, FarOut or The
-   A.T. Guide.
+   dead ends), anything derived from CSI's distances without an authorisation on
+   record — first narrowed 2026-08-13 to ship the NHD- and field-estimate-derived rows
+   (#668), then resolved the same day when the maintainer's declaration released the
+   FarOut-measured rows too (#688, sources.json `atc_licence`; §4's amendments hold
+   the sequence) — and any scrape of WhiteBlaze, FarOut or The A.T. Guide, which the
+   CSI release does not soften: taking ATC's published number is not a licence to
+   touch the app it was measured against.
 
 **On the honesty question the issue says must be settled with the sourcing:** the
 two-tier confidence channel is enough. Every water point from options 1 and 4 enters

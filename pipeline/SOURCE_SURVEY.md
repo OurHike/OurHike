@@ -236,11 +236,15 @@ established-sites subset could be used; do not ingest unilaterally.
 *Amended 2026-08-13:* one narrow, maintainer-directed use now exists — **#668 — A
 shelter card says nothing about water, and ATC has measured the distance to it** takes
 `Proximity_Water_ft` for the **official sites only** (the WHERE clause never requests a
-user-created row) and attaches it to the shelters and campsites already published,
-publishing only the NHD- and field-estimate-derived rows and holding the FarOut-derived
-ones pending §10's ATC ask. WATER_SOURCES.md §4 holds the reasoning,
+user-created row) and attaches it to the shelters and campsites already published.
+The FarOut-measured rows first shipped held back, then were released the same day on
+the maintainer's declaration that data ATC publishes is reusable (**#688 — Release the
+FarOut-measured water distances ATC already publishes**; recorded as sources.json's
+`atc_licence` block, photo_licence's sibling — §10's ask to ATC is now a confirmation
+rather than a blocker). WATER_SOURCES.md §4 holds the reasoning and the sequence,
 `build_water_distance.py` the join, `reference/water_distance.json` the reviewable
-result. The sites themselves stay unpublished exactly as this section says.
+result. The sites themselves stay unpublished exactly as this section says — that rule
+is safety, not licensing, and the declaration does not touch it.
 
 ### 3c. `Helene_Status` — live-ish closure status per club section
 
@@ -543,7 +547,7 @@ data ecosystem looks like:
 |---|---|---|
 | **Public domain (US federal work)** | NPS APPA layers (10 of our 12), USFS EDW, USGS topo/3DEP, NPS_Public_Trails | Ship freely; attribution as courtesy. The survey's provider correction moves most of our current data *into* this row |
 | **ODbL** | OSM (incl. shelter capacities), Waymarked Trails, Geofabrik extracts (already used) | Attribution + share-alike on derivative databases — already complied with for the basemap |
-| **Unstated — org would need to answer** | ATC's own org layers (half-mile points, ATX overnight sites §3a, CSI §3b, Helene §3c), PATC's GIS, TEHCC's wiki, NYNJTC's services, club HTML pages, Trail Finder | Public ≠ licensed. One conversation each with ATC, PATC, TEHCC covers everything worth having in this row |
+| **Unstated — org would need to answer** | ATC's own org layers (half-mile points, ATX overnight sites §3a, CSI §3b, Helene §3c), PATC's GIS, TEHCC's wiki, NYNJTC's services, club HTML pages, Trail Finder | Public ≠ licensed. One conversation each with ATC, PATC, TEHCC covers everything worth having in this row. For ATC's own org the project-side basis is now on record — sources.json's `atc_licence` block, 2026-08-13 (#688) — and the conversation remains the ideal it asks for |
 | **Unresolved, now compounded** | opentrail.org (#98) | No LICENSE file + now imports OSM without attribution; raise both in the same ask |
 | **Copyrighted, permission-gated** | WhiteBlaze shelter PDF, club paper/Avenza maps, MATC's unpublished campsite inventory appendix | Cross-check/validation material, or a direct ask |
 | **Closed, no path** | FarOut, A.T. Guide, AllTrails, Hiking Project (API dead), Gaia | Context only |

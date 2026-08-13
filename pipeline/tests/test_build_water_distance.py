@@ -159,29 +159,48 @@ def test_a_zero_distance_publishes_nothing_with_the_reason_stated():
     assert "0 ft" in record["unresolved"]
 
 
-def test_a_farout_derived_row_is_held_back_with_its_evidence_kept():
-    """WATER_SOURCES.md §4/§7: CSI's FarOut-measured distances derive from a
-    commercial dataset this project has no rights to, so they publish nothing
-    until ATC blesses them. The join evidence and the listed value stay - a
-    reviewer of the holdback has to see what is held, and the value is one
-    public query away on ATC's own service regardless."""
+def test_a_farout_measured_row_publishes_since_the_maintainer_authorised_it():
+    """#668 first shipped with the 218 FarOut-measured rows held back, so the
+    call WATER_SOURCES.md §4/§7 flagged stayed visible instead of being made
+    in code. The maintainer made it on 2026-08-13 - "anything from the ATC is
+    reusable", restated for these rows specifically (#688) - recorded as
+    sources.json's atc_licence block. The distance is ATC's own derived fact
+    in ATC's own public layer, and it publishes like any other."""
     feature = atc_feature("Hurd Brook Lean-to Shelter")
     rows = [csi_row("Hurd Brook Lean-to", 40.0001, -76.0, distance=120.0, provenance="FarOut")]
 
     [record] = bwd.resolve_layer("shelters", [feature], rows)
 
-    assert record["distance_ft"] is None
-    assert record["unresolved"] == bwd.HELD_BACK
-    assert record["listed_distance_ft"] == 120.0
+    assert record["distance_ft"] == 120
     assert record["provenance"] == "FarOut"
+    assert "unresolved" not in record
+
+
+def test_an_unknown_provenance_still_refuses_with_its_evidence_kept():
+    """The allowlist outlived the holdback on purpose: a provenance value ATC
+    introduces later says nothing about what it derives from, so it publishes
+    nothing until a human reads it and adds it deliberately. The join
+    evidence and the listed value stay - a reviewer has to see what is held,
+    and the value is one public query away on ATC's own service regardless."""
+    feature = atc_feature("Hurd Brook Lean-to Shelter")
+    rows = [csi_row("Hurd Brook Lean-to", 40.0001, -76.0, distance=120.0, provenance="SomeNewApp_2027")]
+
+    [record] = bwd.resolve_layer("shelters", [feature], rows)
+
+    assert record["distance_ft"] is None
+    assert "SomeNewApp_2027" in record["unresolved"]
+    assert "PUBLISHABLE_PROVENANCES" in record["unresolved"]
+    assert record["listed_distance_ft"] == 120.0
+    assert record["provenance"] == "SomeNewApp_2027"
     assert record["csi_location"] == "Hurd Brook Lean-to"
 
 
-def test_farout_is_not_among_the_publishable_provenances():
-    """Pinned as data because it is the licence decision itself: adding
-    "FarOut" here after ATC's blessing is the whole change that releases the
-    held rows, and nothing else in this file should move when that happens."""
-    assert bwd.PUBLISHABLE_PROVENANCES == frozenset({"NHDP_HR_Stream", "NHDP_HR_Pond", "OSA_Field_Estimate"})
+def test_the_publishable_provenances_are_the_four_authorised_ones():
+    """Pinned as data because it is the licence decision itself: NHD is
+    public domain, a field estimate is ATC's steward speaking, and FarOut
+    joined on the maintainer's 2026-08-13 authorisation (#688). A fifth value
+    lands here only with a decision like that behind it."""
+    assert bwd.PUBLISHABLE_PROVENANCES == frozenset({"NHDP_HR_Stream", "NHDP_HR_Pond", "OSA_Field_Estimate", "FarOut"})
 
 
 def test_a_sub_metre_distance_rounds_up_to_a_foot_rather_than_to_zero():
@@ -217,7 +236,7 @@ def test_build_counts_per_layer_and_records_the_licence_position():
         "campsites_with_distance": 0,
     }
     assert "unstated" in document["source"]["licence"]
-    assert "maintainer direction" in document["source"]["licence"]
+    assert "atc_licence" in document["source"]["licence"]
     assert "User Created" not in str(document["sites"])
 
 

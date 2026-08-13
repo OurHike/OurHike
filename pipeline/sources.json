@@ -8,6 +8,14 @@
     "recorded_date": "2026-08-08",
     "open_question": "https://github.com/OurHike/OurHike/issues/98 - ATC's redistribution and attribution terms are unresolved in general, and settling them should replace this line with the agreed terms."
   },
+  "atc_licence": {
+    "_comment": "The basis on which DATA the Appalachian Trail Conservancy publishes on its own ArcGIS org and services may be reused - photo_licence's sibling, extended from the photos to the data layers by the maintainer's declaration of 2026-08-13 ('anything from the ATC is reusable', restated specifically for the FarOut-measured CSI water distances - #688). Scope, stated tightly: facts ATC itself publishes (half-mile points, the Campsite_Sustainability_Index water distances build_water_distance.py takes, whatever future ATC-org layer a change deliberately adopts). It does NOT cover documents the maintaining clubs publish (per-entry licence fields govern those, e.g. gatc_water_sources below), does NOT override editorial holdbacks that are about safety or partnership rather than licensing (CSI's user-created campsites stay unpublished - SOURCE_SURVEY.md §3b), and is not a grant to sublicense ATC's work onward.",
+    "author": "Appalachian Trail Conservancy",
+    "license": "© ATC, used with permission",
+    "basis": "Maintainer authorisation, on the basis of Appalachian Trail Conservancy affiliation",
+    "recorded_date": "2026-08-13",
+    "open_question": "ATC's own written terms remain the ideal - SOURCE_SURVEY.md §10's combined ask (capacity, Helene status, CSI, half-mile points) is now a confirmation rather than a blocker, and its answer should replace this line, the same way photo_licence's open question reads."
+  },
   "sources": [
     {
       "key": "trail_club_sections",

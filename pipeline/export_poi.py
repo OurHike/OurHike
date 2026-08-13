@@ -90,11 +90,11 @@ figure is (CONTRIBUTING.md, "store canonical"). Where the site has no actual
 water point folded in, a close-enough distance also reaches the composed
 sentence as a "water N m" entry in the Nearby clause - see
 attach_descriptions - so the answer to "is there water" stops depending on
-the 9 opentrail points that happen to fold. Coverage is deliberately narrow
-for now: 87 of 512 features publish one, because rows CSI measured against
-FarOut's waypoints are held back until ATC blesses them (WATER_SOURCES.md
-§4/§7) and rows with no CSI neighbour (most of Maine) publish nothing rather
-than a neighbour's number.
+the 9 opentrail points that happen to fold. 305 of 512 features publish one
+(the FarOut-measured rows joined on the maintainer's 2026-08-13
+authorisation, sources.json's atc_licence block / #688); the rest have no
+CSI neighbour (most of Maine) or an unreadable value, and publish nothing
+rather than a neighbour's number.
 
 Description: every ATC facility layer carries `description`, one sentence
 about the place -

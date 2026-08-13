@@ -15,6 +15,7 @@ import pytest
 from moto import mock_aws
 
 import publish
+from lib import data_env
 from lib.photo_store import PHOTOS_DIRNAME, photo_digest, photo_key
 
 BUCKET = "ourhike-test-bucket"
@@ -22,7 +23,17 @@ BUCKET = "ourhike-test-bucket"
 
 @pytest.fixture(autouse=True)
 def enable_r2_writes(monkeypatch):
+    """Both gates publish.py checks, turned on for the tests that are not about
+    the gates themselves.
+
+    The environment is `production` because that is what most of this file
+    asserts about - root keys, `latest.json` at the bucket root - and naming it
+    keeps those assertions true statements about production rather than about
+    whichever environment happened to be set. The refusals themselves are
+    tested where they belong, below and in test_data_env.py.
+    """
     monkeypatch.setenv(publish.WRITE_ENABLED_ENV_VAR, "true")
+    monkeypatch.setenv(data_env.ENVIRONMENT_VAR, data_env.PRODUCTION)
 
 
 @pytest.fixture
@@ -552,3 +563,147 @@ def test_a_run_with_nothing_to_do_still_says_so(monkeypatch, capsys, s3_client, 
     out = capsys.readouterr().out
     assert "Nothing changed" in out
     assert "Published version" not in out
+
+
+# ---------------------------------------------------------------------------
+# Which environment a publish lands in (features/DATA_ENVIRONMENTS.md).
+#
+# The property under test throughout is the one the feature exists for: a run
+# publishing to UA writes nothing production reads. It is asserted by listing
+# the bucket rather than by inspecting the call arguments, because "what is in
+# the bucket afterwards" is the only version of that claim a hiker experiences.
+# ---------------------------------------------------------------------------
+
+
+def _keys_in(s3_client):
+    listing = s3_client.list_objects_v2(Bucket=BUCKET)
+    return sorted(item["Key"] for item in listing.get("Contents", []))
+
+
+def test_a_ua_publish_writes_nothing_at_the_bucket_root(s3_client, local_artifacts, local_photos):
+    result = publish.publish(
+        local_artifacts,
+        sidecars={},
+        photos=local_photos,
+        s3_client=s3_client,
+        bucket=BUCKET,
+        environment="ua",
+    )
+
+    assert result["environment"] == "ua"
+    keys = _keys_in(s3_client)
+    assert keys, "the publish uploaded nothing at all, so this proves nothing"
+    assert all(key.startswith("environments/ua/") for key in keys), keys
+
+
+def test_a_ua_publish_leaves_productions_live_keys_alone(s3_client, local_artifacts, tmp_path):
+    """The failure this whole feature removes. Before it, both runs wrote
+    `trails.geojson` at the root, so the second one replaced the bytes a hiker
+    was in the middle of downloading."""
+    publish.publish(local_artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET, environment="production")
+    published = s3_client.get_object(Bucket=BUCKET, Key="trails.geojson")["Body"].read()
+
+    changed = tmp_path / "trails_ua.geojson"
+    changed.write_text('{"type": "FeatureCollection", "features": [{"id": "only in ua"}]}')
+    publish.publish(
+        {"trails.geojson": {"path": str(changed), "sha256": publish.sha256_file(changed)}},
+        sidecars={},
+        photos={},
+        s3_client=s3_client,
+        bucket=BUCKET,
+        environment="ua",
+    )
+
+    assert s3_client.get_object(Bucket=BUCKET, Key="trails.geojson")["Body"].read() == published
+    assert s3_client.get_object(Bucket=BUCKET, Key="environments/ua/trails.geojson")["Body"].read() != published
+
+
+def test_each_environment_has_its_own_manifest(s3_client, local_artifacts):
+    """`latest.json` is the mutable pointer, so it is the one key two
+    environments sharing would corrupt the fastest - a UA publish would move
+    production's version to describe bytes production does not have."""
+    publish.publish(local_artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET, environment="production")
+    publish.publish(local_artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET, environment="ua")
+
+    production = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())
+    ua = json.loads(s3_client.get_object(Bucket=BUCKET, Key="environments/ua/latest.json")["Body"].read())
+    assert production["version"] != ua["version"]
+
+
+def test_a_manifest_names_unscoped_artifacts_in_every_environment(s3_client, local_artifacts):
+    """What makes a manifest portable between environments, and what lets the
+    client stay unaware that environments exist: an artifact is
+    `trails.geojson` everywhere, and which bytes that names is decided by the
+    base URL the build was given."""
+    publish.publish(local_artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET, environment="ua")
+
+    manifest = json.loads(s3_client.get_object(Bucket=BUCKET, Key="environments/ua/latest.json")["Body"].read())
+    assert set(manifest["artifacts"]) == set(local_artifacts)
+
+
+def test_an_environments_publish_diffs_against_its_own_manifest(s3_client, local_artifacts):
+    """Otherwise UA's first publish would read production's manifest, find
+    every hash already matching, upload nothing, and leave UA with a pointer
+    to artifacts that are not in UA's tree."""
+    publish.publish(local_artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET, environment="production")
+
+    result = publish.publish(local_artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET, environment="ua")
+
+    assert sorted(result["uploaded"]) == sorted(local_artifacts)
+    assert result["skipped"] == []
+
+
+def test_photos_are_uploaded_per_environment(s3_client, local_artifacts, local_photos):
+    """`photos/` is the one hiker-facing prefix objects are deleted from, so a
+    shared prefix would let a withdrawal rehearsed in UA take the photograph
+    out of production. The cost is one copy of the corpus per environment,
+    which is the cheap side of that trade."""
+    publish.publish(local_artifacts, sidecars={}, photos=local_photos, s3_client=s3_client, bucket=BUCKET, environment="ua")
+
+    # The published prefix, not PHOTOS_DIRNAME - that names the local directory
+    # the bytes are read from (`poi_photos/`), which is deliberately not what
+    # they are served under.
+    keys = _keys_in(s3_client)
+    assert any(key.startswith("environments/ua/photos/") for key in keys), keys
+    assert not any(key.startswith("photos/") for key in keys), keys
+
+
+def test_a_publish_with_no_environment_set_refuses(monkeypatch, s3_client, local_artifacts):
+    """The autouse fixture sets one for every other test in this file; this is
+    the one that takes it away. Unset must be an error rather than production,
+    because the only thing a default could safely be is the one that overwrites
+    what hikers have already downloaded."""
+    monkeypatch.delenv(data_env.ENVIRONMENT_VAR, raising=False)
+
+    with pytest.raises(data_env.UnknownEnvironment):
+        publish.publish(local_artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    assert _keys_in(s3_client) == []
+
+
+def test_an_unknown_environment_refuses_before_anything_uploads(s3_client, local_artifacts):
+    with pytest.raises(data_env.UnknownEnvironment):
+        publish.publish(local_artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET, environment="staging")
+
+    assert _keys_in(s3_client) == []
+
+
+def test_the_log_says_which_environment_it_published_to(monkeypatch, capsys, s3_client, local_artifacts):
+    """Which environment a job wrote to is the fact this mechanism exists to
+    keep straight, so a log that leaves the reader inferring it from the
+    workflow's name is the log of the run that will be misread."""
+    monkeypatch.setenv(data_env.ENVIRONMENT_VAR, "ua")
+    monkeypatch.setattr(publish, "collect_artifacts", lambda: local_artifacts)
+    monkeypatch.setattr(publish, "collect_sidecars", dict)
+    monkeypatch.setattr(publish, "collect_photos", dict)
+    monkeypatch.setattr(publish.boto3, "client", lambda *a, **k: s3_client)
+    monkeypatch.setenv("R2_BUCKET", BUCKET)
+    monkeypatch.setenv("R2_ENDPOINT_URL", "https://unused.invalid")
+    monkeypatch.setenv("R2_ACCESS_KEY_ID", "unused")
+    monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "unused")
+
+    publish.main()
+
+    out = capsys.readouterr().out
+    assert "ua environment" in out
+    assert "environments/ua/" in out

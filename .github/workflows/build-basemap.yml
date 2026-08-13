@@ -51,6 +51,11 @@ on:
         description: "Upload the AT package to R2. Only full corridor builds (all 14 states, z14) are allowed through."
         type: boolean
         default: false
+      data_environment:
+        description: "Which environment's data this becomes. UA first; production is the promotion."
+        type: choice
+        options: [ua, production, dev]
+        default: ua
 
 concurrency:
   group: build-basemap
@@ -232,6 +237,10 @@ jobs:
           # step in this workflow is structurally incapable of writing to the
           # bucket - see publish.py's writes_enabled().
           R2_WRITE_ENABLED: "true"
+          # Which environment's data this becomes. publish.py scopes every
+          # key by it and refuses to run without one, so a build cannot reach
+          # production's keys by omission (features/DATA_ENVIRONMENTS.md).
+          OURHIKE_DATA_ENV: ${{ inputs.data_environment }}
           R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}

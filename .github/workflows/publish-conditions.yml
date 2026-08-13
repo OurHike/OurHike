@@ -30,6 +30,18 @@
 # verified rows a hiker could already fetch from `GET /closures` without an
 # account, and writes them to a bucket. schema-drift.yml records the same
 # reasoning for the same shape of job.
+#
+# ONE RUN PER DATA ENVIRONMENT (features/DATA_ENVIRONMENTS.md). Each reads its
+# own database and writes its own prefix, so the two never meet: a test closure
+# a UA moderator verified cannot reach a hiker's map, and production's verified
+# rows are not what a tester rehearses moderation against. The matrix jobs write
+# disjoint keys, so they need no concurrency group between them.
+#
+# The ATC leg is deliberately NOT split. Those notices are baked from a file in
+# git that a person reviewed - there is no database behind them and no
+# environment they could differ by - so both runs publish the same reviewed
+# content into their own tree, which is what makes UA's copy a real rehearsal
+# rather than an empty one.
 
 name: Publish conditions
 
@@ -47,9 +59,23 @@ permissions:
 
 jobs:
   publish:
-    name: Publish
+    name: Publish (${{ matrix.data_environment }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # One run per data environment, because this is the source where sharing
+    # hurts most: closures and reports are baked from a *database*, so a single
+    # bake would put whichever database it read in front of both audiences at
+    # once (features/DATA_ENVIRONMENTS.md). UA moderating a test closure would
+    # be a closure on a hiker's map, and a hiker's verified closure would be
+    # what a tester was handed to rehearse against.
+    #
+    # fail-fast off, because the two are independent: UA's database being
+    # unreachable is not a reason to leave production's safety data a day
+    # older than it needs to be.
+    strategy:
+      fail-fast: false
+      matrix:
+        data_environment: [production, ua]
     defaults:
       run:
         working-directory: pipeline
@@ -59,10 +85,25 @@ jobs:
         # Before the checkout, so not in pipeline/ - migrate.yml's gate has
         # the reasoning for testing the secret this way rather than letting
         # the connection fail with something less legible.
+        #
+        # Both secrets are named literally rather than indexed by the matrix
+        # value. GitHub's `a && b || c` yields `c` whenever `b` is empty, and
+        # an unset production URL silently selecting UA's database is the one
+        # mistake this whole job exists to make impossible -
+        # .github/tests/test_repository_settings.py also reads these names as
+        # text, so an indexed reference would leave the settings undeclared.
         working-directory: .
+        env:
+          PRODUCTION_URL: ${{ secrets.PRODUCTION_CONDITIONS_DATABASE_URL }}
+          UA_URL: ${{ secrets.UA_CONDITIONS_DATABASE_URL }}
         run: |
-          if [ -z "${{ secrets.PRODUCTION_CONDITIONS_DATABASE_URL }}" ]; then
-            echo "::warning::No conditions database is configured, so no closures or reports were published. The ATC trail-updates leg does not need one and still ran. See features/CONDITIONS_DELIVERY.md and #429."
+          if [ "${{ matrix.data_environment }}" = "production" ]; then
+            CONFIGURED="$PRODUCTION_URL"
+          else
+            CONFIGURED="$UA_URL"
+          fi
+          if [ -z "$CONFIGURED" ]; then
+            echo "::warning::No ${{ matrix.data_environment }} conditions database is configured, so no closures or reports were published for it. The ATC trail-updates leg does not need one and still ran. See features/CONDITIONS_DELIVERY.md and #429."
             echo "go=false" >> "$GITHUB_OUTPUT"
           else
             echo "go=true" >> "$GITHUB_OUTPUT"
@@ -94,8 +135,15 @@ jobs:
         id: export
         if: steps.can.outputs.go == 'true'
         env:
-          CONDITIONS_DATABASE_URL: ${{ secrets.PRODUCTION_CONDITIONS_DATABASE_URL }}
-        run: python export_conditions.py
+          PRODUCTION_URL: ${{ secrets.PRODUCTION_CONDITIONS_DATABASE_URL }}
+          UA_URL: ${{ secrets.UA_CONDITIONS_DATABASE_URL }}
+        run: |
+          if [ "${{ matrix.data_environment }}" = "production" ]; then
+            export CONDITIONS_DATABASE_URL="$PRODUCTION_URL"
+          else
+            export CONDITIONS_DATABASE_URL="$UA_URL"
+          fi
+          python export_conditions.py
 
       # Printed before publishing, because "it read something" and "it
       # published something" are different facts and only the first one
@@ -125,6 +173,10 @@ jobs:
           # step here is structurally incapable of writing to the bucket -
           # publish-vector-data.yml sets it the same way for the same reason.
           R2_WRITE_ENABLED: "true"
+          # And the one that decides where. This job's whole shape is one run
+          # per environment, so the matrix value is the answer rather than an
+          # input somebody picks (features/DATA_ENVIRONMENTS.md).
+          OURHIKE_DATA_ENV: ${{ matrix.data_environment }}
           R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}

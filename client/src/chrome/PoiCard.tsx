@@ -66,7 +66,9 @@ import { sourceLabel } from './poiSources'
 import { placePoiCard, type CardPlacement } from './poiCardPlacement'
 import { poiColor, poiGlyphPath } from '../map/poiIcons'
 import { MapIcon } from '../map/MapIcon'
-import { siteDistanceMeters } from '../map/poiSites'
+import { siteDistanceFeet } from '../map/poiSites'
+import { describeNearby, type NearbyPart } from '../lib/nearbyClause'
+import { formatShortDistance, type UnitSystem } from '../lib/units'
 
 export interface PoiDetail {
   id: string
@@ -129,6 +131,17 @@ export interface PoiDetail {
    */
   description?: string
   /**
+   * What is around this one, when it anchors a site: a privy, a campsite, the
+   * water ATC's own index puts nearest (#614, #625).
+   *
+   * A phrase and a distance per part rather than the finished sentence the
+   * pipeline used to publish - `describeNearby` writes the sentence, in the
+   * units this hiker chose, which is a question no artifact composed months ago
+   * could have answered. Absent on every POI that anchors nothing, and on any
+   * copy downloaded before the field existed.
+   */
+  nearby?: NearbyPart[]
+  /**
    * A photo of the place, when one exists.
    *
    * Published as photo_* properties on the POI artifacts (pipeline
@@ -184,6 +197,15 @@ export interface PoiCardProps {
    * projection later.
    */
   map: MapLibreMap | null
+  /**
+   * Feet or metres, for every distance on this card (lib/units.ts).
+   *
+   * Handed down like MapScreen's own, and defaulted the way every other
+   * `units` prop in the app is - a caller that has not thought about it gets
+   * the trail's own units rather than a crash. It reaches two places, and they
+   * are the two that used to disagree: the chips, and the nearby sentence.
+   */
+  units?: UnitSystem
   onClose: () => void
 }
 
@@ -284,6 +306,20 @@ function coordinates(lat: number, lon: number): string {
 }
 
 /**
+ * One metre, in feet - pipeline/lib/poi_description.py's `MIN_PART_FT`, which
+ * floors the distances the pipeline publishes for the same reason.
+ *
+ * A stated distance arrives unfloored (`water_distance_ft` is its own column,
+ * not a nearby part), and a card claiming a hiker walks zero of anything to
+ * reach water reads as a bug rather than as the very short walk it is
+ * asserting. Stated in the coarser unit, so neither system rounds it away:
+ * flooring at 1 ft would still print "0 m" for a metric hiker, which is the
+ * defect arriving in the other unit. #694 floored it at a metre for exactly
+ * this reason, back when this line printed only metres.
+ */
+const MIN_PART_FT = 3.28084
+
+/**
  * How far a part of the site is from the pin, for its chip.
  *
  * FROM THE PIN, NOT FROM THE PART CURRENTLY OPEN. The pin is the one point on
@@ -297,42 +333,40 @@ function coordinates(lat: number, lon: number): string {
  * a member, and the number a hiker wants is the offset from what they can
  * actually see. See the note where the caller resolves it.
  *
- * Metres, which is the unit features/POI_SITES.md §5 writes these chips in, and
- * whole ones. A site is under 150 m across by construction (that is the gate
- * that grouped it), so this is a how-many-paces number rather than a distance,
- * and the tenths of a metre are noise against points surveyed no finer.
+ * MEASURED HERE RATHER THAN READ OFF THE ARTIFACT, and that is the reason:
+ * `nearby`'s distances are measured from the ANCHOR, because that is the point
+ * the pipeline knows a hiker can see. When the two are the same point - which
+ * is every site the legend has not filtered - both come out of the same
+ * equirectangular formula with the same constant, so the chip and the sentence
+ * agree to well inside the rounding. When they are not, the chip is right and
+ * the sentence is answering a different question, which is what it did before
+ * this card existed.
  *
- * THE ONE PLACE IN THE APP THAT DOES NOT FOLLOW THE HIKER'S UNITS, and it is
- * held open by an issue rather than by an opinion. This used to read "a change
- * worth asking a hiker about first"; a hiker asked, the standard is now
- * CONTRIBUTING.md's, and this line still cannot keep it alone. The distances
- * are printed TWICE on one card: here, and inside the description above, where
- * the pipeline has already composed them into published prose - "Nearby: a
- * multi-seat moldering privy 40 m away" from
- * `pipeline/lib/poi_description.py`. Converting only the half the client owns
- * puts `Privy · 130 ft` over a sentence saying 40 m, which POI_SITES.md §5
- * names as drift on one card in those exact words, and is worse than either
- * unit alone.
- *
- * So both halves move together or neither does, and the pipeline half costs a
- * re-export. #625 is that work; src/test/unitDisplay.test.ts holds this line
- * as the single excused one until it lands.
+ * The hiker's own units since #625 (lib/units.ts). This was the single line in
+ * the app exempt from that standard, held open while the same distances were
+ * also published as prose in metres: converting one half would have put
+ * `Privy · 130 ft` over a sentence saying 40 m. Both halves moved together in
+ * the end, which is what the exemption was waiting for.
  *
  * A STATED DISTANCE BEATS A COORDINATE DISTANCE (#694). A water member the
  * pipeline synthesized from ATC's distance-to-water inherits the site's own
  * coordinates - ATC states how far, never where - so measuring it would print
- * "Water · 0 m" under a sentence saying 37 m, the drift above in its worst
+ * "Water · 0 ft" beside a sentence saying 121 ft, the drift above in its worst
  * form. Such a member carries the stated figure as `waterDistanceFt`, and it
  * wins whenever present; real mapped members carry none and keep the measured
- * offset exactly as before. Same rounding either way, so the chip and the
- * composed sentence cannot disagree about one number.
+ * offset exactly as before.
+ *
+ * That figure needs no conversion here, which is the one simplification #625
+ * hands #694: ATC states it in feet, the artifact publishes it in feet, and
+ * feet is what lib/units.ts formats from. It reached this line as metres only
+ * because this line printed metres.
  */
-function partDistance(pin: PoiDetail, part: PoiDetail): string {
-  const metres =
+function partDistance(pin: PoiDetail, part: PoiDetail, units: UnitSystem): string {
+  const feet =
     part.type === 'water' && part.waterDistanceFt !== undefined
-      ? Math.max(1, Math.round(part.waterDistanceFt * 0.3048))
-      : Math.round(siteDistanceMeters(pin, part))
-  return `${metres} m` // units-exempt #625
+      ? Math.max(MIN_PART_FT, part.waterDistanceFt)
+      : siteDistanceFeet(pin, part)
+  return formatShortDistance(feet, units)
 }
 
 /**
@@ -410,7 +444,13 @@ function usePinAnchor(
   return placement
 }
 
-export function PoiCard({ poi, site = [], map, onClose }: PoiCardProps) {
+export function PoiCard({
+  poi,
+  site = [],
+  map,
+  units = 'imperial',
+  onClose,
+}: PoiCardProps) {
   const cardRef = useRef<HTMLDivElement | null>(null)
 
   // THE ANCHOR IS NOT THE POINT THIS CARD HANGS OFF, AND THE DIFFERENCE IS NOT
@@ -459,6 +499,11 @@ export function PoiCard({ poi, site = [], map, onClose }: PoiCardProps) {
 
   const placement = usePinAnchor(map, poi, shown, cardRef)
   const source = sourceLabel(shown.source)
+  // `shown`, not `poi`: tapping a chip swaps this card to that part's own
+  // detail, and a part that anchors a site of its own - a campsite with a privy
+  // beside it - has parts of its own to name. Read off whichever waypoint the
+  // card is currently showing, like the description and the source line above.
+  const nearby = describeNearby(shown.nearby, units)
 
   // The two regions a chip swaps, named so `aria-controls` can point at them.
   // Through `useId` rather than a pair of constants because ids have to be
@@ -723,7 +768,7 @@ export function PoiCard({ poi, site = [], map, onClose }: PoiCardProps) {
                         does the spacing. */}{' '}
                     <span aria-hidden="true">·</span>{' '}
                     <span className="poi-card__chip-distance">
-                      {partDistance(poi, part)}
+                      {partDistance(poi, part, units)}
                     </span>
                   </>
                 )}
@@ -768,6 +813,18 @@ export function PoiCard({ poi, site = [], map, onClose }: PoiCardProps) {
         {shown.description !== undefined && (
           <p className="poi-card__description">{shown.description}</p>
         )}
+
+        {/* What is around this one, as its own paragraph rather than appended
+            to the description above (#625).
+
+            The pipeline spliced it onto the end of that sentence while it
+            composed the words; now that the phone composes them, keeping it
+            there would mean concatenating two strings from two places to make
+            one paragraph - and a description that failed to compose (a shelter
+            ATC states nothing about) would take the privy down with it. Two
+            paragraphs render identically when both are present, and each stands
+            up when the other is missing. */}
+        {nearby !== null && <p className="poi-card__nearby">{nearby}</p>}
 
         {shown.confidence === 'low' && (
           <p className="poi-card__unverified" role="note">

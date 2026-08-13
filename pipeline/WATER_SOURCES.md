@@ -279,9 +279,9 @@ ones; the client work for all of this is already built):
 
 - **Water points ride the existing `water` POI type.** No new poi_type, no
   `verify_release.py` change, no client release: a water badge on the site pin, a
-  `Water · N m` chip on the shelter card, and the "Nearby: … water N m" sentence all
-  exist today and are starved of data, not code (`client/src/map/poiSites.ts`,
-  `client/src/chrome/PoiCard.tsx`, `export_poi.py`'s describer). A new source is a
+  `Water · N ft` chip on the shelter card, and the "Nearby: … water N ft" sentence
+  all exist today and are starved of data, not code (`client/src/map/poiSites.ts`,
+  `client/src/chrome/PoiCard.tsx`, `export_poi.py`'s `attach_nearby`). A new source is a
   fetch script on the `fetch_opentrail.py` pattern plus one loader loop in
   `export_poi.py` beside the opentrail one, plus freshness/baseline wiring
   (`check_freshness.py`, `check_output_quality.py`'s `COUNT_UPSTREAM_SOURCES`).

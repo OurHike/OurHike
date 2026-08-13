@@ -385,6 +385,33 @@ export function siteDistanceMeters(
   return Math.hypot(dx, dy)
 }
 
+/** Feet per metre - pipeline/export_poi.py's `M_PER_FT`, the other side of the
+ *  one conversion this measurement makes. */
+const FEET_PER_METRE = 1 / 0.3048
+
+/**
+ * The same distance in feet, which is what anything DISPLAYING it wants.
+ *
+ * Two functions rather than one because the two units answer different
+ * questions and neither should have to know the other's. Metres is what the
+ * grouping is stated in - a 60 m proximity gate, a 150 m name gate, the
+ * pipeline's own `distance_m` - so that is what the formula returns and what
+ * anything reasoning about a site compares against. Feet is what
+ * lib/units.ts's formatters take, because ATC's own figures are feet and the
+ * canonical unit is the one the source states (#625).
+ *
+ * Converting at the source rather than at the screen is the pattern
+ * lib/useGeolocation.ts already follows for GPS accuracy: a component that
+ * multiplied metres by 3.28 on its way into a template would be a component
+ * deciding a unit, which is the thing lib/units.ts exists to stop.
+ */
+export function siteDistanceFeet(
+  from: { lat: number; lon: number },
+  to: { lat: number; lon: number },
+): number {
+  return siteDistanceMeters(from, to) * FEET_PER_METRE
+}
+
 /**
  * The member list as one property value, for the style to `match` on.
  *

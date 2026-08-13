@@ -38,6 +38,26 @@ const ROOT = resolve(process.cwd(), 'src')
  */
 const MAY_WRITE_UNITS = ['lib/units.ts']
 
+/**
+ * The escape hatch, and the toll it charges: `units-exempt #N`, on the line.
+ *
+ * There is exactly one thing this is for - a number the app displays that it
+ * does not own, so that converting the app's copy would make one card
+ * disagree with itself. #625 is the standing case: the pipeline composes a
+ * shelter's "Nearby: a privy 40 m away" into published prose
+ * (`pipeline/lib/poi_description.py`), and #526's chips under it print the
+ * same distances from the same equirectangular maths. Convert the chips
+ * alone and a card reads `Privy · 130 ft` above a sentence saying 40 m,
+ * which is worse than either unit alone and is drift POI_SITES.md §5 names
+ * as a defect in those words.
+ *
+ * The issue number is REQUIRED, and that is the whole design. An exemption
+ * with a number is a debt somebody can find, count and close; an exemption
+ * without one is the standard quietly ending. A bare `units-exempt` fails
+ * this file as loudly as the unit it was trying to excuse.
+ */
+const EXEMPTION = /units-exempt #(\d+)/
+
 /** Every source file the app ships, tests excluded - a test asserting on
  *  "0.2 mi each way" is asserting the formatter's output, which is exactly
  *  what it should be doing. */
@@ -62,7 +82,17 @@ function sourceFiles(dir = ROOT): string[] {
  * positives themselves.
  */
 function code(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, (block) => '\n'.repeat(countNewlines(block)))
+    .replace(/^\s*\/\/.*$/gm, '')
+}
+
+/** Block comments collapse to their own newlines rather than to nothing, so a
+ *  reported line number still points at the line. A guard that names the wrong
+ *  line sends somebody hunting, which is most of the cost of a rule like this
+ *  firing at all. */
+function countNewlines(text: string): number {
+  return text.split('\n').length - 1
 }
 
 /**
@@ -83,6 +113,7 @@ const WRITTEN_UNIT =
 describe('the unit display standard', () => {
   it('leaves every unit in the app to lib/units.ts', () => {
     const offenders: string[] = []
+    const excused: string[] = []
 
     for (const file of sourceFiles()) {
       const name = relative(ROOT, file)
@@ -90,15 +121,27 @@ describe('the unit display standard', () => {
 
       const lines = code(readFileSync(file, 'utf8')).split('\n')
       lines.forEach((line, index) => {
-        if (WRITTEN_UNIT.test(line))
-          offenders.push(`${name}:${index + 1} — ${line.trim()}`)
+        if (!WRITTEN_UNIT.test(line)) return
+        const excuse = EXEMPTION.exec(line)
+        // An offender needs a location to go and fix. An excused line needs
+        // only its name and its issue: pinning its line number too would put
+        // this assertion in the way of every edit made above it, which is how
+        // a guard earns a reputation for crying wolf.
+        if (excuse === null) offenders.push(`${name}:${index + 1} — ${line.trim()}`)
+        else excused.push(`${name} #${excuse[1]}`)
       })
     }
 
     expect(
       offenders,
-      'These write a unit into a string. Every height and distance a hiker reads goes through lib/units.ts, so it comes out in the system they chose in Settings.',
+      'These write a unit into a string. Every height and distance a hiker reads goes through lib/units.ts, so it comes out in the system they chose in Settings. If this one genuinely cannot - the app does not own the number, and converting its copy would make a card disagree with itself - mark the line `units-exempt #N` against an issue that will close it.',
     ).toEqual([])
+
+    // The debt, asserted rather than merely permitted. Exactly one line in the
+    // app is excused today, and pinning the count is what stops the hatch
+    // becoming the way past the rule: a second one is a decision somebody has
+    // to make on purpose, in this file, in front of a reviewer.
+    expect(excused).toEqual(['chrome/PoiCard.tsx #625'])
   })
 
   it('catches the shape it exists to catch, and lets the mile marker through', () => {
@@ -126,5 +169,14 @@ describe('the unit display standard', () => {
     ]) {
       expect(WRITTEN_UNIT.test(allowed), allowed).toBe(false)
     }
+  })
+
+  it('charges an issue number for an exemption, and refuses a bare one', () => {
+    // The hatch's toll. An exemption somebody can find, count and close is a
+    // debt; one without a number is the standard quietly ending, and this is
+    // the assertion that keeps the difference real.
+    expect(EXEMPTION.test('`${m} m` // units-exempt #625')).toBe(true)
+    expect(EXEMPTION.test('`${m} m` // units-exempt')).toBe(false)
+    expect(EXEMPTION.test('`${m} m` // units-exempt: it is fine')).toBe(false)
   })
 })

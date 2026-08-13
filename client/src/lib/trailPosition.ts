@@ -57,13 +57,48 @@ export interface LonLat {
 export interface TrailFix {
   /** Miles from the southern terminus. */
   mile: number
-  /** How far the fix is from the trail itself. */
+  /**
+   * How far the fix is from the A.T. centerline itself.
+   *
+   * This is the distance the mile is measured from, so it is the one that says
+   * how much to trust the mile - not the one that says whether the hiker is on
+   * a trail. For that, see {@link offTreadFeet}.
+   */
   offTrailFeet: number
+  /**
+   * How far the fix is from the nearest mapped tread of any kind - the
+   * centerline or a blue-blazed side trail.
+   *
+   * Separate from {@link offTrailFeet} because "which mile am I at" and "am I
+   * on a trail" are two different questions that used to share one index, and
+   * the answer to the second was wrong nearly every time it mattered. Measured
+   * against the live ATC layers (#308): the median shelter on the Appalachian
+   * Trail is 197 ft from the Appalachian Trail, and 72% of shelters sit past
+   * the 90 ft `OFF_TRAIL_THRESHOLD_FT` - because the shelter is at the end of
+   * a side trail, which is what the side trail is for. Counting those side
+   * trails takes that 72% to 5%.
+   *
+   * Always <= `offTrailFeet`, since the centerline is itself mapped tread.
+   */
+  offTreadFeet: number
 }
 
 interface Bucket {
   /** Indices into the flat coordinate arrays. */
   indices: number[]
+}
+
+/**
+ * The bucketed vertices of some set of lines, with no mile axis on them.
+ *
+ * {@link TrailIndex} is structurally one of these, which is deliberate: the
+ * centerline and the full tread are searched by exactly the same code, and
+ * only one of the two carries miles.
+ */
+interface VertexIndex {
+  lons: Float64Array
+  lats: Float64Array
+  buckets: Map<number, Bucket>
 }
 
 export interface TrailIndex {
@@ -86,6 +121,17 @@ export interface TrailIndex {
    * {@link buildTrailIndex}).
    */
   partStarts: readonly number[]
+  /**
+   * Every mapped trail's vertices - the centerline and the side trails
+   * together - for the "am I on a trail" question only.
+   *
+   * The side trails are in the same published artifact and are excluded from
+   * everything above this line on purpose: a mile means distance along the
+   * A.T., and a hiker on a spur should read the mile of the junction. That
+   * exclusion is right for the mile axis and wrong for the distance, so the
+   * distance gets its own set rather than a flag on the shared one.
+   */
+  tread: VertexIndex
 }
 
 function axisProjection(lon: number, lat: number): number {
@@ -113,21 +159,48 @@ function bucketFor(lat: number): number {
 
 type Coordinates = Array<[number, number]>
 
+/** Buckets a set of coordinate runs by latitude, for nearest-vertex search. */
+function buildVertexIndex(runs: Coordinates[]): VertexIndex {
+  const flat: Coordinates = runs.flat()
+  const count = flat.length
+
+  const lons = new Float64Array(count)
+  const lats = new Float64Array(count)
+  const buckets = new Map<number, Bucket>()
+
+  for (let i = 0; i < count; i += 1) {
+    const [lon, lat] = flat[i]
+    lons[i] = lon
+    lats[i] = lat
+
+    const key = bucketFor(lat)
+    const bucket = buckets.get(key)
+    if (bucket === undefined) buckets.set(key, { indices: [i] })
+    else bucket.indices.push(i)
+  }
+
+  return { lons, lats, buckets }
+}
+
 /**
  * Builds the mile index from the centerline features of trails.geojson.
- * Spurs and side trails are excluded - a mile marker means distance along the
- * AT itself, so a hiker standing on a blue-blazed spur reads the mile of the
- * junction rather than a number measured down the spur.
+ * Spurs and side trails are excluded from it - a mile marker means distance
+ * along the AT itself, so a hiker standing on a blue-blazed spur reads the
+ * mile of the junction rather than a number measured down the spur.
+ *
+ * They are not thrown away, though: they are kept separately as `tread`, which
+ * is what answers "is this fix on a trail at all". See {@link TrailFix} for
+ * why those two questions cannot share one set of vertices.
  */
 export function buildTrailIndex(collection: FeatureCollection): TrailIndex {
   const parts: Coordinates[] = []
+  const spurs: Coordinates[] = []
 
   // Defensive about the shape, not the contents: this arrives over a network
   // from a bucket, and a truncated or unexpected payload should degrade to
   // "we don't know where you are" rather than throw somewhere the caller
   // reports as a failed download.
   for (const feature of collection?.features ?? []) {
-    if (feature.properties?.source !== 'centerline') continue
     // `geometry` before `geometry.type`: a null geometry is valid GeoJSON, not
     // a malformed payload, so a feature carrying one is a thing this can
     // actually be handed. Guarding only the top-level `features` left that
@@ -137,6 +210,15 @@ export function buildTrailIndex(collection: FeatureCollection): TrailIndex {
 
     const coords = (feature.geometry.coordinates ?? []) as Coordinates
     if (coords.length < 2) continue
+
+    // Everything that is not the centerline is tread and nothing else: no
+    // flipping, no ordering, no miles. A side trail has no place on the
+    // Springer->Katahdin axis, and asking it for one is the bug this split
+    // exists to avoid.
+    if (feature.properties?.source !== 'centerline') {
+      spurs.push(coords)
+      continue
+    }
 
     // Flip a piece whose own coordinates run north-to-south, so every piece
     // agrees on which end is Springer before they are ordered.
@@ -197,6 +279,10 @@ export function buildTrailIndex(collection: FeatureCollection): TrailIndex {
     buckets,
     totalMiles: count === 0 ? 0 : miles[count - 1],
     partStarts: [...partStarts].sort((a, b) => a - b),
+    // Centerline included, not just the spurs: the nearest mapped tread to a
+    // hiker walking the AT is the AT, and `offTreadFeet` would otherwise
+    // report the distance to the nearest blue blaze from the middle of it.
+    tread: buildVertexIndex([flat, ...spurs]),
   }
 }
 
@@ -318,7 +404,12 @@ export function trailPointAtMile(
   return null
 }
 
-export function locateOnTrail(index: TrailIndex, at: LonLat): TrailFix | null {
+/** The closest vertex in a set to a point, or null if the set has none near
+ *  enough in latitude to have been bucketed alongside it. */
+function nearestVertex(
+  index: VertexIndex,
+  at: LonLat,
+): { index: number; feet: number } | null {
   if (index.lons.length === 0) return null
 
   const home = bucketFor(at.lat)
@@ -343,10 +434,31 @@ export function locateOnTrail(index: TrailIndex, at: LonLat): TrailFix | null {
   }
 
   if (bestIndex === -1) return null
+  return { index: bestIndex, feet: bestFeet }
+}
+
+export function locateOnTrail(index: TrailIndex, at: LonLat): TrailFix | null {
+  const onCenterline = nearestVertex(index, at)
+  if (onCenterline === null) return null
+
   // Near in latitude is not near. Longitude is not bucketed at all, so the
   // nearest candidate can be most of a continent away and still have been
   // measured - see MAX_OFF_TRAIL_MILES.
-  if (bestFeet > MAX_OFF_TRAIL_MILES * FEET_PER_MILE) return null
+  if (onCenterline.feet > MAX_OFF_TRAIL_MILES * FEET_PER_MILE) return null
 
-  return { mile: index.miles[bestIndex], offTrailFeet: bestFeet }
+  // Gated on the centerline rather than on the tread, deliberately: this gate
+  // is about whether the *mile* means anything, and a mile is only ever
+  // measured along the centerline. A hiker three miles up a side trail is off
+  // the axis this index describes, however much tread they are standing on.
+  const onTread = nearestVertex(index.tread, at)
+
+  return {
+    mile: index.miles[onCenterline.index],
+    offTrailFeet: onCenterline.feet,
+    // The centerline is part of `tread`, so this can only be shorter - and the
+    // fallback is unreachable in practice for the same reason. It is here
+    // because an index built from a payload with no usable lines at all should
+    // report the honest distance it does have rather than a zero.
+    offTreadFeet: onTread === null ? onCenterline.feet : onTread.feet,
+  }
 }

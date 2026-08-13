@@ -189,7 +189,10 @@ A closure is a **line**, not a pin: a wide barred red band (10px) with a hard 2p
 
 - Pin: 44px — one full touch target, and deliberately the biggest thing on the map — red, `triangle-alert`, high-contrast halo — a variant inside the same icon spec, not a new visual language. (Was 34px until 2026-08-03, when the POI pins went up to 38px for legibility; a warning pin the water pins had caught up with would have stopped outranking anything.)
 - Route banner on map open: "2 serious warnings on your route," with See both / Dismiss.
-- Detail: "Confirmed by club moderators" badge + date, the corroboration sentence ("several separate reports over four days…"), reporter names **withheld** for anything about a person, and an explicit "why you weren't pinged."
+- Detail: "Confirmed by club moderators" badge + date (backed by `verified_at`, stamped when a moderator confirms), where the warning is, what it says, and an explicit "why you weren't pinged."
+- **What the detail sheet deliberately no longer says** (#292). It specified two more things, and neither had anything behind it:
+  - *The corroboration sentence* ("several separate reports over four days…") needed a count that does not exist and cannot be derived. Producing one means designing a corroboration model, and §1 above already calls that threshold "real moderation policy, not a data-model question" — deferred to #235. With no source, the choices were a hard-coded string, which is a fabricated evidence claim on a safety warning about a person, or a blank where the justification should be.
+  - *Reporter attribution*, named or withheld. #252 closed by removing reporter identity from the public read path entirely, so identity is now withheld from **every** report — which means a line explaining why *this* one is anonymous implies the others are named. #245 took `marked_by` off the closure sheet the same way and for the same reason: a field nothing can fill is a quiet lie, and deleting is the reversible way to end it.
 - **Warnings never push.**
 
 ### 9. Wrong-way / off-trail alert (`15c`) — the only notification

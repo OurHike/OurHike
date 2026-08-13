@@ -435,3 +435,17 @@ def test_a_failure_exits_non_zero_unless_told_otherwise(mock, monkeypatch):
 
     assert smoke_published.main([]) == 1
     assert smoke_published.main(["--exit-zero"]) == 0
+
+
+def test_an_unreachable_artifact_does_not_exit_like_a_pass(mock, monkeypatch):
+    """#651: unreachable is not passed. This module's own rule is that a
+    green run must not claim more than it checked, and the exit code is the
+    claim a gate reads - a run that could not ask anything used to exit 0,
+    exactly like one that asked and was answered well."""
+    mock.get(f"{BASE}/latest.json", json=MANIFEST)
+    mock.head(f"{BASE}/trails.geojson", exc=requests.exceptions.ConnectionError)
+    mock.head(f"{BASE}/background.pmtiles", exc=requests.exceptions.ConnectionError)
+    monkeypatch.setenv("DATA_BASE_URL", BASE)
+
+    assert smoke_published.main([]) == 1
+    assert smoke_published.main(["--exit-zero"]) == 0

@@ -179,7 +179,11 @@ jobs:
             const unreachable = verdict.unreachable ?? []
             const skipped = verdict.skipped ?? []
 
-            if (failed.length === 0) {
+            // The all-clear needs both halves (#651): nothing failed, AND
+            // nothing was unreachable. An artifact that stops answering
+            // entirely is UNREACHABLE, not failed - closing on failed alone
+            // let the total outage close the alarm its corruption opened.
+            if (failed.length === 0 && unreachable.length === 0) {
               if (existing) {
                 await github.rest.issues.createComment({
                   owner: context.repo.owner,

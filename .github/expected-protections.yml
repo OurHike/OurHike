@@ -49,6 +49,14 @@ branch: main
 # because that is what GitHub reports and therefore what the setting must
 # name. `workflow` is here so the test knows where to look, not as
 # documentation.
+#
+# One wrinkle that sentence used to gloss (#654): a MATRIX job never reports
+# its bare name - GitHub reports one check per leg, `id (value, ...)` - so
+# requiring one means naming a leg. The checkout test expands default-named
+# plain-list matrices and refuses to guess at anything fancier; a required
+# check it cannot resolve is a failing test at the pull request that adds
+# the matrix, not a queue of pull requests blocked behind a status nothing
+# will ever report.
 
 required_status_checks:
   test:

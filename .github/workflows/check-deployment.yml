@@ -183,7 +183,13 @@ jobs:
             const blocking = verdict.hiker_facing_failures ?? []
             const unreachable = verdict.unreachable ?? []
 
-            if (failed.length === 0) {
+            // The all-clear also has to have actually LOOKED (#651): a run
+            // where the artifact checks never ran - manifest and release
+            // index both unreadable, say - proves recovery of nothing, and
+            // must not close an outage issue on the strength of CORS answers
+            // a 404 carries too. Older verdicts lack the field; undefined
+            // does not block, so only a run that says "false" holds back.
+            if (failed.length === 0 && verdict.checked_artifacts !== false) {
               if (existing) {
                 await github.rest.issues.createComment({
                   owner: context.repo.owner,

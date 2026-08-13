@@ -26,11 +26,15 @@
 # clears that with room to spare, at a cost of two checkouts and fourteen small
 # HTTPS requests a day.
 #
-# **There is deliberately only one of these.** A second scheduled job reaching
-# the same project would be a second thing to keep in sync for no additional
-# protection; .github/tests/test_supabase_keepalive_workflow.py fails if one
-# appears. supabase-config-check.yml reaches the project too, but is manual by
-# design and so cannot be relied on for this.
+# **There is deliberately only one KEEPALIVE.** Other scheduled workflows do
+# reach the same project's databases for jobs of their own - schema-drift.yml
+# daily through the migration pooler URLs, publish-conditions.yml daily
+# through the conditions reader - which this comment used to deny outright
+# (#656). What is enforced now is the honest census:
+# .github/tests/test_supabase_keepalive_workflow.py pins the full roster of
+# scheduled roads into the project, each with its stated reason, and a new
+# one fails there by name. supabase-config-check.yml reaches the project too,
+# but is manual by design and so cannot be relied on for any of this.
 
 name: Supabase keepalive
 

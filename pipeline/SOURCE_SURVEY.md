@@ -194,11 +194,19 @@ of them directly answering questions this repo has open:
 413 overnight sites (271 shelters + 142 campsites), data-edited **2025-10-01**, with the
 fields [#444](https://github.com/OurHike/OurHike/issues/444) says nothing published:
 `Shelter_cpcty` (populated on 327 of 413), `sngl_night_max_cpcty` (370), group capacity,
-tent platforms/pads, privy presence-count-type, food-storage capacity and type, water
-source, plus `mileage_from_N`/`mileage_from_S`, club section IDs, state, and FMSS
+tent platforms/pads, privy presence-count-type, food-storage capacity and type, plus
+`mileage_from_N`/`mileage_from_S`, club section IDs, state, and FMSS
 location IDs (`FMSS_LocID`) — that last one a potential **key join to the NPS shelters
 layer**, dodging #444's name-matching problem entirely where it's populated. Spot-checked
 values are real ("Hurd Brook Lean-to: Shelter_cpcty 6, single-night max 18, privy yes").
+
+*Corrected 2026-08-13 (#529 research): this list previously included "water source".
+Enumerating all 40 fields of layer 17 — and its sibling layers and DEMO/TEST twins —
+shows **no water field exists anywhere in the ATX family**; water appears only in
+free-text `notes`, on 34 of 413 sites. The capacity claims above stand.
+[WATER_SOURCES.md](WATER_SOURCES.md) carries the water question, including the ATC-org
+layer that does hold per-site water distances (`Campsite_Sustainability_Index` §3b,
+whose provenance field shows those distances come from FarOut and NHDPlus HR).*
 
 Caveats, honestly: capacity values are strings (`"6"`, `"0"`, `"Unknown"`); the service is
 named for ATC's **Visitor Use Management program** ("ATX" = A.T. experience — current vs.

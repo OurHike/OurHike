@@ -182,6 +182,11 @@ import {
   type RankedAtcUpdate,
 } from './lib/atcUpdates'
 import { atcUpdatePoints } from './map/atcUpdateLayers'
+import {
+  atcAlertsSince,
+  readAtcAlertSilence,
+  writeAtcAlertSilence,
+} from './lib/atcAlertsBanner'
 import { AtcUpdateSheet } from './chrome/AtcUpdateSheet'
 import { AtcNoticeList } from './chrome/AtcNoticeList'
 import { HikePicker } from './screens/HikePicker'
@@ -462,6 +467,12 @@ function App() {
    * and closes that sheet should find the list still where they left it.
    */
   const [atcNoticesOpen, setAtcNoticesOpen] = useState(false)
+  /** The newest ATC edit the hiker has already silenced on this phone, or
+   *  null - lib/atcAlertsBanner.ts's watermark, read once at mount and
+   *  written back every time silencing happens. */
+  const [atcAlertSilence, setAtcAlertSilence] = useState<Date | null>(() =>
+    readAtcAlertSilence(),
+  )
   // Was a state with no setter until #231 - nothing ever synced, so the status
   // strip said "never synced" on every device forever, which was true and
   // looked like a bug in the strip rather than a missing feature.
@@ -1281,6 +1292,34 @@ function App() {
       ]),
     [atcBandsOnMap, atcPointsOnMap],
   )
+
+  /**
+   * What the bottom "new alerts" banner has to say, or null (#687).
+   *
+   * Independent of every filter above - `atcBandCandidates`, `atcPointNotices`
+   * and the lane functions all decide what belongs on the MAP or in the
+   * header's one line, and none of that is "has ATC posted something
+   * recently". An update the map cannot place and the header will never
+   * mention (behind the hiker, over the band ceiling) is still new, and
+   * still worth this banner - `chrome/AtcNoticeList.tsx` is the same
+   * argument for the full list.
+   */
+  const newAtcAlerts = useMemo(
+    () => atcAlertsSince(atcUpdates, now, atcAlertSilence),
+    [atcUpdates, now, atcAlertSilence],
+  )
+
+  /**
+   * Marks every currently-new edit as seen. Wired to both the bottom
+   * banner's own dismiss and to opening the full list (onOpenAtcNotices
+   * below) - whichever way a hiker actually looked, the banner has done its
+   * job and should not return until ATC posts something after this mark.
+   */
+  const silenceAtcAlerts = useCallback(() => {
+    if (newAtcAlerts === null) return
+    writeAtcAlertSilence(newAtcAlerts.newestAt)
+    setAtcAlertSilence(newAtcAlerts.newestAt)
+  }, [newAtcAlerts])
 
   /**
    * Serious warnings as points, straight from the report's own lat/lon.
@@ -2248,7 +2287,15 @@ function App() {
             )
           }
           atcNoticeCount={atcUpdates.length}
-          onOpenAtcNotices={() => setAtcNoticesOpen(true)}
+          onOpenAtcNotices={() => {
+            setAtcNoticesOpen(true)
+            // Opening the full list is a hiker having looked, exactly as
+            // much as tapping the bottom banner's own dismiss is - see
+            // silenceAtcAlerts above.
+            silenceAtcAlerts()
+          }}
+          newAtcAlertCount={newAtcAlerts?.count ?? 0}
+          onSilenceNewAtcAlerts={silenceAtcAlerts}
           atcNoticeList={
             atcNoticesOpen ? (
               <AtcNoticeList

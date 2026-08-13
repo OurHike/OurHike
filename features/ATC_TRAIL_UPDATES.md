@@ -403,9 +403,20 @@ decoration.
   advisory, and an update that does not actually stop a hiker walking through — and both are
   covered below, along with a third set nobody had named.
 
-  "List entry" now has a surface — `client/src/chrome/AtcNoticeList.tsx`,
-  opened from a row under the alert strip that renders whenever the app holds any notices at
-  all. It shows **every** update in the artifact in NOBO order, with ATC's category, their
+  "List entry" now has a surface — `client/src/chrome/AtcNoticeList.tsx`. **Amended
+  2026-08-13 ([#687](https://github.com/OurHike/OurHike/issues/687)) — opened from the
+  legend, not a permanent bar over the map.** It used to open from a row under the alert
+  strip that rendered whenever the app held any notice at all — which given ATC almost
+  always has one live was almost always, so a hiker paid map height for it on every visit
+  rather than on the ones where it actually had news. The permanent way to it is now a quiet
+  row in the legend (`chrome/Legend.tsx`), styled and placed like the download link it sits
+  beside — a rare errand, not a daily one. A transient bottom banner takes the old row's
+  place instead, but answers a narrower question: it renders only while ATC has touched a
+  notice in the last 72 hours and the hiker has not silenced it (`lib/atcAlertsBanner.ts`).
+  "Something changed" and "here is everything ATC has posted" turned out to be two different
+  questions with two different rhythms, not one row answering both.
+
+  It shows **every** update in the artifact in NOBO order, with ATC's category, their
   headline, the states, the miles, the reviewer's `obstructs_trail` answer in both
   directions, ATC's own last-updated date and a link to their page — and it marks the ones
   the map is not drawing, read off what the canvas actually holds rather than re-derived, so

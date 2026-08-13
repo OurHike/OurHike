@@ -32,7 +32,13 @@
 // lib/closureSpan.ts rather than introducing a second number. One constant
 // decides both what gets a band and what gets the quiet line.
 
+// How far ahead the closure is, and how much trail an advisory covers, read in
+// the hiker's units (lib/units.ts). The mile-marker range at the end of every
+// one of these sentences does NOT convert - `mi 476.6 – 485.8` is where the
+// closure is on the A.T., which is the same place whatever anybody measures
+// in. One line can honestly carry both.
 import { closureSpanMiles, isBroadAdvisory } from './closureSpan'
+import { formatDistance, type UnitSystem } from './units'
 
 export type HikeDirection = 'NOBO' | 'SOBO'
 
@@ -74,6 +80,7 @@ export function closureBanner(
   closure: Closure,
   currentMile: number,
   direction: HikeDirection | undefined,
+  units: UnitSystem = 'imperial',
 ): string | null {
   // A reopened closure is not a warning. A reroute is - having somewhere else
   // to walk does not make the trail itself passable.
@@ -98,7 +105,7 @@ export function closureBanner(
     // Whole miles: a span this size does not need tenths, and 398 reads where
     // 398.4 invites a precision the underlying advisory does not have.
     const where = broad
-      ? `Advisory along ${Math.round(closureSpanMiles(closure)).toLocaleString('en-US')} mi of trail`
+      ? `Advisory along ${formatDistance(closureSpanMiles(closure), units, 'whole')} of trail`
       : 'Trail closed here'
 
     return (
@@ -126,7 +133,7 @@ export function closureBanner(
   const what = broad ? 'Advisory' : 'Trail closed'
 
   return (
-    `${what} ${mile(distanceAhead)} mi ahead · ${closureReasonLabel(closure.reason_type)}` +
+    `${what} ${formatDistance(distanceAhead, units)} ahead · ${closureReasonLabel(closure.reason_type)}` +
     ` · mi ${mile(start)} – ${mile(end)}`
   )
 }

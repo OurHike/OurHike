@@ -273,24 +273,40 @@ function coordinates(lat: number, lon: number): string {
 /**
  * How far a part of the site is from the pin, for its chip.
  *
- * FROM THE ANCHOR, NOT FROM THE PART CURRENTLY OPEN. The pin is the one point
- * on this site the hiker can see, and it is where they are standing when they
- * ask; measuring from whichever chip was tapped last would rewrite every other
+ * FROM THE PIN, NOT FROM THE PART CURRENTLY OPEN. The pin is the one point on
+ * this site the hiker can see, and it is where they are standing when they ask;
+ * measuring from whichever chip was tapped last would rewrite every other
  * number in the row on every tap, which is churn in a strip that is meant to be
  * readable at a glance - and would change the strip's height in the process.
  *
+ * "The pin" and not "the anchor", which this said until #607/#609 made them
+ * different things: a site whose anchor the legend filters out gives the pin to
+ * a member, and the number a hiker wants is the offset from what they can
+ * actually see. See the note where the caller resolves it.
+ *
  * Metres, which is the unit features/POI_SITES.md §5 writes these chips in, and
  * whole ones. A site is under 150 m across by construction (that is the gate
- * that grouped it), so this is a how-many-paces number rather than a distance -
- * "131 ft" is not a figure anybody walks off, and the tenths of a metre are
- * noise against points surveyed no finer than this. Deliberately NOT run
- * through `UnitSystem` (lib/userPreferences.ts), which the elevation and contour
- * labels do honour: no preference reaches this card today, and threading one
- * here to switch 40 m for 131 ft is a change worth asking a hiker about first
- * rather than assuming.
+ * that grouped it), so this is a how-many-paces number rather than a distance,
+ * and the tenths of a metre are noise against points surveyed no finer.
+ *
+ * THE ONE PLACE IN THE APP THAT DOES NOT FOLLOW THE HIKER'S UNITS, and it is
+ * held open by an issue rather than by an opinion. This used to read "a change
+ * worth asking a hiker about first"; a hiker asked, the standard is now
+ * CONTRIBUTING.md's, and this line still cannot keep it alone. The distances
+ * are printed TWICE on one card: here, and inside the description above, where
+ * the pipeline has already composed them into published prose - "Nearby: a
+ * multi-seat moldering privy 40 m away" from
+ * `pipeline/lib/poi_description.py`. Converting only the half the client owns
+ * puts `Privy · 130 ft` over a sentence saying 40 m, which POI_SITES.md §5
+ * names as drift on one card in those exact words, and is worse than either
+ * unit alone.
+ *
+ * So both halves move together or neither does, and the pipeline half costs a
+ * re-export. #625 is that work; src/test/unitDisplay.test.ts holds this line
+ * as the single excused one until it lands.
  */
-function partDistance(anchor: PoiDetail, part: PoiDetail): string {
-  return `${Math.round(siteDistanceMeters(anchor, part))} m`
+function partDistance(pin: PoiDetail, part: PoiDetail): string {
+  return `${Math.round(siteDistanceMeters(pin, part))} m` // units-exempt #625
 }
 
 /**

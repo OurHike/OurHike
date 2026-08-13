@@ -171,6 +171,19 @@ describe('desktop layout contract', () => {
     expect(css).toMatch(/\.legend--persistent \.legend__close\s*\{[^}]*display:\s*none/)
   })
 
+  it('keeps the persistent legend positioned, which static quietly was not', () => {
+    // The phone sheet's `position: absolute` is also what anchors the hidden
+    // radios of the background picker at its foot. This rule used to say
+    // `static` - the same place in the flow, but no longer an anchor, so a
+    // desktop legend long enough to scroll handed those radios to the
+    // document and the page grew a scrollbar of its own (#631). Relative is
+    // static's layout with absolute's anchoring.
+    const block = declarationsOf('.legend--persistent')
+
+    expect(block).toMatch(/position:\s*relative/)
+    expect(block).not.toMatch(/position:\s*static/)
+  })
+
   it('paints the chrome from its own aliases, which is what lets the theme re-point it', () => {
     // The frame is pine under the light theme and ink under the dark one, and
     // one stylesheet can only say both by reading the --*-chrome tokens -

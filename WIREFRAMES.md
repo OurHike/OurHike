@@ -209,7 +209,9 @@ not one of them:
 
 - **You** — trail name (Linked / on-this-device), reporter type, account.
 - **The map** — background source (USGS topo downloaded is the default and the only offline-capable one), detail for new downloads, roads & walkability _(Later)_.
-- **Display** — theme (Light / Dark / Auto, a segmented control like the background picker above it; Auto is last, after the two concrete choices, so the group reads as a spectrum ending in "let the phone decide"), units _(Later; mile markers stay miles either way)_.
+- **Display** — theme (Light / Dark / Auto, a segmented control like the background picker above it; Auto is last, after the two concrete choices, so the group reads as a spectrum ending in "let the phone decide"), units (Feet / Metres, the same segmented control; built 2026-08-13, [#619](https://github.com/OurHike/OurHike/issues/619)).
+
+  The units row was the standing example of the _(Later)_ treatment for a year and is now the standing example of it being temporary. It is labelled by the unit rather than by the system — a hiker asks "can I get this in metres?", not "is this app imperial?" — and each segment names the distance unit that rides along with it, because choosing metres is also choosing kilometres and finding that out afterwards on the closure banner is a surprise four words prevent. Its description carries the exception under both options: **mile markers stay in miles either way.** The choice reaches every screen and the canvas alike, which is the standard [CONTRIBUTING.md](CONTRIBUTING.md) states and `client/src/test/unitDisplay.test.ts` enforces.
 - **Safety & privacy** — **Use my location** (added 2026-08-07, [#312](https://github.com/OurHike/OurHike/issues/312) — the section's one live switch), wrong-way alert toggle, "hide my name on reports for…" _(Later)_, and a red locked callout: **closures and serious warnings are always shown; there is no switch, here or anywhere.**
 
   The location row is not a new preference — it is the first control for one that existed and could only ever be written once, by onboarding's completion handler. That step is skippable, correctly, so "Not now" during setup disabled GPS for the life of the install with no way back and a header still claiming to look for it. The switch governs both consumers together: the watch in `lib/useGeolocation.ts` and the map's locate control (§1.5). Turning it on does not grant browser permission — it starts the watch, which asks; a browser that has already been told no surfaces as `Location blocked` in the header rather than as a switch that appears to have done nothing.
@@ -221,6 +223,16 @@ Later rows are shown at reduced opacity with a "Later" tag rather than hidden.
 **About this build** (added 2026-08-08, [#378](https://github.com/OurHike/OurHike/issues/378)) — version, commit and build time, with a **Copy build details** button. Reference material rather than a preference, so it takes no `UserPreferences` key and sits below every group that can be changed — but _above_ the download link, which keeps the foot of the screen for the reason §2's note gives.
 
 The commit is there because the version alone cannot identify most builds: `client/package.json` reads `0.0.0` until the first tag, so `main`, every preview and every laptop share it, and the section says as much rather than letting `0.0.0` pass for a version someone could look up. The build time is there because a service worker can serve a bundle long after a newer one deployed, which is otherwise invisible from the phone. The copy button is not a convenience — seven characters of hex retyped from a phone into an email is exactly what arrives with a digit changed — and the three rows stay readable either way, so a browser that refuses the clipboard costs accuracy rather than the feature. RELEASING.md §4 has the version meanings.
+
+**Report a bug** (added 2026-08-13, [#626](https://github.com/OurHike/OurHike/issues/626)) — four options, each opening the GitHub issue form that fits, directly below About this build and still above the download link. Reference material like the section it follows, and it takes no `UserPreferences` key either.
+
+Its placement is the mechanism, not a layout preference: About this build ends by saying the build is worth quoting in a report, and these links carry those exact three lines into the form's `Device and conditions` field, from the same `BuildInfo` the rows above render. Nobody retypes a commit hash. The `area` dropdown is preselected the same way, which is why `client/src/test/issueFormPrefill.test.ts` reads `.github/ISSUE_TEMPLATE/` itself — GitHub matches a prefilled dropdown by its option _text_, so a label reworded in the form and nowhere else stops preselecting silently rather than failing.
+
+The options are worded for the person holding the phone rather than for the tracker they land in — _the app itself_, _something on the map is wrong_, _reports, syncing or signing in_, _something else_ — because someone watching a pin sit in the wrong place is not thinking in client/backend/pipeline. `client/src/lib/bugReport.ts` does that mapping so the hiker does not have to.
+
+Two things it must say and does. **A trail condition is not a bug**, stated above the options rather than under them: this section sits one word from "Report a problem" (§6), which is the flow a blowdown goes through and the one a moderator reads, and somebody who has already tapped has already gone to the wrong place. And **every one of these links needs signal** — in an app whose whole premise is working without it, these four are the one part of Settings that cannot, so the section says so and points at the copy button immediately above as what to do out of range.
+
+It closes by inviting whoever writes code to the repository. This project is built to be handed to the clubs that maintain the trails rather than owned by whoever wrote it, and the moment someone has gone looking for where to report a defect is the one moment they are already pointed at it. Deliberately **not** prefilled: `navigator.userAgent`. It would answer the form's "phone and browser" better than a hiker can, and the build is a fact about our software where the device is a fact about them — see IDENTITY_AND_PRIVACY.md.
 
 ### 11. Data staleness (`16b`)
 
@@ -372,7 +384,7 @@ The source handoff's own "not yet wireframed" checklist listed several screens t
 - Volunteering work-project pins (Post-MVP).
 - Roads/walkability overlay (Post-MVP, MAP_OPTIONS.md).
 - Auto-rotate (Post-MVP, UX_CUSTOMIZATION.md).
-- Metric units, persistent waypoint/layer prefs (Post-MVP, UX_CUSTOMIZATION.md). _Theme override was here until 2026-08-06 and is now MVP — see that doc for why the split was wrong._
+- Persistent waypoint/layer prefs (Post-MVP, UX_CUSTOMIZATION.md). _Theme override was here until 2026-08-06 and metric units until 2026-08-13; both are built — see that doc._
 - Community Building — Tramily, check-ins, mentions (Post-MVP).
 - Pricing tiers / paywall UI (Post-MVP, PRICING_MODEL.md).
 - Trail names as a distinct onboarding tier (Post-MVP, ONBOARDING.md).

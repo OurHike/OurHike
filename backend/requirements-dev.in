@@ -4,6 +4,16 @@ pytest-cov
 httpx
 ruff
 
+# Runs the suite across cores - 60s serial against 16s on four workers, which
+# is the largest single saving available in this repository's local loop.
+#
+# Not free here the way it is for the other two suites: this one shares a
+# Postgres and drops every table between tests, so four workers pointed at one
+# database deadlock rather than merely fail. tests/conftest.py gives each
+# worker its own database, and tests/test_worker_database.py is why that stays
+# true.
+pytest-xdist
+
 # S3 doubled in-process rather than a live bucket, the project's established
 # convention (pipeline/requirements-dev.in asks for the same thing for
 # publish.py's tests).

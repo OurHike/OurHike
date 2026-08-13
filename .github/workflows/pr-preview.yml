@@ -246,7 +246,7 @@ jobs:
 
       - name: Say where the preview is
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
-        uses: marocchino/sticky-pull-request-comment@67d0dec7b07ed060a405f9b2a64b8ab319fdd7db # v2.9.2
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
         with:
           header: pr-preview
           message: |
@@ -286,7 +286,7 @@ jobs:
 
       - name: Say the pull request is closed
         if: steps.can.outputs.deploy == 'true' && github.event.action == 'closed'
-        uses: marocchino/sticky-pull-request-comment@67d0dec7b07ed060a405f9b2a64b8ab319fdd7db # v2.9.2
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
         with:
           header: pr-preview
           message: |

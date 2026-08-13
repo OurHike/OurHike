@@ -79,7 +79,9 @@ describe('naming a destination', () => {
     const distant = spur({ destination_distance_m: 140 })
 
     expect(describeSpur(distant).destinationPoiId).toBeNull()
-    expect(describeSpur(distant, 150).destinationPoiId).toBe('shelter:rocky-run')
+    expect(describeSpur(distant, 'imperial', 150).destinationPoiId).toBe(
+      'shelter:rocky-run',
+    )
   })
 })
 
@@ -92,6 +94,25 @@ describe('distance and the round trip', () => {
     // The median spur is 385 ft. One decimal would round it to "0.0 mi" and
     // say nothing at all - and the median is exactly the case that has to work.
     expect(describeSpur(spur({ length_ft: 385 })).distanceLabel).toBe('0.07 mi each way')
+  })
+
+  it('states the same spur in metres for a hiker who chose them (#619)', () => {
+    // The same fact the two decimals above exist to preserve, told the way a
+    // metric walker would say it. "0.12 km each way" is arithmetically the
+    // same and is not a sentence anybody speaks.
+    expect(describeSpur(spur({ length_ft: 385 }), 'metric').distanceLabel).toBe(
+      '120 m each way',
+    )
+    expect(describeSpur(spur(), 'metric').distanceLabel).toBe('320 m each way')
+  })
+
+  it('leaves the canonical distance in miles whatever it is displayed in', () => {
+    // The number a caller measures with, unconverted - lib/units.ts's storage
+    // rule at the one seam where a converted value could plausibly escape.
+    const metric = describeSpur(spur({ length_ft: 5280 }), 'metric')
+
+    expect(metric.distanceMi).toBe(1)
+    expect(metric.distanceLabel).toBe('1.6 km each way')
   })
 
   it('states a round trip, which is the decision being made', () => {

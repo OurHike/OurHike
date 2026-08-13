@@ -5,3 +5,8 @@
 pytest
 PyYAML
 ruff
+
+# Runs the suite across cores - 24s serial against 12s on four workers. These
+# tests parse workflow YAML and hold no state between them, so there is
+# nothing for the split to disturb.
+pytest-xdist

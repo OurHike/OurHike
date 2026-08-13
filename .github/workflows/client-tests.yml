@@ -65,11 +65,12 @@ jobs:
           # gate itself still proves the suite it gates.
           #
           # Imported is not the same as read, and the difference was a real
-          # hole (TESTING.md's "Redundancy" audit, 2026-08-06). Two suites
+          # hole (TESTING.md's "Redundancy" audit, 2026-08-06). Three suites
           # read files outside client/ at runtime:
           #
           #   pipeline/reference/gain_vectors.json  lib/elevationGain.test.ts
           #   site/index.html                       test/siteLayout.test.ts
+          #   .github/ISSUE_TEMPLATE/*.yml          test/issueFormPrefill.test.ts
           #
           # Scoped to client/ alone, a pull request editing the shared gain
           # vectors ran only the Python half of a drift guard whose whole
@@ -77,7 +78,12 @@ jobs:
           # unscoped run on `main` closed it, after the merge. The rule that
           # keeps this honest: **a suite's scope list includes every file its
           # tests read.**
-          paths: client/ pipeline/reference/ site/ .github/workflows/client-tests.yml .github/actions/changed-paths/
+          #
+          # The issue forms joined that list with #626: Settings links into
+          # them with fields prefilled, and GitHub matches a prefilled dropdown
+          # by its option TEXT - so rewording a label there and nowhere else
+          # breaks the links silently, and this is the run that says so.
+          paths: client/ pipeline/reference/ site/ .github/ISSUE_TEMPLATE/ .github/workflows/client-tests.yml .github/actions/changed-paths/
 
       - uses: actions/setup-node@v4
         if: steps.scope.outputs.run == 'true'

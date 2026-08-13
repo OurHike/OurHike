@@ -27,20 +27,20 @@ HTTP".
 
 WHAT IT CANNOT CHECK YET, STATED RATHER THAN QUIETLY PASSED
 
-Five of the nineteen checks report SKIPPED with a reason, and a skip here is
-never silent - `--strict` turns every one of them into a failure, because
-"the check did not run" reading like "the check passed" is the exact shape of
-failure this repository keeps finding.
+A skip here is never silent - `--strict` turns every one into a failure,
+because "the check did not run" reading like "the check passed" is the exact
+shape of failure this repository keeps finding.
 
-  3, 17, 19  need the `releases/` layout (#500). R2_LAYOUT.md declares it;
-             the bucket does not have it. Measured: `releases/index.json` 404
-             while `latest.json` answers 206. Without a previous release there
-             is nothing to compare against and no released folder to re-verify,
-             which is check 19 - the headline "the releases hikers are already
-             on still work".
   10         needs the tile count the build reported. `latest.json` carries a
              sha256 per artifact and nothing else, so there is no published
              figure to match against.
+
+Checks 3, 17 and 19 used to be listed here too and are written now (#374's
+item 3). They were blocked on two things, both landed: #490 gave them a file
+to live in, and #500 gave them a layout to read. They still SKIP against a
+bucket that has not published since #500 - with a reason naming which half is
+missing, rather than by construction - so this file goes on being honest about
+a bucket mid-migration without pretending the checks are unwritten.
 
 Check 4 runs but is weaker than §3 asks for, for the same reason: the manifest
 publishes no `size_bytes`, so "Content-Length == manifest size_bytes" is not a
@@ -65,6 +65,12 @@ import requests
 
 from lib import data_env
 from lib.completeness import DROP_THRESHOLD, count_problems
+from lib.releases import (
+    RELEASE_INDEX_KEY,
+    RELEASE_MANIFEST_NAME,
+    index_ids,
+    release_key,
+)
 from smoke_published import (
     HTTP_TIMEOUT,
     HttpRangeSource,
@@ -96,7 +102,18 @@ CORRIDOR_BBOX = (-85.0, 33.5, -66.5, 46.5)
 # real problem, not a rounding detail"; 2% is DATA_RELEASES.md §3's figure.
 ADVERTISED_TOLERANCE = 0.02
 
-_NEEDS_RELEASES = "needs the releases/ layout (#500), which the bucket does not have yet"
+# The two ways checks 3, 17 and 19 can have nothing to say, kept apart because
+# they mean different things. Neither is a fault: a bucket last published
+# before #500 has no release folders at all, and a bucket mid-migration has
+# them without the pointer naming one yet.
+_NO_INDEX = (
+    "no releases/index.json - this bucket has not published since #500 added the layout, "
+    "so there is no release folder to compare against or re-verify"
+)
+_NO_POINTER = (
+    "latest.json names no release - it was written before #500 added the `release` field, "
+    "so nothing here can say which folder holds these bytes"
+)
 
 
 def _report(check: int, key: str, state: str, detail: str) -> dict:
@@ -497,8 +514,241 @@ def check_advertised_size(base: str, key: str, tier: str, advertised: int, sessi
     return _report(18, key, OK, f"{actual:,} bytes, {drift:.2%} from the advertised {advertised:,}")
 
 
+# ---------------------------------------------------------------------------
+# F. The releases hikers are already on still work
+#
+# Checks 3, 17 and 19, which were skipped from the day this file was written
+# because there was no `releases/` layout to read (#500) - and before that, no
+# file to put them in (#490). Both have landed, so these are #374's item 3.
+#
+# WHAT THEY COMPARE, AND WHY IT IS RELEASE-AGAINST-RELEASE RATHER THAN
+# RELEASE-AGAINST-POINTER. `latest.json` lists `conditions/` artifacts and a
+# release folder deliberately does not - safety data is rewritten in place on a
+# daily clock and cannot be frozen (lib/releases.is_release_artifact). Diffing
+# a release manifest against `latest.json` would therefore report every
+# conditions artifact as lost on every run, which is an alarm that is always on
+# and so an alarm nobody reads. Both sides of every comparison below are
+# release manifests.
+# ---------------------------------------------------------------------------
+
+
+def fetch_release_index(base: str, session=None) -> dict | None:
+    """`releases/index.json`, or None if this bucket has not published one."""
+    try:
+        response = (session or requests).get(f"{base}/{RELEASE_INDEX_KEY}", timeout=HTTP_TIMEOUT)
+        if response.status_code != 200:
+            return None
+        return response.json()
+    except (requests.RequestException, ValueError):
+        return None
+
+
+def fetch_release_manifest(base: str, release_id: str, session=None) -> dict | None:
+    """One release folder's own manifest, or None if it cannot be read."""
+    key = release_key(release_id, RELEASE_MANIFEST_NAME)
+    try:
+        response = (session or requests).get(f"{base}/{key}", timeout=HTTP_TIMEOUT)
+        if response.status_code != 200:
+            return None
+        return response.json()
+    except (requests.RequestException, ValueError):
+        return None
+
+
+def previous_release_id(index: dict | None, current_id: str | None) -> str | None:
+    """The release published immediately before `current_id`.
+
+    By POSITION in the index rather than by sorting the ids, because the index
+    is append-ordered and that is the more honest record - a same-day rebuild
+    (`2026-08-13-2`) and its predecessor sort the way they were written, and if
+    the two ever disagreed the order things actually happened is the one worth
+    trusting.
+    """
+    ids = index_ids(index)
+    if current_id is None or current_id not in ids:
+        return None
+    position = ids.index(current_id)
+    return ids[position - 1] if position > 0 else None
+
+
+def check_nothing_lost(previous_id: str, previous_manifest: dict, current_manifest: dict) -> dict:
+    """3. No artifact present in the previous release is missing from this one.
+
+    An artifact silently dropping out of a release is the failure a hiker meets
+    as a 404 partway through a download, and it is invisible to every other
+    check here - all of which ask about what IS published rather than about
+    what used to be.
+    """
+    before = set((previous_manifest.get("artifacts") or {}).keys())
+    now = set((current_manifest.get("artifacts") or {}).keys())
+    lost = sorted(before - now)
+
+    if lost:
+        return _report(
+            3,
+            f"(since {previous_id})",
+            FAILED,
+            f"{len(lost)} artifact(s) in {previous_id} are absent from this release: {', '.join(lost[:5])}. "
+            "A client that had one of these will 404 on it.",
+        )
+    return _report(3, f"(since {previous_id})", OK, f"every one of {len(before)} artifact(s) in {previous_id} is still here")
+
+
+def _content_length(base: str, key: str, session=None) -> int | None:
+    try:
+        response = (session or requests).head(f"{base}/{key}", timeout=HTTP_TIMEOUT)
+    except requests.RequestException:
+        return None
+    if response.status_code != 200:
+        return None
+    try:
+        return int(response.headers["Content-Length"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def check_release_regression(
+    base: str,
+    previous_id: str,
+    current_id: str,
+    previous_manifest: dict,
+    current_manifest: dict,
+    session=None,
+) -> list[dict]:
+    """17. No artifact shrank more than DROP_THRESHOLD against the last release.
+
+    `flag_drops()` retargeted from a gitignored local baseline to the previous
+    release, which is strictly better: `data/quality_baseline.json` is absent on
+    a hosted runner, so the local version of this check reports SKIPPED exactly
+    where it would be most useful.
+
+    Sizes rather than feature counts, and that is a real narrowing of
+    DATA_RELEASES.md section 3's wording. A count needs the artifact downloaded
+    and parsed - twice, once per release - which is ~3.2 GB to answer a question
+    two HEADs answer for the cases that matter. A geojson that lost half its
+    features lost roughly half its bytes.
+    """
+    shared = sorted(
+        set((previous_manifest.get("artifacts") or {}).keys()) & set((current_manifest.get("artifacts") or {}).keys())
+    )
+    if not shared:
+        return [_report(17, f"(vs {previous_id})", SKIPPED, "no artifact appears in both releases")]
+
+    reports = []
+    for name in shared:
+        before = _content_length(base, release_key(previous_id, name), session)
+        now = _content_length(base, release_key(current_id, name), session)
+        if before is None or now is None:
+            reports.append(_report(17, name, SKIPPED, f"could not size it in both releases ({previous_id} and {current_id})"))
+            continue
+        if before == 0:
+            reports.append(_report(17, name, OK, f"{previous_id} published it empty, so there is no drop to measure"))
+            continue
+        drop = (before - now) / before
+        if drop > DROP_THRESHOLD:
+            reports.append(
+                _report(
+                    17,
+                    name,
+                    FAILED,
+                    f"{now} bytes against {before} in {previous_id} - down {drop:.0%}, past the "
+                    f"{DROP_THRESHOLD:.0%} threshold. Either an upstream really shrank or this build lost data.",
+                )
+            )
+        else:
+            reports.append(_report(17, name, OK, f"{now} bytes against {before} in {previous_id}"))
+    return reports
+
+
+def check_released_folder(
+    base: str,
+    release_id: str,
+    release_manifest: dict,
+    session=None,
+    hash_artifacts: bool = True,
+) -> list[dict]:
+    """19. Re-run presence and byte checks against the folder hikers are on.
+
+    THE HEADLINE PROPERTY of this whole battery, and the one that fails for
+    reasons no candidate can cause: an accidental deletion, a lifecycle rule
+    that swept a folder it should have spared, a permissions change. Every
+    other check here asks whether the thing just built is good. This asks
+    whether the thing people are already using is still there.
+
+    Hashing is behind `hash_artifacts` for the same reason check 5 is - it is
+    another ~1.6 GB - and unlike check 5 it is not the only proof of anything:
+    the copy into the folder was server-side, so a mismatch here means the
+    object was altered after it was written rather than copied wrong.
+    """
+    artifacts = release_manifest.get("artifacts") or {}
+    if not artifacts:
+        return [_report(19, release_id, FAILED, "the released folder's manifest lists no artifacts at all")]
+
+    reports = []
+    for name in sorted(artifacts):
+        key = release_key(release_id, name)
+        headers = check_fetchable(base, key, session)
+        reports.append(_report(19, key, headers["state"], headers["detail"]))
+        if hash_artifacts:
+            hashed = check_full_hash(base, key, artifacts[name]["sha256"], session)
+            reports.append(_report(19, key, hashed["state"], hashed["detail"]))
+    return reports
+
+
+def release_checks(base: str, manifest: dict, session=None, hash_artifacts: bool = True) -> list[dict]:
+    """Checks 3, 17 and 19, or honest skips saying which half is missing.
+
+    Three states worth telling apart, because they call for different things:
+    a bucket that has never published a release folder (nothing to do until it
+    does), one that has published exactly one (nothing to compare against yet,
+    but the folder itself can still be re-verified), and the ordinary case.
+    """
+    index = fetch_release_index(base, session)
+    if index is None:
+        return [_report(check, "(releases/index.json)", SKIPPED, _NO_INDEX) for check in (3, 17, 19)]
+
+    current_id = manifest.get("release")
+    if not isinstance(current_id, str):
+        return [_report(check, "latest.json", SKIPPED, _NO_POINTER) for check in (3, 17, 19)]
+
+    current_manifest = fetch_release_manifest(base, current_id, session)
+    if current_manifest is None:
+        return [
+            _report(
+                check,
+                release_key(current_id, RELEASE_MANIFEST_NAME),
+                FAILED,
+                f"latest.json names release {current_id} and that folder has no readable manifest - "
+                "the pointer describes a release that is not there",
+            )
+            for check in (3, 17, 19)
+        ]
+
+    reports = check_released_folder(base, current_id, current_manifest, session, hash_artifacts)
+
+    previous_id = previous_release_id(index, current_id)
+    if previous_id is None:
+        detail = f"{current_id} is the first release in the index, so there is nothing before it to compare against"
+        return [_report(3, current_id, SKIPPED, detail), _report(17, current_id, SKIPPED, detail), *reports]
+
+    previous_manifest = fetch_release_manifest(base, previous_id, session)
+    if previous_manifest is None:
+        detail = f"{previous_id} is listed in the index and its manifest could not be read"
+        return [_report(3, previous_id, SKIPPED, detail), _report(17, previous_id, SKIPPED, detail), *reports]
+
+    return [
+        check_nothing_lost(previous_id, previous_manifest, current_manifest),
+        *check_release_regression(base, previous_id, current_id, previous_manifest, current_manifest, session),
+        *reports,
+    ]
+
+
 def skipped_checks() -> list[dict]:
-    """The five that cannot run yet, each said out loud.
+    """What still cannot run at all, said out loud.
+
+    Down to one since #374's item 3 landed checks 3, 17 and 19 - those now run
+    or skip with a reason specific to what the bucket actually holds
+    (`release_checks`), rather than being skipped by construction.
 
     A skip that reads like a pass is the failure this repository keeps
     finding - #431's negative assertions, gate 11's missing label. `--strict`
@@ -506,17 +756,12 @@ def skipped_checks() -> list[dict]:
     battery that quietly did not ask.
     """
     return [
-        _report(3, "(previous release)", SKIPPED, f"nothing lost since the last release - {_NEEDS_RELEASES}"),
         _report(
             10,
             "(tile counts)",
             SKIPPED,
             "latest.json publishes a sha256 per artifact and no tile count, so there is no build figure to match",
         ),
-        _report(
-            17, "(regression)", SKIPPED, f"release-over-release size/count drop beyond {DROP_THRESHOLD:.0%} - {_NEEDS_RELEASES}"
-        ),
-        _report(19, "(released folder)", SKIPPED, f"re-verify the folder hikers are pinned to today - {_NEEDS_RELEASES}"),
     ]
 
 
@@ -526,7 +771,20 @@ def check_all(base: str, session=None, hash_artifacts: bool = True) -> list[dict
 
     reports = [check_manifest(manifest)]
     if manifest is None or reports[0]["state"] == FAILED:
-        return reports + skipped_checks()
+        # 3, 17 and 19 resolve a release out of the manifest, so an unreadable
+        # manifest leaves them nothing to ask - but they still have to APPEAR.
+        # Dropping them from the list entirely would be worse than skipping
+        # them: a reader counting checks would find a short clean run, which is
+        # the "did not ask" reading like "asked and was satisfied" that
+        # `--strict` exists to prevent.
+        return (
+            reports
+            + [
+                _report(check, "latest.json", SKIPPED, "the manifest could not be read, so no release could be resolved")
+                for check in (3, 17, 19)
+            ]
+            + skipped_checks()
+        )
 
     artifacts = manifest["artifacts"]
     reports += check_client_keys(manifest)
@@ -555,6 +813,10 @@ def check_all(base: str, session=None, hash_artifacts: bool = True) -> list[dict
             reports.append(check_advertised_size(base, key, tier, sizes[tier], session))
 
     reports += check_vector(base, [key for key in sorted(artifacts) if key.endswith(".geojson")], session)
+    # Last, because it is the only group that reads a DIFFERENT release than
+    # the one every check above is about, and because check 19 is the
+    # expensive one when hashing is on.
+    reports += release_checks(base, manifest, session, hash_artifacts)
     reports += skipped_checks()
     return reports
 

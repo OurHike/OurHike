@@ -63,6 +63,21 @@ describe('saying which way you are walking', () => {
     expect(screen.getByRole('status')).toHaveTextContent('42 mi')
   })
 
+  it('states how far apart they are in the hiker’s units, and the fields in neither', async () => {
+    // #619. The one measurement on this screen converts; the two numbers typed
+    // into it are mile markers, which are where you are on the A.T. rather
+    // than a quantity of anything - so the labels keep saying "mile" under
+    // both settings and the readout does not.
+    const user = userEvent.setup()
+    render(<HikePicker {...PROPS} units="metric" />)
+
+    await user.type(screen.getByLabelText(/starting at mile/i), '1450')
+    await user.type(screen.getByLabelText(/finishing at mile/i), '1408')
+
+    expect(screen.getByRole('status')).toHaveTextContent('67.6 km')
+    expect(screen.getByLabelText(/finishing at mile/i)).toHaveValue(1408)
+  })
+
   it('hands back the hike the numbers describe', async () => {
     const user = userEvent.setup()
     const onSave = vi.fn()

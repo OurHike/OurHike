@@ -6,7 +6,7 @@ OurHike is a map for hikers, built to be handed to the clubs that maintain the t
 
 **A trail condition** — a blowdown, flooding, a damaged shelter, a closure — goes through the **app's own "Report a problem" flow**, not GitHub. That reaches a moderator who can act on it. Nobody is watching this repository for washed-out bridges.
 
-**A bug in the software**, or **a systematic data problem** (a shelter in the wrong place, a missing water source, a wrong blaze colour) belongs in [Issues](https://github.com/OurHike/OurHike/issues). There is a form for each.
+**A bug in the software**, or **a systematic data problem** (a shelter in the wrong place, a missing water source, a wrong blaze colour) belongs in [Issues](https://github.com/OurHike/OurHike/issues). There is a form for each, and the app links to both from **Settings → Report a bug** with the build details already filled in — so a report filed that way names the exact build it came from without anyone retyping a commit hash.
 
 If a bug could mislead someone about where they are, where water is, or a hazard, say so — there is a checkbox for it, and those get looked at first. This app gets used in places where being wrong is expensive.
 
@@ -51,6 +51,10 @@ Area labels: `client`, `backend`, `pipeline`, `data`, `ops`, `docs`.
 ## Working on the code
 
 Three independent parts, each with its own tests, plus a small fourth suite covering the repository's own CI configuration. CI runs the same commands, so a green local run means a green CI run.
+
+**`scripts/test.sh` runs the ones your change actually reaches**, which is usually one of the four. It reads each suite's scope list out of that suite's own workflow file, so it makes the same decision CI does rather than a second copy of it that can go stale; it runs the linters and formatters for everything selected before it runs any tests, so a formatting slip costs six seconds instead of a CI round trip; and it runs each suite across every core. Measured, four cores: 294s for the full sequence below, 174s for `scripts/test.sh --all`, 20 to 50 seconds for a change to one of the Python parts. `--list` shows what it picked and which changed file decided it. Anything it cannot work out — a stale `main` ref, an unreadable workflow — it resolves by running everything.
+
+The per-part commands below are what it runs, and remain the reference.
 
 **Client** — React + TypeScript + Vite, MapLibre GL for the map.
 
@@ -98,6 +102,18 @@ python -m ruff format --check .
 ```
 
 Locally this checks that [`.github/expected-settings.yml`](.github/expected-settings.yml) still agrees with the workflows: every secret and variable a workflow reads is declared, and nothing declared has outlived its last reader. Whether those settings actually *exist* is a question no checkout can answer — a secret's value is write-only once set — so the **Settings check** workflow answers it from inside Actions, weekly and on every push to `main`. Adding a workflow that reads a new secret means adding it to the manifest in the same change.
+
+### Units are the hiker's choice, everywhere
+
+**Every height and distance the app displays is displayed in the system the hiker picked in Settings.** Feet and miles or metres and kilometres, one preference (`unit_system`), no screen exempt. This is a standard rather than a style: a component that formats its own feet looks right on its own and disagrees with the one beside it, and a hiker reading 800 m of climbing on the elevation ribbon and 2,600 ft in the callout underneath has to work out which one is lying.
+
+Three rules, and the first two are most of it:
+
+- **`client/src/lib/units.ts` is the only module that writes a unit.** Nothing else spells ` ft`, ` mi`, ` m` or ` km`, and nothing else converts. `client/src/test/unitDisplay.test.ts` fails the build over a new one, so this is checked rather than remembered.
+- **Store canonical, convert at display.** The published data is imperial where the ATC's is (mile markers, `elevation_ft`) and metric where USGS 3DEP's is; both stay as they are. Every function in the units module takes a canonical number and returns a string, which is the one shape a caller cannot accidentally persist.
+- **A component takes the preference; it does not read it.** `App.tsx` reads `unit_system` once and passes it down, the same road the resolved theme travels. Two independent reads is how the map ends up in kilometres under a banner in miles.
+
+One exception, and it is deliberate: **mile markers stay in miles.** `mi 1,407.2` is where somebody *is* on the A.T. — the reference every guidebook, shelter register and shuttle driver shares — not a measurement of anything. The distance *between* two of them is an ordinary distance and converts, so a metric hiker's banner correctly reads "Trail closed 4.8 km ahead · mi 8.0 – 9.0". [features/UX_CUSTOMIZATION.md](features/UX_CUSTOMIZATION.md) holds the reasoning.
 
 ### Changing a Python dependency
 

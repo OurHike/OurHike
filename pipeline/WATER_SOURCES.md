@@ -378,9 +378,15 @@ and hiker reports as the only eventual answer to "is it flowing".
    nobody asked. What replaced it is narrower and load-bearing —
    [build_trail_water.py](build_trail_water.py) publishes a water POI for a
    site only where a hiker could actually reach it: **within 100 ft AND under
-   a 35% grade**, the second gate measured from real 3DEP elevations at both
+   a 15% grade**, the second gate measured from real 3DEP elevations at both
    ends, because a stream 90 ft away and 120 ft below is not a water source
-   however close the map says it is. Rejected candidates keep their numbers
+   however close the map says it is. Both numbers are the maintainer's, and
+   the reasoning behind the tight radius is worth recording: **most A.T.
+   shelters have had their own spring built out over decades**, so the water
+   a shelter actually uses is a piped source somebody dug rather than the
+   nearest blue line — which is why ATC's own measured distance (§4, #668)
+   stays the better answer for shelters and this derivation only fills in a
+   real coordinate where geometry can honestly supply one. Rejected candidates keep their numbers
    in the file so either gate can be re-argued from data. The same script
    fills `crossing` from exact trail×stream intersections — water a hiker
    walks straight through — which is the other half of "show the water that

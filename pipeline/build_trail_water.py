@@ -120,6 +120,11 @@ ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
 OUT_PATH = ROOT / "reference" / "trail_water.json"
 NHD_TMP_DIR = RAW_DIR / "nhd_tmp"
+
+# Ground elevations already asked for, under data/ because it is a fetch
+# artifact rather than reviewed source - the answers are USGS's and the file
+# is disposable.
+ELEVATION_CACHE_PATH = RAW_DIR / "epqs_elevations.json"
 CENTERLINE_PATH = RAW_DIR / "centerline.geojson"
 
 # What counts as a stream a hiker could fill a bottle from. `waterway=ditch`,
@@ -179,20 +184,36 @@ EPQS_URL = "https://epqs.nationalmap.gov/v1/json"
 
 # How far a hiker may walk for a stream to count as this site's water.
 #
-# The maintainer's number, and it sits inside lib/poi_sites.py's 60 m
-# proximity fold on purpose (see the module docstring): a match the map
-# cannot draw as part of the site would be a match in name only. Every
-# candidate out to REPORT_RADIUS_FT is recorded with its numbers regardless,
-# so widening this is a decision somebody can make from the file.
+# The maintainer's number, kept tight on their reasoning rather than mine:
+# **most A.T. shelters have had their own spring built out over decades**, so
+# the water a shelter actually uses is usually a piped source somebody dug,
+# not the nearest blue line on a map. Where those two disagree ATC's own
+# measured distance is the better answer for a shelter (build_water_distance.py,
+# #668), and this derivation is not trying to beat it - it fills in a real
+# COORDINATE where geometry can honestly supply one, and stays quiet where it
+# cannot.
+#
+# It also sits inside lib/poi_sites.py's 60 m proximity fold on purpose (see
+# the module docstring): a match the map cannot draw as part of the site
+# would be a match in name only. Every candidate out to REPORT_RADIUS_FT is
+# recorded with its numbers regardless, so widening this is a decision
+# somebody can make from the file.
 MATCH_RADIUS_FT = 100.0
 REPORT_RADIUS_FT = 400.0
 
 # "Not down a cliff", as a number: rise over run between the site and the
-# water. 0.35 is a steep but walked slope - a 35 ft drop over 100 ft of
-# ground, which is a scramble down a bank rather than a climb. Past it the
-# gap stops being a walk with a bottle, which is the only thing this file is
-# willing to call a water source.
-MAX_GRADE = 0.35
+# water.
+#
+# This started at 0.35 and the maintainer's answer was that a 30% grade is
+# ridiculous, which it is: a 35 ft drop over 100 ft of ground is a scramble
+# somebody does once with an empty bottle and not again at dusk with a full
+# one. 0.15 is the top of the range they named (10-15%) - a 15 ft drop over
+# 100 ft, which is a path down a bank rather than a descent.
+#
+# The looser number was never doing much work anyway: at 0.35 it refused 4
+# candidates out of 47. The gate that binds is MATCH_RADIUS_FT, and that one
+# is deliberately tight (see there).
+MAX_GRADE = 0.15
 
 # Two intersection points closer than this are one crossing: NHD splits a
 # reach at confluences, so the trail meeting a stream once can be recorded
@@ -548,7 +569,16 @@ def elevation_ft(lat: float, lon: float) -> float | None:
     None rather than a raise: an elevation this service cannot answer is a
     candidate this file declines to publish, which is the same safe direction
     every other gate here rounds in.
+
+    Cached on disk, because the gates above are meant to be argued with. The
+    ground does not move between runs, and re-deriving with a tighter
+    MAX_GRADE should cost the reading of the hydrography and not several
+    hundred more round trips to a service that answers in seconds apiece.
     """
+    cache = _elevation_cache()
+    key = f"{lat:.6f},{lon:.6f}"
+    if key in cache:
+        return cache[key]
     for attempt in range(TRIES):
         try:
             response = requests.get(
@@ -559,10 +589,31 @@ def elevation_ft(lat: float, lon: float) -> float | None:
             )
             response.raise_for_status()
             value = response.json().get("value")
-            return None if value is None else float(value)
+            elevation = None if value is None else float(value)
+            if elevation is not None:
+                cache[key] = elevation
+                _write_elevation_cache(cache)
+            return elevation
         except Exception:  # noqa: BLE001 - retried, then declined
             time.sleep(2**attempt)
     return None
+
+
+_ELEVATION_CACHE: dict[str, float] | None = None
+
+
+def _elevation_cache() -> dict[str, float]:
+    global _ELEVATION_CACHE
+    if _ELEVATION_CACHE is None:
+        _ELEVATION_CACHE = json.loads(ELEVATION_CACHE_PATH.read_text()) if ELEVATION_CACHE_PATH.exists() else {}
+    return _ELEVATION_CACHE
+
+
+def _write_elevation_cache(cache: dict[str, float]) -> None:
+    ELEVATION_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = ELEVATION_CACHE_PATH.with_suffix(".tmp")
+    tmp.write_text(json.dumps(cache))
+    tmp.replace(ELEVATION_CACHE_PATH)
 
 
 def resolve_site(feature: dict, layer: str, candidates: list[dict]) -> dict:

@@ -442,6 +442,46 @@ describe('siteRoster', () => {
     expect(roster.map((part) => part.type)).toEqual(['shelter', 'campsite', 'bear_box'])
   })
 
+  it('lists this site’s parts and not the next site’s', () => {
+    // THE SCOPING IS THE FUNCTION. In production `points` is every POI in the
+    // download - hundreds of sites, thousands of points - and every fixture
+    // above is one site, so nothing else here can tell a scoped lookup from an
+    // unscoped one. Both halves matter and both are pinned by this one roster:
+    //
+    //  - Unscoped MEMBERS, and a shelter's card offers the neighbouring site's
+    //    privy. Tapping it opens a card for a place that is not here, which is
+    //    the false statement about location this file's header refuses
+    //    spiderfying over.
+    //  - Unscoped ANCHOR, and the roster's first element is somebody else's
+    //    shelter - so the card's heading, its coordinates, its provenance and
+    //    every distance in the strip belong to a different place. The other site
+    //    is deliberately listed FIRST so that a `find` without the site id
+    //    answers with its anchor rather than accidentally with the right one.
+    const otherShelter = point({
+      id: 'atc_shelter_0422',
+      type: 'shelter',
+      siteId: 'site_0422',
+      siteRole: SITE_ROLE_ANCHOR,
+    })
+    const otherPrivy = point({
+      id: 'atc_privy_0422',
+      type: 'privy',
+      siteId: 'site_0422',
+      siteRole: SITE_ROLE_MEMBER,
+    })
+
+    const roster = siteRoster(
+      [otherShelter, otherPrivy, SHELTER, PRIVY, CAMPSITE],
+      SHELTER.id,
+    )
+
+    expect(roster.map((part) => part.id)).toEqual([
+      'atc_shelter_0421',
+      'atc_privy_0421',
+      'atc_campsite_0421',
+    ])
+  })
+
   it('answers the same roster for a member as for its anchor', () => {
     // The site is a fact about the place, not about which of its points was
     // asked - and search opening a privy's card directly is the next issue.

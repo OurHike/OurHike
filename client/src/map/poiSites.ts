@@ -291,10 +291,23 @@ export function composeSites(
  *
  * IT MIRRORS `composeSites`' RULE, IN REVERSE. There is no site here unless the
  * anchor is: a member whose anchor is missing from `points` - a partial
- * download, a future filter - is drawing its own pin, so listing it as part of
- * something the map is not drawing would be a strip hanging off nothing. Same
- * for a role this build does not recognise: the point keeps its own pin over
- * there, so its card is the plain card, not a site's.
+ * download, a grouping written against a POI this build never received - is
+ * drawing its own pin, so listing it as part of something the map is not drawing
+ * would be a strip hanging off nothing. Same for a role this build does not
+ * recognise: the point keeps its own pin over there, so its card is the plain
+ * card, not a site's.
+ *
+ * THE LEGEND'S FILTER IS NOT ONE OF THOSE CASES, and saying so is the point:
+ * `SiteVisibility` reaches `composeSites` and deliberately does not reach here.
+ * A hidden category is still in `points` - the filter takes PINS off the map,
+ * one layer on - so the roster lists every part of the place including ones the
+ * map is not currently drawing. That is the opposite of what the pin's footer
+ * strip does (#607 trims it to drawn members, because a shelter pin wearing a
+ * privy glyph on a privy-less map is the legend and the map disagreeing), and
+ * the two differ because a chip is not a pin: it makes no claim about what is
+ * drawn, only about what is THERE, and a hiker who filtered to privies has not
+ * asked to be told the shelter stopped existing. It also keeps the strip from
+ * reshuffling under a thumb as the legend is toggled.
  */
 export function siteRoster<T extends SitePoint>(
   points: readonly T[],

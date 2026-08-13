@@ -52,7 +52,14 @@
 // tell a screen-reader user the rest of the screen is inert when it is not.
 // Same call ClosureSheet makes.
 
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { typeLabel } from './legendLabels'
 import { sourceLabel } from './poiSources'
@@ -364,6 +371,32 @@ function usePinAnchor(
 export function PoiCard({ poi, site = [], map, onClose }: PoiCardProps) {
   const cardRef = useRef<HTMLDivElement | null>(null)
 
+  // THE ANCHOR IS NOT THE POINT THIS CARD HANGS OFF, AND THE DIFFERENCE IS NOT
+  // COSMETIC. `siteRoster` puts the anchor first whichever part of the site it
+  // was asked about, so `site[0]` is the site's own identity - what the place is
+  // called - and that is the ONE thing it is used for below.
+  //
+  // Everything positional keys on `poi` instead, because `poi` is the point
+  // CARRYING THE PIN. That is a precondition of this card, not a coincidence:
+  // map/poiLayers.ts builds its features from `composeSites().drawn` and writes
+  // the carrier's id, and a tap is the only thing that opens a card, so what the
+  // shell selected is by construction what is drawn.
+  //
+  // AND THE CARRIER IS NOT ALWAYS THE ANCHOR. #607/#609 gave a site's members
+  // their pins back when the legend filters the anchor out: hide shelters, and
+  // the site redraws as its highest-priority drawn member, so tapping it selects
+  // the PRIVY. Keying the projection on `site[0]` there would hang the card off
+  // the shelter - a point with nothing drawn at it, 42 m away at the median,
+  // which is 11 px at z14 and 165 px at z18 - which is the mild form of the
+  // spiderfying features/POI_SITES.md refuses, and the exact failure keying on
+  // the anchor was meant to avoid.
+  //
+  // So when #527 lets search open a member's card directly, `poi` will no longer
+  // be the carrier and this card will have to be TOLD which point is - the shell
+  // computes the composition and knows. It is not knowable from here, and
+  // guessing `site[0]` is wrong in the case that already exists.
+  const anchor = site[0] ?? poi
+
   // Which part of the site the card is showing. Held here rather than lifted to
   // the shell's `selectedPoiId`, which is fed to a map that has no pin for a
   // member to select and whose setter closes the legend on the way past.
@@ -376,12 +409,39 @@ export function PoiCard({ poi, site = [], map, onClose }: PoiCardProps) {
 
   // The `?? poi` is load-bearing rather than defensive. On the render between a
   // new waypoint arriving and that reset effect firing, `shownId` still names
-  // the previous site's privy - and falling back to the anchor makes that frame
-  // already correct instead of blank.
+  // the previous site's privy - and falling back to the waypoint the shell asked
+  // for makes that frame already correct instead of blank. The waypoint, not
+  // `anchor`: what this card opens on is what was selected, which is the anchor
+  // only until something selects a member (see above).
   const shown = site.find((part) => part.id === shownId) ?? poi
 
   const placement = usePinAnchor(map, poi, shown, cardRef)
   const source = sourceLabel(shown.source)
+
+  // The two regions a chip swaps, named so `aria-controls` can point at them.
+  // Through `useId` rather than a pair of constants because ids have to be
+  // unique in a document and nothing here can promise there is one card - a
+  // test rendering two, or a compare view, would otherwise have both cards'
+  // chips controlling the first card's boxes.
+  const regionId = useId()
+  const mediaId = `${regionId}media`
+  const bodyId = `${regionId}body`
+
+  // What to say out loud when a chip replaces the card under someone who cannot
+  // see it happen. `aria-current` below is an ARIA *property*: a screen reader
+  // announces it on ARRIVAL at the chip rather than when it flips - unlike
+  // aria-pressed or aria-selected - so activating a chip otherwise moves the
+  // heading, the coordinates, the provenance, the unverified sentence and the
+  // photograph in complete silence. This is the half of screens/Tabs.tsx's
+  // contract that role="tab"/role="tabpanel" would have given for free and that
+  // the plain-button markup has to say for itself.
+  //
+  // Empty until a chip is tapped, and reset with the waypoint: a reader arriving
+  // at a freshly opened card is about to be read the card, and a region already
+  // holding "Showing X" would either say it twice or announce the last card's
+  // part on this one.
+  const [announced, setAnnounced] = useState('')
+  useEffect(() => setAnnounced(''), [poi.id])
 
   const photos = cardPhotos(shown)
 
@@ -436,7 +496,9 @@ export function PoiCard({ poi, site = [], map, onClose }: PoiCardProps) {
         ['--poi-accent' as string]: accent,
       }}
     >
-      <div className="poi-card__media">
+      {/* Identified rather than anonymous, because the chips below claim to
+          control it - see `aria-controls` there. */}
+      <div className="poi-card__media" id={mediaId}>
         {showPhoto ? (
           <img
             className="poi-card__photo"
@@ -529,7 +591,7 @@ export function PoiCard({ poi, site = [], map, onClose }: PoiCardProps) {
         </button>
       </div>
 
-      <div className="poi-card__body">
+      <div className="poi-card__body" id={bodyId}>
         {/* The part on screen, not the site. features/POI_SITES.md's open
             question 5 asked whether the card names the place once at the top or
             re-names it per member, and the lines underneath decide it: the
@@ -550,23 +612,29 @@ export function PoiCard({ poi, site = [], map, onClose }: PoiCardProps) {
             The alternatives are worse: reordering the card to put the photo
             inside a panel moves the media box off the card's top edge and
             re-parents the close button out of the corner it is drawn for. So:
-            plain buttons, `aria-current` on the one you are reading, and no
-            `aria-controls` claim that the markup cannot honour.
+            plain buttons and `aria-current` on the one you are reading.
 
             What screens/Tabs.tsx's pattern is reused for is the part that
             matters, which is its rule: ONE panel rendered, not three hidden with
             CSS. There is one media box and one body here, both driven from
             `shown`, so a part nobody is looking at has no gallery buttons in the
-            tab order and nothing for a screen reader to announce. */}
+            tab order and nothing for a screen reader to announce.
+
+            The rest of that pattern's contract is what the two things after the
+            strip put back: `aria-controls` naming both regions a chip drives -
+            the objection above is to a tabpanel WRAPPER, and does not reach an
+            attribute that takes an ID-reference LIST - and a live region that
+            actually produces the announcement, since `aria-current` changing is
+            not one. */}
         {parts.length > 0 && (
           <div
             className="poi-card__chips"
             role="group"
             // The anchor's own name, which is what the pipeline publishes as
-            // `site_name` (features/POI_SITES.md §3). Taken from the chip rather
-            // than from a field of its own so the two cannot disagree about what
-            // this place is called.
-            aria-label={`Parts of ${parts[0].name}`}
+            // `site_name` (features/POI_SITES.md §3). Taken from the anchor
+            // itself - the same point the first chip stands for - so the two
+            // cannot disagree about what this place is called.
+            aria-label={`Parts of ${anchor.name}`}
           >
             {parts.map((part) => (
               <button
@@ -578,7 +646,15 @@ export function PoiCard({ poi, site = [], map, onClose }: PoiCardProps) {
                 // attribute, rather than `aria-pressed`: these are not toggles,
                 // and exactly one of them is true at a time.
                 aria-current={part.id === shown.id}
-                onClick={() => setShownId(part.id)}
+                // Both boxes, because a chip really does swap both, and a list
+                // is what the attribute is for. It is the programmatic link
+                // between the control and what it changes that the plain-button
+                // markup would otherwise be missing.
+                aria-controls={`${mediaId} ${bodyId}`}
+                onClick={() => {
+                  setShownId(part.id)
+                  setAnnounced(`Showing ${part.name}`)
+                }}
               >
                 <MapIcon
                   className="poi-card__chip-icon"
@@ -612,6 +688,18 @@ export function PoiCard({ poi, site = [], map, onClose }: PoiCardProps) {
               </button>
             ))}
           </div>
+        )}
+
+        {/* The announcement itself, empty until a chip is tapped. Rendered
+            whenever there is a strip rather than conditionally on there being
+            something to say: a live region has to be in the DOM BEFORE its text
+            changes, or the change is the region appearing and nothing is read.
+            Visually hidden because the swap is not news to anyone who can see
+            the card - they watched it happen. */}
+        {parts.length > 0 && (
+          <p className="visually-hidden" role="status">
+            {announced}
+          </p>
         )}
 
         {/* One line, up to three facts, separate elements: the mile stays

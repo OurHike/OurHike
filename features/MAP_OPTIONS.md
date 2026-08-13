@@ -290,7 +290,9 @@ Two properties are asserted rather than assumed, in both directions: nothing the
 
 **Extended by [UX_CUSTOMIZATION.md](UX_CUSTOMIZATION.md):** the compass in `NavigationControl` above gets a real reset-to-north behavior once auto-rotate exists, and the legend's job grows to also reflect that doc's `layer_detail_level` and `waypoint_types_shown` settings - same legend, same "read from schemes that already exist" principle, not a second one.
 
-**Extended again by [POI_VISIBILITY.md](POI_VISIBILITY.md) (2026-08-12):** the legend gains a second job this section did not anticipate, because it turns out to be the only surface that can do it. It counts what is in the viewport; the map draws a fraction of that and says nothing about the difference. Waypoint counts, the hide toggles and what the panel says below the pin floor all move there - this section keeps the legend as a piece of *chrome* (where it sits, what it is made of, that it reads from existing schemes) and stops owning what it says about density.
+**Extended again by [POI_VISIBILITY.md](POI_VISIBILITY.md) (2026-08-12, rewritten 2026-08-13):** the legend gains a second job this section did not anticipate, because it turns out to be the only surface that can do it. The hide toggles and what the panel says below the pin floor move there - this section keeps the legend as a piece of *chrome* (where it sits, what it is made of, that it reads from existing schemes) and stops owning what it says about density.
+
+The 2026-08-12 version of that doc also moved a *drop count* here - the legend saying how many waypoints in the viewport were not drawn. The rewrite retires it rather than relocating it: under two ranks a waypoint that loses a pin draws as a dot, so there is no difference between what is present and what is on screen for the legend to report. The legend's counts go back to meaning what they always looked like they meant.
 
 ## 6. Map appearance: style, mode, and detail (built 2026-08-07)
 

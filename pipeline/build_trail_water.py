@@ -215,10 +215,32 @@ REPORT_RADIUS_FT = 400.0
 # is deliberately tight (see there).
 MAX_GRADE = 0.15
 
-# Two intersection points closer than this are one crossing: NHD splits a
-# reach at confluences, so the trail meeting a stream once can be recorded
-# twice where a split happens to land on the trail.
-CROSSING_DEDUPE_M = 20.0
+# Two crossings closer than this are one crossing.
+#
+# The frame is A HIKER'S STOP, not a database's identity, and it had to be:
+# measured across the two hydrographies (2026-08-13), **not one OSM crossing
+# lands within 20 m of a USGS one** - 36 are within 30 m, 77 within 50 m, and
+# the median OSM crossing's nearest USGS neighbour is 363 m away. The cause
+# is well known: OSM's US streams largely descend from an old
+# medium-resolution NHD import while this reads the high-resolution
+# successor, so the same water is drawn tens of metres apart by two surveys
+# decades apart. There is no radius that means "the same feature" to both.
+#
+# What there is a radius for is the question a hiker asks. Two places the
+# trail meets water 50 m apart are one stop with one bottle, whether they are
+# one stream drawn twice or a stream and its tributary. At 50 m the corridor
+# publishes 1,117 crossings rather than 1,274, and 68 of them carry both
+# databases - which is where USGS's flow class reaches an OSM crossing that
+# had none.
+CROSSING_DEDUPE_M = 50.0
+
+# The same question for a site's water is a different question, and keeps the
+# tighter number. Both databases' nearest points are anchored to the same
+# shelter, so they converge on it rather than drifting apart - 25 of the 39
+# published points already merged at 20 m. Widening it here would start
+# folding a shelter's spring into the creek below it, which are two things a
+# hiker chooses between.
+SITE_WATER_MERGE_M = 20.0
 
 M_PER_FT = 0.3048
 M_PER_DEG_LAT = 111_132.0
@@ -471,10 +493,11 @@ def merge_stream_facts(kept: dict, other: dict) -> dict:
 def dedupe_crossings(crossings: list[dict]) -> list[dict]:
     """One pin per place the trail meets water.
 
-    By PROXIMITY rather than by way id, and that is the whole point: OSM
-    splits a stream wherever a tag changes, so one ford can be two ways
-    meeting the trail a metre apart, and a confluence beside the trail can
-    be three. A hiker walking through gets wet once.
+    By PROXIMITY rather than by identity, and across both databases at once:
+    OSM splits a stream wherever a tag changes, USGS splits a reach at every
+    confluence, and the two disagree about where the same water is by tens of
+    metres anyway (see CROSSING_DEDUPE_M for the measurement). A hiker
+    walking through gets wet once.
     """
     kept: list[dict] = []
     for crossing in sorted(crossings, key=lambda c: (c["lat"], c["lon"])):
@@ -558,7 +581,7 @@ def nearest_stream(lat: float, lon: float, candidates: list[dict]) -> dict | Non
     ranked = sorted(best_by_source.values(), key=lambda found: found["distance_m"])
     best = ranked[0]
     for other in ranked[1:]:
-        if distance_between(best["lat"], best["lon"], other["lat"], other["lon"]) <= CROSSING_DEDUPE_M:
+        if distance_between(best["lat"], best["lon"], other["lat"], other["lon"]) <= SITE_WATER_MERGE_M:
             best = merge_stream_facts(best, other)
     return best
 

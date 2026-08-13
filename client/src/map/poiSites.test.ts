@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { HIDEABLE_TYPES } from '../lib/waypointVisibility'
 import {
   SITE_MEMBER_TYPES,
   SITE_ROLE_ANCHOR,
@@ -6,6 +7,7 @@ import {
   composeSites,
   siteMembersKey,
   type SitePoint,
+  type SiteVisibility,
 } from './poiSites'
 
 // One pin per site (#524). What is asserted here is which points survive into
@@ -176,6 +178,174 @@ describe('composeSites', () => {
     const { membersFor } = composeSites([SHELTER, PRIVY, viewpoint])
 
     expect(membersFor.get(SHELTER.id)).toEqual(['privy'])
+  })
+})
+
+// What the legend's filters do to a site (#607). The rule under all of it:
+// a member is folded away only behind a pin that is ACTUALLY going to be drawn,
+// so a site whose anchor has been filtered off the map falls back to its
+// highest-priority drawn member rather than vanishing with it.
+describe('composeSites under the legend’s filters', () => {
+  const WATER = point({
+    id: 'atc_water_0421',
+    type: 'water',
+    siteId: 'site_0421',
+    siteRole: SITE_ROLE_MEMBER,
+  })
+
+  /** The hidden set the legend's "Only <type>" control actually writes -
+   *  lib/waypointVisibility.ts's `onlyType`, run through the real category list
+   *  rather than a hand-written set that could omit whatever gets added next. */
+  function only(type: string): SiteVisibility {
+    return { hiddenTypes: new Set(HIDEABLE_TYPES.filter((other) => other !== type)) }
+  }
+
+  function carriers(points: readonly SitePoint[], visibility: SiteVisibility): string[] {
+    return composeSites(points, visibility).drawn.map((p) => p.id)
+  }
+
+  it('gives a privy its own pin when the filter has hidden its shelter', () => {
+    // THE BUG, in one assertion. "Only Privy" is the two-tap answer to "where is
+    // the next privy", and it drew 32 of the trail's 316: the 284 that fold into
+    // a site were removed from the source here, and the shelters carrying them
+    // were removed by poiFilter one layer on. Neither pin reached the map.
+    expect(carriers([SHELTER, PRIVY, CAMPSITE], only('privy'))).toEqual([
+      'atc_privy_0421',
+    ])
+  })
+
+  it('does it for every member category, not only privies', () => {
+    // privy is the loudest case - 284 of 316 fold - but campsites fold at 144 of
+    // 232 and water is the one a hiker can least afford to lose. One rule, so a
+    // category cannot be fixed on the map and left broken under the filter.
+    const site = [SHELTER, PRIVY, CAMPSITE, WATER]
+
+    for (const type of SITE_MEMBER_TYPES) {
+      const drawn = composeSites(site, only(type)).drawn
+      expect(
+        drawn.map((p) => p.type),
+        type,
+      ).toEqual([type])
+    }
+  })
+
+  it('promotes by POI_PRIORITY, so water outranks campsite outranks privy', () => {
+    // The same safety ordering that decides collisions, asked the same question:
+    // of these, which does a hiker most need to see.
+    const site = [SHELTER, PRIVY, CAMPSITE, WATER]
+
+    expect(carriers(site, { hiddenTypes: new Set(['shelter']) })).toEqual([WATER.id])
+    expect(carriers(site, { hiddenTypes: new Set(['shelter', 'water']) })).toEqual([
+      CAMPSITE.id,
+    ])
+    expect(
+      carriers(site, { hiddenTypes: new Set(['shelter', 'water', 'campsite']) }),
+    ).toEqual([PRIVY.id])
+  })
+
+  it('still draws ONE pin for the site, not one per surviving member', () => {
+    // The correction that must not overshoot. Handing every drawn member its pin
+    // back puts a campsite and a privy 40 m apart in front of the collision
+    // engine, the campsite wins POI_PRIORITY and the privy disappears - which is
+    // the deletion this whole model exists to stop. Only WHICH point carries the
+    // pin changes.
+    const { drawn } = composeSites([SHELTER, PRIVY, CAMPSITE, WATER], {
+      hiddenTypes: new Set(['shelter']),
+    })
+
+    expect(drawn).toHaveLength(1)
+  })
+
+  it('lists the members still riding a promoted pin', () => {
+    const { drawn, membersFor } = composeSites([SHELTER, PRIVY, CAMPSITE], {
+      hiddenTypes: new Set(['shelter']),
+    })
+
+    expect(drawn.map((p) => p.id)).toEqual([CAMPSITE.id])
+    expect(membersFor.get(CAMPSITE.id)).toEqual(['privy'])
+  })
+
+  it('does not list a hidden member on the pin it rides', () => {
+    // Hide privies and a shelter pin keeping its privy glyph is the map saying
+    // "privy" on a screen where the hiker turned privies off - the legend and
+    // the map disagreeing, which poiLayers.ts's header comment makes a
+    // structural property of the one-layer design rather than a nicety.
+    const { drawn, membersFor } = composeSites([SHELTER, PRIVY, CAMPSITE], {
+      hiddenTypes: new Set(['privy']),
+    })
+
+    expect(drawn.map((p) => p.id)).toEqual([SHELTER.id])
+    expect(membersFor.get(SHELTER.id)).toEqual(['campsite'])
+  })
+
+  it('contributes exactly one feature when every part of the site is hidden', () => {
+    // Not zero: the style drops it, and one site producing one feature stays an
+    // invariant rather than becoming a case. What must not happen is a hidden
+    // MEMBER taking the pin and reappearing.
+    const { drawn } = composeSites([SHELTER, PRIVY, CAMPSITE], {
+      hiddenTypes: new Set(['shelter', 'privy', 'campsite']),
+    })
+
+    expect(drawn.map((p) => p.id)).toEqual([SHELTER.id])
+  })
+
+  it('takes an unverified anchor off the map without its verified privy', () => {
+    // The same hole through poiFilter's other clause. export_poi.py publishes
+    // low-confidence facilities, so an unverified anchor carrying a verified
+    // member is not hypothetical.
+    const unverified = point({
+      id: 'shelter_low',
+      type: 'shelter',
+      confidence: 'low',
+      siteId: 'site_low',
+      siteRole: SITE_ROLE_ANCHOR,
+    })
+    const verified = point({
+      id: 'privy_high',
+      type: 'privy',
+      siteId: 'site_low',
+      siteRole: SITE_ROLE_MEMBER,
+    })
+
+    const { drawn } = composeSites([unverified, verified], { verifiedOnly: true })
+
+    expect(drawn.map((p) => p.id)).toEqual(['privy_high'])
+  })
+
+  it('composes exactly as it did before when no filter is in force', () => {
+    // The default path is the one every hiker is on until they tap a row, and it
+    // must be the composition #524 shipped rather than a second code path that
+    // happens to agree today.
+    const site = [SHELTER, PRIVY, CAMPSITE, WATER]
+    const unfiltered = composeSites(site)
+
+    expect(unfiltered.drawn.map((p) => p.id)).toEqual([SHELTER.id])
+    expect(unfiltered.membersFor.get(SHELTER.id)).toEqual(['privy', 'water', 'campsite'])
+    expect(composeSites(site, {})).toEqual(unfiltered)
+  })
+
+  it('promotes the same member whatever order the points arrive in', () => {
+    // Two campsites are equally right to promote, so the tie is broken on id -
+    // otherwise the pin depends on the order IndexedDB handed the POIs back.
+    const second = point({
+      id: 'atc_campsite_0422',
+      type: 'campsite',
+      siteId: 'site_0421',
+      siteRole: SITE_ROLE_MEMBER,
+    })
+    const hiddenTypes = new Set(['shelter'])
+
+    const forwards = carriers([SHELTER, CAMPSITE, second], { hiddenTypes })
+    const backwards = carriers([second, CAMPSITE, SHELTER], { hiddenTypes })
+
+    expect(forwards).toEqual(backwards)
+  })
+
+  it('leaves a POI that is in no site alone whatever is hidden', () => {
+    const loose = point({ id: 'water_1188', type: 'water' })
+
+    expect(carriers([loose], only('water'))).toEqual(['water_1188'])
+    expect(carriers([loose], only('privy'))).toEqual(['water_1188'])
   })
 })
 

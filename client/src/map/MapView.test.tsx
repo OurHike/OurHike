@@ -435,6 +435,54 @@ describe('POI pins', () => {
     expect(map.filters.get(POI_LAYER_ID)).toEqual(poiFilter(new Set(['water'])))
   })
 
+  it('rebuilds the source when a legend tap hides a site’s anchor', () => {
+    // THE WIRING HALF OF #607, and a failure the other two files cannot see.
+    // composeSites can be perfectly right about which member carries the pin
+    // and the map still draws nothing, because the source is only pushed when
+    // `pois` changes - and tapping a legend row does not change `pois`. What
+    // this catches is exactly that missing effect dependency: a shelter hidden,
+    // and its privy never offered a pin to be filtered.
+    const site: MapPoint[] = [
+      {
+        id: 'shelter',
+        type: 'shelter',
+        lat: 39,
+        lon: -77,
+        confidence: 'high',
+        siteId: 'site_1',
+        siteRole: 'anchor',
+      },
+      {
+        id: 'privy',
+        type: 'privy',
+        lat: 39.0004,
+        lon: -77,
+        confidence: 'high',
+        siteId: 'site_1',
+        siteRole: 'member',
+      },
+    ]
+    const pinnedIds = (map: MockMap): unknown[] => {
+      const data = map.sourceData.get(POI_SOURCE_ID) as {
+        features: Array<{ id: unknown }>
+      }
+      return data.features.map((feature) => feature.id)
+    }
+
+    const { rerender } = render(
+      <MapView {...PROPS} pois={site} hiddenTypes={new Set()} />,
+    )
+    const [map] = MockMap.live
+    loadStyle(map)
+    // The precondition, asserted rather than assumed: the privy is folded away
+    // and the shelter's pin stands for both. That is #524 working.
+    expect(pinnedIds(map)).toEqual(['shelter'])
+
+    rerender(<MapView {...PROPS} pois={site} hiddenTypes={new Set(['shelter'])} />)
+
+    expect(pinnedIds(map)).toEqual(['privy'])
+  })
+
   it('takes POIs arriving after the map was built, which is the normal case', () => {
     // The map screen renders before the download finishes and before
     // IndexedDB has been read, so an empty first render is the rule rather

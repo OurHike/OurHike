@@ -181,6 +181,18 @@ A separate `sites.json` was considered and rejected: it would be a second fetch,
 
 The client groups by `site_id` on load. That is a `Map` build over ~2,800 records, once.
 
+**And the anchor's `description` names its parts** *(added 2026-08-13, [#614](https://github.com/OurHike/OurHike/issues/614))*. Folding a privy onto a shelter's pin took away the only place the privy described itself: `lib/poi_description.py` still composes "Multi-seat moldering privy. Built 2019." for it, attached to a feature that now draws nothing. So the anchor's own sentence carries them:
+
+> Two-storey clapboard shelter, sleeps 14, with a fireplace, a fire ring and a porch. Built 1915. **Nearby: a multi-seat moldering privy 40 m away, a group campsite 25 m and water 90 m.**
+
+**A separate sentence, never the `with` clause.** A shelter does not have a privy and a water source *inside* it — "with a fireplace and a porch" lists what the shelter has, and the parts are separate points a short walk away. Three rules fell out of writing it:
+
+- **Each part gets the adjectives that tell one from another, and not its whole card.** "a moldering privy", because §5's own question is *which* privy; not "8 tent pads", which lands a number directly against the distance and stops the sentence being readable. The counts stay on the part's own card, where the chips below reach them.
+- **Metres, whole ones, rounded exactly as the chips round them.** The same fact reading `40 m` on a chip and `131 ft` in the sentence above it is drift on one card.
+- **Ordered by the member order the pin and the chips use** — privy, water, campsite — not nearest-first, so the sentence, the footer strip and the chip row cannot disagree about which part comes first.
+
+This overlaps the chips below on type and distance, deliberately. The chip is a *control* — its job is to lead somewhere; the sentence is what a hiker skims before deciding whether to tap anything, and it is what a client built before the chips still shows.
+
 ### 4. On the map: one pin, carrying its composition
 
 A site draws **one pin, at the anchor's coordinates, in the anchor's accent and glyph.** A shelter still looks like a shelter; nothing about the existing icon work is discarded. Members draw no pin of their own.

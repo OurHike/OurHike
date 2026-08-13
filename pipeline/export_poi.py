@@ -101,6 +101,19 @@ in, since that half is a person's prose and the rest is assembled from
 columns. Which types compose one is DESCRIBERS below; water and resupply do
 not, having no inventory behind them.
 
+A site's anchor also names the parts around it and how far each one is (#614):
+
+    "Two-storey clapboard shelter, sleeps 14, with a fireplace, a fire ring
+     and a porch. Built 1915. Nearby: a multi-seat moldering privy 40 m away,
+     a group campsite 25 m and water 90 m."
+
+A separate sentence, never folded into the "with" clause - a shelter does not
+have a privy and a water source inside it, and the parts are separate points a
+short walk away. It exists because the site grouping below took those points
+off the map: they still compose perfectly good sentences of their own, attached
+to features that draw no pin, and until #526 reaches them from the anchor's
+card this clause is the only place they are mentioned.
+
 Photo enrichment: when fetch_poi_images.py has run, data/raw/poi_images.json
 holds per-POI photo records (Wikimedia Commons; author, licence, capture date
 and the digest of the downloaded image) keyed by the same unified ids this
@@ -131,7 +144,9 @@ it does today.
 The cost, stated where the code is rather than only in the design doc: a wrong
 grouping is baked into the artifacts and a hiker cannot undo it. The rule needs
 name agreement AND proximity for exactly that reason - see lib/poi_sites.py for
-what each gate is holding up, and what a name-only rule ships.
+what each gate is holding up, and what a name-only rule ships. Since #614 that
+cost is louder rather than quieter: a mis-grouped privy is now named in prose
+on the wrong shelter's card, where before it was only a pin that went missing.
 """
 
 import hashlib
@@ -145,9 +160,17 @@ from lib.atc_notes import clean_note
 from lib.completeness import count_problems, fail_if_incomplete
 from lib.corridor import build_corridor
 from lib.photo_store import photo_key
-from lib.poi_description import describe_campsite, describe_parking, describe_privy, describe_shelter, describe_viewpoint
+from lib.poi_description import (
+    describe_campsite,
+    describe_parking,
+    describe_privy,
+    describe_shelter,
+    describe_viewpoint,
+    nearby_clause,
+)
 from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES, poi_output_name, unify_poi
-from lib.poi_sites import group_sites, site_properties
+from lib.poi_sites import ROLE_ANCHOR, ROLE_MEMBER, group_sites, site_properties
+from lib.spurs import distance_m
 
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
@@ -201,7 +224,10 @@ POI_COLUMNS = (
     # shelters nobody has published a usable number for.
     ("capacity", "INTEGER"),
     # One sentence about the place, composed from ATC's own inventory by
-    # lib/poi_description.py. Shelters and campsites only; NULL elsewhere.
+    # lib/poi_description.py - every ATC facility layer, which is DESCRIBERS
+    # below; NULL on water and resupply, which have no inventory to compose
+    # from. On a site's anchor it carries a second sentence naming the parts
+    # around it and how far each one is (#614).
     ("description", "VARCHAR"),
     ("photo_key", "VARCHAR"),
     ("photo_page_url", "VARCHAR"),
@@ -351,16 +377,18 @@ def attach_capacity(records: list[dict], capacities: dict[str, int]) -> int:
 # opentrail.org and ATC's Communities layer, neither of which carries an
 # inventory to compose from.
 #
-# One signature - (properties, capacity, note) - so the dispatch is a lookup
-# rather than a chain of branches. Only the shelter needs the capacity, and it
-# is not ATC's number (reference/shelter_capacity.json), which is why it is
-# passed rather than read from the properties.
+# One signature - (properties, capacity, note, nearby) - so the dispatch is a
+# lookup rather than a chain of branches. Only the shelter needs the capacity,
+# and it is not ATC's number (reference/shelter_capacity.json), which is why it
+# is passed rather than read from the properties. Only the two ANCHOR_TYPES take
+# `nearby`, because only they can have parts to name; the lambdas absorb the
+# difference, which is what they are here for.
 DESCRIBERS = {
-    "shelter": lambda properties, capacity, note: describe_shelter(properties, capacity, note),
-    "campsite": lambda properties, _capacity, note: describe_campsite(properties, note),
-    "viewpoint": lambda properties, _capacity, note: describe_viewpoint(properties, note),
-    "parking": lambda properties, _capacity, note: describe_parking(properties, note),
-    "privy": lambda properties, _capacity, note: describe_privy(properties, note),
+    "shelter": lambda properties, capacity, note, nearby: describe_shelter(properties, capacity, note, nearby),
+    "campsite": lambda properties, _capacity, note, nearby: describe_campsite(properties, note, nearby),
+    "viewpoint": lambda properties, _capacity, note, _nearby: describe_viewpoint(properties, note),
+    "parking": lambda properties, _capacity, note, _nearby: describe_parking(properties, note),
+    "privy": lambda properties, _capacity, note, _nearby: describe_privy(properties, note),
 }
 
 
@@ -386,6 +414,26 @@ def attach_sites(records: list[dict]) -> tuple[int, int]:
     return len(sites), sum(len(site.members) for site in sites)
 
 
+def site_members(records: list[dict]) -> dict[str, list[dict]]:
+    """Site id -> the records riding that site's anchor.
+
+    Read back off the three properties attach_sites already published rather
+    than threaded through from the Site objects, and that is the point of doing
+    it this way: `site_id` and `site_role` are the interface the client reads,
+    so a sentence composed from them cannot describe a grouping different from
+    the one the map draws. It also leaves attach_sites' signature alone.
+
+    Empty when attach_sites has not run, which is how a caller that only wants
+    descriptions - and every test written before sites existed - still gets
+    exactly the sentences it got before.
+    """
+    members: dict[str, list[dict]] = {}
+    for record in records:
+        if record.get("site_role") == ROLE_MEMBER and record.get("site_id"):
+            members.setdefault(record["site_id"], []).append(record)
+    return members
+
+
 def attach_descriptions(records: list[dict]) -> int:
     """Compose `description` for every POI type that has one, returning how
     many got one.
@@ -394,14 +442,36 @@ def attach_descriptions(records: list[dict]) -> int:
     shelter sentence and the number is not ATC's - it comes from
     reference/shelter_capacity.json. A shelter with no capacity gets the
     same sentence without that clause rather than a gap.
+
+    And after attach_sites (#614), because an anchor's sentence names the parts
+    around it and how far each one is. Since #524 those parts draw no pin of
+    their own, so until #526's chips land this sentence is the only place the
+    privy at a shelter is mentioned at all. Run without attach_sites, nothing
+    here is reachable and every sentence is what it was before.
     """
+    members_by_site = site_members(records)
     attached = 0
     for record in records:
         describe = DESCRIBERS.get(record["poi_type"])
         if describe is None:
             continue
         properties = record.get(RAW_PROPERTIES_KEY) or {}
-        description = describe(properties, record.get("capacity"), clean_note(properties.get(ATC_NOTE_FIELD)))
+        nearby = ""
+        if record.get("site_role") == ROLE_ANCHOR:
+            nearby = nearby_clause(
+                [
+                    # Measured from the anchor, which is the one point of this
+                    # site a hiker can see - it is the only pin drawn - and so
+                    # the only place the distance is a distance from.
+                    (
+                        member["poi_type"],
+                        distance_m(record["lat"], record["lon"], member["lat"], member["lon"]),
+                        member.get(RAW_PROPERTIES_KEY) or {},
+                    )
+                    for member in members_by_site.get(record["site_id"], ())
+                ]
+            )
+        description = describe(properties, record.get("capacity"), clean_note(properties.get(ATC_NOTE_FIELD)), nearby)
         if description is None:
             continue
         record["description"] = description

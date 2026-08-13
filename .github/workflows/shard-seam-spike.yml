@@ -168,7 +168,7 @@ jobs:
       # precisely the run where having the bytes next time matters most.
       - name: Restore Planetiler's profile sources
         id: sources
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: pipeline/data/sources
           key: planetiler-profile-sources-v1
@@ -200,7 +200,7 @@ jobs:
       - name: Save Planetiler's profile sources
         if: always() && steps.sources.outputs.cache-hit != 'true'
         continue-on-error: true
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: pipeline/data/sources
           key: planetiler-profile-sources-v1

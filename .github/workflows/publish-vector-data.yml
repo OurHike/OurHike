@@ -152,7 +152,7 @@ jobs:
       - name: Restore POI photo cache
         if: inputs.include_photos
         id: photo-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: |
             pipeline/data/raw/poi_photos
@@ -195,7 +195,7 @@ jobs:
       # path saves through the same line.
       - name: Save POI photo cache
         if: always() && inputs.include_photos
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: |
             pipeline/data/raw/poi_photos

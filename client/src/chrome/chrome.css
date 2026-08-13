@@ -725,6 +725,29 @@
   grid-column: 1 / -1;
 }
 
+/* The way to every ATC notice (#687, Legend.tsx). Same footer-link treatment
+   as .downloads-link just below and for the same reasoning - a hiker reads
+   the rows above constantly and browses every trail update rarely, now that
+   what is actually new has its own bottom banner on the map screen - but its
+   own class rather than sharing that one, because the two rows answer
+   different questions for different reasons and a shared class would read as
+   a claim that they are the same errand. */
+.legend__atc-link {
+  display: block;
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+  margin-top: var(--space-4, 16px);
+  padding: var(--space-3, 12px) 0 0;
+  border: 0;
+  border-top: 1px solid var(--border-1);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--brand-primary);
+  background: none;
+  cursor: pointer;
+}
+
 /* Everything about the downloaded map, in one block at the foot of the panel:
    the background choice and the way to the download (Legend.tsx says why they
    belong together). It exists to be moved as one thing - on a desktop the whole
@@ -1770,41 +1793,64 @@ a.poi-card__credit::after {
   font-weight: 400;
 }
 
-/* The row that opens every ATC notice.
+/* The bottom "something changed" banner (#687), replacing what used to be a
+ * permanent row under the alert strip above. That row rendered whenever the
+ * app held any ATC notice at all - which given ATC almost always has
+ * something live was almost always, so a hiker paid map height for it on
+ * every visit rather than the times it actually had news. Browsing
+ * everything regardless of age moved to a quiet, permanent link in the
+ * legend instead (.legend__atc-link) - this is only for a notice ATC has
+ * touched in the last 72 hours that the hiker has not already silenced
+ * (lib/atcAlertsBanner.ts), so most visits to this screen render nothing
+ * here at all.
  *
- * Directly under the alert strip and sharing its tint, so the two read as one
- * band of trail-safety chrome rather than as an alert with an unrelated control
- * stuck beneath it. Quieter than the alert rows in weight - it is a way to
- * something, not a thing happening - and NOT quieter in hue, for the reason
- * .map-screen__alert--advisory gives about spending contrast to signal
- * hierarchy.
+ * At the FOOT of the main column rather than under the header, which is the
+ * whole point: it costs map height only while it has something to say,
+ * instead of on every visit. And in flow rather than floated over the
+ * canvas - a floating card would have to dodge the locate/compass stack and
+ * the credit strip sharing that corner, by hand-tuned offsets that drift the
+ * moment either changes size, where a row in flow needs none of that on a
+ * phone or the desktop sidebar layout alike.
  *
- * The alert strip keeps its own bottom rule, so when both render there is a
- * hairline between them. That is wanted rather than tolerated: "a closure two
- * miles ahead" and "here is where you can read all nine notices" are different
- * kinds of statement, and the line is what says the second is not a fourth
- * alert. When the strip is absent this row carries the band's bottom edge on
- * its own, which is why the rule is declared on both.
- *
- * Full width and one touch target tall, because it is above the map and will be
- * pressed with a thumb, in gloves, by someone walking. */
-.map-screen__notices {
+ * Same --danger tint as the alert strip - this is still ATC saying something
+ * about the trail, not a generic app notification - but `aria-live="polite"`
+ * rather than `role="alert"` (assertive) or `role="status"` in the markup:
+ * StatusStrip.tsx already owns `role="status"` for connectivity and sync
+ * age, and "something is new" does not need `role="alert"`'s interrupt
+ * either. */
+.map-screen__new-alerts {
   display: flex;
-  padding: 0 var(--space-3, 12px) var(--space-2, 8px);
+  align-items: stretch;
+  gap: var(--space-2, 8px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
   background: color-mix(in srgb, var(--danger) 10%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
 }
 
-.map-screen__notices-button {
+.map-screen__new-alerts-button {
   flex: 1;
   min-height: var(--min-touch-target, 44px);
   padding: 0 var(--space-2, 8px);
   font-size: 13px;
-  font-weight: 400;
+  font-weight: 600;
   text-align: left;
   color: var(--danger);
   background: none;
   border: none;
-  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* The quick "not now" beside it - silences without opening the list, for a
+ * hiker who saw enough in the one line the button itself carries. Its own
+ * touch target rather than a corner glyph shrunk to fit, for the reason
+ * every other icon-only control in this stylesheet already gives
+ * (.legend__close and friends): a cold thumb still has to land on it. */
+.map-screen__new-alerts-silence {
+  min-width: var(--min-touch-target, 44px);
+  min-height: var(--min-touch-target, 44px);
+  font-size: 18px;
+  color: var(--danger);
+  background: none;
+  border: none;
   cursor: pointer;
 }

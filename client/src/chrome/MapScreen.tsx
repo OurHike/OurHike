@@ -123,8 +123,10 @@ export interface MapScreenProps {
    *  whose notice a band belongs to. */
   atcUpdateSheet?: ReactNode
   /**
-   * How many ATC notices the app is holding, for the button that opens all of
-   * them. Zero, or the shell not passing it, renders no button.
+   * How many ATC notices the app is holding, for the Legend row that opens
+   * all of them (#687 - it used to be a permanent button on this screen; see
+   * `newAtcAlertCount` below for what replaced it here). Zero, or the shell
+   * not passing it, renders no row.
    *
    * A COUNT RATHER THAN THE NOTICES. This component does not need to read one,
    * and handing it the array would make it the second place that knows how an
@@ -133,10 +135,27 @@ export interface MapScreenProps {
    * built, exactly as `atcUpdateSheet` does.
    */
   atcNoticeCount?: number
-  /** Opens that list. */
+  /** Opens that list - from the Legend row and from the bottom banner below,
+   *  both of which are simply "a hiker asked to see it". */
   onOpenAtcNotices?: () => void
   /** The full list of ATC notices, or null when it is closed. */
   atcNoticeList?: ReactNode
+  /**
+   * How many ATC notices this screen is holding that ATC touched in the last
+   * 72 hours and the hiker has not already silenced (lib/atcAlertsBanner.ts,
+   * #687). Zero, or the shell not passing it, renders no banner.
+   *
+   * Deliberately not derived from `atcNoticeCount` above - that is every
+   * notice the app holds, drawn or not, and this is the much narrower
+   * "something changed recently" question the bottom banner exists to
+   * answer. The two can and usually do disagree: most visits hold several
+   * notices and none of them new.
+   */
+  newAtcAlertCount?: number
+  /** Silences the bottom banner without opening the list - the quick "not
+   *  now" beside `onOpenAtcNotices`'s "show me". Omitted, no silence control
+   *  is drawn. */
+  onSilenceNewAtcAlerts?: () => void
   warnings?: readonly WarningPoint[]
 
   activeTab: TabId
@@ -337,6 +356,8 @@ export function MapScreen({
   atcNoticeCount = 0,
   onOpenAtcNotices,
   atcNoticeList,
+  newAtcAlertCount = 0,
+  onSilenceNewAtcAlerts,
   warnings,
   activeTab,
   onSelectTab,
@@ -467,36 +488,6 @@ export function MapScreen({
           </div>
         )}
 
-        {/* The way to everything the ATC said, and deliberately OUTSIDE the
-            alert region above rather than a fourth row inside it.
-
-            Two reasons, and both are about what `role="alert"` means. It is a
-            live region: a screen reader announces its contents when they
-            change, which is right for three lines that appear because
-            something is ahead and wrong for a control that is simply always
-            there - every change to a sibling row would re-announce it. And it
-            is reserved for what changes what a hiker does NEXT; this button
-            changes nothing, it only opens something.
-
-            Rendered whenever the app holds any notices, including when no
-            banner line is showing at all. That is the case it exists for: an
-            update behind the hiker, or one that obstructs nothing, produces no
-            banner and no map mark, and before this had no surface whatsoever
-            (chrome/AtcNoticeList.tsx opens with the full accounting). */}
-        {atcNoticeCount > 0 && onOpenAtcNotices !== undefined && (
-          <div className="map-screen__notices">
-            <button
-              type="button"
-              className="map-screen__notices-button"
-              onClick={onOpenAtcNotices}
-            >
-              {atcNoticeCount === 1
-                ? 'Read the 1 ATC trail update'
-                : `Read all ${atcNoticeCount} ATC trail updates`}
-            </button>
-          </div>
-        )}
-
         <Header
           trailName={trailName}
           trailLogo={trailLogo}
@@ -613,8 +604,56 @@ export function MapScreen({
             onOpenDownloads={onOpenDownloads}
             hasDownload={hasDownload}
             downloadActivity={downloadActivity}
+            atcNoticeCount={atcNoticeCount}
+            onOpenAtcNotices={onOpenAtcNotices}
           />
         </div>
+
+        {/* "Something changed" rather than "here is everything" - the row
+            that used to sit under the alert strip and answer the second
+            question moved into the legend above, permanently reachable and
+            no longer costing every visit map height for it (#687). This one
+            answers only the first, and answers it far less often: it renders
+            solely while ATC has touched a live notice in the last 72 hours
+            and the hiker has not already silenced it
+            (lib/atcAlertsBanner.ts).
+
+            At the FOOT of the main column instead - `aria-live="polite"`
+            rather than `role="alert"` (assertive) or `role="status"`: the
+            status strip above already owns that role for connectivity and
+            sync age (StatusStrip.tsx), and a second region claiming it would
+            make "the status region" ambiguous to a screen reader and to
+            `getByRole('status')` alike. Polite announcement is the part this
+            banner actually wants - "something is new" is not "something
+            changes what you do next", so it does not need `role="alert"`'s
+            interrupt either. Bottom rather than a float over the canvas: a
+            floating card would have to dodge the locate/compass stack and
+            the credit strip sharing that corner, by hand-tuned offsets that
+            drift the moment either changes size. A row in flow needs none of
+            that, on a phone or the desktop sidebar layout alike. */}
+        {newAtcAlertCount > 0 && onOpenAtcNotices !== undefined && (
+          <div className="map-screen__new-alerts" aria-live="polite">
+            <button
+              type="button"
+              className="map-screen__new-alerts-button"
+              onClick={onOpenAtcNotices}
+            >
+              {newAtcAlertCount === 1
+                ? 'ATC · New alert issued'
+                : `ATC · ${newAtcAlertCount} new alerts issued`}
+            </button>
+            {onSilenceNewAtcAlerts !== undefined && (
+              <button
+                type="button"
+                className="map-screen__new-alerts-silence"
+                onClick={onSilenceNewAtcAlerts}
+              >
+                <span className="visually-hidden">Silence new ATC alerts</span>
+                <span aria-hidden="true">×</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <TabBar active={activeTab} onSelect={onSelectTab} />

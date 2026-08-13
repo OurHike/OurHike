@@ -583,59 +583,53 @@ describe('MapScreen safety overlays', () => {
   })
 })
 
-describe('the way to every ATC notice', () => {
-  // The button is the only route to an update that has no banner line and no
-  // mark on the map - one behind the hiker, or one over the band ceiling. So
-  // what matters about it is that it does NOT depend on either of those.
+describe('the way to every ATC notice, from the legend (#687)', () => {
+  // This used to be a permanent button on this screen. It moved into the
+  // legend - chrome/Legend.test.tsx covers the row itself, so what matters
+  // here is only that MapScreen hands the count and the handler on honestly.
 
   it('is not there when the app holds no ATC notices', () => {
-    render(<MapScreen {...PROPS} />)
+    render(<MapScreen {...PROPS} legendOpen />)
 
     expect(screen.queryByRole('button', { name: /ATC trail update/ })).toBe(null)
   })
 
-  it('appears whenever there are notices, banner or no banner', () => {
-    render(<MapScreen {...PROPS} atcNoticeCount={6} onOpenAtcNotices={vi.fn()} />)
+  it('reaches the legend once open', () => {
+    render(
+      <MapScreen {...PROPS} legendOpen atcNoticeCount={6} onOpenAtcNotices={vi.fn()} />,
+    )
 
-    expect(screen.queryByRole('alert')).toBe(null)
+    const legend = screen.getByRole('dialog', { name: /legend/i })
     expect(
-      screen.getByRole('button', { name: 'Read all 6 ATC trail updates' }),
+      within(legend).getByRole('button', { name: 'Read all 6 ATC trail updates' }),
     ).toBeInTheDocument()
   })
 
   it('counts one notice without pluralising it', () => {
-    render(<MapScreen {...PROPS} atcNoticeCount={1} onOpenAtcNotices={vi.fn()} />)
+    render(
+      <MapScreen {...PROPS} legendOpen atcNoticeCount={1} onOpenAtcNotices={vi.fn()} />,
+    )
 
+    const legend = screen.getByRole('dialog', { name: /legend/i })
     expect(
-      screen.getByRole('button', { name: 'Read the 1 ATC trail update' }),
+      within(legend).getByRole('button', { name: 'Read the 1 ATC trail update' }),
     ).toBeInTheDocument()
   })
 
   it('reports the tap up to the shell, which owns whether the list is open', async () => {
     const onOpenAtcNotices = vi.fn()
     render(
-      <MapScreen {...PROPS} atcNoticeCount={6} onOpenAtcNotices={onOpenAtcNotices} />,
+      <MapScreen
+        {...PROPS}
+        legendOpen
+        atcNoticeCount={6}
+        onOpenAtcNotices={onOpenAtcNotices}
+      />,
     )
 
     await userEvent.click(screen.getByRole('button', { name: /ATC trail updates/ }))
 
     expect(onOpenAtcNotices).toHaveBeenCalledTimes(1)
-  })
-
-  it('keeps the button out of the alert region', () => {
-    // `role="alert"` is a live region announced on change, and it is reserved
-    // for what changes what a hiker does next. A permanent control inside it
-    // would be re-announced every time a closure row came or went.
-    render(
-      <MapScreen
-        {...PROPS}
-        closureAhead="Trail closed 5.0 mi ahead · Storm damage"
-        atcNoticeCount={6}
-        onOpenAtcNotices={vi.fn()}
-      />,
-    )
-
-    expect(within(screen.getByRole('alert')).queryByRole('button')).toBe(null)
   })
 
   it('renders the list the shell hands it, over the canvas', () => {
@@ -655,5 +649,93 @@ describe('the way to every ATC notice', () => {
     render(<MapScreen {...PROPS} atcNoticeCount={6} onOpenAtcNotices={vi.fn()} />)
 
     expect(screen.queryByTestId('atc-notice-list')).toBe(null)
+  })
+})
+
+describe('the bottom banner for new ATC alerts (#687)', () => {
+  // Independent of atcNoticeCount above - a screen can hold six notices and
+  // none of them new, which is the ordinary case now that the 72-hour gate
+  // lives in lib/atcAlertsBanner.ts rather than here. MapScreen only renders
+  // what it is told; the gate itself is that module's own test.
+
+  it('is not there when nothing is new', () => {
+    render(<MapScreen {...PROPS} atcNoticeCount={6} onOpenAtcNotices={vi.fn()} />)
+
+    expect(screen.queryByRole('button', { name: /new alerts? issued/i })).toBe(null)
+  })
+
+  it('appears once something is, outside any legend or notice-count prop', () => {
+    render(<MapScreen {...PROPS} newAtcAlertCount={2} onOpenAtcNotices={vi.fn()} />)
+
+    expect(
+      screen.getByRole('button', { name: 'ATC · 2 new alerts issued' }),
+    ).toBeInTheDocument()
+  })
+
+  it('counts one alert without pluralising it', () => {
+    render(<MapScreen {...PROPS} newAtcAlertCount={1} onOpenAtcNotices={vi.fn()} />)
+
+    expect(
+      screen.getByRole('button', { name: 'ATC · New alert issued' }),
+    ).toBeInTheDocument()
+  })
+
+  it('opens the same list a tap on the legend row would', async () => {
+    const onOpenAtcNotices = vi.fn()
+    render(
+      <MapScreen {...PROPS} newAtcAlertCount={2} onOpenAtcNotices={onOpenAtcNotices} />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /new alerts issued/ }))
+
+    expect(onOpenAtcNotices).toHaveBeenCalledTimes(1)
+  })
+
+  it('offers a silence control that does not also open the list', async () => {
+    const onOpenAtcNotices = vi.fn()
+    const onSilenceNewAtcAlerts = vi.fn()
+    render(
+      <MapScreen
+        {...PROPS}
+        newAtcAlertCount={2}
+        onOpenAtcNotices={onOpenAtcNotices}
+        onSilenceNewAtcAlerts={onSilenceNewAtcAlerts}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Silence new ATC alerts' }))
+
+    expect(onSilenceNewAtcAlerts).toHaveBeenCalledTimes(1)
+    expect(onOpenAtcNotices).not.toHaveBeenCalled()
+  })
+
+  it('omits the silence control when the shell offers none', () => {
+    render(<MapScreen {...PROPS} newAtcAlertCount={2} onOpenAtcNotices={vi.fn()} />)
+
+    expect(screen.queryByRole('button', { name: /silence/i })).toBe(null)
+  })
+
+  it('is announced politely rather than as a live safety alert', () => {
+    // role="alert" is reserved for what changes what a hiker does next - the
+    // strip above the header (#232), which already keeps that role to
+    // itself and gets no button inside it. This banner is announced instead
+    // through aria-live="polite", not role="status" - StatusStrip.tsx (the
+    // "Offline" flag, sync age) already owns that role on this same screen,
+    // and a second region claiming it would make "the status region"
+    // ambiguous to a screen reader and to a role query alike.
+    const { container } = render(
+      <MapScreen
+        {...PROPS}
+        closureAhead="Trail closed 5.0 mi ahead · Storm damage"
+        newAtcAlertCount={2}
+        onOpenAtcNotices={vi.fn()}
+      />,
+    )
+
+    expect(within(screen.getByRole('alert')).queryByRole('button')).toBe(null)
+    expect(container.querySelector('.map-screen__new-alerts')).toHaveAttribute(
+      'aria-live',
+      'polite',
+    )
   })
 })

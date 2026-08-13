@@ -548,6 +548,69 @@ describe('legend as a persistent panel', () => {
   })
 })
 
+describe('the way to every ATC notice (#687)', () => {
+  // Moved here from a permanent button across the top of the map screen -
+  // chrome/MapScreen.test.tsx now only covers that the hand-off happens;
+  // this is the row itself.
+
+  it('is not there when the app holds no ATC notices', () => {
+    render(<Legend {...PROPS} onOpenAtcNotices={vi.fn()} />)
+
+    expect(screen.queryByRole('button', { name: /ATC trail update/ })).toBeNull()
+  })
+
+  it('draws no such row where the shell offers no handler', () => {
+    render(<Legend {...PROPS} atcNoticeCount={6} />)
+
+    expect(screen.queryByRole('button', { name: /ATC trail update/ })).toBeNull()
+  })
+
+  it('names every notice it holds', () => {
+    render(<Legend {...PROPS} atcNoticeCount={6} onOpenAtcNotices={vi.fn()} />)
+
+    expect(
+      screen.getByRole('button', { name: 'Read all 6 ATC trail updates' }),
+    ).toBeInTheDocument()
+  })
+
+  it('counts one notice without pluralising it', () => {
+    render(<Legend {...PROPS} atcNoticeCount={1} onOpenAtcNotices={vi.fn()} />)
+
+    expect(
+      screen.getByRole('button', { name: 'Read the 1 ATC trail update' }),
+    ).toBeInTheDocument()
+  })
+
+  it('reports the tap up to the shell', async () => {
+    const onOpenAtcNotices = vi.fn()
+    render(<Legend {...PROPS} atcNoticeCount={6} onOpenAtcNotices={onOpenAtcNotices} />)
+
+    await userEvent.click(screen.getByRole('button', { name: /ATC trail updates/ }))
+
+    expect(onOpenAtcNotices).toHaveBeenCalledTimes(1)
+  })
+
+  it('sits above the downloaded-map block, not inside it', () => {
+    // Trail-content-adjacent, not a download errand - #687 is explicit that
+    // conflating the two is what this replaced.
+    const { container } = render(
+      <Legend
+        {...PROPS}
+        atcNoticeCount={6}
+        onOpenAtcNotices={vi.fn()}
+        onOpenDownloads={vi.fn()}
+      />,
+    )
+
+    const atcLink = screen.getByRole('button', { name: /ATC trail updates/ })
+    const foot = container.querySelector('.legend__downloads')
+    expect(foot).not.toBeNull()
+    expect(atcLink.compareDocumentPosition(foot as HTMLElement)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+  })
+})
+
 // Showing one category alone, and the stored preference behind it (#530). The
 // control is what makes `waypoint_types_shown` worth wiring rather than tidy:
 // hiding a category hands its collision budget to the ones left, so at a crowded

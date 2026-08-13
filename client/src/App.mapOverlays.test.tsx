@@ -268,13 +268,20 @@ function serveAtcUpdates(updates: unknown[]): void {
 }
 
 describe('every ATC notice is readable, drawn or not', () => {
+  // #687 moved the way to open this list from a permanent button on the map
+  // screen into the legend, so every test below opens the legend first - the
+  // list itself, and what it shows once open, are otherwise unchanged.
+
   it('offers a way to read all of them as soon as any arrive', async () => {
     serveAtcUpdates([UNDRAWN_UPDATE, DRAWN_UPDATE])
     await renderApp()
 
     // No fix and no direction in this harness, so there is no banner at all -
-    // which is exactly the state the button has to survive.
+    // which is exactly the state the legend row has to survive.
     expect(screen.queryByRole('alert')).toBe(null)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Legend' }))
+
     expect(
       await screen.findByRole('button', { name: 'Read all 2 ATC trail updates' }),
     ).toBeInTheDocument()
@@ -284,6 +291,7 @@ describe('every ATC notice is readable, drawn or not', () => {
     serveAtcUpdates([UNDRAWN_UPDATE, DRAWN_UPDATE])
     await renderApp()
 
+    await userEvent.click(await screen.findByRole('button', { name: 'Legend' }))
     await userEvent.click(
       await screen.findByRole('button', { name: /ATC trail updates/ }),
     )
@@ -305,6 +313,7 @@ describe('every ATC notice is readable, drawn or not', () => {
     serveAtcUpdates([UNDRAWN_UPDATE, DRAWN_UPDATE])
     await renderApp()
 
+    await userEvent.click(await screen.findByRole('button', { name: 'Legend' }))
     await userEvent.click(
       await screen.findByRole('button', { name: /ATC trail updates/ }),
     )
@@ -331,8 +340,78 @@ describe('every ATC notice is readable, drawn or not', () => {
     )
     await renderApp()
 
+    await userEvent.click(await screen.findByRole('button', { name: 'Legend' }))
+
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: /ATC trail update/ })).toBe(null)
     })
+  })
+})
+
+describe('the bottom banner for new ATC alerts, end to end (#687)', () => {
+  // chrome/MapScreen.test.tsx and lib/atcAlertsBanner.test.ts cover the
+  // banner's own rendering and the 72-hour gate in isolation. What only this
+  // file can catch is the wiring between them: App.tsx's real clock
+  // (lib/useClock.ts) and the real localStorage watermark actually meeting
+  // what the shell fetched.
+
+  function recentUpdate() {
+    // An hour old, which is comfortably inside the 72-hour window without
+    // touching its boundary - the exact edge is lib/atcAlertsBanner.test.ts's
+    // job, under a frozen clock where "exact" is possible.
+    return {
+      ...DRAWN_UPDATE,
+      updated_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    }
+  }
+
+  it('appears once ATC has posted something in the last 72 hours', async () => {
+    serveAtcUpdates([UNDRAWN_UPDATE, recentUpdate()])
+    await renderApp()
+
+    expect(
+      await screen.findByRole('button', { name: 'ATC · New alert issued' }),
+    ).toBeInTheDocument()
+  })
+
+  it('stays quiet when everything ATC holds is old news', async () => {
+    // UNDRAWN_UPDATE and DRAWN_UPDATE's own dates (2026-06-02, 2026-07-31)
+    // are what most of this describe block already renders against - this
+    // pins that the banner agrees with the legend row about what "old" means.
+    serveAtcUpdates([UNDRAWN_UPDATE, DRAWN_UPDATE])
+    await renderApp()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Legend' }))
+    await screen.findByRole('button', { name: 'Read all 2 ATC trail updates' })
+
+    expect(screen.queryByRole('button', { name: /new alerts? issued/i })).toBe(null)
+  })
+
+  it('silences on its own, without opening the full list', async () => {
+    serveAtcUpdates([recentUpdate()])
+    await renderApp()
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Silence new ATC alerts' }),
+    )
+
+    expect(screen.queryByRole('button', { name: /new alerts? issued/i })).toBe(null)
+    expect(screen.queryByRole('dialog', { name: /Appalachian Trail Conservancy/ })).toBe(
+      null,
+    )
+  })
+
+  it('is also silenced by reading the full list instead', async () => {
+    serveAtcUpdates([recentUpdate()])
+    await renderApp()
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'ATC · New alert issued' }),
+    )
+
+    expect(screen.queryByRole('button', { name: /new alerts? issued/i })).toBe(null)
+    expect(
+      screen.getByRole('dialog', { name: /Appalachian Trail Conservancy/ }),
+    ).toBeInTheDocument()
   })
 })

@@ -297,6 +297,40 @@ def test_a_publish_that_changes_nothing_writes_no_release(s3_client, artifacts):
     assert releases.index_ids(read_json(s3_client, releases.RELEASE_INDEX_KEY)) == [first["release"]]
 
 
+def test_a_conditions_only_change_moves_the_pointer_and_freezes_nothing(s3_client, artifacts, tmp_path):
+    """The daily bake stamps generated_at into its bytes, so its sha moves
+    even when no closure changed - which means publish() cannot rely on "no
+    uploads" alone to skip the folder. Before #646, every daily conditions
+    run therefore copied every frozen artifact into a new byte-identical
+    folder: one per environment per day, an index entry per day, and no
+    prune job anywhere. A run whose only uploads are excluded names now
+    freezes nothing - the pointer still moves, and keeps naming the last
+    real release, because those are still the bytes the folders hold."""
+    first = publish.publish(artifacts, s3_client=s3_client, bucket=BUCKET)
+    folders_before = keys_under(s3_client, "releases/")
+
+    closures = tmp_path / "closures.json"
+    closures.write_text('{"closures": [], "generated_at": "2026-08-13T08:40:00+00:00"}')
+    second = publish.publish(
+        {**artifacts, "conditions/closures.json": {"path": str(closures), "sha256": publish.sha256_file(closures)}},
+        s3_client=s3_client,
+        bucket=BUCKET,
+    )
+
+    # The pointer moved - fresh conditions hashes are the point of the bake -
+    assert second["version_written"] is True
+    pointer = read_json(s3_client, "latest.json")
+    assert pointer["version"] == second["version"]
+    assert pointer["artifacts"]["conditions/closures.json"] == {"sha256": publish.sha256_file(closures)}
+    # - and nothing was frozen: no new folder, no new index entry, and the
+    # pointer keeps naming the release whose folders hold these bytes.
+    assert second["release"] == first["release"]
+    assert second["release_artifacts"] == []
+    assert pointer["release"] == first["release"]
+    assert releases.index_ids(read_json(s3_client, releases.RELEASE_INDEX_KEY)) == [first["release"]]
+    assert keys_under(s3_client, "releases/") == folders_before
+
+
 def test_two_publishes_on_one_day_get_two_folders(s3_client, artifacts, tmp_path):
     first = publish.publish(artifacts, s3_client=s3_client, bucket=BUCKET)
 

@@ -68,7 +68,12 @@ import { buildAtcUpdateLayers } from '../lib/atcUpdateStyle'
 import { buildClosureLayers } from '../lib/closureStyle'
 import { buildAtcUpdateSource, ATC_UPDATE_SOURCE_ID } from './atcUpdateLayers'
 import { buildClosureSource, CLOSURE_SOURCE_ID } from './closureLayers'
-import { buildPoiLayer, buildPoiSource, POI_SOURCE_ID } from './poiLayers'
+import {
+  buildPoiDotLayer,
+  buildPoiLayer,
+  buildPoiSource,
+  POI_SOURCE_ID,
+} from './poiLayers'
 import { buildWarningLayer, buildWarningSource, WARNING_SOURCE_ID } from './warningLayers'
 import type { BackgroundSource, MapStyle, Theme } from '../lib/userPreferences'
 import {
@@ -787,9 +792,12 @@ export function buildMapStyle({
       // lib/closureStyle.ts for why the band differs from a blaze in width,
       // rhythm and casing weight rather than only in colour.
       ...buildClosureLayers(CLOSURE_SOURCE_ID),
-      // Then the pins, so one is never buried under the trail line it sits on.
-      // See poiLayers.ts for why this is one layer rather than one per
-      // category.
+      // Then the waypoints, so one is never buried under the trail line it
+      // sits on. Two layers over one source, in rank order: the dot first so
+      // the pin covers its own dot rather than sitting beside it. See
+      // poiLayers.ts for why the second layer does not weaken the argument for
+      // the first being single.
+      buildPoiDotLayer(),
       buildPoiLayer(),
       // And the serious-warning pins over every waypoint. The collision engine
       // already keeps them from being dropped (warningLayers.ts); this keeps

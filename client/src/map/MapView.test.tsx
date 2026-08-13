@@ -10,6 +10,7 @@ import {
   poiFeatureCollection,
   poiFilter,
   POI_ID_PROPERTY,
+  POI_DOT_LAYER_ID,
   POI_LAYER_ID,
   POI_SOURCE_ID,
 } from './poiLayers'
@@ -359,7 +360,9 @@ describe('POI pins', () => {
 
   /** Real MapLibre has its layers and sources by the time `load` fires. */
   function loadStyle(map: MockMap): void {
-    map.layerIds = [POI_LAYER_ID, WARNING_LAYER_ID]
+    // Both waypoint ranks, because buildMapStyle adds both and attachPoiFilter
+    // waits for both rather than half-applying (#597).
+    map.layerIds = [POI_DOT_LAYER_ID, POI_LAYER_ID, WARNING_LAYER_ID]
     map.sourceIds = [POI_SOURCE_ID, CLOSURE_SOURCE_ID, WARNING_SOURCE_ID]
     map.emit('load')
   }

@@ -41,7 +41,7 @@ import {
   DEM_SOURCE_ID,
   ELEVATION_ATTRIBUTION,
 } from './terrain'
-import { POI_LAYER_ID } from './poiLayers'
+import { POI_DOT_LAYER_ID, POI_LAYER_ID } from './poiLayers'
 import { WARNING_LAYER_ID } from './warningLayers'
 import {
   ATC_UPDATE_CASING_LAYER_ID,
@@ -563,6 +563,7 @@ describe('the offline-only background', () => {
       'trail-blaze',
       CLOSURE_CASING_LAYER_ID,
       CLOSURE_LAYER_ID,
+      POI_DOT_LAYER_ID,
       POI_LAYER_ID,
       WARNING_LAYER_ID,
       // The ATC's own notices survive the subtraction for the same reason the

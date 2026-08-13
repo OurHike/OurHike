@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createExpression, featureFilter } from '@maplibre/maplibre-gl-style-spec'
+import {
+  createExpression,
+  featureFilter,
+  type LayerSpecification,
+} from '@maplibre/maplibre-gl-style-spec'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { POI_TYPES } from '../lib/config'
 import {
   buildPoiIcons,
+  poiColor,
   poiIconId,
   siteMemberCombinations,
   UNKNOWN_POI_TYPE,
@@ -13,14 +18,21 @@ import {
   attachPoiFilter,
   attachPoiData,
   attachPoiIcons,
+  buildPoiDotLayer,
   buildPoiLayer,
   poiFeatureCollection,
   poiFilter,
+  POI_DOT_COLOR_EXPRESSION,
+  POI_DOT_LAYER_ID,
+  POI_DOT_RADIUS_EXPRESSION,
+  POI_DOT_SIZE_PX,
+  POI_FILTERED_LAYER_IDS,
   POI_ICON_EXPRESSION,
   POI_ICON_SIZE_EXPRESSION,
   POI_ID_PROPERTY,
   POI_LAYER_ID,
   POI_MIN_ZOOM,
+  POI_PIN_MIN_ZOOM,
   POI_PRIORITY,
   POI_SORT_KEY_EXPRESSION,
   POI_SOURCE_ID,
@@ -146,6 +158,73 @@ describe('density', () => {
         expect(evaluate(POI_SORT_KEY_EXPRESSION, poi(type))).toBeLessThan(viewpoint)
       }
     }
+  })
+})
+
+describe('the dot rank (#597)', () => {
+  it('is a circle layer, which is what makes it uncollidable', () => {
+    // The entire mechanism, and the one property worth asserting structurally
+    // rather than by behaviour: MapLibre's collision engine is a feature of
+    // SYMBOL layers. A `circle` takes no part in it, so every feature renders
+    // at every camera. Made a symbol layer with a smaller icon, this would be
+    // a rank that collides slightly less - which is not the same thing at all
+    // and would put the map back to deleting waypoints quietly.
+    expect(buildPoiDotLayer().type).toBe('circle')
+  })
+
+  it('reads the same source as the pins, so a dot and its pin are one waypoint', () => {
+    // Narrowed off LayerSpecification, whose background arm carries no source.
+    const sourceOf = (layer: LayerSpecification) =>
+      'source' in layer ? layer.source : undefined
+
+    expect(sourceOf(buildPoiDotLayer())).toBe(POI_SOURCE_ID)
+    expect(sourceOf(buildPoiDotLayer())).toBe(sourceOf(buildPoiLayer()))
+  })
+
+  it('starts at the same seam as the pins, so nothing appears below it', () => {
+    // Two ranks, ONE seam. A dot layer starting lower would put waypoints on
+    // the corridor view, which is the thing POI_PIN_MIN_ZOOM exists to refuse.
+    expect(buildPoiDotLayer().minzoom).toBe(POI_PIN_MIN_ZOOM)
+    expect(buildPoiDotLayer().minzoom).toBe(buildPoiLayer().minzoom)
+  })
+
+  it('carries no collision or overlap setting of its own', () => {
+    // Belt and braces on the point above: `icon-allow-overlap` is meaningless
+    // on a circle layer, and its appearance here would mean somebody had made
+    // this a symbol layer again.
+    const layer = buildPoiDotLayer() as unknown as { layout?: Record<string, unknown> }
+
+    expect(layer.layout?.['icon-allow-overlap']).toBeUndefined()
+  })
+
+  it('draws each dot in its own type accent, the same one its pin uses', () => {
+    for (const type of POI_TYPES) {
+      expect(evaluate(POI_DOT_COLOR_EXPRESSION, poi(type))).toBe(poiColor(type))
+    }
+  })
+
+  it('falls back rather than vanishing for a type this build has never heard of', () => {
+    // A `match` with no fall-through resolves to nothing, and on a circle
+    // layer "nothing" is an invisible dot - a waypoint back to being absent,
+    // by a different route than the collision engine.
+    expect(evaluate(POI_DOT_COLOR_EXPRESSION, poi('yurt'))).toBe(
+      poiColor(UNKNOWN_POI_TYPE),
+    )
+  })
+
+  it('stays small, and grows with the zoom as the pins do', () => {
+    const far = evaluate(
+      POI_DOT_RADIUS_EXPRESSION,
+      poi('water'),
+      POI_PIN_MIN_ZOOM,
+    ) as number
+    const near = evaluate(POI_DOT_RADIUS_EXPRESSION, poi('water'), 14) as number
+
+    expect(far).toBeLessThan(near)
+    expect(near * 2).toBe(POI_DOT_SIZE_PX)
+    // Second rank, not a competing one. A dot approaching the 38 px pin would
+    // take the pin's job while carrying none of its information.
+    expect(POI_DOT_SIZE_PX).toBeLessThan(10)
   })
 })
 
@@ -426,7 +505,9 @@ describe('pushing all of it onto a live map', () => {
   beforeEach(() => {
     resetMapLibreMock()
     map = new MockMap({})
-    map.layerIds = [POI_LAYER_ID]
+    // Both ranks, because buildMapStyle adds both and attachPoiFilter writes
+    // to both (#597).
+    map.layerIds = [POI_DOT_LAYER_ID, POI_LAYER_ID]
     map.sourceIds = [POI_SOURCE_ID]
   })
 
@@ -539,20 +620,48 @@ describe('pushing all of it onto a live map', () => {
     )
   })
 
-  it('applies the hidden set as a filter on the pin layer', () => {
+  it('applies the hidden set to BOTH ranks, so a hidden type leaves no dots', () => {
+    // #597's named half-done shipment. Hiding shelters has to take the shelter
+    // dots with it: a category that disappears from the pins and stays as a
+    // scatter of dots is the toggle lying about what it did.
     map.styleLoaded = true
 
     attachPoiFilter(map as never, new Set(['water']))
 
-    expect(map.filters.get(POI_LAYER_ID)).toEqual(poiFilter(new Set(['water'])))
+    for (const layer of POI_FILTERED_LAYER_IDS) {
+      expect(map.filters.get(layer)).toEqual(poiFilter(new Set(['water'])))
+    }
+    expect(POI_FILTERED_LAYER_IDS).toContain(POI_DOT_LAYER_ID)
+    expect(POI_FILTERED_LAYER_IDS).toContain(POI_LAYER_ID)
   })
 
-  it('carries the "Verified?" toggle onto the same layer filter', () => {
+  it('carries the "Verified?" toggle onto both layer filters', () => {
     map.styleLoaded = true
 
     attachPoiFilter(map as never, new Set(['water']), true)
 
-    expect(map.filters.get(POI_LAYER_ID)).toEqual(poiFilter(new Set(['water']), true))
+    for (const layer of POI_FILTERED_LAYER_IDS) {
+      expect(map.filters.get(layer)).toEqual(poiFilter(new Set(['water']), true))
+    }
+  })
+
+  it('waits rather than half-applying when only one rank has been built', () => {
+    // A style mid-parse holds one layer and not the other. Writing to the one
+    // that exists would leave the map filtered on the pins and unfiltered on
+    // the dots - which is precisely the state this pair exists to make
+    // impossible - and no later event would come back to finish the job.
+    map.styleLoaded = true
+    map.layerIds = [POI_LAYER_ID]
+
+    attachPoiFilter(map as never, new Set(['water']))
+
+    expect(map.filters.size).toBe(0)
+
+    map.layerIds = [POI_DOT_LAYER_ID, POI_LAYER_ID]
+    map.emit('styledata')
+
+    expect(map.filters.get(POI_DOT_LAYER_ID)).toEqual(poiFilter(new Set(['water'])))
+    expect(map.filters.get(POI_LAYER_ID)).toEqual(poiFilter(new Set(['water'])))
   })
 
   it('keeps the map alive when a write fails, and says so', () => {

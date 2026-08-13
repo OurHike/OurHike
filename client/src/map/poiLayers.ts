@@ -4,8 +4,8 @@
 // poiIcons.ts is pure pixel maths and knows nothing about MapLibre; this is
 // the module that knows about MapLibre and nothing about pixels.
 //
-// Everything here is ONE layer. Not one per category, which is the obvious
-// shape and the wrong one:
+// There is ONE SYMBOL layer. Not one per category, which is the obvious shape
+// and the wrong one:
 //
 //  - Density is MapLibre's own collision engine (`icon-allow-overlap: false`),
 //    and it can only declutter symbols it places together. Five layers means
@@ -17,6 +17,26 @@
 // What survives from that choice: which pin wins a collision is a decision
 // someone has to make rather than an accident of layer order. It is
 // {@link POI_PRIORITY}, and water is first in it.
+//
+// THE SECOND LAYER, WHICH IS NOT A SECOND PLACEMENT PASS (#597)
+//
+// {@link buildPoiDotLayer} adds a `circle` layer under the pins, and it does
+// not weaken any of the above - because the argument above is about COLLISION,
+// and a circle layer does not collide. MapLibre's collision engine is a
+// property of symbol layers only; every feature in a circle layer renders, at
+// every camera, whatever else is on the screen.
+//
+// So the two are ranks rather than rivals. A waypoint above the seam draws as
+// a pin or as a dot and never as neither, which is what stops the collision
+// engine deciding which waypoints EXIST and confines it to deciding which get
+// the big treatment. The legend's "names exactly what is drawn" property is
+// strengthened by that, not broken: at the zooms where a category used to be
+// silently absent it is now present as dots.
+//
+// The two ranks read the SAME source and the SAME filter, and both of those
+// are load-bearing rather than tidy. One source is what makes a dot and its
+// pin the same waypoint; one filter is what stops a hidden category leaving
+// its dots behind.
 
 import type {
   GeoJSONSourceSpecification,
@@ -36,6 +56,8 @@ import {
 } from './poiSites'
 import {
   buildPoiIcons,
+  PIN_HALO_COLOR,
+  poiColor,
   poiIconId,
   siteMemberCombinations,
   UNKNOWN_POI_TYPE,
@@ -45,6 +67,9 @@ import { whenStyleReady } from './styleReady'
 
 export const POI_SOURCE_ID = 'pois'
 export const POI_LAYER_ID = 'poi-pins'
+
+/** The dot rank (#597). Under {@link POI_LAYER_ID}, same source, same filter. */
+export const POI_DOT_LAYER_ID = 'poi-dots'
 
 /**
  * Where a pin carries its POI id, so a tap on it can be turned back into the
@@ -60,14 +85,33 @@ export const POI_LAYER_ID = 'poi-pins'
 export const POI_ID_PROPERTY = 'poi_id'
 
 /**
- * Below this, no pins at all.
+ * The seam: below this the map is a corridor view and draws no waypoints at
+ * all; above it, every waypoint draws as a pin or as a dot.
  *
  * The opening view is the whole 2,197-mile corridor. Eight hundred POIs on it
  * is not a map, it is a texture - and the collision engine would answer the
  * question "which of these do I keep" by geometry, when the honest answer at
  * that zoom is "none, you are not looking at a place yet".
+ *
+ * **9 is provisional.** #593 produces this number as a measurement rather than
+ * as arithmetic, by extending features/POI_SITES.md's placement simulation down
+ * from z12 over the site-folded point set. The design is written so that moving
+ * it is one edit here: nothing below the seam is claimed and nothing above it
+ * is hidden, so a wrong value costs a slightly worse screen rather than a
+ * missing spring.
  */
-export const POI_MIN_ZOOM = 9
+export const POI_PIN_MIN_ZOOM = 9
+
+/**
+ * The old name for {@link POI_PIN_MIN_ZOOM}.
+ *
+ * #597's design renames this constant, and the rename is deferred rather than
+ * skipped: #528 is in flight against `map/drawnPois.ts` and
+ * `lib/useDrawnPoiCounts.ts`, both of which import the old name, and renaming
+ * under a live branch on this file buys a conflict and no behaviour. #593
+ * removes this line when it lands the measured value.
+ */
+export const POI_MIN_ZOOM = POI_PIN_MIN_ZOOM
 
 /**
  * Who wins a collision, best first.
@@ -174,18 +218,91 @@ export const POI_ICON_SIZE_EXPRESSION: unknown[] = [
   'interpolate',
   ['linear'],
   ['zoom'],
-  POI_MIN_ZOOM,
+  POI_PIN_MIN_ZOOM,
   0.6,
   13,
   1,
 ]
+
+/**
+ * A dot in its type's accent - the same accent its pin is drawn in, from the
+ * same function, so the two ranks of one waypoint cannot disagree about colour.
+ *
+ * No confidence channel here, and that is deliberate rather than an omission.
+ * A pin says "unconfirmed" on its rim (poiIcons.ts), which is a detail a 4 px
+ * disc has nowhere to put; a dot's whole claim is "something is here", and at
+ * this size that is the most it can honestly make. The rim is waiting at the
+ * zoom the dot becomes a pin.
+ */
+export const POI_DOT_COLOR_EXPRESSION: unknown[] = [
+  'match',
+  ['get', 'poi_type'],
+  ...POI_TYPES.flatMap((type) => [type, poiColor(type)]),
+  poiColor(UNKNOWN_POI_TYPE),
+]
+
+/**
+ * 3 px at the seam, 4 px by the zoom a hiker walks at.
+ *
+ * Small on purpose: a dot is a second rank, and one drawn large enough to
+ * compete with a pin would take the pin's job while carrying none of its
+ * information. features/POI_VISIBILITY.md holds the open question about the
+ * exact size, which wants #105's real screen in real sun rather than a number
+ * argued at a desk.
+ */
+export const POI_DOT_RADIUS_MAX_PX = 2
+
+/**
+ * The dot at its largest, as a diameter.
+ *
+ * Derived from the radius above rather than written down, because poiTaps.ts
+ * sizes the dot's hit area from it and a second number to keep in step is the
+ * mistake this file has already watched POI_PIN_SIZE make once.
+ */
+export const POI_DOT_SIZE_PX = POI_DOT_RADIUS_MAX_PX * 2
+
+export const POI_DOT_RADIUS_EXPRESSION: unknown[] = [
+  'interpolate',
+  ['linear'],
+  ['zoom'],
+  POI_PIN_MIN_ZOOM,
+  POI_DOT_RADIUS_MAX_PX * 0.75,
+  13,
+  POI_DOT_RADIUS_MAX_PX,
+]
+
+/**
+ * The dot rank: every waypoint in the source, at every camera above the seam.
+ *
+ * A `circle` layer and not a smaller symbol layer, and that is the entire
+ * mechanism rather than a styling preference. MapLibre's collision engine
+ * places SYMBOLS; a circle takes no part in it, so there is no box to lose and
+ * no ordering to lose it to. See this file's header.
+ */
+export function buildPoiDotLayer(sourceId: string = POI_SOURCE_ID): LayerSpecification {
+  return {
+    id: POI_DOT_LAYER_ID,
+    type: 'circle',
+    source: sourceId,
+    minzoom: POI_PIN_MIN_ZOOM,
+    paint: {
+      'circle-color': POI_DOT_COLOR_EXPRESSION as unknown as string,
+      'circle-radius': POI_DOT_RADIUS_EXPRESSION as unknown as number,
+      // A hairline of paper around each dot, for the same reason the pins
+      // carry PIN_HALO_COLOR: two dots 40 m apart at z11 are touching, and
+      // without a break between them they read as one larger smudge.
+      'circle-stroke-color': PIN_HALO_COLOR,
+      'circle-stroke-width': 0.5,
+    },
+  }
+}
 
 export function buildPoiLayer(sourceId: string = POI_SOURCE_ID): LayerSpecification {
   return {
     id: POI_LAYER_ID,
     type: 'symbol',
     source: sourceId,
-    minzoom: POI_MIN_ZOOM,
+    minzoom: POI_PIN_MIN_ZOOM,
     layout: {
       'icon-image': POI_ICON_EXPRESSION as unknown as string,
       'icon-size': POI_ICON_SIZE_EXPRESSION as unknown as number,
@@ -333,7 +450,16 @@ export function attachPoiData(map: MapLibreMap, pois: readonly MapPoint[]): () =
   )
 }
 
-/** Applies the legend's filters to the pin layer, and returns a detach. */
+/**
+ * Applies the legend's filters to BOTH ranks, and returns a detach.
+ *
+ * Both, and it is written as one loop over a list rather than two calls,
+ * because "hiding a type leaves its dots on the map" is exactly the half-done
+ * shipment #597 warned about. One expression, applied everywhere the source is
+ * drawn, is the shape that cannot be half-applied.
+ */
+export const POI_FILTERED_LAYER_IDS: readonly string[] = [POI_DOT_LAYER_ID, POI_LAYER_ID]
+
 export function attachPoiFilter(
   map: MapLibreMap,
   hiddenTypes: ReadonlySet<string>,
@@ -342,9 +468,13 @@ export function attachPoiFilter(
   return whenStyleReady(
     map,
     // setFilter throws outright on a layer the style does not hold, so the
-    // layer's presence is exactly the precondition.
-    () => map.getLayer(POI_LAYER_ID) !== undefined,
-    () => map.setFilter(POI_LAYER_ID, poiFilter(hiddenTypes, verifiedOnly) as never),
+    // layers' presence is exactly the precondition. Both are added by the same
+    // buildMapStyle call, so this is one question rather than two.
+    () => POI_FILTERED_LAYER_IDS.every((id) => map.getLayer(id) !== undefined),
+    () => {
+      const filter = poiFilter(hiddenTypes, verifiedOnly)
+      for (const id of POI_FILTERED_LAYER_IDS) map.setFilter(id, filter as never)
+    },
     'POI visibility',
   )
 }

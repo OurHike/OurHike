@@ -393,7 +393,20 @@ def check_pmtiles_zooms(base: str, key: str, expected_zoom: int | None, session=
 
 
 def check_tile_decodes(base: str, key: str, session=None) -> dict:
-    """12. Spot-decode a real tile - it must be a valid image, not a 404 page."""
+    """12. Spot-decode real tiles - valid images, not 404 pages.
+
+    Wider than one tile since #653. This used to decode `next(traverse(...))`
+    - the first tile in id order, which is the same lowest-zoom tile every
+    run - where the design asks for tiles spread across zoom and geography.
+    Full spread means enumerating directories, and `traverse` fetches every
+    tile it walks, so a whole-archive walk over HTTP is the download this
+    module exists to avoid. Instead: decode the first tile, then descend
+    toward max zoom, probing the four children of each present tile and
+    following any that answers - one real tile per zoom for a bounded number
+    of reads. A dead end is reported, not failed: a present parent with four
+    absent children says nothing about coverage elsewhere, and coverage
+    itself is check 11's subject, absent and said so.
+    """
     from pmtiles.reader import Reader, traverse
 
     try:
@@ -404,12 +417,35 @@ def check_tile_decodes(base: str, key: str, session=None) -> dict:
         if first is None:
             return _report(12, key, FAILED, "the archive contains no tiles at all")
         problem = _tile_looks_right(header, first[1])
+        if problem:
+            return _report(12, key, FAILED, problem)
+
+        (z, x, y), _ = first
+        top, deepest = z, z
+        while z < header["max_zoom"]:
+            found = None
+            for cx in (2 * x, 2 * x + 1):
+                for cy in (2 * y, 2 * y + 1):
+                    data = reader.get(z + 1, cx, cy)
+                    if data:
+                        found = (cx, cy, data)
+                        break
+                if found:
+                    break
+            if found is None:
+                break
+            x, y, data = found
+            z = deepest = z + 1
+            problem = _tile_looks_right(header, data)
+            if problem:
+                return _report(12, key, FAILED, f"z{z}/{x}/{y}: {problem}")
     except Exception as exc:  # noqa: BLE001
         return _report(12, key, FAILED, f"could not read a tile: {exc.__class__.__name__}: {exc}")
 
-    if problem:
-        return _report(12, key, FAILED, problem)
-    return _report(12, key, OK, "a real tile decodes as the image type the header declares")
+    detail = f"real tiles decode as the type the header declares, z{top} down through z{deepest}"
+    if deepest < header["max_zoom"]:
+        detail += f" (no child answered below z{deepest} on this path - coverage is check 11's absent subject)"
+    return _report(12, key, OK, detail)
 
 
 def check_vector(base: str, keys: list[str], session=None) -> list[dict]:
@@ -746,9 +782,14 @@ def release_checks(base: str, manifest: dict, session=None, hash_artifacts: bool
 def skipped_checks() -> list[dict]:
     """What still cannot run at all, said out loud.
 
-    Down to one since #374's item 3 landed checks 3, 17 and 19 - those now run
-    or skip with a reason specific to what the bucket actually holds
-    (`release_checks`), rather than being skipped by construction.
+    Checks 3, 17 and 19 left this list when #374's item 3 built them. Checks
+    6 and 11 JOINED it with #653, and the difference between joining and
+    where they were matters: they were absent entirely - not run, not
+    skipped, not mentioned - which is the one state this module's own rules
+    call worse than any skip, worn by a file whose header says a skip is
+    never silent. Listing them is what lets `--strict` refuse to gate on a
+    battery that cannot yet ask their questions, and each reason below says
+    what building the real check takes.
 
     A skip that reads like a pass is the failure this repository keeps
     finding - #431's negative assertions, gate 11's missing label. `--strict`
@@ -757,10 +798,29 @@ def skipped_checks() -> list[dict]:
     """
     return [
         _report(
+            6,
+            "(range slices)",
+            SKIPPED,
+            "unbuilt (#653): DATA_RELEASES.md asks for prefix, mid-file and suffix ranges each answered 206 "
+            "with bytes identical to the same slice of the full download. Building it means keeping check 5's "
+            "streamed body long enough to compare slices against, or fetching it twice. Until then check 5 "
+            "proves the whole body's hash and check 8 proves range HEADERS are allowed - adjacent claims, not "
+            "this one",
+        ),
+        _report(
             10,
             "(tile counts)",
             SKIPPED,
             "latest.json publishes a sha256 per artifact and no tile count, so there is no build figure to match",
+        ),
+        _report(
+            11,
+            "(tile coverage)",
+            SKIPPED,
+            "unbuilt (#653): every corridor cell holding a tile at every zoom in the tier's range needs the "
+            "cell list published beside the archive, or recomputed from trails.geojson at check time. Check 9 "
+            "reads only header zooms and check 12 decodes a bounded sample, so a hole over one state passes "
+            "both - which is exactly why this stays listed until the check exists",
         ),
     ]
 

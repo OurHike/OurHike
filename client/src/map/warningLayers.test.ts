@@ -101,11 +101,12 @@ describe('warningFeatureCollection', () => {
   })
 
   it('carries nothing else - not the note, not the type, not who wrote it', () => {
-    // The canvas draws WHERE. What a warning says is the sheet's job, and the
-    // sheet cannot be filled honestly yet (#292) - so none of it goes into a
-    // GeoJSON source in the meantime, where it would be one `text-field` away
-    // from being rendered without the corroboration sentence that is supposed
-    // to accompany it.
+    // The canvas draws WHERE. What a warning says is the sheet's job, and it
+    // stays the sheet's job now that #292 has trimmed that sheet to fields a
+    // backend can fill: a note or a type in a GeoJSON source is one
+    // `text-field` away from being drawn on the map itself, stripped of the
+    // confirmation date and the "why your phone stayed silent" note that are
+    // the whole reason the sheet can carry it responsibly.
     const properties = warningFeatureCollection(WARNINGS).features[0].properties
 
     expect(Object.keys(properties)).toEqual([WARNING_ID_PROPERTY])

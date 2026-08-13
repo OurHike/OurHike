@@ -241,6 +241,10 @@ def test_openapi_still_documents_these_fields_as_date_time(model, field):
         # than losing its assertion - a withheld field still has to document
         # what it is when it IS sent, or a generated client stops parsing it.
         (ReportOut, "received_at"),
+        # Nullable for the ordinary reason rather than a privacy one (#292):
+        # a report nobody has confirmed has no confirmation time. Public,
+        # unlike its neighbour above - see the field's own comment.
+        (ReportOut, "verified_at"),
     ],
 )
 def test_openapi_documents_a_nullable_timestamp_as_date_time_or_null(model, field):

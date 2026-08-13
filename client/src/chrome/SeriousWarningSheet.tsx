@@ -1,21 +1,37 @@
 // A serious warning's detail sheet (WIREFRAMES.md §8).
 //
-// Three things here are deliberate rather than decorative:
+// Two things here are deliberate rather than decorative:
 //
-// **The corroboration sentence.** A serious warning is a strong claim, and
-// showing what it rests on ("several separate reports over four days") is
-// what lets a hiker weigh it instead of taking it on faith.
-//
-// **Reporter names are withheld for anything about a person.** Naming who
-// reported being followed could expose them to the person they reported. The
-// sheet says the name is withheld rather than silently omitting it, so the
-// absence reads as a decision rather than missing data.
+// **The confirmation date.** A serious warning is a strong claim, and a hiker
+// weighing one is entitled to know when somebody stood behind it. It is
+// backed by `verified_at`, stamped when a moderator confirms the report.
 //
 // **It explains why the phone stayed silent.** Someone reading a serious
 // warning for the first time will reasonably wonder why they were not
 // notified; an app that leaves that unanswered invites the conclusion that
 // notifications are broken - worse than the silence. Saying it plainly makes
 // the one-notification policy legible instead of something to infer.
+//
+// It used to say two more things, and #292 removed both. The shape below is
+// what a backend can actually fill.
+//
+// **The corroboration sentence** ("several separate reports over four days")
+// rested on a count that does not exist and cannot be derived - the issue's
+// own words, "no field, and no count exists to derive one from". Producing
+// one means designing a corroboration model, which HIKER_SAFETY.md §1 calls
+// "real moderation policy, not a data-model question" and defers to #235.
+// With no source, the two options were a hard-coded string - a fabricated
+// evidence claim, on a safety warning about a named person - or a blank
+// where the justification should be. Nothing honest is left to render.
+//
+// **The reporter attribution** went the way `marked_by` went off the closure
+// sheet in #245, for the same reason and with the same precedent: it was a
+// fact about a person, the only sources for the name were profile ids behind
+// `/profiles`, and #252 closed by removing reporter identity from the public
+// read path entirely. Note what that changes about the old "name withheld -
+// this warning is about a person" line: identity is now withheld from EVERY
+// report, so a sentence explaining why THIS one is anonymous implies the
+// others are named. It was true when written and is misdirection now.
 
 export interface SeriousWarning {
   id: string
@@ -23,9 +39,6 @@ export interface SeriousWarning {
   note: string
   mile: number
   confirmedAt: Date
-  corroboration: string
-  aboutAPerson: boolean
-  reporterName: string | null
 }
 
 export interface SeriousWarningSheetProps {
@@ -63,14 +76,6 @@ export function SeriousWarningSheet({ warning, onClose }: SeriousWarningSheetPro
       </p>
 
       <p className="warning-sheet__note">{warning.note}</p>
-
-      <p className="closure-sheet__meta">{warning.corroboration}</p>
-
-      <p className="closure-sheet__meta">
-        {warning.aboutAPerson
-          ? 'Reporter name withheld — this warning is about a person.'
-          : `Reported by ${warning.reporterName ?? 'a hiker'}`}
-      </p>
 
       <p className="closure-sheet__limit" role="note">
         Your phone didn&rsquo;t buzz for this. OurHike only ever sends one kind of

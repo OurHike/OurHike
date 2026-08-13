@@ -195,6 +195,26 @@ class ReportOut(BaseModel):
     visibility: Visibility
     severity: Severity
 
+    # When a moderator confirmed this, or null if none has (#292).
+    #
+    # Public, and matching what `ClosureOut` has published all along - the
+    # same pair, split the same way: `verified_at` goes out, `verified_by`
+    # stays behind, so the audit trail is intact in the database and only the
+    # person-fact stops being handed to anonymous callers.
+    #
+    # It is worth saying why this is not `received_at`, which sits withheld
+    # ten lines below for being "a second clock". That one narrows "when was
+    # this person there", because a report arrives when its author next has
+    # signal. This one is a fact about a MODERATOR at a desk, days later as
+    # often as not - it says nothing about where the reporter was or when,
+    # and `timestamp` is already public and exact.
+    #
+    # Withholding it would cost something real. `SeriousWarningSheet` renders
+    # "Confirmed by club moderators - <date>", and a hiker weighing a strong
+    # claim about a person is entitled to check when somebody stood behind
+    # it. `status` alone says a moderator acted; only this says when.
+    verified_at: UtcDatetime | None = None
+
     # ---- Withheld from the public. Null is "not for you", not "unset". ----
 
     # A stable account UUID next to a trail position and a time is the
@@ -248,6 +268,7 @@ class ReportOut(BaseModel):
             status=report.status,
             visibility=report.visibility,
             severity=report.severity,
+            verified_at=report.verified_at,
             reporter_id=report.reporter_id if privileged else None,
             received_at=report.received_at if privileged else None,
             maintainer_id=report.maintainer_id if privileged else None,

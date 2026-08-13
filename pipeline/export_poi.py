@@ -80,6 +80,22 @@ partial and deliberately so: a shelter the source lists only as half of a
 pair exports no capacity rather than a guessed one, and the client shows
 nothing rather than a number nobody stands behind.
 
+Water-distance enrichment (#668, the CSI-distance slice of #529's
+WATER_SOURCES.md): shelter and campsite features carry `water_distance_ft`,
+how far ATC's Campsite Sustainability Index puts the nearest water source,
+from reference/water_distance.json - the same checked-in-and-reviewed shape
+as capacity, built by build_water_distance.py, whose docstring holds the
+join, the provenance rule and the licence position. Feet because ATC's
+figure is (CONTRIBUTING.md, "store canonical"). Where the site has no actual
+water point folded in, a close-enough distance also reaches the composed
+sentence as a "water N m" entry in the Nearby clause - see
+attach_descriptions - so the answer to "is there water" stops depending on
+the 9 opentrail points that happen to fold. Coverage is deliberately narrow
+for now: 87 of 512 features publish one, because rows CSI measured against
+FarOut's waypoints are held back until ATC blesses them (WATER_SOURCES.md
+§4/§7) and rows with no CSI neighbour (most of Maine) publish nothing rather
+than a neighbour's number.
+
 Description: every ATC facility layer carries `description`, one sentence
 about the place -
 
@@ -169,7 +185,7 @@ from lib.poi_description import (
     nearby_clause,
 )
 from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES, poi_output_name, unify_poi
-from lib.poi_sites import ROLE_ANCHOR, ROLE_MEMBER, group_sites, site_properties
+from lib.poi_sites import ANCHOR_TYPES, NAME_MATCH_RADIUS_M, ROLE_ANCHOR, ROLE_MEMBER, group_sites, site_properties
 from lib.spurs import distance_m
 
 ROOT = Path(__file__).parent
@@ -180,6 +196,21 @@ OUT_DIR = ROOT / "data" / "processed" / "poi"
 # it is reviewed source rather than a fetch artifact - see that script's
 # docstring for why the join it encodes is checked in.
 CAPACITY_PATH = ROOT / "reference" / "shelter_capacity.json"
+
+# build_water_distance.py's output, under reference/ for the same reason.
+WATER_DISTANCE_PATH = ROOT / "reference" / "water_distance.json"
+
+# ATC states the distance in feet, so feet is what the column stores; this is
+# only for the composed sentence, whose distances are metres (lib/
+# poi_description._metres says why they stay metres regardless of preference).
+M_PER_FT = 0.3048
+
+# How far away water may be and still be spliced into the Nearby sentence.
+# lib/poi_sites.py's NAME_MATCH_RADIUS_M is the widest gate that can fold a
+# real member into a site, so it is the furthest distance "Nearby" already
+# claims anywhere - reusing it keeps the word meaning one thing. A distance
+# beyond it still publishes as `water_distance_ft`; it just is not "Nearby".
+NEARBY_WATER_MAX_M = NAME_MATCH_RADIUS_M
 
 # fetch_poi_images.py's output, read relative to RAW_DIR at call time (not a
 # frozen module constant) so redirecting RAW_DIR - as every test here does -
@@ -223,6 +254,11 @@ POI_COLUMNS = (
     # How many people the shelter sleeps; NULL on every other poi_type and on
     # shelters nobody has published a usable number for.
     ("capacity", "INTEGER"),
+    # How far ATC's Campsite Sustainability Index puts the nearest water
+    # source, in feet because ATC's figure is. Shelters and campsites only;
+    # NULL wherever reference/water_distance.json states a refusal instead of
+    # a number (#668, build_water_distance.py).
+    ("water_distance_ft", "INTEGER"),
     # One sentence about the place, composed from ATC's own inventory by
     # lib/poi_description.py - every ATC facility layer, which is DESCRIBERS
     # below; NULL on water and resupply, which have no inventory to compose
@@ -270,6 +306,15 @@ ATC_NOTE_FIELD = "Comments"
 # composes every other id.
 SHELTER_SOURCE = "atc_shelters"
 
+# The campsite twin, for the same reason: water_distance.json stores bare
+# GlobalIDs against a `layer` name, and load_water_distances composes the
+# unified id from these two constants.
+CAMPSITE_SOURCE = "atc_campsites"
+
+# water_distance.json's `layer` values (sources.json keys) -> the source name
+# unified ids are built from.
+WATER_DISTANCE_SOURCES = {"shelters": SHELTER_SOURCE, "campsites": CAMPSITE_SOURCE}
+
 # (raw filename stem, poi_type, source name used in unified ids, field_map)
 # - the ATC sources that map ~1:1 onto one poi_type each.
 #
@@ -282,7 +327,7 @@ ATC_FACILITY_FIELDS = {"id_field": "GlobalID", "name_field": "Name", "confidence
 
 DIRECT_SOURCES = (
     ("shelters", "shelter", SHELTER_SOURCE, ATC_FACILITY_FIELDS),
-    ("campsites", "campsite", "atc_campsites", ATC_FACILITY_FIELDS),
+    ("campsites", "campsite", CAMPSITE_SOURCE, ATC_FACILITY_FIELDS),
     ("viewpoints", "viewpoint", "atc_viewpoints", ATC_FACILITY_FIELDS),
     ("parking", "parking", "atc_parking", ATC_FACILITY_FIELDS),
     ("privies", "privy", "atc_privies", ATC_FACILITY_FIELDS),
@@ -372,6 +417,46 @@ def attach_capacity(records: list[dict], capacities: dict[str, int]) -> int:
     return attached
 
 
+def load_water_distances(path: Path) -> dict[str, int]:
+    """water_distance.json's known distances, keyed by the same unified POI
+    id this export writes.
+
+    Only records that state a distance are returned - the file lists every
+    shelter and campsite, the blanks carrying the reason there is no number
+    (no CSI row nearby, a 0 ft value nobody can read; see
+    build_water_distance.py). To this export a blank and an absent record are
+    the same thing: no distance to publish.
+
+    A missing file is a normal state, not an error, exactly as it is for
+    capacities and photos: the export's job is to ship what exists.
+    """
+    if not path.exists():
+        return {}
+    document = json.loads(path.read_text(encoding="utf-8"))
+    distances = {}
+    for record in document.get("sites", []):
+        source = WATER_DISTANCE_SOURCES.get(record.get("layer"))
+        if source is None or record.get("distance_ft") is None:
+            continue
+        distances[f"{source}:{record['atc_global_id']}"] = record["distance_ft"]
+    return distances
+
+
+def attach_water_distance(records: list[dict], distances: dict[str, int]) -> int:
+    """Copy each matched feature's water distance onto its unified POI
+    record, returning how many matched - same contract as attach_capacity,
+    and NULL means the same thing: nobody has said, which is not the same as
+    a dry site."""
+    attached = 0
+    for record in records:
+        distance = distances.get(record["id"])
+        if distance is None:
+            continue
+        record["water_distance_ft"] = distance
+        attached += 1
+    return attached
+
+
 # Which poi_types compose a `description`, and with what. Every ATC facility
 # layer is here; water and resupply are absent because they come from
 # opentrail.org and ATC's Communities layer, neither of which carries an
@@ -438,10 +523,11 @@ def attach_descriptions(records: list[dict]) -> int:
     """Compose `description` for every POI type that has one, returning how
     many got one.
 
-    Runs after attach_capacity, because "sleeps 8" is a clause in the
-    shelter sentence and the number is not ATC's - it comes from
-    reference/shelter_capacity.json. A shelter with no capacity gets the
-    same sentence without that clause rather than a gap.
+    Runs after attach_capacity and attach_water_distance, because "sleeps 8"
+    and the spliced "water 90 m" are clauses in the composed sentence and
+    neither number is on the feature ATC published - they come from the two
+    reference/ files. A record without either gets the same sentence without
+    that clause rather than a gap.
 
     And after attach_sites (#614), because an anchor's sentence names the parts
     around it and how far each one is. Since #524 those parts draw no pin of
@@ -456,21 +542,38 @@ def attach_descriptions(records: list[dict]) -> int:
         if describe is None:
             continue
         properties = record.get(RAW_PROPERTIES_KEY) or {}
-        nearby = ""
+        nearby_members = []
         if record.get("site_role") == ROLE_ANCHOR:
-            nearby = nearby_clause(
-                [
-                    # Measured from the anchor, which is the one point of this
-                    # site a hiker can see - it is the only pin drawn - and so
-                    # the only place the distance is a distance from.
-                    (
-                        member["poi_type"],
-                        distance_m(record["lat"], record["lon"], member["lat"], member["lon"]),
-                        member.get(RAW_PROPERTIES_KEY) or {},
-                    )
-                    for member in members_by_site.get(record["site_id"], ())
-                ]
-            )
+            nearby_members = [
+                # Measured from the anchor, which is the one point of this
+                # site a hiker can see - it is the only pin drawn - and so
+                # the only place the distance is a distance from.
+                (
+                    member["poi_type"],
+                    distance_m(record["lat"], record["lon"], member["lat"], member["lon"]),
+                    member.get(RAW_PROPERTIES_KEY) or {},
+                )
+                for member in members_by_site.get(record["site_id"], ())
+            ]
+        # ATC's own distance-to-water fills in where no actual water point
+        # folded into the site (#668) - which is nearly everywhere, since only
+        # 9 opentrail points fold over the whole corridor. Anchors and POIs in
+        # no site both take it; a member does not, because its site's anchor
+        # already answers "is there water" for the one pin a hiker can see.
+        # Never beside a real water member: one sentence, one water distance.
+        if (
+            record["poi_type"] in ANCHOR_TYPES
+            and record.get("site_role") != ROLE_MEMBER
+            and record.get("water_distance_ft") is not None
+            and not any(poi_type == "water" for poi_type, _, _ in nearby_members)
+        ):
+            metres = record["water_distance_ft"] * M_PER_FT
+            # Beyond the widest radius a site can reach, "Nearby" would be a
+            # word meaning something different in this one sentence. The
+            # column still publishes; the clause stays honest.
+            if metres <= NEARBY_WATER_MAX_M:
+                nearby_members.append(("water", metres, {}))
+        nearby = nearby_clause(nearby_members) if nearby_members else ""
         description = describe(properties, record.get("capacity"), clean_note(properties.get(ATC_NOTE_FIELD)), nearby)
         if description is None:
             continue
@@ -650,6 +753,7 @@ def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[
                     # POI arrives without one both when nothing matched and
                     # when a caller never ran the attach step.
                     r.get("capacity"),
+                    r.get("water_distance_ft"),
                     r.get("description"),
                     # .get, not [] - records arrive photo-less both when
                     # attach_photos found no match and when a caller (or an
@@ -776,8 +880,16 @@ def main() -> dict:
     else:
         print(f"  No {CAPACITY_PATH.name} - exporting without shelter capacities.")
 
-    # After the capacity attach, not before: "sleeps 8" is a clause in the
-    # composed sentence and that number is not ATC's.
+    water_distances = load_water_distances(WATER_DISTANCE_PATH)
+    if water_distances:
+        attached = attach_water_distance(clipped, water_distances)
+        print(f"  {attached} shelters and campsites carry a water distance (from {WATER_DISTANCE_PATH.name}).")
+    else:
+        print(f"  No {WATER_DISTANCE_PATH.name} - exporting without water distances.")
+
+    # After the capacity and water attaches, not before: "sleeps 8" and
+    # "water 90 m" are clauses in the composed sentence and neither number
+    # is on the feature ATC published.
     described = attach_descriptions(clipped)
     print(f"  {described} POIs carry a description (of the {len(DESCRIBERS)} types that compose one).")
 

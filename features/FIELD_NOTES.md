@@ -305,6 +305,14 @@ orphans**, into one issue updated in place. Every note keeps its `lat`/`lon`, so
 is re-anchorable rather than lost — which is also why the fallback anchor is in the model
 rather than being derivable from the POI.
 
+**The contract itself now has a design: [POI_IDENTITY.md](POI_IDENTITY.md)**
+([#666](https://github.com/OurHike/OurHike/issues/666) — *A POI's identity is its upstream
+key, so one ATC annual refresh can orphan every photo and comment*). Under its ledger, both
+break modes above stop being possible — an id is minted once and carried across re-keys, and
+a removed feature retires into a tombstone rather than taking its anchors with it. The check
+stays this doc's, demoted to backstop: expected to find nothing, kept because it is what
+proves that, and still the recovery path for anything written before the ledger existed.
+
 ## 8. What this deliberately isn't
 
 - **Not a thread.** No replies, no mentions, no conversation. A conversation needs

@@ -32,6 +32,7 @@ import { backgroundOverride } from '../lib/dataSaver'
 import type { DownloadActivity } from '../lib/downloadActivity'
 import type { BuildInfo } from '../lib/buildInfo'
 import { AboutBuild } from './AboutBuild'
+import { ReportBug } from './ReportBug'
 import { BackgroundPicker } from '../chrome/BackgroundPicker'
 import { DownloadsLink } from '../chrome/DownloadsLink'
 import { REPORTER_TYPES } from '../lib/contributionFlow'
@@ -435,6 +436,12 @@ export function Settings({
           the download link below keeps the foot of the screen it was given.
           See screens/AboutBuild.tsx for the rest of why. */}
       <AboutBuild build={build} />
+
+      {/* Immediately after it, because the build is what a bug report has to
+          name and these links carry it (#626). The same `build` reaches both,
+          so the section that displays it and the links that send it can never
+          disagree about which one this is. */}
+      <ReportBug build={build} />
 
       {/* Below the last group rather than inside "The map" beside the
           background it affects. It is the only way to the download

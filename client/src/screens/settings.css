@@ -88,6 +88,42 @@
   gap: var(--space-2, 8px);
 }
 
+/* ---------- Report a bug (ReportBug.tsx) ---------- */
+
+/* Stacked rather than a row of four: these carry a hint each, and the hint is
+   what stops a trail condition being filed as a bug. Two of them side by side
+   on a phone would be the first thing to get truncated. */
+.settings__links {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+/* Deliberately the label-over-hint treatment the three pickers below use, and
+   the .settings__action border, because it is both of those things: a choice
+   among a small set, and a control that leaves the screen. `display: flex`
+   rather than block so the 44px minimum is a real touch target rather than the
+   height two lines of text happen to make. */
+.settings__link {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-height: var(--min-touch-target, 44px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-1);
+  text-decoration: none;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+}
+.settings__link-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--fg-3);
+}
+
 /* ---------- Light / Dark / Auto (ThemePicker.tsx) ---------- */
 
 /* Deliberately the same segmented treatment as the background picker in the

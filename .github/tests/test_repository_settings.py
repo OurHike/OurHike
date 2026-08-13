@@ -11,7 +11,7 @@ a pull request from a fork, and needs access to nothing.
 configured. A secret's value is write-only once set; the API will not read one
 back and neither will the maintainer who set it. The only process that can see
 whether `R2_SECRET_ACCESS_KEY` exists is a job running in this repository, so
-`settings-check.yml` resolves the `secrets` and `vars` contexts, reduces them
+`settings-configured.yml` resolves the `secrets` and `vars` contexts, reduces them
 to the *names* that came back non-empty, and hands those here through the
 environment. Values never enter this process, which is why nothing below has
 to be careful about printing them - there is nothing here to print.
@@ -38,7 +38,7 @@ WORKFLOW_DIR = REPO_ROOT / ".github" / "workflows"
 
 # `${{ secrets.FOO }}`, and the same names in `if:` conditions, which carry no
 # ${{ }}. It deliberately does not match `toJSON(secrets)` - no dot follows -
-# which is why settings-check.yml enumerates the settings that way rather than
+# which is why settings-configured.yml enumerates the settings that way rather than
 # naming any of them, so that the workflow doing the checking does not read as
 # a workflow expecting a setting called `toJSON`.
 REFERENCE = re.compile(r"\b(secrets|vars)\.([A-Za-z_][A-Za-z0-9_]*)")
@@ -89,7 +89,7 @@ def _references():
 
 
 def _configured(variable):
-    """The names settings-check.yml found configured, or None if this is not
+    """The names settings-configured.yml found configured, or None if this is not
     the live job."""
     raw = os.environ.get(variable)
     if not raw:
@@ -102,7 +102,7 @@ CONFIGURED_VARIABLES = _configured("CONFIGURED_VARIABLES")
 
 live = pytest.mark.skipif(
     CONFIGURED_SECRETS is None or CONFIGURED_VARIABLES is None,
-    reason="Only a job running in this repository can see which settings are configured - see settings-check.yml.",
+    reason="Only a job running in this repository can see which settings are configured - see settings-configured.yml.",
 )
 
 
@@ -224,7 +224,7 @@ def test_a_setting_meant_for_the_variables_tab_is_not_also_kept_as_a_secret():
 @live
 def test_the_live_inputs_carry_names_only_never_values():
     """The reason the rest of this file can be careless about what it prints.
-    Reducing the contexts to names happens in settings-check.yml, so a change
+    Reducing the contexts to names happens in settings-configured.yml, so a change
     that passed toJSON(secrets) straight through would put real credentials in
     this process and in any assertion message that named one. This asserts the
     shape that cannot - and reports offenders by position, never by content."""
@@ -238,7 +238,7 @@ def test_the_live_inputs_carry_names_only_never_values():
         shape = type(json.loads(os.environ[variable])).__name__
         assert shape == "list", (
             f"{variable} arrived as a JSON {shape}, not an array of names. An object is the shape of the raw context, "
-            f"which would mean settings-check.yml stopped reducing it to keys and values are now reaching this process."
+            f"which would mean settings-configured.yml stopped reducing it to keys and values are now reaching this process."
         )
         offenders = [i for i, item in enumerate(json.loads(os.environ[variable])) if not _is_a_name(item)]
         assert not offenders, (

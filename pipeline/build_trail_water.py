@@ -10,12 +10,12 @@ water" - so this file answers those two, and nothing else.
 
 ## What it produces
 
-**Crossings** - exact geometric intersections of ATC's centerline with OSM's
-stream and river ways. Not a proximity guess: the two lines cross, so a hiker
-walking the trail walks through the water. These fill the `crossing`
-poi_type, declared in lib/poi_schema.py and empty since it was declared
-(#97's investigation measured the same thing against NHD first: 841 true
-intersections).
+**Crossings** - exact geometric intersections of ATC's centerline with the
+stream lines of both hydrographies. Not a proximity guess: the two lines
+cross, so a hiker walking the trail walks through the water. **1,125 of them
+over the corridor, 571 seen by both databases**, filling the `crossing`
+poi_type that lib/poi_schema.py declared and nothing has ever populated
+(#97's investigation measured the same thing against NHD alone first: 841).
 
 **Site water** - for each shelter and campsite, the nearest point on a
 stream, published as a water POI only when a hiker could actually reach it:
@@ -217,21 +217,23 @@ MAX_GRADE = 0.15
 
 # Two crossings closer than this are one crossing.
 #
-# The frame is A HIKER'S STOP, not a database's identity, and it had to be:
-# measured across the two hydrographies (2026-08-13), **not one OSM crossing
-# lands within 20 m of a USGS one** - 36 are within 30 m, 77 within 50 m, and
-# the median OSM crossing's nearest USGS neighbour is 363 m away. The cause
-# is well known: OSM's US streams largely descend from an old
-# medium-resolution NHD import while this reads the high-resolution
-# successor, so the same water is drawn tens of metres apart by two surveys
-# decades apart. There is no radius that means "the same feature" to both.
+# The frame is A HIKER'S STOP rather than a database's identity: two places
+# the trail meets water 50 m apart are one stop with one bottle, whether they
+# are one stream drawn twice or a stream and the tributary joining it.
 #
-# What there is a radius for is the question a hiker asks. Two places the
-# trail meets water 50 m apart are one stop with one bottle, whether they are
-# one stream drawn twice or a stream and its tributary. At 50 m the corridor
-# publishes 1,117 crossings rather than 1,274, and 68 of them carry both
-# databases - which is where USGS's flow class reaches an OSM crossing that
-# had none.
+# A CORRECTION IS RECORDED HERE ON PURPOSE. This constant was first argued up
+# from 20 m on a measurement that said not one OSM crossing landed within
+# 20 m of a USGS one, median nearest neighbour 363 m - which would have meant
+# the two databases could never be reconciled. That measurement was taken on
+# output whose merge was silently broken (see dedupe_crossings), so it
+# measured the leftovers of a collapse rather than the relationship, and it
+# was wrong. With the merge working, **571 of the corridor's 1,125 crossings
+# are seen by both databases** at this radius: they agree about the water far
+# more than that artifact suggested.
+#
+# 50 m stands anyway, on the hiker's-stop reasoning it should have rested on
+# in the first place. Whether 20 m would serve as well is a real question and
+# an honest re-measurement away - one this file's own counts would answer.
 CROSSING_DEDUPE_M = 50.0
 
 # The same question for a site's water is a different question, and keeps the

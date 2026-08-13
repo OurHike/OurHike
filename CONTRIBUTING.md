@@ -143,6 +143,20 @@ The pipeline fetches large amounts of data from ATC, USGS and opentrail.org. Rea
 - If a change contradicts something in a design doc, update the doc in the same PR. A doc that disagrees with the code is worse than no doc.
 - Lint and format before pushing. CI checks both and will fail on formatting alone.
 
+## Data does not go in commits
+
+**Anything a script fetched, derived or exported belongs in `pipeline/data/`, which is gitignored — never in a commit.** What hikers get is published to R2 by `publish.py`; what a build needs between runs is carried by the CI cache. Nothing derived is tracked.
+
+This is a security rule rather than a tidiness one, and the reason is that **a commit is a publication that cannot be retracted.** This repository is public, every clone carries its whole history, and `git rm` in a later commit removes a file from the tree while leaving it in every fork, mirror and pack that already pulled it. A byte committed here is published permanently, before anyone has reviewed it — which is the wrong property for data whose terms are still being settled:
+
+- **Licence.** The rule below is to establish a licence before the bytes are in the build, and several sources are still open ([opentrail.org](https://github.com/OurHike/OurHike/issues/98), the club PDFs whose registry entries read *review-only until the club answers*). Committing any of them redistributes them under this repository's licence, from every fork, irreversibly.
+- **Safety.** [`pipeline/SOURCE_SURVEY.md`](pipeline/SOURCE_SURVEY.md) §3b describes 2,333 user-created campsites in ATC's own index — the ones land managers are often trying to close. Publishing their locations would put OurHike on the wrong side of every partner it depends on, and a file committed once cannot be unpublished.
+- **People.** Reports, photos and hiker submissions carry personal data by construction ([features/IDENTITY_AND_PRIVACY.md](features/IDENTITY_AND_PRIVACY.md)). None of it belongs in a tree anybody can clone.
+
+**The one exception is `pipeline/reference/`, and it is narrower than it looks.** Those files are *joins that encode judgement*: a row of `shelter_capacity.json` is somebody's decision that a hiker-list entry is a particular ATC shelter, and reviewing its diff reviews those decisions. That argument holds only while a human actually reads the rows — so the directory carries a line ceiling, and a file past it is either derived data on the wrong shelf or a file whose author says in review why anyone should read that many rows.
+
+The rule is enforced by `.github/tests/test_no_committed_data.py` rather than remembered: it fails on a tracked `pipeline/data/` path, on a data-shaped file outside a stated allowlist, and on an oversized reference file. It exists because the gitignore alone is a convention that a `git add -f` walks past — and because the mistake that prompted it needed no force at all. A 20,099-line derivation was written to `reference/`, which is *not* ignored, and committed, because that directory held three small checked-in files and looked like where derived things go ([#529](https://github.com/OurHike/OurHike/issues/529)).
+
 ## A note on data and licences
 
 The app is AGPL-3.0. The data it ships is not all ours to relicense: USGS topo data is public domain, OpenStreetMap-derived basemap tiles are ODbL and require visible attribution (already rendered in `client/src/map/style.ts`), the bundled Noto Sans glyphs are SIL OFL 1.1 (provenance and licence text in `client/public/glyphs/`), opentrail.org's terms are [not yet formally confirmed](https://github.com/OurHike/OurHike/issues/98), and POI photos are Wikimedia Commons files licensed **per photo** (public domain, CC0, or CC BY / CC BY-SA at 4.0+ only — the pipeline rejects everything else, including pre-4.0 CC versions, whose terms a one-link credit cannot meet), each shipping with the author, licence and file-page link the waypoint card displays (`features/POI_PHOTOS.md`). If you add a data source, establish its licence first and record it — an unlicensed source is a problem inherited by every club that takes this project on later.

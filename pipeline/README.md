@@ -36,6 +36,18 @@ That `--provider` label is as far as this registry currently goes toward being m
 
 What exists upstream *beyond* the registry - the maintaining clubs, the federal servers, the community datasets, and what each is worth - is surveyed and qualified in [SOURCE_SURVEY.md](SOURCE_SURVEY.md) (snapshot dated 2026-08-09; it also corrects who actually hosts the layers above). The water-source question that survey left open - measured against the shelters for **#529 - 97% of shelters have no water source within 250 m, and the trail is not like that** - has its own dated snapshot in [WATER_SOURCES.md](WATER_SOURCES.md), with the two measurement spikes (`spike_shelter_water.py`, `spike_osm_water_census.py`) beside it.
 
+## Where a script's output goes
+
+Three shelves, and picking the wrong one is the one mistake that cannot be undone — see [../CONTRIBUTING.md](../CONTRIBUTING.md)'s "Data does not go in commits" for why a commit is a permanent publication of somebody else's data.
+
+| shelf | for | tracked? |
+|---|---|---|
+| `data/raw/` | anything fetched or derived — layers, extracts, derivations, caches | no, gitignored and cached between CI runs |
+| `data/processed/` | export output, the artifacts `publish.py` uploads to R2 | no |
+| `reference/` | a join that encodes judgement somebody reviews row by row (`shelter_capacity.json`, `water_distance.json`) | **yes**, and under a line ceiling |
+
+`.github/tests/test_no_committed_data.py` enforces it: a tracked `data/` path fails, a data-shaped file outside a stated allowlist fails, and a reference file past ~8,000 lines fails because "committed so the judgement in it can be reviewed" stops being true once nobody reads the rows.
+
 ## Fetching ATC sources
 
 `fetch_all.py` reads `sources.json` and downloads each layer (paginating past ArcGIS's per-request record cap via `lib/arcgis.py`) to `data/raw/<key>.geojson`. It's change-aware: before doing the full paginated fetch, it checks each layer's `editingInfo.dataLastEditDate` (one cheap metadata request) against the value recorded in `data/raw/manifest.json` from the last run, and skips the source entirely if unchanged. Only writes the manifest if **every** registered source succeeded or was confirmed up to date - if any layer fails or goes missing, it exits non-zero instead of silently producing a partial dataset.

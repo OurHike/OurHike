@@ -106,11 +106,16 @@ The two halves of [WATER_SOURCES.md](WATER_SOURCES.md) §7's recommendation, bui
 .venv/Scripts/python fetch_osm_water.py --refetch   # force current extracts
 ```
 
-`build_nhd_streams.py` writes [`reference/nhd_streams.json`](reference/nhd_streams.json): the nearest USGS-mapped stream to each of the 280 shelters — checked in like the capacity and water-distance files, plus one reason of its own: NHD is a frozen snapshot (retired 2023-10-01, served unchanged), so fetching it per build would re-download an unchanging answer. `export_poi.py` appends each shelter's stream sentence to its card description — "Nearest mapped stream: Stony Brook, about 70 m (USGS; mapped as year-round, not recently verified)." — with the flow claim always qualified ("mapped as": the FCode disagrees with field observations ~20% of the time, WATER_SOURCES.md §5), and "No mapped stream within 1 km (USGS)." printed rather than left silent, because a dry ridge is a fact a hiker plans around.
+`build_trail_water.py` writes [`reference/trail_water.json`](reference/trail_water.json): **where the trail meets water, and which sites have water they can actually walk to.** Two products from one derivation over **both** hydrographies — USGS's NHD and OpenStreetMap — merged rather than picked between, because they know different things: USGS classifies flow (perennial / intermittent / ephemeral), OSM more often carries the local name and is edited by people who walk there. A crossing deduped across the two keeps whichever half each supplied, records both in `sources`, and attributes the flow claim to whoever made it (`flow_source`) — [features/POI_DEDUPLICATION.md](../features/POI_DEDUPLICATION.md)'s combine-don't-drop rule. USGS arrives as bulk staged GeoPackages, one subregion at a time, downloaded read and deleted: its query service 504s under corridor-scale load, and a derivation nobody can re-run is not one anybody can check. OSM costs no network at all — it is the same Geofabrik extracts the basemap build already downloads:
+
+- **Crossings** — exact geometric intersections of ATC's centerline with the stream lines of **both** hydrographies. The two lines cross, so a hiker walking the trail walks through the water. These fill `crossing`, the poi_type declared in `lib/poi_schema.py` and empty since it was declared.
+- **Site water** — for each shelter and campsite, the nearest point on a stream, published **only where a hiker could reach it**: within 100 ft *and* under a 35% grade, the second gate measured from real USGS 3DEP elevations at both ends. A stream 90 ft away and 120 ft below is not a water source however close the map says it is. Every rejected candidate keeps its distance, drop and grade in the file, so either gate can be re-argued from the numbers rather than re-run in the dark.
+
+The match radius sits inside `lib/poi_sites.py`'s 60 m proximity fold on purpose: a published point at real coordinates is folded onto the shelter's pin by the grouping that already exists, so there is no second matching rule to keep in step. Nothing composed here carries a distance — the point has coordinates, so the card measures the walk and writes it in the hiker's own units (#625).
 
 ```
-.venv/Scripts/python build_nhd_streams.py            # rebuild and review the diff
-.venv/Scripts/python build_nhd_streams.py --check    # confirm the checked-in file still matches
+.venv/Scripts/python build_trail_water.py            # rebuild and review the diff
+.venv/Scripts/python build_trail_water.py --check    # confirm the checked-in file still matches
 ```
 
 ## Fetching club PDFs (review-only)

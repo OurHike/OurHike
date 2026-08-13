@@ -1418,8 +1418,7 @@ a.poi-card__credit::after {
    one class on both elements, because they are two different facts about the
    place and the card's markup says which is which. */
 .poi-card__description,
-.poi-card__nearby,
-.poi-card__stream {
+.poi-card__nearby {
   margin: var(--space-1, 4px) 0 0;
   font-size: 13px;
   line-height: 1.45;

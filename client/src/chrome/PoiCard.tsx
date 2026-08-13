@@ -68,7 +68,6 @@ import { poiColor, poiGlyphPath } from '../map/poiIcons'
 import { MapIcon } from '../map/MapIcon'
 import { siteDistanceFeet } from '../map/poiSites'
 import { describeNearby, type NearbyPart } from '../lib/nearbyClause'
-import { describeStream, type StreamFacts } from '../lib/streamSentence'
 import { formatShortDistance, type UnitSystem } from '../lib/units'
 
 export interface PoiDetail {
@@ -142,13 +141,6 @@ export interface PoiDetail {
    * copy downloaded before the field existed.
    */
   nearby?: NearbyPart[]
-  /**
-   * The nearest USGS-mapped stream's facts (#529) - `describeStream` writes
-   * the sentence, in this hiker's units, including the "no mapped stream
-   * within 1 km" form, which is a fact worth a sentence and not a blank.
-   * Shelters only, and absent on any copy downloaded before it existed.
-   */
-  stream?: StreamFacts
   /**
    * A photo of the place, when one exists.
    *
@@ -512,9 +504,6 @@ export function PoiCard({
   // beside it - has parts of its own to name. Read off whichever waypoint the
   // card is currently showing, like the description and the source line above.
   const nearby = describeNearby(shown.nearby, units)
-  // The nearest USGS-mapped stream (#529), written here for the same reason:
-  // the sentence contains a distance, and the unit is the hiker's question.
-  const stream = describeStream(shown.stream, units)
 
   // The two regions a chip swaps, named so `aria-controls` can point at them.
   // Through `useId` rather than a pair of constants because ids have to be
@@ -836,12 +825,6 @@ export function PoiCard({
             paragraphs render identically when both are present, and each stands
             up when the other is missing. */}
         {nearby !== null && <p className="poi-card__nearby">{nearby}</p>}
-
-        {/* The stream line renders under the parts and stands alone the same
-            way: it is a proximity fact from USGS, not a part of the site, and
-            its "no mapped stream" form is as much a sentence as the other -
-            a dry ridge is something a hiker plans an evening around. */}
-        {stream !== null && <p className="poi-card__stream">{stream}</p>}
 
         {shown.confidence === 'low' && (
           <p className="poi-card__unverified" role="note">

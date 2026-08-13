@@ -290,7 +290,12 @@ ones; the client work for all of this is already built):
   will not fire for a spring that does not share the shelter's name. Real springs often
   sit 60–250 m out: points alone put pins *near* shelters while most shelter cards stay
   silent. Widening the gate for water specifically is a product decision this document
-  flags and does not make. *(Measured 2026-08-13 while #694 was scoped: against today's
+  flags and does not make.
+  *Amended 2026-08-13:* it stopped being a catch and became the mechanism. The
+  100 ft match radius `build_trail_water.py` uses sits **inside** that 60 m fold
+  deliberately, so a derived water point needs no second association rule — it is
+  published at its real coordinates and the existing grouping puts it on the
+  shelter's pin. A match the map could not draw would be a match in name only. *(Measured 2026-08-13 while #694 was scoped: against today's
   174 opentrail points, widening 60 m → 150 m folds in exactly zero additional water
   members — the decision only becomes live once the OSM points land, and wants
   re-measuring then.)*
@@ -365,16 +370,31 @@ and hiker reports as the only eventual answer to "is it flowing".
    assert "there is water here" — §5's error literature is the reason that wording
    is load-bearing. Blood Mtn stays honest: "no mapped stream within 1 km" is also a
    sentence worth printing.
-   *Amended 2026-08-13: built.* `build_nhd_streams.py` writes
-   [reference/nhd_streams.json](reference/nhd_streams.json) — checked in
-   because the snapshot is frozen (§5), so a per-build fetch would re-download
-   an unchanging answer — and `export_poi.py` publishes each shelter's facts
-   as the `stream` column (name, distance in feet, flow class, or the
-   no-stream fact), with `client/src/lib/streamSentence.ts` writing the words
-   in the hiker's own units — #625's structure-not-prose split, applied the
-   same day it landed. The wording constraints above hold verbatim in that
-   file: "mapped as" on every flow claim, no claim at all for an unclassified
-   reach, and the no-stream sentence printed rather than silent.
+   *Amended 2026-08-13, and the amendment replaces the option rather than
+   completing it.* This shipped first as a nearest-stream sentence on every
+   shelter card, out to a kilometre. **The maintainer rejected the shape, and
+   was right to**: a stream 700 m away is a true fact about the map that says
+   nothing about the shelter, and a card printing it answers a question
+   nobody asked. What replaced it is narrower and load-bearing —
+   [build_trail_water.py](build_trail_water.py) publishes a water POI for a
+   site only where a hiker could actually reach it: **within 100 ft AND under
+   a 35% grade**, the second gate measured from real 3DEP elevations at both
+   ends, because a stream 90 ft away and 120 ft below is not a water source
+   however close the map says it is. Rejected candidates keep their numbers
+   in the file so either gate can be re-argued from data. The same script
+   fills `crossing` from exact trail×stream intersections — water a hiker
+   walks straight through — which is the other half of "show the water that
+   meets the trail or a POI". Streams come from **both** hydrographies,
+   merged: USGS classifies flow — the one structured answer anywhere to "will
+   this be dry in August", and §1's whole reason for measuring NHD — while OSM
+   more often carries the local name and is edited by people who walk there.
+   A crossing deduped across the two keeps whichever half each supplied and
+   attributes the flow claim to whoever made it, per
+   [features/POI_DEDUPLICATION.md](../features/POI_DEDUPLICATION.md)'s
+   combine-don't-drop rule. USGS arrives as bulk staged GeoPackages, one
+   subregion at a time: its query service 504s under corridor-scale load (the
+   failure that killed two publish runs, ELEVATION_SOURCES.md), and a
+   derivation nobody can re-run is not one anybody can check.
 3. **The ATC ask, extended by one question** — *no code, unblocks the ceiling.* The
    combined ask SOURCE_SURVEY.md §10 already plans (capacity, Helene, half-mile
    points) should add: CSI shows per-site water distances sourced from FarOut and

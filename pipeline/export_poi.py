@@ -75,27 +75,30 @@ inspection, 2026-07-28):
     dropped - opentrail imports OSM, so the overlap is largely the same
     node arriving twice, and the opentrail id is the one existing Reports
     may already reference.
-  - crossing: declared in lib/poi_schema.POI_TYPES but always exported with
-    zero features - there's no NHD-crossing fetch script yet (ROADMAP.md
-    still calls that exploratory/undecided, and WATER_SOURCES.md §7 keeps
-    it a hike-planning feature rather than a shelter fix). Shipping an
-    empty-but-present layer (rather than omitting the poi_type, or
-    inventing fake crossings) keeps the schema honest about what's actually
-    populated.
+  - trail_water.json: the two sources below, and the reason `crossing`
+    stopped being an empty-but-present layer after shipping as one since it
+    was declared.
 
-Stream facts (#529, WATER_SOURCES.md §7 option 2): every shelter publishes
-its nearest USGS-mapped stream on the `stream` column - name where NHD has
-one, the FCode's flow class, the distance in feet, {"none": true} where
-nothing is mapped within a kilometre - from reference/nhd_streams.json,
-checked in because NHD is a frozen snapshot (build_nhd_streams.py holds the
-reasoning). Structure rather than a composed sentence for `nearby`'s exact
-reason (#625): the distance is the reader's question, and
-client/src/lib/streamSentence.ts writes "Nearest mapped stream: Stony
-Brook, about 225 ft (USGS; mapped as year-round, not recently verified)."
-in whichever unit the hiker picked. A proximity claim, deliberately never a
-pin: NHD reaches 58% of shelters with a flowing stream inside 250 m but
-does not know the shelter's actual source, so the sentence is the honest
-shape and it reaches all 280 cards regardless of what folds into the site.
+Where the trail meets water (#529, build_trail_water.py): two more sources,
+both read from reference/trail_water.json, both derived from the OSM state
+extracts this pipeline already downloads.
+
+  - CROSSINGS fill `crossing`, the poi_type declared in lib/poi_schema.py and
+    empty since it was declared. Each is an exact geometric intersection of
+    ATC's centerline with an OSM stream way - the two lines cross, so a hiker
+    walking the trail walks through the water. Not a proximity guess, which
+    is what #97 measured overshooting into thousands of near-misses.
+  - SITE WATER folds into `water`: for each shelter and campsite, the nearest
+    point on a stream, published ONLY where a hiker could reach it - inside
+    100 ft and under a 35% grade, measured from real USGS elevations at both
+    ends. A stream 90 ft away and 120 ft below is not a water source however
+    close the map says it is. build_trail_water.py holds both gates and every
+    rejection's numbers.
+
+Neither needs a matching rule here: a published point sits at its real
+coordinates, so lib/poi_sites.py's 60 m proximity fold attaches the site's
+water to its pin exactly as it does an opentrail or OSM point, and #694's
+synthesized CSI member yields to it automatically.
 
 Capacity enrichment: shelter features carry `capacity`, how many people the
 shelter sleeps, from reference/shelter_capacity.json. That file is checked in
@@ -224,6 +227,7 @@ from lib.poi_description import (
     describe_parking,
     describe_privy,
     describe_shelter,
+    describe_stream_point,
     describe_viewpoint,
     describe_water,
     nearby_parts,
@@ -244,17 +248,14 @@ CAPACITY_PATH = ROOT / "reference" / "shelter_capacity.json"
 # build_water_distance.py's output, under reference/ for the same reason.
 WATER_DISTANCE_PATH = ROOT / "reference" / "water_distance.json"
 
-# build_nhd_streams.py's output, under reference/ for those reasons plus one
+# build_trail_water.py's output, under reference/ for those reasons plus one
 # of its own: NHD is a frozen snapshot, so fetching it per build would
 # re-download an unchanging answer (that script's docstring).
-NHD_STREAMS_PATH = ROOT / "reference" / "nhd_streams.json"
+TRAIL_WATER_PATH = ROOT / "reference" / "trail_water.json"
 
 # Metres per foot, for the places the two units meet: a site member's
 # distance is measured in metres (the equirectangular gate that grouped it) and
-# published in feet (what `nearby` states, and what lib/units.ts formats from),
-# and the nearest-stream distance is measured in metres too
-# (build_nhd_streams.py's point-to-segment geometry) and published in feet on
-# `stream` for the same reader - one conversion, at the export boundary.
+# published in feet (what `nearby` states, and what lib/units.ts formats from).
 #
 # ATC's own water distance needs no conversion in either direction now - it is
 # feet in the column and feet in `nearby`. It used to be turned into metres
@@ -338,13 +339,6 @@ POI_COLUMNS = (
     # string into real JSON when it writes the .geojson - so the two artifacts
     # genuinely disagree about this field's type and the client reads both.
     ("nearby", "VARCHAR"),
-    # The nearest USGS-mapped stream's facts, JSON for the same FlatGeobuf
-    # reason as `nearby` above, published the same way for the same reader:
-    # {"name": ..., "distance_ft": ..., "flow": ...} where NHD maps one
-    # within a kilometre, {"none": true} where it does not (a fact the card
-    # prints - see client/src/lib/streamSentence.ts), NULL where the
-    # reference file has no row. Shelters only (#529, build_nhd_streams.py).
-    ("stream", "VARCHAR"),
     ("photo_key", "VARCHAR"),
     ("photo_page_url", "VARCHAR"),
     ("photo_author", "VARCHAR"),
@@ -449,6 +443,22 @@ OPENTRAIL_FIELD_MAP_BASE = {"id_field": "dbid", "name_field": "title"}
 OSM_WATER_SOURCE = "osm_water"
 OSM_WATER_FILENAME = "osm_water.geojson"
 OSM_WATER_FIELD_MAP = {"id_field": "osm_id", "name_field": "name", "confidence": CONFIDENCE_LOW}
+
+# build_trail_water.py's two products (#529). Both CONFIDENCE_LOW, and for
+# the same reason as OSM's points rather than a weaker one: nobody stood at
+# either. A crossing is where two independently digitised lines meet, and a
+# site's water is where geometry says a stream runs nearest a shelter - both
+# are derivations, and the dashed rim plus the card's "Unverified" line is
+# exactly what a derivation is worth until somebody walks it.
+NHD_CROSSING_SOURCE = "nhd_crossing"
+NHD_STREAM_SOURCE = "nhd_stream"
+
+# A crossing's identity is WHERE it is, not which reach it belongs to: NHD
+# splits reaches at confluences, so one reach can cross the trail twice and
+# a reach id alone would collide. Five decimal places is about a metre -
+# finer than the geometry, coarse enough that the id is stable while the
+# snapshot is frozen (which is forever, per build_trail_water.py).
+CROSSING_ID_PRECISION = 5
 
 # How close an OSM water point must sit to an opentrail one to be its twin.
 # Measured before choosing (2026-08-13, 174 opentrail water points against
@@ -691,10 +701,12 @@ DESCRIBERS = {
     "viewpoint": lambda properties, _capacity, note: describe_viewpoint(properties, note),
     "parking": lambda properties, _capacity, note: describe_parking(properties, note),
     "privy": lambda properties, _capacity, note: describe_privy(properties, note),
-    # Composes only for OSM points, whose tags carry facts (`kind`, the
-    # reliability tags); an opentrail point has an icon and a title and
-    # composes None, exactly as before this entry existed.
+    # Composes for OSM points (whose tags carry `kind` and the reliability
+    # tags) and for build_trail_water.py's stream points (which carry NHD's
+    # flow class); an opentrail point has an icon and a title and composes
+    # None, exactly as before this entry existed.
     "water": lambda properties, _capacity, _note: describe_water(properties),
+    "crossing": lambda properties, _capacity, _note: describe_stream_point(properties),
 }
 
 
@@ -837,62 +849,6 @@ def attach_nearby(records: list[dict]) -> int:
     return attached
 
 
-def load_streams(path: Path) -> dict[str, dict]:
-    """nhd_streams.json's per-shelter stream facts, keyed by the same
-    unified POI id this export writes.
-
-    Every record participates - a shelter with no stream within 1 km is a
-    fact the sentence prints, not a blank - so unlike capacities and
-    distances there is no with-value filter here. A missing file is still a
-    normal state (a fresh checkout mid-review, a test fixture without one):
-    the export ships sentences without the stream line rather than failing.
-    """
-    if not path.exists():
-        return {}
-    document = json.loads(path.read_text(encoding="utf-8"))
-    return {f"{SHELTER_SOURCE}:{record['atc_global_id']}": record for record in document.get("shelters", [])}
-
-
-def attach_stream(records: list[dict], streams: dict[str, dict]) -> int:
-    """Publish every shelter's nearest-mapped-stream facts as the `stream`
-    column (#529, WATER_SOURCES.md §7 option 2), returning how many got one.
-
-    STRUCTURE, NOT PROSE, for `nearby`'s exact reason (#625): the sentence
-    contains a distance, a distance is the reader's question, and
-    client/src/lib/streamSentence.ts writes the words in whichever unit the
-    hiker picked. Feet, converted once here at the export boundary - the
-    reference file keeps the metres the geometry was measured in. Unrounded:
-    the phone rounds once, coarsely ("about"), because an envelope query
-    against survey-era stream geometry is not a measurement.
-
-    Every shelter with a reference row, unconditionally - including the ones
-    whose `nearby` already says water. The two are different claims a hiker
-    wants both of: `nearby`'s entry is ATC's measured distance to the site's
-    own source, this column is which mapped stream is closest and what USGS
-    says about its flow. And {"none": true} publishes with the same lack of
-    ceremony, because "no mapped stream within 1 km" is the fact Blood
-    Mountain's card owes a hiker most of all.
-    """
-    attached = 0
-    for record in records:
-        if record["poi_type"] != "shelter":
-            continue
-        stream = streams.get(record["id"])
-        if stream is None:
-            continue
-        if stream.get("distance_m") is None:
-            facts = {"none": True}
-        else:
-            facts = {
-                "name": stream.get("gnis_name"),
-                "distance_ft": round(stream["distance_m"] / M_PER_FT, 1),
-                "flow": stream.get("flow"),
-            }
-        record["stream"] = json.dumps(facts)
-        attached += 1
-    return attached
-
-
 def attach_photos(records: list[dict], photos: dict[str, list[dict]]) -> int:
     """Copy each matched POI's photos onto its unified record, returning how
     many POIs matched. Unmatched records are left without the keys entirely -
@@ -1019,7 +975,85 @@ def unify_all_sources(trail_id: str = TRAIL_ID, skipped: list[str] | None = None
             record[RAW_PROPERTIES_KEY] = feature.get("properties") or {}
             unified.append(record)
 
+    # Read at call time from the module constant, like every path here, so a
+    # test pointing it elsewhere redirects it.
+    unified.extend(load_trail_water(TRAIL_WATER_PATH, trail_id))
+
     return unified
+
+
+def load_trail_water(path: Path, trail_id: str = TRAIL_ID) -> list[dict]:
+    """build_trail_water.py's crossings and site water, as unified POIs.
+
+    Two poi_types out of one file because they answer the same question in
+    two places: where the walking route meets water, and which overnight
+    sites have water they can reach. Both are derived from the same frozen
+    NHD snapshot and both enter at CONFIDENCE_LOW.
+
+    A record whose `water` is null is a site the gates REFUSED - too far, too
+    steep, or no stream at all - and it publishes nothing here. Its reason
+    stays in the reference file where a human can read it and decide whether
+    a gate is wrong, which is the whole point of writing rejections down.
+
+    A missing file is a normal state, exactly as it is for capacities,
+    distances and photos: the export ships without crossings rather than
+    failing.
+    """
+    if not path.exists():
+        return []
+    document = json.loads(path.read_text(encoding="utf-8"))
+    records = []
+
+    for crossing in document.get("crossings", []):
+        lat, lon = crossing["lat"], crossing["lon"]
+        feature = {
+            "geometry": {"type": "Point", "coordinates": [lon, lat]},
+            "properties": {
+                "crossing_id": f"{lat:.{CROSSING_ID_PRECISION}f},{lon:.{CROSSING_ID_PRECISION}f}",
+                "sources": crossing.get("sources"),
+                "name": crossing.get("name"),
+                "flow": crossing.get("flow"),
+                "flow_source": crossing.get("flow_source"),
+            },
+        }
+        record = unify_poi(
+            feature,
+            "crossing",
+            NHD_CROSSING_SOURCE,
+            trail_id,
+            {"id_field": "crossing_id", "name_field": "name", "confidence": CONFIDENCE_LOW},
+        )
+        record[RAW_PROPERTIES_KEY] = {**feature["properties"], "crossing": True}
+        records.append(record)
+
+    for site in document.get("sites", []):
+        water = site.get("water")
+        if water is None:
+            continue
+        feature = {
+            "geometry": {"type": "Point", "coordinates": [water["lon"], water["lat"]]},
+            "properties": {
+                # The site this water belongs to, which is also what makes the
+                # id stable: one reachable stream point per site by
+                # construction, so the site's own GlobalID names it.
+                "site_global_id": site["atc_global_id"],
+                "sources": water.get("sources"),
+                "name": water.get("name"),
+                "flow": water.get("flow"),
+                "flow_source": water.get("flow_source"),
+            },
+        }
+        record = unify_poi(
+            feature,
+            "water",
+            NHD_STREAM_SOURCE,
+            trail_id,
+            {"id_field": "site_global_id", "name_field": "name", "confidence": CONFIDENCE_LOW},
+        )
+        record[RAW_PROPERTIES_KEY] = feature["properties"]
+        records.append(record)
+
+    return records
 
 
 def dedupe_water(records: list[dict]) -> list[dict]:
@@ -1111,7 +1145,6 @@ def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[
                     # The parts as JSON - see attach_nearby, and note the same
                     # scalar-only reason the photo list below is a string.
                     r.get("nearby"),
-                    r.get("stream"),
                     # .get, not [] - records arrive photo-less both when
                     # attach_photos found no match and when a caller (or an
                     # older test) never ran the attach step at all.
@@ -1260,13 +1293,6 @@ def main() -> dict:
     # fact: a jump in it means ATC's naming moved a member in or out of a site.
     nearby = attach_nearby(clipped)
     print(f"  {nearby} anchors name the parts around them (#625 - the phone writes the sentence).")
-
-    streams = load_streams(NHD_STREAMS_PATH)
-    if streams:
-        attached = attach_stream(clipped, streams)
-        print(f"  {attached} shelters carry their nearest-stream facts (from {NHD_STREAMS_PATH.name}).")
-    else:
-        print(f"  No {NHD_STREAMS_PATH.name} - exporting without stream facts.")
 
     commons_photos = load_photo_records(RAW_DIR / IMAGES_FILENAME)
     atc_photos = load_photo_records(RAW_DIR / ATC_IMAGES_FILENAME)

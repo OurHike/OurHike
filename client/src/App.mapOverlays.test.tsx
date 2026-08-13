@@ -12,7 +12,8 @@
 // warning, or a closure placed against the wrong index.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { get, set } from 'idb-keyval'
 import { MockMap, resetMapLibreMock } from './test/mocks/maplibre-gl'
 import { renderedMap } from './test/liveMap'
@@ -202,5 +203,136 @@ describe('what the shell draws once the reads land', () => {
       expect(featuresIn(map, WARNING_SOURCE_ID)).toHaveLength(1)
     })
     expect(screen.queryByRole('alert')).toBe(null)
+  })
+})
+
+// The ATC's notices, end to end (#461 and features/ATC_TRAIL_UPDATES.md).
+//
+// Only this file can catch what is being asserted here, because the gap it
+// covers is a gap BETWEEN modules: `atcBandCandidates` drops a non-obstructing
+// range, `closureBands` drops anything over `MAX_BAND_MILES`, `atcPointNotices`
+// keeps only single-mile notices, and `atcUpdateLanes` shows at most two and
+// only ahead of the hiker. Each is right where it lives. Their intersection is
+// a notice the ATC published that a hiker using this app could not read
+// anywhere at all, and no unit test has a vantage point on an intersection.
+
+/** ATC's Helene advisory at this harness's scale: a range, over the band
+ *  ceiling, obstructing nothing, and with no GPS fix there is no banner
+ *  either. Before the notice list this reached the hiker through nothing. */
+const UNDRAWN_UPDATE = {
+  atc_id: 'hurricane-helene-storm-damage',
+  title: 'Hurricane Helene Storm Damage',
+  category: 'Alert' as const,
+  states: ['NC', 'TN'],
+  start_mile_marker: 1,
+  end_mile_marker: 9,
+  obstructs_trail: false,
+  updated_at: '2026-06-02T00:00:00Z',
+  source_url: 'https://appalachiantrail.org/trail-updates/helene/',
+}
+
+/** A single mile, so the map draws a dot for it. */
+const DRAWN_UPDATE = {
+  atc_id: 'harpers-ferry-footbridge-closure',
+  title: 'Harpers Ferry: Footbridge Closure',
+  category: 'Detour' as const,
+  states: ['MD', 'WV'],
+  start_mile_marker: 6,
+  end_mile_marker: 6,
+  obstructs_trail: true,
+  updated_at: '2026-07-31T19:54:12Z',
+  source_url: 'https://appalachiantrail.org/trail-updates/harpers-ferry/',
+}
+
+/** Answers the one published read this file cares about and 404s the rest, so
+ *  the closures and reports baselines stay exactly as the tests above found
+ *  them - both come from the mocked `lib/api` here, not from the bucket. */
+function serveAtcUpdates(updates: unknown[]): void {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (!url.endsWith('conditions/atc_updates.json')) {
+        return new Response(null, { status: 404 })
+      }
+      return new Response(
+        JSON.stringify({
+          generated_at: '2026-08-12T00:00:00Z',
+          reviewed_at: '2026-08-12T00:00:00Z',
+          atc_updates: updates,
+        }),
+        { status: 200 },
+      )
+    }),
+  )
+}
+
+describe('every ATC notice is readable, drawn or not', () => {
+  it('offers a way to read all of them as soon as any arrive', async () => {
+    serveAtcUpdates([UNDRAWN_UPDATE, DRAWN_UPDATE])
+    await renderApp()
+
+    // No fix and no direction in this harness, so there is no banner at all -
+    // which is exactly the state the button has to survive.
+    expect(screen.queryByRole('alert')).toBe(null)
+    expect(
+      await screen.findByRole('button', { name: 'Read all 2 ATC trail updates' }),
+    ).toBeInTheDocument()
+  })
+
+  it('shows the notice that reaches the hiker through nothing else', async () => {
+    serveAtcUpdates([UNDRAWN_UPDATE, DRAWN_UPDATE])
+    await renderApp()
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /ATC trail updates/ }),
+    )
+
+    const list = screen.getByRole('dialog', {
+      name: /Appalachian Trail Conservancy/,
+    })
+    expect(within(list).getByText('Hurricane Helene Storm Damage')).toBeInTheDocument()
+    expect(
+      within(list).getByText('Harpers Ferry: Footbridge Closure'),
+    ).toBeInTheDocument()
+  })
+
+  it('tells the hiker which one has no mark on the map to look for', async () => {
+    // Read off what the canvas is actually drawing rather than re-derived, so
+    // a notice whose mile falls off this build's centerline is reported
+    // honestly too. The dot for mile 6 is on the eleven-vertex centerline this
+    // file builds; the 8-mile range is over the band ceiling and is not.
+    serveAtcUpdates([UNDRAWN_UPDATE, DRAWN_UPDATE])
+    await renderApp()
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /ATC trail updates/ }),
+    )
+
+    const items = screen.getAllByRole('listitem')
+    const helene = items.find((item) =>
+      within(item).queryByText('Hurricane Helene Storm Damage'),
+    )
+    const footbridge = items.find((item) =>
+      within(item).queryByText('Harpers Ferry: Footbridge Closure'),
+    )
+
+    expect(helene).toHaveTextContent(/Not drawn on the map/)
+    expect(footbridge).not.toHaveTextContent(/Not drawn on the map/)
+  })
+
+  it('offers nothing to open when the bucket has no reviewed file', async () => {
+    // The 404 the pipeline serves while nobody has reviewed the source. An
+    // empty list would render as "the ATC reports nothing", which is the one
+    // thing export_atc_updates.py publishes nothing in order to avoid.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 404 })),
+    )
+    await renderApp()
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /ATC trail update/ })).toBe(null)
+    })
   })
 })

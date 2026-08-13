@@ -122,6 +122,21 @@ export interface MapScreenProps {
    *  reason `selectedPoi` is: the map draws bands, and the app is what knows
    *  whose notice a band belongs to. */
   atcUpdateSheet?: ReactNode
+  /**
+   * How many ATC notices the app is holding, for the button that opens all of
+   * them. Zero, or the shell not passing it, renders no button.
+   *
+   * A COUNT RATHER THAN THE NOTICES. This component does not need to read one,
+   * and handing it the array would make it the second place that knows how an
+   * ATC update is rendered - which is how the banner and the sheet would come
+   * to disagree. The list itself arrives as `atcNoticeList` below, already
+   * built, exactly as `atcUpdateSheet` does.
+   */
+  atcNoticeCount?: number
+  /** Opens that list. */
+  onOpenAtcNotices?: () => void
+  /** The full list of ATC notices, or null when it is closed. */
+  atcNoticeList?: ReactNode
   warnings?: readonly WarningPoint[]
 
   activeTab: TabId
@@ -302,6 +317,9 @@ export function MapScreen({
   atcUpdatePoints,
   onSelectAtcUpdate,
   atcUpdateSheet,
+  atcNoticeCount = 0,
+  onOpenAtcNotices,
+  atcNoticeList,
   warnings,
   activeTab,
   onSelectTab,
@@ -431,6 +449,36 @@ export function MapScreen({
           </div>
         )}
 
+        {/* The way to everything the ATC said, and deliberately OUTSIDE the
+            alert region above rather than a fourth row inside it.
+
+            Two reasons, and both are about what `role="alert"` means. It is a
+            live region: a screen reader announces its contents when they
+            change, which is right for three lines that appear because
+            something is ahead and wrong for a control that is simply always
+            there - every change to a sibling row would re-announce it. And it
+            is reserved for what changes what a hiker does NEXT; this button
+            changes nothing, it only opens something.
+
+            Rendered whenever the app holds any notices, including when no
+            banner line is showing at all. That is the case it exists for: an
+            update behind the hiker, or one that obstructs nothing, produces no
+            banner and no map mark, and before this had no surface whatsoever
+            (chrome/AtcNoticeList.tsx opens with the full accounting). */}
+        {atcNoticeCount > 0 && onOpenAtcNotices !== undefined && (
+          <div className="map-screen__notices">
+            <button
+              type="button"
+              className="map-screen__notices-button"
+              onClick={onOpenAtcNotices}
+            >
+              {atcNoticeCount === 1
+                ? 'Read the 1 ATC trail update'
+                : `Read all ${atcNoticeCount} ATC trail updates`}
+            </button>
+          </div>
+        )}
+
         <Header
           trailName={trailName}
           trailLogo={trailLogo}
@@ -501,6 +549,13 @@ export function MapScreen({
                 this is about a stretch of trail, so it sits where the search
                 sheet does and needs none of that. */}
             {atcUpdateSheet}
+
+            {/* Beside the single-notice sheet, in the same slot and for the
+                same reason - a list about the whole trail anchors to nothing
+                on the canvas. Both can be open at once and the list is
+                rendered second, so it lands on top; that is the right way
+                round, since the list is what a hiker just asked for. */}
+            {atcNoticeList}
 
             <Search
               open={searchOpen}

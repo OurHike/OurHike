@@ -553,3 +553,78 @@ describe('MapScreen safety overlays', () => {
     ).toHaveLength(1)
   })
 })
+
+describe('the way to every ATC notice', () => {
+  // The button is the only route to an update that has no banner line and no
+  // mark on the map - one behind the hiker, or one over the band ceiling. So
+  // what matters about it is that it does NOT depend on either of those.
+
+  it('is not there when the app holds no ATC notices', () => {
+    render(<MapScreen {...PROPS} />)
+
+    expect(screen.queryByRole('button', { name: /ATC trail update/ })).toBe(null)
+  })
+
+  it('appears whenever there are notices, banner or no banner', () => {
+    render(<MapScreen {...PROPS} atcNoticeCount={6} onOpenAtcNotices={vi.fn()} />)
+
+    expect(screen.queryByRole('alert')).toBe(null)
+    expect(
+      screen.getByRole('button', { name: 'Read all 6 ATC trail updates' }),
+    ).toBeInTheDocument()
+  })
+
+  it('counts one notice without pluralising it', () => {
+    render(<MapScreen {...PROPS} atcNoticeCount={1} onOpenAtcNotices={vi.fn()} />)
+
+    expect(
+      screen.getByRole('button', { name: 'Read the 1 ATC trail update' }),
+    ).toBeInTheDocument()
+  })
+
+  it('reports the tap up to the shell, which owns whether the list is open', async () => {
+    const onOpenAtcNotices = vi.fn()
+    render(
+      <MapScreen {...PROPS} atcNoticeCount={6} onOpenAtcNotices={onOpenAtcNotices} />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /ATC trail updates/ }))
+
+    expect(onOpenAtcNotices).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the button out of the alert region', () => {
+    // `role="alert"` is a live region announced on change, and it is reserved
+    // for what changes what a hiker does next. A permanent control inside it
+    // would be re-announced every time a closure row came or went.
+    render(
+      <MapScreen
+        {...PROPS}
+        closureAhead="Trail closed 5.0 mi ahead · Storm damage"
+        atcNoticeCount={6}
+        onOpenAtcNotices={vi.fn()}
+      />,
+    )
+
+    expect(within(screen.getByRole('alert')).queryByRole('button')).toBe(null)
+  })
+
+  it('renders the list the shell hands it, over the canvas', () => {
+    render(
+      <MapScreen
+        {...PROPS}
+        atcNoticeCount={6}
+        onOpenAtcNotices={vi.fn()}
+        atcNoticeList={<div data-testid="atc-notice-list" />}
+      />,
+    )
+
+    expect(screen.getByTestId('atc-notice-list')).toBeInTheDocument()
+  })
+
+  it('shows nothing until the shell says the list is open', () => {
+    render(<MapScreen {...PROPS} atcNoticeCount={6} onOpenAtcNotices={vi.fn()} />)
+
+    expect(screen.queryByTestId('atc-notice-list')).toBe(null)
+  })
+})

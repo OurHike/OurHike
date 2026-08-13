@@ -183,6 +183,7 @@ import {
 } from './lib/atcUpdates'
 import { atcUpdatePoints } from './map/atcUpdateLayers'
 import { AtcUpdateSheet } from './chrome/AtcUpdateSheet'
+import { AtcNoticeList } from './chrome/AtcNoticeList'
 import { HikePicker } from './screens/HikePicker'
 import {
   clearPlannedHike,
@@ -433,6 +434,15 @@ function App() {
   const [atcUpdates, setAtcUpdates] = useState<readonly AtcUpdate[]>([])
   const [atcReviewedAt, setAtcReviewedAt] = useState<Date | null>(null)
   const [selectedAtcBandId, setSelectedAtcBandId] = useState<string | null>(null)
+  /**
+   * Whether the full list of ATC notices is open.
+   *
+   * Separate from `selectedAtcBandId` rather than a third state of it. The two
+   * answer different questions - "which one did they tap" and "did they ask to
+   * read all of them" - and a hiker who opens the list, taps a band behind it
+   * and closes that sheet should find the list still where they left it.
+   */
+  const [atcNoticesOpen, setAtcNoticesOpen] = useState(false)
   // Was a state with no setter until #231 - nothing ever synced, so the status
   // strip said "never synced" on every device forever, which was true and
   // looked like a bug in the strip rather than a missing feature.
@@ -1227,6 +1237,26 @@ function App() {
     if (selectedAtcBandId === null) return null
     return atcUpdateForBandId(atcUpdates, selectedAtcBandId)
   }, [atcUpdates, selectedAtcBandId])
+
+  /**
+   * Which notices the canvas is ACTUALLY drawing, by band id.
+   *
+   * Read off the two collections above rather than re-derived from the
+   * updates, and that is the whole point of computing it here. The filters
+   * (`atcBandCandidates`, `atcPointNotices`) say what this build INTENDS to
+   * draw; `closureBands` and `atcUpdatePoints` then drop anything whose mile
+   * falls outside this build's centerline, which no predicate over an
+   * `AtcUpdate` can know. AtcNoticeList tells a hiker which notices have no
+   * mark to look for, and it can only be honest about that from the truth.
+   */
+  const atcDrawnIds = useMemo(
+    () =>
+      new Set<string>([
+        ...atcBandsOnMap.map((band) => band.id),
+        ...atcPointsOnMap.map((point) => point.id),
+      ]),
+    [atcBandsOnMap, atcPointsOnMap],
+  )
 
   /**
    * Serious warnings as points, straight from the report's own lat/lon.
@@ -2172,6 +2202,18 @@ function App() {
                 onClose={() => setSelectedAtcBandId(null)}
               />
             )
+          }
+          atcNoticeCount={atcUpdates.length}
+          onOpenAtcNotices={() => setAtcNoticesOpen(true)}
+          atcNoticeList={
+            atcNoticesOpen ? (
+              <AtcNoticeList
+                updates={atcUpdates}
+                drawnIds={atcDrawnIds}
+                reviewedAt={atcReviewedAt}
+                onClose={() => setAtcNoticesOpen(false)}
+              />
+            ) : null
           }
           warnings={warningPins}
           time={now}

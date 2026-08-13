@@ -787,23 +787,40 @@ export function buildMapStyle({
       // lib/closureStyle.ts for why the band differs from a blaze in width,
       // rhythm and casing weight rather than only in colour.
       ...buildClosureLayers(CLOSURE_SOURCE_ID),
-      // The ATC's bands directly after, for the same reason and at the same
-      // weight. Which of the two sits on top where they overlap is not a
-      // statement about which is more true - features/SOURCE_REGISTRY.md's
-      // rule for two organisations describing the same ground is show one and
-      // disclose the other, and disclosing is the sheet's job. They are drawn
-      // second only because the ATC is the upstream authority on the A.T.,
-      // and something had to be.
-      ...buildAtcUpdateLayers(ATC_UPDATE_SOURCE_ID),
       // Then the pins, so one is never buried under the trail line it sits on.
       // See poiLayers.ts for why this is one layer rather than one per
       // category.
       buildPoiLayer(),
-      // And the serious-warning pins last of all, over every waypoint. The
-      // collision engine already keeps them from being dropped
-      // (warningLayers.ts); this keeps them from being covered, which is the
-      // same guarantee by the other mechanism.
+      // And the serious-warning pins over every waypoint. The collision engine
+      // already keeps them from being dropped (warningLayers.ts); this keeps
+      // them from being covered, which is the same guarantee by the other
+      // mechanism.
       buildWarningLayer(),
+      // The ATC's own notices last of all, so nothing on this map can cover
+      // one.
+      //
+      // THEY USED TO SIT HERE DIRECTLY AFTER THE CLOSURE BANDS, under both pin
+      // layers, and the point notices are what made that untenable. A band is
+      // hundreds of pixels of barred red and a pin cannot hide it; a dot at a
+      // single mile is exactly the size of the thing drawn on top of it, and
+      // most of what ATC publishes is a dot - five of the six reviewed rows on
+      // 2026-08-12. A closed shelter reported by the organisation that
+      // maintains the shelter, drawn underneath OurHike's own pin for that
+      // shelter, is the failure in one sentence.
+      //
+      // Which of the two barrier sources sits on top where they overlap is
+      // still not a statement about which is more true -
+      // features/SOURCE_REGISTRY.md's rule for two organisations describing
+      // the same ground is show one and disclose the other, and disclosing is
+      // the sheet's job. The ATC is second only because it is the upstream
+      // authority on the A.T., and something had to be.
+      //
+      // OurHike's own closure bands are deliberately NOT moved up with them.
+      // Not because they matter less - lib/atcUpdateStyle.ts refuses that
+      // distinction at length - but because a band is not a dot, so it does
+      // not have the problem this move fixes, and re-ordering a layer nobody
+      // reported a fault with is how a fix turns into two.
+      ...buildAtcUpdateLayers(ATC_UPDATE_SOURCE_ID),
     ],
   }
 }

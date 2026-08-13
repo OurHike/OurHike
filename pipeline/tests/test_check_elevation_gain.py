@@ -255,3 +255,159 @@ def test_an_unreadable_reference_reports_rather_than_tracebacks(profile, tmp_pat
     broken.write_text("{ not json")
 
     assert check_elevation_gain.main(["--profile", str(profile), "--reference", str(broken)]) == 2
+
+
+# --- step plausibility, and what it does to a section's verdict (#663) -------
+
+
+@pytest.fixture
+def profile_with_a_phantom_climb(tmp_path):
+    """The `profile` fixture with one impossible sample spliced into the
+    second climb: +2,000 ft between neighbouring samples 0.01 mi (53 ft)
+    apart.
+
+    That is the shape #559 measures on real data - all 94 of its too-steep
+    steps sit on a centerline part boundary, the largest +2,588 ft across
+    25 m - reproduced small enough to reason about.
+
+    Note it yields **two** impossible steps, not one: a single spliced sample
+    is a spike, so the profile jumps up and straight back down. Both are
+    equally impossible and both are reported; only the rise inflates a gain
+    figure, which is what `ascending_total` is for.
+    """
+    records = []
+    mile = 0.0
+    elevation = 1000.0
+    for climb in range(3):
+        for step in range(101):
+            records.append({"distance_mi": round(mile, 4), "elevation_ft": elevation + step * 10})
+            mile += 0.01
+        if climb == 1:
+            records.append({"distance_mi": round(mile, 4), "elevation_ft": elevation + 1000 + 2000})
+            mile += 0.01
+        for step in range(101):
+            records.append({"distance_mi": round(mile, 4), "elevation_ft": elevation + 1000 - step * 10})
+            mile += 0.01
+    path = tmp_path / "elevation_profile.json"
+    path.write_text(json.dumps(records))
+    return path
+
+
+def test_a_clean_profile_reports_no_implausible_steps(profile, reference, capsys):
+    check_elevation_gain.main(["--profile", str(profile), "--reference", str(reference({}))])
+
+    assert "no step exceeds a 100% grade" in capsys.readouterr().out
+
+
+def test_the_spacing_is_read_off_the_profile_rather_than_assumed(profile):
+    """The ceiling is only meaningful against the spacing the file it is
+    measuring actually used - this script is handed profiles it did not
+    build, possibly from a run whose interval differed."""
+    records = json.loads(profile.read_text())
+
+    # The fixture steps 0.01 mi, which is 52.8 ft.
+    assert check_elevation_gain.sample_spacing_ft(records) == pytest.approx(52.8)
+
+
+def test_a_step_too_steep_to_be_trail_is_reported_with_its_size(profile_with_a_phantom_climb, reference, capsys):
+    check_elevation_gain.main(["--profile", str(profile_with_a_phantom_climb), "--reference", str(reference({}))])
+    out = capsys.readouterr().out
+
+    # Two: up and straight back down - see the fixture. Only the rise is
+    # counted as the over-count.
+    assert "2 step(s) too steep to be trail" in out
+    assert "2,000 ft of it ascending" in out
+    assert "+2,000 ft" in out
+    assert "#559" in out
+
+
+def test_only_the_climbing_half_of_an_impossible_step_counts(profile, reference):
+    """Both halves are equally impossible; only the rise inflates a gain
+    figure, so only the rise is the over-count."""
+    steps = [{"from_mi": 0.0, "to_mi": 0.1, "delta_ft": 900}, {"from_mi": 1.0, "to_mi": 1.1, "delta_ft": -900}]
+
+    assert check_elevation_gain.ascending_total(steps) == 900
+
+
+def test_a_section_containing_an_impossible_step_is_not_validated(profile_with_a_phantom_climb, reference, capsys):
+    """The failure this exists for. The section's measured gain is inflated
+    by a geometry fault, so a pass would record the threshold as validated by
+    a phantom climb - the exact "agrees by construction" failure
+    published_gain.json's README is guarding against."""
+    path = reference(
+        {
+            "sections": [
+                {
+                    "name": "contaminated",
+                    "start_mi": 2.0,
+                    "end_mi": 4.1,
+                    "published_gain_ft": 3000,
+                    "source": "synthetic",
+                }
+            ]
+        }
+    )
+
+    exit_code = check_elevation_gain.main(["--profile", str(profile_with_a_phantom_climb), "--reference", str(path)])
+    out = capsys.readouterr().out
+
+    # Not a pass, and not a failure either - the third state.
+    assert exit_code == 1
+    assert "step too steep to be trail" in out
+    assert "impossible" in out
+    assert "Fix #559" in out
+
+
+def test_a_contaminated_section_is_not_reported_as_outside_tolerance(profile_with_a_phantom_climb, reference, capsys):
+    """Failing it would be as wrong as passing it: somebody would go and tune
+    a dead band that is not the problem."""
+    path = reference(
+        {
+            "sections": [
+                {
+                    "name": "contaminated",
+                    "start_mi": 2.0,
+                    "end_mi": 4.1,
+                    "published_gain_ft": 3000,
+                    "source": "synthetic",
+                }
+            ]
+        }
+    )
+
+    check_elevation_gain.main(["--profile", str(profile_with_a_phantom_climb), "--reference", str(path)])
+    out = capsys.readouterr().out
+
+    assert "outside" not in out
+    assert "OFF" not in out
+
+
+def test_a_clean_section_beside_a_contaminated_one_still_gets_its_verdict(profile_with_a_phantom_climb, reference, capsys):
+    """Contamination is scoped to the window that contains the step, not to
+    the whole run - otherwise one bad boundary would silence every section."""
+    path = reference(
+        {
+            "sections": [
+                {"name": "clean first climb", "start_mi": 0.0, "end_mi": 1.0, "published_gain_ft": 1000, "source": "s"},
+                {"name": "contaminated", "start_mi": 2.0, "end_mi": 4.1, "published_gain_ft": 3000, "source": "s"},
+            ]
+        }
+    )
+
+    check_elevation_gain.main(["--profile", str(profile_with_a_phantom_climb), "--reference", str(path)])
+    out = capsys.readouterr().out
+
+    assert "ok  clean first climb" in out
+    assert "?  contaminated" in out
+
+
+def test_the_implausible_step_finder_ignores_nulls_rather_than_crashing(tmp_path):
+    """A DEM coverage gap is a None, and the step either side of it is not a
+    step at all - lib/elevation_gain.py already breaks its runs there."""
+    records = [
+        {"distance_mi": 0.0, "elevation_ft": 1000.0},
+        {"distance_mi": 0.01, "elevation_ft": None},
+        {"distance_mi": 0.02, "elevation_ft": 5000.0},
+    ]
+
+    assert check_elevation_gain.implausible_steps(records) == []

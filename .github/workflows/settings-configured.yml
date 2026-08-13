@@ -1,41 +1,40 @@
-# Asks whether Settings -> Secrets and variables -> Actions actually holds
-# what the workflows in this directory expect - the one question a checkout
-# cannot answer about itself.
+# Asks whether Settings -> Secrets and variables -> Actions actually holds what
+# the workflows in this directory expect - the one question a checkout cannot
+# answer about itself. A GitHub Actions secret is write-only once set: the API
+# will not read one back, and neither will the maintainer who set it.
 #
 # Read-only in the strongest sense available: it resolves the secrets and vars
 # contexts, immediately reduces them to the names whose values came back
 # non-empty, and passes only those names to pytest. No value reaches the test
 # process, so there is nothing for a failure message to leak.
 #
-# Two jobs because they can see different things:
-#
-#   manifest    expected-settings.yml still agrees with the workflows. Needs
-#               nothing but the checkout, so it runs on every pull request -
-#               including from a fork - and it is the half with teeth on an
-#               ordinary change, since drift is what actually happens.
-#
-#   configured  the settings are really there. Deliberately not on
-#               pull_request: GitHub passes no secrets to a fork's PR run, so
-#               this job would fail for every outside contributor, for a
-#               reason none of them could fix and that says nothing about
-#               their change.
-#
-# The weekly run is the point of the whole thing. An R2 token can be revoked
-# or expire without anyone touching this repository, and the next thing to
-# notice would otherwise be a publish failing partway through. Unlike
+# THE WEEKLY RUN IS THE POINT OF THE WHOLE THING. An R2 token can be revoked or
+# expire without anyone touching this repository, and the next thing to notice
+# would otherwise be a publish failing partway through. Unlike
 # check-upstream-freshness.yml, a red X here is always a real break: a missing
 # credential is not a normal state to be in.
+#
+# DELIBERATELY NOT ON `pull_request`, AND THAT IS WHY IT IS ITS OWN FILE (#679).
+# GitHub passes no secrets to a fork's pull request run, so this job would fail
+# for every outside contributor, for a reason none of them could fix and that
+# says nothing about their change. It used to express that as a job-level `if:`
+# on a `pull_request` trigger it did not want, because it shared an `on:` block
+# with the manifest half, which does want one. Now it simply has no such
+# trigger. `.github/expected-protections.yml` keeps `Settings are configured`
+# in `never_required` for this reason, which is about what the check can see
+# rather than about a missing `merge_group:` trigger.
+#
+# It also carries no `merge_group:` for the same reason: a check that cannot
+# report on a pull request must not be required, and one that cannot report on
+# a queue entry hangs it.
 
-name: Settings check
+name: Settings configured
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
   schedule:
     # Mondays, 07:35 UTC. Off the hour for the same reason as
-    # check-upstream-freshness.yml, and a few minutes clear of it.
+    # check-upstream-freshness.yml, and a few minutes clear of it -
+    # protections-check.yml follows at 07:45.
     - cron: "35 7 * * 1"
   workflow_dispatch:
 
@@ -45,34 +44,11 @@ permissions:
   contents: read
 
 jobs:
-  manifest:
-    name: Manifest agrees with the workflows
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: .github/tests
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"
-
-      - name: Install dependencies
-        run: pip install -r requirements-dev.txt
-
-      - name: Lint
-        run: python -m ruff check .
-
-      - name: Check formatting
-        run: python -m ruff format --check .
-
-      - name: Run tests
-        run: python -m pytest -v
-
   configured:
+    # Unchanged across the split from settings-check.yml, and named in
+    # `.github/expected-protections.yml`'s never_required section by this
+    # string.
     name: Settings are configured
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     defaults:
       run:

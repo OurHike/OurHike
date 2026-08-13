@@ -56,7 +56,7 @@
 #
 # REPOSITORY SECRETS, HELD BY A JOB IN A PROTECTED ENVIRONMENT - not
 # environment secrets. Environment protection rules gate the job either way,
-# so the reviewer requirement is unaffected, and settings-check.yml resolves
+# so the reviewer requirement is unaffected, and settings-configured.yml resolves
 # the contexts with no `environment:` set, so an environment-scoped secret
 # would be invisible to the one job whose purpose is noticing it had gone.
 # publish-vector-data.yml already holds the R2 credentials this way.

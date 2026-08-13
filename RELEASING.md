@@ -25,10 +25,16 @@ standing on a ridge depending on the last one.
 
 ## 1. Why this exists: publishing is not releasing
 
-`.github/workflows/pages.yml` deploys to GitHub Pages **on every push to `main`**. So
-today, merging a pull request is the act of shipping to production. There is no state
-in which a change is built, integrated and reviewable but not yet being served to
-whoever opens the app.
+**This section describes the state this document was written to end, not the state
+today.** §2 is the change that ended it, and it has been built — `pages.yml` deploys on
+a `v*` tag now, and `main` deploys to UA. The argument is kept in the present tense
+because it is the reason every rule below exists, and a reader who skips it will not
+understand what the rest of the document is buying.
+
+As it stood: `.github/workflows/pages.yml` deployed to GitHub Pages **on every push to
+`main`**. So merging a pull request was the act of shipping to production. There was no
+state in which a change was built, integrated and reviewable but not yet being served
+to whoever opened the app.
 
 That sentence is not new here. [DATA_RELEASES.md](pipeline/DATA_RELEASES.md) already
 made the identical argument about *data* — its consequence 3, verbatim:
@@ -59,8 +65,7 @@ a change to wait.
 
 That is the whole structural change. Everything else in this document is process
 arranged around it: naming, notes, review, compatibility and testing are all things
-that happen to a candidate *while it sits in UA*, which is a place that does not
-currently exist.
+that happen to a candidate *while it sits in UA*.
 
 It also costs almost nothing to build, because `pages.yml` already publishes to
 **paths** on a `gh-pages` branch rather than through `actions/deploy-pages` — it was

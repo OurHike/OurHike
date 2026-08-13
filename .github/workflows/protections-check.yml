@@ -1,8 +1,8 @@
 # Asks whether Settings -> Rules, Settings -> Environments and the labels hold
 # what RELEASING.md §8's gate table depends on.
 #
-# The companion to settings-check.yml, which asks the same shape of question
-# about Settings -> Secrets and variables. Both exist because a checkout cannot
+# The companion to settings-manifest.yml and settings-configured.yml, which
+# ask the same shape of question about Settings -> Secrets and variables. Both exist because a checkout cannot
 # answer anything about the repository's own configuration, and both are aimed
 # at the same failure: something set once, by hand, and later removed by
 # somebody who had a good reason and no way to know what depended on it.
@@ -13,7 +13,7 @@
 # gate checked only on the day it was configured is the same document with a
 # delay.
 #
-# READ-ONLY, AND NOTHING HERE IS SECRET. Unlike settings-check.yml there is no
+# READ-ONLY, AND NOTHING HERE IS SECRET. Unlike settings-configured.yml there is no
 # value to be careful about: branch protection, environments and labels are
 # configuration, not credentials, so this workflow prints what it found and the
 # tests can quote it in a failure message. That is why the live half runs the
@@ -32,15 +32,14 @@
 #                               green having read nothing answers the question
 #                               wrongly rather than not at all. That is the
 #                               PROTECTIONS_CHECK_LIVE guard, borrowed from
-#                               settings-check.yml, plus an assertion that the
+#                               settings-configured.yml, plus an assertion that the
 #                               labels - readable with GITHUB_TOKEN alone -
 #                               really were.
 #
-# NOT ON pull_request, for the same reason settings-check.yml's `configured`
-# job is not: a fork's run gets no elevated token, so this would fail for every
+# NOT ON pull_request, for the same reason settings-configured.yml is not: a fork's run gets no elevated token, so this would fail for every
 # outside contributor for a reason none of them could fix. The half of the
 # suite that reads only the checkout - which is the half that catches real
-# drift - runs on every pull request through settings-check.yml's manifest job,
+# drift - runs on every pull request through settings-manifest.yml,
 # because both suites live in .github/tests and pytest collects them together.
 
 name: Protections check
@@ -49,7 +48,7 @@ on:
   push:
     branches: [main]
   schedule:
-    # Mondays, 07:45 UTC. Ten minutes behind settings-check.yml so the two
+    # Mondays, 07:45 UTC. Ten minutes behind settings-configured.yml so the two
     # never contend, and off the hour for the reason every cron here records:
     # GitHub queues everything submitted at :00 behind everyone else's.
     - cron: "45 7 * * 1"

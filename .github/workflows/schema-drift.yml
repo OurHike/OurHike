@@ -10,7 +10,7 @@
 # Nothing else asks this. tests/test_migrations.py runs the whole chain against
 # real Postgres, including `alembic check` - but against a throwaway database
 # the suite created seconds earlier, so it is a claim about the revisions and
-# never about Supabase. settings-check.yml is the closest relative: both ask a
+# never about Supabase. settings-configured.yml is the closest relative: both ask a
 # question a checkout cannot answer about itself.
 #
 # NOT GATED ON AN ENVIRONMENT, deliberately, where migrate.yml's production job
@@ -30,7 +30,7 @@ name: Schema drift
 on:
   schedule:
     # 08:10 UTC daily. Clear of check-upstream-freshness.yml at 07:20 and
-    # settings-check.yml at 07:35, and off the hour for the reason both of
+    # settings-configured.yml at 07:35, and off the hour for the reason both of
     # those record: GitHub queues everything submitted at :00 together.
     - cron: "10 8 * * *"
   workflow_dispatch:

@@ -77,11 +77,38 @@ required_status_checks:
   PR has a linked issue:
     workflow: pr-issue-link.yml
     why: >-
-      CONTRIBUTING.md's tracker rule, and the only one of the four that is
+      CONTRIBUTING.md's tracker rule, and the only one of the five that is
       about process rather than correctness. Required because the exemption it
       polices is a label - a pull request with no issue and no `no-issue` label
       is the case it exists for, and a check nobody has to satisfy does not
       police anything.
+
+  Manifest agrees with the workflows:
+    workflow: settings-manifest.yml
+    why: >-
+      That every `secrets.X`/`vars.X` a workflow reads is declared, that
+      nothing declared has outlived its last reader, and that nothing is read
+      from the context it was not declared for - which GitHub resolves to an
+      empty string rather than an error, so the failure surfaces as missing
+      configuration somewhere far away. Needs only the checkout, so it reports
+      on a fork's pull request too.
+
+      NEWLY REQUIRABLE, AND THE HISTORY IS THE REASON THE ENTRY IS LONG. This
+      sat in never_required until #679, not on principle but on measured
+      evidence: while both halves of the settings suite shared one workflow,
+      BRANCHING.md records five attempts in which any proposed change to
+      settings-check.yml at all - a comment was enough - produced
+      `action_required` with zero jobs rather than a status. That file was the
+      only one here that both ran on `pull_request` and resolved the `secrets`
+      context. The recorded fix was to split it so the half reading secrets and
+      the half reading the checkout stop sharing an `on:` block, and #679 is
+      that split. settings-manifest.yml touches no secrets context anywhere,
+      which is the property that was actually bought.
+
+      The check NAME is unchanged across the split, deliberately: branch
+      protection matches a check name, not a workflow file, so keeping it
+      verbatim is what lets this move without a window in which the required
+      check reports nothing.
 
 # Checks that exist, look like they belong above, and must stay out.
 #
@@ -89,26 +116,18 @@ required_status_checks:
 # decision instead of an oversight - and so a test can fail if the reason ever
 # stops being true.
 never_required:
-  Manifest agrees with the workflows:
-    workflow: settings-check.yml
-    why: >-
-      No `merge_group:` trigger, so requiring it is the hang above rather than
-      a stricter gate. Left out on measured evidence rather than principle:
-      BRANCHING.md records five attempts on the pull request that added those
-      triggers, in which any proposed change to settings-check.yml at all - a
-      comment was enough - produced `action_required` with zero jobs, and only
-      restoring the file byte-for-byte turned it green. The fix that would let
-      this be required is splitting its two jobs into two workflows so the half
-      reading secrets and the half reading the checkout stop sharing an `on:`
-      block. Until somebody does that, this stays out.
-
   Settings are configured:
-    workflow: settings-check.yml
+    workflow: settings-configured.yml
     why: >-
       Deliberately does not run on `pull_request` at all - GitHub passes no
       secrets to a fork's run, so the job would fail for every outside
       contributor for a reason none of them could fix. A required check that
       cannot report on a pull request blocks every pull request.
+
+      This is about what the check can SEE, not about a missing trigger, which
+      is what distinguishes it from its former co-tenant above. Adding
+      `merge_group:` here would not make it requirable; it would only give a
+      queue entry a second way to be blocked by a job that cannot answer.
 
 # ---------------------------------------------------------------------------
 # Branch protection settings that are not about which checks run

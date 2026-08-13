@@ -70,7 +70,7 @@ concurrency:
 on:
   schedule:
     # 08:40 UTC daily. Off the hour, and clear of the other scheduled jobs -
-    # check-upstream-freshness at 07:20, settings-check at 07:35, schema-drift
+    # check-upstream-freshness at 07:20, settings-configured at 07:35, schema-drift
     # at 08:10 - for the reason each of those records: GitHub queues
     # everything submitted at :00 together.
     - cron: "40 8 * * *"

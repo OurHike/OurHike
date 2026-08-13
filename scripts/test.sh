@@ -149,7 +149,7 @@ PY
 }
 
 # The three test workflows carry a machine-readable scope; the settings suite
-# does not, because settings-check.yml runs on every pull request by design
+# does not, because settings-manifest.yml runs on every pull request by design
 # (TESTING.md, "Repository settings"). Its reach is still exactly one
 # directory - it reads .github/workflows/ and .github/expected-settings.yml and
 # nothing else - so that prefix is written here rather than derived. It is the

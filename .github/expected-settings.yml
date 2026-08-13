@@ -129,19 +129,17 @@ settings:
     where: variable
     required: false
     why: >-
-      Which published data UA reads, when that is deliberately not what
-      production reads. Its value is production's DATA_BASE_URL plus
-      `/environments/ua` - the prefix publish.py writes a UA publish to
-      (features/DATA_ENVIRONMENTS.md), and the whole of the client-side
-      mechanism, since config.ts builds every URL it fetches as
-      `${DATA_BASE_URL}/${key}`. Optional because unset is a supported state
-      and is what is configured today: ua.yml falls back to DATA_BASE_URL, so
-      UA reads production's data until this is set - which is fine for looking
-      at and wrong for testing anything that writes. A prefix in the same
-      bucket rather than a bucket of its own, still, and for the reason
-      RELEASING.md 14.2 gave: one bucket means UA is served through the same
-      CORS policy, host and range machinery a phone uses, so what UA verifies
-      is delivered the way production is delivered.
+      An explicit override for which published data UA reads, for whoever
+      needs UA to point somewhere other than its own environment - production's
+      raw data, or a different bucket entirely. ua.yml computes
+      `${DATA_BASE_URL}/environments/ua` on its own by default
+      (features/DATA_ENVIRONMENTS.md), the prefix publish.py writes a UA
+      publish to, so this is optional in the ordinary case and read only when
+      someone needs to override that. A prefix in the same bucket rather than
+      a bucket of its own, still, and for the reason RELEASING.md 14.2 gave:
+      one bucket means UA is served through the same CORS policy, host and
+      range machinery a phone uses, so what UA verifies is delivered the way
+      production is delivered.
 
   UA_SUPABASE_URL:
     where: variable

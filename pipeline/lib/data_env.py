@@ -172,8 +172,8 @@ def base_url_for(name: str, base: str) -> str:
     This is the whole client-side mechanism. `client/src/lib/config.ts` builds
     every URL it fetches as `${DATA_BASE_URL}/${key}`, so an environment is a
     longer base and nothing in the app has to learn what an environment is -
-    `ua.yml` already resolves `UA_DATA_BASE_URL` for exactly this, and this is
-    what computes the value it should hold.
+    `ua.yml` computes this exact value for UA's own build, in bash rather than
+    here, since a workflow step cannot import this module.
     """
     trimmed = base.rstrip("/")
     prefix = prefix_for(name)

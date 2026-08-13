@@ -130,18 +130,21 @@ and the client needs no change at all**:
 UA_DATA_BASE_URL = <DATA_BASE_URL>/environments/ua
 ```
 
-`ua.yml` has resolved that variable since UA was designed. What it lacked was anything that ever
-wrote to the place it would point.
+`ua.yml` computes that value itself now, by default - the formula above is derivable entirely
+from `DATA_BASE_URL` plus a fixed suffix, so nothing has to type it into a variable for the
+ordinary case. `UA_DATA_BASE_URL` still exists as an explicit override for whoever needs UA to
+read something other than its own environment.
 
 The manifest's *contents* stay unscoped, and that is load-bearing rather than incidental. An
 artifact is `trails.geojson` in every environment; which bytes that names is decided by the base
 URL the build was given. So a `latest.json` can be read, diffed or promoted between environments
 without rewriting a single entry, and `dataManifest.ts` never learns that environments exist.
 
-**The fallback stays production's base**, deliberately. A UA build pointed at a prefix nothing
-has published to yet is a UA that 404s on every artifact, which is worse than reading
-production's bytes — a read cannot overwrite anything. What it is not is a test of anything that
-publishes, and `ua.yml` now says so in the log rather than leaving it to be assumed.
+**There is no fallback to production's base.** A UA build pointed at a prefix nothing has
+published to yet 404s on every artifact rather than quietly reading production's - a UA that reads
+production's bytes by default is a UA that looks like it is testing a publish and is not, and a
+404 says plainly that nothing has shipped to UA yet where a silent fallback would not. The cost is
+real only before the first UA publish; after that, `environments/ua/` always has something in it.
 
 ## 5. What stays shared, and why that is not a compromise
 
@@ -216,15 +219,15 @@ UA dataset to point them at.
 | `check_deployment.py`, `smoke_published.py`, `verify_release.py` | `--env`, so the monitors can look at an environment instead of a hand-spliced URL |
 | `publish-vector-data.yml`, `build-raster.yml`, `build-basemap.yml`, `build-dem.yml` | A `data_environment` choice, defaulting to **ua** — the same "UA first, always" `migrate.yml` applies to schema changes |
 | `publish-conditions.yml` | One run per environment, each reading its own database and writing its own prefix |
-| `ua.yml` | Says in the log whether UA is reading its own data or production's |
+| `ua.yml` | Computes `environments/ua` from `DATA_BASE_URL` by default; `UA_DATA_BASE_URL` is an explicit override, not the primary path |
 | `.github/expected-settings.yml` | `UA_CONDITIONS_DATABASE_URL` declared; `UA_DATA_BASE_URL`'s entry corrected to describe the prefix that now exists |
 
 **Not built, each for a reason rather than an omission:**
 
-- **The `UA_DATA_BASE_URL` variable itself, and the first UA publish.** Both are one action each
-  and neither can be done from a checkout: somebody dispatches `publish-vector-data.yml` with
-  `data_environment: ua`, then sets the variable to the prefix it wrote. Until then UA reads
-  production's data and the log says so.
+- **The first UA publish.** One action, and it cannot be done from a checkout: somebody dispatches
+  `publish-vector-data.yml` with `data_environment: ua`. `ua.yml` computes `environments/ua` on its
+  own, so nothing further is needed once that publish lands - and until it does, UA 404s on every
+  artifact rather than quietly reading production's.
 - **UA's conditions database** ([#371](https://github.com/OurHike/OurHike/issues/371)). The UA
   Supabase project does not exist, so the UA conditions leg warns and publishes no closures. Its
   ATC trail-updates artifact publishes either way, which makes UA's `conditions/` prefix real

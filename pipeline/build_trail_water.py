@@ -809,7 +809,29 @@ def build(features_by_layer: dict[str, list[dict]], candidates: dict[str, list[d
 
 
 def render(document: dict) -> str:
-    return json.dumps(document, indent=2) + "\n"
+    """The document as text, ONE RECORD PER LINE inside the two big arrays.
+
+    Rendered rather than `json.dumps(indent=2)`d because the point of
+    checking this file in is that a change to it is reviewable, and at this
+    volume indentation defeats that: 1,125 crossings and 512 sites spread
+    over nine lines apiece is 20,000 lines, three times the largest reference
+    file this pipeline has, and nobody reads it. One line per record is the
+    same data in about a tenth of the space, and a moved crossing or a lost
+    match is exactly one changed line in the diff - which is more reviewable
+    than the pretty-printed form, not less.
+
+    The header keeps its indentation: `_README`, `source` and `counts` are
+    the parts a human actually reads.
+    """
+    header = {key: document[key] for key in ("_README", "source", "counts")}
+    lines = [json.dumps(header, indent=2)[:-2] + ","]  # drop the closing brace, keep the comma
+    for name in ("crossings", "sites"):
+        lines.append(f'  "{name}": [')
+        records = [f"    {json.dumps(record, separators=(', ', ': '))}" for record in document[name]]
+        lines.append(",\n".join(records))
+        lines.append("  ]," if name == "crossings" else "  ]")
+    lines.append("}")
+    return "\n".join(line for line in lines if line) + "\n"
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -306,3 +306,96 @@ describe('writeSegment', () => {
     expect(segmentKeyFor(KEY, 1, 4)).toBe('ourhike:corridor-archive:g1:4')
   })
 })
+
+describe('a torn delete cannot strand bytes (#648)', () => {
+  // The tear that makes gaps is a killed DELETE: it removes ascending from 0,
+  // so what survives is a tail behind a FRONT gap - and a probe that stops at
+  // the first gap concludes the generation is empty while most of it is still
+  // on the phone. Writes cannot make this shape; they are awaited in order.
+
+  /** A generation's tail: segments from `from` up to (not incl.) `to`. */
+  function tail(generation: number, from: number, to: number): Record<string, unknown> {
+    return Object.fromEntries(
+      Array.from({ length: to - from }, (_, i) => [
+        segmentKeyFor(KEY, generation, from + i),
+        new Blob(['x']),
+      ]),
+    )
+  }
+
+  function segmentKeysIn(store: Record<string, unknown>): string[] {
+    return Object.keys(store).filter((key) => /:g\d+:/.test(key))
+  }
+
+  it('carries the replaced generation`s count in the new marker', async () => {
+    // The old marker is the only record of the outgoing generation's length,
+    // and markComplete overwrites it moments before starting the exact
+    // many-transaction free an OS kill interrupts. The count has to be in the
+    // new marker, or the crash takes it.
+    withStore({ ...segments(0, 'a', 'b', 'c', 'd', 'e', 'f'), ...complete(0, 6, 6) })
+
+    await markComplete(KEY, { generation: 1, segments: 2, totalBytes: 2 })
+
+    expect(await readComplete(KEY)).toEqual({
+      generation: 1,
+      segments: 2,
+      totalBytes: 2,
+      priorSegments: 6,
+    })
+  })
+
+  it('completing a download frees an old generation a previous tear already gapped', async () => {
+    // Generation 0 lost segments 0-1 to an interrupted free and kept 2-5.
+    // The marker still says six, and six is the floor the sweep probes to.
+    const store = withStore({
+      ...tail(0, 2, 6),
+      ...complete(0, 6, 6),
+      ...segments(1, 'new'),
+    })
+
+    await markComplete(KEY, { generation: 1, segments: 1, totalBytes: 3 })
+
+    expect(segmentKeysIn(store)).toEqual([segmentKeyFor(KEY, 1, 0)])
+  })
+
+  it('deleting the archive reclaims the replaced generation through priorSegments', async () => {
+    // The #648 scenario end to end: the Fine-to-Standard swap's free was
+    // killed after segments 0-10, the marker now describes the new archive,
+    // and the hiker deletes the map to get the space back. The floor the
+    // caller can offer (the in-flight source record) knows only the NEW
+    // generation's count; the old one's survives in the marker.
+    const store = withStore({
+      ...segments(1, 'the', 'new', 'map'),
+      ...tail(0, 11, 36),
+      [`${KEY}:complete`]: {
+        generation: 1,
+        segments: 3,
+        totalBytes: 9,
+        priorSegments: 36,
+      },
+    })
+
+    await deleteArchiveRecords(KEY, 3)
+
+    expect(segmentKeysIn(store)).toEqual([])
+    expect(store[`${KEY}:complete`]).toBeUndefined()
+  })
+
+  it('reclaims a marker-less stranded tail by probing through the gap', async () => {
+    // A phone that tore before priorSegments existed has a tail and no record
+    // naming it. The delete paths tolerate a bounded run of absences rather
+    // than trusting the first gap, so even this state is reclaimed.
+    const store = withStore(tail(0, 10, 13))
+
+    await deleteArchiveRecords(KEY)
+
+    expect(segmentKeysIn(store)).toEqual([])
+  })
+
+  it('reads a marker without priorSegments as a marker still', async () => {
+    withStore({ ...segments(0, 'old build'), ...complete(0, 1, 9) })
+
+    expect(await readComplete(KEY)).toEqual({ generation: 0, segments: 1, totalBytes: 9 })
+    expect(await (await readArchive(KEY))?.text()).toBe('old build')
+  })
+})

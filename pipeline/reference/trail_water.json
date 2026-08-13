@@ -43,15 +43,15 @@
     }
   },
   "counts": {
-    "crossings": 1274,
+    "crossings": 1133,
     "sites": 512,
     "sites_with_water": 39,
-    "named_crossings": 533,
+    "named_crossings": 456,
     "crossings_from_both": 0,
-    "crossings_usgs_only": 816,
-    "crossings_osm_only": 458,
-    "crossings_perennial": 552,
-    "crossings_intermittent": 258,
+    "crossings_usgs_only": 718,
+    "crossings_osm_only": 415,
+    "crossings_perennial": 479,
+    "crossings_intermittent": 233,
     "crossings_ephemeral": 0
   },
   "crossings": [
@@ -114,16 +114,6 @@
       "flow": null,
       "lat": 34.653969,
       "lon": -84.052146
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "132755138",
-      "name": "Blackwell Creek",
-      "flow": "perennial",
-      "lat": 34.654066,
-      "lon": -84.052343
     },
     {
       "sources": [
@@ -199,16 +189,6 @@
       "sources": [
         "nhd"
       ],
-      "stream_id": "90512344",
-      "name": "Kilby Creek",
-      "flow": "perennial",
-      "lat": 35.005563,
-      "lon": -83.519199
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
       "stream_id": "90511590",
       "name": null,
       "flow": "perennial",
@@ -234,16 +214,6 @@
       "flow": "perennial",
       "lat": 35.121438,
       "lon": -83.547623
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "90511236",
-      "name": "Moore Creek",
-      "flow": "perennial",
-      "lat": 35.121616,
-      "lon": -83.547694
     },
     {
       "sources": [
@@ -449,16 +419,6 @@
       "sources": [
         "nhd"
       ],
-      "stream_id": "132646838",
-      "name": null,
-      "flow": "perennial",
-      "lat": 35.78051,
-      "lon": -83.113276
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
       "stream_id": "132646876",
       "name": null,
       "flow": "perennial",
@@ -474,16 +434,6 @@
       "flow": "perennial",
       "lat": 35.781143,
       "lon": -83.114885
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "132646663",
-      "name": null,
-      "flow": "perennial",
-      "lat": 35.781409,
-      "lon": -83.115066
     },
     {
       "sources": [
@@ -614,16 +564,6 @@
       "flow": null,
       "lat": 35.78541,
       "lon": -83.07711
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "132646281",
-      "name": "Painter Branch",
-      "flow": "perennial",
-      "lat": 35.785497,
-      "lon": -83.076886
     },
     {
       "sources": [
@@ -1182,16 +1122,6 @@
       "stream_id": "{ff80f4bb-10b3-492b-8bad-d165b10a8ad8}",
       "name": null,
       "flow": null,
-      "lat": 35.952917,
-      "lon": -82.561099
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "{ff80f4bb-10b3-492b-8bad-d165b10a8ad8}",
-      "name": null,
-      "flow": null,
       "lat": 35.954184,
       "lon": -82.561573
     },
@@ -1234,16 +1164,6 @@
       "flow": "perennial",
       "lat": 35.996825,
       "lon": -82.606861
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "43753759",
-      "name": "Sugarloaf Branch",
-      "flow": null,
-      "lat": 35.997161,
-      "lon": -82.606753
     },
     {
       "sources": [
@@ -1359,16 +1279,6 @@
       "sources": [
         "nhd"
       ],
-      "stream_id": "{0fc9075d-6453-4bbf-bd76-fdffae69eef8}",
-      "name": null,
-      "flow": null,
-      "lat": 36.026208,
-      "lon": -82.712522
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
       "stream_id": "{757baed9-f5ae-4b3e-bc45-4cae22d305a5}",
       "name": null,
       "flow": null,
@@ -1467,13 +1377,13 @@
     },
     {
       "sources": [
-        "nhd"
+        "osm"
       ],
-      "stream_id": "{806cb139-dbe2-4f8f-afa0-e69904931c03}",
+      "stream_id": "955946776",
       "name": null,
-      "flow": null,
-      "lat": 36.034115,
-      "lon": -82.595931
+      "flow": "intermittent",
+      "lat": 36.034132,
+      "lon": -82.595903
     },
     {
       "sources": [
@@ -1502,28 +1412,8 @@
       "stream_id": "43750608",
       "name": null,
       "flow": null,
-      "lat": 36.036842,
-      "lon": -82.419055
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "43750608",
-      "name": null,
-      "flow": null,
       "lat": 36.037094,
       "lon": -82.419038
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "43750047",
-      "name": null,
-      "flow": null,
-      "lat": 36.037335,
-      "lon": -82.41904
     },
     {
       "sources": [
@@ -1699,16 +1589,6 @@
       "sources": [
         "osm"
       ],
-      "stream_id": "43769300",
-      "name": null,
-      "flow": null,
-      "lat": 36.10035,
-      "lon": -82.431155
-    },
-    {
-      "sources": [
-        "osm"
-      ],
       "stream_id": "43748618",
       "name": null,
       "flow": null,
@@ -1727,13 +1607,13 @@
     },
     {
       "sources": [
-        "osm"
+        "nhd"
       ],
-      "stream_id": "43776803",
-      "name": "Jones Branch",
-      "flow": null,
-      "lat": 36.102958,
-      "lon": -82.427853
+      "stream_id": "130991861",
+      "name": null,
+      "flow": "perennial",
+      "lat": 36.102997,
+      "lon": -82.42775
     },
     {
       "sources": [
@@ -1782,8 +1662,8 @@
       "stream_id": "130990929",
       "name": null,
       "flow": "perennial",
-      "lat": 36.103857,
-      "lon": -82.404449
+      "lat": 36.103865,
+      "lon": -82.404265
     },
     {
       "sources": [
@@ -1804,16 +1684,6 @@
       "flow": "perennial",
       "lat": 36.10415,
       "lon": -82.40002
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "43741986",
-      "name": null,
-      "flow": null,
-      "lat": 36.104362,
-      "lon": -82.399622
     },
     {
       "sources": [
@@ -1857,16 +1727,6 @@
     },
     {
       "sources": [
-        "nhd"
-      ],
-      "stream_id": "130990931",
-      "name": "Jones Branch",
-      "flow": "perennial",
-      "lat": 36.105169,
-      "lon": -82.414017
-    },
-    {
-      "sources": [
         "osm"
       ],
       "stream_id": "43776025",
@@ -1884,16 +1744,6 @@
       "flow": "perennial",
       "lat": 36.105504,
       "lon": -82.415221
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "43744386",
-      "name": "Jones Branch",
-      "flow": null,
-      "lat": 36.105509,
-      "lon": -82.415589
     },
     {
       "sources": [
@@ -1932,18 +1782,8 @@
       "stream_id": "130990622",
       "name": "Jones Branch",
       "flow": "perennial",
-      "lat": 36.107205,
-      "lon": -82.423758
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "130990622",
-      "name": "Jones Branch",
-      "flow": "perennial",
-      "lat": 36.107257,
-      "lon": -82.423291
+      "lat": 36.107223,
+      "lon": -82.423634
     },
     {
       "sources": [
@@ -2012,16 +1852,6 @@
       "stream_id": "89954881",
       "name": null,
       "flow": "perennial",
-      "lat": 36.171939,
-      "lon": -82.011121
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "89954881",
-      "name": null,
-      "flow": "perennial",
       "lat": 36.174199,
       "lon": -82.012266
     },
@@ -2059,16 +1889,6 @@
       "sources": [
         "nhd"
       ],
-      "stream_id": "89954647",
-      "name": "Buck Creek",
-      "flow": "perennial",
-      "lat": 36.177458,
-      "lon": -82.011712
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
       "stream_id": "89954609",
       "name": "Bear Branch",
       "flow": "perennial",
@@ -2094,16 +1914,6 @@
       "flow": "perennial",
       "lat": 36.208236,
       "lon": -81.979686
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "43552606",
-      "name": null,
-      "flow": null,
-      "lat": 36.208497,
-      "lon": -81.979792
     },
     {
       "sources": [
@@ -2207,16 +2017,6 @@
     },
     {
       "sources": [
-        "nhd"
-      ],
-      "stream_id": "89952353",
-      "name": null,
-      "flow": "perennial",
-      "lat": 36.254679,
-      "lon": -82.123947
-    },
-    {
-      "sources": [
         "osm"
       ],
       "stream_id": "43574730",
@@ -2234,16 +2034,6 @@
       "flow": "perennial",
       "lat": 36.255902,
       "lon": -82.124347
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "89952353",
-      "name": null,
-      "flow": "perennial",
-      "lat": 36.256092,
-      "lon": -82.124403
     },
     {
       "sources": [
@@ -2312,16 +2102,6 @@
       "stream_id": "89952353",
       "name": null,
       "flow": "perennial",
-      "lat": 36.260504,
-      "lon": -82.126197
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "89952353",
-      "name": null,
-      "flow": "perennial",
       "lat": 36.264187,
       "lon": -82.123198
     },
@@ -2354,16 +2134,6 @@
       "flow": null,
       "lat": 36.274654,
       "lon": -82.134472
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "89952013",
-      "name": null,
-      "flow": "perennial",
-      "lat": 36.274841,
-      "lon": -82.134754
     },
     {
       "sources": [
@@ -2469,16 +2239,6 @@
       "sources": [
         "osm"
       ],
-      "stream_id": "43553226",
-      "name": null,
-      "flow": null,
-      "lat": 36.314119,
-      "lon": -82.128254
-    },
-    {
-      "sources": [
-        "osm"
-      ],
       "stream_id": "43577784",
       "name": null,
       "flow": null,
@@ -2534,16 +2294,6 @@
       "flow": null,
       "lat": 36.633984,
       "lon": -81.785174
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "1040378693",
-      "name": "Laurel Creek",
-      "flow": null,
-      "lat": 36.634111,
-      "lon": -81.785687
     },
     {
       "sources": [
@@ -2614,16 +2364,6 @@
       "flow": "perennial",
       "lat": 36.645345,
       "lon": -81.736104
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "43573786",
-      "name": "Feathercamp Branch",
-      "flow": "perennial",
-      "lat": 36.64577,
-      "lon": -81.735939
     },
     {
       "sources": [
@@ -2862,16 +2602,6 @@
       "stream_id": "43565366",
       "name": "Vaught Branch",
       "flow": "perennial",
-      "lat": 36.84834,
-      "lon": -81.361783
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "43565366",
-      "name": "Vaught Branch",
-      "flow": "perennial",
       "lat": 36.848542,
       "lon": -81.361893
     },
@@ -2892,28 +2622,8 @@
       "stream_id": "43565366",
       "name": "Vaught Branch",
       "flow": "perennial",
-      "lat": 36.850564,
-      "lon": -81.364151
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "43565366",
-      "name": "Vaught Branch",
-      "flow": "perennial",
       "lat": 36.85108,
       "lon": -81.364428
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "43565366",
-      "name": "Vaught Branch",
-      "flow": "perennial",
-      "lat": 36.851303,
-      "lon": -81.364574
     },
     {
       "sources": [
@@ -2964,16 +2674,6 @@
       "flow": "perennial",
       "lat": 36.858187,
       "lon": -81.361197
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "43565174",
-      "name": "Vaught Branch",
-      "flow": "perennial",
-      "lat": 36.858593,
-      "lon": -81.361323
     },
     {
       "sources": [
@@ -3202,16 +2902,6 @@
       "stream_id": "43545361",
       "name": null,
       "flow": "perennial",
-      "lat": 37.016026,
-      "lon": -81.426548
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "43545361",
-      "name": null,
-      "flow": "perennial",
       "lat": 37.016038,
       "lon": -81.427684
     },
@@ -3274,16 +2964,6 @@
       "flow": "perennial",
       "lat": 37.022102,
       "lon": -81.428037
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "43545307",
-      "name": null,
-      "flow": "perennial",
-      "lat": 37.02214,
-      "lon": -81.427792
     },
     {
       "sources": [
@@ -3439,16 +3119,6 @@
       "sources": [
         "nhd"
       ],
-      "stream_id": "43663277",
-      "name": null,
-      "flow": "intermittent",
-      "lat": 37.215597,
-      "lon": -80.850342
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
       "stream_id": "43663091",
       "name": null,
       "flow": "perennial",
@@ -3474,16 +3144,6 @@
       "flow": null,
       "lat": 37.222564,
       "lon": -80.834144
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "730429789",
-      "name": "Dismal Creek",
-      "flow": null,
-      "lat": 37.222571,
-      "lon": -80.833762
     },
     {
       "sources": [
@@ -3657,16 +3317,6 @@
     },
     {
       "sources": [
-        "nhd"
-      ],
-      "stream_id": "40756759",
-      "name": null,
-      "flow": "perennial",
-      "lat": 37.365836,
-      "lon": -80.145545
-    },
-    {
-      "sources": [
         "osm"
       ],
       "stream_id": "1424159738",
@@ -3674,16 +3324,6 @@
       "flow": "intermittent",
       "lat": 37.371333,
       "lon": -80.149692
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "40756499",
-      "name": "McAfee Run",
-      "flow": "intermittent",
-      "lat": 37.371414,
-      "lon": -80.149381
     },
     {
       "sources": [
@@ -3724,16 +3364,6 @@
       "flow": "intermittent",
       "lat": 37.377558,
       "lon": -80.243226
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "1004824943",
-      "name": null,
-      "flow": "intermittent",
-      "lat": 37.37793,
-      "lon": -80.243382
     },
     {
       "sources": [
@@ -4029,31 +3659,11 @@
       "sources": [
         "nhd"
       ],
-      "stream_id": "40752721",
-      "name": "Wilson Creek",
-      "flow": "intermittent",
-      "lat": 37.420093,
-      "lon": -79.788694
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
       "stream_id": "43655267",
       "name": "Pine Swamp Branch",
       "flow": "intermittent",
       "lat": 37.421459,
       "lon": -80.604687
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "43655351",
-      "name": "Stony Creek",
-      "flow": "perennial",
-      "lat": 37.421802,
-      "lon": -80.604651
     },
     {
       "sources": [
@@ -4094,16 +3704,6 @@
       "flow": "intermittent",
       "lat": 37.428116,
       "lon": -80.612942
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "43655069",
-      "name": null,
-      "flow": "intermittent",
-      "lat": 37.428196,
-      "lon": -80.612578
     },
     {
       "sources": [
@@ -4187,16 +3787,6 @@
     },
     {
       "sources": [
-        "nhd"
-      ],
-      "stream_id": "40743793",
-      "name": null,
-      "flow": "intermittent",
-      "lat": 37.528907,
-      "lon": -79.585477
-    },
-    {
-      "sources": [
         "osm"
       ],
       "stream_id": "543113488",
@@ -4214,16 +3804,6 @@
       "flow": "intermittent",
       "lat": 37.529611,
       "lon": -79.585654
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "40743793",
-      "name": null,
-      "flow": "intermittent",
-      "lat": 37.529789,
-      "lon": -79.585707
     },
     {
       "sources": [
@@ -4254,16 +3834,6 @@
       "flow": "intermittent",
       "lat": 37.533319,
       "lon": -79.585489
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "40743793",
-      "name": null,
-      "flow": "intermittent",
-      "lat": 37.533633,
-      "lon": -79.585382
     },
     {
       "sources": [
@@ -4342,16 +3912,6 @@
       "stream_id": "39904229",
       "name": "Matts Creek",
       "flow": "perennial",
-      "lat": 37.599664,
-      "lon": -79.412794
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "39904229",
-      "name": "Matts Creek",
-      "flow": "perennial",
       "lat": 37.599753,
       "lon": -79.412596
     },
@@ -4364,16 +3924,6 @@
       "flow": "perennial",
       "lat": 37.601467,
       "lon": -79.392177
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "39903595",
-      "name": "Rocky Row Run",
-      "flow": "perennial",
-      "lat": 37.601753,
-      "lon": -79.392142
     },
     {
       "sources": [
@@ -4404,16 +3954,6 @@
       "flow": "intermittent",
       "lat": 37.609949,
       "lon": -79.39029
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "1393660246",
-      "name": null,
-      "flow": "intermittent",
-      "lat": 37.610064,
-      "lon": -79.390482
     },
     {
       "sources": [
@@ -4524,16 +4064,6 @@
       "flow": "perennial",
       "lat": 37.717674,
       "lon": -79.262114
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "39897150",
-      "name": "Brown Mountain Creek",
-      "flow": "perennial",
-      "lat": 37.718041,
-      "lon": -79.261914
     },
     {
       "sources": [
@@ -4697,16 +4227,6 @@
     },
     {
       "sources": [
-        "nhd"
-      ],
-      "stream_id": "66101718",
-      "name": "Ivy Creek",
-      "flow": "intermittent",
-      "lat": 38.270219,
-      "lon": -78.658779
-    },
-    {
-      "sources": [
         "osm"
       ],
       "stream_id": "930378528",
@@ -4754,16 +4274,6 @@
       "flow": "intermittent",
       "lat": 38.653927,
       "lon": -78.313584
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "{172AE520-27E7-40BB-BA72-1595AD9792CD}",
-      "name": null,
-      "flow": "intermittent",
-      "lat": 38.653984,
-      "lon": -78.31398
     },
     {
       "sources": [
@@ -4899,31 +4409,11 @@
       "sources": [
         "osm"
       ],
-      "stream_id": "1009645743",
-      "name": null,
-      "flow": "intermittent",
-      "lat": 39.017338,
-      "lon": -77.966207
-    },
-    {
-      "sources": [
-        "osm"
-      ],
       "stream_id": "1010833652",
       "name": null,
       "flow": "intermittent",
       "lat": 39.029161,
       "lon": -77.957938
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "36281390",
-      "name": null,
-      "flow": "intermittent",
-      "lat": 39.029438,
-      "lon": -77.957782
     },
     {
       "sources": [
@@ -5179,30 +4669,10 @@
       "sources": [
         "nhd"
       ],
-      "stream_id": "49482492",
-      "name": null,
-      "flow": "perennial",
-      "lat": 39.630228,
-      "lon": -77.5585
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
       "stream_id": "49489292",
       "name": null,
       "flow": "perennial",
       "lat": 39.649401,
-      "lon": -77.542351
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "651855564",
-      "name": null,
-      "flow": "intermittent",
-      "lat": 39.649797,
       "lon": -77.542351
     },
     {
@@ -5264,16 +4734,6 @@
       "flow": "perennial",
       "lat": 39.723005,
       "lon": -77.501354
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "517364646",
-      "name": "Falls Creek",
-      "flow": null,
-      "lat": 39.723211,
-      "lon": -77.501269
     },
     {
       "sources": [
@@ -5349,16 +4809,6 @@
       "sources": [
         "osm"
       ],
-      "stream_id": "987549830",
-      "name": "East Branch Antietam Creek",
-      "flow": null,
-      "lat": 39.793619,
-      "lon": -77.483227
-    },
-    {
-      "sources": [
-        "osm"
-      ],
       "stream_id": "989275986",
       "name": "Tumbling Run",
       "flow": null,
@@ -5384,16 +4834,6 @@
       "flow": null,
       "lat": 39.906897,
       "lon": -77.486727
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "49469600",
-      "name": "Conococheague Creek",
-      "flow": "perennial",
-      "lat": 39.906936,
-      "lon": -77.486353
     },
     {
       "sources": [
@@ -5474,16 +4914,6 @@
       "flow": null,
       "lat": 40.030619,
       "lon": -77.297861
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "111061950",
-      "name": "Mountain Creek",
-      "flow": null,
-      "lat": 40.030857,
-      "lon": -77.297812
     },
     {
       "sources": [
@@ -5577,16 +5007,6 @@
     },
     {
       "sources": [
-        "nhd"
-      ],
-      "stream_id": "56407447",
-      "name": "Yellow Breeches Creek",
-      "flow": "perennial",
-      "lat": 40.147522,
-      "lon": -77.123638
-    },
-    {
-      "sources": [
         "osm"
       ],
       "stream_id": "937918112",
@@ -5609,31 +5029,11 @@
       "sources": [
         "nhd"
       ],
-      "stream_id": "56406589",
-      "name": null,
-      "flow": "perennial",
-      "lat": 40.191685,
-      "lon": -77.106765
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
       "stream_id": "56406177",
       "name": "Hogestown Run",
       "flow": "perennial",
       "lat": 40.207484,
       "lon": -77.113456
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "683827627",
-      "name": "Hogestown Run",
-      "flow": null,
-      "lat": 40.207525,
-      "lon": -77.113192
     },
     {
       "sources": [
@@ -5947,16 +5347,6 @@
     },
     {
       "sources": [
-        "nhd"
-      ],
-      "stream_id": "25975370",
-      "name": "Furnace Creek",
-      "flow": "perennial",
-      "lat": 40.589633,
-      "lon": -75.943728
-    },
-    {
-      "sources": [
         "osm"
       ],
       "stream_id": "113527561",
@@ -6024,16 +5414,6 @@
       "flow": "perennial",
       "lat": 40.978637,
       "lon": -75.140351
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "812656264",
-      "name": "Caledonia Creek",
-      "flow": null,
-      "lat": 40.978807,
-      "lon": -75.140448
     },
     {
       "sources": [
@@ -6259,16 +5639,6 @@
       "sources": [
         "nhd"
       ],
-      "stream_id": "60444891",
-      "name": null,
-      "flow": "perennial",
-      "lat": 41.261227,
-      "lon": -74.139213
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
       "stream_id": "60444901",
       "name": null,
       "flow": "perennial",
@@ -6292,8 +5662,8 @@
       "stream_id": "60464401",
       "name": null,
       "flow": "perennial",
-      "lat": 41.264254,
-      "lon": -74.122372
+      "lat": 41.264319,
+      "lon": -74.122241
     },
     {
       "sources": [
@@ -6662,16 +6032,6 @@
       "stream_id": "55505485",
       "name": null,
       "flow": "perennial",
-      "lat": 41.408451,
-      "lon": -73.876451
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "55505485",
-      "name": null,
-      "flow": "perennial",
       "lat": 41.409772,
       "lon": -73.877149
     },
@@ -6829,16 +6189,6 @@
       "sources": [
         "osm"
       ],
-      "stream_id": "951751692",
-      "name": "Whaley Lake Stream",
-      "flow": null,
-      "lat": 41.588329,
-      "lon": -73.662825
-    },
-    {
-      "sources": [
-        "osm"
-      ],
       "stream_id": "43413734",
       "name": "Swamp River",
       "flow": null,
@@ -6884,16 +6234,6 @@
       "flow": "perennial",
       "lat": 41.598977,
       "lon": -73.575937
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "43419339",
-      "name": null,
-      "flow": null,
-      "lat": 41.598993,
-      "lon": -73.575637
     },
     {
       "sources": [
@@ -7047,16 +6387,6 @@
     },
     {
       "sources": [
-        "nhd"
-      ],
-      "stream_id": "122955166",
-      "name": "Macedonia Brook",
-      "flow": "perennial",
-      "lat": 41.731371,
-      "lon": -73.488271
-    },
-    {
-      "sources": [
         "osm"
       ],
       "stream_id": "490725142",
@@ -7084,16 +6414,6 @@
       "flow": null,
       "lat": 41.750335,
       "lon": -73.472631
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "122954948",
-      "name": "Choggam Brook",
-      "flow": "perennial",
-      "lat": 41.750521,
-      "lon": -73.472406
     },
     {
       "sources": [
@@ -7507,16 +6827,6 @@
     },
     {
       "sources": [
-        "osm"
-      ],
-      "stream_id": "43419856",
-      "name": null,
-      "flow": null,
-      "lat": 42.179374,
-      "lon": -73.290799
-    },
-    {
-      "sources": [
         "nhd"
       ],
       "stream_id": "122954455",
@@ -7524,16 +6834,6 @@
       "flow": "intermittent",
       "lat": 42.180835,
       "lon": -73.29109
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "122954455",
-      "name": null,
-      "flow": "intermittent",
-      "lat": 42.181072,
-      "lon": -73.291021
     },
     {
       "sources": [
@@ -7554,16 +6854,6 @@
       "flow": "intermittent",
       "lat": 42.183045,
       "lon": -73.290702
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "122954455",
-      "name": null,
-      "flow": "intermittent",
-      "lat": 42.183345,
-      "lon": -73.290704
     },
     {
       "sources": [
@@ -7617,26 +6907,6 @@
     },
     {
       "sources": [
-        "osm"
-      ],
-      "stream_id": "43414296",
-      "name": "East Brook",
-      "flow": null,
-      "lat": 42.229278,
-      "lon": -73.248053
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "122961589",
-      "name": "East Brook",
-      "flow": "perennial",
-      "lat": 42.229336,
-      "lon": -73.247796
-    },
-    {
-      "sources": [
         "nhd"
       ],
       "stream_id": "122961589",
@@ -7664,16 +6934,6 @@
       "flow": "perennial",
       "lat": 42.234336,
       "lon": -73.19626
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "43419970",
-      "name": "Hop Brook",
-      "flow": null,
-      "lat": 42.234359,
-      "lon": -73.196512
     },
     {
       "sources": [
@@ -7739,16 +6999,6 @@
       "sources": [
         "nhd"
       ],
-      "stream_id": "122952022",
-      "name": "Cooper Brook",
-      "flow": "perennial",
-      "lat": 42.279097,
-      "lon": -73.184302
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
       "stream_id": "{21B4CC6E-CE03-4B54-9E87-BED597246D7F}",
       "name": "Higley Brook",
       "flow": "intermittent",
@@ -7784,16 +7034,6 @@
       "flow": "perennial",
       "lat": 42.325433,
       "lon": -73.166605
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "{6e1b3a1e-9bb7-43b0-9371-b2ad419f2643}",
-      "name": "Washington Mountain Brook",
-      "flow": "perennial",
-      "lat": 42.325698,
-      "lon": -73.166588
     },
     {
       "sources": [
@@ -7969,16 +7209,6 @@
       "sources": [
         "nhd"
       ],
-      "stream_id": "{f137e1bd-b447-4765-9f43-6fdbb4aeb305}",
-      "name": null,
-      "flow": "perennial",
-      "lat": 42.434268,
-      "lon": -73.157751
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
       "stream_id": "{e10df11e-098d-43c6-802c-0b52a8fbdc5a}",
       "name": null,
       "flow": "intermittent",
@@ -8147,16 +7377,6 @@
     },
     {
       "sources": [
-        "osm"
-      ],
-      "stream_id": "857316904",
-      "name": "Paull Brook",
-      "flow": null,
-      "lat": 42.68695,
-      "lon": -73.15981
-    },
-    {
-      "sources": [
         "nhd"
       ],
       "stream_id": "{b3520a8b-1bcf-4bd1-bbf2-1aeb5fcc9e2d}",
@@ -8174,16 +7394,6 @@
       "flow": "intermittent",
       "lat": 42.690427,
       "lon": -73.158576
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "{b3520a8b-1bcf-4bd1-bbf2-1aeb5fcc9e2d}",
-      "name": null,
-      "flow": "intermittent",
-      "lat": 42.69076,
-      "lon": -73.158488
     },
     {
       "sources": [
@@ -8254,16 +7464,6 @@
       "flow": null,
       "lat": 42.702008,
       "lon": -73.152271
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "1099349074",
-      "name": "Sherman Brook",
-      "flow": null,
-      "lat": 42.702439,
-      "lon": -73.152128
     },
     {
       "sources": [
@@ -8627,16 +7827,6 @@
     },
     {
       "sources": [
-        "nhd"
-      ],
-      "stream_id": "{C811A63B-D461-4DA1-8B0E-68F8AAB0DE10}",
-      "name": null,
-      "flow": "perennial",
-      "lat": 43.189681,
-      "lon": -72.989179
-    },
-    {
-      "sources": [
         "osm"
       ],
       "stream_id": "1194306397",
@@ -8837,43 +8027,13 @@
     },
     {
       "sources": [
-        "nhd"
-      ],
-      "stream_id": "{BBB45666-12D9-4A55-9FCC-A5EDA881663A}",
-      "name": "Little Black Branch",
-      "flow": "perennial",
-      "lat": 43.382649,
-      "lon": -72.958432
-    },
-    {
-      "sources": [
         "osm"
       ],
       "stream_id": "1102620331",
       "name": "Little Black Branch",
       "flow": null,
-      "lat": 43.382829,
-      "lon": -72.958352
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "1102620331",
-      "name": "Little Black Branch",
-      "flow": null,
-      "lat": 43.383019,
-      "lon": -72.958193
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "{BBB45666-12D9-4A55-9FCC-A5EDA881663A}",
-      "name": "Little Black Branch",
-      "flow": "perennial",
-      "lat": 43.383201,
-      "lon": -72.957963
+      "lat": 43.382946,
+      "lon": -72.958251
     },
     {
       "sources": [
@@ -8884,16 +8044,6 @@
       "flow": "perennial",
       "lat": 43.383392,
       "lon": -72.957819
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "{BBB45666-12D9-4A55-9FCC-A5EDA881663A}",
-      "name": "Little Black Branch",
-      "flow": "perennial",
-      "lat": 43.383625,
-      "lon": -72.957599
     },
     {
       "sources": [
@@ -8922,28 +8072,8 @@
       "stream_id": "{BBB45666-12D9-4A55-9FCC-A5EDA881663A}",
       "name": "Little Black Branch",
       "flow": "perennial",
-      "lat": 43.38782,
-      "lon": -72.956086
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "{BBB45666-12D9-4A55-9FCC-A5EDA881663A}",
-      "name": "Little Black Branch",
-      "flow": "perennial",
       "lat": 43.389399,
       "lon": -72.955503
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "{BBB45666-12D9-4A55-9FCC-A5EDA881663A}",
-      "name": "Little Black Branch",
-      "flow": "perennial",
-      "lat": 43.389636,
-      "lon": -72.955413
     },
     {
       "sources": [
@@ -8954,16 +8084,6 @@
       "flow": "intermittent",
       "lat": 43.39105,
       "lon": -72.955581
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "{BBB45666-12D9-4A55-9FCC-A5EDA881663A}",
-      "name": "Little Black Branch",
-      "flow": "perennial",
-      "lat": 43.391286,
-      "lon": -72.955674
     },
     {
       "sources": [
@@ -8984,16 +8104,6 @@
       "flow": "perennial",
       "lat": 43.402798,
       "lon": -72.954739
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "{C2E72137-B481-4741-AD98-63E94F2D4B19}",
-      "name": null,
-      "flow": "perennial",
-      "lat": 43.403096,
-      "lon": -72.954548
     },
     {
       "sources": [
@@ -9044,16 +8154,6 @@
       "flow": null,
       "lat": 43.455559,
       "lon": -72.934291
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "{A47FFE7F-3B92-47E3-962F-B177D2927331}",
-      "name": "Roaring Brook",
-      "flow": "perennial",
-      "lat": 43.455813,
-      "lon": -72.934063
     },
     {
       "sources": [
@@ -9359,31 +8459,11 @@
       "sources": [
         "nhd"
       ],
-      "stream_id": "{DE4A74AB-2DA2-4F79-B4FB-FF5C54FD4F02}",
-      "name": "Stony Brook",
-      "flow": "perennial",
-      "lat": 43.691015,
-      "lon": -72.720374
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
       "stream_id": "76909633",
       "name": null,
       "flow": "intermittent",
       "lat": 43.701449,
       "lon": -72.246742
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "76909633",
-      "name": null,
-      "flow": "intermittent",
-      "lat": 43.701616,
-      "lon": -72.246564
     },
     {
       "sources": [
@@ -9597,13 +8677,13 @@
     },
     {
       "sources": [
-        "nhd"
+        "osm"
       ],
-      "stream_id": "{A2A629F9-E305-4EFB-AC5E-326C9F6BE8F3}",
+      "stream_id": "1539061667",
       "name": "Tigertown Brook",
-      "flow": "perennial",
-      "lat": 43.717415,
-      "lon": -72.417863
+      "flow": null,
+      "lat": 43.717445,
+      "lon": -72.417756
     },
     {
       "sources": [
@@ -9624,16 +8704,6 @@
       "flow": "perennial",
       "lat": 43.718633,
       "lon": -72.39931
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "{F3FD641C-906E-4624-A0A6-3FC2545FBEDD}",
-      "name": "Podunk Brook",
-      "flow": "perennial",
-      "lat": 43.71893,
-      "lon": -72.398968
     },
     {
       "sources": [
@@ -9664,16 +8734,6 @@
       "flow": null,
       "lat": 43.723809,
       "lon": -72.389392
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "{891A7303-8B81-43AC-BE0E-9317EA20D320}",
-      "name": null,
-      "flow": "perennial",
-      "lat": 43.723992,
-      "lon": -72.389088
     },
     {
       "sources": [
@@ -9712,28 +8772,8 @@
       "stream_id": "76908535",
       "name": null,
       "flow": "perennial",
-      "lat": 43.75071,
-      "lon": -72.126134
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "76908535",
-      "name": null,
-      "flow": "perennial",
       "lat": 43.75136,
       "lon": -72.125858
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "76908535",
-      "name": null,
-      "flow": "perennial",
-      "lat": 43.751765,
-      "lon": -72.125682
     },
     {
       "sources": [
@@ -9827,16 +8867,6 @@
     },
     {
       "sources": [
-        "osm"
-      ],
-      "stream_id": "372060636",
-      "name": "Brackett Brook",
-      "flow": null,
-      "lat": 43.885337,
-      "lon": -72.001501
-    },
-    {
-      "sources": [
         "nhd"
       ],
       "stream_id": "92791183",
@@ -9894,16 +8924,6 @@
       "flow": null,
       "lat": 43.990643,
       "lon": -71.899733
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "87401939",
-      "name": "Oliverian Brook",
-      "flow": "perennial",
-      "lat": 43.990783,
-      "lon": -71.899561
     },
     {
       "sources": [
@@ -9992,16 +9012,6 @@
       "stream_id": "87401171",
       "name": "Beaver Brook",
       "flow": "intermittent",
-      "lat": 44.036212,
-      "lon": -71.805499
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "87401171",
-      "name": "Beaver Brook",
-      "flow": "intermittent",
       "lat": 44.036329,
       "lon": -71.80516
     },
@@ -10067,16 +9077,6 @@
     },
     {
       "sources": [
-        "osm"
-      ],
-      "stream_id": "766369160",
-      "name": "Eliza Brook",
-      "flow": null,
-      "lat": 44.109497,
-      "lon": -71.741202
-    },
-    {
-      "sources": [
         "nhd"
       ],
       "stream_id": "92787673",
@@ -10097,16 +9097,6 @@
     },
     {
       "sources": [
-        "osm"
-      ],
-      "stream_id": "766369160",
-      "name": "Eliza Brook",
-      "flow": null,
-      "lat": 44.110189,
-      "lon": -71.741192
-    },
-    {
-      "sources": [
         "nhd"
       ],
       "stream_id": "92787673",
@@ -10124,16 +9114,6 @@
       "flow": null,
       "lat": 44.110626,
       "lon": -71.741158
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "766369160",
-      "name": "Eliza Brook",
-      "flow": null,
-      "lat": 44.110881,
-      "lon": -71.741136
     },
     {
       "sources": [
@@ -10162,18 +9142,8 @@
       "stream_id": "766369160",
       "name": "Eliza Brook",
       "flow": null,
-      "lat": 44.112129,
-      "lon": -71.740517
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "92787729",
-      "name": "Eliza Brook",
-      "flow": "intermittent",
-      "lat": 44.112459,
-      "lon": -71.740332
+      "lat": 44.112163,
+      "lon": -71.740461
     },
     {
       "sources": [
@@ -10204,26 +9174,6 @@
       "flow": null,
       "lat": 44.113666,
       "lon": -71.744449
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "92787731",
-      "name": null,
-      "flow": "intermittent",
-      "lat": 44.113717,
-      "lon": -71.742832
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "766369162",
-      "name": null,
-      "flow": null,
-      "lat": 44.113734,
-      "lon": -71.744114
     },
     {
       "sources": [
@@ -10319,16 +9269,6 @@
       "sources": [
         "nhd"
       ],
-      "stream_id": "92787491",
-      "name": null,
-      "flow": "perennial",
-      "lat": 44.13876,
-      "lon": -71.729847
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
       "stream_id": "92787489",
       "name": null,
       "flow": "intermittent",
@@ -10344,16 +9284,6 @@
       "flow": "perennial",
       "lat": 44.169927,
       "lon": -71.466987
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "92786989",
-      "name": "North Fork East Branch Pemigewasset River",
-      "flow": "perennial",
-      "lat": 44.170182,
-      "lon": -71.466763
     },
     {
       "sources": [
@@ -10404,16 +9334,6 @@
       "flow": "intermittent",
       "lat": 44.262591,
       "lon": -71.253382
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "765570923",
-      "name": null,
-      "flow": null,
-      "lat": 44.262785,
-      "lon": -71.253578
     },
     {
       "sources": [
@@ -10552,16 +9472,6 @@
       "stream_id": "106444157",
       "name": "Rattle River",
       "flow": "perennial",
-      "lat": 44.375954,
-      "lon": -71.107674
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "106444157",
-      "name": "Rattle River",
-      "flow": "perennial",
       "lat": 44.376332,
       "lon": -71.107656
     },
@@ -10679,16 +9589,6 @@
       "sources": [
         "nhd"
       ],
-      "stream_id": "106441017",
-      "name": "Austin Mill Brook",
-      "flow": "perennial",
-      "lat": 44.455542,
-      "lon": -71.072792
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
       "stream_id": "118179544",
       "name": "Larry Flume",
       "flow": "intermittent",
@@ -10777,16 +9677,6 @@
     },
     {
       "sources": [
-        "nhd"
-      ],
-      "stream_id": "106432847",
-      "name": null,
-      "flow": "intermittent",
-      "lat": 44.706005,
-      "lon": -70.82072
-    },
-    {
-      "sources": [
         "osm"
       ],
       "stream_id": "506441722",
@@ -10797,16 +9687,6 @@
     },
     {
       "sources": [
-        "nhd"
-      ],
-      "stream_id": "106432847",
-      "name": null,
-      "flow": "intermittent",
-      "lat": 44.707501,
-      "lon": -70.818537
-    },
-    {
-      "sources": [
         "osm"
       ],
       "stream_id": "506441722",
@@ -10814,16 +9694,6 @@
       "flow": null,
       "lat": 44.708765,
       "lon": -70.817577
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "106432847",
-      "name": null,
-      "flow": "intermittent",
-      "lat": 44.708986,
-      "lon": -70.817688
     },
     {
       "sources": [
@@ -10992,28 +9862,8 @@
       "stream_id": "506447760",
       "name": null,
       "flow": null,
-      "lat": 44.912979,
-      "lon": -70.524212
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "506447760",
-      "name": null,
-      "flow": null,
       "lat": 44.91374,
       "lon": -70.524629
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "152392153",
-      "name": "Saddleback Stream",
-      "flow": "intermittent",
-      "lat": 44.913849,
-      "lon": -70.524875
     },
     {
       "sources": [
@@ -11129,16 +9979,6 @@
       "sources": [
         "nhd"
       ],
-      "stream_id": "106568443",
-      "name": null,
-      "flow": "perennial",
-      "lat": 45.134141,
-      "lon": -70.184442
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
       "stream_id": "106568447",
       "name": "Bog Brook",
       "flow": "perennial",
@@ -11169,16 +10009,6 @@
       "sources": [
         "nhd"
       ],
-      "stream_id": "106568443",
-      "name": null,
-      "flow": "perennial",
-      "lat": 45.134848,
-      "lon": -70.172739
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
       "stream_id": "106568369",
       "name": null,
       "flow": "intermittent",
@@ -11204,16 +10034,6 @@
       "flow": null,
       "lat": 45.156599,
       "lon": -70.112715
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "106567633",
-      "name": "Pond Stream",
-      "flow": "perennial",
-      "lat": 45.156827,
-      "lon": -70.112452
     },
     {
       "sources": [
@@ -11272,28 +10092,8 @@
       "stream_id": "152414240",
       "name": "North Branch Carrying Place Stream",
       "flow": "perennial",
-      "lat": 45.216626,
-      "lon": -70.079765
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "152414240",
-      "name": "North Branch Carrying Place Stream",
-      "flow": "perennial",
       "lat": 45.216982,
       "lon": -70.080625
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "152414240",
-      "name": "North Branch Carrying Place Stream",
-      "flow": "perennial",
-      "lat": 45.217072,
-      "lon": -70.081106
     },
     {
       "sources": [
@@ -11344,16 +10144,6 @@
       "flow": null,
       "lat": 45.241749,
       "lon": -70.027303
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "152414247",
-      "name": "Otter Pond Stream",
-      "flow": "perennial",
-      "lat": 45.24194,
-      "lon": -70.02744
     },
     {
       "sources": [
@@ -11422,16 +10212,6 @@
       "stream_id": "152412806",
       "name": "Holly Brook",
       "flow": "perennial",
-      "lat": 45.261291,
-      "lon": -69.97358
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "152412806",
-      "name": "Holly Brook",
-      "flow": "perennial",
       "lat": 45.261646,
       "lon": -69.972852
     },
@@ -11444,16 +10224,6 @@
       "flow": "perennial",
       "lat": 45.26191,
       "lon": -69.972312
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "152412806",
-      "name": "Holly Brook",
-      "flow": "perennial",
-      "lat": 45.262042,
-      "lon": -69.972041
     },
     {
       "sources": [
@@ -11747,16 +10517,6 @@
     },
     {
       "sources": [
-        "osm"
-      ],
-      "stream_id": "506752599",
-      "name": null,
-      "flow": null,
-      "lat": 45.375972,
-      "lon": -69.468884
-    },
-    {
-      "sources": [
         "nhd"
       ],
       "stream_id": "103447896",
@@ -11764,16 +10524,6 @@
       "flow": "perennial",
       "lat": 45.378429,
       "lon": -69.470874
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "506752600",
-      "name": null,
-      "flow": null,
-      "lat": 45.378618,
-      "lon": -69.47069
     },
     {
       "sources": [
@@ -11889,16 +10639,6 @@
       "sources": [
         "nhd"
       ],
-      "stream_id": "103445336",
-      "name": "Henderson Brook",
-      "flow": "perennial",
-      "lat": 45.476172,
-      "lon": -69.292203
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
       "stream_id": "103444762",
       "name": "West Branch Pleasant River",
       "flow": "perennial",
@@ -11922,16 +10662,6 @@
       "stream_id": "103444776",
       "name": "Gulf Hagas Brook",
       "flow": "perennial",
-      "lat": 45.498808,
-      "lon": -69.313726
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "103444776",
-      "name": "Gulf Hagas Brook",
-      "flow": "perennial",
       "lat": 45.504906,
       "lon": -69.319233
     },
@@ -11942,28 +10672,8 @@
       "stream_id": "506754264",
       "name": "Gulf Hagas Brook",
       "flow": null,
-      "lat": 45.505154,
-      "lon": -69.319388
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "506754264",
-      "name": "Gulf Hagas Brook",
-      "flow": null,
       "lat": 45.506338,
       "lon": -69.31992
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "506754264",
-      "name": "Gulf Hagas Brook",
-      "flow": null,
-      "lat": 45.5067,
-      "lon": -69.320008
     },
     {
       "sources": [
@@ -12097,16 +10807,6 @@
     },
     {
       "sources": [
-        "nhd"
-      ],
-      "stream_id": "150604503",
-      "name": null,
-      "flow": "intermittent",
-      "lat": 45.636007,
-      "lon": -69.095489
-    },
-    {
-      "sources": [
         "osm"
       ],
       "stream_id": "1254094539",
@@ -12124,16 +10824,6 @@
       "flow": "perennial",
       "lat": 45.641844,
       "lon": -69.08664
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "506754278",
-      "name": null,
-      "flow": null,
-      "lat": 45.642157,
-      "lon": -69.086466
     },
     {
       "sources": [
@@ -12189,16 +10879,6 @@
       "sources": [
         "osm"
       ],
-      "stream_id": "420657193",
-      "name": null,
-      "flow": null,
-      "lat": 45.665871,
-      "lon": -68.990409
-    },
-    {
-      "sources": [
-        "osm"
-      ],
       "stream_id": "1494770650",
       "name": null,
       "flow": null,
@@ -12214,26 +10894,6 @@
       "flow": "perennial",
       "lat": 45.698652,
       "lon": -69.006898
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "150607199",
-      "name": null,
-      "flow": "perennial",
-      "lat": 45.698848,
-      "lon": -69.006801
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "150607199",
-      "name": null,
-      "flow": "perennial",
-      "lat": 45.699032,
-      "lon": -69.006706
     },
     {
       "sources": [
@@ -12309,31 +10969,11 @@
       "sources": [
         "osm"
       ],
-      "stream_id": "1237616616",
-      "name": null,
-      "flow": null,
-      "lat": 45.707502,
-      "lon": -69.00956
-    },
-    {
-      "sources": [
-        "osm"
-      ],
       "stream_id": "337717064",
       "name": "Twitchell Brook",
       "flow": null,
       "lat": 45.713092,
       "lon": -69.011803
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "150604981",
-      "name": "Twitchell Brook",
-      "flow": "perennial",
-      "lat": 45.713329,
-      "lon": -69.011784
     },
     {
       "sources": [
@@ -12442,18 +11082,8 @@
       "stream_id": "150607804",
       "name": "Rainbow Stream",
       "flow": "perennial",
-      "lat": 45.787543,
-      "lon": -69.160961
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "150607804",
-      "name": "Rainbow Stream",
-      "flow": "perennial",
-      "lat": 45.787671,
-      "lon": -69.161504
+      "lat": 45.787609,
+      "lon": -69.161103
     },
     {
       "sources": [
@@ -12499,31 +11129,11 @@
       "sources": [
         "nhd"
       ],
-      "stream_id": "150607804",
-      "name": "Rainbow Stream",
-      "flow": "perennial",
-      "lat": 45.79424,
-      "lon": -69.162416
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
       "stream_id": "150606799",
       "name": null,
       "flow": "perennial",
       "lat": 45.795988,
       "lon": -69.162821
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "1237790138",
-      "name": null,
-      "flow": null,
-      "lat": 45.796154,
-      "lon": -69.162984
     },
     {
       "sources": [
@@ -12542,28 +11152,18 @@
       "stream_id": "314060478",
       "name": "Rainbow Stream",
       "flow": null,
-      "lat": 45.799149,
-      "lon": -69.170521
-    },
-    {
-      "sources": [
-        "osm"
-      ],
-      "stream_id": "314060478",
-      "name": "Rainbow Stream",
-      "flow": null,
       "lat": 45.800058,
       "lon": -69.171318
     },
     {
       "sources": [
-        "osm"
+        "nhd"
       ],
-      "stream_id": "314060478",
+      "stream_id": "167812968",
       "name": "Rainbow Stream",
-      "flow": null,
-      "lat": 45.800486,
-      "lon": -69.171248
+      "flow": "perennial",
+      "lat": 45.800508,
+      "lon": -69.171242
     },
     {
       "sources": [
@@ -12674,16 +11274,6 @@
       "flow": null,
       "lat": 45.840776,
       "lon": -68.977396
-    },
-    {
-      "sources": [
-        "nhd"
-      ],
-      "stream_id": "150606967",
-      "name": null,
-      "flow": "perennial",
-      "lat": 45.841017,
-      "lon": -68.977624
     },
     {
       "sources": [

@@ -500,13 +500,35 @@ def dedupe_crossings(crossings: list[dict]) -> list[dict]:
     walking through gets wet once.
     """
     kept: list[dict] = []
-    for crossing in sorted(crossings, key=lambda c: (c["lat"], c["lon"])):
-        if any(
-            distance_between(crossing["lat"], crossing["lon"], other["lat"], other["lon"]) <= CROSSING_DEDUPE_M for other in kept
-        ):
+    # USGS first, so a merged crossing keeps the surveyed position and OSM's
+    # name folds onto it rather than the other way round. Within
+    # CROSSING_DEDUPE_M the two are the same stop either way; this only
+    # decides which one the published id is built from, and that id has to be
+    # stable across re-runs.
+    for crossing in sorted(crossings, key=lambda c: ("nhd" not in c["sources"], c["lat"], c["lon"])):
+        twin = next(
+            (
+                index
+                for index, other in enumerate(kept)
+                if distance_between(crossing["lat"], crossing["lon"], other["lat"], other["lon"]) <= CROSSING_DEDUPE_M
+            ),
+            None,
+        )
+        if twin is None:
+            kept.append(
+                {
+                    **crossing,
+                    "flow_source": crossing["sources"][0] if crossing.get("flow") else None,
+                    "lat": round(crossing["lat"], 6),
+                    "lon": round(crossing["lon"], 6),
+                }
+            )
             continue
-        kept.append({**crossing, "lat": round(crossing["lat"], 6), "lon": round(crossing["lon"], 6)})
-    return kept
+        # COMBINED, not discarded: the loser usually knows something the
+        # winner does not - a name, or the flow class - and dropping it is
+        # the mistake features/POI_DEDUPLICATION.md was written about.
+        kept[twin] = merge_stream_facts(kept[twin], crossing)
+    return sorted(kept, key=lambda crossing: (crossing["lat"], crossing["lon"]))
 
 
 def distance_between(lat1: float, lon1: float, lat2: float, lon2: float) -> float:

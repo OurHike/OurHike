@@ -333,14 +333,23 @@ picture of the current camera is not a preference.
   sections. It also puts 2,778 dots on a 2,197-mile line, which is a texture, which is the
   argument `POI_MIN_ZOOM`'s docstring already won once. Recommended **no** for v1, and cheap to
   reverse, because unlike a floor it cannot make the map lie in either position.
-- **Dot size, and whether it varies by `POI_PRIORITY`.** A 4 px water dot and a 3 px vista dot
-  would carry the priority ordering into the rank that has no ordering. Possibly precision for its
-  own sake; wants [#105](https://github.com/OurHike/OurHike/issues/105)'s real screen in real
-  sunlight, like the site pin's badge.
-- **Whether a dot is tappable at all.** Making it tappable is the honest completion of "nothing is
-  hidden" — you can see it *and* reach it. Making it inert is one less 20 px hit box competing
-  with a 44 px one. Recommended tappable, with the pin-beats-dot rule above, but this is the part
-  of the design most likely to be wrong on a phone rather than in a browser.
+- **Dot size, and whether it varies by `POI_PRIORITY`.** Built uniform — 2.5 px at the seam
+  growing to 4 px by z16, the same for every category. A 4 px water dot and a 3 px vista dot would
+  carry the priority ordering into the rank that has no ordering, and the argument for the rank is
+  that it makes no claim beyond *something is here*. **Still open**, because it is the decision
+  most likely to be wrong in a browser and right on a phone, or the reverse:
+  [#105](https://github.com/OurHike/OurHike/issues/105)'s real screen in real sunlight, like the
+  site pin's badge. The measurement gives it a sharper test than "does it look right" —
+  vistas are 42% pinned at the seam, so a corridor of overlooks is the case where the stipple is
+  heaviest and where it should be judged.
+- ~~**Whether a dot is tappable at all.**~~ **Built tappable**
+  ([#597](https://github.com/OurHike/OurHike/issues/597)), with the rule stated in
+  `poiTaps.ts` rather than left to `[0]`: a pin under the thumb beats a dot, and among dots the
+  one nearest the touch centre wins. The cost is real and was the argument against — a dot needs
+  20 px of slop to reach `--min-touch-target` where a pin needs 3, so the dot box routinely holds
+  several waypoints. That is exactly why it needed a rule, and having one is what made it safe to
+  build. If it grates on a phone the fallback is to make dots inert, which is a one-line change to
+  the same function.
 - **Default `waypoint_types_shown`** — all-on (today) vs. a curated subset. Inherited unchanged
   from [UX_CUSTOMIZATION.md](UX_CUSTOMIZATION.md)'s own open list, and it gains weight here: the
   1,194 in-corridor vistas are 43% of every waypoint published, and under the dot rank they are

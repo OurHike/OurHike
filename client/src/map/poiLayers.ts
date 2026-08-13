@@ -4,8 +4,8 @@
 // poiIcons.ts is pure pixel maths and knows nothing about MapLibre; this is
 // the module that knows about MapLibre and nothing about pixels.
 //
-// Everything here is ONE layer. Not one per category, which is the obvious
-// shape and the wrong one:
+// There is ONE SYMBOL layer. Not one per category, which is the obvious shape
+// and the wrong one:
 //
 //  - Density is MapLibre's own collision engine (`icon-allow-overlap: false`),
 //    and it can only declutter symbols it places together. Five layers means
@@ -17,6 +17,23 @@
 // What survives from that choice: which pin wins a collision is a decision
 // someone has to make rather than an accident of layer order. It is
 // {@link POI_PRIORITY}, and water is first in it.
+//
+// THE SECOND LAYER, AND WHY IT DOES NOT BREAK THE ARGUMENT ABOVE (#597)
+//
+// {@link POI_DOT_LAYER_ID} is a `circle` layer under the pins, drawing every
+// waypoint in the source. The argument above is entirely about COLLISION, and
+// collision in MapLibre is a property of SYMBOL layers - a circle layer does
+// not participate in placement at all, so it cannot fragment a placement pass
+// and cannot stack a second pin on a shelter. Adding it costs the argument
+// nothing; a second symbol layer would have cost it everything.
+//
+// What it buys: above {@link POI_PIN_MIN_ZOOM} a waypoint draws as a pin OR as
+// a dot and never as neither. The collision engine stops deciding which
+// waypoints EXIST and starts deciding which get the big treatment. Both layers
+// read the same source and take the same filter, so the legend cannot get out
+// of step with either.
+//
+// features/POI_VISIBILITY.md is the design.
 
 import type {
   GeoJSONSourceSpecification,
@@ -36,6 +53,8 @@ import {
 } from './poiSites'
 import {
   buildPoiIcons,
+  PIN_HALO_COLOR,
+  poiColor,
   poiIconId,
   siteMemberCombinations,
   UNKNOWN_POI_TYPE,
@@ -60,14 +79,26 @@ export const POI_LAYER_ID = 'poi-pins'
 export const POI_ID_PROPERTY = 'poi_id'
 
 /**
- * Below this, no pins at all.
+ * The seam. Below this the map is the corridor view and carries no waypoints
+ * at all; above it every waypoint draws, as a pin or as a dot.
  *
- * The opening view is the whole 2,197-mile corridor. Eight hundred POIs on it
- * is not a map, it is a texture - and the collision engine would answer the
- * question "which of these do I keep" by geometry, when the honest answer at
- * that zoom is "none, you are not looking at a place yet".
+ * MEASURED, not chosen - pipeline/spike_poi_seam.py, 2026-08-13, against the
+ * live ATC service with lib/poi_sites.py's own folding applied. A 390x700
+ * phone map holds about 16 pins down a column, and the median screen centred
+ * on a waypoint carries 35 of them at z10, 18 at z11 and 9 at z12. z12 is the
+ * first zoom that is not oversubscribed.
+ *
+ * On the median rather than the p90 deliberately: above the seam an overfull
+ * screen costs DOTS, not deletions, so the question is "is this a better
+ * screen than the corridor view" and not "is every screen guaranteed to fit".
+ *
+ * It replaces a floor of 9, whose docstring argued - rightly - that eight
+ * hundred POIs on a corridor view "is not a map, it is a texture". That
+ * argument was never wrong; what changed is that the corridor view now has
+ * something else to show (features/CORRIDOR_VIEW.md), so the floor no longer
+ * has to choose between a texture and an empty screen.
  */
-export const POI_MIN_ZOOM = 9
+export const POI_PIN_MIN_ZOOM = 12
 
 /**
  * Who wins a collision, best first.
@@ -166,15 +197,20 @@ export const POI_SORT_KEY_EXPRESSION: unknown[] = [
 /**
  * Pins grow with zoom rather than sitting at one size.
  *
- * At the far end of {@link POI_MIN_ZOOM} they are markers saying something is
- * there; by the zoom a hiker actually walks at they are full size and their
- * glyph is legible. One interpolation covers both without a second layer.
+ * At the far end of {@link POI_PIN_MIN_ZOOM} they are markers saying something
+ * is there; by the zoom a hiker actually walks at they are full size and their
+ * glyph is legible. One interpolation covers both.
+ *
+ * The low anchor moved with the seam, which makes the render slightly kinder
+ * than the measurement: spike_poi_seam.py simulated full-size 42 px boxes at
+ * every zoom, and a pin at 0.6 asks for about 25 px, so z12 fits somewhat more
+ * than the run reported. Conservative in the direction that matters.
  */
 export const POI_ICON_SIZE_EXPRESSION: unknown[] = [
   'interpolate',
   ['linear'],
   ['zoom'],
-  POI_MIN_ZOOM,
+  POI_PIN_MIN_ZOOM,
   0.6,
   13,
   1,
@@ -185,7 +221,7 @@ export function buildPoiLayer(sourceId: string = POI_SOURCE_ID): LayerSpecificat
     id: POI_LAYER_ID,
     type: 'symbol',
     source: sourceId,
-    minzoom: POI_MIN_ZOOM,
+    minzoom: POI_PIN_MIN_ZOOM,
     layout: {
       'icon-image': POI_ICON_EXPRESSION as unknown as string,
       'icon-size': POI_ICON_SIZE_EXPRESSION as unknown as number,
@@ -204,6 +240,83 @@ export function buildPoiLayer(sourceId: string = POI_SOURCE_ID): LayerSpecificat
       // is worse than no pin label: it would be missing exactly when the map
       // is the only thing a hiker has. Names stay in search and the legend,
       // which work the same either way.
+    },
+  }
+}
+
+/** The dot rank: every waypoint, at its real coordinates, always drawn. */
+export const POI_DOT_LAYER_ID = 'poi-dots'
+
+/**
+ * A dot's colour is its category's accent - the same one its pin wears.
+ *
+ * Built from poiIcons.ts's table rather than a second palette, for the reason
+ * that file already gives about anything drawn to match a pin: two tables
+ * cannot disagree about an accent if there is only one.
+ */
+export const POI_DOT_COLOR_EXPRESSION: unknown[] = [
+  'match',
+  ['get', 'poi_type'],
+  ...POI_TYPES.flatMap((type) => [type, poiColor(type)]),
+  poiColor(UNKNOWN_POI_TYPE),
+]
+
+/**
+ * Small, and smaller the further out you are.
+ *
+ * A dot is a claim that something is HERE and nothing else; it is not trying
+ * to say what, which is the pin's job. At the seam the trail is a stipple of
+ * them and at walking zoom they are mostly hidden under the pins that won.
+ *
+ * 2.5 px at {@link POI_PIN_MIN_ZOOM} is ink a sighted hiker can see without it
+ * competing with a 38 px pin. It wants a look on a real screen in real
+ * sunlight (#105) - like the site pin's badge, this is the decision in the
+ * design most likely to be wrong in a browser and right on a phone, or the
+ * reverse.
+ */
+export const POI_DOT_RADIUS_EXPRESSION: unknown[] = [
+  'interpolate',
+  ['linear'],
+  ['zoom'],
+  POI_PIN_MIN_ZOOM,
+  2.5,
+  16,
+  4,
+]
+
+/**
+ * The rank that cannot lose.
+ *
+ * A `circle` layer, and that is the entire mechanism rather than an
+ * implementation detail: MapLibre's collision engine is a property of SYMBOL
+ * layers, so a circle participates in no placement pass and every feature
+ * renders, at any camera. Making this a small symbol layer instead would have
+ * put it straight back into the collision it exists to escape.
+ *
+ * Drawn UNDER the pins (map/style.ts's layer order), so a waypoint that wins
+ * its collision shows a pin with its own dot invisible beneath it, and one
+ * that loses still shows the dot. No feature is in neither state, which is the
+ * whole of features/POI_VISIBILITY.md's "never as neither".
+ *
+ * Same source and same filter as the pins - see {@link attachPoiFilter}. It
+ * therefore inherits site folding for free: poiFeatureCollection already emits
+ * one feature per site, so a privy riding its shelter's pin does not also get
+ * a dot 40 m away claiming to be a second place.
+ */
+export function buildPoiDotLayer(sourceId: string = POI_SOURCE_ID): LayerSpecification {
+  return {
+    id: POI_DOT_LAYER_ID,
+    type: 'circle',
+    source: sourceId,
+    minzoom: POI_PIN_MIN_ZOOM,
+    paint: {
+      'circle-radius': POI_DOT_RADIUS_EXPRESSION as unknown as number,
+      'circle-color': POI_DOT_COLOR_EXPRESSION as unknown as string,
+      // The same halo the pins wear, for the same reason poiIcons.ts gives:
+      // the accents are legible on cream paper and some of them are not
+      // legible on the field sheet's white without an edge.
+      'circle-stroke-width': 1,
+      'circle-stroke-color': PIN_HALO_COLOR,
     },
   }
 }
@@ -333,18 +446,31 @@ export function attachPoiData(map: MapLibreMap, pois: readonly MapPoint[]): () =
   )
 }
 
-/** Applies the legend's filters to the pin layer, and returns a detach. */
+/**
+ * Applies the legend's filters to BOTH ranks, and returns a detach.
+ *
+ * Both, from one computed filter, in one pass - not because it is tidier but
+ * because the alternative fails quietly: a hidden category whose pins go and
+ * whose dots stay leaves the legend saying one thing and the map showing
+ * another, with no error anywhere. The layer list is local and the expression
+ * is computed once, so there is no path on which the two ranks disagree.
+ */
 export function attachPoiFilter(
   map: MapLibreMap,
   hiddenTypes: ReadonlySet<string>,
   verifiedOnly = false,
 ): () => void {
+  const layers = [POI_LAYER_ID, POI_DOT_LAYER_ID]
   return whenStyleReady(
     map,
     // setFilter throws outright on a layer the style does not hold, so the
-    // layer's presence is exactly the precondition.
-    () => map.getLayer(POI_LAYER_ID) !== undefined,
-    () => map.setFilter(POI_LAYER_ID, poiFilter(hiddenTypes, verifiedOnly) as never),
+    // layers' presence is exactly the precondition. Both, because a style
+    // mid-reload can hold one and not the other.
+    () => layers.every((layer) => map.getLayer(layer) !== undefined),
+    () => {
+      const filter = poiFilter(hiddenTypes, verifiedOnly)
+      for (const layer of layers) map.setFilter(layer, filter as never)
+    },
     'POI visibility',
   )
 }

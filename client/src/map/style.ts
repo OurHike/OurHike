@@ -68,7 +68,12 @@ import { buildAtcUpdateLayers } from '../lib/atcUpdateStyle'
 import { buildClosureLayers } from '../lib/closureStyle'
 import { buildAtcUpdateSource, ATC_UPDATE_SOURCE_ID } from './atcUpdateLayers'
 import { buildClosureSource, CLOSURE_SOURCE_ID } from './closureLayers'
-import { buildPoiLayer, buildPoiSource, POI_SOURCE_ID } from './poiLayers'
+import {
+  buildPoiDotLayer,
+  buildPoiLayer,
+  buildPoiSource,
+  POI_SOURCE_ID,
+} from './poiLayers'
 import { buildWarningLayer, buildWarningSource, WARNING_SOURCE_ID } from './warningLayers'
 import type { BackgroundSource, MapStyle, Theme } from '../lib/userPreferences'
 import {
@@ -787,9 +792,18 @@ export function buildMapStyle({
       // lib/closureStyle.ts for why the band differs from a blaze in width,
       // rhythm and casing weight rather than only in colour.
       ...buildClosureLayers(CLOSURE_SOURCE_ID),
-      // Then the pins, so one is never buried under the trail line it sits on.
-      // See poiLayers.ts for why this is one layer rather than one per
-      // category.
+      // Then the waypoints, in their two ranks (#597). The dots go down first
+      // so every pin that wins its collision sits on top of its own dot and
+      // hides it, and every waypoint that loses one still leaves a dot behind.
+      // Reversing these two would put a 2.5 px dot over the middle of a 38 px
+      // pin, which reads as a defect rather than as a rank.
+      //
+      // Both are above the closure bands for the same reason as before: a
+      // waypoint is never buried under the trail line it sits on. See
+      // poiLayers.ts for why the pins are one layer rather than one per
+      // category, and why a non-colliding circle layer beside them does not
+      // undo that argument.
+      buildPoiDotLayer(),
       buildPoiLayer(),
       // And the serious-warning pins over every waypoint. The collision engine
       // already keeps them from being dropped (warningLayers.ts); this keeps

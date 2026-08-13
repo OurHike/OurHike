@@ -6,7 +6,7 @@ import { join } from 'node:path'
 // Same reason lib/push.test.ts asks for it by name.
 import { cwd } from 'node:process'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
-import { POI_LAYER_ID, POI_MIN_ZOOM } from './poiLayers'
+import { POI_LAYER_ID, POI_PIN_MIN_ZOOM } from './poiLayers'
 import { POI_PIN_PIXEL_RATIO } from './poiIcons'
 import { WARNING_ICON_ID } from './warningPin'
 import {
@@ -50,7 +50,7 @@ describe('the layer', () => {
     // texture. Serious warnings are moderator-escalated and rare, and zoomed
     // out to plan a week is exactly when someone wants to see where they are.
     expect(buildWarningLayer()).not.toHaveProperty('minzoom')
-    expect(POI_MIN_ZOOM).toBeGreaterThan(0)
+    expect(POI_PIN_MIN_ZOOM).toBeGreaterThan(0)
   })
 
   it('holds its size instead of shrinking toward a minzoom', () => {

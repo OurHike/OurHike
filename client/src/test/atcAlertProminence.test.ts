@@ -10,7 +10,11 @@ import {
   ATC_UPDATE_POINT_LAYER_ID,
   ATC_UPDATE_POINT_ZOOM_STOPS,
 } from '../lib/atcUpdateStyle'
-import { POI_ICON_SIZE_EXPRESSION, POI_LAYER_ID, POI_MIN_ZOOM } from '../map/poiLayers'
+import {
+  POI_ICON_SIZE_EXPRESSION,
+  POI_LAYER_ID,
+  POI_PIN_MIN_ZOOM,
+} from '../map/poiLayers'
 import { POI_PIN_SIZE } from '../map/poiIcons'
 import { WARNING_LAYER_ID } from '../map/warningLayers'
 import { WARNING_PIN } from '../lib/seriousWarnings'
@@ -78,19 +82,54 @@ describe('the ATC’s point notice sits just above every pin on the map', () => 
 
   it('keeps that clearance at every zoom a waypoint pin is drawn at', () => {
     // Both ramp, so "wider than a pin" is a claim about a range rather than a
-    // number. The stops are shared on purpose - z9/0.6 and z13/1 are
-    // POI_ICON_SIZE_EXPRESSION's own - so the ratio is constant across the
-    // whole span where the two compete, and the dot cannot be the smaller mark
-    // at some middle zoom nobody screenshotted.
-    const poiStops = POI_ICON_SIZE_EXPRESSION.slice(3)
-    const atcStops = ATC_UPDATE_POINT_ZOOM_STOPS.filter(([zoom]) => zoom >= POI_MIN_ZOOM)
+    // number, and the dot must not be the smaller mark at some middle zoom
+    // nobody screenshotted.
+    //
+    // ASSERTED AS THE PROPERTY, NOT AS A SHARED STOP LIST. It used to compare
+    // the two `interpolate` tables for equality, which held only because the
+    // dot's middle stop had been chosen as `POI_MIN_ZOOM`/0.6 to match. #597
+    // moved the pins' lower anchor to POI_PIN_MIN_ZOOM = 12 and the dot's
+    // stayed at 9 - correctly, because lib/atcUpdateStyle.ts sizes this dot
+    // against THE GROUND IT IS DRAWN ON rather than against pins, and it has no
+    // minzoom precisely so a hiker planning a week can still see it. Shrinking
+    // ATC's notices at planning zooms to keep two tables identical would have
+    // been the tail wagging the dog.
+    //
+    // So this now measures what the section is actually about, and holds
+    // whichever constant moves next.
+    const scaleAt = (
+      stops: ReadonlyArray<readonly [number, number]>,
+      zoom: number,
+    ): number => {
+      const clamped = Math.min(Math.max(zoom, stops[0][0]), stops[stops.length - 1][0])
+      for (let at = 0; at < stops.length - 1; at += 1) {
+        const [lowZoom, lowScale] = stops[at]
+        const [highZoom, highScale] = stops[at + 1]
+        if (clamped <= highZoom) {
+          const span = highZoom - lowZoom
+          const along = span === 0 ? 0 : (clamped - lowZoom) / span
+          return lowScale + along * (highScale - lowScale)
+        }
+      }
+      return stops[stops.length - 1][1]
+    }
 
-    expect(atcStops).toEqual(
-      Array.from({ length: poiStops.length / 2 }, (_, at) => [
-        poiStops[at * 2],
-        poiStops[at * 2 + 1],
-      ]),
-    )
+    const pinStops: Array<[number, number]> = []
+    for (let at = 3; at < POI_ICON_SIZE_EXPRESSION.length; at += 2) {
+      pinStops.push([
+        POI_ICON_SIZE_EXPRESSION[at] as number,
+        POI_ICON_SIZE_EXPRESSION[at + 1] as number,
+      ])
+    }
+
+    // Every zoom where both are drawn - the pin layer's minzoom upward. 22 is
+    // MapLibre's own maximum.
+    for (let zoom = POI_PIN_MIN_ZOOM; zoom <= 22; zoom += 0.5) {
+      const dot =
+        ATC_UPDATE_POINT_DRAWN_WIDTH * scaleAt(ATC_UPDATE_POINT_ZOOM_STOPS, zoom)
+      const pin = POI_PIN_SIZE * scaleAt(pinStops, zoom)
+      expect(dot, `ATC dot must outsize a waypoint pin at z${zoom}`).toBeGreaterThan(pin)
+    }
   })
 
   it('does NOT outgrow the serious-warning pin as a disc', () => {

@@ -124,10 +124,17 @@ export const ATC_UPDATE_POINT_RADIUS = ATC_UPDATE_POINT_DIAMETER / 2
  *    a waypoint pin is its whole 38px. This is the comparison every bound in
  *    src/test/atcAlertProminence.test.ts is about, so it has to be the zoom
  *    both are at full size.
- *  - **z9, 0.6.** `POI_MIN_ZOOM`, where waypoint pins first appear, and
- *    `POI_ICON_SIZE_EXPRESSION`'s own lower stop. Matching the fraction rather
- *    than picking one keeps the dot exactly its two pixels clear of a pin at
- *    every zoom where both are drawn, instead of only at the top.
+ *  - **z9, 0.6.** Where waypoint pins used to first appear, and what was then
+ *    `POI_ICON_SIZE_EXPRESSION`'s own lower stop. **That coupling is gone and
+ *    the stop stays anyway** (#597): the pins' lower anchor moved to
+ *    `POI_PIN_MIN_ZOOM` = 12 when the corridor view took over below it, and
+ *    following it up to 12 would have made ATC's notices *smaller* across
+ *    z9-z11 - which is planning territory, exactly where this layer's whole
+ *    argument says it must stay visible. The clearance over a pin is now
+ *    asserted as a property at every zoom both are drawn
+ *    (src/test/atcAlertProminence.test.ts) rather than by two tables agreeing,
+ *    and it is wider than it used to be: at z12 the dot is at 0.9 where a pin
+ *    is at 0.6.
  *  - **z5, 0.4.** Below the pins entirely, where the only question is whether
  *    a hiker planning a week can see WHERE the ATC has posted something. About
  *    18px of ink answers that. It is deliberately NOT a further shrink to

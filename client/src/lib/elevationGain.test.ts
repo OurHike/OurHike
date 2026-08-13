@@ -26,6 +26,7 @@ import { describe, expect, it } from 'vitest'
 import {
   cumulativeGain,
   cumulativeGainOverGaps,
+  cumulativeGainOverProfile,
   gainBetween,
   rawCumulativeGain,
   THRESHOLD_FT,
@@ -135,6 +136,13 @@ describe('shared with the Python implementation', () => {
     expected_gain: number
   }
 
+  interface BoundaryVector {
+    name: string
+    samples: { elevation_ft: number | null; part_start?: boolean }[]
+    threshold: number
+    expected_gain: number
+  }
+
   // Walked up from the working directory rather than resolved from
   // import.meta.url: Vitest transforms this module, so its import.meta.url is
   // not a file: URL and fileURLToPath throws on it. Walking also survives the
@@ -152,13 +160,14 @@ describe('shared with the Python implementation', () => {
 
   const vectors = JSON.parse(
     readFileSync(findRepoFile('pipeline/reference/gain_vectors.json'), 'utf8'),
-  ) as { cases: Vector[]; gap_cases: Vector[] }
+  ) as { cases: Vector[]; gap_cases: Vector[]; boundary_cases: BoundaryVector[] }
 
   it('has vectors to run', () => {
     // A vector file that silently emptied would turn every case below into
     // zero cases, and a suite that runs nothing passes.
     expect(vectors.cases.length).toBeGreaterThanOrEqual(10)
     expect(vectors.gap_cases.length).toBeGreaterThanOrEqual(3)
+    expect(vectors.boundary_cases.length).toBeGreaterThanOrEqual(5)
   })
 
   it.each(vectors.cases)('$name', ({ elevations, threshold, expected_gain }) => {
@@ -167,5 +176,18 @@ describe('shared with the Python implementation', () => {
 
   it.each(vectors.gap_cases)('$name', ({ elevations, threshold, expected_gain }) => {
     expect(cumulativeGainOverGaps(elevations, threshold)).toBeCloseTo(expected_gain)
+  })
+
+  // #559's break, and the reason these carry `samples` rather than
+  // `elevations`: a centerline part boundary is a marker on a record, not a
+  // value in a list. It is not a DEM gap either - the measurement is fine and
+  // the TRAIL is discontinuous, so the step across it is not a slope.
+  it.each(vectors.boundary_cases)('$name', ({ samples, threshold, expected_gain }) => {
+    const profile = samples.map((s, i) => ({
+      distanceMi: i,
+      elevationFt: s.elevation_ft,
+      partStart: s.part_start === true,
+    }))
+    expect(cumulativeGainOverProfile(profile, threshold)).toBeCloseTo(expected_gain)
   })
 })

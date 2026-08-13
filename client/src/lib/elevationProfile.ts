@@ -23,10 +23,25 @@ import type { ElevationSample } from '../chrome/ElevationRibbon'
 import type { ProfileSample } from './elevationGain'
 
 /** Parallel arrays, ascending by distance. `elevationFt[i]` is NaN where the
- *  DEM did not cover `distanceMi[i]`. */
+ *  DEM did not cover `distanceMi[i]`.
+ *
+ *  `partStart[i]` is 1 where sample i begins a new centerline piece, so the
+ *  step into it is a seam in the trail rather than a slope (#559). A third
+ *  parallel array rather than a wider object, for the same reason as the other
+ *  two: a Uint8Array over ~141,000 samples is 141 KB, against the megabyte a
+ *  per-sample boolean field would add to the object form this shape exists to
+ *  avoid.
+ *
+ *  **Optional, and that is a storage fact rather than laziness.** This shape is
+ *  persisted (lib/storedShapes.fixtures.ts' `storedElevation`), so a profile
+ *  read back off a phone that downloaded before this field existed genuinely
+ *  does not have it. Requiring it would type a lie and throw on the archive of
+ *  every early tester. Absent reads as "no seams known", which is the same
+ *  honest degradation the artifact itself gets. */
 export interface ElevationProfile {
   distanceMi: Float32Array
   elevationFt: Float32Array
+  partStart?: Uint8Array
 }
 
 export interface MileWindow {
@@ -45,6 +60,7 @@ export const WINDOW_BEHIND_MI = 1
 interface RawSample {
   distance_mi?: unknown
   elevation_ft?: unknown
+  part_start?: unknown
 }
 
 /**
@@ -67,6 +83,7 @@ export function parseProfile(text: string): ElevationProfile | null {
 
   const distanceMi = new Float32Array(parsed.length)
   const elevationFt = new Float32Array(parsed.length)
+  const partStart = new Uint8Array(parsed.length)
   let count = 0
 
   for (const entry of parsed as RawSample[]) {
@@ -80,6 +97,11 @@ export function parseProfile(text: string): ElevationProfile | null {
     distanceMi[count] = entry.distance_mi
     elevationFt[count] =
       typeof entry.elevation_ft === 'number' ? entry.elevation_ft : Number.NaN
+    // Absent on every sample but the 558 that begin a piece, and absent
+    // throughout a profile published before the pipeline recorded seams -
+    // which reads as "no seams known", the only honest reading of a file that
+    // does not say.
+    partStart[count] = entry.part_start === true ? 1 : 0
     count += 1
   }
 
@@ -88,6 +110,7 @@ export function parseProfile(text: string): ElevationProfile | null {
   return {
     distanceMi: distanceMi.subarray(0, count),
     elevationFt: elevationFt.subarray(0, count),
+    partStart: partStart.subarray(0, count),
   }
 }
 
@@ -163,6 +186,13 @@ export function profileSamples(
     samples.push({
       distanceMi: profile.distanceMi[i],
       elevationFt: Number.isNaN(elevationFt) ? null : elevationFt,
+      // Carried into the window, not just held on the whole profile: a
+      // 10-mile window that spans a seam is exactly the case that would
+      // otherwise report a phantom climb to a hiker looking at the ribbon.
+      //
+      // Optional-chained because a profile restored from an older download has
+      // no such array at all - see ElevationProfile.
+      partStart: profile.partStart?.[i] === 1,
     })
   }
 

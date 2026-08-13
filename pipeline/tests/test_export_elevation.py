@@ -317,3 +317,53 @@ def test_export_elevation_writes_a_sha256_hash_for_the_profile_artifact(tmp_path
     on_disk_manifest = json.loads(manifest_path.read_text())
     assert on_disk_manifest["sha256"] == expected_hash
     assert on_disk_manifest["path"] == str(out_path)
+
+
+# --- part boundaries in the artifact (#559) ---------------------------------
+
+
+def test_a_sample_carries_the_piece_it_came_from():
+    """The walk is the only place that knows where the seams are, so it is the
+    only place that can say. Everything downstream reads the artifact."""
+    from shapely.geometry import LineString
+
+    parts = [LineString([(0, 0), (100, 0)]), LineString([(500, 0), (600, 0)])]
+
+    samples = export_elevation.sample_points_along_parts(parts, 25.0)
+
+    assert [part for _d, _pt, part in samples] == [0, 0, 0, 0, 0, 1, 1, 1, 1]
+
+
+def test_only_the_first_sample_of_a_piece_is_marked(tmp_path, monkeypatch):
+    """558 markers rather than 139,218 `part` indices: the same information at
+    a fraction of the bytes on a file hikers download over trailhead signal."""
+    from shapely.geometry import LineString
+
+    parts = [LineString([(0, 0), (50, 0)]), LineString([(500, 0), (550, 0)])]
+    samples = export_elevation.sample_points_along_parts(parts, 25.0)
+
+    records = []
+    previous = None
+    for _d, _pt, part in samples:
+        record = {}
+        if part != previous:
+            record["part_start"] = True
+            previous = part
+        records.append(record)
+
+    # Three samples on the first 50 m piece (0, 25, 50), then `pending` carries
+    # 25 m into the second, which therefore yields two (25, 50) rather than
+    # three - the interval is continuous across the seam even though the trail
+    # is not, which is the whole reason the marker has to be explicit.
+    assert [bool(r.get("part_start")) for r in records] == [True, False, False, True, False]
+
+
+def test_the_very_first_sample_is_marked_too():
+    """Breaking a run before the first sample is a no-op, so this is about
+    uniformity: a consumer writes "new run at every part_start" without
+    special-casing index 0."""
+    from shapely.geometry import LineString
+
+    samples = export_elevation.sample_points_along_parts([LineString([(0, 0), (50, 0)])], 25.0)
+
+    assert samples[0][2] == 0

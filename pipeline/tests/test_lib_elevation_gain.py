@@ -34,6 +34,8 @@ from lib.elevation_gain import (
     cumulative_gain,
     cumulative_gain_over_gaps,
     gain_between,
+    gain_over_profile,
+    profile_runs,
     raw_cumulative_gain,
 )
 
@@ -283,8 +285,75 @@ def test_shared_gap_vector(case):
     assert cumulative_gain_over_gaps(case["elevations"], case["threshold"]) == pytest.approx(case["expected_gain"])
 
 
+@pytest.mark.parametrize("case", VECTORS["boundary_cases"], ids=lambda c: c["name"])
+def test_shared_boundary_vector(case):
+    """#559's break: a centerline part boundary is not a DEM gap, and is not a
+    slope either. These carry `samples` rather than `elevations` because the
+    marker lives on a record."""
+    assert gain_over_profile(case["samples"], case["threshold"]) == pytest.approx(case["expected_gain"])
+
+
 def test_the_shared_vectors_actually_have_something_in_them():
     """A vector file that silently emptied would turn every parametrised test
     above into zero tests, and a suite that runs nothing passes."""
     assert len(VECTORS["cases"]) >= 10
     assert len(VECTORS["gap_cases"]) >= 3
+    assert len(VECTORS["boundary_cases"]) >= 5
+
+
+# --- Centerline seams (#559) -----------------------------------------------
+
+
+def test_a_part_boundary_starts_a_new_run():
+    """The two breaks are different in kind. A null is a hole in the DEM - the
+    trail is continuous, the measurement is not. A part boundary is the
+    reverse: the measurement is fine and the TRAIL is discontinuous."""
+    profile = [
+        {"elevation_ft": 100},
+        {"elevation_ft": 110},
+        {"elevation_ft": 3000, "part_start": True},
+        {"elevation_ft": 3010},
+    ]
+
+    assert profile_runs(profile) == [[100, 110], [3000, 3010]]
+
+
+def test_a_marker_on_the_first_sample_does_not_make_an_empty_run():
+    """export_elevation.py marks the first sample of every piece including the
+    first, so a consumer never special-cases index 0. An empty leading run
+    would be harmless arithmetically and confusing to read."""
+    profile = [{"elevation_ft": 100, "part_start": True}, {"elevation_ft": 200}]
+
+    assert profile_runs(profile) == [[100, 200]]
+
+
+def test_a_null_and_a_boundary_both_break_and_neither_leaves_a_stray_run():
+    profile = [
+        {"elevation_ft": 100},
+        {"elevation_ft": None},
+        {"elevation_ft": 500},
+        {"elevation_ft": 900, "part_start": True},
+    ]
+
+    assert profile_runs(profile) == [[100], [500], [900]]
+
+
+def test_a_profile_with_no_markers_is_one_run():
+    """The correct reading of an artifact published before seams were
+    recorded: it does not say where they are, so nothing may be assumed."""
+    profile = [{"elevation_ft": e} for e in (100, 110, 3000)]
+
+    assert profile_runs(profile) == [[100, 110, 3000]]
+
+
+def test_gain_between_keeps_the_marker_when_it_slices():
+    """A window that spans a seam and dropped the marker would sum the jump
+    across it as a climb - the whole thing this exists to stop."""
+    profile = [
+        {"distance_mi": 0.0, "elevation_ft": 100},
+        {"distance_mi": 1.0, "elevation_ft": 110},
+        {"distance_mi": 2.0, "elevation_ft": 3000, "part_start": True},
+        {"distance_mi": 3.0, "elevation_ft": 3010},
+    ]
+
+    assert gain_between(profile, 0.0, 3.0, T) == pytest.approx(20)

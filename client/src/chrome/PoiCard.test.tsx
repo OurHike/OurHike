@@ -740,6 +740,43 @@ describe('the parts of one site', () => {
     expect(rim(chips()[2])).not.toHaveAttribute('stroke-dasharray')
   })
 
+  it('lets a thumbless hiker reach every part and open one', async () => {
+    // NOTHING ELSE HERE TOUCHES THE KEYBOARD. Every other chip test drives
+    // `fireEvent.click`, which a `<div role="button" tabindex="-1">` answers
+    // exactly as happily as a real button does - so `getByRole('button')` is no
+    // evidence at all that a keyboard can get here. Two realistic changes would
+    // have kept the whole suite green while breaking it: a refactor to a div with
+    // an onClick, and the roving `tabindex` from screens/Tabs.tsx, which this
+    // card's own comment invites by pointing readers at that file. A roving
+    // tabstop is right for a `tablist` and wrong for a `group` of buttons: it
+    // would put ONE chip in the tab order and hide the rest behind arrow keys
+    // that are deliberately not wired up here.
+    //
+    // So: Tab reaches each chip in turn, and Enter opens one. Asserted through
+    // `user`, which dispatches what a browser dispatches rather than the
+    // synthetic click the rest of the file uses.
+    const user = userEvent.setup()
+    renderSite()
+
+    await user.tab()
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: /close waypoint details/i }),
+    )
+
+    for (const chip of chips()) {
+      await user.tab()
+      expect(document.activeElement).toBe(chip)
+    }
+
+    // The last one Tab landed on is the campsite, and Enter is what opens it -
+    // no click anywhere in this test.
+    await user.keyboard('{Enter}')
+
+    expect(
+      screen.getByRole('heading', { name: 'Chairback Gap Campsite' }),
+    ).toBeInTheDocument()
+  })
+
   it('hangs the strip on the classes its layout rules are written for', () => {
     // test/poiCardChipLayout.test.ts pins two of the issue's requirements as CSS
     // text, because jsdom does no layout: every chip is a 44px gloved-thumb

@@ -42,11 +42,31 @@ not otherwise touching.
 ## Claim the issue before you branch
 
 Sessions run concurrently and unsupervised, and nothing stops two of them from picking up
-the same GitHub issue at the same time. That has already happened once, caught only
-because a human noticed two branches doing the same work — not because anything in the
-repository would have caught it on its own.
+the same GitHub issue at the same time. That has now happened **twice**, both times caught
+by a human noticing rather than by anything in the repository.
 
-Before opening a branch for an issue:
+The second time is the one worth reading, because everybody followed this section as it
+was written and it happened anyway. **#597 — A waypoint that loses a collision disappears,
+when it could be a dot** was claimed at 02:31 by a session that had checked the timeline
+and the ledger and found nothing. Twelve minutes later a second session opened
+**#610 — Draw every waypoint as a pin or a dot, and never as neither** against the same
+issue. Both were green. One entire implementation was thrown away.
+
+Nothing below would have caught it, because **the second session never opened a branch**.
+It stacked #597 onto a branch already carrying two unrelated pipeline issues — which
+[BRANCHING.md](BRANCHING.md) §3 explicitly allows — so `scripts/threads.sh` had no new
+branch to show and reported that branch as `suites: pipeline` right up until the client
+commit landed. The heading said "before you branch", and a session that was not branching
+read itself as out of scope.
+
+So the trigger is **starting work on an issue**, not opening a branch for one. Stacking is
+the case that feels exempt and is not: adding an issue to a branch you already have is
+picking up that issue, and it needs the same claim as a fresh branch would. `#594`'s claim
+comment on that same branch shows the practice being applied correctly an hour earlier —
+what failed was the rule's *scope*, not anybody's diligence.
+
+Before starting work on an issue — a new branch, a new commit on an existing one, or a
+pull request body that will carry `Closes #N`:
 
 - Read the issue's timeline, not just its body. Check the "Development" sidebar for a
   linked pull request, and read the comments for one saying work has already started —
@@ -59,10 +79,29 @@ Before opening a branch for an issue:
   dependency where the existing branch already lives ([BRANCHING.md](BRANCHING.md) §3).
 
 If nothing turns up, claim the issue immediately, before writing any code: leave a comment
-on the issue naming the branch you are about to push. This is the only signal that works —
-every session authenticates as the same GitHub identity (see below), so assigning the issue
+on the issue naming the branch you are about to push — or the branch you are stacking it
+onto, which is the case that gets forgotten. This is the only signal that works — every
+session authenticates as the same GitHub identity (see below), so assigning the issue
 proves nothing and self-assignment cannot distinguish one session from another. A plain,
 timestamped comment is what the next session checking this issue will actually find.
+
+**Release the claim if you stop.** A claim pointing at a closed or abandoned pull request
+is worse than no claim: it reads as live work and stops the next session touching the
+issue. One comment saying the branch is free costs nothing and is the other half of making
+claims mean anything.
+
+### What actually catches this now
+
+`pr-issue-link.yml` reads the `Closes #N` every pull request already carries and warns —
+in the check summary, as an annotation, and as one sticky comment — when another **open**
+pull request closes the same issue. It warns rather than fails, because two pull requests
+closing one issue is occasionally deliberate and a red check would block that to catch the
+common case.
+
+**It catches the collision at the pull request, which is late.** By then both
+implementations exist and the only thing saved is the second review. Nothing mechanical
+watches at claim time, and the checks above are still the only thing that can save the
+work rather than the review — so they are not optional now that a backstop exists.
 
 ## Never merge into `main`
 

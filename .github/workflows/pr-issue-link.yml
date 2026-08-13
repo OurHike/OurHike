@@ -1,9 +1,42 @@
-# Fails a pull request that closes no issue.
+# Fails a pull request that closes no issue, and warns about one that closes
+# an issue somebody else is already closing.
 #
 # CONTRIBUTING.md has asked for `Closes #42` since the beginning, on the
 # grounds that a merge closing its own issue is what keeps the tracker honest
 # rather than someone remembering to tick a box. Asking was all it did. This
 # is the part that checks.
+#
+# THE SECOND QUESTION, AND WHY IT LIVES HERE (#597 / #608 / #610). Two sessions
+# implemented the same issue on the same night. The second opened its pull
+# request twelve minutes after the first, both were green, and one whole
+# implementation was thrown away. It was the second time it had happened;
+# CLAUDE.md records the first, "caught only because a human noticed two
+# branches doing the same work".
+#
+# The claim protocol did not catch it and could not have. A session claims an
+# issue, then checks `scripts/threads.sh` for a branch carrying the same
+# subject - but the other work was STACKED onto a branch already open for two
+# unrelated pipeline issues (BRANCHING.md section 3 allows exactly that), so
+# there was no new branch to see and the ledger read `suites: pipeline` right
+# up until the client commit landed.
+#
+# What both sessions did do is write `Closes #597` in a pull request body. That
+# is the one signal the collision reliably produces, this workflow already
+# reads it, and asking "is anyone else closing this?" is the same query one
+# level down. So the check is here rather than in a new file.
+#
+# IT WARNS RATHER THAN FAILS, deliberately. Two pull requests closing one issue
+# is usually a mistake and is occasionally the point - a change split for
+# review, a replacement opened while the original stays up for comparison. A
+# red check would block the legitimate case to catch the common one, and this
+# is the check most likely to become required. Being told is enough: the whole
+# failure was that nobody knew.
+#
+# AND IT CANNOT TURN THIS CHECK RED BY FAILING, which matters more than the
+# feature does. The duplicate lookup is wrapped, and an error in it reports
+# "could not be determined" and moves on. A pull request that correctly closes
+# an issue must never fail this check because a secondary query broke - that
+# would be a gate rejecting good work for a reason unrelated to its rule.
 #
 # WHAT COUNTS IS THE LINK, NOT THE WORDING. The query below reads
 # `closingIssuesReferences`, which is GitHub's own record of what this PR
@@ -52,11 +85,28 @@ on:
   # repeated because `merge_group` has only the one activity type.
   merge_group:
 
-# Reads three things and writes nothing. `issues: read` is what lets the
-# query name the issue it found instead of just counting it.
+# `issues: read` is what lets the query name the issue it found instead of
+# just counting it.
+#
+# `pull-requests: write` is the one that is not a read, and it is here for one
+# thing only: the sticky comment when another open pull request closes the same
+# issue. This file used to say "reads three things and writes nothing", which
+# was a nicer sentence than the one it can honestly make now.
+#
+# It is worth being clear about what that does and does not buy anybody. The
+# token can comment on a pull request; it cannot merge, push, or change a
+# setting. The check's power to gate a merge comes from being in the required
+# list on `main`, which is a repository setting no workflow can grant itself
+# (see the note above) - and that is unchanged by this line.
+#
+# The alternative was to leave the finding in the job summary only, which needs
+# no write at all. It was rejected because a summary is a page somebody has to
+# go and open, and the failure this exists to catch is precisely nobody
+# noticing. The annotation and the comment are the two places a finding is seen
+# without being looked for.
 permissions:
   contents: read
-  pull-requests: read
+  pull-requests: write
   issues: read
 
 # The fallback is load-bearing, not defensive tidiness. A merge_group run has
@@ -82,7 +132,8 @@ jobs:
       # that reports no status blocks the PR forever rather than passing it -
       # so every exemption below is decided inside the script, where it can
       # still finish green.
-      - uses: actions/github-script@v7
+      - id: check
+        uses: actions/github-script@v7
         env:
           ESCAPE_LABEL: no-issue
         with:
@@ -150,15 +201,118 @@ jobs:
 
             const linked = repository.pullRequest.closingIssuesReferences.nodes
 
+            // Who else is closing these issues.
+            //
+            // Asked per issue rather than by searching open pull requests for
+            // the text `Closes #N`, because this reads the same record the
+            // merge button acts on - so an issue attached through the sidebar's
+            // Development panel counts here exactly as it does above, and a
+            // bare `#42` mention still does not.
+            //
+            // `state` is filtered here rather than by an argument on purpose:
+            // whether the field defaults to open-only is not a thing this file
+            // should depend on, and filtering the answer works either way.
+            //
+            // Returns null - meaning "could not be determined" - rather than
+            // throwing. See the header: nothing in this lookup may fail a pull
+            // request that satisfied the rule above.
+            const otherPullRequestsClosing = async issue => {
+              try {
+                const { repository: r } = await github.graphql(
+                  `query($owner: String!, $repo: String!, $number: Int!) {
+                     repository(owner: $owner, name: $repo) {
+                       issue(number: $number) {
+                         closedByPullRequestsReferences(first: 20, includeClosedPrs: false) {
+                           nodes { number title url state isDraft author { login } }
+                         }
+                       }
+                     }
+                   }`,
+                  { owner, repo, number: issue.number },
+                )
+                const nodes = r.issue?.closedByPullRequestsReferences?.nodes ?? []
+                return nodes.filter(other => other.state === 'OPEN' && other.number !== pr.number)
+              } catch (error) {
+                core.info(`Could not read who else closes #${issue.number}: ${error.message}`)
+                return null
+              }
+            }
+
             if (linked.length > 0) {
-              await summary([
+              const collisions = []
+              let undetermined = false
+
+              for (const issue of linked) {
+                const others = await otherPullRequestsClosing(issue)
+                if (others === null) {
+                  undetermined = true
+                  continue
+                }
+                for (const other of others) collisions.push({ issue, other })
+              }
+
+              const lines = [
                 '## PR issue link',
                 '',
                 `Merging this closes ${linked.length === 1 ? 'an issue' : `${linked.length} issues`}:`,
                 '',
                 ...linked.map(issue => `- [#${issue.number}](${issue.url}) — ${issue.title}`),
-              ])
+              ]
+
+              if (collisions.length > 0) {
+                lines.push(
+                  '',
+                  '### Somebody else is closing this too',
+                  '',
+                  'Not a failure — two pull requests closing one issue is sometimes',
+                  'deliberate. But it is usually two people doing the same work without',
+                  'knowing, so it is worth a look before either merges:',
+                  '',
+                  ...collisions.map(({ issue, other }) =>
+                    `- **#${issue.number}** is also closed by [#${other.number}](${other.url})` +
+                    `${other.isDraft ? ' (draft)' : ''} — ${other.title}`,
+                  ),
+                  '',
+                  'If one supersedes the other, say so on both and close the one that loses.',
+                )
+
+                // An annotation as well as the summary, because a summary is a
+                // page somebody has to open and this needs to reach whoever is
+                // watching the checks.
+                for (const { issue, other } of collisions) {
+                  core.warning(
+                    `#${other.number} also closes #${issue.number}. Check whether these are the same work.`,
+                    { title: 'Another open pull request closes this issue' },
+                  )
+                }
+              }
+
+              if (undetermined) {
+                lines.push(
+                  '',
+                  '_Whether another pull request closes the same issue could not be',
+                  'determined — the lookup failed. The linked-issue rule above is',
+                  'unaffected._',
+                )
+              }
+
+              await summary(lines)
               core.info(`Linked: ${linked.map(i => `#${i.number}`).join(', ')}`)
+              // Two outputs from one finding: the JSON is what the steps below
+              // branch on, the markdown is what a reader sees. Built here rather
+              // than in YAML because a bulleted list assembled out of `join`
+              // inside a template expression is unreadable in both languages.
+              core.setOutput('collisions', JSON.stringify(collisions))
+              core.setOutput(
+                'collisions_markdown',
+                collisions
+                  .map(({ issue, other }) =>
+                    `- **#${issue.number}** — ${issue.title}\n` +
+                    `  is also closed by [#${other.number}](${other.url})` +
+                    `${other.isDraft ? ' (draft)' : ''}, ${other.title}`,
+                  )
+                  .join('\n'),
+              )
               return
             }
 
@@ -182,3 +336,59 @@ jobs:
             ])
 
             core.setFailed('No linked issue. Add `Closes #<n>` to the description, or label the PR `no-issue`.')
+
+      # The comment half of the duplicate warning. Everything about this step is
+      # arranged so it cannot affect the check's conclusion.
+      #
+      #  - `if:` skips it unless there is something to say, on a real pull
+      #    request, from a branch in this repository. A fork's token is
+      #    read-only whatever the block above asks for, so attempting it there
+      #    would be a guaranteed failure on somebody else's contribution.
+      #  - `continue-on-error` covers the rest. A comment that cannot be posted
+      #    is a lost warning; a comment that cannot be posted and reddens the
+      #    check is a pull request blocked over a courtesy. The annotation and
+      #    the summary already carry the finding either way.
+      #
+      # Sticky, so a pull request that pushes six times has one comment saying
+      # the current answer rather than six saying the same thing - and so the
+      # comment disappears on its own once the collision is resolved, instead of
+      # sitting there as a permanent accusation.
+      - name: Say so on the pull request
+        if: >-
+          steps.check.outputs.collisions != ''
+          && steps.check.outputs.collisions != '[]'
+          && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: pr-issue-link-duplicate
+          message: |
+            **Another open pull request closes the same issue.**
+
+            ${{ steps.check.outputs.collisions_markdown }}
+
+            Not a failure, and sometimes deliberate — a change split for review, or a
+            replacement opened while the original stays up for comparison. But it is
+            more often two people doing the same work without knowing, which has
+            happened twice here and cost a whole implementation each time.
+
+            Worth settling before either merges: if one supersedes the other, say so on
+            both and close the one that loses.
+
+      # And take it down again once it stops being true, which is most of what
+      # makes the comment above tolerable rather than noise. The other pull
+      # request gets closed, this one re-runs on its next push, and the warning
+      # removes itself - instead of sitting at the top of the thread accusing a
+      # branch of a collision that was settled hours ago.
+      #
+      # Same `if:` shape inverted, same reasons, same continue-on-error: a
+      # tidy-up that cannot be performed must not fail a pull request either.
+      - name: Take the duplicate warning down once it is settled
+        if: >-
+          (steps.check.outputs.collisions == '' || steps.check.outputs.collisions == '[]')
+          && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: pr-issue-link-duplicate
+          delete: true

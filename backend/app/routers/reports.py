@@ -374,9 +374,13 @@ def list_my_thanks(
     **Three ways to be a recipient, and the third is the one that matters.**
 
     1. Named directly. A hiker who knew the name tagged it.
-    2. Addressed to a club the caller holds an assignment for. Club-level is
-       SAYING_THANKS.md's default, and the common case - the hiker knew the
-       stretch, not the person.
+    2. Addressed to a club the caller CURRENTLY holds an assignment for.
+       Club-level is SAYING_THANKS.md's default, and the common case - the
+       hiker knew the stretch, not the person. "Currently" is load-bearing
+       (#642): this clause used to match every club the caller had EVER held
+       an assignment for, which delivered club mail to people years out of
+       the club. Leaving the club ends the subscription; a thanks for the
+       caller's own work still arrives through 1 and 3, which do not expire.
     3. Written at a mile inside one of the caller's own assignments, on a
        date that assignment was effective.
 
@@ -405,7 +409,18 @@ def list_my_thanks(
     # whose club has not been loaded into the table yet.
     recipient = [Report.maintainer_id == current_user.id]
 
-    clubs = {assignment.club_id for assignment in mine}
+    # Club membership is judged now, not ever (#642). The stretch clause
+    # below judges by the report's authored time because the work has a date;
+    # being in the club is a standing relationship, and it stands or it
+    # doesn't. utc_now() rather than date.today(): the assignment dates are
+    # club records kept in trail-local terms, but the server's own idea of
+    # "today" should not move with whatever timezone the host happens to run in.
+    today = utc_now().date()
+    clubs = {
+        assignment.club_id
+        for assignment in mine
+        if assignment.effective_from <= today and (assignment.effective_to is None or today <= assignment.effective_to)
+    }
     if clubs:
         recipient.append(Report.club_id.in_(clubs))
 
@@ -425,7 +440,15 @@ def list_my_thanks(
 
     rows = (
         db.query(Report)
-        .filter(Report.type == ReportType.thanks, or_(*recipient))
+        # Dismissal is the abuse-removal path - the one moderation action a
+        # thanks can receive - and this inbox is the only surface a thanks is
+        # delivered to. Without this filter the removal removed it from
+        # nowhere: the target kept reading it, newest-first, forever (#642).
+        .filter(
+            Report.type == ReportType.thanks,
+            Report.status != ReportStatus.dismissed,
+            or_(*recipient),
+        )
         # Newest first: this is an inbox, and the useful end of one is the
         # end that just arrived.
         .order_by(Report.timestamp.desc())

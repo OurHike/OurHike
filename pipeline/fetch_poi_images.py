@@ -46,6 +46,7 @@ import duckdb
 import requests
 
 import export_poi
+from lib import fetch_receipts
 from lib.commons import eligible_photo, may_be_a_jpeg, pick_photo
 from lib.completeness import fail_if_incomplete
 from lib.corridor import build_corridor
@@ -459,6 +460,7 @@ def main(recheck: bool = False) -> None:
             print(f"  {index}/{len(pois)} checked ({kept} carried forward), {found_so_far} photos")
 
     persist(records, prior, cutoff)
+    fetch_receipts.record("fetch_poi_images", [OUT_PATH])
     redownload_note = f", {redownloaded} image(s) re-fetched for a cleared cache" if redownloaded else ""
     print(f"Saved -> {OUT_PATH} ({kept} carried forward, {fetched} queried{redownload_note})")
 

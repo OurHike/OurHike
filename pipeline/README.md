@@ -333,7 +333,9 @@ It exists because the ordering below it cannot change: `export_poi.py` attaches 
 
 The check runs the export's **own** reading code rather than a copy, so a source it passes is a source the export can read. What it cannot speak for is the enrichment, which needs the fetches — so the same completeness gate runs again inside the export proper.
 
-The photo cache is saved by its own step now, with `if: always()`, for the other half of the same problem: `actions/cache`'s bundled post-step only runs on success, so a failure late in the job discarded an hour of downloading that was already on disk and already correct.
+Every fetcher's output is cached by its own restore/save pair now, with `if: always()` on the save, for the other half of the same problem: `actions/cache`'s bundled post-step only runs on success, so a failure late in the job discarded an hour of downloading that was already on disk and already correct.
+
+That cache used to cover the photos alone, which is why [run 31592776758](https://github.com/OurHike/OurHike/actions/runs/31592776758) — dead on a USGS 504 at step 13 — kept its photos and re-fetched all thirteen ArcGIS layers on the retry. A runner is empty every time, so `fetch_all.py`'s change-aware skip had no `manifest.json` to compare against and every run was a cold run. The cache now carries every fetcher's durable output **and its receipt** (below), and the two must stay in step: a receipt restored without the file it describes fails the gate for drift when the only thing wrong is a gap in the path list.
 
 ## Checking output quality before publish (done)
 
@@ -343,12 +345,21 @@ The photo cache is saved by its own step now, with `if: always()`, for the other
 .venv/Scripts/python check_output_quality.py
 ```
 
-It's `check_freshness.py`'s output-side sibling: `check_freshness.py` (run before fetching) asks whether anything *upstream* has changed; this asks whether *this run's own output* can be trusted, after everything has already run. Four checks, in priority order - see the module's own docstring for the full reasoning behind each, especially the corridor one:
+It's `check_freshness.py`'s output-side sibling: `check_freshness.py` (run before fetching) asks whether anything *upstream* has changed; this asks whether *this run's own output* can be trusted, after everything has already run. Five checks, in priority order - see the module's own docstring for the full reasoning behind each, especially the corridor one:
 
 1. **Completeness cross-check** - re-reads `trails_manifest.json`, `poi/manifest.json`, and `elevation_manifest.json`, re-hashes the artifact file each one points at (catching drift between a manifest and what's actually on disk), and re-checks the same non-zero feature/point-count rule each exporting script already enforces on itself (`crossing` excepted, same as `export_poi.py`'s own exception) - a second, independent check for the case where a script's own gate has a bug or got bypassed.
 2. **Corridor cross-check** - the one check no single export script can run on itself. Rebuilds the 30-mile corridor twice, independently, from `data/raw/centerline.geojson`, and requires both a plausible (non-degenerate) result and agreement between the two builds.
 3. **`fetch_topo_quads.py` backstop** - re-verifies that every quad recorded in `data/raw/topo_quads/manifest.json` still exists on disk, and that a sample of them still reads as a valid raster, as defense in depth alongside that script's own exit-code gate.
 4. **Drop-vs-baseline detection** - compares this run's counts against `data/quality_baseline.json` (gitignored, like everything else under `data/`) and flags a count dropping more than ~10% with no matching `check_freshness.py`-reported upstream change. Only rewrites the baseline on a fully-passing run.
+5. **Fetch receipts** - the only check here that looks *upstream* of `data/processed/`, because the four above cannot ask its question. They verify what the exports derived; none of them can tell whether the input an export derived it from was fetched on this run or left on disk by the last one. Every fetcher ends by writing `data/raw/receipts/<name>.json` recording when it finished and what its outputs hashed to; this re-hashes them. **A week-old input is a legitimate release and a never-fetched one is not** — an export reading the file cannot tell those apart, so only a record the fetcher itself left can. Staleness is printed with its age, never failed; an absent receipt for a fetcher this run needed, a corrupt one, or an output that has changed since it was fetched all fail.
+
+Check 5 needs to be told which *conditional* fetchers a run asked for, since photos and elevation are workflow inputs. `fetch_all` and `fetch_opentrail` are always required and need no flag — no export can run without either:
+
+```
+.venv/Scripts/python check_output_quality.py --fetched fetch_atc_photos --fetched fetch_elevation
+```
+
+Note the asymmetry with `--optional` below, which is deliberate: `--optional` *excuses* an artifact that was never built, while `--fetched` *adds* a requirement. A missing receipt is never excused, because it is the finding. `fetch_poi_images` is the one exception the other way — its workflow step carries `continue-on-error` because Commons is a third party this project has no relationship with, so its receipt is reported with its age and never required.
 
 Check 4 needs to be told what changed upstream, because this gate deliberately never touches the network — standing directly in front of `publish.py`, it should not be able to fail because an upstream host is down. Pass the sources `check_freshness.py` reported as STALE:
 

@@ -31,6 +31,7 @@ This repository keeps two different kinds of writing, and the difference is wort
 | [pipeline/DBT.md](pipeline/DBT.md), [pipeline/DATA_RELEASES.md](pipeline/DATA_RELEASES.md) | Data platform designs |
 | [pipeline/R2_LAYOUT.md](pipeline/R2_LAYOUT.md) | Where an artifact goes in the bucket and what it may be called |
 | [pipeline/SOURCE_SURVEY.md](pipeline/SOURCE_SURVEY.md) | Upstream A.T. data sources, surveyed and qualified (dated snapshot) |
+| [pipeline/WATER_SOURCES.md](pipeline/WATER_SOURCES.md) | Water near shelters — measurements against every candidate source, and the options (dated snapshot) |
 
 **Issues track the delta between that and reality** — anything with a state, an owner or a date. Open work, bugs, decisions still to make.
 

@@ -154,6 +154,21 @@
       "discovered_via": "SOURCE_SURVEY.md §5's club sweep (the 'water-sources PDF (2026-03-02)' row); fetched and parsed live 2026-08-13 (#669). Registered by hand - discover_sources.py walks the Experience Builder app and this source is not in it.",
       "discovered_date": "2026-08-13",
       "notes": "Fetched by fetch_club_pdfs.py to data/raw/club_pdfs/<key>.pdf (never by fetch_all.py), parsed by lib/club_pdfs.py to <key>.json beside it: 65 rows (4 approach trail + 61 A.T., measured on the live PDF 2026-08-13, agreeing with WATER_SOURCES.md §4's count) of GATC mile point + entry text. The PDF's text layer stores each printed row as one string, so the 'Source Name' and 'Distance Off AT' columns arrive fused and are kept that way rather than split by guesswork - lib/club_pdfs.py's docstring holds the measurement."
+    },
+    {
+      "key": "osm_water",
+      "title": "OSM water point sources (fourteen A.T. states)",
+      "provider": "OpenStreetMap contributors",
+      "kind": "geofabrik_extract",
+      "url": "https://download.geofabrik.de/north-america/us/",
+      "trust": "community",
+      "steward": "OpenStreetMap contributors",
+      "steward_contact": "https://www.openstreetmap.org/",
+      "licence": "ODbL 1.0 - attribution and share-alike, the terms the self-built basemap already complies with; the client's credits screen names OpenStreetMap and each published water point's description carries 'Mapped by OpenStreetMap contributors'. This is the openly licensed half of #529's water answer - no ask pending, unlike the ATC and club rows above.",
+      "attribution": "(c) OpenStreetMap contributors",
+      "discovered_via": "WATER_SOURCES.md's census for #529 (spike_osm_water_census.py) measured OSM point sources within 250 m of 26% of shelters trail-wide and 40% in the south, against 8% for the shipped supply. Registered by hand - discover_sources.py walks the Experience Builder app and this source is not in it.",
+      "discovered_date": "2026-08-13",
+      "notes": "Fetched by fetch_osm_water.py to data/raw/osm_water.geojson (never by fetch_all.py): nodes tagged natural=spring, amenity=drinking_water, man_made=water_tap or man_made=water_well across the fourteen Geofabrik state extracts export_basemap.py already downloads - 7,574 nodes on the first full scan (2026-08-13). No freshness entry on purpose: Geofabrik republishes the extracts daily, so a changed-marker would always say yes (export_basemap.py's docstring holds the reasoning; the fetch is skip-if-present with --refetch). export_poi.py folds these into poi_type water at low confidence, dropping each point within 25 m of an opentrail water point as the same node arriving twice."
     }
   ]
 }

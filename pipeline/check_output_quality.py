@@ -643,7 +643,14 @@ COUNT_UPSTREAM_SOURCES: dict[str, frozenset[str]] = {
     "poi:shelter": frozenset({"atc"}),
     "poi:campsite": frozenset({"atc"}),
     "poi:resupply": frozenset({"atc", "opentrail"}),  # communities.geojson + opentrail "r" tag
-    "poi:water": frozenset({"opentrail"}),  # opentrail "w"/"s" tags
+    # opentrail "w"/"s" tags + osm_water.geojson. "osm" is deliberately NOT a
+    # key here: the OSM source has no check_freshness.py entry (Geofabrik
+    # republishes daily, so "changed" would always be true - see
+    # fetch_osm_water.py), which means no --changed-source flag can ever name
+    # it and a water-count drop on the OSM side always reaches a human. An
+    # OSM mass-deletion near the trail is exactly the drop somebody should
+    # look at rather than wave through.
+    "poi:water": frozenset({"opentrail"}),
     "poi:crossing": frozenset(),  # always 0 today; see module docstring
     "elevation": frozenset({"elevation"}),
 }
@@ -928,7 +935,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="append",
         default=[],
         metavar="FETCHER",
-        choices=["fetch_atc_photos", "fetch_poi_images", "fetch_elevation"],
+        choices=["fetch_atc_photos", "fetch_poi_images", "fetch_elevation", "fetch_osm_water"],
         dest="fetched",
         help=(
             "A conditional fetcher this run was asked to run, repeatable. Its "

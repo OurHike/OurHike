@@ -331,6 +331,13 @@ and hiker reports as the only eventual answer to "is it flowing".
    is thinnest. Each pin is a mapped spring or tap — a claim a hiker can verify at
    the spot. The prior session's "don't build it" was answered by its own missing
    sample: at 40% in the south, the fetcher earns its place.
+   *Amended 2026-08-13: built.* `fetch_osm_water.py` reads the same fourteen
+   extracts the basemap build downloads (7,574 point nodes on the first full
+   scan); `export_poi.py` folds them in at `low`, dropping each point within
+   25 m of an opentrail water point as the same OSM node arriving twice — a
+   radius measured before it was chosen (41 of opentrail's 174 water points
+   have a twin inside it; the tail past it is real neighbours). The corridor's
+   water layer goes from 174 features to 1,705.
 2. **The per-shelter nearest-stream sentence from NHD** — *small effort, closes the
    silence for everyone.* A describer entry in `export_poi.py` composing, for every
    shelter, *"Nearest mapped stream: Stony Brook, about 70 m (USGS; mapped as
@@ -341,6 +348,12 @@ and hiker reports as the only eventual answer to "is it flowing".
    assert "there is water here" — §5's error literature is the reason that wording
    is load-bearing. Blood Mtn stays honest: "no mapped stream within 1 km" is also a
    sentence worth printing.
+   *Amended 2026-08-13: built.* `build_nhd_streams.py` writes
+   [reference/nhd_streams.json](reference/nhd_streams.json) — checked in
+   because the snapshot is frozen (§5), so a per-build fetch would re-download
+   an unchanging answer — and `lib/poi_description.stream_sentence` holds the
+   wording above verbatim, including the no-stream sentence and the "mapped
+   as" qualifier on every flow claim.
 3. **The ATC ask, extended by one question** — *no code, unblocks the ceiling.* The
    combined ask SOURCE_SURVEY.md §10 already plans (capacity, Helene, half-mile
    points) should add: CSI shows per-site water distances sourced from FarOut and

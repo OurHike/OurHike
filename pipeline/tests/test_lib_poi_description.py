@@ -15,7 +15,9 @@ from lib.poi_description import (
     describe_privy,
     describe_shelter,
     describe_viewpoint,
+    describe_water,
     nearby_clause,
+    stream_sentence,
 )
 
 # Upper Goose Pond Cabin: two storeys, clapboard, fireplace, fire ring, porch.
@@ -412,3 +414,83 @@ def test_a_campsite_anchors_a_site_of_its_own_and_names_its_parts():
     assert describe_campsite(CAMPSITE, nearby=nearby_clause([MULTI_SEAT_PRIVY])) == (
         "Designated campsite, 3 sites, with bear-proof food storage. Nearby: a multi-seat moldering privy 42 m away."
     )
+
+
+# --- water points (#529, fetch_osm_water.py) --------------------------------
+
+
+def test_describe_water_names_what_was_mapped():
+    assert describe_water({"kind": "spring"}) == "Spring. Mapped by OpenStreetMap contributors."
+    assert describe_water({"kind": "water_tap"}) == "Water tap. Mapped by OpenStreetMap contributors."
+
+
+def test_describe_water_carries_the_reliability_tags_only_where_they_exist():
+    """The census measured `seasonal` on zero features trail-wide - absence
+    is the normal state and composes NOTHING. 'Flows year-round' from a tag
+    nobody set would be the pipeline strengthening silence into a promise."""
+    assert (
+        describe_water({"kind": "spring", "intermittent": "yes"})
+        == "Spring, mapped as intermittent. Mapped by OpenStreetMap contributors."
+    )
+    assert (
+        describe_water({"kind": "spring", "seasonal": "spring;summer"})
+        == "Spring, mapped as seasonal. Mapped by OpenStreetMap contributors."
+    )
+    assert describe_water({"kind": "spring", "seasonal": "no"}) == "Spring. Mapped by OpenStreetMap contributors."
+
+
+def test_describe_water_gives_not_drinking_water_its_own_sentence():
+    assert (
+        describe_water({"kind": "drinking_water", "drinking_water": "no"})
+        == "Drinking water point. Marked not drinking water. Mapped by OpenStreetMap contributors."
+    )
+
+
+def test_describe_water_composes_nothing_for_a_point_with_no_facts():
+    """opentrail's water points carry an icon and a title - no `kind`, no
+    tags - and compose None, exactly the sentence they had before the water
+    describer existed. An unrecognised kind rounds the same direction every
+    unrecognised ATC code does: shorter, never guessed."""
+    assert describe_water({"icon": "w", "title": "Piped spring"}) is None
+    assert describe_water({"kind": "holy_well"}) is None
+
+
+# --- the stream sentence (#529, build_nhd_streams.py) -----------------------
+
+
+def test_stream_sentence_names_the_stream_and_qualifies_the_flow_claim():
+    assert (
+        stream_sentence(72, "perennial", "Stony Brook")
+        == "Nearest mapped stream: Stony Brook, about 70 m (USGS; mapped as year-round, not recently verified)."
+    )
+
+
+def test_stream_sentence_calls_intermittent_and_ephemeral_seasonal():
+    assert (
+        stream_sentence(307, "intermittent", None)
+        == "Nearest mapped stream about 300 m (USGS; mapped as seasonal, not recently verified)."
+    )
+    assert (
+        stream_sentence(307, "ephemeral", None)
+        == "Nearest mapped stream about 300 m (USGS; mapped as seasonal, not recently verified)."
+    )
+
+
+def test_stream_sentence_makes_no_flow_claim_for_an_unclassified_reach():
+    """46000 is a stream USGS never classified - the sentence says where it
+    is and stops, rather than hedging a claim nobody made."""
+    assert stream_sentence(140, "unclassified", "Matts Creek") == "Nearest mapped stream: Matts Creek, about 150 m (USGS)."
+
+
+def test_stream_sentence_rounds_coarsely_and_floors_at_ten():
+    """'About 707 m' would dress an envelope query against survey-era
+    geometry as a measurement; 'about 0 m' would read as a bug."""
+    assert "about 10 m" in stream_sentence(2, "perennial", None)
+    assert "about 70 m" in stream_sentence(72, "perennial", None)
+    assert "about 700 m" in stream_sentence(707, "perennial", None)
+
+
+def test_stream_sentence_prints_the_no_stream_fact():
+    """Blood Mountain's sentence: a dry ridge is a fact a hiker plans an
+    evening around, and silence would read as the app not knowing."""
+    assert stream_sentence(None, None, None) == "No mapped stream within 1 km (USGS)."

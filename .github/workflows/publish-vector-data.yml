@@ -47,6 +47,10 @@ on:
         description: "Fetch POI photos before exporting. Untick only to publish a release without them."
         type: boolean
         default: true
+      include_osm_water:
+        description: "Fetch OSM water points (Geofabrik extracts, ~3.5 GB / ~15 min). Untick to publish with opentrail's water alone."
+        type: boolean
+        default: true
 
 # One publish at a time. Two concurrent runs would race on latest.json and could
 # interleave uploads, leaving the manifest describing a mixture of two builds.
@@ -233,6 +237,19 @@ jobs:
         continue-on-error: true
         run: python fetch_poi_images.py
 
+      # OSM water points (#529): the fourteen Geofabrik state extracts, the
+      # same files the basemap build downloads, scanned for the four
+      # point-source tags. The extracts are NOT in FETCH_OUTPUTS - caching
+      # ~3.5 GB that Geofabrik republishes daily would evict the caches that
+      # earn their keep - but the scan's small output geojson is, via the
+      # *.geojson glob, so an unticked run still exports whatever water the
+      # last ticked run found, the same way photos ride the cache between
+      # runs. Untick to skip the download; export_poi.py ships opentrail's
+      # points alone, as every release before this source did.
+      - name: Fetch OSM water points
+        if: inputs.include_osm_water
+        run: python fetch_osm_water.py
+
       - name: Export trail lines
         run: python export_trails.py
 
@@ -338,6 +355,9 @@ jobs:
           fetched=""
           if [ "${{ inputs.include_photos }}" = "true" ]; then
             fetched="--fetched fetch_atc_photos"
+          fi
+          if [ "${{ inputs.include_osm_water }}" = "true" ]; then
+            fetched="$fetched --fetched fetch_osm_water"
           fi
           if [ "${{ inputs.include_elevation }}" = "true" ]; then
             python check_output_quality.py $fetched --fetched fetch_elevation

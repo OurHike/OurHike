@@ -64,11 +64,34 @@ inspection, 2026-07-28):
     (junction) aren't mapped to any poi_type here - "t"/"o"/"j" have no
     corresponding poi_type in this schema, and "c" would just be a lower-
     quality duplicate of ATC's own campsites.geojson.
+  - osm_water.geojson: OSM's water point sources across the fourteen A.T.
+    states (fetch_osm_water.py; #529, WATER_SOURCES.md §7 option 1), folded
+    into poi_type water at CONFIDENCE_LOW - a mapped spring is somebody's
+    one-time observation, not a maintained facility, and the low tier's
+    dashed rim plus the card's "Unverified" sentence is exactly that claim.
+    An absent file is a normal state (the fetch is conditional, like
+    photos); the export ships opentrail's points alone, as it always did.
+    Within WATER_DEDUP_RADIUS_M of an opentrail water point the OSM twin is
+    dropped - opentrail imports OSM, so the overlap is largely the same
+    node arriving twice, and the opentrail id is the one existing Reports
+    may already reference.
   - crossing: declared in lib/poi_schema.POI_TYPES but always exported with
     zero features - there's no NHD-crossing fetch script yet (ROADMAP.md
-    still calls that exploratory/undecided). Shipping an empty-but-present
-    layer (rather than omitting the poi_type, or inventing fake crossings)
-    keeps the schema honest about what's actually populated.
+    still calls that exploratory/undecided, and WATER_SOURCES.md §7 keeps
+    it a hike-planning feature rather than a shelter fix). Shipping an
+    empty-but-present layer (rather than omitting the poi_type, or
+    inventing fake crossings) keeps the schema honest about what's actually
+    populated.
+
+Stream sentence (#529, WATER_SOURCES.md §7 option 2): every shelter's
+description ends with the nearest USGS-mapped stream - name where NHD has
+one, "mapped as seasonal" where the FCode says so, "No mapped stream within
+1 km" where that is the truth - from reference/nhd_streams.json, checked in
+because NHD is a frozen snapshot (build_nhd_streams.py holds the reasoning).
+A proximity claim as a sentence, deliberately never a pin: NHD reaches 58%
+of shelters with a flowing stream inside 250 m but does not know the
+shelter's actual source, so the sentence is the honest shape and it reaches
+all 280 cards regardless of what folds into the site.
 
 Capacity enrichment: shelter features carry `capacity`, how many people the
 shelter sleeps, from reference/shelter_capacity.json. That file is checked in
@@ -182,7 +205,9 @@ from lib.poi_description import (
     describe_privy,
     describe_shelter,
     describe_viewpoint,
+    describe_water,
     nearby_clause,
+    stream_sentence,
 )
 from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES, poi_output_name, unify_poi
 from lib.poi_sites import ANCHOR_TYPES, NAME_MATCH_RADIUS_M, ROLE_ANCHOR, ROLE_MEMBER, group_sites, site_properties
@@ -199,6 +224,11 @@ CAPACITY_PATH = ROOT / "reference" / "shelter_capacity.json"
 
 # build_water_distance.py's output, under reference/ for the same reason.
 WATER_DISTANCE_PATH = ROOT / "reference" / "water_distance.json"
+
+# build_nhd_streams.py's output, under reference/ for those reasons plus one
+# of its own: NHD is a frozen snapshot, so fetching it per build would
+# re-download an unchanging answer (that script's docstring).
+NHD_STREAMS_PATH = ROOT / "reference" / "nhd_streams.json"
 
 # ATC states the distance in feet, so feet is what the column stores; this is
 # only for the composed sentence, whose distances are metres (lib/
@@ -350,6 +380,25 @@ OPENTRAIL_ICON_MAP = {
 OPENTRAIL_SOURCE = "opentrail_at"
 OPENTRAIL_FIELD_MAP_BASE = {"id_field": "dbid", "name_field": "title"}
 
+# fetch_osm_water.py's output. CONFIDENCE_LOW on every point - a mapped
+# spring is one contributor's observation on one day, which is precisely the
+# claim the low tier's dashed rim and "Unverified" card sentence make. Most
+# springs are unnamed, so `name` is simply absent on most features and the
+# card leads with its type line, as it does for opentrail's unnamed points.
+OSM_WATER_SOURCE = "osm_water"
+OSM_WATER_FILENAME = "osm_water.geojson"
+OSM_WATER_FIELD_MAP = {"id_field": "osm_id", "name_field": "name", "confidence": CONFIDENCE_LOW}
+
+# How close an OSM water point must sit to an opentrail one to be its twin.
+# Measured before choosing (2026-08-13, 174 opentrail water points against
+# all 7,574 OSM nodes): 37 opentrail points have an OSM node within 15 m and
+# 41 within 25 m, then the tail thins to real neighbours - by 50-100 m the
+# pairs are plausibly a spring and a separate stream access, two facts a
+# hiker wants both of. 25 m keeps the measured duplicate cluster and nothing
+# past it. The opentrail record is the one kept: its id is the one already
+# published, so a Report filed against it stays attached.
+WATER_DEDUP_RADIUS_M = 25.0
+
 
 def load_features(path: Path) -> list[dict]:
     """Read a raw GeoJSON file's features as plain Python dicts."""
@@ -474,6 +523,10 @@ DESCRIBERS = {
     "viewpoint": lambda properties, _capacity, note, _nearby: describe_viewpoint(properties, note),
     "parking": lambda properties, _capacity, note, _nearby: describe_parking(properties, note),
     "privy": lambda properties, _capacity, note, _nearby: describe_privy(properties, note),
+    # Composes only for OSM points, whose tags carry facts (`kind`, the
+    # reliability tags); an opentrail point has an icon and a title and
+    # composes None, exactly as before this entry existed.
+    "water": lambda properties, _capacity, _note, _nearby: describe_water(properties),
 }
 
 
@@ -578,6 +631,53 @@ def attach_descriptions(records: list[dict]) -> int:
         if description is None:
             continue
         record["description"] = description
+        attached += 1
+    return attached
+
+
+def load_streams(path: Path) -> dict[str, dict]:
+    """nhd_streams.json's per-shelter stream facts, keyed by the same
+    unified POI id this export writes.
+
+    Every record participates - a shelter with no stream within 1 km is a
+    fact the sentence prints, not a blank - so unlike capacities and
+    distances there is no with-value filter here. A missing file is still a
+    normal state (a fresh checkout mid-review, a test fixture without one):
+    the export ships sentences without the stream line rather than failing.
+    """
+    if not path.exists():
+        return {}
+    document = json.loads(path.read_text(encoding="utf-8"))
+    return {f"{SHELTER_SOURCE}:{record['atc_global_id']}": record for record in document.get("shelters", [])}
+
+
+def attach_stream_sentences(records: list[dict], streams: dict[str, dict]) -> int:
+    """Append the nearest-mapped-stream sentence to every shelter's
+    description (#529, WATER_SOURCES.md §7 option 2), returning how many got
+    one.
+
+    Every shelter, unconditionally - including the ones whose Nearby clause
+    already says "water 90 m". The two are different claims a hiker wants
+    both of: the clause is ATC's measured distance to the site's own source,
+    the sentence is which mapped stream is closest and what USGS says about
+    its flow. And the no-stream sentence is appended with the same lack of
+    ceremony, because "No mapped stream within 1 km" is the sentence Blood
+    Mountain's card owes a hiker most of all.
+
+    Runs after attach_descriptions: this is a sentence about the water
+    nearby, and it reads after the shelter's own facts and ATC's note, not
+    spliced among them.
+    """
+    attached = 0
+    for record in records:
+        if record["poi_type"] != "shelter":
+            continue
+        stream = streams.get(record["id"])
+        if stream is None:
+            continue
+        sentence = stream_sentence(stream.get("distance_m"), stream.get("flow"), stream.get("gnis_name"))
+        existing = record.get("description")
+        record["description"] = f"{existing} {sentence}" if existing else sentence
         attached += 1
     return attached
 
@@ -690,7 +790,49 @@ def unify_all_sources(trail_id: str = TRAIL_ID, skipped: list[str] | None = None
         field_map = {**OPENTRAIL_FIELD_MAP_BASE, "confidence": confidence}
         unified.append(unify_poi(feature, poi_type, OPENTRAIL_SOURCE, trail_id, field_map))
 
+    # Absent is a normal state, not an error: fetch_osm_water.py is a
+    # conditional fetcher (a multi-gigabyte extract download), so a run that
+    # did not ask for it exports opentrail's water points alone, exactly as
+    # every run did before this source existed - the same tolerance the
+    # photo files get, for the same reason.
+    osm_water_path = RAW_DIR / OSM_WATER_FILENAME
+    if osm_water_path.exists():
+        for feature in load_features(osm_water_path):
+            if not has_geometry(feature):
+                if skipped is not None:
+                    skipped.append(f"{OSM_WATER_SOURCE}:{(feature.get('properties') or {}).get('osm_id')}")
+                continue
+            record = unify_poi(feature, "water", OSM_WATER_SOURCE, trail_id, OSM_WATER_FIELD_MAP)
+            # Kept for describe_water: `kind` and the reliability tags are
+            # what the card's sentence is composed from.
+            record[RAW_PROPERTIES_KEY] = feature.get("properties") or {}
+            unified.append(record)
+
     return unified
+
+
+def dedupe_water(records: list[dict]) -> list[dict]:
+    """Drop each OSM water point that sits within WATER_DEDUP_RADIUS_M of an
+    opentrail one - opentrail imports OSM, so the pair is largely one node
+    arriving through two doors (the measurement is on the constant).
+
+    Direction matters and is fixed, not nearest-wins: the opentrail record
+    keeps its published id, so anything already referencing it stays
+    attached, and the export's counts stay comparable with every release
+    before this source existed.
+    """
+    opentrail_water = [r for r in records if r["poi_type"] == "water" and r["source"] == OPENTRAIL_SOURCE]
+    if not opentrail_water:
+        return records
+
+    def is_twin(record: dict) -> bool:
+        if record["poi_type"] != "water" or record["source"] != OSM_WATER_SOURCE:
+            return False
+        return any(
+            distance_m(record["lat"], record["lon"], kept["lat"], kept["lon"]) <= WATER_DEDUP_RADIUS_M for kept in opentrail_water
+        )
+
+    return [record for record in records if not is_twin(record)]
 
 
 def clip_to_corridor(con: duckdb.DuckDBPyConnection, unified: list[dict]) -> list[dict]:
@@ -820,7 +962,11 @@ def read_sources(con: duckdb.DuckDBPyConnection) -> list[dict]:
 
     clipped = clip_to_corridor(con, unified)
     print(f"  {len(clipped)}/{len(unified)} within the corridor.")
-    return clipped
+
+    deduped = dedupe_water(clipped)
+    if len(deduped) != len(clipped):
+        print(f"  {len(clipped) - len(deduped)} OSM water twin(s) of opentrail points dropped (<= {WATER_DEDUP_RADIUS_M:.0f} m).")
+    return deduped
 
 
 def poi_counts(records: list[dict]) -> dict[str, int]:
@@ -892,6 +1038,13 @@ def main() -> dict:
     # is on the feature ATC published.
     described = attach_descriptions(clipped)
     print(f"  {described} POIs carry a description (of the {len(DESCRIBERS)} types that compose one).")
+
+    streams = load_streams(NHD_STREAMS_PATH)
+    if streams:
+        attached = attach_stream_sentences(clipped, streams)
+        print(f"  {attached} shelters carry a nearest-stream sentence (from {NHD_STREAMS_PATH.name}).")
+    else:
+        print(f"  No {NHD_STREAMS_PATH.name} - exporting without stream sentences.")
 
     commons_photos = load_photo_records(RAW_DIR / IMAGES_FILENAME)
     atc_photos = load_photo_records(RAW_DIR / ATC_IMAGES_FILENAME)

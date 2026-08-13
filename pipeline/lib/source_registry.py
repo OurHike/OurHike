@@ -50,7 +50,16 @@ PUBLISHED_NOTICES = "published_notices"
 # data and licences"). fetch_all.py skips it like everything not ArcGIS.
 CLUB_PDF = "club_pdf"
 
-KNOWN_KINDS = frozenset({ARCGIS_FEATURE_LAYER, PUBLISHED_NOTICES, CLUB_PDF})
+# OSM data read from Geofabrik's daily state extracts (#529) - water point
+# sources first, and the same extracts the basemap build already downloads.
+# Fetched by fetch_osm_water.py (never fetch_all.py: multi-gigabyte
+# downloads are a conditional workflow step, not a scheduled pull), and
+# deliberately absent from check_freshness.py - Geofabrik republishes daily,
+# so "changed" is always true and a marker would be noise, which is
+# export_basemap.py's reasoning applied to a registry entry.
+GEOFABRIK_EXTRACT = "geofabrik_extract"
+
+KNOWN_KINDS = frozenset({ARCGIS_FEATURE_LAYER, PUBLISHED_NOTICES, CLUB_PDF, GEOFABRIK_EXTRACT})
 
 
 def load_registry(path: Path) -> dict:

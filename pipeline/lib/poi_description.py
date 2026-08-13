@@ -668,3 +668,95 @@ def _metres(metres: float) -> str:
     the next edit to those gates.
     """
     return f"{max(1, round(metres)):,} m"
+
+
+# fetch_osm_water.py's `kind` values -> the sentence's head. A kind that
+# script grows and this map does not know composes nothing rather than
+# guessing - the same direction every unrecognised ATC code rounds.
+WATER_KINDS = {
+    "spring": "Spring",
+    "drinking_water": "Drinking water point",
+    "water_tap": "Water tap",
+    "water_well": "Well",
+}
+
+
+def describe_water(properties: dict) -> str | None:
+    """One sentence about a water point, from OSM's own tags - or None for a
+    water point with nothing usable behind it (opentrail's, whose properties
+    carry a title and an icon and no facts to compose from).
+
+    The head names what was mapped - a spring, a tap, a well, a fountain -
+    because that IS the claim an OSM water pin makes: somebody stood there
+    and mapped a spring. The reliability tags follow only where they exist:
+    the census measured `seasonal` on zero features trail-wide and
+    `intermittent` on a handful (#529), so absence is the normal state and
+    composes NOTHING - "mapped as intermittent" is a fact somebody recorded,
+    while "flows year-round" would be this pipeline strengthening silence
+    into a promise (OurHikeValues.md #4).
+
+    `drinking_water=no` earns its own sentence rather than a clause: a
+    hiker skimming to the comma must not carry "drinking water" away from a
+    point tagged the opposite.
+
+    The attribution sentence is ODbL's courtesy paid where the datum is
+    read; the source field carries `osm_water` for machines and the credits
+    screen already names OpenStreetMap for the app as a whole.
+    """
+    head = WATER_KINDS.get(properties.get("kind"))
+    if head is None:
+        return None
+    clauses = []
+    if str(properties.get("intermittent", "")).lower() == "yes":
+        clauses.append("mapped as intermittent")
+    seasonal = str(properties.get("seasonal", "")).lower()
+    if seasonal and seasonal != "no":
+        clauses.append("mapped as seasonal")
+    sentence = head
+    if clauses:
+        sentence += ", " + " and ".join(clauses)
+    sentence += "."
+    if str(properties.get("drinking_water", "")).lower() == "no":
+        sentence += " Marked not drinking water."
+    sentence += " Mapped by OpenStreetMap contributors."
+    return sentence
+
+
+def stream_sentence(distance_m: int | None, flow: str | None, gnis_name: str | None) -> str:
+    """The shelter card's stream sentence, from reference/nhd_streams.json's
+    facts (#529, WATER_SOURCES.md §7 option 2):
+
+        "Nearest mapped stream: Stony Brook, about 70 m (USGS; mapped as
+         year-round, not recently verified)."
+        "Nearest mapped stream about 300 m (USGS; mapped as seasonal, not
+         recently verified)."
+        "No mapped stream within 1 km (USGS)."
+
+    A PROXIMITY CLAIM, DELIBERATELY NOT A PIN, and the wording is the
+    load-bearing part. "Mapped as", never "is": the perennial/intermittent
+    code disagrees with field observations ~20% of the time and far more at
+    headwaters (WATER_SOURCES.md §5), so year-round is what the map says,
+    "not recently verified" is what the frozen snapshot means, and both
+    qualifiers travel with the claim they qualify. An unclassified reach
+    makes no flow claim at all rather than a hedged one.
+
+    "About", and coarse rounding to match: these distances came from an
+    envelope query against survey-era stream geometry, and "about 707 m"
+    would dress that as a measurement. Under 100 m the nearest 10 is how a
+    hiker reads a short walk; above it the nearest 50 is all the geometry
+    supports.
+
+    The no-stream sentence prints rather than staying silent, because "no
+    mapped stream within 1 km" is a fact a hiker plans an evening around -
+    Blood Mountain's card owes them that sentence most of all.
+    """
+    if distance_m is None:
+        return "No mapped stream within 1 km (USGS)."
+    step = 10 if distance_m < 100 else 50
+    about = max(step, round(distance_m / step) * step)
+    qualifiers = {"perennial": "mapped as year-round", "intermittent": "mapped as seasonal", "ephemeral": "mapped as seasonal"}
+    qualifier = qualifiers.get(flow or "")
+    parenthetical = f"(USGS; {qualifier}, not recently verified)" if qualifier else "(USGS)"
+    if gnis_name:
+        return f"Nearest mapped stream: {gnis_name}, about {about:,} m {parenthetical}."
+    return f"Nearest mapped stream about {about:,} m {parenthetical}."

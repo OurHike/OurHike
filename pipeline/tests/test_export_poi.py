@@ -204,6 +204,14 @@ def no_real_water_distance_file(tmp_path, monkeypatch):
     monkeypatch.setattr(export_poi, "WATER_DISTANCE_PATH", tmp_path / "no-water-distance-file.json")
 
 
+@pytest.fixture(autouse=True)
+def no_real_nhd_streams_file(tmp_path, monkeypatch):
+    """NHD_STREAMS_PATH gets the same treatment as the two above, for the
+    same reason - without this, every synthetic shelter here would grow a
+    stream sentence read from 280 real USGS rows."""
+    monkeypatch.setattr(export_poi, "NHD_STREAMS_PATH", tmp_path / "no-nhd-streams-file.json")
+
+
 def test_export_poi_clips_features_outside_the_corridor(tmp_path, con):
     """A synthetic feature far from the trail should not appear in output -
     mirrors spike_corridor.py's own clip step, on tiny synthetic data rather
@@ -1407,3 +1415,163 @@ def test_export_poi_composes_no_nearby_clause_when_the_grouping_never_ran():
 
     assert records[0]["description"] == "Two-storey log shelter."
     assert records[1]["description"] == "Moldering privy."
+
+
+# --- OSM water points (#529, fetch_osm_water.py) ----------------------------
+
+
+def _osm_water_feature(osm_id, lon, lat, **tags):
+    return _point_feature(None, lon, lat, {"osm_id": str(osm_id), "kind": "spring", **tags})
+
+
+def test_export_poi_osm_water_folds_into_water_at_low_confidence(tmp_path, monkeypatch, con):
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    # ~2 km from the opentrail water point at (-73.92, 41.02) - a real
+    # neighbour, not a twin.
+    _write_fc(raw_dir / "osm_water.geojson", [_osm_water_feature(555, -73.90, 41.03, name="Ridge Spring", intermittent="yes")])
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
+
+    export_poi.main()
+
+    water = json.loads((tmp_path / "processed" / "poi" / "water.geojson").read_text())
+    by_id = {f["properties"]["id"]: f["properties"] for f in water["features"]}
+    spring = by_id["osm_water:555"]
+    assert spring["confidence"] == CONFIDENCE_LOW
+    assert spring["name"] == "Ridge Spring"
+    assert spring["description"] == "Spring, mapped as intermittent. Mapped by OpenStreetMap contributors."
+    # opentrail's own points are untouched beside it, description-less as
+    # they always were.
+    assert by_id["opentrail_at:100"]["description"] is None
+
+
+def test_export_poi_an_absent_osm_water_file_is_a_normal_state(tmp_path, monkeypatch, con):
+    """The fetch is conditional (a multi-gigabyte download), so every run
+    before it - and every run that unticks it - exports opentrail's water
+    alone, exactly as before the source existed."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
+
+    export_poi.main()
+
+    water = json.loads((tmp_path / "processed" / "poi" / "water.geojson").read_text())
+    sources = {f["properties"]["source"] for f in water["features"]}
+    assert sources == {"opentrail_at"}
+
+
+def test_export_poi_an_osm_twin_of_an_opentrail_point_is_dropped(tmp_path, monkeypatch, con):
+    """opentrail imports OSM, so a pair within WATER_DEDUP_RADIUS_M is one
+    node arriving through two doors. The opentrail record is the one kept -
+    its id is already published, so a Report filed against it stays
+    attached."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    # ~11 m north of the opentrail "w" point at (-73.92, 41.02).
+    twin = _osm_water_feature(556, -73.92, 41.0201)
+    # ~44 m north: a neighbour past the measured duplicate cluster - kept,
+    # because by that range the pair is plausibly a spring and a separate
+    # stream access, two facts a hiker wants both of.
+    neighbour = _osm_water_feature(557, -73.92, 41.0204)
+    _write_fc(raw_dir / "osm_water.geojson", [twin, neighbour])
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
+
+    export_poi.main()
+
+    water = json.loads((tmp_path / "processed" / "poi" / "water.geojson").read_text())
+    ids = {f["properties"]["id"] for f in water["features"]}
+    assert "opentrail_at:100" in ids
+    assert "osm_water:556" not in ids
+    assert "osm_water:557" in ids
+
+
+# --- the stream sentence (#529, build_nhd_streams.py) -----------------------
+
+
+def _write_streams_file(path, records):
+    path.write_text(json.dumps({"shelters": records}))
+
+
+def test_export_poi_every_shelter_description_ends_with_its_stream_sentence(tmp_path, monkeypatch, con):
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    streams_path = tmp_path / "nhd_streams.json"
+    _write_streams_file(
+        streams_path,
+        [{"atc_global_id": "shelter-glob-1", "distance_m": 72, "flow": "perennial", "gnis_name": "Stony Brook"}],
+    )
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
+    monkeypatch.setattr(export_poi, "NHD_STREAMS_PATH", streams_path)
+
+    export_poi.main()
+
+    shelters = json.loads((tmp_path / "processed" / "poi" / "shelter.geojson").read_text())
+    (shelter,) = shelters["features"]
+    description = shelter["properties"]["description"]
+    # Appended after the shelter's own sentence, never spliced among its
+    # clauses: the stream is a fact about the water nearby, not the building.
+    assert description.startswith("Two-storey log shelter")
+    assert description.endswith(
+        "Nearest mapped stream: Stony Brook, about 70 m (USGS; mapped as year-round, not recently verified)."
+    )
+
+
+def test_export_poi_the_no_stream_sentence_is_printed_too(tmp_path, monkeypatch, con):
+    """The Blood Mountain case: 'no mapped stream within 1 km' is a fact a
+    hiker plans around, so the card says it rather than staying silent."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    streams_path = tmp_path / "nhd_streams.json"
+    _write_streams_file(
+        streams_path,
+        [
+            {
+                "atc_global_id": "shelter-glob-1",
+                "distance_m": None,
+                "flow": None,
+                "gnis_name": None,
+                "unresolved": "no mapped stream within 1 km",
+            }
+        ],
+    )
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
+    monkeypatch.setattr(export_poi, "NHD_STREAMS_PATH", streams_path)
+
+    export_poi.main()
+
+    shelters = json.loads((tmp_path / "processed" / "poi" / "shelter.geojson").read_text())
+    (shelter,) = shelters["features"]
+    assert shelter["properties"]["description"].endswith("No mapped stream within 1 km (USGS).")
+
+
+def test_export_poi_stream_sentences_touch_only_shelters(tmp_path, monkeypatch, con):
+    """The reference file is keyed by shelter GlobalIDs, and campsites keep
+    the CSI distance channel (#668) - a campsite whose id somehow appeared
+    in the streams file must still compose its own sentence unchanged."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    streams_path = tmp_path / "nhd_streams.json"
+    _write_streams_file(
+        streams_path,
+        [{"atc_global_id": "campsite-glob-1", "distance_m": 30, "flow": "perennial", "gnis_name": "Wrong Brook"}],
+    )
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
+    monkeypatch.setattr(export_poi, "NHD_STREAMS_PATH", streams_path)
+
+    export_poi.main()
+
+    campsites = json.loads((tmp_path / "processed" / "poi" / "campsite.geojson").read_text())
+    (campsite,) = campsites["features"]
+    assert "Wrong Brook" not in (campsite["properties"]["description"] or "")

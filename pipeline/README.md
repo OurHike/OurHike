@@ -63,7 +63,7 @@ What exists upstream *beyond* the registry - the maintaining clubs, the federal 
 
 **Which of these reach a hiker as waypoints:** `shelters`, `campsites`, `viewpoints`, `parking` and `privies` each become one `poi_type` in `export_poi.py`, and `communities` folds into `resupply` at low confidence. The other six are fetched for other reasons — `centerline` and `side_trails` are the trail lines, `half_mile_points_from_springer` the mile markers — and `bridges` and `at_treadway` are registered but feed nothing yet. `trail_club_sections` was in that group until 2026-08-13, when `export_club_sections.py` (#594) started reading it; it supplies club *names* and regions, while the club *attribution* comes off `centerline`'s own `Acronym` field, which is two years fresher and sits on the trail line (SOURCE_SURVEY.md §3e). Vistas, parking and privies were in that second group until 2026-08-09: registered on 2026-07-25 and downloaded by every run since, with nothing downstream reading them.
 
-**Gap, now partially filled:** ATC's own data has no dedicated water-source or general resupply layer. `communities` is a partial resupply proxy; `fetch_opentrail.py` (below) is the real fill for both water and resupply.
+**Gap, now partially filled:** ATC's own data has no dedicated water-source or general resupply layer. `communities` is a partial resupply proxy; `fetch_opentrail.py` (below) is the real fill for resupply, and for water it is one of two — `fetch_osm_water.py` (below, [#529](https://github.com/OurHike/OurHike/issues/529)) took the corridor's water layer from 174 points to 1,705.
 
 **A second gap, and no ATC source fills it:** nothing says how many people a shelter sleeps. Searched rather than assumed (2026-08-09) — all twelve registered sources above, `ANST_Facilities`' three unregistered asset tables (a maintenance inventory in EA/LF/SF; its `Sleeping Platform` rows are 6 across the whole trail, all in square feet), the shelter layer's free text on all 280 features (every "sleeping" mention is a dimension, not a person count), and the sibling A.T. services in the same NPS org. The shelter layer's own 135 fields are an FMSS asset inventory, and `FMSS_QTY` is floor area, not people: 15.6 × 15.6 = 243.36 exactly. `build_shelter_capacity.py` (below) is the fill.
 
@@ -94,6 +94,24 @@ What exists upstream *beyond* the registry - the maintaining clubs, the federal 
 ```
 
 The distances are ATC's own, from the `Campsite_Sustainability_Index` layer on their ArcGIS org — **official sites only; the layer's 2,333 user-created campsites are never even requested** ([SOURCE_SURVEY.md](SOURCE_SURVEY.md) §3b says why their locations must not ship). 305 of 512 features publish a distance. The FarOut-measured rows (218 of those 305) first shipped held back — [WATER_SOURCES.md](WATER_SOURCES.md) §4 found 42% of CSI's distances derive from that commercial dataset — and were released on the maintainer's 2026-08-13 authorisation that data ATC publishes is reusable, recorded as the `atc_licence` block in `sources.json` beside `photo_licence` and in its shape (#688); ATC's own written answer stays the ideal (§10's combined ask). The provenance gate outlived the holdback: a `Nearest_Water_Source` value ATC introduces later publishes nothing until a human adds it to `PUBLISHABLE_PROVENANCES` deliberately. Every one of the 512 features is listed in the file either way — a blank always carries its reason (no CSI row within 150 m, a 0 ft value nobody can read, or an unknown provenance).
+
+## Water: OSM points and the stream sentence (#529)
+
+The two halves of [WATER_SOURCES.md](WATER_SOURCES.md) §7's recommendation, built together and honest in different shapes — a pin where a point is true, a sentence where only proximity is:
+
+`fetch_osm_water.py` scans the fourteen Geofabrik state extracts `export_basemap.py` already downloads for OSM's water point sources — `natural=spring`, `amenity=drinking_water`, `man_made=water_tap`, `man_made=water_well`, the census's exact clause set — 7,574 nodes on the first full scan (2026-08-13). `export_poi.py` folds them into poi_type `water` at **low** confidence (a mapped spring is one contributor's observation, which is what the dashed rim and the card's "Unverified" sentence say), drops each point within 25 m of an opentrail water point as the same OSM node arriving twice (measured before choosing: 41 of opentrail's 174 water points have an OSM twin inside that radius, and the tail past it is real neighbours), and composes each point's sentence from its own tags — "Spring, mapped as intermittent." — never strengthening an absent tag into a claim. ODbL; the client's credits screen already names OpenStreetMap, and each description carries "Mapped by OpenStreetMap contributors".
+
+```
+.venv/Scripts/python fetch_osm_water.py             # ~3.5 GB of extracts on a cold machine; skip-if-present
+.venv/Scripts/python fetch_osm_water.py --refetch   # force current extracts
+```
+
+`build_nhd_streams.py` writes [`reference/nhd_streams.json`](reference/nhd_streams.json): the nearest USGS-mapped stream to each of the 280 shelters — checked in like the capacity and water-distance files, plus one reason of its own: NHD is a frozen snapshot (retired 2023-10-01, served unchanged), so fetching it per build would re-download an unchanging answer. `export_poi.py` appends each shelter's stream sentence to its card description — "Nearest mapped stream: Stony Brook, about 70 m (USGS; mapped as year-round, not recently verified)." — with the flow claim always qualified ("mapped as": the FCode disagrees with field observations ~20% of the time, WATER_SOURCES.md §5), and "No mapped stream within 1 km (USGS)." printed rather than left silent, because a dry ridge is a fact a hiker plans around.
+
+```
+.venv/Scripts/python build_nhd_streams.py            # rebuild and review the diff
+.venv/Scripts/python build_nhd_streams.py --check    # confirm the checked-in file still matches
+```
 
 ## Fetching club PDFs (review-only)
 

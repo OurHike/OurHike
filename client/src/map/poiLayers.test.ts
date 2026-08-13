@@ -1,10 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createExpression, featureFilter } from '@maplibre/maplibre-gl-style-spec'
+import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { POI_TYPES } from '../lib/config'
 import { hiddenTypesFrom, onlyType, showAllTypes } from '../lib/waypointVisibility'
 import {
   buildPoiIcons,
+  POI_FALLBACK_COLOR,
+  POI_PIN_SIZE,
+  poiColor,
   poiIconId,
   siteMemberCombinations,
   UNKNOWN_POI_TYPE,
@@ -14,14 +18,18 @@ import {
   attachPoiFilter,
   attachPoiData,
   attachPoiIcons,
+  buildPoiDotLayer,
   buildPoiLayer,
   poiFeatureCollection,
   poiFilter,
+  POI_DOT_COLOR_EXPRESSION,
+  POI_DOT_LAYER_ID,
+  POI_DOT_RADIUS_EXPRESSION,
   POI_ICON_EXPRESSION,
   POI_ICON_SIZE_EXPRESSION,
   POI_ID_PROPERTY,
   POI_LAYER_ID,
-  POI_MIN_ZOOM,
+  POI_PIN_MIN_ZOOM,
   POI_SORT_KEY_EXPRESSION,
   POI_SOURCE_ID,
 } from './poiLayers'
@@ -82,13 +90,86 @@ describe('the icon expression', () => {
   })
 })
 
+describe('the dot rank', () => {
+  it('is a CIRCLE layer, which is the entire mechanism', () => {
+    // THE test in this file. MapLibre's collision engine is a property of
+    // symbol layers; a circle participates in no placement pass, so every
+    // feature renders at every camera. Changed to 'symbol' - which would look
+    // like a harmless refactor and would typecheck - this layer starts
+    // colliding, waypoints start disappearing again, and the only symptom is
+    // that the map is quietly lying once more.
+    expect(buildPoiDotLayer().type).toBe('circle')
+  })
+
+  it('starts at the same seam as the pins, so neither rank leads the other', () => {
+    // Below the seam the map is the corridor view (features/CORRIDOR_VIEW.md)
+    // and carries no waypoints in either rank. A dot layer reaching lower
+    // would put 2,778 dots on a 2,197-mile line, which is the texture
+    // POI_PIN_MIN_ZOOM's own docstring refuses.
+    expect(buildPoiDotLayer().minzoom).toBe(POI_PIN_MIN_ZOOM)
+    expect(buildPoiDotLayer().minzoom).toBe(buildPoiLayer().minzoom)
+  })
+
+  it('reads the same source as the pins, which is what makes it site-correct', () => {
+    // poiFeatureCollection already emits one feature per SITE, so sharing the
+    // source means a privy riding its shelter's pin does not also get a dot
+    // 40 m away claiming to be a second place. Nothing else enforces that.
+    // `source` off the union, which also holds background layers that have
+    // none - narrowed rather than asserted away, so this still fails if either
+    // layer ever stops being source-backed.
+    const sourceOf = (layer: LayerSpecification): string | undefined =>
+      'source' in layer ? layer.source : undefined
+
+    expect(sourceOf(buildPoiDotLayer())).toBe(POI_SOURCE_ID)
+    expect(sourceOf(buildPoiDotLayer())).toBe(sourceOf(buildPoiLayer()))
+  })
+
+  it('wears its category accent, from the same table the pin uses', () => {
+    for (const type of POI_TYPES) {
+      expect(evaluate(POI_DOT_COLOR_EXPRESSION, poi(type))).toBe(poiColor(type))
+    }
+  })
+
+  it('lands an unknown type on the fallback rather than on nothing', () => {
+    expect(evaluate(POI_DOT_COLOR_EXPRESSION, poi('yurt'))).toBe(POI_FALLBACK_COLOR)
+  })
+
+  it('stays small enough not to compete with a pin', () => {
+    const atSeam = evaluate(
+      POI_DOT_RADIUS_EXPRESSION,
+      poi('water'),
+      POI_PIN_MIN_ZOOM,
+    ) as number
+
+    // Diameter against the pin's whole 38px. A dot that reads as a small pin
+    // is worse than no dot: it claims to say what is there, which is exactly
+    // what it cannot do.
+    expect(atSeam * 2).toBeLessThan(POI_PIN_SIZE / 2)
+  })
+
+  it('grows with the camera, like the pins do', () => {
+    const far = evaluate(
+      POI_DOT_RADIUS_EXPRESSION,
+      poi('water'),
+      POI_PIN_MIN_ZOOM,
+    ) as number
+    const near = evaluate(POI_DOT_RADIUS_EXPRESSION, poi('water'), 16) as number
+
+    expect(far).toBeLessThan(near)
+  })
+})
+
 describe('density', () => {
   it('draws no pins at all above the whole-corridor view', () => {
     // The opening camera frames 2,197 miles. Eight hundred pins on it is a
     // texture, not information, and letting the collision engine thin them
     // would answer "which of these matters" by geometry.
-    expect(buildPoiLayer().minzoom).toBe(POI_MIN_ZOOM)
-    expect(POI_MIN_ZOOM).toBeGreaterThan(8)
+    //
+    // The seam is MEASURED - pipeline/spike_poi_seam.py, 2026-08-13 - so this
+    // asserts the floor exists and is above the old z9 rather than restating
+    // the figure, which would be one number in two places.
+    expect(buildPoiLayer().minzoom).toBe(POI_PIN_MIN_ZOOM)
+    expect(POI_PIN_MIN_ZOOM).toBeGreaterThan(9)
   })
 
   it('leaves the collision engine switched on, which is the whole density story', () => {
@@ -98,7 +179,11 @@ describe('density', () => {
   })
 
   it('grows the pins as the hiker zooms in', () => {
-    const far = evaluate(POI_ICON_SIZE_EXPRESSION, poi('water'), POI_MIN_ZOOM) as number
+    const far = evaluate(
+      POI_ICON_SIZE_EXPRESSION,
+      poi('water'),
+      POI_PIN_MIN_ZOOM,
+    ) as number
     const near = evaluate(POI_ICON_SIZE_EXPRESSION, poi('water'), 14) as number
 
     expect(far).toBeLessThan(near)
@@ -505,7 +590,10 @@ describe('pushing all of it onto a live map', () => {
   beforeEach(() => {
     resetMapLibreMock()
     map = new MockMap({})
-    map.layerIds = [POI_LAYER_ID]
+    // Both ranks, because the real style carries both (#597) and
+    // attachPoiFilter waits for both before writing. A stub holding only the
+    // pin layer would make every filter test here pass by never running.
+    map.layerIds = [POI_LAYER_ID, POI_DOT_LAYER_ID]
     map.sourceIds = [POI_SOURCE_ID]
   })
 
@@ -632,6 +720,31 @@ describe('pushing all of it onto a live map', () => {
     attachPoiFilter(map as never, new Set(['water']), true)
 
     expect(map.filters.get(POI_LAYER_ID)).toEqual(poiFilter(new Set(['water']), true))
+  })
+
+  it('hides a type on BOTH ranks, so no dot outlives the pin it belonged to', () => {
+    // The failure this exists for is silent: hide privies, the pins go, and a
+    // stipple of privy dots stays behind saying the legend is lying. Nothing
+    // throws, nothing logs, and the only symptom is on a screen.
+    map.styleLoaded = true
+
+    attachPoiFilter(map as never, new Set(['privy']), true)
+
+    const expected = poiFilter(new Set(['privy']), true)
+    expect(map.filters.get(POI_LAYER_ID)).toEqual(expected)
+    expect(map.filters.get(POI_DOT_LAYER_ID)).toEqual(expected)
+  })
+
+  it('waits for both ranks rather than filtering whichever arrived first', () => {
+    // A style mid-reload can hold one layer and not the other. Writing to the
+    // one that exists would leave the two ranks showing different categories
+    // until something else happened to trigger a re-filter.
+    map.styleLoaded = true
+    map.layerIds = [POI_LAYER_ID]
+
+    attachPoiFilter(map as never, new Set(['privy']))
+
+    expect(map.filters.has(POI_LAYER_ID)).toBe(false)
   })
 
   it('keeps the map alive when a write fails, and says so', () => {

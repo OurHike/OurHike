@@ -1,91 +1,84 @@
-"""Fetch USGS 3DEP 1-meter DEM tiles (GeoTIFF) that intersect the AT corridor.
+"""Index the USGS 3DEP 1/3 arc-second DEM tiles that cover the AT corridor.
 
-Confirmed to live on the same S3 bucket the topo quads use
-(prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/1m/), but unlike the topo
-quads it is NOT one uniform nationwide grid with a lightweight per-tile bbox
-CSV (fetch_topo_quads.py's ustopo_current.csv). Real-service research before
-writing this:
+Nothing is downloaded and nothing is discovered. The tile list is COMPUTED
+from the corridor's own geometry, because 3DEP's 1/3 arc-second product is a
+uniform 1-degree grid with a deterministic URL per cell:
 
-- 1m DEM tiles are grouped into irregular per-LiDAR-acquisition "project"
-  folders (.../Elevation/1m/Projects/<project>/TIFF/<tile>.tif) - project
-  footprints vary in size and shape (a few counties, a whole state, etc.),
-  not a fixed grid cell, so there's no simple state-prefix listing scheme
-  like fetch_topo_quads.py's list_state_geotiffs() to lean on.
-- Tile filenames aren't consistent either: some embed a UTM-zone digit
-  before the grid-cell ID (USGS_1M_17_x54y410_VA_..._D17.tif), others don't
-  (USGS_1m_x51y383_AL_25Co_B1_2017.tif) - a real echo of the dated/undated
-  product_filename inconsistency fetch_topo_quads.py's bare_key() exists to
-  handle, so this script never tries to derive a tile's geographic footprint
-  from its filename.
-- USGS does publish a nationwide spatial index
-  (.../FullExtentSpatialMetadata/10_km_cell_grid.gpkg, ~51MB, 184,152 cells)
-  - but it's the grid definition only (cell polygon + UTM zone), not tied to
-    which project/tile actually covers a given cell, so it can't build a
-    real download URL on its own.
+    https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/current/{cell}/USGS_13_{cell}.tif
+    cell = f"n{ceil(lat):02d}w{ceil(-lon):03d}"     # the cell's north-west corner
 
-What DOES map every real tile to both a bbox and a working download URL in
-one place is the TNM Access API (tnmaccess.nationalmap.gov) - a purpose-
-built discovery layer over the same S3 bucket, not a separate hosting
-scheme. (fetch_topo_quads.py's docstring explains why that API was a poor
-fit there - multiple cataloged "editions" per quad, flaky pagination; that's
-specific to the maps catalog. This elevation dataset is one edition per
-tile with a real boundingBox on every row, and its own offset/total
-pagination is handled explicitly here - see list_products_for_cell().)
+Verified 2026-08-12 against the real ANST centerline buffered 30 miles:
+**56/56 corridor cells resolve, zero discovery requests.**
 
-CORRECTION (2026-07-29, confirmed against the live catalog): the claim above
-that this dataset is "one edition per tile" is WRONG. The real corridor query
-returns 244 tiles covering only 110 distinct footprints - n35w084 alone has
-four editions (20220504, 20220512, 20220725, 20230215), separated only by a
-date in the filename. It is the same multiple-editions problem
-fetch_topo_quads.py documents for the maps catalog, and it matters here
-because ElevationSampler takes the first tile covering a point: without
-deduplication the profile would silently mix survey vintages along the trail.
-build_tile_index keeps the newest edition per footprint.
+WHY THIS FILE USED TO ASK TNM ACCESS, AND WHY IT NO LONGER DOES
 
-Queried per corridor grid cell (the same 1-degree cell approach
-spike_raster_mosaic.py already uses) rather than one query for the
-corridor's whole bounding rectangle - GA to Maine as a rectangle is mostly
-empty space, so one giant query would pull in tiles nowhere near the actual
-trail. Candidate tiles are deduplicated by download URL across cells, then
-filtered against the real corridor polygon (not just cell membership) since
-a tile can sit in a cell's corner the corridor itself never reaches. The
-corridor itself is built fresh on every run, from data/raw/centerline.geojson
-via lib/corridor.py's build_corridor() (the same 30-mile buffer
-export_poi.py/export_trails.py use) - never read from
-data/spike/corridor.geojson, which is stale proof-of-concept output (see
-lib/corridor.py's docstring for why that file specifically must not be read).
+It used to query the TNM Access API (tnmaccess.nationalmap.gov) once per
+corridor cell to find out which tiles existed. Its docstring argued at length
+that 3DEP had no grid-and-listing scheme to lean on - irregular
+per-acquisition project folders, inconsistent tile filenames, a nationwide
+spatial index that could not build a download URL on its own.
 
-No incremental fetch, no manifest, no per-tile validation - because nothing
-is downloaded. Unlike fetch_topo_quads.py, this script never HEADs a tile to
-compare its S3 Last-Modified against a manifest.json, and never opens a
-downloaded file with rasterio to check it reads cleanly: there is no local
-file for either check to apply to. 3DEP tiles are Cloud-Optimized GeoTIFFs,
-so export_elevation.py streams only the blocks it needs straight from each
-tile's URL at read time (see build_tile_index below) - there was never a
-download step here for a manifest or a readability check to guard. The real
-design is narrower: query the TNM catalog per grid cell, dedupe to the
-newest edition per footprint, filter to what actually intersects the
-corridor polygon, and write the resulting {url, bounds} list to
-tile_index.json for export_elevation.py to read later.
+Every word of that was true **of the 1-metre product**, which is what those
+sentences described. `DATASET` was `NED 1/3 arc-second`, and the 1/3
+arc-second product is laid out completely differently. The reasoning that
+justified reaching for a discovery API was written about a dataset this
+script does not use. pipeline/ELEVATION_SOURCES.md section 3 is the survey
+that established that, with the probe behind it (#548, #549).
 
-The safety net this file does have is on the write itself, not on
-individual tiles: main() refuses to overwrite a known-good tile_index.json
-with one that shrank more than expected (see write_gate_problems), rather
-than silently clobbering a good index with a bad run's output.
+What it cost meanwhile: that API is what failed. Both publish runs on
+2026-08-12 died there before anything was exported, with every cell 504-ing
+at least twice - after fetching sources and exporting trails, POIs and spurs,
+all of which was thrown away.
+
+THE EDITIONS HAZARD WAS REAL AND IS NOW UPSTREAM'S PROBLEM
+
+This file used to carry a correction about multiple catalogued editions per
+footprint - n35w084 alone had four, separated only by a date in the filename -
+and a build_tile_index that kept the newest per footprint. That hazard was
+genuine: ElevationSampler takes the first tile covering a point, so mixing
+survey vintages along the trail was a live risk.
+
+It is gone rather than solved here, because USGS already split the bucket:
+`current/` holds exactly one tif per cell and `historical/` holds the dated
+ones. The TNM catalogue returned both mixed together, which is *why* the
+dedup existed. Asking `current/` asks a question that cannot have a wrong
+answer, so the edition parsing and the footprint dedup are not ported.
+
+WHAT IS STILL DONE HERE
+
+The corridor polygon filter, which is not the same question as the cell grid:
+a 1-degree cell is large, and one can clip the corridor's bounding rectangle
+in a corner the trail itself never reaches. The corridor is built fresh on
+every run from data/raw/centerline.geojson via lib/corridor.py's
+build_corridor() - the same 30-mile buffer export_poi.py and export_trails.py
+use - and never read from data/spike/corridor.geojson, which is stale
+proof-of-concept output (see lib/corridor.py's docstring for why that file
+specifically must not be read).
+
+And the write gate, which now guards a different failure than the one it was
+built for - see write_gate_problems().
+
+Still no manifest, no per-tile validation and no download. 3DEP tiles are
+Cloud-Optimized GeoTIFFs, so export_elevation.py streams only the blocks the
+trail crosses straight from each tile's URL at read time. There is no local
+file for a checksum or a readability check to apply to, and there never was.
 """
 
 import argparse
 import json
+import math
 import os
-import re
-import time
 from pathlib import Path
 
 import duckdb
+import requests
 
 from lib.completeness import fail_if_incomplete
 from lib.corridor import build_corridor
-from lib.http_retry import request_with_retry
+
+# One cheap metadata request per corridor cell, and the only requests this
+# script makes. See stamp_last_modified().
+HEAD_TIMEOUT = 30
 
 ROOT = Path(__file__).parent
 # The source line build_corridor() buffers into the 'corridor' table fresh
@@ -93,271 +86,187 @@ ROOT = Path(__file__).parent
 # data/spike/corridor.geojson, which is stale proof-of-concept output.
 CENTERLINE_PATH = ROOT / "data" / "raw" / "centerline.geojson"
 OUT_DIR = ROOT / "data" / "raw" / "elevation"
-# A small JSON list of {url, bounds} - NOT downloaded rasters. See
-# build_tile_index for why nothing is downloaded.
+# A small JSON list of {url, bounds} - NOT downloaded rasters.
 INDEX_PATH = OUT_DIR / "tile_index.json"
-
-# One file per corridor cell holding that cell's TNM answer, so a run that
-# dies on cell 37 keeps cells 1-36 (#536).
-#
-# WHY CACHING THIS IS SAFE, WHICH IS THE ONLY REASON TO DO IT. What is cached
-# is USGS's CATALOGUE of which 1/3 arc-second tiles cover a cell - not the
-# elevation data itself, and not anything a hiker sees. 3DEP re-flies a region
-# on a cycle measured in years, so a run that rediscovers all 51 cells every
-# time is making 51 requests to learn what it already knew. The publish that
-# prompted this died on the FIRST of those 51, having already fetched sources
-# and exported trails, POIs and spurs.
-#
-# Freshness is bounded rather than trusted forever: past CELL_CACHE_MAX_AGE_DAYS
-# a cell is asked again, and `--refresh` ignores the cache entirely. The
-# existing shrink gate still runs over the assembled index either way, so a
-# cache that somehow went wrong cannot quietly publish a smaller corridor.
-CELL_CACHE_DIR = OUT_DIR / "tnm_cells"
-
-# A month. Far shorter than 3DEP's actual revision cycle, so the cache cannot
-# hide a real change for long, and far longer than the gap between publishes,
-# so a normal run makes no catalogue requests at all.
-CELL_CACHE_MAX_AGE_DAYS = 30
 
 # Write-gate tolerances for the final tile_index.json write (see
 # write_gate_problems). Expressed as a fraction of the PREVIOUS run's count,
 # not a fixed tile count, so the check keeps working unmodified as the
-# corridor's real tile count changes over time (new surveys, corridor scope
-# changes, etc.) rather than needing retuning.
+# corridor's real tile count changes over time (corridor scope changes,
+# relocations) rather than needing retuning.
 SHRINK_TOLERANCE = 0.15
 
 # First-run-only backstop, used only when there is no previous index to
 # scale against. Deliberately NOT derived from today's real corridor count
-# (110 tiles) - tying it to that would turn a safety net into a maintenance
-# chore that needs bumping every time the corridor legitimately grows. It
-# exists only to catch a first run that comes back with next to nothing
-# (e.g. a malformed query silently matching almost no tiles).
+# (56 cells) - tying it to that would turn a safety net into a maintenance
+# chore that needs bumping every time the corridor legitimately grows.
 COLD_START_MIN_TILES = 10
 
-# Explicit override for an intentional shrink (e.g. a real corridor/dataset
-# change), settable via --allow-shrink or this env var - see main().
+# Explicit override for an intentional shrink (e.g. a real corridor change),
+# settable via --allow-shrink or this env var - see main().
 ALLOW_SHRINK_ENV_VAR = "FETCH_ELEVATION_ALLOW_SHRINK"
 
-TNM_API_URL = "https://tnmaccess.nationalmap.gov/api/v1/products"
-# 1/3 arc-second (~10 m), NOT 1 metre. Measured against the real TNM catalog
-# before any download: 1 m comes to roughly 1 TB for this corridor (~190
-# tiles per 1-degree cell at a median 324 MB, across 51 cells) - about three
-# orders of magnitude more than an elevation profile rendered into a 100x40
-# SVG needs. 1 m DEM exists to measure boulders and building footprints.
+# 1/3 arc-second (~10 m), NOT 1 metre - that is the `13` in the path. Measured
+# before any download: 1 m comes to roughly 1 TB for this corridor, about
+# three orders of magnitude more than an elevation profile rendered into a
+# 100x40 SVG needs. 1 m DEM exists to measure boulders and building
+# footprints.
 #
 # 10 m gives ~1-2 m vertical accuracy, which is what the "+640 ft ahead"
 # callout needs to be trustworthy - it feeds the Naismith time estimate
 # directly. A move back to 1 m is a ~40x change and should be deliberate.
-DATASET = "National Elevation Dataset (NED) 1/3 arc-second"
-PAGE_SIZE = 1000
-
-# How patient to be with USGS's catalogue. Longer than lib/http_retry.py's
-# default ladder on purpose (#536): this call is made once per corridor cell,
-# 51 times, and it runs after fetching sources, exporting trail lines, POIs
-# and spurs - so the cost of giving up is the whole publish, not one request.
 #
-# WHAT THE 504s ACTUALLY ARE, measured against the live endpoint on
-# 2026-08-12 with ten sequential requests for one 1-degree cell:
-#
-#     504 30.09s   504 30.35s   504 29.96s   200 18.49s   504 30.39s
-#     200 16.58s   200 12.68s   200  8.78s   200  5.90s   200  3.78s
-#
-# Every failure came back at almost exactly **30 seconds**. That is TNM's own
-# gateway giving up on its upstream, not our client giving up on TNM - so
-# raising OUR timeout cannot help, and 60 seconds is already twice their
-# ceiling. A cold query for a dense cell simply costs them more than 30s.
-#
-# The successes are the useful half: 18.5s, then 16.6, 12.7, 8.8, 5.9, 3.8.
-# **Repeating the same query warms their cache**, so persistence converges
-# rather than merely rolling the dice - which is why the answer is a longer
-# ladder rather than a bigger timeout or a lower request rate. The failures
-# and successes interleaved, so this is per-query cost, not rate limiting;
-# a throttle would slow the run down without making a cell more likely to
-# answer.
-#
-# Seven attempts, ~5.5 minutes of waiting, plus ~30s burned per failed try.
-# An unlucky cell can therefore cost ~9 minutes - paid once, because the
-# answer is then cached to disk and a re-dispatch skips it entirely.
-TNM_BACKOFF_SECONDS = (5, 15, 30, 60, 90, 120)
+# `current/` rather than `historical/` is the whole editions story - see the
+# module docstring.
+TILE_URL_TEMPLATE = "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/current/{cell}/USGS_13_{cell}.tif"
 
 CELL_DEGREES = 1.0
 
 
-def compute_grid_cells() -> list[tuple[float, float, float, float]]:
-    """Return the CELL_DEGREES x CELL_DEGREES cells (west, south, east,
-    north) that intersect the corridor - the same grid-chunking pattern
-    spike_raster_mosaic.py uses, needed here so each TNM Access API query
-    stays small (see module docstring)."""
-    con = duckdb.connect()
-    con.execute("INSTALL spatial; LOAD spatial;")
-    build_corridor(con, CENTERLINE_PATH)
-    xmin, ymin, xmax, ymax = con.execute(
-        "SELECT ST_XMin(geom), ST_YMin(geom), ST_XMax(geom), ST_YMax(geom) FROM corridor"
-    ).fetchone()
+def cell_name(north: int, west: int) -> str:
+    """USGS's name for the 1-degree cell with this north-west corner.
 
-    cells = []
-    x = xmin
-    while x < xmax:
-        y = ymin
-        while y < ymax:
-            cx0, cy0 = x, y
-            cx1, cy1 = min(x + CELL_DEGREES, xmax), min(y + CELL_DEGREES, ymax)
-            hit = con.execute(f"""
-                SELECT EXISTS (
-                    SELECT 1 FROM corridor
-                    WHERE ST_Intersects(geom, ST_MakeEnvelope({cx0}, {cy0}, {cx1}, {cy1}))
-                )
-            """).fetchone()[0]
-            if hit:
-                cells.append((cx0, cy0, cx1, cy1))
-            y += CELL_DEGREES
-        x += CELL_DEGREES
-    return cells
+    `north` is degrees north and `west` is degrees WEST as a positive number,
+    which is how USGS writes it: n35w084 is the cell whose north-west corner
+    is 35 degrees north, 84 degrees west.
 
-
-def list_products_for_cell(cell: tuple[float, float, float, float], *, sleep=time.sleep) -> list[dict]:
-    """Query the TNM Access API for every real 1m DEM tile whose bbox
-    intersects this cell. Pages via offset/total explicitly rather than
-    trusting a single response - a cell dense enough to exceed PAGE_SIZE
-    would otherwise silently return a truncated result."""
-    xmin, ymin, xmax, ymax = cell
-    items = []
-    offset = 0
-    while True:
-        resp = request_with_retry(
-            TNM_API_URL,
-            params={
-                "bbox": f"{xmin},{ymin},{xmax},{ymax}",
-                "datasets": DATASET,
-                "outputFormat": "JSON",
-                "max": PAGE_SIZE,
-                "offset": offset,
-            },
-            timeout=60,
-            backoff=TNM_BACKOFF_SECONDS,
-            label=f"TNM cell {xmin:.2f},{ymin:.2f}",
-            # Injected rather than patched globally, matching lib/http_retry.py's
-            # own convention, so a test can assert the ladder without waiting
-            # out five minutes of it.
-            sleep=sleep,
-        )
-        data = resp.json()
-        batch = data.get("items", [])
-        items.extend(batch)
-        offset += len(batch)
-        if not batch or offset >= data.get("total", 0):
-            break
-    return items
-
-
-def cell_cache_path(cell: tuple[float, float, float, float]) -> Path:
-    """Where this cell's TNM answer is kept.
-
-    Named from the bbox to three decimals, which is finer than CELL_DEGREES
-    ever moves and so cannot collide, and stable across runs so a cache
-    written by one run is found by the next.
+    Northern and western hemispheres only, which is not a shortcut worth
+    generalising away: the Appalachian Trail is entirely inside both, and a
+    hemisphere this code has never seen is better refused than guessed at.
     """
-    xmin, ymin, xmax, ymax = cell
-    return CELL_CACHE_DIR / f"{xmin:.3f}_{ymin:.3f}_{xmax:.3f}_{ymax:.3f}.json"
+    if north <= 0 or west <= 0:
+        raise ValueError(f"3DEP cells here are north/west only, got n={north} w={west}")
+    return f"n{north:02d}w{west:03d}"
 
 
-def cached_cell_items(path: Path, max_age_days: int, now: float) -> list[dict] | None:
-    """This cell's remembered TNM items, or None if absent, stale or unreadable.
+def cell_bounds(cell: str) -> tuple[float, float, float, float]:
+    """(west, south, east, north) for a cell, from its name alone.
 
-    Unreadable counts as absent rather than fatal: a truncated file from a run
-    killed mid-write is a reason to ask TNM again, not a reason to stop. The
-    cost of being wrong here is one request.
+    This is what replaced TNM's `boundingBox` field. A 1-degree cell named
+    from its north-west corner extends one degree south and one degree east
+    of it, so the arithmetic is total - there is no lookup that could be
+    missing and no field that could be absent from a row.
     """
-    if not path.exists():
-        return None
-    try:
-        payload = json.loads(path.read_text())
-        queried_at = float(payload["queried_at"])
-        items = payload["items"]
-    except (json.JSONDecodeError, KeyError, TypeError, ValueError, OSError):
-        return None
-    if now - queried_at > max_age_days * 86400:
-        return None
-    return items
+    north = int(cell[1:3])
+    west = int(cell[4:7])
+    return (
+        -float(west),
+        float(north) - CELL_DEGREES,
+        -float(west) + CELL_DEGREES,
+        float(north),
+    )
 
 
-def cell_products(
-    cell: tuple[float, float, float, float],
-    *,
-    refresh: bool = False,
-    max_age_days: int = CELL_CACHE_MAX_AGE_DAYS,
-    now: float | None = None,
-) -> tuple[list[dict], bool]:
-    """(items, came_from_cache) for one cell.
+def cell_url(cell: str) -> str:
+    """The deterministic download URL for a cell's current edition."""
+    return TILE_URL_TEMPLATE.format(cell=cell)
 
-    Writes the answer to disk IMMEDIATELY on a fetch, before the next cell is
-    asked. That is what makes a run resumable: the failure this exists for hit
-    cell 1 of 51, but had it hit cell 37, the previous 36 would have been
-    thrown away too.
+
+def candidate_cells(bbox: tuple[float, float, float, float]) -> list[str]:
+    """Every 1-degree cell whose square overlaps this (west, south, east,
+    north) rectangle.
+
+    A SUPERSET on purpose. This is rectangle-against-rectangle, and the
+    corridor is not a rectangle - Georgia to Maine as a box is mostly empty
+    space. The real filter is the corridor polygon in build_tile_index();
+    this only has to be cheap and to miss nothing.
+
+    Pure arithmetic, so it is testable without DuckDB, a network or a
+    centerline file - which is most of the point of the change it is part of.
+    The function this replaced opened a spatial database to answer the same
+    question.
     """
-    path = cell_cache_path(cell)
-    stamp = time.time() if now is None else now
+    west, south, east, north = bbox
 
-    if not refresh:
-        cached = cached_cell_items(path, max_age_days, stamp)
-        if cached is not None:
-            return cached, True
+    # A cell named nA covers latitudes [A-1, A], so it overlaps [south, north]
+    # when A-1 <= north and A >= south. Inclusive at the edges: a cell that
+    # merely touches costs one polygon test and no requests at all.
+    lat_names = range(math.ceil(south), math.floor(north) + 2)
+    # A cell named wB covers longitudes [-B, -B+1], so it overlaps
+    # [west, east] when -B <= east and -B+1 >= west.
+    lon_names = range(math.ceil(-east), math.floor(1 - west) + 1)
 
-    items = list_products_for_cell(cell)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"queried_at": stamp, "items": items}))
-    return items, False
+    return [cell_name(lat, lon) for lat in lat_names for lon in lon_names if lat > 0 and lon > 0]
 
 
-def build_tile_index(items: list[dict], corridor_hit) -> list[dict]:
-    """Turn TNM catalog rows into a deduplicated list of {url, bounds} for
-    every 10 m DEM tile the corridor actually crosses.
+def build_tile_index(bbox: tuple[float, float, float, float], corridor_hit) -> list[dict]:
+    """The {url, bounds} list for every 3DEP cell the corridor actually
+    crosses, computed from the corridor's bounding box.
 
     Nothing is downloaded, and that is the point. 3DEP tiles are
-    Cloud-Optimized GeoTIFFs - tiled 512x512, served with
+    Cloud-Optimized GeoTIFFs - tiled 512x512, with overviews, served with
     `Accept-Ranges: bytes` - so rasterio reads them in place over HTTP and
     pulls only the blocks the trail crosses. Measured on real centerline
     points: 400 samples in 4.0 s (10 ms/point), which extrapolates to about
     12 minutes for the whole corridor with no bulk transfer and no local DEM
-    storage. Downloading whole 1-degree tiles to sample a line through them
-    would move ~24 GB to read a small fraction of it.
+    storage. The corridor's tiles come to ~25.5 GB and none of it moves.
 
-    `corridor_hit(bbox)` is injected rather than called directly so this
+    `corridor_hit(bounds)` is injected rather than called directly so this
     stays testable without a DuckDB spatial connection - the real caller
     passes the ST_Intersects check against the true corridor polygon.
-    Filtering on the polygon rather than cell membership matters: a tile can
-    sit in a cell's corner the actual corridor never reaches.
+    Filtering on the polygon rather than on the bounding box matters: a
+    1-degree cell is large, and one can clip the corridor's rectangle in a
+    corner the trail never reaches.
+
+    Sorted by cell name, which is not cosmetic: it makes tile_index.json a
+    file whose diff between two runs shows what actually changed, rather than
+    whatever order a catalogue happened to answer in.
     """
-    best: dict[tuple, dict] = {}
-    seen: set[str] = set()
-
-    for item in items:
-        url = item.get("downloadURL")
-        bbox = item.get("boundingBox")
-        if not url or not bbox or url in seen:
+    index = []
+    for cell in sorted(set(candidate_cells(bbox))):
+        bounds = cell_bounds(cell)
+        if not corridor_hit(bounds):
             continue
-        if not corridor_hit(bbox):
-            continue
-
-        seen.add(url)
-        bounds = (bbox["minX"], bbox["minY"], bbox["maxX"], bbox["maxY"])
-        candidate = {"url": url, "bounds": list(bounds), "edition": _edition_of(url)}
-
-        # Keep the newest edition per footprint. An undated filename sorts
-        # lowest, so it is used only when nothing dated covers that cell -
-        # losing coverage would be worse than an unknown vintage.
-        incumbent = best.get(bounds)
-        if incumbent is None or candidate["edition"] > incumbent["edition"]:
-            best[bounds] = candidate
-
-    return [{"url": t["url"], "bounds": t["bounds"]} for t in best.values()]
+        index.append({"url": cell_url(cell), "bounds": list(bounds)})
+    return index
 
 
-def _edition_of(url: str) -> str:
-    """The 8-digit date USGS embeds in a 3DEP filename
-    (USGS_13_n35w084_20230215.tif), or "" when the name does not carry one."""
-    match = re.search(r"_(\d{8})\.tif$", url)
-    return match.group(1) if match else ""
+def stamp_last_modified(index: list[dict], *, head=None) -> list[dict]:
+    """Add each tile's S3 `Last-Modified` to the index, in place.
+
+    WHY THIS IS NOT A CONTRADICTION OF "ZERO DISCOVERY REQUESTS". Discovery -
+    asking which tiles exist - is gone, and that is the failure this change
+    was about. This asks a different question of a different service: **when
+    was this one cell last revised**, of the same S3 bucket export_elevation.py
+    already streams from. One HEAD per cell, no pagination, no gateway that
+    gives up at 30 seconds.
+
+    It is here rather than in check_freshness.py because capture is offline by
+    design: `capture_state()` reads data/raw/ and makes no requests, so a
+    freshness marker it can build has to already be on disk.
+
+    WHAT IT REPLACES, AND WHY SOMETHING HAD TO. lib/freshness_state.py's
+    `edition_key` read the 8-digit date out of a filename, because a
+    republished cell arrived as a NEW dated filename and there was "no
+    per-file timestamp to HEAD". Under `current/` there is: the name never
+    changes, and `Last-Modified` is what moves - the survey checked it against
+    `historical/` on three cells and it matched the newest dated edition every
+    time (n35w084 -> 2023-02-15, n46w069 -> 2026-05-21, n41w074 -> 2024-09-26).
+
+    Left alone, the marker would have gone constant, every comparison would
+    have read FRESH, and 3DEP could re-fly the whole corridor without the
+    monitor saying a word. An alarm that is always off is worse than one that
+    is always on, because nobody notices it stopped.
+
+    Non-fatal on purpose. A tile whose HEAD fails records `None`, which
+    freshness_state already keeps rather than filters - "we did not find out"
+    is a state it models. The index itself is unaffected, so a network
+    problem costs freshness detail and never the elevation profile.
+    """
+    send = head if head is not None else _head
+    for tile in index:
+        tile["last_modified"] = send(tile["url"])
+    return index
+
+
+def _head(url: str) -> str | None:
+    try:
+        response = requests.head(url, timeout=HEAD_TIMEOUT)
+        if response.status_code >= 400:
+            return None
+        return response.headers.get("Last-Modified")
+    except requests.RequestException:
+        return None
 
 
 def _env_flag_set(name: str) -> bool:
@@ -380,12 +289,25 @@ def write_gate_problems(
     main() can gate its tile_index.json write with it and tests can exercise
     it directly.
 
+    WHAT THIS NOW GUARDS, WHICH IS NOT WHAT IT WAS BUILT FOR. It used to
+    catch a catalogue query that came back thin because a server was slow.
+    Computed URLs cannot fail that way - the cell list is arithmetic over the
+    corridor's bounding box and makes no requests at all - so that failure
+    mode left with the API.
+
+    It is kept because the OTHER input did not go anywhere. The corridor is
+    rebuilt from centerline.geojson on every run, so a centerline that
+    fetched short, a buffer that changed, or a geometry regression in
+    lib/corridor.py still shrinks this count, and this is the only thing
+    watching for it. A check costing one integer comparison is not worth
+    trading away for a class of silent failure that survived the change.
+
     Two independent checks:
     (a) Relative shrink: once a previous index exists (`old_count` is not
         None), `new_count` must not fall more than `tolerance` below it -
         self-scaling against whatever the corridor legitimately produced
-        last run, rather than a fixed tile count that would need retuning
-        as corridor scope grows.
+        last run, rather than a fixed count that would need retuning as
+        corridor scope grows.
     (b) Cold-start floor: when there is no previous index at all (first run
         ever, `old_count` is None), there is nothing to scale against, so
         `new_count` is checked against a small absolute floor instead.
@@ -404,49 +326,46 @@ def write_gate_problems(
     return []
 
 
-def main(allow_shrink: bool = False, refresh: bool = False):
+def corridor_bbox(con) -> tuple[float, float, float, float]:
+    """(west, south, east, north) of the corridor already built on `con`."""
+    xmin, ymin, xmax, ymax = con.execute(
+        "SELECT ST_XMin(geom), ST_YMin(geom), ST_XMax(geom), ST_YMax(geom) FROM corridor"
+    ).fetchone()
+    return (xmin, ymin, xmax, ymax)
+
+
+def main(allow_shrink: bool = False):
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
     build_corridor(con, CENTERLINE_PATH)
 
-    cells = compute_grid_cells()
-    print(f"{len(cells)} cell(s) intersect the 30-mile AT corridor.")
+    bbox = corridor_bbox(con)
+    candidates = candidate_cells(bbox)
+    print(f"Corridor bbox {bbox} -> {len(candidates)} candidate 1-degree cell(s).")
 
-    seen_urls = set()
-    candidates = []
-    from_cache = 0
-    for i, cell in enumerate(cells, 1):
-        items, cached = cell_products(cell, refresh=refresh)
-        from_cache += 1 if cached else 0
-        new_here = 0
-        for item in items:
-            url = item.get("downloadURL")
-            bbox = item.get("boundingBox")
-            if not url or not bbox or url in seen_urls:
-                continue
-            # Precise filter, not just cell membership - a tile can sit in a
-            # cell's corner the actual (non-rectangular) corridor polygon
-            # never reaches.
-            hit = con.execute(f"""
-                SELECT EXISTS (
-                    SELECT 1 FROM corridor
-                    WHERE ST_Intersects(geom, ST_MakeEnvelope({bbox["minX"]}, {bbox["minY"]}, {bbox["maxX"]}, {bbox["maxY"]}))
-                )
-            """).fetchone()[0]
-            if not hit:
-                continue
-            seen_urls.add(url)
-            candidates.append(item)
-            new_here += 1
-        where = "cache" if cached else "TNM"
-        print(f"  cell {i}/{len(cells)}: {len(items)} candidate(s) from {where}, {new_here} new corridor-intersecting tile(s)")
+    def corridor_hit(bounds: tuple[float, float, float, float]) -> bool:
+        west, south, east, north = bounds
+        return con.execute(f"""
+            SELECT EXISTS (
+                SELECT 1 FROM corridor
+                WHERE ST_Intersects(geom, ST_MakeEnvelope({west}, {south}, {east}, {north}))
+            )
+        """).fetchone()[0]
 
-    print(f"{from_cache}/{len(cells)} cell(s) answered from cache; {len(cells) - from_cache} asked of TNM.")
-
-    index = build_tile_index(candidates, corridor_hit=lambda _bbox: True)
+    index = build_tile_index(bbox, corridor_hit=corridor_hit)
     new_count = len(index)
-    print(f"{new_count} DEM tile(s) intersect the corridor.")
+    print(f"{new_count} DEM tile(s) intersect the corridor, with zero discovery requests.")
+
+    stamp_last_modified(index)
+    stamped = sum(1 for tile in index if tile.get("last_modified"))
+    print(f"{stamped}/{new_count} cell(s) answered a HEAD with a Last-Modified.")
+    if stamped == 0 and new_count > 0:
+        # Not fatal - the index is still correct and the profile still builds.
+        # Said out loud because a silent zero here is the freshness monitor
+        # going dark, which is the failure stamp_last_modified() exists to
+        # prevent.
+        print("  WARNING: no cell answered. Freshness detection will report nothing for elevation.")
 
     old_count = len(json.loads(INDEX_PATH.read_text())) if INDEX_PATH.exists() else None
     print(f"Previous index: {old_count if old_count is not None else 'none (first run)'} tile(s) -> new: {new_count} tile(s).")
@@ -489,14 +408,5 @@ if __name__ == "__main__":
             f"instead of refusing it (also settable via {ALLOW_SHRINK_ENV_VAR}=1)."
         ),
     )
-    parser.add_argument(
-        "--refresh",
-        action="store_true",
-        help=(
-            "Ask TNM for every cell again, ignoring the per-cell cache. The cache exists because "
-            f"3DEP revises on a multi-year cycle and a warm run needs no catalogue requests at all; "
-            f"entries older than {CELL_CACHE_MAX_AGE_DAYS} days are refreshed anyway."
-        ),
-    )
     args = parser.parse_args()
-    main(allow_shrink=args.allow_shrink, refresh=args.refresh)
+    main(allow_shrink=args.allow_shrink)

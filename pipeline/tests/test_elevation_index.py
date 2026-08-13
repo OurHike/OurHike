@@ -14,7 +14,7 @@ Two things then made the whole download unnecessary:
 1. **1/3 arc-second (~10 m) is the right resolution** for a trail profile -
    ~1-2 m vertical accuracy, close enough that the "+640 ft ahead" callout
    (which feeds the Naismith estimate directly) is trustworthy. That alone
-   cuts the corridor to ~24 GB.
+   cuts the corridor to ~25 GB.
 
 2. **3DEP tiles are Cloud-Optimized GeoTIFFs** - tiled 512x512, served with
    `Accept-Ranges: bytes`. rasterio reads them in place over HTTP, pulling
@@ -26,6 +26,12 @@ Two things then made the whole download unnecessary:
 So this step resolves tile URLs and footprints into a small index, and the
 export samples them remotely. What ships to hikers is unchanged either way:
 ~70,000 {distance_mi, elevation_ft} records, about 3 MB of JSON.
+
+And a third thing then made the DISCOVERY unnecessary too (#550): the 1/3
+arc-second product is a uniform 1-degree grid with a deterministic URL per
+cell, so the index is computed from the corridor's bounding box rather than
+queried. `tests/test_fetch_elevation.py` covers the grid arithmetic; what is
+left here is the shape of the index and the sampler that reads it.
 """
 
 import json
@@ -33,7 +39,7 @@ import json
 import pytest
 
 from export_elevation import ElevationSampler
-from fetch_elevation import DATASET, build_tile_index
+from fetch_elevation import TILE_URL_TEMPLATE, build_tile_index, cell_url
 
 
 class _FakeCorridorCheck:
@@ -43,72 +49,55 @@ class _FakeCorridorCheck:
         self.accept = accept
         self.checked = []
 
-    def __call__(self, bbox):
-        self.checked.append(bbox)
+    def __call__(self, bounds):
+        self.checked.append(bounds)
         return self.accept
 
 
-def _item(name, minx, miny, maxx, maxy):
-    return {
-        "downloadURL": f"https://prd-tnm.s3.amazonaws.com/.../{name}.tif",
-        "boundingBox": {"minX": minx, "minY": miny, "maxX": maxx, "maxY": maxy},
-    }
+# One cell's worth of bounding box, so the grid produces exactly n35w085.
+ONE_CELL_BBOX = (-84.6, 34.2, -84.4, 34.4)
 
 
 def test_dataset_is_the_ten_metre_product_not_one_metre():
-    """A change back to 1 m is a ~40x download and should be a visible edit."""
-    assert "1/3 arc-second" in DATASET
+    """A change back to 1 m is a ~40x download and should be a visible edit.
+
+    Asserted against the URL rather than a DATASET string, which is what it
+    used to be: the product is now named by the `13` in the path USGS serves
+    it from, so the path IS the declaration.
+    """
+    assert "/Elevation/13/TIFF/" in TILE_URL_TEMPLATE
 
 
 def test_index_records_a_url_and_its_footprint():
-    items = [_item("n35w084", -84, 34, -83, 35)]
+    index = build_tile_index(ONE_CELL_BBOX, corridor_hit=_FakeCorridorCheck())
 
-    index = build_tile_index(items, corridor_hit=_FakeCorridorCheck())
-
-    assert index == [
-        {
-            "url": "https://prd-tnm.s3.amazonaws.com/.../n35w084.tif",
-            "bounds": [-84, 34, -83, 35],
-        }
-    ]
-
-
-def test_index_deduplicates_a_tile_seen_from_two_cells():
-    """Adjacent corridor cells overlap the same 1-degree DEM tile constantly."""
-    same = _item("n35w084", -84, 34, -83, 35)
-
-    index = build_tile_index([same, dict(same)], corridor_hit=_FakeCorridorCheck())
-
-    assert len(index) == 1
+    assert index == [{"url": cell_url("n35w085"), "bounds": [-85.0, 34.0, -84.0, 35.0]}]
 
 
 def test_index_drops_a_tile_the_corridor_never_reaches():
-    """Cell membership is not corridor membership - a tile can sit in a
-    cell's corner the actual (non-rectangular) corridor polygon never
-    touches."""
-    index = build_tile_index([_item("far", -99, 20, -98, 21)], corridor_hit=_FakeCorridorCheck(accept=False))
+    """Cell membership is not corridor membership - a 1-degree cell can sit in
+    a corner of the bounding rectangle the actual (non-rectangular) corridor
+    polygon never touches."""
+    check = _FakeCorridorCheck(accept=False)
 
-    assert index == []
-
-
-def test_index_skips_an_item_with_no_download_url():
-    index = build_tile_index(
-        [{"boundingBox": {"minX": -84, "minY": 34, "maxX": -83, "maxY": 35}}],
-        corridor_hit=_FakeCorridorCheck(),
-    )
-
-    assert index == []
+    assert build_tile_index(ONE_CELL_BBOX, corridor_hit=check) == []
+    assert check.checked  # it was actually asked, rather than short-circuited
 
 
-def test_index_skips_an_item_with_no_bounding_box():
-    index = build_tile_index([{"downloadURL": "https://example.org/x.tif"}], corridor_hit=_FakeCorridorCheck())
+def test_index_asks_the_corridor_about_the_cell_it_would_publish():
+    """The bounds handed to the polygon check are the bounds written to disk.
+    Were they to differ, a tile could be admitted on one footprint and sampled
+    on another - which reads as a plausible profile over the wrong ground."""
+    check = _FakeCorridorCheck()
 
-    assert index == []
+    [tile] = build_tile_index(ONE_CELL_BBOX, corridor_hit=check)
+
+    assert [list(bounds) for bounds in check.checked] == [tile["bounds"]]
 
 
 def test_index_is_json_serialisable():
     """It is written to disk and read back by the export step."""
-    index = build_tile_index([_item("n35w084", -84, 34, -83, 35)], corridor_hit=_FakeCorridorCheck())
+    index = build_tile_index(ONE_CELL_BBOX, corridor_hit=_FakeCorridorCheck())
 
     assert json.loads(json.dumps(index)) == index
 
@@ -127,7 +116,11 @@ def test_sampler_accepts_a_remote_url_as_a_tile_source():
 
 def test_sampler_returns_none_outside_every_tile_it_knows_about():
     """A real coverage gap degrades the profile rather than crashing the
-    export - a stretch with no DEM should leave a hole, not lose the run."""
+    export - a stretch with no DEM should leave a hole, not lose the run.
+
+    This is also what a computed URL that 404s comes back as, which is why a
+    coverage check up front is optional rather than required.
+    """
     sampler = ElevationSampler([("/vsicurl/https://example.org/n35w084.tif", (-84, 34, -83, 35))])
 
     assert sampler.sample_many([(0.0, 0.0)]) == [None]
@@ -142,68 +135,52 @@ def test_sampler_treats_tile_bounds_as_inclusive(point):
     assert list(sampler._covering_tiles(*point))
 
 
-# --- One edition per footprint --------------------------------------------
+# --- One edition per footprint, and who guarantees it ----------------------
 #
 # Real-data gotcha, confirmed against the live catalog (2026-07-29): the TNM
-# catalog carries MULTIPLE editions of the same 1-degree DEM cell, separated
+# catalog carried MULTIPLE editions of the same 1-degree DEM cell, separated
 # only by a date in the filename. The real corridor query returned 244 tiles
 # covering just 110 distinct footprints - n35w084 alone had four
 # (20220504, 20220512, 20220725, 20230215).
 #
-# This directly contradicts what this module's own docstring used to claim
-# ("one edition per tile, unlike the maps catalog"). It is the same problem
-# fetch_topo_quads.py documents for the topo product, and it matters here for
-# the same reason: with several tiles covering a point, ElevationSampler takes
-# the FIRST that covers it, so without deduplication the profile would be
-# sampled from whichever edition happened to come back first - silently
-# mixing vintages along the trail, and often preferring an older survey.
+# It mattered because ElevationSampler takes the FIRST tile covering a point,
+# so without deduplication the profile would be sampled from whichever edition
+# came back first - silently mixing survey vintages along the trail, and often
+# preferring an older one.
+#
+# The hazard is real and is no longer ours (#550). USGS splits the bucket:
+# `current/` holds exactly one tif per cell, `historical/` holds the dated
+# ones, and `current/`'s Last-Modified matched the newest dated edition on
+# every cell checked. The catalogue returned both mixed together, which is why
+# a newest-per-footprint dedup was needed at all. Asking `current/` asks a
+# question that cannot have a wrong answer - so what is tested now is that the
+# path stays on that side of the split.
 
 
-def _dated(name, date, minx=-84, miny=34, maxx=-83, maxy=35):
-    return {
-        "downloadURL": f"https://prd-tnm.s3.amazonaws.com/.../USGS_13_{name}_{date}.tif",
-        "boundingBox": {"minX": minx, "minY": miny, "maxX": maxx, "maxY": maxy},
-    }
+def test_the_url_asks_for_the_current_edition():
+    assert "/current/" in TILE_URL_TEMPLATE
 
 
-def test_index_keeps_only_one_edition_per_footprint():
-    items = [_dated("n35w084", "20220504"), _dated("n35w084", "20230215")]
+def test_the_url_never_reaches_into_the_dated_editions():
+    """`historical/` is where the four vintages of n35w084 live. A URL that
+    drifted into it would reintroduce exactly the mixing the dedup existed to
+    prevent, and would do it without any of the dedup left to catch it."""
+    assert "historical" not in cell_url("n35w084")
 
-    index = build_tile_index(items, corridor_hit=_FakeCorridorCheck())
+
+def test_one_cell_yields_exactly_one_tile():
+    """The dedup's guarantee, now structural rather than computed: a cell
+    appears once in the grid, so there is no second edition to choose
+    between."""
+    index = build_tile_index(ONE_CELL_BBOX, corridor_hit=_FakeCorridorCheck())
 
     assert len(index) == 1
 
 
-def test_index_prefers_the_newest_edition():
-    """An older survey is not wrong, but mixing vintages along one profile
-    is - and the newest is the best available answer for each cell."""
-    items = [
-        _dated("n35w084", "20220725"),
-        _dated("n35w084", "20230215"),
-        _dated("n35w084", "20220504"),
-    ]
+def test_neighbouring_cells_both_survive():
+    """Deduplication was per footprint rather than global, and the property it
+    protected still holds: two different cells are two different tiles."""
+    index = build_tile_index((-84.6, 34.2, -83.4, 34.4), corridor_hit=_FakeCorridorCheck())
 
-    [tile] = build_tile_index(items, corridor_hit=_FakeCorridorCheck())
-
-    assert "20230215" in tile["url"]
-
-
-def test_index_keeps_genuinely_different_footprints():
-    """Deduplication is per footprint, not global - neighbouring cells must
-    both survive."""
-    items = [
-        _dated("n35w084", "20230215"),
-        _dated("n36w084", "20230215", minx=-84, miny=35, maxx=-83, maxy=36),
-    ]
-
-    assert len(build_tile_index(items, corridor_hit=_FakeCorridorCheck())) == 2
-
-
-def test_index_keeps_an_undated_tile_rather_than_discarding_it():
-    """A filename that does not match the dated convention should still be
-    usable - dropping coverage is worse than an unknown vintage."""
-    items = [
-        {"downloadURL": "https://example.org/odd_name.tif", "boundingBox": {"minX": -84, "minY": 34, "maxX": -83, "maxY": 35}}
-    ]
-
-    assert len(build_tile_index(items, corridor_hit=_FakeCorridorCheck())) == 1
+    assert len(index) == 2
+    assert len({tile["url"] for tile in index}) == 2

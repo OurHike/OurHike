@@ -699,6 +699,44 @@ describe('the parts of one site', () => {
     expect(chips()[0]).not.toHaveTextContent(/m$/)
   })
 
+  it('prints the stated distance for a synthesized water member, never the zero its coordinates measure (#694)', () => {
+    // The pipeline synthesizes a water member from ATC's distance-to-water
+    // where no real point exists. ATC states how far, never where, so the
+    // member sits AT the shelter's own coordinates - and measuring that
+    // would print "Water · 0 m" under a sentence saying 37 m, drift on one
+    // card in its worst form. The stated figure wins: 120 ft -> 37 m, the
+    // same number the composed sentence carries.
+    const SYNTHESIZED_WATER: PoiDetail = {
+      id: 'atc_csi:xyz',
+      name: 'Water near Chairback Gap Lean-to',
+      type: 'water',
+      lat: SHELTER.lat,
+      lon: SHELTER.lon,
+      confidence: 'low',
+      source: 'atc_csi',
+      waterDistanceFt: 120,
+    }
+    renderSite([SHELTER, PRIVY, SYNTHESIZED_WATER])
+
+    expect(screen.getByRole('button', { name: 'Water 37 m' })).toBeInTheDocument()
+
+    // And a real mapped water point - which carries no stated figure - keeps
+    // the measured offset exactly as before: 0.00036° of latitude is 40 m.
+    const REAL_WATER: PoiDetail = {
+      id: 'opentrail_at:77',
+      name: 'Piped Spring',
+      type: 'water',
+      lat: SHELTER.lat + 0.00036,
+      lon: SHELTER.lon,
+      confidence: 'high',
+      source: 'opentrail_at',
+    }
+    cleanup()
+    renderSite([SHELTER, PRIVY, REAL_WATER])
+
+    expect(screen.getByRole('button', { name: 'Water 40 m' })).toBeInTheDocument()
+  })
+
   it('carries the same icon the map draws for each part', () => {
     // One copy of the pin, which is the rule map/MapIcon.tsx is built on: a chip
     // that drew its own privy silhouette would drift from the map's the first

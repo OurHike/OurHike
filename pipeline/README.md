@@ -86,7 +86,7 @@ What exists upstream *beyond* the registry - the maintaining clubs, the federal 
 
 ## Water distance at shelters and campsites
 
-`build_water_distance.py` writes [`reference/water_distance.json`](reference/water_distance.json): how far the nearest water source is from each A.T. shelter and campsite, keyed to ATC's own GlobalIDs — the same checked-in-and-reviewed shape as shelter capacity, for the same reason (the join encodes judgement calls a diff should show). `export_poi.py` reads it, publishes `water_distance_ft` on shelter and campsite features, and splices "water N m" into the card sentence's Nearby clause where no actual water point folded into the site and the distance is within the site vocabulary's 150 m.
+`build_water_distance.py` writes [`reference/water_distance.json`](reference/water_distance.json): how far the nearest water source is from each A.T. shelter and campsite, keyed to ATC's own GlobalIDs — the same checked-in-and-reviewed shape as shelter capacity, for the same reason (the join encodes judgement calls a diff should show). `export_poi.py` reads it, publishes `water_distance_ft` on shelter and campsite features, and splices "water N m" into the card sentence's Nearby clause where no actual water point folded into the site and the distance is within the site vocabulary's 150 m. Wherever that sentence fires, the export also synthesizes a water POI onto the site (#694) — a `source: "atc_csi"` member at the anchor's own inherited coordinates, since ATC states how far and never where — so the pin's strip and the card's chips show the water the sentence promises; its description states the distance and that the spot is unmapped, and a real mapped water point folding in stops the synthesis for that site.
 
 ```
 .venv/Scripts/python build_water_distance.py            # rebuild and review the diff
@@ -229,6 +229,19 @@ Output goes to `data/spike/` (`corridor.geojson`, `campsites_clipped.geojson`, `
 Reads already-fetched ATC data (`shelters`, `campsites`, `centerline`) the same way `spike_corridor.py` does — no network. It positions every site along the ordered centerline using `export_elevation.py`'s own helpers, so the miles it reports are the same measurement `elevation_profile.json` uses rather than a third one, then reports the real spacing distribution and runs a shortest-path day planner across a range of targets. If `data/processed/elevation_profile.json` exists it also plans against a *time* target rather than a distance one, which is the comparison that says whether planning by Naismith hours is worth the machinery.
 
 **It has not been run against real data yet** — the environment it was written in has no route to ATC's servers. Everything in HIKE_PLANNING.md's Finding 3 is arithmetic over the feature counts in the source table above, not a measurement, and closing that gap is the first thing to do with this script. The planner in it is deliberately throwaway: the real one runs on the phone, and what should survive is the shape rather than the code.
+
+## Duplicate spike: how many POIs are the same place twice? (done)
+
+`spike_poi_duplicates.py` is the measurement behind [../features/POI_DEDUPLICATION.md](../features/POI_DEDUPLICATION.md) and **#696 — Nothing stops two sources publishing the same place twice, and the one rule that does is a 25 m constant for a single source pair**.
+
+```
+.venv/Scripts/python spike_poi_duplicates.py
+.venv/Scripts/python spike_poi_duplicates.py --refetch
+```
+
+Unlike the two spikes above it needs no prior `fetch_all.py` run — it pulls the six ATC POI layers and opentrail.org into `data/spike/poi_duplicates/` and re-reads that cache afterwards, so a re-measurement costs upstream nothing. It measures the *published* set rather than a second version of it, by pointing `export_poi.py`'s own `RAW_DIR` at the cache and calling that module's own `unify_all_sources`.
+
+Measured 2026-08-13, over all 2,837 unified points: **48 same-type pairs sit within 25 m of each other, every one of them inside a single source, and 35 of the 48 are two real places** — ATC distinguishes them by a trailing sibling number, a direction token, or an outright different name. The real duplicates are 11 places holding 23 records (0.42% of the map), almost all of them the viewpoint layer carrying one overlook twice, once with a trailing "Vista". And the one cross-source overlap already shipping — ATC's Communities against opentrail's resupply points — has **no pair within 1 km** of each other, which is what says a radius alone cannot be the definition of a duplicate.
 
 ## Raster background: mosaic + clip at real scale (done)
 

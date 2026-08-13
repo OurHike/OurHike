@@ -643,14 +643,16 @@ COUNT_UPSTREAM_SOURCES: dict[str, frozenset[str]] = {
     "poi:shelter": frozenset({"atc"}),
     "poi:campsite": frozenset({"atc"}),
     "poi:resupply": frozenset({"atc", "opentrail"}),  # communities.geojson + opentrail "r" tag
-    # opentrail "w"/"s" tags + osm_water.geojson. "osm" is deliberately NOT a
-    # key here: the OSM source has no check_freshness.py entry (Geofabrik
-    # republishes daily, so "changed" would always be true - see
-    # fetch_osm_water.py), which means no --changed-source flag can ever name
-    # it and a water-count drop on the OSM side always reaches a human. An
-    # OSM mass-deletion near the trail is exactly the drop somebody should
-    # look at rather than wave through.
-    "poi:water": frozenset({"opentrail"}),
+    # opentrail "w"/"s" tags + osm_water.geojson, plus the members
+    # export_poi.py synthesizes from ATC's CSI distances (#694) - those ride
+    # the shelters/campsites layers, so an ATC change can move this count
+    # too. "osm" is deliberately NOT a key here: the OSM source has no
+    # check_freshness.py entry (Geofabrik republishes daily, so "changed"
+    # would always be true - see fetch_osm_water.py), which means no
+    # --changed-source flag can ever name it and a water-count drop on the
+    # OSM side always reaches a human. An OSM mass-deletion near the trail
+    # is exactly the drop somebody should look at rather than wave through.
+    "poi:water": frozenset({"opentrail", "atc"}),
     "poi:crossing": frozenset(),  # always 0 today; see module docstring
     "elevation": frozenset({"elevation"}),
 }

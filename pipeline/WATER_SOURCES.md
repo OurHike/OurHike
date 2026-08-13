@@ -290,7 +290,24 @@ ones; the client work for all of this is already built):
   will not fire for a spring that does not share the shelter's name. Real springs often
   sit 60–250 m out: points alone put pins *near* shelters while most shelter cards stay
   silent. Widening the gate for water specifically is a product decision this document
-  flags and does not make.
+  flags and does not make. *(Measured 2026-08-13 while #694 was scoped: against today's
+  174 opentrail points, widening 60 m → 150 m folds in exactly zero additional water
+  members — the decision only becomes live once the OSM points land, and wants
+  re-measuring then.)*
+
+*Amended 2026-08-13 (#694 — A card can promise water 37 m away while its site shows no
+water at all):* the CSI distance now also materialises as a **synthesized site member**
+— `source: "atc_csi"`, `CONFIDENCE_LOW`, inheriting the anchor's own coordinates because
+ATC states how far and never where. The maintainer made the call, and the guards keep it
+inside this document's claims taxonomy: a member draws no pin of its own (#524), so the
+inherited location is never drawn as a dot where water is not; its description states
+the distance, the measurement's owner, and that the spot is unmapped; the card's chip
+prints the stated figure rather than measuring the inherited coordinates to zero; only
+sites whose Nearby sentence fired (≤150 m) get one; and a site holding a **real** mapped
+water point never does — the synthesized member stops being produced the export after a
+real point folds in, so options 1's OSM points supersede it site by site as they land.
+Justification, measured: of the 247 spliced cards, 16 have any real water point within
+150 m today, so no fold-gate setting could have closed the gap.
 - **A per-shelter sentence is pipeline-only.** The card renders `description` for every
   type already; `DESCRIBERS` simply has no water entry. *"Nearest mapped stream:
   Stony Brook, about 70 m (USGS, mapped as year-round)"* is a change confined to

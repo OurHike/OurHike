@@ -276,11 +276,22 @@ The motivating example is a shelter with a campsite, a privy **and a water sourc
 
 Nearly every A.T. shelter has water in reality. The app does not know where it is. That is a sourcing problem — OSM `natural=spring` / `amenity=drinking_water` over the corridor, NHD (already flagged exploratory in [../ROADMAP.md](../ROADMAP.md)), or a club-supplied list — and it belongs in its own issue, ahead of any display work that would otherwise render 97% of shelters as having no water when what the app means is that nobody told it.
 
+*Amended 2026-08-13.* The sourcing issue happened (**#529 — 97% of shelters have no water source within 250 m, and the trail is not like that**; `pipeline/WATER_SOURCES.md` holds the measurements), and it split the answer in two. Where a **located** water point exists, nothing here changes. Where ATC states only a **distance** (its Campsite Sustainability Index, shipped by #668/#688), the site model now carries one synthesized member per affected site — `source: "atc_csi"`, at the anchor's own inherited coordinates, low confidence, its description stating the distance and that the spot is unmapped (**#694 — A card can promise water 37 m away while its site shows no water at all**). It extends §3's contract by one clause: a member's coordinates are its location **except** for `atc_csi` members, which sit on their anchor by construction, which is why the chip prints their stated `water_distance_ft` instead of measuring them (`PoiCard.tsx`'s partDistance), and why a real mapped point folding in makes the export stop synthesizing for that site. The paragraph above remains true: this is still not a display change closing a data gap — it is a stated fact finally riding the model that shows facts.
+
 ---
 
 ## What this deliberately isn't
 
 - **Not a general clustering layer.** Sites are a modelled fact about facilities, capped at three member types. A crowded ridge of viewpoints is not this doc's problem — it belongs to [POI_VISIBILITY.md](POI_VISIBILITY.md), written the same day as this one by a session that could not see it. *(That doc was rewritten 2026-08-13 and its answer changed: `POI_PRIORITY` decides which of that ridge's viewpoints gets a **pin**, and the ones that lose draw as dots rather than disappearing. The measurements below are what pushed it — at hiking zooms co-location is nearly the whole of the loss, so this doc turns out to be doing most of the work and that one covers the residue.)* **The two are complementary and the boundary is clean: this doc owns several waypoints at one place, that one owns many places across one viewport.** Grouping 1,027 stacked points into 435 sites hands real pin budget back at hiking zooms and changes nothing about a corridor view holding 90 waypoints on a screen with room for 26. That doc's cross-reference table states the split from the other side; this doc's measurements are the evidence under both.
+- **Not deduplication.** A site is several *different* types at one place; two records of the
+  *same* type describing one place is [POI_DEDUPLICATION.md](POI_DEDUPLICATION.md)'s, added
+  2026-08-13. A privy is never a duplicate of its shelter, and two shelters are never parts of
+  each other — which is why open question 1's Horns Pond lean-tos stay two pins under both
+  designs rather than falling between them. That doc's measurement is the evidence for the
+  boundary: of the 48 same-type pairs within 25 m on the corridor, 35 are two real places that
+  ATC distinguishes by a sibling number, a direction or an outright different name, and the
+  Horns Pond pair (11.3 m), The Birches pair (10.1 m) and the two Grafton Notch privies of open
+  question 4 (20.7 m) are all in that 35.
 - **Not a zoom-dependent reveal.** Drawing member pins again above z16, where they would no longer collide, is a coherent idea and a second code path with a second set of failure modes. Left out of v1; noted below.
 - **Not spiderfy.** Fanning members out around the tapped pin on leader lines preserves the count but draws every member at a position it is not at. This app refuses to draw a stale GPS fix like a live one; drawing a privy 80 px from where it is, is the same refusal.
 - **Not a change to `icon-allow-overlap`.** Letting pins overlap is the symptom the complaint started from.

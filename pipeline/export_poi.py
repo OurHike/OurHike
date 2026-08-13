@@ -117,7 +117,10 @@ the 9 opentrail points that happen to fold. 305 of 512 features publish one
 (the FarOut-measured rows joined on the maintainer's 2026-08-13
 authorisation, sources.json's atc_licence block / #688); the rest have no
 CSI neighbour (most of Maine) or an unreadable value, and publish nothing
-rather than a neighbour's number.
+rather than a neighbour's number. Wherever that sentence fires, the site
+also gains a water POI riding its pin - synthesize_csi_water (#694), a
+member at inherited coordinates whose description states the distance and
+that the spot is unmapped, yielding to any real mapped point that folds in.
 
 Description: every ATC facility layer carries `description`, one sentence
 about the place -
@@ -345,6 +348,17 @@ CAMPSITE_SOURCE = "atc_campsites"
 # unified ids are built from.
 WATER_DISTANCE_SOURCES = {"shelters": SHELTER_SOURCE, "campsites": CAMPSITE_SOURCE}
 
+# The source stamped on the water POIs synthesize_csi_water builds from those
+# distances (#694). ATC's CSI states how FAR water is from a site and never
+# WHERE, so the point inherits its anchor's coordinates and rides the site as
+# a member - drawing no pin of its own (#524) - while its description says
+# exactly what is known: the distance, whose measurement it is, and that the
+# spot is unmapped. Everything that must tell a real water point from this
+# kind keys on this constant: the nearby clause reads coordinates only from
+# real members, synthesis yields to a real member, and
+# client/src/chrome/poiSources.ts turns it into words on the card.
+CSI_WATER_SOURCE = "atc_csi"
+
 # (raw filename stem, poi_type, source name used in unified ids, field_map)
 # - the ATC sources that map ~1:1 onto one poi_type each.
 #
@@ -506,6 +520,97 @@ def attach_water_distance(records: list[dict], distances: dict[str, int]) -> int
     return attached
 
 
+def _is_real_water(member: dict) -> bool:
+    """A water member that is an actual mapped point, as opposed to one this
+    export synthesized from a distance. The two make different claims - a
+    point knows where, a synthesized member only how far - and every place
+    that treats members as coordinates has to ask this first."""
+    return member["poi_type"] == "water" and member.get("source") != CSI_WATER_SOURCE
+
+
+def synthesize_csi_water(records: list[dict]) -> int:
+    """Give every card that says "Nearby: water N m" a water POI riding its
+    site (#694), returning how many were added.
+
+    The sentence attach_descriptions splices from `water_distance_ft` used to
+    be the only trace of ATC's distance: the pin's footer strip and the
+    card's chip strip are built from site MEMBERS, and no member existed -
+    CSI publishes no coordinates to make one from, and no real mapped point
+    sits near most of these sites (measured 2026-08-13: of 247 spliced cards,
+    16 have any real water point within 150 m). So the maintainer's call: the
+    point INHERITS THE ANCHOR'S COORDINATES and says so. A member draws no
+    pin of its own (#524), so the inherited location is never drawn as a dot
+    somewhere water is not; what a hiker sees is the water glyph on the pin,
+    a chip that opens a card, and a card that states the distance, whose
+    measurement it is, and that the spot is unmapped. PoiCard's chip prints
+    the member's own `water_distance_ft` rather than the zero the inherited
+    coordinates would measure.
+
+    One per site, and only where the sentence fired: a distance beyond
+    NEARBY_WATER_MAX_M stays a column (a site is a sub-150 m place, and a
+    member half a kilometre off is not a part of it). A site holding a REAL
+    water member never gets one, so the moment an actual mapped point folds
+    in - opentrail today, OSM when #529's fetch lands - the synthesized
+    member stops being produced and the real point speaks. CONFIDENCE_LOW,
+    because the client's dashed rim and "Unverified" line are the right
+    posture for a point nobody can stand at.
+
+    Runs after attach_sites and attach_water_distance (it reads both) and
+    before attach_descriptions (whose nearby clause must know these members
+    carry no coordinate worth measuring).
+    """
+    members_by_site = site_members(records)
+    synthesized = []
+    for record in records:
+        if record["poi_type"] not in ANCHOR_TYPES or record.get("site_role") == ROLE_MEMBER:
+            continue
+        distance_ft = record.get("water_distance_ft")
+        if distance_ft is None:
+            continue
+        metres = distance_ft * M_PER_FT
+        if metres > NEARBY_WATER_MAX_M:
+            continue
+        if any(_is_real_water(member) for member in members_by_site.get(record.get("site_id"), ())):
+            continue
+
+        # A lone shelter becomes a two-part site: the glyph and the chip both
+        # hang off site properties, and the anchor may not have had any.
+        if record.get("site_id") is None:
+            record["site_id"] = record["id"]
+            record["site_role"] = ROLE_ANCHOR
+            record["site_name"] = record.get("name")
+
+        anchor_name = record.get("name")
+        # The same whole-metre reading lib/poi_description._metres gives the
+        # spliced sentence, so the member's card and the anchor's sentence
+        # cannot print two numbers for one distance.
+        metres_text = f"{max(1, round(metres)):,} m"
+        placed_on = f"the {record['poi_type']}" if not anchor_name else anchor_name
+        synthesized.append(
+            {
+                "id": f"{CSI_WATER_SOURCE}:{record['source_feature_id']}",
+                "poi_type": "water",
+                "trail_id": record["trail_id"],
+                "source": CSI_WATER_SOURCE,
+                "source_feature_id": record["source_feature_id"],
+                "name": f"Water near {anchor_name}" if anchor_name else "Water",
+                "lat": record["lat"],
+                "lon": record["lon"],
+                "confidence": CONFIDENCE_LOW,
+                "water_distance_ft": distance_ft,
+                "description": (
+                    f"About {metres_text} from {placed_on}. ATC measured the distance; the spot itself is "
+                    f"not mapped, so this point sits on the {record['poi_type']}."
+                ),
+                "site_id": record["site_id"],
+                "site_role": ROLE_MEMBER,
+                "site_name": record.get("site_name"),
+            }
+        )
+    records.extend(synthesized)
+    return len(synthesized)
+
+
 # Which poi_types compose a `description`, and with what. Every ATC facility
 # layer is here; water and resupply are absent because they come from
 # opentrail.org and ATC's Communities layer, neither of which carries an
@@ -600,13 +705,18 @@ def attach_descriptions(records: list[dict]) -> int:
             nearby_members = [
                 # Measured from the anchor, which is the one point of this
                 # site a hiker can see - it is the only pin drawn - and so
-                # the only place the distance is a distance from.
+                # the only place the distance is a distance from. A
+                # synthesized water member is excluded exactly because it has
+                # no coordinate worth measuring - it SITS on the anchor
+                # (#694), and reading its position as a distance would print
+                # "water 1 m" on a card whose truth is the splice below.
                 (
                     member["poi_type"],
                     distance_m(record["lat"], record["lon"], member["lat"], member["lon"]),
                     member.get(RAW_PROPERTIES_KEY) or {},
                 )
                 for member in members_by_site.get(record["site_id"], ())
+                if member.get("source") != CSI_WATER_SOURCE
             ]
         # ATC's own distance-to-water fills in where no actual water point
         # folded into the site (#668) - which is nearly everywhere, since only
@@ -614,6 +724,8 @@ def attach_descriptions(records: list[dict]) -> int:
         # no site both take it; a member does not, because its site's anchor
         # already answers "is there water" for the one pin a hiker can see.
         # Never beside a real water member: one sentence, one water distance.
+        # (The synthesized member #694 adds for this same distance is not a
+        # real one - it is excluded above, and this splice is what speaks.)
         if (
             record["poi_type"] in ANCHOR_TYPES
             and record.get("site_role") != ROLE_MEMBER
@@ -1030,6 +1142,8 @@ def main() -> dict:
     if water_distances:
         attached = attach_water_distance(clipped, water_distances)
         print(f"  {attached} shelters and campsites carry a water distance (from {WATER_DISTANCE_PATH.name}).")
+        synthesized = synthesize_csi_water(clipped)
+        print(f"  {synthesized} water points synthesized onto those sites from the distances (#694).")
     else:
         print(f"  No {WATER_DISTANCE_PATH.name} - exporting without water distances.")
 

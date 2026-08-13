@@ -45,6 +45,19 @@ def _point_feature(feature_id, lon, lat, properties):
     }
 
 
+def _json_prop(value):
+    """A JSON-string column as the thing it holds, whichever shape it arrives in.
+
+    The pipeline writes one string - FlatGeobuf property values are scalars -
+    but GDAL recognises a JSON-shaped string when it writes GeoJSON and emits
+    real JSON, so `photos` and `nearby` genuinely differ in type between the
+    two artifacts of one export (measured 2026-08-09). The client accepts both
+    for the same reason, and a test that assumed either would pass on one file
+    and fail on the other.
+    """
+    return json.loads(value) if isinstance(value, str) else value
+
+
 def _write_fc(path, features):
     path.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
 
@@ -562,9 +575,13 @@ def _write_water_distance_file(path, records):
 def test_export_poi_carries_water_distance_onto_shelters_and_campsites(tmp_path, monkeypatch, con):
     """water_distance.json's numbers reach both layers' features - keyed by
     layer + GlobalID, because the file covers shelters AND campsites - and the
-    close one reaches the composed sentence as the Nearby clause's water
-    entry, so the card answers "is there water" without a water point in the
-    data (#668). 120 ft is ~37 m: inside NEARBY_WATER_MAX_M."""
+    close one is named among the anchor's nearby parts, so the card answers "is
+    there water" without a water point in the data (#668). 120 ft is ~37 m:
+    inside NEARBY_WATER_MAX_FT.
+
+    Straight through in ATC's own feet since #625. It used to be converted to
+    metres on the way into the sentence, which meant an imperial hiker read a
+    figure ATC published in feet, in metres, having asked for feet."""
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()
     out_dir = tmp_path / "processed" / "poi"
@@ -594,13 +611,13 @@ def test_export_poi_carries_water_distance_onto_shelters_and_campsites(tmp_path,
 
     shelter_props = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
     assert shelter_props["water_distance_ft"] == 120
-    # 120 ft -> 36.576 m -> "37 m", spliced through the same nearby_clause a
-    # folded water point would use, so one card cannot say it two ways.
-    assert shelter_props["description"].endswith("Nearby: water 37 m away.")
+    # The column's own number, unconverted, through the same nearby_parts a
+    # folded water point would use - so one card cannot say it two ways.
+    assert _json_prop(shelter_props["nearby"]) == [{"phrase": "water", "distance_ft": 120.0}]
 
     campsite_props = json.loads((out_dir / "campsite.geojson").read_text())["features"][0]["properties"]
     assert campsite_props["water_distance_ft"] == 100
-    assert campsite_props["description"].endswith("Nearby: water 30 m away.")
+    assert _json_prop(campsite_props["nearby"]) == [{"phrase": "water", "distance_ft": 100.0}]
 
     # Real water POIs never carry the column - it is a fact about a shelter
     # or campsite, not about the water point itself. The members synthesized
@@ -614,13 +631,18 @@ def test_export_poi_carries_water_distance_onto_shelters_and_campsites(tmp_path,
 
 
 def test_export_poi_synthesizes_a_water_member_where_the_sentence_fired(tmp_path, monkeypatch, con):
-    """The card promising "Nearby: water 37 m" gets a water POI riding its
-    site (#694): a member at the anchor's own coordinates - ATC states how
-    far, never where - whose description says the distance, whose measurement
-    it is, and that the spot is unmapped. The anchor becomes a site so the
-    pin has a strip for the glyph, and its own sentence still reads from the
-    splice, never from the member's inherited position ("water 1 m" is the
-    bug this arrangement exists to not have)."""
+    """The card promising water gets a water POI riding its site (#694): a
+    member at the anchor's own coordinates - ATC states how far, never where -
+    whose description says whose measurement the distance is and that the spot
+    is unmapped. The anchor becomes a site so the pin has a strip for the
+    glyph, and its own nearby entry still carries the stated distance, never
+    the member's inherited position ("water 3 ft" is the bug this arrangement
+    exists to not have).
+
+    The figure itself is NOT in the description, since #625: it is published on
+    this member as `water_distance_ft`, so the chip beside the sentence prints
+    it in the units the hiker chose. A distance written into published prose is
+    a distance in somebody else's units."""
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()
     out_dir = tmp_path / "processed" / "poi"
@@ -645,18 +667,19 @@ def test_export_poi_synthesizes_a_water_member_where_the_sentence_fired(tmp_path
     # Inherited coordinates, and a description that says so in place of them.
     assert (synthesized["lat"], synthesized["lon"]) == (shelter_props["lat"], shelter_props["lon"])
     assert synthesized["description"] == (
-        "About 37 m from Test Shelter. ATC measured the distance; the spot itself is "
-        "not mapped, so this point sits on the shelter."
+        "ATC measured how far water is from Test Shelter; the spot itself is not mapped, so this point sits on the shelter."
     )
+    # And no figure in it, in either unit - the chip carries that (#625).
+    assert not any(character.isdigit() for character in synthesized["description"])
     # It rides the shelter's site as a member, and the lone shelter became a
     # site to carry it.
     assert synthesized["site_id"] == shelter_props["id"]
     assert synthesized["site_role"] == "member"
     assert shelter_props["site_role"] == "anchor"
     assert shelter_props["site_id"] == shelter_props["id"]
-    # The anchor's sentence still speaks the stated distance, not the zero
-    # its member's inherited position would measure.
-    assert shelter_props["description"].endswith("Nearby: water 37 m away.")
+    # The anchor's own parts still carry the stated distance, not the zero its
+    # member's inherited position would measure.
+    assert _json_prop(shelter_props["nearby"]) == [{"phrase": "water", "distance_ft": 120.0}]
 
 
 def test_export_poi_synthesizes_from_the_anchor_only_never_from_a_member(tmp_path, monkeypatch, con):
@@ -723,11 +746,11 @@ def test_export_poi_keeps_far_water_out_of_the_nearby_sentence(tmp_path, monkeyp
 
 
 def test_export_poi_never_says_water_twice_when_a_real_point_already_folded(tmp_path, monkeypatch, con):
-    """A site whose Nearby clause already names an actual folded water point
-    keeps that measured distance - the CSI estimate stays off the sentence,
-    because one sentence naming two water distances reads as two waters and
-    is really one disagreement. The column still publishes; the two numbers
-    remain distinguishable by where they appear."""
+    """A site whose parts already name an actual folded water point keeps that
+    measured distance - the CSI estimate stays out, because one card naming two
+    water distances reads as two waters and is really one disagreement. The
+    column still publishes; the two numbers remain distinguishable by where
+    they appear."""
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()
     out_dir = tmp_path / "processed" / "poi"
@@ -749,9 +772,11 @@ def test_export_poi_never_says_water_twice_when_a_real_point_already_folded(tmp_
 
     shelter_props = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
     assert shelter_props["water_distance_ft"] == 120
-    assert shelter_props["description"].count("water") == 1
-    # The folded point's measured ~45 m, not the reference file's 37 m.
-    assert "water 45 m" in shelter_props["description"]
+    waters = [part for part in _json_prop(shelter_props["nearby"]) if part["phrase"] == "water"]
+    assert len(waters) == 1
+    # The folded point's own measurement - ~45 m, so ~147 ft - and not the
+    # reference file's 120 ft.
+    assert waters[0]["distance_ft"] == pytest.approx(147, abs=2)
     # And no synthesized member beside the real one (#694): the site already
     # holds an actual mapped point, and it speaks for water here.
     water_fc = json.loads((out_dir / "water.geojson").read_text())
@@ -1397,15 +1422,16 @@ def test_export_poi_leaves_the_site_properties_null_outside_a_site(tmp_path, mon
 
 
 def test_export_poi_names_a_sites_parts_in_the_anchors_description(tmp_path, monkeypatch, con):
-    """A site's anchor says what is around it and how far (#614).
+    """A site's anchor publishes what is around it and how far (#614, #625).
 
     Since #524 the privy draws no pin of its own, so its own perfectly good
-    sentence is attached to a feature nothing renders. Until #526 reaches it
-    from the shelter's card, this clause is the only place it is mentioned.
+    sentence is attached to a feature nothing renders. The anchor's `nearby` is
+    where it is named instead.
 
     The shared fixtures' privy sits 3.8 km from the shelter - outside both
     gates, so no site at all - and is re-written 42 m out, the corridor's
-    measured median privy-to-shelter distance.
+    measured median privy-to-shelter distance. 42 m is 137.8 ft, which is what
+    the artifact states: the measurement is metres, the published unit is feet.
     """
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()
@@ -1440,13 +1466,14 @@ def test_export_poi_names_a_sites_parts_in_the_anchors_description(tmp_path, mon
     export_poi.main()
 
     shelter = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
-    assert shelter["description"] == (
-        "Two-storey log shelter, sleeps 8, with a fireplace. Built 1954. Nearby: a multi-seat moldering privy 42 m away."
-    )
+    # The sentence says nothing about the parts since #625 - they are their own
+    # column, and their own line on the card, in the hiker's own units.
+    assert shelter["description"] == "Two-storey log shelter, sleeps 8, with a fireplace. Built 1954."
+    assert _json_prop(shelter["nearby"]) == [{"phrase": "a multi-seat moldering privy", "distance_ft": 137.8}]
 
     # The member keeps its own sentence, unchanged. It is the thing #526's chip
-    # will open, and a member that described itself in terms of its anchor
-    # would say the same fact twice on one card.
+    # opens, and a member that described itself in terms of its anchor would
+    # say the same fact twice on one card.
     privy = json.loads((out_dir / "privy.geojson").read_text())["features"][0]["properties"]
     assert privy["description"] == "Multi-seat moldering privy. Built 2003."
 
@@ -1474,8 +1501,54 @@ def test_export_poi_leaves_a_description_alone_outside_a_site(tmp_path, monkeypa
 
 def test_export_poi_measures_a_part_from_the_anchor_it_rides():
     """The same equirectangular distance lib/poi_sites.py gated the grouping
-    on, rounded the way #526's chip rounds it. Two formulas for one pair would
-    print two numbers for it on one card."""
+    on. Two formulas for one pair would print two numbers for it on one card -
+    the client's own siteDistanceFeet is a copy of this one for that reason.
+
+    Converted to feet at this boundary and nowhere else: 42 m is 137.795 ft,
+    published to a tenth so the phone rounds once, in whichever unit the hiker
+    picked."""
+    anchor = {"id": "a", "poi_type": "shelter", "lat": 41.05, "lon": -73.95, "site_id": "a", "site_role": "anchor"}
+    member = {
+        "id": "b",
+        "poi_type": "privy",
+        "lat": 41.05 + 42 / 111_320.0,
+        "lon": -73.95,
+        "site_id": "a",
+        "site_role": "member",
+    }
+
+    export_poi.attach_nearby([anchor, member])
+
+    assert json.loads(anchor["nearby"]) == [{"phrase": "a privy", "distance_ft": 137.8}]
+
+
+def test_export_poi_publishes_no_parts_when_the_grouping_never_ran():
+    """attach_nearby reads the site properties attach_sites publishes, so a
+    caller that skipped the grouping gets no column rather than an error - and
+    attach_descriptions, which no longer knows about parts at all, composes
+    exactly the sentences it composed before sites existed."""
+    raw = export_poi.RAW_PROPERTIES_KEY
+    records = [
+        {"id": "a", "poi_type": "shelter", "lat": 41.05, "lon": -73.95, raw: {"Stories": 2, "Exterior_M": "5"}},
+        {"id": "b", "poi_type": "privy", "lat": 41.05, "lon": -73.95, raw: {"Type": "1"}},
+    ]
+
+    assert export_poi.attach_nearby(records) == 0
+    export_poi.attach_descriptions(records)
+
+    assert records[0]["description"] == "Two-storey log shelter."
+    assert records[1]["description"] == "Moldering privy."
+    assert all("nearby" not in record for record in records)
+
+
+def test_export_poi_leaves_the_sentence_to_the_describer_and_the_parts_to_the_column():
+    """#625's split, asserted as the two passes it is.
+
+    A shelter ATC states nothing about used to be kept alive by its parts:
+    "Shelter." alone is dropped as saying nothing the type line does not, but
+    "Shelter. Nearby: a privy 42 m away." carried. The parts are their own line
+    on the card now, so the lead-in has nothing to lead into and the empty
+    sentence goes - while the privy is still named, in the hiker's units."""
     anchor = {"id": "a", "poi_type": "shelter", "lat": 41.05, "lon": -73.95, "site_id": "a", "site_role": "anchor"}
     member = {
         "id": "b",
@@ -1487,27 +1560,10 @@ def test_export_poi_measures_a_part_from_the_anchor_it_rides():
     }
 
     export_poi.attach_descriptions([anchor, member])
+    export_poi.attach_nearby([anchor, member])
 
-    # "Shelter." alone is dropped as saying nothing the card's type line does
-    # not - but as the lead-in to the only line naming the privy it carries,
-    # which is why the emptiness check is made on the whole sentence.
-    assert anchor["description"] == "Shelter. Nearby: a privy 42 m away."
-
-
-def test_export_poi_composes_no_nearby_clause_when_the_grouping_never_ran():
-    """attach_descriptions reads the site properties attach_sites publishes, so
-    a caller that skipped the grouping gets exactly the sentences it got before
-    sites existed rather than an error."""
-    raw = export_poi.RAW_PROPERTIES_KEY
-    records = [
-        {"id": "a", "poi_type": "shelter", "lat": 41.05, "lon": -73.95, raw: {"Stories": 2, "Exterior_M": "5"}},
-        {"id": "b", "poi_type": "privy", "lat": 41.05, "lon": -73.95, raw: {"Type": "1"}},
-    ]
-
-    export_poi.attach_descriptions(records)
-
-    assert records[0]["description"] == "Two-storey log shelter."
-    assert records[1]["description"] == "Moldering privy."
+    assert "description" not in anchor
+    assert json.loads(anchor["nearby"]) == [{"phrase": "a privy", "distance_ft": 137.8}]
 
 
 # --- OSM water points (#529, fetch_osm_water.py) ----------------------------
@@ -1584,14 +1640,18 @@ def test_export_poi_an_osm_twin_of_an_opentrail_point_is_dropped(tmp_path, monke
     assert "osm_water:557" in ids
 
 
-# --- the stream sentence (#529, build_nhd_streams.py) -----------------------
+# --- the stream facts column (#529, build_nhd_streams.py) -------------------
 
 
 def _write_streams_file(path, records):
     path.write_text(json.dumps({"shelters": records}))
 
 
-def test_export_poi_every_shelter_description_ends_with_its_stream_sentence(tmp_path, monkeypatch, con):
+def test_export_poi_publishes_every_shelters_stream_facts_as_structure(tmp_path, monkeypatch, con):
+    """#625's split applied to #529's stream: the pipeline publishes the
+    facts in feet (converted once at the export boundary from the reference
+    file's measured metres), and client/src/lib/streamSentence.ts writes the
+    words in the hiker's units."""
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()
     _write_fixture_sources(raw_dir)
@@ -1608,18 +1668,18 @@ def test_export_poi_every_shelter_description_ends_with_its_stream_sentence(tmp_
 
     shelters = json.loads((tmp_path / "processed" / "poi" / "shelter.geojson").read_text())
     (shelter,) = shelters["features"]
-    description = shelter["properties"]["description"]
-    # Appended after the shelter's own sentence, never spliced among its
-    # clauses: the stream is a fact about the water nearby, not the building.
-    assert description.startswith("Two-storey log shelter")
-    assert description.endswith(
-        "Nearest mapped stream: Stony Brook, about 70 m (USGS; mapped as year-round, not recently verified)."
-    )
+    stream = shelter["properties"]["stream"]
+    assert stream == {"name": "Stony Brook", "distance_ft": 236.2, "flow": "perennial"}
+    # The prose description carries no distance for the stream - the column
+    # is the only home, so the card cannot print two numbers for one fact.
+    assert "Stony Brook" not in (shelter["properties"]["description"] or "")
 
 
-def test_export_poi_the_no_stream_sentence_is_printed_too(tmp_path, monkeypatch, con):
+def test_export_poi_publishes_the_no_stream_fact_too(tmp_path, monkeypatch, con):
     """The Blood Mountain case: 'no mapped stream within 1 km' is a fact a
-    hiker plans around, so the card says it rather than staying silent."""
+    hiker plans around, so the column states it rather than staying NULL -
+    NULL is reserved for 'the reference file has no row', which is the app
+    not knowing rather than the ground being dry."""
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()
     _write_fixture_sources(raw_dir)
@@ -1644,13 +1704,13 @@ def test_export_poi_the_no_stream_sentence_is_printed_too(tmp_path, monkeypatch,
 
     shelters = json.loads((tmp_path / "processed" / "poi" / "shelter.geojson").read_text())
     (shelter,) = shelters["features"]
-    assert shelter["properties"]["description"].endswith("No mapped stream within 1 km (USGS).")
+    assert shelter["properties"]["stream"] == {"none": True}
 
 
-def test_export_poi_stream_sentences_touch_only_shelters(tmp_path, monkeypatch, con):
+def test_export_poi_stream_facts_touch_only_shelters(tmp_path, monkeypatch, con):
     """The reference file is keyed by shelter GlobalIDs, and campsites keep
     the CSI distance channel (#668) - a campsite whose id somehow appeared
-    in the streams file must still compose its own sentence unchanged."""
+    in the streams file publishes no stream column."""
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()
     _write_fixture_sources(raw_dir)
@@ -1667,4 +1727,4 @@ def test_export_poi_stream_sentences_touch_only_shelters(tmp_path, monkeypatch, 
 
     campsites = json.loads((tmp_path / "processed" / "poi" / "campsite.geojson").read_text())
     (campsite,) = campsites["features"]
-    assert "Wrong Brook" not in (campsite["properties"]["description"] or "")
+    assert campsite["properties"]["stream"] is None

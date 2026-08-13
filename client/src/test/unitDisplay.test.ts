@@ -43,18 +43,21 @@ const MAY_WRITE_UNITS = ['lib/units.ts']
  *
  * There is exactly one thing this is for - a number the app displays that it
  * does not own, so that converting the app's copy would make one card
- * disagree with itself. #625 is the standing case: the pipeline composes a
- * shelter's "Nearby: a privy 40 m away" into published prose
- * (`pipeline/lib/poi_description.py`), and #526's chips under it print the
- * same distances from the same equirectangular maths. Convert the chips
- * alone and a card reads `Privy · 130 ft` above a sentence saying 40 m,
- * which is worse than either unit alone and is drift POI_SITES.md §5 names
- * as a defect in those words.
+ * disagree with itself. #625 was the standing case and is now closed: the
+ * pipeline composed a shelter's "Nearby: a privy 40 m away" into published
+ * prose, and #526's chips under it printed the same distances from the same
+ * equirectangular maths, so converting the chips alone would have read
+ * `Privy · 130 ft` above a sentence saying 40 m. The fix was to stop
+ * publishing the sentence: `pipeline/lib/poi_description.py` publishes the
+ * parts and `lib/nearbyClause.ts` writes the words, so both halves now answer
+ * the hiker.
  *
- * The issue number is REQUIRED, and that is the whole design. An exemption
- * with a number is a debt somebody can find, count and close; an exemption
- * without one is the standard quietly ending. A bare `units-exempt` fails
- * this file as loudly as the unit it was trying to excuse.
+ * Nothing is exempt today, which is the state this hatch exists to make
+ * conspicuous rather than comfortable. The issue number is REQUIRED, and that
+ * is the whole design. An exemption with a number is a debt somebody can find,
+ * count and close; an exemption without one is the standard quietly ending. A
+ * bare `units-exempt` fails this file as loudly as the unit it was trying to
+ * excuse.
  */
 const EXEMPTION = /units-exempt #(\d+)/
 
@@ -137,11 +140,12 @@ describe('the unit display standard', () => {
       'These write a unit into a string. Every height and distance a hiker reads goes through lib/units.ts, so it comes out in the system they chose in Settings. If this one genuinely cannot - the app does not own the number, and converting its copy would make a card disagree with itself - mark the line `units-exempt #N` against an issue that will close it.',
     ).toEqual([])
 
-    // The debt, asserted rather than merely permitted. Exactly one line in the
-    // app is excused today, and pinning the count is what stops the hatch
-    // becoming the way past the rule: a second one is a decision somebody has
-    // to make on purpose, in this file, in front of a reviewer.
-    expect(excused).toEqual(['chrome/PoiCard.tsx #625'])
+    // The debt, asserted rather than merely permitted. NOTHING is excused
+    // today - #625 closed the one line that was - and pinning the empty list
+    // is what stops the hatch becoming the way past the rule: the first
+    // exemption is a decision somebody has to make on purpose, in this file,
+    // in front of a reviewer.
+    expect(excused).toEqual([])
   })
 
   it('catches the shape it exists to catch, and lets the mile marker through', () => {

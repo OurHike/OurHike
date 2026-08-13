@@ -1406,11 +1406,20 @@ a.poi-card__credit::after {
   color: var(--fg-3);
 }
 
-/* Body text, and the only prose on the card. Sits between the meta line and
-   the unverified block at a size between the two: it is worth reading, and it
-   is not the headline. Leading is looser than the rest because this is the one
-   element here that can run to three lines. */
-.poi-card__description {
+/* Body text. Sits between the meta line and the unverified block at a size
+   between the two: it is worth reading, and it is not the headline. Leading is
+   looser than the rest because these are the elements here that can run to
+   three lines.
+
+   The nearby sentence is the same paragraph in every respect that shows, and
+   deliberately so - it was spliced onto the end of the description until #625
+   moved the composing to the phone, and a hiker should not be able to tell
+   that a sentence changed which machine wrote it. Two selectors rather than
+   one class on both elements, because they are two different facts about the
+   place and the card's markup says which is which. */
+.poi-card__description,
+.poi-card__nearby,
+.poi-card__stream {
   margin: var(--space-1, 4px) 0 0;
   font-size: 13px;
   line-height: 1.45;

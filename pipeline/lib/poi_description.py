@@ -78,8 +78,8 @@ of them is wrong and there is no way here to tell which.
 Since #524 a site's members draw no pin: 284 privies and 144 campsites ride an
 anchor's pin instead of competing for one. That fixed the map and emptied the
 words - each of those points still composes a perfectly good sentence about
-itself, attached to a feature that renders nowhere. So an anchor's sentence
-carries its parts, and `nearby_clause` is where that is written.
+itself, attached to a feature that renders nowhere. So an anchor publishes its
+parts, and `nearby_parts` is where that is written.
 
 **It is a SEPARATE SENTENCE, never a `with` clause**, and the distinction is
 the whole point of it. "with a fireplace, a fire ring and a porch" lists things
@@ -88,6 +88,21 @@ separate points a short walk away, and folding them into that grammar would
 have this pipeline assert something ATC's data does not say and the ground
 plainly contradicts. They get their own sentence, and every one of them
 carries how far it is.
+
+**The sentence is written on the phone, and only the sentence** (#625,
+2026-08-13). `nearby_parts` used to return that clause finished - " Nearby: a
+multi-seat moldering privy 40 m away." - spliced into `description` and
+published as prose. A hiker who picks Feet in Settings then reads metres, on
+the one card in the app that cannot answer them, because a sentence composed
+here was composed before there was anybody to ask. So the distance leaves as a
+NUMBER and client/src/lib/nearbyClause.ts writes the words around it in the
+system that hiker chose.
+
+What stays here is everything that does not depend on the reader: which privy,
+which campsite, in what order. Those are ATC's inventory columns read aloud,
+they are tested here, and moving them to TypeScript would buy a second
+implementation of the same wording. What leaves is the unit and the punctuation
+holding it - which is the smallest cut that lets the phone answer.
 """
 
 # Exterior_M's coded domain, as adjectives rather than the inventory's own
@@ -229,10 +244,19 @@ COMPASS_POINTS = ("north", "north-east", "east", "south-east", "south", "south-w
 # comes first, which is drift a hiker reads as three different answers.
 NEARBY_ORDER = ("privy", "water", "campsite")
 
-# The word the parts are introduced with. One label rather than repeating
-# "away" on every part: the reader carries it forward across the list, and three
-# of them in a row is the sentence describing its own grammar.
-NEARBY_LEAD = "Nearby"
+# The shortest distance a part is published at: one metre, in the feet this
+# module publishes (1 / 0.3048 = 3.28084).
+#
+# The floor `_metres` used to apply, restated in the published unit. Two
+# facility points sharing a coordinate to within half a metre is one thing
+# upstream, and a card saying a hiker can walk zero of anything to reach the
+# privy reads as a bug rather than as the short walk it is claiming.
+#
+# Floored where BOTH systems still round to something, which is why this is a
+# metre and not a foot: at 1 ft a metric reader gets "0 m", which is the exact
+# defect this prevents, arriving in the other unit. The imperial reader's "3 ft"
+# overstates a coincident pair by the same margin metric's "1 m" always did.
+MIN_PART_FT = 3.28084
 
 # ATC's `Type` code for a campsite that is a group site.
 GROUP_CAMPSITE_TYPE = "1"
@@ -289,18 +313,18 @@ def _note_clause(note: str | None) -> str:
     return f" ATC notes: {text}"
 
 
-def describe_shelter(properties: dict, capacity: int | None = None, note: str | None = None, nearby: str = "") -> str | None:
+def describe_shelter(properties: dict, capacity: int | None = None, note: str | None = None) -> str | None:
     """One sentence about a shelter, or None if ATC states nothing usable.
 
     None is reachable in principle - a feature with no material, one storey,
-    no listed feature, no plausible year, no note and no parts around it - and
-    on today's data it never happens, because `Year_Built` alone is populated
-    on all 280.
+    no listed feature, no plausible year and no note - and on today's data it
+    never happens, because `Year_Built` alone is populated on all 280.
 
-    `nearby` is nearby_clause()'s output, spliced BEFORE the note rather than
-    after it. The note is a person's prose and stays last, where the
-    attribution reads as covering it and nothing else; a composed clause
-    trailing "ATC notes: ..." would read as part of what ATC wrote.
+    The parts around it are NOT in here (#625). They were, as a clause spliced
+    before the note, and taking them out is what let the distance become a
+    number a phone can put in the hiker's own units - see nearby_parts. The
+    card renders that sentence directly under this one, which is where the
+    spliced clause appeared anyway.
     """
     storeys = STOREYS.get(int(_count(properties, "Stories")))
     material = EXTERIOR_MATERIALS.get(str(properties.get("Exterior_M", "")).strip())
@@ -310,10 +334,11 @@ def describe_shelter(properties: dict, capacity: int | None = None, note: str | 
     if capacity is not None:
         head += f", sleeps {capacity}"
 
-    sentence = f"{head}{_with_clause(properties, FEATURES)}.{_built_clause(properties)}{nearby}{_note_clause(note)}"
+    sentence = f"{head}{_with_clause(properties, FEATURES)}.{_built_clause(properties)}{_note_clause(note)}"
     # "Shelter." on its own says nothing the card's own type line does not.
-    # With parts around it, it is the lead-in to the only line that mentions
-    # them, and carries.
+    # This used to carry where the shelter had parts, because it was the
+    # lead-in to the only line naming them; the nearby sentence now stands on
+    # its own, so the lead-in has nothing left to lead into.
     if sentence == "Shelter.":
         return None
     return sentence
@@ -495,7 +520,7 @@ def describe_viewpoint(properties: dict, note: str | None = None) -> str | None:
     return f"{head}.{_note_clause(note)}"
 
 
-def describe_campsite(properties: dict, note: str | None = None, nearby: str = "") -> str | None:
+def describe_campsite(properties: dict, note: str | None = None) -> str | None:
     """One sentence about a campsite, or None if ATC states nothing usable.
 
     Campsites carry a much thinner inventory than shelters - no storeys, no
@@ -504,8 +529,8 @@ def describe_campsite(properties: dict, note: str | None = None, nearby: str = "
 
     A campsite is in both of lib/poi_sites.py's tuples - a member of a
     shelter's site, and the anchor of its own where there is no shelter - so
-    `nearby` is populated here for the 41 campsite-anchored sites and empty for
-    the 144 campsites that fold into a shelter's.
+    the 41 campsite-anchored sites publish `nearby_parts` alongside this
+    sentence and the 144 that fold into a shelter's publish none.
     """
     head = "Designated group campsite" if _is_group_campsite(properties) else "Designated campsite"
 
@@ -523,7 +548,7 @@ def describe_campsite(properties: dict, note: str | None = None, nearby: str = "
     if counted:
         head += f", {_join(counted)}"
 
-    sentence = f"{head}{_with_clause(properties, CAMPSITE_FEATURES)}.{nearby}{_note_clause(note)}"
+    sentence = f"{head}{_with_clause(properties, CAMPSITE_FEATURES)}.{_note_clause(note)}"
     if sentence in ("Designated campsite.", "Designated group campsite."):
         # The type line already says "Campsite"; "Designated" alone is not
         # worth a second line on the card.
@@ -602,30 +627,42 @@ def _nearby_part(poi_type: str, properties: dict) -> str:
     return f"{article} {poi_type}"
 
 
-def nearby_clause(members: list[tuple[str, float, dict]]) -> str:
-    """What an anchor's sentence says about the parts around it.
+def nearby_parts(members: list[tuple[str, float, dict]]) -> list[dict]:
+    """What an anchor publishes about the parts around it, for the phone to
+    make a sentence of.
 
-        " Nearby: a multi-seat moldering privy 40 m away, a group campsite
-         25 m and water 90 m."
+        [{"phrase": "a multi-seat moldering privy", "distance_ft": 131.2},
+         {"phrase": "a group campsite", "distance_ft": 82.0},
+         {"phrase": "water", "distance_ft": 295.3}]
 
-    Takes (poi_type, metres, ATC attributes) per member and returns a clause
-    ready to splice in, or "" when there is nothing to say - so a POI in no
-    site composes exactly the sentence it composed before this existed.
+    Takes (poi_type, FEET, ATC attributes) per member and returns the parts in
+    the order the sentence says them, or [] when there is nothing to say - so a
+    POI in no site publishes nothing and describes itself exactly as it did
+    before sites existed.
 
-    A SEPARATE SENTENCE, NOT A `with` CLAUSE. A shelter does not have a privy
-    and a water source inside it; they are separate points a short walk away.
-    See the module docstring - this is the one thing about this clause that is
-    not a formatting decision.
+    STRUCTURE, NOT PROSE (#625). This returned the finished clause until a
+    hiker who had chosen Feet read metres on it; the module docstring has the
+    argument. `client/src/lib/nearbyClause.ts` writes the sentence, which is
+    where the lead word, the list punctuation and the single carried-forward
+    "away" went with it.
 
-    "away" is said once and carried forward across the list. Three of them in
-    a row reads as a sentence explaining its own grammar, and the label at the
-    front has already said it.
+    FEET, because that is the unit this artifact already states a distance in
+    (`water_distance_ft` is ATC's own) and the unit `lib/units.ts` formats
+    from. The measurement is made in metres - it is the equirectangular
+    distance that decided this member belongs to this site - and converted once
+    at the export boundary rather than here, so the gates and the number that
+    passed them stay in one unit.
+
+    UNROUNDED, past the one-metre floor. Rounding here and again at display
+    would put a card's chip and its sentence a metre apart on the boundaries;
+    the phone rounds once, in whichever unit it is about to write.
 
     Ordered by NEARBY_ORDER and then by distance, rather than by whatever order
     the grouping produced. Two privies at one campsite - open question 4's
     "Backpacker Campsite Upper Privy" and "...Lower Privy" - come out nearest
     first, which is the only thing distinguishing them that a hiker standing at
-    the anchor can act on.
+    the anchor can act on. The ORDER is published, not re-derived: a client
+    sorting these again would be a second opinion about which part comes first.
     """
     ranked = sorted(
         members,
@@ -634,40 +671,13 @@ def nearby_clause(members: list[tuple[str, float, dict]]) -> str:
             member[1],
         ),
     )
-    parts = [f"{_nearby_part(poi_type, properties or {})} {_metres(metres)}" for poi_type, metres, properties in ranked]
-    if not parts:
-        return ""
-    parts[0] += " away"
-    return f" {NEARBY_LEAD}: {_join(parts)}."
-
-
-def _metres(metres: float) -> str:
-    """A member's distance, in whole metres.
-
-    METRES, AND NOT A HIKER'S UNIT PREFERENCE. features/POI_SITES.md §5 writes
-    these distances in metres and #526's chips render them the same way, so the
-    same fact reading "40 m" on a chip and "131 ft" in the sentence above it
-    would be drift on one card. `unit_system` exists in the client's preferences
-    (lib/userPreferences.ts) and reaches nothing today; when it does, this is
-    published prose and changing it costs a re-export - the honest price of
-    composing sentences in the pipeline rather than on the phone.
-
-    WHOLE METRES, for the reason the view arc is rounded to 5°: a site is under
-    150 m across by construction - that is the gate that grouped it - so this is
-    a how-many-paces number rather than a measurement, and tenths are noise
-    against two points surveyed no finer than this. Rounded the same way #526's
-    `partDistance` rounds it, over the same equirectangular distance, so the
-    chip and the sentence above it cannot print two numbers for one pair.
-
-    Floored at 1 m rather than allowed to round to zero. "0 m away" reads as a
-    bug; two facility points sharing a coordinate to within half a metre is one
-    upstream, and the sentence should not repeat it as though it were a walk.
-
-    Thousands separated, which cannot bind today - the widest gate admitting a
-    member is 150 m - and is there for the same reason MAX_SITE_RADIUS_M is:
-    the next edit to those gates.
-    """
-    return f"{max(1, round(metres)):,} m"
+    return [
+        {
+            "phrase": _nearby_part(poi_type, properties or {}),
+            "distance_ft": round(max(MIN_PART_FT, feet), 1),
+        }
+        for poi_type, feet, properties in ranked
+    ]
 
 
 # fetch_osm_water.py's `kind` values -> the sentence's head. A kind that
@@ -722,41 +732,15 @@ def describe_water(properties: dict) -> str | None:
     return sentence
 
 
-def stream_sentence(distance_m: int | None, flow: str | None, gnis_name: str | None) -> str:
-    """The shelter card's stream sentence, from reference/nhd_streams.json's
-    facts (#529, WATER_SOURCES.md §7 option 2):
-
-        "Nearest mapped stream: Stony Brook, about 70 m (USGS; mapped as
-         year-round, not recently verified)."
-        "Nearest mapped stream about 300 m (USGS; mapped as seasonal, not
-         recently verified)."
-        "No mapped stream within 1 km (USGS)."
-
-    A PROXIMITY CLAIM, DELIBERATELY NOT A PIN, and the wording is the
-    load-bearing part. "Mapped as", never "is": the perennial/intermittent
-    code disagrees with field observations ~20% of the time and far more at
-    headwaters (WATER_SOURCES.md §5), so year-round is what the map says,
-    "not recently verified" is what the frozen snapshot means, and both
-    qualifiers travel with the claim they qualify. An unclassified reach
-    makes no flow claim at all rather than a hedged one.
-
-    "About", and coarse rounding to match: these distances came from an
-    envelope query against survey-era stream geometry, and "about 707 m"
-    would dress that as a measurement. Under 100 m the nearest 10 is how a
-    hiker reads a short walk; above it the nearest 50 is all the geometry
-    supports.
-
-    The no-stream sentence prints rather than staying silent, because "no
-    mapped stream within 1 km" is a fact a hiker plans an evening around -
-    Blood Mountain's card owes them that sentence most of all.
-    """
-    if distance_m is None:
-        return "No mapped stream within 1 km (USGS)."
-    step = 10 if distance_m < 100 else 50
-    about = max(step, round(distance_m / step) * step)
-    qualifiers = {"perennial": "mapped as year-round", "intermittent": "mapped as seasonal", "ephemeral": "mapped as seasonal"}
-    qualifier = qualifiers.get(flow or "")
-    parenthetical = f"(USGS; {qualifier}, not recently verified)" if qualifier else "(USGS)"
-    if gnis_name:
-        return f"Nearest mapped stream: {gnis_name}, about {about:,} m {parenthetical}."
-    return f"Nearest mapped stream about {about:,} m {parenthetical}."
+# The stream fact deliberately has NO sentence composer here (#529 meets
+# #625): "Nearest mapped stream: Stony Brook, about 250 ft" contains a
+# distance, and a distance is the reader's question - so export_poi.py's
+# attach_stream publishes the FACTS (name, distance_ft, flow) as structure,
+# exactly as nearby_parts above publishes the site's parts, and
+# client/src/lib/streamSentence.ts writes the words in whichever unit the
+# hiker picked. The wording constraints that used to live in a composer here
+# travel with that file: "mapped as", never "is" (the FCode disagrees with
+# field observations ~20% of the time - WATER_SOURCES.md §5), no flow claim
+# at all for an unclassified reach, and the no-stream case printed rather
+# than silent, because "no mapped stream within 1 km" is a fact a hiker
+# plans an evening around.

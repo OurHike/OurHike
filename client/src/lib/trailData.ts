@@ -32,6 +32,8 @@ import {
   type PoiType,
 } from './config'
 import { parseProfile, type ElevationProfile } from './elevationProfile'
+import type { NearbyPart } from './nearbyClause'
+import type { StreamFacts } from './streamSentence'
 import type { SpurRecord } from './spurDestination'
 import { publishedHash } from './dataManifest'
 import { sha256Hex } from './sha256'
@@ -124,6 +126,31 @@ export interface StoredPoi {
    * not in a site". Both draw a plain pin, which is what that phone drew before.
    */
   siteId?: string
+  /**
+   * The parts around this site's anchor, ready for lib/nearbyClause.ts to make
+   * a sentence of: a noun phrase each and how far each one is, in feet.
+   *
+   * Anchors only, and only those with parts - which is 291 of the corridor's
+   * points. The pipeline composed this as finished prose inside `description`
+   * until #625, where the distances were metres for everybody; the phrases are
+   * still ATC's inventory read aloud and still composed there, and the distance
+   * arrives as a number so the card can write it in the hiker's own units.
+   *
+   * Optional for the same backward-compat reason as `source`: a phone that
+   * downloaded before this existed has POIs without it, and its cards read
+   * exactly as they did - the old prose still sits in `description`, metres and
+   * all, until the next download replaces it.
+   */
+  nearby?: NearbyPart[]
+  /**
+   * The nearest USGS-mapped stream's facts, ready for lib/streamSentence.ts
+   * to make a sentence of (#529): name where NHD has one, the distance in
+   * feet, the FCode's flow class - or `{none: true}` where nothing is mapped
+   * within a kilometre, which the card prints rather than hides, because a
+   * dry ridge is a fact a hiker plans around. Shelters only; optional for
+   * `nearby`'s backward-compat reason.
+   */
+  stream?: StreamFacts
   /** `"anchor"` or `"member"`. Not a union type on purpose: a later release
    *  could publish a third role, and a phone must not fail to parse a POI over
    *  a word it does not know. map/poiSites.ts treats an unfamiliar role as "not
@@ -204,6 +231,8 @@ interface PoiProperties {
   site_id?: unknown
   site_role?: unknown
   site_name?: unknown
+  nearby?: unknown
+  stream?: unknown
 }
 
 /** The property when it is a non-empty string, else nothing - the artifact
@@ -265,6 +294,83 @@ function readPhotoList(value: unknown): PoiPhoto[] {
   return photos
 }
 
+/**
+ * The `nearby` property as a usable list, or [] for anything unexpected.
+ *
+ * Both shapes, for the reason readPhotoList takes both: the pipeline writes one
+ * JSON string because FlatGeobuf property values are scalars, and GDAL
+ * re-expands a JSON-shaped string into real JSON when it writes the .geojson -
+ * so one export genuinely produces two types for this field.
+ *
+ * Every failure mode degrades to "no nearby sentence" rather than throwing: a
+ * published artifact one version ahead of this build must never make a waypoint
+ * unopenable. An entry needs both halves to be worth keeping - a phrase with no
+ * distance is a part the card cannot place, and a distance with no phrase is a
+ * number with nothing to attach it to.
+ */
+function readNearbyList(value: unknown): NearbyPart[] {
+  let parsed: unknown = value
+  if (typeof value === 'string') {
+    if (value === '') return []
+    try {
+      parsed = JSON.parse(value)
+    } catch {
+      return []
+    }
+  }
+  if (!Array.isArray(parsed)) return []
+
+  const parts: NearbyPart[] = []
+  for (const entry of parsed) {
+    if (typeof entry !== 'object' || entry === null) continue
+    const record = entry as Record<string, unknown>
+    const phrase = stringProp(record.phrase)
+    const distance = record.distance_ft
+    if (
+      phrase === undefined ||
+      typeof distance !== 'number' ||
+      !Number.isFinite(distance)
+    ) {
+      continue
+    }
+    parts.push({ phrase, distance_ft: distance })
+  }
+  return parts
+}
+
+
+/**
+ * The `stream` property as usable facts, or nothing - both shapes, for
+ * readNearbyList's reason (one export, two types), and every failure mode
+ * degrading to "no stream sentence" rather than throwing. `{none: true}` is
+ * kept as itself: it is a fact the card prints, not an absence.
+ */
+function readStreamFacts(value: unknown): StreamFacts | undefined {
+  let parsed: unknown = value
+  if (typeof value === 'string') {
+    if (value === '') return undefined
+    try {
+      parsed = JSON.parse(value)
+    } catch {
+      return undefined
+    }
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined
+
+  const record = parsed as Record<string, unknown>
+  if (record.none === true) return { none: true }
+  if (typeof record.distance_ft !== 'number' || !Number.isFinite(record.distance_ft)) {
+    return undefined
+  }
+  const name = stringProp(record.name)
+  const flow = stringProp(record.flow)
+  return {
+    distance_ft: record.distance_ft,
+    ...(name !== undefined ? { name } : {}),
+    ...(flow !== undefined ? { flow } : {}),
+  }
+}
+
 /** A whole count of people, or nothing. Anything else the artifact could
  *  hold - null for a shelter with no published number, a non-finite value, a
  *  zero or a fraction from a source that meant something other than people -
@@ -317,6 +423,13 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
     const siteId = stringProp(props.site_id)
     const siteRole = stringProp(props.site_role)
     const siteName = stringProp(props.site_name)
+    // The anchor's parts (#614, #625). Structure rather than the prose this
+    // used to arrive as, which is what lets the card write the distances in
+    // the units the hiker chose - see lib/nearbyClause.ts.
+    const nearby = readNearbyList(props.nearby)
+    // The nearest stream's facts (#529), structure for the same reason - the
+    // card writes the distance in the hiker's units via lib/streamSentence.ts.
+    const stream = readStreamFacts(props.stream)
 
     pois.push({
       id: String(props.id ?? `${fallbackType}:${props.lat},${props.lon}`),
@@ -349,6 +462,13 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
       ...(siteId !== undefined && siteRole !== undefined
         ? { siteId, siteRole, ...(siteName !== undefined ? { siteName } : {}) }
         : {}),
+      // Left off entirely when there is nothing in it, like every optional
+      // above: an empty list and an absent field would render identically, and
+      // storing the empty one would put an array on 40,000 POIs to say nothing.
+      ...(nearby.length > 0 ? { nearby } : {}),
+      // Left off when absent, kept when it says {none: true}: "no mapped
+      // stream" is a published fact, not an empty field.
+      ...(stream !== undefined ? { stream } : {}),
       // Photo fields ride only behind a photo URL: an author or licence with
       // no photo is a credit for nothing, and would render as one.
       ...(photoUrl !== undefined

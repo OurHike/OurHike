@@ -279,9 +279,9 @@ ones; the client work for all of this is already built):
 
 - **Water points ride the existing `water` POI type.** No new poi_type, no
   `verify_release.py` change, no client release: a water badge on the site pin, a
-  `Water · N m` chip on the shelter card, and the "Nearby: … water N m" sentence all
-  exist today and are starved of data, not code (`client/src/map/poiSites.ts`,
-  `client/src/chrome/PoiCard.tsx`, `export_poi.py`'s describer). A new source is a
+  `Water · N ft` chip on the shelter card, and the "Nearby: … water N ft" sentence
+  all exist today and are starved of data, not code (`client/src/map/poiSites.ts`,
+  `client/src/chrome/PoiCard.tsx`, `export_poi.py`'s `attach_nearby`). A new source is a
   fetch script on the `fetch_opentrail.py` pattern plus one loader loop in
   `export_poi.py` beside the opentrail one, plus freshness/baseline wiring
   (`check_freshness.py`, `check_output_quality.py`'s `COUNT_UPSTREAM_SOURCES`).
@@ -368,9 +368,13 @@ and hiker reports as the only eventual answer to "is it flowing".
    *Amended 2026-08-13: built.* `build_nhd_streams.py` writes
    [reference/nhd_streams.json](reference/nhd_streams.json) — checked in
    because the snapshot is frozen (§5), so a per-build fetch would re-download
-   an unchanging answer — and `lib/poi_description.stream_sentence` holds the
-   wording above verbatim, including the no-stream sentence and the "mapped
-   as" qualifier on every flow claim.
+   an unchanging answer — and `export_poi.py` publishes each shelter's facts
+   as the `stream` column (name, distance in feet, flow class, or the
+   no-stream fact), with `client/src/lib/streamSentence.ts` writing the words
+   in the hiker's own units — #625's structure-not-prose split, applied the
+   same day it landed. The wording constraints above hold verbatim in that
+   file: "mapped as" on every flow claim, no claim at all for an unclassified
+   reach, and the no-stream sentence printed rather than silent.
 3. **The ATC ask, extended by one question** — *no code, unblocks the ceiling.* The
    combined ask SOURCE_SURVEY.md §10 already plans (capacity, Helene, half-mile
    points) should add: CSI shows per-site water distances sourced from FarOut and

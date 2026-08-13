@@ -308,7 +308,13 @@ references that cross release boundaries.
   review here is bounded (once per refresh), rides a gate that already exists (the release
   PR), and defaults to the recoverable outcome when nobody decides. No inbox accumulates.
 - **Not a general conflation engine.** Sources are matched at transitions — a refresh, a
-  swap — never continuously deduplicated against each other at steady state.
+  swap — never continuously deduplicated against each other at steady state. *(And the
+  transition this doc does not cover — two sources describing one place at the same time — is
+  [POI_DEDUPLICATION.md](POI_DEDUPLICATION.md)'s, added 2026-08-13. The boundary is time
+  against sources: this doc owns "this row is that row, a year later", that one owns "this row
+  is that row, from somewhere else". It writes its decisions as `superseded_by` edges in the
+  ledger above rather than keeping a second one, so the resolver, the tombstone and the
+  release-PR review here serve both.)*
 - **Not a client-side matcher.** [POI_SITES.md](POI_SITES.md) §1's reasons transfer whole:
   stable ids can only be minted where the raw evidence lives, testable against the real
   corridor, computed once.

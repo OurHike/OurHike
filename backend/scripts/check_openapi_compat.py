@@ -45,8 +45,9 @@ WHAT IS DELIBERATELY NOT CHECKED
 Type narrowing beyond required/optional and enum membership - `string` to a
 pattern-constrained `string`, a widened numeric bound. Detecting those well
 means implementing JSON Schema subtyping, and detecting them badly means a
-check people learn to override. The four rules below are the ones that are
-unambiguous.
+check people learn to override. The rules below are the ones that are
+unambiguous - a count this docstring once kept ("the four rules") and let
+drift, which is its own small #650.
 """
 
 from __future__ import annotations
@@ -166,6 +167,44 @@ def _enum_values(schema: dict[str, Any]) -> set[Any] | None:
     return None
 
 
+def _required_parameters(operation: dict[str, Any]) -> set[tuple[str, str]]:
+    return {
+        (parameter.get("in", "?"), parameter.get("name", "?"))
+        for parameter in operation.get("parameters") or []
+        if isinstance(parameter, dict) and parameter.get("required")
+    }
+
+
+def _operation_breaks(path: str, method: str, old: dict[str, Any], new: dict[str, Any]) -> list[Break]:
+    """The break classes that live on an operation rather than on a schema.
+
+    All three returned nothing before #650, while the docstring below said
+    "every way": a parameter made required (old clients never send it and
+    422 forever), a request body made required where none was (same), and a
+    response stripped of its content (the reader gets nothing, and the
+    schema-role rules go quiet with it, because the reference that gave the
+    schema its RESPONSE role vanished with the content).
+    """
+    where = f"{method.upper()} {path}"
+    breaks: list[Break] = []
+
+    for location, name in sorted(_required_parameters(new) - _required_parameters(old)):
+        breaks.append(Break("parameter newly required", f"{where} {location}:{name}", "an old client never sends it and 422s"))
+
+    if (new.get("requestBody") or {}).get("required") and not (old.get("requestBody") or {}).get("required"):
+        breaks.append(Break("request body newly required", where, "an old client sends none and 422s"))
+
+    new_responses = new.get("responses") or {}
+    for status, old_response in (old.get("responses") or {}).items():
+        if not isinstance(old_response, dict) or not old_response.get("content"):
+            continue
+        new_response = new_responses.get(status)
+        if not isinstance(new_response, dict) or not new_response.get("content"):
+            breaks.append(Break("response stripped", f"{where} {status}", "an old client reads a body this no longer sends"))
+
+    return breaks
+
+
 def compare(baseline: dict[str, Any], current: dict[str, Any]) -> list[Break]:
     """Every way `current` breaks a client written against `baseline`."""
     breaks: list[Break] = []
@@ -183,6 +222,10 @@ def compare(baseline: dict[str, Any], current: dict[str, Any]) -> list[Break]:
                 continue
             if method not in new_item:
                 breaks.append(Break("operation removed", f"{method.upper()} {path}", "clients calling it get a 405"))
+                continue
+            new_operation = new_item[method]
+            if isinstance(new_operation, dict):
+                breaks.extend(_operation_breaks(path, method, old_operation, new_operation))
 
     old_schemas = baseline.get("components", {}).get("schemas", {})
     new_schemas = current.get("components", {}).get("schemas", {})

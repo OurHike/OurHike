@@ -4,7 +4,8 @@
 // alone can trigger: (1) distance from the nearest trail line exceeds a
 // threshold (reuses Map Options' snap-to-segment math conceptually - this
 // module takes the already-computed distance as an input, it doesn't do
-// the geometry itself), (2) a sustained reversed bearing vs. the hike's
+// the geometry itself; see WrongWaySample.distanceFromTrailFt for which
+// distance, which is load-bearing), (2) a sustained reversed bearing vs. the hike's
 // intended direction. A `bearingDeltaDeg` of `null` means "not moving
 // enough to have a meaningful bearing" (e.g. standing still at a shelter)
 // and must never count toward sustained divergence - that's what makes a
@@ -23,6 +24,19 @@ const REVERSED_BEARING_THRESHOLD_DEG = 90
 
 export interface WrongWaySample {
   timestampMs: number
+  /**
+   * Distance from the nearest mapped tread of ANY kind - `TrailFix.offTreadFeet`,
+   * not `offTrailFeet`.
+   *
+   * Which of the two is fed in decides whether this mode is a wrong-way test
+   * or a shelter detector, so it is a contract rather than a preference.
+   * Measured against the live ATC layers (#308): the median shelter is 197 ft
+   * from the centerline and 72% are past OFF_TRAIL_THRESHOLD_FT, because the
+   * shelter sits at the end of a blue-blazed side trail. Fed the centerline
+   * distance, this mode raises "you may be off the trail" at roughly three in
+   * four shelter stops longer than CUE_PERSISTENCE_MS - which is what a
+   * shelter is for. Fed the tread distance, that falls to about one in twenty.
+   */
   distanceFromTrailFt: number
   /** Degrees of deviation from the hike's intended bearing; null if the
    * hiker isn't moving enough for a bearing to mean anything. */

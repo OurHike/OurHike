@@ -125,6 +125,28 @@ describe('buildTrailIndex', () => {
     expect(index.lons).toHaveLength(2)
   })
 
+  it('keeps spurs as tread even though they are off the mile axis', () => {
+    const index = buildTrailIndex(
+      collection([
+        line([
+          [-77, 39],
+          [-77, 39 + MILE_IN_DEGREES_LAT],
+        ]),
+        line(
+          [
+            [-77, 39],
+            [-76.9, 39],
+          ],
+          'side_trails',
+        ),
+      ]),
+    )
+
+    // Both sets of vertices, in one index: two on the axis, four on tread.
+    expect(index.lons).toHaveLength(2)
+    expect(index.tread.lons).toHaveLength(4)
+  })
+
   it('is empty rather than broken when there is no centerline at all', () => {
     const index = buildTrailIndex(collection([]))
 
@@ -291,6 +313,97 @@ describe('locateOnTrail', () => {
 
     expect(broken.lons).toHaveLength(2)
     expect(locateOnTrail(broken, { lon: -77, lat: 39 })).toBeNull()
+  })
+})
+
+describe('offTreadFeet', () => {
+  // The shape this exists for, at the real measured scale (#308): a shelter
+  // roughly 200 ft off the centerline, reached by the blue-blazed side trail
+  // that is the entire reason it is where it is. The median A.T. shelter is
+  // 197 ft out and OFF_TRAIL_THRESHOLD_FT is 90, so a hiker standing at one is
+  // "off trail" by the centerline measure and on it by the honest one.
+  const SHELTER = { lon: -77 + 200 / 284_000, lat: 39.005 }
+
+  function corridor(withSideTrail: boolean) {
+    const features = [
+      line(
+        Array.from({ length: 50 }, (_, i) => [-77, 39 + i * MILE_IN_DEGREES_LAT * 0.1]),
+      ),
+    ]
+    if (withSideTrail) {
+      features.push(
+        line(
+          [
+            [-77, SHELTER.lat],
+            [SHELTER.lon, SHELTER.lat],
+          ],
+          'side_trails',
+        ),
+      )
+    }
+    return buildTrailIndex(collection(features))
+  }
+
+  it('measures a shelter spur as on-trail once the side trail is indexed', () => {
+    const fix = locateOnTrail(corridor(true), SHELTER)
+
+    // The distance that decides the mile is unchanged - the shelter really is
+    // ~200 ft from the A.T., and that fact is not being edited away.
+    expect(fix?.offTrailFeet).toBeGreaterThan(150)
+    // The distance that decides "are you on a trail" now says yes.
+    expect(fix?.offTreadFeet).toBeLessThan(10)
+  })
+
+  it('is the centerline distance when no side trail reaches the spot', () => {
+    // Same coordinates, same everything, minus the blue blaze: an unmapped
+    // 200 ft from any tread is genuinely 200 ft from any tread, and this must
+    // not quietly report otherwise.
+    const fix = locateOnTrail(corridor(false), SHELTER)
+
+    expect(fix?.offTreadFeet).toBeCloseTo(fix?.offTrailFeet ?? -1, 5)
+    expect(fix?.offTreadFeet).toBeGreaterThan(150)
+  })
+
+  it('is never farther than the centerline distance', () => {
+    // The centerline is part of the tread, so this holds everywhere or the
+    // sets have come apart. Walking the middle of the A.T. is the case that
+    // would break if `tread` were built from the spurs alone.
+    const index = corridor(true)
+
+    for (const lat of [39, 39.005, 39.01, 39.02, 39.04]) {
+      for (const lon of [-77, -76.999, -76.998]) {
+        const fix = locateOnTrail(index, { lon, lat })
+        if (fix !== null) {
+          expect(fix.offTreadFeet).toBeLessThanOrEqual(fix.offTrailFeet + 1e-6)
+        }
+      }
+    }
+  })
+
+  it('does not let a side trail put a hiker on the mile axis', () => {
+    // The gate is the centerline's, not the tread's. A side trail running far
+    // out from the corridor is still tread, and someone at the end of it still
+    // has no honest mile - so the fix is refused rather than answered with the
+    // mile of the junction miles away.
+    const index = buildTrailIndex(
+      collection([
+        line([
+          [-77, 39],
+          [-77, 39 + MILE_IN_DEGREES_LAT],
+        ]),
+        line(
+          [
+            [-77, 39],
+            [-77, 39 + MILE_IN_DEGREES_LAT * 5],
+          ],
+          'side_trails',
+        ),
+      ]),
+    )
+
+    expect(
+      locateOnTrail(index, { lon: -77, lat: 39 + MILE_IN_DEGREES_LAT * 5 }),
+    ).toBeNull()
   })
 })
 

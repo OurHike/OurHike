@@ -219,11 +219,22 @@ def test_obstructs_trail_must_be_a_real_boolean():
     assert any("must be true or false" in problem for problem in problems)
 
 
-def test_two_closures_can_disagree_about_obstructing_the_trail():
-    """The live case that removed the category-based rule (2026-08-12). ATC
-    files both of these as `Closure`, and they are opposite answers to the only
-    question a band asks - the trail past Limestone Spring is open and the
-    shelter is shut, while the way across the Potomac is gone."""
+def test_atcs_category_does_not_answer_whether_the_trail_is_passable():
+    """The live case that removed the category-based rule, as ATC actually
+    filed it on 2026-08-12.
+
+    The two rows below are the whole argument. The only notice ATC files as
+    `Closure` is a closed SHELTER, with the trail past it open; the one thing
+    that genuinely stops a hiker - the way across the Potomac - is filed as
+    `Detour`. So the old rule ("draw `Closure` and `Detour`") was wrong in
+    both directions at once: it would have barred open trail at Limestone
+    Spring, and it caught the real obstruction only because `Detour` happened
+    to be on its list.
+
+    Written from the live page rather than from memory of it. The first
+    version of this test said both were `Closure`, which is the tidier story
+    and not the one ATC published.
+    """
     shelter = row(
         atc_id="connecticut-limestone-spring-shelter-closed",
         title="Connecticut: Limestone Spring Shelter Closed",
@@ -236,8 +247,8 @@ def test_two_closures_can_disagree_about_obstructing_the_trail():
     footbridge = row(
         atc_id="harpers-ferry-footbridge-closure",
         title="Harpers Ferry: Footbridge Closure",
-        category="Closure",
-        states=["WV"],
+        category="Detour",
+        states=["MD", "WV"],
         start_mile_marker=1026.7,
         end_mile_marker=1026.7,
         obstructs_trail=True,
@@ -245,5 +256,7 @@ def test_two_closures_can_disagree_about_obstructing_the_trail():
 
     assert row_problems(shelter) == []
     assert row_problems(footbridge) == []
-    assert shelter["category"] == footbridge["category"]
-    assert shelter["obstructs_trail"] != footbridge["obstructs_trail"]
+    # The `Closure` is the one that does NOT obstruct, which is the whole
+    # point: sorting on the category gets both of these backwards.
+    assert shelter["category"] == "Closure" and not shelter["obstructs_trail"]
+    assert footbridge["category"] == "Detour" and footbridge["obstructs_trail"]

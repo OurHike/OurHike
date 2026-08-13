@@ -49,10 +49,16 @@ describe('which updates become bands', () => {
   })
 
   it('does not read the answer off ATC’s category', () => {
-    // The live case that removed the category-based rule (2026-08-12). ATC
-    // files both of these as `Closure` and they are opposite answers: the
-    // trail past Limestone Spring is open and the shelter is shut, while the
-    // way across the Potomac is gone.
+    // The live case that removed the category-based rule, as ATC actually
+    // filed it on 2026-08-12: the only notice they call a `Closure` is a
+    // closed SHELTER with the trail past it open, while the one thing that
+    // genuinely stops a hiker - the way across the Potomac - is a `Detour`.
+    // The old rule ("draw `Closure` and `Detour`") was therefore wrong in
+    // both directions at once.
+    //
+    // Written from the live page rather than from memory of it. The first
+    // version of this test said both were `Closure`, which is the tidier
+    // story and not the one ATC published.
     const shelter = update({
       atc_id: 'connecticut-limestone-spring-shelter-closed',
       category: 'Closure',
@@ -60,10 +66,12 @@ describe('which updates become bands', () => {
     })
     const footbridge = update({
       atc_id: 'harpers-ferry-footbridge-closure',
-      category: 'Closure',
+      category: 'Detour',
       obstructs_trail: true,
     })
 
+    // The `Closure` is the one that does NOT obstruct, which is the whole
+    // point: sorting on the category gets both of these backwards.
     expect(obstructsTheTrail(shelter)).toBe(false)
     expect(obstructsTheTrail(footbridge)).toBe(true)
   })

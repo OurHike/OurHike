@@ -6,7 +6,7 @@ OurHike is a map for hikers, built to be handed to the clubs that maintain the t
 
 **A trail condition** — a blowdown, flooding, a damaged shelter, a closure — goes through the **app's own "Report a problem" flow**, not GitHub. That reaches a moderator who can act on it. Nobody is watching this repository for washed-out bridges.
 
-**A bug in the software**, or **a systematic data problem** (a shelter in the wrong place, a missing water source, a wrong blaze colour) belongs in [Issues](https://github.com/OurHike/OurHike/issues). There is a form for each.
+**A bug in the software**, or **a systematic data problem** (a shelter in the wrong place, a missing water source, a wrong blaze colour) belongs in [Issues](https://github.com/OurHike/OurHike/issues). There is a form for each, and the app links to both from **Settings → Report a bug** with the build details already filled in — so a report filed that way names the exact build it came from without anyone retyping a commit hash.
 
 If a bug could mislead someone about where they are, where water is, or a hazard, say so — there is a checkbox for it, and those get looked at first. This app gets used in places where being wrong is expensive.
 

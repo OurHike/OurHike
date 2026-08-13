@@ -224,6 +224,16 @@ Later rows are shown at reduced opacity with a "Later" tag rather than hidden.
 
 The commit is there because the version alone cannot identify most builds: `client/package.json` reads `0.0.0` until the first tag, so `main`, every preview and every laptop share it, and the section says as much rather than letting `0.0.0` pass for a version someone could look up. The build time is there because a service worker can serve a bundle long after a newer one deployed, which is otherwise invisible from the phone. The copy button is not a convenience — seven characters of hex retyped from a phone into an email is exactly what arrives with a digit changed — and the three rows stay readable either way, so a browser that refuses the clipboard costs accuracy rather than the feature. RELEASING.md §4 has the version meanings.
 
+**Report a bug** (added 2026-08-13, [#626](https://github.com/OurHike/OurHike/issues/626)) — four options, each opening the GitHub issue form that fits, directly below About this build and still above the download link. Reference material like the section it follows, and it takes no `UserPreferences` key either.
+
+Its placement is the mechanism, not a layout preference: About this build ends by saying the build is worth quoting in a report, and these links carry those exact three lines into the form's `Device and conditions` field, from the same `BuildInfo` the rows above render. Nobody retypes a commit hash. The `area` dropdown is preselected the same way, which is why `client/src/test/issueFormPrefill.test.ts` reads `.github/ISSUE_TEMPLATE/` itself — GitHub matches a prefilled dropdown by its option _text_, so a label reworded in the form and nowhere else stops preselecting silently rather than failing.
+
+The options are worded for the person holding the phone rather than for the tracker they land in — _the app itself_, _something on the map is wrong_, _reports, syncing or signing in_, _something else_ — because someone watching a pin sit in the wrong place is not thinking in client/backend/pipeline. `client/src/lib/bugReport.ts` does that mapping so the hiker does not have to.
+
+Two things it must say and does. **A trail condition is not a bug**, stated above the options rather than under them: this section sits one word from "Report a problem" (§6), which is the flow a blowdown goes through and the one a moderator reads, and somebody who has already tapped has already gone to the wrong place. And **every one of these links needs signal** — in an app whose whole premise is working without it, these four are the one part of Settings that cannot, so the section says so and points at the copy button immediately above as what to do out of range.
+
+It closes by inviting whoever writes code to the repository. This project is built to be handed to the clubs that maintain the trails rather than owned by whoever wrote it, and the moment someone has gone looking for where to report a defect is the one moment they are already pointed at it. Deliberately **not** prefilled: `navigator.userAgent`. It would answer the form's "phone and browser" better than a hiker can, and the build is a fact about our software where the device is a fact about them — see IDENTITY_AND_PRIVACY.md.
+
 ### 11. Data staleness (`16b`)
 
 A third visual channel, independent of confidence:

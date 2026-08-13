@@ -29,20 +29,19 @@ and the waypoints are not it.
 
 ## The seam
 
-[POI_VISIBILITY.md](POI_VISIBILITY.md) owns the number — **`POI_PIN_MIN_ZOOM = 10`**, chosen on
-one criterion: a day's hike is 16–24 miles, and a phone map covers 25.5 miles of ground at z10.
-Below it, this doc. Above it, that one.
+[POI_VISIBILITY.md](POI_VISIBILITY.md) owns the number — **`POI_PIN_MIN_ZOOM = 9`**, chosen on one
+criterion: a day's hike is 16–24 miles, the planning window is twice that so the day has ground
+around it, and a phone map covers 50.9 miles at z9. Below it, this doc. Above it, that one.
 
-**So this view owns z0–z9**, which on a phone runs from the whole corridor at about z4 down to a
-screen holding roughly 28 × 51 miles — two days of walking. That is the range in which somebody is
-choosing *where to go* rather than looking at where they are, which is the right span for a screen
-about exploring.
+**So this view owns z0–z8**, which on a phone runs from the whole corridor at about z4 down to a
+screen holding roughly 57 × 102 miles — four days of walking. That is the range in which somebody
+is choosing *where to go* rather than looking at where they are, which is the right span for a
+screen about exploring.
 
-**It was z12 for an afternoon on 2026-08-13**, which would have given this view everything out to
-6.4 miles of ground — a quarter of a day, and far too much of the map for a screen that has no
-waypoints on it. The correction is recorded in [POI_VISIBILITY.md](POI_VISIBILITY.md)'s seam
-section; the short version is that the first criterion tested pin legibility, and under two ranks
-legibility is a comfort question rather than a truth one.
+**It was z12, then z10, before settling here on 2026-08-13**, and the corrections all ran the same
+way: each earlier number handed this view more of the map than it should have had, on a criterion
+that turned out to be about pin comfort rather than about what a hiker is doing.
+[POI_VISIBILITY.md](POI_VISIBILITY.md)'s seam section records them.
 
 The property that makes the split honest, and it is the whole reason this is a separate doc:
 **below the seam the map is not an incomplete map of places. It is a complete map of something

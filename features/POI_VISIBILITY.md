@@ -139,48 +139,69 @@ The absence of a pin is the strongest statement this map makes about a place. So
 One zoom, `POI_PIN_MIN_ZOOM`, replacing `POI_MIN_ZOOM`. Below it the map is about the trail and
 is [CORRIDOR_VIEW.md](CORRIDOR_VIEW.md)'s; above it the map is about places and is this doc's.
 
-**`POI_PIN_MIN_ZOOM = 10`. The criterion is a day's hike, and that is the whole of it.**
+**`POI_PIN_MIN_ZOOM = 9`, with pins drawn at 0.8 rather than 0.6 to suit it.**
 
-A day on the A.T. is 16–24 miles. A 390 × 700 phone map covers **25.5 miles of ground at z10** and
-12.7 at z11 — so z10 is the tightest zoom that still shows a hiker the day they are about to walk,
-waypoints and all. Further out and the waypoints stop being about a hike and start being about a
-region, which is [CORRIDOR_VIEW.md](CORRIDOR_VIEW.md)'s job.
+A day on the A.T. is 16–24 miles, and the window is **twice that**, so the day has ground around
+it rather than filling the screen edge to edge. A 390 × 700 phone map covers **50.9 miles at z9**
+and 25.5 at z10 — so z9 is the tightest zoom that shows a hiker the day they are about to walk
+*and where it sits*.
 
-**This doc said z12 for an afternoon, and the mistake is worth keeping rather than quietly
-fixing.** The arithmetic was right; the question was wrong. The first pass chose the seam as *the
-tightest zoom where the screen is not oversubscribed with pins* — and that is a pin-legibility
-test. Under two ranks an oversubscribed screen costs **dots, not deletions**, which this very
-document says two paragraphs later. Legibility is a comfort criterion; nothing true or false hangs
-on it. z12 shows 6.4 miles: a quarter of a day, four pans to see one.
+**The doubling is the point, not slack.** z10 fits a 24-mile day exactly, which means the day
+touches both edges and every question that starts *"and then what"* costs a pan.
 
-Measured at z10 by [`pipeline/spike_poi_seam.py`](../pipeline/spike_poi_seam.py) against the live
+Measured at z9 by [`pipeline/spike_poi_seam.py`](../pipeline/spike_poi_seam.py) against the live
 ATC service, with [`lib/poi_sites.py`](../pipeline/lib/poi_sites.py)'s own folding applied:
 
-| zoom | screen | shelter | privy | campsite | parking | viewpoint | all | median load / room |
+| zoom | screen | shelter | privy | campsite | parking | viewpoint | all | load / room |
 |---|---|---|---|---|---|---|---|---|
-| 8 | 101.9 mi | 63% | 51% | 41% | 5% | 1% | 32% | 140 / 26 |
-| 9 | 50.9 mi | 88% | 74% | 68% | 21% | 4% | 51% | 69 / 26 |
-| **10** | **25.5 mi** | **95%** | **82%** | **76%** | **51%** | **15%** | **64%** | **35 / 26** |
-| 11 | 12.7 mi | 97% | 85% | 81% | 69% | 30% | 72% | 18 / 21 |
-| 12 | 6.4 mi | 97% | 86% | 84% | 81% | 46% | 79% | 9 / 18 |
-| 13 | 3.2 mi | 97% | 88% | 85% | 88% | 61% | 84% | 5 / 16 |
+| 8 | 101.9 mi | 51% | 41% | 32% | 4% | 0% | 26% | 140 / 20 |
+| **9** | **50.9 mi** | **83%** | **69%** | **59%** | **14%** | **2%** | **46%** | **69 / 20** |
+| 10 | 25.5 mi | 93% | 79% | 72% | 38% | 10% | 59% | 35 / 19 |
+| 11 | 12.7 mi | 97% | 84% | 79% | 65% | 24% | 70% | 18 / 18 |
+| 12 | 6.4 mi | 97% | 86% | 84% | 81% | 44% | 78% | 9 / 17 |
 
-**At the seam the things a day is planned around are nearly all pins** — shelters 95%, privies
-82%, campsites 76% — **and the vistas are nearly all dots**, which is the right way round and is
-what the dot rank is for. The screen is oversubscribed 35 against room for 26, and that is fine:
-the eleven that lose are dots, not absences.
+**The things a day is planned around are mostly pins; the vistas are almost entirely dots.** The
+screen runs 69 waypoints against room for 20, and that is the design working rather than failing —
+the forty-nine that lose are dots, at their real coordinates, tappable.
 
-**A second correction, in the simulation rather than the design.** The first run modelled a
-full-size 42 px collision box at every zoom, when `POI_ICON_SIZE_EXPRESSION` draws pins at 0.6
-near the seam — a 27 px box. That understates what fits by a lot exactly where it matters: a
-column holds **26** pins at the seam, not 16. The error was conservative, which is why it survived
-a reading; conservative is the wrong property for a number deciding how far out a hiker can still
-see their day.
+### The pins got bigger, and it cost almost nothing
 
-**What z9 would buy and cost**, since it is the obvious next question: 50.9 miles, about two days.
-Shelters barely suffer (95% → 88%) but **parking halves (51% → 21%) and vistas all but vanish as
-pins (15% → 4%)**, and the screen runs 69 against room for 26. Defensible if the map is for
-planning several days at once; z10 is the answer if it is for planning tomorrow.
+Pushing the seam out to z9 draws pins at the low end of `POI_ICON_SIZE_EXPRESSION`'s ramp, where
+0.6 gives a 22.8 px pin carrying a **10.6 px glyph** — a mark you can locate but not identify. The
+obvious worry is that raising it costs coverage, since bigger pins collide more. Measured at z9:
+
+| min scale | pin | glyph | shelter | privy | campsite |
+|---|---|---|---|---|---|
+| 0.6 | 22.8 px | 10.6 px | 88% | 74% | 68% |
+| **0.8** | **30.4 px** | **14.2 px** | **83%** | **69%** | **59%** |
+| 1.0 | 38.0 px | 17.7 px | 73% | 60% | 52% |
+
+**A third more pin costs shelters five points**, because what binds at z9 is the trail's own
+density rather than the box. `POI_PIN_MIN_SCALE = 0.8` is the result. `poiIcons.test.ts` holds a
+7 px floor on a glyph and neither figure is near it — this is about comfort at arm's length in
+sun, not about a minimum.
+
+### It was z12, then z10, both on the same day
+
+Both corrections are kept here rather than tidied away, because in neither case was the arithmetic
+wrong.
+
+**z12** came from asking *"at what zoom does the screen stop being oversubscribed with pins?"* —
+a pin-legibility test, when this very document says an oversubscribed screen costs **dots, not
+deletions**. Legibility is a comfort criterion; nothing true or false hangs on it, so it is the
+wrong thing to set a floor with. z12 showed 6.4 miles: a quarter of a day.
+
+**z10** came from fixing that and then sizing the window to *exactly* one day — a day with no
+context around it.
+
+The failure mode both share is worth naming: a defensible-sounding criterion, correctly computed,
+answering a question nobody was asking. The measurement was never the weak part.
+
+**A third correction, in the simulation rather than the design.** The first run modelled a
+full-size 42 px collision box at every zoom, when the ramp draws pins smaller near the seam. That
+understates what fits exactly where it matters. The spike now models the ramp, and both anchors
+are named constants on both sides so the measurement cannot describe a different map from the one
+that ships.
 
 **Getting it wrong would have been cheap, which is why it was worth measuring rather than
 agonising over.** Under a design that deletes waypoints, the floor is where truth turns into

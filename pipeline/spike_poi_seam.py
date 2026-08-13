@@ -95,7 +95,7 @@ ICON_PADDING_PX = 2.0
 # pins rather than 16. The error was conservative, which is why it survived a
 # reading - but "conservative" is the wrong property for a number that decides
 # how far out a hiker can still see their day.
-PIN_MIN_SCALE = 0.6
+PIN_MIN_SCALE = 0.8
 PIN_FULL_SCALE_ZOOM = 13
 
 # WIREFRAMES.md's phone map area, which is what the seam is a judgement about.
@@ -113,6 +113,18 @@ VIEWPORT_H_PX = 700.0
 # and the map should show a day's worth of waypoints at a glance while they
 # plan it. That is a claim about GROUND COVERED, not about pin density.
 DAY_MILES = 24.0
+
+# And the window is a day PLUS THE GROUND EITHER SIDE OF IT.
+#
+# The correction after the first correction. Sizing the screen to exactly one
+# day puts a 24-mile day edge to edge with no margin: the hiker sees their day
+# and nothing of where it sits, so every question that starts "and then what"
+# needs a pan. z10 is 25.5 miles - a day, and only a day.
+#
+# Doubling it gives z9 at 50.9 miles: the day, and as much again around it.
+# That is the view somebody plans from, and it is what the maintainer asked
+# for on a real screen.
+PLANNING_WINDOW_MILES = DAY_MILES * 2
 
 # Metres per degree at the equator, for the ground-extent arithmetic.
 EARTH_CIRCUMFERENCE_M = 40_075_017.0
@@ -322,7 +334,7 @@ def measure(records: list[dict], zooms: range, seam: float) -> list[ZoomResult]:
     return results
 
 
-def seam(zooms: range = range(4, 18), day_miles: float = DAY_MILES) -> int | None:
+def seam(zooms: range = range(4, 18), window_miles: float = PLANNING_WINDOW_MILES) -> int | None:
     """The lowest zoom that still fits a day's hike on the screen.
 
     THE CRITERION CHANGED ON 2026-08-13 and this is the change. The first cut
@@ -332,8 +344,10 @@ def seam(zooms: range = range(4, 18), day_miles: float = DAY_MILES) -> int | Non
     pin density is about comfort and not about truth.
 
     What the seam is actually for is a hiker looking at the day they are about
-    to walk. A day on the A.T. is 16-24 miles. So: the furthest OUT the map can
-    go while a day still fits, because further out than that the waypoints stop
+    to walk, AND at where that day sits. A day on the A.T. is 16-24 miles, and
+    the window is twice that so the day has ground around it rather than
+    filling the screen edge to edge. So: the furthest OUT the map can go while
+    that window still fits, because further out than that the waypoints stop
     being about a hike and start being about a region - which is the corridor
     view's job (features/CORRIDOR_VIEW.md).
 
@@ -344,7 +358,7 @@ def seam(zooms: range = range(4, 18), day_miles: float = DAY_MILES) -> int | Non
     the point where the screen is ABOUT a day: wider shows a region, tighter
     shows half a day.
     """
-    fitting = [z for z in zooms if screen_miles(z)[1] >= day_miles]
+    fitting = [z for z in zooms if screen_miles(z)[1] >= window_miles]
     return max(fitting, default=None) if fitting else None
 
 
@@ -360,7 +374,9 @@ def main() -> None:
     folded = sum(len(s.members) for s in sites)
     answer = seam()
     print(f"{len(records)} waypoints -> {len(sites)} sites folding {folded} members")
-    print(f"a day is {DAY_MILES:.0f} miles; the seam is the widest view that still fits one\n")
+    print(
+        f"a day is {DAY_MILES:.0f} miles, the planning window {PLANNING_WINDOW_MILES:.0f}; the seam is the tightest view that still fits the window\n"
+    )
 
     results = measure(records, range(args.min_zoom, args.max_zoom + 1), answer or args.min_zoom)
     types = sorted(results[0].drawn_share)

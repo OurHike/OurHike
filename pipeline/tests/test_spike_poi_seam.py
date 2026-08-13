@@ -27,6 +27,8 @@ from spike_poi_seam import (
     DAY_MILES,
     ICON_PADDING_PX,
     PIN_FULL_SCALE_ZOOM,
+    PIN_MIN_SCALE,
+    PLANNING_WINDOW_MILES,
     POI_PIN_SIZE_PX,
     VIEWPORT_H_PX,
     VIEWPORT_W_PX,
@@ -43,7 +45,7 @@ from spike_poi_seam import (
 
 # The seam every call below is measured at, so a test never depends on the
 # constant the spike is computing.
-SEAM = 10
+SEAM = 9
 
 
 def poi(poi_id: str, poi_type: str, lat: float, lon: float, name: str | None = None) -> dict:
@@ -230,7 +232,7 @@ def test_a_pin_is_smaller_at_the_seam_than_at_walking_zoom():
     understates what fits by a lot exactly where it matters: 27 px at the seam
     against 42, so a column holds 26 pins rather than 16."""
     assert pin_box_px(SEAM, SEAM) < pin_box_px(PIN_FULL_SCALE_ZOOM, SEAM)
-    assert pin_box_px(SEAM, SEAM) == pytest.approx(POI_PIN_SIZE_PX * 0.6 + ICON_PADDING_PX * 2)
+    assert pin_box_px(SEAM, SEAM) == pytest.approx(POI_PIN_SIZE_PX * PIN_MIN_SCALE + ICON_PADDING_PX * 2)
 
 
 def test_a_pin_is_full_size_from_z13_up_and_stays_there():
@@ -249,34 +251,45 @@ def test_the_screen_halves_in_each_direction_per_zoom_level():
     assert closer_tall == pytest.approx(tall / 2)
 
 
-def test_the_seam_is_the_tightest_zoom_that_still_shows_a_whole_day():
-    """THE criterion, and the one this spike got wrong first time round.
+def test_the_seam_is_the_tightest_zoom_that_still_shows_the_planning_window():
+    """THE criterion, and the one this spike has now got wrong twice.
 
-    A day on the A.T. is 16-24 miles. The seam is where the screen is ABOUT a
-    day - wider shows a region, tighter shows half a day - so it is the
-    HIGHEST zoom whose screen still fits one.
+    A day on the A.T. is 16-24 miles, and the window is twice that so the day
+    has ground around it rather than filling the screen edge to edge. The seam
+    is the HIGHEST zoom whose screen still fits that window.
     """
     answer = seam()
     assert answer is not None
-    assert screen_miles(answer)[1] >= DAY_MILES
-    assert screen_miles(answer + 1)[1] < DAY_MILES
+    assert screen_miles(answer)[1] >= PLANNING_WINDOW_MILES
+    assert screen_miles(answer + 1)[1] < PLANNING_WINDOW_MILES
+
+
+def test_the_window_is_a_day_with_room_around_it_rather_than_exactly_a_day():
+    """The second correction. Sizing the screen to exactly one day put a
+    24-mile day edge to edge with no context, so every question that starts
+    "and then what" cost a pan. Doubling it is deliberate, not slack."""
+    assert PLANNING_WINDOW_MILES == pytest.approx(DAY_MILES * 2)
+
+    exactly_a_day = seam(window_miles=DAY_MILES)
+    assert seam() < exactly_a_day, "the wider window must sit further out"
+    assert screen_miles(seam())[1] >= DAY_MILES * 2
 
 
 def test_taking_the_lowest_fitting_zoom_would_report_the_whole_corridor():
     """The bug this replaced, kept as a test because it produced a plausible
-    number rather than an error: every wider view also "fits" a day, trivially,
-    so a `min` walks out to the bottom of the range and calls the whole
-    2,197-mile corridor the seam."""
-    fitting = [z for z in range(4, 18) if screen_miles(z)[1] >= DAY_MILES]
+    number rather than an error: every wider view also fits the window,
+    trivially, so a `min` walks out to the bottom of the range and calls the
+    whole 2,197-mile corridor the seam."""
+    fitting = [z for z in range(4, 18) if screen_miles(z)[1] >= PLANNING_WINDOW_MILES]
     assert min(fitting) == 4
     assert seam() == max(fitting)
 
 
-def test_a_shorter_day_pushes_the_seam_in_rather_than_out():
+def test_a_smaller_window_pushes_the_seam_in_rather_than_out():
     """Sanity on the direction, since the inequality is easy to flip: asking
     for less ground on screen means zooming further in."""
-    assert seam(day_miles=DAY_MILES / 4) > seam(day_miles=DAY_MILES)
+    assert seam(window_miles=PLANNING_WINDOW_MILES / 4) > seam()
 
 
 def test_no_zoom_fitting_is_reported_rather_than_guessed():
-    assert seam(zooms=range(18, 20), day_miles=DAY_MILES) is None
+    assert seam(zooms=range(18, 20)) is None

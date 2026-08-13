@@ -131,6 +131,21 @@
       "discovered_via": "features/ATC_TRAIL_UPDATES.md - read from ATC's public website, not from an ArcGIS service. Registered by hand because discover_sources.py walks the Experience Builder app and this source is not in it.",
       "discovered_date": "2026-08-12",
       "notes": "Not fetched by fetch_all.py and has no data/raw/<key>.geojson - the build input is the reviewed file named in `reviewed_input`, which a human edits and a merged pull request releases (#460). The freshness marker is what tells that human ATC has published something since they last looked."
+    },
+    {
+      "key": "gatc_water_sources",
+      "title": "GATC Water Sources (approach trail + Georgia A.T.)",
+      "provider": "GATC",
+      "kind": "club_pdf",
+      "url": "https://georgia-atclub.org/wp-content/uploads/2026/03/GATC_Water_Sources.pdf",
+      "trust": "authoritative",
+      "steward": "Georgia Appalachian Trail Club",
+      "steward_contact": "https://georgia-atclub.org/contact/",
+      "licence": "Unstated - a free public download from GATC's own site, fetched for REVIEW AND CROSS-CHECKS ONLY. Nothing from this source reaches a published artifact until GATC answers a redistribution ask (CONTRIBUTING.md, 'A note on data and licences'; the ask is the same shape as https://github.com/OurHike/OurHike/issues/98 records for opentrail.org). WATER_SOURCES.md §4 sizes this document as 'a pilot-state candidate after an email' and notes its embedded title is 'GATC Water Update July 2020.xlsx', so the 2026-03 file may re-export older data - a second reason the ask precedes any publication.",
+      "attribution": "Georgia Appalachian Trail Club",
+      "discovered_via": "SOURCE_SURVEY.md §5's club sweep (the 'water-sources PDF (2026-03-02)' row); fetched and parsed live 2026-08-13 (#669). Registered by hand - discover_sources.py walks the Experience Builder app and this source is not in it.",
+      "discovered_date": "2026-08-13",
+      "notes": "Fetched by fetch_club_pdfs.py to data/raw/club_pdfs/<key>.pdf (never by fetch_all.py), parsed by lib/club_pdfs.py to <key>.json beside it: 65 rows (4 approach trail + 61 A.T., measured on the live PDF 2026-08-13, agreeing with WATER_SOURCES.md §4's count) of GATC mile point + entry text. The PDF's text layer stores each printed row as one string, so the 'Source Name' and 'Distance Off AT' columns arrive fused and are kept that way rather than split by guesswork - lib/club_pdfs.py's docstring holds the measurement."
     }
   ]
 }

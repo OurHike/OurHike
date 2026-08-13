@@ -451,8 +451,10 @@ jobs:
             echo "Dry run - nothing was uploaded. Re-run with 'publish' ticked to upload."
           elif [ "${{ inputs.data_environment }}" = "production" ]; then
             echo "Published to production. The client needs DATA_BASE_URL set and a Pages redeploy to see it."
+          elif [ "${{ inputs.data_environment }}" = "ua" ]; then
+            echo "Published to ua, under environments/ua/. Production's keys were not touched."
+            echo "UA reads this automatically once ua.yml next rebuilds - see features/DATA_ENVIRONMENTS.md."
           else
             echo "Published to ${{ inputs.data_environment }}, under environments/${{ inputs.data_environment }}/."
-            echo "Production's keys were not touched. UA reads this once UA_DATA_BASE_URL names that prefix"
-            echo "and ua.yml has rebuilt - see features/DATA_ENVIRONMENTS.md."
+            echo "Production's keys were not touched."
           fi

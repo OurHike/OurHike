@@ -20,6 +20,7 @@
 // be wrong on one side of itself.
 
 import { naismithTime } from './naismith'
+import { formatDistance, type UnitSystem } from './units'
 
 /** How close the spur's far end must sit to a POI before that POI is named.
  *
@@ -45,9 +46,11 @@ export interface SpurRecord {
 export interface SpurDetail {
   /** The POI to name, or null when nothing confident enough was found. */
   destinationPoiId: string | null
-  /** One-way distance in miles, or null when ATC published no length. */
+  /** One-way distance in miles, or null when ATC published no length.
+   *  The canonical number, unconverted - what a caller measures with. */
   distanceMi: number | null
-  /** "0.2 mi each way", or null when there is no length to state. */
+  /** "0.2 mi each way" or "320 m each way", in the hiker's units, or null
+   *  when there is no length to state. */
   distanceLabel: string | null
   /** "≈20m there and back", or null when there is no length. */
   roundTripLabel: string | null
@@ -68,6 +71,7 @@ export interface SpurDetail {
  */
 export function describeSpur(
   spur: SpurRecord | undefined | null,
+  units: UnitSystem = 'imperial',
   nameWithinM = NAME_DESTINATION_WITHIN_M,
 ): SpurDetail {
   const empty: SpurDetail = {
@@ -83,7 +87,10 @@ export function describeSpur(
   return {
     destinationPoiId: namedDestination(spur, nameWithinM),
     distanceMi,
-    distanceLabel: distanceMi === null ? null : `${formatMiles(distanceMi)} mi each way`,
+    distanceLabel:
+      distanceMi === null
+        ? null
+        : `${formatDistance(distanceMi, units, 'fine')} each way`,
     roundTripLabel: distanceMi === null ? null : roundTrip(distanceMi),
   }
 }
@@ -105,12 +112,6 @@ function usableLengthMi(lengthFt: number | null | undefined): number | null {
   if (typeof lengthFt !== 'number' || !Number.isFinite(lengthFt) || lengthFt <= 0)
     return null
   return lengthFt / FEET_PER_MILE
-}
-
-function formatMiles(miles: number): string {
-  // Two decimals under a tenth of a mile, where one would round a 158 ft spur
-  // to "0.0 mi" and say nothing at all.
-  return miles < 0.1 ? miles.toFixed(2) : miles.toFixed(1)
 }
 
 function roundTrip(distanceMi: number): string {

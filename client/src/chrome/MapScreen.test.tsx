@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, act, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
+import { MockMap, ScaleControl, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { MapScreen } from './MapScreen'
 import {
   mapCredits,
@@ -166,6 +166,35 @@ describe('MapScreen', () => {
 
     expect(screen.getByRole('img', { name: /elevation profile/i })).toBeInTheDocument()
     expect(screen.getByTestId('lane-water')).toBeInTheDocument()
+  })
+
+  // #619. One preference, one prop, two consumers. The failure this guards is
+  // not a crash: it is a canvas whose scale bar and contour interval read in
+  // metres under a ribbon still labelled in feet, which nothing but a test
+  // holding both at once would catch - each half is right on its own.
+  it('sends one unit preference to the canvas and to the ribbon over it', () => {
+    render(<MapScreen {...PROPS} units="metric" />)
+
+    const [map] = MockMap.live
+    const scale = map.controls
+      .map((c) => c.control)
+      .find((c) => c instanceof ScaleControl)
+    expect(scale?.options?.unit).toBe('metric')
+
+    // The ribbon's low mark: 1,200 ft is 366 m.
+    expect(screen.getByText(/366 m/)).toBeInTheDocument()
+  })
+
+  it('draws both in feet for a hiker who has not changed the default', () => {
+    render(<MapScreen {...PROPS} />)
+
+    const [map] = MockMap.live
+    const scale = map.controls
+      .map((c) => c.control)
+      .find((c) => c instanceof ScaleControl)
+    expect(scale?.options?.unit).toBe('imperial')
+
+    expect(screen.getByText(/1,200 ft/)).toBeInTheDocument()
   })
 
   it('omits the ribbon and lanes rather than showing empty ones when there is no data', () => {

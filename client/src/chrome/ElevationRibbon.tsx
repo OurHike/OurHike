@@ -9,8 +9,16 @@
 // The time estimate comes from lib/naismith.ts. It is a DURATION and never an
 // arrival clock: Naismith gives no descent credit and knows nothing about
 // breaks, so an arrival time would be a promise the rule cannot keep.
+//
+// The samples stay in feet and miles whatever the hiker reads in - that is
+// what the published profile carries (`elevation_ft`, `distance_mi`) and what
+// the geometry below is computed from. Only the three labels convert, through
+// lib/units.ts. Converting the samples instead would put a rounded number into
+// the path arithmetic for nothing: the SVG is a shape, and a shape has no
+// units.
 
 import { naismithTime } from '../lib/naismith'
+import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
 
 const VIEW_W = 100
 const VIEW_H = 40
@@ -30,6 +38,11 @@ export interface ElevationRibbonProps {
   samples: ElevationSample[]
   currentMile: number
   upcomingClimb?: UpcomingClimb
+  /** Which units the three labels read in. Defaulted rather than required, so
+   *  a ribbon rendered outside the shell still says something true - and
+   *  defaulted to the same value lib/userPreferences.ts does, so the default
+   *  is the preference's default rather than a second opinion about it. */
+  units?: UnitSystem
 }
 
 function pctAlong(mile: number, startMile: number, endMile: number): number {
@@ -41,6 +54,7 @@ export function ElevationRibbon({
   samples,
   currentMile,
   upcomingClimb,
+  units = 'imperial',
 }: ElevationRibbonProps) {
   const startMile = samples[0]?.mile ?? 0
   const endMile = samples[samples.length - 1]?.mile ?? 0
@@ -72,8 +86,8 @@ export function ElevationRibbon({
   return (
     <div className="elevation-ribbon">
       <div className="elevation-ribbon__labels">
-        <span className="elevation-ribbon__max">{maxFt.toLocaleString('en-US')} ft</span>
-        <span className="elevation-ribbon__min">{minFt.toLocaleString('en-US')} ft</span>
+        <span className="elevation-ribbon__max">{formatElevation(maxFt, units)}</span>
+        <span className="elevation-ribbon__min">{formatElevation(minFt, units)}</span>
       </div>
 
       <svg
@@ -116,9 +130,10 @@ export function ElevationRibbon({
 
       {upcomingClimb && (
         <p data-testid="climb-callout" className="elevation-ribbon__callout">
-          {`+${upcomingClimb.ascentFt.toLocaleString('en-US')} ft · ${(
-            upcomingClimb.endMile - upcomingClimb.startMile
-          ).toFixed(1)} mi · ${naismithTime({
+          {`+${formatElevation(upcomingClimb.ascentFt, units)} · ${formatDistance(
+            upcomingClimb.endMile - upcomingClimb.startMile,
+            units,
+          )} · ${naismithTime({
             distanceMi: upcomingClimb.endMile - upcomingClimb.startMile,
             ascentFt: upcomingClimb.ascentFt,
           })}`}

@@ -72,7 +72,25 @@ Two different questions, worth distinguishing rather than treating as one settin
 
 **The real engineering principle: store one canonical unit internally, convert only at the display layer.** Worth stating plainly because this project's own real data already mixes unit systems at the source - the ATC's mile-marker system (`half_mile_points_from_springer`) is inherently imperial by real hiking convention, while the USGS 3DEP elevation data is inherently metric. Converting at display time, never storing a user-facing preference into the canonical data, avoids exactly the class of bug that comes from mixing the two.
 
-**A distinction worth keeping separate from the general unit toggle: mile-marker numbers are a cultural reference point, not just a measurement.** "I'm at mile 1000" is how thru-hikers actually talk about their position on the trail - that label probably shouldn't silently become a kilometer-marker number just because a hiker set a general metric preference elsewhere (elevation gain, segment distances). Flagged below as a real open question, not decided here.
+**A distinction worth keeping separate from the general unit toggle: mile-marker numbers are a cultural reference point, not just a measurement.** "I'm at mile 1000" is how thru-hikers actually talk about their position on the trail - that label probably shouldn't silently become a kilometer-marker number just because a hiker set a general metric preference elsewhere (elevation gain, segment distances). Decided 2026-08-13, in the direction the app had already taken - see below.
+
+### Built 2026-08-13 (#619) - and the standard it sets
+
+`unit_system` is the third of the five to ship. What it turned out to need was not the conversion, which is four constants, but a **standard**, because the preference had existed for months with a backend column, a sync payload and nothing at all reading it - and every one of the eleven places that printed a height or a distance had reasonably printed it in feet and miles.
+
+**The standard: every unit the app displays is displayed in the system the hiker chose.** Not "where convenient". A screen that keeps its own feet is a screen that disagrees with the one beside it, and a hiker reading 800 m of climbing on the elevation ribbon and 2,600 ft in the callout underneath has to work out which one is lying. That is worse than either answer alone, and it is the shape this gets into by accident rather than by decision - each literal correct where it stands, wrong only when read together.
+
+Three things hold it up:
+
+- **One module.** `client/src/lib/units.ts` owns every conversion and every format. Nothing else writes a unit. It takes the canonical value and returns a string, which is the shape that cannot be stored by accident - the principle above, enforced by the signature rather than by remembering it.
+- **One preference, one road.** `App.tsx` reads `unit_system` once and hands it down, the way the resolved theme already travels. Two reads of one preference is how a banner in miles ends up over a map in kilometres.
+- **A guard, not a convention.** `client/src/test/unitDisplay.test.ts` fails the build on a new hard-coded unit, the same way `themeTokens.test.ts` fails it on a base palette colour in an app stylesheet. Both catch the same class of thing: a mistake that is invisible under the default and wrong for everybody else, and that no component test would ever fail on, because it is not a mistake in the component.
+
+**The map needed none of it.** `MapView` had taken a `units` prop since the contours were built - it switches the contour interval, the summit labels' source field (`ele_ft` against `ele`) and the scale bar, and `map/terrain.ts` has carried both interval tables all along. Nothing passed the preference into it, so all of it sat on the `'imperial'` default. One line connected it.
+
+**Mile markers stay in miles, and that is now decided.** `mi 1,407.2` is *where a hiker is* on the Appalachian Trail - the reference every guidebook, shelter register and shuttle driver shares, and the number said out loud when a ranger asks. `km 2,265.0` would be a coordinate nobody else on the trail can read. The distance *between* two mile markers is an ordinary distance and converts like any other, which is why a metric hiker's banner reads "Trail closed 4.8 km ahead · mi 8.0 – 9.0" - two different facts, correctly in two different systems, in one sentence. The Settings control says so under both options, because the exception is the part that surprises somebody.
+
+**What imperial hikers see: nothing.** Every existing string was reproduced exactly - the spur's two decimals under a tenth of a mile, the whole miles on a 398-mile advisory, the grouped thousands on an elevation, the trimmed `42 mi` in the hike picker. A units module that quietly re-rounded them would have shipped a copy change nobody asked for under cover of a settings toggle. The one place metric deliberately does not mirror imperial is short distances: below a kilometre it reads in metres ("120 m each way"), because "0.07 km" is arithmetically correct and is not a sentence anybody speaks. Feet below a tenth of a mile would read better to some imperial hikers too, and that is a copy change to argue on its own evidence rather than one to smuggle in here.
 
 ## Data model sketch
 
@@ -82,9 +100,9 @@ Two different questions, worth distinguishing rather than treating as one settin
 
 **Update 2026-08-07:** `layer_detail_level` is the second - see "Layer details" above. MAP_STYLE_SPEC.md also treats `theme` as the map's *mode* (`day | night | auto` in the spec's vocabulary): the map style it introduces (MAP_OPTIONS.md §6) resolves its palette against the same resolved theme the chrome uses, so one preference answers "is it dark" for every screen and the canvas alike.
 
-## Open questions (for you, not decided here)
+**Update 2026-08-13:** `unit_system` is the third, and it stays `imperial | metric` defaulting to `imperial` exactly as designed. What changed is that something reads it - see "Built" above for the standard that came with it, which is the part worth carrying to the two preferences still unbuilt.
 
-- **Whether metric unit_system should also convert mile-marker labels**, or keep those as a fixed cultural reference regardless of the general unit preference - flagged above, a real product call.
+## Open questions (for you, not decided here)
 - **Default `waypoint_types_shown`** - all types on by default (today's implicit MVP behavior) vs. a curated "important" subset by default - worth deciding once there's a real settings screen in front of you.
 - ~~**Exact `layer_detail_level` zoom thresholds**~~ - **overtaken 2026-08-07:** the built control is per-layer visibility tiers, not zoom thresholds (see above). What survives of the question is MAP_STYLE_SPEC.md's own open item - whether `minimal` should *also* thin place labels to towns and larger at hiking zooms - which is the zoom-threshold idea in its one still-live form.
 - **Whether auto-rotate is worth its build cost** - the native `WKUIDelegate` work for the Capacitor iOS shell is real engineering effort for a feature that, unlike the wrong-way alert, isn't safety-critical. Worth weighing deliberately rather than assuming it's cheap because the ask itself is a short bullet point.

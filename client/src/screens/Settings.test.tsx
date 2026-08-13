@@ -312,6 +312,36 @@ describe('Settings', () => {
     expect(screen.getAllByText('Later').length).toBeGreaterThan(0)
   })
 
+  // #619. Units was the standing example of the "Later" treatment - a disabled
+  // checkbox over a preference key that had a backend column, a sync payload
+  // and nothing at all reading it. These three assert the row is now a control
+  // that writes, because the tag it shed is only honest while it is temporary.
+  it('offers units as a live control rather than a Later row', () => {
+    render(<Settings {...PROPS} />)
+
+    const units = within(screen.getByRole('group', { name: /units/i }))
+    for (const radio of units.getAllByRole('radio')) {
+      expect(radio).toBeEnabled()
+    }
+  })
+
+  it('writes the unit choice to the canonical preference key', async () => {
+    const user = userEvent.setup()
+    render(<Settings {...PROPS} />)
+
+    await user.click(screen.getByRole('radio', { name: /metres/i }))
+
+    expect(PROPS.onChange).toHaveBeenCalledWith({ unit_system: 'metric' })
+  })
+
+  it('shows the stored choice, so the screen agrees with what the app is doing', () => {
+    renderSettings({
+      preferences: { ...DEFAULT_PREFERENCES, unit_system: 'metric' },
+    })
+
+    expect(screen.getByRole('radio', { name: /metres/i })).toBeChecked()
+  })
+
   it('disables the Later rows so they cannot be operated', () => {
     render(<Settings {...PROPS} />)
 

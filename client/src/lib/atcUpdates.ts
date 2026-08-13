@@ -28,6 +28,7 @@
 
 import type { Closure, HikeDirection } from './closureBanner'
 import { isBroadAdvisory } from './closureSpan'
+import { formatDistance, type UnitSystem } from './units'
 
 /** One notice, exactly as `pipeline/export_atc_updates.py` publishes it.
  *
@@ -212,11 +213,17 @@ function mile(value: number): string {
  * lib/closureBanner.ts and are deliberately not re-derived here: warning half
  * of all hikers about something behind them is how a warning surface teaches
  * people to ignore it.
+ *
+ * How far ahead it is reads in the hiker's units, like every distance in the
+ * app; ATC's mile range does not, for the reason lib/units.ts gives. The two
+ * sit in one sentence because they are two different facts - how far you walk
+ * before you are in it, and where on the trail "it" is.
  */
 export function atcUpdateBanner(
   update: AtcUpdate,
   currentMile: number,
   direction: HikeDirection | undefined,
+  units: UnitSystem = 'imperial',
 ): string | null {
   const { start_mile_marker: start, end_mile_marker: end } = update
   const range = start === end ? `mi ${mile(start)}` : `mi ${mile(start)} – ${mile(end)}`
@@ -230,7 +237,7 @@ export function atcUpdateBanner(
     // does not need tenths. ATC's category and headline are still theirs
     // verbatim; only OurHike's word for WHERE they are changes.
     const where = isBroadAtcAdvisory(update)
-      ? `along ${Math.round(Math.abs(end - start)).toLocaleString('en-US')} mi of trail`
+      ? `along ${formatDistance(Math.abs(end - start), units, 'whole')} of trail`
       : 'here'
 
     return `ATC · ${update.category} ${where} · ${update.title} · ${range}`
@@ -243,7 +250,7 @@ export function atcUpdateBanner(
     direction === 'NOBO' ? nearEdge - currentMile : currentMile - nearEdge
   if (distanceAhead < 0) return null
 
-  return `ATC · ${update.category} ${mile(distanceAhead)} mi ahead · ${update.title} · ${range}`
+  return `ATC · ${update.category} ${formatDistance(distanceAhead, units)} ahead · ${update.title} · ${range}`
 }
 
 /**

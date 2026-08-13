@@ -37,13 +37,13 @@ import type { DownloadActivity } from '../lib/downloadActivity'
 import type { ArchiveZooms } from '../lib/archiveCoverage'
 import { mapCredits } from '../map/credits'
 import { MapAttribution } from './MapAttribution'
-import type { ScaleUnits } from '../map/mapChrome'
 import type { ResolvedTheme } from '../lib/theme'
 import type {
   BackgroundSource,
   LayerDetailLevel,
   MapStyle,
   Theme,
+  UnitSystem,
 } from '../lib/userPreferences'
 import type { BoundingBox, MapPoint } from '../lib/legendContents'
 import type { SearchablePoi } from '../lib/searchPoi'
@@ -198,7 +198,16 @@ export interface MapScreenProps {
   waypoints?: WaypointLanesProps
 
   showZoomButtons?: boolean
-  units?: ScaleUnits
+  /**
+   * Feet or metres, for everything on this screen (lib/units.ts).
+   *
+   * Typed as the PREFERENCE rather than as map/mapChrome.ts's `ScaleUnits`,
+   * which is the same two strings under a name that stopped being true: this
+   * prop drives the scale bar, the contour interval, the summit labels' source
+   * field AND the elevation ribbon's three labels. One value down one road, so
+   * the canvas and the chrome over it cannot disagree.
+   */
+  units?: UnitSystem
   /** Which theme the canvas is drawn in. Passed down rather than read here so
    *  the chrome and the map answer from one value - see MapViewProps. */
   theme?: ResolvedTheme
@@ -488,7 +497,11 @@ export function MapScreen({
           onOpenSearch={onOpenSearch}
         />
 
-        {elevation && <ElevationRibbon {...elevation} />}
+        {/* `units` last, so the screen's answer wins over anything the shell
+            put in the ribbon's own props. The canvas below and the ribbon over
+            it read the same preference, and a map in metres under a profile in
+            feet is exactly the disagreement one prop exists to prevent. */}
+        {elevation && <ElevationRibbon {...elevation} units={units} />}
         {waypoints && <WaypointLanes {...waypoints} />}
 
         {/* The map and the legend. Separated from the chrome above so the two

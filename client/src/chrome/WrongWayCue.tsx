@@ -10,10 +10,17 @@
 // "Show me the way back" points; it does not route. Same position the closure
 // sheet takes - OurHike does not work out detours.
 
+import { formatShortDistance, type UnitSystem } from '../lib/units'
+
 export interface WrongWayCueProps {
   open: boolean
+  /** The displacement lib/wrongWay.ts measured, in the feet it computes in.
+   *  Converted for display only - see lib/units.ts. */
   distanceFt: number
   minutes: number
+  /** Which units the sentence reads in. Defaults as every other display
+   *  component here does, to lib/userPreferences.ts's own default. */
+  units?: UnitSystem
   onShowWayBack: () => void
   onDismiss: () => void
 }
@@ -22,6 +29,7 @@ export function WrongWayCue({
   open,
   distanceFt,
   minutes,
+  units = 'imperial',
   onShowWayBack,
   onDismiss,
 }: WrongWayCueProps) {
@@ -30,7 +38,7 @@ export function WrongWayCue({
   return (
     <div className="wrong-way-cue" role="alert">
       <p className="wrong-way-cue__text">
-        {`You may be off the trail — about ${distanceFt} ft from the blazes for the last ${minutes} minutes.`}
+        {`You may be off the trail — about ${formatShortDistance(distanceFt, units)} from the blazes for the last ${minutes} minutes.`}
       </p>
 
       <div className="wrong-way-cue__actions">

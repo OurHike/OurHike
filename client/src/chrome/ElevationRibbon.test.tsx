@@ -74,6 +74,28 @@ describe('ElevationRibbon', () => {
     expect(screen.getByText(/\+640 ft · 2\.6 mi · ≈1h 10m/)).toBeInTheDocument()
   })
 
+  // #619. All three labels, in one component, from one preference - a ribbon
+  // with its high mark in metres and its callout in feet would be worse than
+  // either alone.
+  it('reads in metres and kilometres for a hiker who chose them', () => {
+    render(<ElevationRibbon {...PROPS} units="metric" />)
+
+    expect(screen.getByText(/299 m/)).toBeInTheDocument()
+    expect(screen.getByText(/640 m/)).toBeInTheDocument()
+    expect(screen.getByText(/\+195 m · 4\.2 km · ≈1h 10m/)).toBeInTheDocument()
+  })
+
+  it('keeps the estimate in the units time is measured in, whatever the hiker chose', () => {
+    // Naismith's arithmetic is metric underneath and its OUTPUT is a duration,
+    // which has no unit system to belong to. The one part of the callout that
+    // must not move when the preference does.
+    render(<ElevationRibbon {...PROPS} units="metric" />)
+
+    expect(screen.getByTestId('climb-callout')).toHaveTextContent(
+      naismithTime({ distanceMi: 2.6, ascentFt: 640 }),
+    )
+  })
+
   it('takes its estimate from lib/naismith rather than keeping a second copy of the maths', () => {
     render(<ElevationRibbon {...PROPS} />)
     const expected = naismithTime({ distanceMi: 2.6, ascentFt: 640 })

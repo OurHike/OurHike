@@ -209,7 +209,9 @@ not one of them:
 
 - **You** — trail name (Linked / on-this-device), reporter type, account.
 - **The map** — background source (USGS topo downloaded is the default and the only offline-capable one), detail for new downloads, roads & walkability _(Later)_.
-- **Display** — theme (Light / Dark / Auto, a segmented control like the background picker above it; Auto is last, after the two concrete choices, so the group reads as a spectrum ending in "let the phone decide"), units _(Later; mile markers stay miles either way)_.
+- **Display** — theme (Light / Dark / Auto, a segmented control like the background picker above it; Auto is last, after the two concrete choices, so the group reads as a spectrum ending in "let the phone decide"), units (Feet / Metres, the same segmented control; built 2026-08-13, [#619](https://github.com/OurHike/OurHike/issues/619)).
+
+  The units row was the standing example of the _(Later)_ treatment for a year and is now the standing example of it being temporary. It is labelled by the unit rather than by the system — a hiker asks "can I get this in metres?", not "is this app imperial?" — and each segment names the distance unit that rides along with it, because choosing metres is also choosing kilometres and finding that out afterwards on the closure banner is a surprise four words prevent. Its description carries the exception under both options: **mile markers stay in miles either way.** The choice reaches every screen and the canvas alike, which is the standard [CONTRIBUTING.md](CONTRIBUTING.md) states and `client/src/test/unitDisplay.test.ts` enforces.
 - **Safety & privacy** — **Use my location** (added 2026-08-07, [#312](https://github.com/OurHike/OurHike/issues/312) — the section's one live switch), wrong-way alert toggle, "hide my name on reports for…" _(Later)_, and a red locked callout: **closures and serious warnings are always shown; there is no switch, here or anywhere.**
 
   The location row is not a new preference — it is the first control for one that existed and could only ever be written once, by onboarding's completion handler. That step is skippable, correctly, so "Not now" during setup disabled GPS for the life of the install with no way back and a header still claiming to look for it. The switch governs both consumers together: the watch in `lib/useGeolocation.ts` and the map's locate control (§1.5). Turning it on does not grant browser permission — it starts the watch, which asks; a browser that has already been told no surfaces as `Location blocked` in the header rather than as a switch that appears to have done nothing.
@@ -372,7 +374,7 @@ The source handoff's own "not yet wireframed" checklist listed several screens t
 - Volunteering work-project pins (Post-MVP).
 - Roads/walkability overlay (Post-MVP, MAP_OPTIONS.md).
 - Auto-rotate (Post-MVP, UX_CUSTOMIZATION.md).
-- Metric units, persistent waypoint/layer prefs (Post-MVP, UX_CUSTOMIZATION.md). _Theme override was here until 2026-08-06 and is now MVP — see that doc for why the split was wrong._
+- Persistent waypoint/layer prefs (Post-MVP, UX_CUSTOMIZATION.md). _Theme override was here until 2026-08-06 and metric units until 2026-08-13; both are built — see that doc._
 - Community Building — Tramily, check-ins, mentions (Post-MVP).
 - Pricing tiers / paywall UI (Post-MVP, PRICING_MODEL.md).
 - Trail names as a distinct onboarding tier (Post-MVP, ONBOARDING.md).

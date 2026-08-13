@@ -99,6 +99,18 @@ python -m ruff format --check .
 
 Locally this checks that [`.github/expected-settings.yml`](.github/expected-settings.yml) still agrees with the workflows: every secret and variable a workflow reads is declared, and nothing declared has outlived its last reader. Whether those settings actually *exist* is a question no checkout can answer — a secret's value is write-only once set — so the **Settings check** workflow answers it from inside Actions, weekly and on every push to `main`. Adding a workflow that reads a new secret means adding it to the manifest in the same change.
 
+### Units are the hiker's choice, everywhere
+
+**Every height and distance the app displays is displayed in the system the hiker picked in Settings.** Feet and miles or metres and kilometres, one preference (`unit_system`), no screen exempt. This is a standard rather than a style: a component that formats its own feet looks right on its own and disagrees with the one beside it, and a hiker reading 800 m of climbing on the elevation ribbon and 2,600 ft in the callout underneath has to work out which one is lying.
+
+Three rules, and the first two are most of it:
+
+- **`client/src/lib/units.ts` is the only module that writes a unit.** Nothing else spells ` ft`, ` mi`, ` m` or ` km`, and nothing else converts. `client/src/test/unitDisplay.test.ts` fails the build over a new one, so this is checked rather than remembered.
+- **Store canonical, convert at display.** The published data is imperial where the ATC's is (mile markers, `elevation_ft`) and metric where USGS 3DEP's is; both stay as they are. Every function in the units module takes a canonical number and returns a string, which is the one shape a caller cannot accidentally persist.
+- **A component takes the preference; it does not read it.** `App.tsx` reads `unit_system` once and passes it down, the same road the resolved theme travels. Two independent reads is how the map ends up in kilometres under a banner in miles.
+
+One exception, and it is deliberate: **mile markers stay in miles.** `mi 1,407.2` is where somebody *is* on the A.T. — the reference every guidebook, shelter register and shuttle driver shares — not a measurement of anything. The distance *between* two of them is an ordinary distance and converts, so a metric hiker's banner correctly reads "Trail closed 4.8 km ahead · mi 8.0 – 9.0". [features/UX_CUSTOMIZATION.md](features/UX_CUSTOMIZATION.md) holds the reasoning.
+
 ### Changing a Python dependency
 
 The `requirements.txt` and `requirements-dev.txt` files are **compiled output** — every package pinned to an exact version, transitive ones included. Do not edit them by hand. The hand-written files are the matching `.in`, which is where the comments explaining *why* a dependency exists live.

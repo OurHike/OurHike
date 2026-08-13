@@ -274,16 +274,27 @@ function coordinates(lat: number, lon: number): string {
  *
  * Metres, which is the unit features/POI_SITES.md §5 writes these chips in, and
  * whole ones. A site is under 150 m across by construction (that is the gate
- * that grouped it), so this is a how-many-paces number rather than a distance -
- * "131 ft" is not a figure anybody walks off, and the tenths of a metre are
- * noise against points surveyed no finer than this. Deliberately NOT run
- * through `UnitSystem` (lib/userPreferences.ts), which the elevation and contour
- * labels do honour: no preference reaches this card today, and threading one
- * here to switch 40 m for 131 ft is a change worth asking a hiker about first
- * rather than assuming.
+ * that grouped it), so this is a how-many-paces number rather than a distance,
+ * and the tenths of a metre are noise against points surveyed no finer.
+ *
+ * THE ONE PLACE IN THE APP THAT DOES NOT FOLLOW THE HIKER'S UNITS, and it is
+ * held open by an issue rather than by an opinion. This used to read "a change
+ * worth asking a hiker about first"; a hiker asked, the standard is now
+ * CONTRIBUTING.md's, and this line still cannot keep it alone. The distances
+ * are printed TWICE on one card: here, and inside the description above, where
+ * the pipeline has already composed them into published prose - "Nearby: a
+ * multi-seat moldering privy 40 m away" from
+ * `pipeline/lib/poi_description.py`. Converting only the half the client owns
+ * puts `Privy · 130 ft` over a sentence saying 40 m, which POI_SITES.md §5
+ * names as drift on one card in those exact words, and is worse than either
+ * unit alone.
+ *
+ * So both halves move together or neither does, and the pipeline half costs a
+ * re-export. #625 is that work; src/test/unitDisplay.test.ts holds this line
+ * as the single excused one until it lands.
  */
 function partDistance(anchor: PoiDetail, part: PoiDetail): string {
-  return `${Math.round(siteDistanceMeters(anchor, part))} m`
+  return `${Math.round(siteDistanceMeters(anchor, part))} m` // units-exempt #625
 }
 
 /**

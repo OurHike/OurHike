@@ -36,6 +36,7 @@ import {
   wholeTrail,
   type PlannedHike,
 } from '../lib/plannedHike'
+import { formatDistance, type UnitSystem } from '../lib/units'
 import './settings.css'
 
 export interface HikePickerProps {
@@ -50,6 +51,15 @@ export interface HikePickerProps {
    * still work for anyone who knows their mile markers.
    */
   trailMiles: number | null
+  /**
+   * Which units the readout below the two fields is written in.
+   *
+   * The FIELDS are mile markers and stay in miles under either setting - they
+   * are the numbers on the trail, and lib/units.ts says why. What converts is
+   * the one sentence that describes how far apart they are, which is an
+   * ordinary distance and the only measurement on this screen.
+   */
+  units?: UnitSystem
   onSave: (hike: PlannedHike) => void
   onClear: () => void
   onClose: () => void
@@ -59,13 +69,10 @@ function directionLabel(direction: HikeDirection): string {
   return direction === 'NOBO' ? 'Northbound' : 'Southbound'
 }
 
-function mile(value: number): string {
-  return value.toLocaleString('en-US', { maximumFractionDigits: 1 })
-}
-
 export function HikePicker({
   hike,
   trailMiles,
+  units = 'imperial',
   onSave,
   onClear,
   onClose,
@@ -150,9 +157,13 @@ export function HikePicker({
         <p className="settings__note" role="status">
           {parsed === null
             ? 'Two different mile markers describe a hike; the same one twice does not.'
-            : `${directionLabel(plannedDirection(parsed))} · ${mile(
+            : `${directionLabel(plannedDirection(parsed))} · ${formatDistance(
                 Math.abs(parsed.endMile - parsed.startMile),
-              )} mi`}
+                units,
+                // Two typed mileposts, subtracted: a hiker who entered 100 and
+                // 142 reads "42 mi", not "42.0 mi".
+                'trimmed',
+              )}`}
         </p>
 
         <button

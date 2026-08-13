@@ -97,21 +97,23 @@
  *
  * Its own class rather than reusing `.bg-picker`, since the two live in
  * different stylesheets for different components and a shared class would make
- * every future change to one silently a change to the other. The three
- * pickers that DO live in this stylesheet - theme, map style, map detail -
+ * every future change to one silently a change to the other. The four pickers
+ * that DO live in this stylesheet - theme, map style, map detail and units -
  * share each rule as a selector list instead: same file, same screen, same
- * kind of control, so a change to the treatment SHOULD reach all three, and
- * three hand-copied blocks would only offer three chances to miss one. */
+ * kind of control, so a change to the treatment SHOULD reach all of them, and
+ * four hand-copied blocks would only offer four chances to miss one. */
 .theme-picker,
 .map-style-picker,
-.map-detail-picker {
+.map-detail-picker,
+.unit-picker {
   margin: 0;
   padding: 0;
   border: 0;
 }
 .theme-picker__legend,
 .map-style-picker__legend,
-.map-detail-picker__legend {
+.map-detail-picker__legend,
+.unit-picker__legend {
   padding: 0;
   margin-bottom: var(--space-2, 8px);
   font-size: 12px;
@@ -122,13 +124,15 @@
 }
 .theme-picker__options,
 .map-style-picker__options,
-.map-detail-picker__options {
+.map-detail-picker__options,
+.unit-picker__options {
   display: flex;
   gap: var(--space-2, 8px);
 }
 .theme-picker__option,
 .map-style-picker__option,
-.map-detail-picker__option {
+.map-detail-picker__option,
+.unit-picker__option {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -143,7 +147,8 @@
 }
 .theme-picker__option[data-selected='true'],
 .map-style-picker__option[data-selected='true'],
-.map-detail-picker__option[data-selected='true'] {
+.map-detail-picker__option[data-selected='true'],
+.unit-picker__option[data-selected='true'] {
   border-color: var(--brand-primary);
   box-shadow: inset 0 0 0 1px var(--brand-primary);
 }
@@ -152,7 +157,8 @@
  * The label is the hit target, and it is the whole segment. */
 .theme-picker__input,
 .map-style-picker__input,
-.map-detail-picker__input {
+.map-detail-picker__input,
+.unit-picker__input {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -165,31 +171,36 @@
 }
 .theme-picker__input:focus-visible + .theme-picker__label,
 .map-style-picker__input:focus-visible + .map-style-picker__label,
-.map-detail-picker__input:focus-visible + .map-detail-picker__label {
+.map-detail-picker__input:focus-visible + .map-detail-picker__label,
+.unit-picker__input:focus-visible + .unit-picker__label {
   outline: 2px solid var(--brand-primary);
   outline-offset: 2px;
   border-radius: 3px;
 }
 .theme-picker__label,
 .map-style-picker__label,
-.map-detail-picker__label {
+.map-detail-picker__label,
+.unit-picker__label {
   font-size: 14px;
   color: var(--fg-1);
 }
 .theme-picker__option[data-selected='true'] .theme-picker__label,
 .map-style-picker__option[data-selected='true'] .map-style-picker__label,
-.map-detail-picker__option[data-selected='true'] .map-detail-picker__label {
+.map-detail-picker__option[data-selected='true'] .map-detail-picker__label,
+.unit-picker__option[data-selected='true'] .unit-picker__label {
   font-weight: 700;
 }
 .theme-picker__hint,
 .map-style-picker__hint,
-.map-detail-picker__hint {
+.map-detail-picker__hint,
+.unit-picker__hint {
   font-size: 11px;
   color: var(--fg-3);
 }
 .theme-picker__description,
 .map-style-picker__description,
-.map-detail-picker__description {
+.map-detail-picker__description,
+.unit-picker__description {
   margin: var(--space-2, 8px) 0 0;
   font-size: 12px;
   color: var(--fg-3);

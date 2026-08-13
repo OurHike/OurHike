@@ -12,9 +12,11 @@
 //
 // Rows that are not built yet are shown with a "Later" tag and disabled,
 // rather than hidden. That is WIREFRAMES.md's explicit instruction and it is
-// the right call: a visible, dimmed "Units (Later)" answers the question
-// "can I switch to metric?" honestly, where a missing row leaves someone
-// hunting through every screen for it.
+// the right call: a visible, dimmed row answers the question "can I do this
+// at all?" honestly, where a missing one leaves someone hunting through every
+// screen for it. Units was the standing example of that treatment and is now
+// a live control (#619) - the tag is a holding position, not a destination,
+// and what it holds is a promise that gets kept.
 //
 // The locked callout about closures and serious warnings is the visible half
 // of an invariant whose real enforcement is in lib/userPreferences.ts - there
@@ -40,6 +42,7 @@ import { typeLabel } from '../chrome/legendLabels'
 import { HIDEABLE_TYPES, hiddenTypesFrom, toggleType } from '../lib/waypointVisibility'
 import { MapStylePicker } from './MapStylePicker'
 import { ThemePicker } from './ThemePicker'
+import { UnitPicker } from './UnitPicker'
 import './settings.css'
 
 export interface SettingsProps {
@@ -318,12 +321,16 @@ export function Settings({
           value={preferences.theme}
           onChange={(theme) => onChange({ theme })}
         />
-        <label className="settings__row settings__row--later">
-          <span className="settings__label">Units</span>
-          <LaterTag />
-          <input type="checkbox" name="unit_system" disabled checked={false} readOnly />
-        </label>
-        <p className="settings__note">Mile markers stay in miles either way.</p>
+
+        {/* Was a disabled checkbox under a "Later" tag, with the mile-marker
+            note beside it - the honest shape for a row that had a preference
+            key, a backend column and nothing reading either. The note moved
+            into the picker's own description, where it is read by whoever is
+            actually choosing rather than by everyone scrolling past. */}
+        <UnitPicker
+          value={preferences.unit_system}
+          onChange={(unit_system) => onChange({ unit_system })}
+        />
       </section>
 
       <section className="settings__group">

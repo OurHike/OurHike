@@ -350,6 +350,24 @@ describe('a broad advisory does not bury the closure inside it', () => {
     expect(banner).not.toContain('Trail closed')
   })
 
+  // #619. One sentence, two kinds of number: how far the hiker walks before
+  // they are in it, and where on the A.T. "it" is. The first converts and the
+  // second cannot - a metric hiker who reads `km 385.0 – 1,026.5` has a
+  // coordinate nobody else on the trail can check.
+  it('reads the distance in kilometres while the mile markers stay put', () => {
+    const banner = closureBanner(HELENE, 200, 'NOBO', 'metric')
+
+    expect(banner).toContain('Advisory 63.4 km ahead')
+    expect(banner).toContain('mi 239.4 – 637.8')
+  })
+
+  it('states a broad advisory’s extent in kilometres too', () => {
+    const banner = closureBanner(HELENE, 242, 'NOBO', 'metric')
+
+    expect(banner).toContain('Advisory along 641 km of trail')
+    expect(banner).toContain('mi 239.4 – 637.8')
+  })
+
   it('still says "closed here" for a closure that really is one', () => {
     // The ordinary case has to keep the ordinary sentence - it is what
     // WIREFRAMES.md §7 specifies, and the whole reason breadth is a predicate

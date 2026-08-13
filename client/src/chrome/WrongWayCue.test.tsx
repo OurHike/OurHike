@@ -46,6 +46,16 @@ describe('WrongWayCue', () => {
     expect(cue).toHaveTextContent(/12 minutes/)
   })
 
+  it('gives that distance in metres for a hiker who chose them (#619)', () => {
+    // The safety surface is not exempt from the standard. Somebody deciding
+    // whether they have wandered far enough to turn around has to be able to
+    // read the number without converting it in their head, which is precisely
+    // the situation where nobody converts anything.
+    render(<WrongWayCue {...PROPS} units="metric" />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/27 m from the blazes/)
+  })
+
   it('offers to show the way back', async () => {
     const user = userEvent.setup()
     render(<WrongWayCue {...PROPS} />)

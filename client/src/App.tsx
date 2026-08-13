@@ -782,6 +782,11 @@ function App() {
   // The hiking sheet's own level (#276) - a separate dial from the USGS
   // raster's tier above, because the two sheets' choices must never share one.
   const hikingLevel = preferences.hiking_detail_level
+  // Feet or metres, for every screen and the canvas alike (#619, lib/units.ts).
+  // Read once here and handed down, the same way the resolved theme is: two
+  // reads of one preference is how a banner in miles ends up over a map in
+  // kilometres.
+  const units = preferences.unit_system
 
   // The background sheets a hiker can choose between (#237), and every
   // archive behind them (#192). One flat download store underneath - the
@@ -1143,9 +1148,9 @@ function App() {
       atc: RankedAtcUpdate | null,
     ): string | null => {
       if (closure !== null && (atc === null || closure.distance <= atc.distance)) {
-        return closureBanner(closure.closure, fix.mile, heading)
+        return closureBanner(closure.closure, fix.mile, heading, units)
       }
-      if (atc !== null) return atcUpdateBanner(atc.update, fix.mile, heading)
+      if (atc !== null) return atcUpdateBanner(atc.update, fix.mile, heading, units)
       return null
     }
 
@@ -1153,7 +1158,7 @@ function App() {
       closureAhead: pick(closureLane.specific, atcLane.specific),
       advisoryAhead: pick(closureLane.broad, atcLane.broad),
     }
-  }, [closures, atcUpdates, fix, heading])
+  }, [closures, atcUpdates, fix, heading, units])
 
   /**
    * Serious warnings between here and the end of the trail, counted.
@@ -2079,6 +2084,7 @@ function App() {
                 <HikePicker
                   hike={hike}
                   trailMiles={trailIndex?.totalMiles ?? null}
+                  units={units}
                   onSave={(next) => void handleSaveHike(next)}
                   onClear={() => void handleClearHike()}
                   onClose={() => setPickingHike(false)}
@@ -2309,6 +2315,12 @@ function App() {
           mapStyle={preferences.map_style}
           redLight={preferences.red_light_enabled}
           detail={preferences.layer_detail_level}
+          // And the same road for the same reason: the contour interval, the
+          // summit labels, the scale bar and the elevation ribbon's three
+          // labels all answer from this one value (#619). The machinery on the
+          // map side has been there since the contours were built - what was
+          // missing was anybody passing the preference into it.
+          units={units}
           // The corridor is the opening view only. Once there is a camera to put
           // back, it wins: `bounds` would otherwise re-frame the entire trail
           // every time the map screen came back from another tab.

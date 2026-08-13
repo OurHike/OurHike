@@ -159,6 +159,32 @@ describe('a hiker who has said which way they are walking', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/trail closed/i)
   })
 
+  it('reads that warning in the units they chose in Settings (#619)', async () => {
+    // The whole thread, end to end: a stored preference, read by the shell,
+    // handed to lib/closureBanner.ts, on screen in the one line a hiker sees
+    // without tapping anything. Every other test of this reaches one seam;
+    // this one proves the seams are joined.
+    //
+    // Mile 5, closure at 8: three miles ahead is 4.8 km. The mile-marker range
+    // in the same sentence stays as the trail has it, which is the exception
+    // lib/units.ts exists to keep visible.
+    store.set(PREFERENCES_KEY, {
+      ...DEFAULT_PREFERENCES,
+      onboarding_completed: true,
+      download_choice_made: true,
+      location_permission_requested: true,
+      unit_system: 'metric',
+    })
+    store.set(PLANNED_HIKE_KEY, { startMile: 0, endMile: 30 })
+
+    await renderApp()
+    await reportOneFix()
+
+    const banner = await screen.findByRole('alert')
+    expect(banner).toHaveTextContent('4.8 km ahead')
+    expect(banner).toHaveTextContent('mi 8.0 – 9.0')
+  })
+
   it('is told nothing about a closure behind them', async () => {
     // Southbound past the same closure. "Ahead" is the entire content of the
     // banner, and getting it backwards would be worse than silence - it would

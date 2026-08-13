@@ -359,7 +359,7 @@ jobs:
           && steps.check.outputs.collisions != '[]'
           && github.event.pull_request.head.repo.full_name == github.repository
         continue-on-error: true
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: pr-issue-link-duplicate
           message: |
@@ -388,7 +388,7 @@ jobs:
           (steps.check.outputs.collisions == '' || steps.check.outputs.collisions == '[]')
           && github.event.pull_request.head.repo.full_name == github.repository
         continue-on-error: true
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: pr-issue-link-duplicate
           delete: true

@@ -181,17 +181,46 @@ export function pinGeometry(pixels: number) {
      * a size change the same way the plain pin does.
      */
     strip: {
-      /** Vertical span, from the centre downwards. */
-      top: center + rDisc * 0.26,
-      bottom: center + rDisc * 0.74,
+      /** Vertical span, from the centre downwards.
+       *
+       * TALLER THAN IT WAS, because 5.7 CSS px per member glyph was reported as
+       * hard to read and it was. The band's height was the binding constraint on
+       * every member count, so raising it lifts all of them:
+       *
+       *   members   1     2     3
+       *   before    5.7   5.7   5.7   CSS px per glyph
+       *   after     9.6   9.6   7.5
+       *
+       * NOT SIZED FOR THE CURRENT DISTRIBUTION, and that is deliberate. Of the
+       * 295 sites the 2026-08-13 publish produced, 169 carry one member category
+       * (57%), 123 carry two (42%) and three carry three (1%) - and it would be a
+       * mistake to design for that, because the 1% is measuring a DATA GAP rather
+       * than the trail. 153 of those sites are privy-only and only 11 water POIs
+       * are members of anything, while #529 measured that 97% of shelters have no
+       * mapped water source within 250 m and observed that nearly every A.T.
+       * shelter has water in reality. Close that gap and privy+water becomes
+       * ordinary and privy+campsite+water common. So three is the case to hold
+       * room for, not the case to sacrifice.
+       *
+       * WHERE THIS RUNS OUT. Inside the disc there is a ceiling: the band cannot
+       * grow further without the anchor's own glyph becoming the unreadable one.
+       * If three members become typical, the next move is to take the strip
+       * OUTSIDE the disc - a taller image with the band hanging below it and a
+       * data-driven `icon-offset` keeping the disc centred on the coordinate -
+       * which buys a full-height band at the cost of a taller collision box. That
+       * is a bigger change than this one and wants the same real screen this
+       * did. */
+      top: center + rDisc * 0.16,
+      bottom: center + rDisc * 0.86,
       /** Half-width. The disc clips the corners, which is why this can be
        *  generous without spilling. */
-      halfWidth: rDisc * 0.78,
+      halfWidth: rDisc * 0.82,
     },
     /** Where the anchor's glyph sits once a strip is under it: the same box,
-     *  smaller, and lifted clear of the band. */
-    sitedGlyphBox: rDisc * Math.SQRT2 * 0.62,
-    sitedGlyphShift: -rDisc * 0.24,
+     *  smaller, and lifted clear of the band. The shift is what buys the band
+     *  its height without the shelter's roof running into it. */
+    sitedGlyphBox: rDisc * Math.SQRT2 * 0.54,
+    sitedGlyphShift: -rDisc * 0.34,
   }
 }
 
@@ -546,7 +575,7 @@ export function buildPinImage({
                 memberInks.length - 1,
                 Math.max(0, Math.floor(offset / cellWidth)),
               )
-              const cellBox = Math.min(cellWidth, strip.bottom - strip.top) * 0.82
+              const cellBox = Math.min(cellWidth, strip.bottom - strip.top) * 0.94
               const cx = center - strip.halfWidth + (cell + 0.5) * cellWidth
               const cy = (strip.top + strip.bottom) / 2
               const mx = (x - (cx - cellBox / 2)) / cellBox

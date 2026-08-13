@@ -7,6 +7,7 @@ import {
   buildPoiIcons,
   poiColor,
   poiGlyphPath,
+  pinGeometry,
   poiIconId,
   siteMemberCombinations,
   POI_COLORS,
@@ -360,6 +361,36 @@ describe('buildPoiIcons', () => {
     const sited = buildPoiIcon('shelter', 'high', ['privy'])
 
     expect(sited.data).not.toEqual(plain.data)
+  })
+
+  it('draws a member glyph big enough to read, at every member count', () => {
+    // 5.7 CSS px was reported as hard to read on a real screen, which is the
+    // review features/POI_SITES.md said this decision needed. The band's height
+    // was the binding constraint on all three counts, so it is asserted here as
+    // a floor rather than left to whoever next adjusts a fraction.
+    //
+    // THREE IS INCLUDED ON PURPOSE. Only 1% of today's sites carry three member
+    // categories, but that is #529's water gap - 97% of shelters have no mapped
+    // water source - not the trail. Sizing this for the current distribution
+    // would build the gap into the artwork.
+    const g = pinGeometry(POI_PIN_SIZE * POI_PIN_PIXEL_RATIO)
+    const bandHeight = g.strip.bottom - g.strip.top
+    const span = g.strip.halfWidth * 2
+
+    for (const count of [1, 2, 3]) {
+      const cell = Math.min(span / count, bandHeight) * 0.94
+      expect(cell / POI_PIN_PIXEL_RATIO, `${count} member(s)`).toBeGreaterThanOrEqual(7)
+    }
+  })
+
+  it('leaves the anchor own glyph the larger of the two', () => {
+    // The band cannot grow without taking this, and a site pin whose shelter is
+    // less legible than its privy badge has traded the wrong way round.
+    const g = pinGeometry(POI_PIN_SIZE * POI_PIN_PIXEL_RATIO)
+    const memberCell =
+      Math.min(g.strip.halfWidth * 2, g.strip.bottom - g.strip.top) * 0.94
+
+    expect(g.sitedGlyphBox).toBeGreaterThan(memberCell)
   })
 
   it('clears WCAG AA between the footer band and every member glyph on it', () => {

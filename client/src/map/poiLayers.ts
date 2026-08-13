@@ -53,7 +53,9 @@ import {
   SITE_MEMBERS_PROPERTY,
   composeSites,
   siteMembersKey,
+  type SiteVisibility,
 } from './poiSites'
+import { POI_PRIORITY } from './poiPriority'
 import {
   buildPoiIcons,
   PIN_HALO_COLOR,
@@ -120,33 +122,10 @@ export const POI_PIN_MIN_ZOOM = 12
  */
 export const POI_MIN_ZOOM = POI_PIN_MIN_ZOOM
 
-/**
- * Who wins a collision, best first.
- *
- * This is a safety ordering, not a visual one. When two pins cannot both be
- * placed, the one that stays is the one a hiker most needs: water, then
- * somewhere to sleep, then supplies. WIREFRAMES.md's lanes make the same call
- * in the same order.
- */
-export const POI_PRIORITY: readonly string[] = [
-  'water',
-  'shelter',
-  'campsite',
-  'resupply',
-  // Parking above the rest of the tail because it is the way off the trail:
-  // the pin a hiker looks for when the weather turns or an ankle goes, which
-  // is the same argument water and shelter win on.
-  'parking',
-  'privy',
-  'crossing',
-  // Last, and the ordering earns its keep here for the first time. Vistas are
-  // the densest layer ATC publishes - 1,223 of them, half again as many as
-  // every other POI put together - so at any zoom where pins collide, they
-  // are what would win by sheer count if nothing decided otherwise. A hiker
-  // losing a spring to an overlook is the exact trade this list exists to
-  // refuse.
-  'viewpoint',
-]
+// {@link POI_PRIORITY} lives in poiPriority.ts and is imported above. It moved
+// there when site composition needed the same ordering to decide which member
+// carries a pin whose anchor has been filtered out (#607) - one home, and not
+// re-exported from here, so there is one path to it rather than two.
 
 function iconMatch(
   confidence: PoiConfidence,
@@ -384,13 +363,22 @@ export interface PoiFeatureCollection {
  * the reason {@link POI_ID_PROPERTY} gives. Names are not here because nothing
  * draws them - see the note about `glyphs` in {@link buildPoiLayer}.
  */
-export function poiFeatureCollection(pois: readonly MapPoint[]): PoiFeatureCollection {
+export function poiFeatureCollection(
+  pois: readonly MapPoint[],
+  visibility: SiteVisibility = {},
+): PoiFeatureCollection {
   // ONE FEATURE PER SITE, not per POI (#524). The members are removed here
   // rather than filtered in the style, which is the whole mechanism: a style
   // filter still hands MapLibre a symbol to place and lose, where a source
   // without the member never asks for a box at all. See map/poiSites.ts for why
   // deletion rather than overlap was the problem.
-  const { drawn, membersFor } = composeSites(pois)
+  //
+  // WHICH IS WHY THE FILTERS ARE PASSED IN (#607). The removal is only safe
+  // while the pin that replaces the member is on the map, and {@link poiFilter}
+  // can take that pin off - so this collection has to be rebuilt when the hidden
+  // set changes, not merely re-filtered. That is a rebuild of ~2,800 points on a
+  // legend tap, which is the cost the design doc weighed and accepted.
+  const { drawn, membersFor } = composeSites(pois, visibility)
 
   return {
     type: 'FeatureCollection',
@@ -452,8 +440,19 @@ export function attachPoiIcons(map: MapLibreMap): () => void {
   )
 }
 
-/** Pushes POIs onto the live map's source, and returns a detach function. */
-export function attachPoiData(map: MapLibreMap, pois: readonly MapPoint[]): () => void {
+/**
+ * Pushes POIs onto the live map's source, and returns a detach function.
+ *
+ * `visibility` is the same pair {@link attachPoiFilter} applies, and both are
+ * needed: the filter decides which pins are drawn, this decides which POIs get
+ * a pin to be drawn at all. Passing it here is what makes a site whose anchor
+ * is hidden fall back to a member rather than vanish (#607).
+ */
+export function attachPoiData(
+  map: MapLibreMap,
+  pois: readonly MapPoint[],
+  visibility: SiteVisibility = {},
+): () => void {
   return whenStyleReady(
     map,
     // The source itself is the readiness question. This is the write that used
@@ -467,7 +466,7 @@ export function attachPoiData(map: MapLibreMap, pois: readonly MapPoint[]): () =
       const source = map.getSource<GeoJSONSource>(POI_SOURCE_ID)
       if (source === undefined || typeof source.setData !== 'function') return
 
-      source.setData(poiFeatureCollection(pois) as never)
+      source.setData(poiFeatureCollection(pois, visibility) as never)
     },
     'POI data',
   )

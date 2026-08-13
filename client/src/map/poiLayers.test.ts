@@ -6,6 +6,7 @@ import {
 } from '@maplibre/maplibre-gl-style-spec'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { POI_TYPES } from '../lib/config'
+import { hiddenTypesFrom, onlyType, showAllTypes } from '../lib/waypointVisibility'
 import {
   buildPoiIcons,
   poiColor,
@@ -33,10 +34,10 @@ import {
   POI_LAYER_ID,
   POI_MIN_ZOOM,
   POI_PIN_MIN_ZOOM,
-  POI_PRIORITY,
   POI_SORT_KEY_EXPRESSION,
   POI_SOURCE_ID,
 } from './poiLayers'
+import { POI_PRIORITY } from './poiPriority'
 
 // These are EVALUATED rather than shape-asserted wherever MapLibre gives us
 // the means to. An expression can have exactly the right array structure and
@@ -447,6 +448,84 @@ describe('hiding a category', () => {
     expect(poiFilter(new Set(['water', 'campsite']))).toEqual(
       poiFilter(new Set(['campsite', 'water'])),
     )
+  })
+})
+
+// The source and the filter TOGETHER, which is the only place this bug is
+// visible (#607). Neither half can catch it alone: the composition can be right
+// about which POI carries the pin while the filter takes that pin off the map,
+// and the filter can be right about which types survive while the source never
+// offered the privy in the first place. What is asserted here is what reaches
+// the hiker's screen.
+describe('filtering the legend down to one category', () => {
+  const SITE = [
+    {
+      id: 'shelter',
+      type: 'shelter',
+      lat: 39,
+      lon: -77,
+      confidence: 'high' as const,
+      siteId: 'site_1',
+      siteRole: 'anchor',
+    },
+    {
+      id: 'privy',
+      // 42 m from its shelter, which is the median in features/POI_SITES.md and
+      // the reason it cannot be drawn below z16 while it competes for a box.
+      type: 'privy',
+      lat: 39.0004,
+      lon: -77,
+      confidence: 'high' as const,
+      siteId: 'site_1',
+      siteRole: 'member',
+    },
+  ]
+
+  function drawnPins(shown: string[]): string[] {
+    const hiddenTypes = hiddenTypesFrom(shown)
+    const { filter } = featureFilter(poiFilter(hiddenTypes) as never, 'layers[0].filter')
+
+    return poiFeatureCollection(SITE, { hiddenTypes })
+      .features.filter((feature) =>
+        filter(
+          { zoom: 14 } as never,
+          { properties: feature.properties, type: 1 } as never,
+          null as never,
+        ),
+      )
+      .map((feature) => feature.id)
+  }
+
+  it('draws the privy once its shelter has been filtered out', () => {
+    // THE REGRESSION. Before this, both halves fired at once and the map drew
+    // NOTHING: the privy was removed from the source as riding a shelter pin,
+    // and the shelter pin was removed by the filter. Over the real corridor that
+    // is 284 of 316 privies gone from the one control built to find them.
+    expect(drawnPins(onlyType('privy'))).toEqual(['privy'])
+  })
+
+  it('still draws the shelter, and only the shelter, when nothing is hidden', () => {
+    expect(drawnPins(showAllTypes())).toEqual(['shelter'])
+  })
+
+  it('draws the shelter and not the privy when only shelters are asked for', () => {
+    // The other direction, and it must still fold: the privy is not promoted
+    // just because a filter is in force, only because the pin it rides has gone.
+    expect(drawnPins(onlyType('shelter'))).toEqual(['shelter'])
+  })
+
+  it('resolves the promoted pin to an image that was actually registered', () => {
+    // A promoted member is asked for by an expression built for anchors. A privy
+    // is not a SITE_ANCHOR_TYPE, so it has no member variants - and an id nobody
+    // built draws as nothing at all, which would turn this fix into the same
+    // blank map by another route.
+    const hiddenTypes = hiddenTypesFrom(onlyType('privy'))
+    const [promoted] = poiFeatureCollection(SITE, { hiddenTypes }).features
+
+    const resolved = evaluate(POI_ICON_EXPRESSION, promoted.properties)
+
+    expect(REGISTERED_ICON_IDS).toContain(resolved)
+    expect(resolved).toBe(poiIconId('privy', 'high'))
   })
 })
 

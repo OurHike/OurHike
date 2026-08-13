@@ -1721,11 +1721,20 @@ function App() {
         // trail name beside it may legitimately be left blank (#233).
         hasIdentity: hasStatedReporterType(preferences.reporter_type),
       })
-      // 'send' needs no step here:
-      // useOutboxSync above is already watching, and a report queued by a
-      // signed-in hiker with signal goes on its own. Nothing is awaited for
-      // it, because a send that blocked this callback would be a network round
-      // trip standing between someone and the map they were reading.
+      // Sent now, explicitly (#640). useOutboxSync cannot do it: its effect
+      // fires when `online` or the account CHANGES, and a signed-in hiker
+      // with signal changes neither by submitting - the same steady-state gap
+      // #266 closed for "Try again", on the other path that needed it. This
+      // comment used to say the hook "is already watching"; that sentence was
+      // what kept the gap open. When the next step is sign-in there is no
+      // account yet and syncOutbox declines on its own - the flush after
+      // signing in belongs to the hook, because an account arriving is the
+      // change it does watch. Not awaited: a send standing between someone
+      // and the map they were reading would be a network round trip in the
+      // way, and a failure lands in the outbox exactly as it always did.
+      void syncOutbox().then((result) => {
+        if (result !== null && result.sent > 0) setLastSyncedAt(new Date())
+      })
       if (next === 'sign-in') setAuthFlow({ screen: 'choose', afterReport: true })
       else if (next === 'identity') askForIdentity()
     },

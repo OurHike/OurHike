@@ -105,6 +105,19 @@ export interface PoiDetail {
    */
   capacity?: number
   /**
+   * How far the nearest water source is, in feet, by ATC's own measurement
+   * (pipeline/build_water_distance.py).
+   *
+   * Carried by shelters, campsites, and the water members the pipeline
+   * synthesizes onto their sites from the same figure (#694). Those members
+   * inherit the site's coordinates because ATC states how far and never
+   * where - which is exactly why partDistance prefers this number over a
+   * coordinate-derived one: measuring the inherited position would print
+   * "0 m" for a distance the data actually knows. Absent means nobody has
+   * published one, never "no water" - the capacity rule.
+   */
+  waterDistanceFt?: number
+  /**
    * One sentence about the place - what it is built of, what it has, when it
    * went up - for shelters and campsites.
    *
@@ -304,9 +317,22 @@ function coordinates(lat: number, lon: number): string {
  * So both halves move together or neither does, and the pipeline half costs a
  * re-export. #625 is that work; src/test/unitDisplay.test.ts holds this line
  * as the single excused one until it lands.
+ *
+ * A STATED DISTANCE BEATS A COORDINATE DISTANCE (#694). A water member the
+ * pipeline synthesized from ATC's distance-to-water inherits the site's own
+ * coordinates - ATC states how far, never where - so measuring it would print
+ * "Water · 0 m" under a sentence saying 37 m, the drift above in its worst
+ * form. Such a member carries the stated figure as `waterDistanceFt`, and it
+ * wins whenever present; real mapped members carry none and keep the measured
+ * offset exactly as before. Same rounding either way, so the chip and the
+ * composed sentence cannot disagree about one number.
  */
 function partDistance(pin: PoiDetail, part: PoiDetail): string {
-  return `${Math.round(siteDistanceMeters(pin, part))} m` // units-exempt #625
+  const metres =
+    part.type === 'water' && part.waterDistanceFt !== undefined
+      ? Math.max(1, Math.round(part.waterDistanceFt * 0.3048))
+      : Math.round(siteDistanceMeters(pin, part))
+  return `${metres} m` // units-exempt #625
 }
 
 /**

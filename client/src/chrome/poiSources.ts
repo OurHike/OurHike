@@ -23,6 +23,11 @@ export const SOURCE_LABELS: Record<string, string> = {
   atc_parking: 'the Appalachian Trail Conservancy’s parking data',
   atc_privies: 'the Appalachian Trail Conservancy’s privy data',
   atc_communities: 'the Appalachian Trail Conservancy’s list of A.T. Community towns',
+  // Not "water data": the ATC measured how FAR water is from the site, never
+  // where it is, and the point carrying this label sits at the site itself
+  // (#694). The wording keeps the claim the size it really is, the same way
+  // the Communities line refuses to say "the ATC" plain for a proxy.
+  atc_csi: 'the Appalachian Trail Conservancy’s distance-to-water measurements',
   opentrail_at: 'opentrail.org, tagged by hikers',
 }
 

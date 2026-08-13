@@ -107,6 +107,19 @@ export interface PoiDetail {
    */
   capacity?: number
   /**
+   * How far the nearest water source is, in feet, by ATC's own measurement
+   * (pipeline/build_water_distance.py).
+   *
+   * Carried by shelters, campsites, and the water members the pipeline
+   * synthesizes onto their sites from the same figure (#694). Those members
+   * inherit the site's coordinates because ATC states how far and never
+   * where - which is exactly why partDistance prefers this number over a
+   * coordinate-derived one: measuring the inherited position would print
+   * "0 m" for a distance the data actually knows. Absent means nobody has
+   * published one, never "no water" - the capacity rule.
+   */
+  waterDistanceFt?: number
+  /**
    * One sentence about the place - what it is built of, what it has, when it
    * went up - for shelters and campsites.
    *
@@ -293,6 +306,20 @@ function coordinates(lat: number, lon: number): string {
 }
 
 /**
+ * One metre, in feet - pipeline/lib/poi_description.py's `MIN_PART_FT`, which
+ * floors the distances the pipeline publishes for the same reason.
+ *
+ * A stated distance arrives unfloored (`water_distance_ft` is its own column,
+ * not a nearby part), and a card claiming a hiker walks zero of anything to
+ * reach water reads as a bug rather than as the very short walk it is
+ * asserting. Stated in the coarser unit, so neither system rounds it away:
+ * flooring at 1 ft would still print "0 m" for a metric hiker, which is the
+ * defect arriving in the other unit. #694 floored it at a metre for exactly
+ * this reason, back when this line printed only metres.
+ */
+const MIN_PART_FT = 3.28084
+
+/**
  * How far a part of the site is from the pin, for its chip.
  *
  * FROM THE PIN, NOT FROM THE PART CURRENTLY OPEN. The pin is the one point on
@@ -320,9 +347,26 @@ function coordinates(lat: number, lon: number): string {
  * also published as prose in metres: converting one half would have put
  * `Privy · 130 ft` over a sentence saying 40 m. Both halves moved together in
  * the end, which is what the exemption was waiting for.
+ *
+ * A STATED DISTANCE BEATS A COORDINATE DISTANCE (#694). A water member the
+ * pipeline synthesized from ATC's distance-to-water inherits the site's own
+ * coordinates - ATC states how far, never where - so measuring it would print
+ * "Water · 0 ft" beside a sentence saying 121 ft, the drift above in its worst
+ * form. Such a member carries the stated figure as `waterDistanceFt`, and it
+ * wins whenever present; real mapped members carry none and keep the measured
+ * offset exactly as before.
+ *
+ * That figure needs no conversion here, which is the one simplification #625
+ * hands #694: ATC states it in feet, the artifact publishes it in feet, and
+ * feet is what lib/units.ts formats from. It reached this line as metres only
+ * because this line printed metres.
  */
 function partDistance(pin: PoiDetail, part: PoiDetail, units: UnitSystem): string {
-  return formatShortDistance(siteDistanceFeet(pin, part), units)
+  const feet =
+    part.type === 'water' && part.waterDistanceFt !== undefined
+      ? Math.max(MIN_PART_FT, part.waterDistanceFt)
+      : siteDistanceFeet(pin, part)
+  return formatShortDistance(feet, units)
 }
 
 /**

@@ -805,6 +805,61 @@ describe('the parts of one site', () => {
     expect(screen.getByText('Nearby: a pit privy 66 ft away.')).toBeInTheDocument()
   })
 
+  it('prints the stated distance for a synthesized water member, never the zero its coordinates measure (#694)', () => {
+    // The pipeline synthesizes a water member from ATC's distance-to-water
+    // where no real point exists. ATC states how far, never where, so the
+    // member sits AT the shelter's own coordinates - and measuring that
+    // would print "Water · 0 ft" beside a sentence saying 120 ft, drift on
+    // one card in its worst form. The stated figure wins, and needs no
+    // conversion to do it: ATC states feet, the artifact publishes feet, and
+    // feet is what lib/units.ts formats from (#625).
+    const SYNTHESIZED_WATER: PoiDetail = {
+      id: 'atc_csi:xyz',
+      name: 'Water near Chairback Gap Lean-to',
+      type: 'water',
+      lat: SHELTER.lat,
+      lon: SHELTER.lon,
+      confidence: 'low',
+      source: 'atc_csi',
+      waterDistanceFt: 120,
+    }
+    renderSite([SHELTER, PRIVY, SYNTHESIZED_WATER])
+
+    expect(screen.getByRole('button', { name: 'Water 120 ft' })).toBeInTheDocument()
+
+    // And a real mapped water point - which carries no stated figure - keeps
+    // the measured offset exactly as before: 0.00036° of latitude is 40.1 m,
+    // which is 131 ft.
+    const REAL_WATER: PoiDetail = {
+      id: 'opentrail_at:77',
+      name: 'Piped Spring',
+      type: 'water',
+      lat: SHELTER.lat + 0.00036,
+      lon: SHELTER.lon,
+      confidence: 'high',
+      source: 'opentrail_at',
+    }
+    cleanup()
+    renderSite([SHELTER, PRIVY, REAL_WATER])
+
+    expect(screen.getByRole('button', { name: 'Water 131 ft' })).toBeInTheDocument()
+
+    // Both readings follow the hiker, which is the half #694 could not have:
+    // the stated figure and the measured one convert through one formatter.
+    cleanup()
+    render(
+      <PoiCard
+        poi={SHELTER}
+        site={[SHELTER, SYNTHESIZED_WATER]}
+        map={null}
+        units="metric"
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Water 37 m' })).toBeInTheDocument()
+  })
+
   it('carries the same icon the map draws for each part', () => {
     // One copy of the pin, which is the rule map/MapIcon.tsx is built on: a chip
     // that drew its own privy silhouette would drift from the map's the first

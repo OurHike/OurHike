@@ -73,6 +73,19 @@ export interface StoredPoi {
    */
   capacity?: number
   /**
+   * How far the nearest water source is, in feet, by ATC's own measurement
+   * (pipeline/build_water_distance.py - their Campsite Sustainability Index
+   * states a distance per site, never a location).
+   *
+   * Carried by shelters and campsites, and by the water POIs the pipeline
+   * synthesizes onto their sites from the same number (#694) - those inherit
+   * the site's coordinates because no real ones exist, which is exactly why
+   * a card must prefer THIS figure over a coordinate-derived distance
+   * (chrome/PoiCard.tsx's partDistance). Absent means nobody has published a
+   * distance, never "no water" - the same rule as `capacity`.
+   */
+  waterDistanceFt?: number
+  /**
    * One sentence about the place, for every POI type ATC's own facility
    * layers feed - shelters, campsites, viewpoints, parking areas, privies.
    *
@@ -197,6 +210,7 @@ interface PoiProperties {
   confidence?: unknown
   source?: unknown
   capacity?: unknown
+  water_distance_ft?: unknown
   description?: unknown
   photo_key?: unknown
   photos?: unknown
@@ -323,6 +337,16 @@ function capacityProp(value: unknown): number | undefined {
     : undefined
 }
 
+/** A whole distance in feet, or nothing - the same guard as capacityProp for
+ *  the same reason: the pipeline publishes null where it refused to state a
+ *  number (pipeline/build_water_distance.py's zeros and holdbacks), and a
+ *  card rendering "Water · 0 m" from a null would be the guess it refused. */
+function waterDistanceProp(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0
+    ? value
+    : undefined
+}
+
 function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
   const parsed = JSON.parse(text) as { features?: Array<{ properties?: PoiProperties }> }
   const pois: StoredPoi[] = []
@@ -344,6 +368,7 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
     const photoTaken = stringProp(props.photo_taken)
     const photoList = readPhotoList(props.photos)
     const capacity = capacityProp(props.capacity)
+    const waterDistanceFt = waterDistanceProp(props.water_distance_ft)
     const description = stringProp(props.description)
     // #523's grouping (pipeline/lib/poi_sites.py). Read here rather than
     // dropped, because these three are what let the map draw one pin for a
@@ -381,6 +406,7 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
       // as a zero, so the card can tell "sleeps nobody knows how many" from
       // a number.
       ...(capacity !== undefined ? { capacity } : {}),
+      ...(waterDistanceFt !== undefined ? { waterDistanceFt } : {}),
       ...(description !== undefined ? { description } : {}),
       // All three ride together or not at all: a role with no site to belong
       // to cannot be acted on, and map/poiSites.ts would treat it as a POI in

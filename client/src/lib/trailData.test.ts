@@ -420,6 +420,67 @@ describe('trail data', () => {
     expect(pois[0]).not.toHaveProperty('capacity')
   })
 
+  it('keeps the water distance, so the chip can print the stated figure (#694)', async () => {
+    // Both carriers in one download: the shelter whose card splices the
+    // sentence, and the water member the pipeline synthesized onto its site -
+    // which inherits the shelter's coordinates, making this number the only
+    // honest distance a chip can show for it.
+    serve(
+      poiCollection([
+        {
+          id: 'atc_shelters:abc',
+          poi_type: 'shelter',
+          name: 'Chairback Gap Lean-to',
+          lat: 45.45,
+          lon: -69.26,
+          confidence: 'high',
+          water_distance_ft: 120,
+        },
+        {
+          id: 'atc_csi:abc',
+          poi_type: 'water',
+          name: 'Water near Chairback Gap Lean-to',
+          lat: 45.45,
+          lon: -69.26,
+          confidence: 'low',
+          source: 'atc_csi',
+          water_distance_ft: 120,
+        },
+      ]),
+    )
+    await downloadTrailData()
+
+    const pois = store.get(POIS_KEY) as StoredPoi[]
+    expect(pois[0].waterDistanceFt).toBe(120)
+    expect(pois[1].waterDistanceFt).toBe(120)
+  })
+
+  it.each([
+    ['null, which the artifact writes where the pipeline refused a number', null],
+    ['zero, which the pipeline itself refuses to publish', 0],
+    ['a string, which is not a distance', '120'],
+  ])(
+    'leaves the water distance off when the artifact carries %s',
+    async (_why, water_distance_ft) => {
+      serve(
+        poiCollection([
+          {
+            id: 'atc_shelters:abc',
+            poi_type: 'shelter',
+            name: 'Shelter',
+            lat: 1,
+            lon: 2,
+            water_distance_ft,
+          },
+        ]),
+      )
+      await downloadTrailData()
+
+      const pois = store.get(POIS_KEY) as StoredPoi[]
+      expect(pois[0]).not.toHaveProperty('waterDistanceFt')
+    },
+  )
+
   it('keeps the composed description, so the card can say what the place is', async () => {
     serve(
       poiCollection([

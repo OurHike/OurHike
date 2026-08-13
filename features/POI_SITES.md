@@ -188,9 +188,20 @@ A site draws **one pin, at the anchor's coordinates, in the anchor's accent and 
 The pin has to say that it stands for more than itself, and there are two ways to do it:
 
 - **A `+N` badge.** Cheap, legible at 38 px, and says nothing about *what*.
-- **A footer strip of two or three micro-glyphs.** Answers "is there a privy" without a tap, which is the actual question, and costs legibility at 38 px.
+- **Micro-glyphs, one per member category.** Answers "is there a privy" without a tap, which is the actual question, and costs legibility at 38 px.
 
-**Recommended: the glyph strip, prototyped against the contrast assertions already in `poiIcons.test.ts`, falling back to `+N` if it cannot clear them.** The recommendation is soft on purpose — this is the one decision in this document that wants a look at a real screen in real sunlight ([#105](https://github.com/OurHike/OurHike/issues/105)) before it is settled.
+**Settled on micro-glyphs**, which is what [#524](https://github.com/OurHike/OurHike/issues/524) built. *Where* they go took two more passes, and the real screen this section asked for is what decided both:
+
+| | where | anchor glyph | member glyph | icon box |
+|---|---|---|---|---|
+| #524, then [#604](https://github.com/OurHike/OurHike/issues/604) | a white footer strip across the disc | 11.1 px | 9.6 px at one member, 7.5 at three | 38 px |
+| [#611](https://github.com/OurHike/OurHike/issues/611) | badges on the rim, upper right | **17.7 px** | **7.2 px at every count** | 46 / 54 / 58 px |
+
+The strip could only be made by taking the anchor's own glyph down to 11.1 px, and every site pin paid that — including the 57% carrying a single member. A shelter carrying a privy was a less legible shelter than one carrying nothing, which is a strange thing for a pin to say. **Badges hang off the outer circle instead, crossing the halo ring and never the disc**, so the anchor keeps the full 17.7 px a plain pin draws at and a site pin is a plain pin again. Each badge is the same pin language at badge scale: the category's accent, its glyph in halo white, a white ring, the dark hairline outside.
+
+The trade, stated plainly: a single member's glyph drops from 9.6 px to 7.2. It buys a whole disc, a full-size anchor glyph, and a member glyph that no longer shrinks as a pin carries more — the strip divided a fixed span, so a third member shrank all three. It stays above the 7 px floor `poiIcons.test.ts` holds.
+
+**What it costs is the collision box.** Badges hang past the rim, so the image grows — symmetrically, which is what lets the disc stay on the hiker's coordinate with no `icon-offset` in `poiLayers.ts` at all. Padded per member count rather than once for every site pin, because the padding *is* the collision box: 46 px carrying one member, 54 carrying two, 58 carrying three, against 38 for every other waypoint on the map. At z14 that is a site pin evicting a losing neighbour from 185 m, 215 m or 229 m rather than from 155 m. Set against it, the same grouping took 428 members out of the source altogether — those stopped asking for a box at all. If it ever bites, the cheaper version is to pad the top and right only — where the badges actually are — and re-centre with a data-driven `icon-offset`, which takes the three-member box from 58 px to 48.
 
 What this does *not* do is change `icon-allow-overlap`. Sites remove the pins that were colliding rather than permitting overlap; the collision engine keeps doing its job on what is left, and `POI_PRIORITY` keeps deciding a genuinely crowded ridge. Two shelters 400 m apart still collide at z12, correctly.
 
@@ -245,6 +256,6 @@ Nearly every A.T. shelter has water in reality. The app does not know where it i
 
 1. **Two shelters, one site.** Horns Pond has two lean-tos ~40 m apart and is genuinely one place; elsewhere two shelters that close would be a data error. v1 keeps one anchor per site and lets the second shelter keep its own pin, which is safe and slightly wrong at Horns Pond. Is that the right trade, or should anchor-to-anchor merging be in scope?
 2. **Trailheads.** `parking + resupply` (26 clusters) and `parking + privy` (13) are a real second grouping with a different card. Deliberately out of v1 — is it v1.1 or v2?
-3. **The pin badge.** Glyph strip or `+N`, settled on a real screen rather than here.
+3. ~~**The pin badge.** Glyph strip or `+N`, settled on a real screen rather than here.~~ **Settled** — see §4. Micro-glyphs rather than `+N`, on badges around the rim rather than in a strip across the disc. The real screen decided it twice: once against a member glyph too small to read ([#604](https://github.com/OurHike/OurHike/issues/604)), and once against the white bar itself ([#611](https://github.com/OurHike/OurHike/issues/611)). What is still open there is narrower and worth carrying forward: a badge says nothing about whether *that privy* is verified, where the rim says it for the anchor.
 4. **The 32 unmatched privies** (35 as projected; `group` found three of them). Named for something that is not a shelter or campsite — `"Kennebec Privy"`, `"Bromley Summit Privy"`, `"Guilder Pond Parking Area Privy"` — or distinguished by a word the rule has no reading of: `"Backpacker Campsite Upper Privy"` and `"...Lower Privy"` are two privies at one campsite, and `"501 Shelter Winter Privy"` is a seasonal second one. They keep their own pins, which is honest. Worth a second pass, or leave them?
 5. **Site names.** A site anchored on `"Chairback Gap Lean-to Shelter"` shows that name. Does the card say "Chairback Gap" once at the top and let the chips carry the rest, or repeat the full name per member?

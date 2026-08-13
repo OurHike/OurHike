@@ -154,17 +154,20 @@ export function pinGeometry(pixels: number) {
 
   // A MEMBER BADGE (#524, and #611 which moved it here from a footer band).
   //
-  // Big enough to carry a silhouette rather than a colour - 14 CSS px at the
-  // standard pin, which puts its glyph at 7.1 CSS px, over the 7 px floor
-  // poiIcons.test.ts holds and well clear of the 5.7 px that was reported as
-  // unreadable on a real screen. Small enough that a hiker reads it as extra
-  // information about a shelter rather than as a fourth pin.
-  const badgeRadius = rOuter * 0.37
-  // Far enough out that a badge crosses only the halo ring and NEVER the disc,
-  // which is what leaves the anchor's own glyph at full size - the whole point
-  // of moving off the band. The clearance is thin (0.4 CSS px at the standard
-  // pin) and it is an invariant rather than a look, so the test suite holds it.
-  const badgeRing = rOuter * 1.16
+  // 21 CSS px at the standard pin, which puts its glyph at 10.7 CSS px - half
+  // again the 14 px this shipped as, and above even the 9.6 px the old footer
+  // strip managed at its most generous. The first size was picked to read as
+  // "extra, not equal"; on a real screen it read as too quiet, and a member a
+  // hiker has to squint at is the failure this whole feature exists to fix.
+  const badgeRadius = rOuter * 0.555
+  // DERIVED, not chosen, and that is the point: a badge sits exactly far enough
+  // out to clear the disc, whatever size it is. Crossing the disc would put a
+  // badge on top of the anchor's own silhouette - the thing moving off the band
+  // was for - so the rule holds the invariant rather than a constant that would
+  // have to be re-tuned by hand every time the badge changed. The daylight is a
+  // third of the pin's own hairline: enough that the two never merge, little
+  // enough that a badge still reads as attached rather than floating.
+  const badgeRing = rDisc + badgeRadius + edgeWidth / 3
   // Thinner rings than the pin's own 1/6 and 1/15. At this size the pin's
   // proportions would spend a fifth of the badge on a halo whose only job here
   // is separating it from the disc beneath it - the dark hairline outside is

@@ -368,7 +368,10 @@ describe('buildPoiIcons', () => {
   it('draws a member glyph big enough to read, at every member count', () => {
     // 5.7 CSS px was reported as hard to read on a real screen, which is the
     // review features/POI_SITES.md said this decision needed, and 7 is the floor
-    // that came out of it.
+    // that came out of it. The badge now clears it by half again, because 7.1
+    // was reported as too quiet on the same screen - so the floor is asserted
+    // here and the ACTUAL size below it, which is what would catch a badge
+    // quietly shrinking back towards the bar it stays clear of.
     //
     // A badge is the SAME SIZE whatever a pin carries, which is most of what
     // moving off the band bought: the strip's cell had to divide a fixed span
@@ -384,6 +387,10 @@ describe('buildPoiIcons', () => {
       ).toBeGreaterThanOrEqual(7)
       expect(badgeCenters(count, g.badge)).toHaveLength(count)
     }
+
+    // Bigger than the footer strip managed at its most generous (9.6 px at one
+    // member), which is the bar this layout has to beat to have been worth it.
+    expect(g.badge.glyphBox / POI_PIN_PIXEL_RATIO).toBeGreaterThan(9.6)
   })
 
   it('leaves the anchor own glyph exactly the size a plain pin draws it', () => {
@@ -394,7 +401,12 @@ describe('buildPoiIcons', () => {
     const g = pinGeometry(POI_PIN_SIZE * POI_PIN_PIXEL_RATIO)
 
     expect(g.glyphBox / POI_PIN_PIXEL_RATIO).toBeCloseTo(17.72, 2)
-    expect(g.glyphBox).toBeGreaterThan(g.badge.glyphBox * 2)
+    // And still the biggest thing on the pin. The margin has narrowed - 17.7
+    // against 10.7, where the first badge size made it 17.7 against 7.1 - which
+    // is the real cost of a badge a hiker can read: a site pin now says two
+    // things loudly rather than one loudly and one quietly. It is a shelter
+    // first, and this is where that stops being true if a badge grows again.
+    expect(g.glyphBox).toBeGreaterThan(g.badge.glyphBox)
   })
 
   it('never lets a badge reach the disc', () => {
@@ -429,14 +441,42 @@ describe('buildPoiIcons', () => {
 
   it('puts the badges in the upper right, however many there are', () => {
     // Where the maintainer asked for them, and the reason the fan is centred on
-    // the 45 degree axis rather than growing from one end.
+    // the 45 degree axis rather than growing from one end: one member lands
+    // square in the corner, and the rest open out either side of it evenly.
+    //
+    // WHAT THIS DELIBERATELY DOES NOT ASSERT is `x >= 0 && y <= 0` - a badge
+    // strictly inside the quarter turn between twelve and three - which is what
+    // it said while the badge was 14 px across. Three badges half again that
+    // size do not fit in a quarter turn without touching each other, so at three
+    // members the outer two sit about 7 degrees past twelve and past three. That
+    // is a consequence of the size, not a drift: what has to hold is that every
+    // badge stays on the upper-right side of the pin, which is the anti-diagonal
+    // below, and that none of them wanders more than 55 degrees off the corner.
     const g = pinGeometry(POI_PIN_SIZE * POI_PIN_PIXEL_RATIO)
+    const AXIS = -Math.PI / 4
+
+    // One member is exactly in the corner: as far right as it is up.
+    const only = badgeCenters(1, g.badge)[0]
+    expect(only.x).toBeCloseTo(-only.y, 6)
 
     for (const count of [1, 2, 3]) {
-      for (const { x, y } of badgeCenters(count, g.badge)) {
-        expect(x, `${count} member(s)`).toBeGreaterThanOrEqual(0)
-        expect(y, `${count} member(s)`).toBeLessThanOrEqual(0)
+      const spots = badgeCenters(count, g.badge)
+
+      for (const { x, y } of spots) {
+        // Upper-right of the anti-diagonal through the pin's centre.
+        expect(x - y, `${count} member(s)`).toBeGreaterThan(0)
+        // And within 55 degrees of the corner itself, which is the room three
+        // badges take. A fourth member category would break this, and should -
+        // it is a layout decision, not a fraction to widen quietly.
+        const off = Math.atan2(y, x) - AXIS
+        expect(Math.abs(off) * (180 / Math.PI), `${count} member(s)`).toBeLessThan(55)
       }
+
+      // Symmetric about the 45 degree axis: the first and last badge are the
+      // same angle either side of it.
+      const first = Math.atan2(spots[0].y, spots[0].x)
+      const last = Math.atan2(spots[spots.length - 1].y, spots[spots.length - 1].x)
+      expect((first + last) / 2, `${count} member(s)`).toBeCloseTo(AXIS, 6)
     }
   })
 

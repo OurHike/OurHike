@@ -1,4 +1,4 @@
-"""Tests for build_trail_water.py - where the trail meets water, and which
+"""Tests for fetch_trail_water.py - where the trail meets water, and which
 sites have water a hiker can reach (#529).
 
 Synthetic geometry and canned elevations throughout, never a state extract or
@@ -10,8 +10,8 @@ segment distance - is pure or monkeypatchable without one (TESTING.md).
 import json
 import math
 
-import build_trail_water as trail_water
-from build_trail_water import (
+import fetch_trail_water as trail_water
+from fetch_trail_water import (
     CROSSING_DEDUPE_M,
     MATCH_RADIUS_FT,
     MAX_GRADE,
@@ -216,24 +216,66 @@ def test_streams_further_apart_than_the_merge_radius_are_different_water():
     assert found["flow"] is None
 
 
-# --- the file contract ----------------------------------------------------
+# --- the write guards ----------------------------------------------------
 
 
-def test_check_mode_compares_without_writing(tmp_path, monkeypatch):
+def test_a_derivation_that_lost_most_of_its_crossings_refuses_to_overwrite(tmp_path, monkeypatch):
+    """A read that half-failed must not be able to replace good output with
+    less of it. Ordinary editing of either hydrography never halves a
+    corridor's crossings; a broken subregion does."""
+    out = tmp_path / "trail_water.json"
+    monkeypatch.setattr(trail_water, "OUT_PATH", out)
+    monkeypatch.setattr(trail_water, "fetch_atc_features", lambda layer: [_site()] if layer == "shelters" else [])
+    monkeypatch.setattr(trail_water, "elevation_ft", lambda lat, lon: 2000.0)
+
+    plenty = [
+        _crossing("nhd", 41.0 + _north(60 * index), -74.0, stream_id=str(index)) for index in range(trail_water.MIN_CROSSINGS * 2)
+    ]
+    monkeypatch.setattr(trail_water, "collect_streams", lambda sites: (plenty, {}))
+    assert trail_water.main([]) == 0
+    kept = len(json.loads(out.read_text())["crossings"])
+
+    monkeypatch.setattr(trail_water, "collect_streams", lambda sites: (plenty[: len(plenty) // 4], {}))
+    assert trail_water.main([]) == 1
+    assert len(json.loads(out.read_text())["crossings"]) == kept
+
+
+def test_a_derivation_below_the_floor_refuses_even_with_nothing_on_disk(tmp_path, monkeypatch):
+    """The first run has no previous file to compare against, so the floor is
+    the only thing between a broken read and an empty success."""
     monkeypatch.setattr(trail_water, "OUT_PATH", tmp_path / "trail_water.json")
     monkeypatch.setattr(trail_water, "fetch_atc_features", lambda layer: [_site()] if layer == "shelters" else [])
+    monkeypatch.setattr(trail_water, "collect_streams", lambda sites: ([_crossing("nhd", 41.0, -74.0)], {}))
+    monkeypatch.setattr(trail_water, "elevation_ft", lambda lat, lon: 2000.0)
+
+    assert trail_water.main([]) == 1
+    assert not (tmp_path / "trail_water.json").exists()
+
+
+def test_a_good_derivation_records_a_receipt(tmp_path, monkeypatch):
+    """The completion record check_output_quality.py re-hashes (#542) - a
+    derived input nobody can prove was derived this run is the gap that gate
+    exists to close."""
+    out = tmp_path / "trail_water.json"
+    monkeypatch.setattr(trail_water, "OUT_PATH", out)
+    monkeypatch.setattr(trail_water, "fetch_atc_features", lambda layer: [_site()] if layer == "shelters" else [])
     monkeypatch.setattr(
-        trail_water, "collect_streams", lambda sites: ([_crossing("nhd", 41.0, -74.0)], {"shelter-1": [_stream_at(20)]})
+        trail_water,
+        "collect_streams",
+        lambda sites: (
+            [
+                _crossing("nhd", 41.0 + _north(60 * index), -74.0, stream_id=str(index))
+                for index in range(trail_water.MIN_CROSSINGS)
+            ],
+            {},
+        ),
     )
     monkeypatch.setattr(trail_water, "elevation_ft", lambda lat, lon: 2000.0)
 
-    assert trail_water.main(["--check"]) == 1  # nothing on disk yet
-    assert not (tmp_path / "trail_water.json").exists()
-
     assert trail_water.main([]) == 0
-    assert trail_water.main(["--check"]) == 0
 
-    drifted = json.loads((tmp_path / "trail_water.json").read_text())
-    drifted["crossings"] = []
-    (tmp_path / "trail_water.json").write_text(json.dumps(drifted))
-    assert trail_water.main(["--check"]) == 1
+    from lib import fetch_receipts
+
+    receipt = fetch_receipts.load("fetch_trail_water")
+    assert receipt is not None
+    assert [output["path"] for output in receipt["outputs"]] == [str(out)]

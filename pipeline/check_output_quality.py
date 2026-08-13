@@ -943,7 +943,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="append",
         default=[],
         metavar="FETCHER",
-        choices=["fetch_atc_photos", "fetch_poi_images", "fetch_elevation", "fetch_osm_water"],
+        choices=["fetch_atc_photos", "fetch_poi_images", "fetch_elevation", "fetch_osm_water", "fetch_trail_water"],
         dest="fetched",
         help=(
             "A conditional fetcher this run was asked to run, repeatable. Its "

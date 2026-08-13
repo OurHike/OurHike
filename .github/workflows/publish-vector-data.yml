@@ -51,6 +51,10 @@ on:
         description: "Fetch OSM water points (Geofabrik extracts, ~3.5 GB / ~15 min). Untick to publish with opentrail's water alone."
         type: boolean
         default: true
+      include_trail_water:
+        description: "Derive trail crossings and reachable site water (adds ~5.7 GB of USGS subregions / ~30 min). Untick to reuse the last run's."
+        type: boolean
+        default: false
 
 # One publish at a time. Two concurrent runs would race on latest.json and could
 # interleave uploads, leaving the manifest describing a mixture of two builds.
@@ -95,6 +99,8 @@ jobs:
       # which default to pipeline/.
       FETCH_OUTPUTS: |
         pipeline/data/raw/*.geojson
+        pipeline/data/raw/trail_water.json
+        pipeline/data/raw/epqs_elevations.json
         pipeline/data/raw/manifest.json
         pipeline/data/raw/opentrail_state.json
         pipeline/data/raw/receipts
@@ -250,6 +256,19 @@ jobs:
         if: inputs.include_osm_water
         run: python fetch_osm_water.py
 
+      # Where the trail meets water, and which sites have water a hiker can
+      # reach (#529). Off by default, unlike the OSM points: it downloads
+      # ~5.7 GB of USGS subregions on top of reading the extracts, and its
+      # answer barely moves - NHD is a frozen snapshot and the trail does not
+      # often change where it fords a creek. The output rides FETCH_OUTPUTS,
+      # so an unticked run exports the last derivation's crossings rather
+      # than none, exactly as the photo fetches behave. Its elevation cache
+      # rides along too, so a re-run after a threshold change pays for the
+      # hydrography and not for several hundred more EPQS round trips.
+      - name: Derive trail water
+        if: inputs.include_trail_water
+        run: python fetch_trail_water.py
+
       - name: Export trail lines
         run: python export_trails.py
 
@@ -358,6 +377,9 @@ jobs:
           fi
           if [ "${{ inputs.include_osm_water }}" = "true" ]; then
             fetched="$fetched --fetched fetch_osm_water"
+          fi
+          if [ "${{ inputs.include_trail_water }}" = "true" ]; then
+            fetched="$fetched --fetched fetch_trail_water"
           fi
           if [ "${{ inputs.include_elevation }}" = "true" ]; then
             python check_output_quality.py $fetched --fetched fetch_elevation

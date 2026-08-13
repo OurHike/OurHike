@@ -79,20 +79,22 @@ inspection, 2026-07-28):
     stopped being an empty-but-present layer after shipping as one since it
     was declared.
 
-Where the trail meets water (#529, build_trail_water.py): two more sources,
-both read from reference/trail_water.json, both derived from the OSM state
-extracts this pipeline already downloads.
+Where the trail meets water (#529, fetch_trail_water.py): two more sources,
+both read from data/raw/trail_water.json, both derived by
+fetch_trail_water.py from USGS's hydrography and the OSM state extracts this
+pipeline already downloads.
 
   - CROSSINGS fill `crossing`, the poi_type declared in lib/poi_schema.py and
     empty since it was declared. Each is an exact geometric intersection of
-    ATC's centerline with an OSM stream way - the two lines cross, so a hiker
-    walking the trail walks through the water. Not a proximity guess, which
-    is what #97 measured overshooting into thousands of near-misses.
+    ATC's centerline with a stream line from either hydrography - the two
+    lines cross, so a hiker walking the trail walks through the water. Not a
+    proximity guess, which is what #97 measured overshooting into thousands
+    of near-misses.
   - SITE WATER folds into `water`: for each shelter and campsite, the nearest
     point on a stream, published ONLY where a hiker could reach it - inside
-    100 ft and under a 35% grade, measured from real USGS elevations at both
+    100 ft and under a 15% grade, measured from real USGS elevations at both
     ends. A stream 90 ft away and 120 ft below is not a water source however
-    close the map says it is. build_trail_water.py holds both gates and every
+    close the map says it is. fetch_trail_water.py holds both gates and every
     rejection's numbers.
 
 Neither needs a matching rule here: a published point sits at its real
@@ -248,10 +250,11 @@ CAPACITY_PATH = ROOT / "reference" / "shelter_capacity.json"
 # build_water_distance.py's output, under reference/ for the same reason.
 WATER_DISTANCE_PATH = ROOT / "reference" / "water_distance.json"
 
-# build_trail_water.py's output, under reference/ for those reasons plus one
-# of its own: NHD is a frozen snapshot, so fetching it per build would
-# re-download an unchanging answer (that script's docstring).
-TRAIL_WATER_PATH = ROOT / "reference" / "trail_water.json"
+# fetch_trail_water.py's output. In data/raw/ rather than reference/ because
+# it is derived geometry, not a join somebody reviews row by row - the
+# judgement it encodes lives in that script's constants, which are code. Read
+# at call time from this constant so a test redirecting it redirects the read.
+TRAIL_WATER_PATH = RAW_DIR / "trail_water.json"
 
 # Metres per foot, for the places the two units meet: a site member's
 # distance is measured in metres (the equirectangular gate that grouped it) and
@@ -975,8 +978,6 @@ def unify_all_sources(trail_id: str = TRAIL_ID, skipped: list[str] | None = None
             record[RAW_PROPERTIES_KEY] = feature.get("properties") or {}
             unified.append(record)
 
-    # Read at call time from the module constant, like every path here, so a
-    # test pointing it elsewhere redirects it.
     unified.extend(load_trail_water(TRAIL_WATER_PATH, trail_id))
 
     return unified

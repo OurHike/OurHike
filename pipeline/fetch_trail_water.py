@@ -1,4 +1,4 @@
-"""Build reference/trail_water.json - where the A.T. meets water, and which
+"""Derive data/raw/trail_water.json - where the A.T. meets water, and which
 shelters and campsites have water they can actually walk to.
 
 This replaces an earlier attempt that published, on every shelter card, the
@@ -74,19 +74,29 @@ coordinates and the existing grouping does the rest. That is also why the
 radius here stays inside that gate - a "match" this file cannot make the map
 show would be a match in name only.
 
-## Why the output is checked in rather than fetched at build time
+## Why this is a fetch step and not a reviewed file
 
-The same reason shelter_capacity.json and water_distance.json are - the
-derivation encodes judgement (which FCodes are streams, how steep is too
-steep) and a checked-in file makes every change a reviewable diff - plus one
-this source adds: **the extracts move daily.** Geofabrik republishes every night, so a
-derivation run at build time would quietly change the corridor's crossings
-between two releases with no diff anybody reviewed. Checked in, a stream that
-appears or moves is a line in a pull request.
+It nearly shipped as `reference/trail_water.json`, checked in beside
+shelter_capacity.json and water_distance.json, and that was the wrong shelf.
+Those two are JOINS THAT ENCODE JUDGEMENT - a row in shelter_capacity.json is
+somebody's decision that this hiker-list entry is that ATC shelter, and a
+diff of it is a review of those decisions. This file's rows are derived
+geometry: 1,125 crossing coordinates and 512 site verdicts, none of which a
+human reads one by one.
 
-Every rejected candidate is listed with its numbers rather than dropped, so
-raising MATCH_RADIUS_FT or MAX_GRADE is a decision somebody can make from
-this file instead of a re-run in the dark.
+The judgement here lives in the CONSTANTS - MATCH_RADIUS_FT, MAX_GRADE,
+CROSSING_DEDUPE_M, which streams count - and those are code, reviewed as
+code. So the output goes where every other derived input goes: `data/raw/`,
+gitignored, cached between CI runs, and standing behind a receipt like every
+other fetcher (#542). What reaches hikers reaches them the way every layer
+does - through export_poi.py into `crossing.geojson` and `water.geojson`, and
+through publish.py into R2.
+
+Re-running it costs the extracts already on disk plus ~5.7 GB of USGS
+subregions downloaded and deleted in turn, which is why the publish workflow
+makes it an opt-in step and why its output rides the fetch cache: a run that
+does not ask for it exports whatever the last run derived, exactly as the
+photo fetches behave.
 
 Licence: NHD and 3DEP are U.S. federal work in the public domain (USGS asks
 for a courtesy citation, which the source block carries). OSM is ODbL -
@@ -96,10 +106,14 @@ it came from, and a merged one names both, so the attribution travels with
 the record rather than sitting in a registry line somebody has to find.
 
 Usage:
-    python build_trail_water.py [--check]
+    python fetch_trail_water.py
 
-`--check` re-derives the file and exits non-zero if it differs from what is
-on disk, without writing.
+A derivation this expensive must not be able to quietly replace good output
+with less of it, so the write is guarded the way fetch_opentrail.py's is: a
+result under MIN_CROSSINGS, or one that has lost more than
+MAX_CROSSING_DROP_RATIO of what is already on disk, refuses rather than
+overwrites. Ordinary edits to either hydrography never halve a corridor's
+crossings; a broken read does.
 """
 
 import argparse
@@ -115,10 +129,11 @@ import requests
 
 from build_water_distance import fetch_atc_features
 from export_basemap import AT_STATES, OSM_RAW_DIR
+from lib import fetch_receipts
 
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
-OUT_PATH = ROOT / "reference" / "trail_water.json"
+OUT_PATH = RAW_DIR / "trail_water.json"
 NHD_TMP_DIR = RAW_DIR / "nhd_tmp"
 
 # Ground elevations already asked for, under data/ because it is a fetch
@@ -252,6 +267,12 @@ TIMEOUT = 90
 TRIES = 5
 
 NO_STREAM_NEARBY = f"no stream within {REPORT_RADIUS_FT:.0f} ft"
+
+# The write guards, in fetch_opentrail.py's shape and for its reason. The
+# floor is far under the 1,125 the corridor measured (2026-08-13), because it
+# is there to catch a read that returned nothing, not to police the tide.
+MIN_CROSSINGS = 200
+MAX_CROSSING_DROP_RATIO = 0.5
 TOO_FAR = "the nearest stream is {distance_ft:.0f} ft away, past the {radius:.0f} ft a hiker walks for water"
 TOO_STEEP = (
     "the ground drops {drop_ft:.0f} ft over {distance_ft:.0f} ft - a {grade:.0%} grade, which is a scramble rather than a walk"
@@ -836,10 +857,7 @@ def render(document: dict) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument(
-        "--check", action="store_true", help="re-derive and compare against the checked-in file instead of writing it"
-    )
-    args = parser.parse_args(argv)
+    parser.parse_args(argv)
 
     features_by_layer = {}
     for layer in ("shelters", "campsites"):
@@ -858,19 +876,31 @@ def main(argv: list[str] | None = None) -> int:
     counts = document["counts"]
     print(f"  {counts['sites_with_water']}/{counts['sites']} sites have water they can walk to.")
 
-    rendered = render(document)
-    if args.check:
-        current = OUT_PATH.read_text(encoding="utf-8") if OUT_PATH.exists() else ""
-        if current == rendered:
-            print(f"{OUT_PATH} is up to date.")
-            return 0
-        print(f"{OUT_PATH} differs from what the sources now say - re-run without --check and review the diff.")
+    if len(crossings) < MIN_CROSSINGS:
+        print(f"Refusing to write: {len(crossings)} crossings is below the floor of {MIN_CROSSINGS} - see MIN_CROSSINGS.")
+        return 1
+    previous = existing_crossing_count(OUT_PATH)
+    if previous and len(crossings) < previous * MAX_CROSSING_DROP_RATIO:
+        print(
+            f"Refusing to overwrite {OUT_PATH.name}: {len(crossings)} crossings against {previous} "
+            f"on disk is past the {MAX_CROSSING_DROP_RATIO:.0%} drop guard."
+        )
         return 1
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    OUT_PATH.write_text(rendered, encoding="utf-8")
+    tmp = OUT_PATH.with_suffix(".tmp")
+    tmp.write_text(render(document), encoding="utf-8")
+    tmp.replace(OUT_PATH)
     print(f"Wrote {OUT_PATH}")
+
+    fetch_receipts.record("fetch_trail_water", [OUT_PATH])
     return 0
+
+
+def existing_crossing_count(path: Path) -> int | None:
+    if not path.exists():
+        return None
+    return len(json.loads(path.read_text(encoding="utf-8")).get("crossings", []))
 
 
 if __name__ == "__main__":

@@ -2,6 +2,8 @@
 #    uv pip compile --universal --python-version 3.11 .github/tests/requirements-dev.in -o .github/tests/requirements-dev.txt
 colorama==0.4.6 ; sys_platform == 'win32'
     # via pytest
+execnet==2.1.2
+    # via pytest-xdist
 iniconfig==2.3.0
     # via pytest
 packaging==26.3
@@ -11,6 +13,10 @@ pluggy==1.6.0
 pygments==2.20.0
     # via pytest
 pytest==9.1.1
+    # via
+    #   -r .github/tests/requirements-dev.in
+    #   pytest-xdist
+pytest-xdist==3.8.0
     # via -r .github/tests/requirements-dev.in
 pyyaml==6.0.3
     # via -r .github/tests/requirements-dev.in

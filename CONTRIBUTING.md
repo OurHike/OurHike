@@ -52,6 +52,10 @@ Area labels: `client`, `backend`, `pipeline`, `data`, `ops`, `docs`.
 
 Three independent parts, each with its own tests, plus a small fourth suite covering the repository's own CI configuration. CI runs the same commands, so a green local run means a green CI run.
 
+**`scripts/test.sh` runs the ones your change actually reaches**, which is usually one of the four. It reads each suite's scope list out of that suite's own workflow file, so it makes the same decision CI does rather than a second copy of it that can go stale; it runs the linters and formatters for everything selected before it runs any tests, so a formatting slip costs six seconds instead of a CI round trip; and it runs each suite across every core. Measured, four cores: 294s for the full sequence below, 174s for `scripts/test.sh --all`, 20 to 50 seconds for a change to one of the Python parts. `--list` shows what it picked and which changed file decided it. Anything it cannot work out — a stale `main` ref, an unreadable workflow — it resolves by running everything.
+
+The per-part commands below are what it runs, and remain the reference.
+
 **Client** — React + TypeScript + Vite, MapLibre GL for the map.
 
 ```

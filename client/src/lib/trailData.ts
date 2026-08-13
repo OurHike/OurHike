@@ -327,7 +327,6 @@ function readNearbyList(value: unknown): NearbyPart[] {
   return parts
 }
 
-
 /** A whole count of people, or nothing. Anything else the artifact could
  *  hold - null for a shelter with no published number, a non-finite value, a
  *  zero or a fraction from a source that meant something other than people -

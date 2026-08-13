@@ -1,45 +1,45 @@
-"""Tests for fetch_elevation.py - corridor-scoped USGS 3DEP 1m DEM tile
-*discovery* (never download - see fetch_elevation.py's module docstring for
-why nothing is downloaded here, unlike fetch_topo_quads.py).
+"""Tests for fetch_elevation.py - the corridor's 3DEP tile index.
 
-Unlike fetch_topo_quads.py (a uniform nationwide quad grid with a
-lightweight per-quad bbox CSV), 1m DEM tiles are organized as irregular
-per-LiDAR-project S3 folders with no equivalent lightweight index - see
-fetch_elevation.py's module docstring for why this uses the TNM Access API
-(a real metadata layer over the same S3 bucket) for per-cell discovery
-instead. These tests mock that API using a requests_mock fixture matched on
-path only (no query-string matching) - the same pattern lib/arcgis.py's
-pagination test uses, since the corridor grid cell varies per call but the
-endpoint doesn't.
+Never a download: see fetch_elevation.py's module docstring for why nothing is
+fetched here, unlike fetch_topo_quads.py.
 
-Also covered here: the corridor is built fresh from a centerline via
-lib.corridor.build_corridor() rather than read from any fixed file (see
-CENTERLINE_PATH), and write_gate_problems() - the count comparison that
-gates main()'s final tile_index.json write. The latter is pure Python with
-no network/DuckDB involved, unlike everything else in this file.
+**These tests make no network calls at all, and that is the change they are
+testing.** This file used to mock the TNM Access API, because the tile list was
+discovered by asking it once per corridor cell. 3DEP's 1/3 arc-second product
+is a uniform 1-degree grid with a deterministic URL per cell, so the list is now
+arithmetic over the corridor's bounding box (#550, ELEVATION_SOURCES.md section
+3). A test that needs a mocked HTTP endpoint to find out which tiles cover
+Georgia would be testing a design that no longer exists.
+
+Covered here: the cell naming and its inverse, the candidate grid, the corridor
+polygon filter that narrows it, the corridor being built fresh from a
+centerline via lib.corridor.build_corridor() rather than read from any fixed
+file (see CENTERLINE_PATH), and write_gate_problems() - the count comparison
+that gates main()'s final tile_index.json write.
 """
 
 import json
-import time
 
 import pytest
 
 import fetch_elevation
-from fetch_elevation import compute_grid_cells, list_products_for_cell
+from fetch_elevation import (
+    build_tile_index,
+    candidate_cells,
+    cell_bounds,
+    cell_name,
+    cell_url,
+    corridor_bbox,
+)
 
 # Same neighborhood/coordinates test_lib_corridor.py's, test_export_poi.py's,
 # and test_export_trails.py's own synthetic centerline fixtures use (see
 # test_spike_corridor.py) - far from any real data, so it can't collide with
 # anything. Its 30-mile buffer spans just over 1 degree of longitude
-# (verified empirically), so grid-chunking sees more than one cell.
+# (verified empirically), so the grid sees more than one cell.
 CENTERLINE_COORDS = [(-74.0, 41.0), (-73.9, 41.1)]
 
-# A short line near the equator, chosen only so its 30-mile buffer fits
-# inside a single 1-degree grid cell (verified empirically - the buffer's
-# EPSG:5070-projected extent shrinks approaching the equator, unlike a naive
-# spherical estimate). Same "small enough to need only one grid cell"
-# reasoning a fixed corridor rectangle fixture would use, just applied to a
-# centerline that now needs buffering first.
+# A short line whose 30-mile buffer fits inside a single 1-degree cell.
 SMALL_CENTERLINE_COORDS = [(-81.50, 20.00), (-81.49, 20.01)]
 
 
@@ -57,88 +57,209 @@ def _write_centerline(path, coords):
     path.write_text(json.dumps(fc))
 
 
-# --- compute_grid_cells: grid-chunking + corridor freshness ---------------
+def _corridor_bbox_for(path):
+    """The corridor's bbox, built fresh from a centerline the way main() does."""
+    import duckdb
+
+    from lib.corridor import build_corridor
+
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    build_corridor(con, path)
+    return corridor_bbox(con)
 
 
-def test_compute_grid_cells_returns_one_cell_for_a_small_corridor(tmp_path, monkeypatch):
-    """A centerline short enough (and far enough from the poles) that its
-    30-mile buffer fits inside a single 1x1-degree grid cell must produce
-    exactly one cell - not zero (the corridor must not be lost entirely) and
-    not spuriously more than one."""
-    centerline_path = tmp_path / "centerline.geojson"
-    _write_centerline(centerline_path, SMALL_CENTERLINE_COORDS)
-    monkeypatch.setattr(fetch_elevation, "CENTERLINE_PATH", centerline_path)
-
-    cells = compute_grid_cells()
-
-    assert len(cells) == 1
-    cx0, cy0, cx1, cy1 = cells[0]
-    # The one cell actually covers the source line, not some unrelated area.
-    assert cx0 < SMALL_CENTERLINE_COORDS[0][0] < cx1
-    assert cy0 < SMALL_CENTERLINE_COORDS[0][1] < cy1
+# --- cell names and their bounds -----------------------------------------
 
 
-def test_compute_grid_cells_returns_multiple_cells_for_a_corridor_spanning_more_than_one_degree(tmp_path, monkeypatch):
-    """A centerline whose 30-mile buffer spans more than one degree must be
-    chunked into more than one grid cell, so each TNM Access API query stays
-    small (see module docstring) rather than one giant query for the whole
-    span."""
-    centerline_path = tmp_path / "centerline.geojson"
-    _write_centerline(centerline_path, CENTERLINE_COORDS)
-    monkeypatch.setattr(fetch_elevation, "CENTERLINE_PATH", centerline_path)
-
-    cells = compute_grid_cells()
-
-    assert len(cells) > 1
+def test_a_cell_is_named_from_its_north_west_corner():
+    """USGS's own convention, and the whole reason a URL can be computed.
+    n35w084 is the cell whose north-west corner is 35N 84W."""
+    assert cell_name(35, 84) == "n35w084"
+    assert cell_name(46, 69) == "n46w069"
 
 
-def test_compute_grid_cells_builds_the_corridor_fresh_from_centerline_path_not_a_stale_file(tmp_path, monkeypatch):
-    """Regression guard: this module used to read the confirmed-stale
-    data/spike/corridor.geojson directly via a CORRIDOR_PATH constant (see
-    lib/corridor.py's docstring for why that file must never be read). It
-    must instead build the corridor fresh via lib.corridor.build_corridor()
-    from CENTERLINE_PATH on every call - proven here by pointing
-    CENTERLINE_PATH at two different centerlines in turn and confirming the
-    grid cells actually differ, rather than coming from one fixed file
-    regardless of input."""
+def test_a_cell_name_is_zero_padded_to_the_width_usgs_uses():
+    """Two digits of latitude, three of longitude. A cell named n5w84 exists
+    nowhere in the bucket, so an unpadded name is a 404 rather than a miss."""
+    assert cell_name(5, 84) == "n05w084"
+
+
+@pytest.mark.parametrize("north,west", [(0, 84), (-35, 84), (35, 0), (35, -84)])
+def test_a_cell_outside_the_north_west_quadrant_is_refused(north, west):
+    """The AT is entirely north and west, and a hemisphere this code has never
+    seen is better refused than guessed at - a silently wrong hemisphere would
+    compute a URL that 404s, which reads as 'no coverage' rather than as a bug."""
+    with pytest.raises(ValueError):
+        cell_name(north, west)
+
+
+def test_bounds_come_back_out_of_the_name():
+    """The arithmetic that replaced TNM's boundingBox field. A cell extends one
+    degree south and one degree east of the corner it is named for."""
+    assert cell_bounds("n35w084") == (-84.0, 34.0, -83.0, 35.0)
+
+
+def test_a_name_and_its_bounds_round_trip():
+    """The property that matters more than either direction alone: the bounds
+    written into tile_index.json describe the tile the URL beside them fetches.
+    A mismatch here would sample the wrong ground and look entirely plausible."""
+    for north, west in [(35, 84), (41, 74), (46, 69), (5, 180)]:
+        bounds = cell_bounds(cell_name(north, west))
+        assert bounds[3] == north
+        assert bounds[0] == -west
+
+
+def test_the_url_is_the_current_edition_rather_than_a_dated_one():
+    """The editions hazard, solved upstream. USGS splits current/ from
+    historical/, and the TNM catalogue returned both mixed together - which is
+    why this file used to need a newest-per-footprint dedup at all."""
+    url = cell_url("n35w084")
+
+    assert "/current/n35w084/USGS_13_n35w084.tif" in url
+    assert "historical" not in url
+    # 1/3 arc-second, not 1 metre - a ~40x change in transfer if it slipped.
+    assert "/Elevation/13/TIFF/" in url
+
+
+# --- candidate_cells: the grid, without a database ------------------------
+
+
+def test_one_cell_covers_a_bbox_inside_one_cell():
+    cells = candidate_cells((-84.6, 34.2, -84.4, 34.4))
+
+    assert cells == ["n35w085"]
+
+
+def test_a_bbox_spanning_a_boundary_takes_both_cells():
+    """The corridor crosses 14 states; missing a cell at a boundary is a
+    stretch of trail with no elevation rather than a visible failure."""
+    cells = candidate_cells((-84.6, 34.2, -83.4, 34.4))
+
+    # Set rather than sequence: this function's order is an artefact of the
+    # loop, and build_tile_index is where the ordering guarantee lives.
+    assert set(cells) == {"n35w085", "n35w084"}
+
+
+def test_every_candidate_cell_actually_overlaps_the_bbox():
+    """A superset is fine and a WRONG superset is not: each extra cell is a
+    real HTTP range read at sampling time, against a ~460 MB tile."""
+    bbox = (-84.73, 34.19, -68.30, 46.34)
+
+    for cell in candidate_cells(bbox):
+        west, south, east, north = cell_bounds(cell)
+        assert west <= bbox[2] and east >= bbox[0]
+        assert south <= bbox[3] and north >= bbox[1]
+
+
+def test_the_corridor_bbox_produces_cells_covering_both_terminuses():
+    """Springer Mountain and Katahdin, which is the end-to-end claim: a grid
+    that lost either end would still look like a full corridor in aggregate."""
+    cells = candidate_cells((-84.73, 34.19, -68.30, 46.34))
+
+    assert "n35w085" in cells  # Springer Mountain, Georgia
+    assert "n46w069" in cells  # Katahdin, Maine
+
+
+def test_the_grid_needs_no_network_and_no_database():
+    """The point of #550, asserted rather than implied. This whole function is
+    arithmetic - the version it replaced opened a spatial database, and the one
+    before that made 51 HTTP requests that could 504."""
+    assert candidate_cells((-84.6, 34.2, -84.4, 34.4)) == ["n35w085"]
+
+
+# --- build_tile_index: the corridor polygon narrows the grid --------------
+
+
+def test_a_cell_the_corridor_never_reaches_is_dropped():
+    """Filtering on the polygon rather than the rectangle. A 1-degree cell is
+    large and the corridor is a 30-mile ribbon, so a cell can clip the
+    bounding box in a corner the trail never enters."""
+    bbox = (-84.6, 34.2, -83.4, 34.4)
+
+    index = build_tile_index(bbox, corridor_hit=lambda bounds: bounds[0] == -85.0)
+
+    assert [tile["url"] for tile in index] == [cell_url("n35w085")]
+
+
+def test_each_tile_carries_the_url_and_the_bounds_of_the_same_cell():
+    index = build_tile_index((-84.6, 34.2, -84.4, 34.4), corridor_hit=lambda _b: True)
+
+    assert index == [{"url": cell_url("n35w085"), "bounds": [-85.0, 34.0, -84.0, 35.0]}]
+
+
+def test_the_index_is_sorted_so_two_runs_can_be_diffed():
+    """Not cosmetic: it makes tile_index.json a file whose diff shows what
+    actually changed, rather than whatever order a catalogue answered in."""
+    index = build_tile_index((-84.73, 34.19, -68.30, 46.34), corridor_hit=lambda _b: True)
+    names = [tile["url"] for tile in index]
+
+    assert names == sorted(names)
+
+
+def test_no_cell_appears_twice():
+    """A duplicate would be sampled twice and counted twice by the write gate,
+    which is the gate measuring its own noise."""
+    index = build_tile_index((-84.73, 34.19, -68.30, 46.34), corridor_hit=lambda _b: True)
+    urls = [tile["url"] for tile in index]
+
+    assert len(urls) == len(set(urls))
+
+
+# --- the corridor is built fresh, not read from a stale file --------------
+
+
+def test_the_corridor_is_built_fresh_from_centerline_path_not_a_stale_file(tmp_path):
+    """Regression guard carried over from the TNM version: this module used to
+    read the confirmed-stale data/spike/corridor.geojson via a CORRIDOR_PATH
+    constant (see lib/corridor.py's docstring for why that file must never be
+    read). Two different centerlines must produce two different grids."""
     assert not hasattr(fetch_elevation, "CORRIDOR_PATH")
 
     small_path = tmp_path / "small.geojson"
     _write_centerline(small_path, SMALL_CENTERLINE_COORDS)
-    monkeypatch.setattr(fetch_elevation, "CENTERLINE_PATH", small_path)
-    small_cells = compute_grid_cells()
+    small_cells = candidate_cells(_corridor_bbox_for(small_path))
 
     wide_path = tmp_path / "wide.geojson"
     _write_centerline(wide_path, CENTERLINE_COORDS)
-    monkeypatch.setattr(fetch_elevation, "CENTERLINE_PATH", wide_path)
-    wide_cells = compute_grid_cells()
+    wide_cells = candidate_cells(_corridor_bbox_for(wide_path))
 
-    assert len(small_cells) != len(wide_cells)
-
-
-# --- list_products_for_cell ---------------------------------------------
+    assert small_cells != wide_cells
 
 
-def test_list_products_for_cell_paginates_when_total_exceeds_one_page(requests_mock):
-    """The TNM Access API caps items per response - a cell dense enough to
-    exceed that cap must page via offset until every item's been collected,
-    not silently return a truncated first page."""
-    page1 = {"total": 3, "items": [{"downloadURL": "u1"}, {"downloadURL": "u2"}]}
-    page2 = {"total": 3, "items": [{"downloadURL": "u3"}]}
-    requests_mock.get(fetch_elevation.TNM_API_URL, [{"json": page1}, {"json": page2}])
+def test_a_corridor_inside_one_cell_still_produces_a_cell(tmp_path):
+    """Not zero: the corridor must never be lost entirely, which is the
+    failure a bbox-arithmetic bug produces silently."""
+    path = tmp_path / "small.geojson"
+    _write_centerline(path, SMALL_CENTERLINE_COORDS)
 
-    items = list_products_for_cell((-75.0, 41.0, -74.0, 42.0))
-
-    assert [item["downloadURL"] for item in items] == ["u1", "u2", "u3"]
+    assert len(candidate_cells(_corridor_bbox_for(path))) >= 1
 
 
-def test_list_products_for_cell_stops_after_a_single_page_when_total_fits(requests_mock):
-    page = {"total": 2, "items": [{"downloadURL": "u1"}, {"downloadURL": "u2"}]}
-    requests_mock.get(fetch_elevation.TNM_API_URL, [{"json": page}])  # only one response registered
+# --- what the TNM path left behind ---------------------------------------
 
-    items = list_products_for_cell((-75.0, 41.0, -74.0, 42.0))  # should not raise NoMockAddress from a second call
 
-    assert [item["downloadURL"] for item in items] == ["u1", "u2"]
+@pytest.mark.parametrize(
+    "gone",
+    [
+        "TNM_API_URL",
+        "TNM_BACKOFF_SECONDS",
+        "CELL_CACHE_DIR",
+        "CELL_CACHE_MAX_AGE_DAYS",
+        "list_products_for_cell",
+        "cell_products",
+        "cell_cache_path",
+        "cached_cell_items",
+        "compute_grid_cells",
+        "_edition_of",
+    ],
+)
+def test_the_discovery_path_is_gone_rather_than_merely_unused(gone):
+    """Left in place, these read as a fallback somebody could switch back on,
+    and the per-cell cache in particular would look like a live optimisation
+    while nothing wrote to it. The workflow step that restored that cache is
+    removed in the same change."""
+    assert not hasattr(fetch_elevation, gone)
 
 
 # --- write_gate_problems: the tile_index.json write gate (pure Python) ----
@@ -221,130 +342,50 @@ def test_env_flag_set_is_false_when_unset(monkeypatch):
     assert fetch_elevation._env_flag_set(fetch_elevation.ALLOW_SHRINK_ENV_VAR) is False
 
 
-# ---------------------------------------------------------------------------
-# The per-cell catalogue cache (#536).
-#
-# The publish that prompted it died on the FIRST of 51 cells. Had it died on
-# the 37th, the previous 36 answers would have been thrown away too - so the
-# assertions that matter are that an answer is written before the next cell is
-# asked, and that a second run makes no request at all.
-# ---------------------------------------------------------------------------
-
-CELL = (-84.73, 34.19, -83.73, 35.19)
+# --- stamp_last_modified: keeping the freshness monitor alive -------------
 
 
-def _tnm(requests_mock, items, **kwargs):
-    requests_mock.get(
-        fetch_elevation.TNM_API_URL,
-        json={"items": items, "total": len(items)},
-        **kwargs,
-    )
+def test_each_tile_gets_the_timestamp_its_url_answered_with():
+    index = [{"url": cell_url("n35w084"), "bounds": [-84.0, 34.0, -83.0, 35.0]}]
+
+    fetch_elevation.stamp_last_modified(index, head=lambda _url: "Wed, 15 Feb 2023 00:00:00 GMT")
+
+    assert index[0]["last_modified"] == "Wed, 15 Feb 2023 00:00:00 GMT"
 
 
-def test_a_cells_answer_is_written_before_the_next_cell_is_asked(tmp_path, monkeypatch, requests_mock):
-    """Resumability, which is the whole point. The failure lost 12 completed
-    steps because nothing durable existed until every cell had answered."""
-    monkeypatch.setattr(fetch_elevation, "CELL_CACHE_DIR", tmp_path)
-    _tnm(requests_mock, [{"downloadURL": "https://example/a.tif"}])
+def test_one_request_per_cell_and_no_more():
+    """The whole cost of keeping revision detection: one HEAD per cell, no
+    pagination, against the bucket the export already streams from."""
+    index = [
+        {"url": cell_url("n35w084"), "bounds": [-84.0, 34.0, -83.0, 35.0]},
+        {"url": cell_url("n36w084"), "bounds": [-84.0, 35.0, -83.0, 36.0]},
+    ]
+    asked = []
 
-    items, cached = fetch_elevation.cell_products(CELL)
+    fetch_elevation.stamp_last_modified(index, head=lambda url: asked.append(url) or "x")
 
-    assert cached is False
-    assert items == [{"downloadURL": "https://example/a.tif"}]
-    assert fetch_elevation.cell_cache_path(CELL).exists()
-
-
-def test_a_second_run_asks_tnm_nothing(tmp_path, monkeypatch, requests_mock):
-    """3DEP revises on a multi-year cycle. Rediscovering 51 cells every publish
-    is 51 chances to meet a 504 in order to learn what we already knew."""
-    monkeypatch.setattr(fetch_elevation, "CELL_CACHE_DIR", tmp_path)
-    _tnm(requests_mock, [{"downloadURL": "https://example/a.tif"}])
-    fetch_elevation.cell_products(CELL)
-    calls_after_first = requests_mock.call_count
-
-    items, cached = fetch_elevation.cell_products(CELL)
-
-    assert cached is True
-    assert items == [{"downloadURL": "https://example/a.tif"}]
-    assert requests_mock.call_count == calls_after_first
+    assert asked == [cell_url("n35w084"), cell_url("n36w084")]
 
 
-def test_a_stale_entry_is_asked_again(tmp_path, monkeypatch, requests_mock):
-    """Bounded rather than trusted forever, so the cache cannot hide a real
-    3DEP revision indefinitely."""
-    monkeypatch.setattr(fetch_elevation, "CELL_CACHE_DIR", tmp_path)
-    _tnm(requests_mock, [{"downloadURL": "https://example/a.tif"}])
-    fetch_elevation.cell_products(CELL)
+def test_a_failed_head_records_none_rather_than_failing_the_run():
+    """The index is still correct without a timestamp - the profile is built
+    from the URLs, not from the headers. A network problem costs freshness
+    detail and must never cost the elevation data."""
+    index = [{"url": cell_url("n35w084"), "bounds": [-84.0, 34.0, -83.0, 35.0]}]
 
-    much_later = time.time() + (fetch_elevation.CELL_CACHE_MAX_AGE_DAYS + 1) * 86400
-    _, cached = fetch_elevation.cell_products(CELL, now=much_later)
+    fetch_elevation.stamp_last_modified(index, head=lambda _url: None)
 
-    assert cached is False
-
-
-def test_refresh_ignores_a_fresh_entry(tmp_path, monkeypatch, requests_mock):
-    monkeypatch.setattr(fetch_elevation, "CELL_CACHE_DIR", tmp_path)
-    _tnm(requests_mock, [{"downloadURL": "https://example/a.tif"}])
-    fetch_elevation.cell_products(CELL)
-
-    _, cached = fetch_elevation.cell_products(CELL, refresh=True)
-
-    assert cached is False
+    assert index[0]["last_modified"] is None
+    assert index[0]["url"] == cell_url("n35w084")
 
 
-def test_a_truncated_cache_file_is_re_asked_rather_than_fatal(tmp_path, monkeypatch, requests_mock):
-    """A file half-written by a killed run is a reason to ask again, not a
-    reason to stop. The cost of being wrong here is one request."""
-    monkeypatch.setattr(fetch_elevation, "CELL_CACHE_DIR", tmp_path)
-    path = fetch_elevation.cell_cache_path(CELL)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text('{"queried_at": 1, "items": [')
-    _tnm(requests_mock, [{"downloadURL": "https://example/a.tif"}])
+def test_stamping_does_not_disturb_the_index_it_was_given():
+    """The bounds and URL are what export_elevation.py reads. A stamping step
+    that reordered or dropped an entry would be a coverage change disguised
+    as a metadata one."""
+    index = build_tile_index((-84.6, 34.2, -83.4, 34.4), corridor_hit=lambda _b: True)
+    before = [(tile["url"], list(tile["bounds"])) for tile in index]
 
-    items, cached = fetch_elevation.cell_products(CELL)
+    fetch_elevation.stamp_last_modified(index, head=lambda _url: "x")
 
-    assert cached is False
-    assert items == [{"downloadURL": "https://example/a.tif"}]
-
-
-def test_two_cells_do_not_share_a_cache_file(tmp_path, monkeypatch):
-    """A collision would serve one cell's tiles as another's, which the
-    corridor-intersection filter would not necessarily catch."""
-    monkeypatch.setattr(fetch_elevation, "CELL_CACHE_DIR", tmp_path)
-    other = (-83.73, 34.19, -82.73, 35.19)
-
-    assert fetch_elevation.cell_cache_path(CELL) != fetch_elevation.cell_cache_path(other)
-
-
-def test_the_ladder_outlasts_a_bad_patch_at_tnm(requests_mock):
-    """Measured 2026-08-12: one cell answered 504 three times, then 200, then
-    504 again, before settling. Four attempts was not enough for that pattern,
-    which is what killed run 31595636184 seventeen minutes in.
-
-    The waits are asserted rather than slept through - a test that actually
-    waited 320 seconds would be a test nobody runs.
-    """
-    slept = []
-    requests_mock.get(
-        fetch_elevation.TNM_API_URL,
-        [
-            {"status_code": 504},
-            {"status_code": 504},
-            {"status_code": 504},
-            {"status_code": 504},
-            {"json": {"items": [{"downloadURL": "https://example/a.tif"}], "total": 1}},
-        ],
-    )
-
-    items = fetch_elevation.list_products_for_cell(CELL, sleep=slept.append)
-
-    assert items == [{"downloadURL": "https://example/a.tif"}]
-    assert slept == [5, 15, 30, 60]
-
-
-def test_the_ladder_is_long_enough_to_be_worth_having():
-    """Guards the number rather than the mechanism. Each failed attempt burns
-    ~30s against TNM's own gateway ceiling before the wait even starts, so a
-    short ladder gives a struggling cell very few real chances."""
-    assert len(fetch_elevation.TNM_BACKOFF_SECONDS) + 1 >= 7
-    assert sum(fetch_elevation.TNM_BACKOFF_SECONDS) >= 300
+    assert [(tile["url"], list(tile["bounds"])) for tile in index] == before

@@ -97,14 +97,30 @@ def summarise(reports: list[dict]) -> dict:
     }
 
 
-def edition_key(url: str) -> str:
-    """`n35w084:20230215` for a conventional 3DEP filename.
+def edition_key(url: str, last_modified: str | None = None) -> str:
+    """`n35w084:20230215` for a conventional 3DEP filename, or
+    `n35w084:Wed, 15 Feb 2023 00:00:00 GMT` once a tile carries its own
+    `Last-Modified`.
+
+    TWO SHAPES BECAUSE THE UPSTREAM CHANGED SHAPE (#550). The dated form is
+    how 3DEP editions arrived through the TNM catalogue: a republished cell
+    appeared as a NEW dated filename, so the date in the name WAS the version
+    and there was no per-file timestamp to ask for. `current/` inverts that -
+    the filename never changes and `Last-Modified` is what moves.
+
+    So a `last_modified` given here wins outright. Without it the dated form
+    still parses, which is what keeps a build_state.json captured before this
+    change readable rather than turning every old state into a false STALE on
+    a key nobody can compare.
 
     An unparseable name still yields a key rather than being skipped: a tile
     silently dropped from the marker would make a real change look like no
     change at all.
     """
     name = url.rsplit("/", 1)[-1]
+    if last_modified is not None:
+        cell = re.search(r"n\d+w\d+", name)
+        return f"{cell.group(0) if cell else name}:{last_modified}"
     match = re.match(r"USGS_1[3m]?_?(?P<cell>n\d+w\d+)_(?P<edition>\d{8})\.tif$", name)
     if match is None:
         return f"{name}:"
@@ -167,13 +183,20 @@ def topo_markers(manifest_path: Path) -> dict[str, str | None]:
 def elevation_marker(index_path: Path) -> str | None:
     """Which tile editions the current index pinned, order-independent.
 
-    TNM returns tiles in no guaranteed order, so a reshuffle must not read as
-    a change - only a genuinely new edition should.
+    Sorted rather than taken in file order, so a reshuffle cannot read as a
+    change - only a genuinely new edition should. That mattered when TNM
+    returned tiles in no guaranteed order; the computed index is sorted at
+    source now (#550), and this stays because "order-independent" is the
+    property wanted rather than a workaround for one producer.
+
+    Reads `last_modified` where the entry carries one - see
+    fetch_elevation.stamp_last_modified() for why the version moved out of the
+    filename and into a header.
     """
     if not Path(index_path).exists():
         return None
     entries = json.loads(Path(index_path).read_text())
-    return "|".join(sorted(edition_key(entry["url"]) for entry in entries))
+    return "|".join(sorted(edition_key(entry["url"], entry.get("last_modified")) for entry in entries))
 
 
 def atc_updates_marker(reviewed_path: Path) -> str | None:

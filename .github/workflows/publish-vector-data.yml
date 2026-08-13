@@ -208,18 +208,19 @@ jobs:
 
       # Elevation has its own fetch too, and it is the slow one - it streams
       # USGS 3DEP tiles, which is why the whole leg is opt-in.
-      # The TNM catalogue answers, not the elevation data. 3DEP revises on a
-      # multi-year cycle, so a warm run asks USGS nothing at all - which is
-      # what stopped a single 504 on the first of 51 cells from throwing away
-      # an entire publish (#536). A miss just means asking again.
-      - name: Restore the TNM catalogue cache
-        if: inputs.include_elevation
-        uses: actions/cache@v4
-        with:
-          path: pipeline/data/raw/elevation/tnm_cells
-          key: tnm-cells-${{ github.run_id }}
-          restore-keys: tnm-cells-
-
+      #
+      # There is no catalogue cache to restore any more (#550). This step used
+      # to hold `actions/cache@v4` over the per-cell TNM answers, and it went
+      # with the API it cached: the tile list is now computed from the
+      # corridor's bounding box, so this step makes no requests that could 504
+      # and has nothing worth remembering between runs.
+      #
+      # It is worth noting what that cache was actually doing, since it was
+      # added for #536 and is being deleted rather than fixed: `actions/cache`
+      # skips its post-run save when the job FAILS, so the cache built to
+      # rescue a run that died mid-fetch was discarded on exactly those runs.
+      # Computing the list removes the need for either the cache or the
+      # restore/save split that would have fixed it.
       - name: Fetch elevation tiles
         if: inputs.include_elevation
         run: python fetch_elevation.py

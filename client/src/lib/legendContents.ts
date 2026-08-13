@@ -21,6 +21,19 @@ export interface MapPoint {
   lat: number
   lon: number
   confidence: 'high' | 'low'
+  /**
+   * Which site this point belongs to, and whether it anchors it (#523/#524).
+   *
+   * Here rather than in a parallel type because the shell already maps a stored
+   * POI onto this once, and a second array to keep in step with it is a second
+   * thing that can fall out of step. Nothing in THIS file reads them - the
+   * legend counts what is in the viewport, and a privy riding a shelter pin is
+   * still a privy in the viewport, which is deliberate: hiding it from the count
+   * would make the panel disagree with the data for the sake of agreeing with
+   * the pins. map/poiSites.ts is what reads them.
+   */
+  siteId?: string
+  siteRole?: string
 }
 
 /**

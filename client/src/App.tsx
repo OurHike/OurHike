@@ -1288,6 +1288,13 @@ function App() {
         lat: poi.lat,
         lon: poi.lon,
         confidence: poi.confidence,
+        // Carried through so the map can draw one pin per site (#524). Spread
+        // conditionally rather than assigned as possibly-undefined, so a POI
+        // from a pre-#523 download has no site keys at all rather than keys
+        // holding undefined - which `composeSites` reads identically, but which
+        // would show up in a snapshot as a claim about a site.
+        ...(poi.siteId !== undefined ? { siteId: poi.siteId } : {}),
+        ...(poi.siteRole !== undefined ? { siteRole: poi.siteRole } : {}),
       })),
     [pois],
   )

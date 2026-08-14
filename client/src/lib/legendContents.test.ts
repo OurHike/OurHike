@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeLegendContents, type MapPoint } from './legendContents'
+import { computeLegendContents, legendDropSummary, type MapPoint } from './legendContents'
 
 // WIREFRAMES.md's Legend section: lists only what's in the current
 // viewport, with counts. Rows are tappable to hide - except the closure row
@@ -141,4 +141,126 @@ describe('the "Verified?" filter', () => {
       expect(rows.find((r) => r.type === type)?.count).toBe(1)
     },
   )
+})
+
+// What is DRAWN, as against what is present (#528). The panel's promise is "what
+// am I looking at right now", and since collision culling arrived it had been
+// answering "what is inside this rectangle" - a row reading `Privy 6` on a map
+// with no privy pin, because 3% of privies place at z14.
+describe('the drawn count', () => {
+  const bbox = { west: -1, south: -1, east: 1, north: 1 }
+  const at = (id: string, type: string, confidence: 'high' | 'low' = 'high') => ({
+    id,
+    type,
+    lat: 0,
+    lon: 0,
+    confidence,
+  })
+
+  it('carries how many of each row the map actually drew', () => {
+    const rows = computeLegendContents(
+      bbox,
+      [at('w1', 'water'), at('w2', 'water'), at('p1', 'privy')],
+      false,
+      new Map([
+        ['water', 1],
+        ['privy', 0],
+      ]),
+    )
+
+    expect(rows).toEqual([
+      { type: 'water', count: 2, hideable: true, drawnCount: 1 },
+      { type: 'privy', count: 1, hideable: true, drawnCount: 0 },
+    ])
+  })
+
+  it('is undefined, not zero, when nobody measured', () => {
+    // The pin layer is absent on a cold start. "0 shown" then would claim a drop
+    // that has not happened.
+    const [row] = computeLegendContents(bbox, [at('w1', 'water')])
+
+    expect(row.drawnCount).toBeUndefined()
+  })
+
+  it('is zero for a category the measurement did not mention', () => {
+    // The whole map was measured, so a missing key is an answer rather than a gap
+    // - this is exactly the privy row at a hiking zoom.
+    const [row] = computeLegendContents(bbox, [at('p1', 'privy')], false, new Map())
+
+    expect(row.drawnCount).toBe(0)
+  })
+
+  it('never reports more drawn than present', () => {
+    // A drawn figure over the rectangle's own count can only be a duplicate the
+    // probe failed to fold, and `Water 1 · 3 shown` would discredit every other
+    // row on the panel.
+    const [row] = computeLegendContents(
+      bbox,
+      [at('w1', 'water')],
+      false,
+      new Map([['water', 3]]),
+    )
+
+    expect(row.drawnCount).toBe(1)
+  })
+
+  it('counts a verified and an unverified spring in one row, as the rows do', () => {
+    // #580 folded the confidence split out, so the drawn figure folds with it -
+    // keying this the old way would produce a count that never matched a row.
+    const rows = computeLegendContents(
+      bbox,
+      [at('w1', 'water'), at('w2', 'water', 'low')],
+      false,
+      new Map([['water', 1]]),
+    )
+
+    expect(rows).toEqual([{ type: 'water', count: 2, hideable: true, drawnCount: 1 }])
+  })
+
+  it('agrees with the verified-only filter rather than fighting it', () => {
+    // With the toggle on, the counts exclude unverified points and the MAP has
+    // filtered them out too, so both halves shrink together.
+    const rows = computeLegendContents(
+      bbox,
+      [at('w1', 'water'), at('w2', 'water', 'low')],
+      true,
+      new Map([['water', 1]]),
+    )
+
+    expect(rows).toEqual([{ type: 'water', count: 1, hideable: true, drawnCount: 1 }])
+  })
+})
+
+describe('legendDropSummary', () => {
+  const row = (type: string, count: number, drawnCount?: number) => ({
+    type,
+    count,
+    hideable: true,
+    drawnCount,
+  })
+
+  it('adds up what is in view against what fits', () => {
+    expect(legendDropSummary([row('water', 14, 4), row('privy', 6, 0)])).toEqual({
+      present: 20,
+      drawn: 4,
+    })
+  })
+
+  it('says nothing when everything present is drawn', () => {
+    // "112 of 112 fit" is noise on a panel someone opens all day to answer a
+    // different question.
+    expect(legendDropSummary([row('water', 14, 14)])).toBeNull()
+  })
+
+  it('says nothing when nothing was measured', () => {
+    expect(legendDropSummary([row('water', 14)])).toBeNull()
+  })
+
+  it('says nothing about an empty viewport', () => {
+    expect(legendDropSummary([])).toBeNull()
+  })
+
+  it('ignores rows nobody measured rather than counting them as dropped', () => {
+    expect(legendDropSummary([row('water', 14, 14), row('privy', 6)])).toBeNull()
+  })
 })

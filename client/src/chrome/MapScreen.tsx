@@ -45,7 +45,12 @@ import type {
   Theme,
   UnitSystem,
 } from '../lib/userPreferences'
-import type { BoundingBox, MapPoint } from '../lib/legendContents'
+import {
+  computeLegendContents,
+  legendDropSummary,
+  type BoundingBox,
+  type MapPoint,
+} from '../lib/legendContents'
 import type { SearchablePoi } from '../lib/searchPoi'
 import './chrome.css'
 
@@ -318,6 +323,11 @@ export interface MapScreenProps {
    * disagree.
    */
   belowArchiveZoom?: boolean
+  /** How many waypoints of each `type::confidence` the map actually drew, and
+   *  whether the camera is below the zoom pins are drawn at (#528). Passed
+   *  straight to the legend, which is where both are said. */
+  drawnCounts?: ReadonlyMap<string, number>
+  belowPoiZoom?: boolean
   /**
    * Whether the map is drawing no trail line at all - see StatusStrip, which
    * is the only thing that reads it.
@@ -409,6 +419,8 @@ export function MapScreen({
   backgroundProblem = null,
   onLiveSourceHealth,
   belowArchiveZoom = false,
+  drawnCounts,
+  belowPoiZoom = false,
   trailLinesMissing = false,
   archiveZooms = null,
 }: MapScreenProps) {
@@ -429,6 +441,15 @@ export function MapScreen({
       onMapReady?.(map)
     },
     [onMapReady],
+  )
+
+  // The same rows the legend builds, from the same arguments, so the canvas count
+  // and the panel can never disagree - one arithmetic, two places it is said
+  // (#528). `verifiedOnly` is passed for exactly that reason: with the filter on,
+  // the legend counts fewer points, and a canvas figure computed without it would
+  // contradict the panel it is standing next to.
+  const droppedSummary = legendDropSummary(
+    computeLegendContents(bbox, viewportPoints, verifiedOnly, drawnCounts),
   )
 
   return (
@@ -541,6 +562,20 @@ export function MapScreen({
               onMapReady={handleMapReady}
               onLiveSourceHealth={onLiveSourceHealth}
             />
+            {/* On the canvas, so "is there anything here I am not being shown"
+                is answerable without opening the legend (#528).
+
+                Deliberately NOT in the status strip. That is a row of narrow
+                flags about connectivity, GPS and data age - things that are
+                either true or not - and a number that changes on every pinch
+                does not belong beside them. It sits over the map instead,
+                where the thing it is about is. */}
+            {droppedSummary !== null && (
+              <p className="map-screen__dropped" aria-live="polite">
+                {droppedSummary.drawn} of {droppedSummary.present} waypoints fit
+              </p>
+            )}
+
             {/* Inline above the desktop breakpoint, where the whole list fits
                 on one line - the same `isDesktop` the legend uses, so the two
                 cannot disagree about how much room this layout has. */}
@@ -602,6 +637,8 @@ export function MapScreen({
             onChangeBackground={onChangeBackground}
             backgroundOverride={backgroundOverride}
             belowArchiveZoom={belowArchiveZoom}
+            drawnCounts={drawnCounts}
+            belowPoiZoom={belowPoiZoom}
             onOpenDownloads={onOpenDownloads}
             hasDownload={hasDownload}
             downloadActivity={downloadActivity}

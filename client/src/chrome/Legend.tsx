@@ -24,6 +24,7 @@
 
 import {
   computeLegendContents,
+  legendDropSummary,
   type BoundingBox,
   type MapPoint,
 } from '../lib/legendContents'
@@ -114,6 +115,25 @@ export interface LegendProps {
   backgroundOverride?: BackgroundOverride | null
   /** Whether the view is zoomed out past what the download covers (#216). */
   belowArchiveZoom?: boolean
+  /**
+   * How many waypoints of each category the map actually drew
+   * (map/drawnPois.ts). Omitted where nobody measured, and then the rows read
+   * exactly as they did before #528.
+   */
+  drawnCounts?: ReadonlyMap<string, number>
+  /**
+   * Whether the camera is below POI_PIN_MIN_ZOOM, where neither waypoint rank
+   * is drawn at all.
+   *
+   * Its own flag rather than inferred from an empty row list, because the two are
+   * different facts with opposite remedies: nothing here, or everything here and
+   * none of it drawable yet. The panel said the wrong one at the opening view.
+   *
+   * "The pin layer" until #597 landed a second rank under it. Below the seam
+   * both are absent, so the sentence this gates is still the true one - but the
+   * reason is now the seam rather than one layer's floor.
+   */
+  belowPoiZoom?: boolean
   /** Opens the download window, from the link at the foot of the panel.
    *  Passed straight through: this panel has no opinion about downloads, it is
    *  just the piece of chrome the link ended up in. Omitted, no link is drawn
@@ -164,6 +184,8 @@ export function Legend({
   onChangeBackground,
   backgroundOverride = null,
   belowArchiveZoom = false,
+  drawnCounts,
+  belowPoiZoom = false,
   onOpenDownloads,
   hasDownload = false,
   downloadActivity = null,
@@ -172,7 +194,8 @@ export function Legend({
 }: LegendProps) {
   if (!open && !persistent) return null
 
-  const rows = computeLegendContents(bbox, points, verifiedOnly)
+  const rows = computeLegendContents(bbox, points, verifiedOnly, drawnCounts)
+  const dropped = legendDropSummary(rows)
   const isEmpty = rows.length === 0 && blazeCounts.length === 0
 
   // What the type picker shows. Not a placeholder: a picker sitting at "Show one
@@ -215,7 +238,22 @@ export function Legend({
         )}
       </div>
 
-      {isEmpty && !emptiedByFilter && (
+      {/* Below the pin zoom this panel used to render the sentence below, which
+          at the opening view is false in both halves: there is plenty here, and
+          zooming OUT is the wrong direction (#528). Checked first, so the true
+          sentence wins over the general one.
+
+          The background picker used to sit above this and now sits at the foot of
+          the panel with the downloads link (#583) - the daily question keeps the
+          top. Nothing here moved it back. */}
+      {belowPoiZoom && rows.length === 0 && (
+        <p className="legend__empty">
+          Waypoints are drawn from a closer zoom. Zoom in to see what is along this
+          stretch.
+        </p>
+      )}
+
+      {isEmpty && !emptiedByFilter && !belowPoiZoom && (
         <p className="legend__empty">
           Nothing on this part of the map yet — pan or zoom out to see more.
         </p>
@@ -225,6 +263,16 @@ export function Legend({
         <p className="legend__empty">
           Nothing here has been confirmed yet — turn Verified? off to see what is
           reported.
+        </p>
+      )}
+
+      {/* The summary, above the rows it summarises. Second-order on purpose - the
+          per-row figures are where a hiker learns that the category missing is the
+          privies, and a single averaged line would hide exactly that. */}
+      {dropped !== null && (
+        <p className="legend__dropped">
+          {dropped.drawn} of {dropped.present} waypoints fit at this zoom. Zoom in to see
+          the rest.
         </p>
       )}
 
@@ -249,6 +297,10 @@ export function Legend({
           {rows.map((row) => {
             const label = typeLabel(row.type)
             const hidden = row.hideable && hiddenTypes.has(row.type)
+            // Only where it differs, which keeps the panel quiet at the zooms
+            // where nothing is being dropped: `Water 14` and `Water 13/14` are
+            // the same row saying as much as is true.
+            const short = row.drawnCount !== undefined && row.drawnCount < row.count
 
             // The pin, the name and the count, in that order. On a hideable
             // row all three go inside the button, which is the whole point:
@@ -267,7 +319,23 @@ export function Legend({
                     something rather than about a rectangle. */}
                 <MapIcon className="legend__icon" type={row.type} />
                 <span className="legend__label">{label}</span>
-                <span className="legend__count">{row.count}</span>
+                {/* ONE SLOT, NOT TWO. This carried the count and then a second
+                    `13 shown` badge beside it, and in a two-column grid at
+                    390 px that badge does not fit on the line: `3 shown` and
+                    `2 shown` wrapped, leaving rows of unequal height and a
+                    ragged column edge. Rendered from this repository's own
+                    tokens before the change was made, rather than reasoned
+                    about - it is the defect, not a preference.
+
+                    The fraction says the same thing in the space the count
+                    already had. `0/6` is six here and none drawn; `13/14` is
+                    one missing. It also puts the relationship IN the notation,
+                    which the two-badge version never did - `9` beside `3 shown`
+                    is two numbers with nothing saying one is a subset of the
+                    other. Maintainer's call between six renderings, PR #706. */}
+                <span className="legend__count">
+                  {short ? `${row.drawnCount}/${row.count}` : row.count}
+                </span>
               </>
             )
 
@@ -283,7 +351,23 @@ export function Legend({
                 ]
                   .filter(Boolean)
                   .join(' ')}
-                aria-label={label}
+                // The drawn figure goes into the accessible name too, so a
+                // screen-reader user hears "Privy, none of 6 shown" rather than
+                // a count that is wrong about what is on the map.
+                //
+                // WORDS HERE, THE FRACTION ON SCREEN, and they are allowed to
+                // differ because the two are read by different means. A slash
+                // is punctuation a screen reader is free to skip - "13 14" is a
+                // plausible rendering of `13/14` and says nothing - so the
+                // visual shorthand that fixes the wrapping is exactly the wrong
+                // string to hand a reader. `none of 6` rather than `0 of 6` for
+                // the same reason PoiCard spells its separators out: zero read
+                // in a run of digits is the one that slips past.
+                aria-label={
+                  short
+                    ? `${label} · ${row.drawnCount === 0 ? 'none' : row.drawnCount} of ${row.count} shown`
+                    : label
+                }
               >
                 {row.hideable ? (
                   <button

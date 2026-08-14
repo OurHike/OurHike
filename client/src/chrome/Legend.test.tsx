@@ -777,3 +777,181 @@ describe('showing one category alone', () => {
     ).toBeInTheDocument()
   })
 })
+
+// Saying what is not drawn (#528). Before this the panel counted the viewport
+// rectangle and called it "what am I looking at", which at hiking zooms is a row
+// reading `Privy · 6` over a map with no privy pin on it.
+describe('reporting waypoints that did not fit', () => {
+  const bbox = { west: -1, south: -1, east: 1, north: 1 }
+  const point = (id: string, type: string) => ({
+    id,
+    type,
+    lat: 0,
+    lon: 0,
+    confidence: 'high' as const,
+  })
+  const points = [
+    point('w1', 'water'),
+    point('w2', 'water'),
+    point('p1', 'privy'),
+    point('p2', 'privy'),
+  ]
+
+  function renderLegend(drawnCounts?: ReadonlyMap<string, number>, belowPoiZoom = false) {
+    return render(
+      <Legend
+        open
+        bbox={bbox}
+        points={points}
+        blazeCounts={[]}
+        hiddenTypes={new Set()}
+        onToggleType={() => {}}
+        onClose={() => {}}
+        drawnCounts={drawnCounts}
+        belowPoiZoom={belowPoiZoom}
+      />,
+    )
+  }
+
+  it('folds the drawn count into the count slot as a fraction where they differ', () => {
+    renderLegend(
+      new Map([
+        ['water', 1],
+        ['privy', 0],
+      ]),
+    )
+
+    expect(screen.getByText('1/2')).toBeInTheDocument()
+    expect(screen.getByText('0/2')).toBeInTheDocument()
+  })
+
+  it('renders one count element per row, so nothing has to wrap', () => {
+    // The defect this design replaced: a second `1 shown` badge beside the
+    // count does not fit a two-column row at 390 px, so it wrapped and left
+    // rows of unequal height and a ragged column edge. Asserting the element
+    // COUNT rather than the width, because jsdom lays nothing out - what can be
+    // proved here is that there is only one thing in the slot, which is what
+    // makes the wrap impossible. The width itself is a real-browser question
+    // and is why the rendering was screenshotted before this landed.
+    const { container } = renderLegend(
+      new Map([
+        ['water', 1],
+        ['privy', 0],
+      ]),
+    )
+
+    expect(container.querySelectorAll('.legend__count')).toHaveLength(2)
+    expect(container.querySelector('.legend__drawn')).toBe(null)
+  })
+
+  it('says nothing extra on a row that is fully drawn', () => {
+    // The panel stays quiet at the zooms where nothing is being dropped. Asserted
+    // as the plain count being PRESENT rather than only as the fraction being
+    // absent: `queryByText(/shown/)` alone would now pass on a row rendering
+    // `2/2`, since the word left with the badge.
+    renderLegend(
+      new Map([
+        ['water', 2],
+        ['privy', 2],
+      ]),
+    )
+
+    expect(screen.getAllByText('2')).toHaveLength(2)
+    expect(screen.queryByText('2/2')).not.toBeInTheDocument()
+    expect(screen.queryByText(/fit at this zoom/)).not.toBeInTheDocument()
+  })
+
+  it('spells the figure out in the row’s accessible name rather than reusing the fraction', () => {
+    // A screen-reader user gets "Privy, none of 2 shown" rather than a bare
+    // count that is wrong about what is on the map - and rather than `0/2`,
+    // whose slash a reader is free to skip, leaving "0 2".
+    renderLegend(new Map([['privy', 0]]))
+
+    expect(
+      screen.getByRole('listitem', { name: /privy · none of 2 shown/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('says the number out loud when some did fit', () => {
+    renderLegend(new Map([['water', 1]]))
+
+    expect(
+      screen.getByRole('listitem', { name: /water · 1 of 2 shown/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('summarises the drop at the head of the panel', () => {
+    renderLegend(
+      new Map([
+        ['water', 1],
+        ['privy', 0],
+      ]),
+    )
+
+    expect(screen.getByText(/1 of 4 waypoints fit at this zoom/i)).toBeInTheDocument()
+  })
+
+  it('reads exactly as it did before when nothing was measured', () => {
+    // No measurement is a real state on a cold start, and it must read as "not
+    // measured" rather than as "none are drawn" - which a fraction of `0/2`
+    // would say, wrongly and alarmingly.
+    renderLegend(undefined)
+
+    expect(screen.getAllByText('2')).toHaveLength(2)
+    expect(screen.queryByText('0/2')).not.toBeInTheDocument()
+    expect(screen.queryByText(/fit at this zoom/)).not.toBeInTheDocument()
+  })
+
+  it('keeps the row tappable as the hide control on a row that did not fit', () => {
+    // A category being culled is exactly when a hiker might want to hide
+    // something else, so the affordance has to survive the new figure. Since #580
+    // the ROW is that control - there is no separate "Hide privy" button - so what
+    // this checks is that the row is still a pressed-state button carrying the
+    // figure rather than a plain span.
+    renderLegend(new Map([['privy', 0]]))
+
+    // The figure is on the row's own accessible name; the button is inside it.
+    const row = screen.getByRole('listitem', { name: /privy · none of 2 shown/i })
+    expect(within(row).getByRole('button')).toHaveAttribute('aria-pressed', 'true')
+  })
+})
+
+describe('below the zoom waypoints are drawn at', () => {
+  const bbox = { west: -1, south: -1, east: 1, north: 1 }
+
+  it('says so, instead of claiming there is nothing here', () => {
+    // The old sentence was false in both halves at the opening view: there is
+    // plenty here, and zooming OUT is the wrong direction (#528).
+    render(
+      <Legend
+        open
+        bbox={bbox}
+        points={[]}
+        blazeCounts={[]}
+        hiddenTypes={new Set()}
+        onToggleType={() => {}}
+        onClose={() => {}}
+        belowPoiZoom
+      />,
+    )
+
+    expect(screen.getByText(/drawn from a closer zoom/i)).toBeInTheDocument()
+    expect(screen.queryByText(/pan or zoom out/i)).not.toBeInTheDocument()
+  })
+
+  it('still says "nothing here" when that is the true one', () => {
+    render(
+      <Legend
+        open
+        bbox={bbox}
+        points={[]}
+        blazeCounts={[]}
+        hiddenTypes={new Set()}
+        onToggleType={() => {}}
+        onClose={() => {}}
+      />,
+    )
+
+    expect(screen.getByText(/pan or zoom out/i)).toBeInTheDocument()
+  })
+})

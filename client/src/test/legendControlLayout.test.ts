@@ -94,3 +94,62 @@ describe('the legend type picker sits on a row, not in a sentence', () => {
     }
   })
 })
+
+// THE SECOND BUG, same panel, same cause as the first - a CSS contract that
+// nothing enforced (#528).
+//
+// The drawn counts made a pin row end in a block of mono digits: `Viewpoint`
+// against the corridor's 1,223 of them renders `0/1223`. Photographed in
+// Chromium at the three widths this panel has:
+//
+//   272px (desktop, desktop.css `flex: 0 0 17rem`)
+//     five of the seven rows overflowed their grid track outright - the widest
+//     surface for the panel was the worst affected, and the least looked at
+//
+//   320px (iPhone SE)
+//     the 8px gutter between the columns measured 0.6px of actual ink
+//
+//   390px
+//     8px, which is the designed gutter and still reads as the columns touching
+//
+// A flex item defaults to `min-width: auto` and will not shrink below its own
+// min-content, so every link from the grid track down to the label has to opt
+// out before a row can fit itself into its track. One link left at `auto`
+// restores the overflow, silently and only at narrow widths - which is what
+// makes this worth pinning rather than reviewing.
+describe('a legend row can shrink into its column', () => {
+  /**
+   * The `.legend__pins` block that lays the grid out.
+   *
+   * Not `rule()`, which takes the first `.legend__pins {` in the file - and that
+   * is the grouped `.legend__blazes, .legend__pins` reset above it, whose body
+   * is margins. Anchored on the property being asserted about instead.
+   */
+  function pinsGrid(): string {
+    const at = css.indexOf('grid-template-columns')
+    expect(at, 'no grid-template-columns in chrome.css').toBeGreaterThan(-1)
+    return css.slice(css.lastIndexOf('{', at), css.indexOf('}', at))
+  }
+
+  it('opens the whole chain, not only the label', () => {
+    // The grid track, the button inside the row, and the one flexible item.
+    expect(pinsGrid()).toMatch(/minmax\(\s*150px/)
+    expect(rule('.legend__toggle')).toMatch(/min-width:\s*0/)
+    expect(rule('.legend__label')).toMatch(/min-width:\s*0/)
+  })
+
+  it('drops to one column rather than truncating the category names', () => {
+    // Measured at 320px: a hard two-column grid there cuts `Campsite`,
+    // `Resupply` and `Viewpoint` to `Cam…`, `Resu…` and `Vie…`. A category name
+    // is what the row IS, so the column count gives way before the word does.
+    expect(pinsGrid()).toMatch(/repeat\(\s*auto-fit/)
+    expect(pinsGrid()).not.toMatch(/repeat\(\s*2\s*,/)
+  })
+
+  it('spends the label on an ellipsis and never the count', () => {
+    // A label that loses a letter is still readable beside its own pin. A count
+    // that lost a digit would be a different number, with nothing saying so.
+    expect(rule('.legend__label')).toMatch(/text-overflow:\s*ellipsis/)
+    expect(rule('.legend__count')).toMatch(/flex:\s*none/)
+  })
+})

@@ -1,6 +1,6 @@
 # The workflows
 
-29 files, 38 jobs. Each file's header comment is the design record for that
+30 files, 39 jobs. Each file's header comment is the design record for that
 workflow and is the place to find out *why* it is the way it is — this file is
 the level above: what exists, what makes each one run, and the three or four
 facts that are dangerous to learn by discovering them.
@@ -113,7 +113,7 @@ maintainer ships — a GitHub setting rather than a habit.
 
 ### Watches a live system
 
-Scheduled. Four of them report by opening, updating and closing a **tracking
+Scheduled. Five of them report by opening, updating and closing a **tracking
 issue** rather than by failing the run, because GitHub emails on every failure
 of a scheduled workflow and a week-long outage would send seven identical
 emails before the eighth was filtered. Alert on transitions, not on runs.
@@ -124,16 +124,26 @@ emails before the eighth was filtered. Alert on transitions, not on runs.
 | `check-deployed-app.yml` | tracking issue | whether the deployed app draws a trail at all |
 | `check-upstream-freshness.yml` | tracking issue | whether ATC and the other upstreams have moved |
 | `smoke-published.yml` | tracking issue | the published artifacts, weekly |
+| `check-pending-approvals.yml` | tracking issue | whether a run is sitting in `waiting` for an approval nobody was told about |
 | `schema-drift.yml` | failing the run | both databases against the models; being behind head is normal and never fails |
 | `supabase-keepalive.yml` | failing the run | keeps a free-plan project from being paused; also reads all seven tables with the anon key |
 | `protections-check.yml` | failing the run | branch protection, environments and labels |
 | `settings-configured.yml` | failing the run | that the secrets and variables really exist |
 
-**All four share one routine** — `.github/scripts/tracking-issue.js`, required
+**All five share one routine** — `.github/scripts/tracking-issue.js`, required
 from each monitor's `github-script` step. It owns finding the issue by label
 *and* title, opening, updating in place, commenting and closing, and the
 "first seen" map. What stays with each caller is the verdict — whether this run
 is green — and the rendered body.
+
+`check-pending-approvals.yml` is the one that alerts on more than the first
+transition, through the module's optional `announce`. The other four each watch
+a single ongoing condition, where a body update carrying the same outage into
+its second week is genuinely not news; its keys are *workflow runs*, one
+decision each, queued behind one another by `concurrency: publish-data`. So a
+new key is itself a transition and gets a comment, and a key that was already
+there still does not. #431's rule did not change — what widened is what counts
+as a transition.
 
 That line is where it is because of #651, which corrected the all-clear
 condition in two of these monitors and needed a *different* correction for
@@ -186,6 +196,7 @@ gathered rather than restated.
 
 | When | | |
 |---|---|---|
+| `7,37 * * * *` | twice an hour | `check-pending-approvals.yml` — the only one that is not daily or weekly, because its worst case is a production publish expiring unapproved at 30 days |
 | `20 7 * * *` | daily | `check-upstream-freshness.yml` |
 | `35 7 * * 1` | Mondays | `settings-configured.yml` |
 | `45 7 * * 1` | Mondays | `protections-check.yml` |
@@ -223,4 +234,5 @@ handful of ways the thing can be wrong, and those are worth fixing in one place.
 - and named checks on individual workflows: `test_pages_publish.py`,
   `test_pages_preview_cleanup.py`, `test_publish_concurrency.py`,
   `test_pr_issue_link_duplicates.py`, `test_release_notes.py`,
-  `test_supabase_keepalive_workflow.py`, `test_dependabot_labels.py`
+  `test_supabase_keepalive_workflow.py`, `test_dependabot_labels.py`,
+  `test_pending_approvals_workflow.py`

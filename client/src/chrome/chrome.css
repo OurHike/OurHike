@@ -603,10 +603,31 @@
    name has room to sit on one line beside its swatch. The swatch is a solid
    bar, which is now literally how the map draws the line (map/style.ts) - it
    used to be a solid bar standing in for a dashed one. */
+/* Two columns where two fit, ONE WHERE THEY DO NOT, and a 16px gutter either
+   way (#528).
+
+   Both halves are the drawn counts' doing. A row now ends in a block of mono
+   digits and the next begins with a filled 24px pin, and 8px of white between
+   `0/1223` and the parking icon reads as the two columns touching - which is
+   how it was reported. Rows keep the tighter 8px: a 44px touch target already
+   separates them vertically.
+
+   The widened gutter has to come out of the labels, and on a 320px phone there
+   is not enough slack to give: measured, a hard two-column grid there truncates
+   `Campsite`, `Resupply` and `Viewpoint` to `Cam…`, `Resu…` and `Vie…`. That is
+   worse than the crowding it fixes. A category name is what the row IS, and
+   `Vie…` beside a 24px glyph asks a hiker to identify a category from an icon
+   they are looking at the legend to decode.
+
+   So the count decides itself. `auto-fit` with a 150px floor gives two columns
+   at 360px and up, one at 320px - taller, and it scrolls in a panel that
+   already scrolls, which is the cheaper of the two costs. Measured across
+   320/360/390/430: two columns and no truncation above the fold, one column and
+   no truncation below it. */
 .legend__pins {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2, 8px);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-2, 8px) var(--space-4, 16px);
 }
 
 .legend__row {
@@ -624,8 +645,31 @@
   border: 1px solid var(--border-2);
 }
 
+/* The label is the only part of a row that may give up width, and `min-width: 0`
+   is what lets it (#528).
+
+   A flex item defaults to `min-width: auto` and will not shrink below its own
+   min-content, so without this the row cannot fit itself into its grid track -
+   it overflows and eats the gutter instead, which is what put `0/1223` against
+   the parking pin. The whole chain has to allow it: `.legend__pins` sets
+   `minmax(0, 1fr)` tracks, `.legend__toggle` clears its own floor below, and
+   this clears the label's. One link left at `auto` re-breaks it.
+
+   Measured at 320px, an iPhone SE and the narrowest phone worth drawing for,
+   because that is where it bites and 390px hides it: with the chain open the
+   ink between the two columns is the full gutter, and with any link closed it
+   collapses to under 5px.
+
+   Truncation is the release valve rather than the intent - nothing in this
+   corridor's seven categories actually truncates at 320px. The ellipsis is what
+   a longer category name from a later import gets instead of clipping
+   mid-glyph. */
 .legend__label {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Carries the drawn figure too, as `13/14`, where fewer are drawn than are here
@@ -650,6 +694,10 @@
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 12px;
   color: var(--fg-2);
+  /* Never the part that gives way. The label can lose a letter to an ellipsis
+     and stay readable beside its own pin; a count that shed a digit would be a
+     different number, silently. */
+  flex: none;
 }
 /* The count over the canvas (#528). Bottom-left, clear of the zoom buttons and
    the attribution, so it is legible without covering the trail line the hiker is
@@ -697,6 +745,10 @@
   align-items: center;
   gap: var(--space-2, 8px);
   min-height: var(--min-touch-target);
+  /* The middle link in the shrink chain `.legend__label` describes. This is the
+     element that was measured overflowing its grid track, so leaving it at the
+     default `auto` keeps the gutter shut however flexible the label is. */
+  min-width: 0;
   /* Pulled back out again so the icon still lines up with the blaze swatches
      above it: the padding is there to give the hover and focus states room to
      sit off the text, not to indent the row. */

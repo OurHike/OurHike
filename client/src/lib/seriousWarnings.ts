@@ -64,7 +64,10 @@ export interface PlaceableReport {
  * Severity is NOT filtered here — `warningsOnRoute` owns that, so the pins
  * and the banner cannot come to disagree about which reports are warnings.
  */
-export function placeAll(reports: PlaceableReport[], index: TrailIndex): WarningReport[] {
+export function placeAll(
+  reports: readonly PlaceableReport[],
+  index: TrailIndex,
+): WarningReport[] {
   return reports.flatMap((report) => {
     const snapped =
       report.lat === null || report.lon === null

@@ -6,7 +6,6 @@ advance - see TESTING.md for the "encode every gotcha as a regression test"
 convention this follows.
 """
 
-import json
 import os
 
 import numpy as np
@@ -19,27 +18,7 @@ from rasterio.transform import from_bounds
 import spike_raster_mosaic
 from fetch_topo_quads import bare_key
 from spike_raster_mosaic import bounds_intersect, index_quads_in_dir, load_neatlines, mosaic_one_cell, open_cropped_vrt
-
-# Same neighborhood/coordinates test_lib_corridor.py's, test_export_poi.py's,
-# and test_spike_corridor.py's own synthetic centerline fixtures use - far
-# from any real data, so it can't collide with anything, and it lets the
-# bbox assertions below reuse the same plausible-range test_lib_corridor.py
-# already established for this exact line's 30-mile buffer.
-_CENTERLINE_COORDS = [(-74.0, 41.0), (-73.9, 41.1)]
-
-
-def _write_centerline(path, coords=_CENTERLINE_COORDS):
-    fc = {
-        "type": "FeatureCollection",
-        "features": [
-            {
-                "type": "Feature",
-                "properties": {},
-                "geometry": {"type": "LineString", "coordinates": [[lon, lat] for lon, lat in coords]},
-            }
-        ],
-    }
-    path.write_text(json.dumps(fc))
+from tests.synthetic import write_centerline
 
 
 def _write_multistrip_tiff(path, height=200, width=50):
@@ -407,7 +386,7 @@ def test_load_corridor_and_cells_builds_fresh_from_centerline_not_the_stale_spik
     not the real AT's GA-to-Maine extent a read of the stale file would have
     produced instead."""
     centerline_path = tmp_path / "centerline.geojson"
-    _write_centerline(centerline_path)
+    write_centerline(centerline_path)
     monkeypatch.setattr(spike_raster_mosaic, "CENTERLINE_PATH", centerline_path)
 
     corridor_geom, cells = spike_raster_mosaic.load_corridor_and_cells()
@@ -437,7 +416,7 @@ def test_main_completeness_check_reports_per_cell_reasons_via_shared_helper(tmp_
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()
     centerline_path = raw_dir / "centerline.geojson"
-    _write_centerline(centerline_path)
+    write_centerline(centerline_path)
 
     metadata_csv = raw_dir / "ustopo_current.csv"
     metadata_csv.write_text("product_filename,westbc,eastbc,northbc,southbc\n")  # header only, no quads

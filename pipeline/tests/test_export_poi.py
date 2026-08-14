@@ -13,27 +13,9 @@ import pytest
 import export_poi
 from lib.photo_store import photo_digest
 from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES
-
-# A small line near (-74, 41), same neighborhood other synthetic fixtures in
-# this suite use (see test_spike_corridor.py) - far from any real data, so
-# it can't collide with anything.
-CENTERLINE_COORDS = [(-74.0, 41.0), (-73.9, 41.1)]
+from tests.synthetic import write_centerline
 
 SHELTER_DIGEST = photo_digest(b"\xff\xd8 a test shelter photo")
-
-
-def _write_centerline(path, coords=CENTERLINE_COORDS):
-    fc = {
-        "type": "FeatureCollection",
-        "features": [
-            {
-                "type": "Feature",
-                "properties": {},
-                "geometry": {"type": "LineString", "coordinates": [[lon, lat] for lon, lat in coords]},
-            }
-        ],
-    }
-    path.write_text(json.dumps(fc))
 
 
 def _point_feature(feature_id, lon, lat, properties):
@@ -68,7 +50,7 @@ def _write_fixture_sources(raw_dir):
     it. Field names match the real ones found by inspecting the actual raw
     ATC/opentrail.org files (GlobalID/Name for ATC, dbid/title/icon for
     opentrail.org)."""
-    _write_centerline(raw_dir / "centerline.geojson")
+    write_centerline(raw_dir / "centerline.geojson")
 
     _write_fc(
         raw_dir / "shelters.geojson",
@@ -229,7 +211,7 @@ def test_export_poi_clips_features_outside_the_corridor(tmp_path, con):
     than the full real 14GB dataset."""
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()
-    _write_centerline(raw_dir / "centerline.geojson")
+    write_centerline(raw_dir / "centerline.geojson")
 
     export_poi.build_corridor(con, raw_dir / "centerline.geojson")
 

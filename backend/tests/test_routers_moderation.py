@@ -12,15 +12,14 @@ action, is the entire mechanism.
 import uuid
 
 from app.models.closure import Closure, ClosureStatus, ModerationStatus
-from app.models.profile import Profile, Role
+from app.models.profile import Role
 from app.models.report import Report, ReportStatus, ReportType, Severity, Visibility
+from tests.factories import make_closure, make_profile
 from tests.tokens import auth_headers
 
 
 def _make_reporter_and_report(db_session, report_type=ReportType.blowdown):
-    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    db_session.add(reporter)
-    db_session.commit()
+    reporter = make_profile(db_session, Role.hiker)
     # visibility has no column default by design (app/models/report.py: "the
     # router always computes and sets this explicitly") - set it explicitly
     # here too, the same way create_report does, rather than relying on one.
@@ -32,11 +31,7 @@ def _make_reporter_and_report(db_session, report_type=ReportType.blowdown):
 
 
 def _make_maintainer(db_session):
-    maintainer_id = str(uuid.uuid4())
-    maintainer = Profile(id=maintainer_id, role=Role.maintainer)
-    db_session.add(maintainer)
-    db_session.commit()
-    return maintainer_id
+    return make_profile(db_session, Role.maintainer).id
 
 
 def test_verify_report_rejects_a_plain_hiker_role_with_403(client, db_session):
@@ -211,32 +206,13 @@ def test_dismiss_report_requires_maintainer_or_club_admin_role(client, db_sessio
 
 def _submitted_closure(db_session):
     """An unmoderated closure and a maintainer who can act on it."""
-    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    db_session.add(reporter)
-    db_session.commit()
-    closure = Closure(
-        reported_by=reporter.id,
-        reason_type="storm_damage",
-        start_mile_marker=1.0,
-        end_mile_marker=2.0,
-    )
-    db_session.add(closure)
-    db_session.commit()
+    closure = make_closure(db_session, make_profile(db_session).id)
     return closure, _make_maintainer(db_session)
 
 
 def test_verify_closure_sets_verified_by_and_verified_at(client, db_session):
-    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    db_session.add(reporter)
-    db_session.commit()
-    closure = Closure(
-        reported_by=reporter.id,
-        reason_type="storm_damage",
-        start_mile_marker=1.0,
-        end_mile_marker=2.0,
-    )
-    db_session.add(closure)
-    db_session.commit()
+    reporter = make_profile(db_session, Role.hiker)
+    closure = make_closure(db_session, reporter.id)
     maintainer_id = _make_maintainer(db_session)
 
     response = client.post(f"/closures/{closure.id}/verify", headers=auth_headers(maintainer_id))
@@ -317,17 +293,8 @@ def test_verify_closure_still_refuses_a_plain_hiker_with_a_status_in_hand(client
 
 
 def test_dismiss_closure_requires_maintainer_or_club_admin_role(client, db_session):
-    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    db_session.add(reporter)
-    db_session.commit()
-    closure = Closure(
-        reported_by=reporter.id,
-        reason_type="storm_damage",
-        start_mile_marker=1.0,
-        end_mile_marker=2.0,
-    )
-    db_session.add(closure)
-    db_session.commit()
+    reporter = make_profile(db_session, Role.hiker)
+    closure = make_closure(db_session, reporter.id)
     hiker_id = str(uuid.uuid4())
     maintainer_id = _make_maintainer(db_session)
 
@@ -348,9 +315,7 @@ def test_verify_report_that_does_not_exist_returns_404(client, db_session):
 
 
 def test_severity_data_default_is_normal(db_session):
-    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    db_session.add(reporter)
-    db_session.commit()
+    reporter = make_profile(db_session, Role.hiker)
     report = Report(reporter_id=reporter.id, type=ReportType.trash, reporter_type="day", visibility=Visibility.public)
     db_session.add(report)
     db_session.commit()
@@ -368,15 +333,7 @@ def test_severity_data_default_is_normal(db_session):
 
 
 def _make_closure(db_session, reporter_id, moderation_status=ModerationStatus.submitted):
-    closure = Closure(
-        reported_by=reporter_id,
-        reason_type="storm_damage",
-        start_mile_marker=1.0,
-        end_mile_marker=2.0,
-        moderation_status=moderation_status,
-    )
-    db_session.add(closure)
-    db_session.commit()
+    closure = make_closure(db_session, reporter_id, moderation_status=moderation_status)
     return closure
 
 

@@ -11,25 +11,7 @@ import pytest
 
 import build_cells_manifest
 from build_cells_manifest import check_manifest_is_complete
-
-# Same fixture line test_lib_corridor.py's own tests use - far from any real
-# data, so it can't collide with anything, and its buffered-corridor bbox
-# range is already established there (-76 < lon < -72, 39 < lat < 43).
-CENTERLINE_COORDS = [(-74.0, 41.0), (-73.9, 41.1)]
-
-
-def _write_centerline(path, coords=CENTERLINE_COORDS):
-    fc = {
-        "type": "FeatureCollection",
-        "features": [
-            {
-                "type": "Feature",
-                "properties": {},
-                "geometry": {"type": "LineString", "coordinates": [[lon, lat] for lon, lat in coords]},
-            }
-        ],
-    }
-    path.write_text(json.dumps(fc))
+from tests.synthetic import write_centerline
 
 
 def _write_metadata_csv(path, rows):
@@ -92,7 +74,7 @@ def test_main_builds_a_fresh_corridor_and_writes_cells_json(tmp_path, monkeypatc
     corridor is written to CORRIDOR_PATH for lib/corridor_grid.py's file-
     based build_cells_manifest() to read, producing a complete manifest."""
     centerline_path = tmp_path / "centerline.geojson"
-    _write_centerline(centerline_path)
+    write_centerline(centerline_path)
 
     metadata_csv = tmp_path / "ustopo_current.csv"
     # This fixture line's 30-mile-buffered corridor spans two 1-degree grid
@@ -127,7 +109,7 @@ def test_main_fails_loudly_and_does_not_write_cells_json_when_a_cell_would_have_
     would-be manifest with a zero-quad cell must sys.exit(1) rather than
     silently writing a broken file downstream jobs would trust."""
     centerline_path = tmp_path / "centerline.geojson"
-    _write_centerline(centerline_path)
+    write_centerline(centerline_path)
 
     metadata_csv = tmp_path / "ustopo_current.csv"
     # Nowhere near the corridor - compute_cells() still yields >= 1 cell (a

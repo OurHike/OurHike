@@ -118,18 +118,10 @@ import { useAppUpdate, UPDATE_CHECK_MS } from './lib/useAppUpdate'
 import { readCamera, writeCamera } from './lib/cameraMemory'
 import { useGeolocation } from './lib/useGeolocation'
 import { positionLine } from './lib/positionLine'
-import { buildTrailIndex, locateOnTrail, type TrailIndex } from './lib/trailPosition'
-import {
-  downloadTrailData,
-  loadTrailData,
-  TrailDataHashMismatchError,
-  type StoredPoi,
-} from './lib/trailData'
-import {
-  ribbonSamples,
-  ribbonWindow,
-  type ElevationProfile,
-} from './lib/elevationProfile'
+import { locateOnTrail } from './lib/trailPosition'
+import type { StoredPoi } from './lib/trailData'
+import { useTrailData } from './lib/useTrailData'
+import { ribbonSamples, ribbonWindow } from './lib/elevationProfile'
 import { upcomingClimb } from './lib/upcomingClimb'
 import { startTracking, trackDirection, type DirectionTracker } from './lib/hikeDirection'
 import { beginContribution, stepAfterSaving } from './lib/contributionFlow'
@@ -150,27 +142,8 @@ import {
 } from './lib/auth'
 import { listQueued, removeQueued, retryQueued, type FlushResult } from './lib/outbox'
 import { useOutboxSync, syncOutbox } from './lib/outboxSync'
-import {
-  API_CONFIGURED,
-  fetchClosures,
-  fetchReports,
-  type ClosureSummary,
-  type ReportSummary,
-} from './lib/api'
-import {
-  UNAVAILABLE,
-  conditionsAgeLabel,
-  itemsOf,
-  withBaseline,
-  withLive,
-  worstOf,
-  type ConditionState,
-} from './lib/conditionState'
-import {
-  fetchPublishedAtcUpdates,
-  fetchPublishedClosures,
-  fetchPublishedReports,
-} from './lib/publishedConditions'
+import { conditionsAgeLabel, worstOf } from './lib/conditionState'
+import { useConditions } from './lib/useConditions'
 import { closureBanner, closureLanes, type RankedClosure } from './lib/closureBanner'
 import {
   atcBandCandidates,
@@ -178,7 +151,6 @@ import {
   atcUpdateBanner,
   atcUpdateForBandId,
   atcUpdateLanes,
-  type AtcUpdate,
   type RankedAtcUpdate,
 } from './lib/atcUpdates'
 import { atcUpdatePoints } from './map/atcUpdateLayers'
@@ -258,43 +230,6 @@ const SEARCH_RESULT_ZOOM = 14
 interface Camera {
   center: [number, number]
   zoom: number
-}
-
-/** MapLibre needs a resolvable URL even with nothing downloaded; an empty
- *  collection draws nothing, where a missing URL logs a style error. */
-function emptyTrailsUrl(): string {
-  return URL.createObjectURL(
-    new Blob([JSON.stringify({ type: 'FeatureCollection', features: [] })], {
-      type: 'application/json',
-    }),
-  )
-}
-
-/**
- * What went wrong fetching the trail's own data, in the shape both fetch paths
- * report.
- *
- * One function because there are two callers and they must not drift: the
- * launch fetch nobody asked for, and the tapped download. They fail for
- * exactly the same reasons - no signal, a refused origin, a bucket with
- * nothing in it - and the hiker reading the sentence has no way to tell which
- * request produced it, so two wordings would be two accounts of one event.
- *
- * The hash mismatch keeps its own kind because its remedy differs: nothing was
- * kept on purpose, and a fresh download is the fix rather than a resume
- * (#238).
- */
-function describeTrailDataError(error: unknown): {
-  kind: 'hash-mismatch' | 'error'
-  message: string
-} {
-  if (error instanceof TrailDataHashMismatchError) {
-    return { kind: 'hash-mismatch', message: error.message }
-  }
-  return {
-    kind: 'error',
-    message: error instanceof Error ? error.message : 'Trail data failed to download.',
-  }
 }
 
 /**
@@ -384,24 +319,6 @@ function App() {
   const [verifiedOnly, setVerifiedOnly] = useState(false)
   const [bbox, setBbox] = useState<BoundingBox>(EMPTY_BBOX)
 
-  const [trailIndex, setTrailIndex] = useState<TrailIndex | null>(null)
-  const [pois, setPois] = useState<StoredPoi[]>([])
-  const [elevation, setElevation] = useState<ElevationProfile | null>(null)
-  const [trailsUrl, setTrailsUrl] = useState<string>(emptyTrailsUrl)
-  /** Whether the map has a real trail line on it, as against the empty
-   *  collection the style is seeded with. What the strip reads to say the
-   *  trail itself is missing - see `trailLinesMissing` below. */
-  const [haveTrailLines, setHaveTrailLines] = useState(false)
-  /** The trail-data download's failure, with the one distinction that changes
-   *  what the notice says: a hash mismatch kept nothing on purpose, and its
-   *  remedy is a clean re-download rather than a retry of what stopped
-   *  (#238). Typed at the moment the error still has a type - matching on
-   *  message text would break the day the sentence was reworded. */
-  const [dataError, setDataError] = useState<{
-    kind: 'hash-mismatch' | 'error'
-    message: string
-  } | null>(null)
-
   const [reporting, setReporting] = useState<ReportingState>(null)
   const [authFlow, setAuthFlow] = useState<AuthFlowState>(null)
   /**
@@ -427,36 +344,6 @@ function App() {
   const account = useAccount()
   const [queuedCount, setQueuedCount] = useState(0)
   const [stuckReports, setStuckReports] = useState<StuckReport[]>([])
-  // Null means "we have not managed to ask", not "there are none" - the two
-  // draw the same map and mean opposite things on the ground (#286). Nothing
-  // renders a reassuring absence from either: a clear header is what a hiker
-  // sees when the way ahead is clear AND when we could not check, and the
-  // status strip's sync age is what tells those apart (lib/syncAge.ts).
-  // One state rather than a list plus a separate "where did this come from",
-  // because the two reads race and updating two states from a race is how you
-  // get fresh closures labelled stale. lib/conditionState.ts owns the rule
-  // that live always wins; `closures` and `reports` below stay exactly the
-  // `T[] | null` every consumer already expects. Reports carry the same state
-  // machine as closures (#436) - they are the warning pins, the other half of
-  // what a hiker walks into.
-  const [closureState, setClosureState] =
-    useState<ConditionState<ClosureSummary>>(UNAVAILABLE)
-  const closures = itemsOf(closureState)
-  const [reportState, setReportState] =
-    useState<ConditionState<ReportSummary>>(UNAVAILABLE)
-  const reports = itemsOf(reportState)
-  // The ATC's own notices, and deliberately NOT a `ConditionState` (#461).
-  // That machine exists to say which of two tiers a hiker is looking at -
-  // a live backend read or a day-old published baseline - and here there is
-  // only ever one: ATC publishes on their website, not through our API, so
-  // there is no live tier for a baseline to be a fallback from. Wrapping it
-  // anyway would put an "as of" caveat about OUR bake on data whose age is
-  // ATC's own `updated_at`, which is the one number that matters and travels
-  // on each row. `reviewedAt` is the other half of that honesty and rides
-  // beside the list rather than inside the rows, because it is a fact about
-  // the review rather than about any one notice.
-  const [atcUpdates, setAtcUpdates] = useState<readonly AtcUpdate[]>([])
-  const [atcReviewedAt, setAtcReviewedAt] = useState<Date | null>(null)
   const [selectedAtcBandId, setSelectedAtcBandId] = useState<string | null>(null)
   /**
    * Whether the full list of ATC notices is open.
@@ -473,10 +360,6 @@ function App() {
   const [atcAlertSilence, setAtcAlertSilence] = useState<Date | null>(() =>
     readAtcAlertSilence(),
   )
-  // Was a state with no setter until #231 - nothing ever synced, so the status
-  // strip said "never synced" on every device forever, which was true and
-  // looked like a bug in the strip rather than a missing feature.
-  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
 
   // What the hiker SAID they are doing, as against what the GPS works out
   // below. Null is the ordinary state rather than an incomplete setup (#335).
@@ -507,6 +390,33 @@ function App() {
 
   const now = useClock()
   const online = useOnline()
+
+  // What the trail is like right now - closures, reports, the ATC's own
+  // notices - and when something last reached the server. See
+  // lib/useConditions.ts for the two tiers behind the first two.
+  const {
+    closures,
+    reports,
+    closureState,
+    reportState,
+    atcUpdates,
+    atcReviewedAt,
+    lastSyncedAt,
+    markSynced,
+  } = useConditions(online)
+
+  // The centerline, the POIs, the elevation profile, and the fetch that puts
+  // them on the phone - see lib/useTrailData.ts. Everything below reads these;
+  // nothing else writes them.
+  const {
+    trailIndex,
+    pois,
+    elevation,
+    trailsUrl,
+    haveTrailLines,
+    error: dataError,
+    ensure: ensureTrailData,
+  } = useTrailData(online)
 
   /**
    * The map's source observations, folded in; its withdrawals, dropped.
@@ -617,13 +527,13 @@ function App() {
       // Only on a real delivery. Stamping the clock after a flush that sent
       // nothing would make "synced just now" mean "we had signal", which is
       // the opposite of what the strip is for (lib/syncAge.ts).
-      if (sent > 0) setLastSyncedAt(new Date())
+      if (sent > 0) markSynced()
       // Refreshed even when nothing was sent, because a flush that only
       // discovered a refusal still changed what the hiker needs to see -
       // that is the whole point of the stuck state.
       if (sent > 0 || stuck > 0) void refreshOutbox()
     },
-    [refreshOutbox],
+    [refreshOutbox, markSynced],
   )
 
   // Written through to the phone before the state moves, so a hiker who sets
@@ -642,113 +552,6 @@ function App() {
   }, [])
 
   useOutboxSync(online && account !== null, handleSynced)
-
-  // The map's own reads (#232), separate from the outbox flush above and
-  // deliberately not gated on an account: browsing has never needed one, and
-  // the reads send a token only if there is one (lib/api.ts).
-  //
-  // Both settle independently. A closures read that succeeds while reports
-  // fails should still warn about the closure - pairing them would mean one
-  // failure silencing both, and closures are the half a hiker walks into.
-  // The published baseline, fetched once and independently of the backend
-  // (features/CONDITIONS_DELIVERY.md). This is the read that makes an
-  // unreachable backend mean "day-old closures, labelled as day-old" rather
-  // than the silence it used to mean.
-  //
-  // Gated on `online`, matching the rule the trail-line fetch already keeps -
-  // "waits for signal rather than failing a fetch it knows cannot work".
-  // This was written ungated first, on the theory that the service worker
-  // might hold a copy; it does not. vite.config.ts precaches the app shell and
-  // the glyph ranges and nothing else, because this app's offline story is
-  // IndexedDB rather than cached responses. So offline there is genuinely no
-  // baseline to get, and the honest state is `unavailable` - which the strip
-  // now says out loud instead of rendering as a clear trail.
-  //
-  // Losing that case matters less than it sounds: the failure this baseline
-  // exists for is a backend that is down while the phone has signal, and that
-  // is an online phone. Keeping a baseline across a real signal loss means
-  // persisting it the way the trail lines are persisted, which is a storage
-  // decision of its own rather than a line in this effect.
-  //
-  // NOT gated on API_CONFIGURED, though - this path has nothing to do with the
-  // backend, and a build with no backend configured at all is exactly the one
-  // that most needs a baseline.
-  useEffect(() => {
-    if (!online) return
-
-    let cancelled = false
-
-    void fetchPublishedClosures().then((published) => {
-      if (cancelled || published === null) return
-      // Functional update, because the live read may already have landed -
-      // `withBaseline` is what refuses to overwrite it.
-      setClosureState((current) =>
-        withBaseline(current, published.items, published.generatedAt),
-      )
-    })
-
-    // Reports the same way (#436). The baseline holds only public moderated
-    // rows, so a signed-in reporter's own unmoderated report still needs the
-    // live read - which wins whenever it lands, exactly as with closures.
-    void fetchPublishedReports().then((published) => {
-      if (cancelled || published === null) return
-      setReportState((current) =>
-        withBaseline(current, published.items, published.generatedAt),
-      )
-    })
-
-    // The ATC's notices. No `withBaseline` and no race to lose: there is no
-    // live read to be overwritten by, so this is a plain set. `null` covers
-    // the 404 the bucket serves while nobody has reviewed the source file,
-    // and leaving the list empty in that case is the point - the pipeline
-    // publishes nothing rather than an empty document precisely so that "we
-    // have not looked" cannot render as "ATC reports nothing".
-    void fetchPublishedAtcUpdates().then((published) => {
-      if (cancelled || published === null) return
-      setAtcUpdates(published.items)
-      setAtcReviewedAt(published.reviewedAt ?? null)
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [online])
-
-  useEffect(() => {
-    if (!online || !API_CONFIGURED) return
-
-    let cancelled = false
-    // A read reaching the server IS a sync, and the status strip's age is the
-    // only thing distinguishing "nothing reported here" from "we could not
-    // ask" - so it has to move when the map data does, not only when a
-    // report goes out.
-    const markSynced = () => {
-      if (!cancelled) setLastSyncedAt(new Date())
-    }
-
-    // A read that throws leaves its state where it was - the baseline if one
-    // landed, `unavailable` otherwise - and says nothing else. Being unable to
-    // reach the backend is the ordinary condition out here, not an error to
-    // interrupt someone over; the conditions age on the status strip is what
-    // turns the state left behind into something a hiker can read.
-    const leaveUnknown = () => undefined
-
-    void fetchClosures().then((next) => {
-      if (cancelled) return
-      setClosureState(withLive(next))
-      markSynced()
-    }, leaveUnknown)
-
-    void fetchReports().then((next) => {
-      if (cancelled) return
-      setReportState(withLive(next))
-      markSynced()
-    }, leaveUnknown)
-
-    return () => {
-      cancelled = true
-    }
-  }, [online])
 
   /**
    * Clears the refusal and sends, now - the escape hatch for a cause the
@@ -772,11 +575,11 @@ function App() {
       void retryQueued(id)
         .then(() => syncOutbox())
         .then((result) => {
-          if (result !== null && result.sent > 0) setLastSyncedAt(new Date())
+          if (result !== null && result.sent > 0) markSynced()
         })
         .finally(() => void refreshOutbox())
     },
-    [refreshOutbox],
+    [refreshOutbox, markSynced],
   )
 
   const handleDiscardReport = useCallback(
@@ -922,158 +725,6 @@ function App() {
     CORRIDOR_BACKGROUND_PACKAGE.idbKey,
     archiveDownloaded,
   )
-
-  /** Returns whether anything was actually on the phone to load. */
-  const refreshTrailData = useCallback(async () => {
-    const data = await loadTrailData()
-    if (data === null) return false
-
-    setTrailsUrl(URL.createObjectURL(data.trails))
-    // Set here rather than derived from `trailsUrl`, which starts life as a
-    // perfectly valid object URL for an empty collection and so cannot answer
-    // "is there a trail on this map". Nothing else can answer it either: the
-    // POIs are a separate artifact and the index is best-effort, so a phone
-    // can hold both and still be drawing no line.
-    setHaveTrailLines(true)
-    setPois(data.pois)
-    setElevation(data.elevation)
-
-    // Best-effort, and separate from the POIs above on purpose. A shelter is
-    // findable by name with no geometry at all, so a trails.geojson that
-    // arrived truncated or malformed should cost the mile numbers decorating
-    // each row and nothing else.
-    //
-    // buildTrailIndex() guards the shape it is handed, but JSON.parse runs
-    // first and throws on the more likely symptom of a truncated download -
-    // half a file. Uncaught, that escaped through the `void refreshTrailData()`
-    // below as an unhandled rejection: no index, no message, and no search
-    // either, which is the failure this whole path was rebuilt to avoid.
-    try {
-      setTrailIndex(buildTrailIndex(JSON.parse(await data.trails.text())))
-    } catch {
-      setTrailIndex(null)
-    }
-    return true
-  }, [])
-
-  /**
-   * The trail-data fetch that is in flight, so that re-renders, connectivity
-   * flapping and a tapped download cannot start a second one. A ref rather
-   * than state because nothing renders from it.
-   *
-   * THE PROMISE, not a boolean, and that is the whole point of it. It was a
-   * flag, which only the launch fetch below ever read - so a hiker who tapped
-   * Download while that fetch was still running got `loadTrailData()` back as
-   * null (nothing committed yet), and pulled the same 12.3 MB of
-   * trails.geojson a second time, against the same connection, ahead of the
-   * archive they were actually waiting for. Sharing the attempt means the tap
-   * waits for the bytes already coming rather than racing them.
-   *
-   * Cleared when it settles, either way: a fetch that failed must be
-   * retryable when signal returns, and one that succeeded leaves
-   * `loadTrailData()` answering from the phone, which is cheaper than any
-   * flag.
-   */
-  const trailDataFetch = useRef<Promise<void> | null>(null)
-
-  /**
-   * The trail's own data on the phone, fetched at most once at a time.
-   *
-   * Rejects with whatever the fetch rejected with - both callers report it,
-   * differently: the launch fetch nobody asked for reports through the status
-   * strip, a tapped download reports on the card that was tapped.
-   */
-  const fetchTrailDataOnce = useCallback(() => {
-    const inFlight = trailDataFetch.current
-    if (inFlight !== null) return inFlight
-
-    const attempt = (async () => {
-      // Asked directly rather than assumed: a phone that already has the
-      // lines needs no network at all.
-      if ((await loadTrailData()) !== null) return
-      await downloadTrailData()
-      await refreshTrailData()
-    })()
-    trailDataFetch.current = attempt
-    const clear = () => {
-      if (trailDataFetch.current === attempt) trailDataFetch.current = null
-    }
-    attempt.then(clear, clear)
-    return attempt
-  }, [refreshTrailData])
-
-  // The trail lines load themselves, rather than waiting for someone to tap
-  // Download.
-  //
-  // They are a few megabytes against the archive's 314 MB - the download flow
-  // already treats them that way, fetching them first as the canary - and they
-  // are not decoration on the map, they ARE the map: without them the app
-  // opens on a background with no trail on it, no POIs, nothing to search and
-  // no elevation ribbon. Making the whole corridor download a precondition for
-  // seeing where the Appalachian Trail runs is the wrong trade at any
-  // connection speed, and it is the state every first run was in.
-  //
-  // NOT quiet about failing, which is what this used to be, and the reasoning
-  // for the quiet was wrong in a way worth writing down rather than deleting.
-  // It ran: the hiker did not ask for this, so a failure is not a result they
-  // are owed a message about - it leaves exactly the empty map they would have
-  // had anyway, and the Downloads screen still reports the download they DO
-  // ask for.
-  //
-  // Both halves fail. "The empty map they would have had anyway" is a map with
-  // no Appalachian Trail drawn on it, which this file argues three paragraphs
-  // up is not the empty state but a broken one: the lines "are not decoration
-  // on the map, they ARE the map". And the Downloads screen only reports what
-  // was tapped, so a launch fetch that failed was recorded nowhere at all -
-  // not on the map, not in the window, not in a state anything rendered.
-  //
-  // What that cost is the bug report this comment was rewritten for: an app
-  // whose trail line was missing because the bucket refused its origin, and
-  // whose entire account of itself was a map with no trail on it. The failure
-  // is now carried the same way a tapped download's is, and the strip says the
-  // trail is missing (`trailLinesMissing`) so the sentence is findable from
-  // the screen the missing line is on. Retried when the phone comes back
-  // online, which is the one condition likely to have changed.
-  // Reading what is already on the phone, and unconditionally. This has to
-  // stay independent of the fetch below: an unconfigured build and a phone
-  // with no signal both still have whatever was downloaded last time, and
-  // gating this on either one would leave a hiker on a ridge - the exact
-  // person the offline store exists for - looking at a map with no trail.
-  useEffect(() => {
-    void refreshTrailData()
-  }, [refreshTrailData])
-
-  useEffect(() => {
-    if (!DATA_CONFIGURED || !online) return
-
-    let cancelled = false
-
-    // Deduplicated inside fetchTrailDataOnce rather than by a flag here, so
-    // that a download tapped while this is still running joins it instead of
-    // fetching the same megabytes alongside it.
-    void fetchTrailDataOnce().catch((error: unknown) => {
-      // Not reported if the effect was torn down under us: by then this is a
-      // fetch nobody is waiting on, and a notice about it would outlive the
-      // screen that could act on it. Nothing is stored either way -
-      // downloadTrailData commits all four files or none - so coming back
-      // into signal can simply try again.
-      if (cancelled) return
-      setDataError(describeTrailDataError(error))
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [fetchTrailDataOnce, online])
-
-  // Revoking belongs here rather than inside the setTrailsUrl updater it used
-  // to live in. A state updater has to be pure: React may run it more than
-  // once for a single update and may throw a render away entirely, and either
-  // one leaked a blob URL - or, in the discarded-render case, revoked the URL
-  // the map was still using. As a cleanup it runs exactly once per value, when
-  // that value stops being current, which is precisely when the bytes behind
-  // it stop being needed.
-  useEffect(() => () => URL.revokeObjectURL(trailsUrl), [trailsUrl])
 
   // A fix moves no camera - see CORRIDOR_BOUNDS. It is read for everything
   // else: the mile below, the direction of travel, the elevation ribbon.
@@ -1551,33 +1202,6 @@ function App() {
     [updatePreferences, openDownloads, isDesktop],
   )
 
-  /** The trail's own data - centerline, spurs, POIs, elevation profile - on
-   *  the phone, fetching it only if it is not already here.
-   *
-   *  Not a choice anyone is offered: it is a few megabytes against a
-   *  background measured in hundreds, and it is what makes the app an app
-   *  rather than a map viewer, so it is downloaded by default wherever it is
-   *  missing (the effect above does the same on launch). Called before the
-   *  background too, where it doubles as the canary: whatever stopped these
-   *  few megabytes - no signal, a missing key, a misconfigured bucket - will
-   *  stop the next several hundred, and finding that out costs a hiker their
-   *  data allowance to learn nothing.
-   *
-   *  Returns whether to go on. */
-  const ensureTrailData = useCallback(async () => {
-    setDataError(null)
-    try {
-      // Shares whatever is already coming, and asks the phone first - both
-      // inside fetchTrailDataOnce, so that a tap during the launch fetch
-      // waits on it rather than duplicating it.
-      await fetchTrailDataOnce()
-      return true
-    } catch (error) {
-      setDataError(describeTrailDataError(error))
-      return false
-    }
-  }, [fetchTrailDataOnce])
-
   /** One sheet: every archive it is made of, in one tap. Archives already on
    *  the phone are left alone rather than re-fetched. */
   const handleDownloadSheet = useCallback(
@@ -1772,12 +1396,12 @@ function App() {
       // and the map they were reading would be a network round trip in the
       // way, and a failure lands in the outbox exactly as it always did.
       void syncOutbox().then((result) => {
-        if (result !== null && result.sent > 0) setLastSyncedAt(new Date())
+        if (result !== null && result.sent > 0) markSynced()
       })
       if (next === 'sign-in') setAuthFlow({ screen: 'choose', afterReport: true })
       else if (next === 'identity') askForIdentity()
     },
-    [account, preferences.reporter_type, askForIdentity],
+    [account, preferences.reporter_type, askForIdentity, markSynced],
   )
 
   /** Answered: both fields land together, which is what the screen collects.

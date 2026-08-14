@@ -1,13 +1,10 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, render, screen, cleanup, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { get, set, del } from 'idb-keyval'
 import App from './App'
 import { MockMap, resetMapLibreMock } from './test/mocks/maplibre-gl'
 import { renderedMap } from './test/liveMap'
-import { PREFERENCES_KEY } from './lib/preferences'
-import { DEFAULT_PREFERENCES } from './lib/userPreferences'
-import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
+import { appHarness, latOfMile } from './test/appHarness'
 import { CORRIDOR_ARCHIVE_KEY } from './map/pmtilesSource'
 import { readCamera } from './lib/cameraMemory'
 import { fetchClosures, fetchReports } from './lib/api'
@@ -41,24 +38,6 @@ vi.mock('./lib/api', () => ({
   fetchClosures: vi.fn(async () => []),
 }))
 
-const store = new Map<string, unknown>()
-
-/** A centerline running due north, so a mile of latitude is about a mile. */
-const MILE_LAT = 1 / 69.05
-const TRAILS_GEOJSON = JSON.stringify({
-  type: 'FeatureCollection',
-  features: [
-    {
-      type: 'Feature',
-      properties: { source: 'centerline' },
-      geometry: {
-        type: 'LineString',
-        coordinates: Array.from({ length: 40 }, (_, i) => [-77, 39 + i * MILE_LAT]),
-      },
-    },
-  ],
-})
-
 /** A verified closure between two miles of the synthetic centerline. */
 function closure(startMile: number, endMile: number) {
   return {
@@ -73,73 +52,23 @@ function closure(startMile: number, endMile: number) {
   }
 }
 
-let watchSuccess: ((position: GeolocationPosition) => void) | undefined
+// onLine, unlike App.flows' harness - the closure reads are gated on it.
+const app = appHarness({
+  navigator: { onLine: true, geolocation: true },
+  objectUrls: true,
+})
+const store = app.store
+const reportFixAtMile = app.reportFixAtMile
 
 beforeEach(() => {
-  store.clear()
-  watchSuccess = undefined
-  resetMapLibreMock()
-  vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
-  vi.mocked(set).mockImplementation((key, value) => {
-    store.set(key as string, value)
-    return Promise.resolve()
-  })
-  vi.mocked(del).mockImplementation((key) => {
-    store.delete(key as string)
-    return Promise.resolve()
-  })
   vi.mocked(fetchClosures).mockResolvedValue([])
   vi.mocked(fetchReports).mockResolvedValue([])
-
-  vi.stubGlobal('fetch', vi.fn())
-  // onLine: true, unlike App.flows' stub - the closure reads are gated on it.
-  vi.stubGlobal('navigator', {
-    onLine: true,
-    geolocation: {
-      watchPosition: (success: (position: GeolocationPosition) => void) => {
-        watchSuccess = success
-        return 1
-      },
-      clearWatch: () => {},
-    },
-    userAgent: '',
-    platform: '',
-  })
-  vi.stubGlobal('URL', {
-    ...URL,
-    createObjectURL: vi.fn(() => 'blob:trails'),
-    revokeObjectURL: vi.fn(),
-  })
-})
-
-afterEach(() => {
-  cleanup()
-  vi.clearAllMocks()
-  vi.unstubAllGlobals()
 })
 
 /** Onboarded, location allowed, trail data already on the phone. */
 function hikerOnTrail(overrides: Record<string, unknown> = {}) {
-  store.set(PREFERENCES_KEY, {
-    ...DEFAULT_PREFERENCES,
-    onboarding_completed: true,
-    download_choice_made: true,
-    location_permission_requested: true,
-    ...overrides,
-  })
-  store.set(TRAILS_BLOB_KEY, new Blob([TRAILS_GEOJSON]))
-  store.set(POIS_KEY, [])
-}
-
-/** Report a GPS fix at a mile of the synthetic centerline. */
-async function reportFixAtMile(mile: number) {
-  await waitFor(() => expect(watchSuccess).toBeDefined())
-  await act(async () => {
-    watchSuccess?.({
-      coords: { latitude: 39 + mile * MILE_LAT, longitude: -77, accuracy: 5 },
-      timestamp: Date.now(),
-    } as unknown as GeolocationPosition)
-  })
+  app.onboard({ location_permission_requested: true, ...overrides })
+  app.putTrailData()
 }
 
 /**
@@ -277,7 +206,7 @@ describe('the serious-warnings banner', () => {
         reporter_type: 'thru',
         status: 'verified',
         severity: 'serious',
-        lat: 39 + 8 * MILE_LAT,
+        lat: latOfMile(8),
         lon: -77,
         poi_id: null,
         mile: null,

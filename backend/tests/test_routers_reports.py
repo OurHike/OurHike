@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from app.models.profile import Profile, Role
 from app.models.report import Report, ReporterType, ReportStatus, ReportType, Visibility
 from app.schemas.report import ReportCreate
+from tests.factories import make_profile
 from tests.tokens import auth_headers
 
 _VALID_PAYLOAD = {
@@ -84,9 +85,7 @@ def test_create_report_ignores_a_client_supplied_severity_field(client):
 
 
 def test_public_list_reports_excludes_internal_only_reports(client, db_session):
-    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    db_session.add(reporter)
-    db_session.commit()
+    reporter = make_profile(db_session, Role.hiker)
 
     # Both verified, so the only thing separating them in the result is
     # visibility - which is what this test is about. Before the moderation
@@ -118,9 +117,7 @@ def test_public_list_reports_excludes_internal_only_reports(client, db_session):
 
 
 def test_public_list_reports_excludes_dismissed_reports(client, db_session):
-    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    db_session.add(reporter)
-    db_session.commit()
+    reporter = make_profile(db_session, Role.hiker)
 
     active_report = Report(
         reporter_id=reporter.id,
@@ -320,9 +317,7 @@ def test_invasive_species_is_public_like_every_other_condition_type(client):
 def test_invasive_species_appears_in_the_public_report_list_once_verified(client, db_session):
     """Public like every other condition type - but public still means
     moderated first, which is the one thing it does inherit from them."""
-    moderator = Profile(id=str(uuid.uuid4()), role=Role.club_admin, display_name="Mod")
-    db_session.add(moderator)
-    db_session.commit()
+    moderator = make_profile(db_session, Role.club_admin, display_name="Mod")
 
     created = client.post("/reports", json=_INVASIVE, headers=auth_headers(str(uuid.uuid4()))).json()
 
@@ -338,9 +333,7 @@ def test_invasive_species_can_be_verified_unlike_a_thanks(client, db_session):
     """There IS something to verify about a species sighting, so it uses the
     normal moderation queue - the exception carved out for `thanks` must not
     have widened to cover every new type."""
-    moderator = Profile(id=str(uuid.uuid4()), role=Role.club_admin, display_name="Mod")
-    db_session.add(moderator)
-    db_session.commit()
+    moderator = make_profile(db_session, Role.club_admin, display_name="Mod")
 
     created = client.post("/reports", json=_INVASIVE, headers=auth_headers(str(uuid.uuid4()))).json()
     response = client.post(
@@ -392,9 +385,7 @@ def test_animals_stays_a_separate_type(client):
 
 def _verified_and_submitted_reports(db_session):
     """One report either side of the gate, from the same reporter."""
-    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    db_session.add(reporter)
-    db_session.commit()
+    reporter = make_profile(db_session, Role.hiker)
 
     submitted = Report(
         reporter_id=reporter.id,
@@ -449,9 +440,7 @@ def test_a_reporter_still_sees_their_own_report_while_it_waits(client, db_sessio
 def test_a_resolved_report_stays_public(client, db_session):
     """It was verified once and reads as "Fixed" - a blowdown someone has
     since cleared is information, not noise."""
-    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    db_session.add(reporter)
-    db_session.commit()
+    reporter = make_profile(db_session, Role.hiker)
     resolved = Report(
         reporter_id=reporter.id,
         type=ReportType.blowdown,
@@ -597,9 +586,7 @@ def test_a_refused_id_files_nothing(client):
 def test_a_moderator_can_always_reach_a_report_that_was_accepted(client, db_session):
     """The property the validation exists to protect, asserted end to end
     rather than inferred from the 422s above."""
-    moderator = Profile(id=str(uuid.uuid4()), role=Role.club_admin, display_name="Mod")
-    db_session.add(moderator)
-    db_session.commit()
+    moderator = make_profile(db_session, Role.club_admin, display_name="Mod")
     created = client.post(
         "/reports",
         json=dict(_VALID_PAYLOAD, type="bad_hikers", id=str(uuid.uuid4())),
@@ -691,9 +678,7 @@ def _public_report(db_session, reporter_id: str, **overrides) -> Report:
 
 
 def test_anonymous_list_withholds_the_reporter_id(client, db_session):
-    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    db_session.add(reporter)
-    db_session.commit()
+    reporter = make_profile(db_session, Role.hiker)
     _public_report(db_session, reporter.id)
 
     body = client.get("/reports").json()
@@ -706,9 +691,7 @@ def test_anonymous_list_withholds_the_reporter_id(client, db_session):
 
 
 def test_anonymous_detail_withholds_it_too(client, db_session):
-    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    db_session.add(reporter)
-    db_session.commit()
+    reporter = make_profile(db_session, Role.hiker)
     report = _public_report(db_session, reporter.id)
 
     body = client.get(f"/reports/{report.id}").json()
@@ -792,9 +775,7 @@ def test_the_receipt_time_is_withheld_as_well(client, db_session):
     """A second clock narrows "when was this person there" further than
     either alone, and nothing public reads it - the client's own
     `ReportSummary` does not even declare the field."""
-    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    db_session.add(reporter)
-    db_session.commit()
+    reporter = make_profile(db_session, Role.hiker)
     _public_report(db_session, reporter.id)
 
     assert client.get("/reports").json()[0]["received_at"] is None
@@ -842,9 +823,7 @@ def test_the_public_list_is_ordered_so_array_position_leaks_nothing(client, db_s
     the second is a property of a particular database's scan behaviour and
     the first is the thing the code promises.
     """
-    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    db_session.add(reporter)
-    db_session.commit()
+    reporter = make_profile(db_session, Role.hiker)
     for _ in range(5):
         _public_report(db_session, reporter.id)
 
@@ -973,9 +952,7 @@ def test_a_report_without_a_mile_is_null_rather_than_zero(client):
 def test_the_mile_travels_back_out_on_the_public_list(client, db_session):
     """The banner reads this list, so a mile that only exists in the row is a
     mile the safety feature still cannot filter on."""
-    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    db_session.add(reporter)
-    db_session.commit()
+    reporter = make_profile(db_session, Role.hiker)
     db_session.add(
         Report(
             id=str(uuid.uuid4()),

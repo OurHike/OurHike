@@ -20,28 +20,9 @@ from rasterio.transform import from_bounds
 import check_output_quality
 from check_output_quality import Verdict
 from lib import fetch_receipts
+from tests.synthetic import write_centerline
 
 # --- Shared fixtures ---------------------------------------------------------
-
-# Same neighborhood/coordinates test_lib_corridor.py's/test_export_poi.py's/
-# test_export_trails.py's own synthetic centerline fixtures use - far from
-# any real data, and it lets the "plausible area" assertions below reuse the
-# same expected range those tests already established for this exact line.
-CENTERLINE_COORDS = [(-74.0, 41.0), (-73.9, 41.1)]
-
-
-def _write_centerline(path, coords=CENTERLINE_COORDS):
-    fc = {
-        "type": "FeatureCollection",
-        "features": [
-            {
-                "type": "Feature",
-                "properties": {},
-                "geometry": {"type": "LineString", "coordinates": [[lon, lat] for lon, lat in coords]},
-            }
-        ],
-    }
-    path.write_text(json.dumps(fc))
 
 
 def _write_tiny_geotiff(path):
@@ -409,7 +390,7 @@ def test_corridor_verdict_is_problem_when_centerline_is_missing(tmp_path):
 
 def test_corridor_verdict_ok_for_a_real_centerline_fixture(tmp_path):
     centerline_path = tmp_path / "centerline.geojson"
-    _write_centerline(centerline_path)
+    write_centerline(centerline_path)
 
     report = check_output_quality.corridor_verdict(centerline_path)
 
@@ -1064,7 +1045,7 @@ def passing_pipeline(tmp_path, monkeypatch):
     )
 
     centerline_path = tmp_path / "centerline.geojson"
-    _write_centerline(centerline_path)
+    write_centerline(centerline_path)
 
     # The two always-required fetch receipts (#542). Added here rather than
     # excused in the check, because "a complete, passing set" genuinely now

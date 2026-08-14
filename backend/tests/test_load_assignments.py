@@ -25,13 +25,12 @@ from app.models.club import Club
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.profile import Profile, Role
 from load_assignments import InvalidFile, apply, parse
+from tests.factories import make_profile
 
 
 @pytest.fixture()
 def pat(db_session) -> Profile:
-    profile = Profile(id=str(uuid.uuid4()), role=Role.maintainer, display_name="Pat")
-    db_session.add(profile)
-    db_session.commit()
+    profile = make_profile(db_session, Role.maintainer, display_name="Pat")
     return profile
 
 
@@ -134,9 +133,7 @@ def test_it_does_not_promote_anybody_to_a_moderator_role(db_session):
     """Looking after a stretch is not permission to moderate safety reports
     about named individuals, and a data-loading script is the last place
     anybody would look for an account being promoted."""
-    hiker = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    db_session.add(hiker)
-    db_session.commit()
+    hiker = make_profile(db_session, Role.hiker)
 
     _load(db_session, _document(hiker))
 

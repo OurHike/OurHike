@@ -1,16 +1,15 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, render, screen, cleanup, waitFor, within } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { get, set, del } from 'idb-keyval'
 import App from './App'
+import { appHarness, centerlineGeoJSON, latOfMile } from './test/appHarness'
 import { PREFERENCES_KEY } from './lib/preferences'
-import { DEFAULT_PREFERENCES } from './lib/userPreferences'
 import { ELEVATION_STORE_KEY, POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 import { CORRIDOR_ARCHIVE_KEY } from './map/pmtilesSource'
 import { readArchive, segmentKeyFor } from './lib/archiveStore'
 import { POI_ID_PROPERTY, POI_LAYER_ID } from './map/poiLayers'
 import { archiveUrl } from './lib/config'
-import { MockMap, resetMapLibreMock } from './test/mocks/maplibre-gl'
+import { MockMap } from './test/mocks/maplibre-gl'
 import { liveMap } from './test/liveMap'
 import { THEME_ATTRIBUTE } from './lib/theme'
 import { BACKDROP_LAYER_ID, MAP_BACKDROP } from './map/style'
@@ -33,109 +32,30 @@ function backdropOf(map: MockMap): unknown {
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
 
-const store = new Map<string, unknown>()
-
-/** A centerline running due north, so a mile of latitude is about a mile. */
-const MILE_LAT = 1 / 69.05
-const TRAILS_GEOJSON = JSON.stringify({
-  type: 'FeatureCollection',
-  features: [
-    {
-      type: 'Feature',
-      properties: { source: 'centerline' },
-      geometry: {
-        type: 'LineString',
-        coordinates: Array.from({ length: 40 }, (_, i) => [-77, 39 + i * MILE_LAT]),
-      },
-    },
-  ],
-})
-
 const SHELTER = {
   id: 'atc_shelters:abc',
   type: 'shelter',
   name: 'Chairback Gap Lean-to',
-  lat: 39 + 5 * MILE_LAT,
+  lat: latOfMile(5),
   lon: -77,
   confidence: 'high' as const,
   source: 'atc_shelters',
 }
 
-let watchSuccess: ((position: GeolocationPosition) => void) | undefined
-
-beforeEach(() => {
-  store.clear()
-  watchSuccess = undefined
-  resetMapLibreMock()
-
-  vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
-  vi.mocked(set).mockImplementation((key, value) => {
-    store.set(key as string, value)
-    return Promise.resolve()
-  })
-  vi.mocked(del).mockImplementation((key) => {
-    store.delete(key as string)
-    return Promise.resolve()
-  })
-
-  vi.stubGlobal('fetch', vi.fn())
-  vi.stubGlobal('navigator', {
-    geolocation: {
-      watchPosition: (success: (position: GeolocationPosition) => void) => {
-        watchSuccess = success
-        return 1
-      },
-      clearWatch: () => {},
-    },
-    userAgent: '',
-    platform: '',
-  })
-  // jsdom implements neither, and App revokes/creates one per trail-data load.
-  vi.stubGlobal('URL', {
-    ...URL,
-    createObjectURL: vi.fn(() => 'blob:trails'),
-    revokeObjectURL: vi.fn(),
-  })
-})
-
-afterEach(() => {
-  cleanup()
-  vi.clearAllMocks()
-  vi.unstubAllGlobals()
-})
+// No `onLine`, deliberately - App.safety.test.tsx is where the reads that need
+// a connection are asserted, and these flows are the ones a hiker walks with
+// no signal at all.
+const app = appHarness({ navigator: { geolocation: true }, objectUrls: true })
+const store = app.store
 
 /** Onboarded, location allowed, trail data already on the phone. */
 function hikerOnTrail(overrides: Record<string, unknown> = {}) {
-  store.set(PREFERENCES_KEY, {
-    ...DEFAULT_PREFERENCES,
-    onboarding_completed: true,
-    download_choice_made: true,
-    location_permission_requested: true,
-    ...overrides,
-  })
-  store.set(TRAILS_BLOB_KEY, new Blob([TRAILS_GEOJSON]))
-  store.set(POIS_KEY, [SHELTER])
+  app.onboard({ location_permission_requested: true, ...overrides })
+  app.putTrailData({ pois: [SHELTER] })
 }
 
-/**
- * Report a GPS fix five miles up the synthetic centerline.
- *
- * Waits for the watch to exist first, and that is not defensive padding. The
- * watch starts in an effect that runs only once loaded preferences say
- * location is allowed - a commit or two AFTER the map screen appears - so
- * firing straight after `findByRole` sometimes found `watchSuccess` still
- * undefined. The optional call then swallowed the fix, no further fix was ever
- * sent, and the test failed looking for a mile that was never going to arrive.
- */
-async function reportFix(lat = 39 + 5 * MILE_LAT, lon = -77) {
-  await waitFor(() => expect(watchSuccess).toBeDefined())
-  await act(async () => {
-    watchSuccess?.({
-      coords: { latitude: lat, longitude: lon, accuracy: 5 },
-      timestamp: Date.now(),
-    } as unknown as GeolocationPosition)
-  })
-}
+/** Report a GPS fix at a mile of the synthetic centerline. */
+const reportFix = (mile = 5) => app.reportFixAtMile(mile)
 
 /**
  * The download window, opened the way a hiker reaches it.
@@ -187,7 +107,7 @@ describe('once there is a GPS fix', () => {
     await reportFix()
     expect(await screen.findByText(/mi 5\./)).toBeInTheDocument()
 
-    await reportFix(39 + 6 * MILE_LAT)
+    await reportFix(6)
     expect(await screen.findByText(/mi 6\./)).toBeInTheDocument()
 
     expect(MockMap.instances[0].cameraMoves).toHaveLength(0)
@@ -198,8 +118,8 @@ describe('once there is a GPS fix', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
 
-    await reportFix(39 + 5 * MILE_LAT)
-    await reportFix(39 + 8 * MILE_LAT)
+    await reportFix(5)
+    await reportFix(8)
 
     expect(await screen.findByText(/mi 8\./)).toBeInTheDocument()
   })
@@ -556,7 +476,7 @@ describe('downloading everything', () => {
         ok: true,
         status: 200,
         statusText: 'OK',
-        blob: () => Promise.resolve(new Blob([TRAILS_GEOJSON])),
+        blob: () => Promise.resolve(new Blob([centerlineGeoJSON()])),
         // The vector artifacts are hashed before they are stored (#197), so
         // the double has to answer with bytes as well as with text.
         arrayBuffer: () =>
@@ -581,7 +501,7 @@ describe('downloading everything', () => {
                     ],
                   })
                 : String(url).includes('trails')
-                  ? TRAILS_GEOJSON
+                  ? centerlineGeoJSON()
                   : JSON.stringify({ type: 'FeatureCollection', features: [] }),
             ).buffer,
           ),
@@ -620,11 +540,7 @@ describe('downloading everything', () => {
 
   it('fetches the trail data and then the archive, in that order', async () => {
     const user = userEvent.setup()
-    store.set(PREFERENCES_KEY, {
-      ...DEFAULT_PREFERENCES,
-      onboarding_completed: true,
-      download_choice_made: true,
-    })
+    app.onboard()
     servesEverything()
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
@@ -983,11 +899,7 @@ describe('when the trail data cannot be downloaded', () => {
     // configured, so the host is described rather than named: printing this
     // app's own origin would name the one host that is certainly not at fault.
     const user = userEvent.setup()
-    store.set(PREFERENCES_KEY, {
-      ...DEFAULT_PREFERENCES,
-      onboarding_completed: true,
-      download_choice_made: true,
-    })
+    app.onboard()
     vi.mocked(fetch).mockRejectedValue('the network went away')
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
@@ -1239,7 +1151,7 @@ describe('the elevation ribbon and the waypoint lanes', () => {
 
     await reportFix()
     // A mile further north: enough movement for NOBO to be established.
-    await reportFix(39 + 6 * MILE_LAT)
+    await reportFix(6)
 
     // 1,000 ft between mile 8 and mile 10, and Naismith's duration for it -
     // never an arrival clock.

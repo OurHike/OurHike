@@ -544,6 +544,58 @@ describe('App shell', () => {
     expect(moved?.zoom as number).toBeGreaterThanOrEqual(14)
   })
 
+  it('opens the card on the part that was searched for, even when it has no pin of its own', async () => {
+    // §3 of #527. Selecting a result moved the camera and opened nothing, which
+    // was survivable while every POI had a pin and became a dead end when sites
+    // landed: `composeSites` takes a folded member out of the source, so this
+    // privy is not on the map at all - it rides the shelter's pin. Searching it
+    // centred the map on a coordinate with nothing there and said nothing.
+    const user = userEvent.setup()
+    returningHiker()
+    store.set(
+      'ourhike:trails',
+      new Blob([JSON.stringify({ type: 'FeatureCollection', features: [] })]),
+    )
+    store.set('ourhike:pois', [
+      {
+        id: 'atc_shelters:algo',
+        type: 'shelter',
+        name: 'Mt. Algo Shelter',
+        lat: 41.66,
+        lon: -73.48,
+        confidence: 'high',
+        siteId: 'site:algo',
+        siteRole: 'anchor',
+      },
+      {
+        id: 'atc_privies:algo',
+        type: 'privy',
+        name: 'Mt. Algo Shelter Privy',
+        lat: 41.6604,
+        lon: -73.4803,
+        confidence: 'high',
+        siteId: 'site:algo',
+        siteRole: 'member',
+      },
+    ])
+
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('button', { name: 'Search' }))
+    await user.type(await screen.findByRole('searchbox'), 'algo shelter privy')
+    await user.click(await screen.findByRole('button', { name: /algo shelter privy/i }))
+
+    // The card is open AND showing the privy - not the shelter that carries the
+    // pin. `aria-current` is what PoiCard marks the shown chip with, so this
+    // asserts which part the card landed on rather than merely that a card
+    // exists, which the shelter would also satisfy.
+    const card = await screen.findByRole('dialog')
+    expect(
+      within(card).getByRole('button', { name: /privy/i, current: true }),
+    ).toBeInTheDocument()
+  })
+
   it('does not pull the map back out when a search result is found while zoomed in', async () => {
     const user = userEvent.setup()
     returningHiker()

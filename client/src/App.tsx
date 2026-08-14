@@ -1953,6 +1953,20 @@ function App() {
           searchablePois={searchablePois}
           onSelectSearchResult={(poi) => {
             const found = pois.find((p) => p.id === poi.id)
+            // AND OPEN ITS CARD (§3 of #527). Moving the camera was the whole of
+            // what selecting a result did, which broke the moment sites landed:
+            // `composeSites` removes a folded member from the source, so
+            // searching "Mt. Algo Shelter Privy" centred the map on a coordinate
+            // with NO PIN on it - the privy rides the shelter's pin ~42 m away -
+            // and then said nothing. The search found it and the map denied it.
+            //
+            // Selecting it is what makes the card open, and the card is where
+            // the answer is: PoiCard opens on whichever part the shell asked for
+            // (`shown = site.find(...) ?? poi`), so this lands on the PRIVY's
+            // chip with the rest of the site beside it, rather than on the
+            // shelter. Nothing here special-cases a member - passing the id that
+            // was searched for is what makes it right.
+            handleSelectPoi(poi.id)
             // Centring alone left the zoom wherever it was, which from the opening
             // view of the whole corridor meant tapping a result moved the map by a
             // few pixels and looked like nothing happened at all.

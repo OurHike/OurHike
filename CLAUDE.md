@@ -4,6 +4,98 @@
 expectations, the "one home per item" rule for docs and issues. This file covers only
 what is specific to an agent working here, and does not restate the rest.
 
+## Say what a claim rests on, or say that nothing does
+
+**Every assertion an agent writes — in a comment, a docstring, a design doc, a pull
+request body, a commit message — carries the evidence it stands on.** A measurement, a
+source, a maintainer's decision, or nothing yet. The last one is a legitimate answer and
+the one most worth writing down, because it is the only one a reader cannot reconstruct
+for themselves.
+
+The habit is already here and applied unevenly, the same way issue-naming is.
+`build_water_distance.py`'s docstring says "the median offset from an ATC shelter to its
+nearest CSI shelter row is 21 m", dated and re-runnable, so the 150 m name-match gate
+below it is a decision a reviewer can disagree with on the merits.
+`upcomingClimb.ts`'s `MIN_CLIMB_FT` opens "Derived rather than picked" and shows the
+arithmetic that makes 300 ft the smallest climb capable of moving the number the callout
+prints. `trailPosition.ts` explains why `MAX_OFF_TRAIL_MILES` is 3 and not a rounder
+number — it has to fit inside the bucket search — and then says what the alternative
+would be: "a worse thing to be than merely conservative."
+
+Against that, `staleness.ts` declares `FRESH_MAX_DAYS = 14` and `AGEING_MAX_DAYS = 60`
+and says nothing at all about where either came from. WIREFRAMES.md §11 writes them as
+"≤ ~14 days" and "~14–60 days"; the tildes are the only hint that they are a mock-up's
+round numbers rather than anybody's finding, and the tildes did not survive into the
+code. Those two constants decide whether a hiker reads a water report as trustworthy.
+
+Three grades. The words are not interchangeable and a claim that picks the wrong one is
+worse than a claim with no adjective at all:
+
+- **Measured** — somebody produced this number and could produce it again. Carry the
+  figure, the date, and what it was measured against. "72% of shelters sit past
+  `OFF_TRAIL_THRESHOLD_FT`, measured against the live ATC layers (#308)" is checkable by
+  the next person; "most shelters are well off the centerline" is not.
+- **Reasoned** — it follows from something already established here. Carry the
+  derivation, not the conclusion, so a reader can find the step they disagree with.
+- **Unvalidated** — picked, and nobody has checked it. Tag it `@unvalidated` and finish
+  the sentence with what would settle it. `wrongWay.ts` is the model: its three
+  thresholds are flagged as "WIREFRAMES.md UI-mockup placeholders, not a validated
+  HIKER_SAFETY.md spec", pointing at the field-testing under tree canopy that
+  HIKER_SAFETY.md §5 declines to guess at.
+
+The tag exists to be greppable. `grep -rn '@unvalidated'` should answer "what does this
+build not actually know" in one command, which is a question worth being able to ask
+before a release and impossible to ask of prose alone.
+
+**Prefer the weaker true sentence to the stronger plausible one.** Where the evidence
+supports "ATC's steward estimated", do not write "ATC measured". Where it supports "on
+the four fixtures this suite builds", do not write "always". A hedge is not weakness
+here; it is the part of the sentence carrying the information.
+
+**This is not a licence to hedge everything.** A caveat on every line reads exactly like
+a caveat on none, and buries the two or three that a hiker's safety actually turns on.
+If a claim is plainly true and cheap to check, assert it and move on. The rule bites on
+numbers, thresholds, coverage claims, and anything asserting what the data means —
+not on "returns the parsed manifest".
+
+## Four ways this app can hurt somebody
+
+**Lost, out of water, in front of something dangerous, or unable to get off the trail
+quickly.** Everything OurHike ships either touches one of those or it does not, and the
+standard above tightens on the code that does: `trailPosition.ts`, `wrongWay.ts` and its
+alert wiring, the water distances from `build_water_distance.py` through `export_poi.py`
+to the card, staleness and confidence, closures, serious warnings, and the elevation and
+pace estimates a hiker uses to decide whether they beat the dark.
+
+On those paths, **an honest unknown outranks a confident answer**, and this is a
+commitment the project has already made rather than a new one: value #4 ("honesty about
+uncertainty… matter[s] more than polish"), and FEATURES.md's own line that "a
+confidently wrong prediction is more dangerous than an honest unknown."
+
+What that means concretely is already visible in the code, and is the pattern to copy:
+
+- **Omit rather than guess.** A shelter whose capacity nobody stands behind exports no
+  capacity — "a hiker deciding whether to push on to the next shelter is better served
+  by no answer than by a made-up one." Absent means unknown, never zero and never "none".
+- **Miss rather than cry wolf.** `wrongWay.test.ts` states the asymmetry outright:
+  "False negatives are acceptable; false positives are the failure this whole module
+  exists to prevent." A safety alert nobody trusts has already failed.
+- **Round toward caution, and say which way you rounded.** Naismith gets no descent
+  credit — a known weakness of the rule, left in place deliberately and documented so
+  the next agent does not "improve" it into an optimistic number.
+- **Never let a display outrun its source.** If the pipeline knows a figure is a
+  steward's round-number estimate, the phone may not render it in the same voice as a
+  surveyed one. Provenance that stops at the last Python file is provenance nobody has.
+
+When you find one of these paths under-evidenced, **say so where a hiker's safety is at
+stake even if fixing it is out of scope** — an issue, or a paragraph in the pull request.
+Silence about a gap you noticed is the failure mode this section exists to prevent; the
+audit that prompted it found comments confidently asserting things nobody had checked,
+and none of them looked uncertain from the outside.
+
+None of this is a reason to slow down. Move fast, try things, spike them — and let the
+comment say it was a spike.
+
 ## Name an issue or PR, don't just number it
 
 **Every reference to an issue or pull request carries its number *and* its title** — in chat,

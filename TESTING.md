@@ -14,6 +14,36 @@ Most of the pipeline was built through manual, ad hoc verification this session:
 - **Small-synthetic-fixture tests** for anything spatial/numerical/binary (geometry, rasters, etc.) - tiny fixtures generated in test code, not committed as opaque binary files. A test that builds its own "corrupted" file byte-for-byte documents exactly what "corrupted" means; a checked-in blob doesn't.
 - **HTTP-mocked tests** for any network-touching logic (especially change-detection/skip-logic, which is easy to silently break and expensive to notice - you'd only find out via a full re-fetch that should've been skipped). Real network calls are never allowed to fire during tests.
 
+## A test proves the mechanism or proves the number, and says which
+
+A passing test is read as evidence, so it has to be honest about what it is evidence
+*of*. Two different things get asserted in this repository and they are worth very
+different amounts:
+
+- **The mechanism** - given this threshold, does the code do the right thing on each
+  side of it. This is real coverage and it is most of the suite.
+- **The number** - is the threshold itself right for a hiker on a trail. Almost nothing
+  here proves this, and nothing in a test runner can: it needs field data.
+
+**A test that locks in an unvalidated number, without saying so, converts a guess into a
+rule** - the next contributor reads a red suite as "you broke it" rather than "you
+changed a placeholder nobody has checked", and the number outlives everyone who knew it
+was arbitrary. So a suite exercising a value tagged `@unvalidated` (see
+[CLAUDE.md](CLAUDE.md)'s evidence rule) opens with a comment saying the numbers are
+placeholders, asserts against the imported constants rather than literals, and names
+what would validate them.
+
+`client/src/lib/wrongWay.test.ts` is the worked example. Its header states that the
+90 ft / 12 min / 25 min figures are WIREFRAMES.md mock-up placeholders pending
+field-testing under canopy, that "these tests assert the MECHANISM behaves correctly
+against the placeholder constants, never that the numbers themselves are correct", and
+which direction of error the module exists to avoid. Every case then reads
+`OFF_TRAIL_THRESHOLD_FT - 10` rather than `80`, so re-tuning the threshold moves the
+tests with it and only a genuine behaviour change goes red.
+
+Where a number *is* backed, cite the backing in the test rather than only at the
+definition - the test is where the next person arrives when it fails.
+
 ## What we deliberately don't test
 
 - **Real network calls** to live third-party services (ArcGIS, opentrail.org, USGS, etc.) in the automated suite - slow, flaky, not reproducible, and impolite to hammer on every test run.

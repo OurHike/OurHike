@@ -85,11 +85,56 @@ describe('the waypoint card’s strip of site parts', () => {
     expect(chip).toMatch(/white-space:\s*nowrap/)
   })
 
-  it('gives every chip the whole touch target', () => {
+  it('gives every chip the whole touch target, in both directions', () => {
     // Against the token, never the literal 44px: desktop.css narrows it to 32px
     // under `pointer: fine`, and a hard-coded 44 here would silently opt this
     // one control out of that.
-    expect(rule('.poi-card__chip')).toMatch(/min-height:\s*var\(--min-touch-target\)/)
+    //
+    // WIDTH JOINED HEIGHT IN #711. A chip used to be its words, so it was never
+    // narrower than 97px and the height was the whole of the guarantee. An
+    // unselected chip is now its pin alone - 24px of icon in 8px of padding
+    // either side - which is 40px, under the token in the one direction nothing
+    // was checking. Dropping this line does not fail a single other test in
+    // this suite: jsdom does no layout, so the strip still "fits" and the chips
+    // still carry their class.
+    const chip = rule('.poi-card__chip')
+
+    expect(chip).toMatch(/min-width:\s*var\(--min-touch-target\)/)
+    expect(chip).toMatch(/min-height:\s*var\(--min-touch-target\)/)
+  })
+
+  it('takes an unread chip’s words out of the layout, not just out of sight', () => {
+    // #711, and the half of it that lives in CSS. chrome/PoiCard.test.tsx
+    // asserts the other half - that `visually-hidden` really lands on the label
+    // of every chip but the one being read - and the two together are what stop
+    // a three-part site asking for 406px of a 240px strip.
+    //
+    // Asserted from here, on a shared utility this file otherwise has no
+    // business in, because the strip's fit now DEPENDS on that utility: soften
+    // `.visually-hidden` to `opacity: 0` or `color: transparent` and every test
+    // in both files stays green - the class is still applied, the accessible
+    // name is unchanged, jsdom measures nothing - while all 406px of the
+    // overflow comes back and the bug is exactly as it was.
+    const hidden = rule('.visually-hidden')
+
+    expect(hidden).toMatch(/position:\s*absolute/)
+    expect(hidden).toMatch(/width:\s*1px/)
+    expect(hidden).toMatch(/height:\s*1px/)
+  })
+
+  it('keeps a chip’s words in a flex box of their own, so the spacing does not double', () => {
+    // The category, the middot and the distance used to be direct children of
+    // the chip, spaced by ITS `gap` - and the whitespace text nodes between
+    // them, which exist so the accessible name reads "Privy 131 ft" rather than
+    // "Privy131 ft", were dropped as whitespace-only runs by that same flex
+    // context. #711 wrapped the three in one span so one class could hide them
+    // all. A plain inline wrapper would start rendering those spaces, putting a
+    // space AND a 4px gap between each pair - the reason the accessible name
+    // and the visual spacing can share one set of nodes at all.
+    const label = rule('.poi-card__chip-label')
+
+    expect(label).toMatch(/display:\s*inline-flex/)
+    expect(label).toMatch(/gap:/)
   })
 
   it('marks the part you are on by more than a colour', () => {

@@ -883,6 +883,59 @@ describe('the parts of one site', () => {
     }
   })
 
+  it('spells out only the part you are reading, and leaves the rest as pins', () => {
+    // #711. A chip carrying a pin, a category and a distance is 135-165px and
+    // the strip has 240, so two fit: a three-part site - 41% of them - asked for
+    // 406px, and `scrollbar-width: none` two rules up means nothing on screen
+    // says the third one is there. A hiker read a shelter and a privy and
+    // concluded that was the whole place.
+    //
+    // THE CLASS, not the pixels, because jsdom does no layout: this is the half
+    // of the contract src/test/poiCardChipLayout.test.ts cannot see, and that
+    // file asserts the half this one cannot - that `visually-hidden` still takes
+    // the words out of the layout rather than merely out of sight.
+    renderSite()
+
+    const words = (chip: HTMLElement) => chip.querySelector('.poi-card__chip-label')
+
+    expect(words(chips()[0])).not.toHaveClass('visually-hidden')
+    expect(words(chips()[1])).toHaveClass('visually-hidden')
+    expect(words(chips()[2])).toHaveClass('visually-hidden')
+  })
+
+  it('moves the words to whichever part you tap', () => {
+    // The half a first-render assertion cannot see. `aria-current` and this
+    // class are two readings of one fact - "you are on this part" - and the
+    // failure if they drift is silent and ugly: a chip wearing the current ring
+    // with nothing in it, or two chips spelling themselves out at once. Both
+    // render fine and neither looks like a bug from the outside.
+    renderSite()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
+
+    const words = (chip: HTMLElement) => chip.querySelector('.poi-card__chip-label')
+
+    expect(words(chips()[0])).toHaveClass('visually-hidden')
+    expect(words(chips()[1])).not.toHaveClass('visually-hidden')
+    expect(chips()[1]).toHaveAttribute('aria-current', 'true')
+  })
+
+  it('says as much to a screen reader with the words off as with them on', () => {
+    // The reason #711 is a small change rather than a risky one, and the thing
+    // most easily lost by "simplifying" it: `visually-hidden` rather than
+    // `display: none` or dropping the text, so the words stay in the
+    // accessibility tree and the buttons keep the names they had. A chip
+    // reduced to its pin with nothing else in it is a button whose accessible
+    // name is empty - unreachable by name, announced as "button".
+    renderSite()
+
+    expect(chips()[1]).toHaveAccessibleName('Privy 131 ft')
+    expect(chips()[2]).toHaveAccessibleName('Campsite 82 ft')
+    // Including the one whose words ARE on screen, so this cannot pass by the
+    // hiding having quietly stopped happening.
+    expect(chips()[0]).toHaveAccessibleName('Shelter')
+  })
+
   it('carries each part’s own rim, broken where nobody has checked', () => {
     // The chip's rim is a fact about ONE privy - which is where it parts company
     // with the legend, whose pins carry no confidence at all because a key says

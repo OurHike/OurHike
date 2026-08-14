@@ -1420,7 +1420,18 @@ a.poi-card__credit::after {
   gap: var(--space-1, 4px);
   /* The whole chip is the target, and it is tapped with a gloved thumb. The
      token narrows to 32px under `pointer: fine` (desktop.css), which is the
-     intended trade and the reason this is never the literal 44px. */
+     intended trade and the reason this is never the literal 44px.
+
+     BOTH DIMENSIONS SINCE #711, which is the change that made the width worth
+     stating: a chip used to be its words and so was never under 97px wide, and
+     min-height alone was the whole of the guarantee. An unselected chip is now
+     its pin - 24px of icon inside 8px of padding either side, so 40px - and
+     4px under the token in the one direction nobody was watching. The cost of
+     holding it is 4px per hidden chip, which is 273px of strip becoming 289
+     against 240 available: it makes the overflow slightly worse and is still
+     the right way round, because a target under the token is a miss by a
+     gloved thumb and a slightly longer scroll is not. */
+  min-width: var(--min-touch-target);
   min-height: var(--min-touch-target);
   padding: 0 var(--space-2, 8px);
   font: inherit;
@@ -1475,6 +1486,23 @@ a.poi-card__credit::after {
   flex: none;
   width: 24px;
   height: 24px;
+}
+
+/* The chip's words - category, separator, distance - as one thing, so that one
+   thing can be taken off screen for every chip but the one being read (#711;
+   PoiCard.tsx carries the measurement and the trade).
+
+   A flex container rather than a plain inline, and it matters: the separator's
+   spacing is `gap` doing the work while the whitespace text nodes either side
+   of it are dropped as whitespace-only runs. Those nodes exist so the
+   accessible name concatenates as "Privy 131 ft" instead of "Privy131 ft", and
+   they were real spaces before this span existed only because their parent was
+   also a flex container. Make this `display: inline` and they start rendering,
+   doubling every gap in the chip. */
+.poi-card__chip-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1, 4px);
 }
 
 .poi-card__meta {

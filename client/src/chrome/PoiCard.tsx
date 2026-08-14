@@ -723,57 +723,130 @@ export function PoiCard({
             // cannot disagree about what this place is called.
             aria-label={`Parts of ${anchor.name}`}
           >
-            {parts.map((part) => (
-              <button
-                key={part.id}
-                type="button"
-                className="poi-card__chip"
-                data-testid="poi-card-chip"
-                // `aria-current`, the "one of a set of related items you are on"
-                // attribute, rather than `aria-pressed`: these are not toggles,
-                // and exactly one of them is true at a time.
-                aria-current={part.id === shown.id}
-                // Both boxes, because a chip really does swap both, and a list
-                // is what the attribute is for. It is the programmatic link
-                // between the control and what it changes that the plain-button
-                // markup would otherwise be missing.
-                aria-controls={`${mediaId} ${bodyId}`}
-                onClick={() => {
-                  setShownId(part.id)
-                  setAnnounced(`Showing ${part.name}`)
-                }}
-              >
-                <MapIcon
-                  className="poi-card__chip-icon"
-                  type={part.type}
-                  // The rim, unlike the legend's (Legend.tsx passes none, on the
-                  // grounds that a key says what a category's symbol IS and a
-                  // symbol that changed as you panned would not be a key). A
-                  // chip is not a key: it stands for one privy, so the broken
-                  // rim is a fact about that privy, the same fact its own panel
-                  // spells out in words once you tap it.
-                  confidence={part.confidence}
-                />
-                <span>{typeLabel(part.type)}</span>
-                {part.id !== poi.id && (
-                  <>
-                    {/* The middot is punctuation for eyes only, as it is on the
-                        meta line - but a button's accessible name is its
-                        contents CONCATENATED, and with the separator hidden
-                        there is nothing left between the two facts: this
-                        announced "Privy40 m" until the spaces were made real
-                        text nodes of their own. They cost nothing visually,
-                        because a flex container drops a whitespace-only run
-                        instead of making an item of it, and the gap is what
-                        does the spacing. */}{' '}
-                    <span aria-hidden="true">·</span>{' '}
-                    <span className="poi-card__chip-distance">
-                      {partDistance(poi, part, units)}
-                    </span>
-                  </>
-                )}
-              </button>
-            ))}
+            {parts.map((part) => {
+              // ONE reading of "this is the part you are on", used twice below:
+              // by `aria-current`, and by the class deciding whether this chip's
+              // words are on screen. Two independent readings of one fact are two
+              // things that can drift, and the drift would be silent in the worst
+              // direction - a chip wearing the current ring with its label hidden
+              // is a pin with a circle round it and nothing saying what it is.
+              const isShown = part.id === shown.id
+
+              return (
+                <button
+                  key={part.id}
+                  type="button"
+                  className="poi-card__chip"
+                  data-testid="poi-card-chip"
+                  // `aria-current`, the "one of a set of related items you are on"
+                  // attribute, rather than `aria-pressed`: these are not toggles,
+                  // and exactly one of them is true at a time.
+                  aria-current={isShown}
+                  // Both boxes, because a chip really does swap both, and a list
+                  // is what the attribute is for. It is the programmatic link
+                  // between the control and what it changes that the plain-button
+                  // markup would otherwise be missing.
+                  aria-controls={`${mediaId} ${bodyId}`}
+                  onClick={() => {
+                    setShownId(part.id)
+                    setAnnounced(`Showing ${part.name}`)
+                  }}
+                >
+                  <MapIcon
+                    className="poi-card__chip-icon"
+                    type={part.type}
+                    // The rim, unlike the legend's (Legend.tsx passes none, on the
+                    // grounds that a key says what a category's symbol IS and a
+                    // symbol that changed as you panned would not be a key). A
+                    // chip is not a key: it stands for one privy, so the broken
+                    // rim is a fact about that privy, the same fact its own panel
+                    // spells out in words once you tap it.
+                    confidence={part.confidence}
+                  />
+                  {/* THE WORDS BELONG TO THE PART YOU ARE READING; EVERY OTHER
+                      CHIP IS ITS PIN (#711).
+
+                      A chip carrying a 24 px pin, a category and a distance
+                      measures 135-165 px, and the strip has 240 px - the card is
+                      `min(264px, ...)` and the body spends 12 px each side. So two
+                      fit. Measured in Chromium 1194 at that width against this
+                      file's own test fixtures (2026-08-14), a three-part site asks
+                      for 406 px and a five-part one for 691. The parts past the
+                      edge are reachable by dragging and by nothing else:
+                      `overflow-x: auto` scrolls, and `scrollbar-width: none` two
+                      rules down means nothing on screen says there is anywhere to
+                      scroll TO. A hiker reads a shelter and a privy and concludes
+                      that is the whole place, which is #524's deletion arriving one
+                      layer up - not a pin dropped by the collision engine, but a
+                      part of the place with no gesture leading to it.
+
+                      Hiding the words takes an unselected chip to the touch target
+                      and no wider - 44 px. Measured the same way, and NOT every
+                      case fixed, which is worth writing as numbers rather than as
+                      "better" because the residue is the shape of whatever closes
+                      it next:
+
+                        3 parts, as it opens        406 -> 240   fits
+                        3 parts, campsite open      407 -> 268   28 px over
+                        5 parts, as it opens        691 -> 289   49 px over
+                        5 parts, campsite open      692 -> 364  124 px over
+
+                      What changes is that every pin is on screen or about one chip
+                      from it, rather than 450 px past it. The whole of the residue
+                      is the selected chip's own words: `Campsite · 181 ft` is 172 px
+                      of that 364. Dropping the distance and keeping the category
+                      alone would fit every case at 289 px flat - not done, because
+                      the distance is the half of the chip a hiker is asking for, and
+                      the maintainer chose to keep it.
+
+                      IT COSTS THE ROW ITS FIXED GEOMETRY, which the rule below used
+                      to guarantee - the current-chip marker is an inset ring
+                      precisely so that marking a chip does not resize it. Selecting
+                      one now grows it and shrinks the last, so the strip shifts
+                      under the thumb that tapped it. HEIGHT is what had to hold, and
+                      does: every chip keeps `min-height: var(--min-touch-target)`
+                      whether it has words or not, so the card's measured height -
+                      which is what positions it when it hangs below its pin - does
+                      not move.
+
+                      `visually-hidden` rather than `display: none`, and that is the
+                      whole reason this is a small change: the words stay in the
+                      accessibility tree, so the button's name is still "Privy 131
+                      ft" and nothing a screen reader does here changes at all. What
+                      a sighted hiker loses is real and is the trade being made -
+                      the category is a symbol they have to recognise until they tap
+                      it, and one distance is legible at a time instead of two. */}
+                  <span
+                    className={
+                      isShown
+                        ? 'poi-card__chip-label'
+                        : 'poi-card__chip-label visually-hidden'
+                    }
+                  >
+                    {typeLabel(part.type)}
+                    {part.id !== poi.id && (
+                      <>
+                        {/* The middot is punctuation for eyes only, as it is on
+                            the meta line - but a button's accessible name is its
+                            contents CONCATENATED, and with the separator hidden
+                            there is nothing left between the two facts: this
+                            announced "Privy40 m" until the spaces were made real
+                            text nodes of their own. They cost nothing visually,
+                            because a flex container drops a whitespace-only run
+                            instead of making an item of it, and the gap is what
+                            does the spacing - which is why the span wrapping them
+                            is a flex container of its own and not a plain
+                            inline. */}{' '}
+                        <span aria-hidden="true">·</span>{' '}
+                        <span className="poi-card__chip-distance">
+                          {partDistance(poi, part, units)}
+                        </span>
+                      </>
+                    )}
+                  </span>
+                </button>
+              )
+            })}
           </div>
         )}
 

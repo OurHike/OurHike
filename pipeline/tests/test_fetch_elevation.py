@@ -18,8 +18,6 @@ file (see CENTERLINE_PATH), and write_gate_problems() - the count comparison
 that gates main()'s final tile_index.json write.
 """
 
-import json
-
 import pytest
 
 import fetch_elevation
@@ -31,30 +29,15 @@ from fetch_elevation import (
     cell_url,
     corridor_bbox,
 )
+from tests.synthetic import CENTERLINE_COORDS, write_centerline
 
-# Same neighborhood/coordinates test_lib_corridor.py's, test_export_poi.py's,
-# and test_export_trails.py's own synthetic centerline fixtures use (see
-# test_spike_corridor.py) - far from any real data, so it can't collide with
-# anything. Its 30-mile buffer spans just over 1 degree of longitude
-# (verified empirically), so the grid sees more than one cell.
-CENTERLINE_COORDS = [(-74.0, 41.0), (-73.9, 41.1)]
-
-# A short line whose 30-mile buffer fits inside a single 1-degree cell.
+# The shared line's 30-mile buffer spans just over 1 degree of longitude
+# (verified empirically), so the grid sees more than one cell - which is the
+# property this suite tests against.
+#
+# A short line whose 30-mile buffer fits inside a single 1-degree cell, for
+# the other side of that test. Its own, because nothing else needs it.
 SMALL_CENTERLINE_COORDS = [(-81.50, 20.00), (-81.49, 20.01)]
-
-
-def _write_centerline(path, coords):
-    fc = {
-        "type": "FeatureCollection",
-        "features": [
-            {
-                "type": "Feature",
-                "properties": {},
-                "geometry": {"type": "LineString", "coordinates": [[lon, lat] for lon, lat in coords]},
-            }
-        ],
-    }
-    path.write_text(json.dumps(fc))
 
 
 def _corridor_bbox_for(path):
@@ -217,11 +200,11 @@ def test_the_corridor_is_built_fresh_from_centerline_path_not_a_stale_file(tmp_p
     assert not hasattr(fetch_elevation, "CORRIDOR_PATH")
 
     small_path = tmp_path / "small.geojson"
-    _write_centerline(small_path, SMALL_CENTERLINE_COORDS)
+    write_centerline(small_path, SMALL_CENTERLINE_COORDS)
     small_cells = candidate_cells(_corridor_bbox_for(small_path))
 
     wide_path = tmp_path / "wide.geojson"
-    _write_centerline(wide_path, CENTERLINE_COORDS)
+    write_centerline(wide_path, CENTERLINE_COORDS)
     wide_cells = candidate_cells(_corridor_bbox_for(wide_path))
 
     assert small_cells != wide_cells
@@ -231,7 +214,7 @@ def test_a_corridor_inside_one_cell_still_produces_a_cell(tmp_path):
     """Not zero: the corridor must never be lost entirely, which is the
     failure a bbox-arithmetic bug produces silently."""
     path = tmp_path / "small.geojson"
-    _write_centerline(path, SMALL_CENTERLINE_COORDS)
+    write_centerline(path, SMALL_CENTERLINE_COORDS)
 
     assert len(candidate_cells(_corridor_bbox_for(path))) >= 1
 

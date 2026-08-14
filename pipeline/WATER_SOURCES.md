@@ -292,7 +292,7 @@ ones; the client work for all of this is already built):
   silent. Widening the gate for water specifically is a product decision this document
   flags and does not make.
   *Amended 2026-08-13:* it stopped being a catch and became the mechanism. The
-  100 ft match radius `build_trail_water.py` uses sits **inside** that 60 m fold
+  100 ft match radius `fetch_trail_water.py` uses sits **inside** that 60 m fold
   deliberately, so a derived water point needs no second association rule — it is
   published at its real coordinates and the existing grouping puts it on the
   shelter's pin. A match the map could not draw would be a match in name only. *(Measured 2026-08-13 while #694 was scoped: against today's
@@ -376,7 +376,7 @@ and hiker reports as the only eventual answer to "is it flowing".
    was right to**: a stream 700 m away is a true fact about the map that says
    nothing about the shelter, and a card printing it answers a question
    nobody asked. What replaced it is narrower and load-bearing —
-   [build_trail_water.py](build_trail_water.py) publishes a water POI for a
+   [fetch_trail_water.py](fetch_trail_water.py) publishes a water POI for a
    site only where a hiker could actually reach it: **within 100 ft AND under
    a 15% grade**, the second gate measured from real 3DEP elevations at both
    ends, because a stream 90 ft away and 120 ft below is not a water source
@@ -417,6 +417,27 @@ and hiker reports as the only eventual answer to "is it flowing".
    validation steps stand, now with §5's status facts attached (frozen snapshot,
    fetch the 21 HU4 staged files once, keep the FCode attributes for the eventual
    reliability model). It should not be sold as the fix for shelter cards.
+   *Amended 2026-08-14: validation step 2 is done, and it holds.*
+   [spike_guide_water_check.py](spike_guide_water_check.py) measured the 1,125
+   shipped crossings against the 980 water-tagged rows in the maintainer's own
+   copy of The A.T. Guide, both placed on ATC's half-mile points and the two
+   mileages aligned by an offset measured from the guide rows that print
+   coordinates (median +0.51 mi, drifting −0.75 to +0.79 — which is why the
+   alignment interpolates rather than applying one shift). **Two thirds of the
+   guide's stream rows (302 of 460) have one of our crossings within 0.2 mi**,
+   computed from hydrography that has never seen the guidebook: that is the
+   positional confirmation the issue wanted, and it bears on step 1 too, since a
+   centerline systematically misaligned against the hydrography would not agree
+   with a third source this often. **Springs sit at 10% and cannot do better** —
+   a spring does not cross the trail, so a crossing cannot find one by
+   construction, and the 37% any OurHike water reaches there is OSM's points
+   doing the work. **60% of our crossings are not guidebook water**, which is
+   this issue's own "minor unnamed streams no guidebook would list" measured
+   rather than feared, and the argument for publishing them as `crossing` and
+   never as water pins. Step 1, the visual inspection, is still open. The guide
+   is copyright AntiGravityGear, LLC and none of it is committed, published or
+   folded into our data — §8 of [SOURCE_SURVEY.md](SOURCE_SURVEY.md) is
+   unchanged, and what the spike writes down is statistics about *our* data.
 6. **What not to build:** an NHD/GNIS springs fetch (4% / ~54 points — measured
    dead ends), anything derived from CSI's distances without an authorisation on
    record — first narrowed 2026-08-13 to ship the NHD- and field-estimate-derived rows

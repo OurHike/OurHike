@@ -447,7 +447,7 @@ OSM_WATER_SOURCE = "osm_water"
 OSM_WATER_FILENAME = "osm_water.geojson"
 OSM_WATER_FIELD_MAP = {"id_field": "osm_id", "name_field": "name", "confidence": CONFIDENCE_LOW}
 
-# build_trail_water.py's two products (#529). Both CONFIDENCE_LOW, and for
+# fetch_trail_water.py's two products (#529). Both CONFIDENCE_LOW, and for
 # the same reason as OSM's points rather than a weaker one: nobody stood at
 # either. A crossing is where two independently digitised lines meet, and a
 # site's water is where geometry says a stream runs nearest a shelter - both
@@ -460,7 +460,7 @@ NHD_STREAM_SOURCE = "nhd_stream"
 # splits reaches at confluences, so one reach can cross the trail twice and
 # a reach id alone would collide. Five decimal places is about a metre -
 # finer than the geometry, coarse enough that the id is stable while the
-# snapshot is frozen (which is forever, per build_trail_water.py).
+# snapshot is frozen (which is forever, per fetch_trail_water.py).
 CROSSING_ID_PRECISION = 5
 
 # How close an OSM water point must sit to an opentrail one to be its twin.
@@ -705,7 +705,7 @@ DESCRIBERS = {
     "parking": lambda properties, _capacity, note: describe_parking(properties, note),
     "privy": lambda properties, _capacity, note: describe_privy(properties, note),
     # Composes for OSM points (whose tags carry `kind` and the reliability
-    # tags) and for build_trail_water.py's stream points (which carry NHD's
+    # tags) and for fetch_trail_water.py's stream points (which carry NHD's
     # flow class); an opentrail point has an icon and a title and composes
     # None, exactly as before this entry existed.
     "water": lambda properties, _capacity, _note: describe_water(properties),
@@ -984,7 +984,7 @@ def unify_all_sources(trail_id: str = TRAIL_ID, skipped: list[str] | None = None
 
 
 def load_trail_water(path: Path, trail_id: str = TRAIL_ID) -> list[dict]:
-    """build_trail_water.py's crossings and site water, as unified POIs.
+    """fetch_trail_water.py's crossings and site water, as unified POIs.
 
     Two poi_types out of one file because they answer the same question in
     two places: where the walking route meets water, and which overnight

@@ -34,7 +34,7 @@ To point the script at a different Experience Builder app (e.g. if the ATC publi
 
 That `--provider` label is as far as this registry currently goes toward being multi-organization: every entry says `"ATC"`, and adding a fourteenth source is still a code change by whoever owns this repository. The thirteenth arrived on 2026-08-12 and is the first that is not an ArcGIS layer — ATC's Trail Updates, read from their website ([../features/ATC_TRAIL_UPDATES.md](../features/ATC_TRAIL_UPDATES.md)). It carries `kind`, `trust`, `steward`, `licence` and `freshness`, so several of the fields below now exist on real data rather than only in the design; `lib/source_registry.py` is what reads `kind`, and `fetch_all.py` fetches only the entries that are feature layers. It is hand-written rather than discovered, which works because `discover_sources.py` keeps entries it did not rediscover — and now keeps hand-added fields on the ones it did. [../features/SOURCE_REGISTRY.md](../features/SOURCE_REGISTRY.md) is the design for letting an outside organization register its own layers and a contact to notify - including the fields this file would gain (`steward`, `kind`, `licence`, `field_map`, `freshness`, `trust`, `state`) and why the registry stays a reviewed file in git rather than becoming a database table.
 
-What exists upstream *beyond* the registry - the maintaining clubs, the federal servers, the community datasets, and what each is worth - is surveyed and qualified in [SOURCE_SURVEY.md](SOURCE_SURVEY.md) (snapshot dated 2026-08-09; it also corrects who actually hosts the layers above). The water-source question that survey left open - measured against the shelters for **#529 - 97% of shelters have no water source within 250 m, and the trail is not like that** - has its own dated snapshot in [WATER_SOURCES.md](WATER_SOURCES.md), with the two measurement spikes (`spike_shelter_water.py`, `spike_osm_water_census.py`) beside it.
+What exists upstream *beyond* the registry - the maintaining clubs, the federal servers, the community datasets, and what each is worth - is surveyed and qualified in [SOURCE_SURVEY.md](SOURCE_SURVEY.md) (snapshot dated 2026-08-09; it also corrects who actually hosts the layers above). The water-source question that survey left open - measured against the shelters for **#529 - 97% of shelters have no water source within 250 m, and the trail is not like that** - has its own dated snapshot in [WATER_SOURCES.md](WATER_SOURCES.md), with the three measurement spikes (`spike_shelter_water.py`, `spike_osm_water_census.py`, `spike_guide_water_check.py`) beside it.
 
 ## Where a script's output goes
 
@@ -118,7 +118,7 @@ The two halves of [WATER_SOURCES.md](WATER_SOURCES.md) §7's recommendation, bui
 .venv/Scripts/python fetch_osm_water.py --refetch   # force current extracts
 ```
 
-`build_trail_water.py` writes [`reference/trail_water.json`](reference/trail_water.json): **where the trail meets water, and which sites have water they can actually walk to.** Two products from one derivation over **both** hydrographies — USGS's NHD and OpenStreetMap — merged rather than picked between, because they know different things: USGS classifies flow (perennial / intermittent / ephemeral), OSM more often carries the local name and is edited by people who walk there. A crossing deduped across the two keeps whichever half each supplied, records both in `sources`, and attributes the flow claim to whoever made it (`flow_source`) — [features/POI_DEDUPLICATION.md](../features/POI_DEDUPLICATION.md)'s combine-don't-drop rule. USGS arrives as bulk staged GeoPackages, one subregion at a time, downloaded read and deleted: its query service 504s under corridor-scale load, and a derivation nobody can re-run is not one anybody can check. OSM costs no network at all — it is the same Geofabrik extracts the basemap build already downloads:
+`fetch_trail_water.py` writes `data/raw/trail_water.json` — gitignored, cached between CI runs, and published to R2 like every other fetched layer, because 20,000 lines of derived coordinates are data and [data does not go in commits](../CONTRIBUTING.md#data-does-not-go-in-commits): **where the trail meets water, and which sites have water they can actually walk to.** Two products from one derivation over **both** hydrographies — USGS's NHD and OpenStreetMap — merged rather than picked between, because they know different things: USGS classifies flow (perennial / intermittent / ephemeral), OSM more often carries the local name and is edited by people who walk there. A crossing deduped across the two keeps whichever half each supplied, records both in `sources`, and attributes the flow claim to whoever made it (`flow_source`) — [features/POI_DEDUPLICATION.md](../features/POI_DEDUPLICATION.md)'s combine-don't-drop rule. USGS arrives as bulk staged GeoPackages, one subregion at a time, downloaded read and deleted: its query service 504s under corridor-scale load, and a derivation nobody can re-run is not one anybody can check. OSM costs no network at all — it is the same Geofabrik extracts the basemap build already downloads:
 
 - **Crossings** — exact geometric intersections of ATC's centerline with the stream lines of **both** hydrographies. The two lines cross, so a hiker walking the trail walks through the water. These fill `crossing`, the poi_type declared in `lib/poi_schema.py` and empty since it was declared.
 **1,125 crossings** land in the corridor, **571 of them corroborated by both databases**, and **39 of 512 shelters and campsites** get water they can walk to.
@@ -128,8 +128,27 @@ The two halves of [WATER_SOURCES.md](WATER_SOURCES.md) §7's recommendation, bui
 The match radius sits inside `lib/poi_sites.py`'s 60 m proximity fold on purpose: a published point at real coordinates is folded onto the shelter's pin by the grouping that already exists, so there is no second matching rule to keep in step. Nothing composed here carries a distance — the point has coordinates, so the card measures the walk and writes it in the hiker's own units (#625).
 
 ```
-.venv/Scripts/python build_trail_water.py            # rebuild and review the diff
-.venv/Scripts/python build_trail_water.py --check    # confirm the checked-in file still matches
+.venv/Scripts/python fetch_trail_water.py    # 14 OSM extracts, then 21 USGS subregions one at a time
+```
+
+### Is any of it the water a guidebook lists? (#97)
+
+`spike_guide_water_check.py` is the cross-reference **#97 — Validate NHD flowline stream-crossings as a water-source candidate list** asks for as its second validation step: measure real overlap versus gap against a source somebody trusts, rather than comparing totals. Run 2026-08-14 against the maintainer's own copy of The A.T. Guide (980 water-tagged mile-table rows), with both put on ATC's half-mile points as a shared ruler and the two mileages aligned by an offset measured from the rows that print coordinates rather than assumed to be zero:
+
+| what the guide row describes | rows | our crossing within 0.2 mi | any OurHike water |
+|---|---|---|---|
+| a **stream** (creek/brook/river/fork/run) | 460 | **302 (66%)** | 320 (70%) |
+| other | 310 | 75 (24%) | 141 (45%) |
+| a **spring** | 210 | 20 (10%) | 77 (37%) |
+| **all water rows** | **980** | **397 (41%)** | **538 (55%)** |
+
+Two thirds of the guidebook's stream rows have one of our crossings within a fifth of a mile, from hydrography that has never seen the guidebook — which is what a crossing claims. Springs are the structural gap and cannot be otherwise: a spring does not cross the trail. And 60% of our crossings are not guidebook water, which is why they publish as `crossing` and never as water pins.
+
+**The guide is a personal copy and stays one.** It is copyright AntiGravityGear, LLC ([SOURCE_SURVEY.md](SOURCE_SURVEY.md) §8: context only, never a source), so the parse runs in memory, the results file holds counts and percentages only, and the PDF lives in `personal_reference/` — the first line of the repository's `.gitignore`. Every machine without one gets told the PDF is missing, which is the correct outcome; the method and the numbers are in the script's docstring.
+
+```
+.venv/Scripts/python spike_guide_water_check.py             # needs `pip install pypdf`
+GUIDE_PDF=/path/to/at_guide.pdf .venv/Scripts/python spike_guide_water_check.py
 ```
 
 ## Fetching club PDFs (review-only)

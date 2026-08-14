@@ -279,3 +279,21 @@ def test_a_good_derivation_records_a_receipt(tmp_path, monkeypatch):
     receipt = fetch_receipts.load("fetch_trail_water")
     assert receipt is not None
     assert [output["path"] for output in receipt["outputs"]] == [str(out)]
+
+
+def test_the_files_own_header_quotes_the_gates_it_was_written_under():
+    """The header said "under a 35% grade" for as long as MAX_GRADE was 0.15,
+    and the script's name in it stayed `build_trail_water.py` through the
+    rename that moved this output out of the repository.
+
+    Neither is cosmetic. `_README` is the first thing anybody opening
+    trail_water.json reads, and both errors point a reader at a gate twice as
+    loose as the real one and at a script that does not exist. The strings are
+    interpolated from the constants now, so this test is what keeps them
+    honest rather than the next author noticing."""
+    header = "\n".join(trail_water.README)
+
+    assert f"{MATCH_RADIUS_FT:.0f} ft" in header
+    assert f"{MAX_GRADE:.0%}" in header
+    assert "build_trail_water.py" not in header
+    assert "fetch_trail_water.py" in header

@@ -1620,7 +1620,7 @@ def test_export_poi_an_osm_twin_of_an_opentrail_point_is_dropped(tmp_path, monke
     assert "osm_water:557" in ids
 
 
-# --- where the trail meets water (#529, build_trail_water.py) ---------------
+# --- where the trail meets water (#529, fetch_trail_water.py) ---------------
 
 
 def _write_trail_water(path, crossings=(), sites=()):

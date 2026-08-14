@@ -708,7 +708,7 @@ FLOW_WORDS = {"perennial": "year-round", "intermittent": "seasonal", "ephemeral"
 
 def describe_stream_point(properties: dict) -> str:
     """One sentence about a point on a stream - the site water and the trail
-    crossings build_trail_water.py derives from USGS's and OSM's hydrography
+    crossings fetch_trail_water.py derives from USGS's and OSM's hydrography
     (#529).
 
     NO DISTANCE IN IT, deliberately (#625). These points sit at real
@@ -758,7 +758,7 @@ def describe_water(properties: dict) -> str | None:
 
     Two kinds of water point reach this, and they are told apart by which
     facts they carry rather than by a source string: OSM's have a `kind` from
-    somebody's tags, and build_trail_water.py's have a `flow` from NHD's
+    somebody's tags, and fetch_trail_water.py's have a `flow` from NHD's
     FCode. The docstring below is the OSM half; describe_stream_point is the
     other.
 

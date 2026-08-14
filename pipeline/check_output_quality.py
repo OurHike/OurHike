@@ -653,12 +653,13 @@ COUNT_UPSTREAM_SOURCES: dict[str, frozenset[str]] = {
     # OSM side always reaches a human. An OSM mass-deletion near the trail
     # is exactly the drop somebody should look at rather than wave through.
     "poi:water": frozenset({"opentrail", "atc"}),
-    # Filled since #529 from reference/trail_water.json, and empty here on
-    # purpose for `poi:water`'s reason one line up: a checked-in reference
-    # file has no upstream source a --changed-source flag could name, so a
-    # drop in the crossings always reaches a human. That is the right
-    # direction for a layer whose count moving means either the centerline
-    # moved or somebody edited a reviewed file.
+    # Filled since #529 from data/raw/trail_water.json, and empty here on
+    # purpose for `poi:water`'s reason one line up: its two upstreams are the
+    # Geofabrik extracts (no check_freshness entry, so no --changed-source
+    # flag can name them) and USGS's frozen NHD snapshot, which by definition
+    # never changes. So a drop in the crossings always reaches a human, which
+    # is the right direction for a layer whose count moving means either the
+    # centerline moved or the derivation broke.
     "poi:crossing": frozenset(),
     "elevation": frozenset({"elevation"}),
 }

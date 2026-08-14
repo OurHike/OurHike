@@ -1,5 +1,6 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, cleanup, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { WaypointLanes } from './WaypointLanes'
 
 // WIREFRAMES.md §1.4: three lanes of 19px - WATER, SLEEP, ELSE - with mono
@@ -17,7 +18,7 @@ const POINTS = [
   { id: 'r1', type: 'resupply', mile: 1408 },
 ]
 
-const PROPS = { points: POINTS, ...WINDOW }
+const PROPS = { points: POINTS, ...WINDOW, onSelectPoi: () => {} }
 
 afterEach(() => {
   cleanup()
@@ -86,6 +87,28 @@ describe('WaypointLanes', () => {
     expect(screen.getByTestId('lane-water')).toBeInTheDocument()
     expect(screen.getByTestId('lane-sleep')).toBeInTheDocument()
     expect(screen.getByTestId('lane-else')).toBeInTheDocument()
+  })
+
+  // §4 of #527. These were buttons with no onClick from the day they were built,
+  // so the ribbon offered a press to something that did nothing.
+  it('opens a lone pin when it is tapped', async () => {
+    const onSelectPoi = vi.fn()
+    render(<WaypointLanes {...PROPS} onSelectPoi={onSelectPoi} />)
+
+    await userEvent.click(within(screen.getByTestId('lane-sleep')).getByRole('button'))
+
+    expect(onSelectPoi).toHaveBeenCalledWith('s1')
+  })
+
+  it('opens the member a pill is showing, not some other one it swallowed', async () => {
+    // The pill's glyph is `members[0].type`, so opening anything else would mean
+    // the ribbon showing a spring and opening whatever came after it.
+    const onSelectPoi = vi.fn()
+    render(<WaypointLanes {...PROPS} onSelectPoi={onSelectPoi} />)
+
+    await userEvent.click(within(screen.getByTestId('lane-water')).getByRole('button'))
+
+    expect(onSelectPoi).toHaveBeenCalledWith('w1')
   })
 
   it('draws a waypoint type it has no glyph for rather than dropping it', () => {

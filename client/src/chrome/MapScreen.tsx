@@ -222,7 +222,13 @@ export interface MapScreenProps {
   // ahead of you," which is a different and much worse claim than "we don't
   // have the profile for this stretch."
   elevation?: ElevationRibbonProps
-  waypoints?: WaypointLanesProps
+  /**
+   * `onSelectPoi` omitted deliberately, the way `units` is left off the ribbon
+   * above: this screen already holds the handler a pin tap goes through, so it
+   * supplies that one rather than letting the shell pass a second. A ribbon pill
+   * and a map pin opening different cards is the disagreement one prop prevents.
+   */
+  waypoints?: Omit<WaypointLanesProps, 'onSelectPoi'>
 
   showZoomButtons?: boolean
   /**
@@ -502,7 +508,7 @@ export function MapScreen({
             it read the same preference, and a map in metres under a profile in
             feet is exactly the disagreement one prop exists to prevent. */}
         {elevation && <ElevationRibbon {...elevation} units={units} />}
-        {waypoints && <WaypointLanes {...waypoints} />}
+        {waypoints && <WaypointLanes {...waypoints} onSelectPoi={onSelectPoi} />}
 
         {/* The map and the legend. Separated from the chrome above so the two
             can sit side by side on a desktop, where the legend is a panel

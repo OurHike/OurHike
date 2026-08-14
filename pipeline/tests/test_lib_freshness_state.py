@@ -364,6 +364,7 @@ def test_every_source_gets_a_verdict_even_when_none_can_be_checked():
         "topo_quads",
         "elevation",
         "atc_trail_updates",
+        "usgs_3dhp",
     ]
     assert set(freshness_state.SOURCES) == {r["source"] for r in reports}
 
@@ -384,3 +385,76 @@ def test_state_age_is_measured_from_when_it_was_captured():
 def test_state_age_is_none_when_the_state_does_not_say():
     assert state_age_days({}) is None
     assert state_age_days({"captured_at": "not a date"}) is None
+
+
+# --- The 3DHP watch (#714) -------------------------------------------------
+#
+# The sixth source, and the second that no fetcher can clear. Its recorded
+# side is a line in sources.json rather than a file on disk, because nothing
+# in this pipeline fetches 3DHP at all - there is no artifact whose age could
+# stand in for "somebody asked and was told NHD".
+
+
+def _registry(tmp_path, recorded="NHD", key="usgs_3dhp"):
+    path = tmp_path / "sources.json"
+    path.write_text(json.dumps({"sources": [{"key": key, "freshness": {"recorded": recorded} if recorded else {}}]}))
+    return path
+
+
+def test_the_hydrography_marker_is_what_the_registry_records(tmp_path):
+    assert freshness_state.hydrography_watch_marker(_registry(tmp_path)) == "NHD"
+
+
+def test_a_registry_with_no_3dhp_entry_is_unknown_not_fresh(tmp_path):
+    """A registry somebody edited the entry out of has not told us 3DHP is
+    unchanged - it has told us nothing, and None is how this module says so."""
+    assert freshness_state.hydrography_watch_marker(_registry(tmp_path, key="something_else")) is None
+
+
+def test_an_entry_with_no_recorded_value_is_unknown_not_fresh(tmp_path):
+    assert freshness_state.hydrography_watch_marker(_registry(tmp_path, recorded=None)) is None
+
+
+def test_a_missing_or_unparseable_registry_is_unknown_rather_than_a_crash(tmp_path):
+    """This marker is read during --capture, inside a build. A malformed
+    registry must cost the build one UNKNOWN row, not the whole capture."""
+    assert freshness_state.hydrography_watch_marker(tmp_path / "absent.json") is None
+    broken = tmp_path / "broken.json"
+    broken.write_text("{not json")
+    assert freshness_state.hydrography_watch_marker(broken) is None
+
+
+def test_capture_leaves_the_hydrography_watch_out_when_no_registry_is_offered(tmp_path):
+    """Same shape as `atc_updates_file`: a caller with no opinion gets the
+    key present and None, which `drop_unrecorded` removes from a published
+    state and `compare_state` reads as unchecked - never as current."""
+    state = capture_state(
+        atc_manifest=tmp_path / "absent.json",
+        opentrail_state=tmp_path / "absent.json",
+        topo_manifest=tmp_path / "absent.json",
+        elevation_index=tmp_path / "absent.json",
+    )
+
+    assert state["usgs_3dhp"] is None
+    assert "usgs_3dhp" not in freshness_state.drop_unrecorded(state)
+
+
+def test_a_resurveyed_corridor_reads_as_stale_rather_than_as_a_refetch(tmp_path):
+    """The verdict that is the whole point. STALE here does not mean the
+    pipeline is behind; it means USGS has stopped republishing NHD for the
+    corridor, which is the moment migrating off a frozen 2023 snapshot is
+    worth costing (WATER_SOURCES.md §5)."""
+    reports = compare_state({"usgs_3dhp": "NHD"}, {"usgs_3dhp": "3DHP_MA_01"})
+
+    report = next(r for r in reports if r["source"] == "usgs_3dhp")
+    assert report["freshness"] is Freshness.STALE
+    assert "not that anything needs refetching" in report["detail"]
+
+
+def test_an_unreachable_3dhp_is_unknown_not_fresh():
+    """The asymmetry this whole module is built on, applied to the one source
+    whose FRESH nobody would otherwise question - it has said the same word
+    since 2023, so a silent failure to ask looks exactly like an answer."""
+    reports = compare_state({"usgs_3dhp": "NHD"}, {"usgs_3dhp": None})
+
+    assert next(r for r in reports if r["source"] == "usgs_3dhp")["freshness"] is Freshness.UNKNOWN

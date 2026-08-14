@@ -202,9 +202,9 @@ def elevation_marker(index_path: Path) -> str | None:
 def atc_updates_marker(reviewed_path: Path) -> str | None:
     """What ATC's Trail Updates feed said when a human last reviewed them.
 
-    The fifth source, and the only one whose recorded side is **in git**
-    rather than in gitignored `data/raw/` (features/ATC_TRAIL_UPDATES.md,
-    #459). Nothing fetches ATC's notices on a schedule: a person reads them,
+    The fifth source, and the first whose recorded side is **in git** rather
+    than in gitignored `data/raw/` (features/ATC_TRAIL_UPDATES.md, #459);
+    `hydrography_watch_marker` below is the second, for its own reason. Nothing fetches ATC's notices on a schedule: a person reads them,
     writes the rows into `reference/atc_updates.json`, and a merged pull
     request releases that file. So the thing this marker is recorded against
     is that review, and STALE here has a meaning none of the other four
@@ -228,7 +228,45 @@ def atc_updates_marker(reviewed_path: Path) -> str | None:
     return None if marker is None else str(marker)
 
 
-SOURCES = ("atc", "opentrail", "topo_quads", "elevation", "atc_trail_updates")
+#: The registry key the marker below is read from. Spelled once, because
+#: check_freshness.py reads the same entry for the URL to ask.
+HYDROGRAPHY_WATCH_KEY = "usgs_3dhp"
+
+
+def hydrography_watch_marker(registry_path: Path) -> str | None:
+    """What 3DHP said about the corridor when somebody last looked.
+
+    The sixth source, and the second whose recorded side is in git rather
+    than in gitignored `data/raw/` - but for a different reason from
+    `atc_updates_marker`'s. That one has a reviewed file because a human
+    writes the content. This one has no content at all: **nothing in this
+    pipeline fetches 3DHP**, so there is no artifact whose age could stand in
+    for the answer. What is recorded is somebody's acknowledgement that they
+    asked and were told `NHD` - which is 3DHP reporting, in its own
+    `workunitid` field, that the corridor's flowlines are the retired NHD
+    republished rather than anything it has surveyed (WATER_SOURCES.md §5).
+
+    So it lives in `sources.json` beside the rest of that source's facts,
+    which is one home rather than a new file carrying a single string. STALE
+    here means USGS has resurveyed the A.T. corridor - the event that makes
+    migrating off a frozen 2023 snapshot worth costing, and one no fetcher
+    could act on by itself.
+
+    A registry that cannot be read, or holds no such entry, answers None ->
+    UNKNOWN. Never FRESH: not being able to ask is not an answer.
+    """
+    if not Path(registry_path).exists():
+        return None
+    try:
+        registry = json.loads(Path(registry_path).read_text())
+    except ValueError:
+        return None
+    entry = next((source for source in registry.get("sources", []) if source.get("key") == HYDROGRAPHY_WATCH_KEY), None)
+    marker = ((entry or {}).get("freshness") or {}).get("recorded")
+    return None if marker is None else str(marker)
+
+
+SOURCES = ("atc", "opentrail", "topo_quads", "elevation", "atc_trail_updates", HYDROGRAPHY_WATCH_KEY)
 
 
 def capture_state(
@@ -238,20 +276,22 @@ def capture_state(
     topo_manifest: Path,
     elevation_index: Path,
     atc_updates_file: Path | None = None,
+    registry_file: Path | None = None,
     captured_at: str | None = None,
 ) -> dict:
     """Every upstream freshness marker this checkout currently records.
 
-    All five sources are always present as keys. On a machine that has done
+    All six sources are always present as keys. On a machine that has done
     the fetching, an empty/None value means "never fetched", which is a real
     answer the checking side needs - a source that silently vanished from the
     dict would instead read as one nobody has to worry about.
 
-    `atc_updates_file` is optional where the other four are not, because it
-    is the reviewed file rather than a fetch artifact: a caller that has no
-    opinion about ATC's Trail Updates (every caller that predates them) gets
-    the key present and None, which `drop_unrecorded` then removes from a
-    published state and `compare_state` reads as unchecked.
+    `atc_updates_file` and `registry_file` are optional where the other four
+    are not, because neither is a fetch artifact: one is the reviewed file a
+    human edits, the other is the registry. A caller with no opinion about
+    either (every caller that predates them) gets the key present and None,
+    which `drop_unrecorded` then removes from a published state and
+    `compare_state` reads as unchecked.
     """
     return {
         "version": STATE_VERSION,
@@ -261,6 +301,7 @@ def capture_state(
         "topo_quads": topo_markers(topo_manifest),
         "elevation": elevation_marker(elevation_index),
         "atc_trail_updates": atc_updates_marker(atc_updates_file) if atc_updates_file else None,
+        HYDROGRAPHY_WATCH_KEY: hydrography_watch_marker(registry_file) if registry_file else None,
     }
 
 
@@ -444,6 +485,25 @@ def compare_state(recorded: dict, upstream: dict) -> list[dict]:
                 "source": "atc_trail_updates",
                 "freshness": compare_marker(recorded.get("atc_trail_updates"), upstream.get("atc_trail_updates")),
                 "detail": "ETag on ATC's trail-updates feed, against the reviewed file - stale means review, not refetch",
+            }
+        )
+
+    # The sixth goes one step further than the fifth. STALE on the four
+    # fetched sources says refetch; STALE on ATC's updates says re-read a
+    # page; STALE here says **a dataset this pipeline does not use has
+    # started to differ from the one it does**, which is a design decision to
+    # cost rather than a job to run. Nothing clears it automatically, and
+    # nothing should: USGS resurveying the corridor is the moment somebody
+    # weighs migrating off a frozen 2023 snapshot, against losing the
+    # perennial/intermittent code 3DHP does not carry (WATER_SOURCES.md §5).
+    if HYDROGRAPHY_WATCH_KEY not in recorded:
+        reports.append({"source": HYDROGRAPHY_WATCH_KEY, "freshness": Freshness.UNKNOWN, "detail": "not in this state"})
+    else:
+        reports.append(
+            {
+                "source": HYDROGRAPHY_WATCH_KEY,
+                "freshness": compare_marker(recorded.get(HYDROGRAPHY_WATCH_KEY), upstream.get(HYDROGRAPHY_WATCH_KEY)),
+                "detail": "3DHP's own work unit for the corridor - stale means USGS resurveyed it, not that anything needs refetching",
             }
         )
 

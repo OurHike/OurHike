@@ -48,7 +48,7 @@ reaches along 2,197 miles of trail means hundreds of polyline queries, and
 that service 504s under exactly that load - the same failure that killed two
 publish runs through the TNM Access API (pipeline/ELEVATION_SOURCES.md,
 #549). Each subregion is downloaded, read and deleted in turn, so the peak
-cost on disk is one ~270 MB archive rather than 5.7 GB of them, and the whole
+cost on disk is one ~270 MB archive rather than 3.1 GB of them, and the whole
 derivation re-runs without a single interactive request.
 
 OSM costs no network at all: `fetch_osm_water.py` and the basemap build both
@@ -92,7 +92,7 @@ other fetcher (#542). What reaches hikers reaches them the way every layer
 does - through export_poi.py into `crossing.geojson` and `water.geojson`, and
 through publish.py into R2.
 
-Re-running it costs the extracts already on disk plus ~5.7 GB of USGS
+Re-running it costs the extracts already on disk plus ~3.1 GB of USGS
 subregions downloaded and deleted in turn, which is why the publish workflow
 makes it an opt-in step and why its output rides the fetch cache: a run that
 does not ask for it exports whatever the last run derived, exactly as the
@@ -429,7 +429,7 @@ def collect_streams(sites: list[dict]) -> tuple[list[dict], dict[str, list[dict]
     state extracts and twenty-one subregions at once is tens of gigabytes,
     and nothing here needs two in memory together. The USGS subregions are
     downloaded, read and deleted in the same loop, so the peak cost on disk
-    is one 270 MB archive rather than 5.7 GB of them.
+    is one 270 MB archive rather than 3.1 GB of them.
     """
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
@@ -471,7 +471,7 @@ def fetch_nhd_subregion(huc4: str) -> Path:
     """Download and unpack one NHD subregion's GeoPackage, returning its path.
 
     Straight to a temporary directory rather than data/raw/: unlike the OSM
-    extracts, nothing else in this pipeline reads these, and keeping 5.7 GB
+    extracts, nothing else in this pipeline reads these, and keeping 3.1 GB
     of them to re-run a derivation whose answer is checked in would be
     storing the working out.
     """

@@ -169,6 +169,27 @@
       "discovered_via": "WATER_SOURCES.md's census for #529 (spike_osm_water_census.py) measured OSM point sources within 250 m of 26% of shelters trail-wide and 40% in the south, against 8% for the shipped supply. Registered by hand - discover_sources.py walks the Experience Builder app and this source is not in it.",
       "discovered_date": "2026-08-13",
       "notes": "Fetched by fetch_osm_water.py to data/raw/osm_water.geojson (never by fetch_all.py): nodes tagged natural=spring, amenity=drinking_water, man_made=water_tap or man_made=water_well across the fourteen Geofabrik state extracts export_basemap.py already downloads - 7,574 nodes on the first full scan (2026-08-13). No freshness entry on purpose: Geofabrik republishes the extracts daily, so a changed-marker would always say yes (export_basemap.py's docstring holds the reasoning; the fetch is skip-if-present with --refetch). export_poi.py folds these into poi_type water at low confidence, dropping each point within 25 m of an opentrail water point as the same node arriving twice."
+    },
+    {
+      "key": "usgs_3dhp",
+      "title": "3D Hydrography Program (3DHP)",
+      "provider": "USGS",
+      "kind": "watched_only",
+      "url": "https://3dhp.nationalmap.gov/arcgis/rest/services/usgs_3dhp_all/FeatureServer",
+      "trust": "authoritative",
+      "steward": "U.S. Geological Survey",
+      "steward_contact": "https://www.usgs.gov/3d-hydrography-program",
+      "licence": "Public domain, as a work of the United States government — the whole USGS hydrography column (WATER_SOURCES.md §5). Attribution is courtesy rather than obligation, and the client's credits screen already names USGS for NHD.",
+      "attribution": "U.S. Geological Survey",
+      "freshness": {
+        "kind": "arcgis_distinct_values",
+        "url": "https://3dhp.nationalmap.gov/arcgis/rest/services/usgs_3dhp_all/FeatureServer/50/query",
+        "recorded": "NHD",
+        "notes": "The distinct `workunitid` values 3DHP's flowline layer returns for boxes on the trail. `NHD` is 3DHP saying, in its own field, that these lines are the retired dataset republished rather than anything it has surveyed - measured 2026-08-14 at five points spread along the trail from North Carolina (mile 110) to New Hampshire (mile 1,868), every one of them `NHD`. When that stops being the answer, 3DHP has resurveyed the corridor and the migration this pipeline is deliberately not doing becomes worth costing. Changing `recorded` is how a person acknowledges having looked; nothing writes it automatically."
+      },
+      "discovered_via": "WATER_SOURCES.md §5, following USGS's retirement of the NHD on 2023-10-01. Registered by hand - discover_sources.py walks ATC's Experience Builder app and this is not in it.",
+      "discovered_date": "2026-08-14",
+      "notes": "Nothing fetches this. It is registered because the pipeline's water derivation (fetch_trail_water.py) reads a dataset USGS no longer maintains, and this is where its replacement will appear. Measured 2026-08-14: for the corridor, 3DHP IS NHD - identical geometry (1,265 flowlines in a box in central Virginia against NHD's 1,265, same vertex count, worst-case separation 0.086 mm) and identical springs (1,796 features, every one within 1 m of an NHD spring) - with the perennial/intermittent FCode collapsed away into an undifferentiated `Channel Line`. Migrating now would trade the only structured seasonality signal the pipeline has for the same geometry, so the entry holds a watch instead of a fetch."
     }
   ]
 }

@@ -5,33 +5,11 @@ centerline fixture throughout (tiny GeoJSON built in test code), never the
 real 3,025-segment centerline.geojson - see TESTING.md.
 """
 
-import json
-
 import duckdb
 import pytest
 
 from lib.corridor import build_corridor
-
-# Same neighborhood/coordinates test_export_poi.py's, test_export_trails.py's,
-# and test_spike_corridor.py's own synthetic centerline fixtures use - far
-# from any real data, so it can't collide with anything, and it lets this
-# test's plausible-area assertion below reuse the same expected range
-# test_spike_corridor.py already established for this exact line.
-CENTERLINE_COORDS = [(-74.0, 41.0), (-73.9, 41.1)]
-
-
-def _write_centerline(path, coords=CENTERLINE_COORDS):
-    fc = {
-        "type": "FeatureCollection",
-        "features": [
-            {
-                "type": "Feature",
-                "properties": {},
-                "geometry": {"type": "LineString", "coordinates": [[lon, lat] for lon, lat in coords]},
-            }
-        ],
-    }
-    path.write_text(json.dumps(fc))
+from tests.synthetic import write_centerline
 
 
 @pytest.fixture
@@ -47,7 +25,7 @@ def test_build_corridor_populates_a_single_non_empty_polygon(tmp_path, con):
     every caller (export_poi.py's/export_trails.py's clip_to_corridor)
     relies on."""
     centerline_path = tmp_path / "centerline.geojson"
-    _write_centerline(centerline_path)
+    write_centerline(centerline_path)
 
     build_corridor(con, centerline_path)
 
@@ -67,7 +45,7 @@ def test_build_corridor_area_is_plausible_for_a_30_mile_buffer_around_the_fixtur
     produces by putting the geometry on the wrong side of the globe before
     buffering)."""
     centerline_path = tmp_path / "centerline.geojson"
-    _write_centerline(centerline_path)
+    write_centerline(centerline_path)
 
     build_corridor(con, centerline_path)
 
@@ -92,7 +70,7 @@ def test_build_corridor_keeps_the_result_in_the_source_hemisphere_not_axis_swapp
     longitude; northern hemisphere, positive latitude, close to the original
     (-74, 41) point), not swapped or wrapped somewhere nonsensical."""
     centerline_path = tmp_path / "centerline.geojson"
-    _write_centerline(centerline_path)
+    write_centerline(centerline_path)
 
     build_corridor(con, centerline_path)
 

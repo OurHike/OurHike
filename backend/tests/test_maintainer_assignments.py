@@ -23,6 +23,7 @@ from app.models.club import Club
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.profile import Profile, Role
 from app.models.report import ReportType, Visibility
+from tests.factories import make_profile
 from tests.tokens import auth_headers
 
 
@@ -283,9 +284,7 @@ def test_bad_hikers_stays_internal_only_not_club_only(client):
 def test_verifying_a_thanks_is_refused(client, db_session):
     """There is nothing to verify about gratitude, so the action is not
     merely hidden in the UI - the server refuses it."""
-    moderator = Profile(id=str(uuid.uuid4()), role=Role.club_admin, display_name="Mod")
-    db_session.add(moderator)
-    db_session.commit()
+    moderator = make_profile(db_session, Role.club_admin, display_name="Mod")
 
     created = client.post("/reports", json=_THANKS, headers=auth_headers(str(uuid.uuid4()))).json()
     response = client.post(
@@ -300,9 +299,7 @@ def test_verifying_a_thanks_is_refused(client, db_session):
 def test_a_thanks_can_still_be_dismissed_so_abuse_has_a_removal_path(client, db_session):
     """Not verification - removal. Someone will eventually write something
     unkind in a thanks box, and hiding it must stay possible."""
-    moderator = Profile(id=str(uuid.uuid4()), role=Role.club_admin, display_name="Mod")
-    db_session.add(moderator)
-    db_session.commit()
+    moderator = make_profile(db_session, Role.club_admin, display_name="Mod")
 
     created = client.post("/reports", json=_THANKS, headers=auth_headers(str(uuid.uuid4()))).json()
     response = client.post(f"/reports/{created['id']}/dismiss", headers=auth_headers(moderator.id))
@@ -559,9 +556,7 @@ def test_a_dismissed_thanks_leaves_every_inbox_it_was_delivered_to(client, db_se
     targeted kept it at the top of their inbox forever."""
     club = _club(db_session)
     pat = _maintainer(db_session)
-    moderator = Profile(id=str(uuid.uuid4()), role=Role.club_admin, display_name="Mod")
-    db_session.add(moderator)
-    db_session.commit()
+    moderator = make_profile(db_session, Role.club_admin, display_name="Mod")
     _assign(db_session, maintainer=pat, club=club, start=1000, end=1100, frm=_JUNE)
     filed = _thanks_at(client, 1043, _JUNE)
     assert [row["id"] for row in _inbox(client, pat.id)] == [filed["id"]]

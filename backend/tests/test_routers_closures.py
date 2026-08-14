@@ -14,6 +14,7 @@ import uuid
 
 from app.models.closure import Closure, ClosureStatus, ModerationStatus
 from app.models.profile import Profile, Role
+from tests.factories import make_closure, make_profile
 from tests.tokens import auth_headers
 
 _VALID_PAYLOAD = {
@@ -43,9 +44,7 @@ def test_create_closure_always_starts_at_moderation_status_submitted(client):
 
 
 def test_public_list_closures_excludes_moderation_status_submitted(client, db_session):
-    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    db_session.add(reporter)
-    db_session.commit()
+    reporter = make_profile(db_session, Role.hiker)
 
     verified = Closure(
         reported_by=reporter.id,
@@ -118,17 +117,8 @@ def test_public_closures_name_nobody(client, db_session):
 
 
 def test_update_closure_status_rejected_for_a_plain_hiker_role_with_403(client, db_session):
-    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    db_session.add(reporter)
-    db_session.commit()
-    closure = Closure(
-        reported_by=reporter.id,
-        reason_type="storm_damage",
-        start_mile_marker=1.0,
-        end_mile_marker=2.0,
-    )
-    db_session.add(closure)
-    db_session.commit()
+    reporter = make_profile(db_session, Role.hiker)
+    closure = make_closure(db_session, reporter.id)
 
     hiker_id = str(uuid.uuid4())
     response = client.patch(
@@ -146,14 +136,7 @@ def test_update_closure_status_allowed_for_maintainer_role(client, db_session):
     maintainer = Profile(id=maintainer_id, role=Role.maintainer)
     db_session.add_all([reporter, maintainer])
     db_session.commit()
-    closure = Closure(
-        reported_by=reporter.id,
-        reason_type="storm_damage",
-        start_mile_marker=1.0,
-        end_mile_marker=2.0,
-    )
-    db_session.add(closure)
-    db_session.commit()
+    closure = make_closure(db_session, reporter.id)
 
     response = client.patch(
         f"/closures/{closure.id}",
@@ -235,14 +218,7 @@ def test_a_maintainer_can_still_reopen_a_trail(client, db_session):
     maintainer_id = str(uuid.uuid4())
     db_session.add_all([reporter, Profile(id=maintainer_id, role=Role.maintainer)])
     db_session.commit()
-    closure = Closure(
-        reported_by=reporter.id,
-        reason_type="storm_damage",
-        start_mile_marker=1.0,
-        end_mile_marker=2.0,
-    )
-    db_session.add(closure)
-    db_session.commit()
+    closure = make_closure(db_session, reporter.id)
 
     response = client.patch(
         f"/closures/{closure.id}",
@@ -268,19 +244,9 @@ def test_a_maintainer_can_still_reopen_a_trail(client, db_session):
 
 
 def _closure_and_maintainer(db_session):
-    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    maintainer_id = str(uuid.uuid4())
-    db_session.add_all([reporter, Profile(id=maintainer_id, role=Role.maintainer)])
-    db_session.commit()
-    closure = Closure(
-        reported_by=reporter.id,
-        reason_type="storm_damage",
-        start_mile_marker=1.0,
-        end_mile_marker=2.0,
-    )
-    db_session.add(closure)
-    db_session.commit()
-    return closure, maintainer_id
+    """A submitted closure and a maintainer who can move it."""
+    closure = make_closure(db_session, make_profile(db_session).id)
+    return closure, make_profile(db_session, Role.maintainer).id
 
 
 def test_a_new_closure_has_all_three_detail_fields_null(client):

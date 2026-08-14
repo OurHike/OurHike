@@ -34,6 +34,7 @@ from app.core.photos import MAX_PHOTO_BYTES, PHOTO_URL_TTL_SECONDS, photo_key
 from app.models.profile import Profile, Role
 from app.models.report import Report, ReporterType, ReportStatus, ReportType, Visibility
 from app.routers.reports import read_capped_body
+from tests.factories import make_profile
 from tests.tokens import auth_headers
 
 _BUCKET = "ourhike-test"
@@ -74,9 +75,7 @@ def _configure(monkeypatch) -> None:
 
 
 def _reporter(db_session) -> Profile:
-    profile = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    db_session.add(profile)
-    db_session.commit()
+    profile = make_profile(db_session, Role.hiker)
     return profile
 
 

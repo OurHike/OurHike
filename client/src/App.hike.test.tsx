@@ -13,14 +13,10 @@
 // hiker walks leaving a trailhead, which is where a closure two miles up the
 // trail most needs saying.
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, render, screen, cleanup, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { get, set, del } from 'idb-keyval'
-import { resetMapLibreMock } from './test/mocks/maplibre-gl'
-import { PREFERENCES_KEY } from './lib/preferences'
-import { DEFAULT_PREFERENCES } from './lib/userPreferences'
-import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
+import { appHarness } from './test/appHarness'
 import { PLANNED_HIKE_KEY } from './lib/plannedHike'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
@@ -49,76 +45,18 @@ vi.mock('./lib/api', () => ({
   fetchReports: vi.fn(async () => []),
 }))
 
-const MILE_LAT = 1 / 69.05
-const TRAILS_GEOJSON = JSON.stringify({
-  type: 'FeatureCollection',
-  features: [
-    {
-      type: 'Feature',
-      properties: { source: 'centerline' },
-      geometry: {
-        type: 'LineString',
-        coordinates: Array.from({ length: 40 }, (_, i) => [-77, 39 + i * MILE_LAT]),
-      },
-    },
-  ],
+// onLine because the map's own reads are gated on it (App.tsx): a navigator
+// without it is `undefined`, which is falsy, so no closure ever arrives and
+// every banner assertion below would pass by being vacuously silent.
+const app = appHarness({
+  navigator: { onLine: true, geolocation: true },
+  objectUrls: true,
 })
-
-const store = new Map<string, unknown>()
-let watchSuccess: ((position: GeolocationPosition) => void) | undefined
+const store = app.store
 
 beforeEach(() => {
-  store.clear()
-  watchSuccess = undefined
-  resetMapLibreMock()
-
-  vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
-  vi.mocked(set).mockImplementation((key, value) => {
-    store.set(key as string, value)
-    return Promise.resolve()
-  })
-  vi.mocked(del).mockImplementation((key) => {
-    store.delete(key as string)
-    return Promise.resolve()
-  })
-
-  store.set(PREFERENCES_KEY, {
-    ...DEFAULT_PREFERENCES,
-    onboarding_completed: true,
-    download_choice_made: true,
-    location_permission_requested: true,
-  })
-  store.set(TRAILS_BLOB_KEY, new Blob([TRAILS_GEOJSON]))
-  store.set(POIS_KEY, [])
-
-  vi.stubGlobal('fetch', vi.fn())
-  vi.stubGlobal('navigator', {
-    geolocation: {
-      watchPosition: (success: (position: GeolocationPosition) => void) => {
-        watchSuccess = success
-        return 1
-      },
-      clearWatch: () => {},
-    },
-    userAgent: '',
-    platform: '',
-    // The map's own reads are gated on being online (App.tsx), and a stubbed
-    // navigator without this is `undefined` - which is falsy, so no closure
-    // ever arrives and every banner assertion below would pass by being
-    // vacuously silent.
-    onLine: true,
-  })
-  vi.stubGlobal('URL', {
-    ...URL,
-    createObjectURL: vi.fn(() => 'blob:trails'),
-    revokeObjectURL: vi.fn(),
-  })
-})
-
-afterEach(() => {
-  cleanup()
-  vi.clearAllMocks()
-  vi.unstubAllGlobals()
+  app.onboard({ location_permission_requested: true })
+  app.putTrailData()
 })
 
 /**
@@ -129,15 +67,7 @@ afterEach(() => {
  * feature exists for: a hiker who is somewhere, and about whom nothing is yet
  * known regarding which way they are pointed.
  */
-async function reportOneFix() {
-  await waitFor(() => expect(watchSuccess).toBeDefined())
-  await act(async () => {
-    watchSuccess?.({
-      coords: { latitude: 39 + 5 * MILE_LAT, longitude: -77, accuracy: 5 },
-      timestamp: 1_754_000_000_000,
-    } as unknown as GeolocationPosition)
-  })
-}
+const reportOneFix = () => app.reportFixAtMile(5)
 
 async function renderApp() {
   render(<App />)
@@ -168,13 +98,7 @@ describe('a hiker who has said which way they are walking', () => {
     // Mile 5, closure at 8: three miles ahead is 4.8 km. The mile-marker range
     // in the same sentence stays as the trail has it, which is the exception
     // lib/units.ts exists to keep visible.
-    store.set(PREFERENCES_KEY, {
-      ...DEFAULT_PREFERENCES,
-      onboarding_completed: true,
-      download_choice_made: true,
-      location_permission_requested: true,
-      unit_system: 'metric',
-    })
+    app.onboard({ location_permission_requested: true, unit_system: 'metric' })
     store.set(PLANNED_HIKE_KEY, { startMile: 0, endMile: 30 })
 
     await renderApp()

@@ -1,10 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { get, set } from 'idb-keyval'
 import App from './App'
-import { PREFERENCES_KEY } from './lib/preferences'
-import { DEFAULT_PREFERENCES } from './lib/userPreferences'
+import { appHarness } from './test/appHarness'
 import { OUTBOX_KEY } from './lib/outbox'
 import { sendReport } from './lib/api'
 import { BUILD_INFO } from './lib/buildInfo'
@@ -52,7 +50,8 @@ vi.mock('./lib/auth', async (importOriginal) => ({
 }))
 
 const mockedSend = vi.mocked(sendReport)
-const store = new Map<string, unknown>()
+const app = appHarness()
+const store = app.store
 
 // `build` is THIS build's commit, and that is what makes the item genuinely
 // stuck for the purposes of this file (#412). A failure recorded by a
@@ -72,26 +71,7 @@ const STUCK_ITEM = {
   },
 }
 
-beforeEach(() => {
-  store.clear()
-  vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
-  vi.mocked(set).mockImplementation((key, value) => {
-    store.set(key as string, value)
-    return Promise.resolve()
-  })
-  store.set(PREFERENCES_KEY, {
-    ...DEFAULT_PREFERENCES,
-    onboarding_completed: true,
-    download_choice_made: true,
-  })
-  vi.stubGlobal('fetch', vi.fn())
-})
-
-afterEach(() => {
-  cleanup()
-  vi.clearAllMocks()
-  vi.unstubAllGlobals()
-})
+beforeEach(() => app.onboard())
 
 async function openMore(user: ReturnType<typeof userEvent.setup>) {
   render(<App />)

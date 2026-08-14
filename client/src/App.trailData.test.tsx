@@ -7,11 +7,10 @@
 // mocking config there would quietly change the subject of every test in it.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
-import { get, set } from 'idb-keyval'
-import { MockMap, resetMapLibreMock } from './test/mocks/maplibre-gl'
-import { PREFERENCES_KEY } from './lib/preferences'
-import { DEFAULT_PREFERENCES } from './lib/userPreferences'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import { get } from 'idb-keyval'
+import { MockMap } from './test/mocks/maplibre-gl'
+import { appHarness } from './test/appHarness'
 import { TRAILS_BLOB_KEY } from './lib/trailData'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
@@ -32,23 +31,17 @@ vi.mock('./lib/config', async (importOriginal) => ({
   archiveUrl: () => 'https://data.example/corridor.pmtiles',
 }))
 
-const store = new Map<string, unknown>()
-
 const TRAILS = '{"type":"FeatureCollection","features":[]}'
 
+// jsdom's own navigator, not a stub: three tests below spy on `onLine`'s
+// getter to go offline mid-test, which a plain stubbed object cannot carry.
+// Its own fetch too - this file is about what the trail-data fetch does with
+// what comes back, so an empty mock would have nothing to say.
+const app = appHarness({ stubFetch: false })
+const store = app.store
+
 beforeEach(() => {
-  store.clear()
-  resetMapLibreMock()
-  vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
-  vi.mocked(set).mockImplementation((key, value) => {
-    store.set(key as string, value)
-    return Promise.resolve()
-  })
-  store.set(PREFERENCES_KEY, {
-    ...DEFAULT_PREFERENCES,
-    onboarding_completed: true,
-    download_choice_made: true,
-  })
+  app.onboard()
   vi.stubGlobal(
     'fetch',
     vi.fn(() =>
@@ -67,13 +60,10 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  cleanup()
-  vi.clearAllMocks()
   // restore, not just clear: the offline cases spy on `navigator.onLine`'s
   // getter, and a cleared spy still answers false - which silently turned the
   // fetch-failure case below into a test about being offline.
   vi.restoreAllMocks()
-  vi.unstubAllGlobals()
 })
 
 async function renderApp() {

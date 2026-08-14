@@ -6,7 +6,7 @@ OurHike is a map for hikers, built to be handed to the clubs that maintain the t
 
 **A trail condition** — a blowdown, flooding, a damaged shelter, a closure — goes through the **app's own "Report a problem" flow**, not GitHub. That reaches a moderator who can act on it. Nobody is watching this repository for washed-out bridges.
 
-**A bug in the software**, or **a systematic data problem** (a shelter in the wrong place, a missing water source, a wrong blaze colour) belongs in [Issues](https://github.com/OurHike/OurHike/issues). There is a form for each.
+**A bug in the software**, or **a systematic data problem** (a shelter in the wrong place, a missing water source, a wrong blaze colour) belongs in [Issues](https://github.com/OurHike/OurHike/issues). There is a form for each, and the app links to both from **Settings → Report a bug** with the build details already filled in — so a report filed that way names the exact build it came from without anyone retyping a commit hash.
 
 If a bug could mislead someone about where they are, where water is, or a hazard, say so — there is a checkbox for it, and those get looked at first. This app gets used in places where being wrong is expensive.
 
@@ -31,6 +31,7 @@ This repository keeps two different kinds of writing, and the difference is wort
 | [pipeline/DBT.md](pipeline/DBT.md), [pipeline/DATA_RELEASES.md](pipeline/DATA_RELEASES.md) | Data platform designs |
 | [pipeline/R2_LAYOUT.md](pipeline/R2_LAYOUT.md) | Where an artifact goes in the bucket and what it may be called |
 | [pipeline/SOURCE_SURVEY.md](pipeline/SOURCE_SURVEY.md) | Upstream A.T. data sources, surveyed and qualified (dated snapshot) |
+| [pipeline/WATER_SOURCES.md](pipeline/WATER_SOURCES.md) | Water near shelters — measurements against every candidate source, and the options (dated snapshot) |
 
 **Issues track the delta between that and reality** — anything with a state, an owner or a date. Open work, bugs, decisions still to make.
 
@@ -51,6 +52,10 @@ Area labels: `client`, `backend`, `pipeline`, `data`, `ops`, `docs`.
 ## Working on the code
 
 Three independent parts, each with its own tests, plus a small fourth suite covering the repository's own CI configuration. CI runs the same commands, so a green local run means a green CI run.
+
+**`scripts/test.sh` runs the ones your change actually reaches**, which is usually one of the four. It reads each suite's scope list out of that suite's own workflow file, so it makes the same decision CI does rather than a second copy of it that can go stale; it runs the linters and formatters for everything selected before it runs any tests, so a formatting slip costs six seconds instead of a CI round trip; and it runs each suite across every core. Measured, four cores: 294s for the full sequence below, 174s for `scripts/test.sh --all`, 20 to 50 seconds for a change to one of the Python parts. `--list` shows what it picked and which changed file decided it. Anything it cannot work out — a stale `main` ref, an unreadable workflow — it resolves by running everything.
+
+The per-part commands below are what it runs, and remain the reference.
 
 **Client** — React + TypeScript + Vite, MapLibre GL for the map.
 
@@ -99,6 +104,18 @@ python -m ruff format --check .
 
 Locally this checks that [`.github/expected-settings.yml`](.github/expected-settings.yml) still agrees with the workflows: every secret and variable a workflow reads is declared, and nothing declared has outlived its last reader. Whether those settings actually *exist* is a question no checkout can answer — a secret's value is write-only once set — so the **Settings check** workflow answers it from inside Actions, weekly and on every push to `main`. Adding a workflow that reads a new secret means adding it to the manifest in the same change.
 
+### Units are the hiker's choice, everywhere
+
+**Every height and distance the app displays is displayed in the system the hiker picked in Settings.** Feet and miles or metres and kilometres, one preference (`unit_system`), no screen exempt. This is a standard rather than a style: a component that formats its own feet looks right on its own and disagrees with the one beside it, and a hiker reading 800 m of climbing on the elevation ribbon and 2,600 ft in the callout underneath has to work out which one is lying.
+
+Three rules, and the first two are most of it:
+
+- **`client/src/lib/units.ts` is the only module that writes a unit.** Nothing else spells ` ft`, ` mi`, ` m` or ` km`, and nothing else converts. `client/src/test/unitDisplay.test.ts` fails the build over a new one, so this is checked rather than remembered.
+- **Store canonical, convert at display.** The published data is imperial where the ATC's is (mile markers, `elevation_ft`) and metric where USGS 3DEP's is; both stay as they are. Every function in the units module takes a canonical number and returns a string, which is the one shape a caller cannot accidentally persist.
+- **A component takes the preference; it does not read it.** `App.tsx` reads `unit_system` once and passes it down, the same road the resolved theme travels. Two independent reads is how the map ends up in kilometres under a banner in miles.
+
+One exception, and it is deliberate: **mile markers stay in miles.** `mi 1,407.2` is where somebody *is* on the A.T. — the reference every guidebook, shelter register and shuttle driver shares — not a measurement of anything. The distance *between* two of them is an ordinary distance and converts, so a metric hiker's banner correctly reads "Trail closed 4.8 km ahead · mi 8.0 – 9.0". [features/UX_CUSTOMIZATION.md](features/UX_CUSTOMIZATION.md) holds the reasoning.
+
 ### Changing a Python dependency
 
 The `requirements.txt` and `requirements-dev.txt` files are **compiled output** — every package pinned to an exact version, transitive ones included. Do not edit them by hand. The hand-written files are the matching `.in`, which is where the comments explaining *why* a dependency exists live.
@@ -125,6 +142,20 @@ The pipeline fetches large amounts of data from ATC, USGS and opentrail.org. Rea
 - New behaviour comes with tests. See [TESTING.md](TESTING.md) for what is expected; the short version is that tests describe behaviour rather than implementation.
 - If a change contradicts something in a design doc, update the doc in the same PR. A doc that disagrees with the code is worse than no doc.
 - Lint and format before pushing. CI checks both and will fail on formatting alone.
+
+## Data does not go in commits
+
+**Anything a script fetched, derived or exported belongs in `pipeline/data/`, which is gitignored — never in a commit.** What hikers get is published to R2 by `publish.py`; what a build needs between runs is carried by the CI cache. Nothing derived is tracked.
+
+This is a security rule rather than a tidiness one, and the reason is that **a commit is a publication that cannot be retracted.** This repository is public, every clone carries its whole history, and `git rm` in a later commit removes a file from the tree while leaving it in every fork, mirror and pack that already pulled it. A byte committed here is published permanently, before anyone has reviewed it — which is the wrong property for data whose terms are still being settled:
+
+- **Licence.** The rule below is to establish a licence before the bytes are in the build, and several sources are still open ([opentrail.org](https://github.com/OurHike/OurHike/issues/98), the club PDFs whose registry entries read *review-only until the club answers*). Committing any of them redistributes them under this repository's licence, from every fork, irreversibly.
+- **Safety.** [`pipeline/SOURCE_SURVEY.md`](pipeline/SOURCE_SURVEY.md) §3b describes 2,333 user-created campsites in ATC's own index — the ones land managers are often trying to close. Publishing their locations would put OurHike on the wrong side of every partner it depends on, and a file committed once cannot be unpublished.
+- **People.** Reports, photos and hiker submissions carry personal data by construction ([features/IDENTITY_AND_PRIVACY.md](features/IDENTITY_AND_PRIVACY.md)). None of it belongs in a tree anybody can clone.
+
+**The one exception is `pipeline/reference/`, and it is narrower than it looks.** Those files are *joins that encode judgement*: a row of `shelter_capacity.json` is somebody's decision that a hiker-list entry is a particular ATC shelter, and reviewing its diff reviews those decisions. That argument holds only while a human actually reads the rows — so the directory carries a line ceiling, and a file past it is either derived data on the wrong shelf or a file whose author says in review why anyone should read that many rows.
+
+The rule is enforced by `.github/tests/test_no_committed_data.py` rather than remembered: it fails on a tracked `pipeline/data/` path, on a data-shaped file outside a stated allowlist, and on an oversized reference file. It exists because the gitignore alone is a convention that a `git add -f` walks past — and because the mistake that prompted it needed no force at all. A 20,099-line derivation was written to `reference/`, which is *not* ignored, and committed, because that directory held three small checked-in files and looked like where derived things go ([#529](https://github.com/OurHike/OurHike/issues/529)).
 
 ## A note on data and licences
 

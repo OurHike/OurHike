@@ -34,6 +34,7 @@ from app.core.photos import MAX_PHOTO_BYTES, PHOTO_URL_TTL_SECONDS, photo_key
 from app.models.profile import Profile, Role
 from app.models.report import Report, ReporterType, ReportStatus, ReportType, Visibility
 from app.routers.reports import read_capped_body
+from tests.factories import make_profile
 from tests.tokens import auth_headers
 
 _BUCKET = "ourhike-test"
@@ -74,9 +75,7 @@ def _configure(monkeypatch) -> None:
 
 
 def _reporter(db_session) -> Profile:
-    profile = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    db_session.add(profile)
-    db_session.commit()
+    profile = make_profile(db_session, Role.hiker)
     return profile
 
 
@@ -878,6 +877,25 @@ def test_a_photo_bucket_pointed_at_the_published_one_refuses_to_start(monkeypatc
     assert "LAUNCH_CHECKLIST.md 1.7" in message
 
 
+def test_the_collision_is_refused_when_it_arrives_through_a_dot_env_file(monkeypatch, tmp_path):
+    """The bypass #649 demonstrated. pydantic-settings loads `backend/.env` -
+    the gitignored channel the config module's own header sanctions - WITHOUT
+    exporting it to os.environ, and the guard used to ask os.environ alone. So
+    a developer keeping both variable sets in `.env`, with the photo bucket
+    pasted wrong, started cleanly into the exact state the guard exists to
+    refuse. The guard now reads the publishing names from every channel its
+    own fields arrive by."""
+    monkeypatch.delenv("R2_BUCKET", raising=False)
+    monkeypatch.delenv("R2_PHOTO_BUCKET", raising=False)
+    (tmp_path / ".env").write_text("R2_BUCKET=your-hike\nR2_PHOTO_BUCKET=your-hike\n")
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValidationError) as caught:
+        Settings()
+
+    assert "LAUNCH_CHECKLIST.md 1.7" in str(caught.value)
+
+
 def test_a_photo_token_that_is_the_publishing_token_refuses_to_start(monkeypatch):
     """A token scoped to the published bucket is wrong here whichever way it
     fails. Either it cannot write to the photo bucket - so every upload 503s
@@ -905,12 +923,22 @@ def test_a_correctly_separated_deployment_is_silent(monkeypatch):
     assert fresh.r2_photo_bucket == "your-hike-photos"
 
 
-def test_the_guard_stays_quiet_where_there_is_nothing_to_collide_with(monkeypatch):
+def test_the_guard_stays_quiet_where_there_is_nothing_to_collide_with(monkeypatch, tmp_path):
     """Every developer machine and every CI run: photo variables set, no
-    publishing variables present. There is nothing to compare against, so there
-    is nothing to say."""
+    publishing variables in the environment or in a `.env`. Nothing to compare
+    against, so nothing to say.
+
+    Quiet is not a safety proof, and this test's name should not be read as
+    one (#649): a backend-only host where someone pastes the published
+    bucket's NAME with no publishing variables anywhere looks exactly like
+    this from inside the process. That case has no in-process check - it is
+    what LAUNCH_CHECKLIST.md 1.7's separate bucket and scoped token exist to
+    prevent. What this asserts is only that the guard does not cry wolf on
+    the correct arrangement."""
     monkeypatch.delenv("R2_BUCKET", raising=False)
     monkeypatch.delenv("R2_ACCESS_KEY_ID", raising=False)
     monkeypatch.setenv("R2_PHOTO_BUCKET", "your-hike-photos")
+    # An empty directory, so a stray developer .env cannot decide this test.
+    monkeypatch.chdir(tmp_path)
 
     assert Settings().r2_photo_bucket == "your-hike-photos"

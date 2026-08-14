@@ -12,15 +12,14 @@ action, is the entire mechanism.
 import uuid
 
 from app.models.closure import Closure, ClosureStatus, ModerationStatus
-from app.models.profile import Profile, Role
+from app.models.profile import Role
 from app.models.report import Report, ReportStatus, ReportType, Severity, Visibility
+from tests.factories import make_closure, make_profile
 from tests.tokens import auth_headers
 
 
 def _make_reporter_and_report(db_session, report_type=ReportType.blowdown):
-    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    db_session.add(reporter)
-    db_session.commit()
+    reporter = make_profile(db_session, Role.hiker)
     # visibility has no column default by design (app/models/report.py: "the
     # router always computes and sets this explicitly") - set it explicitly
     # here too, the same way create_report does, rather than relying on one.
@@ -32,11 +31,7 @@ def _make_reporter_and_report(db_session, report_type=ReportType.blowdown):
 
 
 def _make_maintainer(db_session):
-    maintainer_id = str(uuid.uuid4())
-    maintainer = Profile(id=maintainer_id, role=Role.maintainer)
-    db_session.add(maintainer)
-    db_session.commit()
-    return maintainer_id
+    return make_profile(db_session, Role.maintainer).id
 
 
 def test_verify_report_rejects_a_plain_hiker_role_with_403(client, db_session):
@@ -211,32 +206,13 @@ def test_dismiss_report_requires_maintainer_or_club_admin_role(client, db_sessio
 
 def _submitted_closure(db_session):
     """An unmoderated closure and a maintainer who can act on it."""
-    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    db_session.add(reporter)
-    db_session.commit()
-    closure = Closure(
-        reported_by=reporter.id,
-        reason_type="storm_damage",
-        start_mile_marker=1.0,
-        end_mile_marker=2.0,
-    )
-    db_session.add(closure)
-    db_session.commit()
+    closure = make_closure(db_session, make_profile(db_session).id)
     return closure, _make_maintainer(db_session)
 
 
 def test_verify_closure_sets_verified_by_and_verified_at(client, db_session):
-    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    db_session.add(reporter)
-    db_session.commit()
-    closure = Closure(
-        reported_by=reporter.id,
-        reason_type="storm_damage",
-        start_mile_marker=1.0,
-        end_mile_marker=2.0,
-    )
-    db_session.add(closure)
-    db_session.commit()
+    reporter = make_profile(db_session, Role.hiker)
+    closure = make_closure(db_session, reporter.id)
     maintainer_id = _make_maintainer(db_session)
 
     response = client.post(f"/closures/{closure.id}/verify", headers=auth_headers(maintainer_id))
@@ -317,17 +293,8 @@ def test_verify_closure_still_refuses_a_plain_hiker_with_a_status_in_hand(client
 
 
 def test_dismiss_closure_requires_maintainer_or_club_admin_role(client, db_session):
-    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    db_session.add(reporter)
-    db_session.commit()
-    closure = Closure(
-        reported_by=reporter.id,
-        reason_type="storm_damage",
-        start_mile_marker=1.0,
-        end_mile_marker=2.0,
-    )
-    db_session.add(closure)
-    db_session.commit()
+    reporter = make_profile(db_session, Role.hiker)
+    closure = make_closure(db_session, reporter.id)
     hiker_id = str(uuid.uuid4())
     maintainer_id = _make_maintainer(db_session)
 
@@ -348,9 +315,7 @@ def test_verify_report_that_does_not_exist_returns_404(client, db_session):
 
 
 def test_severity_data_default_is_normal(db_session):
-    reporter = Profile(id=str(uuid.uuid4()), role=Role.hiker)
-    db_session.add(reporter)
-    db_session.commit()
+    reporter = make_profile(db_session, Role.hiker)
     report = Report(reporter_id=reporter.id, type=ReportType.trash, reporter_type="day", visibility=Visibility.public)
     db_session.add(report)
     db_session.commit()
@@ -368,15 +333,7 @@ def test_severity_data_default_is_normal(db_session):
 
 
 def _make_closure(db_session, reporter_id, moderation_status=ModerationStatus.submitted):
-    closure = Closure(
-        reported_by=reporter_id,
-        reason_type="storm_damage",
-        start_mile_marker=1.0,
-        end_mile_marker=2.0,
-        moderation_status=moderation_status,
-    )
-    db_session.add(closure)
-    db_session.commit()
+    closure = make_closure(db_session, reporter_id, moderation_status=moderation_status)
     return closure
 
 
@@ -445,3 +402,69 @@ def test_moderation_queue_drops_an_item_once_it_is_actioned(client, db_session):
     body = client.get("/moderation/queue", headers=headers).json()
     assert body["reports"] == []
     assert body["closures"] == []
+
+
+# --- when a moderator confirmed it, on the wire (#292) ------------------------
+
+
+def test_an_unverified_report_has_no_confirmation_time(client, db_session):
+    """Null means "nobody has confirmed this", and the sheet renders the
+    badge off it - so a report that only reached the queue must not read as
+    one a moderator stood behind.
+
+    Read as its own author, because an unverified report is not publicly
+    readable at all - which is itself the reason the anonymous test below
+    has to verify first."""
+    reporter, report = _make_reporter_and_report(db_session)
+
+    body = client.get(f"/reports/{report.id}", headers=auth_headers(reporter.id)).json()
+
+    assert body["verified_at"] is None
+
+
+def test_verifying_a_report_stamps_a_confirmation_time_on_the_wire(client, db_session):
+    """`verified_at` has been on the model since #251 and was not on
+    `ReportOut`, so the database knew when a moderator confirmed a report and
+    the API could not say it. SeriousWarningSheet renders "Confirmed by club
+    moderators - <date>" off exactly this."""
+    _reporter, report = _make_reporter_and_report(db_session)
+    maintainer_id = _make_maintainer(db_session)
+
+    body = client.post(f"/reports/{report.id}/verify", json={}, headers=auth_headers(maintainer_id)).json()
+
+    assert body["verified_at"] is not None
+
+
+def test_the_confirmation_time_reaches_an_anonymous_reader(client, db_session):
+    """The property the sheet depends on, and the one worth pinning: this is
+    PUBLIC, unlike `received_at` beside it.
+
+    A hiker weighing a strong claim is entitled to check when somebody stood
+    behind it, and they are reading the map without an account. The privacy
+    argument that withholds `received_at` does not reach this: that one
+    narrows "when was this person there", because a report arrives when its
+    author next has signal. This is a fact about a moderator at a desk.
+    """
+    _reporter, report = _make_reporter_and_report(db_session)
+    maintainer_id = _make_maintainer(db_session)
+    client.post(f"/reports/{report.id}/verify", json={}, headers=auth_headers(maintainer_id))
+
+    body = client.get(f"/reports/{report.id}").json()
+
+    assert body["verified_at"] is not None
+    assert body["received_at"] is None
+
+
+def test_who_confirmed_it_stays_behind(client, db_session):
+    """The same split `ClosureOut` has always made: `verified_at` goes out,
+    `verified_by` does not. It is a profile id, and #252 closed by taking
+    reporter identity off the public read path - a moderator's is no more
+    publishable than a reporter's."""
+    _reporter, report = _make_reporter_and_report(db_session)
+    maintainer_id = _make_maintainer(db_session)
+    client.post(f"/reports/{report.id}/verify", json={}, headers=auth_headers(maintainer_id))
+
+    body = client.get(f"/reports/{report.id}").json()
+
+    assert "verified_by" not in body
+    assert maintainer_id not in str(body)

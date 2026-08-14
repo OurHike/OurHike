@@ -19,7 +19,7 @@ documented pipeline run order (see README.md).
 
     .venv/Scripts/python check_output_quality.py
 
-FOUR CHECKS, IN PRIORITY ORDER
+FIVE CHECKS, IN PRIORITY ORDER
 -------------------------------
 1. COMPLETENESS CROSS-CHECK (trails_verdict/poi_verdict/elevation_verdict).
    export_trails.py and export_poi.py already gate themselves on this via
@@ -108,6 +108,16 @@ FOUR CHECKS, IN PRIORITY ORDER
    pipeline artifact does, so it's gitignored the same way (pipeline's
    .gitignore already excludes all of data/ - nothing extra needed here).
 
+5. FETCH RECEIPTS (fetches_verdict) - the only check here that looks
+   UPSTREAM of data/processed/, and the reason it belongs in this module
+   anyway is that the four above cannot ask its question. They verify what
+   the exports derived; none of them can tell whether the input an export
+   derived it FROM was fetched this run or left on disk by the last one. A
+   week-old input is a legitimate release and a never-fetched one is not
+   (#542), and an export reading the file cannot tell those apart - only a
+   record the fetcher itself left can. Staleness is printed, not failed;
+   absence and drift fail.
+
 Like check_freshness.py: pure-ish verdict functions (each does its own
 I/O, but none of them mutate anything except baseline_verdict()'s eventual
 write, which only main() triggers, and only on a fully-passing run), never
@@ -128,6 +138,7 @@ from pathlib import Path
 import duckdb
 import rasterio
 
+from lib import fetch_receipts
 from lib.completeness import count_problems
 from lib.corridor import GEOGRAPHIC_CRS, METERS_PER_MILE, PROJECTED_CRS, build_corridor
 from lib.poi_schema import POI_TYPES
@@ -148,6 +159,11 @@ ELEVATION_MANIFEST = PROCESSED_DIR / "elevation_manifest.json"
 CENTERLINE_PATH = ROOT / "data" / "raw" / "centerline.geojson"
 TOPO_QUADS_MANIFEST = ROOT / "data" / "raw" / "topo_quads" / "manifest.json"
 BASELINE_PATH = ROOT / "data" / "quality_baseline.json"
+#: The directory fetch receipts record their output paths relative to - the
+#: pipeline root itself, not a file under it, because a receipt names several
+#: outputs across data/raw/ and data/processed/. A constant like the manifest
+#: paths above so a test can point the check at a tmp tree the same way.
+RECEIPTS_ROOT = ROOT
 
 # How far apart two independently-fresh corridor builds are allowed to be
 # before that counts as "disagree" rather than float noise - see
@@ -627,8 +643,23 @@ COUNT_UPSTREAM_SOURCES: dict[str, frozenset[str]] = {
     "poi:shelter": frozenset({"atc"}),
     "poi:campsite": frozenset({"atc"}),
     "poi:resupply": frozenset({"atc", "opentrail"}),  # communities.geojson + opentrail "r" tag
-    "poi:water": frozenset({"opentrail"}),  # opentrail "w"/"s" tags
-    "poi:crossing": frozenset(),  # always 0 today; see module docstring
+    # opentrail "w"/"s" tags + osm_water.geojson, plus the members
+    # export_poi.py synthesizes from ATC's CSI distances (#694) - those ride
+    # the shelters/campsites layers, so an ATC change can move this count
+    # too. "osm" is deliberately NOT a key here: the OSM source has no
+    # check_freshness.py entry (Geofabrik republishes daily, so "changed"
+    # would always be true - see fetch_osm_water.py), which means no
+    # --changed-source flag can ever name it and a water-count drop on the
+    # OSM side always reaches a human. An OSM mass-deletion near the trail
+    # is exactly the drop somebody should look at rather than wave through.
+    "poi:water": frozenset({"opentrail", "atc"}),
+    # Filled since #529 from reference/trail_water.json, and empty here on
+    # purpose for `poi:water`'s reason one line up: a checked-in reference
+    # file has no upstream source a --changed-source flag could name, so a
+    # drop in the crossings always reaches a human. That is the right
+    # direction for a layer whose count moving means either the centerline
+    # moved or somebody edited a reviewed file.
+    "poi:crossing": frozenset(),
     "elevation": frozenset({"elevation"}),
 }
 
@@ -739,6 +770,60 @@ def baseline_verdict(current_counts: dict, baseline_path: Path | None = None, ch
 # --- Orchestration -----------------------------------------------------------
 
 
+# --- Check 5: fetch receipts (#542) -----------------------------------------
+
+
+def fetches_verdict(fetched: set[str] | None = None, root: Path | None = None) -> dict:
+    """Did the fetchers this run depended on actually finish, and do the
+    files they left behind still hash to what they said?
+
+    The other four checks all ask about `data/processed/` - what the exports
+    derived. This one asks the question one layer upstream, and it is the
+    only place the answer exists: a fetcher that never ran leaves an export
+    reading whatever the last run left on disk, which is a legitimate release
+    if that data is a week old and not one at all if it was never fetched.
+    #542 names telling those two apart as the thing packaging has to do, and
+    without a receipt there is nothing to tell them apart WITH - an export
+    cannot distinguish a stale input from a current one by looking at it.
+
+    Staleness is reported, never failed. "A release built while
+    poi_images.json is a week old is a legitimate release" is the issue's own
+    wording; the age goes in `detail` so a reader can judge it, and only an
+    absent or drifted receipt is a problem.
+    """
+    root = RECEIPTS_ROOT if root is None else root
+    expected = fetch_receipts.expected_fetchers(sorted(fetched or ()))
+    problems: list[str] = []
+    ages: list[str] = []
+
+    for name in expected + [f for f in fetch_receipts.ADVISORY_FETCHERS if f not in expected]:
+        advisory = name in fetch_receipts.ADVISORY_FETCHERS
+        try:
+            receipt = fetch_receipts.load(name, root=root)
+        except json.JSONDecodeError as exc:
+            # Never excused, advisory or not. A corrupt receipt is not the
+            # same as a fetch that did not happen - something wrote a
+            # half-file where a completion record belongs, and packaging
+            # should stop rather than guess which.
+            problems.append(f"{name}: receipt is not readable JSON ({exc})")
+            continue
+
+        if receipt is None:
+            if advisory:
+                ages.append(f"{name} never")
+            else:
+                problems.append(f"{name}: no receipt - this run needs it and it never finished")
+            continue
+
+        problems.extend(fetch_receipts.verify(receipt, root=root))
+        days = fetch_receipts.age_days(receipt)
+        ages.append(f"{name} {'?' if days is None else f'{days:.1f}d'}")
+
+    verdict = Verdict.PROBLEM if problems else Verdict.OK
+    detail = f"{len(expected)} required fetch(es); ages: {', '.join(ages) if ages else 'none recorded'}"
+    return {"check": "fetches", "verdict": verdict, "detail": detail, "problems": problems, "counts": {}}
+
+
 def _safe_verdict(check_name: str, fn) -> dict:
     """Run one verdict-building function and never let it take check_all()
     down with it.
@@ -788,6 +873,7 @@ def as_optional(report: dict) -> dict:
 def check_all(
     changed_sources: set[str] | None = None,
     optional: set[str] | None = None,
+    fetched: set[str] | None = None,
 ) -> list[dict]:
     """Every check's verdict, in the priority order the module docstring
     lays out. Never raises - see _safe_verdict()."""
@@ -806,8 +892,14 @@ def check_all(
 
     current_counts = {**trails["counts"], **poi["counts"], **elevation["counts"]}
     baseline = _safe_verdict("baseline", lambda: baseline_verdict(current_counts, changed_sources=changed_sources))
+    # Deliberately NOT routed through as_optional(). Its excuse is keyed on
+    # MANIFEST_MISSING - "this artifact was never built" - and the fetches
+    # check has the opposite polarity: a missing receipt is the whole finding,
+    # not a reason to look away. Which fetchers this run needed is said with
+    # --fetched instead.
+    fetches = _safe_verdict("fetches", lambda: fetches_verdict(fetched=fetched, root=RECEIPTS_ROOT))
 
-    return [trails, poi, elevation, corridor, topo_quads, baseline]
+    return [trails, poi, elevation, corridor, topo_quads, baseline, fetches]
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -846,6 +938,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "deliberately publishing a subset, which publish.py supports."
         ),
     )
+    parser.add_argument(
+        "--fetched",
+        action="append",
+        default=[],
+        metavar="FETCHER",
+        choices=["fetch_atc_photos", "fetch_poi_images", "fetch_elevation", "fetch_osm_water", "fetch_trail_water"],
+        dest="fetched",
+        help=(
+            "A conditional fetcher this run was asked to run, repeatable. Its "
+            "receipt then has to be there. fetch_all and fetch_opentrail are "
+            "always required and need no flag - no export can run without "
+            "them. Photos and elevation are workflow inputs, so only the "
+            "caller knows whether this run asked for them."
+        ),
+    )
     return parser.parse_args([] if argv is None else argv)
 
 
@@ -854,6 +961,7 @@ def main(argv: list[str] | None = None) -> int:
     reports = check_all(
         changed_sources=set(args.changed_sources),
         optional=set(args.optional),
+        fetched=set(args.fetched),
     )
     for report in reports:
         print(f"  {report['verdict'].value.upper():8} {report['check']:12} {report['detail']}")

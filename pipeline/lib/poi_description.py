@@ -72,6 +72,37 @@ of 1,223. `Scope` claims to be the width and agrees with `(Right - Left) mod
 360` on only 419 of the 512 features carrying it, so the arc is computed from
 the bearings and `Scope` is not published at all. Where the two disagree, one
 of them is wrong and there is no way here to tell which.
+
+## An anchor's sentence names the parts around it (2026-08-13)
+
+Since #524 a site's members draw no pin: 284 privies and 144 campsites ride an
+anchor's pin instead of competing for one. That fixed the map and emptied the
+words - each of those points still composes a perfectly good sentence about
+itself, attached to a feature that renders nowhere. So an anchor publishes its
+parts, and `nearby_parts` is where that is written.
+
+**It is a SEPARATE SENTENCE, never a `with` clause**, and the distinction is
+the whole point of it. "with a fireplace, a fire ring and a porch" lists things
+the shelter HAS. A privy and a water source are not among them - they are
+separate points a short walk away, and folding them into that grammar would
+have this pipeline assert something ATC's data does not say and the ground
+plainly contradicts. They get their own sentence, and every one of them
+carries how far it is.
+
+**The sentence is written on the phone, and only the sentence** (#625,
+2026-08-13). `nearby_parts` used to return that clause finished - " Nearby: a
+multi-seat moldering privy 40 m away." - spliced into `description` and
+published as prose. A hiker who picks Feet in Settings then reads metres, on
+the one card in the app that cannot answer them, because a sentence composed
+here was composed before there was anybody to ask. So the distance leaves as a
+NUMBER and client/src/lib/nearbyClause.ts writes the words around it in the
+system that hiker chose.
+
+What stays here is everything that does not depend on the reader: which privy,
+which campsite, in what order. Those are ATC's inventory columns read aloud,
+they are tested here, and moving them to TypeScript would buy a second
+implementation of the same wording. What leaves is the unit and the punctuation
+holding it - which is the smallest cut that lets the phone answer.
 """
 
 # Exterior_M's coded domain, as adjectives rather than the inventory's own
@@ -199,6 +230,37 @@ ARC_ROUNDING_DEGREES = 5
 
 COMPASS_POINTS = ("north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west")
 
+# --- sites -----------------------------------------------------------------
+
+# The order an anchor's parts are named in - lib/poi_sites.py's MEMBER_TYPES,
+# but sorted by what a hiker asks first at a shelter rather than alphabetically.
+# features/POI_SITES.md's own framing of the question is "is there a privy, and
+# is there water"; a campsite is the one of the three you can see for yourself
+# once you are standing there.
+#
+# The client's SITE_MEMBER_TYPES (client/src/map/poiSites.ts) fixes the same
+# order for the pin's footer glyphs and #526's chips. Two orders for one site
+# would have the sentence, the pin and the chip strip disagree about which part
+# comes first, which is drift a hiker reads as three different answers.
+NEARBY_ORDER = ("privy", "water", "campsite")
+
+# The shortest distance a part is published at: one metre, in the feet this
+# module publishes (1 / 0.3048 = 3.28084).
+#
+# The floor `_metres` used to apply, restated in the published unit. Two
+# facility points sharing a coordinate to within half a metre is one thing
+# upstream, and a card saying a hiker can walk zero of anything to reach the
+# privy reads as a bug rather than as the short walk it is claiming.
+#
+# Floored where BOTH systems still round to something, which is why this is a
+# metre and not a foot: at 1 ft a metric reader gets "0 m", which is the exact
+# defect this prevents, arriving in the other unit. The imperial reader's "3 ft"
+# overstates a coincident pair by the same margin metric's "1 m" always did.
+MIN_PART_FT = 3.28084
+
+# ATC's `Type` code for a campsite that is a group site.
+GROUP_CAMPSITE_TYPE = "1"
+
 
 def _count(properties: dict, key: str) -> float:
     """An ATC count column as a number, treating null and non-numeric alike
@@ -257,6 +319,12 @@ def describe_shelter(properties: dict, capacity: int | None = None, note: str | 
     None is reachable in principle - a feature with no material, one storey,
     no listed feature, no plausible year and no note - and on today's data it
     never happens, because `Year_Built` alone is populated on all 280.
+
+    The parts around it are NOT in here (#625). They were, as a clause spliced
+    before the note, and taking them out is what let the distance become a
+    number a phone can put in the hiker's own units - see nearby_parts. The
+    card renders that sentence directly under this one, which is where the
+    spliced clause appeared anyway.
     """
     storeys = STOREYS.get(int(_count(properties, "Stories")))
     material = EXTERIOR_MATERIALS.get(str(properties.get("Exterior_M", "")).strip())
@@ -268,6 +336,9 @@ def describe_shelter(properties: dict, capacity: int | None = None, note: str | 
 
     sentence = f"{head}{_with_clause(properties, FEATURES)}.{_built_clause(properties)}{_note_clause(note)}"
     # "Shelter." on its own says nothing the card's own type line does not.
+    # This used to carry where the shelter had parts, because it was the
+    # lead-in to the only line naming them; the nearby sentence now stands on
+    # its own, so the lead-in has nothing left to lead into.
     if sentence == "Shelter.":
         return None
     return sentence
@@ -276,6 +347,17 @@ def describe_shelter(properties: dict, capacity: int | None = None, note: str | 
 def _coded(properties: dict, field: str) -> str:
     """One of ATC's coded-domain values as a bare string, for dict lookup."""
     return str(properties.get(field, "")).strip()
+
+
+def _is_group_campsite(properties: dict) -> bool:
+    """Whether ATC has this campsite down as a group site.
+
+    Read in one place because two callers need it - the campsite's own sentence
+    and the nearby clause that names it from a shelter - and a group site is
+    exactly the thing a party of six is deciding on. Two readings of one code
+    is how the card and the sentence about the card end up disagreeing.
+    """
+    return _coded(properties, "Type") == GROUP_CAMPSITE_TYPE
 
 
 def describe_parking(properties: dict, note: str | None = None) -> str | None:
@@ -444,9 +526,13 @@ def describe_campsite(properties: dict, note: str | None = None) -> str | None:
     Campsites carry a much thinner inventory than shelters - no storeys, no
     materials, no year - so this leans on the two columns that are populated:
     whether the site is a group site, and how many individual sites it holds.
+
+    A campsite is in both of lib/poi_sites.py's tuples - a member of a
+    shelter's site, and the anchor of its own where there is no shelter - so
+    the 41 campsite-anchored sites publish `nearby_parts` alongside this
+    sentence and the 144 that fold into a shelter's publish none.
     """
-    is_group = str(properties.get("Type", "")).strip() == "1"
-    head = "Designated group campsite" if is_group else "Designated campsite"
+    head = "Designated group campsite" if _is_group_campsite(properties) else "Designated campsite"
 
     sites = int(_count(properties, "Site_Num"))
     pads = int(_count(properties, "Tent_Pads"))
@@ -467,4 +553,248 @@ def describe_campsite(properties: dict, note: str | None = None) -> str | None:
         # The type line already says "Campsite"; "Designated" alone is not
         # worth a second line on the card.
         return None
+    return sentence
+
+
+# --- what an anchor says about its parts ------------------------------------
+
+
+def _privy_phrase(properties: dict) -> str:
+    """ "a multi-seat moldering privy" - which privy, not the privy's card.
+
+    The adjectives are the ones describe_privy already argues for: type,
+    because a moldering privy is used differently from a pit one, and the
+    missing enclosure, because 8 of the 316 have none and that is the kind of
+    thing a hiker would rather read here than discover on arrival. `Built` is
+    not here - a rebuild date is a fact about the privy, read on the privy.
+    """
+    words = ["a"]
+    if _coded(properties, "Enclosure") == PRIVY_MULTI_SEAT:
+        words.append("multi-seat")
+    kind = PRIVY_TYPES.get(_coded(properties, "Type"))
+    if kind:
+        words.append(kind)
+    words.append("privy")
+    if _coded(properties, "Enclosure") == PRIVY_OPEN_ENCLOSURE:
+        # Not ", open to the air with no enclosure" as the privy's own sentence
+        # has it: a comma inside a comma-joined list reads as another part.
+        words.append("with no enclosure")
+    return " ".join(words)
+
+
+def _campsite_phrase(properties: dict) -> str:
+    """ "a group campsite", or "a campsite".
+
+    The counts describe_campsite carries - sites, tent pads, tent platforms -
+    are deliberately absent, and this is the one place the selection was hard.
+    They are useful, and they land a number directly against the distance:
+    "a campsite with 8 tent pads 25 m" is two figures with nothing between
+    them, and a reader has to stop and work out which belongs to what. Group
+    or not is the fact a party of six acts on; the rest is on the campsite.
+    """
+    return "a group campsite" if _is_group_campsite(properties) else "a campsite"
+
+
+# poi_type -> the noun phrase naming it, article included ("water" takes none).
+# Every one of lib/poi_sites.py's MEMBER_TYPES is here.
+#
+# `water` composes from nothing because there is nothing to compose from: it is
+# opentrail.org's, not ATC's, so it reaches this module with no inventory
+# columns at all. Its own title ("Piped spring", "Seasonal Water Spigot") is
+# free text from a third party and stays off the sentence for the reason the
+# module docstring gives for every other unrecognised value - a shorter
+# sentence rather than a wrong one.
+NEARBY_PHRASES = {
+    "privy": _privy_phrase,
+    "campsite": _campsite_phrase,
+    "water": lambda _properties: "water",
+}
+
+
+def _nearby_part(poi_type: str, properties: dict) -> str:
+    """One part's noun phrase, falling back to its bare type.
+
+    A fallback rather than a skip, and for the reason the client's `memberRank`
+    sorts an unknown category last instead of dropping it: a member type a
+    later release publishes would otherwise vanish from the only sentence that
+    mentions it, which is the bug this whole clause exists to fix, reintroduced
+    by the code that fixed it.
+    """
+    phrase = NEARBY_PHRASES.get(poi_type)
+    if phrase is not None:
+        return phrase(properties)
+    article = "an" if poi_type[:1] in "aeiou" else "a"
+    return f"{article} {poi_type}"
+
+
+def nearby_parts(members: list[tuple[str, float, dict]]) -> list[dict]:
+    """What an anchor publishes about the parts around it, for the phone to
+    make a sentence of.
+
+        [{"phrase": "a multi-seat moldering privy", "distance_ft": 131.2},
+         {"phrase": "a group campsite", "distance_ft": 82.0},
+         {"phrase": "water", "distance_ft": 295.3}]
+
+    Takes (poi_type, FEET, ATC attributes) per member and returns the parts in
+    the order the sentence says them, or [] when there is nothing to say - so a
+    POI in no site publishes nothing and describes itself exactly as it did
+    before sites existed.
+
+    STRUCTURE, NOT PROSE (#625). This returned the finished clause until a
+    hiker who had chosen Feet read metres on it; the module docstring has the
+    argument. `client/src/lib/nearbyClause.ts` writes the sentence, which is
+    where the lead word, the list punctuation and the single carried-forward
+    "away" went with it.
+
+    FEET, because that is the unit this artifact already states a distance in
+    (`water_distance_ft` is ATC's own) and the unit `lib/units.ts` formats
+    from. The measurement is made in metres - it is the equirectangular
+    distance that decided this member belongs to this site - and converted once
+    at the export boundary rather than here, so the gates and the number that
+    passed them stay in one unit.
+
+    UNROUNDED, past the one-metre floor. Rounding here and again at display
+    would put a card's chip and its sentence a metre apart on the boundaries;
+    the phone rounds once, in whichever unit it is about to write.
+
+    Ordered by NEARBY_ORDER and then by distance, rather than by whatever order
+    the grouping produced. Two privies at one campsite - open question 4's
+    "Backpacker Campsite Upper Privy" and "...Lower Privy" - come out nearest
+    first, which is the only thing distinguishing them that a hiker standing at
+    the anchor can act on. The ORDER is published, not re-derived: a client
+    sorting these again would be a second opinion about which part comes first.
+    """
+    ranked = sorted(
+        members,
+        key=lambda member: (
+            NEARBY_ORDER.index(member[0]) if member[0] in NEARBY_ORDER else len(NEARBY_ORDER),
+            member[1],
+        ),
+    )
+    return [
+        {
+            "phrase": _nearby_part(poi_type, properties or {}),
+            "distance_ft": round(max(MIN_PART_FT, feet), 1),
+        }
+        for poi_type, feet, properties in ranked
+    ]
+
+
+# fetch_osm_water.py's `kind` values -> the sentence's head. A kind that
+# script grows and this map does not know composes nothing rather than
+# guessing - the same direction every unrecognised ATC code rounds.
+WATER_KINDS = {
+    "spring": "Spring",
+    "drinking_water": "Drinking water point",
+    "water_tap": "Water tap",
+    "water_well": "Well",
+}
+
+
+#: What each source is called in a sentence, and what its flow claim sounds
+#: like. USGS *maps* a class - it is a survey code on a published dataset;
+#: OSM contributors *tag* one - it is what a mapper wrote down. The verbs are
+#: different because the claims are.
+STREAM_SOURCES = {"nhd": "USGS", "osm": "OpenStreetMap contributors"}
+STREAM_CLAIMS = {"nhd": "maps it as", "osm": "tag it as"}
+
+#: A flow class as a hiker reads it. "Year-round" and "seasonal" are the only
+#: two distinctions that change what somebody carries; ephemeral folds into
+#: seasonal because the difference between "flows after rain" and "flows in
+#: spring" is not one this data can be trusted to hold (WATER_SOURCES.md §5's
+#: error literature), and an unclassified reach says nothing at all.
+FLOW_WORDS = {"perennial": "year-round", "intermittent": "seasonal", "ephemeral": "seasonal"}
+
+
+def describe_stream_point(properties: dict) -> str:
+    """One sentence about a point on a stream - the site water and the trail
+    crossings build_trail_water.py derives from USGS's and OSM's hydrography
+    (#529).
+
+    NO DISTANCE IN IT, deliberately (#625). These points sit at real
+    coordinates, so a site's own `nearby` measures the walk and the phone
+    writes it in the hiker's units; a distance composed into this sentence
+    would be the same number twice, in a unit somebody did not choose.
+
+    What it does carry is the derivation, because a hiker deserves to know
+    the difference between a spring somebody mapped and a spot geometry
+    picked: "where it runs closest to the site" is the honest description of
+    a point nobody has stood at.
+
+    THE FLOW CLAIM IS ATTRIBUTED TO WHOEVER MADE IT. A merged point carries
+    both hydrographies, and only one of them usually classified the reach -
+    so the sentence names that one rather than spreading the claim across
+    both. Where nobody classified it, the sentence makes no flow claim at
+    all: silence is not a promise of year-round water, and an untagged reach
+    is silence.
+    """
+    name = properties.get("name")
+    sources = list(properties.get("sources") or [])
+    if properties.get("crossing"):
+        opening = f"Where the trail crosses {name}." if name else "Where the trail crosses a stream."
+    else:
+        subject = name if name else "A stream"
+        opening = f"{subject}, where it runs closest to the site."
+
+    flow_word = FLOW_WORDS.get(properties.get("flow") or "")
+    claimant = properties.get("flow_source") if flow_word else None
+    parts = [opening]
+    if claimant in STREAM_SOURCES:
+        parts.append(f"{STREAM_SOURCES[claimant]} {STREAM_CLAIMS[claimant]} {flow_word}.")
+        others = [STREAM_SOURCES[source] for source in sources if source != claimant and source in STREAM_SOURCES]
+        if others:
+            parts.append(f"Also mapped by {_join(others)}.")
+    else:
+        named = [STREAM_SOURCES[source] for source in sources if source in STREAM_SOURCES]
+        if named:
+            parts.append(f"Mapped by {_join(named)}.")
+    return " ".join(parts)
+
+
+def describe_water(properties: dict) -> str | None:
+    """One sentence about a water point - or None for one with nothing usable
+    behind it (opentrail's, whose properties carry a title and an icon and no
+    facts to compose from).
+
+    Two kinds of water point reach this, and they are told apart by which
+    facts they carry rather than by a source string: OSM's have a `kind` from
+    somebody's tags, and build_trail_water.py's have a `flow` from NHD's
+    FCode. The docstring below is the OSM half; describe_stream_point is the
+    other.
+
+    The head names what was mapped - a spring, a tap, a well, a fountain -
+    because that IS the claim an OSM water pin makes: somebody stood there
+    and mapped a spring. The reliability tags follow only where they exist:
+    the census measured `seasonal` on zero features trail-wide and
+    `intermittent` on a handful (#529), so absence is the normal state and
+    composes NOTHING - "mapped as intermittent" is a fact somebody recorded,
+    while "flows year-round" would be this pipeline strengthening silence
+    into a promise (OurHikeValues.md #4).
+
+    `drinking_water=no` earns its own sentence rather than a clause: a
+    hiker skimming to the comma must not carry "drinking water" away from a
+    point tagged the opposite.
+
+    The attribution sentence is ODbL's courtesy paid where the datum is
+    read; the source field carries `osm_water` for machines and the credits
+    screen already names OpenStreetMap for the app as a whole.
+    """
+    if properties.get("sources"):
+        return describe_stream_point(properties)
+    head = WATER_KINDS.get(properties.get("kind"))
+    if head is None:
+        return None
+    clauses = []
+    if str(properties.get("intermittent", "")).lower() == "yes":
+        clauses.append("mapped as intermittent")
+    seasonal = str(properties.get("seasonal", "")).lower()
+    if seasonal and seasonal != "no":
+        clauses.append("mapped as seasonal")
+    sentence = head
+    if clauses:
+        sentence += ", " + " and ".join(clauses)
+    sentence += "."
+    if str(properties.get("drinking_water", "")).lower() == "no":
+        sentence += " Marked not drinking water."
+    sentence += " Mapped by OpenStreetMap contributors."
     return sentence

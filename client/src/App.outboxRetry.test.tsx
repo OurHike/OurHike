@@ -1,10 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { get, set } from 'idb-keyval'
 import App from './App'
-import { PREFERENCES_KEY } from './lib/preferences'
-import { DEFAULT_PREFERENCES } from './lib/userPreferences'
+import { appHarness } from './test/appHarness'
 import { OUTBOX_KEY } from './lib/outbox'
 import { sendReport } from './lib/api'
 import { BUILD_INFO } from './lib/buildInfo'
@@ -52,7 +50,8 @@ vi.mock('./lib/auth', async (importOriginal) => ({
 }))
 
 const mockedSend = vi.mocked(sendReport)
-const store = new Map<string, unknown>()
+const app = appHarness()
+const store = app.store
 
 // `build` is THIS build's commit, and that is what makes the item genuinely
 // stuck for the purposes of this file (#412). A failure recorded by a
@@ -72,26 +71,7 @@ const STUCK_ITEM = {
   },
 }
 
-beforeEach(() => {
-  store.clear()
-  vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
-  vi.mocked(set).mockImplementation((key, value) => {
-    store.set(key as string, value)
-    return Promise.resolve()
-  })
-  store.set(PREFERENCES_KEY, {
-    ...DEFAULT_PREFERENCES,
-    onboarding_completed: true,
-    download_choice_made: true,
-  })
-  vi.stubGlobal('fetch', vi.fn())
-})
-
-afterEach(() => {
-  cleanup()
-  vi.clearAllMocks()
-  vi.unstubAllGlobals()
-})
+beforeEach(() => app.onboard())
 
 async function openMore(user: ReturnType<typeof userEvent.setup>) {
   render(<App />)
@@ -135,6 +115,27 @@ describe('Try again, on a report the server refused', () => {
     await user.click(screen.getByRole('button', { name: /try again/i }))
 
     await waitFor(() => expect(screen.queryByRole('alert')).toBe(null))
+  })
+
+  it('sends a report the moment it is filed with signal and an account', async () => {
+    // #640, the submit-path twin of #266: enqueueing changes neither of
+    // useOutboxSync's deps, so on a steady connection nothing flushed and a
+    // freshly filed report sat as "waiting to send" until the connection
+    // flapped - while the submit handler's comment said it would go on its
+    // own. The mount flush below drains an empty queue, so a send can only
+    // have come from the submit itself.
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByRole('tab', { name: 'More' })
+    expect(mockedSend).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+    await user.click(await screen.findByRole('button', { name: /blow down/i }))
+    await user.click(await screen.findByRole('button', { name: /^send$/i }))
+
+    await waitFor(() => expect(mockedSend).toHaveBeenCalledTimes(1))
+    expect(mockedSend.mock.calls[0][0].payload.type).toBe('blowdown')
   })
 
   it('does not claim the report is waiting when the send failed again', async () => {

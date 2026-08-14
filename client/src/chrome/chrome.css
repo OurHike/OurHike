@@ -768,6 +768,29 @@
   grid-column: 1 / -1;
 }
 
+/* The way to every ATC notice (#687, Legend.tsx). Same footer-link treatment
+   as .downloads-link just below and for the same reasoning - a hiker reads
+   the rows above constantly and browses every trail update rarely, now that
+   what is actually new has its own bottom banner on the map screen - but its
+   own class rather than sharing that one, because the two rows answer
+   different questions for different reasons and a shared class would read as
+   a claim that they are the same errand. */
+.legend__atc-link {
+  display: block;
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+  margin-top: var(--space-4, 16px);
+  padding: var(--space-3, 12px) 0 0;
+  border: 0;
+  border-top: 1px solid var(--border-1);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--brand-primary);
+  background: none;
+  cursor: pointer;
+}
+
 /* Everything about the downloaded map, in one block at the foot of the panel:
    the background choice and the way to the download (Legend.tsx says why they
    belong together). It exists to be moved as one thing - on a desktop the whole
@@ -1306,6 +1329,103 @@ a.poi-card__credit::after {
   color: var(--fg-1);
 }
 
+/* Every part of the site, one chip each (PoiCard.tsx, #526).
+
+   SCROLLS SIDEWAYS RATHER THAN WRAPPING, and here that is forced rather than
+   chosen. The card is 264px wide and this strip sits inside 12px of body
+   padding each side, so it has 240px - and a chip is a 24px pin plus "Campsite"
+   plus a distance, which is most of 110px. Two fit. Wrapping instead would
+   change the card's HEIGHT with the number of parts, and the card is positioned
+   by its measured height whenever it hangs below its pin, so a strip that grew a
+   row would push itself over the thing it describes. Same argument tabs.css
+   makes for the same declaration.
+
+   Not sized to today's sites, either. features/POI_SITES.md counts 94% of them
+   at two or three members and five as three places on the whole trail, but that
+   shape is partly #529's water gap - 97% of shelters have no mapped water
+   source, so only 11 water points are members of anything - and it moves as that
+   closes. A strip that scrolls does not care. */
+.poi-card__chips {
+  display: flex;
+  gap: var(--space-1, 4px);
+  margin: var(--space-1, 4px) 0;
+  overflow-x: auto;
+  /* No visible scrollbar: it would eat a chip's worth of the 240px and this is a
+     thumb-dragged strip, not a mouse-dragged one. */
+  scrollbar-width: none;
+}
+.poi-card__chips::-webkit-scrollbar {
+  display: none;
+}
+
+/* `flex: 0 0 auto`, and NOT tabs.css's `flex: 1 0 auto`: a tab strip stretches
+   its tabs to fill the row, which for two chips in a 240px card would make each
+   one 120px of mostly nothing and for five would squeeze them all instead of
+   letting the strip scroll. A chip is as wide as what it says. */
+.poi-card__chip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-1, 4px);
+  /* The whole chip is the target, and it is tapped with a gloved thumb. The
+     token narrows to 32px under `pointer: fine` (desktop.css), which is the
+     intended trade and the reason this is never the literal 44px. */
+  min-height: var(--min-touch-target);
+  padding: 0 var(--space-2, 8px);
+  font: inherit;
+  font-size: 13px;
+  color: var(--fg-2);
+  background: var(--bg-sunken);
+  border: 0;
+  border-radius: 999px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* The part you are reading. Three channels and none of them hue - a ring, more
+   weight, and more contrast - which is the rule .legend__row--hidden states
+   outright and tabs.css follows for its selected tab: a strip read at arm's
+   length in direct sun cannot rest the answer on a colour. An INSET ring rather
+   than a border, so marking a chip does not change its width and shuffle the
+   row sideways.
+
+   THE RING FLOATS INSIDE THE CHIP RATHER THAN FILLING ITS EDGE, and the 3px gap
+   is that same rule applied to itself. The focus ring below is drawn in the 2px
+   band at the chip's edge, and the anchor chip is BOTH first in the tab order
+   and the current one when the card opens - so it is exactly where a keyboard
+   user lands first. A marker ring in those pixels left "focused" signalled by
+   hue alone: resolved, --brand-primary against --fg-2 is 1.01:1 in the light
+   theme (forest-600 on stone-700) and 1.65:1 in the dark one, both far under
+   3:1. Two stacked inset shadows rather than one, because a single one can only
+   start at the edge: the first repaints the chip's own background over the band
+   nearest the edge, leaving the second showing as a ring from 3px to 5px in.
+   Still no width of its own, so the row does not shuffle. */
+.poi-card__chip[aria-current='true'] {
+  font-weight: 600;
+  color: var(--fg-1);
+  box-shadow:
+    inset 0 0 0 3px var(--bg-sunken),
+    inset 0 0 0 5px var(--fg-2);
+}
+
+/* Inward, because .poi-card sets `overflow: hidden` to round the photo's
+   corners with the card's - an outward ring on the first or last chip would be
+   clipped by exactly the rule that makes the card a card. The band it lands in
+   is kept clear by the rule above; see the reasoning there. */
+.poi-card__chip:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: -2px;
+}
+
+/* The same pin the map draws, in the same fixed square slot the legend gives it
+   (.legend__icon): MapIcon has no intrinsic size, so a caller that sets none
+   gets whatever the flex context feels like. */
+.poi-card__chip-icon {
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+
 .poi-card__meta {
   display: flex;
   gap: var(--space-1, 4px);
@@ -1315,8 +1435,10 @@ a.poi-card__credit::after {
 }
 
 /* Mono, like every other mile on this screen - the header's, the ribbon's and
-   the closure sheet's - so a hiker reads them as the same kind of number. */
+   the closure sheet's - so a hiker reads them as the same kind of number. The
+   chips' metres join them: it is the same kind of claim, read the same way. */
 .poi-card__mile,
+.poi-card__chip-distance,
 .poi-card__coords {
   font-family: var(--font-mono, ui-monospace, monospace);
 }
@@ -1327,11 +1449,19 @@ a.poi-card__credit::after {
   color: var(--fg-3);
 }
 
-/* Body text, and the only prose on the card. Sits between the meta line and
-   the unverified block at a size between the two: it is worth reading, and it
-   is not the headline. Leading is looser than the rest because this is the one
-   element here that can run to three lines. */
-.poi-card__description {
+/* Body text. Sits between the meta line and the unverified block at a size
+   between the two: it is worth reading, and it is not the headline. Leading is
+   looser than the rest because these are the elements here that can run to
+   three lines.
+
+   The nearby sentence is the same paragraph in every respect that shows, and
+   deliberately so - it was spliced onto the end of the description until #625
+   moved the composing to the phone, and a hiker should not be able to tell
+   that a sentence changed which machine wrote it. Two selectors rather than
+   one class on both elements, because they are two different facts about the
+   place and the card's markup says which is which. */
+.poi-card__description,
+.poi-card__nearby {
   margin: var(--space-1, 4px) 0 0;
   font-size: 13px;
   line-height: 1.45;
@@ -1501,6 +1631,12 @@ a.poi-card__credit::after {
 }
 
 .bg-picker__option {
+  /* The containing block for the hidden radio below, so its 1px box stays
+     pinned to this segment instead of resolving against the document and
+     stretching the page - settings.css's options carry the whole of why
+     (#631). The legend being absolute used to contain it by accident on a
+     phone; the desktop panel is not, and Settings never was. */
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1708,41 +1844,64 @@ a.poi-card__credit::after {
   font-weight: 400;
 }
 
-/* The row that opens every ATC notice.
+/* The bottom "something changed" banner (#687), replacing what used to be a
+ * permanent row under the alert strip above. That row rendered whenever the
+ * app held any ATC notice at all - which given ATC almost always has
+ * something live was almost always, so a hiker paid map height for it on
+ * every visit rather than the times it actually had news. Browsing
+ * everything regardless of age moved to a quiet, permanent link in the
+ * legend instead (.legend__atc-link) - this is only for a notice ATC has
+ * touched in the last 72 hours that the hiker has not already silenced
+ * (lib/atcAlertsBanner.ts), so most visits to this screen render nothing
+ * here at all.
  *
- * Directly under the alert strip and sharing its tint, so the two read as one
- * band of trail-safety chrome rather than as an alert with an unrelated control
- * stuck beneath it. Quieter than the alert rows in weight - it is a way to
- * something, not a thing happening - and NOT quieter in hue, for the reason
- * .map-screen__alert--advisory gives about spending contrast to signal
- * hierarchy.
+ * At the FOOT of the main column rather than under the header, which is the
+ * whole point: it costs map height only while it has something to say,
+ * instead of on every visit. And in flow rather than floated over the
+ * canvas - a floating card would have to dodge the locate/compass stack and
+ * the credit strip sharing that corner, by hand-tuned offsets that drift the
+ * moment either changes size, where a row in flow needs none of that on a
+ * phone or the desktop sidebar layout alike.
  *
- * The alert strip keeps its own bottom rule, so when both render there is a
- * hairline between them. That is wanted rather than tolerated: "a closure two
- * miles ahead" and "here is where you can read all nine notices" are different
- * kinds of statement, and the line is what says the second is not a fourth
- * alert. When the strip is absent this row carries the band's bottom edge on
- * its own, which is why the rule is declared on both.
- *
- * Full width and one touch target tall, because it is above the map and will be
- * pressed with a thumb, in gloves, by someone walking. */
-.map-screen__notices {
+ * Same --danger tint as the alert strip - this is still ATC saying something
+ * about the trail, not a generic app notification - but `aria-live="polite"`
+ * rather than `role="alert"` (assertive) or `role="status"` in the markup:
+ * StatusStrip.tsx already owns `role="status"` for connectivity and sync
+ * age, and "something is new" does not need `role="alert"`'s interrupt
+ * either. */
+.map-screen__new-alerts {
   display: flex;
-  padding: 0 var(--space-3, 12px) var(--space-2, 8px);
+  align-items: stretch;
+  gap: var(--space-2, 8px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
   background: color-mix(in srgb, var(--danger) 10%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
 }
 
-.map-screen__notices-button {
+.map-screen__new-alerts-button {
   flex: 1;
   min-height: var(--min-touch-target, 44px);
   padding: 0 var(--space-2, 8px);
   font-size: 13px;
-  font-weight: 400;
+  font-weight: 600;
   text-align: left;
   color: var(--danger);
   background: none;
   border: none;
-  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* The quick "not now" beside it - silences without opening the list, for a
+ * hiker who saw enough in the one line the button itself carries. Its own
+ * touch target rather than a corner glyph shrunk to fit, for the reason
+ * every other icon-only control in this stylesheet already gives
+ * (.legend__close and friends): a cold thumb still has to land on it. */
+.map-screen__new-alerts-silence {
+  min-width: var(--min-touch-target, 44px);
+  min-height: var(--min-touch-target, 44px);
+  font-size: 18px;
+  color: var(--danger);
+  background: none;
+  border: none;
   cursor: pointer;
 }

@@ -6,6 +6,7 @@ import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { PoiCard, type PoiDetail } from './PoiCard'
 import { CARD_GAP_PX } from './poiCardPlacement'
 import {
+  poiColor,
   poiGlyphPath,
   POI_FALLBACK_COLOR,
   POI_PIN_SIZE,
@@ -591,5 +592,659 @@ describe('PoiCard photo gallery', () => {
     )
 
     expect(screen.getByTestId('poi-card-photo-count')).toHaveTextContent('1 of 3')
+  })
+})
+
+// A shelter, its privy and its campsite are one place with parts, and since
+// #524 gave the site one pin the members have had no pin of their own - so the
+// strip of chips under the name is the only gesture in the app that reaches
+// them (#526, features/POI_SITES.md §5). What is asserted here is that the row
+// is a complete picture of the place, that tapping a chip really replaces the
+// card rather than revealing a second one, and that the two mechanical traps
+// the issue named are actually shut.
+describe('the parts of one site', () => {
+  // Latitude-only offsets, so the distances on the chips are hand-checkable
+  // against the pipeline's own constant (111,320 m per degree) rather than
+  // re-derived from the code under test: 0.00036° is 40.1 m and 0.000225° is
+  // 25.0 m, which the card shows as 131 ft and 82 ft for a hiker who chose
+  // Feet. poiSites.test.ts owns the formula and the one conversion.
+  const PRIVY: PoiDetail = {
+    id: 'atc_privies:xyz',
+    name: 'Chairback Gap Privy',
+    type: 'privy',
+    lat: 45.47356,
+    lon: -69.1183,
+    // The everyday case rather than a contrived one: ATC's privy layer is
+    // published unverified, which is why the swap has an unverified line to
+    // assert on.
+    confidence: 'low',
+    source: 'atc_privies',
+  }
+
+  const CAMPSITE: PoiDetail = {
+    id: 'atc_campsites:xyz',
+    name: 'Chairback Gap Campsite',
+    type: 'campsite',
+    lat: 45.473425,
+    lon: -69.1183,
+    confidence: 'high',
+    description: 'Four tent pads below the lean-to.',
+  }
+
+  const SITE: readonly PoiDetail[] = [SHELTER, PRIVY, CAMPSITE]
+
+  function renderSite(site: readonly PoiDetail[] = SITE, poi: PoiDetail = SHELTER) {
+    return render(<PoiCard poi={poi} site={site} map={null} onClose={vi.fn()} />)
+  }
+
+  const chips = () => screen.getAllByTestId('poi-card-chip')
+
+  it('lists every part of the place, the one you are already on included', () => {
+    // The issue's own sketch listed the members only, on the reasoning that the
+    // anchor is the card you are reading. The maintainer asked for the anchor
+    // too, and it earns its place twice: the row is then the whole place rather
+    // than the place minus the part you can see, and it is the way back.
+    renderSite()
+
+    expect(chips()).toHaveLength(3)
+    expect(screen.getByRole('button', { name: 'Shelter' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Privy 131 ft' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Campsite 82 ft' })).toBeInTheDocument()
+  })
+
+  it('puts the pin you tapped first, and says that is where you are', () => {
+    renderSite()
+
+    expect(chips()[0]).toHaveAccessibleName('Shelter')
+    expect(chips()[0]).toHaveAttribute('aria-current', 'true')
+    // Exactly one, or "which part am I reading" has two answers.
+    expect(
+      chips().filter((chip) => chip.getAttribute('aria-current') === 'true'),
+    ).toHaveLength(1)
+  })
+
+  it('names the place once, on the strip, rather than on every part', () => {
+    // features/POI_SITES.md's open question 5. The heading follows the part on
+    // screen because the coordinates under it do; the site's own name goes here,
+    // where it costs no height and a screen reader still gets it.
+    renderSite()
+
+    expect(
+      screen.getByRole('group', { name: 'Parts of Chairback Gap Lean-to' }),
+    ).toBeInTheDocument()
+
+    // AND STILL AFTER A TAP, which is the half a first-render assertion cannot
+    // see: labelling the group from `shown` rather than from the anchor reads
+    // identically on open and then announces "Parts of Chairback Gap Privy"
+    // once you are in it - telling a screen-reader user that a privy has parts,
+    // which is false about the structure they are navigating, and taking the
+    // site's own name off the card entirely. The heading moves; the strip's
+    // label is the one thing here that must not.
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
+
+    expect(
+      screen.getByRole('heading', { name: 'Chairback Gap Privy' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('group', { name: 'Parts of Chairback Gap Lean-to' }),
+    ).toBeInTheDocument()
+  })
+
+  it('says how far each part is, and puts no distance on the pin itself', () => {
+    // "Privy · 131 ft" is the design's own chip, in the units this hiker
+    // chose. The anchor carries no number because zero from itself is not a
+    // fact anybody needed.
+    renderSite()
+
+    expect(chips()[1]).toHaveTextContent('131 ft')
+    expect(chips()[2]).toHaveTextContent('82 ft')
+    expect(chips()[0]).not.toHaveTextContent(/\d/)
+  })
+
+  it('says how far in the units the hiker chose', () => {
+    // #625. This strip was the single line in the app exempt from the unit
+    // standard, printing metres at a hiker who had picked Feet in Settings -
+    // held open only because the same distances were also published as prose
+    // in metres, and converting one half would have put "131 ft" on a chip
+    // above a sentence saying 40 m.
+    render(
+      <PoiCard poi={SHELTER} site={SITE} map={null} units="metric" onClose={vi.fn()} />,
+    )
+
+    expect(chips()[1]).toHaveTextContent('40 m')
+    expect(chips()[2]).toHaveTextContent('25 m')
+  })
+
+  it('names what is around the place, in those same units', () => {
+    // The other half of the same fix, and the reason the chip could not move
+    // alone. The parts arrive as structure - a phrase and a distance in feet -
+    // and the card writes the sentence the pipeline used to publish finished.
+    const anchor: PoiDetail = {
+      ...SHELTER,
+      description: 'Two-storey log shelter, sleeps 8, with a fireplace. Built 1954.',
+      nearby: [
+        { phrase: 'a multi-seat moldering privy', distance_ft: 131.5 },
+        { phrase: 'water', distance_ft: 295.3 },
+      ],
+    }
+
+    const { rerender } = render(
+      <PoiCard poi={anchor} site={[anchor, PRIVY]} map={null} onClose={vi.fn()} />,
+    )
+
+    expect(
+      screen.getByText(
+        'Nearby: a multi-seat moldering privy 132 ft away and water 295 ft.',
+      ),
+    ).toBeInTheDocument()
+    // And the description it sits under is untouched by the swap - two
+    // paragraphs, one fact each.
+    expect(screen.getByText(/Two-storey log shelter/)).toBeInTheDocument()
+
+    rerender(
+      <PoiCard
+        poi={anchor}
+        site={[anchor, PRIVY]}
+        map={null}
+        units="metric"
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(
+      screen.getByText('Nearby: a multi-seat moldering privy 40 m away and water 90 m.'),
+    ).toBeInTheDocument()
+  })
+
+  it('puts the same number on the chip and in the sentence for one pair', () => {
+    // The property #625 had to preserve while moving both halves: the chip
+    // measures on the phone (from the pin), the sentence carries the pipeline's
+    // measurement (from the anchor), and where those are the same point the two
+    // must not print two numbers for one privy. Same formula, same constant,
+    // rounded once each in the same unit.
+    const anchor: PoiDetail = {
+      ...SHELTER,
+      // What export_poi.py publishes for this pair: 0.00036° of latitude, in
+      // feet, unrounded.
+      nearby: [{ phrase: 'a multi-seat moldering privy', distance_ft: 131.48 }],
+    }
+
+    render(<PoiCard poi={anchor} site={[anchor, PRIVY]} map={null} onClose={vi.fn()} />)
+
+    expect(chips()[1]).toHaveTextContent('131 ft')
+    expect(
+      screen.getByText('Nearby: a multi-seat moldering privy 131 ft away.'),
+    ).toBeInTheDocument()
+  })
+
+  it('says nothing about what is around a part that has nothing around it', () => {
+    // Most POIs, and every copy downloaded before the field existed. No empty
+    // paragraph either - a gap in the card reads as something failing to load.
+    const { container } = renderSite()
+
+    expect(container.querySelector('.poi-card__nearby')).toBeNull()
+  })
+
+  it('reads the parts off whichever part the card is showing', () => {
+    // A campsite is a member of a shelter's site AND the anchor of its own
+    // where there is no shelter, so tapping a chip can move to a waypoint with
+    // parts of its own. Reading `nearby` off the pin instead would say the
+    // shelter's parts under the campsite's name.
+    const campsite: PoiDetail = {
+      ...CAMPSITE,
+      nearby: [{ phrase: 'a pit privy', distance_ft: 65.6 }],
+    }
+
+    render(
+      <PoiCard poi={SHELTER} site={[SHELTER, campsite]} map={null} onClose={vi.fn()} />,
+    )
+    expect(screen.queryByText(/Nearby:/)).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Campsite 82 ft' }))
+
+    expect(screen.getByText('Nearby: a pit privy 66 ft away.')).toBeInTheDocument()
+  })
+
+  it('prints the stated distance for a synthesized water member, never the zero its coordinates measure (#694)', () => {
+    // The pipeline synthesizes a water member from ATC's distance-to-water
+    // where no real point exists. ATC states how far, never where, so the
+    // member sits AT the shelter's own coordinates - and measuring that
+    // would print "Water · 0 ft" beside a sentence saying 120 ft, drift on
+    // one card in its worst form. The stated figure wins, and needs no
+    // conversion to do it: ATC states feet, the artifact publishes feet, and
+    // feet is what lib/units.ts formats from (#625).
+    const SYNTHESIZED_WATER: PoiDetail = {
+      id: 'atc_csi:xyz',
+      name: 'Water near Chairback Gap Lean-to',
+      type: 'water',
+      lat: SHELTER.lat,
+      lon: SHELTER.lon,
+      confidence: 'low',
+      source: 'atc_csi',
+      waterDistanceFt: 120,
+    }
+    renderSite([SHELTER, PRIVY, SYNTHESIZED_WATER])
+
+    expect(screen.getByRole('button', { name: 'Water 120 ft' })).toBeInTheDocument()
+
+    // And a real mapped water point - which carries no stated figure - keeps
+    // the measured offset exactly as before: 0.00036° of latitude is 40.1 m,
+    // which is 131 ft.
+    const REAL_WATER: PoiDetail = {
+      id: 'opentrail_at:77',
+      name: 'Piped Spring',
+      type: 'water',
+      lat: SHELTER.lat + 0.00036,
+      lon: SHELTER.lon,
+      confidence: 'high',
+      source: 'opentrail_at',
+    }
+    cleanup()
+    renderSite([SHELTER, PRIVY, REAL_WATER])
+
+    expect(screen.getByRole('button', { name: 'Water 131 ft' })).toBeInTheDocument()
+
+    // Both readings follow the hiker, which is the half #694 could not have:
+    // the stated figure and the measured one convert through one formatter.
+    cleanup()
+    render(
+      <PoiCard
+        poi={SHELTER}
+        site={[SHELTER, SYNTHESIZED_WATER]}
+        map={null}
+        units="metric"
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Water 37 m' })).toBeInTheDocument()
+  })
+
+  it('carries the same icon the map draws for each part', () => {
+    // One copy of the pin, which is the rule map/MapIcon.tsx is built on: a chip
+    // that drew its own privy silhouette would drift from the map's the first
+    // time either moved, and the chip's whole job is to be recognised.
+    renderSite()
+
+    const glyphs = chips().map((chip) => chip.querySelector('path')?.getAttribute('d'))
+    expect(glyphs).toEqual([
+      poiGlyphPath('shelter'),
+      poiGlyphPath('privy'),
+      poiGlyphPath('campsite'),
+    ])
+
+    // And in the slot that gives it a size. MapIcon's SVG has no intrinsic
+    // dimensions, so a chip that asked for the pin without the class gets
+    // whatever the flex row decides - which jsdom would render happily and a
+    // stylesheet-contract test cannot see, because the rule would still be
+    // there with nothing using it.
+    for (const chip of chips()) {
+      expect(chip.querySelector('svg')).toHaveClass('poi-card__chip-icon')
+    }
+  })
+
+  it('carries each part’s own rim, broken where nobody has checked', () => {
+    // The chip's rim is a fact about ONE privy - which is where it parts company
+    // with the legend, whose pins carry no confidence at all because a key says
+    // what a category's symbol is. Drop the prop and every chip claims the same
+    // confidence: an unverified privy looks surveyed until you tap it, which is
+    // the honesty-about-uncertainty channel (OurHikeValues.md #4) this card is
+    // built around, silently gone. Assertable because MapIcon gives a verified
+    // pin no `stroke-dasharray` attribute at all rather than a solid-looking
+    // one - see the comment on `broken` there.
+    renderSite()
+
+    const rim = (chip: HTMLElement) => chip.querySelector('.map-icon__halo')
+
+    expect(rim(chips()[1])).toHaveAttribute('stroke-dasharray')
+    expect(rim(chips()[0])).not.toHaveAttribute('stroke-dasharray')
+    expect(rim(chips()[2])).not.toHaveAttribute('stroke-dasharray')
+  })
+
+  it('lets a thumbless hiker reach every part and open one', async () => {
+    // NOTHING ELSE HERE TOUCHES THE KEYBOARD. Every other chip test drives
+    // `fireEvent.click`, which a `<div role="button" tabindex="-1">` answers
+    // exactly as happily as a real button does - so `getByRole('button')` is no
+    // evidence at all that a keyboard can get here. Two realistic changes would
+    // have kept the whole suite green while breaking it: a refactor to a div with
+    // an onClick, and the roving `tabindex` from screens/Tabs.tsx, which this
+    // card's own comment invites by pointing readers at that file. A roving
+    // tabstop is right for a `tablist` and wrong for a `group` of buttons: it
+    // would put ONE chip in the tab order and hide the rest behind arrow keys
+    // that are deliberately not wired up here.
+    //
+    // So: Tab reaches each chip in turn, and Enter opens one. Asserted through
+    // `user`, which dispatches what a browser dispatches rather than the
+    // synthetic click the rest of the file uses.
+    const user = userEvent.setup()
+    renderSite()
+
+    await user.tab()
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: /close waypoint details/i }),
+    )
+
+    for (const chip of chips()) {
+      await user.tab()
+      expect(document.activeElement).toBe(chip)
+    }
+
+    // The last one Tab landed on is the campsite, and Enter is what opens it -
+    // no click anywhere in this test.
+    await user.keyboard('{Enter}')
+
+    expect(
+      screen.getByRole('heading', { name: 'Chairback Gap Campsite' }),
+    ).toBeInTheDocument()
+  })
+
+  it('hangs the strip on the classes its layout rules are written for', () => {
+    // test/poiCardChipLayout.test.ts pins two of the issue's requirements as CSS
+    // text, because jsdom does no layout: every chip is a 44px gloved-thumb
+    // target, and the strip scrolls sideways rather than wrapping - which is what
+    // stops it growing a second row and pushing the card, positioned by its own
+    // height, over the pin it describes. A rule whose selector matches nothing is
+    // as absent as a deleted rule, so that file only means something while these
+    // two class names are on these two elements.
+    renderSite()
+
+    expect(screen.getByRole('group', { name: /^Parts of/ })).toHaveClass(
+      'poi-card__chips',
+    )
+    for (const chip of chips()) {
+      expect(chip).toHaveClass('poi-card__chip')
+    }
+  })
+
+  it('says out loud that the card changed, and what it changed to', () => {
+    // `aria-current` is an ARIA PROPERTY: a screen reader announces it on
+    // arrival at the chip, not when it flips - unlike aria-pressed. So without a
+    // live region, pressing Enter on "Privy 131 ft" moves the heading, the
+    // coordinates, the provenance, the unverified sentence and the photograph
+    // while the hiker hears nothing at all. Empty on open, because a reader
+    // arriving at the card is about to be read the card.
+    renderSite()
+
+    // `toBeEmptyDOMElement`, not `toHaveTextContent('')`: the latter asks
+    // whether the text CONTAINS the argument, and every string contains the
+    // empty one, so it passes against a region already holding the last card's
+    // part. That is the shape of vacuous assertion this whole change is about,
+    // and it does not get a pass for being on the tidy side of it.
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
+
+    expect(screen.getByRole('status')).toHaveTextContent('Chairback Gap Privy')
+  })
+
+  it('does not read the last card’s part out over the next card', () => {
+    // The other half of that region, and the half a single render cannot show.
+    // MapScreen renders this card without a React key, so the region survives a
+    // change of subject with its text in it - and a live region whose content is
+    // already there when a reader arrives either gets read a second time or
+    // announces the previous waypoint's privy as though it were this one's. The
+    // announcement is news about a tap; opening a card is not a tap.
+    const { rerender } = renderSite()
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
+    expect(screen.getByRole('status')).toHaveTextContent('Chairback Gap Privy')
+
+    const other: PoiDetail = {
+      ...SHELTER,
+      id: 'atc_shelters:other',
+      name: 'Cloud Pond Lean-to',
+    }
+    rerender(<PoiCard poi={other} site={[other, PRIVY]} map={null} onClose={vi.fn()} />)
+
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
+  })
+
+  it('links each chip to both boxes it swaps', () => {
+    // The other half of what role="tab"/role="tabpanel" would have given for
+    // free. The objection to a tabpanel is that it could only wrap the text while
+    // the photo above it changed silently - it does not reach `aria-controls`,
+    // which takes an ID-reference LIST, so both regions are named and the claim
+    // is honest.
+    renderSite()
+
+    for (const chip of chips()) {
+      const controlled = (chip.getAttribute('aria-controls') ?? '').split(' ')
+
+      expect(controlled).toHaveLength(2)
+      expect(document.getElementById(controlled[0])).toHaveClass('poi-card__media')
+      expect(document.getElementById(controlled[1])).toHaveClass('poi-card__body')
+    }
+  })
+
+  it('swaps the card to the part you tapped', () => {
+    renderSite()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
+
+    // Its own name, its own coordinates, its own provenance, and its own
+    // unverified line - the privy's, not the shelter's.
+    expect(
+      screen.getByRole('heading', { name: 'Chairback Gap Privy' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/45\.47356, -69\.11830/)).toBeInTheDocument()
+    expect(screen.getByText(/privy data/)).toBeInTheDocument()
+    expect(screen.getByText(/nobody has confirmed/i)).toBeInTheDocument()
+
+    // And the shelter's facts are gone rather than sitting under the privy's
+    // name, which would be the card making exactly the claim it exists not to.
+    expect(screen.queryByRole('heading', { name: SHELTER.name })).not.toBeInTheDocument()
+    expect(screen.queryByText('mi 2,078.4')).not.toBeInTheDocument()
+    expect(screen.queryByText(/45\.47320/)).not.toBeInTheDocument()
+
+    // The row follows: "the one you are on" has to move, or the strip is
+    // describing a card that is no longer there.
+    expect(screen.getByRole('button', { name: 'Privy 131 ft' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+    expect(screen.getByRole('button', { name: 'Shelter' })).toHaveAttribute(
+      'aria-current',
+      'false',
+    )
+  })
+
+  it('keeps measuring the distances from the pin as you tap around', () => {
+    // The row's numbers are offsets from the site's one pin, not from whichever
+    // chip was tapped last. Measuring from the open part would rewrite every
+    // other number on every tap - churn in a strip meant to be read at a glance,
+    // and a change of the strip's own width while a thumb is on it.
+    renderSite()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
+
+    expect(screen.getByRole('button', { name: 'Campsite 82 ft' })).toBeInTheDocument()
+  })
+
+  it('shows the tapped part in its own accent, placeholder and all', () => {
+    renderSite()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
+
+    const card = screen.getByRole('dialog', { name: /waypoint/i })
+    expect(card.style.getPropertyValue('--poi-accent')).toBe(poiColor('privy'))
+    expect(
+      screen.getByTestId('poi-card-placeholder').querySelector('path')?.getAttribute('d'),
+    ).toBe(poiGlyphPath('privy'))
+  })
+
+  it('renders one part, not three hidden with CSS', () => {
+    // screens/Tabs.tsx's rule, and the reason it carries here: three galleries
+    // rendered and two hidden would put six "Previous photo"/"Next photo"
+    // buttons in the tab order, announcing controls for photographs of a privy
+    // nobody has asked to see.
+    renderSite([
+      { ...SHELTER, photos: [{ url: 'blob:s1' }, { url: 'blob:s2' }] },
+      { ...PRIVY, photos: [{ url: 'blob:p1' }, { url: 'blob:p2' }] },
+      { ...CAMPSITE, photos: [{ url: 'blob:c1' }, { url: 'blob:c2' }] },
+    ])
+
+    expect(screen.getAllByTestId('poi-card-photo-count')).toHaveLength(1)
+    expect(screen.queryAllByRole('button', { name: /next photo/i })).toHaveLength(1)
+    expect(screen.queryAllByRole('button', { name: /previous photo/i })).toHaveLength(1)
+    // The other parts' text is absent too, not merely invisible.
+    expect(
+      screen.queryByText('Four tent pads below the lean-to.'),
+    ).not.toBeInTheDocument()
+    expect(screen.getByTestId('poi-card-photo')).toHaveAttribute('src', 'blob:s1')
+  })
+
+  it('starts the part you tapped at its own first photo', () => {
+    // The mirror of "starts a different waypoint at its own first photo".
+    // Paging to photo 2 of the shelter and then tapping the privy must not open
+    // the privy on its second photograph - the count would be honest and the
+    // choice of image would be the last place's.
+    renderSite([
+      {
+        ...SHELTER,
+        photos: [{ url: 'blob:s1' }, { url: 'blob:s2' }, { url: 'blob:s3' }],
+      },
+      { ...PRIVY, photos: [{ url: 'blob:p1' }, { url: 'blob:p2' }] },
+    ])
+
+    fireEvent.click(screen.getByTestId('poi-card-photo-next'))
+    expect(screen.getByTestId('poi-card-photo')).toHaveAttribute('src', 'blob:s2')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
+
+    expect(screen.getByTestId('poi-card-photo-count')).toHaveTextContent('1 of 2')
+    expect(screen.getByTestId('poi-card-photo')).toHaveAttribute('src', 'blob:p1')
+  })
+
+  it('gets you back to the pin you tapped', () => {
+    // Without this the anchor chip is decoration: tapping into a member would
+    // be a one-way trip, and closing and re-tapping the pin the only way out.
+    renderSite()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Shelter' }))
+
+    expect(screen.getByRole('heading', { name: SHELTER.name })).toBeInTheDocument()
+    expect(screen.getByText('mi 2,078.4')).toBeInTheDocument()
+    expect(chips()[0]).toHaveAttribute('aria-current', 'true')
+    expect(screen.queryByText(/nobody has confirmed/i)).not.toBeInTheDocument()
+  })
+
+  it('opens whatever the shell selected, not the part you were last reading', () => {
+    // MapScreen renders this card without a React key, so the selection state
+    // survives a change of subject and has to be reset on it.
+    //
+    // The case that needs the reset rather than the `?? poi` fallback is a new
+    // subject whose site still CONTAINS the part you were on - one site
+    // re-resolved around a different point of it, which is what search opening a
+    // privy's own card will do (#527). The fallback covers the other direction,
+    // where the stale id is not in the new site at all, and it covers it on the
+    // very first render rather than one commit later.
+    const { rerender } = renderSite()
+    fireEvent.click(screen.getByRole('button', { name: 'Campsite 82 ft' }))
+    expect(
+      screen.getByRole('heading', { name: 'Chairback Gap Campsite' }),
+    ).toBeInTheDocument()
+
+    rerender(<PoiCard poi={PRIVY} site={SITE} map={null} onClose={vi.fn()} />)
+
+    expect(
+      screen.getByRole('heading', { name: 'Chairback Gap Privy' }),
+    ).toBeInTheDocument()
+
+    // And the other direction: a different place entirely, whose site holds
+    // nothing the card was showing.
+    const other: PoiDetail = {
+      ...SHELTER,
+      id: 'atc_shelters:other',
+      name: 'Cloud Pond Lean-to',
+    }
+    rerender(<PoiCard poi={other} site={[other]} map={null} onClose={vi.fn()} />)
+
+    expect(
+      screen.getByRole('heading', { name: 'Cloud Pond Lean-to' }),
+    ).toBeInTheDocument()
+  })
+
+  it('gives a waypoint in no site no chip row at all', () => {
+    // A phone that downloaded before #523 published the grouping has no site
+    // keys on anything, and most POIs have none after it either. Those cards
+    // must be exactly the cards they were.
+    renderCard(SHELTER)
+
+    expect(screen.queryAllByTestId('poi-card-chip')).toHaveLength(0)
+    expect(screen.queryByRole('group')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: SHELTER.name })).toBeInTheDocument()
+  })
+
+  it('offers no strip for a site with nothing else at it', () => {
+    // A shelter whose privy is not in this download. One chip is a control that
+    // leads to the card it is already on.
+    renderSite([SHELTER])
+
+    expect(screen.queryAllByTestId('poi-card-chip')).toHaveLength(0)
+  })
+
+  it('measures the card again when the chip changes, without moving off the pin', () => {
+    // The trap the issue named. usePinAnchor reads the card's height inside a
+    // listener that only fires on a camera move, and tapping a chip is not one -
+    // so without the shown part in its dependencies the placement keeps the
+    // height of the part the hiker just left until the next pan, and a card
+    // placed below its pin by a stale height sits on top of it.
+    //
+    // The second assertion is the other half, and it is why `shown` is a
+    // dependency rather than the projected point: the privy has no pin since
+    // #524, so a card that followed it would hang off blank map.
+    const mock = new MockMap({})
+    const map = mock as unknown as MapLibreMap
+    render(<PoiCard poi={SHELTER} site={SITE} map={map} onClose={vi.fn()} />)
+    const projections = mock.projectCalls.length
+
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
+
+    expect(mock.projectCalls.length).toBeGreaterThan(projections)
+    expect(mock.projectCalls.at(-1)).toEqual([SHELTER.lon, SHELTER.lat])
+    expect(mock.projectCalls).not.toContainEqual([PRIVY.lon, PRIVY.lat])
+  })
+
+  it('hangs off the part that is carrying the pin, not off the anchor', () => {
+    // REACHABLE TODAY, through #607/#609. Hide shelters in the legend and a site
+    // gives its pin back to its highest-priority drawn member, so the feature
+    // map/poiLayers.ts writes carries the PRIVY's id and a tap selects the privy.
+    // The shelter has nothing drawn at it at that moment.
+    //
+    // So the positional facts follow `poi` - the point the shell selected, which
+    // is by construction the one with the pin - and not `site[0]`. Keying them on
+    // the anchor would hang the card off the hidden shelter, 40 m away here and a
+    // median 42 m on the trail: 11 px at z14, 165 px at z18, and the mild form of
+    // the spiderfying features/POI_SITES.md refuses. The distances follow for the
+    // same reason - they are offsets from the pin the hiker can see - so from the
+    // privy the campsite is 15 m (49 ft), not the 25 m (82 ft) it is from the
+    // shelter.
+    //
+    // The anchor still names the place, because that is the site's identity
+    // rather than a position; the group's label is asserted elsewhere.
+    const mock = new MockMap({})
+    render(
+      <PoiCard
+        poi={PRIVY}
+        site={SITE}
+        map={mock as unknown as MapLibreMap}
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(mock.projectCalls).toContainEqual([PRIVY.lon, PRIVY.lat])
+    expect(mock.projectCalls).not.toContainEqual([SHELTER.lon, SHELTER.lat])
+
+    expect(
+      screen.getByRole('heading', { name: 'Chairback Gap Privy' }),
+    ).toBeInTheDocument()
+    // No number on the pin's own chip - zero from itself was never a fact
+    // anybody needed - and the other two measured from it.
+    expect(screen.getByRole('button', { name: 'Privy' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+    expect(screen.getByRole('button', { name: 'Shelter 131 ft' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Campsite 49 ft' })).toBeInTheDocument()
   })
 })

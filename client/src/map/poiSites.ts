@@ -271,6 +271,148 @@ export function composeSites(
 }
 
 /**
+ * Every POI at one site, the anchor first, for the card that has to lead to
+ * them (#526).
+ *
+ * A SIBLING OF `composeSites` RATHER THAN A SECOND READING OF IT. That function
+ * answers what a PIN says and deliberately throws away everything a card needs:
+ * its members are distinct category strings keyed by anchor id, so a site with
+ * two privies collapses to one entry and neither privy has an id left to open.
+ * Correct for a 38 px pin, fatal for a strip that has to lead somewhere - the
+ * "Backpacker Campsite Upper Privy" / "...Lower Privy" pair in
+ * features/POI_SITES.md's open question 4 is two real points at one place, and
+ * both must be reachable. So this keys on POI id and returns the points
+ * themselves.
+ *
+ * Generic over the point type, which is what lets the shell pass its stored
+ * POIs - names, photos, descriptions and all - and get them back without an
+ * adapter type in between, while this file still knows nothing about
+ * lib/trailData.ts.
+ *
+ * IT MIRRORS `composeSites`' RULE, IN REVERSE. There is no site here unless the
+ * anchor is: a member whose anchor is missing from `points` - a partial
+ * download, a grouping written against a POI this build never received - is
+ * drawing its own pin, so listing it as part of something the map is not drawing
+ * would be a strip hanging off nothing. Same for a role this build does not
+ * recognise: the point keeps its own pin over there, so its card is the plain
+ * card, not a site's.
+ *
+ * THE LEGEND'S FILTER IS NOT ONE OF THOSE CASES, and saying so is the point:
+ * `SiteVisibility` reaches `composeSites` and deliberately does not reach here.
+ * A hidden category is still in `points` - the filter takes PINS off the map,
+ * one layer on - so the roster lists every part of the place including ones the
+ * map is not currently drawing. That is the opposite of what the pin's footer
+ * strip does (#607 trims it to drawn members, because a shelter pin wearing a
+ * privy glyph on a privy-less map is the legend and the map disagreeing), and
+ * the two differ because a chip is not a pin: it makes no claim about what is
+ * drawn, only about what is THERE, and a hiker who filtered to privies has not
+ * asked to be told the shelter stopped existing. It also keeps the strip from
+ * reshuffling under a thumb as the legend is toggled.
+ */
+export function siteRoster<T extends SitePoint>(
+  points: readonly T[],
+  poiId: string,
+): readonly T[] {
+  const found = points.find((point) => point.id === poiId)
+  if (found === undefined || found.siteId === undefined) return []
+  if (found.siteRole !== SITE_ROLE_ANCHOR && found.siteRole !== SITE_ROLE_MEMBER)
+    return []
+
+  const siteId = found.siteId
+  const anchor = points.find(
+    (point) => point.siteId === siteId && point.siteRole === SITE_ROLE_ANCHOR,
+  )
+  if (anchor === undefined) return []
+
+  const members = points.filter(
+    (point) => point.siteId === siteId && point.siteRole === SITE_ROLE_MEMBER,
+  )
+  members.sort(
+    (a, b) => memberRank(a.type) - memberRank(b.type) || compareIds(a.id, b.id),
+  )
+
+  return [anchor, ...members]
+}
+
+/**
+ * Where a member type sorts in the strip - `SITE_MEMBER_TYPES` order, and
+ * anything else after it rather than dropped.
+ *
+ * Filtering to the known three would be the shorter line and would make a
+ * member type a later release publishes unreachable from its own site's card,
+ * which is the exact bug #526 exists to fix. An unfamiliar category sorts last
+ * and still gets a chip; the neutral diamond pin MapIcon draws for it says it
+ * is something this build has not heard of.
+ */
+function memberRank(type: string): number {
+  const at = (SITE_MEMBER_TYPES as readonly string[]).indexOf(type)
+  return at === -1 ? SITE_MEMBER_TYPES.length : at
+}
+
+/** A stable tiebreak inside one category, so two privies at one campsite come
+ *  out in the same order on every render. By id and not by name because a
+ *  `SitePoint` carries no name - this file's whole input is geometry and site
+ *  keys - and an unstable strip is worse than an arbitrary one. */
+function compareIds(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
+/** Metres per degree of latitude, and of longitude at the equator -
+ *  pipeline/lib/spurs.py's `METERS_PER_DEGREE`. */
+const METERS_PER_DEGREE = 111_320
+
+/**
+ * How far apart two points at one site are, in metres.
+ *
+ * Equirectangular, not haversine, and copied from the pipeline's `distance_m`
+ * (pipeline/lib/spurs.py) on purpose: THAT is the measurement that decided this
+ * member belongs to this site - a 60 m proximity gate and a 150 m name gate,
+ * with the furthest real member at 143 m. A second formula here would put a
+ * different number on the card from the one that admitted the point, which is
+ * the drift map/MapIcon.ts's header calls the one failure a symbol cannot
+ * survive, in arithmetic. Its own docstring gives the accuracy: under a
+ * kilometre the flat approximation is good to well under 1%, and `cos()` at the
+ * midpoint latitude is what keeps a longitude degree honest across the trail's
+ * 34-46 degree span.
+ */
+export function siteDistanceMeters(
+  from: { lat: number; lon: number },
+  to: { lat: number; lon: number },
+): number {
+  const meanLat = (((from.lat + to.lat) / 2) * Math.PI) / 180
+  const dy = (to.lat - from.lat) * METERS_PER_DEGREE
+  const dx = (to.lon - from.lon) * METERS_PER_DEGREE * Math.cos(meanLat)
+  return Math.hypot(dx, dy)
+}
+
+/** Feet per metre - pipeline/export_poi.py's `M_PER_FT`, the other side of the
+ *  one conversion this measurement makes. */
+const FEET_PER_METRE = 1 / 0.3048
+
+/**
+ * The same distance in feet, which is what anything DISPLAYING it wants.
+ *
+ * Two functions rather than one because the two units answer different
+ * questions and neither should have to know the other's. Metres is what the
+ * grouping is stated in - a 60 m proximity gate, a 150 m name gate, the
+ * pipeline's own `distance_m` - so that is what the formula returns and what
+ * anything reasoning about a site compares against. Feet is what
+ * lib/units.ts's formatters take, because ATC's own figures are feet and the
+ * canonical unit is the one the source states (#625).
+ *
+ * Converting at the source rather than at the screen is the pattern
+ * lib/useGeolocation.ts already follows for GPS accuracy: a component that
+ * multiplied metres by 3.28 on its way into a template would be a component
+ * deciding a unit, which is the thing lib/units.ts exists to stop.
+ */
+export function siteDistanceFeet(
+  from: { lat: number; lon: number },
+  to: { lat: number; lon: number },
+): number {
+  return siteDistanceMeters(from, to) * FEET_PER_METRE
+}
+
+/**
  * The member list as one property value, for the style to `match` on.
  *
  * A sorted, joined string rather than an array because a MapLibre `match`

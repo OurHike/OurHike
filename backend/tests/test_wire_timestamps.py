@@ -17,13 +17,13 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app.models.closure import Closure
 from app.models.profile import Profile, Role
 from app.schemas.closure import ClosureOut
 from app.schemas.hike import HikeOut
 from app.schemas.preferences import PreferencesOut
 from app.schemas.profile import ProfileOut
 from app.schemas.report import ReportOut
+from tests.factories import make_closure
 from tests.tokens import auth_headers
 
 _REPORT_PAYLOAD = {
@@ -111,15 +111,7 @@ def test_closure_verified_at_is_stamped_utc_once_it_is_set(client, db_session):
     maintainer_id = str(uuid.uuid4())
     db_session.add_all([reporter, Profile(id=maintainer_id, role=Role.maintainer)])
     db_session.commit()
-    closure = Closure(
-        reported_by=reporter.id,
-        reason_type="storm_damage",
-        start_mile_marker=1.0,
-        end_mile_marker=2.0,
-        verified_at=datetime(2026, 8, 6, 12, 0, 0),
-    )
-    db_session.add(closure)
-    db_session.commit()
+    closure = make_closure(db_session, reporter.id, verified_at=datetime(2026, 8, 6, 12, 0, 0))
 
     response = client.patch(
         f"/closures/{closure.id}",
@@ -241,6 +233,10 @@ def test_openapi_still_documents_these_fields_as_date_time(model, field):
         # than losing its assertion - a withheld field still has to document
         # what it is when it IS sent, or a generated client stops parsing it.
         (ReportOut, "received_at"),
+        # Nullable for the ordinary reason rather than a privacy one (#292):
+        # a report nobody has confirmed has no confirmation time. Public,
+        # unlike its neighbour above - see the field's own comment.
+        (ReportOut, "verified_at"),
     ],
 )
 def test_openapi_documents_a_nullable_timestamp_as_date_time_or_null(model, field):

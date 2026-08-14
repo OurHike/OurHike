@@ -62,7 +62,7 @@ from pathlib import Path
 import requests
 import yaml
 
-from lib import data_env
+from lib import data_env, releases
 
 ROOT = Path(__file__).resolve().parent
 ORIGINS_MANIFEST = ROOT.parent / ".github" / "expected-origins.yml"
@@ -393,6 +393,26 @@ def fetch_published_manifest(base: str, session: requests.Session | None = None)
         return None
 
 
+def deployment_has_published(base: str, session: requests.Session | None = None) -> bool:
+    """Has this deployment EVER published - the question a missing manifest turns on.
+
+    Answered from `releases/index.json`, which every real release appends to
+    and nothing deletes: already public, already true, not a second piece of
+    state to keep. Errors and absences read as "no evidence" rather than as
+    proof of anything - the caller uses only True, to tell the two kinds of
+    missing manifest apart (#651).
+    """
+    getter = (session or requests).get
+    try:
+        response = getter(f"{base}/{releases.RELEASE_INDEX_KEY}", timeout=HTTP_TIMEOUT)
+        if response.status_code != 200:
+            return False
+        index = response.json()
+        return isinstance(index, dict) and bool(index.get("releases"))
+    except (requests.RequestException, ValueError):
+        return False
+
+
 def check_all(base: str, manifest: dict | None = None, session: requests.Session | None = None) -> list[dict]:
     """Every assertion, against a live bucket. Never raises.
 
@@ -411,6 +431,28 @@ def check_all(base: str, manifest: dict | None = None, session: requests.Session
 
     published = fetch_published_manifest(base, session)
     if published is None:
+        # Two different days look identical here, and only one is calm. A
+        # bucket that has never published is LAUNCH_CHECKLIST.md 1.6 still
+        # ahead of us - alarming daily until then is how an alarm gets muted.
+        # A bucket whose release index lists releases HAS published, and a
+        # missing latest.json there is the pointer every client fetches
+        # first, gone - the deletion this monitor exists to catch, which
+        # until #651 read as a quiet pre-launch morning while the app was
+        # down. The CORS checks above pass on a 404 (error responses wear
+        # CORS headers too), so without this report the run came back green.
+        if deployment_has_published(base, session):
+            reports.append(
+                {
+                    "check": "manifest",
+                    "key": MANIFEST_KEY,
+                    "state": FAILED,
+                    "detail": (
+                        f"{MANIFEST_KEY} is missing or unreadable, but {releases.RELEASE_INDEX_KEY} "
+                        "lists releases - this deployment has published, and the pointer every "
+                        "client fetches first is gone. No artifact could be checked behind it."
+                    ),
+                }
+            )
         return reports
 
     artifacts = sorted((published.get("artifacts") or {}).keys())
@@ -496,6 +538,10 @@ def verdict_document(base: str, reports: list[dict], manifest: dict, published: 
         "checked_at": date.today().isoformat(),
         "base": base,
         "published": published,
+        # Whether the artifact checks RAN, which is a different claim from
+        # "nothing failed". The workflow's all-clear must not close an outage
+        # issue on a run that never looked behind the manifest (#651).
+        "checked_artifacts": published,
         "checks": reports,
         "failed": [report for report in reports if report["state"] == FAILED],
         "unreachable": [report for report in reports if report["state"] == UNREACHABLE],
@@ -552,7 +598,8 @@ def main(argv: list[str] | None = None) -> int:
         subject = report.get("origin") or report.get("key") or ""
         print(f"  {report['state'].upper():12} {report['check']:15} {subject:45} {report['detail']}")
 
-    if not published:
+    manifest_gone = any(report["check"] == "manifest" and report["state"] == FAILED for report in reports)
+    if not published and not manifest_gone:
         print(f"\nNothing is published at {base} yet, so only the CORS contract could be checked.")
 
     document = verdict_document(base, reports, manifest, published)

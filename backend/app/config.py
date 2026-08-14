@@ -11,7 +11,9 @@ an empty string standing in for a real credential.
 """
 
 import os
+from pathlib import Path
 
+from dotenv import dotenv_values
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -133,20 +135,31 @@ class Settings(BaseSettings):
         to, rather than merely unlikely to, which is the same argument
         `r2_photo_write_enabled` above makes for uploads generally.
 
-        It reads `os.environ` directly, deliberately, and it is the only place
-        in this file that does. `R2_BUCKET` and `R2_ACCESS_KEY_ID` are not
-        fields here precisely because this backend must never be configured by
-        them - adding them as fields to compare against would undo the
+        It reads the publishing names through `_publishing_setting`, not as
+        fields. `R2_BUCKET` and `R2_ACCESS_KEY_ID` must never CONFIGURE this
+        backend - adding them as fields to compare against would undo the
         separation the comment above spends its length on. What is being asked
-        is not "what is my published bucket" but "is this environment also
-        carrying the publishing variables, and have the two been pointed at the
-        same place", and only the environment can answer that.
+        is not "what is my published bucket" but "is this process also
+        carrying the publishing variables, and have the two been pointed at
+        the same place" - and "carrying" has to mean every channel this
+        model's own fields arrive by. This guard used to ask `os.environ`
+        alone, and the exact collision it exists to refuse constructed
+        cleanly out of a `backend/.env` - the gitignored file the top of this
+        class sanctions - because pydantic-settings loads a .env without
+        exporting it (#649).
 
-        Silent when the publishing variables are absent, which is every
-        developer machine, every CI run, and a correctly separated production
-        backend. There is nothing to collide with, so there is nothing to say.
+        Silent when the publishing variables are absent from both channels,
+        which is every developer machine, every CI run, and a correctly
+        separated production backend. Absent-and-quiet is not a safety proof,
+        and this docstring used to imply one: a backend-only host where
+        somebody pastes the published bucket's NAME with no publishing
+        variables anywhere is indistinguishable, from inside this process,
+        from a correctly configured one. That case has no in-process check -
+        it is what LAUNCH_CHECKLIST.md 1.7's separate-bucket step and its
+        scoped token exist to prevent - so this guard claims exactly the
+        collisions it can see, and no more.
         """
-        published_bucket = (os.environ.get("R2_BUCKET") or "").strip()
+        published_bucket = self._publishing_setting("R2_BUCKET")
         if published_bucket and self.r2_photo_bucket.strip() == published_bucket:
             raise ValueError(
                 f"R2_PHOTO_BUCKET is {published_bucket!r}, which is also R2_BUCKET - the PUBLISHED "
@@ -155,7 +168,7 @@ class Settings(BaseSettings):
                 "second, private bucket (LAUNCH_CHECKLIST.md 1.7) and point R2_PHOTO_BUCKET at it."
             )
 
-        published_key = (os.environ.get("R2_ACCESS_KEY_ID") or "").strip()
+        published_key = self._publishing_setting("R2_ACCESS_KEY_ID")
         if published_key and self.r2_photo_access_key_id.strip() == published_key:
             raise ValueError(
                 "R2_PHOTO_ACCESS_KEY_ID is the same token as R2_ACCESS_KEY_ID, which is scoped to "
@@ -165,6 +178,22 @@ class Settings(BaseSettings):
             )
 
         return self
+
+    def _publishing_setting(self, name: str) -> str:
+        """A publishing variable as this process could be carrying it.
+
+        Both channels this model's own fields arrive by, in the same order of
+        precedence pydantic-settings applies to them: the process environment
+        first, then the `.env` file `model_config` names. Reading only the
+        first is how the collision guard above was bypassed (#649).
+        """
+        from_environ = os.environ.get(name)
+        if from_environ is not None:
+            return from_environ.strip()
+        env_file = self.model_config.get("env_file")
+        if isinstance(env_file, str) and Path(env_file).exists():
+            return (dotenv_values(env_file).get(name) or "").strip()
+        return ""
 
 
 settings = Settings()

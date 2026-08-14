@@ -42,7 +42,24 @@ ARCGIS_FEATURE_LAYER = "arcgis_feature_layer"
 # "the parse proposes; a human publishes").
 PUBLISHED_NOTICES = "published_notices"
 
-KNOWN_KINDS = frozenset({ARCGIS_FEATURE_LAYER, PUBLISHED_NOTICES})
+# A PDF one of the thirty maintaining clubs publishes (#669) - GATC's water
+# sources first. Fetched by fetch_club_pdfs.py into data/raw/club_pdfs/ and
+# parsed where lib/club_pdfs.py has a parser for it, for review and
+# cross-checks; nothing of this kind reaches a published artifact until the
+# entry's `licence` says the club has answered (CONTRIBUTING.md, "A note on
+# data and licences"). fetch_all.py skips it like everything not ArcGIS.
+CLUB_PDF = "club_pdf"
+
+# OSM data read from Geofabrik's daily state extracts (#529) - water point
+# sources first, and the same extracts the basemap build already downloads.
+# Fetched by fetch_osm_water.py (never fetch_all.py: multi-gigabyte
+# downloads are a conditional workflow step, not a scheduled pull), and
+# deliberately absent from check_freshness.py - Geofabrik republishes daily,
+# so "changed" is always true and a marker would be noise, which is
+# export_basemap.py's reasoning applied to a registry entry.
+GEOFABRIK_EXTRACT = "geofabrik_extract"
+
+KNOWN_KINDS = frozenset({ARCGIS_FEATURE_LAYER, PUBLISHED_NOTICES, CLUB_PDF, GEOFABRIK_EXTRACT})
 
 
 def load_registry(path: Path) -> dict:
@@ -68,6 +85,11 @@ def is_arcgis_feature_layer(entry: dict) -> bool:
 def arcgis_sources(registry: dict) -> list[dict]:
     """The entries `fetch_all.py` may fetch, in registry order."""
     return [entry for entry in registry.get("sources", []) if is_arcgis_feature_layer(entry)]
+
+
+def club_pdf_sources(registry: dict) -> list[dict]:
+    """The entries `fetch_club_pdfs.py` may fetch, in registry order."""
+    return [entry for entry in registry.get("sources", []) if source_kind(entry) == CLUB_PDF]
 
 
 def find_source(registry: dict, key: str) -> dict | None:

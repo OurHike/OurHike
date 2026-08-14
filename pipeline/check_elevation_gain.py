@@ -32,9 +32,8 @@ from lib.elevation_gain import (
     DEFAULT_THRESHOLD_FT,
     DEFAULT_THRESHOLD_M,
     METERS_PER_FOOT,
-    cumulative_gain_over_gaps,
     gain_between,
-    raw_cumulative_gain,
+    gain_over_profile,
 )
 
 ROOT = Path(__file__).parent
@@ -46,6 +45,21 @@ REFERENCE_PATH = ROOT / "reference" / "published_gain.json"
 # barely moves between 2 m and 4 m is a robust answer; one that halves is a
 # knob, and the difference should not have to be inferred.
 SWEEP_M = (0.0, 1.0, 2.0, DEFAULT_THRESHOLD_M, 4.0, 6.0, 10.0)
+
+# Feet in a mile, for turning the profile's own `distance_mi` axis into the
+# units its elevations are already in.
+FEET_PER_MILE = 5280
+
+# The steepest a step between neighbouring samples may be and still be trail.
+#
+# 1.0 is a 100% grade - 45 degrees, sustained, between two samples. The A.T.
+# has nothing like it: the steepest named scrambles are short scrambles, not
+# a sustained 45 degrees held across the whole spacing. So this is a ceiling
+# on the physically possible rather than a judgement about what is steep, and
+# it is set loose on purpose - every real case measured so far clears it by a
+# wide margin (the largest by 30x), so nothing is gained by arguing the
+# ceiling down to something a hiker might dispute.
+MAX_PLAUSIBLE_GRADE = 1.0
 
 # How far a section may sit from its published figure before it is called a
 # failure, as a fraction.
@@ -94,18 +108,142 @@ def load_reference(path: Path) -> dict:
 
 
 def sweep(profile: list[dict]) -> list[tuple[float, float]]:
-    """Total gain in feet at each threshold in SWEEP_M."""
-    elevations = [record.get("elevation_ft") for record in profile]
-    return [(m, cumulative_gain_over_gaps(elevations, m / METERS_PER_FOOT)) for m in SWEEP_M]
+    """Total gain in feet at each threshold in SWEEP_M.
+
+    Over records rather than bare elevations, so the sweep breaks at part
+    boundaries as well as DEM nulls (#559). It has to: the contamination is
+    flat at ~36,800 ft across the whole sweep, so reading it off elevations
+    alone would shift every row by the same amount and leave the SHAPE - the
+    one thing the sweep exists to show - looking identical while every number
+    in it was wrong.
+    """
+    return [(m, gain_over_profile(profile, m / METERS_PER_FOOT)) for m in SWEEP_M]
 
 
-def check_sections(profile: list[dict], sections: list[dict], threshold_ft: float) -> list[dict]:
-    """One row per published section: measured, published, and the error."""
+def marks_part_boundaries(profile: list[dict]) -> bool:
+    """Whether this profile records where its centerline pieces break.
+
+    A profile published before `export_elevation.py` started marking them
+    carries none, and is measured exactly as it was before - the honest
+    reading of a file that does not say. Reported rather than assumed, because
+    a fix that silently does nothing on old data is worse than no fix: the run
+    would print the old contaminated total under the new code and look
+    corrected.
+    """
+    return any(record.get("part_start") for record in profile)
+
+
+def sample_spacing_ft(profile: list[dict]) -> float | None:
+    """The profile's own along-trail spacing in feet, from the median step.
+
+    Read off the data rather than taken from export_elevation.py's
+    SAMPLE_INTERVAL_METERS, because this script is handed a profile - possibly
+    an older one, possibly the published artifact from a run whose interval
+    differed - and the grade ceiling below is only meaningful against the
+    spacing the file it is measuring actually used.
+
+    Median rather than mean: cross-part boundaries carry the distance axis
+    straight across (export_elevation.py docstring point 4), so a handful of
+    steps are far longer than the interval and would drag an average.
+
+    Expect a couple of feet of slack rather than the exact interval, and that
+    is fine here. `distance_mi` is written to three decimals, so a true 25 m
+    step (0.015534 mi) lands as either 0.016 or 0.015 - the median picks the
+    commoner, giving ~84 ft where the interval is 82. The ceiling below is a
+    bound on the physically possible and every real finding clears it by
+    roughly 30x, so a 3% loose ceiling costs nothing and errs toward reporting
+    fewer steps rather than inventing one. It does mean a count here can differ
+    by one or two from a count taken against the unrounded geometry.
+    """
+    steps = [
+        b["distance_mi"] - a["distance_mi"]
+        for a, b in zip(profile, profile[1:])
+        if a.get("distance_mi") is not None and b.get("distance_mi") is not None
+    ]
+    positive = sorted(step for step in steps if step > 0)
+    if not positive:
+        return None
+    return positive[len(positive) // 2] * FEET_PER_MILE
+
+
+def implausible_steps(profile: list[dict], spacing_ft: float | None = None) -> list[dict]:
+    """Steps too steep to be trail, whatever produced them.
+
+    A step's grade is computable from the artifact alone, which is what makes
+    this checkable here: the published profile records nothing about where the
+    centerline pieces break (#559), but it does not have to - a rise past
+    MAX_PLAUSIBLE_GRADE between neighbouring samples is not a slope anybody
+    walks, so it is not terrain, so whatever it is it is not gain.
+
+    Deliberately NOT used to correct the totals. That is #559's option (4),
+    which that issue argues against and I agree with: subtracting these would
+    delete the evidence of a real geometry fault and leave a number that
+    merely looks right. This only reports.
+    """
+    if spacing_ft is None:
+        spacing_ft = sample_spacing_ft(profile)
+    if not spacing_ft:
+        return []
+
+    ceiling_ft = spacing_ft * MAX_PLAUSIBLE_GRADE
+    steps = []
+    for a, b in zip(profile, profile[1:]):
+        first, second = a.get("elevation_ft"), b.get("elevation_ft")
+        if first is None or second is None:
+            continue
+        delta = second - first
+        if abs(delta) > ceiling_ft:
+            steps.append(
+                {
+                    "from_mi": a["distance_mi"],
+                    "to_mi": b["distance_mi"],
+                    "delta_ft": delta,
+                    # A step INTO a marked first-sample crosses a seam, so the
+                    # gain already excludes it (#559). One that is not at a
+                    # seam is the interesting case: something is wrong that
+                    # part boundaries do not explain.
+                    "at_seam": bool(b.get("part_start")),
+                }
+            )
+    return steps
+
+
+def ascending_total(steps: list[dict]) -> float:
+    """The climbing half of a set of steps - what they add to a gain figure.
+
+    A descent contributes nothing to cumulative ascent, so only the rises are
+    the over-count. Both halves are equally impossible; only one inflates.
+    """
+    return sum(step["delta_ft"] for step in steps if step["delta_ft"] > 0)
+
+
+def check_sections(
+    profile: list[dict],
+    sections: list[dict],
+    threshold_ft: float,
+    suspect_steps: list[dict] | None = None,
+) -> list[dict]:
+    """One row per published section: measured, published, and the error.
+
+    `suspect_steps` are implausible_steps()' findings. A section containing
+    one is marked `contaminated` and its comparison is not to be believed in
+    either direction - see main() for why that is reported rather than
+    failed.
+
+    **Only steps that are NOT at a marked seam contaminate.** Once a profile
+    records its centerline boundaries (#559), a step across one is already
+    excluded from `gain_between`, so the section's figure is sound and
+    withholding a verdict would refuse to validate for a reason that has been
+    fixed. An impossible step somewhere the pipeline calls continuous trail is
+    a different matter: nothing excludes that one, and it is still summed.
+    """
+    suspect_steps = [step for step in (suspect_steps or []) if not step.get("at_seam")]
     rows = []
     for section in sections:
         measured = gain_between(profile, section["start_mi"], section["end_mi"], threshold_ft)
         published = section["published_gain_ft"]
         error = None if not published else (measured - published) / published
+        inside = [step for step in suspect_steps if section["start_mi"] <= step["from_mi"] and step["to_mi"] <= section["end_mi"]]
         rows.append(
             {
                 "name": section["name"],
@@ -116,6 +254,8 @@ def check_sections(profile: list[dict], sections: list[dict], threshold_ft: floa
                 "source": section.get("source", ""),
                 "error": error,
                 "within_tolerance": error is not None and abs(error) <= SECTION_TOLERANCE,
+                "contaminated_ft": ascending_total(inside),
+                "contaminated": bool(inside),
             }
         )
     return rows
@@ -147,12 +287,17 @@ def main(argv: list[str] | None = None) -> int:
         # again: nothing has been checked, and a traceback would say less.
         print(f"Cannot read the reference: {exc}", file=sys.stderr)
         return 2
-    elevations = [record.get("elevation_ft") for record in profile]
-
-    raw = raw_cumulative_gain(elevations)
-    chosen = cumulative_gain_over_gaps(elevations, DEFAULT_THRESHOLD_FT)
+    raw = gain_over_profile(profile, 0.0)
+    chosen = gain_over_profile(profile, DEFAULT_THRESHOLD_FT)
 
     print(f"{len(profile):,} samples")
+    if marks_part_boundaries(profile):
+        seams = sum(1 for record in profile if record.get("part_start"))
+        print(f"  {seams} centerline seam(s) marked and excluded from the sums below (#559).")
+    else:
+        print("  No part_start markers: this profile predates them, so every centerline")
+        print("  seam in it is still summed as climbing (#559). The figures below are the")
+        print("  OLD, contaminated ones - re-run export_elevation.py for corrected numbers.")
     print(f"  raw (every rise summed)     {raw:>12,.0f} ft")
     print(f"  at {DEFAULT_THRESHOLD_M} m dead band          {chosen:>12,.0f} ft")
     if raw:
@@ -162,6 +307,30 @@ def main(argv: list[str] | None = None) -> int:
     for meters, total in sweep(profile):
         marker = "  <- chosen" if meters == DEFAULT_THRESHOLD_M else ""
         print(f"  {meters:>5.1f} m  {total:>12,.0f} ft{marker}")
+
+    spacing_ft = sample_spacing_ft(profile)
+    suspect = implausible_steps(profile, spacing_ft)
+    if spacing_ft:
+        print(f"\nstep plausibility (spacing {spacing_ft:,.0f} ft, ceiling {spacing_ft * MAX_PLAUSIBLE_GRADE:,.0f} ft)")
+        if not suspect:
+            print("  no step exceeds a 100% grade.")
+        else:
+            unexplained = [step for step in suspect if not step["at_seam"]]
+            print(f"  {len(suspect)} step(s) too steep to be trail")
+            for step in sorted(suspect, key=lambda s: abs(s["delta_ft"]), reverse=True)[:3]:
+                at = "seam" if step["at_seam"] else "NOT a seam"
+                print(f"    mi {step['from_mi']:>9.3f} -> {step['to_mi']:>9.3f}  {step['delta_ft']:+9,.0f} ft  ({at})")
+            seamed = len(suspect) - len(unexplained)
+            if seamed:
+                print(f"  {seamed} at a marked centerline seam, already excluded from the sums above (#559).")
+            if unexplained:
+                # The finding worth acting on once #559's markers exist. A step
+                # nothing walks, at a place the pipeline says is continuous
+                # trail, is a defect the markers do not explain - and unlike a
+                # seam it IS still being summed as climbing.
+                climbing = ascending_total(unexplained)
+                share = f" ({climbing / chosen:.1%} of the {DEFAULT_THRESHOLD_M} m total)" if chosen else ""
+                print(f"  {len(unexplained)} NOT at any seam, {climbing:,.0f} ft of it ascending{share} - and still summed.")
 
     whole = reference.get("whole_trail")
     if whole and whole.get("published_gain_ft"):
@@ -180,7 +349,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print(f"\nper-section, at {DEFAULT_THRESHOLD_M} m (tolerance {SECTION_TOLERANCE:.0%})")
-    rows = check_sections(profile, sections, DEFAULT_THRESHOLD_FT)
+    rows = check_sections(profile, sections, DEFAULT_THRESHOLD_FT, suspect_steps=suspect)
     failed = []
     unvalidated = []
     for row in rows:
@@ -192,6 +361,19 @@ def main(argv: list[str] | None = None) -> int:
             print(f"   -  {row['name']:<28} {row['measured_ft']:>9,.0f} vs         - ft       -   {row['source']}")
             unvalidated.append(row["name"])
             continue
+        # A section with an impossible step inside it lands in that same
+        # third state, and it is the more dangerous of the two: its measured
+        # figure is inflated by an amount that has nothing to do with the
+        # threshold, so BOTH answers are worthless. Passing would record the
+        # threshold as validated by a phantom climb; failing would send
+        # somebody to tune a dead band that is not the problem.
+        if row["contaminated"]:
+            print(
+                f"   ?  {row['name']:<28} {row['measured_ft']:>9,.0f} vs {row['published_ft']:>9,.0f} ft"
+                f"  +{row['contaminated_ft']:,.0f} ft impossible   {row['source']}"
+            )
+            unvalidated.append(row["name"])
+            continue
         mark = "ok " if row["within_tolerance"] else "OFF"
         print(
             f"  {mark} {row['name']:<28} {row['measured_ft']:>9,.0f} vs {row['published_ft']:>9,.0f} ft  {row['error']:+6.1%}"
@@ -200,8 +382,14 @@ def main(argv: list[str] | None = None) -> int:
         if not row["within_tolerance"]:
             failed.append(row["name"])
 
-    if unvalidated:
-        print(f"\n{len(unvalidated)} of {len(rows)} sections have no published figure yet: {', '.join(unvalidated)}")
+    contaminated = [row["name"] for row in rows if row["contaminated"]]
+    missing = [row["name"] for row in rows if row["error"] is None and not row["contaminated"]]
+    if missing:
+        print(f"\n{len(missing)} of {len(rows)} sections have no published figure yet: {', '.join(missing)}")
+    if contaminated:
+        print(f"\n{len(contaminated)} of {len(rows)} sections contain a step too steep to be trail: {', '.join(contaminated)}")
+        print("Their measured gain is inflated by a geometry fault, not by the dead band, so")
+        print("neither a pass nor a failure would mean anything. Fix #559 before citing these.")
 
     if failed:
         print(f"\n{len(failed)} of {len(rows)} sections outside {SECTION_TOLERANCE:.0%}: {', '.join(failed)}")

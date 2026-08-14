@@ -25,6 +25,7 @@ import {
   WINDOW_SPAN_MI,
   type ElevationProfile,
 } from './elevationProfile'
+import { gainBetween } from './elevationGain'
 
 /** A profile from (mile, ft) pairs, with null standing for a DEM gap. */
 function profileOf(points: Array<[number, number | null]>): ElevationProfile {
@@ -212,5 +213,64 @@ describe('ribbonSamples', () => {
     ])
 
     expect(ribbonSamples(profile, { startMile: 0, endMile: 1 })).toEqual([])
+  })
+})
+
+// --- centerline seams (#559) ------------------------------------------------
+
+describe('part boundaries', () => {
+  it('carries part_start through to the samples ascent is counted over', () => {
+    const profile = parseProfile(
+      JSON.stringify([
+        { distance_mi: 0, elevation_ft: 100 },
+        { distance_mi: 0.1, elevation_ft: 110 },
+        { distance_mi: 0.2, elevation_ft: 3000, part_start: true },
+      ]),
+    )
+
+    const samples = profileSamples(profile!, { startMile: 0, endMile: 1 })
+    expect(samples.map((s) => s.partStart)).toEqual([false, false, true])
+  })
+
+  it('reads a profile with no markers as having no seams', () => {
+    // An artifact published before the pipeline recorded them. The file does
+    // not say where its seams are, so nothing may be assumed about them.
+    const profile = parseProfile(
+      JSON.stringify([
+        { distance_mi: 0, elevation_ft: 100 },
+        { distance_mi: 0.1, elevation_ft: 3000 },
+      ]),
+    )
+
+    const samples = profileSamples(profile!, { startMile: 0, endMile: 1 })
+    expect(samples.map((s) => s.partStart)).toEqual([false, false])
+  })
+
+  it('survives a profile restored from a download that predates the field', () => {
+    // lib/storedShapes.fixtures.ts' storedElevation() is exactly this shape.
+    // Requiring partStart would throw on every early tester's archive.
+    const stored = {
+      distanceMi: Float32Array.from([0, 0.1, 0.2]),
+      elevationFt: Float32Array.from([100, 110, 3000]),
+    }
+
+    const samples = profileSamples(stored, { startMile: 0, endMile: 1 })
+
+    expect(samples).toHaveLength(3)
+    expect(samples.every((s) => s.partStart === false)).toBe(true)
+  })
+
+  it('does not sum the step into a seam as a climb', () => {
+    const profile = parseProfile(
+      JSON.stringify([
+        { distance_mi: 0, elevation_ft: 100 },
+        { distance_mi: 0.1, elevation_ft: 110 },
+        { distance_mi: 0.2, elevation_ft: 3000, part_start: true },
+        { distance_mi: 0.3, elevation_ft: 3010 },
+      ]),
+    )
+
+    const samples = profileSamples(profile!, { startMile: 0, endMile: 1 })
+    expect(gainBetween(samples, 0, 1)).toBeCloseTo(20)
   })
 })

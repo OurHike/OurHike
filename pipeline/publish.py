@@ -45,11 +45,12 @@ import hashlib
 import json
 import os
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 import boto3
 
-from lib import data_env
+from lib import data_env, releases
 from lib.photo_store import PHOTO_EXTENSION, PHOTOS_DIRNAME, photo_key
 from lib.r2_keys import assert_valid_keys
 
@@ -262,9 +263,13 @@ def collect_artifacts() -> dict[str, dict]:
 
     # Verified closures and reports, if export_conditions.py has run
     # (features/CONDITIONS_DELIVERY.md). Ordinary artifacts rather than a
-    # special case: they want the same sha256 diffing every other one gets, and
-    # that diffing is what makes a daily bake cheap - a day with no condition
-    # changes uploads nothing and writes no new version.
+    # special case: they want the same sha256 diffing every other one gets.
+    # What that diffing cannot do is make the daily bake a no-op - the baked
+    # bytes carry generated_at, so their sha moves every run whether or not a
+    # row changed. This comment used to promise "a day with no condition
+    # changes uploads nothing and writes no new version"; that was false from
+    # the day the two met (#646), and the release-staging skip below is what
+    # actually keeps the daily clock from minting a release folder a day.
     #
     # Published under `conditions/` rather than at the root because the whole
     # prefix is rewritten in place on a different clock from the trail data.
@@ -313,6 +318,61 @@ def _load_remote_manifest(s3_client, bucket: str, manifest_key: str = MANIFEST_K
 def writes_enabled() -> bool:
     """Whether this environment is explicitly allowed to publish to R2."""
     return os.environ.get(WRITE_ENABLED_ENV_VAR, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _stage_release(
+    s3_client,
+    bucket: str,
+    prefix: str,
+    release_id: str,
+    manifest: dict,
+    sidecar_names: list[str],
+) -> list[str]:
+    """Copy this version's bytes into `releases/<id>/` and return what landed.
+
+    SERVER-SIDE COPIES, which is what makes a complete folder affordable.
+    Every artifact in the manifest is copied from its flat key - the one this
+    run either just uploaded or verified unchanged - so a 1.6 GB release costs
+    one `copy_object` per artifact and no second transfer. Re-uploading from
+    disk would double every publish and would not even be possible for the
+    artifacts this checkout did not build.
+
+    EVERY ARTIFACT, not just the changed ones, and that is the property rather
+    than an inefficiency: a hiker's client resolves one folder and must find
+    everything in it (DATA_RELEASES.md section 2).
+
+    A failed copy raises rather than warning. It means the flat key named by
+    the manifest is not in the bucket, which is a real fault - and half a
+    release folder is worse than none, because the index would then advertise
+    something incomplete as somewhere to roll back to.
+    """
+    names = [name for name in sorted([*manifest["artifacts"], *sidecar_names]) if releases.is_release_artifact(name)]
+
+    # Before the first copy, for the reason publish() validates before the
+    # first upload: a name that breaks the layout must fail the run rather
+    # than leave half a release folder behind. This is the one place the
+    # release id itself is checked - it is the only new segment, and a folder
+    # named something RELEASE_ID_PATTERN rejects would be a release nothing
+    # could later resolve.
+    assert_valid_keys([f"{prefix}{releases.release_key(release_id, name)}" for name in [*names, releases.RELEASE_MANIFEST_NAME]])
+
+    staged: list[str] = []
+    for name in names:
+        s3_client.copy_object(
+            Bucket=bucket,
+            CopySource={"Bucket": bucket, "Key": f"{prefix}{name}"},
+            Key=f"{prefix}{releases.release_key(release_id, name)}",
+        )
+        staged.append(name)
+
+    # The folder's own manifest, written last of the folder's contents, so it
+    # never describes bytes that have not landed yet.
+    s3_client.put_object(
+        Bucket=bucket,
+        Key=f"{prefix}{releases.release_key(release_id, releases.RELEASE_MANIFEST_NAME)}",
+        Body=json.dumps(manifest, indent=2).encode("utf-8"),
+    )
+    return staged
 
 
 def publish(
@@ -368,7 +428,13 @@ def publish(
     # to be the key that gets written - an environment prefix that made a legal
     # name illegal would otherwise be found by the bucket rather than by this.
     manifest_key = data_env.scope_key(environment, MANIFEST_KEY)
-    assert_valid_keys([manifest_key, *(f"{prefix}{name}" for name in (*artifacts, *sidecars, *photos))])
+    assert_valid_keys(
+        [
+            manifest_key,
+            data_env.scope_key(environment, releases.RELEASE_INDEX_KEY),
+            *(f"{prefix}{name}" for name in (*artifacts, *sidecars, *photos)),
+        ]
+    )
 
     if s3_client is None:
         s3_client = boto3.client(
@@ -439,6 +505,78 @@ def publish(
     # mistake build metadata for something a hiker downloads.
     if sidecars:
         new_manifest["sidecars"] = {name: {"sha256": entry["sha256"]} for name, entry in sidecars.items()}
+
+    # A version is not automatically a release (#646). `conditions/` names
+    # are excluded from release folders by design - that prefix rewrites in
+    # place on a daily clock - and the baked bytes carry generated_at, so the
+    # daily run's sha moves even when no row changed. Staging on such a run
+    # would server-side-copy every frozen artifact into a folder
+    # byte-identical to yesterday's: one duplicate folder per environment per
+    # day, an index entry per day, and nothing anywhere that prunes. So a run
+    # whose uploads are all excluded names freezes nothing: the pointer still
+    # moves (fresh conditions hashes are the point of the bake), and it keeps
+    # naming the last real release, because those are still the bytes the
+    # folders hold.
+    release_worthy = any(releases.is_release_artifact(name) for name in uploaded)
+    if release_worthy:
+        # Which folder this version's bytes are also kept in, taken from the
+        # ids already used so a second publish on one day gets `-2` rather
+        # than overwriting the morning's release. Read before anything under
+        # `releases/` is written, because the answer decides where it is
+        # written.
+        index_key = data_env.scope_key(environment, releases.RELEASE_INDEX_KEY)
+        release_index = _load_remote_manifest(s3_client, bucket, index_key)
+        release_id = releases.next_release_id(releases.index_ids(release_index))
+
+        # The same manifest as the pointer's, minus what may not be frozen.
+        # See lib/releases.is_release_artifact: `conditions/` is rewritten in
+        # place on a daily clock, and a reopened closure must stop being
+        # served - which an immutable folder cannot express.
+        release_manifest = {
+            **new_manifest,
+            "release": release_id,
+            "artifacts": {name: entry for name, entry in new_manifest["artifacts"].items() if releases.is_release_artifact(name)},
+        }
+        staged = _stage_release(
+            s3_client,
+            bucket,
+            prefix,
+            release_id,
+            release_manifest,
+            sorted(sidecars),
+        )
+
+        s3_client.put_object(
+            Bucket=bucket,
+            Key=index_key,
+            Body=json.dumps(
+                releases.append_release(
+                    release_index,
+                    release_id=release_id,
+                    version=new_version,
+                    created_at=datetime.now(timezone.utc).isoformat(),
+                ),
+                indent=2,
+            ).encode("utf-8"),
+        )
+    else:
+        release_id = remote_manifest.get("release") if remote_manifest else None
+        staged = []
+
+    # `latest.json` LAST, after the release folder and the index it is listed
+    # in, and the ordering is the same argument the photos make above: this is
+    # the pointer every client fetches first, so anything it names has to
+    # already be there. A reader that learns about version N and then cannot
+    # find `releases/<id>/` would be looking at a release that does not exist
+    # yet - which is exactly the state the rollback story assumes cannot
+    # happen.
+    #
+    # `release` is additive rather than a replacement. Every build in the
+    # field goes on reading `artifacts` from the flat keys exactly as before,
+    # and this tells a reader which folder holds the same bytes - which is
+    # what #374's release-over-release checks need in order to have something
+    # to compare against.
+    new_manifest["release"] = release_id
     s3_client.put_object(Bucket=bucket, Key=manifest_key, Body=json.dumps(new_manifest, indent=2).encode("utf-8"))
 
     return {
@@ -449,6 +587,8 @@ def publish(
         "photos_uploaded": sorted(uploaded_photos),
         "version_written": True,
         "version": new_version,
+        "release": release_id,
+        "release_artifacts": staged,
     }
 
 

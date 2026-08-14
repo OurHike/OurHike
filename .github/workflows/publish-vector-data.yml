@@ -47,6 +47,14 @@ on:
         description: "Fetch POI photos before exporting. Untick only to publish a release without them."
         type: boolean
         default: true
+      include_osm_water:
+        description: "Fetch OSM water points (Geofabrik extracts, ~3.5 GB / ~15 min). Untick to publish with opentrail's water alone."
+        type: boolean
+        default: true
+      include_trail_water:
+        description: "Derive trail crossings and reachable site water (adds ~5.7 GB of USGS subregions / ~30 min). Untick to reuse the last run's."
+        type: boolean
+        default: false
 
 # One publish at a time. Two concurrent runs would race on latest.json and could
 # interleave uploads, leaving the manifest describing a mixture of two builds.
@@ -82,6 +90,25 @@ jobs:
       run:
         working-directory: pipeline
 
+    env:
+      # One home for the cached-path list, read by both the restore and the
+      # save step below (#542). An env var rather than a YAML anchor because
+      # GitHub Actions does not support anchors, and two hand-kept copies of
+      # a list whose whole job is completeness is the drift this repository
+      # keeps finding. Paths are workspace-relative, unlike `run:` steps,
+      # which default to pipeline/.
+      FETCH_OUTPUTS: |
+        pipeline/data/raw/*.geojson
+        pipeline/data/raw/trail_water.json
+        pipeline/data/raw/epqs_elevations.json
+        pipeline/data/raw/manifest.json
+        pipeline/data/raw/opentrail_state.json
+        pipeline/data/raw/receipts
+        pipeline/data/raw/poi_photos
+        pipeline/data/raw/poi_images.json
+        pipeline/data/raw/poi_images_atc.json
+        pipeline/data/raw/elevation
+
     steps:
       - uses: actions/checkout@v4
 
@@ -94,6 +121,52 @@ jobs:
       # Runtime deps only - this builds real data rather than running the suite.
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      # EVERY fetcher's durable output, carried between runs (#542).
+      #
+      # Each fetcher already writes its output atomically and each is
+      # change-aware, so none of them needed fixing. What was missing is that
+      # a GitHub runner is empty every time, so all that carefulness had
+      # nothing to be careful ABOUT: fetch_all.py's skip compares against a
+      # manifest.json that did not survive, and re-fetched all thirteen
+      # layers from cold on every single run.
+      #
+      # That is what made run 31592776758 expensive. It died on a USGS 504 at
+      # step 13 and discarded twelve completed steps - and the photos were
+      # the only thing that came back, because the photo cache this step
+      # grew out of was the only cache in the job.
+      #
+      # THE PATHS MUST COVER EVERY OUTPUT ANY RECEIPT NAMES. Receipts are
+      # restored with the files they describe, and check_output_quality.py
+      # re-hashes those files against the receipt - so a cache that restored a
+      # receipt without its output would fail the gate on its own contents,
+      # reporting drift where there was only a gap in this list.
+      #
+      # That is not a hypothetical either: the first version of this list had
+      # elevation's tile index under data/processed/, where it does not live.
+      # tests/test_fetch_cache_paths.py now checks every entry against the
+      # constants the fetchers actually write to, because a hand-kept list
+      # whose whole job is completeness is the drift this repository keeps
+      # finding.
+      #
+      # Split restore/save rather than `actions/cache`, and `always()` on the
+      # save, because the bundled post-step is skipped when the job FAILS -
+      # so a plain cache would discard the work on precisely the runs this
+      # exists to rescue. That is not hypothetical: it is what happened on
+      # both failed runs of 2026-08-09, and what #549 found the elevation
+      # catalogue cache doing before #550 removed it.
+      #
+      # Not conditional on include_photos, unlike the photo-only cache it
+      # replaces: the ArcGIS layers matter to every run. Changing the key
+      # orphans the old poi-photos- entries, so the first run after this
+      # merges is cold - once.
+      - name: Restore fetched data
+        id: fetch-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.FETCH_OUTPUTS }}
+          key: fetch-outputs-${{ github.run_id }}
+          restore-keys: fetch-outputs-
 
       # fetch_all.py covers the ArcGIS sources only - it drives lib/arcgis.py and
       # iterates sources.json. opentrail.org is a different API with its own
@@ -129,19 +202,19 @@ jobs:
       # upload. That is a green run that silently ships POIs with no photo,
       # which is how this went unnoticed when the ATC source was added.
       #
-      # Cached because both fetches are change-aware per POI and the cache is
-      # the only thing that state survives in. The key is deliberately coarse
-      # - one cache for the photo store, restored by prefix - because the
-      # fetches themselves decide what is stale, and a cache miss costs time
-      # rather than correctness.
+      # Their bytes come back from the "Restore fetched data" step at the top
+      # of this job, which covers the photo store along with every other
+      # fetcher's output (#542). The key is deliberately coarse - one cache,
+      # restored by prefix - because the fetches themselves decide what is
+      # stale, and a cache miss costs time rather than correctness.
       #
       # Do not expect it to hit. GitHub evicts cache entries not accessed for
       # 7 days, and DATA_RELEASES.md puts releases on a monthly-ish cadence,
       # so the normal publish finds no cache and pays the full ~18 minutes
-      # (measured cold, 2026-08-09) plus Commons. This step earns its keep on
-      # runs close together - a dry run followed by the real publish, or a
-      # re-run after a failure - which is exactly when re-downloading 75 MB
-      # from ATC would be most gratuitous.
+      # (measured cold, 2026-08-09) plus Commons. It earns its keep on runs
+      # close together - a dry run followed by the real publish, or a re-run
+      # after a failure - which is exactly when re-downloading 75 MB from ATC
+      # would be most gratuitous.
       #
       # The cold cost is not pure waste, which is why it is tolerated rather
       # than engineered around: ATC is still adding photos to these layers
@@ -149,18 +222,7 @@ jobs:
       # If it ever needs to be cheap, the fix is not a longer-lived cache -
       # it is teaching the fetch that bytes already in R2 need not be
       # downloaded again to be published.
-      - name: Restore POI photo cache
-        if: inputs.include_photos
-        id: photo-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            pipeline/data/raw/poi_photos
-            pipeline/data/raw/poi_images.json
-            pipeline/data/raw/poi_images_atc.json
-          key: poi-photos-${{ github.run_id }}
-          restore-keys: poi-photos-
-
+      #
       # ATC's own facility photographs: 453 of the 522 photos a hiker sees,
       # and the only source covering shelters and campsites at all
       # (features/POI_PHOTOS.md). Allowed to fail the release, unlike the
@@ -181,27 +243,31 @@ jobs:
         continue-on-error: true
         run: python fetch_poi_images.py
 
-      # Saved even when a later step fails, which is the whole reason the
-      # cache is split into restore/save rather than left as `actions/cache`.
-      # The bundled post-step only runs on success, so both failed runs of
-      # 2026-08-09 threw away the ~55 minutes of fetching they had already
-      # done, and the retry started from cold. The photos on disk are correct
-      # whatever the export does with them afterwards - they are
-      # content-addressed - so there is nothing to be gained by discarding
-      # them because a later step disagreed with the data.
-      #
-      # Placed here rather than at the end of the job so it covers the export
-      # steps below; `always()` rather than `failure()` so the successful
-      # path saves through the same line.
-      - name: Save POI photo cache
-        if: always() && inputs.include_photos
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            pipeline/data/raw/poi_photos
-            pipeline/data/raw/poi_images.json
-            pipeline/data/raw/poi_images_atc.json
-          key: poi-photos-${{ github.run_id }}
+      # OSM water points (#529): the fourteen Geofabrik state extracts, the
+      # same files the basemap build downloads, scanned for the four
+      # point-source tags. The extracts are NOT in FETCH_OUTPUTS - caching
+      # ~3.5 GB that Geofabrik republishes daily would evict the caches that
+      # earn their keep - but the scan's small output geojson is, via the
+      # *.geojson glob, so an unticked run still exports whatever water the
+      # last ticked run found, the same way photos ride the cache between
+      # runs. Untick to skip the download; export_poi.py ships opentrail's
+      # points alone, as every release before this source did.
+      - name: Fetch OSM water points
+        if: inputs.include_osm_water
+        run: python fetch_osm_water.py
+
+      # Where the trail meets water, and which sites have water a hiker can
+      # reach (#529). Off by default, unlike the OSM points: it downloads
+      # ~5.7 GB of USGS subregions on top of reading the extracts, and its
+      # answer barely moves - NHD is a frozen snapshot and the trail does not
+      # often change where it fords a creek. The output rides FETCH_OUTPUTS,
+      # so an unticked run exports the last derivation's crossings rather
+      # than none, exactly as the photo fetches behave. Its elevation cache
+      # rides along too, so a re-run after a threshold change pays for the
+      # hydrography and not for several hundred more EPQS round trips.
+      - name: Derive trail water
+        if: inputs.include_trail_water
+        run: python fetch_trail_water.py
 
       - name: Export trail lines
         run: python export_trails.py
@@ -241,6 +307,31 @@ jobs:
         if: inputs.include_elevation
         run: python export_elevation.py
 
+      # Saved even when an earlier step failed, which is the whole reason the
+      # cache is split into restore/save rather than left as `actions/cache`:
+      # the bundled post-step only runs on success, so both failed runs of
+      # 2026-08-09 threw away the ~55 minutes of fetching they had already
+      # done and the retry started from cold.
+      #
+      # AFTER the last fetch, so one save covers all five. The photo-only
+      # version of this step sat above the exports and therefore could not
+      # carry elevation's tile index at all. What is on disk is correct
+      # whatever the exports make of it - the fetch outputs are gated and
+      # atomic, and the photos are content-addressed - so there is nothing to
+      # be gained by discarding them because a later step disagreed with the
+      # data.
+      #
+      # `always()` rather than `failure()` so the successful path saves
+      # through the same line, and unconditional on the photo/elevation
+      # inputs because a run that fetched neither still refreshed thirteen
+      # ArcGIS layers worth keeping.
+      - name: Save fetched data
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.FETCH_OUTPUTS }}
+          key: fetch-outputs-${{ github.run_id }}
+
       # Record what every upstream said at the moment this build fetched, and
       # publish it beside the artifacts as build_state.json. That file is the
       # entire input to the scheduled freshness check
@@ -264,12 +355,36 @@ jobs:
       # a subset, which publish.py supports, and a gate that insisted on the
       # full set would contradict the thing it gates. It only excuses an ABSENT
       # artifact - one that exists and fails still fails.
+      #
+      # --fetched names the CONDITIONAL fetchers this run asked for, so their
+      # receipts are required too (#542). fetch_all and fetch_opentrail need
+      # no flag - no export can run without either, so that is a fact about
+      # the code rather than about this run. Note the asymmetry with
+      # --optional one line up, and it is deliberate: --optional excuses an
+      # artifact that was never built, while --fetched ADDS a requirement.
+      # A missing receipt is never excused, because it is the finding.
+      #
+      # fetch_poi_images is deliberately not named even when photos were
+      # asked for. Its step carries continue-on-error, so requiring its
+      # receipt would fail releases the workflow has already decided to
+      # allow. It is reported with its age either way, so a run that shipped
+      # without Commons photos still says so out loud.
       - name: Check output quality
         run: |
+          fetched=""
+          if [ "${{ inputs.include_photos }}" = "true" ]; then
+            fetched="--fetched fetch_atc_photos"
+          fi
+          if [ "${{ inputs.include_osm_water }}" = "true" ]; then
+            fetched="$fetched --fetched fetch_osm_water"
+          fi
+          if [ "${{ inputs.include_trail_water }}" = "true" ]; then
+            fetched="$fetched --fetched fetch_trail_water"
+          fi
           if [ "${{ inputs.include_elevation }}" = "true" ]; then
-            python check_output_quality.py
+            python check_output_quality.py $fetched --fetched fetch_elevation
           else
-            python check_output_quality.py --optional elevation
+            python check_output_quality.py $fetched --optional elevation
           fi
 
       - name: What would be published
@@ -378,8 +493,10 @@ jobs:
             echo "Dry run - nothing was uploaded. Re-run with 'publish' ticked to upload."
           elif [ "${{ inputs.data_environment }}" = "production" ]; then
             echo "Published to production. The client needs DATA_BASE_URL set and a Pages redeploy to see it."
+          elif [ "${{ inputs.data_environment }}" = "ua" ]; then
+            echo "Published to ua, under environments/ua/. Production's keys were not touched."
+            echo "UA reads this automatically once ua.yml next rebuilds - see features/DATA_ENVIRONMENTS.md."
           else
             echo "Published to ${{ inputs.data_environment }}, under environments/${{ inputs.data_environment }}/."
-            echo "Production's keys were not touched. UA reads this once UA_DATA_BASE_URL names that prefix"
-            echo "and ua.yml has rebuilt - see features/DATA_ENVIRONMENTS.md."
+            echo "Production's keys were not touched."
           fi

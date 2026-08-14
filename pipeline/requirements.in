@@ -5,7 +5,7 @@
 # requirements.txt to seed the sandbox's spatial extension offline. A
 # Dependabot PR bumping it is only safe once the matching extension build
 # exists; check PyPI before merging one.
-duckdb==1.5.4
+duckdb==1.5.5
 requests
 rasterio
 numpy
@@ -39,3 +39,17 @@ psycopg[binary]
 # breaks when it is dropped - and JSON cannot carry a comment. The same
 # argument .github/expected-settings.yml is already written on.
 PyYAML
+
+# Not here either, and recorded like tifffile above rather than left to be
+# rediscovered: pypdf, which fetch_club_pdfs.py imports lazily to extract
+# text from the PDFs the maintaining clubs publish (#669). Install it ad hoc
+# to run that fetch (`pip install pypdf` - pure Python, ~2MB; NOT the
+# pdfplumber stack removed above, whose 18MB bought column geometry the club
+# PDFs' text layers turn out not to carry - lib/club_pdfs.py holds the
+# measurement). It stays out of the pins because no workflow runs the fetch
+# yet - the club_pdf kind is review-only until a club answers its licence ask
+# - and because pinning it here means recompiling both lockfiles, which the
+# current uv resolves with different environment markers than the checked-in
+# files (numpy/rasterio silently move on Python 3.12+). The day a workflow
+# needs this fetch, move pypdf up beside PyYAML and recompile both files
+# deliberately, upgrades reviewed as upgrades.

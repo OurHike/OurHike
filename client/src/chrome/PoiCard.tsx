@@ -33,17 +33,42 @@
 // feature set hikers can trust beats a flashy one they have to second-guess" -
 // so tapping the pin is where the words are.
 //
+// ONE CARD FOR A PLACE WITH PARTS. A shelter, its privy and its campsite are
+// one site drawing one pin (#524, map/poiSites.ts), so since that landed the
+// members have had no pin to tap and no gesture anywhere in the app reached
+// them. The strip of chips under the name is that gesture (#526,
+// features/POI_SITES.md §5): every part of the site, each carrying the icon the
+// map draws for it, and tapping one swaps the card to that part's own detail -
+// its photo and gallery, its description, its coordinates, its unverified line.
+//
+// The part you are on is a chip too, first in the row and marked as current.
+// The issue's own sketch listed only the members, on the reasoning that the
+// anchor is the card you are already reading; including it makes the row a
+// complete picture of the place rather than a list with one part missing from
+// it, and - since tapping a chip replaces the body - it is also the way back.
+//
 // Not a modal. The map behind it stays live and pannable - panning is how the
 // card is USED, it rides along with its pin - and claiming `aria-modal` would
 // tell a screen-reader user the rest of the screen is inert when it is not.
 // Same call ClosureSheet makes.
 
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { typeLabel } from './legendLabels'
 import { sourceLabel } from './poiSources'
 import { placePoiCard, type CardPlacement } from './poiCardPlacement'
 import { poiColor, poiGlyphPath } from '../map/poiIcons'
+import { MapIcon } from '../map/MapIcon'
+import { siteDistanceFeet } from '../map/poiSites'
+import { describeNearby, type NearbyPart } from '../lib/nearbyClause'
+import { formatShortDistance, type UnitSystem } from '../lib/units'
 
 export interface PoiDetail {
   id: string
@@ -82,6 +107,19 @@ export interface PoiDetail {
    */
   capacity?: number
   /**
+   * How far the nearest water source is, in feet, by ATC's own measurement
+   * (pipeline/build_water_distance.py).
+   *
+   * Carried by shelters, campsites, and the water members the pipeline
+   * synthesizes onto their sites from the same figure (#694). Those members
+   * inherit the site's coordinates because ATC states how far and never
+   * where - which is exactly why partDistance prefers this number over a
+   * coordinate-derived one: measuring the inherited position would print
+   * "0 m" for a distance the data actually knows. Absent means nobody has
+   * published one, never "no water" - the capacity rule.
+   */
+  waterDistanceFt?: number
+  /**
    * One sentence about the place - what it is built of, what it has, when it
    * went up - for shelters and campsites.
    *
@@ -92,6 +130,17 @@ export interface PoiDetail {
    * none at all.
    */
   description?: string
+  /**
+   * What is around this one, when it anchors a site: a privy, a campsite, the
+   * water ATC's own index puts nearest (#614, #625).
+   *
+   * A phrase and a distance per part rather than the finished sentence the
+   * pipeline used to publish - `describeNearby` writes the sentence, in the
+   * units this hiker chose, which is a question no artifact composed months ago
+   * could have answered. Absent on every POI that anchors nothing, and on any
+   * copy downloaded before the field existed.
+   */
+  nearby?: NearbyPart[]
   /**
    * A photo of the place, when one exists.
    *
@@ -126,6 +175,19 @@ export interface PoiDetail {
 export interface PoiCardProps {
   poi: PoiDetail
   /**
+   * Every part of the site this waypoint belongs to, anchor first - built by
+   * map/poiSites.ts's `siteRoster` and handed down by the shell, which is the
+   * only layer holding the other POIs.
+   *
+   * Absent or a single entry means there is nothing to offer and the card
+   * renders exactly as it did before sites existed: no strip, no group, no
+   * change of any kind. That is the same backward-compatibility rule every
+   * optional field above states - a phone that downloaded before #523 published
+   * the grouping has no site keys at all, so its cards must be the old cards
+   * rather than one chip that leads nowhere.
+   */
+  site?: readonly PoiDetail[]
+  /**
    * The live map the card is anchored on.
    *
    * Null is tolerated rather than forbidden - the shell learns about the map
@@ -135,6 +197,15 @@ export interface PoiCardProps {
    * projection later.
    */
   map: MapLibreMap | null
+  /**
+   * Feet or metres, for every distance on this card (lib/units.ts).
+   *
+   * Handed down like MapScreen's own, and defaulted the way every other
+   * `units` prop in the app is - a caller that has not thought about it gets
+   * the trail's own units rather than a crash. It reaches two places, and they
+   * are the two that used to disagree: the chips, and the nearby sentence.
+   */
+  units?: UnitSystem
   onClose: () => void
 }
 
@@ -235,6 +306,70 @@ function coordinates(lat: number, lon: number): string {
 }
 
 /**
+ * One metre, in feet - pipeline/lib/poi_description.py's `MIN_PART_FT`, which
+ * floors the distances the pipeline publishes for the same reason.
+ *
+ * A stated distance arrives unfloored (`water_distance_ft` is its own column,
+ * not a nearby part), and a card claiming a hiker walks zero of anything to
+ * reach water reads as a bug rather than as the very short walk it is
+ * asserting. Stated in the coarser unit, so neither system rounds it away:
+ * flooring at 1 ft would still print "0 m" for a metric hiker, which is the
+ * defect arriving in the other unit. #694 floored it at a metre for exactly
+ * this reason, back when this line printed only metres.
+ */
+const MIN_PART_FT = 3.28084
+
+/**
+ * How far a part of the site is from the pin, for its chip.
+ *
+ * FROM THE PIN, NOT FROM THE PART CURRENTLY OPEN. The pin is the one point on
+ * this site the hiker can see, and it is where they are standing when they ask;
+ * measuring from whichever chip was tapped last would rewrite every other
+ * number in the row on every tap, which is churn in a strip that is meant to be
+ * readable at a glance - and would change the strip's height in the process.
+ *
+ * "The pin" and not "the anchor", which this said until #607/#609 made them
+ * different things: a site whose anchor the legend filters out gives the pin to
+ * a member, and the number a hiker wants is the offset from what they can
+ * actually see. See the note where the caller resolves it.
+ *
+ * MEASURED HERE RATHER THAN READ OFF THE ARTIFACT, and that is the reason:
+ * `nearby`'s distances are measured from the ANCHOR, because that is the point
+ * the pipeline knows a hiker can see. When the two are the same point - which
+ * is every site the legend has not filtered - both come out of the same
+ * equirectangular formula with the same constant, so the chip and the sentence
+ * agree to well inside the rounding. When they are not, the chip is right and
+ * the sentence is answering a different question, which is what it did before
+ * this card existed.
+ *
+ * The hiker's own units since #625 (lib/units.ts). This was the single line in
+ * the app exempt from that standard, held open while the same distances were
+ * also published as prose in metres: converting one half would have put
+ * `Privy · 130 ft` over a sentence saying 40 m. Both halves moved together in
+ * the end, which is what the exemption was waiting for.
+ *
+ * A STATED DISTANCE BEATS A COORDINATE DISTANCE (#694). A water member the
+ * pipeline synthesized from ATC's distance-to-water inherits the site's own
+ * coordinates - ATC states how far, never where - so measuring it would print
+ * "Water · 0 ft" beside a sentence saying 121 ft, the drift above in its worst
+ * form. Such a member carries the stated figure as `waterDistanceFt`, and it
+ * wins whenever present; real mapped members carry none and keep the measured
+ * offset exactly as before.
+ *
+ * That figure needs no conversion here, which is the one simplification #625
+ * hands #694: ATC states it in feet, the artifact publishes it in feet, and
+ * feet is what lib/units.ts formats from. It reached this line as metres only
+ * because this line printed metres.
+ */
+function partDistance(pin: PoiDetail, part: PoiDetail, units: UnitSystem): string {
+  const feet =
+    part.type === 'water' && part.waterDistanceFt !== undefined
+      ? Math.max(MIN_PART_FT, part.waterDistanceFt)
+      : siteDistanceFeet(pin, part)
+  return formatShortDistance(feet, units)
+}
+
+/**
  * The card's screen position, re-projected on every camera move.
  *
  * Layout effect rather than effect, so the first placement lands before the
@@ -242,10 +377,19 @@ function coordinates(lat: number, lon: number): string {
  * the pin. Measuring the card in the same pass is safe for the same reason:
  * by the time this runs the DOM holds the final content, and reading
  * `offsetWidth` forces layout synchronously.
+ *
+ * TWO POIS, AND THEY ARE NOT INTERCHANGEABLE. `anchor` is the point projected:
+ * the one thing on this site with a pin, since #524 removed the members' own.
+ * Projecting the shown part instead would hang the card off a position where
+ * nothing is drawn - the mild form of the refusal features/POI_SITES.md makes
+ * of spiderfying, which is that drawing a privy 80 px from where it is says
+ * something untrue about where it is. `shown` is only ever a dependency, and it
+ * is there because it changes the card's HEIGHT (see below).
  */
 function usePinAnchor(
   map: MapLibreMap | null,
-  poi: PoiDetail,
+  anchor: PoiDetail,
+  shown: PoiDetail,
   card: RefObject<HTMLDivElement | null>,
 ): CardPlacement | null {
   const [placement, setPlacement] = useState<CardPlacement | null>(null)
@@ -262,7 +406,7 @@ function usePinAnchor(
 
       const canvas = map.getCanvas()
       const next = placePoiCard(
-        map.project([poi.lon, poi.lat]),
+        map.project([anchor.lon, anchor.lat]),
         { width: card.current.offsetWidth, height: card.current.offsetHeight },
         // The canvas's CSS size, which is the coordinate space `project`
         // answers in - `canvas.width` is that times the device pixel ratio.
@@ -284,26 +428,118 @@ function usePinAnchor(
       map.off('move', update)
       map.off('resize', update)
     }
-    // `poi`, not `poi.lon`/`poi.lat`: a mile arriving late or a source line
-    // appearing changes the card's HEIGHT, and a placement measured against
-    // the old height would leave a flipped card overlapping its pin.
-  }, [map, poi, card])
+    // `anchor`, not `anchor.lon`/`anchor.lat`: a mile arriving late or a source
+    // line appearing changes the card's HEIGHT, and a placement measured
+    // against the old height would leave a flipped card overlapping its pin.
+    //
+    // `shown` is in here for that same reason and a much larger dose of it.
+    // Tapping a chip is not a camera move, so nothing on the map fires and
+    // nothing else would re-measure - the placement would keep the height of
+    // the part the hiker just left until the next pan. A privy is several lines
+    // shorter than its shelter (no capacity, usually no description, often no
+    // photo credit), and a card placed BELOW its pin is positioned by its own
+    // height, so a stale one sits over the pin it is describing.
+  }, [map, anchor, shown, card])
 
   return placement
 }
 
-export function PoiCard({ poi, map, onClose }: PoiCardProps) {
+export function PoiCard({
+  poi,
+  site = [],
+  map,
+  units = 'imperial',
+  onClose,
+}: PoiCardProps) {
   const cardRef = useRef<HTMLDivElement | null>(null)
-  const placement = usePinAnchor(map, poi, cardRef)
-  const source = sourceLabel(poi.source)
 
-  const photos = cardPhotos(poi)
+  // THE ANCHOR IS NOT THE POINT THIS CARD HANGS OFF, AND THE DIFFERENCE IS NOT
+  // COSMETIC. `siteRoster` puts the anchor first whichever part of the site it
+  // was asked about, so `site[0]` is the site's own identity - what the place is
+  // called - and that is the ONE thing it is used for below.
+  //
+  // Everything positional keys on `poi` instead, because `poi` is the point
+  // CARRYING THE PIN. That is a precondition of this card, not a coincidence:
+  // map/poiLayers.ts builds its features from `composeSites().drawn` and writes
+  // the carrier's id, and a tap is the only thing that opens a card, so what the
+  // shell selected is by construction what is drawn.
+  //
+  // AND THE CARRIER IS NOT ALWAYS THE ANCHOR. #607/#609 gave a site's members
+  // their pins back when the legend filters the anchor out: hide shelters, and
+  // the site redraws as its highest-priority drawn member, so tapping it selects
+  // the PRIVY. Keying the projection on `site[0]` there would hang the card off
+  // the shelter - a point with nothing drawn at it, 42 m away at the median,
+  // which is 11 px at z14 and 165 px at z18 - which is the mild form of the
+  // spiderfying features/POI_SITES.md refuses, and the exact failure keying on
+  // the anchor was meant to avoid.
+  //
+  // So when #527 lets search open a member's card directly, `poi` will no longer
+  // be the carrier and this card will have to be TOLD which point is - the shell
+  // computes the composition and knows. It is not knowable from here, and
+  // guessing `site[0]` is wrong in the case that already exists.
+  const anchor = site[0] ?? poi
+
+  // Which part of the site the card is showing. Held here rather than lifted to
+  // the shell's `selectedPoiId`, which is fed to a map that has no pin for a
+  // member to select and whose setter closes the legend on the way past.
+  //
+  // Reset on the waypoint, because MapScreen renders this card without a React
+  // key: the state survives a change of pin, and opening a different shelter
+  // must not land on the last one's privy.
+  const [shownId, setShownId] = useState(poi.id)
+  useEffect(() => setShownId(poi.id), [poi.id])
+
+  // The `?? poi` is load-bearing rather than defensive. On the render between a
+  // new waypoint arriving and that reset effect firing, `shownId` still names
+  // the previous site's privy - and falling back to the waypoint the shell asked
+  // for makes that frame already correct instead of blank. The waypoint, not
+  // `anchor`: what this card opens on is what was selected, which is the anchor
+  // only until something selects a member (see above).
+  const shown = site.find((part) => part.id === shownId) ?? poi
+
+  const placement = usePinAnchor(map, poi, shown, cardRef)
+  const source = sourceLabel(shown.source)
+  // `shown`, not `poi`: tapping a chip swaps this card to that part's own
+  // detail, and a part that anchors a site of its own - a campsite with a privy
+  // beside it - has parts of its own to name. Read off whichever waypoint the
+  // card is currently showing, like the description and the source line above.
+  const nearby = describeNearby(shown.nearby, units)
+
+  // The two regions a chip swaps, named so `aria-controls` can point at them.
+  // Through `useId` rather than a pair of constants because ids have to be
+  // unique in a document and nothing here can promise there is one card - a
+  // test rendering two, or a compare view, would otherwise have both cards'
+  // chips controlling the first card's boxes.
+  const regionId = useId()
+  const mediaId = `${regionId}media`
+  const bodyId = `${regionId}body`
+
+  // What to say out loud when a chip replaces the card under someone who cannot
+  // see it happen. `aria-current` below is an ARIA *property*: a screen reader
+  // announces it on ARRIVAL at the chip rather than when it flips - unlike
+  // aria-pressed or aria-selected - so activating a chip otherwise moves the
+  // heading, the coordinates, the provenance, the unverified sentence and the
+  // photograph in complete silence. This is the half of screens/Tabs.tsx's
+  // contract that role="tab"/role="tabpanel" would have given for free and that
+  // the plain-button markup has to say for itself.
+  //
+  // Empty until a chip is tapped, and reset with the waypoint: a reader arriving
+  // at a freshly opened card is about to be read the card, and a region already
+  // holding "Showing X" would either say it twice or announce the last card's
+  // part on this one.
+  const [announced, setAnnounced] = useState('')
+  useEffect(() => setAnnounced(''), [poi.id])
+
+  const photos = cardPhotos(shown)
 
   // Which photo of this place is on screen. Reset when the card changes to a
   // different waypoint - opening a shelter after paging to photo 4 of the
-  // last one must start at its own first photo, not its fourth.
+  // last one must start at its own first photo, not its fourth. Keyed on the
+  // part SHOWN, not on the tapped pin, because tapping through to the privy is
+  // that same situation: photo 4 of the shelter must not decide which
+  // photograph of the privy comes up first.
   const [photoIndex, setPhotoIndex] = useState(0)
-  useEffect(() => setPhotoIndex(0), [poi.id])
+  useEffect(() => setPhotoIndex(0), [shown.id])
 
   // Guarded rather than trusted: a re-render with a shorter list (a fresh
   // download of the same waypoint) must not index off the end.
@@ -316,7 +552,7 @@ export function PoiCard({ poi, map, onClose }: PoiCardProps) {
   const [photoFailed, setPhotoFailed] = useState(false)
   useEffect(() => setPhotoFailed(false), [current?.url])
 
-  const accent = poiColor(poi.type)
+  const accent = poiColor(shown.type)
   const showPhoto = current !== undefined && !photoFailed
   const credit = current === undefined ? null : photoCredit(current)
   // Controls only where they lead somewhere. Wrapping rather than disabling at
@@ -324,6 +560,10 @@ export function PoiCard({ poi, map, onClose }: PoiCardProps) {
   const hasGallery = photos.length > 1
   const step = (delta: number) =>
     setPhotoIndex((i) => (i + delta + photos.length) % photos.length)
+
+  // A strip only where it says something. One chip is the card you are already
+  // reading, which is a control that answers a question nobody asked.
+  const parts = site.length > 1 ? site : []
 
   return (
     <div
@@ -343,7 +583,9 @@ export function PoiCard({ poi, map, onClose }: PoiCardProps) {
         ['--poi-accent' as string]: accent,
       }}
     >
-      <div className="poi-card__media">
+      {/* Identified rather than anonymous, because the chips below claim to
+          control it - see `aria-controls` there. */}
+      <div className="poi-card__media" id={mediaId}>
         {showPhoto ? (
           <img
             className="poi-card__photo"
@@ -363,7 +605,7 @@ export function PoiCard({ poi, map, onClose }: PoiCardProps) {
               aria-hidden="true"
               focusable="false"
             >
-              <path d={poiGlyphPath(poi.type)} fillRule="evenodd" />
+              <path d={poiGlyphPath(shown.type)} fillRule="evenodd" />
             </svg>
           </div>
         )}
@@ -436,35 +678,155 @@ export function PoiCard({ poi, map, onClose }: PoiCardProps) {
         </button>
       </div>
 
-      <div className="poi-card__body">
-        <h2 className="poi-card__name">{poi.name}</h2>
+      <div className="poi-card__body" id={bodyId}>
+        {/* The part on screen, not the site. features/POI_SITES.md's open
+            question 5 asked whether the card names the place once at the top or
+            re-names it per member, and the lines underneath decide it: the
+            coordinates, the unverified sentence and the provenance below this
+            heading all belong to the part being shown, and a privy's
+            coordinates under a shelter's name is precisely the kind of false
+            statement this card exists not to make. The site is still named
+            once - on the strip below, where it costs no height. */}
+        <h2 className="poi-card__name">{shown.name}</h2>
+
+        {/* Every part of this place, the one you are on included.
+
+            NOT a `role="tablist"`, and the reason is structural rather than a
+            preference. The photo, the gallery and the credit are as
+            member-specific as the text is, and they are ABOVE this strip in the
+            card - so a `tabpanel` here could only contain the text, while the
+            image it claimed to control changed silently over the hiker's head.
+            The alternatives are worse: reordering the card to put the photo
+            inside a panel moves the media box off the card's top edge and
+            re-parents the close button out of the corner it is drawn for. So:
+            plain buttons and `aria-current` on the one you are reading.
+
+            What screens/Tabs.tsx's pattern is reused for is the part that
+            matters, which is its rule: ONE panel rendered, not three hidden with
+            CSS. There is one media box and one body here, both driven from
+            `shown`, so a part nobody is looking at has no gallery buttons in the
+            tab order and nothing for a screen reader to announce.
+
+            The rest of that pattern's contract is what the two things after the
+            strip put back: `aria-controls` naming both regions a chip drives -
+            the objection above is to a tabpanel WRAPPER, and does not reach an
+            attribute that takes an ID-reference LIST - and a live region that
+            actually produces the announcement, since `aria-current` changing is
+            not one. */}
+        {parts.length > 0 && (
+          <div
+            className="poi-card__chips"
+            role="group"
+            // The anchor's own name, which is what the pipeline publishes as
+            // `site_name` (features/POI_SITES.md §3). Taken from the anchor
+            // itself - the same point the first chip stands for - so the two
+            // cannot disagree about what this place is called.
+            aria-label={`Parts of ${anchor.name}`}
+          >
+            {parts.map((part) => (
+              <button
+                key={part.id}
+                type="button"
+                className="poi-card__chip"
+                data-testid="poi-card-chip"
+                // `aria-current`, the "one of a set of related items you are on"
+                // attribute, rather than `aria-pressed`: these are not toggles,
+                // and exactly one of them is true at a time.
+                aria-current={part.id === shown.id}
+                // Both boxes, because a chip really does swap both, and a list
+                // is what the attribute is for. It is the programmatic link
+                // between the control and what it changes that the plain-button
+                // markup would otherwise be missing.
+                aria-controls={`${mediaId} ${bodyId}`}
+                onClick={() => {
+                  setShownId(part.id)
+                  setAnnounced(`Showing ${part.name}`)
+                }}
+              >
+                <MapIcon
+                  className="poi-card__chip-icon"
+                  type={part.type}
+                  // The rim, unlike the legend's (Legend.tsx passes none, on the
+                  // grounds that a key says what a category's symbol IS and a
+                  // symbol that changed as you panned would not be a key). A
+                  // chip is not a key: it stands for one privy, so the broken
+                  // rim is a fact about that privy, the same fact its own panel
+                  // spells out in words once you tap it.
+                  confidence={part.confidence}
+                />
+                <span>{typeLabel(part.type)}</span>
+                {part.id !== poi.id && (
+                  <>
+                    {/* The middot is punctuation for eyes only, as it is on the
+                        meta line - but a button's accessible name is its
+                        contents CONCATENATED, and with the separator hidden
+                        there is nothing left between the two facts: this
+                        announced "Privy40 m" until the spaces were made real
+                        text nodes of their own. They cost nothing visually,
+                        because a flex container drops a whitespace-only run
+                        instead of making an item of it, and the gap is what
+                        does the spacing. */}{' '}
+                    <span aria-hidden="true">·</span>{' '}
+                    <span className="poi-card__chip-distance">
+                      {partDistance(poi, part, units)}
+                    </span>
+                  </>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* The announcement itself, empty until a chip is tapped. Rendered
+            whenever there is a strip rather than conditionally on there being
+            something to say: a live region has to be in the DOM BEFORE its text
+            changes, or the change is the region appearing and nothing is read.
+            Visually hidden because the swap is not news to anyone who can see
+            the card - they watched it happen. */}
+        {parts.length > 0 && (
+          <p className="visually-hidden" role="status">
+            {announced}
+          </p>
+        )}
 
         {/* One line, up to three facts, separate elements: the mile stays
             mono like every other mile on this screen, and the dots between
             them are punctuation for eyes only. */}
         <p className="poi-card__meta">
-          <span>{typeLabel(poi.type)}</span>
-          {poi.mile !== undefined && (
+          <span>{typeLabel(shown.type)}</span>
+          {shown.mile !== undefined && (
             <>
               <span aria-hidden="true">·</span>
-              <span className="poi-card__mile">{`mi ${mile(poi.mile)}`}</span>
+              <span className="poi-card__mile">{`mi ${mile(shown.mile)}`}</span>
             </>
           )}
-          {poi.capacity !== undefined && (
+          {shown.capacity !== undefined && (
             <>
               <span aria-hidden="true">·</span>
               {/* "Sleeps 8", not "8": the bare number beside a mile reads as
                   another distance. */}
-              <span>{`Sleeps ${poi.capacity}`}</span>
+              <span>{`Sleeps ${shown.capacity}`}</span>
             </>
           )}
         </p>
 
-        {poi.description !== undefined && (
-          <p className="poi-card__description">{poi.description}</p>
+        {shown.description !== undefined && (
+          <p className="poi-card__description">{shown.description}</p>
         )}
 
-        {poi.confidence === 'low' && (
+        {/* What is around this one, as its own paragraph rather than appended
+            to the description above (#625).
+
+            The pipeline spliced it onto the end of that sentence while it
+            composed the words; now that the phone composes them, keeping it
+            there would mean concatenating two strings from two places to make
+            one paragraph - and a description that failed to compose (a shelter
+            ATC states nothing about) would take the privy down with it. Two
+            paragraphs render identically when both are present, and each stands
+            up when the other is missing. */}
+        {nearby !== null && <p className="poi-card__nearby">{nearby}</p>}
+
+        {shown.confidence === 'low' && (
           <p className="poi-card__unverified" role="note">
             Unverified — nobody has confirmed this one is really there.
           </p>
@@ -472,7 +834,7 @@ export function PoiCard({ poi, map, onClose }: PoiCardProps) {
 
         <p className="poi-card__coords">
           <span className="visually-hidden">Latitude, longitude: </span>
-          {coordinates(poi.lat, poi.lon)}
+          {coordinates(shown.lat, shown.lon)}
         </p>
 
         {source !== null && <p className="poi-card__source">{`From ${source}.`}</p>}

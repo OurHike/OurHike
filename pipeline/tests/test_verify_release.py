@@ -11,10 +11,15 @@ ugliest part of the script and the part whose silent failure would be worst: a
 regex that stopped matching would check fewer keys than the client asks for and
 report a clean release, which is the exact shape of #427.
 
-`TestASkipIsNeverAPass` covers the four checks that cannot run yet. A skip that
-reads like a pass is the failure this repository keeps finding, so the skips
-are asserted to be present, to name their reason, and to fail the gate under
-`--strict`.
+`TestASkipIsNeverAPass` covers what still cannot run - one check now, down from
+four since #374's item 3 wrote 3, 17 and 19. A skip that reads like a pass is
+the failure this repository keeps finding, so the skips are asserted to be
+present, to name their reason, and to fail the gate under `--strict`.
+
+The last four groups cover those three new checks, and most of their weight is
+on a bucket MID-MIGRATION rather than on the happy path - a release published
+before #500 has no index, and one published before the `release` field has an
+index nothing points into. Both are states a real bucket passes through.
 """
 
 from __future__ import annotations
@@ -36,8 +41,13 @@ from verify_release import (
     check_full_hash,
     check_if_range,
     check_manifest,
+    check_nothing_lost,
+    check_release_regression,
+    check_released_folder,
     check_vector,
     expected_client_keys,
+    previous_release_id,
+    release_checks,
     skipped_checks,
     verdict_document,
 )
@@ -268,22 +278,21 @@ class TestVectorContent:
 
 class TestASkipIsNeverAPass:
     def test_the_checks_that_cannot_run_are_listed_by_number(self):
-        assert {report["check"] for report in skipped_checks()} == {3, 10, 17, 19}
+        """Three: 10, and since #653, 6 and 11. The two newcomers were not
+        skipped before - they were ABSENT, unmentioned by a file whose header
+        says a skip is never silent, and this very test pinned the absence in
+        place by asserting the set was exactly {10}. The set is the honest
+        roster now; shrinking it means BUILDING a check, not deleting a row."""
+        assert {report["check"] for report in skipped_checks()} == {6, 10, 11}
 
     def test_each_one_says_why_rather_than_just_being_absent(self):
         for report in skipped_checks():
             assert report["state"] == SKIPPED
             assert report["detail"].strip()
 
-    def test_the_release_blocking_ones_name_their_dependency(self):
-        by_number = {report["check"]: report for report in skipped_checks()}
-        for number in (3, 17, 19):
-            assert "#500" in by_number[number]["detail"]
-
     def test_strict_turns_a_skip_into_a_failed_gate(self):
-        """What a release gate should use once #500 lands. Without it, a
-        battery that quietly did not ask reads identically to one that asked
-        and was satisfied."""
+        """Without it, a battery that quietly did not ask reads identically to
+        one that asked and was satisfied."""
         reports = skipped_checks()
 
         assert verdict_document(BASE, reports, strict=False)["gate"] == "pass"
@@ -304,4 +313,216 @@ class TestTheWholeRun:
         reports = check_all(BASE, hash_artifacts=False)
 
         assert reports[0]["state"] == FAILED
-        assert {r["check"] for r in reports if r["state"] == SKIPPED} == {3, 10, 17, 19}
+        # 3, 17 and 19 read a release out of the manifest, so they cannot run
+        # either - and must still APPEAR rather than vanishing, or a reader
+        # counting checks finds a short clean run. 6 and 11 are the standing
+        # skips (#653), present in every run until somebody builds them.
+        assert {r["check"] for r in reports if r["state"] == SKIPPED} == {3, 6, 10, 11, 17, 19}
+
+
+# ---------------------------------------------------------------------------
+# F. The releases hikers are already on still work (#374's item 3)
+#
+# These three were skipped by construction until the layout existed. What they
+# are worth is entirely in what they catch that nothing else does: every other
+# check here asks whether the thing just built is good, and these ask whether
+# the thing people are already using is still there.
+#
+# The awkward case is the one most of this covers: a bucket MID-MIGRATION. A
+# release built before #500 has no index, and one built before the `release`
+# field has an index but no pointer into it. Both have to skip with a reason
+# naming which half is missing, because both are states a real bucket passes
+# through and neither is a fault.
+# ---------------------------------------------------------------------------
+
+
+def _index(*ids):
+    return {"releases": [{"id": name, "created_at": f"{name}T00:00:00+00:00", "version": name} for name in ids]}
+
+
+def _release_manifest(release_id, artifacts):
+    return {
+        "version": release_id,
+        "release": release_id,
+        "artifacts": {name: {"sha256": digest} for name, digest in artifacts.items()},
+    }
+
+
+class TestNothingLostSinceTheLastRelease:
+    def test_an_artifact_that_vanished_fails(self):
+        """The failure a hiker meets as a 404 partway through a download, and
+        the one every other check here is blind to - they all ask about what
+        IS published rather than what used to be."""
+        before = _release_manifest("2026-08-12", {"trails.geojson": "a", "poi_water.geojson": "b"})
+        now = _release_manifest("2026-08-13", {"trails.geojson": "a"})
+
+        report = check_nothing_lost("2026-08-12", before, now)
+
+        assert report["state"] == FAILED
+        assert "poi_water.geojson" in report["detail"]
+
+    def test_carrying_everything_forward_passes(self):
+        before = _release_manifest("2026-08-12", {"trails.geojson": "a"})
+        now = _release_manifest("2026-08-13", {"trails.geojson": "a", "poi_water.geojson": "b"})
+
+        assert check_nothing_lost("2026-08-12", before, now)["state"] == OK
+
+    def test_a_new_artifact_is_not_a_loss(self):
+        """Additions are the normal shape of a release and must not read as a
+        regression, or the check is an alarm that is always on."""
+        before = _release_manifest("2026-08-12", {"trails.geojson": "a"})
+        now = _release_manifest("2026-08-13", {"trails.geojson": "a", "club_sections.json": "c"})
+
+        assert check_nothing_lost("2026-08-12", before, now)["state"] == OK
+
+
+class TestTheReleaseBeforeThisOne:
+    def test_it_is_the_one_written_before_it_rather_than_the_lexically_smaller(self):
+        index = _index("2026-08-12", "2026-08-13", "2026-08-13-2")
+
+        assert previous_release_id(index, "2026-08-13-2") == "2026-08-13"
+
+    def test_the_first_release_has_nothing_before_it(self):
+        assert previous_release_id(_index("2026-08-13"), "2026-08-13") is None
+
+    def test_a_release_the_index_never_heard_of_has_no_predecessor(self):
+        """A pointer naming a folder the index does not list is a real
+        inconsistency, and guessing a predecessor for it would compare against
+        an arbitrary release."""
+        assert previous_release_id(_index("2026-08-12"), "2026-08-99") is None
+
+
+class TestASizeRegressionAgainstTheLastRelease:
+    def test_an_artifact_that_shrank_past_the_threshold_fails(self, requests_mock):
+        requests_mock.head(f"{BASE}/releases/2026-08-12/trails.geojson", headers={"Content-Length": "1000"})
+        requests_mock.head(f"{BASE}/releases/2026-08-13/trails.geojson", headers={"Content-Length": "500"})
+        before = _release_manifest("2026-08-12", {"trails.geojson": "a"})
+        now = _release_manifest("2026-08-13", {"trails.geojson": "b"})
+
+        [report] = check_release_regression(BASE, "2026-08-12", "2026-08-13", before, now)
+
+        assert report["state"] == FAILED
+        assert "50%" in report["detail"]
+
+    def test_a_small_change_passes(self, requests_mock):
+        requests_mock.head(f"{BASE}/releases/2026-08-12/trails.geojson", headers={"Content-Length": "1000"})
+        requests_mock.head(f"{BASE}/releases/2026-08-13/trails.geojson", headers={"Content-Length": "980"})
+        before = _release_manifest("2026-08-12", {"trails.geojson": "a"})
+        now = _release_manifest("2026-08-13", {"trails.geojson": "b"})
+
+        assert check_release_regression(BASE, "2026-08-12", "2026-08-13", before, now)[0]["state"] == OK
+
+    def test_growth_is_never_a_regression(self, requests_mock):
+        requests_mock.head(f"{BASE}/releases/2026-08-12/trails.geojson", headers={"Content-Length": "100"})
+        requests_mock.head(f"{BASE}/releases/2026-08-13/trails.geojson", headers={"Content-Length": "9000"})
+        before = _release_manifest("2026-08-12", {"trails.geojson": "a"})
+        now = _release_manifest("2026-08-13", {"trails.geojson": "b"})
+
+        assert check_release_regression(BASE, "2026-08-12", "2026-08-13", before, now)[0]["state"] == OK
+
+    def test_an_artifact_only_in_the_new_release_is_not_measured(self, requests_mock):
+        """Nothing to compare against is not a drop. Check 3 is what notices a
+        LOST artifact; this one is only about the ones in both."""
+        before = _release_manifest("2026-08-12", {"trails.geojson": "a"})
+        now = _release_manifest("2026-08-13", {"trails.geojson": "a", "club_sections.json": "c"})
+        requests_mock.head(f"{BASE}/releases/2026-08-12/trails.geojson", headers={"Content-Length": "100"})
+        requests_mock.head(f"{BASE}/releases/2026-08-13/trails.geojson", headers={"Content-Length": "100"})
+
+        reports = check_release_regression(BASE, "2026-08-12", "2026-08-13", before, now)
+
+        assert [report["key"] for report in reports] == ["trails.geojson"]
+
+    def test_a_size_that_cannot_be_read_skips_rather_than_passing(self, requests_mock):
+        """Never OK on a failure to ask. A missing Content-Length reported as
+        no-drop is the false-clean this whole battery is against."""
+        requests_mock.head(f"{BASE}/releases/2026-08-12/trails.geojson", status_code=404)
+        requests_mock.head(f"{BASE}/releases/2026-08-13/trails.geojson", headers={"Content-Length": "500"})
+        before = _release_manifest("2026-08-12", {"trails.geojson": "a"})
+        now = _release_manifest("2026-08-13", {"trails.geojson": "b"})
+
+        assert check_release_regression(BASE, "2026-08-12", "2026-08-13", before, now)[0]["state"] == SKIPPED
+
+
+class TestTheFolderHikersArePinnedTo:
+    def test_a_deleted_object_in_the_released_folder_fails(self, requests_mock):
+        """The headline property: this fails for a reason no candidate can
+        cause - a lifecycle rule, an accidental delete, a permissions change on
+        data people are using today."""
+        requests_mock.head(f"{BASE}/releases/2026-08-13/trails.geojson", status_code=404)
+        manifest = _release_manifest("2026-08-13", {"trails.geojson": "a"})
+
+        reports = check_released_folder(BASE, "2026-08-13", manifest, hash_artifacts=False)
+
+        assert [report["check"] for report in reports] == [19]
+        assert reports[0]["state"] == FAILED
+
+    def test_an_intact_folder_passes(self, requests_mock):
+        requests_mock.head(
+            f"{BASE}/releases/2026-08-13/trails.geojson",
+            headers={"Content-Length": "10", "Accept-Ranges": "bytes", "ETag": '"x"'},
+        )
+        manifest = _release_manifest("2026-08-13", {"trails.geojson": "a"})
+
+        reports = check_released_folder(BASE, "2026-08-13", manifest, hash_artifacts=False)
+
+        assert all(report["state"] == OK for report in reports)
+
+    def test_an_empty_manifest_fails_rather_than_passing_vacuously(self):
+        """Zero artifacts iterated is zero failures, which would report a
+        released folder as intact having looked at nothing in it."""
+        report = check_released_folder(BASE, "2026-08-13", {"artifacts": {}}, hash_artifacts=False)[0]
+
+        assert report["state"] == FAILED
+
+
+class TestABucketMidMigration:
+    def test_no_index_skips_all_three_and_says_which_half_is_missing(self, requests_mock):
+        requests_mock.get(f"{BASE}/releases/index.json", status_code=404)
+
+        reports = release_checks(BASE, {"release": "2026-08-13", "artifacts": {}}, hash_artifacts=False)
+
+        assert {report["check"] for report in reports} == {3, 17, 19}
+        assert all(report["state"] == SKIPPED for report in reports)
+        assert all("#500" in report["detail"] for report in reports)
+
+    def test_a_manifest_with_no_release_field_skips_all_three(self, requests_mock):
+        """`latest.json` written before #500 added the field. The index may
+        exist and still be unusable, because nothing says which folder holds
+        these bytes."""
+        requests_mock.get(f"{BASE}/releases/index.json", json=_index("2026-08-13"))
+
+        reports = release_checks(BASE, {"artifacts": {}}, hash_artifacts=False)
+
+        assert {report["check"] for report in reports} == {3, 17, 19}
+        assert all(report["state"] == SKIPPED for report in reports)
+
+    def test_a_pointer_at_a_folder_with_no_manifest_FAILS(self, requests_mock):
+        """Not a skip. The pointer every client fetches first names a release
+        that is not there, which is the one state #500's write ordering exists
+        to make impossible - so meeting it means something is actually wrong."""
+        requests_mock.get(f"{BASE}/releases/index.json", json=_index("2026-08-13"))
+        requests_mock.get(f"{BASE}/releases/2026-08-13/manifest.json", status_code=404)
+
+        reports = release_checks(BASE, {"release": "2026-08-13", "artifacts": {}}, hash_artifacts=False)
+
+        assert all(report["state"] == FAILED for report in reports)
+
+    def test_the_first_ever_release_still_gets_its_folder_verified(self, requests_mock):
+        """Nothing to compare against does not mean nothing to check. 3 and 17
+        skip; 19 - the headline one - still runs."""
+        requests_mock.get(f"{BASE}/releases/index.json", json=_index("2026-08-13"))
+        requests_mock.get(
+            f"{BASE}/releases/2026-08-13/manifest.json",
+            json=_release_manifest("2026-08-13", {"trails.geojson": "a"}),
+        )
+        requests_mock.head(
+            f"{BASE}/releases/2026-08-13/trails.geojson",
+            headers={"Content-Length": "10", "Accept-Ranges": "bytes", "ETag": '"x"'},
+        )
+
+        reports = release_checks(BASE, {"release": "2026-08-13", "artifacts": {}}, hash_artifacts=False)
+
+        by_check = {report["check"]: report for report in reports}
+        assert by_check[3]["state"] == SKIPPED
+        assert by_check[17]["state"] == SKIPPED
+        assert by_check[19]["state"] == OK

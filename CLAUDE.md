@@ -4,6 +4,98 @@
 expectations, the "one home per item" rule for docs and issues. This file covers only
 what is specific to an agent working here, and does not restate the rest.
 
+## Say what a claim rests on, or say that nothing does
+
+**Every assertion an agent writes — in a comment, a docstring, a design doc, a pull
+request body, a commit message — carries the evidence it stands on.** A measurement, a
+source, a maintainer's decision, or nothing yet. The last one is a legitimate answer and
+the one most worth writing down, because it is the only one a reader cannot reconstruct
+for themselves.
+
+The habit is already here and applied unevenly, the same way issue-naming is.
+`build_water_distance.py`'s docstring says "the median offset from an ATC shelter to its
+nearest CSI shelter row is 21 m", dated and re-runnable, so the 150 m name-match gate
+below it is a decision a reviewer can disagree with on the merits.
+`upcomingClimb.ts`'s `MIN_CLIMB_FT` opens "Derived rather than picked" and shows the
+arithmetic that makes 300 ft the smallest climb capable of moving the number the callout
+prints. `trailPosition.ts` explains why `MAX_OFF_TRAIL_MILES` is 3 and not a rounder
+number — it has to fit inside the bucket search — and then says what the alternative
+would be: "a worse thing to be than merely conservative."
+
+Against that, `staleness.ts` declares `FRESH_MAX_DAYS = 14` and `AGEING_MAX_DAYS = 60`
+and says nothing at all about where either came from. WIREFRAMES.md §11 writes them as
+"≤ ~14 days" and "~14–60 days"; the tildes are the only hint that they are a mock-up's
+round numbers rather than anybody's finding, and the tildes did not survive into the
+code. Those two constants decide whether a hiker reads a water report as trustworthy.
+
+Three grades. The words are not interchangeable and a claim that picks the wrong one is
+worse than a claim with no adjective at all:
+
+- **Measured** — somebody produced this number and could produce it again. Carry the
+  figure, the date, and what it was measured against. "72% of shelters sit past
+  `OFF_TRAIL_THRESHOLD_FT`, measured against the live ATC layers (#308)" is checkable by
+  the next person; "most shelters are well off the centerline" is not.
+- **Reasoned** — it follows from something already established here. Carry the
+  derivation, not the conclusion, so a reader can find the step they disagree with.
+- **Unvalidated** — picked, and nobody has checked it. Tag it `@unvalidated` and finish
+  the sentence with what would settle it. `wrongWay.ts` is the model: its three
+  thresholds are flagged as "WIREFRAMES.md UI-mockup placeholders, not a validated
+  HIKER_SAFETY.md spec", pointing at the field-testing under tree canopy that
+  HIKER_SAFETY.md §5 declines to guess at.
+
+The tag exists to be greppable. `grep -rn '@unvalidated'` should answer "what does this
+build not actually know" in one command, which is a question worth being able to ask
+before a release and impossible to ask of prose alone.
+
+**Prefer the weaker true sentence to the stronger plausible one.** Where the evidence
+supports "ATC's steward estimated", do not write "ATC measured". Where it supports "on
+the four fixtures this suite builds", do not write "always". A hedge is not weakness
+here; it is the part of the sentence carrying the information.
+
+**This is not a licence to hedge everything.** A caveat on every line reads exactly like
+a caveat on none, and buries the two or three that a hiker's safety actually turns on.
+If a claim is plainly true and cheap to check, assert it and move on. The rule bites on
+numbers, thresholds, coverage claims, and anything asserting what the data means —
+not on "returns the parsed manifest".
+
+## Four ways this app can hurt somebody
+
+**Lost, out of water, in front of something dangerous, or unable to get off the trail
+quickly.** Everything OurHike ships either touches one of those or it does not, and the
+standard above tightens on the code that does: `trailPosition.ts`, `wrongWay.ts` and its
+alert wiring, the water distances from `build_water_distance.py` through `export_poi.py`
+to the card, staleness and confidence, closures, serious warnings, and the elevation and
+pace estimates a hiker uses to decide whether they beat the dark.
+
+On those paths, **an honest unknown outranks a confident answer**, and this is a
+commitment the project has already made rather than a new one: value #4 ("honesty about
+uncertainty… matter[s] more than polish"), and FEATURES.md's own line that "a
+confidently wrong prediction is more dangerous than an honest unknown."
+
+What that means concretely is already visible in the code, and is the pattern to copy:
+
+- **Omit rather than guess.** A shelter whose capacity nobody stands behind exports no
+  capacity — "a hiker deciding whether to push on to the next shelter is better served
+  by no answer than by a made-up one." Absent means unknown, never zero and never "none".
+- **Miss rather than cry wolf.** `wrongWay.test.ts` states the asymmetry outright:
+  "False negatives are acceptable; false positives are the failure this whole module
+  exists to prevent." A safety alert nobody trusts has already failed.
+- **Round toward caution, and say which way you rounded.** Naismith gets no descent
+  credit — a known weakness of the rule, left in place deliberately and documented so
+  the next agent does not "improve" it into an optimistic number.
+- **Never let a display outrun its source.** If the pipeline knows a figure is a
+  steward's round-number estimate, the phone may not render it in the same voice as a
+  surveyed one. Provenance that stops at the last Python file is provenance nobody has.
+
+When you find one of these paths under-evidenced, **say so where a hiker's safety is at
+stake even if fixing it is out of scope** — an issue, or a paragraph in the pull request.
+Silence about a gap you noticed is the failure mode this section exists to prevent; the
+audit that prompted it found comments confidently asserting things nobody had checked,
+and none of them looked uncertain from the outside.
+
+None of this is a reason to slow down. Move fast, try things, spike them — and let the
+comment say it was a spike.
+
 ## Name an issue or PR, don't just number it
 
 **Every reference to an issue or pull request carries its number *and* its title** — in chat,
@@ -42,11 +134,31 @@ not otherwise touching.
 ## Claim the issue before you branch
 
 Sessions run concurrently and unsupervised, and nothing stops two of them from picking up
-the same GitHub issue at the same time. That has already happened once, caught only
-because a human noticed two branches doing the same work — not because anything in the
-repository would have caught it on its own.
+the same GitHub issue at the same time. That has now happened **twice**, both times caught
+by a human noticing rather than by anything in the repository.
 
-Before opening a branch for an issue:
+The second time is the one worth reading, because everybody followed this section as it
+was written and it happened anyway. **#597 — A waypoint that loses a collision disappears,
+when it could be a dot** was claimed at 02:31 by a session that had checked the timeline
+and the ledger and found nothing. Twelve minutes later a second session opened
+**#610 — Draw every waypoint as a pin or a dot, and never as neither** against the same
+issue. Both were green. One entire implementation was thrown away.
+
+Nothing below would have caught it, because **the second session never opened a branch**.
+It stacked #597 onto a branch already carrying two unrelated pipeline issues — which
+[BRANCHING.md](BRANCHING.md) §3 explicitly allows — so `scripts/threads.sh` had no new
+branch to show and reported that branch as `suites: pipeline` right up until the client
+commit landed. The heading said "before you branch", and a session that was not branching
+read itself as out of scope.
+
+So the trigger is **starting work on an issue**, not opening a branch for one. Stacking is
+the case that feels exempt and is not: adding an issue to a branch you already have is
+picking up that issue, and it needs the same claim as a fresh branch would. `#594`'s claim
+comment on that same branch shows the practice being applied correctly an hour earlier —
+what failed was the rule's *scope*, not anybody's diligence.
+
+Before starting work on an issue — a new branch, a new commit on an existing one, or a
+pull request body that will carry `Closes #N`:
 
 - Read the issue's timeline, not just its body. Check the "Development" sidebar for a
   linked pull request, and read the comments for one saying work has already started —
@@ -59,10 +171,29 @@ Before opening a branch for an issue:
   dependency where the existing branch already lives ([BRANCHING.md](BRANCHING.md) §3).
 
 If nothing turns up, claim the issue immediately, before writing any code: leave a comment
-on the issue naming the branch you are about to push. This is the only signal that works —
-every session authenticates as the same GitHub identity (see below), so assigning the issue
+on the issue naming the branch you are about to push — or the branch you are stacking it
+onto, which is the case that gets forgotten. This is the only signal that works — every
+session authenticates as the same GitHub identity (see below), so assigning the issue
 proves nothing and self-assignment cannot distinguish one session from another. A plain,
 timestamped comment is what the next session checking this issue will actually find.
+
+**Release the claim if you stop.** A claim pointing at a closed or abandoned pull request
+is worse than no claim: it reads as live work and stops the next session touching the
+issue. One comment saying the branch is free costs nothing and is the other half of making
+claims mean anything.
+
+### What actually catches this now
+
+`pr-issue-link.yml` reads the `Closes #N` every pull request already carries and warns —
+in the check summary, as an annotation, and as one sticky comment — when another **open**
+pull request closes the same issue. It warns rather than fails, because two pull requests
+closing one issue is occasionally deliberate and a red check would block that to catch the
+common case.
+
+**It catches the collision at the pull request, which is late.** By then both
+implementations exist and the only thing saved is the second review. Nothing mechanical
+watches at claim time, and the checks above are still the only thing that can save the
+work rather than the review — so they are not optional now that a backstop exists.
 
 ## Never merge into `main`
 
@@ -120,9 +251,43 @@ collide, which files actually cause the collisions, and what order to land thing
 it before opening a second concurrent branch. It also holds the one-branch-per-issue rule
 that used to live here.
 
+## A build script's output has a home, and it is not the repository
+
+Before running a script that writes a file, decide where that file lives — because
+committing it is the one choice that cannot be undone. [CONTRIBUTING.md](CONTRIBUTING.md)
+has the rule and the reasoning ("Data does not go in commits"); what an agent needs is the
+trigger: **you are about to add a generated file, so pick its shelf first.**
+
+`pipeline/data/` for anything fetched or derived — gitignored, cached between CI runs,
+published to R2 by `publish.py`. `pipeline/reference/` **only** for a join that encodes
+judgement somebody reviews row by row, and it has a line ceiling for exactly that reason.
+
+This is written down because an agent did the wrong one and had a good story for it:
+`reference/` is not gitignored, holds three small checked-in files, and reads as "where
+derived things go", so a 20,099-line derivation went in with a docstring explaining why it
+belonged there. Every sentence of that explanation was about *reproducibility*, and none of
+it noticed that the file was a permanent publication of somebody else's data. The maintainer
+caught it in review. `.github/tests/test_no_committed_data.py` catches it now.
+
 ## Run what CI runs, before pushing
 
-Every suite CI runs, not only the one you touched:
+```
+scripts/test.sh
+```
+
+That is the whole command. It works out which suites your changes actually
+reach — reading each one's scope list out of its own workflow YAML, so it
+cannot disagree with CI by being forgotten — and runs those, linters and
+formatters first, each suite across every core. A change to one of the Python
+parts finishes in 20 to 50 seconds; `--all` is the full four suites in 174s,
+against 294s for running them by hand. `--list` says what it picked and which
+file decided it, `--all` overrides the scoping, and `--coverage` puts the
+coverage reports back.
+
+Every uncertain case runs everything rather than guessing — a stale `main`
+ref, an unreadable workflow, a detached head — so a wrong answer costs a
+minute, never a missed regression. If you want the long-hand form anyway, or
+the script cannot run:
 
 ```
 cd client        && npm run typecheck && npm run lint && npm run format:check && npm test && npm run build

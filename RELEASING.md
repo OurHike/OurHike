@@ -25,10 +25,16 @@ standing on a ridge depending on the last one.
 
 ## 1. Why this exists: publishing is not releasing
 
-`.github/workflows/pages.yml` deploys to GitHub Pages **on every push to `main`**. So
-today, merging a pull request is the act of shipping to production. There is no state
-in which a change is built, integrated and reviewable but not yet being served to
-whoever opens the app.
+**This section describes the state this document was written to end, not the state
+today.** §2 is the change that ended it, and it has been built — `pages.yml` deploys on
+a `v*` tag now, and `main` deploys to UA. The argument is kept in the present tense
+because it is the reason every rule below exists, and a reader who skips it will not
+understand what the rest of the document is buying.
+
+As it stood: `.github/workflows/pages.yml` deployed to GitHub Pages **on every push to
+`main`**. So merging a pull request was the act of shipping to production. There was no
+state in which a change was built, integrated and reviewable but not yet being served
+to whoever opened the app.
 
 That sentence is not new here. [DATA_RELEASES.md](pipeline/DATA_RELEASES.md) already
 made the identical argument about *data* — its consequence 3, verbatim:
@@ -59,8 +65,7 @@ a change to wait.
 
 That is the whole structural change. Everything else in this document is process
 arranged around it: naming, notes, review, compatibility and testing are all things
-that happen to a candidate *while it sits in UA*, which is a place that does not
-currently exist.
+that happen to a candidate *while it sits in UA*.
 
 It also costs almost nothing to build, because `pages.yml` already publishes to
 **paths** on a `gh-pages` branch rather than through `actions/deploy-pages` — it was
@@ -595,6 +600,41 @@ can approve their own pull request on GitHub: it is a platform rule with no togg
 nothing here is ever mergeable, including the agent-authored pull requests, since the
 token authenticates as the maintainer and GitHub counts those as theirs. Both of these
 are asserted rather than remembered, in `.github/tests/test_repository_protections.py`.
+
+### Being told the gate is waiting
+
+**The gate holds the run; nothing about it tells you it is holding one.** Measured on
+2026-08-13, a dispatched publish sat unapproved for 8h52m with a second queued behind
+it ([#701](https://github.com/OurHike/OurHike/issues/701)). GitHub fails an unapproved
+deployment after 30 days, so the failure this produces is a release that quietly
+expires rather than one that quietly ships.
+
+**The Actions notification setting is not the lever, and it is the one everybody
+reaches for.** Notification settings → System → Actions offers "Only notify for failed
+workflows", which reads exactly like the explanation — a `waiting` run is not a failed
+one. It is not: that channel fires when a run **you triggered has completed**, so it
+cannot carry a pending approval at any setting, and turning the filter off changes
+nothing. The approval notice is a separate email GitHub sends an environment's required
+reviewers, routed through your ordinary notification settings — which address
+repository notifications go to, and whether Watching and Participating deliver by email
+at all.
+
+Three notices, and they fail independently rather than duplicating each other:
+
+- **`check-pending-approvals.yml`** opens a tracking issue naming every waiting run,
+  its environment, how long it has waited and how long until it expires; it closes
+  itself when the queue drains, and comments when a new run joins one already open. It
+  reports into the repository rather than into one account's mail, which is what makes
+  it the one notice that does not depend on account configuration nobody can verify.
+  Worst case is its half-hour cron.
+- **Your notification routing**, if you want the platform's own email to work: check
+  which address repository notifications go to and that Watching and Participating
+  deliver by email. GitHub Mobile puts the same notification on a phone. No checkout
+  can verify any of this, which is why it is not the only mechanism.
+- **Slack or Teams**, which is GitHub's own documented answer and the only one with no
+  latency at all. In a channel with the GitHub app installed, `/github subscribe
+  OurHike/OurHike deployments` posts when a deployment is pending approval, when it is
+  approved, and when its status changes.
 
 ## 13. Status
 

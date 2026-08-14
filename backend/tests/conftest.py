@@ -11,9 +11,11 @@ container, see ../.github/workflows/backend-tests.yml). The engine the suite
 runs against is the engine production runs on, so a passing run means
 something about Supabase's Postgres rather than about a local stand-in.
 
-It is one shared database across the whole test run rather than a fresh one
-per test, so isolation comes from dropping every table the test created
-before the next test starts (see `_reset_schema` below).
+It is one shared database per *worker* rather than a fresh one per test, so
+isolation comes from dropping every table the test created before the next
+test starts (see `_reset_schema` below). Serially that is one database for
+the whole run; under `pytest -n` it is one each, for the reason
+`_worker_database_url` gives.
 """
 
 import os
@@ -39,8 +41,72 @@ os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://ourhike:ourhike@loca
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import MetaData, create_engine  # noqa: E402
+from sqlalchemy import MetaData, create_engine, text  # noqa: E402
+from sqlalchemy.engine import make_url  # noqa: E402
+from sqlalchemy.exc import ProgrammingError  # noqa: E402
 from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
+
+
+def _worker_database_url(url: str, worker: str) -> str:
+    """`url` with the running xdist worker's name appended to the database.
+
+    The isolation model in this file's docstring is "drop every table between
+    tests", and that is only safe while one process is doing it. Point four
+    `pytest -n` workers at one database and they drop each other's tables
+    mid-test: measured here, that is not a handful of failures but a
+    deadlock - workers block on locks held by tables another worker is in the
+    middle of dropping, and a run that takes 60s serially took 1785s before
+    it was killed.
+
+    So parallelism is bought with a database per worker rather than by
+    weakening the isolation. Each worker still runs its own tests serially
+    against its own database, which is exactly the model that was there
+    before - `gw0` simply cannot see `gw1`'s tables to drop them.
+    """
+    parsed = make_url(url)
+    return parsed.set(database=f"{parsed.database}_{worker}").render_as_string(hide_password=False)
+
+
+def _ensure_database(url: str) -> None:
+    """Create `url`'s database if it is not there yet.
+
+    `scripts/local-postgres.sh` creates `ourhike_test`; it cannot create the
+    per-worker ones because how many there are is decided by the `-n` on the
+    command line. Creating them here keeps that script's contract intact and
+    means a parallel run needs no setup step of its own.
+
+    CREATE DATABASE has no IF NOT EXISTS, and two workers racing on the same
+    name is the normal case rather than an edge one, so the duplicate is
+    caught instead of tested for.
+    """
+    parsed = make_url(url)
+    admin = create_engine(parsed.set(database="postgres"), isolation_level="AUTOCOMMIT")
+    try:
+        with admin.connect() as connection:
+            already_there = connection.execute(
+                text("select 1 from pg_database where datname = :name"), {"name": parsed.database}
+            ).scalar()
+            if not already_there:
+                try:
+                    connection.execute(text(f'create database "{parsed.database}"'))
+                except ProgrammingError:
+                    # Another worker got there between the check and the
+                    # create. Its database is as good as this one would be.
+                    pass
+    finally:
+        admin.dispose()
+
+
+# Before `from app.config import settings` below, because that reads
+# DATABASE_URL once at import and every other reader in the codebase - the
+# module-level engine in app/db/session.py, alembic/env.py, and the tests that
+# call `settings.database_url` directly - goes through that one object. Setting
+# the variable is therefore the whole change; nothing else has to learn about
+# workers.
+_XDIST_WORKER = os.environ.get("PYTEST_XDIST_WORKER")
+if _XDIST_WORKER:
+    os.environ["DATABASE_URL"] = _worker_database_url(os.environ["DATABASE_URL"], _XDIST_WORKER)
+    _ensure_database(os.environ["DATABASE_URL"])
 
 from app.config import settings  # noqa: E402
 from app.db.base import Base  # noqa: E402

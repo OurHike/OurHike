@@ -89,6 +89,16 @@ export interface ArchiveComplete {
   generation: number
   segments: number
   totalBytes: number
+  /**
+   * How many segments the generation this marker REPLACED held, so a later
+   * delete can sweep that generation to a known floor even after a torn free
+   * left a gap at its front (#648). The knowledge has to live here: the free
+   * runs right after this marker overwrites the only other record of that
+   * count, so a crash mid-free takes the count with it unless the new marker
+   * carries it. Absent on markers written before this field existed - readers
+   * treat that as 0 and lean on the delete sweep's gap tolerance instead.
+   */
+  priorSegments?: number
 }
 
 /**
@@ -115,7 +125,12 @@ const MAX_SEGMENTS = 4_096
  * end.
  *
  * `atLeast` keeps going past a gap up to a count that is known from a marker or
- * a source record, so a delete cannot leak segments a torn write left behind.
+ * a source record. Note what that does NOT claim: a torn WRITE cannot leave a
+ * gap at all - writes are awaited in order from 0, so a killed transfer leaves
+ * a contiguous prefix. The tear that makes gaps is a killed DELETE, which
+ * removes ascending from 0 and so leaves a gap at the FRONT (#648); reads
+ * correctly treat that generation as empty, and the delete paths carry their
+ * own gap tolerance so they cannot be fooled the same way.
  */
 async function segmentBlobs(
   packageKey: string,
@@ -183,14 +198,20 @@ export async function readSegmentRun(
 export async function readComplete(packageKey: string): Promise<ArchiveComplete | null> {
   const stored = await get(completeKeyFor(packageKey))
   if (stored === null || typeof stored !== 'object') return null
-  const { generation, segments, totalBytes } = stored as Partial<ArchiveComplete>
+  const { generation, segments, totalBytes, priorSegments } =
+    stored as Partial<ArchiveComplete>
   if (
     typeof generation !== 'number' ||
     typeof segments !== 'number' ||
     typeof totalBytes !== 'number'
   )
     return null
-  return { generation, segments, totalBytes }
+  // Optional rather than required: markers written before this field existed
+  // are still markers, and the delete sweep's gap tolerance covers what they
+  // cannot say (#648).
+  return typeof priorSegments === 'number'
+    ? { generation, segments, totalBytes, priorSegments }
+    : { generation, segments, totalBytes }
 }
 
 /**
@@ -251,9 +272,17 @@ export async function markComplete(
   packageKey: string,
   complete: ArchiveComplete,
 ): Promise<void> {
-  await set(completeKeyFor(packageKey), complete)
+  // Read BEFORE the overwrite on the next line destroys it: the old marker is
+  // the only record of how many segments the outgoing generation holds, and
+  // the free below is exactly the kind of many-transaction loop an OS kill
+  // interrupts. Carried in the new marker so the count survives the crash and
+  // a later delete can still sweep to it (#648).
+  const replaced = await readComplete(packageKey)
+  const priorSegments = Math.max(replaced?.segments ?? 0, replaced?.priorSegments ?? 0)
+  await set(completeKeyFor(packageKey), { ...complete, priorSegments })
   for (const generation of GENERATIONS) {
-    if (generation !== complete.generation) await deleteGeneration(packageKey, generation)
+    if (generation !== complete.generation)
+      await deleteGeneration(packageKey, generation, priorSegments)
   }
   // The bytes this replaces. Left standing it would waste up to 1.18 GB of a
   // hiker's phone for good, since `readArchive` now serves the segments and
@@ -261,16 +290,44 @@ export async function markComplete(
   await del(packageKey)
 }
 
+/**
+ * How far past `atLeast` a delete keeps probing through absences before
+ * concluding a generation is spent.
+ *
+ * A killed delete leaves a gap at the FRONT of a generation (it removes
+ * ascending from 0), and a marker from before `priorSegments` existed - or a
+ * marker the tear itself outlived - names no floor that reaches past it. So
+ * the delete paths do not trust a gap the way the read paths may: they keep
+ * probing until this many consecutive indexes answer nothing. At 32 MiB a
+ * segment, 64 covers a 2 GiB front gap - past every archive the pipeline
+ * publishes - for 64 extra reads on the ordinary gapless path, which is the
+ * cost of never again leaving 800 MB stranded on a phone whose owner deleted
+ * the map to free the space (#648).
+ */
+const DELETE_GAP_RUN = 64
+
 /** Reclaims one generation's segments. `atLeast` is a count claimed by a marker
- *  or a source record; see `segmentBlobs`. */
+ *  or a source record; past it, absences are tolerated up to DELETE_GAP_RUN in
+ *  a row rather than read as the end, because on a delete a gap may be a torn
+ *  earlier delete rather than the truth (#648). */
 export async function deleteGeneration(
   packageKey: string,
   generation: number,
   atLeast = 0,
 ): Promise<void> {
-  const parts = await segmentBlobs(packageKey, generation, atLeast)
-  for (let index = 0; index < parts.length; index += 1) {
-    await del(segmentKeyFor(packageKey, generation, index))
+  let absentRun = 0
+  for (let index = 0; index < MAX_SEGMENTS; index += 1) {
+    const key = segmentKeyFor(packageKey, generation, index)
+    const stored = await get(key)
+    if (stored === undefined) {
+      if (index >= atLeast) {
+        absentRun += 1
+        if (absentRun >= DELETE_GAP_RUN) break
+      }
+      continue
+    }
+    absentRun = 0
+    await del(key)
   }
 }
 
@@ -280,14 +337,19 @@ export async function deleteGeneration(
  *
  * Someone deleting a 1.18 GB map to free room must not be left holding most of
  * it (#554), so this sweeps generations it has no record of rather than trusting
- * the marker to name the only one present.
+ * the marker to name the only one present - and it asks the marker itself for
+ * the deepest floor it knows (its own count, and the replaced generation's via
+ * `priorSegments`), so the caller's floor is a contribution rather than the
+ * whole answer (#648).
  */
 export async function deleteArchiveRecords(
   packageKey: string,
   atLeast = 0,
 ): Promise<void> {
+  const marker = await readComplete(packageKey)
+  const floor = Math.max(atLeast, marker?.segments ?? 0, marker?.priorSegments ?? 0)
   for (const generation of GENERATIONS) {
-    await deleteGeneration(packageKey, generation, atLeast)
+    await deleteGeneration(packageKey, generation, floor)
   }
   await del(completeKeyFor(packageKey))
   await del(packageKey)

@@ -181,6 +181,29 @@ A separate `sites.json` was considered and rejected: it would be a second fetch,
 
 The client groups by `site_id` on load. That is a `Map` build over ~2,800 records, once.
 
+**And a fourth property, `nearby`, names the anchor's parts** *(added 2026-08-13, [#614](https://github.com/OurHike/OurHike/issues/614); reshaped the same day by [#625](https://github.com/OurHike/OurHike/issues/625))*. Folding a privy onto a shelter's pin took away the only place the privy described itself: `lib/poi_description.py` still composes "Multi-seat moldering privy. Built 2019." for it, attached to a feature that now draws nothing. So the anchor carries them:
+
+```json
+[{"phrase": "a multi-seat moldering privy", "distance_ft": 131.2},
+ {"phrase": "a group campsite", "distance_ft": 82.0},
+ {"phrase": "water", "distance_ft": 295.3}]
+```
+
+— which `client/src/lib/nearbyClause.ts` renders under the description, in the units the hiker chose:
+
+> Two-storey clapboard shelter, sleeps 14, with a fireplace, a fire ring and a porch. Built 1915.
+> **Nearby: a multi-seat moldering privy 130 ft away, a group campsite 82 ft and water 295 ft.**
+
+**Structure, not the sentence, and that is the correction #625 made.** This shipped as prose spliced into `description` — the pipeline wrote "40 m away" into the artifact, so every hiker read metres whatever Settings said, and a hiker reported exactly that. Published prose cannot ask a phone a question; it was composed months before the card was opened, and a re-export was the only way to change a word of it. The phrases are still composed in the pipeline, because they are ATC's inventory read aloud and nothing about them depends on the reader. The distance travels as a number, in ATC's own feet.
+
+**A separate sentence, never the `with` clause.** A shelter does not have a privy and a water source *inside* it — "with a fireplace and a porch" lists what the shelter has, and the parts are separate points a short walk away. Three rules fell out of writing it:
+
+- **Each part gets the adjectives that tell one from another, and not its whole card.** "a moldering privy", because §5's own question is *which* privy; not "8 tent pads", which lands a number directly against the distance and stops the sentence being readable. The counts stay on the part's own card, where the chips below reach them.
+- **One number per pair, whichever unit it is written in.** The sentence carries the pipeline's measurement from the anchor and the chip measures from the pin; where those are the same point — every site the legend has not filtered — both come from the same equirectangular formula and round once, in the same unit. `Privy · 130 ft` over a sentence saying 40 m is drift on one card, and it is why neither half could convert without the other.
+- **Ordered by the member order the pin and the chips use** — privy, water, campsite — not nearest-first, so the sentence, the footer strip and the chip row cannot disagree about which part comes first. The order is published, not re-derived on the phone: a client sorting it again would be a second opinion.
+
+This overlaps the chips below on type and distance, deliberately. The chip is a *control* — its job is to lead somewhere; the sentence is what a hiker skims before deciding whether to tap anything.
+
 ### 4. On the map: one pin, carrying its composition
 
 A site draws **one pin, at the anchor's coordinates, in the anchor's accent and glyph.** A shelter still looks like a shelter; nothing about the existing icon work is discarded. Members draw no pin of their own.
@@ -188,15 +211,33 @@ A site draws **one pin, at the anchor's coordinates, in the anchor's accent and 
 The pin has to say that it stands for more than itself, and there are two ways to do it:
 
 - **A `+N` badge.** Cheap, legible at 38 px, and says nothing about *what*.
-- **A footer strip of two or three micro-glyphs.** Answers "is there a privy" without a tap, which is the actual question, and costs legibility at 38 px.
+- **Micro-glyphs, one per member category.** Answers "is there a privy" without a tap, which is the actual question, and costs legibility at 38 px.
 
-**Recommended: the glyph strip, prototyped against the contrast assertions already in `poiIcons.test.ts`, falling back to `+N` if it cannot clear them.** The recommendation is soft on purpose — this is the one decision in this document that wants a look at a real screen in real sunlight ([#105](https://github.com/OurHike/OurHike/issues/105)) before it is settled.
+**Settled on micro-glyphs**, which is what [#524](https://github.com/OurHike/OurHike/issues/524) built. *Where* they go took two more passes, and the real screen this section asked for is what decided both:
+
+| | where | anchor glyph | member glyph | icon box |
+|---|---|---|---|---|
+| #524, then [#604](https://github.com/OurHike/OurHike/issues/604) | a white footer strip across the disc | 11.1 px | 9.6 px at one member, 7.5 at three | 38 px |
+| [#611](https://github.com/OurHike/OurHike/issues/611) | 21 px badges on the rim, upper right | **17.7 px** | **10.7 px at every count** | 58 / 70 / 72 px |
+
+The strip could only be made by taking the anchor's own glyph down to 11.1 px, and every site pin paid that — including the 57% carrying a single member. A shelter carrying a privy was a less legible shelter than one carrying nothing, which is a strange thing for a pin to say. **Badges hang off the outer circle instead, crossing the halo ring and never the disc**, so the anchor keeps the full 17.7 px a plain pin draws at and a site pin is a plain pin again. Each badge is the same pin language at badge scale: the category's accent, its glyph in halo white, a white ring, the dark hairline outside.
+
+The badge went out at 14 px and came back at 21 — the same real screen, saying the smaller one read as too quiet. So the member glyph now beats the strip at every count rather than trading against it: 10.7 px where the strip's most generous case was 9.6 and its three-member case 7.5. **A badge is also the same size whatever a pin carries**, where the strip divided a fixed span and so shrank all three glyphs to fit a third member.
+
+Two things the size costs, both real:
+
+- **The anchor no longer outranks its members by much.** 17.7 px against 10.7, where the 14 px badge made it 17.7 against 7.1. A site pin now says two things loudly instead of one loudly and one quietly. It is still a shelter first, and that is the thing to watch if a badge is ever grown again.
+- **Three badges no longer fit inside the corner.** At 21 px they cannot fan across a quarter turn without touching, so a three-member pin puts its outer two about 7° past twelve and past three o'clock. One member (57% of sites) still sits square in the corner and two (42%) stay well inside it; only the 1% carrying three spills, and that 1% is #529's water gap rather than the trail.
+
+**What it costs beyond that is the collision box.** Badges hang past the rim, so the image grows — symmetrically, which is what lets the disc stay on the hiker's coordinate with no `icon-offset` in `poiLayers.ts` at all. Padded per member count rather than once for every site pin, because the padding *is* the collision box: 58 px carrying one member, 70 carrying two, 72 carrying three, against 38 for every other waypoint on the map. At z14 that is a site pin evicting a losing neighbour from 229 m, 274 m or 281 m rather than from 155 m. Set against it, the same grouping took 428 members out of the source altogether — those stopped asking for a box at all. If it bites, the two ways out are to pad the top and right only and re-centre with a data-driven `icon-offset`, or to take the badge back towards 14 px.
+
+**And it costs rasterising time**, which is worth writing down because it is the one cost that was found by CI rather than by looking. The images are 2.2× the pixels they were before badges, and building all 46 of them is a few hundred milliseconds on the main thread — enough, unoptimised, to time out tests that mount a map. Two things pay for it: the rasteriser skips any pixel whose samples cannot reach the pin or a badge (about half of a three-member image is empty corner), and `buildPoiIcons` is built once per process rather than once per map, since every trip to the More tab and back was paying the whole bill again for an answer that cannot change.
 
 What this does *not* do is change `icon-allow-overlap`. Sites remove the pins that were colliding rather than permitting overlap; the collision engine keeps doing its job on what is left, and `POI_PRIORITY` keeps deciding a genuinely crowded ridge. Two shelters 400 m apart still collide at z12, correctly.
 
 ### 5. On the card: chips that are also the tabs
 
-Under the name, a row of chips — `Privy · 40 m`, `Campsite · 25 m`, `Water · 90 m` — and tapping one swaps the card body to that member's own detail: its photo and gallery, its description, its coordinates, its unverified line.
+Under the name, a row of chips — `Privy · 130 ft`, `Campsite · 82 ft`, `Water · 295 ft`, or the same three in metres for a hiker who chose them — and tapping one swaps the card body to that member's own detail: its photo and gallery, its description, its coordinates, its unverified line.
 
 One control doing two jobs, and the reason to prefer it over a plain tab strip: **the chip's existence is usually the whole answer.** A hiker wants to know there is a privy, not to read the privy's card. Tabs hide that behind a tap; chips answer at a glance and still lead somewhere.
 
@@ -207,6 +248,23 @@ Two mechanical gotchas, both already visible in the current code:
 - `usePinAnchor` depends on `[map, poi, card]` with a comment explaining that a late-arriving mile changes the card's *height* and a stale measurement leaves a flipped card overlapping its pin. Switching chips changes the height far more than a mile does. The effect has to re-run on the selected member, not only on the POI.
 - The chip strip is tapped with a gloved thumb, so `--min-touch-target` applies to each chip. Four chips at 44 px fit a 320 px card; five do not, and the largest real site has five members. The strip scrolls horizontally or the card widens — a decision for whoever builds it, against a real device.
 
+**Built in [#526](https://github.com/OurHike/OurHike/issues/526), and four things it settled that this section left open.**
+
+**The strip scrolls; the card keeps its width.** Not really a choice by the time it was measured: `.poi-card` is `min(264px, …)`, not the 320 px this section reasoned from, and the body's padding leaves the strip 240 px — so two chips fit and the three-chip case, which is 41% of all sites, already overflows. Widening the card trades against `poiCardPlacement.ts`'s edge margins on a 360 px phone, and wrapping is worse than either: a strip that gains a row changes the card's *height*, and a card hanging below its pin is positioned by its measured height, so it would push itself over the pin it describes. Horizontal scroll costs nothing and does not care how many parts a site has — which matters, because the size distribution above is partly [#529](https://github.com/OurHike/OurHike/issues/529)'s water gap and moves as that closes.
+
+**The chips are not a `role="tablist"`.** The rule this section insists carries — one panel rendered, not three hidden with CSS — is honoured: there is one media box and one body, both driven from the selected part. The ARIA pattern is not, and the reason is the card's own layout. The photo, the gallery and its buttons are as part-specific as the text is, and they sit *above* the strip; a `tabpanel` under the name could only contain the text while claiming to control an image that changed silently above it. Putting the media inside a panel means the strip precedes the photo, which moves the media box off the card's top edge and re-parents the close button out of the corner it is drawn for. So: plain buttons, `aria-current` on the one being read.
+
+What that costs has to be paid separately, because dropping the pattern drops the half of it that tells a screen-reader user the card changed under them. `aria-current` is an ARIA *property*: it is announced on arrival at the chip, not when it flips — unlike `aria-pressed` — so on its own, activating a chip moves the heading, the coordinates, the provenance, the unverified sentence and the photograph in silence. Two things put that back, and neither needs the panel: `aria-controls` on each chip naming **both** regions it swaps, which the objection above does not reach because the attribute takes an ID-reference *list* rather than a wrapper, and a visually-hidden `role="status"` region that names the part now shown, which is what actually produces an announcement.
+
+**The distance is computed on the phone, from the pin.** The published `nearby` measures from the *anchor*, which is the point the pipeline knows a hiker can see, so the chip cannot read it: since [#607](https://github.com/OurHike/OurHike/issues/607)/[#609](https://github.com/OurHike/OurHike/issues/609) the pin is a member whenever the legend filters the anchor out. So it is `siteDistanceFeet` in `client/src/map/poiSites.ts` — the pipeline's own equirectangular `distance_m` from `pipeline/lib/spurs.py`, ported rather than re-derived, so the number on the chip is the measurement that admitted the member to the site. Measured from the pin and not from whichever chip was last tapped, so the row's numbers do not rewrite themselves on every tap. Where the pin *is* the anchor — every unfiltered site — the two computations are the same formula with the same constant and land on the same number.
+
+**Revisited 2026-08-13, and fixed the same day.** "Worth revisiting if a hiker asks" was the standing note here; a hiker asked, and [#619](https://github.com/OurHike/OurHike/issues/619) made following the hiker's units a standard the whole app keeps ([CONTRIBUTING.md](../CONTRIBUTING.md)). This chip could not keep it **alone**, for the reason the paragraph above gives rather than a preference about paces: the same distances were printed twice on one card, once here and once inside the description, where the pipeline had already composed them into published prose. Converting only the half the client owns puts `Privy · 130 ft` over a sentence reading 40 m — the drift this section calls a defect. So both halves moved together in [#625](https://github.com/OurHike/OurHike/issues/625): §3's `nearby` publishes structure instead of prose, the client writes the sentence, and the chip converts. `client/src/test/unitDisplay.test.ts` excuses nothing now, and still requires an issue number for the first line that asks.
+
+**The card hangs off the part carrying the pin, which is not always the anchor.** Three facts on the card are positional — where it is projected, every distance in the strip, and which chip carries no number — and all three follow the *carrier*, meaning whatever point the shell selected. That is a precondition rather than a coincidence: `poiLayers.ts` builds its features from `composeSites().drawn` and writes the carrier's id, and a tap is the only thing that opens a card, so what was selected is by construction what is drawn.
+
+It has to be the carrier and not `site[0]`, because §6's second bullet — built as [#607](https://github.com/OurHike/OurHike/issues/607)/[#609](https://github.com/OurHike/OurHike/issues/609) — made those two different things. Hide shelters and a site redraws as its highest-priority drawn member, so a tap selects the *privy* while the shelter has nothing drawn at it; keying the projection on the anchor there hangs the card off the hidden shelter, a median 42 m away, which is 11 px at z14 and 165 px at z18. That is the mild form of the spiderfying this section refuses, arrived at from the opposite direction. The anchor keeps exactly one job — naming the place, on the strip's group label — because identity is not a position.
+
+The consequence is a **precondition worth stating before [#527](https://github.com/OurHike/OurHike/issues/527) trips over it**: `siteRoster` deliberately answers the same anchor-first roster for a member as for its anchor, so search opening a privy's card directly will hand `PoiCard` a `poi` that is *not* the carrier. The card cannot tell from its own props — nothing in them says what the map drew — so on that day the shell has to pass the carrier, since it is the layer that computed the composition. Guessing the anchor instead is wrong in the case that already exists.
 ### 6. What a site model quietly breaks
 
 Four things, each small, each a lie on the map if it is missed:
@@ -229,11 +287,22 @@ The motivating example is a shelter with a campsite, a privy **and a water sourc
 
 Nearly every A.T. shelter has water in reality. The app does not know where it is. That is a sourcing problem — OSM `natural=spring` / `amenity=drinking_water` over the corridor, NHD (already flagged exploratory in [../ROADMAP.md](../ROADMAP.md)), or a club-supplied list — and it belongs in its own issue, ahead of any display work that would otherwise render 97% of shelters as having no water when what the app means is that nobody told it.
 
+*Amended 2026-08-13.* The sourcing issue happened (**#529 — 97% of shelters have no water source within 250 m, and the trail is not like that**; `pipeline/WATER_SOURCES.md` holds the measurements), and it split the answer in two. Where a **located** water point exists, nothing here changes. Where ATC states only a **distance** (its Campsite Sustainability Index, shipped by #668/#688), the site model now carries one synthesized member per affected site — `source: "atc_csi"`, at the anchor's own inherited coordinates, low confidence, its description saying whose measurement the distance is and that the spot is unmapped (**#694 — A card can promise water 37 m away while its site shows no water at all**). It extends §3's contract by one clause: a member's coordinates are its location **except** for `atc_csi` members, which sit on their anchor by construction, which is why the chip prints their stated `water_distance_ft` instead of measuring them (`PoiCard.tsx`'s partDistance), and why a real mapped point folding in makes the export stop synthesizing for that site. The figure itself left that description in [#625](https://github.com/OurHike/OurHike/issues/625) and is now only on the chip, which states it in the hiker's own units — a distance written into published prose is a distance in somebody else's units, which is the defect that issue closed. The paragraph above remains true: this is still not a display change closing a data gap — it is a stated fact finally riding the model that shows facts.
+
 ---
 
 ## What this deliberately isn't
 
 - **Not a general clustering layer.** Sites are a modelled fact about facilities, capped at three member types. A crowded ridge of viewpoints is not this doc's problem — it belongs to [POI_VISIBILITY.md](POI_VISIBILITY.md), written the same day as this one by a session that could not see it. *(That doc was rewritten 2026-08-13 and its answer changed: `POI_PRIORITY` decides which of that ridge's viewpoints gets a **pin**, and the ones that lose draw as dots rather than disappearing. The measurements below are what pushed it — at hiking zooms co-location is nearly the whole of the loss, so this doc turns out to be doing most of the work and that one covers the residue.)* **The two are complementary and the boundary is clean: this doc owns several waypoints at one place, that one owns many places across one viewport.** Grouping 1,027 stacked points into 435 sites hands real pin budget back at hiking zooms and changes nothing about a corridor view holding 90 waypoints on a screen with room for 26. That doc's cross-reference table states the split from the other side; this doc's measurements are the evidence under both.
+- **Not deduplication.** A site is several *different* types at one place; two records of the
+  *same* type describing one place is [POI_DEDUPLICATION.md](POI_DEDUPLICATION.md)'s, added
+  2026-08-13. A privy is never a duplicate of its shelter, and two shelters are never parts of
+  each other — which is why open question 1's Horns Pond lean-tos stay two pins under both
+  designs rather than falling between them. That doc's measurement is the evidence for the
+  boundary: of the 48 same-type pairs within 25 m on the corridor, 35 are two real places that
+  ATC distinguishes by a sibling number, a direction or an outright different name, and the
+  Horns Pond pair (11.3 m), The Birches pair (10.1 m) and the two Grafton Notch privies of open
+  question 4 (20.7 m) are all in that 35.
 - **Not a zoom-dependent reveal.** Drawing member pins again above z16, where they would no longer collide, is a coherent idea and a second code path with a second set of failure modes. Left out of v1; noted below.
 - **Not spiderfy.** Fanning members out around the tapped pin on leader lines preserves the count but draws every member at a position it is not at. This app refuses to draw a stale GPS fix like a live one; drawing a privy 80 px from where it is, is the same refusal.
 - **Not a change to `icon-allow-overlap`.** Letting pins overlap is the symptom the complaint started from.
@@ -245,6 +314,6 @@ Nearly every A.T. shelter has water in reality. The app does not know where it i
 
 1. **Two shelters, one site.** Horns Pond has two lean-tos ~40 m apart and is genuinely one place; elsewhere two shelters that close would be a data error. v1 keeps one anchor per site and lets the second shelter keep its own pin, which is safe and slightly wrong at Horns Pond. Is that the right trade, or should anchor-to-anchor merging be in scope?
 2. **Trailheads.** `parking + resupply` (26 clusters) and `parking + privy` (13) are a real second grouping with a different card. Deliberately out of v1 — is it v1.1 or v2?
-3. **The pin badge.** Glyph strip or `+N`, settled on a real screen rather than here.
+3. ~~**The pin badge.** Glyph strip or `+N`, settled on a real screen rather than here.~~ **Settled** — see §4. Micro-glyphs rather than `+N`, on badges around the rim rather than in a strip across the disc. The real screen decided it twice: once against a member glyph too small to read ([#604](https://github.com/OurHike/OurHike/issues/604)), and once against the white bar itself ([#611](https://github.com/OurHike/OurHike/issues/611)). What is still open there is narrower and worth carrying forward: a badge says nothing about whether *that privy* is verified, where the rim says it for the anchor.
 4. **The 32 unmatched privies** (35 as projected; `group` found three of them). Named for something that is not a shelter or campsite — `"Kennebec Privy"`, `"Bromley Summit Privy"`, `"Guilder Pond Parking Area Privy"` — or distinguished by a word the rule has no reading of: `"Backpacker Campsite Upper Privy"` and `"...Lower Privy"` are two privies at one campsite, and `"501 Shelter Winter Privy"` is a seasonal second one. They keep their own pins, which is honest. Worth a second pass, or leave them?
-5. **Site names.** A site anchored on `"Chairback Gap Lean-to Shelter"` shows that name. Does the card say "Chairback Gap" once at the top and let the chips carry the rest, or repeat the full name per member?
+5. ~~**Site names.** A site anchored on `"Chairback Gap Lean-to Shelter"` shows that name. Does the card say "Chairback Gap" once at the top and let the chips carry the rest, or repeat the full name per member?~~ **Answered by [#526](https://github.com/OurHike/OurHike/issues/526): the heading names the part on screen, and the site is named once on the strip.** The lines underneath the heading decided it rather than any argument about repetition — the coordinates, the unverified sentence and the provenance line all belong to the part being shown, and a privy's coordinates under a shelter's name is exactly the kind of quiet false statement the card exists not to make. The site's own name goes on the chip strip's group label, where it is read once, costs no height, and comes off the anchor chip rather than out of a second field that could disagree with it. Which is also why the card reads nothing from `site_name`: the anchor is in the roster, so its display name is already there.

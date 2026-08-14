@@ -99,9 +99,14 @@ export function AboutBuild({ build = BUILD_INFO }: AboutBuildProps) {
         </p>
       )}
 
+      {/* The copy button is still the path for an email or a message to a
+          club. Report a bug, directly below, needs no copying at all - it
+          carries these three lines into the form itself (lib/bugReport.ts,
+          #626) - and saying so is what stops this note reading as the only
+          way to do it. */}
       <p className="settings__note">
         Worth quoting if you report a problem with the app itself — it says exactly which
-        build you were looking at.
+        build you were looking at. Report a bug, below, carries these three lines for you.
       </p>
     </section>
   )

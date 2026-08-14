@@ -360,6 +360,23 @@ class TestTheWorkflowUsesIt:
         assert (ACTION_DIR / "action.yml").is_file()
         assert SCRIPT.is_file()
 
+    def test_the_closed_path_can_resolve_the_local_action_it_runs(self):
+        """`uses: ./…` is resolved out of the workspace at step time, so the
+        teardown needs a checkout that still happens when the pull request
+        closes. The checkout used to skip on `closed`, which failed every
+        teardown on the only event that triggers one - while the comment
+        below it told the pull request the previews had been removed (#643).
+        Every step between that checkout and the teardown must skip on close
+        for the same reason in reverse: the close has no build to do."""
+        steps = self._steps()
+        teardown_at = next(i for i, step in enumerate(steps) if step.get("uses") == "./.github/actions/delete-pages-previews")
+        survives_close = [
+            step
+            for step in steps[:teardown_at]
+            if str(step.get("uses", "")).startswith("actions/checkout") and "closed" not in str(step.get("if", ""))
+        ]
+        assert survives_close, "no checkout on the closed path precedes the local-action teardown"
+
     def test_closing_a_pull_request_removes_its_previews(self):
         teardown = next(step for step in self._steps() if step.get("uses") == "./.github/actions/delete-pages-previews")
         assert "closed" in teardown["if"]

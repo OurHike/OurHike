@@ -189,6 +189,19 @@ class TestTheReleaseWorkflows:
         push = _triggers(_workflow("pages.yml"))["push"]
         assert "branches" not in push
 
+    def test_production_does_not_deploy_from_a_dispatch_off_a_branch(self):
+        """The assertion above closes the front door; this is the back one.
+        Both tag gates are steps that *skip* on a non-tag ref - deliberately,
+        so a rollback dispatch does not re-assert paperwork - and the Run
+        workflow button offers the default branch first. Without a refusal
+        step, the default dispatch of Deploy Pages built main and pushed it
+        to production with every gate silently skipped (#644)."""
+        steps = _workflow("pages.yml")["jobs"]["build"]["steps"]
+        guard = steps[0]
+        assert guard.get("name") == "Refuse a dispatch that is not a tag"
+        assert "workflow_dispatch" in guard["if"]
+        assert "!startsWith(github.ref, 'refs/tags/')" in guard["if"]
+
     def test_ua_deploys_from_main(self):
         push = _triggers(_workflow("ua.yml"))["push"]
         assert push.get("branches") == ["main"]

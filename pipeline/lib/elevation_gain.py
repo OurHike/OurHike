@@ -165,6 +165,52 @@ def cumulative_gain_over_gaps(elevations: Iterable[float | None], threshold: flo
     return total + cumulative_gain(run, threshold)
 
 
+def profile_runs(profile: Iterable[dict]) -> list[list[float]]:
+    """The profile's unbroken runs of elevation, split at both kinds of break.
+
+    Two things end a run, and they are different in kind:
+
+    A **null elevation** is a hole in the DEM - the trail is continuous, the
+    measurement is not.
+
+    A **`part_start`** is the opposite: the measurement is fine and the TRAIL
+    is not continuous. `export_elevation.py` walks 558 disconnected centerline
+    pieces and carries the distance axis straight across the space between
+    them, so the step from the last sample of one piece to the first of the
+    next is not a slope anybody walks. Summing it is #559 - measured at
+    ~36,800 ft of phantom climb on the real profile, concentrated at ~94
+    points, the largest a single +2,588 ft "step" across 25 m of ground.
+
+    A profile with no `part_start` anywhere is read as one run, which is the
+    correct reading of an artifact published before this existed: that file
+    genuinely does not record where its seams are, and inventing them would be
+    worse than the under-count. `check_elevation_gain.py` says so out loud
+    rather than letting a fix quietly do nothing.
+    """
+    runs: list[list[float]] = []
+    run: list[float] = []
+    for record in profile:
+        if record.get("part_start") and run:
+            runs.append(run)
+            run = []
+        value = record.get("elevation_ft")
+        if value is None:
+            if run:
+                runs.append(run)
+            run = []
+        else:
+            run.append(value)
+    if run:
+        runs.append(run)
+    return runs
+
+
+def gain_over_profile(profile: Iterable[dict], threshold: float = DEFAULT_THRESHOLD_FT) -> float:
+    """Total confirmed ascent over a profile, breaking at DEM nulls AND at
+    centerline part boundaries. See profile_runs()."""
+    return sum(cumulative_gain(run, threshold) for run in profile_runs(profile))
+
+
 def raw_cumulative_gain(elevations: Iterable[float | None]) -> float:
     """Every rise summed, noise included - what a zero threshold gives.
 
@@ -188,6 +234,11 @@ def gain_between(
     selects fewer than two samples has no gain rather than raising, since a
     caller asking about a 50 m window is asking a reasonable question about a
     25 m profile.
+
+    The window keeps whole records rather than bare elevations, because
+    `part_start` has to survive the slice - a window that spans a centerline
+    seam and dropped the marker would sum the jump across it as a climb
+    (#559), which is the entire thing this is meant to stop.
     """
-    window = [record["elevation_ft"] for record in profile if start_mi <= record["distance_mi"] <= end_mi]
-    return cumulative_gain_over_gaps(window, threshold)
+    window = [record for record in profile if start_mi <= record["distance_mi"] <= end_mi]
+    return gain_over_profile(window, threshold)

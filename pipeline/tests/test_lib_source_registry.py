@@ -106,6 +106,17 @@ def test_the_registry_still_records_the_photo_licence_block():
     assert registry["photo_licence"]["license"]
 
 
+def test_the_registry_still_records_the_atc_licence_block():
+    """photo_licence's sibling (#688): the maintainer's 2026-08-13
+    authorisation for reusing the data ATC publishes on its own org, which
+    build_water_distance.py's licence position rides on. Same discovery-run
+    survival concern, same pin."""
+    registry = load_registry(REAL_REGISTRY)
+
+    assert registry["atc_licence"]["basis"].startswith("Maintainer authorisation")
+    assert registry["atc_licence"]["recorded_date"] == "2026-08-13"
+
+
 def test_the_registry_is_still_parseable_as_plain_json():
     """Cheap, and the thing a hand-edited entry breaks first."""
     json.loads(REAL_REGISTRY.read_text())

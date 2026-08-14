@@ -146,6 +146,24 @@ export interface LegendProps {
    *  tap from the map, so it is where a hiker who started a download and shut
    *  its window will actually look to find out whether it is still going. */
   downloadActivity?: DownloadActivity | null
+  /**
+   * How many ATC trail updates the app is holding, for the row that opens
+   * all of them (#687). Zero, or the shell not passing it, renders no row -
+   * the same "count rather than the notices" reasoning MapScreen's own prop
+   * of this name documents.
+   *
+   * This is the row that used to be a permanent button across the top of the
+   * map screen. It moved here because browsing every notice on the trail,
+   * whether or not any of it changed lately, is exactly the kind of rare
+   * errand this panel's own download link already exists for - "a hiker
+   * opens this all day to ask what is nearby, a handful of times ever to do
+   * this." What is actually NEW gets its own bottom banner on the map screen
+   * instead, which this row has no opinion about.
+   */
+  atcNoticeCount?: number
+  /** Opens the full list (chrome/AtcNoticeList.tsx), rendered by the shell
+   *  the same way `onOpenDownloads` is. */
+  onOpenAtcNotices?: () => void
 }
 
 export function Legend({
@@ -171,6 +189,8 @@ export function Legend({
   onOpenDownloads,
   hasDownload = false,
   downloadActivity = null,
+  atcNoticeCount = 0,
+  onOpenAtcNotices,
 }: LegendProps) {
   if (!open && !persistent) return null
 
@@ -438,6 +458,25 @@ export function Legend({
             onChange={onToggleVerifiedOnly}
           />
         </label>
+      )}
+
+      {/* The way to every ATC notice (#687), moved here from a permanent
+          button across the top of the map screen - it used to render
+          whenever the app held any notice at all, which given ATC almost
+          always has something live was almost always, so a hiker paid map
+          height for it on every visit rather than the times it actually had
+          news. What is genuinely new gets its own bottom banner on the map
+          screen instead; this is the quiet, permanent way to browse
+          everything ATC has posted, trail-content-adjacent so it sits above
+          the downloaded-map block below rather than inside it - those answer
+          a different question and #687 is explicit that conflating them is
+          what this replaces. */}
+      {atcNoticeCount > 0 && onOpenAtcNotices !== undefined && (
+        <button type="button" className="legend__atc-link" onClick={onOpenAtcNotices}>
+          {atcNoticeCount === 1
+            ? 'Read the 1 ATC trail update'
+            : `Read all ${atcNoticeCount} ATC trail updates`}
+        </button>
       )}
 
       {/* THE DOWNLOADED MAP, ALL OF IT, IN ONE BLOCK AT THE FOOT.

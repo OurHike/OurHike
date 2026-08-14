@@ -20,6 +20,7 @@ from pathlib import Path
 
 import requests
 
+from lib import fetch_receipts
 from lib.completeness import fail_if_incomplete
 
 API_URL = "https://opentrail.org/api/getData"
@@ -112,6 +113,13 @@ def main():
 
     if fc is None:
         print("Up to date (304 Not Modified), skipping.")
+        # A receipt on the skip path too, and it is not a formality. A 304 is
+        # this fetcher succeeding - it asked upstream and confirmed the local
+        # copy is current - so a run that skipped must not look to packaging
+        # like a run that never fetched. Without this, the first cached run
+        # after a release would report opentrail as absent and fail the gate
+        # that #542 exists to make trustworthy.
+        fetch_receipts.record("fetch_opentrail", [OUT_PATH])
         return
 
     print(f"  {len(fc['features'])} features fetched.")
@@ -129,6 +137,12 @@ def main():
     OUT_PATH.write_text(json.dumps(fc))
     STATE_PATH.write_text(json.dumps({"etag": new_etag}))
     print(f"Saved (comments excluded) -> {OUT_PATH}")
+
+    # OUT_PATH only. STATE_PATH is this fetcher's own skip bookkeeping - the
+    # ETag it will compare against next time - and nothing downstream reads
+    # it, while export_poi.py reads OUT_PATH directly. A receipt lists what a
+    # fetcher stands behind for its consumers, not its private notes.
+    fetch_receipts.record("fetch_opentrail", [OUT_PATH])
 
     counts = {}
     for f in fc["features"]:

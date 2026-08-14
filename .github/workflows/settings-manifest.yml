@@ -1,0 +1,86 @@
+# Asks whether `.github/expected-settings.yml` still agrees with the workflows
+# in this directory - every `secrets.X`/`vars.X` a workflow reads is declared,
+# nothing declared has outlived its last reader, and nothing is read from the
+# context it was not declared for.
+#
+# Needs nothing but the checkout, which is the whole reason this file exists
+# separately from settings-configured.yml. It runs on every pull request
+# including from a fork, and it is the half with teeth on an ordinary change,
+# since drift is what actually happens.
+#
+# WHY THIS IS TWO FILES AND NOT TWO JOBS (#679). The two halves of the settings
+# suite want opposite triggers, and one `on:` block cannot serve both. This
+# half wants `pull_request` and `merge_group:` so it can be a required check;
+# the other half must never run on a pull request at all, because GitHub
+# passes no secrets to a fork's run and it would fail for every outside
+# contributor for a reason none of them could fix. Sharing a trigger block
+# meant the secrets half carried a `pull_request` trigger it then declined
+# with a job-level `if:`, and this half could not gain `merge_group:` without
+# handing one to the secrets half too.
+#
+# There was a second reason, and it is the one that made the file hard to
+# maintain rather than merely mis-shaped. BRANCHING.md records five attempts in
+# which ANY proposed change to the combined file - a comment was enough -
+# produced `action_required` with zero jobs instead of a status, and only
+# restoring it byte-for-byte turned it green again. It was the only workflow
+# here that both ran on `pull_request` and resolved the `secrets` context.
+# This file does not touch that context anywhere, which is what makes it an
+# ordinary workflow again: a change to it can be reviewed on the pull request
+# that proposes it.
+#
+# So `secrets` must not appear in this file. Not as a policy - it is the
+# property the split was performed to obtain.
+
+name: Settings manifest
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # The event a merge queue raises checks on, and the point of the split. A
+  # required check whose workflow lacks this does not fail a queue entry, it
+  # hangs it until the queue times out and ejects the pull request. Unfiltered
+  # for the same reason pipeline-tests.yml gives: a queue entry's ref is
+  # `refs/heads/gh-readonly-queue/...` rather than `main`, and `merge_group`'s
+  # `branches:` filter is undocumented as to which it matches.
+  merge_group:
+
+# Reads the repository and nothing else. Deliberately no wider than the two
+# things this job actually opens: the workflow directory and the manifest.
+permissions:
+  contents: read
+
+jobs:
+  manifest:
+    # The check name branch protection matches, unchanged across the split from
+    # settings-check.yml. Renaming it would silently stop the required check
+    # reporting, which hangs a queue entry rather than failing it - the check
+    # name is the contract, not the file it lives in.
+    name: Manifest agrees with the workflows
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .github/tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: python -m ruff check .
+
+      - name: Check formatting
+        run: python -m ruff format --check .
+
+      # No SETTINGS_CHECK_LIVE, so every test needing the live contexts skips
+      # and what runs is the from-a-checkout half. settings-configured.yml runs
+      # the same suite with that variable set; the suite decides which of its
+      # tests each job is asking for, rather than either job selecting them.
+      - name: Run tests
+        run: python -m pytest -v

@@ -119,7 +119,9 @@ Set it as a **repository variable** (not a secret — it's a public URL): Settin
 
 ## 3. Host the client
 
-✅ **Already done, mostly automatic** — `.github/workflows/pages.yml` builds and deploys the client to GitHub Pages on every push to `main`: the beta landing page at `https://ourhike.github.io/OurHike/` and the installable app at `.../OurHike/app/`. Cloudflare Pages was the original plan when this list was written, but GitHub Pages is what actually got wired up (it's what gives the PWA the HTTPS a browser requires before offering "Install app").
+✅ **Already done, mostly automatic** — `.github/workflows/pages.yml` builds and deploys the client to GitHub Pages: the beta landing page at `https://ourhike.github.io/OurHike/` and the installable app at `.../OurHike/app/`. Cloudflare Pages was the original plan when this list was written, but GitHub Pages is what actually got wired up (it's what gives the PWA the HTTPS a browser requires before offering "Install app").
+
+**It deploys on a `v*` tag, not on a push to `main`** — [RELEASING.md](RELEASING.md) §2 is why, and `.github/workflows/ua.yml` is what `main` deploys to instead. This step used to say "on every push to `main`", which was true until the release plumbing landed.
 
 **One manual step, once:** Settings → Pages → Build and deployment → Source must be **"Deploy from a branch"**, branch `gh-pages`, folder `/ (root)`. The workflow pushes to that branch itself; nothing publishes until the source is pointed at it.
 
@@ -226,7 +228,9 @@ Adding an entry per PR by hand is not a plan, and without a matching entry every
 - whether every provider in `AUTH_PROVIDERS` is actually enabled in the dashboard — a mismatch there is a button that reaches an error page, and nothing else in the system compares those two lists;
 - whether the anon key is the legacy JWT rather than the publishable key.
 
-Read-only, and safe to run any time. It does not itself check the redirect allow-list — that is not in the settings document it reads — but **the allow-list is no longer unchecked**: `.github/workflows/supabase-config-check.yml`'s `redirects` job runs `pipeline/check_auth_redirects.py` daily and opens a tracking issue when a sign-in cannot come back to the app.
+Read-only, and safe to run any time. It does not itself check the redirect allow-list — that is not in the settings document it reads — but **the allow-list is checkable**: `.github/workflows/supabase-config-check.yml`'s `redirects` job runs `pipeline/check_auth_redirects.py` and fails when a sign-in cannot come back to the app.
+
+**Dispatch-only, and nobody is watching it on your behalf.** Unlike its two siblings it is on no schedule and opens no tracking issue — it reports by exiting non-zero, so a drift that arrives on a day nobody dispatches it goes unnoticed. That is a known cost rather than an oversight: `.github/tests/test_supabase_keepalive_workflow.py` allows exactly one scheduled workflow to reach the Supabase project, and loosening that guard to fit this in would be the wrong way round. [#488](https://github.com/OurHike/OurHike/issues/488) is where scheduling gets decided on its own terms. Run it by hand when auth misbehaves, and after any change to the allow-list or Site URL.
 
 It reads a list the public API does not publish by asking for the behaviour instead of the document: `GET /auth/v1/verify` with a junk token redirects to the requested URL when that URL is allowed, and falls back to the project's Site URL when it is not. **That check found production's allow-list and Site URL still naming the pre-org-migration Pages host** — which by then answered 404 — so every sign-in from production was redirecting to a dead host with the auth code in the URL, while the map and the bucket were both fine.
 

@@ -37,9 +37,17 @@ import yaml
 WORKFLOW_DIR = Path(__file__).resolve().parents[1] / "workflows"
 KEEPALIVE = "supabase-keepalive.yml"
 
-# The settings that name the project. A workflow reading either of these is
-# talking to Supabase; nothing else in this repository does.
+# The settings that name the project. This used to end "nothing else in this
+# repository does", and that was false the day schema-drift.yml shipped
+# (#656): the project's DATABASES are also reachable through secrets named
+# for their own jobs - the migration pooler URLs, the conditions reader -
+# each engineered precisely so this pattern would not read it as a second
+# keepalive. Both roads are counted now; the roster test below is the census.
 SUPABASE_REFERENCE = re.compile(r"\b(?:secrets|vars)\.SUPABASE_[A-Z_]+", re.IGNORECASE)
+
+# The other road into the same project: connection strings for its Postgres,
+# named for the job that holds them rather than for Supabase.
+DATABASE_SECRET = re.compile(r"\bsecrets\.[A-Z_]*DATABASE_URL\b")
 
 # Supabase's guidance is "a few user requests to the database each day over the
 # previous week" - a per-day measure. A gap this size keeps at least one run in
@@ -140,17 +148,39 @@ def _scheduled_supabase_workflows():
     return sorted(
         name
         for name, parsed in _workflows().items()
-        if _crons(parsed) and any(SUPABASE_REFERENCE.search(text) for text in _strings(parsed))
+        if _crons(parsed) and any(SUPABASE_REFERENCE.search(text) or DATABASE_SECRET.search(text) for text in _strings(parsed))
     )
 
 
-def test_exactly_one_scheduled_workflow_reaches_the_supabase_project():
+# Every scheduled road into the Supabase project, and why each is deliberate.
+# Joining this roster is a conscious act with a reason, made at the moment a
+# new entrant is cheap to reconsider - which is the enforcement the old
+# "exactly one" census claimed and could not deliver (#656).
+SCHEDULED_ROSTER = {
+    KEEPALIVE: "the keepalive itself - PostgREST reads, the database activity Supabase measures",
+    "publish-conditions.yml": "bakes verified closures and reports daily, through the conditions reader credentials",
+    "schema-drift.yml": "reads both databases' schemas daily through the migration pooler URLs; deliberately not a "
+    "keepalive (its SUPABASE_URL is a placeholder), but scheduled database activity all the same",
+}
+
+
+def test_every_scheduled_road_to_the_supabase_project_is_on_the_roster():
+    """The keepalive question is "does the project get scheduled activity
+    from one place or several" - and the census used to measure only the
+    SUPABASE_* settings, a weaker property its own name overclaimed (#656).
+    Two scheduled workflows reach the same project's databases through
+    secrets named for their own jobs, each written to slip past the old
+    pattern, so the dodge was becoming the house style. Both roads are
+    counted now, against a roster that names each member's reason; a fourth
+    entrant fails here by name."""
     found = _scheduled_supabase_workflows()
 
-    assert found == [KEEPALIVE], (
-        "A free-plan Supabase project needs one scheduled job keeping it awake, and gains nothing from a second. "
-        f"Scheduled workflows reaching the project: {found or 'none'}. If the new one replaces "
-        f"{KEEPALIVE}, delete that file and its tests rather than running both."
+    assert found == sorted(SCHEDULED_ROSTER), (
+        "The scheduled workflows reaching the Supabase project are not the ones the roster names. "
+        f"Found: {found or 'none'}; roster: {sorted(SCHEDULED_ROSTER)}. A new scheduled road to the project is a "
+        "second thing to keep in sync and a second load profile - join the roster with a stated reason, or reach "
+        "the project some other way. If it replaces a member, remove that member and its tests rather than running "
+        "both."
     )
 
 

@@ -482,10 +482,6 @@
             "title": "Id",
             "type": "string"
           },
-          "maintainer_id": {
-            "title": "Maintainer Id",
-            "type": "string"
-          },
           "start_mile": {
             "title": "Start Mile",
             "type": "number"
@@ -493,7 +489,6 @@
         },
         "required": [
           "id",
-          "maintainer_id",
           "club_id",
           "club_name",
           "display_name",

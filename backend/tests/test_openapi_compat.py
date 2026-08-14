@@ -122,9 +122,22 @@ def test_every_document_in_the_directory_is_claimed_by_the_manifest():
 
 def test_the_baselines_on_disk_are_what_the_writer_produces():
     """They are written by `--write`, so each must be byte-comparable to that
-    output - otherwise a hand-edit could sit in a file undetected."""
-    for release, document in load_baselines():
-        assert document == json.loads(json.dumps(document, sort_keys=True)), release
+    output - otherwise a hand-edit could sit in a file undetected.
+
+    The BYTES on disk against the writer's exact rendering, which is the
+    assertion this docstring always described. The old body compared a parsed
+    document to a round-trip of itself - true for every parseable file, a
+    tampered one included - so the one hand-edit this test exists to catch
+    was precisely what it could not see (#650). A legitimate surgical edit
+    (the #641/#430 refreshes) passes exactly when it preserves the writer's
+    format, which is the discipline those refreshes already followed."""
+    for entry in load_manifest()["releases"]:
+        path = BASELINES_DIR / entry["document"]
+        document = json.loads(path.read_text())
+        assert path.read_text() == json.dumps(document, indent=2, sort_keys=True) + "\n", (
+            f"{entry['document']} is not byte-identical to the writer's rendering of its own content - "
+            "a hand-edit that changed more than values, or a rewrite outside `--write`. See #650."
+        )
 
 
 # --- The retention rule: which releases "supported" means -----------------
@@ -300,6 +313,72 @@ def test_a_removed_operation_is_a_break():
     breaks = compare(_document(THING), current)
 
     assert "operation removed" in [item.rule for item in breaks]
+
+
+def test_a_newly_required_parameter_is_a_break():
+    """#650's headline case: GET /reports gains a required ?bbox= and every
+    retained client in the field 422s on every call - through a gate whose
+    docstring says "every way" and which returned [] for this one."""
+    old = _document(THING)
+    new = copy.deepcopy(old)
+    new["paths"]["/things"]["get"]["parameters"] = [
+        {"name": "bbox", "in": "query", "required": True, "schema": {"type": "string"}}
+    ]
+
+    breaks = compare(old, new)
+
+    assert [item.rule for item in breaks] == ["parameter newly required"]
+    assert "query:bbox" in breaks[0].where
+
+
+def test_a_parameter_required_all_along_is_not_a_break():
+    old = _document(THING)
+    old["paths"]["/things"]["get"]["parameters"] = [
+        {"name": "bbox", "in": "query", "required": True, "schema": {"type": "string"}}
+    ]
+
+    assert compare(old, copy.deepcopy(old)) == []
+
+
+def test_a_newly_optional_parameter_is_not_a_break():
+    """The additive direction: an old client that never sends it is exactly
+    what optional means."""
+    old = _document(THING)
+    new = copy.deepcopy(old)
+    new["paths"]["/things"]["get"]["parameters"] = [
+        {"name": "bbox", "in": "query", "required": False, "schema": {"type": "string"}}
+    ]
+
+    assert compare(old, new) == []
+
+
+def test_a_newly_required_request_body_is_a_break():
+    old = {"openapi": "3.1.0", "paths": {"/things": {"post": {"responses": {"204": {"description": "ok"}}}}}}
+    new = copy.deepcopy(old)
+    new["paths"]["/things"]["post"]["requestBody"] = {
+        "required": True,
+        "content": {"application/json": {"schema": {"type": "object"}}},
+    }
+
+    breaks = compare(old, new)
+
+    assert [item.rule for item in breaks] == ["request body newly required"]
+
+
+def test_a_response_stripped_of_its_content_is_a_break():
+    """A 200-with-content becoming a 204, or losing its content, hands an old
+    reader nothing - and takes the schema's RESPONSE role with it, so the
+    field-level rules go quiet at exactly the wrong moment. The operation
+    keeps existing, which is what kept this invisible to the removed-path and
+    removed-operation rules (#650)."""
+    old = _document(THING)
+    new = copy.deepcopy(old)
+    new["paths"]["/things"]["get"]["responses"] = {"200": {"description": "no body any more"}}
+
+    breaks = compare(old, new)
+
+    assert "response stripped" in [item.rule for item in breaks]
+    assert any("GET /things 200" in item.where for item in breaks)
 
 
 def test_a_removed_response_field_is_a_break():

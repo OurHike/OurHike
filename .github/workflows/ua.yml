@@ -80,20 +80,29 @@ jobs:
         working-directory: client
         run: npm ci
 
-      # UA points at its own published data where there is some, and at
-      # production's otherwise. Prefix-only, never a separate bucket
+      # UA points at its own published data: DATA_BASE_URL plus
+      # `/environments/ua`, the prefix a UA publish writes to
+      # (features/DATA_ENVIRONMENTS.md). Prefix-only, never a separate bucket
       # (RELEASING.md §14.2): one bucket means UA is served through the same
       # CORS policy, host and range machinery a phone uses, so what UA verifies
       # is delivered the way production is delivered.
       #
-      # UA_DATA_BASE_URL is production's base plus `/environments/ua` - the
-      # prefix a UA publish writes to (features/DATA_ENVIRONMENTS.md). The
-      # fallback stays production's base rather than becoming that prefix
-      # automatically, because a prefix nothing has published to yet is a UA
-      # that 404s on every artifact, and reading production's published bytes
-      # is harmless in the direction that matters: a read cannot overwrite
-      # anything. What it is NOT good enough for is testing anything that
-      # publishes - which is the line the log below draws out loud.
+      # Computed here rather than read from a variable someone has to type
+      # out: the value is entirely derivable from DATA_BASE_URL plus a fixed
+      # suffix, so a second setting holding the same information was a manual
+      # step for no reason - one more place this could drift from
+      # features/DATA_ENVIRONMENTS.md's own formula, and one more thing
+      # standing between a UA publish landing and UA actually reading it.
+      # UA_DATA_BASE_URL still exists below as an explicit override, for
+      # whoever needs UA to point somewhere other than its own environment -
+      # production's raw data, or a different bucket entirely.
+      #
+      # Before the first UA publish this points at a prefix with nothing in
+      # it, and UA 404s on every artifact rather than quietly serving
+      # production's. That is deliberate: a UA that reads production's bytes
+      # by default is a UA that looks like it is testing a publish and is
+      # not, and a 404 says plainly that nothing has shipped to UA yet where
+      # a silent fallback would not.
       - name: Resolve the data source
         if: steps.can.outputs.deploy == 'true'
         id: data
@@ -102,14 +111,16 @@ jobs:
           FROM_VAR: ${{ vars.DATA_BASE_URL }}
           FROM_SECRET: ${{ secrets.DATA_BASE_URL }}
         run: |
-          URL="${UA_URL:-${FROM_VAR:-$FROM_SECRET}}"
-          if [ -z "$URL" ]; then
-            echo "::warning::No data source is configured, so UA cannot download a map. See LAUNCH_CHECKLIST.md 1.5."
-          elif [ -n "$UA_URL" ]; then
-            echo "Data source: $URL (UA's own)"
+          BASE="${FROM_VAR:-$FROM_SECRET}"
+          if [ -n "$UA_URL" ]; then
+            URL="$UA_URL"
+            echo "Data source: $URL (UA_DATA_BASE_URL override)"
+          elif [ -n "$BASE" ]; then
+            URL="$BASE/environments/ua"
+            echo "Data source: $URL (UA's own environment, computed from DATA_BASE_URL)"
           else
-            echo "::notice::UA_DATA_BASE_URL is unset, so UA reads production's published data. Fine for looking at, and not a test of anything that publishes - see features/DATA_ENVIRONMENTS.md."
-            echo "Data source: $URL (production's)"
+            URL=""
+            echo "::warning::No data source is configured, so UA cannot download a map. See LAUNCH_CHECKLIST.md 1.5."
           fi
           echo "url=$URL" >> "$GITHUB_OUTPUT"
 

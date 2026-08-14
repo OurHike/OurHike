@@ -124,17 +124,23 @@ export const ATC_UPDATE_POINT_RADIUS = ATC_UPDATE_POINT_DIAMETER / 2
  *    a waypoint pin is its whole 38px. This is the comparison every bound in
  *    src/test/atcAlertProminence.test.ts is about, so it has to be the zoom
  *    both are at full size.
- *  - **z9, 0.6.** Where waypoint pins used to first appear, and what was then
- *    `POI_ICON_SIZE_EXPRESSION`'s own lower stop. **That coupling is gone and
- *    the stop stays anyway** (#597): the pins' lower anchor moved to
- *    `POI_PIN_MIN_ZOOM` = 12 when the corridor view took over below it, and
- *    following it up to 12 would have made ATC's notices *smaller* across
- *    z9-z11 - which is planning territory, exactly where this layer's whole
- *    argument says it must stay visible. The clearance over a pin is now
- *    asserted as a property at every zoom both are drawn
- *    (src/test/atcAlertProminence.test.ts) rather than by two tables agreeing,
- *    and it is wider than it used to be: at z12 the dot is at 0.9 where a pin
- *    is at 0.6.
+ *  - **z9, 0.8.** Where waypoint pins first appear (`POI_PIN_MIN_ZOOM`), at
+ *    the fraction they are drawn at there (`POI_PIN_MIN_SCALE`). Matching the
+ *    pin's own scale is what keeps this dot its couple of pixels clear at
+ *    every zoom where both are drawn, rather than only at the top.
+ *
+ *    **It was 0.6 and that briefly became a real regression** (#617). The seam
+ *    moved out to z9 and pins were raised to 0.8 to stay legible there; a dot
+ *    left at 0.6 is 24 px against a 30.4 px pin, so ATC's own safety notice
+ *    would have been the SMALLER mark - the exact fault
+ *    src/test/atcAlertProminence.test.ts was written to catch, and it caught
+ *    it. Raising it to 0.8 also makes notices bigger across z5-z9 rather than
+ *    smaller anywhere, which is the only direction this layer may move.
+ *
+ *    The number is repeated here rather than imported: `lib/` does not depend
+ *    on `map/`, and the relationship is enforced by that test file, which
+ *    exists precisely because neither half of the comparison can be made where
+ *    either side lives.
  *  - **z5, 0.4.** Below the pins entirely, where the only question is whether
  *    a hiker planning a week can see WHERE the ATC has posted something. About
  *    18px of ink answers that. It is deliberately NOT a further shrink to
@@ -151,7 +157,7 @@ export const ATC_UPDATE_POINT_RADIUS = ATC_UPDATE_POINT_DIAMETER / 2
  */
 export const ATC_UPDATE_POINT_ZOOM_STOPS: ReadonlyArray<[zoom: number, scale: number]> = [
   [5, 0.4],
-  [9, 0.6],
+  [9, 0.8],
   [13, 1],
 ]
 

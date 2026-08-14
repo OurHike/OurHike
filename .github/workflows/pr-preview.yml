@@ -101,8 +101,14 @@ jobs:
             echo "url=https://pr-$NUMBER.$PROJECT.pages.dev"
           } >> "$GITHUB_OUTPUT"
 
+      # On the closed path too, not just the build path: the teardown below is
+      # a repo-local action, which the runner resolves out of the workspace at
+      # step time. With nothing checked out it cannot even be found - so every
+      # close failed the cleanup on its way to a comment claiming the previews
+      # had been removed (#643). Everything the build needs stays gated on
+      # not-closed below; the close needs the repository and nothing else.
       - uses: actions/checkout@v4
-        if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
+        if: steps.can.outputs.deploy == 'true'
 
       - uses: actions/setup-node@v4
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
@@ -246,7 +252,7 @@ jobs:
 
       - name: Say where the preview is
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
-        uses: marocchino/sticky-pull-request-comment@67d0dec7b07ed060a405f9b2a64b8ab319fdd7db # v2.9.2
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
         with:
           header: pr-preview
           message: |
@@ -286,7 +292,7 @@ jobs:
 
       - name: Say the pull request is closed
         if: steps.can.outputs.deploy == 'true' && github.event.action == 'closed'
-        uses: marocchino/sticky-pull-request-comment@67d0dec7b07ed060a405f9b2a64b8ab319fdd7db # v2.9.2
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
         with:
           header: pr-preview
           message: |

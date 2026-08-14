@@ -12,14 +12,11 @@
 // warning, or a closure placed against the wrong index.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { get, set } from 'idb-keyval'
-import { MockMap, resetMapLibreMock } from './test/mocks/maplibre-gl'
+import { MockMap } from './test/mocks/maplibre-gl'
 import { renderedMap } from './test/liveMap'
-import { PREFERENCES_KEY } from './lib/preferences'
-import { DEFAULT_PREFERENCES } from './lib/userPreferences'
-import { TRAILS_BLOB_KEY } from './lib/trailData'
+import { appHarness } from './test/appHarness'
 import { CLOSURE_SOURCE_ID } from './map/closureLayers'
 import { WARNING_SOURCE_ID } from './map/warningLayers'
 
@@ -98,53 +95,19 @@ vi.mock('./lib/api', () => ({
   fetchReports: vi.fn(async () => REPORTS),
 }))
 
-/** A mile of latitude, near enough that a vertex index IS a mile marker. */
-const MILE_IN_DEGREES_LAT = 1 / 69.05
-
-const TRAILS = JSON.stringify({
-  type: 'FeatureCollection',
-  features: [
-    {
-      type: 'Feature',
-      properties: { source: 'centerline', blaze_color: 'White' },
-      geometry: {
-        type: 'LineString',
-        coordinates: Array.from({ length: 11 }, (_, i) => [
-          -77,
-          39 + i * MILE_IN_DEGREES_LAT,
-        ]),
-      },
-    },
-  ],
-})
-
-const store = new Map<string, unknown>()
+// No fetch stub: this file mocks lib/api and lib/config, so nothing here
+// reaches the network, and a stub would only hide it if something did.
+const app = appHarness({ stubFetch: false })
 
 beforeEach(() => {
-  store.clear()
-  resetMapLibreMock()
-  vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
-  vi.mocked(set).mockImplementation((key, value) => {
-    store.set(key as string, value)
-    return Promise.resolve()
-  })
-  store.set(PREFERENCES_KEY, {
-    ...DEFAULT_PREFERENCES,
-    onboarding_completed: true,
-    download_choice_made: true,
-  })
+  app.onboard()
   // Already on the phone, so nothing is fetched and the centerline index is
-  // built from exactly the geometry above.
-  store.set(TRAILS_BLOB_KEY, new Blob([TRAILS]))
-  store.set('ourhike:pois', [])
+  // built from exactly this geometry - eleven miles, one vertex each.
+  app.putTrailData({ miles: 11 })
 })
 
-afterEach(() => {
-  cleanup()
-  vi.clearAllMocks()
-  vi.restoreAllMocks()
-  vi.unstubAllGlobals()
-})
+// restore, not just clear - see App.trailData.test.tsx's own note.
+afterEach(() => vi.restoreAllMocks())
 
 async function renderApp(): Promise<MockMap> {
   const { default: App } = await import('./App')
@@ -268,13 +231,20 @@ function serveAtcUpdates(updates: unknown[]): void {
 }
 
 describe('every ATC notice is readable, drawn or not', () => {
+  // #687 moved the way to open this list from a permanent button on the map
+  // screen into the legend, so every test below opens the legend first - the
+  // list itself, and what it shows once open, are otherwise unchanged.
+
   it('offers a way to read all of them as soon as any arrive', async () => {
     serveAtcUpdates([UNDRAWN_UPDATE, DRAWN_UPDATE])
     await renderApp()
 
     // No fix and no direction in this harness, so there is no banner at all -
-    // which is exactly the state the button has to survive.
+    // which is exactly the state the legend row has to survive.
     expect(screen.queryByRole('alert')).toBe(null)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Legend' }))
+
     expect(
       await screen.findByRole('button', { name: 'Read all 2 ATC trail updates' }),
     ).toBeInTheDocument()
@@ -284,6 +254,7 @@ describe('every ATC notice is readable, drawn or not', () => {
     serveAtcUpdates([UNDRAWN_UPDATE, DRAWN_UPDATE])
     await renderApp()
 
+    await userEvent.click(await screen.findByRole('button', { name: 'Legend' }))
     await userEvent.click(
       await screen.findByRole('button', { name: /ATC trail updates/ }),
     )
@@ -305,6 +276,7 @@ describe('every ATC notice is readable, drawn or not', () => {
     serveAtcUpdates([UNDRAWN_UPDATE, DRAWN_UPDATE])
     await renderApp()
 
+    await userEvent.click(await screen.findByRole('button', { name: 'Legend' }))
     await userEvent.click(
       await screen.findByRole('button', { name: /ATC trail updates/ }),
     )
@@ -331,8 +303,78 @@ describe('every ATC notice is readable, drawn or not', () => {
     )
     await renderApp()
 
+    await userEvent.click(await screen.findByRole('button', { name: 'Legend' }))
+
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: /ATC trail update/ })).toBe(null)
     })
+  })
+})
+
+describe('the bottom banner for new ATC alerts, end to end (#687)', () => {
+  // chrome/MapScreen.test.tsx and lib/atcAlertsBanner.test.ts cover the
+  // banner's own rendering and the 72-hour gate in isolation. What only this
+  // file can catch is the wiring between them: App.tsx's real clock
+  // (lib/useClock.ts) and the real localStorage watermark actually meeting
+  // what the shell fetched.
+
+  function recentUpdate() {
+    // An hour old, which is comfortably inside the 72-hour window without
+    // touching its boundary - the exact edge is lib/atcAlertsBanner.test.ts's
+    // job, under a frozen clock where "exact" is possible.
+    return {
+      ...DRAWN_UPDATE,
+      updated_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    }
+  }
+
+  it('appears once ATC has posted something in the last 72 hours', async () => {
+    serveAtcUpdates([UNDRAWN_UPDATE, recentUpdate()])
+    await renderApp()
+
+    expect(
+      await screen.findByRole('button', { name: 'ATC · New alert issued' }),
+    ).toBeInTheDocument()
+  })
+
+  it('stays quiet when everything ATC holds is old news', async () => {
+    // UNDRAWN_UPDATE and DRAWN_UPDATE's own dates (2026-06-02, 2026-07-31)
+    // are what most of this describe block already renders against - this
+    // pins that the banner agrees with the legend row about what "old" means.
+    serveAtcUpdates([UNDRAWN_UPDATE, DRAWN_UPDATE])
+    await renderApp()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Legend' }))
+    await screen.findByRole('button', { name: 'Read all 2 ATC trail updates' })
+
+    expect(screen.queryByRole('button', { name: /new alerts? issued/i })).toBe(null)
+  })
+
+  it('silences on its own, without opening the full list', async () => {
+    serveAtcUpdates([recentUpdate()])
+    await renderApp()
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Silence new ATC alerts' }),
+    )
+
+    expect(screen.queryByRole('button', { name: /new alerts? issued/i })).toBe(null)
+    expect(screen.queryByRole('dialog', { name: /Appalachian Trail Conservancy/ })).toBe(
+      null,
+    )
+  })
+
+  it('is also silenced by reading the full list instead', async () => {
+    serveAtcUpdates([recentUpdate()])
+    await renderApp()
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'ATC · New alert issued' }),
+    )
+
+    expect(screen.queryByRole('button', { name: /new alerts? issued/i })).toBe(null)
+    expect(
+      screen.getByRole('dialog', { name: /Appalachian Trail Conservancy/ }),
+    ).toBeInTheDocument()
   })
 })

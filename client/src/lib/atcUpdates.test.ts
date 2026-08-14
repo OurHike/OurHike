@@ -146,6 +146,17 @@ describe('the banner, in ATC’s voice', () => {
     expect(atcUpdateBanner(update(), 470, 'NOBO')).toContain('6.6 mi ahead')
   })
 
+  it('says it in kilometres for a hiker who chose them, leaving ATC’s range alone', () => {
+    // #619. The distance ahead is OurHike's arithmetic on this hiker's
+    // position and follows their preference; the mile range is ATC's own
+    // published figure, in the units they publish it in, and rewriting their
+    // numbers would misquote them as well as move a mile marker.
+    const line = atcUpdateBanner(update(), 470, 'NOBO', 'metric')
+
+    expect(line).toContain('10.6 km ahead')
+    expect(line).toContain('mi 476.6 – 485.8')
+  })
+
   it('says "here" rather than a distance when the hiker is inside it', () => {
     // "0.0 mi ahead" is a distance pretending to be a place - the same call
     // lib/closureBanner.ts makes.
@@ -259,6 +270,9 @@ describe('a region-wide ATC advisory', () => {
 
     expect(banner).not.toContain('Alert here')
     expect(banner).toContain('ATC · Alert along 398 mi of trail')
+    expect(atcUpdateBanner(HELENE, 242, 'NOBO', 'metric')).toContain(
+      'ATC · Alert along 641 km of trail',
+    )
     // ATC's category and headline stay verbatim - only OurHike's word for WHERE
     // the hiker is has changed.
     expect(banner).toContain('Hurricane Helene damage')

@@ -38,6 +38,7 @@ feature_count 0, the script exits non-zero rather than silently continuing.
 import json
 from pathlib import Path
 
+from lib import fetch_receipts
 from lib.arcgis import fetch_layer_to_file, get_layer_edit_date
 from lib.completeness import count_problems, fail_if_incomplete
 from lib.source_registry import arcgis_sources, load_registry
@@ -96,6 +97,17 @@ def main():
 
     MANIFEST_PATH.write_text(json.dumps(results, indent=2))
     print(f"\nAll {len(sources)} feature layers up to date. Manifest -> {MANIFEST_PATH}")
+
+    # After the gate above, never before: a receipt means "this finished", so
+    # one written ahead of a sys.exit(1) would record a failed run as a good
+    # one. Every layer file is listed, not just the manifest - the manifest
+    # records what was fetched, and the receipt is what lets packaging
+    # re-check that those bytes are still there and unchanged (#542).
+    receipt = fetch_receipts.record(
+        "fetch_all",
+        [MANIFEST_PATH] + [RAW_DIR / f"{src['key']}.geojson" for src in sources],
+    )
+    print(f"Receipt -> {fetch_receipts.receipt_path('fetch_all')} ({len(receipt['outputs'])} output(s))")
 
 
 if __name__ == "__main__":

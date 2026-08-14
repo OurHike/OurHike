@@ -5,7 +5,10 @@ import {
   SITE_ROLE_ANCHOR,
   SITE_ROLE_MEMBER,
   composeSites,
+  siteDistanceFeet,
+  siteDistanceMeters,
   siteMembersKey,
+  siteRoster,
   type SitePoint,
   type SiteVisibility,
 } from './poiSites'
@@ -364,6 +367,245 @@ describe('siteMembersKey', () => {
     const { membersFor } = composeSites([SHELTER, CAMPSITE, PRIVY])
 
     expect(siteMembersKey(membersFor.get(SHELTER.id))).toBe('privy+campsite')
+  })
+})
+
+// The other half of the same fix (#526). One pin means the members have nowhere
+// to be read, so the card has to list them - and what it lists them from is this
+// roster, which unlike `composeSites` has to keep hold of the points themselves.
+describe('siteRoster', () => {
+  it('lists every part of the place, the anchor first', () => {
+    // Anchor first because the card puts it first: it is the pin that was
+    // tapped, and it is the way back once a member has replaced the body.
+    const roster = siteRoster([PRIVY, SHELTER, CAMPSITE], SHELTER.id)
+
+    expect(roster.map((part) => part.id)).toEqual([
+      'atc_shelter_0421',
+      'atc_privy_0421',
+      'atc_campsite_0421',
+    ])
+  })
+
+  it('orders the members the way a pin lists them, not the way they arrived', () => {
+    // Same fixed order as the glyph strip, and for a reason the strip's own
+    // comment gives: one site should produce one shape. A strip whose chips
+    // reshuffled between two renders of the same place would be unlearnable.
+    const water = point({
+      id: 'opentrail_water_0421',
+      type: 'water',
+      siteId: 'site_0421',
+      siteRole: SITE_ROLE_MEMBER,
+    })
+    const roster = siteRoster([CAMPSITE, water, PRIVY, SHELTER], SHELTER.id)
+
+    expect(roster.map((part) => part.type)).toEqual([
+      'shelter',
+      'privy',
+      'water',
+      'campsite',
+    ])
+  })
+
+  it('keeps both of two privies at one place, rather than one chip for the pair', () => {
+    // Where this parts company with composeSites, which counts members by
+    // DISTINCT CATEGORY because a 38px pin only has to answer "is there one".
+    // A chip has to LEAD somewhere, so collapsing these would leave one of them
+    // exactly as unreachable as it was before this issue - and they are real:
+    // features/POI_SITES.md's open question 4 names the "Upper"/"Lower" pair.
+    const lower = point({
+      id: 'atc_privy_0421_lower',
+      type: 'privy',
+      siteId: 'site_0421',
+      siteRole: SITE_ROLE_MEMBER,
+    })
+    const roster = siteRoster([SHELTER, lower, PRIVY], SHELTER.id)
+
+    expect(roster.map((part) => part.id)).toEqual([
+      'atc_shelter_0421',
+      'atc_privy_0421',
+      'atc_privy_0421_lower',
+    ])
+  })
+
+  it('gives a member category this build has never heard of a place in the row', () => {
+    // Filtering to the three known member types would be the shorter line and
+    // would make a category a later release publishes unreachable from the only
+    // card that leads to it, which is the bug this whole issue is about. It
+    // sorts last; the neutral pin says it is unfamiliar.
+    const bear = point({
+      id: 'atc_bearbox_0421',
+      type: 'bear_box',
+      siteId: 'site_0421',
+      siteRole: SITE_ROLE_MEMBER,
+    })
+    const roster = siteRoster([SHELTER, bear, CAMPSITE], SHELTER.id)
+
+    expect(roster.map((part) => part.type)).toEqual(['shelter', 'campsite', 'bear_box'])
+  })
+
+  it('lists this site’s parts and not the next site’s', () => {
+    // THE SCOPING IS THE FUNCTION. In production `points` is every POI in the
+    // download - hundreds of sites, thousands of points - and every fixture
+    // above is one site, so nothing else here can tell a scoped lookup from an
+    // unscoped one. Both halves matter and both are pinned by this one roster:
+    //
+    //  - Unscoped MEMBERS, and a shelter's card offers the neighbouring site's
+    //    privy. Tapping it opens a card for a place that is not here, which is
+    //    the false statement about location this file's header refuses
+    //    spiderfying over.
+    //  - Unscoped ANCHOR, and the roster's first element is somebody else's
+    //    shelter - so the card's heading, its coordinates, its provenance and
+    //    every distance in the strip belong to a different place. The other site
+    //    is deliberately listed FIRST so that a `find` without the site id
+    //    answers with its anchor rather than accidentally with the right one.
+    const otherShelter = point({
+      id: 'atc_shelter_0422',
+      type: 'shelter',
+      siteId: 'site_0422',
+      siteRole: SITE_ROLE_ANCHOR,
+    })
+    const otherPrivy = point({
+      id: 'atc_privy_0422',
+      type: 'privy',
+      siteId: 'site_0422',
+      siteRole: SITE_ROLE_MEMBER,
+    })
+
+    const roster = siteRoster(
+      [otherShelter, otherPrivy, SHELTER, PRIVY, CAMPSITE],
+      SHELTER.id,
+    )
+
+    expect(roster.map((part) => part.id)).toEqual([
+      'atc_shelter_0421',
+      'atc_privy_0421',
+      'atc_campsite_0421',
+    ])
+  })
+
+  it('answers the same roster for a member as for its anchor', () => {
+    // The site is a fact about the place, not about which of its points was
+    // asked - and search opening a privy's card directly is the next issue.
+    expect(
+      siteRoster([SHELTER, PRIVY, CAMPSITE], PRIVY.id).map((part) => part.id),
+    ).toEqual(siteRoster([SHELTER, PRIVY, CAMPSITE], SHELTER.id).map((part) => part.id))
+  })
+
+  it('has no site to show when the anchor is not here', () => {
+    // composeSites' rule in reverse. It refuses to drop a member whose anchor is
+    // absent, so that privy is over there drawing its own pin - and a strip
+    // listing it as part of something the map is not drawing would point at
+    // nothing.
+    expect(siteRoster([PRIVY, CAMPSITE], PRIVY.id)).toEqual([])
+  })
+
+  it('has no site to show for a waypoint that is in none', () => {
+    // The pre-#523 download, and most POIs even after it: the card must render
+    // exactly as it did before sites existed.
+    const spring = point({ id: 'opentrail_spring_88', type: 'water' })
+
+    expect(siteRoster([SHELTER, PRIVY, spring], spring.id)).toEqual([])
+  })
+
+  it('has no site to show for a role this build cannot read', () => {
+    // Same call composeSites makes on an unfamiliar role: the point keeps its own
+    // pin, so its card is the plain card. Claiming it as part of a site would
+    // put it in a strip that does not contain it.
+    const future = point({
+      id: 'atc_future_0421',
+      type: 'privy',
+      siteId: 'site_0421',
+      siteRole: 'annex',
+    })
+
+    expect(siteRoster([SHELTER, future], future.id)).toEqual([])
+  })
+
+  it('has nothing to say about a waypoint it does not hold', () => {
+    expect(siteRoster([SHELTER, PRIVY], 'atc_shelter_9999')).toEqual([])
+  })
+})
+
+describe('siteDistanceMeters', () => {
+  it('measures a member’s offset in metres', () => {
+    // 0.001 degrees of latitude, which is 111.32 m by the constant the pipeline
+    // uses - a hand-checkable case rather than a re-derivation.
+    const distance = siteDistanceMeters(
+      { lat: 35.7, lon: -83.2 },
+      { lat: 35.701, lon: -83.2 },
+    )
+
+    expect(distance).toBeCloseTo(111.32, 2)
+  })
+
+  it('shrinks a degree of longitude by the latitude it is measured at', () => {
+    // The whole reason this is not flat arithmetic on degrees: at 35.7°N a
+    // longitude degree is about 81% of a latitude one, and the trail spans 34-46°.
+    const east = siteDistanceMeters(
+      { lat: 35.7, lon: -83.2 },
+      { lat: 35.7, lon: -83.199 },
+    )
+
+    expect(east).toBeCloseTo(111.32 * Math.cos((35.7 * Math.PI) / 180), 2)
+    expect(east).toBeLessThan(111.32)
+  })
+
+  it('agrees with the pipeline gate that admitted the member', () => {
+    // The measurement that decided this privy belongs to this shelter is
+    // pipeline/lib/spurs.py's distance_m against a 60 m proximity gate, and the
+    // furthest real member came in at 143 m. A card that computed the offset a
+    // different way would put a different number on it from the one that grouped
+    // it. Diagonal, so both terms are exercised at once.
+    const distance = siteDistanceMeters(
+      { lat: 44.0, lon: -70.0 },
+      { lat: 44.0005, lon: -70.0005 },
+    )
+
+    const dy = 0.0005 * 111_320
+    const dx = 0.0005 * 111_320 * Math.cos((44.00025 * Math.PI) / 180)
+    expect(distance).toBeCloseTo(Math.hypot(dx, dy), 6)
+  })
+
+  it('is zero for a point against itself', () => {
+    expect(siteDistanceMeters(SHELTER, SHELTER)).toBe(0)
+  })
+})
+
+describe('siteDistanceFeet', () => {
+  it('is the same measurement in the unit a display takes', () => {
+    // One formula, two units, and the conversion in one place. Feet is what
+    // lib/units.ts formats from - ATC states its own distances in feet - and
+    // metres is what the grouping gates are written in, so both stay.
+    const from = { lat: 35.7, lon: -83.2 }
+    const to = { lat: 35.701, lon: -83.2 }
+
+    expect(siteDistanceFeet(from, to)).toBeCloseTo(111.32 / 0.3048, 6)
+    expect(siteDistanceFeet(from, to)).toBeCloseTo(
+      siteDistanceMeters(from, to) / 0.3048,
+      9,
+    )
+  })
+
+  it('agrees with the feet the pipeline publishes for the same pair', () => {
+    // export_poi.attach_nearby measures a member with the same equirectangular
+    // formula and divides by the same 0.3048 (#625). The chip measures here
+    // because it measures from the PIN, which is not always the anchor - so the
+    // two computations have to land on the same number where they do coincide,
+    // or one card prints two distances for one privy.
+    //
+    // 0.00036° of latitude is the corridor's median privy offset, which
+    // pipeline/tests/test_export_poi.py pins at 137.8 ft for a 42 m pair; this
+    // is the same arithmetic at 40.1 m.
+    const feet = siteDistanceFeet(
+      { lat: 45.4732, lon: -69.1183 },
+      { lat: 45.47356, lon: -69.1183 },
+    )
+
+    expect(feet).toBeCloseTo(131.48, 2)
+  })
+
+  it('is zero for a point against itself', () => {
+    expect(siteDistanceFeet(SHELTER, SHELTER)).toBe(0)
   })
 })
 

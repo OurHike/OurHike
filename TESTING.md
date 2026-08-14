@@ -14,6 +14,36 @@ Most of the pipeline was built through manual, ad hoc verification this session:
 - **Small-synthetic-fixture tests** for anything spatial/numerical/binary (geometry, rasters, etc.) - tiny fixtures generated in test code, not committed as opaque binary files. A test that builds its own "corrupted" file byte-for-byte documents exactly what "corrupted" means; a checked-in blob doesn't.
 - **HTTP-mocked tests** for any network-touching logic (especially change-detection/skip-logic, which is easy to silently break and expensive to notice - you'd only find out via a full re-fetch that should've been skipped). Real network calls are never allowed to fire during tests.
 
+## A test proves the mechanism or proves the number, and says which
+
+A passing test is read as evidence, so it has to be honest about what it is evidence
+*of*. Two different things get asserted in this repository and they are worth very
+different amounts:
+
+- **The mechanism** - given this threshold, does the code do the right thing on each
+  side of it. This is real coverage and it is most of the suite.
+- **The number** - is the threshold itself right for a hiker on a trail. Almost nothing
+  here proves this, and nothing in a test runner can: it needs field data.
+
+**A test that locks in an unvalidated number, without saying so, converts a guess into a
+rule** - the next contributor reads a red suite as "you broke it" rather than "you
+changed a placeholder nobody has checked", and the number outlives everyone who knew it
+was arbitrary. So a suite exercising a value tagged `@unvalidated` (see
+[CLAUDE.md](CLAUDE.md)'s evidence rule) opens with a comment saying the numbers are
+placeholders, asserts against the imported constants rather than literals, and names
+what would validate them.
+
+`client/src/lib/wrongWay.test.ts` is the worked example. Its header states that the
+90 ft / 12 min / 25 min figures are WIREFRAMES.md mock-up placeholders pending
+field-testing under canopy, that "these tests assert the MECHANISM behaves correctly
+against the placeholder constants, never that the numbers themselves are correct", and
+which direction of error the module exists to avoid. Every case then reads
+`OFF_TRAIL_THRESHOLD_FT - 10` rather than `80`, so re-tuning the threshold moves the
+tests with it and only a genuine behaviour change goes red.
+
+Where a number *is* backed, cite the backing in the test rather than only at the
+definition - the test is where the next person arrives when it fails.
+
 ## What we deliberately don't test
 
 - **Real network calls** to live third-party services (ArcGIS, opentrail.org, USGS, etc.) in the automated suite - slow, flaky, not reproducible, and impolite to hammer on every test run.
@@ -107,6 +137,8 @@ One boundary worth stating plainly: everything in this suite runs in jsdom again
 
 19. **A build that cannot draw a map does not ship.** Every test in `client/src` mocks `maplibre-gl` outright - it has to, since jsdom has no WebGL context and a real map cannot be constructed there at all - so the whole suite can pass while the shipped bundle draws nothing. That is not a hypothetical gap: maplibre-gl 6 stopped inlining its web worker and resolves one from its own module URL, which after bundling is the app chunk, so the built app fetched `assets/maplibre-gl-worker.mjs`, which no build ever emitted. MapLibre fires no error for that. The style still parsed, every layer was still in it, and the map was a blank sheet of paper on every platform, online and off - including the off-archive hatch that exists to say "no data here", which waits on a `load` event that a workerless map never fires. So the guard is on the artifact, not the source: `client/scripts/check-build-output.mjs` reads `dist/` and asserts that every asset the bundle references is really published, that the assets whose absence is *silent* are wired up rather than merely emitted, and that they are in the service worker's precache - a map that fetches part of itself on demand works in town and goes blank on a ridge. It runs as part of `npm run build`, so the check cannot be skipped by deploying. The source half is `client/src/map/mapWorker.test.ts` and one ordering test in `MapView.test.tsx`: MapLibre is pointed at a bundled worker URL, and pointed at it before any map is constructed (there is one worker pool per page, built for the first map, so a URL set afterwards is one nothing reads).
 
+20. **No screen keeps its own units.** Every height and distance a hiker reads goes through `client/src/lib/units.ts` and comes out in the system they chose (CONTRIBUTING.md states the standard; `features/UX_CUSTOMIZATION.md` holds the reasoning). Asserted as a property of the source rather than screen by screen - `client/src/test/unitDisplay.test.ts` scans every shipped `.ts`/`.tsx` for a unit written into a string literal and fails on one, the same shape and for the same reason as `themeTokens.test.ts`'s palette rule. Both catch a mistake that is invisible under the default and wrong for everyone else, and that no component test can fail on because it is not a mistake in the component: `unit_system` sat in the model, the backend's schema and the sync payload for months while eleven display sites printed feet and miles regardless, each of them locally correct. The rule matches on order - a unit *after* a figure (`${gain} ft`) is a measurement, a unit *before* one (`mi ${start}`) is the mile marker, which is a position on the A.T. and the one thing that does not convert - so the exception needs no exemption list and stays legible in the code that relies on it. The guard's own test asserts both halves, because a regex this quiet stops earning its place the day it silently matches nothing.
+
 **Field testing (not automatable):** thresholds for off-trail distance and wrong-direction persistence need real GPS behaviour under tree canopy, ideally with NYNJTC/ATC volunteers, before the push path ships. Sunlight-glare readability and gloved one-handed use likewise (WIREFRAMES.md's `9d` is the greyscale pass to test against).
 
 ## Backend (Python/FastAPI)
@@ -114,6 +146,8 @@ One boundary worth stating plainly: everything in this suite runs in jsdom again
 Built. pytest, 167 tests (measured 2026-08-06), reusing the pipeline's approach - synthetic fixtures, no network (every JWT is minted locally; the JWKS fetch is a monkeypatched seam, never called). The one deliberate departure from "mock the heavy thing": the suite runs against a **real local Postgres 16** - the same engine Supabase runs in production - never a stand-in dialect, because RLS statements, Alembic migrations up *and* down, and `pg_class` readbacks are exactly the things a stand-in would vouch for wrongly. `scripts/local-postgres.sh` makes that a one-command setup, and CI runs a service container of the same version.
 
 The isolation model is worth knowing before pointing `DATABASE_URL` anywhere: each test drops every table in whatever database that URL names and recreates the schema. That is what makes the suite recover from a run killed mid-test, and it is also why the URL must never name a database anyone cares about.
+
+That model is also why this suite is the one place in the repository where parallelism had to be bought rather than switched on. "Drop every table between tests" is safe exactly as long as one process is doing it; four `pytest -n` workers sharing one database do not merely fail, they wedge, each blocking on locks held by tables another worker is partway through dropping — measured at 1785s before it was killed, against 60s for the same suite serially. So `tests/conftest.py` gives each worker its own database, created on demand, and the per-test drop is unchanged inside it. Every worker still runs its own tests serially against its own schema, which is the model that was already there; `gw0` simply cannot see `gw1`'s tables to drop them. `tests/test_worker_database.py` is what keeps that true, including one test asserting the rewrite actually took effect in the process running it — a rewrite that silently became a no-op would put every worker back on one database and buy the deadlock back.
 
 Three invariants from the wireframe handoff live here specifically, since they're only meaningfully enforceable server-side:
 
@@ -131,7 +165,7 @@ Split by what can see what, not by taste:
 
 - **From a checkout** - the manifest and `.github/workflows/` still agree. Every `secrets.X`/`vars.X` a workflow reads is declared; nothing declared has outlived its last reader; nothing is read from the context it wasn't declared for (GitHub resolves the wrong one to an empty string rather than an error, so that surfaces as missing configuration somewhere far away). Runs anywhere, including on a fork's PR. This is the half with teeth on an ordinary change, because drift is what actually happens.
 
-- **From inside Actions** - the settings really exist. `settings-check.yml` resolves the `secrets` and `vars` contexts, reduces them to the *names* that came back non-empty, and passes only those to pytest. Values never enter the test process, which is what lets the failure messages be written for a human to read. It runs weekly, because a revoked R2 token is a change nobody makes to this repository, and there is otherwise nothing to notice it before the next publish does.
+- **From inside Actions** - the settings really exist. `settings-configured.yml` resolves the `secrets` and `vars` contexts, reduces them to the *names* that came back non-empty, and passes only those to pytest. Values never enter the test process, which is what lets the failure messages be written for a human to read. It runs weekly, because a revoked R2 token is a change nobody makes to this repository, and there is otherwise nothing to notice it before the next publish does.
 
 Which workflows use a setting is derived, never written down - a hand-kept copy is the half that goes stale (CONTRIBUTING.md's one home per item). `LAUNCH_CHECKLIST.md` steps 1.3 and 2 stay the prose instructions; the manifest is the same statement in a form a test can read.
 
@@ -183,7 +217,9 @@ Three workflows, one per part: `.github/workflows/pipeline-tests.yml`, `backend-
 
 None of them is (yet) a required check via branch protection - a red run doesn't currently block merging, it's just visible on the PR. All three do now trigger on `merge_group` as well, so they report against a merge queue entry the day one is switched on; [BRANCHING.md](BRANCHING.md) is the home for that, including which checks are safe to require and which would wedge the queue.
 
-`.github/workflows/settings-check.yml` runs the settings suite. Its `manifest` job runs on every PR; its `configured` job deliberately does not, because GitHub passes no secrets to a fork's PR run and the job would fail for every outside contributor for a reason none of them could fix. This is the one gating workflow with **no** `merge_group:` trigger, so the settings suite does not gate a merge queue. That is on evidence rather than principle. It is the only workflow here that both runs on `pull_request` and reads the secrets context, and any pull request that proposes *any* change to it - a comment is enough - gets `action_required` with zero jobs instead of a status. Measured by restoring the file byte-for-byte, which turned it green again. BRANCHING.md holds the table, the mechanism, and why the remaining risk is about queue entries rather than pull requests.
+**Two workflows run the settings suite, split by what each half can see** (#679). `settings-manifest.yml` runs the from-a-checkout half on every PR, including from a fork, and carries `merge_group:` so it can be - and now is - a required check. `settings-configured.yml` runs the live half weekly and deliberately never on a pull request, because GitHub passes no secrets to a fork's PR run and the job would fail for every outside contributor for a reason none of them could fix.
+
+They were one file until #679, and the split bought something specific. The combined file was the only workflow here that both ran on `pull_request` and read the secrets context, and any pull request that proposed *any* change to it - a comment was enough - got `action_required` with zero jobs instead of a status. Measured by restoring the file byte-for-byte, which turned it green again. `settings-manifest.yml` reads no secrets context anywhere, so it sits under no such gate. BRANCHING.md holds the table, the mechanism, and the full history.
 
 ### Why a PR only runs some of them
 
@@ -204,9 +240,23 @@ So the triggers stay unfiltered and the decision moves inside the job, which alw
 
 The scoping is a pull-request optimisation and deliberately stops there: on a merge queue entry the action answers "run" for everything, the same as it does for a push. A queue entry is a commit combining several pull requests, so the union of their file lists is the most any filter could compute - and the failure a queue exists to catch is the one that belongs to the combination rather than to either diff, which no file list shows.
 
-The distinction is which half of the check you want. `settings-check.yml`'s `configured` job carries a job-level `if:` on purpose, and is right to: that check *should* be absent on a pull request, because it cannot pass on one. A test suite is the opposite - it is a check a reviewer expects to see reporting, so it has to report even when the answer is "nothing to do".
+The distinction is which half of the check you want. `settings-configured.yml` has no `pull_request` trigger on purpose, and is right not to: that check *should* be absent on a pull request, because it cannot pass on one. Until #679 it expressed the same intent as a job-level `if:` on a trigger it did not want, which is the weaker form - a workflow that simply does not trigger says so in one place rather than two. A test suite is the opposite - it is a check a reviewer expects to see reporting, so it has to report even when the answer is "nothing to do".
 
 The action answers "run" for every case it is unsure about - a push, a PR too large for the files API to list, an API call that failed, an empty path list. Running a suite that did not need to run costs a minute; skipping one that did costs a merge, and does it quietly.
+
+### The same decision, locally
+
+`scripts/test.sh` makes that decision before the push instead of after it. CONTRIBUTING.md asks for every suite before every push and is right to - the round trip it prevents is real, and a quarter of this repository's CI failures were formatting alone. What it costs is the whole four-suite run for a change that could only have broken one part, which is most changes here.
+
+Measured on a four-core machine: the full sequence CONTRIBUTING.md lists takes **294s**. `scripts/test.sh --all` is the same four suites in **174s**, and a change to one of the Python parts is **20 to 50 seconds** because the other three suites do not run at all. A client-only change is about **two minutes**, nearly all of it the client suite itself - that one is large enough that scoping is what helps every *other* change, rather than something that helps it. Three things get those numbers, and only the first is a judgement call:
+
+- **Only the affected suites run.** The scope lists are *read out of the workflow YAML at run time*, not copied into the script - the same parse `test_ci_scope.py` already does, so local and CI cannot disagree by being forgotten. Adding a path to a workflow changes what runs locally in the same edit. Every uncertain case runs everything, for the reason the action gives: a stale `main` ref, no upstream, an unreadable workflow, a detached head.
+- **The suites run across cores.** `pytest-xdist` for the three Python suites; vitest already did. Pipeline 45s to 22s, settings 24s to 12s, backend 60s to 16s.
+- **Coverage is off unless asked for.** It is visibility-only in all four suites by deliberate decision, so leaving it out cannot turn a green run red or the reverse - and it is not free: 148s against 100s for the client. `--coverage` puts it back, and CI measures it on every run regardless, which is where the report is actually read.
+
+The linters and formatters for every selected suite run **before any suite does**, which is the ordering CLAUDE.md asks for and the reason it asks. Ruff and prettier answer in about six seconds against three minutes of tests, and the CI job that catches formatting runs the formatter first - so a formatting-only failure there never ran the tests at all and the log said nothing about the change being made.
+
+What this does *not* do is select individual tests, for the reason the section above gives. Per part is still the whole of the mapping.
 
 ## The long-term strategy
 

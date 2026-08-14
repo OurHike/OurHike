@@ -194,11 +194,19 @@ of them directly answering questions this repo has open:
 413 overnight sites (271 shelters + 142 campsites), data-edited **2025-10-01**, with the
 fields [#444](https://github.com/OurHike/OurHike/issues/444) says nothing published:
 `Shelter_cpcty` (populated on 327 of 413), `sngl_night_max_cpcty` (370), group capacity,
-tent platforms/pads, privy presence-count-type, food-storage capacity and type, water
-source, plus `mileage_from_N`/`mileage_from_S`, club section IDs, state, and FMSS
+tent platforms/pads, privy presence-count-type, food-storage capacity and type, plus
+`mileage_from_N`/`mileage_from_S`, club section IDs, state, and FMSS
 location IDs (`FMSS_LocID`) — that last one a potential **key join to the NPS shelters
 layer**, dodging #444's name-matching problem entirely where it's populated. Spot-checked
 values are real ("Hurd Brook Lean-to: Shelter_cpcty 6, single-night max 18, privy yes").
+
+*Corrected 2026-08-13 (#529 research): this list previously included "water source".
+Enumerating all 40 fields of layer 17 — and its sibling layers and DEMO/TEST twins —
+shows **no water field exists anywhere in the ATX family**; water appears only in
+free-text `notes`, on 34 of 413 sites. The capacity claims above stand.
+[WATER_SOURCES.md](WATER_SOURCES.md) carries the water question, including the ATC-org
+layer that does hold per-site water distances (`Campsite_Sustainability_Index` §3b,
+whose provenance field shows those distances come from FarOut and NHDPlus HR).*
 
 Caveats, honestly: capacity values are strings (`"6"`, `"0"`, `"Unknown"`); the service is
 named for ATC's **Visitor Use Management program** ("ATX" = A.T. experience — current vs.
@@ -224,6 +232,19 @@ as-is**: the 2,333 user-created sites are the ones land managers are often tryin
 close, and publishing them as places to camp would put OurHike on the wrong side of every
 partner it depends on. **NEEDS REVIEW** — worth asking ATC whether the
 established-sites subset could be used; do not ingest unilaterally.
+
+*Amended 2026-08-13:* one narrow, maintainer-directed use now exists — **#668 — A
+shelter card says nothing about water, and ATC has measured the distance to it** takes
+`Proximity_Water_ft` for the **official sites only** (the WHERE clause never requests a
+user-created row) and attaches it to the shelters and campsites already published.
+The FarOut-measured rows first shipped held back, then were released the same day on
+the maintainer's declaration that data ATC publishes is reusable (**#688 — Release the
+FarOut-measured water distances ATC already publishes**; recorded as sources.json's
+`atc_licence` block, photo_licence's sibling — §10's ask to ATC is now a confirmation
+rather than a blocker). WATER_SOURCES.md §4 holds the reasoning and the sequence,
+`build_water_distance.py` the join, `reference/water_distance.json` the reviewable
+result. The sites themselves stay unpublished exactly as this section says — that rule
+is safety, not licensing, and the declaration does not touch it.
 
 ### 3c. `Helene_Status` — live-ish closure status per club section
 
@@ -412,7 +433,7 @@ and the same "public ≠ licensed" caveat as every club asset (§9).
 | Carolina Mountain Club (CMC) | 92.7 | **find-a-hike database** (filterable, rich per-hike detail pages, no GPX); A.T.-MST challenge log (15 legs w/ cumulative miles); no shelter content | WordPress; `wp-json` root exists — **NEEDS REVIEW**: whether the hike post type is exposed is untested | hikes scheduled thru Sep 2026 |
 | Smoky Mtns Hiking Club (SMHC) | 102 | 2026 member handbook PDF (Dec 2025); maps page links NPS + historic archives | none | handbook contents unparsed — **NEEDS REVIEW** if hike schedules wanted |
 | Nantahala Hiking Club (NHC) | 58.6 | SOBO-by-sections map/guide PDF (Oct 2025) | none | current |
-| Georgia A.T. Club (GATC) | 78.6 (+8.8 approach) | free map+profile PDFs (Nov 2024), **water-sources PDF (2026-03-02)**, mile-by-mile trail guide (2023), CalTopo maps with GPX/KML export | CalTopo export | **NEEDS REVIEW**: CalTopo terms for bulk reuse; members-only "Districts Sections Mapping" suggests internal GIS |
+| Georgia A.T. Club (GATC) | 78.6 (+8.8 approach) | free map+profile PDFs (Nov 2024), **water-sources PDF (2026-03-02)** — since 2026-08-13 fetched and parsed for review by `fetch_club_pdfs.py` (#669, `kind: club_pdf`; publication still gated on asking GATC), mile-by-mile trail guide (2023), CalTopo maps with GPX/KML export | CalTopo export | **NEEDS REVIEW**: CalTopo terms for bulk reuse; members-only "Districts Sections Mapping" suggests internal GIS |
 
 **TEHCC's wiki** (`tehcc.org/clubwiki`) — re-verified 2026-08-09: MediaWiki 1.43.9 with
 Semantic MediaWiki; Action API + REST API answer anonymously; a `GeoJson:` namespace holds
@@ -526,7 +547,7 @@ data ecosystem looks like:
 |---|---|---|
 | **Public domain (US federal work)** | NPS APPA layers (10 of our 12), USFS EDW, USGS topo/3DEP, NPS_Public_Trails | Ship freely; attribution as courtesy. The survey's provider correction moves most of our current data *into* this row |
 | **ODbL** | OSM (incl. shelter capacities), Waymarked Trails, Geofabrik extracts (already used) | Attribution + share-alike on derivative databases — already complied with for the basemap |
-| **Unstated — org would need to answer** | ATC's own org layers (half-mile points, ATX overnight sites §3a, CSI §3b, Helene §3c), PATC's GIS, TEHCC's wiki, NYNJTC's services, club HTML pages, Trail Finder | Public ≠ licensed. One conversation each with ATC, PATC, TEHCC covers everything worth having in this row |
+| **Unstated — org would need to answer** | ATC's own org layers (half-mile points, ATX overnight sites §3a, CSI §3b, Helene §3c), PATC's GIS, TEHCC's wiki, NYNJTC's services, club HTML pages, Trail Finder | Public ≠ licensed. One conversation each with ATC, PATC, TEHCC covers everything worth having in this row. For ATC's own org the project-side basis is now on record — sources.json's `atc_licence` block, 2026-08-13 (#688) — and the conversation remains the ideal it asks for |
 | **Unresolved, now compounded** | opentrail.org (#98) | No LICENSE file + now imports OSM without attribution; raise both in the same ask |
 | **Copyrighted, permission-gated** | WhiteBlaze shelter PDF, club paper/Avenza maps, MATC's unpublished campsite inventory appendix | Cross-check/validation material, or a direct ask |
 | **Closed, no path** | FarOut, A.T. Guide, AllTrails, Hiking Project (API dead), Gaia | Context only |

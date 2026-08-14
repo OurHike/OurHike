@@ -175,6 +175,7 @@ def test_a_null_recorded_atc_marker_rolls_up_as_unknown_not_a_false_fresh(tmp_pa
     monkeypatch.setattr(check_freshness, "upstream_opentrail_marker", lambda: None)
     monkeypatch.setattr(check_freshness, "upstream_elevation_marker", lambda: None)
     monkeypatch.setattr(check_freshness, "upstream_atc_updates_marker", lambda: None)
+    monkeypatch.setattr(check_freshness, "upstream_hydrography_marker", lambda: None)
 
     requests_mock.get(
         "https://example.com/centerline?f=json",
@@ -574,3 +575,176 @@ def test_the_json_verdict_records_how_old_the_state_it_trusted_was(tmp_path, mon
     verdict = json.loads(out.read_text())
     assert verdict["state_captured_at"] == "2026-07-01T00:00:00+00:00"
     assert verdict["state_age_days"] >= 0
+
+
+# --- The 3DHP watch (#714) -------------------------------------------------
+#
+# Five probe boxes on the trail, one distinct-values query each. The verdict
+# is not "refetch"; it is "USGS has resurveyed the corridor, so the migration
+# WATER_SOURCES.md §5 declines to make is now worth costing".
+
+PROBE_URL = "https://3dhp.test/FeatureServer/50/query"
+
+
+def _registry_at(tmp_path, url=PROBE_URL, recorded="NHD"):
+    """A sources.json holding only the watched entry, so these tests never
+    depend on the real registry's URL staying as it is."""
+    path = tmp_path / "sources.json"
+    path.write_text(json.dumps({"sources": [{"key": "usgs_3dhp", "freshness": {"url": url, "recorded": recorded}}]}))
+    return path
+
+
+def _units(*names):
+    return {"features": [{"attributes": {"workunitid": name}} for name in names]}
+
+
+def test_the_3dhp_url_comes_from_the_registry_rather_than_the_script(tmp_path, monkeypatch):
+    monkeypatch.setattr(check_freshness, "SOURCES_PATH", _registry_at(tmp_path))
+
+    assert check_freshness.hydrography_watch_url() == PROBE_URL
+
+
+def test_a_registry_that_cannot_be_read_asks_nothing_at_all(tmp_path, monkeypatch, requests_mock):
+    """No URL, no request. Deliberately no mock is registered here: if this
+    ever starts guessing an endpoint, requests_mock raises NoMockAddress and
+    this test fails loudly rather than quietly probing a hard-coded host."""
+    monkeypatch.setattr(check_freshness, "SOURCES_PATH", tmp_path / "absent.json")
+
+    assert check_freshness.upstream_hydrography_marker() is None
+    assert requests_mock.call_count == 0
+
+
+def test_every_probe_answering_nhd_gives_the_marker_the_registry_records(tmp_path, monkeypatch, requests_mock):
+    """The measured state of the world on 2026-08-14: all five boxes, from
+    North Carolina to New Hampshire, answer `NHD` - 3DHP saying in its own field that
+    these lines are the retired dataset republished."""
+    monkeypatch.setattr(check_freshness, "SOURCES_PATH", _registry_at(tmp_path))
+    requests_mock.get(PROBE_URL, json=_units("NHD"))
+
+    assert check_freshness.upstream_hydrography_marker() == "NHD"
+    assert requests_mock.call_count == len(check_freshness.CORRIDOR_PROBES)
+
+
+def test_one_probe_failing_makes_the_whole_marker_unknown_not_the_other_four(tmp_path, monkeypatch, requests_mock):
+    """The false-fresh this source is most exposed to. Four boxes still
+    saying `NHD` is not evidence about the fifth, and a marker built from
+    them would compare equal to the recorded one and report FRESH over a
+    stretch of trail nobody managed to ask about."""
+    monkeypatch.setattr(check_freshness, "SOURCES_PATH", _registry_at(tmp_path))
+    answers = [{"json": _units("NHD")}] * (len(check_freshness.CORRIDOR_PROBES) - 1) + [{"status_code": 503}]
+    requests_mock.get(PROBE_URL, answers)
+
+    assert check_freshness.upstream_hydrography_marker() is None
+
+
+def test_a_probe_box_with_no_flowlines_is_not_an_answer_about_that_box(tmp_path, monkeypatch, requests_mock):
+    """An empty feature list means the query reached the service and found
+    nothing where the trail demonstrably has streams - a moved layer id or a
+    changed schema, not a corridor without water."""
+    monkeypatch.setattr(check_freshness, "SOURCES_PATH", _registry_at(tmp_path))
+    requests_mock.get(PROBE_URL, json={"features": []})
+
+    assert check_freshness.upstream_hydrography_marker() is None
+
+
+def test_one_silent_box_among_four_agreeing_ones_is_unknown_not_fresh(tmp_path, monkeypatch, requests_mock):
+    """The false-fresh this whole source is exposed to, and the bug the first
+    version of it had. `returnDistinctValues` on a nullable field returns the
+    null group as a row, so a box that names no work unit still answers with
+    rows. Accumulated into one shared set and only checked for emptiness at
+    the end, that box is indistinguishable from one that agreed - the marker
+    comes back `NHD` from the other four, compares equal to the recorded
+    value, and reports FRESH over a stretch nobody managed to ask about."""
+    monkeypatch.setattr(check_freshness, "SOURCES_PATH", _registry_at(tmp_path))
+    silent = {"features": [{"attributes": {"workunitid": None}}]}
+    requests_mock.get(PROBE_URL, [{"json": _units("NHD")}] * 4 + [{"json": silent}])
+
+    assert check_freshness.upstream_hydrography_marker() is None
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"features": [None]},
+        {"features": "NHD"},
+        {"features": [["NHD"]]},
+        {"features": {"attributes": {"workunitid": "NHD"}}},
+    ],
+    ids=["null row", "string", "list row", "dict not list"],
+)
+def test_a_response_shaped_wrongly_is_unknown_rather_than_a_crash(body, tmp_path, monkeypatch, requests_mock):
+    """check_all() promises in writing that it never raises: a source that
+    cannot be checked reports UNKNOWN rather than taking the whole run down.
+    These four shapes all raise AttributeError, which is not a
+    RequestException, so reading the response outside the `try` would turn a
+    changed 3DHP schema into a crashed scheduled job - and the workflow reads
+    a non-zero exit it did not expect as "the check itself is broken", losing
+    the ATC and opentrail verdicts in the same run."""
+    monkeypatch.setattr(check_freshness, "SOURCES_PATH", _registry_at(tmp_path))
+    requests_mock.get(PROBE_URL, json=body)
+
+    assert check_freshness.upstream_hydrography_marker() is None
+
+
+def test_an_arcgis_error_document_is_unknown_rather_than_a_marker(tmp_path, monkeypatch, requests_mock):
+    """ArcGIS answers a bad query with HTTP 200 and an `error` body. Read as
+    a marker that would be a string that never matches, which reports STALE -
+    an alarm about USGS when the fault is ours."""
+    monkeypatch.setattr(check_freshness, "SOURCES_PATH", _registry_at(tmp_path))
+    requests_mock.get(PROBE_URL, json={"error": {"code": 400, "message": "Invalid field: workunitid"}})
+
+    assert check_freshness.upstream_hydrography_marker() is None
+
+
+def test_several_work_units_come_back_sorted_so_the_marker_is_stable(tmp_path, monkeypatch, requests_mock):
+    """Once 3DHP starts resurveying, different stretches will name different
+    work units, and the order a service returns them in is not a promise. An
+    unsorted marker would flap between two spellings of the same answer."""
+    monkeypatch.setattr(check_freshness, "SOURCES_PATH", _registry_at(tmp_path))
+    requests_mock.get(PROBE_URL, json=_units("3DHP_VT_02", "NHD", "3DHP_NH_01"))
+
+    assert check_freshness.upstream_hydrography_marker() == "3DHP_NH_01|3DHP_VT_02|NHD"
+
+
+def test_one_resurveyed_box_among_four_still_saying_nhd_changes_the_marker(tmp_path, monkeypatch, requests_mock):
+    """The shape the first real STALE will actually arrive in. 3DHP is
+    migrating watershed by watershed, so the corridor will not flip at once -
+    one box will name a new work unit while the rest still say `NHD`, and the
+    marker has to be the union across boxes rather than whichever one
+    answered last."""
+    monkeypatch.setattr(check_freshness, "SOURCES_PATH", _registry_at(tmp_path))
+    requests_mock.get(PROBE_URL, [{"json": _units("NHD")}] * 4 + [{"json": _units("3DHP_NH_01")}])
+
+    assert check_freshness.upstream_hydrography_marker() == "3DHP_NH_01|NHD"
+
+
+def test_a_resurveyed_corridor_rolls_up_as_stale_through_check_all(tmp_path, monkeypatch, requests_mock):
+    """End to end, because the rollup is where a person reads this."""
+    monkeypatch.setattr(check_freshness, "SOURCES_PATH", _registry_at(tmp_path))
+    requests_mock.get(PROBE_URL, json=_units("3DHP_NH_01"))
+    requests_mock.get("https://arcgis.test/centerline?f=json", json={"editingInfo": {"dataLastEditDate": 1}})
+    requests_mock.head("https://opentrail.org/api/getData?trail=AT", headers={"ETag": 'W/"abc"'})
+
+    reports = check_freshness.check_all(_published_state(usgs_3dhp="NHD"))
+
+    report = next(r for r in reports if r["source"] == "usgs_3dhp")
+    assert report["freshness"] is Freshness.STALE
+
+
+def test_the_probes_all_sit_on_the_trail(tmp_path):
+    """The constant is five hand-written boxes, and a typo in one would put a
+    probe in a different watershed while still answering plausibly. Each is
+    checked against the half-mile point it was derived from - the same
+    coordinates the comment beside CORRIDOR_PROBES names."""
+    on_trail = (
+        (-83.5496, 35.1217),
+        (-81.3696, 36.9195),
+        (-77.9983, 38.9826),
+        (-73.8394, 41.4559),
+        (-71.3122, 44.3063),
+    )
+
+    assert len(check_freshness.CORRIDOR_PROBES) == len(on_trail)
+    for (west, south, east, north), (lon, lat) in zip(check_freshness.CORRIDOR_PROBES, on_trail):
+        assert west < lon < east, f"{lon} is not inside {west}..{east}"
+        assert south < lat < north, f"{lat} is not inside {south}..{north}"

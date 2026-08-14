@@ -22,15 +22,20 @@ Each upstream exposes a different freshness marker, so this normalises them:
     ATC updates   HTTP ETag on ATC's trail-updates feed, compared against
                   what a human recorded in reference/atc_updates.json when
                   they last reviewed it (#459)
+    USGS 3DHP     the distinct `workunitid` 3DHP returns for boxes on the
+                  trail, against what sources.json records. `NHD` means the
+                  successor is still republishing the retired dataset the
+                  water derivation already reads (WATER_SOURCES.md §5)
 
-The fifth one is the odd one and worth reading the difference off: the other
-four say *the pipeline should refetch*, and it says *a person should go and
+The last two are the odd ones and worth reading the difference off: the first
+four say *the pipeline should refetch*, and these say *a person should go and
 look*. Nothing fetches ATC's Trail Updates on a schedule - they are prose on
 a website, reviewed into a file in git and released by a merged pull request
 (features/ATC_TRAIL_UPDATES.md) - so no automated run can clear a STALE here.
-Its recorded side is therefore in git rather than in gitignored `data/raw/`,
-which also means it is the one source this check can answer from a bare
-checkout.
+Nothing fetches 3DHP at all; its verdict is an invitation to cost a migration,
+not a job to run. Both recorded sides are therefore in git rather than in
+gitignored `data/raw/`, which also means they are the two sources this check
+can answer from a bare checkout.
 
 THE FAILURE THAT MATTERS is a false "fresh". Reporting stale data as current
 means the map quietly keeps showing a closed trail or a moved shelter, so
@@ -94,13 +99,40 @@ TOPO_MANIFEST = ROOT / "data" / "raw" / "topo_quads" / "manifest.json"
 OPENTRAIL_STATE = ROOT / "data" / "raw" / "opentrail_state.json"
 ELEVATION_INDEX = ROOT / "data" / "raw" / "elevation" / "tile_index.json"
 
-# The one recorded marker that is checked in rather than fetched - see the
-# module docstring's fifth row. `data/raw/` is gitignored; this is not.
+# The two recorded markers that are checked in rather than fetched - see the
+# module docstring's last two rows. `data/raw/` is gitignored; neither of
+# these is, which is what lets this check answer from a bare checkout.
+# SOURCES_PATH carries both the 3DHP probe URL and the value it is compared
+# against, so it is a recorded side and not only a lookup.
 ATC_UPDATES_FILE = ROOT / "reference" / "atc_updates.json"
 SOURCES_PATH = ROOT / "sources.json"
 
 OPENTRAIL_URL = "https://opentrail.org/api/getData?trail=AT"
 HTTP_TIMEOUT = 30
+
+# Where to ask 3DHP whether it has resurveyed the corridor: five 0.04-degree
+# envelopes (lon/lat, min then max) - 4.4 km north-south and 3.2-3.7 km
+# east-west at these latitudes - each centred on ATC's own half-mile point
+# nearest 5%, 25%, 45%, 65% and 85% of the trail's 2,197.5 miles, so every
+# one of them sits on the footpath rather than somewhere in the state it runs
+# through. Derived that way and written down rather than recomputed, because
+# `data/raw/` is gitignored and this check has to answer from a bare checkout.
+#
+# The southernmost is at mile 110, which is in North Carolina: 5% of the
+# trail is past Georgia's 78.6 miles. Nothing in Georgia is probed, and no
+# sentence about this check should say "Georgia to New Hampshire".
+#
+# A sample, deliberately, and for topo_sample()'s reason one constant up: the
+# corridor's own bounding box spans the whole eastern seaboard, so asking it
+# as one envelope would report a resurvey of coastal Maryland as news about
+# the A.T. A sample that finds nothing is reported as a sample.
+CORRIDOR_PROBES = (
+    (-83.570, 35.102, -83.530, 35.142),  # mile 110, NC near Standing Indian
+    (-81.390, 36.900, -81.350, 36.940),  # mile 549, VA near Mount Rogers
+    (-78.018, 38.963, -77.978, 39.003),  # mile 989, VA/WV near Harpers Ferry
+    (-73.859, 41.436, -73.819, 41.476),  # mile 1428, NY in the Hudson Highlands
+    (-71.332, 44.286, -71.292, 44.326),  # mile 1868, NH in the Whites
+)
 
 # How many topo quads to spot-check. All 1,654 would mean 1,654 HEAD requests
 # for a dataset that is re-published as a batch, so a sample is enough to
@@ -138,6 +170,7 @@ def recorded_state() -> dict:
         topo_manifest=TOPO_MANIFEST,
         elevation_index=ELEVATION_INDEX,
         atc_updates_file=ATC_UPDATES_FILE,
+        registry_file=SOURCES_PATH,
     )
 
 
@@ -164,6 +197,10 @@ def recorded_elevation_marker() -> str | None:
 
 def recorded_atc_updates_marker() -> str | None:
     return freshness_state.atc_updates_marker(ATC_UPDATES_FILE)
+
+
+def recorded_hydrography_marker() -> str | None:
+    return freshness_state.hydrography_watch_marker(SOURCES_PATH)
 
 
 # --- Upstream markers ------------------------------------------------------
@@ -230,6 +267,85 @@ def upstream_atc_updates_marker(url: str | None = None) -> str | None:
         return response.headers.get("ETag")
     except requests.RequestException:
         return None
+
+
+def hydrography_watch_url() -> str | None:
+    """Where to ask 3DHP, from sources.json - `atc_updates_feed_url`'s reason
+    exactly: the URL, the licence and what the answer means are one registry
+    entry a person can read, not three facts scattered through the scripts."""
+    try:
+        registry = load_registry(SOURCES_PATH)
+    except (OSError, ValueError):
+        return None
+    entry = find_source(registry, freshness_state.HYDROGRAPHY_WATCH_KEY) or {}
+    return (entry.get("freshness") or {}).get("url")
+
+
+def upstream_hydrography_marker(url: str | None = None) -> str | None:
+    """Which work units 3DHP currently claims the corridor's flowlines from.
+
+    One `returnDistinctValues` query per probe box, asking a single field.
+    Distinct rather than paged features because the answer wanted is a small
+    set of labels, not geometry: five requests returning one row each is the
+    whole cost of this check.
+
+    **Every probe must contribute, or the marker is None**, and that is
+    checked per box rather than over the union. A partial read would let a
+    resurveyed segment hide behind four boxes that still say `NHD`, reported
+    as FRESH - the false-fresh this module exists to refuse. Four boxes
+    agreeing is not evidence about the fifth, and the first version of this
+    function accumulated into one shared set and only asked whether it was
+    empty at the end, which made a silent box indistinguishable from an
+    agreeing one. `returnDistinctValues` on a nullable field returns the null
+    group as a row of its own, so "rows came back" was never the same
+    question as "this box named a work unit".
+
+    Everything that reads the response is inside the `try` for the same
+    reason: `features` arriving as a string, a dict, or a list of nulls
+    raises AttributeError, which is not a RequestException, and check_all
+    promises in writing that it never raises.
+
+    Measured 2026-08-14: all five answer `NHD`, each returning exactly one
+    distinct value, over 22-44 flowlines per box against the layer's
+    maxRecordCount of 2,500 - so nothing here is a page of a longer answer.
+    """
+    url = url or hydrography_watch_url()
+    if not url:
+        return None
+
+    units: set[str] = set()
+    for west, south, east, north in CORRIDOR_PROBES:
+        try:
+            response = requests.get(
+                url,
+                params={
+                    "f": "json",
+                    "where": "1=1",
+                    "outFields": "workunitid",
+                    "returnGeometry": "false",
+                    "returnDistinctValues": "true",
+                    "geometry": f"{west},{south},{east},{north}",
+                    "geometryType": "esriGeometryEnvelope",
+                    "inSR": 4326,
+                    "spatialRel": "esriSpatialRelIntersects",
+                },
+                timeout=HTTP_TIMEOUT,
+            )
+            response.raise_for_status()
+            found = {
+                str(unit)
+                for feature in response.json()["features"]
+                if (unit := (feature.get("attributes") or {}).get("workunitid"))
+            }
+        except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
+            return None
+        # This box said nothing - no flowlines, or rows with no work unit on
+        # them. Either way it is not an answer about this stretch of trail.
+        if not found:
+            return None
+        units |= found
+
+    return "|".join(sorted(units))
 
 
 def topo_quad_state(url: str) -> str:
@@ -409,6 +525,9 @@ def gather_upstream(state: dict, *, local: bool = True) -> dict:
 
     if "atc_trail_updates" in state:
         upstream["atc_trail_updates"] = upstream_atc_updates_marker()
+
+    if freshness_state.HYDROGRAPHY_WATCH_KEY in state:
+        upstream[freshness_state.HYDROGRAPHY_WATCH_KEY] = upstream_hydrography_marker()
 
     return upstream
 

@@ -226,10 +226,69 @@ the Okanogan (WA) and Birch Creek (AK) watersheds — everything else, including
 whole A.T. corridor, is migrated NHD behind a new schema
 ([April 2026 service update](https://www.usgs.gov/3d-hydrography-program/news/usgs-announces-release-updated-3d-hydrography-program-data-service-and)).
 Two schema facts worth recording now: 3DHP's flowline table **drops the
-perennial/intermittent FCode entirely**, replacing it with a continuous
-probability-of-flow estimate (published only for the updated areas), and its
-hydrolocation domain keeps a Spring type. So the FCode this document leans on is a
-legacy attribute with no successor until 3DHP reaches the east coast.
+perennial/intermittent FCode entirely**, and its hydrolocation domain keeps a Spring
+type. So the FCode this document leans on is a legacy attribute with no successor
+until 3DHP reaches the east coast.
+
+*Amended 2026-08-14: measured against the live services, and the paragraph above was
+right for a reason it did not name.* Each figure below says where it came from, because
+they come from three different places: 3DHP from
+`3dhp.nationalmap.gov/arcgis/rest/services/usgs_3dhp_all/FeatureServer`, NHD from
+`hydro.nationalmap.gov/.../nhd/MapServer` (layer 6 flowlines, layer 0 points), and the
+bulk sizes from TNM Access's product catalogue. The geometry comparison is one
+0.2° × 0.2° box on the trail in central Virginia (−79.2,37.5 to −79.0,37.7), both
+services queried for everything it intersects:
+
+| | NHD (`nhd` MapServer) | 3DHP layer 50 |
+|---|---|---|
+| flowlines in the box | 1,265 | 1,265 |
+| total length | 775.149 km | 775.149 km |
+| total vertices | 36,831 | 36,831 |
+
+Paired 1:1 by position, the worst separation is **0.086 mm** and no pair differs in
+vertex count. The springs layer matches the same way: **1,796 features in the corridor
+bounding box against NHD's 1,796, every one within 1 m of an NHD spring**, and
+17 within 100 m of the centerline either way. The decisive field is 3DHP's own:
+every flowline in that box carries **`workunitid` = `NHD`** and `featuredate` 2023.
+It is not that 3DHP resembles NHD for the corridor — it reports itself as NHD.
+
+**What a switch would cost today, stated as arithmetic.** In the same box NHD holds
+479 perennial + 540 intermittent + 244 artificial path + 2 connector; 3DHP holds
+**1,019 Channel Line** + 244 Waterbody Connector + 2 Surface Connector. 479 + 540 =
+1,019: the same lines with the distinction deleted. Counted in
+`data/raw/trail_water.json`, **935 of the 1,125 crossings the pipeline publishes carry
+a flow claim (83%) and 916 of those come from NHD's FCode** — the remaining 19 are
+OSM's `intermittent` tag — so migrating now would take seasonality coverage to
+whatever OSM alone supplies, which is 19 crossings, and receive identical geometry for
+it.
+
+The operational shape argues the same way. NHD ships as 21 HU4 GeoPackages read and
+deleted one at a time — **3.13 GB in total, HEAD-measured across all 21 archives on
+2026-08-14**; the "~5.7 GB" this file and `fetch_trail_water.py` used to carry was the
+largest subregion multiplied by 21 rather than a measurement, and is corrected in both.
+3DHP publishes no per-subregion slicing at all, only an annual CONUS file
+(**23 GB GeoPackage / 12.5 GB FileGDB**, FY25 published 2025-03-20 and FY26 2026-01-23,
+from TNM Access's product listing for a bounding box on the trail).
+
+**So the answer is a watch, not a migration**, and it is now wired rather than
+remembered: `sources.json` registers `usgs_3dhp` at kind `watched_only`, and
+`check_freshness.py` asks five boxes spread along the trail from North Carolina to New Hampshire
+for their distinct `workunitid`. All five answered `NHD` on 2026-08-14. When one stops, USGS has
+resurveyed the corridor and this decision is worth re-costing. The honest counterweight
+is that NHD's real risk is *availability* rather than correctness — this section already
+says the S3 objects should not be assumed permanent — and archiving the 21 files the
+pipeline ingests is a cheaper hedge than a 23 GB dependency.
+
+**@unvalidated — the "continuous probability-of-flow estimate".** An earlier version of
+this paragraph said 3DHP replaces the FCode with one, published only for the updated
+areas. That claim came from USGS's April 2026 news release and **could not be confirmed
+in the data**: the service exposes six layers, none named for it, and layer 50's 36
+fields hold no flow-probability field (checked 2026-08-14). It may exist in a separate
+product, in a release not yet public, or only in the news release's phrasing. What would
+settle it is the FY26 CONUS download's schema, or a 3DHP layer covering the Okanogan
+where the new hydrography actually exists. **Until then it must not be quoted as the
+reason a migration would recover what the FCode gives us** — that is precisely the
+sentence a future switch would lean on.
 
 **How far the perennial/intermittent code can be trusted — measured, not vibes.**
 The classification descends from the blue lines of 1:24,000 topo quads compiled

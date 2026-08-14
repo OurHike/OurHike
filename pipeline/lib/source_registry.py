@@ -59,7 +59,18 @@ CLUB_PDF = "club_pdf"
 # export_basemap.py's reasoning applied to a registry entry.
 GEOFABRIK_EXTRACT = "geofabrik_extract"
 
-KNOWN_KINDS = frozenset({ARCGIS_FEATURE_LAYER, PUBLISHED_NOTICES, CLUB_PDF, GEOFABRIK_EXTRACT})
+# A source nothing here fetches, registered so that somebody is told when it
+# becomes worth fetching. USGS's 3D Hydrography Program is the first: it is
+# the successor to the retired NHD this pipeline's water derivation depends
+# on, it is the product USGS actually maintains - and for the A.T. corridor
+# it currently republishes NHD unchanged, so migrating today would cost the
+# perennial/intermittent classification and buy nothing (WATER_SOURCES.md
+# section 5). The registry entry exists to hold the watch, not a fetch:
+# `fetch_all.py` skips it like everything not ArcGIS, and check_freshness.py
+# reports on it so the day the answer changes is a day somebody hears about.
+WATCHED_ONLY = "watched_only"
+
+KNOWN_KINDS = frozenset({ARCGIS_FEATURE_LAYER, PUBLISHED_NOTICES, CLUB_PDF, GEOFABRIK_EXTRACT, WATCHED_ONLY})
 
 
 def load_registry(path: Path) -> dict:

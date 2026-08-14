@@ -2,25 +2,32 @@
 # nobody has been told about. Approves nothing, ever - it holds no permission
 # that could, and that is deliberate rather than incidental.
 #
-# WHY THE PLATFORM'S OWN NOTICE DOES NOT ARRIVE (#701). Two independent causes,
-# either of which is enough on its own:
+# WHY THE PLATFORM'S OWN NOTICE DOES NOT ARRIVE (#701), and the first answer
+# written here was wrong in a way worth recording, because it is the answer
+# anybody looking at the notification settings will reach for.
 #
-#   * Settings -> Notifications -> Actions defaults to "Don't notify", and its
-#     one filter is "Only notify for failed workflows". A run in `waiting` is
-#     not a failed run, so that filter alone suppresses every approval request.
-#   * GitHub does not notify you about your own activity, and with a single
-#     maintainer the account that dispatches is always the account that must
-#     approve. `.github/expected-protections.yml` depends on that overlap -
-#     `prevent_self_review: false`, so the maintainer can approve their own -
-#     which leaves the one notification that matters as the one GitHub is
-#     least likely to send.
+# THE ACTIONS SETTING IS NOT THE LEVER. Notification settings -> System ->
+# Actions defaults to "Don't notify" and offers "Only notify for failed
+# workflows", which reads exactly like the cause: a `waiting` run is not a
+# failed one. It is not the cause. That channel is documented as firing "when
+# any workflow runs that you've triggered have *completed*" - so it cannot
+# deliver a pending-approval notice at any setting, because a run waiting for
+# approval has not completed. Turning the filter off changes nothing here.
 #
-# Both live in account settings, which a checkout cannot read. That is the
-# argument protections-check.yml makes about itself, and it applies twice over
-# here: a notice that depends on a setting nobody can verify is a notice that
-# stops working silently. This job notifies as `github-actions[bot]` opening an
-# issue, which is a different account from the maintainer and so is unaffected
-# by the second cause and by any later change to the first.
+# THE APPROVAL NOTICE IS A DIFFERENT CHANNEL. GitHub emails the required
+# reviewers of an environment when a deployment needs review, which routes
+# through the ordinary notification settings - which address repository
+# notifications go to, and whether Watching and Participating are set to email
+# at all - and not through the Actions section at all. So the reasons it can be
+# missing are the reasons any notification email can be missing, none of which
+# are visible from the Actions page somebody will go and check first.
+#
+# EITHER WAY IT IS ACCOUNT CONFIGURATION, which a checkout cannot read. That is
+# the argument protections-check.yml makes about itself, and it is the whole
+# case for this file: a notice nobody can verify is a notice that stops working
+# silently. This job opens an issue as `github-actions[bot]`, which lands in
+# the repository rather than in one account's mail, so it is visible to anybody
+# who can see the repository and unaffected by all of the above.
 #
 # MEASURED BEFORE IT WAS BUILT, so the cadence is a decision rather than a
 # guess: on 2026-08-13 run #21 of Publish vector data waited 8h52m with run #22
@@ -216,11 +223,12 @@ jobs:
                   `GitHub fails an unapproved deployment after ${EXPIRY_DAYS} days, so the column on the right is a`,
                   'countdown to the run being lost rather than shipped.',
                   '',
-                  'This issue exists because the platform\'s own notice does not reliably arrive: a `waiting` run is',
-                  'not a failed one, so **Settings → Notifications → Actions** filters it out unless',
-                  '"Only notify for failed workflows" is unticked — and GitHub does not notify you about your own',
-                  'activity, which with one maintainer is every dispatch. RELEASING.md §12 has the Slack route,',
-                  'which has none of this job\'s half-hour latency.',
+                  'This issue exists because the platform\'s own notice does not reliably arrive. Note that the',
+                  '**Notification settings → System → Actions** option is *not* the lever it looks like: that channel',
+                  'fires when a run you triggered has **completed**, so it cannot carry a pending approval at any',
+                  'setting. The approval notice is the separate email GitHub sends an environment\'s required',
+                  'reviewers, and it goes wherever your repository notifications go. RELEASING.md §12 has the Slack',
+                  'route, which has none of this job\'s half-hour latency.',
                   '',
                   `Last checked ${checkedAt} · [run](${process.env.RUN_URL})`,
                   '',

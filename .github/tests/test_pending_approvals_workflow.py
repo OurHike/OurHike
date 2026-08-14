@@ -1,10 +1,13 @@
 """Tests for the monitor that notices a run waiting on the production gate.
 
 `check-pending-approvals.yml` exists because the platform's own notice does not
-arrive (#701): a `waiting` run is not a failed one, so the Actions notification
-filter drops it, and GitHub does not notify anyone about their own activity -
-which with one maintainer is every dispatch. Measured before it was built, run
-#21 of Publish vector data waited 8h52m unnoticed.
+arrive (#701). Measured before it was built, run #21 of Publish vector data
+waited 8h52m unnoticed. The Actions notification setting is not the cause and
+not the fix - that channel fires when a run you triggered has *completed*, so
+it cannot carry a pending approval at any setting; the approval notice is a
+separate email to the environment's required reviewers, routed through account
+settings no checkout can read. Which is the case for reporting into the
+repository instead.
 
 What is asserted here is the handful of properties that would let it go quiet
 again without failing anything:

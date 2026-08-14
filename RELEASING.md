@@ -607,26 +607,34 @@ are asserted rather than remembered, in `.github/tests/test_repository_protectio
 2026-08-13, a dispatched publish sat unapproved for 8h52m with a second queued behind
 it ([#701](https://github.com/OurHike/OurHike/issues/701)). GitHub fails an unapproved
 deployment after 30 days, so the failure this produces is a release that quietly
-expires rather than one that quietly ships — and the same self-review overlap that makes
-the gate workable for a solo maintainer is what suppresses the notice, because GitHub
-does not notify anyone about their own activity.
+expires rather than one that quietly ships.
+
+**The Actions notification setting is not the lever, and it is the one everybody
+reaches for.** Notification settings → System → Actions offers "Only notify for failed
+workflows", which reads exactly like the explanation — a `waiting` run is not a failed
+one. It is not: that channel fires when a run **you triggered has completed**, so it
+cannot carry a pending approval at any setting, and turning the filter off changes
+nothing. The approval notice is a separate email GitHub sends an environment's required
+reviewers, routed through your ordinary notification settings — which address
+repository notifications go to, and whether Watching and Participating deliver by email
+at all.
 
 Three notices, and they fail independently rather than duplicating each other:
 
 - **`check-pending-approvals.yml`** opens a tracking issue naming every waiting run,
   its environment, how long it has waited and how long until it expires; it closes
   itself when the queue drains, and comments when a new run joins one already open. It
-  notifies as `github-actions[bot]`, which is a different account from yours and so is
-  the one route immune to the self-notification rule. Worst case is its half-hour cron.
-- **Settings → Notifications → Actions**, on your own account: set *Email* or
-  *On GitHub*, and **untick "Only notify for failed workflows"** — a `waiting` run is
-  not a failed one, so that filter alone drops every approval request. Add GitHub
-  Mobile if you want it on a phone. No checkout can verify any of this, which is why it
-  is not the only mechanism.
-- **Slack or Teams**, which is GitHub's own answer and the only one with no latency at
-  all. In a channel with the GitHub app installed, `/github subscribe OurHike/OurHike
-  deployments` posts when a deployment is pending approval, when it is approved, and
-  when its status changes.
+  reports into the repository rather than into one account's mail, which is what makes
+  it the one notice that does not depend on account configuration nobody can verify.
+  Worst case is its half-hour cron.
+- **Your notification routing**, if you want the platform's own email to work: check
+  which address repository notifications go to and that Watching and Participating
+  deliver by email. GitHub Mobile puts the same notification on a phone. No checkout
+  can verify any of this, which is why it is not the only mechanism.
+- **Slack or Teams**, which is GitHub's own documented answer and the only one with no
+  latency at all. In a channel with the GitHub app installed, `/github subscribe
+  OurHike/OurHike deployments` posts when a deployment is pending approval, when it is
+  approved, and when its status changes.
 
 ## 13. Status
 

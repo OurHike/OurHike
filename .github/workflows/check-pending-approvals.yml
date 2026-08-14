@@ -1,0 +1,231 @@
+# Asks, every half hour, whether a run is sitting in `waiting` for an approval
+# nobody has been told about. Approves nothing, ever - it holds no permission
+# that could, and that is deliberate rather than incidental.
+#
+# WHY THE PLATFORM'S OWN NOTICE DOES NOT ARRIVE (#701). Two independent causes,
+# either of which is enough on its own:
+#
+#   * Settings -> Notifications -> Actions defaults to "Don't notify", and its
+#     one filter is "Only notify for failed workflows". A run in `waiting` is
+#     not a failed run, so that filter alone suppresses every approval request.
+#   * GitHub does not notify you about your own activity, and with a single
+#     maintainer the account that dispatches is always the account that must
+#     approve. `.github/expected-protections.yml` depends on that overlap -
+#     `prevent_self_review: false`, so the maintainer can approve their own -
+#     which leaves the one notification that matters as the one GitHub is
+#     least likely to send.
+#
+# Both live in account settings, which a checkout cannot read. That is the
+# argument protections-check.yml makes about itself, and it applies twice over
+# here: a notice that depends on a setting nobody can verify is a notice that
+# stops working silently. This job notifies as `github-actions[bot]` opening an
+# issue, which is a different account from the maintainer and so is unaffected
+# by the second cause and by any later change to the first.
+#
+# MEASURED BEFORE IT WAS BUILT, so the cadence is a decision rather than a
+# guess: on 2026-08-13 run #21 of Publish vector data waited 8h52m with run #22
+# queued behind it, run #20 waited three hours and was cancelled, and further
+# back runs #11 and #16 waited 60 and 18 minutes. An unapproved deployment
+# auto-fails at 30 days, so the failure this catches is a publish that quietly
+# expires - not one that quietly ships.
+#
+# `waiting` ONLY, AND `action_required` DELIBERATELY NOT. They are two
+# different gates: `waiting` is an environment's required reviewer, which is
+# what #701 is about, while `action_required` is the fork-and-secrets approval
+# BRANCHING.md documents on settings-configured.yml. The second has a different
+# audience and a different remedy, and folding both into one issue would make
+# the table's "environment" column meaningless for half its rows.
+#
+# THE AGE COMES FROM THE API, NOT FROM THE FIRST-SEEN MARKER, which is worth
+# saying because every other caller of tracking-issue.js renders that marker
+# into its table. The marker's granularity is a date, and a run that has waited
+# nine hours and one that has waited nine minutes both read "2026-08-13" - the
+# number that decides whether to go and look is exactly the one it cannot
+# carry. `run_started_at` is exact and already in the payload, so the marker is
+# used here only for what it alone can answer: which of these runs the open
+# issue had not already recorded, which is what `announce` keys off.
+
+name: Check pending approvals
+
+on:
+  schedule:
+    # :07 and :37, every hour. Off the hour for the reason every cron in this
+    # directory records - GitHub queues everything submitted at :00 behind
+    # everyone else's - and off the half hour for the same reason. Thirty
+    # minutes is the worst-case silence; the run costs one API call plus one
+    # per waiting run, which is why this can be the only cron here that is not
+    # daily without being the most expensive.
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+
+# Read the runs, write the one tracking issue. Note what is NOT here:
+# `deployments: write` is what approving a pending deployment needs, and its
+# absence is what makes "approves nothing, ever" a property of the token rather
+# than a promise in a comment.
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+# One at a time, and never cancel a run in flight. A cancelled run leaves the
+# issue describing a queue it had only half finished reading, and at this
+# cadence the next run is never far away.
+concurrency:
+  group: check-pending-approvals
+  cancel-in-progress: false
+
+env:
+  ISSUE_TITLE: "Runs waiting for approval"
+  ISSUE_LABEL: deployment-health
+
+jobs:
+  check:
+    name: Nothing is waiting unnoticed
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ask which runs are waiting, and open, update or close the issue
+        uses: actions/github-script@v7
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const trackingIssue = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/tracking-issue.js`)
+            const repo = {owner: context.repo.owner, repo: context.repo.repo}
+
+            // `status: 'waiting'` is the environment gate specifically, which
+            // is the whole scope of this monitor. Verified against the live
+            // repository while #701 was being written: it returned run #21 and
+            // nothing else, while a bare listing returned all 22.
+            const waiting = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+              ...repo,
+              status: 'waiting',
+              per_page: 100,
+            })
+
+            // Which environment is being asked for. Worth one call per waiting
+            // run because "waiting" alone does not say what it is waiting on,
+            // and a maintainer deciding whether to get up and approve
+            // something wants to know it is production before they look.
+            //
+            // Tolerated rather than required: this is the only call here that
+            // can fail for a reason that is not worth losing the whole alert
+            // over - the run can be approved, cancelled or expire between the
+            // listing above and this line, and a 404 for one run must not cost
+            // the notice for the other three.
+            const described = []
+            for (const run of waiting) {
+              let environments = []
+              try {
+                const pending = await github.rest.actions.getPendingDeploymentsForRun({...repo, run_id: run.id})
+                environments = (pending.data ?? []).map((entry) => entry.environment?.name).filter(Boolean)
+              } catch (error) {
+                core.warning(`Could not read pending deployments for run ${run.id}: ${error.message}`)
+              }
+              described.push({run, environments})
+            }
+
+            const now = new Date()
+            const startedAt = (run) => new Date(run.run_started_at ?? run.created_at)
+
+            const age = (since) => {
+              const minutes = Math.max(0, Math.round((now - since) / 60000))
+              if (minutes < 60) return `${minutes}m`
+              const hours = Math.floor(minutes / 60)
+              if (hours < 48) return `${hours}h ${minutes % 60}m`
+              return `${Math.floor(hours / 24)}d ${hours % 24}h`
+            }
+
+            // GitHub fails an unapproved deployment after 30 days. Counting
+            // down to that is the difference between "this is waiting" and
+            // "this is about to be lost", and the second is the one that
+            // should change what somebody does today.
+            const EXPIRY_DAYS = 30
+            const daysLeft = (since) =>
+              Math.ceil((since.getTime() + EXPIRY_DAYS * 86400000 - now.getTime()) / 86400000)
+
+            const checkedAt = now.toISOString().slice(0, 10)
+            const keys = described.map(({run}) => String(run.id))
+
+            const line = ({run, environments}, cell) => {
+              const since = startedAt(run)
+              const left = daysLeft(since)
+              const cells = [
+                `[#${run.run_number}](${run.html_url})`,
+                cell(run.name ?? run.display_title ?? ''),
+                environments.length ? environments.map((name) => `\`${cell(name)}\``).join(', ') : '—',
+                cell(run.triggering_actor?.login ?? run.actor?.login ?? 'unknown'),
+                `${since.toISOString().replace('T', ' ').slice(0, 16)} UTC`,
+                `**${age(since)}**`,
+                left <= 3 ? `**${left}d** ⚠️` : `${left}d`,
+              ]
+              return `| ${cells.join(' | ')} |`
+            }
+
+            await trackingIssue({github, context, core}, {
+              label: process.env.ISSUE_LABEL,
+              title: process.env.ISSUE_TITLE,
+              checkedAt,
+              keys,
+              healthy: described.length === 0,
+              allClear: `Nothing is waiting for approval as of ${checkedAt}. Closing.`,
+
+              // The exception to "updating a body is silent", and the reason
+              // tracking-issue.js grew an `announce` at all. Each of these keys
+              // is one run needing one decision, and publish-vector-data.yml's
+              // `concurrency: publish-data` queues dispatches behind one
+              // another - so a second run joining an open episode is ordinary,
+              // and announcing only the first would be the bug this monitor
+              // exists to fix, one level up.
+              announce: (appeared, cell) => {
+                const fresh = described.filter(({run}) => appeared.includes(String(run.id)))
+                if (!fresh.length) return null
+                return [
+                  fresh.length === 1
+                    ? 'One more run is now waiting for approval:'
+                    : `${fresh.length} more runs are now waiting for approval:`,
+                  '',
+                  ...fresh.map(({run, environments}) =>
+                    `- [**${cell(run.name ?? 'run')}** #${run.run_number}](${run.html_url})` +
+                    (environments.length ? ` → \`${cell(environments.join(', '))}\`` : '') +
+                    ` · dispatched by ${cell(run.triggering_actor?.login ?? 'unknown')}`,
+                  ),
+                  '',
+                  'The table above has the full queue.',
+                ].join('\n')
+              },
+
+              render: (firstSeen, cell) => {
+                const oldest = described
+                  .map(({run}) => startedAt(run))
+                  .sort((a, b) => a - b)[0]
+                return [
+                  described.length === 1
+                    ? 'One run is waiting for a deployment approval.'
+                    : `${described.length} runs are waiting for a deployment approval.`,
+                  '',
+                  `The oldest has been waiting **${age(oldest)}**. Open the run and press **Review deployments**.`,
+                  '',
+                  '| run | workflow | environment | dispatched by | waiting since | waited | expires in |',
+                  '|---|---|---|---|---|---|---|',
+                  ...described.map((entry) => line(entry, cell)),
+                  '',
+                  `GitHub fails an unapproved deployment after ${EXPIRY_DAYS} days, so the column on the right is a`,
+                  'countdown to the run being lost rather than shipped.',
+                  '',
+                  'This issue exists because the platform\'s own notice does not reliably arrive: a `waiting` run is',
+                  'not a failed one, so **Settings → Notifications → Actions** filters it out unless',
+                  '"Only notify for failed workflows" is unticked — and GitHub does not notify you about your own',
+                  'activity, which with one maintainer is every dispatch. RELEASING.md §12 has the Slack route,',
+                  'which has none of this job\'s half-hour latency.',
+                  '',
+                  `Last checked ${checkedAt} · [run](${process.env.RUN_URL})`,
+                  '',
+                  '---',
+                  '_Generated by [Claude Code](https://claude.ai/code)_',
+                ].join('\n')
+              },
+            })

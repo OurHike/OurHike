@@ -1,9 +1,10 @@
-"""Tests for the tracking-issue policy the four scheduled monitors share.
+"""Tests for the tracking-issue policy the five scheduled monitors share.
 
 `.github/scripts/tracking-issue.js` is what check-deployment.yml,
-check-deployed-app.yml, check-upstream-freshness.yml and smoke-published.yml
-all call to open, update and close their one issue. Before #678 it was four
-copies of about ninety lines, and this file did not exist.
+check-deployed-app.yml, check-upstream-freshness.yml, smoke-published.yml and
+check-pending-approvals.yml all call to open, update and close their one issue.
+Before #678 it was four copies of about ninety lines, and this file did not
+exist.
 
 **The round trip is the point.** Each copy recovered "first seen" by parsing
 the dates back out of the markdown table it had itself written, with a regex
@@ -76,6 +77,12 @@ trackingIssue({github, context, core}, {
     '|---|---|---|---|',
     ...options.keys.map(k => `| \\`${k}\\` | changed | ${firstSeen[k]} | ${cell(options.detail || 'plain')} |`),
   ].join('\\n'),
+  // `announce` absent, announcing, or deliberately quiet - the three cases,
+  // distinguished by undefined vs true vs null so the tests can reach all of
+  // them through JSON.
+  announce: options.announce === undefined
+    ? undefined
+    : (newKeys, cell) => (options.announce === null ? null : `now waiting: ${newKeys.map(k => cell(k)).join(', ')}`),
 }).then(result => {
   console.log(JSON.stringify({result, calls}))
 }).catch(error => {
@@ -263,6 +270,75 @@ def test_an_issue_with_a_different_title_under_the_same_label_is_not_touched():
     )
 
 
+# --- Announcing a key that was not there before ----------------------------
+#
+# #701's addition, and the one exception to "updating a body is silent". The
+# four original monitors each track one ongoing condition, where a second week
+# of the same outage is genuinely not news. check-pending-approvals.yml's keys
+# are workflow runs - one decision each - and `concurrency: publish-data`
+# queues dispatches behind one another, so a second run joining an open episode
+# is ordinary. Silence there would announce the first run of an episode and
+# nothing after it, which is the failure that monitor exists to fix.
+
+
+def _open_issue_carrying(keys, checked_at="2026-08-01"):
+    """An issue body with `keys` already recorded in its marker."""
+    opened = run(keys=keys, checkedAt=checked_at)
+    return {"number": 21, "title": "Upstream data freshness", "body": body_of(opened["calls"], "create")}
+
+
+def test_a_key_the_open_issue_had_not_recorded_is_announced():
+    result = run(
+        keys=["31712795726", "31718004411"],
+        existing=_open_issue_carrying(["31712795726"]),
+        announce=True,
+    )
+    assert [c["call"] for c in result["calls"]] == ["update", "createComment"], (
+        "The body must be current before the comment that points at it lands, so the order matters here "
+        "for the same reason it does when closing."
+    )
+    comment = body_of(result["calls"], "createComment")
+    assert "31718004411" in comment
+    assert "31712795726" not in comment, (
+        "The run that was already on the issue got re-announced, which is the comment-per-run noise "
+        "the tracking issue exists to avoid."
+    )
+    assert result["result"]["appeared"] == ["31718004411"]
+
+
+def test_a_key_that_was_already_there_says_nothing():
+    """The whole of #431 still holds for keys that have not changed: an
+    approval left unapproved for a week is not seven notifications."""
+    result = run(keys=["31712795726"], existing=_open_issue_carrying(["31712795726"]), announce=True)
+    assert [c["call"] for c in result["calls"]] == ["update"]
+    assert result["result"]["appeared"] == []
+
+
+def test_a_monitor_that_passes_no_announce_never_comments_while_red():
+    """The other four. This is `test_staying_red_updates_the_body_and_does_not
+    _comment` stated as a property of the option rather than of the default,
+    because the default is what a later caller would have to opt out of."""
+    result = run(keys=["a", "b"], existing=_open_issue_carrying(["a"]))
+    assert [c["call"] for c in result["calls"]] == ["update"], "A new key started commenting on monitors that never asked for it."
+
+
+def test_announce_can_decline_to_say_anything():
+    result = run(keys=["a", "b"], existing=_open_issue_carrying(["a"]), announce=None)
+    assert [c["call"] for c in result["calls"]] == ["update"]
+
+
+def test_opening_the_issue_does_not_also_comment():
+    """Opening notifies on its own. A comment alongside it would be the same
+    notification twice, on the run where there is most to read."""
+    result = run(keys=["a"], existing=None, announce=True)
+    assert [c["call"] for c in result["calls"]] == ["create"]
+
+
+def test_an_announcement_escapes_text_it_did_not_write():
+    result = run(keys=["a|b"], existing=_open_issue_carrying(["z"]), announce=True)
+    assert r"a\|b" in body_of(result["calls"], "createComment")
+
+
 # --- Text that arrives from somewhere else --------------------------------
 
 
@@ -282,7 +358,7 @@ def test_a_newline_in_upstream_text_cannot_break_the_table():
 
 
 def test_every_monitor_uses_the_shared_module():
-    """Guard against a fifth copy appearing, or one of these four quietly
+    """Guard against a sixth copy appearing, or one of these five quietly
     growing its own again."""
     workflows = REPO_ROOT / ".github" / "workflows"
     missing = [
@@ -292,6 +368,7 @@ def test_every_monitor_uses_the_shared_module():
             "check-deployed-app.yml",
             "check-upstream-freshness.yml",
             "smoke-published.yml",
+            "check-pending-approvals.yml",
         )
         if "scripts/tracking-issue.js" not in (workflows / name).read_text(encoding="utf-8")
     ]

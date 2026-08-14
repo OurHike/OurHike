@@ -628,29 +628,28 @@
   flex: 1;
 }
 
+/* Carries the drawn figure too, as `13/14`, where fewer are drawn than are here
+   (#528). One slot rather than two, and that is the whole of the fix: a second
+   `13 shown` badge beside this one does not fit a two-column row at 390 px, so
+   it wrapped and left the column ragged.
+
+   There is deliberately no styling to go with the fraction. It inherits this
+   rule, so the emphasis is the same whether the row is short or not - a row
+   missing one pin should not shout, and the row missing all six is legible
+   because `0/6` says so, not because it is bolder.
+
+   A `.legend__drawn` rule used to sit here for that second badge. It is gone
+   with the badge, and worth a line because of how it failed rather than for
+   its own sake: it was called `legend__shown` until #530's type picker landed
+   on `main` using that name for its own row, two different things under one
+   class, and the later 44px bordered flex row won - rendering a 12px inline
+   badge as a full-width band inside a pin row. Git merged the two branches
+   without a marker; src/test/legendControlLayout.test.ts is what caught it.
+   One fewer class in this file is one fewer chance of that. */
 .legend__count {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 12px;
   color: var(--fg-2);
-}
-/* How many of that count are actually drawn, where fewer are (#528). Sits
-   immediately after the present count because the two are one statement -
-   "14, of which 4" - and it carries the emphasis, since the surprising half is
-   the one a hiker has no other way to learn. Not red: nothing is broken, the
-   pins do not fit, and the remedy is in the header line.
-
-   `legend__drawn` and not `legend__shown`, which is what this was called until
-   #530's type picker landed on `main` using that name for its own row. Two
-   different things under one class in one stylesheet, and the later rule won for
-   both: this 12px inline badge inherited a 44px bordered flex row and rendered as
-   a full-width band inside a pin row. Git merged the two branches without a
-   marker - src/test/legendControlLayout.test.ts is what caught it. Named to pair
-   with `legend__dropped` below, which is the same fact summarised. */
-.legend__drawn {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--fg-1);
 }
 /* The count over the canvas (#528). Bottom-left, clear of the zoom buttons and
    the attribution, so it is legible without covering the trail line the hiker is

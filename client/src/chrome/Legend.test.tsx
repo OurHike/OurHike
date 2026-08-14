@@ -813,7 +813,7 @@ describe('reporting waypoints that did not fit', () => {
     )
   }
 
-  it('shows the drawn count beside the present one where they differ', () => {
+  it('folds the drawn count into the count slot as a fraction where they differ', () => {
     renderLegend(
       new Map([
         ['water', 1],
@@ -821,12 +821,34 @@ describe('reporting waypoints that did not fit', () => {
       ]),
     )
 
-    expect(screen.getByText('1 shown')).toBeInTheDocument()
-    expect(screen.getByText('0 shown')).toBeInTheDocument()
+    expect(screen.getByText('1/2')).toBeInTheDocument()
+    expect(screen.getByText('0/2')).toBeInTheDocument()
+  })
+
+  it('renders one count element per row, so nothing has to wrap', () => {
+    // The defect this design replaced: a second `1 shown` badge beside the
+    // count does not fit a two-column row at 390 px, so it wrapped and left
+    // rows of unequal height and a ragged column edge. Asserting the element
+    // COUNT rather than the width, because jsdom lays nothing out - what can be
+    // proved here is that there is only one thing in the slot, which is what
+    // makes the wrap impossible. The width itself is a real-browser question
+    // and is why the rendering was screenshotted before this landed.
+    const { container } = renderLegend(
+      new Map([
+        ['water', 1],
+        ['privy', 0],
+      ]),
+    )
+
+    expect(container.querySelectorAll('.legend__count')).toHaveLength(2)
+    expect(container.querySelector('.legend__drawn')).toBe(null)
   })
 
   it('says nothing extra on a row that is fully drawn', () => {
-    // The panel stays quiet at the zooms where nothing is being dropped.
+    // The panel stays quiet at the zooms where nothing is being dropped. Asserted
+    // as the plain count being PRESENT rather than only as the fraction being
+    // absent: `queryByText(/shown/)` alone would now pass on a row rendering
+    // `2/2`, since the word left with the badge.
     renderLegend(
       new Map([
         ['water', 2],
@@ -834,17 +856,27 @@ describe('reporting waypoints that did not fit', () => {
       ]),
     )
 
-    expect(screen.queryByText(/shown/)).not.toBeInTheDocument()
+    expect(screen.getAllByText('2')).toHaveLength(2)
+    expect(screen.queryByText('2/2')).not.toBeInTheDocument()
     expect(screen.queryByText(/fit at this zoom/)).not.toBeInTheDocument()
   })
 
-  it('puts the drawn figure in the row’s accessible name', () => {
-    // A screen-reader user gets "Privy, 2, 0 shown" rather than a bare count
-    // that is wrong about what is on the map.
+  it('spells the figure out in the row’s accessible name rather than reusing the fraction', () => {
+    // A screen-reader user gets "Privy, none of 2 shown" rather than a bare
+    // count that is wrong about what is on the map - and rather than `0/2`,
+    // whose slash a reader is free to skip, leaving "0 2".
     renderLegend(new Map([['privy', 0]]))
 
     expect(
-      screen.getByRole('listitem', { name: /privy · 2 · 0 shown/i }),
+      screen.getByRole('listitem', { name: /privy · none of 2 shown/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('says the number out loud when some did fit', () => {
+    renderLegend(new Map([['water', 1]]))
+
+    expect(
+      screen.getByRole('listitem', { name: /water · 1 of 2 shown/i }),
     ).toBeInTheDocument()
   })
 
@@ -860,9 +892,13 @@ describe('reporting waypoints that did not fit', () => {
   })
 
   it('reads exactly as it did before when nothing was measured', () => {
+    // No measurement is a real state on a cold start, and it must read as "not
+    // measured" rather than as "none are drawn" - which a fraction of `0/2`
+    // would say, wrongly and alarmingly.
     renderLegend(undefined)
 
-    expect(screen.queryByText(/shown/)).not.toBeInTheDocument()
+    expect(screen.getAllByText('2')).toHaveLength(2)
+    expect(screen.queryByText('0/2')).not.toBeInTheDocument()
     expect(screen.queryByText(/fit at this zoom/)).not.toBeInTheDocument()
   })
 
@@ -875,7 +911,7 @@ describe('reporting waypoints that did not fit', () => {
     renderLegend(new Map([['privy', 0]]))
 
     // The figure is on the row's own accessible name; the button is inside it.
-    const row = screen.getByRole('listitem', { name: /privy · 2 · 0 shown/i })
+    const row = screen.getByRole('listitem', { name: /privy · none of 2 shown/i })
     expect(within(row).getByRole('button')).toHaveAttribute('aria-pressed', 'true')
   })
 })

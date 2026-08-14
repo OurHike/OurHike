@@ -298,8 +298,8 @@ export function Legend({
             const label = typeLabel(row.type)
             const hidden = row.hideable && hiddenTypes.has(row.type)
             // Only where it differs, which keeps the panel quiet at the zooms
-            // where nothing is being dropped: `Water 14` and `Water 14 · 4 shown`
-            // are the same row saying as much as is true.
+            // where nothing is being dropped: `Water 14` and `Water 13/14` are
+            // the same row saying as much as is true.
             const short = row.drawnCount !== undefined && row.drawnCount < row.count
 
             // The pin, the name and the count, in that order. On a hideable
@@ -319,8 +319,23 @@ export function Legend({
                     something rather than about a rectangle. */}
                 <MapIcon className="legend__icon" type={row.type} />
                 <span className="legend__label">{label}</span>
-                <span className="legend__count">{row.count}</span>
-                {short && <span className="legend__drawn">{row.drawnCount} shown</span>}
+                {/* ONE SLOT, NOT TWO. This carried the count and then a second
+                    `13 shown` badge beside it, and in a two-column grid at
+                    390 px that badge does not fit on the line: `3 shown` and
+                    `2 shown` wrapped, leaving rows of unequal height and a
+                    ragged column edge. Rendered from this repository's own
+                    tokens before the change was made, rather than reasoned
+                    about - it is the defect, not a preference.
+
+                    The fraction says the same thing in the space the count
+                    already had. `0/6` is six here and none drawn; `13/14` is
+                    one missing. It also puts the relationship IN the notation,
+                    which the two-badge version never did - `9` beside `3 shown`
+                    is two numbers with nothing saying one is a subset of the
+                    other. Maintainer's call between six renderings, PR #706. */}
+                <span className="legend__count">
+                  {short ? `${row.drawnCount}/${row.count}` : row.count}
+                </span>
               </>
             )
 
@@ -337,10 +352,21 @@ export function Legend({
                   .filter(Boolean)
                   .join(' ')}
                 // The drawn figure goes into the accessible name too, so a
-                // screen-reader user hears "Privy, 6, 0 shown" rather than a
-                // count that is wrong about what is on the map.
+                // screen-reader user hears "Privy, none of 6 shown" rather than
+                // a count that is wrong about what is on the map.
+                //
+                // WORDS HERE, THE FRACTION ON SCREEN, and they are allowed to
+                // differ because the two are read by different means. A slash
+                // is punctuation a screen reader is free to skip - "13 14" is a
+                // plausible rendering of `13/14` and says nothing - so the
+                // visual shorthand that fixes the wrapping is exactly the wrong
+                // string to hand a reader. `none of 6` rather than `0 of 6` for
+                // the same reason PoiCard spells its separators out: zero read
+                // in a run of digits is the one that slips past.
                 aria-label={
-                  short ? `${label} · ${row.count} · ${row.drawnCount} shown` : label
+                  short
+                    ? `${label} · ${row.drawnCount === 0 ? 'none' : row.drawnCount} of ${row.count} shown`
+                    : label
                 }
               >
                 {row.hideable ? (

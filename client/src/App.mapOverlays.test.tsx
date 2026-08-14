@@ -12,14 +12,11 @@
 // warning, or a closure placed against the wrong index.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { get, set } from 'idb-keyval'
-import { MockMap, resetMapLibreMock } from './test/mocks/maplibre-gl'
+import { MockMap } from './test/mocks/maplibre-gl'
 import { renderedMap } from './test/liveMap'
-import { PREFERENCES_KEY } from './lib/preferences'
-import { DEFAULT_PREFERENCES } from './lib/userPreferences'
-import { TRAILS_BLOB_KEY } from './lib/trailData'
+import { appHarness } from './test/appHarness'
 import { CLOSURE_SOURCE_ID } from './map/closureLayers'
 import { WARNING_SOURCE_ID } from './map/warningLayers'
 
@@ -98,53 +95,19 @@ vi.mock('./lib/api', () => ({
   fetchReports: vi.fn(async () => REPORTS),
 }))
 
-/** A mile of latitude, near enough that a vertex index IS a mile marker. */
-const MILE_IN_DEGREES_LAT = 1 / 69.05
-
-const TRAILS = JSON.stringify({
-  type: 'FeatureCollection',
-  features: [
-    {
-      type: 'Feature',
-      properties: { source: 'centerline', blaze_color: 'White' },
-      geometry: {
-        type: 'LineString',
-        coordinates: Array.from({ length: 11 }, (_, i) => [
-          -77,
-          39 + i * MILE_IN_DEGREES_LAT,
-        ]),
-      },
-    },
-  ],
-})
-
-const store = new Map<string, unknown>()
+// No fetch stub: this file mocks lib/api and lib/config, so nothing here
+// reaches the network, and a stub would only hide it if something did.
+const app = appHarness({ stubFetch: false })
 
 beforeEach(() => {
-  store.clear()
-  resetMapLibreMock()
-  vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
-  vi.mocked(set).mockImplementation((key, value) => {
-    store.set(key as string, value)
-    return Promise.resolve()
-  })
-  store.set(PREFERENCES_KEY, {
-    ...DEFAULT_PREFERENCES,
-    onboarding_completed: true,
-    download_choice_made: true,
-  })
+  app.onboard()
   // Already on the phone, so nothing is fetched and the centerline index is
-  // built from exactly the geometry above.
-  store.set(TRAILS_BLOB_KEY, new Blob([TRAILS]))
-  store.set('ourhike:pois', [])
+  // built from exactly this geometry - eleven miles, one vertex each.
+  app.putTrailData({ miles: 11 })
 })
 
-afterEach(() => {
-  cleanup()
-  vi.clearAllMocks()
-  vi.restoreAllMocks()
-  vi.unstubAllGlobals()
-})
+// restore, not just clear - see App.trailData.test.tsx's own note.
+afterEach(() => vi.restoreAllMocks())
 
 async function renderApp(): Promise<MockMap> {
   const { default: App } = await import('./App')

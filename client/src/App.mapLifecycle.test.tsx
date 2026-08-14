@@ -25,12 +25,12 @@
 // last.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, render, screen, cleanup } from '@testing-library/react'
-import { get, set } from 'idb-keyval'
+import { act, render, screen } from '@testing-library/react'
+import { get } from 'idb-keyval'
 import App from './App'
-import { MockMap, resetMapLibreMock } from './test/mocks/maplibre-gl'
+import { MockMap } from './test/mocks/maplibre-gl'
+import { appHarness } from './test/appHarness'
 import { PREFERENCES_KEY } from './lib/preferences'
-import { DEFAULT_PREFERENCES } from './lib/userPreferences'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 import {
   CORRIDOR_BACKGROUND_PACKAGE,
@@ -46,7 +46,8 @@ vi.mock('./map/archiveZooms', () => ({
   readArchiveZooms: () => Promise.resolve({ minZoom: 5, maxZoom: 14 }),
 }))
 
-const store = new Map<string, unknown>()
+const app = appHarness()
+const store = app.store
 
 /**
  * Every read the app has asked for and not yet been given an answer to.
@@ -55,13 +56,15 @@ const store = new Map<string, unknown>()
  * same commit that asked, which collapses the launch sequence into one render
  * and hides the very staggering these tests are about - the bug is invisible
  * against a mock that is faster than React.
+ *
+ * This is the one file that replaces the harness's `get`, rather than seeding
+ * through it: what it is testing is the ORDER reads land in, which a mock that
+ * answers immediately cannot express.
  */
 let pending: Array<{ key: string; release: () => void }> = []
 
 beforeEach(() => {
-  store.clear()
   pending = []
-  resetMapLibreMock()
   vi.mocked(get).mockImplementation(
     (key) =>
       new Promise((resolve) => {
@@ -71,19 +74,9 @@ beforeEach(() => {
         })
       }),
   )
-  vi.mocked(set).mockImplementation((key, value) => {
-    store.set(key as string, value)
-    return Promise.resolve()
-  })
-  vi.stubGlobal('fetch', vi.fn())
 })
 
-afterEach(() => {
-  cleanup()
-  vi.clearAllMocks()
-  vi.restoreAllMocks()
-  vi.unstubAllGlobals()
-})
+afterEach(() => vi.restoreAllMocks())
 
 /**
  * Answers every outstanding read whose key matches, and lets React finish with
@@ -124,12 +117,7 @@ const TRAILS = JSON.stringify({ type: 'FeatureCollection', features: [] })
  *  downloaded, and the trail lines already in the store. The ordinary state
  *  of the app for everyone except a first-run hiker. */
 function aPhoneThatHasBeenUsed(): void {
-  store.set(PREFERENCES_KEY, {
-    ...DEFAULT_PREFERENCES,
-    onboarding_completed: true,
-    download_choice_made: true,
-    background_source: 'usgs_topo_offline',
-  })
+  app.onboard({ background_source: 'usgs_topo_offline' })
   store.set(CORRIDOR_BACKGROUND_PACKAGE.idbKey, new Blob(['pmtiles']))
   store.set(TRAILS_BLOB_KEY, new Blob([TRAILS]))
   store.set(POIS_KEY, [])

@@ -39,9 +39,10 @@ def receipts_in_a_tmp_dir(tmp_path, monkeypatch):
 def no_real_trail_water(tmp_path, monkeypatch):
     """Keep the real corridor's water out of every synthetic fixture (#529).
 
-    `reference/trail_water.json` is checked in, and unify_all_sources reads
-    it - so without this a suite of six synthetic points near (-74, 41)
-    quietly gains seventeen real stream crossings from the Hudson Highlands,
+    `data/raw/trail_water.json` sits on any machine that has run the fetch,
+    and unify_all_sources reads it - so without this a suite of six synthetic
+    points near (-74, 41) quietly gains seventeen real stream crossings from
+    the Hudson Highlands,
     which is TESTING.md's "never the real data" rule broken by a file the
     test never mentions.
 

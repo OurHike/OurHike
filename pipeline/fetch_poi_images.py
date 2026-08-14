@@ -95,7 +95,7 @@ MAX_PHOTO_AGE_DAYS = 1461  # four years, including one leap day
 # `crossing` is deliberately absent, and lib/poi_schema.py's POI_TYPES comment
 # is where that silence is documented: an absent radius means this crawl skips
 # the category. It carried 300 while the layer was empty, so nothing was ever
-# skipped in practice; when build_trail_water.py filled it (#529) the choice
+# skipped in practice; when fetch_trail_water.py filled it (#529) the choice
 # became real, and the answer is no. A Commons photo matched by proximity to a
 # stream-crossing coordinate is a photograph of whatever somebody uploaded
 # nearby - features/POI_PHOTOS.md measured how often that is a plant - and a

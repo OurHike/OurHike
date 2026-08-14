@@ -539,7 +539,7 @@ def test_an_unclassified_reach_claims_nothing_about_flow():
 
 def test_describe_water_dispatches_a_stream_point_by_the_facts_it_carries():
     """Two kinds of water point, told apart by their fields rather than by a
-    source string: OSM's nodes carry `kind`, build_trail_water.py's derived
+    source string: OSM's nodes carry `kind`, fetch_trail_water.py's derived
     points carry the hydrographies they were merged from."""
     assert describe_water({"sources": ["nhd"], "name": "Stony Brook"}).startswith("Stony Brook, where it runs closest")
     assert describe_water({"kind": "spring"}) == "Spring. Mapped by OpenStreetMap contributors."

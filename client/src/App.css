@@ -31,80 +31,11 @@
   position: relative;
 }
 
-/* ---------- First run (App.tsx's onboarding branch) ---------- */
-
-/* The frame the entry steps sit in: the map filling it, the steps over it.
-   `height`, not `min-height`, for the same reason .app__screen has one - the
-   steps size themselves against this box, and a box that can grow past the
-   viewport takes the map's share of the screen with it. */
-.app__entry {
-  position: relative;
-  height: 100svh;
-  overflow: hidden;
-  background: var(--bg-page);
-}
-
-/* The map behind them. Absolute rather than a flex row above the steps,
-   because it is a backdrop and not a band: the steps overlap it, and how much
-   of it is left showing is decided by the card's own height (onboarding.css)
-   rather than by splitting the screen here.
-
-   `pointer-events: none` alongside the `inert` App.tsx sets - inert is what
-   the semantics rest on, and this is the belt to that pair of braces on a
-   browser that has the attribute unimplemented, where a stray tap would
-   otherwise reach a live MapLibre canvas underneath the steps.
-
-   `display: flex` because .map-view is `flex: 1` (chrome.css) and fills its
-   parent rather than sizing itself. */
-.app__entry-map {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  pointer-events: none;
-}
-
-/* MapLibre's own controls - compass, locate, scale bar - are not drawn here.
-   They are attached to every map this app builds (map/mapChrome.ts), and on
-   this one they are inert: a picture of a button that cannot be pressed is a
-   worse thing to show someone than no button at all, and these ones stack in
-   the bottom corners, which is exactly where the entry card is. The map screen
-   the steps hand over to has all three, in the thumb zone, seconds later. */
-.app__entry-map .maplibregl-ctrl {
-  display: none;
-}
-
-/* Where the licence credit sits on this screen. WHAT it says is
-   map/credits.ts's decision and HOW MUCH ROOM it takes is
-   chrome/MapAttribution.tsx's - the same pair the map screen uses, so first run
-   cannot credit a different set of sources from the screen after it. Only the
-   placement is decided here.
-
-   Top-left, rather than the strip under the canvas the map screen gets: this
-   screen has no chrome to put a strip in, and its bottom is where the card is,
-   so the corner guaranteed to be map is the one at the top.
-
-   Above the steps in the stack (z-index 2 against their 1), which on a desktop
-   is what keeps it out from under the dim behind the centred card
-   (src/desktop.css). A credit a licence requires is not something to show at
-   78% of itself. */
-.app__entry-attribution {
-  position: absolute;
-  top: max(var(--space-2, 8px), env(safe-area-inset-top, 0));
-  left: var(--space-2, 8px);
-  z-index: 2;
-  max-width: calc(100% - 2 * var(--space-2, 8px));
-  background: color-mix(in srgb, var(--bg-page) 92%, transparent);
-  border-radius: var(--radius-s, 4px);
-}
-
-/* The strip's own treatment is for a full-width row beneath the canvas
-   (chrome.css). Floating over the map it needs neither the rule that separated
-   it from the canvas nor a second opaque background over the translucent one
-   above. The text sizing and colour stay exactly as the map screen's. */
-.app__entry-attribution .map-attribution {
-  background: none;
-  border-top: 0;
-}
+/* First run used to have its own frame here - .app__entry, .app__entry-map and
+   .app__entry-attribution - holding a second MapView behind the steps. #721
+   removed all three: the map screen itself is the backdrop now, hidden down to
+   its canvas by chrome.css's .map-screen--entering, so there is one map instead
+   of two and nothing here to lay out. */
 
 .app__notice {
   margin: 0;

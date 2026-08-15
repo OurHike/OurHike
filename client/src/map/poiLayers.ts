@@ -283,6 +283,41 @@ export const POI_DOT_COLOR_EXPRESSION: unknown[] = [
 ]
 
 /**
+ * How far down the dot rank goes - and it goes all the way (#603).
+ *
+ * The pin seam is a claim about legibility: below {@link POI_PIN_MIN_ZOOM} a
+ * pin cannot say what it is without colliding with its neighbours. A DOT MAKES
+ * NO SUCH CLAIM. It says something is here and nothing more, so the argument
+ * that stops pins never applied to it, and stopping both at one seam meant the
+ * opening view of the whole corridor - which lands near z4 on a phone - drew
+ * the trail line and nothing else.
+ *
+ * This is features/POI_VISIBILITY.md's own open question ("whether the dot rank
+ * should extend below the seam"), answered yes by the maintainer on #603.
+ *
+ * IT IS THE ANSWER THAT ADDS RATHER THAN REVERSES, which is why it is this one
+ * and not a tighter opening camera. `App.tsx`'s CORRIDOR_BOUNDS argues that any
+ * camera naming a place is "a confident-looking answer that is wrong for
+ * everyone not standing" there, and `lib/cameraMemory.ts` argues that a camera
+ * surviving the tab closing would restore "last Tuesday's view over Georgia to
+ * someone starting in Maine". Both stand. The camera does not move here; what
+ * changes is that there is now something on it.
+ *
+ * Zero rather than a floor near the opening view, because there is no zoom at
+ * which "something is here" becomes false. The radius below carries the
+ * honesty instead: at z4 these are 1.2 px, a stipple along the corridor rather
+ * than a map of places.
+ *
+ * What it costs, stated rather than glossed: ~2,837 circles at z4. They are a
+ * `circle` layer, so no collision pass and no per-feature layout - the cost is
+ * one draw call's worth of geometry, not 2,837 decisions. And it softens
+ * features/POI_VISIBILITY.md's "below the seam the map is a complete map of
+ * something else" - the corridor view now carries a second thing. See
+ * features/CORRIDOR_VIEW.md, which owns that view.
+ */
+export const POI_DOT_MIN_ZOOM = 0
+
+/**
  * Small, and smaller the further out you are.
  *
  * A dot is a claim that something is HERE and nothing else; it is not trying
@@ -294,11 +329,24 @@ export const POI_DOT_COLOR_EXPRESSION: unknown[] = [
  * sunlight (#105) - like the site pin's badge, this is the decision in the
  * design most likely to be wrong in a browser and right on a phone, or the
  * reverse.
+ *
+ * The corridor end of the ramp is 1.2 px at {@link POI_DOT_MIN_ZOOM}, and it is
+ * doing the work the seam used to do (#603). At z4 the corridor's 2,837
+ * waypoints sit within a few hundred pixels of trail line, so a dot sized for
+ * the seam would draw a solid bar and claim the trail is one continuous place.
+ * At 1.2 px they read as what they are - texture, denser where the places are.
+ *
+ * @unvalidated 1.2 px is picked, not measured. What would settle it is the same
+ * outdoor pass #105 already owes the 2.5 px above: whether a corridor-view
+ * stipple is legible in sunlight, or whether it wants 1.5 px and a lighter
+ * halo. Nobody has looked at this on a phone.
  */
 export const POI_DOT_RADIUS_EXPRESSION: unknown[] = [
   'interpolate',
   ['linear'],
   ['zoom'],
+  POI_DOT_MIN_ZOOM,
+  1.2,
   POI_PIN_MIN_ZOOM,
   2.5,
   16,
@@ -323,13 +371,17 @@ export const POI_DOT_RADIUS_EXPRESSION: unknown[] = [
  * therefore inherits site folding for free: poiFeatureCollection already emits
  * one feature per site, so a privy riding its shelter's pin does not also get
  * a dot 40 m away claiming to be a second place.
+ *
+ * Its floor is {@link POI_DOT_MIN_ZOOM} and NOT the pin seam (#603). The two
+ * ranks answer different questions, so they stop at different places - see
+ * POI_DOT_MIN_ZOOM for why the seam was never the dot's to share.
  */
 export function buildPoiDotLayer(sourceId: string = POI_SOURCE_ID): LayerSpecification {
   return {
     id: POI_DOT_LAYER_ID,
     type: 'circle',
     source: sourceId,
-    minzoom: POI_PIN_MIN_ZOOM,
+    minzoom: POI_DOT_MIN_ZOOM,
     paint: {
       'circle-radius': POI_DOT_RADIUS_EXPRESSION as unknown as number,
       'circle-color': POI_DOT_COLOR_EXPRESSION as unknown as string,

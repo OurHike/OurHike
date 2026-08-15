@@ -179,8 +179,12 @@ describe('App shell', () => {
     // reaching it would raise the OS location prompt before the step whose
     // whole job is to explain why we are asking. `inert` also keeps the canvas
     // out of the tab order and its region out of the accessibility tree.
-    const backdrop = document.querySelector('.app__entry-map')
+    // The map screen IS the backdrop now (#721) - there is no separate entry
+    // map to find, which is the whole point. What has to hold is what held
+    // before: nothing behind the steps is reachable or announced.
+    const backdrop = document.querySelector('.map-screen')
     expect(backdrop).not.toBe(null)
+    expect(backdrop).toHaveClass('map-screen--entering')
     expect(backdrop).toHaveAttribute('inert')
     expect(backdrop).toHaveAttribute('aria-hidden', 'true')
     expect(screen.queryByRole('region', { name: /trail map/i })).toBe(null)
@@ -193,9 +197,14 @@ describe('App shell', () => {
     await completeOnboarding(user)
     await screen.findByRole('region', { name: /trail map/i })
 
-    // The backdrop is torn down as the map screen builds its own. Two live
-    // maps would be two WebGL contexts and two sets of tile reads.
+    // ONE MAP EVER CONSTRUCTED, which is #721 and is stronger than the live
+    // count this used to assert. Before, first run built a map behind the steps
+    // and threw it away when they finished, so `live` was 1 and `instances` was
+    // 2 - a whole WebGL context and a fresh set of tile reads, spent at the end
+    // of the flow whose job is the first impression. The map is the same object
+    // across the hand-over now, so the count that proves it is the total.
     await waitFor(() => expect(MockMap.live).toHaveLength(1))
+    expect(MockMap.instances).toHaveLength(1)
   })
 
   it('does not show onboarding again once it has been completed', async () => {

@@ -56,9 +56,6 @@ import { InstallPrompt } from './screens/InstallPrompt'
 import { Onboarding, type OnboardingResult } from './screens/Onboarding'
 import { ReportForm, type ReportFormSubmission } from './screens/ReportForm'
 import { ReportTypePicker, type ReportTypeId } from './screens/ReportTypePicker'
-import { MapView } from './map/MapView'
-import { mapCredits } from './map/credits'
-import { MapAttribution } from './chrome/MapAttribution'
 import { CORRIDOR_ARCHIVE_URL } from './map/protocol'
 import { DATA_CONFIGURED } from './lib/config'
 import { loadPreferences, savePreferences } from './lib/preferences'
@@ -1495,7 +1492,11 @@ function App() {
   // including its catch, sets a status.
   if (!preferencesLoaded || !archivesRead) return null
 
-  // First run, over the map rather than in front of a blank page.
+  /** First run: the three entry steps are showing over the map (#721). */
+  const entering = !preferences.onboarding_completed
+
+  // First run is rendered by the MAIN RETURN below, not by a branch here, and
+  // that is #721's whole fix.
   //
   // The three entry steps used to be an opaque screen, so the first thing
   // OurHike showed anyone was a page about a map instead of the map. Every
@@ -1506,71 +1507,25 @@ function App() {
   // on top of the already-downloading map, so the reason is visible"); it is
   // the same argument on all three, so the map is behind all three.
   //
-  // Deliberately NOT the map SCREEN. What is behind the steps is the canvas
-  // and nothing else - no header, no tab bar, no legend - because chrome
-  // behind a modal is either a trap or a way to skip the flow sideways, and
-  // neither is the first thing to hand someone.
+  // That was built as a SECOND `<MapView>`, in a branch that returned before
+  // the map screen ever rendered. It drew the right thing and cost a whole map:
+  // React reconciles by position, so when `onboarding_completed` flipped, the
+  // entry tree unmounted, `MapView`'s cleanup dropped the WebGL context, and
+  // the map screen built another one from scratch. Measured on a 4x-throttled
+  // phone profile: two WebGL contexts, and 1,230 ms of blocking work across
+  // seven long tasks at the exact moment the steps were dismissed - on a main
+  // thread that had just finished the launch fetch.
   //
-  // `inert` (with pointer-events: none in App.css behind it) is what makes
-  // that safe, and it is not only about stray taps. MapView attaches a locate
-  // control (map/mapChrome.ts), and a tap on it would put the OS location
-  // prompt on screen before the step whose entire job is to explain why we
-  // are asking - spending the one permission this app cares about at the exact
-  // moment it has earned the least trust. Inert also keeps the canvas out of
-  // the tab order and its region out of the accessibility tree, so a keyboard
-  // or screen-reader user is in the steps and only the steps.
+  // The comment here used to justify that as "the same price a trip through
+  // the More tab already pays". It is not the same price. A trip through More
+  // is something a hiker chose and can avoid; this landed on every hiker once,
+  // at the end of the flow whose entire job is the first impression.
   //
-  // It costs one extra map build - this one is torn down when the steps
-  // finish and the map screen builds its own - which is the same price a trip
-  // through the More tab already pays, and buys the entire first run.
-  if (!preferences.onboarding_completed) {
-    // The same call the map screen makes below. With nothing downloaded yet -
-    // which is every first run - it answers the live sheet whatever the stored
-    // preference or Data Saver says, so this draws exactly what the map screen
-    // would have drawn seconds later and spends no bytes that were not already
-    // going to be spent.
-    const entryBackground = effectiveBackground(
-      preferences.background_source,
-      saveData,
-      archiveDownloaded,
-    )
-
-    return (
-      <div className="app__entry">
-        <div className="app__entry-map" aria-hidden="true" inert>
-          <MapView
-            topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
-            trailsUrl={trailsUrl}
-            background={entryBackground}
-            pois={viewportPoints}
-            archiveZooms={archiveZooms}
-            bounds={CORRIDOR_BOUNDS}
-          />
-        </div>
-        {/* Outside the inert backdrop, and not optional. The live sheet's OSM
-            data is ODbL and its credit is a licence condition, so a map that
-            is drawn has to be credited whether or not anyone is meant to touch
-            it - the map screen renders this same line for the same reason
-            (chrome/MapScreen.tsx). Kept out of the inert subtree so it is
-            readable rather than merely present.
-
-            Same pair as the map screen - what it names is map/credits.ts's
-            decision, how much room it takes is MapAttribution's - so first run
-            cannot end up crediting a different set of sources from the screen
-            it hands over to a moment later. */}
-        <div className="app__entry-attribution">
-          <MapAttribution
-            credits={mapCredits({
-              background: entryBackground,
-              hasRasterArchive: archiveDownloaded,
-            })}
-            inline={isDesktop}
-          />
-        </div>
-        <Onboarding onComplete={handleOnboardingComplete} />
-      </div>
-    )
-  }
+  // So the map stays where it is and the CHROME changes around it: the map
+  // screen renders throughout, with `entering` hiding everything but its canvas
+  // and making the subtree `inert` (chrome/MapScreen.tsx). Nothing about what a
+  // hiker sees behind the steps has changed - still the canvas and nothing
+  // else, still untouchable, still credited - and there is now one map.
 
   if (authFlow !== null) {
     if (authFlow.screen === 'email') {
@@ -1834,6 +1789,10 @@ function App() {
         )}
       >
         <MapScreen
+          // First run (#721). Hides everything but the canvas and makes the
+          // whole subtree inert, so the steps below are drawn over the map
+          // rather than over a second copy of it.
+          entering={entering}
           topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
           trailsUrl={trailsUrl}
           background={effectiveBackground(
@@ -2041,6 +2000,18 @@ function App() {
           onMapReady={handleMapReady}
         />
       </ErrorBoundary>
+      {/* The entry steps, over the map screen rather than instead of it
+          (#721). A sibling of the boundary, not a child: they are the way out
+          of first run, so a map that throws mid-onboarding must not take them
+          down with it - the same argument that keeps the download window
+          outside it.
+
+          Last in the fragment, so they stack over everything the map screen
+          draws. There is nothing else to compete with them - `entering` has
+          hidden the chrome and made the whole screen inert - and the download
+          window below cannot be open yet, because the only thing that opens it
+          is finishing these steps. */}
+      {entering && <Onboarding onComplete={handleOnboardingComplete} />}
       {downloadsWindow}
     </>
   )

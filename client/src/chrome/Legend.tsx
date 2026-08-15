@@ -246,10 +246,14 @@ export function Legend({
           The background picker used to sit above this and now sits at the foot of
           the panel with the downloads link (#583) - the daily question keeps the
           top. Nothing here moved it back. */}
+      {/* Below the pin seam. The sentence changed with #603: the dot rank now
+          draws all the way down (map/poiLayers.ts's POI_DOT_MIN_ZOOM), so
+          "waypoints are drawn from a closer zoom" became half wrong - they ARE
+          drawn here, as dots. What needs a closer zoom is telling one from
+          another, which is the pin's job and the thing this panel lists. */}
       {belowPoiZoom && rows.length === 0 && (
         <p className="legend__empty">
-          Waypoints are drawn from a closer zoom. Zoom in to see what is along this
-          stretch.
+          Waypoints show as dots at this zoom. Zoom in to see what each one is.
         </p>
       )}
 

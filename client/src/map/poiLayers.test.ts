@@ -24,6 +24,7 @@ import {
   poiFilter,
   POI_DOT_COLOR_EXPRESSION,
   POI_DOT_LAYER_ID,
+  POI_DOT_MIN_ZOOM,
   POI_DOT_RADIUS_EXPRESSION,
   POI_ICON_EXPRESSION,
   POI_ICON_SIZE_EXPRESSION,
@@ -101,13 +102,31 @@ describe('the dot rank', () => {
     expect(buildPoiDotLayer().type).toBe('circle')
   })
 
-  it('starts at the same seam as the pins, so neither rank leads the other', () => {
-    // Below the seam the map is the corridor view (features/CORRIDOR_VIEW.md)
-    // and carries no waypoints in either rank. A dot layer reaching lower
-    // would put 2,778 dots on a 2,197-mile line, which is the texture
-    // POI_PIN_MIN_ZOOM's own docstring refuses.
-    expect(buildPoiDotLayer().minzoom).toBe(POI_PIN_MIN_ZOOM)
-    expect(buildPoiDotLayer().minzoom).toBe(buildPoiLayer().minzoom)
+  it('reaches below the pin seam, because a dot makes no claim a seam protects', () => {
+    // #603, reversing what this test used to assert. The seam is about whether
+    // a PIN can say what it is without colliding; a dot says only "something is
+    // here", so that argument never covered it - and holding both ranks at one
+    // seam left the opening corridor view drawing the trail line and nothing
+    // else. features/POI_VISIBILITY.md had this open as a question and it is
+    // answered yes.
+    //
+    // The two ranks now stop in different places, deliberately, which is the
+    // thing a later reader is most likely to "tidy" back into agreement.
+    expect(buildPoiDotLayer().minzoom).toBe(POI_DOT_MIN_ZOOM)
+    expect(POI_DOT_MIN_ZOOM).toBeLessThan(POI_PIN_MIN_ZOOM)
+    expect(buildPoiLayer().minzoom).toBe(POI_PIN_MIN_ZOOM)
+  })
+
+  it('shrinks to a stipple at the corridor view rather than keeping its seam size', () => {
+    // What makes the line above honest. At z4 the corridor's waypoints sit
+    // within a few hundred pixels of trail line, so a dot sized for the seam
+    // would draw a solid bar and claim the trail is one continuous place.
+    const ramp = POI_DOT_RADIUS_EXPRESSION
+    const atDotFloor = ramp[ramp.indexOf(POI_DOT_MIN_ZOOM) + 1] as number
+    const atSeam = ramp[ramp.indexOf(POI_PIN_MIN_ZOOM) + 1] as number
+
+    expect(atDotFloor).toBeLessThan(atSeam)
+    expect(atDotFloor).toBeGreaterThan(0)
   })
 
   it('reads the same source as the pins, which is what makes it site-correct', () => {

@@ -1,7 +1,10 @@
 # Water near shelters — the measurements and the sourcing options (August 2026)
 
 Companion to [SOURCE_SURVEY.md](SOURCE_SURVEY.md) (the general upstream survey this
-narrows to one question) and the working record for **#529 — 97% of shelters have no
+narrows to one question), to [WATER_CONDITIONS.md](WATER_CONDITIONS.md) (the same question
+asked about *time* rather than place — whether the water is flowing today, added
+2026-08-15 and the one correction to §7's closing paragraph), and the working record for
+**#529 — 97% of shelters have no
 water source within 250 m, and the trail is not like that**. Everything here was
 measured 2026-08-13 unless a different date is stated; the two measurement scripts are
 committed beside this file ([spike_shelter_water.py](spike_shelter_water.py) for USGS
@@ -516,3 +519,15 @@ becomes a pin at all. Reliability over time — flowing *today* — belongs to
 perennial/intermittent code kept as an input to the prediction FEATURES.md already
 sketches, not shown as a promise. A dry August at a `low`-confidence spring pin whose
 card says "mapped as seasonal" is a hiker warned, not a hiker lied to.
+
+*Amended 2026-08-15 (#716 — Nothing tells a hiker the water is running low, and 206 miles
+of the trail are in severe drought today):* "nothing open carries reliability" was true of
+every source measured above, and it is **not** true of the hydrology and drought column
+those measurements never reached. USGS gauge percentiles, NOAA's National Water Model and
+the U.S. Drought Monitor all publish a current, free, trail-locatable low-water signal —
+206 miles of the trail are in severe drought as this is written.
+[WATER_CONDITIONS.md](WATER_CONDITIONS.md) holds those measurements. What does **not**
+change is the sentence this paragraph is really making: none of them observes a spring,
+so "is *this* source flowing" still belongs to
+[DATA_NUDGES.md](../features/DATA_NUDGES.md)'s one-tap loop, and the new sources answer
+the regional question instead.

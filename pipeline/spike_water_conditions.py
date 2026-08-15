@@ -98,6 +98,13 @@ NWM_MISSING = -9999.0
 # as a region on a zoomed-out map rather than as a stripe on the trail.
 CORRIDOR_BUFFER_DEG = 0.09
 
+# The other two steps of export_drought.py's corridor, kept in step with it so
+# the layer size measured here is the artifact that ships. ~110 m before the
+# buffer (which is what makes buffering a 690,040-vertex line affordable at
+# all: 235 s measured without it) and ~550 m after it.
+CORRIDOR_SIMPLIFY_DEG = 0.001
+CORRIDOR_SMOOTH_DEG = 0.005
+
 EARTH_R_M = 6_371_008.8
 
 
@@ -618,6 +625,8 @@ def measure_drought(parts, gauge_rows):
     def measure_part(geometry):
         return trail_miles(piece_lines(geometry))
 
+    measure_class_overlap(classes)
+
     names = {
         0: "D0 abnormally dry",
         1: "D1 moderate drought",
@@ -626,13 +635,14 @@ def measure_drought(parts, gauge_rows):
         4: "D4 exceptional drought",
     }
     print(f"\nA.T. centerline: {total:.1f} mi across {len(parts)} parts")
-    print("miles inside each U.S. Drought Monitor class (the classes nest - D2 also lies inside D1 and D0):")
+    print("miles inside each U.S. Drought Monitor class (the classes are disjoint - see above):")
     miles = {}
     for level in sorted(classes):
         miles[level] = measure_part(line.intersection(classes[level]))
         print("  %-24s %7.1f mi  (%.1f%%)" % (names[level], miles[level], 100 * miles[level] / total))
-    clear = total - miles.get(0, 0.0)
-    print("  %-24s %7.1f mi  (%.1f%%)" % ("no class at all", clear, 100 * clear / total))
+    affected = sum(miles.values())
+    print("  %-24s %7.1f mi  (%.1f%%)" % ("any class at all", affected, 100 * affected / total))
+    print("  %-24s %7.1f mi  (%.1f%%)" % ("no class at all", total - affected, 100 * (total - affected) / total))
 
     if gauge_rows:
         print("\ngauge flow band against the drought class at the gauge:")
@@ -656,6 +666,38 @@ def measure_drought(parts, gauge_rows):
     return miles
 
 
+def measure_class_overlap(classes):
+    """Are the U.S. Drought Monitor's classes nested, or mutually exclusive?
+
+    Worth measuring rather than reading, because the widely-repeated answer is
+    the wrong one for this endpoint. USDM's shapefiles are usually described
+    as nested - D0 containing D1 containing D2 - and `export_drought.py` was
+    first written to subtract each class from the one below on that basis.
+    The GeoJSON at droughtmonitor.unl.edu/data/json/ does not do that: every
+    pair intersects in zero area.
+
+    It matters twice over. Nested classes drawn as translucent fills paint the
+    worst areas darkest by stacking rather than by severity, and a per-class
+    mileage read as "this class or worse" is wrong by the sum of everything
+    inside it - 511 trail miles on the 2026-08-11 release, which is how this
+    function came to exist.
+    """
+    from shapely.ops import unary_union
+
+    levels = sorted(classes)
+    print("\nU.S. Drought Monitor class overlap (0 everywhere means the classes are disjoint):")
+    worst = 0.0
+    for index, level in enumerate(levels):
+        for other in levels[index + 1 :]:
+            overlap = classes[level].intersection(classes[other]).area
+            worst = max(worst, overlap)
+            print("  D%d n D%d = %.6f sq deg" % (level, other, overlap))
+    union_area = sum(classes[level].area for level in levels)
+    combined = unary_union([classes[level] for level in levels]).area
+    print("  sum of class areas %.3f vs area of their union %.3f" % (union_area, combined))
+    print("  -> classes are %s" % ("DISJOINT" if worst == 0.0 else "OVERLAPPING"))
+
+
 def measure_drought_layer(line, classes, national_miles):
     """What a shippable corridor-clipped drought layer costs, and what it loses.
 
@@ -668,7 +710,13 @@ def measure_drought_layer(line, classes, national_miles):
     """
     from shapely.geometry import mapping
 
-    corridor = line.buffer(CORRIDOR_BUFFER_DEG).simplify(0.01)
+    # The same three steps export_drought.py builds its corridor from, so the
+    # size printed here is the size of the artifact that actually ships rather
+    # than of a research-time approximation of it. Simplify, buffer, smooth:
+    # the first makes the buffer affordable, the third is the biggest lever on
+    # the bytes, and both are safe because the corridor edge is a 10 km choice
+    # of ours rather than a boundary in anybody's data.
+    corridor = line.simplify(CORRIDOR_SIMPLIFY_DEG).buffer(CORRIDOR_BUFFER_DEG).simplify(CORRIDOR_SMOOTH_DEG)
     clipped, features = {}, []
     for level in sorted(classes):
         piece = classes[level].intersection(corridor)
@@ -678,8 +726,12 @@ def measure_drought_layer(line, classes, national_miles):
         features.append({"type": "Feature", "properties": {"DM": level}, "geometry": mapping(piece)})
 
     raw = json.dumps({"type": "FeatureCollection", "features": features}).encode()
-    print(f"\na corridor-clipped drought layer (+-{CORRIDOR_BUFFER_DEG * 111:.0f} km):")
+    print(f"\nthe clipped drought GEOMETRY (+-{CORRIDOR_BUFFER_DEG * 111:.0f} km corridor):")
     print(f"  {len(raw)} bytes raw, {len(gzip.compress(raw))} bytes gzipped")
+    # Compact, and carrying only `DM`. The shipped artifact is larger because
+    # export_drought.py pretty-prints it and adds a label and trail miles per
+    # band - 108,695 bytes / 14,507 gzipped on this release. This number is
+    # the geometry's own cost; that one is what a hiker downloads.
     print("  re-measuring the trail against the clipped polygons:")
     for level, piece in clipped.items():
         pieces = piece_lines(line.intersection(piece))

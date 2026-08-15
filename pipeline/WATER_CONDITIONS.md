@@ -189,29 +189,46 @@ notice was found** on their site or in search. That is an absence of a warning r
 a promise of stability — NDMC publishes no support commitment either — so it is a reason
 not to fear this source, not a reason to skip a freshness check on it.
 
-**Measured, this week's release (valid 2026-08-11 to 2026-08-17), against the centerline:**
+**Measured, this week's release (valid 2026-08-11 to 2026-08-17), against the centerline.**
+*Corrected 2026-08-15, and the correction is worth reading before the table:* the first
+version of this section reported these as "D0 or worse", "D1 or worse" and so on, because
+USDM's shapefiles are usually described as nested — D0 containing D1 containing D2. **This
+endpoint's classes are not nested.** All ten pairs of the 2026-08-11 release intersect in
+exactly zero area, and the five class areas sum to 629.563 square degrees against a union
+of 629.563 (`spike_water_conditions.py`'s `measure_class_overlap`). Each figure below is
+therefore the mileage at *exactly* that class, they sum rather than nest, and the original
+reading understated the trail under drought by 511 miles.
 
 | class | A.T. miles | share |
 |---|---|---|
-| D0 abnormally dry or worse | 877.1 | 40.4% |
-| D1 moderate drought or worse | 295.4 | 13.6% |
-| D2 severe drought or worse | 205.8 | 9.5% |
+| D0 abnormally dry | 877.1 | 40.4% |
+| D1 moderate drought | 295.4 | 13.6% |
+| D2 severe drought | 205.8 | 9.5% |
 | D3 extreme drought | 10.2 | 0.5% |
-| no class at all | 1,294.9 | 59.6% |
+| **any class at all** | **1,388.5** | **63.9%** |
+| no class at all | 783.4 | 36.1% |
 
 The D2 stretch is central Virginia, roughly latitude 37.4 to 38.0 — the Blue Ridge between
 the James River and Shenandoah. The 10 miles of D3 sit around latitude 35.13–35.22 in the
 Nantahalas of North Carolina. **Two hundred miles of the Appalachian Trail are in severe
-drought today**, and this is the cheapest, most legible way to say so.
+drought today and nearly two thirds of it is under some drought class**, and this is the
+cheapest, most legible way to say so.
 
 **As a shippable layer it is very small, which was not obvious from the download.** The
 national file is **27.6 MB** — five features, one enormous multipolygon per class. Clipped
-to a ±10 km corridor around the centerline it is **32,359 bytes, or 10,163 gzipped**, and
-the clip is lossless where it matters: re-measuring the table above against the clipped
-polygons reproduces every class to within **0.002 mi** (about three metres). So the weekly
-refresh is a 10 KB fetch, not a 28 MB one, and it does not need to ride inside a
-downloaded map package to be current — which is the argument §6 makes for putting it in
-`conditions/` rather than the basemap.
+to a ±10 km corridor around the centerline, the artifact `export_drought.py` actually
+publishes is **108,695 bytes, or 14,507 gzipped**, and the clip is lossless where it
+matters: re-measuring the table above against the clipped polygons reproduces every class
+to within **0.002 mi** (about three metres). So the weekly refresh is a 14 KB fetch, not a
+28 MB one, and it does not need to ride inside a downloaded map package to be current —
+which is the argument §6 makes for putting it in `conditions/` rather than the basemap.
+
+Most of that size is the corridor's own outline rather than anybody's drought boundary,
+which is why it is worth one sentence: the trail's switchbacks traced at full resolution
+put the artifact at **749,464 bytes**, and smoothing the corridor edge to about 550 m
+brings it to the figure above without touching a single drought boundary. The edge is a
+10 km choice of ours; the boundaries are NDMC's measurement, and only one of those two is
+allowed to be approximated.
 
 **Reuse terms, read 2026-08-15 rather than assumed.** NDMC's permission page states the map
 may be reproduced given the exact credit naming all four partners and ending "Map courtesy
@@ -277,10 +294,10 @@ work:
 
 1. **The Drought Monitor as a regional banner** — *smallest effort, largest honest
    coverage.* One weekly fetch of a public GeoJSON, intersected with the centerline the
-   pipeline already has, published into `conditions/`. It reaches 877 miles today, it
+   pipeline already has, published into `conditions/`. It reaches 1,388 miles today, it
    carries a name hikers already know from their own state's news, it needs no percentile
    machinery, and it cannot be mistaken for a claim about a particular spring. §4 measures
-   the whole artifact at **10 KB gzipped** once clipped to the corridor, losslessly, so the
+   the whole artifact at **14 KB gzipped** once clipped to the corridor, losslessly, so the
    weekly refresh costs nothing and needs no map-package rebuild. **The one thing to settle
    first is narrower than "read the licence"**: NDMC explicitly permits reproducing the map
    with their credit line, and says nothing either way about redistributing the polygons,

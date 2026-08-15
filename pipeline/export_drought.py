@@ -16,23 +16,33 @@ drought layer baked into a downloaded package would be stale the moment
 NDMC's next Thursday release landed, and a hiker in the Hundred-Mile
 Wilderness would have no way to know.
 
-TWO DECISIONS THAT ARE NOT COSMETIC
------------------------------------
-**The classes are un-nested here, not in the client.** USDM ships D0 as a
-polygon that CONTAINS D1, which contains D2, and so on - five overlapping
-sheets. Drawn as translucent fills in that form, a D3 area is painted four
-times and comes out darker than its own colour, so the map's darkest ink
-would land wherever the polygons happen to stack rather than where the
-drought is worst. This subtracts each class from the one below it, so every
-published band is disjoint and one pixel carries exactly one class. Doing it
-in the pipeline rather than the client is deliberate: it is a property of the
-data, and a client that got it wrong would be wrong quietly.
+THE CLASSES ARRIVE DISJOINT, WHICH IS THE OPPOSITE OF WHAT WAS ASSUMED
+----------------------------------------------------------------------
+This export was first written to subtract each class from the one below it,
+on the widely-repeated understanding that USDM ships D0 as a polygon
+CONTAINING D1, which contains D2, and so on - the form its shapefiles are
+usually described in, and a form that would matter here, because translucent
+fills over nested sheets paint a D3 area four times and put the darkest ink
+wherever polygons stack rather than where the drought is worst.
+
+**Measured against the 2026-08-11 release, that is not what this endpoint
+serves.** All ten class pairs intersect in exactly zero area, and the five
+class areas sum to 629.563 square degrees against a union of 629.563 - so
+`droughtmonitor.unl.edu/data/json/usdm_*.json` publishes mutually exclusive
+classes and the subtraction was a no-op that tripled the artifact's size for
+nothing. `spike_water_conditions.py`'s `measure_class_overlap` is that
+measurement, re-runnable, and this note exists so the next reader does not
+re-add the difference on the strength of the same reasonable assumption.
+
+What follows from it: one pixel already carries exactly one class, a
+translucent fill is safe as-is, and every `trail_miles` below is the mileage
+whose class is exactly this one - NOT "this class or worse". They sum to the
+total under any drought at all.
 
 **The trail miles are measured here and shipped with the bands.** The client
 could not compute them without the centerline index and a spherical length
 routine, and a hiker reading "206 miles of severe drought ahead" is reading
-the claim this artifact exists to make. Measuring it beside the clip also
-gives the export something to check itself against - see `verify_clip`.
+the claim this artifact exists to make.
 
 WHAT THIS ARTIFACT DOES NOT CLAIM
 ---------------------------------
@@ -79,6 +89,30 @@ PAYLOAD = "drought"
 # reproducing every class's trail mileage to within 0.002 mi
 # (spike_water_conditions.py's `measure_drought_layer`).
 CORRIDOR_BUFFER_DEG = 0.09
+
+# How hard the centerline is simplified before it is buffered. About 110 m,
+# against a 10 km buffer - three orders of magnitude of headroom, and
+# `verify_corridor_covers_trail` re-proves it every run against the FULL
+# line rather than this simplified one.
+CORRIDOR_SIMPLIFY_DEG = 0.001
+
+# How hard the buffered corridor's own outline is smoothed, about 550 m.
+#
+# This is the single biggest lever on the artifact's size, and it is safe to
+# pull because the corridor edge is OURS: it is an arbitrary 10 km choice,
+# not a boundary in anybody's data, and every published polygon that follows
+# it is following a line we invented. The drought boundaries inside it are
+# untouched, which is the half that is somebody's measurement.
+#
+# Measured on the 2026-08-11 release: without this the artifact is 749,464
+# bytes, because the clip makes every band trace the trail's own switchbacks
+# at 110 m. With it, see the size the export prints.
+CORRIDOR_SMOOTH_DEG = 0.005
+
+# Area, in square degrees, below which two classes count as non-overlapping.
+# The measured value across all ten pairs of the 2026-08-11 release is
+# exactly 0.0; this is slack for a future release whose rings touch.
+OVERLAP_TOLERANCE_SQ_DEG = 1e-6
 
 # How far a clipped band's measured trail mileage may sit from the same
 # measurement against the unclipped national polygon before the export
@@ -169,25 +203,37 @@ def newest_release() -> tuple[Path, date]:
     return newest, stamp
 
 
-def nested_classes(document: dict) -> dict[int, object]:
-    """USDM's polygons as one geometry per class, still nested."""
+def source_classes(document: dict) -> dict[int, object]:
+    """USDM's polygons as one geometry per class, exactly as published."""
     by_class: dict[int, list] = {}
     for feature in document["features"]:
         by_class.setdefault(feature["properties"]["DM"], []).append(shape(feature["geometry"]))
     return {level: unary_union(parts).buffer(0) for level, parts in sorted(by_class.items())}
 
 
-def disjoint_bands(classes: dict[int, object]) -> dict[int, object]:
-    """Each class minus the worse one inside it - see the module docstring."""
+def verify_classes_disjoint(classes: dict[int, object]) -> None:
+    """Refuse if a release ever does ship overlapping classes.
+
+    The module docstring records that this endpoint's classes are mutually
+    exclusive, measured. That is a fact about NDMC's output rather than a
+    promise they have made, so it is checked on every run instead of trusted:
+    if a future release nests them, translucent fills would silently paint the
+    worst areas darkest-by-stacking, and the artifact's `trail_miles` would
+    quietly change meaning from "exactly this class" to "this class or worse".
+    Both are wrong quietly, which is the kind this pipeline checks for.
+    """
     levels = sorted(classes)
-    bands = {}
     for index, level in enumerate(levels):
-        band = classes[level]
         for worse in levels[index + 1 :]:
-            band = band.difference(classes[worse])
-        if not band.is_empty:
-            bands[level] = band
-    return bands
+            overlap = classes[level].intersection(classes[worse]).area
+            if overlap > OVERLAP_TOLERANCE_SQ_DEG:
+                raise SystemExit(
+                    f"D{level} and D{worse} overlap by {overlap:.6f} sq deg, so this release "
+                    "nests its classes where every measured one has not. Nothing was published: "
+                    "the bands would need differencing before they could be drawn or counted. "
+                    "See this module's docstring and spike_water_conditions.py's "
+                    "measure_class_overlap."
+                )
 
 
 def verify_corridor_covers_trail(line: MultiLineString, corridor) -> None:
@@ -238,12 +284,13 @@ def build_document(
     export_atc_updates.py records for the ATC file and which applies to every
     weekly source.
 
-    `trail_miles` is the *disjoint* band's mileage - the miles whose worst
-    class is exactly this one - so the numbers sum to the total affected
-    rather than nesting. That is the opposite convention from
-    WATER_CONDITIONS.md §4's table, which reports "this class or worse", and
-    the difference is called out in `label` so a reader cannot silently
-    compare the two.
+    `trail_miles` is the mileage whose class is EXACTLY this one, because
+    that is how NDMC publishes the polygons (see the module docstring's
+    measurement). The numbers therefore sum to the total under any drought at
+    all, and none of them is a "this class or worse" figure - a distinction
+    worth keeping straight, because the first draft of this pipeline and of
+    WATER_CONDITIONS.md §4 both read them the other way and were wrong by
+    511 trail miles.
     """
     return {
         "generated_at": _stamp_utc(generated_at),
@@ -278,19 +325,24 @@ def main() -> dict:
     document = json.loads(release_path.read_text())
     line = load_centerline()
 
-    corridor = line.buffer(CORRIDOR_BUFFER_DEG).simplify(0.01)
+    # Simplified BEFORE buffering, which is the difference between a job that
+    # runs in seconds and one that runs in four minutes: buffering the
+    # centerline at full resolution took 235 s measured here, against 0.7 s
+    # for the containment check that follows it. The tolerance is ~110 m
+    # against a 10 km buffer, so it cannot move the corridor edge anywhere
+    # near the trail - and `verify_corridor_covers_trail` proves that on every
+    # run rather than leaving it as an argument.
+    corridor = line.simplify(CORRIDOR_SIMPLIFY_DEG).buffer(CORRIDOR_BUFFER_DEG).simplify(CORRIDOR_SMOOTH_DEG)
     verify_corridor_covers_trail(line, corridor)
 
-    # Un-nest first, then clip. The other order also works and is slower for
-    # nothing: differencing five national sheets against each other costs far
-    # more than differencing five corridor slivers, and the result is the same
-    # because intersection distributes over difference.
-    clipped = {}
-    for level, geometry in nested_classes(document).items():
+    classes = source_classes(document)
+    verify_classes_disjoint(classes)
+
+    bands = {}
+    for level, geometry in classes.items():
         piece = geometry.intersection(corridor)
         if not piece.is_empty:
-            clipped[level] = piece
-    bands = disjoint_bands(clipped)
+            bands[level] = piece
     miles = band_miles(line, bands)
 
     if not bands:

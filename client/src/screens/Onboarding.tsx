@@ -59,6 +59,19 @@ import { useAvailableBytes } from '../lib/useAvailableBytes'
 import { Tabs } from './Tabs'
 import './onboarding.css'
 
+/**
+ * How much of the viewport the entry card is allowed to cover.
+ *
+ * The twin of `max-height` in onboarding.css, and the reason it is a number
+ * here rather than only a CSS declaration: the map behind these steps has to be
+ * framed against the part of the screen the card does NOT cover, which is
+ * something only the map can do and only if it knows this figure
+ * (App.tsx's `entryFitPadding`). test/entryLayout.test.ts asserts the two agree,
+ * because a stylesheet and a constant drifting apart would leave the trail
+ * fitted to a screen nobody can see.
+ */
+export const ENTRY_CARD_MAX_VIEWPORT_FRACTION = 0.78
+
 export interface OnboardingResult {
   /** The hiking sheet's level (#276/#277) - the download decision this flow
    *  actually shows, so the preference written matches the choice made. */

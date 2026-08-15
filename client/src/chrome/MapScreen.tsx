@@ -347,6 +347,10 @@ export interface MapScreenProps {
   trailLinesMissing?: boolean
   /** What the archive's own header says it covers, for the opening camera. */
   archiveZooms?: ArchiveZooms | null
+  /** Room to leave around the opening box, per side - see MapViewProps. The
+   *  shell sets a bottom inset during first run so the trail is framed against
+   *  the strip above the entry card rather than against the whole canvas. */
+  boundsPadding?: number | { top: number; bottom: number; left: number; right: number }
   /**
    * First run: this screen is the backdrop to the onboarding steps, and is
    * showing its canvas and nothing else (#721).
@@ -455,6 +459,7 @@ export function MapScreen({
   belowPoiZoom = false,
   trailLinesMissing = false,
   archiveZooms = null,
+  boundsPadding,
   entering = false,
 }: MapScreenProps) {
   // The one thing the stylesheet cannot do. The legend announces itself as
@@ -606,6 +611,7 @@ export function MapScreen({
               zoom={zoom}
               bounds={bounds}
               archiveZooms={archiveZooms}
+              boundsPadding={boundsPadding}
               onViewportChange={onViewportChange}
               onMapReady={handleMapReady}
               onLiveSourceHealth={onLiveSourceHealth}

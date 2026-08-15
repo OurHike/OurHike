@@ -115,6 +115,22 @@ afterEach(() => {
 })
 
 describe('MapView', () => {
+  it('frames the opening box against the room the caller says it has', () => {
+    // First run draws the steps OVER this map, so the box has to be fitted to
+    // the strip they leave rather than to the whole canvas. Without this the
+    // corridor was fitted to a full-height map and then three quarters of it
+    // was covered, leaving a fragment of Maine in the corner above the card
+    // while the sentence beside it said "the whole trail".
+    const padding = { top: 24, bottom: 658, left: 24, right: 24 }
+    const corridor: [[number, number], [number, number]] = [
+      [-84.73, 34.2],
+      [-68.3, 46.34],
+    ]
+    render(<MapView {...PROPS} bounds={corridor} boundsPadding={padding} />)
+
+    expect(MockMap.instances.at(-1)?.options.fitBoundsOptions).toEqual({ padding })
+  })
+
   it('leaves exactly one LIVE map after StrictMode’s deliberate double-invoke', () => {
     render(
       <StrictMode>

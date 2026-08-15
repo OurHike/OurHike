@@ -53,7 +53,11 @@ import { DownloadsDialog } from './screens/DownloadsDialog'
 import { More, type StuckReport } from './screens/More'
 import { Moderation } from './screens/Moderation'
 import { InstallPrompt } from './screens/InstallPrompt'
-import { Onboarding, type OnboardingResult } from './screens/Onboarding'
+import {
+  ENTRY_CARD_MAX_VIEWPORT_FRACTION,
+  Onboarding,
+  type OnboardingResult,
+} from './screens/Onboarding'
 import { ReportForm, type ReportFormSubmission } from './screens/ReportForm'
 import { ReportTypePicker, type ReportTypeId } from './screens/ReportTypePicker'
 import { CORRIDOR_ARCHIVE_URL } from './map/protocol'
@@ -1495,6 +1499,34 @@ function App() {
   /** First run: the three entry steps are showing over the map (#721). */
   const entering = !preferences.onboarding_completed
 
+  /**
+   * Where the opening view has room to be, which during first run is not the
+   * whole canvas.
+   *
+   * The corridor was always fitted to the full map, and the entry card then
+   * covered up to 78% of it - so the first thing a hiker saw was the Maine end
+   * of the trail wedged into the corner above the card, while the sentence next
+   * to it said "the whole trail's topo map lives on your phone". The fit was
+   * right and the framing was wrong, which is why this is padding rather than a
+   * different camera: CORRIDOR_BOUNDS still says show all of it, and this says
+   * where "all of it" has to fit.
+   *
+   * Expressed as a fraction of the viewport rather than in pixels because the
+   * card is (`ENTRY_CARD_MAX_VIEWPORT_FRACTION`), so the two move together on a
+   * short screen and a tall one alike. The left/right/top insets stay the plain
+   * breathing room every fitted box gets.
+   */
+  const entryFitPadding = entering
+    ? {
+        top: 24,
+        bottom: Math.round(
+          (globalThis.innerHeight ?? 0) * ENTRY_CARD_MAX_VIEWPORT_FRACTION,
+        ),
+        left: 24,
+        right: 24,
+      }
+    : undefined
+
   // First run is rendered by the MAIN RETURN below, not by a branch here, and
   // that is #721's whole fix.
   //
@@ -1996,6 +2028,7 @@ function App() {
           center={camera?.center}
           zoom={camera?.zoom}
           bounds={camera === null ? CORRIDOR_BOUNDS : undefined}
+          boundsPadding={entryFitPadding}
           onViewportChange={handleViewportChange}
           onMapReady={handleMapReady}
         />

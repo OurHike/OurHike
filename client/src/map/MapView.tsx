@@ -132,6 +132,18 @@ export interface MapViewProps {
    * the hiker can do afterwards - zooming out past the download is allowed,
    * and the chrome says so rather than the map refusing.
    */
+  /**
+   * Room to leave around {@link bounds} when fitting it, per side.
+   *
+   * A number is the same inset all round and is what almost every caller wants.
+   * An object is for the case this exists for: something is drawn OVER the map,
+   * so the box has to be framed against the part of the canvas that is actually
+   * visible rather than against the whole of it. First run is that case - the
+   * onboarding card covers most of the screen, and without a bottom inset the
+   * trail is fitted to the full canvas and then three quarters of it is hidden,
+   * leaving a fragment of Maine in the corner above the card (#719 review).
+   */
+  boundsPadding?: number | { top: number; bottom: number; left: number; right: number }
   archiveZooms?: ArchiveZooms | null
   /**
    * A pin was tapped, by POI id - or the bare map was, reported as null so
@@ -214,8 +226,8 @@ export interface MapViewProps {
 const DEFAULT_CENTER: [number, number] = [-77.1, 39.3]
 const DEFAULT_ZOOM = 12
 
-/** Breathing room around a fitted box, and the figure the opening-floor
- *  calculation has to use too or the two disagree about what fits. */
+/** Breathing room around a fitted box, on every side, when the caller asks for
+ *  nothing more specific. */
 const FIT_PADDING = 24
 
 // Module-level, so the default is the SAME value on every render. A `= []`
@@ -246,6 +258,7 @@ export function MapView({
   zoom,
   bounds,
   archiveZooms = null,
+  boundsPadding = FIT_PADDING,
   showZoomButtons = false,
   units = 'imperial',
   locationEnabled = false,
@@ -348,7 +361,7 @@ export function MapView({
       // for a box rather than a zoom number.
       ...(bounds === undefined
         ? { center: center ?? DEFAULT_CENTER, zoom: zoom ?? DEFAULT_ZOOM }
-        : { bounds, fitBoundsOptions: { padding: FIT_PADDING } }),
+        : { bounds, fitBoundsOptions: { padding: boundsPadding } }),
       // Attribution is rendered by the app's own chrome, positioned per
       // WIREFRAMES.md, rather than by MapLibre's default control.
       attributionControl: false,

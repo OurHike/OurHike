@@ -21,6 +21,7 @@
 // Resolved from the Vitest root (client/), which vite.config.ts pins.
 
 import { describe, expect, it } from 'vitest'
+import { ENTRY_CARD_MAX_VIEWPORT_FRACTION } from '../screens/Onboarding'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
@@ -114,6 +115,20 @@ describe('first-run layout contract', () => {
     // What makes the cap safe: contents past it scroll inside the card rather
     // than being pushed off the bottom of the screen with the way forward.
     expect(rule).toMatch(/overflow-y:\s*auto/)
+  })
+
+  it('keeps the card cap and the map padding the same number', () => {
+    // The map behind the steps is fitted against the strip the card does NOT
+    // cover (App.tsx's entryFitPadding), so this fraction lives in two places
+    // that cannot see each other: a CSS `max-height` and a TypeScript constant.
+    // Drift between them is silent and one-directional in the worst way - the
+    // card grows, the padding does not, and the trail goes back to being fitted
+    // to a canvas three quarters of which nobody can see.
+    const rule = ruleFor(onboardingCss, '.onboarding__card')
+    const capped = /max-height:\s*(\d+)%/.exec(rule)
+
+    expect(capped, 'the entry card needs a max-height').not.toBe(null)
+    expect(Number(capped![1]) / 100).toBe(ENTRY_CARD_MAX_VIEWPORT_FRACTION)
   })
 
   it('drops the entry animation for anyone who has asked for less motion', () => {

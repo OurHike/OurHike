@@ -22,6 +22,11 @@
 // supplies it from what MapLibre actually placed. Per-row rather than as a
 // single headline total, and deliberately: a "38 of 112 fit" line averages away
 // the only rows that are alarming, which are the ones at or near zero.
+//
+// AND EVERY OTHER CATEGORY BELOW THEM, BECAUSE THE ROWS ARE ALSO THE TOGGLES
+// (#723). That job wants the whole list and this one wants the viewport, so they
+// are two functions rather than one: `computeLegendContents` still answers only
+// what is in the rectangle, and `withEveryType` pads it for the grid alone.
 
 export interface BoundingBox {
   west: number
@@ -145,6 +150,66 @@ export function computeLegendContents(
     // too, so the two agree by construction rather than by coincidence.
     drawnCount: drawn === undefined ? undefined : Math.min(drawn.get(type) ?? 0, count),
   }))
+}
+
+/**
+ * The same rows, with a zero row for every category `types` names and the
+ * viewport does not hold (#723).
+ *
+ * WHY THIS EXISTS. `computeLegendContents` answers "what is in this rectangle",
+ * and the rows are also the hide toggles - so at the zooms a hiker reads a place
+ * from, the panel carrying the toggles carries two of them. That is arithmetic,
+ * not a rare case: features/POI_VISIBILITY.md's own density table puts 2-4
+ * waypoints in a 390 x 700 phone map at z14 and 4-8 at z13. A category with
+ * nothing in view had no row and could not be switched from this panel at all,
+ * which chrome/Legend.tsx has named in a comment since #530 without fixing.
+ *
+ * SEPARATE FROM `computeLegendContents` ON PURPOSE. That function is what
+ * chrome/MapScreen.tsx feeds `legendDropSummary` for the count over the canvas,
+ * and what the panel's own "nothing here yet" and "turn Verified? off" sentences
+ * are decided by. All three speak about the viewport, and padding at the source
+ * would have them speaking about the category list instead. Only the grid is
+ * padded, and only where it is rendered.
+ *
+ * @param types The categories to guarantee a row for - in practice
+ *   lib/waypointVisibility.ts's `HIDEABLE_TYPES`, passed in rather than imported
+ *   because that module imports `NEVER_HIDEABLE` from this one. It is also the
+ *   ORDER the padded rows come back in, which is a second thing worth having:
+ *   `computeLegendContents` returns whatever order the points happened to be
+ *   encountered in, so the grid re-shuffled itself as a hiker panned.
+ *
+ *   A row already present keeps its count, its `drawnCount` and its
+ *   `hideable` flag untouched. Rows whose type is not in `types` - the safety
+ *   layers, which have no toggle to reach and no business claiming "Closure 0"
+ *   on a stretch with no closure on it - are appended in their original order
+ *   rather than padded.
+ */
+export function withEveryType(
+  rows: readonly LegendRow[],
+  types: readonly string[],
+): LegendRow[] {
+  const byType = new Map(rows.map((row) => [row.type, row]))
+
+  const listed = types.map(
+    (type) =>
+      byType.get(type) ?? {
+        type,
+        count: 0,
+        // Every type this is called with is hideable by construction - the
+        // caller's list excludes the safety layers. Read from NEVER_HIDEABLE
+        // anyway, so a caller passing a wider list cannot manufacture a toggle
+        // for a closure by handing this the wrong array.
+        hideable: !NEVER_HIDEABLE.has(type),
+        // NOT zero. `drawnCount` reports a DROP - how many of the ones here did
+        // not fit - and there is no drop to report on a category with nothing
+        // here. Zero would put this row into `legendDropSummary`'s arithmetic as
+        // a measured row, and render the count as a plain `0` either way.
+        drawnCount: undefined,
+      },
+  )
+
+  const known = new Set(types)
+  return [...listed, ...rows.filter((row) => !known.has(row.type))]
 }
 
 /**

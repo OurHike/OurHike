@@ -169,6 +169,13 @@ class PreferencesIn(BaseModel):
     map_style: MapStyle = MapStyle.field
     red_light_enabled: bool = False
     show_roads: bool = False
+    # Defaulted rather than required, like map_style and red_light_enabled
+    # above and for the same second reason: rows written before this key
+    # existed have to read back as "off" rather than as a ValidationError.
+    # False is also the client's own default, so the two agree by value and
+    # not just by type - a hiker who never touched the switch syncs the same
+    # thing whichever side answers first.
+    drought_layer_shown: bool = False
     waypoint_types_shown: list[str] = []
     layer_detail_level: LayerDetailLevel
     auto_rotate_enabled: bool = False

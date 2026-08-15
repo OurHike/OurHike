@@ -34,7 +34,8 @@ import { HIDEABLE_TYPES, shownSelection } from '../lib/waypointVisibility'
 import { typeLabel } from './legendLabels'
 import { BackgroundPicker } from './BackgroundPicker'
 import { DownloadsLink } from './DownloadsLink'
-import type { BackgroundSource } from '../lib/userPreferences'
+import type { BackgroundSource, UnitSystem } from '../lib/userPreferences'
+import { formatDistance } from '../lib/units'
 import type { BackgroundOverride } from '../lib/dataSaver'
 import type { DownloadActivity } from '../lib/downloadActivity'
 
@@ -98,6 +99,30 @@ export interface LegendProps {
    */
   verifiedOnly?: boolean
   onToggleVerifiedOnly?: () => void
+  /**
+   * The drought wash, and how to turn it off (#720).
+   *
+   * Here for the same reason the background picker is: this panel is one tap
+   * from the map and already answers "what am I looking at", and a tint over
+   * the whole map is exactly the thing somebody wants to switch off at the
+   * moment they notice it - not after finding a settings screen.
+   *
+   * Its row states the week and the trail miles rather than only naming the
+   * layer, because the numbers are the whole content: "1,388 mi affected,
+   * week of 11 Aug" is the claim, and a switch labelled "Drought" would leave
+   * a hiker to guess how current it is.
+   */
+  droughtShown?: boolean
+  onToggleDrought?: () => void
+  /** What the bands say, for that row's summary line. Empty when none
+   *  arrived, which draws no numbers rather than a confident zero. */
+  droughtSummary?: { miles: number; weekStart: Date | null }
+  /** The hiker's unit system, for that row's distance. Required with
+   *  `droughtSummary`: CONTRIBUTING.md's units standard says every
+   *  distance a hiker reads comes out of lib/units.ts in the system they
+   *  chose, and a legend printing miles under a metric map is exactly the
+   *  disagreement that rule exists to stop. */
+  units?: UnitSystem
   onClose: () => void
   /**
    * The stored background preference, and how to change it.
@@ -178,6 +203,10 @@ export function Legend({
   onShowAllTypes,
   typesShown,
   verifiedOnly = false,
+  droughtShown = false,
+  onToggleDrought,
+  droughtSummary,
+  units = 'imperial',
   onToggleVerifiedOnly,
   onClose,
   backgroundChoice,
@@ -482,6 +511,38 @@ export function Legend({
             name="verified_only"
             checked={verifiedOnly}
             onChange={onToggleVerifiedOnly}
+          />
+        </label>
+      )}
+
+      {/* The drought wash (#720). Rendered whenever the shell can write the
+          preference back, INCLUDING in a week with no drought on the trail -
+          a hiker who switched it on should see it stay on and say "none this
+          week" rather than find the control has vanished, which would read
+          as the app losing their setting. */}
+      {onToggleDrought !== undefined && (
+        <label className="legend__drought">
+          <span className="legend__drought-name">
+            Drought
+            {droughtSummary !== undefined && (
+              <span className="legend__drought-detail">
+                {droughtSummary.miles > 0
+                  ? `${formatDistance(droughtSummary.miles, units, 'whole')} affected`
+                  : 'none on the trail'}
+                {droughtSummary.weekStart !== null &&
+                  ` · week of ${droughtSummary.weekStart.toLocaleDateString(undefined, {
+                    month: 'short',
+                    day: 'numeric',
+                    timeZone: 'UTC',
+                  })}`}
+              </span>
+            )}
+          </span>
+          <input
+            type="checkbox"
+            name="drought_layer"
+            checked={droughtShown}
+            onChange={onToggleDrought}
           />
         </label>
       )}

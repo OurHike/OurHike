@@ -125,6 +125,22 @@ export interface UserPreferences {
    */
   red_light_enabled: boolean
   show_roads: boolean
+  /**
+   * The U.S. Drought Monitor wash over the map (#720).
+   *
+   * Off by default, and that is the honest default rather than a cautious
+   * one. It is context, not a hazard: FEATURES.md's "use the app less often,
+   * and find information faster when you do" argues against tinting the whole
+   * map for everyone, and pipeline/WATER_CONDITIONS.md is emphatic that this
+   * data says nothing about the spring at the next shelter. A hiker who wants
+   * to know what the region is doing turns it on.
+   *
+   * Its own key rather than a value of `background_source`, which is a closed
+   * two-value enum of BACKGROUNDS - the live sheet or the downloaded archive.
+   * The drought is drawn over whichever of those is showing, so folding it in
+   * there would make two independent choices into one list of four.
+   */
+  drought_layer_shown: boolean
   waypoint_types_shown: string[]
   layer_detail_level: LayerDetailLevel
   auto_rotate_enabled: boolean
@@ -166,6 +182,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   map_style: 'field',
   red_light_enabled: false,
   show_roads: false,
+  drought_layer_shown: false,
   waypoint_types_shown: [],
   layer_detail_level: 'standard',
   auto_rotate_enabled: false,

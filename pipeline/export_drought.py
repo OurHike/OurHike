@@ -296,26 +296,33 @@ def build_document(
     worth keeping straight, because the first draft of this pipeline and of
     WATER_CONDITIONS.md §4 both read them the other way and were wrong by
     511 trail miles.
+
+    THE PAYLOAD IS A LIST OF FEATURES, NOT A FeatureCollection, and that is
+    for the client's benefit rather than a GeoJSON opinion.
+    `lib/publishedConditions.ts` reads every artifact in this family through
+    one validated function, and that function refuses a document whose payload
+    is not an array - which is what makes a reports document served on the
+    closures key read as "no usable baseline" instead of as an empty trail.
+    Wrapping these features into a FeatureCollection is one line in the client
+    and MapLibre wants that shape anyway; earning the shared reader's
+    `generated_at` strictness is worth more than matching a file format here.
     """
     return {
         "generated_at": _stamp_utc(generated_at),
         "valid_start": stamp.isoformat(),
         "valid_end": (stamp + timedelta(days=6)).isoformat(),
-        PAYLOAD: {
-            "type": "FeatureCollection",
-            "features": [
-                {
-                    "type": "Feature",
-                    "properties": {
-                        "dm": level,
-                        "label": CLASS_LABELS[level],
-                        "trail_miles": round(miles[level], 1),
-                    },
-                    "geometry": mapping(band),
-                }
-                for level, band in sorted(bands.items())
-            ],
-        },
+        PAYLOAD: [
+            {
+                "type": "Feature",
+                "properties": {
+                    "dm": level,
+                    "label": CLASS_LABELS[level],
+                    "trail_miles": round(miles[level], 1),
+                },
+                "geometry": mapping(band),
+            }
+            for level, band in sorted(bands.items())
+        ],
     }
 
 

@@ -64,6 +64,7 @@ describe('UserPreferences schema', () => {
         'auto_rotate_enabled',
         'background_source',
         'download_choice_made',
+        'drought_layer_shown',
         'hiking_detail_level',
         'layer_detail_level',
         'location_permission_requested',

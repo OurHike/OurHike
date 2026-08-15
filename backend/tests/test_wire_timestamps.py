@@ -50,6 +50,7 @@ def _valid_preferences() -> dict:
         "background_source": "usgs_topo_offline",
         "max_background_zoom": 12,
         "show_roads": False,
+        "drought_layer_shown": False,
         "waypoint_types_shown": ["water", "shelter"],
         "layer_detail_level": "standard",
         "auto_rotate_enabled": False,

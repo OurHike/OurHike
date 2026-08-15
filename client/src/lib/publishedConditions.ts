@@ -37,6 +37,7 @@ import { DATA_CONFIGURED, dataUrl } from './config'
 export const PUBLISHED_CLOSURES_KEY = 'conditions/closures.json'
 export const PUBLISHED_REPORTS_KEY = 'conditions/reports.json'
 export const PUBLISHED_ATC_UPDATES_KEY = 'conditions/atc_updates.json'
+export const PUBLISHED_DROUGHT_KEY = 'conditions/drought.json'
 
 export interface PublishedConditions<T> {
   /** When the bake ran. Rendered to the hiker; see lib/conditionState.ts. */
@@ -55,6 +56,21 @@ export interface PublishedConditions<T> {
    * `generated_at` stamp exists to prevent.
    */
   reviewedAt?: Date
+  /**
+   * The week an artifact describes, when that is not the week it was baked.
+   *
+   * The drought bands are the case, and they are `reviewedAt`'s problem in a
+   * different costume: the U.S. Drought Monitor publishes one map per week,
+   * on a Thursday, for the Tuesday-to-Monday week just gone. Baking that
+   * hourly is right - it is how the new release is picked up within an hour -
+   * but it means `generatedAt` moves twenty-four times a day while the claim
+   * underneath does not move at all. A hiker told "drought as of 20 minutes
+   * ago" would be reading the bake's clock as if it were NDMC's.
+   *
+   * `undefined` everywhere else, for the same reason `reviewedAt` is: a
+   * closure is true as of the bake and has no other week to belong to.
+   */
+  validWeek?: { start: Date; end: Date }
 }
 
 /**
@@ -73,7 +89,7 @@ export interface PublishedConditions<T> {
  */
 async function fetchPublished<T>(
   key: string,
-  field: 'closures' | 'reports' | 'atc_updates',
+  field: 'closures' | 'reports' | 'atc_updates' | 'drought',
   signal?: AbortSignal,
 ): Promise<PublishedConditions<T> | null> {
   if (!DATA_CONFIGURED) return null
@@ -91,7 +107,13 @@ async function fetchPublished<T>(
     if (Number.isNaN(generatedAt.getTime())) return null
 
     const reviewedAt = parseReviewedAt(document.reviewed_at)
-    return { generatedAt, items: items as T[], ...(reviewedAt ? { reviewedAt } : {}) }
+    const validWeek = parseValidWeek(document.valid_start, document.valid_end)
+    return {
+      generatedAt,
+      items: items as T[],
+      ...(reviewedAt ? { reviewedAt } : {}),
+      ...(validWeek ? { validWeek } : {}),
+    }
   } catch {
     // Includes the abort case, which is not an error worth distinguishing:
     // a cancelled read has no baseline to offer either.
@@ -110,6 +132,28 @@ function parseReviewedAt(value: unknown): Date | undefined {
   if (typeof value !== 'string') return undefined
   const parsed = new Date(value)
   return Number.isNaN(parsed.getTime()) ? undefined : parsed
+}
+
+/** The week an artifact describes, or undefined when it does not name one.
+ *
+ *  Lenient like `reviewedAt` and for the same reason - an artifact baked
+ *  before this field existed still reads - but stricter in one way: BOTH ends
+ *  have to parse. A half-dated week would render as "the week of 11 August to
+ *  Invalid Date", and no date at all is a better thing to show than that.
+ *
+ *  The dates arrive as bare `YYYY-MM-DD`, which `new Date()` reads as UTC
+ *  midnight rather than local. That is deliberate and matches the `...Z`
+ *  stamping the pipeline uses everywhere else: a hiker in Georgia and one in
+ *  Maine should read the same week off the same artifact. */
+function parseValidWeek(
+  start: unknown,
+  end: unknown,
+): { start: Date; end: Date } | undefined {
+  if (typeof start !== 'string' || typeof end !== 'string') return undefined
+  const from = new Date(start)
+  const to = new Date(end)
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return undefined
+  return { start: from, end: to }
 }
 
 export async function fetchPublishedClosures(
@@ -144,4 +188,34 @@ export async function fetchPublishedAtcUpdates(
   signal?: AbortSignal,
 ): Promise<PublishedConditions<AtcUpdate> | null> {
   return fetchPublished(PUBLISHED_ATC_UPDATES_KEY, 'atc_updates', signal)
+}
+
+/** One published drought band, exactly as `pipeline/export_drought.py` writes
+ *  it. `trail_miles` is the mileage at EXACTLY this class - NDMC's polygons
+ *  are mutually exclusive, and the export refuses a release where they are
+ *  not - so these add up rather than nesting. */
+export interface PublishedDroughtBand {
+  type: 'Feature'
+  geometry: unknown
+  properties: { dm: number; label: string; trail_miles: number }
+}
+
+/**
+ * This week's drought bands, or null if there isn't a usable set.
+ *
+ * Like the ATC notices and unlike closures, this is the only tier there is -
+ * there is no live endpoint behind it, so nothing overrides it and nothing
+ * falls back to it.
+ *
+ * The distinction `null` carries here is the one the pipeline went out of its
+ * way to preserve: a 404 means we could not ask, while a document holding an
+ * EMPTY band list means NDMC has looked and there is no drought on the trail.
+ * Both draw an empty map and only one of them is good news, which is why the
+ * export publishes the empty set rather than skipping the file
+ * (`pipeline/export_drought.py`).
+ */
+export async function fetchPublishedDrought(
+  signal?: AbortSignal,
+): Promise<PublishedConditions<PublishedDroughtBand> | null> {
+  return fetchPublished(PUBLISHED_DROUGHT_KEY, 'drought', signal)
 }

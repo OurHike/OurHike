@@ -70,7 +70,7 @@ class TestWhatItPublishes:
 
     def test_each_band_carries_its_class_label_and_mileage(self, run_export):
         document = run_export([polygon_feature(2, (-1, -1, 1, 2))])
-        (band,) = document["drought"]["features"]
+        (band,) = document["drought"]
         assert band["properties"]["dm"] == 2
         assert band["properties"]["label"] == "Severe drought"
         # The toy line is one degree of latitude, about 69 miles, and it lies
@@ -90,7 +90,7 @@ class TestWhatItPublishes:
                 polygon_feature(2, (-1, 0.5, 1, 1.1)),
             ]
         )
-        miles = {f["properties"]["dm"]: f["properties"]["trail_miles"] for f in document["drought"]["features"]}
+        miles = {f["properties"]["dm"]: f["properties"]["trail_miles"] for f in document["drought"]}
         assert miles[0] == pytest.approx(34.5, abs=1.0)
         assert miles[2] == pytest.approx(34.5, abs=1.0)
         assert sum(miles.values()) == pytest.approx(69.0, abs=1.0)
@@ -102,13 +102,13 @@ class TestWhatItPublishes:
                 polygon_feature(3, (40, 40, 41, 41)),
             ]
         )
-        assert [f["properties"]["dm"] for f in document["drought"]["features"]] == [0]
+        assert [f["properties"]["dm"] for f in document["drought"]] == [0]
 
     def test_a_trail_with_no_drought_publishes_an_empty_band_set(self, run_export):
         """Not a missing file: absent renders as "no layer", which is a
         different claim from "no drought"."""
         document = run_export([polygon_feature(0, (40, 40, 41, 41))])
-        assert document["drought"]["features"] == []
+        assert document["drought"] == []
         assert document["valid_start"] == "2026-08-11"
 
 
@@ -150,7 +150,7 @@ class TestTheGuards:
         guard above is discriminating rather than merely strict."""
         zigzag = [[0.0, 0.0], [0.5, 0.1], [0.0, 0.2], [0.5, 0.3], [0.0, 0.4]]
         document = run_export([polygon_feature(0, (-1, -1, 1, 2))], line=zigzag)
-        assert document["drought"]["features"][0]["properties"]["dm"] == 0
+        assert document["drought"][0]["properties"]["dm"] == 0
 
     def test_a_missing_release_says_to_run_the_fetcher(self, tmp_path, monkeypatch):
         monkeypatch.setattr(export_drought, "RAW_DIR", tmp_path / "empty")

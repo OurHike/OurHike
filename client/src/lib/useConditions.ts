@@ -27,9 +27,21 @@ import {
 import {
   fetchPublishedAtcUpdates,
   fetchPublishedClosures,
+  fetchPublishedDrought,
   fetchPublishedReports,
 } from './publishedConditions'
+import type { DroughtBand } from '../map/droughtLayers'
 import type { AtcUpdate } from './atcUpdates'
+
+/**
+ * How often the published baselines are re-read while the app is open.
+ *
+ * One hour, deliberately equal to the pipeline's publish cadence
+ * (.github/workflows/publish-conditions.yml) rather than a fraction of it.
+ * Exported so a test can drive it and so the pairing is greppable from both
+ * ends.
+ */
+export const CONDITIONS_REFRESH_MS = 60 * 60 * 1000
 
 export interface Conditions {
   /**
@@ -58,6 +70,20 @@ export interface Conditions {
   /** The other half of that honesty, beside the list rather than inside the
    *  rows - it is a fact about the review, not about any one notice. */
   atcReviewedAt: Date | null
+  /**
+   * This week's drought bands, and the week they describe (#720).
+   *
+   * Empty rather than null when there is nothing: unlike a closure, an
+   * absent drought band is not ambiguous. The pipeline publishes an empty
+   * band set for a trail with no drought on it precisely so that "no
+   * drought" and "we could not ask" stay distinguishable - the second one
+   * leaves `droughtWeek` null, and the map draws nothing in both cases
+   * because there is nothing to draw either way.
+   */
+  drought: readonly DroughtBand[]
+  /** The Tuesday-to-Monday week those bands describe, or null if none
+   *  arrived. NOT the bake's clock - see publishedConditions.ts. */
+  droughtWeek: { start: Date; end: Date } | null
   /** When something last actually reached the server. Null until it has. */
   lastSyncedAt: Date | null
   /** Stamp that clock. Exposed because the outbox flush is the other thing
@@ -79,12 +105,42 @@ export function useConditions(online: boolean): Conditions {
     useState<ConditionState<ReportSummary>>(UNAVAILABLE)
   const [atcUpdates, setAtcUpdates] = useState<readonly AtcUpdate[]>([])
   const [atcReviewedAt, setAtcReviewedAt] = useState<Date | null>(null)
+  const [drought, setDrought] = useState<readonly DroughtBand[]>([])
+  const [droughtWeek, setDroughtWeek] = useState<{ start: Date; end: Date } | null>(null)
   // Was a state with no setter until #231 - nothing ever synced, so the status
   // strip said "never synced" on every device forever, which was true and
   // looked like a bug in the strip rather than a missing feature.
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
 
   const markSynced = useCallback(() => setLastSyncedAt(new Date()), [])
+
+  // WHY THERE IS A CLOCK HERE AT ALL (#720).
+  //
+  // Both reads below used to run once per online transition, so a hiker who
+  // opened the app in the morning and kept signal still had the morning's
+  // closures at dusk. That was survivable while the pipeline published once a
+  // day - the artifact could not be newer than what they already had. It
+  // stopped being survivable when publishing moved to hourly: without this,
+  // the whole cadence change would land in the bucket and reach nobody.
+  //
+  // An hour, matching the publish cadence rather than beating it. A shorter
+  // interval would spend a hiker's battery and data re-reading bytes that
+  // cannot have changed; a longer one would make the hourly publish pointless
+  // for the phone it is for. The two numbers are a pair, and moving one
+  // without the other is the mistake this comment exists to prevent.
+  //
+  // Every read this drives is cheap and cancellable, and each one leaves its
+  // state exactly where it was on failure - so a wake-up in a dead spot costs
+  // one failed fetch and changes nothing on screen.
+  const [refreshCount, setRefreshCount] = useState(0)
+  useEffect(() => {
+    if (!online) return
+    const timer = setInterval(
+      () => setRefreshCount((count) => count + 1),
+      CONDITIONS_REFRESH_MS,
+    )
+    return () => clearInterval(timer)
+  }, [online])
 
   // The published baseline, fetched once and independently of the backend.
   // This is the read that makes an unreachable backend mean "day-old closures,
@@ -144,10 +200,26 @@ export function useConditions(online: boolean): Conditions {
       setAtcReviewedAt(published.reviewedAt ?? null)
     })
 
+    // The drought bands (#720). No `withBaseline` and no race, like the ATC
+    // notices: there is no live endpoint behind this, so the published
+    // artifact is the only tier there is.
+    void fetchPublishedDrought().then((published) => {
+      if (cancelled || published === null) return
+      setDrought(
+        published.items.map((feature) => ({
+          dm: feature.properties.dm,
+          label: feature.properties.label,
+          trailMiles: feature.properties.trail_miles,
+          geometry: feature.geometry,
+        })),
+      )
+      setDroughtWeek(published.validWeek ?? null)
+    })
+
     return () => {
       cancelled = true
     }
-  }, [online])
+  }, [online, refreshCount])
 
   // The map's own reads (#232), deliberately not gated on an account: browsing
   // has never needed one, and the reads send a token only if there is one
@@ -190,7 +262,12 @@ export function useConditions(online: boolean): Conditions {
     return () => {
       cancelled = true
     }
-  }, [online])
+    // `refreshCount` drives this one too. The baseline read above is what
+    // makes an unreachable backend survivable; this is the read that makes a
+    // reachable one current, and a hiker with signal all afternoon should get
+    // the closure a moderator verified at lunchtime rather than whatever the
+    // backend said when the app opened.
+  }, [online, refreshCount])
 
   return {
     closures: itemsOf(closureState),
@@ -199,6 +276,8 @@ export function useConditions(online: boolean): Conditions {
     reportState,
     atcUpdates,
     atcReviewedAt,
+    drought,
+    droughtWeek,
     lastSyncedAt,
     markSynced,
   }

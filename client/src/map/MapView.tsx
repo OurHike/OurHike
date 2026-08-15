@@ -41,6 +41,7 @@ import {
   type AtcUpdatePoint,
 } from './atcUpdateLayers'
 import { attachClosureData, type ClosureBand } from './closureLayers'
+import { attachDroughtData, setDroughtVisible, type DroughtBand } from './droughtLayers'
 import { attachWarningData, attachWarningIcon, type WarningPoint } from './warningLayers'
 import { attachPoiTaps } from './poiTaps'
 import type { BoundingBox, MapPoint } from '../lib/legendContents'
@@ -94,6 +95,18 @@ export interface MapViewProps {
    * closureLayers.ts's `closureBands`.
    */
   closures?: readonly ClosureBand[]
+  /**
+   * This week's drought bands, already as published polygons (#720).
+   *
+   * Unlike `closures`, these need no coordinate work in the shell: the
+   * pipeline ships real geometry rather than mile markers, so there is no
+   * centerline index in the way and the features go straight onto the source.
+   */
+  drought?: readonly DroughtBand[]
+  /** Whether the hiker has the drought wash switched on. Separate from the
+   *  data for the reason droughtLayers.ts gives: the bands arrive once and
+   *  the switch moves whenever somebody taps it. */
+  showDrought?: boolean
   /**
    * The ATC's own trail updates, in the same coordinates and drawn at the
    * same weight - a second band source rather than more features in
@@ -225,6 +238,7 @@ const FIT_PADDING = 24
 const NO_POIS: readonly MapPoint[] = []
 const NOTHING_HIDDEN: ReadonlySet<string> = new Set()
 const NO_CLOSURES: readonly ClosureBand[] = []
+const NO_DROUGHT: readonly DroughtBand[] = []
 const NO_ATC_UPDATES: readonly ClosureBand[] = []
 const NO_ATC_POINTS: readonly AtcUpdatePoint[] = []
 const NO_WARNINGS: readonly WarningPoint[] = []
@@ -237,6 +251,8 @@ export function MapView({
   hiddenTypes = NOTHING_HIDDEN,
   verifiedOnly = false,
   closures = NO_CLOSURES,
+  drought = NO_DROUGHT,
+  showDrought = false,
   atcUpdates = NO_ATC_UPDATES,
   atcUpdatePoints = NO_ATC_POINTS,
   onSelectAtcUpdate,
@@ -523,6 +539,26 @@ export function MapView({
     if (map === null) return
     return attachClosureData(map, closures)
   }, [map, closures])
+
+  // Two effects rather than one, and deliberately: the bands arrive from the
+  // network once and the switch moves whenever a hiker taps it. Folding them
+  // together would re-push the polygons on every tap of the toggle.
+  //
+  // Neither is passed to `buildMapStyle` at creation, though the option
+  // exists there for tests and for reading the stack in one place. Threading
+  // the switch through the style would put it in the style's rebuild
+  // dependencies, and a hiker flipping a background tint would get the whole
+  // map torn down and rebuilt - the exact cost `setDroughtVisible` avoids.
+  // The layer is built hidden and this effect shows it on the next frame.
+  useEffect(() => {
+    if (map === null) return
+    return attachDroughtData(map, drought)
+  }, [map, drought])
+
+  useEffect(() => {
+    if (map === null) return
+    return setDroughtVisible(map, showDrought)
+  }, [map, showDrought])
 
   useEffect(() => {
     if (map === null) return

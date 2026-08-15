@@ -66,8 +66,10 @@ import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec'
 import { BLAZE_MATCH_EXPRESSION } from '../lib/blaze'
 import { buildAtcUpdateLayers } from '../lib/atcUpdateStyle'
 import { buildClosureLayers } from '../lib/closureStyle'
+import { buildDroughtLayer } from '../lib/droughtStyle'
 import { buildAtcUpdateSource, ATC_UPDATE_SOURCE_ID } from './atcUpdateLayers'
 import { buildClosureSource, CLOSURE_SOURCE_ID } from './closureLayers'
+import { buildDroughtSource, DROUGHT_SOURCE_ID } from './droughtLayers'
 import {
   buildPoiDotLayer,
   buildPoiLayer,
@@ -549,6 +551,10 @@ export interface MapStyleOptions {
   themeChoice?: Theme
   mapStyle?: MapStyle
   redLight?: boolean
+  /** Whether the hiker has asked for the drought wash (#720). Off by
+   *  default: it is context, and an unasked-for tint over the whole map is
+   *  the opposite of "find information faster". */
+  showDrought?: boolean
 }
 
 export function buildMapStyle({
@@ -561,6 +567,7 @@ export function buildMapStyle({
   themeChoice = 'auto',
   mapStyle = 'field',
   redLight = false,
+  showDrought = false,
 }: MapStyleOptions): StyleSpecification {
   const appearance: SheetAppearance = { theme, themeChoice, mapStyle, redLight }
   // Asked for, and that is the whole question. Terrain used to be half of it -
@@ -674,6 +681,14 @@ export function buildMapStyle({
       // over a closure somebody walked up to and photographed would be a false
       // statement about where it came from.
       [CLOSURE_SOURCE_ID]: buildClosureSource(),
+      // The drought bands (#720). Empty until the shell fills them, like the
+      // two above, and carrying no `attribution` for a third reason again:
+      // NDMC's permission asks for a specific four-partner credit sentence,
+      // which is far too long for the map corner and is rendered on the
+      // credits screen instead (map/credits.ts). A truncated version of a
+      // credit somebody asked for in particular wording is worse than putting
+      // it where it fits.
+      [DROUGHT_SOURCE_ID]: buildDroughtSource(),
       // The ATC's notices, and this one DOES have a third party to credit -
       // which is why it is a separate source rather than more features in the
       // one above. No `attribution` here either, though: a corner credit is
@@ -734,6 +749,19 @@ export function buildMapStyle({
       // here stays a pure function of the preference, Data Saver, and whether a
       // DEM could be built.
       ...(liveOptions === null ? [] : liveTopoLayers(liveOptions)),
+      // The drought wash, and its place in the stack is the argument (#720).
+      //
+      // OVER the background sheets, so it tints the ground a hiker reads the
+      // terrain off; UNDER the trail, every pin and every closure, so nothing
+      // that carries a decision is ever seen through it. That ordering is the
+      // difference between a background layer and an overlay, and this is
+      // emphatically the first: it colours where you are, it never annotates
+      // what is there.
+      //
+      // Off unless the hiker asked (`layout.visibility`), which is why it can
+      // sit in the style unconditionally - see lib/droughtStyle.ts for why the
+      // switch is a visibility flip rather than an add and remove.
+      buildDroughtLayer(DROUGHT_SOURCE_ID, sheetIsDark(appearance), showDrought),
       {
         // Hairline dark casing, drawn under every blaze so the trail stays
         // readable over busy topo contours. It is doing more work than it used

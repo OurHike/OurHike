@@ -50,6 +50,7 @@ import {
   ATC_UPDATE_POINT_LAYER_ID,
 } from '../lib/atcUpdateStyle'
 import { CLOSURE_CASING_LAYER_ID, CLOSURE_LAYER_ID } from '../lib/closureStyle'
+import { DROUGHT_LAYER_ID } from '../lib/droughtStyle'
 
 // The live background exists because a raster mosaic of pre-rendered US Topo
 // quads cannot be restyled, cannot be read at a zoom it was not drawn for, and
@@ -559,6 +560,13 @@ describe('the offline-only background', () => {
     expect(ids(offline())).toEqual([
       BACKDROP_LAYER_ID,
       TOPO_LAYER_ID,
+      // The drought wash sits between the background and the trail, and its
+      // presence here is the assertion (#720): it is a BACKGROUND layer, so
+      // it must survive the subtraction the way the archive does - and it
+      // must stay below everything a hiker acts on. Built hidden; the switch
+      // is a visibility flip, not an add and remove, so it is in the stack
+      // whether or not it is drawn.
+      DROUGHT_LAYER_ID,
       'trail-casing',
       'trail-blaze',
       CLOSURE_CASING_LAYER_ID,

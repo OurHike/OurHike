@@ -270,11 +270,19 @@ export function Settings({
           onChange={(layer_detail_level) => onChange({ layer_detail_level })}
         />
 
-        {/* The full category list, which WIREFRAMES.md §2 has always put here
-            rather than in the legend: "Full 10-category list lives in Settings,
-            not here." The legend shows what is in the VIEWPORT, so a category
-            with no points in view has no row there and could not be turned back
-            on - which is the second of the three consequences #530 lists.
+        {/* The full category list. It used to be the ONLY one - WIREFRAMES.md §2
+            said "Full 10-category list lives in Settings, not here", because the
+            legend showed what was in the viewport and a category with nothing in
+            view had no row to tap. That is the second of the three consequences
+            #530 lists, and #723 is it being reported from a phone: at z14 the
+            legend was routinely offering two of the eight switches.
+
+            The legend carries all of them now (chrome/Legend.tsx), and this list
+            stays rather than being retired to it. Two homes for one control is
+            not a duplicate here - it is the same HIDEABLE_TYPES behind both, and
+            the two are read at different moments. Somebody setting the app up
+            before a hike works down this screen; somebody looking at a crowded
+            map wants the switch without leaving the map.
 
             The safety layers are absent rather than listed-and-disabled, which is
             how HIKER_SAFETY.md and MAP_OPTIONS.md §4 say to keep that rule:

@@ -1,9 +1,20 @@
 // The legend bottom sheet (WIREFRAMES.md §2).
 //
-// It answers "what am I looking at right now," so its contents are derived
-// from the current viewport on every render rather than held in state - pan
-// the map and the counts change. It is deliberately NOT the settings list of
-// every possible category; WIREFRAMES.md puts that in Settings.
+// It answers "what am I looking at right now," so its COUNTS are derived from
+// the current viewport on every render rather than held in state - pan the map
+// and they change.
+//
+// The rows it puts those counts on are every hideable category, in view or not
+// (#723). That is not the panel giving up on the viewport - it is the rows
+// having a second job. They are the hide toggles, and a toggle that exists only
+// while something of its category is on screen is a switch a hiker cannot find
+// when they want it: features/POI_VISIBILITY.md's density table puts 2-4
+// waypoints in a phone map at z14, so the panel carrying eight toggles was
+// routinely showing two. `withEveryType` in lib/legendContents.ts pads the grid
+// and nothing else, so every sentence on this panel still speaks only about what
+// is in front of the hiker. WIREFRAMES.md §2 is amended to match; Settings keeps
+// its own copy of the list, which is where somebody setting the app up rather
+// than reading a map will look.
 //
 // Closure and serious-warning rows render with no hide control whatsoever.
 // Not defaulted-on, not disabled - absent. A safety layer having no off switch
@@ -25,6 +36,7 @@
 import {
   computeLegendContents,
   legendDropSummary,
+  withEveryType,
   type BoundingBox,
   type MapPoint,
 } from '../lib/legendContents'
@@ -194,9 +206,21 @@ export function Legend({
 }: LegendProps) {
   if (!open && !persistent) return null
 
-  const rows = computeLegendContents(bbox, points, verifiedOnly, drawnCounts)
-  const dropped = legendDropSummary(rows)
-  const isEmpty = rows.length === 0 && blazeCounts.length === 0
+  // TWO LISTS, AND KEEPING THEM APART IS THE WHOLE OF #723.
+  //
+  // `inView` is what this panel has always computed and is what every SENTENCE
+  // below is decided by - "nothing on this part of the map yet", "turn Verified?
+  // off", the drop summary, the below-the-pin-floor line. Those speak about the
+  // viewport, and none of them may start speaking about the category list.
+  //
+  // `rows` is the grid, which is also the hide toggles, and that job wants every
+  // category whether or not one is in front of the hiker right now. A row
+  // reading `Privy 0` is an accurate statement about this rectangle and a
+  // working switch; no row at all was neither.
+  const inView = computeLegendContents(bbox, points, verifiedOnly, drawnCounts)
+  const rows = withEveryType(inView, HIDEABLE_TYPES)
+  const dropped = legendDropSummary(inView)
+  const isEmpty = inView.length === 0 && blazeCounts.length === 0
 
   // What the type picker shows. Not a placeholder: a picker sitting at "Show one
   // only…" over a map drawing water alone is a control disowning its own state.
@@ -210,7 +234,7 @@ export function Legend({
   // walking away from the water. Costs a second pass over the same points,
   // only while the filter is on.
   const emptiedByFilter =
-    verifiedOnly && rows.length === 0 && computeLegendContents(bbox, points).length > 0
+    verifiedOnly && inView.length === 0 && computeLegendContents(bbox, points).length > 0
 
   // Gates the wrapper only. The picker's own two props are re-checked where it
   // is drawn, because that is what narrows them from optional to present - and
@@ -246,7 +270,7 @@ export function Legend({
           The background picker used to sit above this and now sits at the foot of
           the panel with the downloads link (#583) - the daily question keeps the
           top. Nothing here moved it back. */}
-      {belowPoiZoom && rows.length === 0 && (
+      {belowPoiZoom && inView.length === 0 && (
         <p className="legend__empty">
           Waypoints are drawn from a closer zoom. Zoom in to see what is along this
           stretch.
@@ -428,10 +452,10 @@ export function Legend({
 
           A native select because it is one line at rest, opens to the full list,
           and is reachable by keyboard without any of that being written here. It
-          lists every hideable category rather than only those in view, which
-          answers the second consequence #530 lists: a category with nothing in
-          the viewport has no row, and could not otherwise be reached from this
-          panel at all. */}
+          lists every hideable category, which the grid above now does too (#723)
+          - so this is no longer the only way to reach a category with nothing in
+          the viewport, and is back to being what it says it is: one tap for
+          "this one and nothing else", against eight taps of the rows. */}
       {onOnlyType !== undefined && onShowAllTypes !== undefined && (
         <label className="legend__shown">
           <span className="legend__shown-name">Showing</span>

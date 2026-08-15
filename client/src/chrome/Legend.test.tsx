@@ -3,6 +3,7 @@ import { render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Legend } from './Legend'
 import { HIDEABLE_TYPES } from '../lib/waypointVisibility'
+import { typeLabel } from './legendLabels'
 import { glyphPath, poiGlyphPath } from '../map/poiIcons'
 import { WARNING_GLYPH } from '../map/warningPin'
 import { CLOSURE_COLOR } from '../lib/closureStyle'
@@ -10,10 +11,14 @@ import { CLOSURE_COLOR } from '../lib/closureStyle'
 // WIREFRAMES.md §2 (Legend) plus TESTING.md item 7. Two rules carry real
 // weight beyond layout:
 //
-//  - The legend lists ONLY what is in the current viewport, with counts, and
-//    recomputes as the map moves. It is not the settings list of every
-//    possible category - WIREFRAMES.md is explicit that the full 10-category
-//    list lives in Settings, not here.
+//  - The legend's COUNTS are only what is in the current viewport, and
+//    recompute as the map moves. The ROWS those counts sit on are every
+//    hideable category, in view or not, because a row is also the hide toggle
+//    and a switch that vanishes with its category is a switch nobody can find
+//    (#723, WIREFRAMES.md §2 as amended). What must not follow is the panel's
+//    prose speaking for categories that are not there - so the empty-state
+//    sentences and the drop summary are still decided by the viewport alone,
+//    and are asserted here to be.
 //  - Closure and serious-warning rows carry "Always shown" and have NO hide
 //    control. Not merely defaulted-on: there is no affordance to turn a safety
 //    layer off, here or anywhere else in the app.
@@ -83,22 +88,25 @@ describe('Legend', () => {
     expect(rowFor('Water')).toHaveTextContent('3')
   })
 
-  it('leaves out what is outside the viewport entirely', () => {
+  it('counts what is outside the viewport as none of it, rather than as some', () => {
+    // The campsite in POINTS is at 20N/100W, thousands of miles from this
+    // rectangle. Its row exists because the row is a switch (#723); the number
+    // on it is what keeps the row from claiming there is a campsite here.
     render(<Legend {...PROPS} />)
 
-    expect(screen.queryByRole('listitem', { name: 'Campsite' })).not.toBeInTheDocument()
+    expect(rowFor('Campsite')).toHaveTextContent('0')
   })
 
   it('recomputes when the map moves, rather than holding the first viewport', () => {
     const { rerender } = render(<Legend {...PROPS} />)
-    expect(screen.getByRole('listitem', { name: 'Shelter' })).toBeInTheDocument()
+    expect(rowFor('Shelter')).toHaveTextContent('1')
 
     // Pan north-east, leaving the shelter behind.
     rerender(
       <Legend {...PROPS} bbox={{ west: -77.5, south: 39.55, east: -77, north: 40 }} />,
     )
 
-    expect(screen.queryByRole('listitem', { name: 'Shelter' })).not.toBeInTheDocument()
+    expect(rowFor('Shelter')).toHaveTextContent('0')
   })
 
   it('folds unverified points into their category row instead of adding a second one', () => {
@@ -192,6 +200,118 @@ describe('Legend', () => {
     render(<Legend {...PROPS} points={[]} blazeCounts={[]} />)
 
     expect(screen.getByText(/nothing on this part of the map/i)).toBeInTheDocument()
+  })
+})
+
+// --- Every category is reachable from the panel (#723) ---------------------
+//
+// The reported symptom was two toggles on an Android phone, and it was the
+// specification working: the rows came from the viewport, and
+// features/POI_VISIBILITY.md's own density table puts 2-4 waypoints in a
+// 390 x 700 phone map at z14. Sending a hiker to Settings to turn privies back
+// on is the same mistake MAP_OPTIONS.md §4 already reversed for the background
+// picker - the moment you want this control is the moment you are looking at
+// the map.
+//
+// The half of this that could go wrong quietly is the other direction: rows for
+// categories that are not here must not make the PANEL claim they are. Every
+// sentence on it is asserted below to still be the viewport's.
+describe('every hideable category has a row, in view or not', () => {
+  it('offers a switch for all of them', () => {
+    render(<Legend {...PROPS} />)
+
+    for (const type of HIDEABLE_TYPES) {
+      expect(
+        within(rowFor(typeLabel(type))).getByRole('button'),
+        `${type} has no toggle`,
+      ).toBeInTheDocument()
+    }
+  })
+
+  it('turns off a category with nothing of it in view', async () => {
+    // The whole point. `privy` appears nowhere in POINTS, so before this it had
+    // no row and this tap had nothing to land on.
+    const user = userEvent.setup()
+    render(<Legend {...PROPS} />)
+
+    await user.click(within(rowFor('Privy')).getByRole('button'))
+
+    expect(PROPS.onToggleType).toHaveBeenCalledWith('privy')
+  })
+
+  it('turns one back on from the panel that turned it off', async () => {
+    // The trap this issue is most able to build: hide the only water in view,
+    // the row disappears with its own count, and the switch back is gone.
+    const user = userEvent.setup()
+    render(<Legend {...PROPS} hiddenTypes={new Set(['privy'])} />)
+
+    const row = rowFor('Privy')
+    expect(row).toHaveClass('legend__row--hidden')
+    await user.click(within(row).getByRole('button'))
+
+    expect(PROPS.onToggleType).toHaveBeenCalledWith('privy')
+  })
+
+  it('keeps them in one order however the map is panned', () => {
+    // The counts come out of a Map keyed by whatever order the points were
+    // encountered in, so the grid used to re-shuffle as a hiker walked. A key
+    // whose rows move is a key you have to read rather than glance at.
+    const labels = () =>
+      screen
+        .getAllByRole('listitem')
+        .map((row) => row.getAttribute('aria-label'))
+        .filter((name) => name !== null && !name.endsWith('blaze'))
+
+    const { rerender } = render(<Legend {...PROPS} />)
+    const first = labels()
+
+    rerender(
+      <Legend {...PROPS} bbox={{ west: -77.5, south: 39.55, east: -77, north: 40 }} />,
+    )
+
+    expect(labels().slice(0, HIDEABLE_TYPES.length)).toEqual(
+      first.slice(0, HIDEABLE_TYPES.length),
+    )
+    expect(first.slice(0, HIDEABLE_TYPES.length)).toEqual(HIDEABLE_TYPES.map(typeLabel))
+  })
+
+  it('never invents a safety row for a stretch with no closure on it', () => {
+    // Closures and serious warnings are not in HIDEABLE_TYPES, have no switch to
+    // reach, and a standing "Closure 0" would be this panel making a claim about
+    // closures that nothing asked it to make.
+    render(<Legend {...PROPS} points={[]} blazeCounts={[]} />)
+
+    expect(screen.queryByRole('listitem', { name: 'Closure' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('listitem', { name: 'Serious warning' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('still says the map is empty here, with eight rows of zero on screen', () => {
+    // `isEmpty` is decided by the viewport, not by the grid. Decided by the grid
+    // it would never be true again, and the sentence would be dead code that
+    // still reads as live.
+    render(<Legend {...PROPS} points={[]} blazeCounts={[]} />)
+
+    expect(screen.getByText(/nothing on this part of the map/i)).toBeInTheDocument()
+    expect(rowFor('Water')).toHaveTextContent('0')
+  })
+
+  it('reports no drop for a category that has nothing to drop', () => {
+    // A padded row carries no `drawnCount` at all - "none of them fitted" and
+    // "there were none" are different sentences, and only one of them is true
+    // of a category with nothing in the rectangle. Measured against the drop
+    // summary, which is where a zero would have shown up as a claim.
+    render(
+      <Legend
+        {...PROPS}
+        points={[POINTS[0], POINTS[1], POINTS[2]]}
+        drawnCounts={new Map([['water', 3]])}
+      />,
+    )
+
+    expect(screen.queryByText(/fit at this zoom/i)).not.toBeInTheDocument()
+    expect(rowFor('Privy')).toHaveTextContent('0')
   })
 })
 
@@ -840,7 +960,13 @@ describe('reporting waypoints that did not fit', () => {
       ]),
     )
 
-    expect(container.querySelectorAll('.legend__count')).toHaveLength(2)
+    // Counted against the ROWS rather than against a literal: the grid is
+    // every hideable category now (#723), so a hard number here would be
+    // asserting how many types the app ships rather than the invariant, which
+    // is one slot per row and no second badge beside it.
+    const rows = container.querySelectorAll('.legend__pins .legend__row')
+    expect(rows.length).toBeGreaterThan(0)
+    expect(container.querySelectorAll('.legend__count')).toHaveLength(rows.length)
     expect(container.querySelector('.legend__drawn')).toBe(null)
   })
 

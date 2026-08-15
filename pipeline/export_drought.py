@@ -239,19 +239,24 @@ def verify_classes_disjoint(classes: dict[int, object]) -> None:
 def verify_corridor_covers_trail(line: MultiLineString, corridor) -> None:
     """Prove the clip cannot have lost trail, rather than sampling for it.
 
-    A buffer slightly too tight loses a stretch of trail near the corridor
-    edge, and nothing downstream would notice: the artifact would still be a
-    valid map of *something*. The spike this descends from caught that by
-    re-measuring every class against the unclipped national polygons and
-    comparing - which works, and costs minutes, because each comparison
-    intersects the whole centerline with a 27 MB multipolygon.
+    If the centerline lies entirely within the corridor then for ANY geometry
+    X, `line n (X n corridor)` equals `line n X` - the clip cannot change a
+    trail measurement it cannot reach. Proving containment once therefore
+    proves it for every class, this week and every week, where the spike this
+    descends from re-measured each class against the unclipped national
+    polygons and could only ever prove it for the classes that happened to be
+    present (and cost minutes doing it, meeting a 27 MB multipolygon each
+    time).
 
-    This checks the stronger property directly and in seconds. If the
-    centerline lies entirely within the corridor, then for ANY geometry X,
-    `line n (X n corridor)` equals `line n X` - the clip cannot change a trail
-    measurement it cannot reach. Proving containment once therefore proves it
-    for every class, this week and every week, where the sampled version only
-    ever proved it for the classes that happened to be present.
+    WHAT IT ACTUALLY GUARDS, which is narrower than it first looks. The
+    BUFFER can never fail this: a buffer always contains the geometry it was
+    grown from, at any radius. The two simplifications are the real risk, and
+    `CORRIDOR_SIMPLIFY_DEG` is the sharp one - it cuts corners off the line
+    *before* the buffer is grown, so a switchback whose corner is trimmed by
+    more than the buffer's width ends up outside the corridor. That cannot
+    happen at the shipped settings, where the buffer is ninety times the
+    simplification, and this is here for the change that alters one of them
+    without the other.
     """
     outside = line.difference(corridor)
     stray = line_miles(outside)

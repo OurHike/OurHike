@@ -101,15 +101,37 @@ def fetch_release(stamp: date) -> dict | None:
     return document
 
 
+def release_path(stamp: date) -> Path:
+    return OUT_DIR / f"usdm_{stamp:%Y%m%d}.json"
+
+
 def main(today: date | None = None) -> Path | None:
+    """The newest release NDMC has published, fetched only if it is new.
+
+    SKIPPING IS THE COMMON CASE, AND IT IS WHAT MAKES A SHORT CADENCE HONEST.
+    A release is 27.6 MB and changes once a week, so a job running hourly
+    would pull about 4.6 GB a week from a university-hosted nonprofit to
+    learn nothing 167 times out of 168. The week's stamp is known before any
+    body is downloaded - that is the whole reason this fetches the dated file
+    - so a release already on disk costs one 404-or-nothing check instead.
+    `data/` is cached between CI runs, so the skip holds across them.
+    """
     today = today or date.today()
     for stamp in candidate_stamps(today):
+        out_path = release_path(stamp)
+        if out_path.exists():
+            print(f"Already have {stamp:%Y-%m-%d}'s release at {out_path}; nothing to fetch.")
+            # Still a receipt: this run stands behind that file, and
+            # lib/fetch_receipts.py's whole point is that packaging can tell
+            # an output that is current from one nobody has fetched at all.
+            fetch_receipts.record("fetch_drought", [out_path])
+            return out_path
+
         document = fetch_release(stamp)
         if document is None:
             print(f"  {stamp:%Y-%m-%d}: not published yet")
             continue
         OUT_DIR.mkdir(parents=True, exist_ok=True)
-        out_path = OUT_DIR / f"usdm_{stamp:%Y%m%d}.json"
         partial = out_path.with_suffix(".json.partial")
         partial.write_text(json.dumps(document))
         partial.replace(out_path)

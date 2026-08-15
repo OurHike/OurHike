@@ -590,6 +590,17 @@
 
 /* ---------- Legend sheet ---------- */
 
+/* THE CAP STAYS AT 60% (#723). The grid below it is now every hideable category
+   rather than the two or three in the viewport, which on a phone is taller than
+   the sheet - and the sheet is the answer rather than the problem, because this
+   thing covers the map. features/MAP_OPTIONS.md §4 documents the cap and the
+   cost it accepts ("a picker at the foot of a busy viewport is now a scroll away
+   rather than the first thing under the title"); a longer list does not change
+   that trade, it just makes the scrolling routine instead of occasional.
+
+   What being routine changes is the affordance, and the fix for that is the list
+   itself. Two rows in a sheet with room for eight gave a hiker nothing to
+   suggest anything was under them. Eight rows cut off mid-grid do. */
 .legend {
   position: absolute;
   left: 0;
@@ -598,7 +609,19 @@
   z-index: 2;
   max-height: 60%;
   overflow-y: auto;
+  /* The scroll stops here. Without it a flick that runs off the end of the list
+     chains to the nearest scrollable ancestor and then to the document, which on
+     Chrome for Android is where pull-to-refresh lives - so a hiker reaching for
+     the row below the fold could reload the app instead. Reasoned from the
+     documented chaining behaviour, not measured on a handset: nothing in this
+     repository can drive a real Android touch stack. */
+  overscroll-behavior: contain;
   padding: var(--space-4, 16px);
+  /* The sheet's bottom edge IS the viewport's - it is positioned against the
+     initial containing block, not the map - so on a gesture-navigation phone the
+     last thing in it sits under the system's own bar. That last thing is the
+     downloads link, and before it the row a hiker scrolled down to reach. */
+  padding-bottom: calc(var(--space-4, 16px) + env(safe-area-inset-bottom, 0px));
   background: var(--bg-surface);
   border-top-left-radius: 14px;
   border-top-right-radius: 14px;

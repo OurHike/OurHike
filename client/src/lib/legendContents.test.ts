@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { computeLegendContents, legendDropSummary, type MapPoint } from './legendContents'
+import {
+  computeLegendContents,
+  legendDropSummary,
+  withEveryType,
+  type MapPoint,
+} from './legendContents'
 
 // WIREFRAMES.md's Legend section: lists only what's in the current
 // viewport, with counts. Rows are tappable to hide - except the closure row
@@ -228,6 +233,74 @@ describe('the drawn count', () => {
     )
 
     expect(rows).toEqual([{ type: 'water', count: 1, hideable: true, drawnCount: 1 }])
+  })
+})
+
+// The grid is also the hide toggles, and a toggle that only exists while its
+// category is in front of the hiker is one they cannot find (#723). This pads
+// the grid; nothing else on the panel sees the padded list.
+describe('withEveryType', () => {
+  const TYPES = ['water', 'privy', 'shelter']
+
+  it('leaves a row that is already there exactly as it found it', () => {
+    const measured = { type: 'water', count: 14, hideable: true, drawnCount: 4 }
+
+    expect(withEveryType([measured], TYPES)[0]).toEqual(measured)
+  })
+
+  it('gives an absent category a row that counts none of it', () => {
+    const rows = withEveryType([], TYPES)
+
+    expect(rows.map((row) => [row.type, row.count])).toEqual([
+      ['water', 0],
+      ['privy', 0],
+      ['shelter', 0],
+    ])
+  })
+
+  it('makes a padded row a working switch', () => {
+    expect(withEveryType([], TYPES).every((row) => row.hideable)).toBe(true)
+  })
+
+  it('reports no drop on a category with nothing to drop', () => {
+    // Not zero. `drawnCount` says how many of the ones HERE did not fit, and a
+    // zero would enter legendDropSummary's arithmetic as a measured row - the
+    // panel reporting a drop that never happened.
+    expect(withEveryType([], TYPES)[0].drawnCount).toBeUndefined()
+    expect(legendDropSummary(withEveryType([], TYPES))).toBeNull()
+  })
+
+  it('returns them in the order it was given, whatever order the counts came in', () => {
+    // computeLegendContents keys off a Map filled in whatever order the points
+    // were encountered, so the grid re-shuffled itself as a hiker panned.
+    const rows = withEveryType(
+      [
+        { type: 'shelter', count: 1, hideable: true },
+        { type: 'water', count: 2, hideable: true },
+      ],
+      TYPES,
+    )
+
+    expect(rows.map((row) => row.type)).toEqual(TYPES)
+  })
+
+  it('keeps a safety row it was not asked to pad, after the ones it was', () => {
+    // Closures and serious warnings are never in the caller's list: they have no
+    // switch to reach, and a permanent "Closure 0" would be a standing claim
+    // about closures on a panel with no business making one.
+    const closure = { type: 'closure', count: 1, hideable: false }
+
+    const rows = withEveryType([closure], TYPES)
+
+    expect(rows).toHaveLength(TYPES.length + 1)
+    expect(rows.at(-1)).toEqual(closure)
+  })
+
+  it('cannot be made to build a switch for a safety layer', () => {
+    // The guard is NEVER_HIDEABLE rather than the caller's list, so a caller
+    // handing this the wrong array gets a row it cannot toggle rather than an
+    // off switch for a closure.
+    expect(withEveryType([], ['closure'])[0].hideable).toBe(false)
   })
 })
 

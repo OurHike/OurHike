@@ -153,3 +153,36 @@ describe('a legend row can shrink into its column', () => {
     expect(rule('.legend__count')).toMatch(/flex:\s*none/)
   })
 })
+
+// THE SHEET ITSELF, now that the grid inside it is every hideable category
+// rather than the two or three in the viewport (#723).
+//
+// The list is reliably taller than the sheet on a phone, so scrolling stopped
+// being the occasional case and became the normal one. What that changes is not
+// the cap - this thing covers the map, and features/MAP_OPTIONS.md §4 documents
+// the 60% cap and the trade it accepts - but what the scroll has to survive at
+// its two ends.
+describe('the legend sheet scrolls a list longer than itself', () => {
+  const sheet = rule('.legend')
+
+  it('still scrolls its own overflow rather than growing', () => {
+    expect(sheet).toMatch(/overflow-y:\s*auto/)
+    expect(sheet).toMatch(/max-height:\s*60%/)
+  })
+
+  it('stops the scroll at its own edges', () => {
+    // Chained to the document, a flick past the end of the list reaches Chrome
+    // for Android's pull-to-refresh - so a hiker reaching for the row below the
+    // fold could reload the app instead. Reasoned from the documented chaining
+    // behaviour rather than measured: nothing here can drive a real Android
+    // touch stack, which is exactly why it is pinned rather than reviewed.
+    expect(sheet).toMatch(/overscroll-behavior:\s*contain/)
+  })
+
+  it('keeps the end of that list clear of the system bar', () => {
+    // The sheet is positioned against the initial containing block, so its
+    // bottom edge IS the viewport's - and the last thing in it is the row a
+    // hiker just scrolled down to reach.
+    expect(sheet).toMatch(/padding-bottom:.*env\(safe-area-inset-bottom/)
+  })
+})

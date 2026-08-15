@@ -70,7 +70,33 @@ GEOFABRIK_EXTRACT = "geofabrik_extract"
 # reports on it so the day the answer changes is a day somebody hears about.
 WATCHED_ONLY = "watched_only"
 
-KNOWN_KINDS = frozenset({ARCGIS_FEATURE_LAYER, PUBLISHED_NOTICES, CLUB_PDF, GEOFABRIK_EXTRACT, WATCHED_ONLY})
+# A dataset republished on a fixed weekly cadence, where the WEEK is part of
+# the claim rather than metadata about it. The U.S. Drought Monitor is the
+# first (#720): NDMC publishes a dated file every Thursday describing the
+# Tuesday-to-Monday week, and `fetch_drought.py` takes the dated file
+# specifically because the polygons carry no date inside them - so an
+# artifact built from `usdm_current.json` could only be stamped with the
+# bake's own clock, which is the failure export_atc_updates.py records at
+# length for the ATC file.
+#
+# Its own kind rather than ARCGIS_FEATURE_LAYER (it is not one) or
+# GEOFABRIK_EXTRACT (that kind's whole point is that "changed" is always true
+# and freshness is therefore meaningless): a weekly source is exactly the
+# case where freshness IS meaningful and checkable, because a release either
+# landed this week or it did not. `fetch_all.py` skips it like everything
+# not ArcGIS.
+WEEKLY_POLYGONS = "weekly_polygons"
+
+KNOWN_KINDS = frozenset(
+    {
+        ARCGIS_FEATURE_LAYER,
+        PUBLISHED_NOTICES,
+        CLUB_PDF,
+        GEOFABRIK_EXTRACT,
+        WATCHED_ONLY,
+        WEEKLY_POLYGONS,
+    }
+)
 
 
 def load_registry(path: Path) -> dict:

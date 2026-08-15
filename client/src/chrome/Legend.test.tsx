@@ -1081,3 +1081,70 @@ describe('below the zoom waypoints are drawn at', () => {
     expect(screen.getByText(/pan or zoom out/i)).toBeInTheDocument()
   })
 })
+
+describe('the drought row', () => {
+  const bbox = { west: -80, south: 35, east: -78, north: 37 } as const
+
+  function renderDrought(
+    droughtSummary: { miles: number; weekStart: Date | null } | undefined,
+    units: 'imperial' | 'metric' = 'imperial',
+  ) {
+    render(
+      <Legend
+        open
+        bbox={bbox}
+        points={[]}
+        blazeCounts={[]}
+        hiddenTypes={new Set()}
+        onToggleType={() => {}}
+        onClose={() => {}}
+        onToggleDrought={() => {}}
+        droughtSummary={droughtSummary}
+        units={units}
+      />,
+    )
+  }
+
+  it('does not say "none on the trail" when nothing arrived', () => {
+    // The whole point of the row, and the bug it shipped with first: an
+    // unreachable artifact and a genuinely drought-free week both draw an
+    // empty map, and only one of them is good news (#286's distinction). The
+    // week is what says somebody looked, so no week means no reassurance.
+    renderDrought({ miles: 0, weekStart: null })
+
+    expect(screen.getByText(/not available/i)).toBeInTheDocument()
+    expect(screen.queryByText(/none on the trail/i)).not.toBeInTheDocument()
+  })
+
+  it('says none on the trail for a week somebody did look at', () => {
+    renderDrought({ miles: 0, weekStart: new Date('2026-08-11') })
+
+    expect(screen.getByText(/none on the trail/i)).toBeInTheDocument()
+    expect(screen.getByText(/week of Aug 11/i)).toBeInTheDocument()
+  })
+
+  it('reports the affected distance in the hiker’s own units', () => {
+    // CONTRIBUTING.md's units standard. This row printed "mi" directly once,
+    // which unitDisplay.test.ts caught - the guard proves nothing writes a
+    // unit, and this proves the right one comes out.
+    renderDrought({ miles: 1388.5, weekStart: new Date('2026-08-11') }, 'metric')
+
+    expect(screen.getByText(/2,235 km affected/)).toBeInTheDocument()
+  })
+
+  it('is absent entirely when the shell cannot store the preference', () => {
+    render(
+      <Legend
+        open
+        bbox={bbox}
+        points={[]}
+        blazeCounts={[]}
+        hiddenTypes={new Set()}
+        onToggleType={() => {}}
+        onClose={() => {}}
+      />,
+    )
+
+    expect(screen.queryByRole('checkbox', { name: /drought/i })).not.toBeInTheDocument()
+  })
+})

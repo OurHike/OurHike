@@ -27,6 +27,7 @@ import { WaypointLanes, type WaypointLanesProps } from './WaypointLanes'
 import { PoiCard, type PoiDetail } from './PoiCard'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MapView } from '../map/MapView'
+import type { DroughtBand } from '../map/droughtLayers'
 import type { ClosureBand } from '../map/closureLayers'
 import type { AtcUpdatePoint } from '../map/atcUpdateLayers'
 import type { WarningPoint } from '../map/warningLayers'
@@ -200,6 +201,12 @@ export interface MapScreenProps {
    *  decision rather than two that can drift. */
   verifiedOnly: boolean
   onToggleVerifiedOnly: () => void
+  /** The drought wash and its switch (#720), passed straight through to
+   *  the legend and the map - this screen makes no decision about it. */
+  drought?: readonly DroughtBand[]
+  droughtShown?: boolean
+  onToggleDrought?: () => void
+  droughtWeek?: { start: Date; end: Date } | null
 
   /**
    * The tapped pin's detail, or null when nothing is selected.
@@ -395,6 +402,10 @@ export function MapScreen({
   typesShown,
   verifiedOnly,
   onToggleVerifiedOnly,
+  drought,
+  droughtShown = false,
+  onToggleDrought,
+  droughtWeek = null,
   selectedPoi,
   selectedSite,
   onSelectPoi,
@@ -546,6 +557,8 @@ export function MapScreen({
               pois={viewportPoints}
               hiddenTypes={hiddenTypes}
               verifiedOnly={verifiedOnly}
+              drought={drought}
+              showDrought={droughtShown}
               closures={closures}
               atcUpdates={atcUpdates}
               atcUpdatePoints={atcUpdatePoints}
@@ -638,6 +651,17 @@ export function MapScreen({
             typesShown={typesShown}
             verifiedOnly={verifiedOnly}
             onToggleVerifiedOnly={onToggleVerifiedOnly}
+            droughtShown={droughtShown}
+            onToggleDrought={onToggleDrought}
+            units={units}
+            droughtSummary={
+              drought === undefined
+                ? undefined
+                : {
+                    miles: drought.reduce((total, band) => total + band.trailMiles, 0),
+                    weekStart: droughtWeek?.start ?? null,
+                  }
+            }
             onClose={onCloseLegend}
             backgroundChoice={backgroundChoice}
             onChangeBackground={onChangeBackground}

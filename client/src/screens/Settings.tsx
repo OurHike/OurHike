@@ -445,6 +445,19 @@ export function Settings({
           Map data: USGS US Topo, ATC GIS, © OpenStreetMap contributors, OpenFreeMap ©
           OpenMapTiles, USGS 3DEP via AWS Terrain Tiles.
         </p>
+        {/* NDMC's credit, in their own words and unabridged (#720).
+            droughtmonitor.unl.edu/About/Permission.aspx asks for this exact
+            sentence naming all four partners, so it is quoted rather than
+            summarised into the line above - a shortened version of a credit
+            somebody specified word for word is not the credit they asked for.
+            It sits here whether or not the layer is switched on: the terms
+            attach to shipping the data, not to drawing it. */}
+        <p className="settings__note">
+          The U.S. Drought Monitor is jointly produced by the National Drought Mitigation
+          Center at the University of Nebraska-Lincoln, the United States Department of
+          Agriculture, the National Oceanic and Atmospheric Administration and the
+          National Aeronautics and Space Administration. Map courtesy of NDMC.
+        </p>
       </section>
 
       {/* Below every group that can be changed, and deliberately not last -

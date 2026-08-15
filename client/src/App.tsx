@@ -402,6 +402,8 @@ function App() {
     reportState,
     atcUpdates,
     atcReviewedAt,
+    drought,
+    droughtWeek,
     lastSyncedAt,
     markSynced,
   } = useConditions(online)
@@ -1166,6 +1168,27 @@ function App() {
     },
     [updatePreferences, archiveDownloaded, openDownloads],
   )
+
+  /**
+   * The drought wash on or off (#720).
+   *
+   * A stored preference rather than a `useState`, and that is the whole
+   * point: `hiddenTypes` learned this lesson the hard way (#530) - the
+   * legend's category toggles wrote to a state that died on reload, so
+   * hiding privies lasted until the next launch and never reached an
+   * account. A background tint somebody turned off should stay off.
+   */
+  const handleToggleDrought = useCallback(() => {
+    // Reads the current value inside the functional update rather than
+    // closing over `preferences`, so the callback has no dependency on the
+    // thing it toggles - the same shape `updatePreferences` already uses, and
+    // the reason a fast double-tap cannot land two flips on one stale value.
+    setPreferences((current) => {
+      const next = { ...current, drought_layer_shown: !current.drought_layer_shown }
+      void savePreferences(next)
+      return next
+    })
+  }, [])
 
   const handleOnboardingComplete = useCallback(
     ({ hikingDetailLevel, locationRequested }: OnboardingResult) => {
@@ -2000,6 +2023,10 @@ function App() {
           typesShown={preferences.waypoint_types_shown}
           verifiedOnly={verifiedOnly}
           onToggleVerifiedOnly={handleToggleVerifiedOnly}
+          drought={drought}
+          droughtShown={preferences.drought_layer_shown}
+          onToggleDrought={handleToggleDrought}
+          droughtWeek={droughtWeek}
           selectedPoi={selectedPoi}
           selectedSite={selectedSite}
           onSelectPoi={handleSelectPoi}

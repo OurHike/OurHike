@@ -23,6 +23,7 @@ def _valid_preferences(**overrides) -> dict:
         "map_style": "field",
         "red_light_enabled": False,
         "show_roads": False,
+        "drought_layer_shown": False,
         "waypoint_types_shown": ["water", "shelter"],
         "layer_detail_level": "standard",
         "auto_rotate_enabled": False,

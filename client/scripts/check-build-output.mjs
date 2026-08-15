@@ -227,12 +227,74 @@ if (serviceWorker === undefined) {
   }
 }
 
-// 4. The stylesheets that make the map usable actually shipped.
+// 4. Nothing in the built CSS reaches another origin.
+//
+// This is the check that would have caught #717, and it is deliberately about
+// the SHAPE rather than about Google: any cross-origin `@import` or `url()`
+// that survives into the emitted stylesheet is a third party the first paint
+// waits on.
+//
+// A CSS `@import` of a cross-origin stylesheet is render-blocking, so the
+// browser paints nothing until it resolves. Measured 2026-08-15 on the build
+// before this check existed: app shell fully downloaded at 527 ms, first paint
+// at 12,956 ms, main thread idle throughout. `display=swap` does not help - it
+// governs how a font renders once its stylesheet has arrived, not whether the
+// stylesheet gates paint. Neither does the service worker, because the request
+// is not to this origin and so is not in the precache.
+//
+// Full airplane mode is not the bad case (the request fails at once). Some
+// signal and poor is, which is the connection this app is built for.
+const CROSS_ORIGIN_CSS = /(?:@import\s+|url\(\s*)["']?(https?:)?\/\/[^"')\s]+/g
+
+const stylesheets = files.filter((f) => f.endsWith('.css'))
+
+for (const file of stylesheets) {
+  const text = readFileSync(file, 'utf8')
+  for (const [match] of text.matchAll(CROSS_ORIGIN_CSS)) {
+    problems.push(
+      `Cross-origin reference in the built CSS: ${relative(DIST, file)}`,
+      `  ${match.slice(0, 120)}`,
+      `  An @import blocks the first paint on somebody else's server, and a`,
+      `  url() cannot be precached, so it is missing exactly where this app is`,
+      `  meant to work. Vendor the file into src/design-system/assets/ instead.`,
+    )
+  }
+}
+
+// 5. The UI typography shipped and is precached.
+//
+// Same failure shape as the glyphs above and the same remedy, one layer up:
+// the glyphs label the map, these label everything else. Counted rather than
+// "at least one", because a subset that is emitted but not precached is
+// invisible until somebody opens the app without signal.
+const fontsInDist = [...present].filter((p) => p.endsWith('.woff2'))
+const UI_FONT_FILES = 10
+if (fontsInDist.length !== UI_FONT_FILES) {
+  problems.push(
+    `Expected ${UI_FONT_FILES} self-hosted .woff2 files in the build, found ${fontsInDist.length}.`,
+    '  See src/design-system/tokens/typography.css - the three families are',
+    '  vendored precisely so no paint waits on another origin.',
+  )
+} else if (serviceWorker !== undefined) {
+  const precache = readFileSync(serviceWorker, 'utf8')
+  const notPrecached = fontsInDist.filter(
+    (p) => !precache.includes(p) && !precache.includes(p.split('/').pop()),
+  )
+  if (notPrecached.length > 0) {
+    problems.push(
+      `${notPrecached.length} of ${UI_FONT_FILES} UI font files are not in the service worker's precache.`,
+      `  ${notPrecached.join(', ')}`,
+      '  The app would render in its own typeface in town and fall back to the',
+      '  system stack in the field. Check workbox.globPatterns in vite.config.ts.',
+    )
+  }
+}
+
+// 6. The stylesheets that make the map usable actually shipped.
 //
 // Separate from the asset checks above because there is no reference to look
 // for: Vite bundles imported CSS into the app's own stylesheet, so a forgotten
 // import leaves a build that is internally consistent and visibly broken.
-const stylesheets = files.filter((f) => f.endsWith('.css'))
 const styles = stylesheets.map((f) => readFileSync(f, 'utf8')).join('\n')
 
 for (const { what, selectors, why } of REQUIRED_STYLESHEETS) {
@@ -251,5 +313,7 @@ if (problems.length > 0) fail(problems)
 console.log(
   `Build output OK: ${referenced.size} referenced assets all published, ` +
     `${REQUIRED_ASSETS.length} required asset(s) wired up and precached, ` +
+    `${fontsInDist.length} UI font file(s) vendored and precached, ` +
+    `no cross-origin CSS, ` +
     `${REQUIRED_STYLESHEETS.length} required stylesheet(s) in the built CSS.`,
 )

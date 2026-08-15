@@ -12,6 +12,12 @@ waypoint lanes](https://github.com/OurHike/OurHike/issues/532), and answers it w
 
 ## The first map a hiker ever sees is an empty line
 
+> **Partly fixed, 2026-08-15 (#603).** The dot rank now draws all the way down
+> (`POI_DOT_MIN_ZOOM = 0`), so the opening view carries a stipple of every waypoint on the trail
+> rather than nothing, and the legend's sentence is corrected to match. **The club sections this
+> doc argues for are still the subject it is missing** — dots are texture, not a subject, and
+> nothing below answers itself. `CORRIDOR_BOUNDS` is untouched and the section below stands.
+
 `CORRIDOR_BOUNDS` in [`App.tsx`](../client/src/App.tsx):240 opens the app on the whole 2,197-mile
 corridor, which lands near z4 on a phone. `POI_MIN_ZOOM = 9` means no waypoints. So the opening
 screen is a thin line down fourteen states with nothing on it, and the legend says *Nothing on

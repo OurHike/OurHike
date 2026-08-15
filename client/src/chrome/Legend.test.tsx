@@ -1061,7 +1061,10 @@ describe('below the zoom waypoints are drawn at', () => {
       />,
     )
 
-    expect(screen.getByText(/drawn from a closer zoom/i)).toBeInTheDocument()
+    // Reworded by #603. The dot rank draws below the seam now, so the panel
+    // must not say waypoints are absent here - it says what a hiker is looking
+    // at (dots) and what zooming in buys (knowing which is which).
+    expect(screen.getByText(/show as dots at this zoom/i)).toBeInTheDocument()
     expect(screen.queryByText(/pan or zoom out/i)).not.toBeInTheDocument()
   })
 

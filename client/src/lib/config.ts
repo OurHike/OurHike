@@ -57,10 +57,16 @@ export const SPURS_KEY = 'spurs.json'
 
 // The along-the-trail elevation profile, published by
 // pipeline/export_elevation.py: ~141,000 {distance_mi, elevation_ft} samples at
-// 25 m spacing along the real centerline. 6.5 MB of JSON that gzips to 0.87 MB
-// - under 7% of what trails.geojson alone already costs, which is why it is
-// fetched whole rather than windowed. Windowing it would also defeat the point:
-// the ribbon has to work in a dead zone fifty miles from where it downloaded.
+// 25 m spacing along the real centerline. 7.0 MB of JSON that gzips to 0.89 MB,
+// measured against the live bucket 2026-08-15 - under 7% of what trails.geojson
+// already costs, which is why it is fetched whole rather than windowed.
+// Windowing it would also defeat the point: the ribbon has to work in a dead
+// zone fifty miles from where it downloaded.
+//
+// That gzipped figure is only what a hiker actually pays since #717. This
+// comment quoted it for a long time while pipeline/publish.py uploaded with no
+// Content-Encoding at all, so R2 served every one of the 7.0 MB - a claim about
+// a compression nothing was performing.
 //
 // Absent from data releases built before export_elevation.py existed, which
 // lib/trailData.ts treats as "no profile" rather than a failed download - the
@@ -74,8 +80,10 @@ export const ELEVATION_KEY = 'elevation_profile.json'
 // This list is the download list, so it is also the size of a hiker's first
 // fetch. 'viewpoint', 'parking' and 'privy' roughly double the POI count
 // (2,021 more features from ATC's own facility layers) - real weight, and
-// still small beside trails.geojson's 12 MB, which is the artifact that
-// decides whether a download over a hostel's wifi is comfortable.
+// still small beside trails.geojson, which at 12.3 MB raw and 4.1 MB gzipped
+// (measured 2026-08-15) is the artifact that decides whether a download over a
+// hostel's wifi is comfortable. The whole launch fetch is 21.5 MB of text that
+// gzips to 5.3 MB, which is what #717 made it cost.
 //
 // Keep it in step with pipeline/lib/poi_schema.POI_TYPES: verify_release.py
 // parses THIS array to know which artifacts a release must serve, so a type

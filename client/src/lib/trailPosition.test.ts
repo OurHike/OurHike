@@ -3,6 +3,7 @@ import type { Feature, FeatureCollection } from 'geojson'
 import {
   buildTrailIndex,
   locateOnTrail,
+  mileOnTrail,
   trailSlice,
   MAX_OFF_TRAIL_MILES,
 } from './trailPosition'
@@ -313,6 +314,45 @@ describe('locateOnTrail', () => {
 
     expect(broken.lons).toHaveLength(2)
     expect(locateOnTrail(broken, { lon: -77, lat: 39 })).toBeNull()
+  })
+})
+
+describe('mileOnTrail', () => {
+  // The bulk path (#717). It must agree with locateOnTrail's mile exactly and
+  // apply the same MAX_OFF_TRAIL_MILES gate - the whole point is that it is
+  // the same answer for less work, not a cheaper answer.
+  const index = buildTrailIndex(
+    collection([
+      line(
+        Array.from({ length: 50 }, (_, i) => [-77, 39 + i * MILE_IN_DEGREES_LAT * 0.1]),
+      ),
+    ]),
+  )
+
+  it('agrees with locateOnTrail wherever locateOnTrail places a point', () => {
+    for (let i = 0; i < 40; i += 1) {
+      const at = { lon: -77 + i * 0.0004, lat: 39 + i * MILE_IN_DEGREES_LAT * 0.1 }
+      expect(mileOnTrail(index, at)).toBe(locateOnTrail(index, at)?.mile ?? null)
+    }
+  })
+
+  it('refuses a point that is only near in latitude, exactly as locateOnTrail does', () => {
+    // The Indianapolis case. A cheaper mile must not be a laxer one - this is
+    // the gate that stops a POI most of a continent away being given a number.
+    const farWest = { lon: -86.16, lat: 39 }
+    expect(mileOnTrail(index, farWest)).toBeNull()
+    expect(locateOnTrail(index, farWest)).toBeNull()
+  })
+
+  it('answers null for an index with no usable lines', () => {
+    expect(mileOnTrail(buildTrailIndex(collection([])), { lon: -77, lat: 39 })).toBeNull()
+  })
+
+  it('places a point a couple of miles off the centerline, like locateOnTrail', () => {
+    const twoMilesNorth = { lon: -77, lat: 39 + MILE_IN_DEGREES_LAT * 6.9 }
+    expect(mileOnTrail(index, twoMilesNorth)).toBe(
+      locateOnTrail(index, twoMilesNorth)?.mile ?? null,
+    )
   })
 })
 

@@ -302,12 +302,20 @@ two is worth stating here because it is what makes the seam defensible:
 else** — all thirty maintaining-club sections, all of the stretches worth going to. Nothing is
 sampled, so nothing needs a caption admitting it was.
 
-The one thing this doc still owes that view: the legend says *waypoints are drawn from a closer
-zoom*, rather than today's `Nothing on this part of the map yet — pan or zoom out to see more`,
-which at the opening view is false in both halves — there is plenty here, and zooming *out* is the
-wrong direction. That sentence is already built, on
-[#574 — Say how many waypoints did not fit, per category, where it is read](https://github.com/OurHike/OurHike/pull/574),
-and is worth keeping whatever happens to the rest of that branch.
+**Since #603 it also carries the dot rank**, which is a real qualification of the paragraph above
+rather than a footnote to it: the corridor view is now that complete map of something else *plus*
+a stipple of every waypoint on the trail. The claim survives because a dot is not a place-card —
+nothing about the scatter suggests it is a curated set, and no dot is sampled out — but the view is
+no longer showing one subject. See the answered question below for why that trade was taken, and
+`client/src/map/poiLayers.ts`'s `POI_DOT_MIN_ZOOM` for the reasoning in the code.
+
+The legend's sentence for this band is now *"Waypoints show as dots at this zoom. Zoom in to see
+what each one is."* It replaced `Nothing on this part of the map yet — pan or zoom out to see
+more`, which at the opening view was false in both halves — there was plenty here, and zooming
+*out* was the wrong direction. The first replacement landed with
+[#528](https://github.com/OurHike/OurHike/issues/528) as *"waypoints are drawn from a closer
+zoom"*; #603 corrected it again, because once dots draw here that sentence is half wrong too —
+they **are** drawn, and what needs a closer zoom is telling one from another.
 
 ---
 
@@ -341,11 +349,27 @@ picture of the current camera is not a preference.
   doc asked for rather than a number argued into place. See "The seam" above. What it turned up
   along the way reshaped two things here rather than confirming them: site folding is doing more
   of the work than this doc credited it with, and the dot rank is in practice a vista rank.
-- **Whether the dot rank should extend below the seam.** It would be honest — dots never claim
-  completeness — and it would make the corridor view show waypoint *density* under the club
-  sections. It also puts 2,778 dots on a 2,197-mile line, which is a texture, which is the
-  argument `POI_MIN_ZOOM`'s docstring already won once. Recommended **no** for v1, and cheap to
-  reverse, because unlike a floor it cannot make the map lie in either position.
+- ~~**Whether the dot rank should extend below the seam.**~~ **Answered 2026-08-15 — yes**, on
+  [#603](https://github.com/OurHike/OurHike/issues/603), by the maintainer. `POI_DOT_MIN_ZOOM = 0`
+  in `client/src/map/poiLayers.ts`; the pin rank keeps `POI_PIN_MIN_ZOOM`, so the two ranks now
+  stop in different places on purpose.
+
+  The recommendation here was **no**, and what changed is not the argument but the evidence
+  against it. #603 recorded what the corridor view actually is today: the app opens on the whole
+  trail, which lands near z4 on a phone, so the first map a hiker ever sees was the trail line and
+  nothing else, for the entire z4–z9 band. The "it is a texture" objection is still correct and is
+  now answered by size rather than by absence — the dots ramp down to 1.2 px at z0, so what the
+  corridor view carries is a stipple, denser where the places are. That is the texture, labelled,
+  which is the same move the seam's own docstring made when it stopped drawing nothing.
+
+  It was chosen over the two alternatives in #603's scope precisely because it adds rather than
+  reverses: a tighter opening camera would contradict `CORRIDOR_BOUNDS`'s comment, and a camera
+  surviving the tab closing would contradict `cameraMemory.ts`'s. Both stand untouched.
+
+  **The cost this doc should keep stating:** the "Below the seam" section above says the corridor
+  view is *a complete map of something else*. It now carries a second thing, and that claim is
+  softer than it was. ~2,837 circles at z4 — cheap to draw (a `circle` layer runs no collision
+  pass), but not free of meaning.
 - **Dot size, and whether it varies by `POI_PRIORITY`.** Built uniform — 2.5 px at the seam
   growing to 4 px by z16, the same for every category. A 4 px water dot and a 3 px vista dot would
   carry the priority ordering into the rank that has no ordering, and the argument for the rank is

@@ -8,6 +8,7 @@ project's established convention, same as requests-mock elsewhere) - moto
 mocks S3/R2 (R2 is S3-compatible) instead of hitting a real bucket.
 """
 
+import gzip
 import json
 
 import boto3
@@ -707,3 +708,69 @@ def test_the_log_says_which_environment_it_published_to(monkeypatch, capsys, s3_
     out = capsys.readouterr().out
     assert "ua environment" in out
     assert "environments/ua/" in out
+
+
+# ---------------------------------------------------------------------------
+# How artifacts are STORED, as against which of them are (#717).
+#
+# Every object used to land with no Content-Encoding, no Cache-Control and, for
+# .geojson, no Content-Type - so the bucket served 21.5 MB of text to deliver
+# 5.3 MB of information, on every hiker's first launch. These check the headers
+# rather than the compression ratio: what a given input gzips to is zlib's
+# business, and what a client can read is ours.
+# ---------------------------------------------------------------------------
+
+
+def test_text_artifacts_are_stored_gzipped_and_typed(s3_client, local_artifacts):
+    publish.publish(local_artifacts, s3_client=s3_client, bucket=BUCKET)
+
+    stored = s3_client.get_object(Bucket=BUCKET, Key="trails.geojson")
+    assert stored["ContentEncoding"] == "gzip"
+    assert stored["ContentType"] == "application/geo+json"
+    # The bytes in the bucket really are gzip, and really are the artifact.
+    # `fetch` decodes this transparently, which is why the published sha256
+    # below can stay the hash of the file on disk.
+    assert json.loads(gzip.decompress(stored["Body"].read())) == {
+        "type": "FeatureCollection",
+        "features": [],
+    }
+
+
+def test_the_published_hash_is_still_of_the_uncompressed_bytes(s3_client, local_artifacts):
+    # The whole safety of serving these compressed rests on this. A client's
+    # fetch decodes before its code sees a byte, so client/src/lib/trailData.ts
+    # hashes the file as it was on disk - if the manifest recorded the gzipped
+    # hash instead, every download would be rejected as corrupt.
+    publish.publish(local_artifacts, s3_client=s3_client, bucket=BUCKET)
+
+    manifest = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())
+    assert manifest["artifacts"]["trails.geojson"]["sha256"] == local_artifacts["trails.geojson"]["sha256"]
+
+
+def test_range_readable_archives_are_never_encoded(tmp_path, s3_client):
+    # .pmtiles is read by byte range - the client seeks within the archive
+    # (map/pmtilesSource.ts) and resumes partial transfers with a Range header
+    # (lib/archiveDownload.ts). A stored Content-Encoding makes a range refer
+    # to compressed offsets, which breaks both, so this must never be "helped"
+    # into the compressible table.
+    archive = tmp_path / "background.pmtiles"
+    archive.write_bytes(b"PMTiles" + b"\0" * 512)
+    artifacts = {"background.pmtiles": {"path": str(archive), "sha256": publish.sha256_file(archive)}}
+
+    publish.publish(artifacts, s3_client=s3_client, bucket=BUCKET)
+
+    stored = s3_client.get_object(Bucket=BUCKET, Key="background.pmtiles")
+    assert "ContentEncoding" not in stored
+    assert stored["ContentType"] == "application/vnd.pmtiles"
+    assert stored["Body"].read() == archive.read_bytes()
+
+
+def test_the_manifest_is_never_cached(s3_client, local_artifacts):
+    # latest.json says which version is current. A stale copy would have a
+    # client check freshly downloaded bytes against a superseded hash and
+    # discard a good download.
+    publish.publish(local_artifacts, s3_client=s3_client, bucket=BUCKET)
+
+    stored = s3_client.get_object(Bucket=BUCKET, Key="latest.json")
+    assert stored["CacheControl"] == "no-cache"
+    assert "ContentEncoding" not in stored

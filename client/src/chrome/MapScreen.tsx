@@ -354,6 +354,36 @@ export interface MapScreenProps {
   trailLinesMissing?: boolean
   /** What the archive's own header says it covers, for the opening camera. */
   archiveZooms?: ArchiveZooms | null
+  /** Room to leave around the opening box, per side - see MapViewProps. The
+   *  shell sets a bottom inset during first run so the trail is framed against
+   *  the strip above the entry card rather than against the whole canvas. */
+  boundsPadding?: number | { top: number; bottom: number; left: number; right: number }
+  /**
+   * First run: this screen is the backdrop to the onboarding steps, and is
+   * showing its canvas and nothing else (#721).
+   *
+   * ONE BOOLEAN RATHER THAN A SECOND MAP. `App.tsx` used to render its own
+   * `<MapView>` behind the steps and then hand over to this screen's, which
+   * meant the first run built two maps and threw the first away at the exact
+   * moment onboarding ended - measured at two WebGL contexts and 1,230 ms of
+   * blocking work across 7 long tasks, on a phone that had just finished the
+   * launch fetch. React reconciles by position, so the only way to keep one
+   * map across that transition is for the map to stay where it is and the
+   * chrome to change around it. This is that.
+   *
+   * What it does NOT do is put the map screen behind the steps. The chrome is
+   * hidden AND the whole subtree is `inert`, because `App.tsx`'s original
+   * reasoning holds: chrome behind a modal "is either a trap or a way to skip
+   * the flow sideways". Hiding is structural rather than a list of names - see
+   * chrome.css's `.map-screen--entering` block - so a control added to this
+   * screen later is hidden here by default rather than appearing behind the
+   * steps because nobody remembered this flag.
+   *
+   * The attribution is the deliberate exception and stays drawn: the live
+   * sheet's OSM data is ODbL and its credit is a licence condition, so a map
+   * that is drawn has to be credited whether or not anyone may touch it.
+   */
+  entering?: boolean
 }
 
 export function MapScreen({
@@ -440,6 +470,8 @@ export function MapScreen({
   belowPoiZoom = false,
   trailLinesMissing = false,
   archiveZooms = null,
+  boundsPadding,
+  entering = false,
 }: MapScreenProps) {
   // The one thing the stylesheet cannot do. The legend announces itself as
   // `role="dialog" aria-modal="true"` and renders nothing when closed; as a
@@ -470,7 +502,22 @@ export function MapScreen({
   )
 
   return (
-    <div className="map-screen">
+    // `inert` is what makes hiding the chrome safe rather than cosmetic: it
+    // takes the whole subtree out of the tab order and the accessibility tree,
+    // so a keyboard or screen-reader user during first run is in the steps and
+    // only the steps. It also covers the map's own locate control, a tap on
+    // which would put the OS location prompt on screen ahead of the step whose
+    // entire job is to explain why we are asking.
+    <div
+      className={entering ? 'map-screen map-screen--entering' : 'map-screen'}
+      inert={entering || undefined}
+      // Paired with `inert` rather than standing in for it. `inert` is what
+      // makes the subtree unreachable; this is what stops a screen reader
+      // announcing a map region that a hiker cannot get to and is not being
+      // asked about. Safe together precisely because of `inert` - aria-hidden
+      // over focusable content would otherwise be the classic trap.
+      aria-hidden={entering || undefined}
+    >
       {/* Everything that is not the navigation. On a phone this is a plain
           column and changes nothing; on a desktop the tab bar becomes a
           sidebar beside it (src/desktop.css). */}
@@ -577,6 +624,7 @@ export function MapScreen({
               zoom={zoom}
               bounds={bounds}
               archiveZooms={archiveZooms}
+              boundsPadding={boundsPadding}
               onViewportChange={onViewportChange}
               onMapReady={handleMapReady}
               onLiveSourceHealth={onLiveSourceHealth}

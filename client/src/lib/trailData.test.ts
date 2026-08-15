@@ -13,7 +13,7 @@ import {
 } from './trailData'
 import { dataUrl, ELEVATION_KEY, POI_TYPES, SPURS_KEY, TRAILS_KEY } from './config'
 import type { ElevationProfile } from './elevationProfile'
-import { publishedHash } from './dataManifest'
+import { publishedHashes } from './dataManifest'
 import { sha256Hex } from './sha256'
 
 vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
@@ -21,9 +21,19 @@ vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
 // The published-hash lookup, mocked the same way archiveDownload.test.ts
 // mocks it: what latest.json says is dataManifest.ts's own subject, and what
 // matters here is only whether these artifacts are held to it.
-vi.mock('./dataManifest', () => ({ publishedHash: vi.fn() }))
+vi.mock('./dataManifest', () => ({ publishedHash: vi.fn(), publishedHashes: vi.fn() }))
 
-const mockedPublishedHash = vi.mocked(publishedHash)
+const mockedPublishedHashes = vi.mocked(publishedHashes)
+
+/**
+ * What `latest.json` publishes, in the shape the download now reads it: ONE
+ * snapshot per attempt, handed back as a synchronous lookup (#717). It used to
+ * be re-fetched per artifact, so these tests set a per-key async mock; the
+ * expectations are unchanged, only where the answer comes from.
+ */
+function publishing(lookup: (key: string) => string | null) {
+  mockedPublishedHashes.mockResolvedValue(lookup)
+}
 
 const store = new Map<string, unknown>()
 
@@ -39,7 +49,7 @@ beforeEach(() => {
   // No published answer by default, which is what an older release or a
   // field-test server gives - and must leave these downloads behaving
   // exactly as they did before #197.
-  mockedPublishedHash.mockResolvedValue(null)
+  publishing(() => null)
   vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
   vi.mocked(set).mockImplementation((key, value) => {
     store.set(key as string, value)
@@ -1103,7 +1113,7 @@ describe('holding the trail data to its published hash (#197)', () => {
 
   it('stores the trail data when every artifact matches what was published', async () => {
     serve(poiCollection([]))
-    mockedPublishedHash.mockImplementation(async (key) =>
+    publishing((key) =>
       key === TRAILS_KEY
         ? sha256Hex(new TextEncoder().encode('{"type":"FeatureCollection"}'))
         : null,
@@ -1120,7 +1130,7 @@ describe('holding the trail data to its published hash (#197)', () => {
     // it was already using.
     store.set(TRAILS_BLOB_KEY, new Blob(['the lines that already work']))
     serve(poiCollection([]))
-    mockedPublishedHash.mockImplementation(async (key) =>
+    publishing((key) =>
       key === TRAILS_KEY
         ? sha256Hex(new TextEncoder().encode('a different build'))
         : null,
@@ -1138,7 +1148,7 @@ describe('holding the trail data to its published hash (#197)', () => {
     // Which file it was is the difference between a useful field report and
     // "the download failed".
     serve(poiCollection([]))
-    mockedPublishedHash.mockImplementation(async (key) =>
+    publishing((key) =>
       key === 'poi_water.geojson'
         ? sha256Hex(new TextEncoder().encode('not what arrived'))
         : null,
@@ -1152,7 +1162,7 @@ describe('holding the trail data to its published hash (#197)', () => {
 
   it('checks the optional artifacts too, where a release publishes them', async () => {
     serve(poiCollection([]), '{"at-1":{"destination":"Somewhere"}}')
-    mockedPublishedHash.mockImplementation(async (key) =>
+    publishing((key) =>
       key === SPURS_KEY
         ? sha256Hex(new TextEncoder().encode('an older spurs.json'))
         : null,
@@ -1161,11 +1171,25 @@ describe('holding the trail data to its published hash (#197)', () => {
     await expect(downloadTrailData()).rejects.toThrow(TrailDataHashMismatchError)
   })
 
+  it('reads latest.json once for the whole attempt, not once per artifact', async () => {
+    // #717. readChecked() used to call publishedHash() itself, so a launch
+    // fetch of eleven artifacts pulled the manifest eleven times - measured on
+    // a real first run as eleven round trips strung between the downloads.
+    // One snapshot is also the more correct thing to check an attempt against:
+    // every artifact is held to ONE published version rather than to whatever
+    // the bucket was serving at the moment each file happened to finish.
+    serve(poiCollection([]))
+
+    await downloadTrailData()
+
+    expect(mockedPublishedHashes).toHaveBeenCalledTimes(1)
+  })
+
   it('stores what arrived when nothing published a hash for it', async () => {
     // Absence of a check is not a failed check - the same downgrade the
     // archive download makes, for the same reason.
     serve(poiCollection([]))
-    mockedPublishedHash.mockResolvedValue(null)
+    publishing(() => null)
 
     await downloadTrailData()
 

@@ -2,27 +2,38 @@
  *
  * The rule this file exists to keep: the map behind the steps stays visible.
  * That is not decoration - every one of the three steps is a claim about the
- * map, and the shell pays for a whole extra MapLibre build to have it there
- * (App.tsx), which a stylesheet that covered it would waste in silence.
+ * map, so a stylesheet that covered it would quietly undo the reason the map
+ * is drawn behind them at all.
  *
  * So there is no page background here, and the card is capped short of the
  * viewport rather than sized by its contents. Both are asserted in
  * test/entryLayout.test.ts, because jsdom does no layout and "you can still
  * see the map" is exactly the kind of property that decays under a later
  * well-meaning `min-height: 100svh`.
+ *
+ * The file header used to say the shell "pays for a whole extra MapLibre build
+ * to have it there". It no longer does - #721 made the map screen itself the
+ * backdrop, hidden down to its canvas - which is also why the block below is
+ * an overlay rather than a child of a frame that no longer exists.
  */
 
 .onboarding {
-  position: relative;
-  /* Over the backdrop .app__entry-map, which is absolute in the same frame. */
+  /* Over the map screen, which is a sibling in App.tsx's fragment rather than
+     a parent (#721). Fixed rather than absolute because there is no positioned
+     ancestor to resolve against any more, and the steps want the viewport:
+     .map-screen is 100svh, so this covers exactly it. */
+  position: fixed;
+  inset: 0;
   z-index: 1;
-  height: 100%;
   display: flex;
   flex-direction: column;
   /* The card sits at the bottom - the thumb end of a phone, and the end of
      the screen a map is least often read from. */
   justify-content: flex-end;
-  /* Deliberately no background. See the file header. */
+  /* Deliberately no background. See the file header - and note that being a
+     full-viewport overlay makes this line load-bearing rather than merely
+     tidy: a background here would hide the map completely. */
+  pointer-events: none;
 }
 
 /* The steps themselves.
@@ -38,6 +49,10 @@
   gap: var(--space-4, 16px);
   max-height: 78%;
   overflow-y: auto;
+  /* Only the card takes taps - the overlay around it is `pointer-events: none`
+     so the empty region is a window onto the map rather than a modal scrim,
+     which is the one thing the design says it is not. */
+  pointer-events: auto;
   padding: var(--space-5, 20px);
   padding-bottom: max(var(--space-5, 20px), env(safe-area-inset-bottom, 0));
   background: var(--bg-page);

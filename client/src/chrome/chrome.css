@@ -349,6 +349,46 @@
   background: var(--bg-page);
 }
 
+/* First run: this screen is the backdrop to the onboarding steps, showing its
+   canvas and nothing else (#721, MapScreenProps.entering).
+ *
+ * HIDING IS BY EXCLUSION, NOT BY LIST, and that is the load-bearing choice
+ * here. Each rule hides every child of a wrapper except the one on the path
+ * down to the canvas, so a control added to this screen next year is hidden
+ * during first run by default. A list of class names would have gone stale the
+ * first time somebody added a button, and the failure mode is a stray control
+ * sitting behind a modal - which is the trap App.tsx's own reasoning rules out.
+ *
+ * `display: none` and not `visibility`/opacity: a hidden-but-laid-out header
+ * would still take its share of the column and leave the canvas short.
+ *
+ * None of this is what makes the screen safe to have behind a modal - `inert`
+ * on the root does that, in MapScreen.tsx. This is what makes it look like the
+ * plain canvas the steps are drawn over. */
+.map-screen--entering > :not(.map-screen__main),
+.map-screen--entering .map-screen__main > :not(.map-screen__body),
+.map-screen--entering .map-screen__body > :not(.map-screen__canvas) {
+  display: none;
+}
+
+/* Inside the canvas the exception is the attribution, which is a licence
+   condition rather than chrome: the live sheet's OSM data is ODbL, so a map
+   that is drawn has to be credited whether or not anyone may touch it. The
+   canvas overlays that are not the map or that credit - the dropped-waypoint
+   count, the waypoint card, search - go with the rest. */
+.map-screen--entering .map-screen__canvas > :not(.map-view):not(.map-attribution) {
+  display: none;
+}
+
+/* MapLibre's own controls - compass, locate, scale bar - are attached to every
+   map this app builds (map/mapChrome.ts) and are drawn in the bottom corners,
+   which is exactly where the entry card is. A picture of a button that cannot
+   be pressed is a worse thing to show someone than no button at all. They come
+   back, in the thumb zone, the moment the steps finish. */
+.map-screen--entering .maplibregl-ctrl {
+  display: none;
+}
+
 /* Two wrappers that exist for the desktop layout (src/desktop.css) and are
    deliberately inert here: each is a plain flex column that fills, which is
    exactly what these children did as direct children of .map-screen.

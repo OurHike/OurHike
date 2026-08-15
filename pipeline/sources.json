@@ -190,6 +190,30 @@
       "discovered_via": "WATER_SOURCES.md §5, following USGS's retirement of the NHD on 2023-10-01. Registered by hand - discover_sources.py walks ATC's Experience Builder app and this is not in it.",
       "discovered_date": "2026-08-14",
       "notes": "Nothing fetches this. It is registered because the pipeline's water derivation (fetch_trail_water.py) reads a dataset USGS no longer maintains, and this is where its replacement will appear. Measured 2026-08-14: for the corridor, 3DHP IS NHD - identical geometry (1,265 flowlines in a box in central Virginia against NHD's 1,265, same vertex count, worst-case separation 0.086 mm) and identical springs (1,796 features, every one within 1 m of an NHD spring) - with the perennial/intermittent FCode collapsed away into an undifferentiated `Channel Line`. Migrating now would trade the only structured seasonality signal the pipeline has for the same geometry, so the entry holds a watch instead of a fetch."
+    },
+    {
+      "key": "usdm_drought",
+      "title": "U.S. Drought Monitor weekly class polygons",
+      "provider": "National Drought Mitigation Center (UNL), USDA, NOAA, NASA",
+      "kind": "weekly_polygons",
+      "url": "https://droughtmonitor.unl.edu/data/json/",
+      "trust": "authoritative",
+      "steward": "National Drought Mitigation Center, University of Nebraska-Lincoln",
+      "steward_contact": "DroughtMonitor@unl.edu",
+      "licence": "See usdm_licence above - reproduction of the map is explicitly permitted with NDMC's credit line, redistribution of the polygons rides on the maintainer's declaration of 2026-08-15, and the open question is recorded there rather than resolved.",
+      "attribution": "The U.S. Drought Monitor is jointly produced by the National Drought Mitigation Center at the University of Nebraska-Lincoln, the United States Department of Agriculture, the National Oceanic and Atmospheric Administration and the National Aeronautics and Space Administration. Map courtesy of NDMC.",
+      "discovered_via": "WATER_CONDITIONS.md's survey for #716 measured it against the centerline: 877.1 of 2,172.0 trail miles at least abnormally dry on 2026-08-11, 205.8 of them in severe drought. Registered by hand - discover_sources.py walks ATC's Experience Builder app and this source is not in it.",
+      "discovered_date": "2026-08-15",
+      "notes": "Fetched by fetch_drought.py to data/raw/drought/usdm_YYYYMMDD.json, the DATED file rather than usdm_current.json: the polygons carry no date inside them, and a weekly product whose artifact cannot name its week leaves the client with only the bake's clock. A USDM week runs Tuesday to Monday and is released on the Thursday, so the fetcher walks back a week at a time - a midweek 404 is 'not published yet', not a failure. export_drought.py clips to a 10 km corridor (27.6 MB national file to about 10 KB gzipped, losslessly - WATER_CONDITIONS.md §4), un-nests the classes so each published band is disjoint, and publishes conditions/drought.json."
     }
-  ]
+  ],
+  "usdm_licence": {
+    "_comment": "The basis on which the U.S. Drought Monitor's POLYGONS may be republished from OurHike's own bucket, which is a different act from reproducing NDMC's map image. NDMC's permission page (read 2026-08-15) explicitly allows reproducing the MAP given the credit line below, and is silent on redistributing the underlying data - which is what conditions/drought.json does. Recorded on the maintainer's declaration of 2026-08-15, the same footing as atc_licence above: a federally co-produced dataset published for open download is reusable with the required credit. Scope: the weekly USDM class polygons and nothing else. It is NOT a grant to sublicense NDMC's work onward, and it does not extend to any other NDMC or drought.gov product.",
+    "author": "National Drought Mitigation Center, USDA, NOAA and NASA",
+    "license": "Reproduction permitted with NDMC's required credit; redistribution recorded by maintainer declaration",
+    "basis": "Maintainer authorisation, 2026-08-15",
+    "recorded_date": "2026-08-15",
+    "attribution": "The U.S. Drought Monitor is jointly produced by the National Drought Mitigation Center at the University of Nebraska-Lincoln, the United States Department of Agriculture, the National Oceanic and Atmospheric Administration and the National Aeronautics and Space Administration. Map courtesy of NDMC.",
+    "open_question": "NDMC has not been asked directly whether redistributing the polygons is in scope. The wording above is theirs, verbatim from droughtmonitor.unl.edu/About/Permission.aspx; an email to DroughtMonitor@unl.edu would turn this declaration into a confirmation. Until then this is the maintainer's reading, recorded as such rather than as NDMC's."
+  }
 }

@@ -119,7 +119,7 @@ import { useAppUpdate, UPDATE_CHECK_MS } from './lib/useAppUpdate'
 import { readCamera, writeCamera } from './lib/cameraMemory'
 import { useGeolocation } from './lib/useGeolocation'
 import { positionLine } from './lib/positionLine'
-import { locateOnTrail } from './lib/trailPosition'
+import { locateOnTrail, mileOnTrail } from './lib/trailPosition'
 import type { StoredPoi } from './lib/trailData'
 import { useTrailData } from './lib/useTrailData'
 import { ribbonSamples, ribbonWindow } from './lib/elevationProfile'
@@ -996,6 +996,14 @@ function App() {
   // exists and simply omitted where it does not - searching for a shelter by
   // name needs no geometry, and gating the whole list on the index meant a
   // missing one silently emptied search while 800-odd POIs sat in memory.
+  //
+  // `mileOnTrail` rather than `locateOnTrail` (#717). This memo wants the mile
+  // and reads nothing else, and `locateOnTrail` pays for a second search over
+  // the whole tread to answer a question about GPS fixes that a POI never
+  // asks. Measured 2026-08-15 on x86 over the corridor's 2,837 POIs: 975 ms in
+  // one synchronous memo, about half of it that discarded scan - and this runs
+  // on the launch after the trail index lands, which is the same moment the
+  // map is being built.
   const searchablePois: SearchablePoi[] = useMemo(
     () =>
       pois.map((poi) => ({
@@ -1005,7 +1013,7 @@ function App() {
         mile:
           trailIndex === null
             ? undefined
-            : locateOnTrail(trailIndex, { lon: poi.lon, lat: poi.lat })?.mile,
+            : (mileOnTrail(trailIndex, { lon: poi.lon, lat: poi.lat }) ?? undefined),
       })),
     [pois, trailIndex],
   )

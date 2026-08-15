@@ -437,6 +437,33 @@ function nearestVertex(
   return { index: bestIndex, feet: bestFeet }
 }
 
+/**
+ * The mile alone, for a caller that wants nothing else.
+ *
+ * The same centerline search and the same {@link MAX_OFF_TRAIL_MILES} gate
+ * {@link locateOnTrail} applies, and deliberately NOT the second search over
+ * `tread`. That second search is what answers "am I on a trail at all", it is
+ * the more expensive of the two (251,544 tread vertices against the
+ * centerline's 219,293), and a caller placing a POI on the mile axis has no
+ * use for it.
+ *
+ * Worth its own function rather than a flag because of who calls which. This
+ * one is called in bulk - App.tsx's `searchablePois` runs it over every POI on
+ * the phone, 2,837 of them, in a memo that blocks the main thread; measured
+ * 2026-08-15 on x86, `locateOnTrail` over that set costs 975 ms and roughly
+ * half of that is the tread scan whose result was being discarded (#717).
+ * {@link locateOnTrail} is called once per GPS fix and feeds the wrong-way
+ * alert, which needs `offTreadFeet` and must keep paying for it. Splitting
+ * them means the cheap path cannot accidentally become the safety path, or
+ * the reverse.
+ */
+export function mileOnTrail(index: TrailIndex, at: LonLat): number | null {
+  const onCenterline = nearestVertex(index, at)
+  if (onCenterline === null) return null
+  if (onCenterline.feet > MAX_OFF_TRAIL_MILES * FEET_PER_MILE) return null
+  return index.miles[onCenterline.index]
+}
+
 export function locateOnTrail(index: TrailIndex, at: LonLat): TrailFix | null {
   const onCenterline = nearestVertex(index, at)
   if (onCenterline === null) return null

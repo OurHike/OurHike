@@ -1,4 +1,140 @@
-@import url('https://fonts.googleapis.com/css2?family=Bitter:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Public+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap');
+/* Typography tokens, and the three families the design system names.
+ *
+ * THE FONTS ARE SERVED FROM THIS ORIGIN, and that is the load-bearing part of
+ * this file rather than a packaging preference.
+ *
+ * This file used to open with `@import url('https://fonts.googleapis.com/...')`.
+ * A cross-origin CSS `@import` is render-blocking: the browser paints nothing
+ * at all until it resolves, and `display=swap` does not change that - swap
+ * governs how a FONT renders once its stylesheet has arrived, not whether the
+ * stylesheet gates the first paint.
+ *
+ * Measured 2026-08-15, the built client served over loopback with the app
+ * shell fully downloaded at 527 ms: `first-paint` at 12,956 ms and React's
+ * first effect at 12,971 ms, with the main thread idle throughout (the
+ * long-task observer records nothing before 13,088 ms). The app was not busy;
+ * it was not allowed to paint. That 12.7 s is one sandbox's time-to-fail
+ * reaching Google, so it is not the number a hiker gets - the number a hiker
+ * gets is whatever their connection does with a request to a third party.
+ *
+ * Full airplane mode was never the bad case: the request fails in 64 ms
+ * because the OS knows there is no network, and first paint follows at 64 ms.
+ * The bad case is the one this app exists for - SOME signal, and poor. A
+ * trailhead with one bar, a hostel's wifi, a captive portal that completes the
+ * TCP connection and never answers. A service worker cannot help, because the
+ * request is cross-origin and is not in the precache.
+ *
+ * This repository has already made this call once, correctly, for the other
+ * half of its typography: vite.config.ts precaches `glyphs/**` because
+ * otherwise "labels render in town and vanish in airplane mode - precisely the
+ * split this app cannot ship" (#188). The map glyphs were self-hosted and the
+ * UI fonts were not, and the UI fonts gate strictly more.
+ *
+ * What is here is Google's own woff2 for the same three families, `latin` and
+ * `latin-ext` subsets only, fetched 2026-08-15 - 10 files, 200 KB, all of it
+ * precached and versioned with the build. The families keep their
+ * `unicode-range`s, so an ASCII screen still downloads only the latin file.
+ * Bitter and Public Sans are the VARIABLE cuts, which is why one file now
+ * covers a weight range that used to be listed weight by weight; IBM Plex Mono
+ * publishes no variable cut, so its two weights are two files. Nothing about
+ * which weights are available to a caller has changed.
+ *
+ * All three are Open Font License. Re-cutting them means re-running the fetch
+ * in the pull request that introduced this file; there is no build step here
+ * on purpose, because a font that is fetched at build time is a third party on
+ * the critical path again, one layer down.
+ */
+
+@font-face {
+  font-family: 'Bitter';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/bitter-italic-400-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Bitter';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/bitter-italic-400-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Bitter';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('../assets/fonts/bitter-normal-400-700-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Bitter';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('../assets/fonts/bitter-normal-400-700-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/ibm-plex-mono-normal-400-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/ibm-plex-mono-normal-400-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('../assets/fonts/ibm-plex-mono-normal-500-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('../assets/fonts/ibm-plex-mono-normal-500-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Public Sans';
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url('../assets/fonts/public-sans-normal-400-800-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Public Sans';
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url('../assets/fonts/public-sans-normal-400-800-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
 :root{
 --font-display:'Bitter',ui-serif,Georgia,serif;
 --font-body:'Public Sans',ui-sans-serif,system-ui,sans-serif;

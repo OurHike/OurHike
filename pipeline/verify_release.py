@@ -630,7 +630,14 @@ def check_nothing_lost(previous_id: str, previous_manifest: dict, current_manife
     return _report(3, f"(since {previous_id})", OK, f"every one of {len(before)} artifact(s) in {previous_id} is still here")
 
 
-def _content_length(base: str, key: str, session=None) -> int | None:
+def _content_length(base: str, key: str, session=None) -> tuple[int, str] | None:
+    """Stored size and Content-Encoding, or None if it cannot be sized.
+
+    The encoding rides along because the size means nothing without it. R2
+    stores whatever bytes were uploaded, so a gzipped object's Content-Length
+    is its COMPRESSED size - and comparing that against an uncompressed
+    predecessor measures the compression, not the data. See check 17.
+    """
     try:
         response = (session or requests).head(f"{base}/{key}", timeout=HTTP_TIMEOUT)
     except requests.RequestException:
@@ -638,7 +645,7 @@ def _content_length(base: str, key: str, session=None) -> int | None:
     if response.status_code != 200:
         return None
     try:
-        return int(response.headers["Content-Length"])
+        return int(response.headers["Content-Length"]), response.headers.get("Content-Encoding", "")
     except (KeyError, TypeError, ValueError):
         return None
 
@@ -663,6 +670,15 @@ def check_release_regression(
     and parsed - twice, once per release - which is ~3.2 GB to answer a question
     two HEADs answer for the cases that matter. A geojson that lost half its
     features lost roughly half its bytes.
+
+    That last sentence is only true while both releases are stored the same
+    way, which is why the encoding is compared before the sizes are (#717).
+    `publish.py` now stores .json and .geojson gzipped, so the first release
+    after that change is a 3-8x "drop" against its predecessor that is entirely
+    compression - trails.geojson goes from 12,308,084 stored bytes to about
+    4,142,846 while carrying exactly the same features. Reporting that as data
+    loss would be a red gate on a change that lost nothing, and worse, it would
+    teach whoever saw it that this check cries wolf.
     """
     shared = sorted(
         set((previous_manifest.get("artifacts") or {}).keys()) & set((current_manifest.get("artifacts") or {}).keys())
@@ -672,10 +688,22 @@ def check_release_regression(
 
     reports = []
     for name in shared:
-        before = _content_length(base, release_key(previous_id, name), session)
-        now = _content_length(base, release_key(current_id, name), session)
-        if before is None or now is None:
+        sized_before = _content_length(base, release_key(previous_id, name), session)
+        sized_now = _content_length(base, release_key(current_id, name), session)
+        if sized_before is None or sized_now is None:
             reports.append(_report(17, name, SKIPPED, f"could not size it in both releases ({previous_id} and {current_id})"))
+            continue
+        (before, encoded_before), (now, encoded_now) = sized_before, sized_now
+        if encoded_before != encoded_now:
+            reports.append(
+                _report(
+                    17,
+                    name,
+                    SKIPPED,
+                    f"stored as {encoded_before or 'identity'} in {previous_id} and {encoded_now or 'identity'} now, "
+                    "so the two sizes are not measuring the same thing",
+                )
+            )
             continue
         if before == 0:
             reports.append(_report(17, name, OK, f"{previous_id} published it empty, so there is no drop to measure"))

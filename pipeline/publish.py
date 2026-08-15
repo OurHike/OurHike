@@ -41,9 +41,11 @@ have already downloaded.
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import os
+import shutil
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -145,6 +147,107 @@ OFFLINE_SHEET_ARCHIVES = {
 # prevent, so the state is only ever written together with the bytes it
 # describes.
 SIDECARS = ("build_state.json",)
+
+
+# What an artifact is served as, by extension.
+#
+# UNTIL #717 THIS WAS NOTHING AT ALL. `upload_file` was called with no
+# ExtraArgs, so every object landed in R2 with no Content-Encoding, no
+# Cache-Control, and - for `.geojson`, which Python's mimetypes does not know -
+# no Content-Type either. R2 does not compress on the fly, so what the bucket
+# served was what a hiker downloaded, byte for byte.
+#
+# Measured against the live bucket 2026-08-15, requesting with
+# `Accept-Encoding: gzip, br`, over the eleven artifacts the client fetches on
+# every first launch:
+#
+#     served    21.5 MB   (22,542,491 bytes)
+#     gzip -6    5.3 MB   ( 5,554,379 bytes)   4.1x
+#
+# trails.geojson alone is 12,308,084 -> 4,142,846, and elevation_profile.json
+# 6,996,308 -> 914,415. The client's own comments have quoted the gzipped
+# figures for years (client/src/lib/config.ts on elevation_profile.json: "6.5
+# MB of JSON that gzips to 0.87 MB"); nothing was gzipping them.
+#
+# ONLY TEXT. The .pmtiles archives and .fgb files are read by BYTE RANGE -
+# client/src/map/pmtilesSource.ts seeks within the archive, and
+# client/src/lib/archiveDownload.ts resumes a partial transfer with a Range
+# header. A stored Content-Encoding makes ranges refer to compressed offsets
+# and breaks both, so those two extensions are deliberately absent from this
+# table. They are also already compressed internally, so there is nothing to
+# win and a download to lose.
+#
+# The published SHA-256 does not move. `latest.json` records the hash of the
+# file on disk, and a client's `fetch` decodes Content-Encoding before any of
+# its code sees the bytes - so client/src/lib/trailData.ts hashes exactly what
+# was hashed here.
+COMPRESSIBLE_TYPES = {
+    ".json": "application/json",
+    ".geojson": "application/geo+json",
+}
+
+# Everything else, named rather than guessed, so a new extension is a decision
+# instead of an empty Content-Type.
+BINARY_TYPES = {
+    ".pmtiles": "application/vnd.pmtiles",
+    ".fgb": "application/vnd.flatgeobuf",
+}
+
+# Long enough that nothing re-fetches within a session, short enough that a
+# republish reaches a phone the same day.
+#
+# `no-cache` for the manifest specifically, because it is the thing that says
+# what the current version IS - serving a stale one would have a client verify
+# fresh bytes against an old hash and reject a perfectly good download.
+#
+# Both are an improvement on sending no header at all rather than a tuning
+# exercise: with no Cache-Control a browser applies HEURISTIC freshness from
+# Last-Modified, which for an artifact published weeks ago can be days. Every
+# key here is overwritten in place (DATA_RELEASES.md), so heuristic caching was
+# quietly deciding how long a hiker kept stale trail data.
+ARTIFACT_CACHE_CONTROL = "public, max-age=300, must-revalidate"
+MANIFEST_CACHE_CONTROL = "no-cache"
+
+
+def upload_args(name: str, path: str, *, compress: bool = True) -> tuple[str, dict]:
+    """The path to actually upload for `name`, and its ExtraArgs.
+
+    Returns the original path untouched for anything not in
+    COMPRESSIBLE_TYPES; for the rest, a gzipped copy beside it. The copy is
+    written into the same directory rather than a temp dir so it lands on
+    `data/`, which is gitignored and already the shelf for derived bytes
+    (CONTRIBUTING.md's "Data does not go in commits").
+
+    `compress=False` is for the sidecars. They are build metadata on nobody's
+    critical path - build_state.json is read once a day by a scheduled
+    freshness job, not by a phone - so the two kilobytes are not worth putting
+    a second representation of them in front of a reader. Content-Type and
+    Cache-Control still apply, because those were missing for everything.
+    """
+    suffix = Path(name).suffix
+    extra: dict[str, str] = {"CacheControl": ARTIFACT_CACHE_CONTROL}
+
+    if suffix in BINARY_TYPES:
+        extra["ContentType"] = BINARY_TYPES[suffix]
+        return path, extra
+
+    if suffix not in COMPRESSIBLE_TYPES:
+        return path, extra
+
+    extra["ContentType"] = COMPRESSIBLE_TYPES[suffix]
+    if not compress:
+        return path, extra
+
+    source = Path(path)
+    compressed = source.with_name(f"{source.name}.gz")
+    # mtime=0 so the same input produces the same bytes on every run. The
+    # object's own diffing is on the uncompressed sha256 above, so this does
+    # not decide whether anything uploads - it only keeps a re-upload from
+    # differing for no reason anybody can see.
+    with open(source, "rb") as raw, gzip.GzipFile(compressed, "wb", 6, mtime=0) as out:
+        shutil.copyfileobj(raw, out)
+    extra["ContentEncoding"] = "gzip"
+    return str(compressed), extra
 
 
 def collect_sidecars() -> dict[str, dict]:
@@ -464,7 +567,8 @@ def publish(
         if remote_entry is not None and remote_entry["sha256"] == entry["sha256"]:
             skipped.append(name)
             continue
-        s3_client.upload_file(entry["path"], bucket, f"{prefix}{name}")
+        upload_path, extra = upload_args(name, entry["path"])
+        s3_client.upload_file(upload_path, bucket, f"{prefix}{name}", ExtraArgs=extra)
         uploaded.append(name)
 
     if not uploaded:
@@ -483,7 +587,8 @@ def publish(
     # After the decision, never before: a sidecar must never be able to cause
     # a version, and must never describe data that was not published.
     for name, entry in sidecars.items():
-        s3_client.upload_file(entry["path"], bucket, f"{prefix}{name}")
+        upload_path, extra = upload_args(name, entry["path"], compress=False)
+        s3_client.upload_file(upload_path, bucket, f"{prefix}{name}", ExtraArgs=extra)
 
     # Merge, don't replace: an artifact that's live in remote_artifacts but
     # wasn't produced by this run's collect_artifacts() (e.g. a checkout that
@@ -577,7 +682,18 @@ def publish(
     # what #374's release-over-release checks need in order to have something
     # to compare against.
     new_manifest["release"] = release_id
-    s3_client.put_object(Bucket=bucket, Key=manifest_key, Body=json.dumps(new_manifest, indent=2).encode("utf-8"))
+    s3_client.put_object(
+        Bucket=bucket,
+        Key=manifest_key,
+        Body=json.dumps(new_manifest, indent=2).encode("utf-8"),
+        ContentType="application/json",
+        # Never a stale manifest. This file is what says which version is
+        # current, so a cached copy would have a client verify freshly
+        # downloaded bytes against a superseded hash and throw away a good
+        # download. Left uncompressed too - it is 3.5 KB, and it is the one
+        # object every other check reads before it can do anything.
+        CacheControl=MANIFEST_CACHE_CONTROL,
+    )
 
     return {
         "environment": environment,

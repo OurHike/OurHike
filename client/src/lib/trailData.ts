@@ -17,8 +17,9 @@
 // IS the trail line, and a corrupted POI file is a water source in the wrong
 // place, which is the kind of wrong this app cannot be. A JSON file that is
 // damaged rather than truncated parses perfectly well, so the parse is not the
-// check people assume it is. Hashing whole bytes is cheap here because they are
-// already whole in memory.
+// check people assume it is. Being already whole in memory is what lets these
+// go through `crypto.subtle.digest` rather than the vendored streaming fold the
+// archive needs - see sha256Of below, and #717 for the 10x that was costing.
 
 import { get, set, del } from 'idb-keyval'
 import {
@@ -34,7 +35,7 @@ import {
 import { parseProfile, type ElevationProfile } from './elevationProfile'
 import type { NearbyPart } from './nearbyClause'
 import type { SpurRecord } from './spurDestination'
-import { publishedHash } from './dataManifest'
+import { publishedHashes, type PublishedHashLookup } from './dataManifest'
 import { sha256Hex } from './sha256'
 
 export const TRAILS_BLOB_KEY = 'ourhike:trails'
@@ -488,10 +489,41 @@ interface FetchedArtifact {
   contentType: string
 }
 
+/**
+ * SHA-256 of bytes that are already whole in memory.
+ *
+ * `crypto.subtle.digest` where it exists, which is every browser this app
+ * targets over https, and lib/sha256.ts where it does not.
+ *
+ * The vendored fold is not the wrong code - it is the right code for the job
+ * it was written for, which is the 1.18 GB archive that cannot be handed to
+ * `crypto.subtle.digest` as one buffer at all (see its header, and #448 for
+ * the archive path's own main-thread problem). None of that reasoning reaches
+ * here. These artifacts are already one buffer, which is precisely the case
+ * the platform's own digest exists for: native, and off the main thread.
+ *
+ * Measured 2026-08-15, x86, over the eleven artifacts of one launch fetch
+ * (21.5 MB): vendored JS 624 ms against native 60 ms, a 10.4x difference, all
+ * of the former synchronous on the thread that is also drawing the map. A
+ * phone is materially slower than the machine those numbers came from.
+ */
+async function sha256Of(bytes: Uint8Array): Promise<string> {
+  const subtle = globalThis.crypto?.subtle
+  // Absent on http:// origins and in some test environments. The fallback is
+  // the same algorithm over the same bytes, so this is a speed decision and
+  // never a correctness one.
+  if (subtle === undefined) return sha256Hex(bytes)
+
+  const digest = await subtle.digest('SHA-256', bytes as unknown as BufferSource)
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+}
+
 async function readChecked(
   artifactKey: string,
   response: Response,
-  signal?: AbortSignal,
+  expectedHash: string | null,
 ): Promise<FetchedArtifact> {
   if (!response.ok) {
     // Shown to the hiker in the download window, so the sentence leads and is
@@ -508,8 +540,10 @@ async function readChecked(
 
   const buffer = await response.arrayBuffer()
   const bytes = new Uint8Array(buffer)
-  const expected = await publishedHash(artifactKey, { signal })
-  if (expected !== null && sha256Hex(bytes) !== expected) {
+  // The DECODED bytes, which is what makes serving these artifacts gzipped
+  // safe: `fetch` applies Content-Encoding before anything here sees them, so
+  // the hash is still over exactly the bytes publish.py hashed on disk.
+  if (expectedHash !== null && (await sha256Of(bytes)) !== expectedHash) {
     throw new TrailDataHashMismatchError(artifactKey)
   }
 
@@ -584,12 +618,13 @@ async function fetchArtifactResponse(
 /** An artifact this release must have. */
 async function fetchArtifact(
   artifactKey: string,
+  expected: PublishedHashLookup,
   signal?: AbortSignal,
 ): Promise<FetchedArtifact> {
   return readChecked(
     artifactKey,
     await fetchArtifactResponse(artifactKey, signal),
-    signal,
+    expected(artifactKey),
   )
 }
 
@@ -597,11 +632,12 @@ async function fetchArtifact(
  *  where a 404 means "this release has no such file" rather than a failure. */
 async function fetchOptionalArtifact(
   artifactKey: string,
+  expected: PublishedHashLookup,
   signal?: AbortSignal,
 ): Promise<FetchedArtifact | null> {
   const response = await fetchArtifactResponse(artifactKey, signal)
   if (response.status === 404) return null
-  return readChecked(artifactKey, response, signal)
+  return readChecked(artifactKey, response, expected(artifactKey))
 }
 
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes)
@@ -614,8 +650,11 @@ const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes)
  *  spur either way, it just cannot say where one goes. Anything other than a
  *  missing file still throws, so a genuinely broken fetch is not swallowed
  *  along with it. */
-async function fetchSpurs(signal?: AbortSignal): Promise<Record<string, SpurRecord>> {
-  const fetched = await fetchOptionalArtifact(SPURS_KEY, signal)
+async function fetchSpurs(
+  expected: PublishedHashLookup,
+  signal?: AbortSignal,
+): Promise<Record<string, SpurRecord>> {
+  const fetched = await fetchOptionalArtifact(SPURS_KEY, expected, signal)
   if (fetched === null) return {}
   const parsed: unknown = JSON.parse(decode(fetched.bytes))
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
@@ -631,11 +670,18 @@ async function fetchSpurs(signal?: AbortSignal): Promise<Record<string, SpurReco
  *  rather than a throw - parseProfile() has the reasoning - so a ribbon that
  *  cannot be drawn never costs the trail lines that arrived beside it.
  *
- *  This is the largest of the vector downloads at 0.87 MB gzipped, and it is
- *  fetched last so a hiker on a failing connection has the trail and the POIs
- *  in hand before the decoration is attempted. */
-async function fetchElevation(signal?: AbortSignal): Promise<ElevationProfile | null> {
-  const fetched = await fetchOptionalArtifact(ELEVATION_KEY, signal)
+ *  7.0 MB on the wire today and 0.89 MB gzipped, measured against the live
+ *  bucket 2026-08-15. Which of those two numbers a hiker pays depends on
+ *  pipeline/publish.py setting Content-Encoding, which it did not until #717 -
+ *  this file's own comments quoted the gzipped figure for a compression that
+ *  was never applied. It is fetched last either way, so a hiker on a failing
+ *  connection has the trail and the POIs in hand before the decoration is
+ *  attempted. */
+async function fetchElevation(
+  expected: PublishedHashLookup,
+  signal?: AbortSignal,
+): Promise<ElevationProfile | null> {
+  const fetched = await fetchOptionalArtifact(ELEVATION_KEY, expected, signal)
   if (fetched === null) return null
   return parseProfile(decode(fetched.bytes))
 }
@@ -648,30 +694,67 @@ export async function downloadTrailData({
   let completed = 0
 
   const report = (label: string) => onProgress?.({ label, completed, total })
+  /** One artifact landed. Called as each finishes rather than in list order,
+   *  because the middle group below is no longer sequential. */
+  const finished = (label: string) => {
+    completed += 1
+    report(label)
+  }
 
+  // ONE read of latest.json, shared by every artifact in this attempt (#717).
+  // It used to be fetched inside readChecked, so eleven artifacts meant eleven
+  // round trips for the same 3.5 KB, each one sitting between two downloads.
+  // A snapshot is also the more correct thing to verify a single attempt
+  // against: every artifact here is checked against one published version,
+  // rather than against whatever the bucket happened to be serving at the
+  // moment that particular file finished.
   report('Trail lines')
-  const fetchedTrails = await fetchArtifact(TRAILS_KEY, signal)
+  const expected = await publishedHashes({ signal })
+
+  // The trail lines first, alone, and awaited before anything else starts.
+  // They are the canary (see useTrailData.ts's `ensure`): whatever would stop
+  // these twelve megabytes stops the rest, and finding that out should not
+  // cost a hiker nine more requests to learn.
+  const fetchedTrails = await fetchArtifact(TRAILS_KEY, expected, signal)
   // Rebuilt from the verified bytes, keeping the served content type: what
   // MapLibre is handed has to be the bytes that were checked, not a second
   // read of the response.
   const trails = new Blob([fetchedTrails.buffer], { type: fetchedTrails.contentType })
-  completed += 1
+  finished('Trail lines')
 
-  const pois: StoredPoi[] = []
-  for (const type of POI_TYPES) {
-    report(type)
-    const fetched = await fetchArtifact(poiKey(type), signal)
-    pois.push(...readPois(decode(fetched.bytes), type))
-    completed += 1
-  }
+  // The eight POI files and the spurs together, rather than one after another.
+  // Nothing orders them against each other - they are eight independent
+  // artifacts, none of which is read before all of them have arrived - and
+  // serially they spent a round trip of dead time per file. Measured on a
+  // first run, the eight POI files and spurs.json occupied 23.6s to 29.4s of a
+  // chain that was mostly waiting.
+  //
+  // Still all-or-nothing: `Promise.all` rejects on the first failure and
+  // nothing below commits, which is the property the `set()` calls at the end
+  // depend on.
+  const [poiGroups, spurs] = await Promise.all([
+    Promise.all(
+      POI_TYPES.map(async (type) => {
+        const fetched = await fetchArtifact(poiKey(type), expected, signal)
+        finished(type)
+        return readPois(decode(fetched.bytes), type)
+      }),
+    ),
+    fetchSpurs(expected, signal).then((value) => {
+      finished('Spur destinations')
+      return value
+    }),
+  ])
+  // Flattened in POI_TYPES order rather than in completion order, so what is
+  // stored does not depend on which request happened to finish first.
+  const pois: StoredPoi[] = poiGroups.flat()
 
-  report('Spur destinations')
-  const spurs = await fetchSpurs(signal)
-  completed += 1
-
+  // Last, and on its own, which is the one piece of ordering worth keeping -
+  // see fetchElevation. A hiker whose connection dies here has the trail and
+  // every waypoint on the phone and loses only the ribbon.
   report('Elevation profile')
-  const elevation = await fetchElevation(signal)
-  completed += 1
+  const elevation = await fetchElevation(expected, signal)
+  finished('Elevation profile')
 
   // Nothing is committed until everything has arrived. Writing the trail lines
   // as soon as they landed meant a POI fetch failing - signal dropping partway

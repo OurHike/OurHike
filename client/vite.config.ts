@@ -163,7 +163,16 @@ export default defineConfig({
             // ship. scripts/check-build-output.mjs verifies all 256 made it
             // into the generated manifest, so a glob drift here fails the
             // build rather than the hiker.
-            globPatterns: ['**/*.{js,css,html}', 'glyphs/**/*.pbf'],
+            //
+            // The third is the UI typography, self-hosted for exactly the
+            // reason the glyphs are (#717, and see
+            // src/design-system/tokens/typography.css for the measurement).
+            // Those three families used to arrive through a render-blocking
+            // `@import` of fonts.googleapis.com, which no service worker can
+            // precache because it is somebody else's origin - so the app
+            // painted nothing until a third party answered. Emitted under
+            // `assets/` by Vite, hence the bare glob rather than a directory.
+            globPatterns: ['**/*.{js,css,html}', 'glyphs/**/*.pbf', '**/*.woff2'],
           },
           includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
           manifest: {

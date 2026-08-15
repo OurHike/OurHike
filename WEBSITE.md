@@ -405,8 +405,9 @@ continuing to hand-write HTML — §5.3 alone is several hundred pages.
 **Deployment.** `.github/workflows/pages.yml` already assembles `site/` → root
 and `client/dist/` → `/app/`. The change is one build step before the copy;
 paths and the app's `base` are untouched. Worth doing at the same time:
-**register `ourhike.app`** — LAUNCH_CHECKLIST.md §1.5 already anticipates
-`data.ourhike.app` for the R2 bucket, and `ourhike.github.io/
+**move onto `ourhike.org`** — registered 2026-08-15 through Cloudflare
+Registrar, with `data.ourhike.org` already serving the R2 bucket
+(LAUNCH_CHECKLIST.md §1.5), and `ourhike.github.io/
 OurHike/` is not a URL to put on a site meant to be trusted with somebody's
 navigation.
 
@@ -495,9 +496,14 @@ a volunteer project, and none is needed for the jobs in §2.
 
 ## 10. Decisions needed before Phase 2
 
-1. **Domain.** Register `ourhike.app`, or stay on the Pages URL? Affects §5 and
-   LAUNCH_CHECKLIST.md §1.5's `data.ourhike.app` plan; cheap now, disruptive
-   later.
+1. **Domain.** Half-decided: `ourhike.org` is registered and `data.ourhike.org`
+   serves the R2 bucket as of 2026-08-15, so LAUNCH_CHECKLIST.md §1.5's plan is
+   done. What is still open is whether the *app* moves off the Pages URL onto
+   it. That affects §5, and it is not the self-contained change moving the data
+   host was: the app's origin is what `.github/expected-origins.yml`, the R2
+   CORS allow-list and both Supabase redirect allow-lists are keyed on, and
+   #427 — the eight days the deployed app drew a topo sheet with no Appalachian
+   Trail on it — is what one of those moving without the others looks like.
 2. **Astro, Eleventy, or hand-written?** §7. Determines Phase 1's shape.
 3. **Photography.** Who is asked, under what licence, by when? §3.
 4. **Whose site is this, in the copy?** OurHike as an independent project, or as

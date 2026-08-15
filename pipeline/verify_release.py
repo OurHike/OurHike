@@ -298,9 +298,18 @@ def check_if_range(base: str, key: str, session=None) -> dict:
 
     That is a real failure of the bucket and this reports it as one. It stays a
     FAILURE rather than becoming an expected result (#506): a gate taught to
-    expect the current breakage cannot notice it was fixed, and the move to a
-    custom domain may fix it - re-run this against `data.ourhike.app` before
-    assuming either way.
+    expect the current breakage cannot notice it was fixed.
+
+    The move to a custom domain was the open question, and it is now measured
+    rather than assumed (#566). Against `data.ourhike.org` on 2026-08-15 a
+    stale ETag answered 206 exactly as `r2.dev` does, on `latest.json` and on a
+    64 MB archive alike. Every response carried `cf-cache-status: DYNAMIC`,
+    including after three consecutive ranged GETs: the edge does not cache
+    these objects, so the full Cloudflare cache #566 expected to arbitrate a
+    stale partial never enters the path. A Cache Rule would put it there, and
+    is not obviously worth it - a publish is a `PutObject` over a live key
+    (`lib/data_env.py`), so an edge cache in front of mutable keys trades this
+    for hikers downloading stale archives. #566 carries the decision.
 
     It is not a live hazard to a hiker, and the message says so rather than
     overstating. `archiveDownload.ts` performs this same comparison itself, on

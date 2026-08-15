@@ -526,15 +526,25 @@ export function Legend({
             Drought
             {droughtSummary !== undefined && (
               <span className="legend__drought-detail">
-                {droughtSummary.miles > 0
-                  ? `${formatDistance(droughtSummary.miles, units, 'whole')} affected`
-                  : 'none on the trail'}
-                {droughtSummary.weekStart !== null &&
-                  ` · week of ${droughtSummary.weekStart.toLocaleDateString(undefined, {
-                    month: 'short',
-                    day: 'numeric',
-                    timeZone: 'UTC',
-                  })}`}
+                {/* THE WEEK IS WHAT SAYS SOMEBODY LOOKED, so it decides this
+                    sentence rather than decorating it (#286's distinction,
+                    which this row got wrong first time round). With no week
+                    there is no artifact - the bucket 404ed, or the app has
+                    not reached it yet - and "none on the trail" would be a
+                    reassurance nobody has earned. The pipeline publishes an
+                    EMPTY band set precisely so that a genuinely dry-free week
+                    can say so, and that case still has a week. */}
+                {droughtSummary.weekStart === null
+                  ? 'not available'
+                  : `${
+                      droughtSummary.miles > 0
+                        ? `${formatDistance(droughtSummary.miles, units, 'whole')} affected`
+                        : 'none on the trail'
+                    } · week of ${droughtSummary.weekStart.toLocaleDateString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                      timeZone: 'UTC',
+                    })}`}
               </span>
             )}
           </span>

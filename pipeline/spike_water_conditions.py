@@ -56,6 +56,7 @@ without re-fetching and an interrupted run resumes.
 from __future__ import annotations
 
 import datetime
+import gzip
 import json
 import math
 import os
@@ -91,6 +92,11 @@ SMALL_CATCHMENT_SQMI = 50.0
 # (Watauga River, TN and Dead River, ME) returned it for every hour of the
 # series, so it is common enough to be a filter rather than a curiosity.
 NWM_MISSING = -9999.0
+
+# Half-width of the corridor a shippable drought layer would be clipped to.
+# 0.09 degrees is about 10 km, which is wide enough that the band still reads
+# as a region on a zoomed-out map rather than as a stripe on the trail.
+CORRIDOR_BUFFER_DEG = 0.09
 
 EARTH_R_M = 6_371_008.8
 
@@ -610,8 +616,7 @@ def measure_drought(parts, gauge_rows):
     total = trail_miles(parts)
 
     def measure_part(geometry):
-        pieces = [geometry] if geometry.geom_type == "LineString" else list(getattr(geometry, "geoms", []))
-        return trail_miles([list(p.coords) for p in pieces if p.geom_type == "LineString"])
+        return trail_miles(piece_lines(geometry))
 
     names = {
         0: "D0 abnormally dry",
@@ -646,7 +651,48 @@ def measure_drought(parts, gauge_rows):
             "above normal (>p75)",
         ):
             print("%-28s %s" % (band, "  ".join("%4d" % table.get((band, level), 0) for level in levels)))
+
+    measure_drought_layer(line, classes, miles)
     return miles
+
+
+def measure_drought_layer(line, classes, national_miles):
+    """What a shippable corridor-clipped drought layer costs, and what it loses.
+
+    The national file is tens of megabytes because each class is one enormous
+    multipolygon, which makes it look unshippable. Clipped to the corridor it
+    is a few tens of kilobytes - but a clip is only worth quoting alongside
+    proof that it did not move the boundaries, so this re-measures the trail
+    against the clipped polygons and prints the difference rather than
+    asserting there is none.
+    """
+    from shapely.geometry import mapping
+
+    corridor = line.buffer(CORRIDOR_BUFFER_DEG).simplify(0.01)
+    clipped, features = {}, []
+    for level in sorted(classes):
+        piece = classes[level].intersection(corridor)
+        if piece.is_empty:
+            continue
+        clipped[level] = piece
+        features.append({"type": "Feature", "properties": {"DM": level}, "geometry": mapping(piece)})
+
+    raw = json.dumps({"type": "FeatureCollection", "features": features}).encode()
+    print(f"\na corridor-clipped drought layer (+-{CORRIDOR_BUFFER_DEG * 111:.0f} km):")
+    print(f"  {len(raw)} bytes raw, {len(gzip.compress(raw))} bytes gzipped")
+    print("  re-measuring the trail against the clipped polygons:")
+    for level, piece in clipped.items():
+        pieces = piece_lines(line.intersection(piece))
+        here = trail_miles(pieces)
+        print(
+            "    D%d  clipped %7.1f mi   national %7.1f mi   delta %+.3f"
+            % (level, here, national_miles[level], here - national_miles[level])
+        )
+
+
+def piece_lines(geometry):
+    pieces = [geometry] if geometry.geom_type == "LineString" else list(getattr(geometry, "geoms", []))
+    return [list(p.coords) for p in pieces if p.geom_type == "LineString"]
 
 
 def main():

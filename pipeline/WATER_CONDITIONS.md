@@ -177,9 +177,17 @@ day-of-year percentiles, and it should be costed as such before anyone promises 
 ## 4. The U.S. Drought Monitor — coarse, weekly, and the one a hiker already understands
 
 Free GeoJSON at `droughtmonitor.unl.edu/data/json/usdm_current.json`, released every
-Thursday, produced by NDMC/USDA/NOAA authors who read the gauges, the soil moisture, the
-precipitation records and local reports and publish a single reviewed judgement. There is a
-per-county history API as well (`usdmdataservices.unl.edu`).
+Thursday, produced by NDMC/USDA/NOAA/NASA authors who read the gauges, the soil moisture,
+the precipitation records and local reports and publish a single reviewed judgement. There
+is a per-county history API as well (`usdmdataservices.unl.edu`).
+
+**This is not the source with an expiry date, and the distinction is worth stating because
+the two are easy to conflate.** §1's percentile endpoint is a USGS product being switched
+off; the Drought Monitor is a different publisher entirely. Both endpoints above answered
+200 with current data when re-checked on 2026-08-15, and **no deprecation or retirement
+notice was found** on their site or in search. That is an absence of a warning rather than
+a promise of stability — NDMC publishes no support commitment either — so it is a reason
+not to fear this source, not a reason to skip a freshness check on it.
 
 **Measured, this week's release (valid 2026-08-11 to 2026-08-17), against the centerline:**
 
@@ -195,6 +203,23 @@ The D2 stretch is central Virginia, roughly latitude 37.4 to 38.0 — the Blue R
 the James River and Shenandoah. The 10 miles of D3 sit around latitude 35.13–35.22 in the
 Nantahalas of North Carolina. **Two hundred miles of the Appalachian Trail are in severe
 drought today**, and this is the cheapest, most legible way to say so.
+
+**As a shippable layer it is very small, which was not obvious from the download.** The
+national file is **27.6 MB** — five features, one enormous multipolygon per class. Clipped
+to a ±10 km corridor around the centerline it is **32,359 bytes, or 10,163 gzipped**, and
+the clip is lossless where it matters: re-measuring the table above against the clipped
+polygons reproduces every class to within **0.002 mi** (about three metres). So the weekly
+refresh is a 10 KB fetch, not a 28 MB one, and it does not need to ride inside a
+downloaded map package to be current — which is the argument §6 makes for putting it in
+`conditions/` rather than the basemap.
+
+**Reuse terms, read 2026-08-15 rather than assumed.** NDMC's permission page states the map
+may be reproduced given the exact credit naming all four partners and ending "Map courtesy
+of NDMC", and the site carries a "©2026 National Drought Mitigation Center" notice. What
+the page does **not** address is redistributing the underlying polygons or embedding them
+in an application, which is what a layer would do. So this is one email to
+`DroughtMonitor@unl.edu`, not an open licensing question — and the answer belongs in
+`sources.json`'s `licence` field whichever way it comes back.
 
 **A coherence check, because two sources agreeing is worth more than either alone.**
 Cross-tabulating §1's gauges against the drought class at each gauge's own location: of
@@ -254,14 +279,23 @@ work:
    coverage.* One weekly fetch of a public GeoJSON, intersected with the centerline the
    pipeline already has, published into `conditions/`. It reaches 877 miles today, it
    carries a name hikers already know from their own state's news, it needs no percentile
-   machinery, and it cannot be mistaken for a claim about a particular spring. The
-   licence needs a human read before anything ships (NDMC is a university partnership, not
-   a pure federal work), which is the one blocker.
+   machinery, and it cannot be mistaken for a claim about a particular spring. §4 measures
+   the whole artifact at **10 KB gzipped** once clipped to the corridor, losslessly, so the
+   weekly refresh costs nothing and needs no map-package rebuild. **The one thing to settle
+   first is narrower than "read the licence"**: NDMC explicitly permits reproducing the map
+   with their credit line, and says nothing either way about redistributing the polygons,
+   which is what publishing a layer does. One email answers it.
+   *Rendered as what?* A tinted corridor band is the honest form — it says "this region",
+   which is exactly what the data knows — but two rendering constraints are real and
+   unresolved here: the USDM's canonical yellow-to-dark-red palette occupies the same
+   visual register as the closure band and the serious-warning treatment in
+   [features/MAP_STYLE_SPEC.md](../features/MAP_STYLE_SPEC.md), and a drought tint that
+   reads as a hazard band is worse than no tint. That is a design decision, not a data one.
 2. **USGS gauge percentiles as a corridor-scale index** — *medium effort, the strongest
    evidence in this document.* Screen for unregulated small catchments, compute
    day-of-year percentiles locally from the daily record via `hyswap` against the new API
    (never the retiring one), publish a per-segment "streams here are running X" with the
-   gauge count and record length attached so a thin claim reads as thin. 198 gauges is
+   gauge count and record length attached so a thin claim reads as thin. 199 gauges is
    sparse per mile and deep per gauge — the opposite shape to option 1, which is why they
    are worth having together.
 3. **Ask ATC to publish a water advisory** — *no code, and the highest-value thing here.*

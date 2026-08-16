@@ -255,26 +255,20 @@ jobs:
             echo "Centerline restored from cache."
           fi
 
-      # Skipped when the published artifact already describes the newest
-      # release on disk, which is every hour except the first one after
-      # NDMC's Thursday publication. The comparison is on USDM's own week
-      # rather than on a file timestamp: the artifact names the week it
-      # describes, so "is this current" is a question the data answers about
-      # itself rather than one the runner infers from mtimes.
-      - name: Export the drought bands, if the week moved
-        run: |
-          python -c "
-          import json, pathlib, sys
-          import export_drought
-          _, stamp = export_drought.newest_release()
-          published = pathlib.Path('data/processed/conditions/drought.json')
-          if published.exists():
-              current = json.loads(published.read_text()).get('valid_start')
-              if current == stamp.isoformat():
-                  print(f'Already published the week of {current}; nothing to rebuild.')
-                  sys.exit(0)
-          export_drought.main()
-          "
+      # One command, and the skip lives inside it (#731).
+      #
+      # This step used to be an inline python that decided whether to call
+      # export_drought.py at all, and skipping it meant no drought_manifest.json
+      # was written - which meant publish.py had nothing to collect and the
+      # bands were uploaded never, with every step green. The export owns the
+      # decision now: it rebuilds only when USDM's week has moved, and it
+      # rewrites the manifest on every run either way, because the manifest is
+      # not a record of work done but the statement "this file is ready to
+      # publish" - true on a skipped run too.
+      #
+      # Measured: 0.35 s when the week has not moved, ~43 s when it has.
+      - name: Export the drought bands
+        run: python export_drought.py
 
       - name: Save the drought inputs
         if: always()

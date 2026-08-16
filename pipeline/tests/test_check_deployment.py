@@ -28,6 +28,7 @@ from check_deployment import (
     check_all,
     check_artifact_present,
     check_exposed_headers,
+    check_if_range,
     check_origin_allowed,
     check_preflight,
     check_range_request,
@@ -38,6 +39,11 @@ from check_deployment import (
 )
 
 BASE = "https://data.example.org"
+
+# What a healthy bucket returns as its validator, and what `If-Range` is
+# compared against. A constant rather than a literal in three places, because
+# the whole point of the check below is that two of those places must AGREE.
+HEALTHY_ETAG = '"a-published-object"'
 
 PRODUCTION = {
     "pattern": "https://ourhike.github.io",
@@ -347,6 +353,77 @@ def test_the_range_check_asks_for_one_byte(mock):
     assert mock.last_request.headers["Range"] == "bytes=0-0"
 
 
+def test_a_bucket_that_honours_if_range_passes(mock):
+    mock.head(f"{BASE}/background.pmtiles", headers={"ETag": HEALTHY_ETAG})
+    mock.get(f"{BASE}/background.pmtiles", [{"status_code": 206}, {"status_code": 200}])
+
+    assert check_if_range(BASE, "background.pmtiles")["state"] == OK
+
+
+def test_a_bucket_that_ignores_if_range_fails_and_says_what_is_left(mock):
+    """Measured against the real endpoints, which is why the message is careful
+    (#506, #566): a stale ETag is answered 206 with the range served, on r2.dev
+    and on the custom domain that was expected to fix it. It stays a FAILURE - a
+    check taught to expect the breakage cannot notice it was fixed - but it must
+    not overstate what is at risk. `archiveDownload.ts` makes the same
+    comparison client-side against the ETag on the 206, so what is missing is
+    the server-side half of a defence rather than the whole of one."""
+    mock.head(f"{BASE}/background.pmtiles", headers={"ETag": HEALTHY_ETAG})
+    mock.get(f"{BASE}/background.pmtiles", [{"status_code": 206}, {"status_code": 206}])
+
+    report = check_if_range(BASE, "background.pmtiles")
+
+    assert report["state"] == FAILED
+    assert "ignoring If-Range" in report["detail"]
+    assert "does not depend on it" in report["detail"]
+    assert "server-side" in report["detail"]
+
+
+def test_a_current_etag_refused_is_the_serious_direction(mock):
+    """The other way round from the known breakage, and the worse one: a bucket
+    that answers 206 to a stale validator merely fails to help, but one that
+    will not answer 206 to a CURRENT one has broken resuming outright."""
+    mock.head(f"{BASE}/background.pmtiles", headers={"ETag": HEALTHY_ETAG})
+    mock.get(f"{BASE}/background.pmtiles", [{"status_code": 200}, {"status_code": 200}])
+
+    report = check_if_range(BASE, "background.pmtiles")
+
+    assert report["state"] == FAILED
+    assert "resume is broken" in report["detail"]
+
+
+def test_no_etag_means_the_if_range_question_cannot_be_asked(mock):
+    mock.head(f"{BASE}/background.pmtiles", headers={})
+
+    assert check_if_range(BASE, "background.pmtiles")["state"] == FAILED
+
+
+def test_an_if_range_failure_is_not_an_outage(mock):
+    """The assertion that let this check move here at all (#566).
+
+    It is known-failing against the live bucket and will report FAILED every
+    day until the endpoint changes. If that counted as hiker-facing, this
+    monitor would declare "a hiker cannot download the map" every morning
+    forever - and an alarm that is always on is one nobody reads on the morning
+    it means something. The client makes this comparison itself, so the report
+    is real and the outage is not.
+    """
+    reports = [
+        {"check": "if-range", "key": "background.pmtiles", "state": FAILED, "hiker_facing": False, "detail": "..."},
+    ]
+
+    assert hiker_facing_failures(reports, MANIFEST) == []
+
+
+def test_a_check_is_hiker_facing_unless_it_says_otherwise(mock):
+    """The default that makes the opt-out above safe: a report carrying no
+    opinion is treated as an outage, so a new check has to argue its way out
+    rather than fall out by the shape of its dict."""
+    reports = [{"check": "artifact", "key": "trails.geojson", "state": FAILED, "detail": "..."}]
+
+    assert hiker_facing_failures(reports, MANIFEST) == reports
+
+
 # ----------------------------------------------------------- the artifact check
 
 
@@ -428,8 +505,29 @@ def _healthy_bucket(mock, *, allow_origins=True):
     tier_sizes = {key: advertised_sizes()[tier] for tier, key in archive_keys().items()}
     for key in PUBLISHED["artifacts"]:
         length = tier_sizes.get(key, 999)
-        mock.head(f"{BASE}/{key}", headers={"Content-Length": str(length), "Accept-Ranges": "bytes"})
-    mock.get(f"{BASE}/background.pmtiles", status_code=206, headers={"Content-Range": "bytes 0-0/999"})
+        mock.head(
+            f"{BASE}/{key}",
+            headers={"Content-Length": str(length), "Accept-Ranges": "bytes", "ETag": HEALTHY_ETAG},
+        )
+
+    def ranged(request, context):
+        """A healthy bucket arbitrates a stale partial itself (#566).
+
+        RFC 9110: a current validator is answered 206 and the transfer
+        continues, a stale one is answered 200 and the range is ignored, so the
+        held bytes are discarded rather than spliced. The plain range check
+        sends no `If-Range` at all, which is the 206 case too - so this one
+        callback serves both checks without either knowing about the other.
+        """
+        if_range = request.headers.get("If-Range")
+        if if_range and if_range != HEALTHY_ETAG:
+            context.status_code = 200
+            return b""
+        context.status_code = 206
+        context.headers["Content-Range"] = "bytes 0-0/999"
+        return b""
+
+    mock.get(f"{BASE}/background.pmtiles", content=ranged)
     return mock
 
 

@@ -323,6 +323,17 @@ What must be true before a tag is pushed. **Hard** means the release does not ha
 | 13 | Field-validated thresholds actually field-validated | **soft** | stated in the notes — see §8d |
 | 14 | Real-device pass on iOS and Android | **soft** until Phase 3 | stated in the notes |
 
+**Gate 6 became answerable on 2026-08-15, and the row is unchanged because the gate is.**
+The battery behind it carried one check — `If-Range` is honoured — that failed on every
+release and always would have: it tests the bucket, not the candidate.
+[#566](https://github.com/OurHike/OurHike/issues/566) measured the custom domain that was
+expected to fix it, found it does not, and moved the check to the daily standing monitor
+(DATA_RELEASES.md §3a). So gate 6 stays **hard** and now goes red only when something
+about the candidate is wrong, which is what a hard gate has to mean. The gap itself is
+neither closed nor hidden: it is reported daily, and the monitor is the thing that will
+notice the day the endpoint starts honouring it — which a gate everyone had learned to
+wave through would not have.
+
 Two of these — gates 1 and 5 — need a repository setting that does not exist yet. TESTING.md records
 that **none of the suites is a required check** — "a red run doesn't currently block
 merging, it's just visible on the PR" — and the scoping was deliberately built so they

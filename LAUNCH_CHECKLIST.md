@@ -137,13 +137,25 @@ Nothing here is reversible in seconds, so do it at a quiet hour rather than befo
 
 2. **R2 CORS next** (R2 → the public bucket → Settings → CORS policy). Paste what `python pipeline/check_deployment.py --print-cors-policy` prints — it now leads with `https://ourhike.org`. Do not hand-edit; the whole point of generating it is that the pasted copy and the checked copy are one object.
 
-3. **DNS, in Cloudflare.** Four `A` records on the apex to GitHub Pages — `185.199.108.153`, `185.199.109.153`, `185.199.110.153`, `185.199.111.153` — and the four `AAAA` records GitHub documents alongside them. **Set them DNS-only (grey cloud), not proxied**: GitHub issues the site's certificate by looking up these records itself, and behind Cloudflare's proxy it sees Cloudflare rather than a record it can validate. The apex has no `A` record today and `www` does not exist at all, so nothing is being replaced.
+3. **Verify the domain to the org, BEFORE any DNS points at Pages.** GitHub organisation Settings → Pages → **Add a verified domain** → `ourhike.org`, then add the `TXT` record it gives you at `_github-pages-challenge-ourhike.ourhike.org`. **Leave that TXT record in DNS permanently** — deleting it drops the verification.
 
-4. **Then ship it.** Merge, tag, and let `pages.yml` deploy. `site/CNAME` sets the custom domain as part of the deploy, so this is also the moment GitHub starts issuing the certificate and starts answering `ourhike.github.io/OurHike/*` with a 301 to the new host.
+   This step is third rather than a footnote because of what GitHub's own documentation says happens without it: *"Configuring your custom domain with your DNS provider without adding your custom domain to GitHub could result in someone else being able to host a site on one of your subdomains."* Setting a Pages custom domain proves no ownership — the only stated constraint is that the name is not already in use — so between the moment DNS points at Pages and the moment a repository here claims the name, **any GitHub user can claim it and serve their content on `ourhike.org`.** Verification is what closes that window, and it is scoped to the organisation: once verified, only repositories owned by `OurHike` may publish to the domain or its immediate subdomains.
 
-5. **Enforce HTTPS** (Settings → Pages) once the certificate is issued. The checkbox is disabled until then, which is the signal that step 3 worked.
+   This ordering is written down because it was got wrong the first time this section was published — DNS was step 3 and verification was absent, and the apex spent the gap resolving to Pages with no repository claiming it.
 
-**There is a short window, and it is worth knowing its shape.** Between the deploy in step 4 and GitHub finishing the certificate, `ourhike.github.io` already redirects to a host whose HTTPS is not ready — usually minutes, and the reason this belongs at a quiet hour. It cannot be avoided by deploying the domain earlier: setting the custom domain before the `/app/` build ships would serve the *old* bundle, which asks for its assets under `/OurHike/`, at a root that has no such path.
+4. **DNS, in Cloudflare.** Four `A` records on the apex to GitHub Pages — `185.199.108.153`, `185.199.109.153`, `185.199.110.153`, `185.199.111.153` — and the four `AAAA` records: `2606:50c0:8000::153`, `2606:50c0:8001::153`, `2606:50c0:8002::153`, `2606:50c0:8003::153`. No other `A`/`AAAA`/`ALIAS`/`ANAME` on the apex; GitHub's DNS check fails on a conflicting extra record.
+
+   **DNS-only (grey cloud), not proxied.** Setting the custom domain starts an automatic DNS check, and a Let's Encrypt job is queued *only if that check passes*. Behind Cloudflare's proxy the lookup returns Cloudflare's addresses rather than GitHub's, so the check cannot pass and no certificate is ever issued. Neither vendor documents this combination; it follows from GitHub requiring its own IPs and Cloudflare's proxy replacing them, and each half is documented separately.
+
+   The orange-cloud alternative genuinely works for visitors — Cloudflare's Universal SSL already covers this apex, so HTTPS answers immediately — but it costs three things worth naming rather than discovering: it needs SSL mode **Flexible** (guaranteed) or **Full**, never **Full (strict)**, because there is no origin certificate for strict to validate; under Flexible the Cloudflare-to-GitHub leg is **unencrypted**; and GitHub's **Enforce HTTPS** stays unavailable, because that checkbox needs a certificate GitHub can only get from the DNS check the proxy prevents. Grey cloud is the recommendation.
+
+5. **Then ship it.** Merge, tag, and let `pages.yml` deploy. `site/CNAME` claims the custom domain as part of the deploy, which is what turns the apex's `404` into the site and starts the certificate.
+
+6. **Enforce HTTPS** (Settings → Pages) once the certificate is issued. Two different waits, and conflating them is the usual planning error: **up to an hour** for the site to answer over HTTPS, **up to 24 hours** for the checkbox to become available. If it stalls, removing the custom domain and re-entering it restarts the DNS check.
+
+**The old URL's redirect is plaintext, which is not what you would guess.** Measured across six live Pages sites on 2026-08-16: `<user>.github.io/<repo>/…` answers `301` with a `Location` of **`http://`** — never `https://` — preserving path and query and stripping the `/<repo>/` segment. So the hop out of `ourhike.github.io` is an unencrypted request to `ourhike.org` regardless of certificate state, and what upgrades it is whatever answers there. `@unvalidated` for our own case: none of the six was this site, and the behaviour is undocumented by GitHub — it was measured because the docs describe only apex-to-`www` redirects and say nothing about this one.
+
+That reframes the window rather than removing it. Between the deploy in step 5 and the certificate, `ourhike.org` may answer HTTP but not yet HTTPS — minutes to an hour, and the reason this belongs at a quiet hour. It cannot be avoided by claiming the domain earlier: doing that before the `/app/` build ships would serve the *old* bundle, which asks for its assets under `/OurHike/`, at a root that has no such path.
 
 **What this costs a hiker, once.** The downloaded map does not come with them. `client/src/lib/archiveDownload.ts` stores the archive through `idb-keyval`, and IndexedDB is scoped to an origin — so bytes fetched on `ourhike.github.io` are not readable from `ourhike.org`, and anyone who has already pulled `background_z13.pmtiles` pulls all 1.18 GB of it again. A 301 moves a request, not a database. Say so in the release notes; it is a bad thing to discover on a trailhead's wifi.
 
@@ -154,7 +166,10 @@ python pipeline/check_deployment.py --base https://data.ourhike.org   # can a br
 python pipeline/check_auth_redirects.py --project production          # can a browser FINISH a sign-in, on the new origin
 node client/scripts/check-deployed-app.mjs                            # does the deployed app actually draw a trail
 curl -sSI https://ourhike.github.io/OurHike/app/ | head -3            # does the old URL really 301
+dig +short TXT _github-pages-challenge-ourhike.ourhike.org            # is the domain still verified to the org
 ```
+
+**A `404` from `ourhike.org` carrying an `x-github-request-id` header is the diagnostic worth recognising**: DNS is reaching GitHub Pages and no repository has claimed the domain. Before step 5 that is the expected state and step 3 is what makes it safe; after step 5 it means the deploy did not carry `site/CNAME`.
 
 ### 3a. Preview deployments (Cloudflare Pages)
 

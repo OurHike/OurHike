@@ -676,6 +676,25 @@ followed:**
   These are the difference between §8's table being a mechanism and being a
   document, and none of them can be set from a checkout. **The two labels are done**
   (2026-08-08), which closes gate 11's half of that list.
+- **The `PROTECTIONS_READ_TOKEN` PAT**, which is why the line above is currently
+  taken on trust. It is declared in
+  [`.github/expected-settings.yml`](.github/expected-settings.yml) and optional by
+  design, so its absence is a declared state rather than a fault — but while it is
+  unset, `protections-check.yml` cannot read classic branch protection or the
+  environments list, which is exactly what gates 1 and 5 depend on. Measured
+  2026-08-15: the run reports 19 passing tests and says in its own log that those
+  two sections *"were not checked"*. Green there currently means "nothing I could
+  see is wrong", and the sections it cannot see are the ones the gate is about.
+- **`settings-configured.yml` cannot run at all**, which is the same problem one
+  level up. Added 2026-08-13 and never completed a job: dispatched twice on
+  2026-08-15, both runs finished in about two seconds with **zero jobs** and a
+  conclusion of `action_required`. The workflow file is not the cause — it parses,
+  its `permissions:` block is valid, it declares no environment, and the run's
+  approvals and pending-deployments endpoints are both empty — so this is a
+  repository-level Actions policy that only the settings page can answer. The cost
+  is specific rather than general: the one check built to notice a credential that
+  is missing or has been revoked, **including the PAT above**, is the one check
+  that cannot report.
 
   What *is* built is the noticing: `.github/workflows/protections-check.yml` reads the
   live configuration weekly and reports what is missing, so the remaining two stop

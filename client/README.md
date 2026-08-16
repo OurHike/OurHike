@@ -104,8 +104,9 @@ against it would prove nothing about production.
 ## Deploying
 
 `.github/workflows/pages.yml` publishes to GitHub Pages when a `v*` tag is
-pushed — the beta landing page (`site/`) at `/OurHike/` and this app at
-`/OurHike/app/`. A push to `main` deploys to UA instead (`ua.yml`); see
+pushed — the beta landing page (`site/`) at `https://ourhike.org/` and this app
+at `/app/`, with `site/CNAME` putting the site on that domain (#733). A push to
+`main` deploys to UA instead (`ua.yml`); see
 [RELEASING.md](../RELEASING.md) §2 for why those are two different things.
 Enable Pages once under Settings → Pages → Source → **GitHub Actions**, and set
 `DATA_BASE_URL` as a repository _variable_ (not a secret — it is public either
@@ -119,13 +120,17 @@ command is `npm run build`.
 `VITE_BASE_PATH` controls where the app expects to live, trailing slash
 required. This matters more for a PWA than for an ordinary site: `scope` and
 `start_url` in the manifest decide which pages the installed app owns, so a
-manifest claiming `/` while served from `/OurHike/app/` either fails install
+manifest claiming `/` while served from `/app/` either fails install
 validation or installs an app that opens the wrong page. It defaults to `/`, so
-a root-domain deploy needs nothing set.
+a preview at the root of its own hostname needs nothing set.
+
+Production sets `/app/`, because `ourhike.org` serves the landing page at its
+root and the app beneath it (#733). It was `/OurHike/app/` while the site was a
+GitHub Pages _project_ site, which is where the examples below come from.
 
 One Windows gotcha: Git Bash rewrites a leading-slash value into a Windows
-path, so `VITE_BASE_PATH=/OurHike/app/ npm run build` silently produces
-`C:/Program Files/Git/OurHike/app/`. Use PowerShell, or prefix with
+path, so `VITE_BASE_PATH=/app/ npm run build` silently produces
+`C:/Program Files/Git/app/`. Use PowerShell, or prefix with
 `MSYS_NO_PATHCONV=1`.
 
 **HTTPS is not optional.** Android only offers "Install app" for a page served

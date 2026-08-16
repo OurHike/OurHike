@@ -108,11 +108,19 @@ def test_the_real_manifest_declares_the_headers_the_client_actually_sends():
 
 def test_the_real_manifest_declares_production_as_the_hiker_facing_origin():
     """The origin that went missing. If this list ever loses it again, the
-    daily check has nothing to notice."""
+    daily check has nothing to notice.
+
+    `ourhike.org` since #733, and `ourhike.github.io` alongside it rather than
+    instead of it. A browser arriving at the old host is redirected, but a PWA
+    installed before the move keeps its service worker and its downloaded
+    archive on that origin, so it can still be a hiker fetching data from
+    there - see the `@unvalidated` note on the entry. Both stay blocking until
+    that is measured.
+    """
     manifest = load_manifest()
     hiker_facing = [origin["pattern"] for origin in manifest["origins"] if origin.get("hiker_facing")]
 
-    assert hiker_facing == ["https://ourhike.github.io"]
+    assert hiker_facing == ["https://ourhike.org", "https://ourhike.github.io"]
 
 
 def test_every_declared_origin_has_a_concrete_probe():

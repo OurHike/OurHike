@@ -1,7 +1,7 @@
 blank_issues_enabled: true
 contact_links:
   - name: Report a trail condition
-    url: https://ourhike.github.io/OurHike/app/
+    url: https://ourhike.org/app/
     about: >-
       Blowdowns, flooding, shelter damage, closures and anything else about the trail
       right now go through the app's own "Report a problem" flow, where a moderator sees

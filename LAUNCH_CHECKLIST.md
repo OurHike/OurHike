@@ -75,7 +75,7 @@ Resumes therefore reach the network again. What the bucket still does **not** do
 
 **Decided 2026-07-31: start with the R2.dev subdomain, not a custom domain.** Gets a working map faster with no DNS to set up. Cloudflare documents the r2.dev subdomain as meant for testing/light use, not sustained production traffic, so this is a deliberate stopgap — **switch `DATA_BASE_URL` to `https://data.ourhike.org`, which has been a custom domain on this bucket since 2026-08-15.** Nothing else about steps 2/3 changes: swapping the repository variable and redeploying Pages is the whole migration, no code change.
 
-The domain registered was `ourhike.org`, not the `ourhike.app` this file and #566 assumed while it was still hypothetical — older issues naming `data.ourhike.app` mean this host. Moving the *data* host is self-contained: `.github/expected-origins.yml` governs the origins the app is served **from**, and a CORS allow-list names the requesting origin rather than the host being requested, so nothing in it, in the bucket's policy or in Supabase's redirect lists changes when the bucket's own hostname does. Serving the **app** from `ourhike.org` is the opposite case and is not this step (WEBSITE.md §10).
+The domain registered was `ourhike.org`, not the `ourhike.app` this file and #566 assumed while it was still hypothetical — older issues naming `data.ourhike.app` mean this host. Moving the *data* host is self-contained: `.github/expected-origins.yml` governs the origins the app is served **from**, and a CORS allow-list names the requesting origin rather than the host being requested, so nothing in it, in the bucket's policy or in Supabase's redirect lists changes when the bucket's own hostname does. Serving the **app** from `ourhike.org` is the opposite case, and is 3b below.
 
 **1.6 Publish — now a CI workflow, not a local script.** Dispatch **"Publish vector data"** (Actions tab → workflow_dispatch) with `publish` ticked. Leaving it unticked does a dry run: builds and quality-checks everything without uploading, useful for checking upstream still parses. `include_elevation` adds ~25 min and isn't read by any client code yet, so leave it off unless you're specifically testing that.
 
@@ -121,11 +121,55 @@ Set it as a **repository variable** (not a secret — it's a public URL): Settin
 
 ## 3. Host the client
 
-✅ **Already done, mostly automatic** — `.github/workflows/pages.yml` builds and deploys the client to GitHub Pages: the beta landing page at `https://ourhike.github.io/OurHike/` and the installable app at `.../OurHike/app/`. Cloudflare Pages was the original plan when this list was written, but GitHub Pages is what actually got wired up (it's what gives the PWA the HTTPS a browser requires before offering "Install app").
+✅ **Already done, mostly automatic** — `.github/workflows/pages.yml` builds and deploys the client to GitHub Pages: the beta landing page at the site root and the installable app at `/app/`. Cloudflare Pages was the original plan when this list was written, but GitHub Pages is what actually got wired up (it's what gives the PWA the HTTPS a browser requires before offering "Install app").
 
 **It deploys on a `v*` tag, not on a push to `main`** — [RELEASING.md](RELEASING.md) §2 is why, and `.github/workflows/ua.yml` is what `main` deploys to instead. This step used to say "on every push to `main`", which was true until the release plumbing landed.
 
 **One manual step, once:** Settings → Pages → Build and deployment → Source must be **"Deploy from a branch"**, branch `gh-pages`, folder `/ (root)`. The workflow pushes to that branch itself; nothing publishes until the source is pointed at it.
+
+### 3b. Moving the app onto `ourhike.org` (#733)
+
+**The order below is the whole step.** Every allow-list gains the new origin *before* any traffic arrives on it, and `ourhike.github.io` keeps its entries throughout. [#427](https://github.com/OurHike/OurHike/issues/427) — the eight days the deployed app drew a topo sheet with no Appalachian Trail on it — is what one of these moving without the others looks like, and it stayed green in every check for all eight days.
+
+Nothing here is reversible in seconds, so do it at a quiet hour rather than before a weekend.
+
+1. **Supabase first** (Authentication → URL Configuration, production project). Paste what `python pipeline/check_auth_redirects.py --print-redirects` prints: the Site URL becomes `https://ourhike.org/app/`, and the Redirect URLs gain `https://ourhike.org/app/**` while keeping the `ourhike.github.io` entry. Doing this *before* merging is what keeps the daily auth check honest — `.github/expected-origins.yml` declares the new Site URL, and the check reads the live one back on every run, so the two disagree loudly from the moment this lands until the dashboard catches up.
+
+2. **R2 CORS next** (R2 → the public bucket → Settings → CORS policy). Paste what `python pipeline/check_deployment.py --print-cors-policy` prints — it now leads with `https://ourhike.org`. Do not hand-edit; the whole point of generating it is that the pasted copy and the checked copy are one object.
+
+3. **Verify the domain to the org, BEFORE any DNS points at Pages.** GitHub organisation Settings → Pages → **Add a verified domain** → `ourhike.org`, then add the `TXT` record it gives you at `_github-pages-challenge-ourhike.ourhike.org`. **Leave that TXT record in DNS permanently** — deleting it drops the verification.
+
+   This step is third rather than a footnote because of what GitHub's own documentation says happens without it: *"Configuring your custom domain with your DNS provider without adding your custom domain to GitHub could result in someone else being able to host a site on one of your subdomains."* Setting a Pages custom domain proves no ownership — the only stated constraint is that the name is not already in use — so between the moment DNS points at Pages and the moment a repository here claims the name, **any GitHub user can claim it and serve their content on `ourhike.org`.** Verification is what closes that window, and it is scoped to the organisation: once verified, only repositories owned by `OurHike` may publish to the domain or its immediate subdomains.
+
+   This ordering is written down because it was got wrong the first time this section was published — DNS was step 3 and verification was absent, and the apex spent the gap resolving to Pages with no repository claiming it.
+
+4. **DNS, in Cloudflare.** Four `A` records on the apex to GitHub Pages — `185.199.108.153`, `185.199.109.153`, `185.199.110.153`, `185.199.111.153` — and the four `AAAA` records: `2606:50c0:8000::153`, `2606:50c0:8001::153`, `2606:50c0:8002::153`, `2606:50c0:8003::153`. No other `A`/`AAAA`/`ALIAS`/`ANAME` on the apex; GitHub's DNS check fails on a conflicting extra record.
+
+   **DNS-only (grey cloud), not proxied.** Setting the custom domain starts an automatic DNS check, and a Let's Encrypt job is queued *only if that check passes*. Behind Cloudflare's proxy the lookup returns Cloudflare's addresses rather than GitHub's, so the check cannot pass and no certificate is ever issued. Neither vendor documents this combination; it follows from GitHub requiring its own IPs and Cloudflare's proxy replacing them, and each half is documented separately.
+
+   The orange-cloud alternative genuinely works for visitors — Cloudflare's Universal SSL already covers this apex, so HTTPS answers immediately — but it costs three things worth naming rather than discovering: it needs SSL mode **Flexible** (guaranteed) or **Full**, never **Full (strict)**, because there is no origin certificate for strict to validate; under Flexible the Cloudflare-to-GitHub leg is **unencrypted**; and GitHub's **Enforce HTTPS** stays unavailable, because that checkbox needs a certificate GitHub can only get from the DNS check the proxy prevents. Grey cloud is the recommendation.
+
+5. **Then ship it.** Merge, tag, and let `pages.yml` deploy. `site/CNAME` claims the custom domain as part of the deploy, which is what turns the apex's `404` into the site and starts the certificate.
+
+6. **Enforce HTTPS** (Settings → Pages) once the certificate is issued. Two different waits, and conflating them is the usual planning error: **up to an hour** for the site to answer over HTTPS, **up to 24 hours** for the checkbox to become available. If it stalls, removing the custom domain and re-entering it restarts the DNS check.
+
+**The old URL's redirect is plaintext, which is not what you would guess.** Measured across six live Pages sites on 2026-08-16: `<user>.github.io/<repo>/…` answers `301` with a `Location` of **`http://`** — never `https://` — preserving path and query and stripping the `/<repo>/` segment. So the hop out of `ourhike.github.io` is an unencrypted request to `ourhike.org` regardless of certificate state, and what upgrades it is whatever answers there. `@unvalidated` for our own case: none of the six was this site, and the behaviour is undocumented by GitHub — it was measured because the docs describe only apex-to-`www` redirects and say nothing about this one.
+
+That reframes the window rather than removing it. Between the deploy in step 5 and the certificate, `ourhike.org` may answer HTTP but not yet HTTPS — minutes to an hour, and the reason this belongs at a quiet hour. It cannot be avoided by claiming the domain earlier: doing that before the `/app/` build ships would serve the *old* bundle, which asks for its assets under `/OurHike/`, at a root that has no such path.
+
+**What this costs a hiker, once.** The downloaded map does not come with them. `client/src/lib/archiveDownload.ts` stores the archive through `idb-keyval`, and IndexedDB is scoped to an origin — so bytes fetched on `ourhike.github.io` are not readable from `ourhike.org`, and anyone who has already pulled `background_z13.pmtiles` pulls all 1.18 GB of it again. A 301 moves a request, not a database. Say so in the release notes; it is a bad thing to discover on a trailhead's wifi.
+
+**Verify before calling it done**, in this order — each answers a question the previous one cannot:
+
+```
+python pipeline/check_deployment.py --base https://data.ourhike.org   # can a browser READ the data, from the new origin
+python pipeline/check_auth_redirects.py --project production          # can a browser FINISH a sign-in, on the new origin
+node client/scripts/check-deployed-app.mjs                            # does the deployed app actually draw a trail
+curl -sSI https://ourhike.github.io/OurHike/app/ | head -3            # does the old URL really 301
+dig +short TXT _github-pages-challenge-ourhike.ourhike.org            # is the domain still verified to the org
+```
+
+**A `404` from `ourhike.org` carrying an `x-github-request-id` header is the diagnostic worth recognising**: DNS is reaching GitHub Pages and no repository has claimed the domain. Before step 5 that is the expected state and step 3 is what makes it safe; after step 5 it means the deploy did not carry `site/CNAME`.
 
 ### 3a. Preview deployments (Cloudflare Pages)
 
@@ -215,7 +259,7 @@ and paste what it prints. It covers **both** Supabase projects — production an
 
 Both local ports, because they are different servers: `npm run dev` is Vite on **5173**, and `npm run preview` serves the *built* bundle on **4173**. The second is the one you reach for to check something behaves the same after a production build, which makes it exactly the wrong one to have working differently from the others.
 
-Adding an entry per PR by hand is not a plan, and without a matching entry every provider round trip from a preview ends in a redirect mismatch. Supabase recommends pinning the exact path for the production **Site URL** even so — set that to `https://<user>.github.io/OurHike/app/`.
+Adding an entry per PR by hand is not a plan, and without a matching entry every provider round trip from a preview ends in a redirect mismatch. Supabase recommends pinning the exact path for the production **Site URL** even so — the generator prints it, and since #733 it is `https://ourhike.org/app/`.
 
 **4.3c Custom SMTP, before real traffic.** The magic-link sign-in and the account-confirmation email both go through Supabase's built-in sender, which is rate-limited to a handful of messages per hour and is explicitly not for production. Fine for testing; a hiker hitting "email me a sign-in link" and silently getting nothing is not. Configure real SMTP under Authentication → Emails when this stops being a test deployment.
 

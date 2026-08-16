@@ -409,7 +409,8 @@ paths and the app's `base` are untouched. Worth doing at the same time:
 Registrar, with `data.ourhike.org` already serving the R2 bucket
 (LAUNCH_CHECKLIST.md §1.5), and `ourhike.github.io/
 OurHike/` is not a URL to put on a site meant to be trusted with somebody's
-navigation.
+navigation. Done ahead of this work rather than as part of it (#733), so the
+Astro build in Phase 1 stands up at the apex from its first commit.
 
 **Design system, first real task.** The DS components are demo artifacts:
 inline-styled `.jsx` loaded via a `window.OurHikeDesignSystem_60cee1` global
@@ -496,14 +497,19 @@ a volunteer project, and none is needed for the jobs in §2.
 
 ## 10. Decisions needed before Phase 2
 
-1. **Domain.** Half-decided: `ourhike.org` is registered and `data.ourhike.org`
-   serves the R2 bucket as of 2026-08-15, so LAUNCH_CHECKLIST.md §1.5's plan is
-   done. What is still open is whether the *app* moves off the Pages URL onto
-   it. That affects §5, and it is not the self-contained change moving the data
-   host was: the app's origin is what `.github/expected-origins.yml`, the R2
-   CORS allow-list and both Supabase redirect allow-lists are keyed on, and
-   #427 — the eight days the deployed app drew a topo sheet with no Appalachian
-   Trail on it — is what one of those moving without the others looks like.
+1. **Domain. Decided (#733), and no longer blocking anything here.** `ourhike.org`
+   is registered, `data.ourhike.org` has served the R2 bucket since 2026-08-15,
+   and the app moves to `ourhike.org/app/` with the landing page at the root —
+   the structure §5 and §8 already assume. LAUNCH_CHECKLIST.md §3b is the
+   ordered migration, and the ordering is the substance: the app's origin is
+   what `.github/expected-origins.yml`, the R2 CORS allow-list and both Supabase
+   redirect allow-lists are keyed on, and #427 — the eight days the deployed app
+   drew a topo sheet with no Appalachian Trail on it — is what one of those
+   moving without the others looks like.
+
+   What this settles for the site work: pages built here are served from the
+   apex, so §5.3's generated pages and §5.2's map get real paths under
+   `ourhike.org/` rather than under a repository name.
 2. **Astro, Eleventy, or hand-written?** §7. Determines Phase 1's shape.
 3. **Photography.** Who is asked, under what licence, by when? §3.
 4. **Whose site is this, in the copy?** OurHike as an independent project, or as

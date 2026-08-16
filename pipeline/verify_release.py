@@ -111,6 +111,19 @@ SKIPPED = "skipped"
 # whose CORS policy is the thing under test - see check 8.
 EXPOSED = ("accept-ranges", "content-length", "content-range", "etag")
 
+# The origin check 8 asks as. Production's, from the same declaration and named
+# here for the same reason EXPOSED is - and it has to be a real one: sending an
+# origin no hiker is on would test a rule nobody relies on and pass while the
+# one that matters is broken.
+#
+# `ourhike.org` since #733. It was `ourhike.github.io`, which is the shape of
+# staleness this is most exposed to: a literal in a file whose own comment
+# explains why it is a literal, changed nowhere near the change that moved the
+# app. `.github/tests/test_pages_publish.py` cannot see this one - it reads the
+# workflow and the declaration - so a grep for the old host is what catches it,
+# and this comment is here to be found by that grep.
+HIKER_ORIGIN = "https://ourhike.org"
+
 # Generous bounds on the Appalachian Trail corridor. A sanity bound, not a
 # clip: it catches a geometry at (0, 0) or one that landed in the wrong
 # hemisphere, which is what a projection bug produces. Deriving it from
@@ -319,7 +332,7 @@ def check_cors(base: str, key: str, session=None) -> dict:
     try:
         response = (session or requests).get(
             f"{base}/{key}",
-            headers={"Range": "bytes=0-0", "Origin": "https://ourhike.github.io"},
+            headers={"Range": "bytes=0-0", "Origin": HIKER_ORIGIN},
             timeout=HTTP_TIMEOUT,
         )
     except requests.RequestException as exc:

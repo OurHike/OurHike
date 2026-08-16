@@ -104,11 +104,19 @@ settings:
     required: false
     why: >-
       Which sign-in buttons a build offers. Optional because the client
-      defaults to google,email when it is unset, so a missing value is a
-      working app rather than a broken one. Worth declaring anyway: every
-      name in it must be a provider actually enabled in the Supabase
-      dashboard, and one that is not is a button reaching an error page. The
-      Supabase config check is what compares those two lists.
+      defaults to google when it is unset, so a missing value is a working
+      app rather than a broken one. Worth declaring anyway: every name in it
+      must be a provider actually enabled in the Supabase dashboard, and one
+      that is not is a button reaching an error page. The Supabase config
+      check is what compares those two lists.
+
+      The default was google,email until #397 decided v1's provider set.
+      Email was in it because switching it on costs nothing, which was true
+      of the setup and false of the result - Supabase's built-in sender is
+      not a delivery path this project ships on, so an unset variable built
+      an app offering a sign-in that could not complete. Setting this to
+      `google` explicitly is still worth doing; since #397 it agrees with the
+      default rather than rescuing it.
 
   API_BASE_URL:
     where: variable

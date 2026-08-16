@@ -51,8 +51,20 @@ export function parseProviders(raw: string): AuthProvider[] {
   return ALL_PROVIDERS.filter((provider) => named.has(provider))
 }
 
-/** Defaults to Google and email: the two whose setup costs nothing beyond a
- *  console registration. Apple is opt-in for the membership fee. */
+/** Defaults to Google alone, which is v1's decided provider set (#397).
+ *
+ *  It used to default to `google,email`, on the reasoning that email costs
+ *  nothing to switch on. That was true of the *setup* and false of the
+ *  result: Supabase's built-in sender is not a delivery path this project
+ *  can ship on, so the default offered a button whose sign-in could not
+ *  complete - in every build that did not override it, the deployed one
+ *  included. A provider nobody configured reaching an error page is the
+ *  exact failure the comment above ALL_PROVIDERS describes, and the default
+ *  was producing it rather than guarding against it.
+ *
+ *  Apple stays off for the membership fee and is deferred to v2 (#92).
+ *  Email returns when it has a sender behind it, by adding it here and to
+ *  the AUTH_PROVIDERS variable together. */
 const CONFIGURED_PROVIDERS: string = import.meta.env.VITE_AUTH_PROVIDERS ?? ''
 
 /**
@@ -68,7 +80,7 @@ const CONFIGURED_PROVIDERS: string = import.meta.env.VITE_AUTH_PROVIDERS ?? ''
  * credentials in the Supabase dashboard, which is where the real switch is.
  */
 export const ENABLED_PROVIDERS = parseProviders(
-  CONFIGURED_PROVIDERS.trim() === '' ? 'google,email' : CONFIGURED_PROVIDERS,
+  CONFIGURED_PROVIDERS.trim() === '' ? 'google' : CONFIGURED_PROVIDERS,
 )
 
 let client: SupabaseClient | null | undefined

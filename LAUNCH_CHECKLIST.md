@@ -192,7 +192,7 @@ SUPABASE_ANON_KEY=<publishable key, sb_publishable_...>
 ```
 SUPABASE_URL=https://<ref>.supabase.co
 SUPABASE_ANON_KEY=<anon public key>
-AUTH_PROVIDERS=google,email          # optional; defaults to google,email
+AUTH_PROVIDERS=google                # optional; defaults to google (#397)
 ```
 
 **Variables, not Secrets.** Neither is secret. The anon key is *designed* to be public — Vite inlines it into a JS bundle that anyone can read with view-source, so hiding it in a Secret buys nothing and costs a readable build log, exactly as the comment above `DATA_BASE_URL` in `pages.yml` explains. Both workflows accept either, and warn if you picked Secrets. What is **not** here, and must never be, is `SUPABASE_JWT_SECRET`: that one is real, it belongs only to the backend's runtime environment, and a `VITE_`-prefixed copy would be inlined into a public file.
@@ -323,11 +323,13 @@ An empty array or a permission error is what you want. Rows are the failure.
 
 **While you are in Advisors:** it also flags **leaked password protection as disabled**, and will keep flagging it. That check — Supabase's [HaveIBeenPwned integration](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection) — is **a paid-plan feature, confirmed 2026-08-06 against this project's own dashboard**. It is not a free toggle somebody forgot, so treat that advisor line as known and unactionable rather than as an outstanding task. An earlier version of this section said to go and switch it on; that was wrong, and re-discovering it costs somebody the same trip to the dashboard every time.
 
-It matters at all because email/password is a real sign-in path here — `VITE_AUTH_PROVIDERS` defaults to `google,email`, and `screens/EmailSignIn.tsx` offers a password as the fallback behind its magic-link default. Without the check, an account secured by a password reused from a breached site is exactly as reachable as that password, and these accounts can file `bad_hikers` reports about named people.
+It mattered because email/password was a real sign-in path here — `VITE_AUTH_PROVIDERS` defaulted to `google,email`, and `screens/EmailSignIn.tsx` offers a password as the fallback behind its magic-link default. Without the check, an account secured by a password reused from a breached site is exactly as reachable as that password, and these accounts can file `bad_hikers` reports about named people.
+
+**Since [#397](https://github.com/OurHike/OurHike/issues/397) that risk is deferred rather than accepted: v1 ships Google alone**, so a v1 build has no password path to protect and the advisor line is moot as well as unactionable. It is written in the past tense above and kept rather than deleted, because the risk returns in full the moment email is switched back on — and the person switching it on is the one who needs to read this paragraph. `EmailSignIn.tsx` stays in the tree for the same reason; it is unreachable in a Google-only build, not removed.
 
 **The mitigation that costs nothing is to have no passwords**, not to buy the check — and specifically an emailed **6-digit code**, not the magic link already sent. `EmailSignIn.tsx` keeps the password because a link "means leaving for an email client and coming back, and on a ridge with one bar that round trip is the fragile part"; that is an argument against links, not for passwords. A typed code has the one property the password was kept for — finishing without leaving the app — with nothing to remember, leak or reuse. It also sidesteps a real PWA mechanic: a link tapped in a mail client opens the browser, which on iOS may not share storage with the installed app, so the session can land where the app cannot see it.
 
-See [#279](https://github.com/OurHike/OurHike/issues/279) — `verifyOtp` is already in the installed SDK, so this is an email-template change plus one field, and it deletes more code than it adds. Until it is decided, the paywalled check is a known accepted risk rather than a gap nobody noticed.
+See [#279](https://github.com/OurHike/OurHike/issues/279) — `verifyOtp` is already in the installed SDK, so this is an email-template change plus one field, and it deletes more code than it adds. **#279 moved to `post-mvp` with email itself (#397), so it is now the shape the email path takes when it ships rather than a v1 task**; the argument above is unaffected by the deferral and is the reason to build it that way rather than restoring the password.
 
 ---
 

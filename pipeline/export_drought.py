@@ -332,8 +332,68 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def already_published(stamp: date) -> bool:
+    """Does the artifact on disk already describe this week's release?
+
+    The comparison is on USDM's own week rather than on a file timestamp, so
+    "is this current" is a question the data answers about itself.
+    """
+    if not OUT_PATH.exists():
+        return False
+    try:
+        return json.loads(OUT_PATH.read_text()).get("valid_start") == stamp.isoformat()
+    except json.JSONDecodeError:
+        # A truncated artifact is not a current one, and rebuilding is cheap
+        # next to publishing something unparseable.
+        return False
+
+
+def write_manifest(stamp: date, generated_at: datetime, count: int) -> dict:
+    """The manifest, which is what `publish.py` actually reads.
+
+    SEPARATE FROM THE BUILD, and that separation is the whole point (#731).
+    The first version of the hourly job decided OUTSIDE this script whether to
+    run it at all, so a skipped run wrote no manifest - and a manifest that
+    does not exist is an artifact `publish.py` cannot see. The bands were
+    built correctly, cached correctly, and uploaded never, with every step
+    green and the publish line simply not mentioning them.
+
+    So the skip lives in `main` now and skips the EXPENSIVE half only. The
+    manifest is rewritten on every run from whatever artifact is on disk,
+    because it is not a record of work done - it is the statement "this file
+    is ready to publish", which is true on a skipped run too.
+    """
+    manifest = {
+        "artifacts": {
+            PAYLOAD: {
+                "path": str(OUT_PATH),
+                "sha256": sha256_file(OUT_PATH),
+                "count": count,
+                "generated_at": _stamp_utc(generated_at),
+                "valid_start": stamp.isoformat(),
+            }
+        }
+    }
+    MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    MANIFEST_PATH.write_text(json.dumps(manifest, indent=2) + "\n")
+    return manifest
+
+
 def main() -> dict:
     release_path, stamp = newest_release()
+
+    if already_published(stamp):
+        # The ordinary case on an hourly clock: 167 hours out of 168. The
+        # geometry below takes ~43 s and would produce the same bytes.
+        published = json.loads(OUT_PATH.read_text())
+        manifest = write_manifest(
+            stamp,
+            datetime.fromisoformat(published["generated_at"].replace("Z", "+00:00")),
+            len(published[PAYLOAD]),
+        )
+        print(f"Already built the week of {stamp:%Y-%m-%d}; manifest refreshed, bands not rebuilt.")
+        return manifest
+
     document = json.loads(release_path.read_text())
     line = load_centerline()
 
@@ -368,19 +428,7 @@ def main() -> dict:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(json.dumps(build_document(bands, miles, stamp, generated_at), indent=2) + "\n")
 
-    manifest = {
-        "artifacts": {
-            PAYLOAD: {
-                "path": str(OUT_PATH),
-                "sha256": sha256_file(OUT_PATH),
-                "count": len(bands),
-                "generated_at": _stamp_utc(generated_at),
-                "valid_start": stamp.isoformat(),
-            }
-        }
-    }
-    MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
-    MANIFEST_PATH.write_text(json.dumps(manifest, indent=2) + "\n")
+    manifest = write_manifest(stamp, generated_at, len(bands))
 
     summary = ", ".join(f"D{level} {miles[level]:.1f} mi" for level in sorted(bands))
     print(f"Wrote {OUT_PATH} for the week of {stamp:%Y-%m-%d}: {summary or 'no drought on the trail'}.")

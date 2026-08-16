@@ -184,3 +184,54 @@ class TestTheCenterline:
         with pytest.raises(SystemExit) as exit_info:
             export_drought.load_centerline()
         assert "no line geometry" in str(exit_info.value)
+
+
+class TestTheSkipStillPublishes:
+    """#731: the skip that saved 43 s also stopped the artifact being published.
+
+    The hourly job used to decide OUTSIDE this script whether to run it at
+    all, so a skipped run wrote no manifest - and `publish.py` reads the
+    manifest, not the artifact. The bands were built correctly, cached
+    correctly, and uploaded never. Every step was green.
+    """
+
+    def test_a_second_run_writes_the_manifest_without_rebuilding(self, run_export, tmp_path, monkeypatch):
+        run_export([polygon_feature(0, (-1, -1, 1, 2))])
+        manifest_path = tmp_path / "processed" / "drought_manifest.json"
+        first = json.loads(manifest_path.read_text())
+        artifact = json.loads((tmp_path / "processed" / "conditions" / "drought.json").read_text())
+        manifest_path.unlink()
+
+        # A refusal to rebuild: any attempt to touch the geometry fails here.
+        monkeypatch.setattr(
+            export_drought,
+            "load_centerline",
+            lambda: (_ for _ in ()).throw(AssertionError("rebuilt when the week had not moved")),
+        )
+        export_drought.main()
+
+        second = json.loads(manifest_path.read_text())
+        assert second["artifacts"]["drought"]["valid_start"] == "2026-08-11"
+        assert second["artifacts"]["drought"]["count"] == len(artifact["drought"])
+        # Same bytes, so the same hash - publish.py's diffing uploads nothing.
+        assert second["artifacts"]["drought"]["sha256"] == first["artifacts"]["drought"]["sha256"]
+
+    def test_a_moved_week_does_rebuild(self, run_export, tmp_path):
+        run_export([polygon_feature(0, (-1, -1, 1, 2))])
+        published = tmp_path / "processed" / "conditions" / "drought.json"
+        stale = json.loads(published.read_text())
+        stale["valid_start"] = "2026-08-04"
+        published.write_text(json.dumps(stale))
+
+        export_drought.main()
+
+        assert json.loads(published.read_text())["valid_start"] == "2026-08-11"
+
+    def test_an_unparseable_artifact_is_rebuilt_rather_than_trusted(self, run_export, tmp_path):
+        run_export([polygon_feature(0, (-1, -1, 1, 2))])
+        published = tmp_path / "processed" / "conditions" / "drought.json"
+        published.write_text("{ truncated")
+
+        export_drought.main()
+
+        assert json.loads(published.read_text())["valid_start"] == "2026-08-11"

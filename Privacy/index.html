@@ -229,14 +229,14 @@
 
     <main class="wrap">
       <h1>Privacy Policy</h1>
-      <p class="updated">Last updated August 6, 2026</p>
+      <p class="updated">Last updated August 13, 2026</p>
 
       <p class="lede">
         OurHike is a small, volunteer-built offline map for the Appalachian
         Trail, currently in public beta. This page explains what
         information we collect, why, and what you can do about it — in
         plain language, not legalese. If something here is unclear,
-        <a href="https://github.com/jaimito-asuntos-gringuenos/OurHike/issues"
+        <a href="https://github.com/OurHike/OurHike/issues"
           >open an issue</a
         >
         and ask.
@@ -259,13 +259,12 @@
       <ul>
         <li>
           Your <strong>email address</strong>, whether you sign in with a
-          magic link, a password, or an account you already have with
-          Google or Apple.
+          magic link, a password, or a Google account you already have.
         </li>
         <li>
-          If you sign in with Google or Apple, the basic profile
-          information that provider shares to verify your identity (your
-          email address, typically nothing beyond that).
+          If you sign in with Google, the basic profile information Google
+          shares to verify your identity (your email address, typically
+          nothing beyond that).
         </li>
         <li>
           If you set a password, it's stored and hashed by Supabase — we
@@ -286,6 +285,23 @@
         anywhere unless you choose to attach it to a report you submit —
         for example, to mark exactly where a blowdown or a water source
         is.
+      </p>
+      <p>
+        That includes the off-trail alert. If you turn it on, OurHike
+        watches your position continuously to notice when you may have
+        left the trail — and it does that entirely on your phone. Your
+        track is not uploaded, not stored on our side, and not used for
+        anything else.
+      </p>
+
+      <h3>Notifications</h3>
+      <p>
+        <strong>OurHike sends exactly one kind of notification: the
+        off-trail alert.</strong> Nothing else — no news, no reminders,
+        no marketing, no "come back and use the app". That is a rule in
+        the code rather than a promise here: there is a single function
+        allowed to send a notification, and an automated check reads the
+        whole codebase and fails the build if anything else tries to.
       </p>
 
       <h3>Reports you submit</h3>
@@ -360,9 +376,27 @@
         </li>
       </ul>
       <p>
-        Map and terrain data itself is served from Cloudflare and public
-        elevation-tile sources anonymously — those requests don't carry
-        any information that identifies you.
+        <strong>Map tiles come from three places, and asking for a tile
+        says roughly where you are looking.</strong> The trail data and
+        the downloadable offline maps come from our own storage at
+        Cloudflare. The default background map comes from
+        <a href="https://openfreemap.org/">OpenFreeMap</a>
+        (<code>tiles.openfreemap.org</code>), and the hillshading and
+        contours from
+        <a href="https://registry.opendata.aws/terrain-tiles/"
+          >AWS Terrain Tiles</a
+        >
+        (<code>s3.amazonaws.com</code>). None of those requests carries
+        your account, your trail name
+        or anything else that identifies you — but the servers involved
+        do see which part of the map was fetched, in the ordinary way any
+        website sees which page you asked for.
+      </p>
+      <p>
+        If you would rather not fetch tiles at all while you walk,
+        downloading the map for offline use is the answer: once it is on
+        your phone, the map draws from your own device and asks nobody
+        anything.
       </p>
 
       <h2>Your choices</h2>
@@ -372,7 +406,7 @@
           Ask us to see, correct, or delete the account information we
           hold by
           <a
-            href="https://github.com/jaimito-asuntos-gringuenos/OurHike/issues"
+            href="https://github.com/OurHike/OurHike/issues"
             >opening an issue</a
           >
           — no need to put personal details in the issue itself, just ask
@@ -399,7 +433,7 @@
         We may update this policy as the app changes. We'll update the
         date at the top when we do, and for meaningful changes we'll try
         to call it out on the app's
-        <a href="https://github.com/jaimito-asuntos-gringuenos/OurHike"
+        <a href="https://github.com/OurHike/OurHike"
           >GitHub page</a
         >.
       </p>
@@ -407,7 +441,7 @@
       <h2>Contact</h2>
       <p>
         Questions about this policy or your data:
-        <a href="https://github.com/jaimito-asuntos-gringuenos/OurHike/issues"
+        <a href="https://github.com/OurHike/OurHike/issues"
           >open an issue on GitHub</a
         >.
       </p>

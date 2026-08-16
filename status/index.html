@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OurHike status — is the map working?</title>
+    <meta
+      name="description"
+      content="Whether OurHike's map data can be downloaded right now, checked live from your own browser."
+    />
+    <meta name="theme-color" content="#122016" />
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+    <meta name="robots" content="noindex" />
+
+    <style>
+      /* Same tokens as site/index.html, which lifted them from the app's own
+         design-system/tokens/colors.css - the site, the status page and the
+         thing they describe should read as one product. */
+      :root {
+        --pine-900: #122016;
+        --pine-800: #1c2f1f;
+        --pine-700: #284029;
+        --bone: #f4f1e8;
+        --bone-dim: #cfc9b8;
+        --blaze: #e8e2d0;
+        --ok: #6fbf73;
+        --bad: #e5736a;
+        --unknown: #d8b25f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 2rem 1.25rem 4rem;
+        background: var(--pine-900);
+        color: var(--bone);
+        font:
+          16px/1.6 system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+      }
+
+      main {
+        max-width: 42rem;
+        margin: 0 auto;
+      }
+
+      h1 {
+        font-size: 1.5rem;
+        margin: 0 0 0.25rem;
+      }
+
+      .lede {
+        color: var(--bone-dim);
+        margin: 0 0 2rem;
+      }
+
+      #verdict {
+        border: 1px solid var(--pine-700);
+        border-radius: 0.75rem;
+        padding: 1.25rem;
+        background: var(--pine-800);
+        margin-bottom: 2rem;
+      }
+
+      #verdict h2 {
+        font-size: 1.15rem;
+        margin: 0 0 0.35rem;
+      }
+
+      #verdict p {
+        margin: 0;
+        color: var(--bone-dim);
+      }
+
+      .dot {
+        display: inline-block;
+        width: 0.6rem;
+        height: 0.6rem;
+        border-radius: 50%;
+        margin-right: 0.5rem;
+        vertical-align: 0.05rem;
+        background: var(--unknown);
+      }
+
+      .dot.ok {
+        background: var(--ok);
+      }
+      .dot.bad {
+        background: var(--bad);
+      }
+
+      ul {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 2rem;
+      }
+
+      li {
+        border-bottom: 1px solid var(--pine-700);
+        padding: 0.75rem 0;
+        display: flex;
+        gap: 1rem;
+        align-items: baseline;
+      }
+
+      li:last-child {
+        border-bottom: 0;
+      }
+
+      .what {
+        flex: 1;
+      }
+
+      .what small {
+        display: block;
+        color: var(--bone-dim);
+        font-size: 0.85rem;
+      }
+
+      .state {
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        color: var(--bone-dim);
+        font-size: 0.9rem;
+      }
+
+      footer {
+        color: var(--bone-dim);
+        font-size: 0.9rem;
+        border-top: 1px solid var(--pine-700);
+        padding-top: 1.5rem;
+      }
+
+      footer p {
+        margin: 0 0 0.75rem;
+      }
+
+      a {
+        color: var(--blaze);
+      }
+
+      code {
+        background: var(--pine-800);
+        padding: 0.1rem 0.3rem;
+        border-radius: 0.25rem;
+        font-size: 0.9em;
+      }
+    </style>
+  </head>
+
+  <body>
+    <main>
+      <h1>Is the map working?</h1>
+      <p class="lede">
+        This page checks OurHike's map data from
+        <strong>your own browser, right now</strong> — not from a server, and
+        not from a report written earlier.
+      </p>
+
+      <div id="verdict">
+        <h2><span class="dot" id="dot"></span><span id="headline">Checking…</span></h2>
+        <p id="detail">Asking the data bucket the same questions the app asks.</p>
+      </div>
+
+      <ul id="checks"></ul>
+
+      <footer>
+        <p>
+          <strong>Two things this page cannot tell you</strong>, worth saying
+          plainly rather than implying more coverage than it has.
+        </p>
+        <p>
+          It is served from the same place as the app. If GitHub Pages itself is
+          down, this page goes down with the thing it reports on — so reaching
+          it at all already rules one failure out, and rules nothing else in.
+        </p>
+        <p>
+          It needs a connection. OurHike is built to work without one, so if you
+          are on the trail with a downloaded map, none of this affects you: the
+          map on your phone does not ask anything of a server. This page is for
+          the person at a trailhead on wifi, wondering whether it is worth
+          starting a download.
+        </p>
+        <p>
+          <a href="../">Back to OurHike</a>
+        </p>
+      </footer>
+    </main>
+
+    <script>
+      // Checked live, in the visitor's browser, rather than rendered from a
+      // verdict a scheduled job wrote earlier. Two reasons, and the first is
+      // the one that matters:
+      //
+      // 1. THIS PAGE SHARES AN ORIGIN WITH THE APP. So a fetch from here
+      //    crosses the exact same CORS boundary the app's fetches cross. That
+      //    is the failure that took the map down for eight days (#427) while
+      //    every server-side check stayed green, because none of them was a
+      //    browser and none of them sent an `Origin` header. A browser is the
+      //    only client that can answer this question, and here one is.
+      //
+      // 2. A stored verdict is stale by as much as a day. "Is it broken right
+      //    now" is the question being asked, and yesterday's answer is a
+      //    different question.
+      //
+      // The rule this replaces - #431's "generated, never hand-written" - is
+      // there so the page cannot sit claiming "All systems operational"
+      // through an outage. A page that holds no stored claim at all cannot go
+      // stale, which meets that intent rather than working around it.
+      //
+      // The daily server-side check (.github/workflows/check-deployment.yml)
+      // still runs and still opens an issue: it watches when nobody is
+      // looking, which is the half a page of HTML cannot do.
+
+      // Substituted by .github/workflows/pages.yml from the same DATA_BASE_URL
+      // the app is built with. Left as a placeholder in the repository so this
+      // file never carries a bucket URL that could drift from the app's.
+      const DATA_BASE_URL = 'https://data.ourhike.org'.replace(/\/+$/, '')
+      const CONFIGURED = DATA_BASE_URL !== '' && !DATA_BASE_URL.startsWith('__')
+
+      const checks = [
+        {
+          name: 'Reaching the map data',
+          why: 'The app downloads its map from a storage bucket. This asks for the file listing every published piece.',
+          async run() {
+            const response = await fetch(`${DATA_BASE_URL}/latest.json`, {
+              cache: 'no-store',
+            })
+            if (!response.ok) throw new Error(`answered ${response.status}`)
+            const manifest = await response.json()
+            const count = Object.keys(manifest.artifacts || {}).length
+            if (!count) throw new Error('nothing is published')
+            return `${count} files published`
+          },
+        },
+        {
+          name: 'Your browser is allowed to read it',
+          why: 'A bucket can serve a file perfectly and still refuse to let a browser read it. That is what broke the map for eight days in August, with every other check passing.',
+          async run() {
+            // Reaching this at all means the fetch above was not blocked: a
+            // CORS refusal rejects the promise rather than returning a status,
+            // so it fails the check above first. Re-reading the same key keeps
+            // the two questions separate on screen, which is the distinction a
+            // visitor actually came here for.
+            const response = await fetch(`${DATA_BASE_URL}/latest.json`, {
+              cache: 'no-store',
+            })
+            if (!response.ok) throw new Error(`answered ${response.status}`)
+            return 'allowed'
+          },
+        },
+        {
+          name: 'Downloads can be resumed',
+          why: 'The map is large. If a download is interrupted, it has to pick up where it stopped rather than starting again — that needs the server to honour a range request.',
+          async run() {
+            const response = await fetch(`${DATA_BASE_URL}/latest.json`, {
+              headers: { Range: 'bytes=0-0' },
+              cache: 'no-store',
+            })
+            if (response.status !== 206) {
+              throw new Error(
+                `a partial request answered ${response.status} instead of 206`,
+              )
+            }
+            return 'yes'
+          },
+        },
+      ]
+
+      const list = document.getElementById('checks')
+      const dot = document.getElementById('dot')
+      const headline = document.getElementById('headline')
+      const detail = document.getElementById('detail')
+
+      function row(check) {
+        const li = document.createElement('li')
+        li.innerHTML = `<span class="what"><strong></strong><small></small></span><span class="state">checking…</span>`
+        li.querySelector('strong').textContent = check.name
+        li.querySelector('small').textContent = check.why
+        list.append(li)
+        return li.querySelector('.state')
+      }
+
+      async function main() {
+        if (!CONFIGURED) {
+          dot.className = 'dot'
+          headline.textContent = 'This page is not configured'
+          detail.textContent =
+            'No data source was set when this page was published, so there is nothing for it to check. That is a deployment problem rather than an outage.'
+          return
+        }
+
+        const states = checks.map((check) => ({ check, cell: row(check) }))
+        let failed = 0
+
+        for (const { check, cell } of states) {
+          try {
+            cell.textContent = await check.run()
+          } catch (error) {
+            failed += 1
+            cell.textContent = 'failed'
+            cell.style.color = 'var(--bad)'
+            const small = cell.parentElement.querySelector('small')
+            small.textContent = `${small.textContent} — ${error.message || error}`
+          }
+        }
+
+        if (failed === 0) {
+          dot.className = 'dot ok'
+          headline.textContent = 'The map data is reachable'
+          detail.textContent =
+            'Everything the app needs to download a map is answering normally from here. If your map still looks wrong, it is worth reporting.'
+        } else {
+          dot.className = 'dot bad'
+          headline.textContent = 'Something is wrong on our side'
+          detail.textContent =
+            'At least one thing the app depends on is not answering correctly. It is not you. This is known the moment it happens — a scheduled check opens an issue on the repository — so it is being looked at.'
+        }
+      }
+
+      main()
+    </script>
+  </body>
+</html>

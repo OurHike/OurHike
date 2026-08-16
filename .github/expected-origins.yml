@@ -137,7 +137,19 @@ supabase_projects:
   production:
     url_var: SUPABASE_URL
     key_var: SUPABASE_ANON_KEY
-    site_url_origin: https://ourhike.github.io
+    # Moved to the custom domain with the app (#733). The Site URL is the
+    # FALLBACK - where Supabase sends a redirect it refused - so leaving it on
+    # a host that now answers 301 would put an auth round trip through a
+    # redirect on the one path that is hardest to debug and easiest to believe
+    # is working. Whether a 301 preserves the code is not something this
+    # repository has measured, and the Site URL is the wrong place to find out.
+    #
+    # This is the entry that makes the Supabase dashboard change ORDERING
+    # rather than cleanup: `check_auth_redirects.py` reads the live Site URL
+    # back on every run, so this file and the dashboard disagree - loudly, in
+    # the daily check - from the moment this lands until someone changes it
+    # there. Change it there first.
+    site_url_origin: https://ourhike.org
     serves: The project hikers sign in to.
 
   ua:
@@ -151,18 +163,51 @@ supabase_projects:
     serves: The release candidate's project, so a UA tester is not a hiker.
 
 origins:
-  - pattern: https://ourhike.github.io
-    probe: https://ourhike.github.io
+  - pattern: https://ourhike.org
+    probe: https://ourhike.org
     # Where the app itself is served on this origin - `VITE_BASE_PATH` in the
     # workflow that builds for it. Not decoration: an auth redirect targets the
     # app rather than the origin root, and a redirect to the bare origin lands
-    # on the project's landing page with the code in its URL and nothing there
-    # to read it. It is also what makes the probe concrete.
+    # on the landing page with the code in its URL and nothing there to read
+    # it. It is also what makes the probe concrete.
+    app_path: /app/
+    supabase: [production]
+    serves: The deployed app and landing page, on GitHub Pages via ourhike.org.
+    # The one whose absence is an outage rather than an inconvenience: it is
+    # the origin every hiker is on.
+    hiker_facing: true
+
+  - pattern: https://ourhike.github.io
+    probe: https://ourhike.github.io
+    # Still `/OurHike/app/`, even though nothing is BUILT for this path any
+    # more. GitHub Pages answers the project-site path with a 301 to the custom
+    # domain once `site/CNAME` is live, and a bookmark has to be able to
+    # complete that hop rather than be refused at it.
     app_path: /OurHike/app/
     supabase: [production]
-    serves: The deployed app and landing page, on GitHub Pages.
-    # The one whose absence is an outage rather than an inconvenience: it is
-    # the origin every hiker is on. It is also the one that went missing.
+    serves: The pre-#733 origin - redirects for a browser, still home to older installs.
+    # STILL hiker_facing, which is the opposite of what "we moved" suggests and
+    # is the more careful answer.
+    #
+    # @unvalidated - reasoned from how service workers and per-origin storage
+    # work, not measured against a real install, and worth measuring before
+    # this entry is retired. A PWA installed before the move has its service
+    # worker registered on THIS origin and its downloaded archive in THIS
+    # origin's IndexedDB. Opening it should serve the cached shell and read the
+    # map a hiker already has - none of which the 301 touches, because a
+    # service worker update request that redirects cross-origin fails rather
+    # than following. If that is right, these installs keep working here and
+    # keep fetching from R2 with this Origin, and a CORS regression on it is a
+    # hiker who cannot resume a download rather than a broken redirect.
+    #
+    # Being wrong in this direction costs a check reported as blocking when it
+    # was merely inconvenient. Being wrong in the other direction is #427,
+    # narrowed to whoever installed early. What would settle it: open an
+    # install made before the cutover, offline, after the domain moves.
+    #
+    # Retiring this entry is a separate change and needs that measurement plus
+    # evidence the installs are gone - not a guess about how long is long
+    # enough.
     hiker_facing: true
 
   - pattern: https://*.ourhike-preview.pages.dev

@@ -467,3 +467,128 @@ class TestTheDeployWorkflows:
         # linking somewhere the upload did not go is a reviewer looking at a
         # 404, or at someone else's change, and believing it.
         assert "steps.deploy.outputs.pages-deployment-alias-url" in comment["with"]["message"]
+
+
+class TestTheCustomDomainAndTheBuildAgree:
+    """Three files decide where the production app is, and all three must say it.
+
+    `site/CNAME` moves the GitHub Pages site onto `ourhike.org`, `pages.yml`
+    builds the bundle for the path it will be served at, and
+    `.github/expected-origins.yml` is what the R2 CORS allow-list and both
+    Supabase redirect lists are pasted from. #733 moved all three together.
+
+    Any one of them moving alone is a failure that deploys perfectly well.
+    A base path that disagrees with the serving path is a blank screen; an
+    origin declaration that disagrees with either is #427 again - the eight
+    days the deployed app drew a topo sheet with no Appalachian Trail on it,
+    because an allow-list did not move when the origin did.
+
+    These are string comparisons rather than live requests on purpose. The
+    live half already exists and runs daily against the real services
+    (`pipeline/check_deployment.py`, `pipeline/check_auth_redirects.py`); what
+    it cannot do is fail in a pull request, before the mismatch is deployed.
+    """
+
+    CNAME = REPO_ROOT / "site" / "CNAME"
+    ORIGINS = REPO_ROOT / ".github" / "expected-origins.yml"
+
+    @classmethod
+    def _host(cls) -> str:
+        return cls.CNAME.read_text(encoding="utf-8").strip()
+
+    @classmethod
+    def _origins(cls) -> dict:
+        return yaml.safe_load(cls.ORIGINS.read_text(encoding="utf-8"))
+
+    @classmethod
+    def _base_path(cls) -> str:
+        workflow = yaml.safe_load((WORKFLOW_DIR / "pages.yml").read_text(encoding="utf-8"))
+        steps = [step for job in workflow["jobs"].values() for step in job["steps"]]
+        build = next(step for step in steps if step.get("name") == "Build the app")
+        return build["env"]["VITE_BASE_PATH"]
+
+    def test_the_cname_holds_exactly_one_bare_hostname(self):
+        """GitHub Pages reads this file literally, and forgives nothing.
+
+        A scheme, a path, a trailing comment or a second line is not a
+        hostname, and Pages responds by serving the site at a domain nobody
+        asked for - or at none.
+        """
+        raw = self.CNAME.read_text(encoding="utf-8")
+        assert raw.strip().splitlines() == [self._host()], "CNAME must hold one line"
+        assert "://" not in self._host()
+        assert "/" not in self._host()
+
+    def test_the_app_is_built_for_a_subpath_of_the_custom_domain_root(self):
+        """The apex serves the landing page; the app lives under it.
+
+        `/OurHike/app/` was right while this was a project site and is wrong
+        now, in the specific way that builds, deploys and then asks for its
+        assets at a path nothing answers.
+        """
+        assert self._base_path() == "/app/"
+        assert self._base_path().startswith("/")
+        assert self._base_path().endswith("/"), "Vite joins this to asset paths directly"
+
+    def test_the_repository_name_no_longer_decides_the_serving_path(self):
+        """It did, and following a repository rename would now be wrong.
+
+        The serving path is a property of the domain, and the domain does not
+        change when somebody renames the repository.
+        """
+        raw = (WORKFLOW_DIR / "pages.yml").read_text(encoding="utf-8")
+        assert "VITE_BASE_PATH: /${{ github.event.repository.name }}" not in raw
+
+    def test_the_domain_the_cname_names_is_declared_and_hiker_facing(self):
+        """The origin declaration is what the allow-lists are pasted from.
+
+        If this drifts from `site/CNAME`, the bucket and Supabase are told to
+        trust a host the app is not served from - and the host it IS served
+        from is refused by both.
+
+        `in`, not `==`: the pre-#733 origin is deliberately still blocking too,
+        because an install made before the move keeps its storage there. That
+        is the origins file's judgement to make and its comment to justify;
+        this test only insists the domain being deployed to is among them.
+        """
+        hiker_facing = [origin["pattern"] for origin in self._origins()["origins"] if origin.get("hiker_facing")]
+        assert f"https://{self._host()}" in hiker_facing
+
+    def test_the_declared_app_path_is_the_one_the_bundle_is_built_for(self):
+        """`app_path` is where an auth redirect is sent back to.
+
+        Supabase returns a hiker to this exact path after a provider round
+        trip. Pointing it anywhere but the built base lands them on a page
+        with the auth code in its URL and nothing there to read it - which
+        looks like a sign-in that silently did nothing.
+        """
+        origin = next(o for o in self._origins()["origins"] if o["pattern"] == f"https://{self._host()}")
+        assert origin["app_path"] == self._base_path()
+
+    def test_the_site_url_falls_back_to_the_domain_the_app_is_on(self):
+        """The Site URL is where a REFUSED redirect goes, so it is the quiet one.
+
+        A wrong one turns "this redirect is not allowed" into a silent trip
+        somewhere else, which is how the pre-org-migration host went unnoticed
+        while every sign-in from production redirected to a dead 404.
+        """
+        production = self._origins()["supabase_projects"]["production"]
+        assert production["site_url_origin"] == f"https://{self._host()}"
+
+    def test_the_old_project_site_origin_is_kept_and_still_blocking(self):
+        """Removing it is the change most likely to look like tidying up.
+
+        A browser arriving there is redirected, which reads as "nothing uses
+        this any more" - but an install made before the move keeps its service
+        worker and its downloaded archive on that origin, and would still be
+        fetching from R2 with it. Dropping the entry drops it from the
+        generated CORS policy, which is #427 narrowed to whoever installed
+        early: a map that stops downloading, for a subset of hikers, with
+        every check green.
+        """
+        github_io = next(
+            (o for o in self._origins()["origins"] if o["pattern"] == "https://ourhike.github.io"),
+            None,
+        )
+        assert github_io is not None, "removing this is a separate change - see #733"
+        assert github_io.get("hiker_facing") is True

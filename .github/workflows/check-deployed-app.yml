@@ -55,7 +55,10 @@ concurrency:
 env:
   ISSUE_TITLE: "Deployed app does not draw a trail"
   ISSUE_LABEL: deployment-health
-  DEFAULT_URL: https://ourhike.github.io/OurHike/app/
+  # The origin the app is actually served from since #733. Checking the old
+  # project-site URL instead would still pass - it 301s here - while proving
+  # nothing about the host a hiker is on.
+  DEFAULT_URL: https://ourhike.org/app/
 
 jobs:
   check:

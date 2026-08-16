@@ -1,19 +1,28 @@
 # Publishes the beta landing page and the installable app to GitHub Pages.
 #
 # GitHub Pages is what makes this installable at all: a PWA needs HTTPS before
-# any browser will offer "Install app", and Pages provides it for free on a
-# project site.
+# any browser will offer "Install app", and Pages provides it for free.
 #
-# Two things land, at the two paths the site is written to expect:
+# Three things land, at the paths the site is written to expect:
 #
-#   /OurHike/         site/index.html         - the beta announcement and install steps
-#   /OurHike/app/     client/dist/            - the app itself
-#   /OurHike/status/  site/status/index.html  - "is it me or us?", checked live
-#                                               in the visitor's browser (#467)
+#   /         site/index.html         - the beta announcement and install steps
+#   /app/     client/dist/            - the app itself
+#   /status/  site/status/index.html  - "is it me or us?", checked live
+#                                       in the visitor's browser (#467)
+#
+# Those are apex paths because `site/CNAME` moves this site onto `ourhike.org`
+# (#733). It used to be a project site under `/OurHike/`, and the prefix was
+# never in this file's assembly step - `_site/` has always had the landing page
+# at its root and the app at `app/`. Only VITE_BASE_PATH below carried it, so
+# the custom domain is the one-line change it looks like.
 #
 # The app's `base` has to match its serving path exactly, because a PWA's
 # `scope` and `start_url` decide which pages the installed app owns - see the
-# note in client/vite.config.ts.
+# note in client/vite.config.ts. This is the half that CANNOT be wrong while
+# the other half is right: a base of `/OurHike/app/` served at `ourhike.org`
+# asks for assets nothing answers, and a base of `/app/` served at
+# `ourhike.github.io` does the same. `.github/tests/test_pages_publish.py`
+# holds them to `site/CNAME` so neither moves alone.
 #
 # Set the DATA_BASE_URL repository variable (Settings -> Secrets and variables
 # -> Actions -> Variables) to the public R2 bucket URL. Without it the app
@@ -204,7 +213,13 @@ jobs:
         working-directory: client
         env:
           # Trailing slash matters - Vite joins this to asset paths directly.
-          VITE_BASE_PATH: /${{ github.event.repository.name }}/app/
+          #
+          # A literal, not `/${{ github.event.repository.name }}/app/` as it
+          # was while this was a project site: the serving path is now decided
+          # by `site/CNAME`, which has nothing to do with what the repository
+          # is called. Deriving it from the repo name would silently follow a
+          # rename that the domain would not.
+          VITE_BASE_PATH: /app/
           VITE_DATA_BASE_URL: ${{ steps.data.outputs.url }}
           VITE_SUPABASE_URL: ${{ steps.supabase.outputs.url }}
           VITE_SUPABASE_ANON_KEY: ${{ steps.supabase.outputs.key }}
@@ -276,6 +291,10 @@ jobs:
           DATA_URL: ${{ steps.data.outputs.url }}
         run: |
           mkdir -p _site/app
+          # Carries site/CNAME with it, which is what moves this site onto
+          # ourhike.org (#733). Not copied by name on purpose: a second
+          # spelling of the hostname here is a second place for it to be
+          # wrong, and site/CNAME is the one the test reads.
           cp -r site/. _site/
           cp -r client/dist/. _site/app/
           cp client/public/favicon.svg _site/favicon.svg

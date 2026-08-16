@@ -31,7 +31,7 @@
 import * as nodeFs from 'node:fs'
 import { chromium } from 'playwright'
 
-const DEFAULT_URL = 'https://ourhike.github.io/OurHike/app/'
+const DEFAULT_URL = 'https://ourhike.org/app/'
 
 // Long, because this is a real page loading a real 12 MB artifact over a
 // public CDN, and a slow morning is not an outage. The check reports what it

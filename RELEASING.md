@@ -78,7 +78,7 @@ two targets is a smaller change than the workflow's own header comment.
 |---|---|---|---|
 | **What it is** | a laptop, and a preview per pull request | one persistent deployment of `main` | what hikers install |
 | **Deployed by** | `npm run dev`; `pr-preview.yml` | push to `main` | an annotated tag `v*` |
-| **Client origin** | `localhost:5173` / `:4173`; `pr-<n>.ourhike-preview.pages.dev` | `ua.ourhike-preview.pages.dev` | `ourhike.github.io` |
+| **Client origin** | `localhost:5173` / `:4173`; `pr-<n>.ourhike-preview.pages.dev` | `ua.ourhike-preview.pages.dev` | `ourhike.org` |
 | **Backend** | local uvicorn | a UA service on the backend host | a production service on the backend host |
 | **Database** | local Postgres (`backend/scripts/local-postgres.sh`) | UA Supabase project | production Supabase project |
 | **Map data** | local artifacts, or `environments/dev/` | `environments/ua/`; the **candidate** `releases/<id>/` within it | the bucket root; the **released** `releases/<id>/` within it |

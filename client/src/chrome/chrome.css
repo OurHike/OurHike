@@ -1476,13 +1476,22 @@ a.poi-card__credit::after {
 /* Every part of the site, one chip each (PoiCard.tsx, #526).
 
    SCROLLS SIDEWAYS RATHER THAN WRAPPING, and here that is forced rather than
-   chosen. The card is 264px wide and this strip sits inside 12px of body
-   padding each side, so it has 240px - and a chip is a 24px pin plus "Campsite"
-   plus a distance, which is most of 110px. Two fit. Wrapping instead would
-   change the card's HEIGHT with the number of parts, and the card is positioned
-   by its measured height whenever it hangs below its pin, so a strip that grew a
-   row would push itself over the thing it describes. Same argument tabs.css
-   makes for the same declaration.
+   chosen. The card is 264px wide and this strip sits inside 12px of body padding
+   each side, so it has 240px. Wrapping instead would change the card's HEIGHT
+   with the number of parts, and the card is positioned by its measured height
+   whenever it hangs below its pin, so a strip that grew a row would push itself
+   over the thing it describes. Same argument tabs.css makes for the same
+   declaration, and the opposite of the one .poi-card__meta makes below - that
+   line wraps, because what makes it long is one part's own facts rather than how
+   many parts there are.
+
+   WHAT ACTUALLY SCROLLS IS NOW SIX PARTS AND UP. A chip was a 24px pin plus
+   "Campsite" plus a distance - most of 110px, so two fit - until #711 took the
+   words off the unselected chips and this issue took them off the selected one
+   too. Every chip is the touch target and no wider, so five chips and four gaps
+   is 236px of the 240 and the largest site on the trail fits (PoiCard.tsx
+   carries the measurements). The declaration stays because the strip must still
+   have an answer at six.
 
    Not sized to today's sites, either. features/POI_SITES.md counts 94% of them
    at two or three members and five as three places on the whole trail, but that
@@ -1517,13 +1526,16 @@ a.poi-card__credit::after {
 
      BOTH DIMENSIONS SINCE #711, which is the change that made the width worth
      stating: a chip used to be its words and so was never under 97px wide, and
-     min-height alone was the whole of the guarantee. An unselected chip is now
-     its pin - 24px of icon inside 8px of padding either side, so 40px - and
-     4px under the token in the one direction nobody was watching. The cost of
-     holding it is 4px per hidden chip, which is 273px of strip becoming 289
-     against 240 available: it makes the overflow slightly worse and is still
-     the right way round, because a target under the token is a miss by a
-     gloved thumb and a slightly longer scroll is not. */
+     min-height alone was the whole of the guarantee. A chip is now its pin -
+     24px of icon inside 8px of padding either side, so 40px - and 4px under the
+     token in the one direction nobody was watching.
+
+     It is also the whole of the strip's width now that EVERY chip is a pin, so
+     this line is what makes five parts fit in 240px and six not: 5x44 + 4x4 is
+     236, 6x44 + 5x4 is 284. Lowering it to fit a sixth chip is the one change
+     here that would trade a gloved thumb's hit rate for a scroll, which is the
+     wrong way round - a missed target is a tap that does nothing, and a scroll
+     is a tap that works after a drag. */
   min-width: var(--min-touch-target);
   min-height: var(--min-touch-target);
   padding: 0 var(--space-2, 8px);
@@ -1582,8 +1594,10 @@ a.poi-card__credit::after {
 }
 
 /* The chip's words - category, separator, distance - as one thing, so that one
-   thing can be taken off screen for every chip but the one being read (#711;
-   PoiCard.tsx carries the measurement and the trade).
+   thing can be taken off screen for every chip (#711 for all but the one being
+   read, and PoiCard.tsx's own note for that last one; it carries the
+   measurements). They are hidden rather than deleted: the accessible name is
+   still "Privy 131 ft", and this rule is what that name's spacing depends on.
 
    A flex container rather than a plain inline, and it matters: the separator's
    spacing is `gap` doing the work while the whitespace text nodes either side
@@ -1598,8 +1612,27 @@ a.poi-card__credit::after {
   gap: var(--space-1, 4px);
 }
 
+/* WRAPS, WHERE THE STRIP ABOVE MUST NOT. The two look like the same decision
+   and are opposite ones: a strip that gains a row changes the card's height with
+   the number of PARTS, which is a permanent extra row on a five-part site, while
+   this line gains one only when a single part happens to carry four facts.
+
+   Which one part can: a shelter is the only type with a capacity, and it prints
+   a distance only when it is not the pin - reachable since #607/#609, where
+   hiding shelters in the legend redraws the site on a member. `Shelter · mi
+   2189.4 · Sleeps 8 · 131 ft away` measures 240 px against the body's 240
+   (Chromium 1194, 2026-08-16). Without this it does not overflow, which would at
+   least be visible - `display: flex` with no wrap shrinks the items instead, and
+   a shrunk item wraps INSIDE itself, breaking `mi 2189.4` across two lines at
+   the space. So the choice is between wrapping between the facts and wrapping
+   through the middle of one.
+
+   The card's height moving is handled rather than avoided: `usePinAnchor`
+   re-measures on the shown part for exactly this reason, and does so already
+   because a privy's card is several lines shorter than its shelter's. */
 .poi-card__meta {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-1, 4px);
   margin: 0;
   font-size: 13px;
@@ -1608,9 +1641,14 @@ a.poi-card__credit::after {
 
 /* Mono, like every other mile on this screen - the header's, the ribbon's and
    the closure sheet's - so a hiker reads them as the same kind of number. The
-   chips' metres join them: it is the same kind of claim, read the same way. */
+   parts' metres join them: it is the same kind of claim, read the same way.
+   `.poi-card__chip-distance` is still in this list although the chips no longer
+   show their words: they are `visually-hidden` rather than removed, and a
+   font-family on an element clipped to 1px costs nothing while dropping it would
+   make the rule disagree with the markup for no gain. */
 .poi-card__mile,
 .poi-card__chip-distance,
+.poi-card__part-distance,
 .poi-card__coords {
   font-family: var(--font-mono, ui-monospace, monospace);
 }

@@ -91,23 +91,48 @@ describe('the waypoint card’s strip of site parts', () => {
     // one control out of that.
     //
     // WIDTH JOINED HEIGHT IN #711. A chip used to be its words, so it was never
-    // narrower than 97px and the height was the whole of the guarantee. An
-    // unselected chip is now its pin alone - 24px of icon in 8px of padding
-    // either side - which is 40px, under the token in the one direction nothing
-    // was checking. Dropping this line does not fail a single other test in
-    // this suite: jsdom does no layout, so the strip still "fits" and the chips
-    // still carry their class.
+    // narrower than 97px and the height was the whole of the guarantee. A chip
+    // is now its pin alone - 24px of icon in 8px of padding either side - which
+    // is 40px, under the token in the one direction nothing was checking.
+    // Dropping this line does not fail a single other test in this suite: jsdom
+    // does no layout, so the strip still "fits" and the chips still carry their
+    // class.
+    //
+    // It is also what sets the strip's width now that every chip is a pin: 5x44
+    // plus 4x4 of gap is 236 of 240, so five parts - the largest site on the
+    // trail - fits and six scrolls. Which means this token is load-bearing in
+    // two directions at once, and lowering it to buy a sixth chip would trade a
+    // gloved thumb's hit rate for a drag.
     const chip = rule('.poi-card__chip')
 
     expect(chip).toMatch(/min-width:\s*var\(--min-touch-target\)/)
     expect(chip).toMatch(/min-height:\s*var\(--min-touch-target\)/)
   })
 
-  it('takes an unread chip’s words out of the layout, not just out of sight', () => {
+  it('wraps the meta line between its facts, where the strip above must not', () => {
+    // The two declarations look like the same decision and are opposite ones,
+    // which is why this sits next to the test above rather than anywhere else.
+    // A strip that wraps gains a row with the number of PARTS - permanent, on
+    // every five-part site. This line gains one only when a single part carries
+    // four facts, which one type can: a shelter has a capacity, and it prints a
+    // distance only when it is not the pin (reachable since #607/#609). Measured
+    // at 240px against the body's 240 in Chromium 1194.
+    //
+    // Without it the line does not overflow visibly - `display: flex` with no
+    // wrap shrinks the items, and a shrunk item wraps INSIDE itself, breaking
+    // `mi 2189.4` across two lines at the space. So this is not "allow it to be
+    // long"; it is which of two wraps happens, and jsdom can see neither.
+    const line = rule('.poi-card__meta')
+
+    expect(line).toMatch(/display:\s*flex/)
+    expect(line).toMatch(/flex-wrap:\s*wrap/)
+  })
+
+  it('takes a chip’s words out of the layout, not just out of sight', () => {
     // #711, and the half of it that lives in CSS. chrome/PoiCard.test.tsx
-    // asserts the other half - that `visually-hidden` really lands on the label
-    // of every chip but the one being read - and the two together are what stop
-    // a three-part site asking for 406px of a 240px strip.
+    // asserts the other half - that `visually-hidden` really lands on every
+    // chip's label, the one being read included - and the two together are what
+    // took a three-part site from 406px of a 240px strip to 140.
     //
     // Asserted from here, on a shared utility this file otherwise has no
     // business in, because the strip's fit now DEPENDS on that utility: soften

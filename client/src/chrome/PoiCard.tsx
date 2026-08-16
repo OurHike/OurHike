@@ -724,12 +724,14 @@ export function PoiCard({
             aria-label={`Parts of ${anchor.name}`}
           >
             {parts.map((part) => {
-              // ONE reading of "this is the part you are on", used twice below:
-              // by `aria-current`, and by the class deciding whether this chip's
-              // words are on screen. Two independent readings of one fact are two
-              // things that can drift, and the drift would be silent in the worst
-              // direction - a chip wearing the current ring with its label hidden
-              // is a pin with a circle round it and nothing saying what it is.
+              // "This is the part you are on", which since the words came off
+              // every chip is read in one place only - `aria-current`, and the
+              // inset ring chrome.css hangs off it. It was two readings while the
+              // selected chip also spelt itself out, and they could drift: a chip
+              // wearing the current ring with its label hidden is a pin with a
+              // circle round it and nothing saying what it is. Now the ring is the
+              // whole of the marking, and the words for that part are on the meta
+              // line below rather than in the strip.
               const isShown = part.id === shown.id
 
               return (
@@ -763,66 +765,59 @@ export function PoiCard({
                     // spells out in words once you tap it.
                     confidence={part.confidence}
                   />
-                  {/* THE WORDS BELONG TO THE PART YOU ARE READING; EVERY OTHER
-                      CHIP IS ITS PIN (#711).
+                  {/* EVERY CHIP IS ITS PIN, THE ONE YOU ARE READING INCLUDED.
 
-                      A chip carrying a 24 px pin, a category and a distance
-                      measures 135-165 px, and the strip has 240 px - the card is
-                      `min(264px, ...)` and the body spends 12 px each side. So two
-                      fit. Measured in Chromium 1194 at that width against this
-                      file's own test fixtures (2026-08-14), a three-part site asks
-                      for 406 px and a five-part one for 691. The parts past the
-                      edge are reachable by dragging and by nothing else:
-                      `overflow-x: auto` scrolls, and `scrollbar-width: none` two
-                      rules down means nothing on screen says there is anywhere to
-                      scroll TO. A hiker reads a shelter and a privy and concludes
-                      that is the whole place, which is #524's deletion arriving one
-                      layer up - not a pin dropped by the collision engine, but a
-                      part of the place with no gesture leading to it.
+                      #711 took the words off the UNSELECTED chips and left the
+                      selected one spelling itself out, and its own table named what
+                      that left behind: `Campsite · 181 ft` was 172 px of the 364 a
+                      five-part strip still wanted out of 240. Finishing the job has
+                      two consequences worth stating.
 
-                      Hiding the words takes an unselected chip to the touch target
-                      and no wider - 44 px. Measured the same way, and NOT every
-                      case fixed, which is worth writing as numbers rather than as
-                      "better" because the residue is the shape of whatever closes
-                      it next:
+                      The strip goes back to FIXED GEOMETRY, which #711 knowingly
+                      spent. The current-chip marker is an inset ring (chrome.css)
+                      precisely so that marking a chip does not resize it; a chip
+                      that grew when selected undid that, and the row shifted
+                      sideways under the thumb that had just tapped it.
 
-                        3 parts, as it opens        406 -> 240   fits
-                        3 parts, campsite open      407 -> 268   28 px over
-                        5 parts, as it opens        691 -> 289   49 px over
-                        5 parts, campsite open      692 -> 364  124 px over
+                      And the whole strip fits at every site size the trail has.
+                      Measured in Chromium 1194 at the card's real width against this
+                      file's own fixtures plus the four-fact case the meta line needs
+                      below (2026-08-16), as chip boxes plus gaps rather than
+                      scrollWidth - which floors at the container and hides the
+                      headroom, so #711's "240" for a fitting case and its "240" for
+                      the container are the same number by accident:
 
-                      What changes is that every pin is on screen or about one chip
-                      from it, rather than 450 px past it. The whole of the residue
-                      is the selected chip's own words: `Campsite · 181 ft` is 172 px
-                      of that 364. Dropping the distance and keeping the category
-                      alone would fit every case at 289 px flat - not done, because
-                      the distance is the half of the chip a hiker is asking for, and
-                      the maintainer chose to keep it.
+                        3 parts, as it opens        180 -> 140   fits (was: fits)
+                        3 parts, campsite open      244 -> 140   fits
+                        5 parts, as it opens        276 -> 236   fits
+                        5 parts, campsite open      348 -> 236   fits
 
-                      IT COSTS THE ROW ITS FIXED GEOMETRY, which the rule below used
-                      to guarantee - the current-chip marker is an inset ring
-                      precisely so that marking a chip does not resize it. Selecting
-                      one now grows it and shrinks the last, so the strip shifts
-                      under the thumb that tapped it. HEIGHT is what had to hold, and
-                      does: every chip keeps `min-height: var(--min-touch-target)`
-                      whether it has words or not, so the card's measured height -
-                      which is what positions it when it hangs below its pin - does
-                      not move.
+                      Five 44 px chips and four 4 px gaps is 236 of 240, so five
+                      parts - the largest site on the trail (features/POI_SITES.md
+                      §5) - is the last size that fits, with 4 px to spare. SIX would
+                      ask 284 and scroll, and nothing here changes what happens then:
+                      `overflow-x: auto` with no scrollbar is reachable and not
+                      discoverable, which is #711's bug returning at a site size that
+                      does not exist yet. That is the number to re-run this against
+                      if #529's water gap closes and sites grow.
 
-                      `visually-hidden` rather than `display: none`, and that is the
-                      whole reason this is a small change: the words stay in the
-                      accessibility tree, so the button's name is still "Privy 131
-                      ft" and nothing a screen reader does here changes at all. What
-                      a sighted hiker loses is real and is the trade being made -
-                      the category is a symbol they have to recognise until they tap
-                      it, and one distance is legible at a time instead of two. */}
-                  <span
-                    className={
-                      isShown
-                        ? 'poi-card__chip-label'
-                        : 'poi-card__chip-label visually-hidden'
-                    }
-                  >
+                      HIDING THE SELECTED CHIP'S WORDS COSTS NOTHING, which is why
+                      this is small rather than a trade. Its category was already on
+                      the meta line below and its name in the heading above; the one
+                      fact that lived nowhere else is its distance, and that moves
+                      down to the meta line rather than going away.
+
+                      `visually-hidden` rather than `display: none`, unchanged from
+                      #711: the words stay in the accessibility tree, so the button's
+                      name is still "Privy 131 ft" and nothing a screen reader does
+                      here changes at all. What a sighted hiker gives up is unchanged
+                      too, and still real - a chip is a symbol they have to recognise
+                      until they tap it. @unvalidated, and inherited rather than
+                      introduced: that a 44 px pin is legible and hittable with a
+                      gloved thumb in sun is the field test HIKER_SAFETY.md §5
+                      declines to guess at, which #711 flagged for the chips it had
+                      already made pins and this extends to one more per card. */}
+                  <span className="poi-card__chip-label visually-hidden">
                     {typeLabel(part.type)}
                     {part.id !== poi.id && (
                       <>
@@ -862,9 +857,14 @@ export function PoiCard({
           </p>
         )}
 
-        {/* One line, up to three facts, separate elements: the mile stays
+        {/* One line, up to four facts, separate elements: the mile stays
             mono like every other mile on this screen, and the dots between
-            them are punctuation for eyes only. */}
+            them are punctuation for eyes only.
+
+            THIS LINE IS WHERE THE CHIP'S WORDS WENT. The strip above is pins
+            alone, so the category and the distance of the part being read are
+            said once, here, under the row rather than inside it - and the
+            heading above already carries that part's name. */}
         <p className="poi-card__meta">
           <span>{typeLabel(shown.type)}</span>
           {shown.mile !== undefined && (
@@ -879,6 +879,31 @@ export function PoiCard({
               {/* "Sleeps 8", not "8": the bare number beside a mile reads as
                   another distance. */}
               <span>{`Sleeps ${shown.capacity}`}</span>
+            </>
+          )}
+          {/* How far the part being read is from the pin - the same
+              `partDistance` the chips used, measured from the same point, so
+              nothing about the number changed when it moved down here. Absent on
+              the pin's own part, exactly as it was absent from the pin's own
+              chip: the card hangs off that point, and "0 ft away" from the thing
+              you are standing on is noise.
+
+              "away" rather than a bare figure, and rather than a phrasing of its
+              own. A bare `131 ft` next to `mi 2189.4` reads as a second distance
+              of the same kind - the hazard "Sleeps 8" is spelt out for two lines
+              up. `describeNearby` already says "away" for this exact claim on
+              this same card, so borrowing its word keeps one voice rather than
+              inventing a second; what "away" leaves implicit there and here is
+              the point measured FROM, which is the pin and not the hiker. That
+              ambiguity is inherited, not introduced, and it is the one thing on
+              this line worth revisiting if somebody reports reading it as
+              distance-to-walk. */}
+          {shown.id !== poi.id && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span className="poi-card__part-distance">
+                {`${partDistance(poi, shown, units)} away`}
+              </span>
             </>
           )}
         </p>

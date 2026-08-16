@@ -883,12 +883,12 @@ describe('the parts of one site', () => {
     }
   })
 
-  it('spells out only the part you are reading, and leaves the rest as pins', () => {
-    // #711. A chip carrying a pin, a category and a distance is 135-165px and
-    // the strip has 240, so two fit: a three-part site - 41% of them - asked for
-    // 406px, and `scrollbar-width: none` two rules up means nothing on screen
-    // says the third one is there. A hiker read a shelter and a privy and
-    // concluded that was the whole place.
+  it('leaves every chip a pin, the one you are reading included', () => {
+    // #711 took the words off the unselected chips; this takes them off the
+    // selected one too, which is what makes the strip fixed-width again - five
+    // 44px chips and four 4px gaps is 236 of the 240 the body has, so the
+    // largest site on the trail fits and tapping one no longer resizes the row
+    // under the thumb.
     //
     // THE CLASS, not the pixels, because jsdom does no layout: this is the half
     // of the contract src/test/poiCardChipLayout.test.ts cannot see, and that
@@ -898,26 +898,73 @@ describe('the parts of one site', () => {
 
     const words = (chip: HTMLElement) => chip.querySelector('.poi-card__chip-label')
 
-    expect(words(chips()[0])).not.toHaveClass('visually-hidden')
-    expect(words(chips()[1])).toHaveClass('visually-hidden')
-    expect(words(chips()[2])).toHaveClass('visually-hidden')
+    for (const chip of chips()) expect(words(chip)).toHaveClass('visually-hidden')
   })
 
-  it('moves the words to whichever part you tap', () => {
-    // The half a first-render assertion cannot see. `aria-current` and this
-    // class are two readings of one fact - "you are on this part" - and the
-    // failure if they drift is silent and ugly: a chip wearing the current ring
-    // with nothing in it, or two chips spelling themselves out at once. Both
-    // render fine and neither looks like a bug from the outside.
+  it('keeps every chip a pin whichever part you tap', () => {
+    // The half a first-render assertion cannot see, and the reason this is not
+    // "delete the conditional and move on": the words used to follow the
+    // selection, so the realistic regression is not the class disappearing but
+    // the OLD behaviour surviving a tap - the strip renders correctly until
+    // something is pressed, and every first-render test in this file stays
+    // green.
     renderSite()
 
     fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
 
     const words = (chip: HTMLElement) => chip.querySelector('.poi-card__chip-label')
 
-    expect(words(chips()[0])).toHaveClass('visually-hidden')
-    expect(words(chips()[1])).not.toHaveClass('visually-hidden')
+    for (const chip of chips()) expect(words(chip)).toHaveClass('visually-hidden')
     expect(chips()[1]).toHaveAttribute('aria-current', 'true')
+  })
+
+  it('says which part you are reading, and how far it is, under the strip', () => {
+    // WHERE THE CHIP'S WORDS WENT, and the reason taking them off the selected
+    // chip costs a sighted hiker nothing. The category was already on this line
+    // and the name is in the heading above it; the distance is the one fact that
+    // lived only on the chip, so it moves here rather than going away.
+    //
+    // Asserted on the meta line specifically, not on the card: `getByText` over
+    // the whole card would pass on the hidden chip label this change is
+    // deliberately keeping in the DOM, which is a test that cannot fail.
+    const { container } = renderSite()
+
+    const meta = () => container.querySelector('.poi-card__meta')
+
+    // The pin's own part carries no distance, exactly as its chip never did -
+    // the card hangs off that point, and "0 ft away" from the thing you are
+    // standing on is noise.
+    expect(meta()).toHaveTextContent('Shelter')
+    expect(meta()).not.toHaveTextContent('away')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
+
+    expect(meta()).toHaveTextContent('Privy')
+    expect(meta()).toHaveTextContent('131 ft away')
+
+    // And it follows the selection rather than being written once: the campsite
+    // is 82 ft, and a line that kept saying 131 would be the drift this card's
+    // whole distance story exists to prevent.
+    fireEvent.click(screen.getByRole('button', { name: 'Campsite 82 ft' }))
+
+    expect(meta()).toHaveTextContent('Campsite')
+    expect(meta()).toHaveTextContent('82 ft away')
+    expect(meta()).not.toHaveTextContent('131 ft')
+  })
+
+  it('states the meta line’s distance in the hiker’s own units', () => {
+    // The chip's distance was the single line in the app that had to be argued
+    // into the hiker's units (#625, features/POI_SITES.md), so moving it is
+    // exactly where that could be lost - `partDistance` takes `units` and a
+    // caller that stopped passing it would silently print feet to a hiker who
+    // chose metres, with every other test here green.
+    const { container } = render(
+      <PoiCard poi={SHELTER} site={SITE} map={null} units="metric" onClose={vi.fn()} />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 40 m' }))
+
+    expect(container.querySelector('.poi-card__meta')).toHaveTextContent('40 m away')
   })
 
   it('says as much to a screen reader with the words off as with them on', () => {
@@ -931,8 +978,9 @@ describe('the parts of one site', () => {
 
     expect(chips()[1]).toHaveAccessibleName('Privy 131 ft')
     expect(chips()[2]).toHaveAccessibleName('Campsite 82 ft')
-    // Including the one whose words ARE on screen, so this cannot pass by the
-    // hiding having quietly stopped happening.
+    // The pin's own chip too, which is the one being read on a fresh card - so
+    // the part a sighted hiker now learns about from the meta line instead is
+    // still named on the button itself for anyone who cannot see either.
     expect(chips()[0]).toHaveAccessibleName('Shelter')
   })
 

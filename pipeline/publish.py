@@ -60,6 +60,16 @@ ROOT = Path(__file__).parent
 PROCESSED_DIR = ROOT / "data" / "processed"
 RAW_DIR = ROOT / "data" / "raw"
 MANIFEST_KEY = "latest.json"
+
+# Every manifest whose artifacts publish under `conditions/`. Named here
+# rather than inline so `tests/test_publish.py` can hold it against the export
+# scripts that actually write manifests - see collect_artifacts for what
+# forgetting an entry costs and how quietly it costs it.
+CONDITIONS_MANIFESTS = (
+    "conditions_manifest.json",
+    "atc_updates_manifest.json",
+    "drought_manifest.json",
+)
 WRITE_ENABLED_ENV_VAR = "R2_WRITE_ENABLED"
 
 
@@ -380,14 +390,22 @@ def collect_artifacts() -> dict[str, dict]:
     # and each becomes `conditions/<name>.json`; a manifest from before #436
     # has no "artifacts" key at all, and a KeyError here beats quietly
     # publishing a stale shape (re-running export_conditions.py rewrites it).
-    # Two manifests rather than one, because two scripts produce them:
-    # export_conditions.py reads the database, export_atc_updates.py reads a
-    # reviewed file in git, and they run under different conditions - the
-    # first needs a credential that may not exist yet, the second never needs
-    # one. Sharing a manifest file would make the published set depend on
-    # which ran last, since each rewrites its own manifest whole, and the
-    # artifact that lost would vanish from the upload with nothing said.
-    for name in ("conditions_manifest.json", "atc_updates_manifest.json"):
+    # Three manifests rather than one, because three scripts produce them and
+    # each runs under different conditions: export_conditions.py reads the
+    # database and needs a credential that may not exist yet,
+    # export_atc_updates.py reads a reviewed file in git and needs none, and
+    # export_drought.py fetches a public weekly release. Sharing a manifest
+    # file would make the published set depend on which ran last, since each
+    # rewrites its own manifest whole, and the artifact that lost would vanish
+    # from the upload with nothing said.
+    #
+    # THIS TUPLE IS THE THING TO EXTEND WHEN A FOURTH ARRIVES, and forgetting
+    # it is silent: #720 shipped export_drought.py with its own manifest and
+    # did not add the name here, so conditions/drought.json was rebuilt every
+    # hour for nothing and never uploaded once. The publish log said
+    # "uploaded ['conditions/atc_updates.json']" and no step failed. The test
+    # beside this one now walks every *_manifest.json this directory can hold.
+    for name in CONDITIONS_MANIFESTS:
         conditions_manifest = PROCESSED_DIR / name
         if conditions_manifest.exists():
             manifest = json.loads(conditions_manifest.read_text())

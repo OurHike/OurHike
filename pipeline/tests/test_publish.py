@@ -10,6 +10,8 @@ mocks S3/R2 (R2 is S3-compatible) instead of hitting a real bucket.
 
 import gzip
 import json
+import pathlib
+import re
 
 import boto3
 import pytest
@@ -774,3 +776,55 @@ def test_the_manifest_is_never_cached(s3_client, local_artifacts):
     stored = s3_client.get_object(Bucket=BUCKET, Key="latest.json")
     assert stored["CacheControl"] == "no-cache"
     assert "ContentEncoding" not in stored
+
+
+def test_collect_gathers_the_drought_bands(tmp_path, monkeypatch):
+    """#720's artifact, and the one this file did not cover when it shipped.
+
+    `collect_artifacts` walked a hardcoded pair of manifest names, so an
+    export script that wrote a third was built every hour and uploaded never.
+    Nothing failed: the publish log read "uploaded
+    ['conditions/atc_updates.json']" and every step was green.
+    """
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    conditions_dir = tmp_path / "conditions"
+    conditions_dir.mkdir()
+    drought = conditions_dir / "drought.json"
+    drought.write_text('{"generated_at": "2026-08-15T23:00:00Z", "drought": []}')
+    (tmp_path / "drought_manifest.json").write_text(
+        json.dumps({"artifacts": {"drought": {"path": str(drought), "sha256": "d40u9h7", "count": 4}}})
+    )
+
+    artifacts = publish.collect_artifacts()
+
+    assert artifacts["conditions/drought.json"]["sha256"] == "d40u9h7"
+
+
+def test_every_conditions_manifest_an_export_writes_is_one_publish_collects():
+    """The guard for the class of bug above, rather than for that one instance.
+
+    An export script that writes a manifest into `data/processed/` and is not
+    named in `CONDITIONS_MANIFESTS` publishes nothing, silently. This reads
+    the export scripts for the manifest filenames they actually write and
+    holds them against the tuple.
+
+    It deliberately covers only the manifests that land in `conditions/` -
+    the trails, POI, elevation, spurs and club-section manifests are each
+    collected by their own named block in `collect_artifacts`, so a missing
+    entry there is a different (and louder) failure.
+    """
+    pipeline_dir = pathlib.Path(publish.__file__).resolve().parent
+    written = set()
+    for script in sorted(pipeline_dir.glob("export_*.py")):
+        source = script.read_text()
+        # The artifact family is identifiable from the export itself: these
+        # are the scripts that write into data/processed/conditions/.
+        if "PAYLOAD = " not in source or '"conditions"' not in source:
+            continue
+        for match in re.finditer(r'"([a-z_]+_manifest\.json)"', source):
+            written.add(match.group(1))
+
+    assert written, "found no conditions exports - this guard has stopped guarding"
+    assert written <= set(publish.CONDITIONS_MANIFESTS), (
+        f"these manifests are written but never published: {sorted(written - set(publish.CONDITIONS_MANIFESTS))}"
+    )

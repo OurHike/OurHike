@@ -39,10 +39,19 @@ describe('parseProviders', () => {
 })
 
 describe('the default build', () => {
-  it('offers Google and email, and not Apple', () => {
-    // Apple needs a $99/yr Developer Program membership that the other two do
-    // not (LAUNCH_CHECKLIST.md 4.3), so it is opt-in rather than assumed.
-    expect(ENABLED_PROVIDERS).toEqual(['google', 'email'])
+  it('offers Google alone - not Apple, and no longer email', () => {
+    // v1's decided provider set (#397). Apple needs a $99/yr Developer Program
+    // membership that Google does not (LAUNCH_CHECKLIST.md 4.3), so it is
+    // opt-in rather than assumed, and is deferred to v2 (#92).
+    //
+    // Email left the default rather than never being in it, and the direction
+    // matters: it was included because switching it on costs nothing, which
+    // was true of the setup and false of the outcome. Supabase's built-in
+    // sender is not a delivery path this project ships on, so the default was
+    // putting a button on the sign-in screen whose flow could not finish -
+    // including in the deployed build, which is what made it a defect rather
+    // than a preference.
+    expect(ENABLED_PROVIDERS).toEqual(['google'])
   })
 
   it('falls back to the default when the setting is blank, not to nothing', () => {

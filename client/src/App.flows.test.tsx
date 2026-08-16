@@ -835,9 +835,15 @@ describe('signing in from Settings', () => {
   })
 
   it('offers only the providers this build has credentials for', async () => {
-    // ENABLED_PROVIDERS defaults to Google and email. Apple needs a $99/yr
-    // membership, and a button for a provider with no credentials behind it
-    // reaches an error page rather than an account.
+    // ENABLED_PROVIDERS is Google alone - v1's decided provider set (#397).
+    // Apple needs a $99/yr membership and is deferred to v2 (#92); email left
+    // the default because Supabase's built-in sender is not a delivery path
+    // this project ships on, so offering it built a button whose sign-in
+    // could not complete.
+    //
+    // Both absences are asserted rather than only Apple's, because they are
+    // absent for different reasons and a single "not Apple" assertion would
+    // pass on a build that had quietly restored email.
     const user = userEvent.setup()
     hikerOnTrail()
     render(<App />)
@@ -847,42 +853,24 @@ describe('signing in from Settings', () => {
     await user.click(await screen.findByRole('button', { name: /sign in/i }))
     await screen.findByRole('button', { name: /continue with google/i })
 
-    expect(
-      screen.getByRole('button', { name: /continue with email/i }),
-    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /continue with email/i })).toBe(null)
     expect(screen.queryByRole('button', { name: /continue with apple/i })).toBe(null)
   })
 
-  it('reaches the email form, which asks only for an address', async () => {
-    // The link is the default way in: one field, and nothing to remember.
-    const user = userEvent.setup()
-    hikerOnTrail()
-    render(<App />)
-    await screen.findByRole('region', { name: /trail map/i })
-    await user.click(screen.getByRole('tab', { name: 'More' }))
-
-    await user.click(await screen.findByRole('button', { name: /sign in/i }))
-    await user.click(await screen.findByRole('button', { name: /continue with email/i }))
-
-    expect(await screen.findByLabelText(/email/i)).toBeInTheDocument()
-    expect(screen.queryByLabelText(/password/i)).toBe(null)
-  })
-
-  it('still offers a password, for someone who would rather not leave the app', async () => {
-    const user = userEvent.setup()
-    hikerOnTrail()
-    render(<App />)
-    await screen.findByRole('region', { name: /trail map/i })
-    await user.click(screen.getByRole('tab', { name: 'More' }))
-
-    await user.click(await screen.findByRole('button', { name: /sign in/i }))
-    await user.click(await screen.findByRole('button', { name: /continue with email/i }))
-    await user.click(
-      await screen.findByRole('button', { name: /use a password instead/i }),
-    )
-
-    expect(await screen.findByLabelText(/password/i)).toBeInTheDocument()
-  })
+  // Two tests stood here and were removed with the email default (#397): one
+  // that the email button reaches a form asking only for an address, and one
+  // that the form offers a password fallback. They drove App -> SignInPrompt
+  // -> EmailSignIn, and that route is unreachable in a build offering Google
+  // alone, so keeping them would have meant faking the configuration to test
+  // a path no hiker can take.
+  //
+  // Nothing about EmailSignIn lost coverage: screens/EmailSignIn.test.tsx
+  // renders it directly and covers both paths further than these did - the
+  // address-only form, the link's wording, the password fallback, switching
+  // between them and the failure messages. What is uncovered while email is
+  // off is the App-level wiring between the button and the screen, which is
+  // the thing that only exists when the button does. Restore these two with
+  // the provider, not before.
 })
 
 describe('when the trail data cannot be downloaded', () => {

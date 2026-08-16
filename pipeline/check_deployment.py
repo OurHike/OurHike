@@ -342,6 +342,94 @@ def check_range_request(base: str, key: str, session: requests.Session | None = 
     }
 
 
+def check_if_range(base: str, key: str, session: requests.Session | None = None) -> dict:
+    """Does the server itself arbitrate a stale partial?
+
+    `client/src/lib/archiveDownload.ts` sends `If-Range` on every resume. RFC
+    9110 requires a current validator to be answered 206 and the transfer
+    continued, and a stale one to be answered 200 and the range ignored, so the
+    old bytes are discarded rather than spliced onto new ones.
+
+    WHY THIS LIVES HERE AND NOT IN THE RELEASE BATTERY (#566). It was
+    `verify_release.py` check 7 until 2026-08-15. It is a property of the
+    BUCKET that no release candidate can change, so as a release gate it
+    returned the same answer whatever was being released - and RELEASING.md §8
+    gate 6 is hard, which made every promotion a promotion over a red gate for
+    a reason nothing in the release could affect. A gate waived by habit is one
+    nobody reads when it goes red for a second reason. Daily, against live
+    infrastructure, is where a fact about the infrastructure belongs, and it is
+    also the only place that would NOTICE the day it starts passing.
+
+    NOT HIKER-FACING, WHICH IS NOT THE SAME AS NOT WORTH REPORTING.
+    `archiveDownload.ts` makes this same comparison itself, against the ETag
+    the 206 carries, with the published SHA-256 behind that. What is absent is
+    the server-side half of a defence rather than the whole of one, so calling
+    it "a hiker cannot get the map" would be false - and a monitor that reports
+    an outage every morning over a known-absent belt is one nobody is reading
+    on the morning the braces go too.
+    """
+    getter = (session or requests).get
+    try:
+        head = (session or requests).head(f"{base}/{key}", timeout=HTTP_TIMEOUT)
+        etag = head.headers.get("ETag")
+        if not etag:
+            return {
+                "check": "if-range",
+                "key": key,
+                "state": FAILED,
+                "hiker_facing": False,
+                "detail": "no ETag, so If-Range cannot be evaluated at all",
+            }
+
+        fresh = getter(f"{base}/{key}", headers={"Range": "bytes=0-1023", "If-Range": etag}, timeout=HTTP_TIMEOUT)
+        stale = getter(
+            f"{base}/{key}",
+            headers={"Range": "bytes=0-1023", "If-Range": '"ourhike-deliberately-stale"'},
+            timeout=HTTP_TIMEOUT,
+        )
+    except requests.RequestException as exc:
+        return {
+            "check": "if-range",
+            "key": key,
+            "state": UNREACHABLE,
+            "hiker_facing": False,
+            "detail": f"could not ask: {exc.__class__.__name__}",
+        }
+
+    if fresh.status_code != 206:
+        return {
+            "check": "if-range",
+            "key": key,
+            "state": FAILED,
+            "hiker_facing": False,
+            "detail": f"a CURRENT ETag answered {fresh.status_code}, not 206 - resume is broken",
+        }
+
+    if stale.status_code != 200:
+        return {
+            "check": "if-range",
+            "key": key,
+            "state": FAILED,
+            "hiker_facing": False,
+            "detail": (
+                f"a STALE ETag answered {stale.status_code}, not 200 - the bucket is ignoring If-Range, so it "
+                "will not arbitrate a stale partial. The client does not depend on it: archiveDownload.ts "
+                "compares the ETag on the 206 against the one its held bytes were recorded under and refuses "
+                "the resume itself, with the published SHA-256 behind that. What is missing is the server-side "
+                "half. Known absent on both r2.dev and the data.ourhike.org custom domain (#566, measured "
+                "2026-08-15) - a green here would mean the endpoint changed, which is the day this is for."
+            ),
+        }
+
+    return {
+        "check": "if-range",
+        "key": key,
+        "state": OK,
+        "hiker_facing": False,
+        "detail": "current ETag -> 206, stale ETag -> 200",
+    }
+
+
 def check_artifact_present(base: str, key: str, session: requests.Session | None = None) -> dict:
     """Is the object `latest.json` names actually there and fetchable?
 
@@ -467,6 +555,11 @@ def check_all(base: str, manifest: dict | None = None, session: requests.Session
     rangeable = next((key for key in artifacts if key.endswith(".pmtiles")), None)
     reports.append(check_range_request(base, rangeable or MANIFEST_KEY, session))
 
+    # Same object, same reasoning, and the resume half of the same question:
+    # check 5 above asks whether a range is served at all, this asks whether a
+    # STALE one is refused. Moved here from the release battery by #566.
+    reports.append(check_if_range(base, rangeable or MANIFEST_KEY, session))
+
     reports.extend(check_advertised_sizes(base, artifacts, session))
 
     return reports
@@ -524,10 +617,21 @@ def hiker_facing_failures(reports: list[dict], manifest: dict) -> list[dict]:
     production origin losing it is the outage. Artifact and range checks are
     hiker-facing by construction - there is no such thing as an artifact only
     a developer downloads.
+
+    A check may opt out by reporting `hiker_facing: False`, and `if-range` is
+    the first and so far only one to do so: the client performs that comparison
+    itself, so the server declining to is a missing belt rather than missing
+    braces (#566). The default is True precisely so that opting out has to be
+    an argument somebody wrote down, rather than the shape of a report deciding
+    it by accident.
     """
     hiker_facing = {origin["pattern"] for origin in manifest["origins"] if origin.get("hiker_facing")}
     return [
-        report for report in reports if report["state"] == FAILED and ("origin" not in report or report["origin"] in hiker_facing)
+        report
+        for report in reports
+        if report["state"] == FAILED
+        and report.get("hiker_facing", True)
+        and ("origin" not in report or report["origin"] in hiker_facing)
     ]
 
 

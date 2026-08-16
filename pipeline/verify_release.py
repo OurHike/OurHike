@@ -47,6 +47,26 @@ publishes no `size_bytes`, so "Content-Length == manifest size_bytes" is not a
 question that can be asked. It asserts the headers that make an artifact
 fetchable and resumable instead, and says so.
 
+CHECK 7 IS ABSENT ON PURPOSE, AND ITS NUMBER IS NOT REUSED
+
+`If-Range` is honoured now lives in `check_deployment.py`, the standing monitor
+(#566). It is a property of the bucket that no candidate can change, so as a
+release gate it returned the same answer whatever was being released - and
+RELEASING.md §8 gate 6 is *hard*, which made every promotion from here a
+promotion over a red gate for a reason nothing in the release could affect. It
+was measured, not assumed, before it moved: r2.dev ignores `If-Range`, and so
+does the `data.ourhike.org` custom domain that was expected to fix it (measured
+2026-08-15; every response `cf-cache-status: DYNAMIC`, so the Cloudflare cache
+that would have arbitrated never enters the path).
+
+Moving it is not dropping it. It runs daily instead of per-release, against the
+same live infrastructure, and the monitor is the thing that would notice the day
+it starts passing - which a gate everyone has learned to wave through would not.
+
+8 through 19 keep their numbers. DATA_RELEASES.md §3a, check 8's own docstring
+and several issues cite them by number, and renumbering would silently
+invalidate every one of those references to close a gap in a list.
+
     python verify_release.py --base https://data.example.org
     python verify_release.py --base https://data.example.org --strict
 """
@@ -286,67 +306,15 @@ def check_full_hash(base: str, key: str, expected: str, session=None) -> dict:
     return _report(5, key, OK, f"sha256 matches over all {read} bytes")
 
 
-def check_if_range(base: str, key: str, session=None) -> dict:
-    """7. `If-Range` is honoured: correct ETag -> 206, stale ETag -> 200.
-
-    One of the two mechanisms `client/src/lib/archiveDownload.ts` uses to
-    refuse a splice, and DATA_RELEASES.md §3 is right that it must be tested
-    rather than assumed - measured against the live `r2.dev` endpoint on
-    2026-08-09, it is NOT honoured: a stale ETag, a wrong-but-valid-shaped
-    ETag and a long-past HTTP-date all answer 206 with the range served, where
-    RFC 9110 requires the Range to be ignored and 200 returned.
-
-    That is a real failure of the bucket and this reports it as one. It stays a
-    FAILURE rather than becoming an expected result (#506): a gate taught to
-    expect the current breakage cannot notice it was fixed, and the move to a
-    custom domain may fix it - re-run this against `data.ourhike.app` before
-    assuming either way.
-
-    It is not a live hazard to a hiker, and the message says so rather than
-    overstating. `archiveDownload.ts` performs this same comparison itself, on
-    the ETag the 206 carries, so what the bucket declines to arbitrate is
-    arbitrated client-side before any body is read - and the published SHA-256
-    remains behind that. What this check establishes is that the resume's
-    server-side defence is absent, not that the resume is undefended.
-    """
-    getter = (session or requests).get
-    try:
-        head = (session or requests).head(f"{base}/{key}", timeout=HTTP_TIMEOUT)
-        etag = head.headers.get("ETag")
-        if not etag:
-            return _report(7, key, FAILED, "no ETag, so If-Range cannot be evaluated at all")
-
-        fresh = getter(f"{base}/{key}", headers={"Range": "bytes=0-1023", "If-Range": etag}, timeout=HTTP_TIMEOUT)
-        stale = getter(
-            f"{base}/{key}",
-            headers={"Range": "bytes=0-1023", "If-Range": '"ourhike-deliberately-stale"'},
-            timeout=HTTP_TIMEOUT,
-        )
-    except requests.RequestException as exc:
-        return _report(7, key, FAILED, f"could not ask: {exc.__class__.__name__}")
-
-    if fresh.status_code != 206:
-        return _report(7, key, FAILED, f"a CURRENT ETag answered {fresh.status_code}, not 206 - resume is broken")
-    if stale.status_code != 200:
-        return _report(
-            7,
-            key,
-            FAILED,
-            f"a STALE ETag answered {stale.status_code}, not 200 - the bucket is ignoring If-Range, so it "
-            "will not arbitrate a stale partial. The client does not depend on it: archiveDownload.ts "
-            "compares the ETag on the 206 against the one its held bytes were recorded under and refuses "
-            "the resume itself, with the published SHA-256 behind that. What is missing is the server-side "
-            "half, so a conforming endpoint - a custom domain - would restore a defence rather than add one.",
-        )
-    return _report(7, key, OK, "current ETag -> 206, stale ETag -> 200")
-
-
 def check_cors(base: str, key: str, session=None) -> dict:
     """8. The expose-headers a browser needs in order to READ the rest.
 
     R2 sent all four throughout #427 and a browser still could not see them.
-    A CORS regression silently disarms check 7 on real devices while CI, which
-    is not a browser, would never notice - so this sends an Origin.
+    A CORS regression silently disarms the `If-Range` comparison on real
+    devices while CI, which is not a browser, would never notice - so this
+    sends an Origin. That comparison is `check_deployment.py`'s since #566;
+    this check stays here because the headers it asks about are what makes the
+    *published bytes* readable at all, which is a release-time question.
     """
     try:
         response = (session or requests).get(
@@ -882,11 +850,11 @@ def check_all(base: str, session=None, hash_artifacts: bool = True) -> list[dict
         if hash_artifacts:
             reports.append(check_full_hash(base, key, artifacts[key]["sha256"], session))
 
-    # One artifact for the range-machinery checks rather than all of them:
-    # If-Range and CORS are properties of the BUCKET, not of an object, so
-    # asking twenty times would cost twenty round trips to learn one fact.
+    # One artifact rather than all of them: CORS is a property of the BUCKET,
+    # not of an object, so asking twenty times would cost twenty round trips to
+    # learn one fact. Check 7 asked the same way and against the same probe
+    # until #566 moved it to check_deployment.py.
     probe = next((key for key in sorted(artifacts) if key.endswith(".pmtiles")), sorted(artifacts)[0])
-    reports.append(check_if_range(base, probe, session))
     reports.append(check_cors(base, probe, session))
 
     tiers = archive_keys()

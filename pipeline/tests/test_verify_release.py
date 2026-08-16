@@ -39,7 +39,6 @@ from verify_release import (
     check_cors,
     check_fetchable,
     check_full_hash,
-    check_if_range,
     check_manifest,
     check_nothing_lost,
     check_release_regression,
@@ -169,39 +168,6 @@ class TestBytes:
         requests_mock.get(f"{BASE}/a.bin", exc=requests.ConnectionError)
 
         assert check_full_hash(BASE, "a.bin", "whatever")["state"] == FAILED
-
-
-class TestIfRange:
-    def test_a_bucket_that_honours_it_passes(self, requests_mock):
-        requests_mock.head(f"{BASE}/a.pmtiles", headers=_headers())
-        requests_mock.get(
-            f"{BASE}/a.pmtiles",
-            [{"status_code": 206}, {"status_code": 200}],
-        )
-
-        assert check_if_range(BASE, "a.pmtiles")["state"] == OK
-
-    def test_a_bucket_that_ignores_it_fails_and_says_what_is_left(self, requests_mock):
-        """Measured against the real r2.dev endpoint: a stale ETag is answered
-        206 with the range served. It stays a FAILURE (#506) - a gate taught to
-        expect the breakage cannot notice it was fixed - but the message must
-        not overstate what is at risk. `archiveDownload.ts` makes the same
-        comparison client-side against the ETag on the 206, so what is missing
-        is the server-side half of a defence rather than the whole of one."""
-        requests_mock.head(f"{BASE}/a.pmtiles", headers=_headers())
-        requests_mock.get(f"{BASE}/a.pmtiles", [{"status_code": 206}, {"status_code": 206}])
-
-        verdict = check_if_range(BASE, "a.pmtiles")
-
-        assert verdict["state"] == FAILED
-        assert "ignoring If-Range" in verdict["detail"]
-        assert "does not depend on it" in verdict["detail"]
-        assert "server-side half" in verdict["detail"]
-
-    def test_no_etag_means_the_question_cannot_be_asked(self, requests_mock):
-        requests_mock.head(f"{BASE}/a.pmtiles", headers=_headers(etag=None))
-
-        assert check_if_range(BASE, "a.pmtiles")["state"] == FAILED
 
 
 class TestCors:

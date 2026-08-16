@@ -73,7 +73,9 @@ Resumes therefore reach the network again. What the bucket still does **not** do
 
 **1.5 Enable public read access**, either R2's public bucket URL or a custom domain. A custom domain is worth it — the URL ends up baked into the client build as `DATA_BASE_URL` (step 2 below).
 
-**Decided 2026-07-31: start with the R2.dev subdomain, not a custom domain.** Gets a working map faster with no DNS to set up. Cloudflare documents the r2.dev subdomain as meant for testing/light use, not sustained production traffic, so this is a deliberate stopgap — **switch `DATA_BASE_URL` to `https://data.ourhike.app` once that domain is set up as a custom domain on this bucket.** Nothing else about steps 2/3 changes when that happens: swapping the repository variable and redeploying Pages is the whole migration, no code change.
+**Decided 2026-07-31: start with the R2.dev subdomain, not a custom domain.** Gets a working map faster with no DNS to set up. Cloudflare documents the r2.dev subdomain as meant for testing/light use, not sustained production traffic, so this is a deliberate stopgap — **switch `DATA_BASE_URL` to `https://data.ourhike.org`, which has been a custom domain on this bucket since 2026-08-15.** Nothing else about steps 2/3 changes: swapping the repository variable and redeploying Pages is the whole migration, no code change.
+
+The domain registered was `ourhike.org`, not the `ourhike.app` this file and #566 assumed while it was still hypothetical — older issues naming `data.ourhike.app` mean this host. Moving the *data* host is self-contained: `.github/expected-origins.yml` governs the origins the app is served **from**, and a CORS allow-list names the requesting origin rather than the host being requested, so nothing in it, in the bucket's policy or in Supabase's redirect lists changes when the bucket's own hostname does. Serving the **app** from `ourhike.org` is the opposite case and is not this step (WEBSITE.md §10).
 
 **1.6 Publish — now a CI workflow, not a local script.** Dispatch **"Publish vector data"** (Actions tab → workflow_dispatch) with `publish` ticked. Leaving it unticked does a dry run: builds and quality-checks everything without uploading, useful for checking upstream still parses. `include_elevation` adds ~25 min and isn't read by any client code yet, so leave it off unless you're specifically testing that.
 
@@ -111,7 +113,7 @@ No longer a code change — the client already reads the bucket URL from a build
 
 Set it as a **repository variable** (not a secret — it's a public URL): Settings → Secrets and variables → Actions → **Variables** tab → New repository variable → `DATA_BASE_URL` = the public URL from 1.5. `.github/workflows/pages.yml` picks it up as `VITE_DATA_BASE_URL` at build time.
 
-**Currently the R2.dev subdomain (see 1.5); revisit once `data.ourhike.app` is set up as a custom domain** and update `DATA_BASE_URL` to `https://data.ourhike.app`, then redeploy Pages (step 3) to pick it up.
+**Currently the R2.dev subdomain (see 1.5); `data.ourhike.org` has been a custom domain on the bucket since 2026-08-15** — update `DATA_BASE_URL` to `https://data.ourhike.org`, then redeploy Pages (step 3) to pick it up. Every consumer reads the same repository variable (`pages.yml`, `check-deployment.yml`, `check-deployed-app.yml`, `check-upstream-freshness.yml`, `verify-release.yml`, `package-overlap-spike.yml`), so the one edit moves all of them.
 
 **This is the step that turns the repo into a working map**, and it needs nothing but the URL, set once.
 

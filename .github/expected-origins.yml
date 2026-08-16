@@ -13,9 +13,9 @@
 # anywhere sent one: a ranged GET with no `Origin` returned 206 with
 # `Content-Range`, `ETag` and `Accept-Ranges` intact throughout the outage.
 # pipeline/DATA_RELEASES.md had already written down that "a CORS regression
-# silently disarms check 7 on real devices while CI, which is not a browser,
-# would never notice." It named this blind spot in advance and we shipped past
-# it.
+# silently disarms the `If-Range` comparison on real devices while CI, which is
+# not a browser, would never notice." It named this blind spot in advance and we
+# shipped past it.
 #
 # WHY A FILE HERE AND NOT PROSE IN LAUNCH_CHECKLIST.md. The rule that the R2
 # and Supabase allow-lists have to move together was written down, in prose,
@@ -71,9 +71,16 @@
 # Being ALLOWED to send `If-Range` is not the same as the server obeying it,
 # and this bucket does the first and not the second (#506): a stale validator
 # is answered 206 with the range served, where RFC 9110 requires 200. That is
-# `verify_release.py` check 7's subject rather than this file's - nothing in a
-# CORS policy can fix it - and `archiveDownload.ts` makes the comparison
-# client-side because of it.
+# not this file's subject - nothing in a CORS policy can fix it - and
+# `archiveDownload.ts` makes the comparison client-side because of it.
+#
+# Since #566 the two live one file apart rather than one repository apart:
+# `check_deployment.py`, which reads THIS file for its CORS checks, also asks
+# the `If-Range` question in the same daily run. It was `verify_release.py`
+# check 7 until then, where it failed on every release for a reason no release
+# could affect. The `if-range` entry above is what lets a browser send the
+# header at all; whether the server then obeys it is the other check's, and
+# both being green is what the resume actually needs.
 #
 # `content-type` was in the old hand-kept copy and is deliberately not here:
 # every request to this bucket is a GET or a HEAD with no body, and a request

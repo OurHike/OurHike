@@ -55,6 +55,7 @@ import requests
 from pmtiles.reader import Reader, traverse
 
 from lib import data_env
+from publish import COMPRESSIBLE_TYPES
 
 MANIFEST_KEY = "latest.json"
 
@@ -141,20 +142,77 @@ def fetch_manifest(base: str, session: requests.Session | None = None) -> dict |
         return None
 
 
+def _encoding_problem(key: str, encoding: str | None) -> str | None:
+    """Why this object's `Content-Encoding` is wrong, or None if it is fine.
+
+    THE RULE IS PER ARTIFACT, AND IT USED NOT TO BE. This refused any encoding
+    on anything until #732, which is a rule that was correct when written and
+    became wrong under it: #717 taught `publish.py` to store `.json` and
+    `.geojson` gzipped on purpose - 21.5 MB of first-launch fetches down to
+    5.3 MB, measured against the live bucket 2026-08-15 - and nothing here was
+    told. Measured against `https://data.ourhike.org` on 2026-08-17, all
+    fifteen text artifacts answer `Content-Encoding: gzip` and
+    `background_z11.pmtiles` answers none, which is exactly what publish.py
+    intends and exactly what this function was calling a failure.
+
+    That was not merely noise. `check_all` skips the range and hash checks for
+    any artifact whose headers fail, so every `.geojson` and `.json` a hiker's
+    map is made of - `trails.geojson`, all eight `poi_*`, the conditions files
+    - went unhashed and unranged while the tracking issue reported them red.
+    The check that exists to catch "the bytes and the manifest disagree" was
+    not running on the artifacts that matter most.
+
+    So the two halves are split by how the CLIENT reads the artifact:
+
+    - **Read whole** (`COMPRESSIBLE_TYPES`, imported rather than restated so
+      the two files cannot drift apart again the way they just did). Ranges
+      never enter into it: `trailData.ts` fetches these with a plain `fetch`,
+      which decodes the encoding before any of its code sees a byte, and the
+      SHA-256 in `latest.json` is of the file on disk - so the hash still
+      matches. `gzip` is expected, absent is merely a missed saving, and
+      anything else means something between publish.py and here re-encoded the
+      object, which is worth failing on because the published representation is
+      no longer what is on the wire.
+    - **Read by range** (everything else, which is `.pmtiles` and `.fgb` today).
+      Here the original reasoning stands unchanged, and the default is refusal
+      rather than permission on purpose: a new extension nobody has classified
+      is likelier to be a new archive than a new text file, and the cheap
+      failure is a false alarm on a file that is fine.
+    """
+    if Path(key).suffix in COMPRESSIBLE_TYPES:
+        if not encoding or encoding == "gzip":
+            return None
+        return (
+            f"served with Content-Encoding: {encoding}, where publish.py stores these gzipped or not at all. "
+            "Something between the publisher and here has re-encoded the object, so what is on the wire is no "
+            "longer the representation that was published."
+        )
+
+    if encoding:
+        return (
+            f"served with Content-Encoding: {encoding}. This artifact is read by RANGE - archiveDownload.ts "
+            "resumes a partial transfer and pmtilesSource.ts seeks within the archive - so ranges apply to "
+            "encoded bytes while the client's resume counts decoded ones, and a resumed download reads from "
+            "the wrong offset and fails as a hash mismatch that names nothing about encoding."
+        )
+    return None
+
+
 def check_headers(base: str, key: str, session: requests.Session | None = None) -> dict:
     """What the object says about itself before a byte of it is read.
 
     `Content-Encoding` is the one worth being careful about, and it is why this
-    is not folded into the hash check. If the bucket transparently re-encodes,
-    a `Range` applies to the *encoded* bytes while the client's resume maths
-    counts decoded ones - so the resume silently reads from the wrong offset,
-    and the failure surfaces as a hash mismatch on a 1.18 GB download rather
-    than as anything naming encoding.
+    is not folded into the hash check: on a range-read artifact a resume
+    silently reads from the wrong offset, and the failure surfaces as a hash
+    mismatch on a 1.18 GB download rather than as anything naming encoding.
+    `_encoding_problem` holds that rule and why it differs per artifact.
 
-    A missing `Content-Type` is reported rather than failed. R2 currently sends
-    none at all for these keys, and nothing in the client depends on one -
-    `fetch().json()` ignores it and MapLibre reads bytes - so failing on it
-    would be this check inventing a rule the app does not have.
+    A missing `Content-Type` is reported rather than failed. Since #717
+    publish.py sets one for every extension it knows, and the live bucket
+    serves it (`application/geo+json` on the POI files, measured 2026-08-17) -
+    but nothing in the client depends on one, because `fetch().json()` ignores
+    it and MapLibre reads bytes, so failing on it would be this check inventing
+    a rule the app does not have.
     """
     head = (session or requests).head
     try:
@@ -166,15 +224,9 @@ def check_headers(base: str, key: str, session: requests.Session | None = None) 
         return _report("headers", key, FAILED, f"HEAD answered {response.status_code}")
 
     encoding = response.headers.get("Content-Encoding")
-    if encoding:
-        return _report(
-            "headers",
-            key,
-            FAILED,
-            f"served with Content-Encoding: {encoding}. Ranges then apply to encoded bytes while the "
-            "client's resume counts decoded ones, so a resumed download reads from the wrong offset "
-            "and fails as a hash mismatch that names nothing about encoding.",
-        )
+    problem = _encoding_problem(key, encoding)
+    if problem:
+        return _report("headers", key, FAILED, problem)
 
     if response.headers.get("Accept-Ranges", "").lower() != "bytes":
         return _report("headers", key, FAILED, f"Accept-Ranges was {response.headers.get('Accept-Ranges')!r}")
@@ -183,8 +235,25 @@ def check_headers(base: str, key: str, session: requests.Session | None = None) 
     if not length or not length.isdigit() or int(length) == 0:
         return _report("headers", key, FAILED, f"Content-Length was {length!r}")
 
-    note = "" if response.headers.get("Content-Type") else " (no Content-Type, which nothing here depends on)"
-    return _report("headers", key, OK, f"{int(length)} bytes{note}")
+    # Notes, never failures - each one is something a reader of this report
+    # would otherwise have to work out for themselves. `check_all` parses the
+    # leading integer out of this detail, so the size stays first.
+    notes = []
+    if encoding:
+        # Worth saying plainly: this is the STORED size, which is what a range
+        # is measured in, and it is not the size `latest.json` records. For
+        # trails.geojson the two are 4.1 MB and 12.3 MB (measured 2026-08-17)
+        # and a reader comparing them without this note would file a bug.
+        notes.append(f"{encoding}, so this is the encoded size and not the manifest's")
+    elif Path(key).suffix in COMPRESSIBLE_TYPES:
+        notes.append("no Content-Encoding, so a hiker pays the uncompressed size for a file publish.py gzips")
+    if not response.headers.get("Content-Type"):
+        notes.append("no Content-Type, which nothing here depends on")
+
+    detail = f"{int(length)} bytes"
+    if notes:
+        detail += f" ({'; '.join(notes)})"
+    return _report("headers", key, OK, detail)
 
 
 def check_range(base: str, key: str, size: int, session: requests.Session | None = None) -> dict:
@@ -199,6 +268,22 @@ def check_range(base: str, key: str, size: int, session: requests.Session | None
     starts over, so it costs a hiker the entire transfer rather than corrupting
     the file - but on a 1.18 GB archive over trail signal, "starts over" is the
     whole problem.
+
+    READ UNDECODED, and this is not a detail. A range addresses the bytes the
+    bucket STORES, so a slice out of the middle of a gzipped object is a
+    fragment of a deflate stream with no header in front of it, and letting
+    `requests` apply `Content-Encoding` to it fails.
+
+    Measured 2026-08-17 against a mock serving the shape R2 serves: with the
+    decoding read, this returns UNREACHABLE for every gzipped artifact - not a
+    crash, because `stream=False` materialises the body inside `send()` where
+    the `except` below catches `ContentDecodingError`. That is the worse of the
+    two outcomes to have shipped. A range check that reports "could not ask"
+    reads as a transport wobble, and the workflow counts unreachable separately
+    from failed, so the artifact would have gone unranged with the report
+    saying so in the one line nobody treats as a finding. Nothing hit it only
+    because `check_headers` used to fail every gzipped artifact first and
+    `check_all` skipped this check entirely; #732 removed that shield.
     """
     if size <= RANGE_PROBE_BYTES * 2:
         return _report("range", key, SKIPPED, f"only {size} bytes, too small for a mid-file probe")
@@ -207,7 +292,16 @@ def check_range(base: str, key: str, size: int, session: requests.Session | None
     end = start + RANGE_PROBE_BYTES - 1
     getter = (session or requests).get
     try:
-        response = getter(f"{base}/{key}", headers={"Range": f"bytes={start}-{end}"}, timeout=HTTP_TIMEOUT)
+        response = getter(
+            f"{base}/{key}",
+            headers={"Range": f"bytes={start}-{end}"},
+            timeout=HTTP_TIMEOUT,
+            stream=True,
+        )
+        # decode_content=False is the whole point of the docstring's second
+        # paragraph. Read inside the `try` so a decode or transport failure is
+        # an UNREACHABLE verdict rather than an exception out of check_all.
+        body = response.raw.read(decode_content=False) if response.status_code == 206 else b""
     except requests.RequestException as exc:
         return _report("range", key, UNREACHABLE, f"could not ask: {exc.__class__.__name__}")
 
@@ -222,7 +316,7 @@ def check_range(base: str, key: str, size: int, session: requests.Session | None
     if response.status_code != 206:
         return _report("range", key, FAILED, f"a mid-file range answered {response.status_code}")
 
-    got = len(response.content)
+    got = len(body)
     if got != RANGE_PROBE_BYTES:
         return _report("range", key, FAILED, f"asked for {RANGE_PROBE_BYTES} bytes and got {got}")
 

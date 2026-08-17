@@ -161,6 +161,17 @@ never created, and sends you back to re-check SQL that is already correct. The f
 run of `publish-conditions.yml` failed on exactly this (2026-08-08); `export_conditions.py`
 now catches it and says so rather than passing the raw error through.
 
+Setting the secret took three dispatches, every failure in the username field, and each of
+the three outcomes is diagnostic (#438 — the role goes before the dot, the project ref
+after it, and `postgres` in the repository's other examples is a role *name*, not a pooler
+keyword):
+
+| Username | What happens |
+|---|---|
+| `postgres.<project-ref>` | **Connects, then fails misleadingly.** `export_conditions.py` exits saying `closures` has RLS on and no policy it can read through — accurate about `current_user`, misleading about the database, because both policies exist and are correct. `pg_policies` is filtered by `current_user`, so connecting as the owner makes the reader's policies invisible rather than absent. If you see the missing-policy message, check who you connected as before re-checking SQL. |
+| `postgres.ourhike_conditions_reader` (halves swapped) | `FATAL: (ENOTFOUND) tenant/user ... not found` |
+| `ourhike_conditions_reader.<project-ref>` | Works |
+
 **`export_conditions.py` refuses to run unless both are in place**, asking the catalog
 rather than trusting the configuration, so that a genuinely empty result is trustworthy.
 `pipeline/tests/test_export_conditions.py` proves the underlying trap is real by

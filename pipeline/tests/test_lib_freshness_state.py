@@ -217,26 +217,48 @@ def test_a_state_loads_over_plain_https(requests_mock, paths):
     """The whole point of the split: this is the one call a scheduled check
     makes to learn what the last build recorded, and it needs no credentials
     to make it - the same public object a phone reads."""
-    requests_mock.get("https://data.test/build_state.json", json=capture_state(**paths))
+    requests_mock.get("https://data.ourhike.org/build_state.json", json=capture_state(**paths))
 
-    assert load_state("https://data.test/build_state.json")["opentrail"] == 'W/"abc123"'
+    assert load_state("https://data.ourhike.org/build_state.json")["opentrail"] == 'W/"abc123"'
 
 
 def test_a_missing_published_state_is_its_own_outcome_not_an_empty_one(requests_mock):
     """A 404 must not become `{}`. An empty state compares as "nothing
     recorded", which reads as a data emergency rather than as a bucket that
     has simply never published one."""
-    requests_mock.get("https://data.test/build_state.json", status_code=404)
+    requests_mock.get("https://data.ourhike.org/build_state.json", status_code=404)
 
     with pytest.raises(StateUnavailable):
-        load_state("https://data.test/build_state.json")
+        load_state("https://data.ourhike.org/build_state.json")
 
 
 def test_an_unreachable_host_raises_rather_than_returning_a_partial_state(requests_mock):
-    requests_mock.get("https://data.test/build_state.json", exc=requests.ConnectionError)
+    requests_mock.get("https://data.ourhike.org/build_state.json", exc=requests.ConnectionError)
 
     with pytest.raises(StateUnavailable):
-        load_state("https://data.test/build_state.json")
+        load_state("https://data.ourhike.org/build_state.json")
+
+
+def test_a_state_url_off_the_allowlist_is_refused_before_any_fetch(requests_mock):
+    """#173's SSRF half: a dispatched run with a crafted state_url, or a
+    poisoned workflow variable, must not turn the runner into a GET proxy.
+    No mock is registered, so a fetch attempt would fail loudly as an
+    unmatched request rather than quietly passing this test."""
+    with pytest.raises(StateUnavailable, match="not a place a published state lives"):
+        load_state("https://internal.example.net/build_state.json")
+
+
+def test_a_plain_http_state_url_is_refused_even_on_an_allowed_host():
+    with pytest.raises(StateUnavailable, match="must be https"):
+        load_state("http://data.ourhike.org/build_state.json")
+
+
+def test_an_r2_dev_state_url_is_allowed(requests_mock, paths):
+    """The UA bucket has no custom domain, so its r2.dev hostname is a
+    legitimate place a state lives."""
+    requests_mock.get("https://pub-abc123.r2.dev/build_state.json", json=capture_state(**paths))
+
+    assert load_state("https://pub-abc123.r2.dev/build_state.json")["version"] == 1
 
 
 def test_a_missing_local_state_file_raises(tmp_path):

@@ -76,6 +76,7 @@ import re
 import sys
 from datetime import date
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 
@@ -204,6 +205,21 @@ def recorded_hydrography_marker() -> str | None:
 
 
 # --- Upstream markers ------------------------------------------------------
+
+
+def _is_atc_service_url(url: str) -> bool:
+    """Whether a URL recorded in a state's `atc` entries may be fetched.
+
+    Every ATC layer this pipeline has ever read lives on an
+    `services<N>.arcgis.com` host (see sources.json), and the marker request
+    is ArcGIS metadata (`?f=json`) that means nothing anywhere else - so the
+    fetchable set is https plus that host family, and anything outside it is
+    a state document trying to aim this checker somewhere it has no business
+    (#173).
+    """
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    return parsed.scheme == "https" and (host == "arcgis.com" or host.endswith(".arcgis.com"))
 
 
 def upstream_atc_marker(url: str) -> str | None:
@@ -507,6 +523,15 @@ def gather_upstream(state: dict, *, local: bool = True) -> dict:
         marker = entry.get("marker") if isinstance(entry, dict) else entry
         url = entry.get("url") if isinstance(entry, dict) else None
         if marker is None or not url:
+            continue
+        # The URL comes from inside the loaded state, which on the --state
+        # path is a fetched document - so it is held to the same distrust as
+        # every other input here rather than fetched on its say-so (#173). A
+        # refused URL reports as could-not-check (None), never as current,
+        # and says why: silently skipping would read as one fewer source.
+        if not _is_atc_service_url(url):
+            print(f"  refusing to check {key}: {url!r} is not an https ArcGIS service URL")
+            upstream["atc"][key] = None
             continue
         upstream["atc"][key] = upstream_atc_marker(url)
 

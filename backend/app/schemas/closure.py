@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError, field_validator, model_validator
 from pydantic.networks import HttpUrl
 
 from app.core.time import UtcDatetime
@@ -32,6 +32,26 @@ class ClosureCreate(BaseModel):
     note: str | None = None
     start_mile_marker: float
     end_mile_marker: float
+
+    @model_validator(mode="after")
+    def _order_the_mile_markers(self) -> "ClosureCreate":
+        """A reversed pair is normalised, not refused (#257).
+
+        The client's own consumers split on this - warningsOnRoute normalises
+        ordering, closureBanner assumes start <= end - and a reversed pair
+        made the inside-the-closure check unsatisfiable and the banner's
+        distance wrong. The fix belongs at the source, and it is a swap
+        rather than a 422 because the reporter's meaning is unambiguous:
+        "the trail is closed between these two miles" says the same thing
+        in either order, and a hiker reporting a closure from a trailhead
+        should not be bounced over which end they named first.
+        """
+        if self.start_mile_marker > self.end_mile_marker:
+            self.start_mile_marker, self.end_mile_marker = (
+                self.end_mile_marker,
+                self.start_mile_marker,
+            )
+        return self
 
 
 class ClosureUpdate(BaseModel):

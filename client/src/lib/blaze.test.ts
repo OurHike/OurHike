@@ -19,6 +19,13 @@ describe('blazePaintColor', () => {
     warn.mockRestore()
   })
 
+  it('maps "Unknown" to the neutral fallback, silently - the pipeline emits it by contract for every undecodable blaze (#257)', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(blazePaintColor('Unknown')).toBe('#8a8271')
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
   it('maps "Other" to the neutral fallback, silently - no dedicated paint style exists for it', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     expect(blazePaintColor('Other')).toBe('#8a8271')
@@ -29,13 +36,16 @@ describe('blazePaintColor', () => {
   it('falls back to neutral grey AND emits a warning for any value that is not one of the expected strings', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    expect(blazePaintColor('Unknown')).toBe('#8a8271')
+    // "Unknown" used to head this list; it moved to the silent set above,
+    // because the pipeline emits it by contract for every undecodable blaze
+    // (#257) - warning on it was noise about our own upstream's documented
+    // behaviour.
     expect(blazePaintColor('Gold')).toBe('#8a8271')
     expect(blazePaintColor('')).toBe('#8a8271')
     // @ts-expect-error - defensive fallback must also cover unexpected non-string input from a rendering layer that shouldn't blindly trust the pipeline
     expect(blazePaintColor(null)).toBe('#8a8271')
 
-    expect(warn).toHaveBeenCalledTimes(4)
+    expect(warn).toHaveBeenCalledTimes(3)
     warn.mockRestore()
   })
 })

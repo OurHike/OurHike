@@ -67,6 +67,13 @@ class ReporterType(str, enum.Enum):
 class ReportStatus(str, enum.Enum):
     submitted = "submitted"
     verified = "verified"
+    # Load-bearing and, today, unreachable (#257): the public-visibility rule
+    # deliberately keeps resolved reports visible ("it reads as 'Fixed'",
+    # routers/reports.py) and the client maps it (lib/reportStatus.ts), but no
+    # endpoint sets it - the lifecycle dead-ends at verified/dismissed. The
+    # resolve action belongs to the moderator surface (#235); until that
+    # lands, "Fixed" is a state the vocabulary holds open rather than one a
+    # report can wear.
     resolved = "resolved"
     dismissed = "dismissed"
 

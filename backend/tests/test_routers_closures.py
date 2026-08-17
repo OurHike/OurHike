@@ -505,3 +505,18 @@ def test_an_explicit_null_on_a_non_nullable_field_is_a_422(client, db_session):
 
         assert response.status_code == 422, field
         assert field in response.text
+
+
+def test_a_reversed_mile_pair_is_normalised_on_create(client):
+    """#257: warningsOnRoute normalises ordering and closureBanner assumes
+    start <= end, so a reversed pair made the inside-the-closure check
+    unsatisfiable. Normalised at the source, as a swap rather than a 422 -
+    "closed between these two miles" means the same thing in either order."""
+    payload = dict(_VALID_PAYLOAD, start_mile_marker=120.5, end_mile_marker=118.0)
+
+    response = client.post("/closures", json=payload, headers=auth_headers(str(uuid.uuid4())))
+
+    body = response.json()
+    assert response.status_code == 201
+    assert body["start_mile_marker"] == 118.0
+    assert body["end_mile_marker"] == 120.5

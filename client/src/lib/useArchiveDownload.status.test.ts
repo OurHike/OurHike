@@ -28,7 +28,12 @@ import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
 // retry, wait, or check their signal - and it is invisible unless something
 // asserts on the message.
 
-vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
+vi.mock('idb-keyval', () => ({
+  get: vi.fn(),
+  set: vi.fn(),
+  del: vi.fn(),
+  update: vi.fn(),
+}))
 vi.mock('./archiveDownload', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./archiveDownload')>()
   return {

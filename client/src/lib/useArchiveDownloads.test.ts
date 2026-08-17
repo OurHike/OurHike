@@ -15,7 +15,12 @@ import { readArchive, segmentKeyFor } from './archiveStore'
 // deletion and resume are its own, and that holding several does not make
 // them interfere.
 
-vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
+vi.mock('idb-keyval', () => ({
+  get: vi.fn(),
+  set: vi.fn(),
+  del: vi.fn(),
+  update: vi.fn(),
+}))
 
 const SHEET = {
   packageKey: 'ourhike:sheet',

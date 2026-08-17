@@ -36,7 +36,12 @@ import { Sha256, sha256Hex, type Sha256State } from './sha256'
 // key. A failed or aborted attempt must leave both the partial progress and
 // any previously-completed archive intact.
 
-vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
+vi.mock('idb-keyval', () => ({
+  get: vi.fn(),
+  set: vi.fn(),
+  del: vi.fn(),
+  update: vi.fn(),
+}))
 
 // The published-hash lookup is mocked rather than served through the fetch
 // stub above: what it reads (latest.json under VITE_DATA_BASE_URL, which is

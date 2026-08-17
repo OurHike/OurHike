@@ -3,7 +3,7 @@ import { get, set } from 'idb-keyval'
 import { loadPreferences, savePreferences, PREFERENCES_KEY } from './preferences'
 import { DEFAULT_PREFERENCES } from './userPreferences'
 
-vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn() }))
+vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), update: vi.fn() }))
 
 const store = new Map<string, unknown>()
 

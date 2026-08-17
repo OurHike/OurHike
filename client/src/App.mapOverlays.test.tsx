@@ -21,7 +21,12 @@ import { CLOSURE_SOURCE_ID } from './map/closureLayers'
 import { WARNING_SOURCE_ID } from './map/warningLayers'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
-vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
+vi.mock('idb-keyval', () => ({
+  get: vi.fn(),
+  set: vi.fn(),
+  del: vi.fn(),
+  update: vi.fn(),
+}))
 vi.mock('./map/archiveZooms', () => ({ readArchiveZooms: () => Promise.resolve(null) }))
 vi.mock('./map/protocol', () => ({
   PMTILES_SCHEME: 'pmtiles',

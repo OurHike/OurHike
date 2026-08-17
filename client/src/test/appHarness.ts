@@ -21,7 +21,7 @@
 
 import { afterEach, beforeEach, expect, vi } from 'vitest'
 import { act, cleanup, waitFor } from '@testing-library/react'
-import { del, get, set } from 'idb-keyval'
+import { del, get, set, update } from 'idb-keyval'
 import { resetMapLibreMock } from './mocks/maplibre-gl'
 import { PREFERENCES_KEY } from '../lib/preferences'
 import { DEFAULT_PREFERENCES } from '../lib/userPreferences'
@@ -134,6 +134,13 @@ export function appHarness(options: HarnessOptions = {}): AppHarness {
     })
     vi.mocked(del).mockImplementation((key) => {
       store.delete(key as string)
+      return Promise.resolve()
+    })
+    // Applied synchronously against the store, mirroring the real update()'s
+    // single-transaction semantics - the outbox's mutators go through it
+    // since #288, so a harness without it strands every report flow.
+    vi.mocked(update).mockImplementation((key, updater) => {
+      store.set(key as string, updater(store.get(key as string)))
       return Promise.resolve()
     })
 

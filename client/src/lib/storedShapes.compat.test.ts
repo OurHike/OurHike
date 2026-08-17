@@ -57,7 +57,12 @@ import {
   storedTrailsBlob,
 } from './storedShapes.fixtures'
 
-vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
+vi.mock('idb-keyval', () => ({
+  get: vi.fn(),
+  set: vi.fn(),
+  del: vi.fn(),
+  update: vi.fn(),
+}))
 
 const mockedGet = vi.mocked(get)
 

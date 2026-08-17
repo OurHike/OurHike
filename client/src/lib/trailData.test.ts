@@ -16,7 +16,12 @@ import type { ElevationProfile } from './elevationProfile'
 import { publishedHashes } from './dataManifest'
 import { sha256Hex } from './sha256'
 
-vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
+vi.mock('idb-keyval', () => ({
+  get: vi.fn(),
+  set: vi.fn(),
+  del: vi.fn(),
+  update: vi.fn(),
+}))
 
 // The published-hash lookup, mocked the same way archiveDownload.test.ts
 // mocks it: what latest.json says is dataManifest.ts's own subject, and what

@@ -25,7 +25,12 @@ import {
 //   - an in-flight transfer writes into the generation the finished archive is
 //     NOT in, so a re-download cannot overwrite the map it is replacing.
 
-vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
+vi.mock('idb-keyval', () => ({
+  get: vi.fn(),
+  set: vi.fn(),
+  del: vi.fn(),
+  update: vi.fn(),
+}))
 
 const KEY = 'ourhike:corridor-archive'
 

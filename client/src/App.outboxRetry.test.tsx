@@ -22,7 +22,12 @@ import { BUILD_INFO } from './lib/buildInfo'
 // API_CONFIGURED being false so syncOutbox returns before touching anything.
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
-vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
+vi.mock('idb-keyval', () => ({
+  get: vi.fn(),
+  set: vi.fn(),
+  del: vi.fn(),
+  update: vi.fn(),
+}))
 vi.mock('./map/archiveZooms', () => ({ readArchiveZooms: () => Promise.resolve(null) }))
 vi.mock('./lib/api', () => ({
   API_CONFIGURED: true,

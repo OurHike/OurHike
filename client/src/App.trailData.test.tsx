@@ -14,7 +14,12 @@ import { appHarness } from './test/appHarness'
 import { TRAILS_BLOB_KEY } from './lib/trailData'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
-vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
+vi.mock('idb-keyval', () => ({
+  get: vi.fn(),
+  set: vi.fn(),
+  del: vi.fn(),
+  update: vi.fn(),
+}))
 vi.mock('./map/protocol', () => ({
   PMTILES_SCHEME: 'pmtiles',
   registerPMTilesProtocol: vi.fn(),

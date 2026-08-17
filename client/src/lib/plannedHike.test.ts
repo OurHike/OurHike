@@ -11,7 +11,12 @@ import {
   PLANNED_HIKE_KEY,
 } from './plannedHike'
 
-vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
+vi.mock('idb-keyval', () => ({
+  get: vi.fn(),
+  set: vi.fn(),
+  del: vi.fn(),
+  update: vi.fn(),
+}))
 
 // #335. Two numbers, and everything the app needs from a hike falls out of
 // them. The rules worth holding are all about what those two numbers are NOT

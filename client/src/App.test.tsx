@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { get, set } from 'idb-keyval'
+import { get, set, update } from 'idb-keyval'
 import App from './App'
 import { MockMap, NavigationControl, resetMapLibreMock } from './test/mocks/maplibre-gl'
 // The shared helper this file's own copy became (#331) - two other suites had
@@ -18,7 +18,12 @@ import type { ArchiveZooms } from './lib/archiveCoverage'
 // exists - not the screens themselves, which have their own tests.
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
-vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
+vi.mock('idb-keyval', () => ({
+  get: vi.fn(),
+  set: vi.fn(),
+  del: vi.fn(),
+  update: vi.fn(),
+}))
 
 /**
  * What the archive's PMTiles header says it covers (#216).
@@ -42,6 +47,10 @@ beforeEach(() => {
   vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
   vi.mocked(set).mockImplementation((key, value) => {
     store.set(key as string, value)
+    return Promise.resolve()
+  })
+  vi.mocked(update).mockImplementation((key, updater) => {
+    store.set(key as string, updater(store.get(key as string)))
     return Promise.resolve()
   })
   vi.stubGlobal('fetch', vi.fn())

@@ -10,6 +10,7 @@ The checklists this file used to carry are gone, for a reason worth recording: b
 
 | Where to look | For |
 |---|---|
+| [V2_PLAN.md](V2_PLAN.md) | Every open issue, grouped into bodies of work a session can pick up |
 | [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) | The ordered steps to get v1 deployed |
 | [`v1-mvp`](https://github.com/OurHike/OurHike/labels/v1-mvp) | What still blocks launch |
 | [`post-mvp`](https://github.com/OurHike/OurHike/labels/post-mvp) | Designed, deliberately not started |

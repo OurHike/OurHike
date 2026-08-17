@@ -137,6 +137,22 @@ jobs:
         env:
           ESCAPE_LABEL: no-issue
         with:
+          # octokit defaults to NO retries, and a 503 from the GraphQL API is
+          # then a red required check for a reason nobody can act on.
+          # Measured 2026-08-17: this job failed three times in eight minutes
+          # on `No server is currently available to service your request`,
+          # twice on a push and once on a manual re-run, none of them having
+          # reached the question the job exists to ask.
+          #
+          # That is the same failure the comment above refuses an `if:` for.
+          # A check that cannot report blocks a pull request forever; a check
+          # that reports red because GitHub was briefly unwell blocks it just
+          # as hard, and teaches everyone to merge past a red square.
+          #
+          # `retry-exempt-status-codes` already defaults to the codes that
+          # must NOT be retried - 400, 401, 403, 404, 422 - so this retries
+          # the 5xx family and nothing carrying a real answer.
+          retries: 3
           script: |
             const { owner, repo } = context.repo
             const pr = context.payload.pull_request

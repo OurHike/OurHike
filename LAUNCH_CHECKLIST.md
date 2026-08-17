@@ -423,17 +423,16 @@ Confirms all four upstream sources are unchanged since the last fetch. Exits non
 
 ## Things I know are not done, stated plainly
 
-Each of these is now an issue, so that fixing one closes it here too rather than leaving this list to be remembered. The [`v1-mvp`](https://github.com/OurHike/OurHike/labels/v1-mvp) label is the current version of this list.
+Each of these is an issue, so that fixing one closes it here too rather than leaving this list to be remembered — and this list still drifted anyway: reconciled against the tracker 2026-08-17 (#601), four of its seven entries were already closed. The tracker itself ([V2_PLAN.md](V2_PLAN.md), or the [`v2`](https://github.com/OurHike/OurHike/labels/v2) label) is the current version of this list; the `v1-mvp` label this paragraph used to point at now sits only on closed issues.
+
+What is genuinely still not done, of what this list carried:
 
 - **Real OAuth login has never been exercised end to end** ([#92](https://github.com/OurHike/OurHike/issues/92)). The auth code path is fully tested against a mocked Supabase client, but no real Google or Apple sign-in has happened, because that needs credentials only you can create. Expect to find something here.
 - **The wrong-way alert's thresholds (90 ft / 12 min / 25 min) are wireframe placeholders** ([#93](https://github.com/OurHike/OurHike/issues/93)), not validated numbers. `HIKER_SAFETY.md` explicitly declines to guess them pending field testing under tree canopy. The mechanism is tested; the numbers are not trustworthy yet, and this is the one feature where a false alarm costs the most.
-- **Cumulative ascent needs one real validation run** ([#91](https://github.com/OurHike/OurHike/issues/91)). The over-count is fixed in code: `pipeline/lib/elevation_gain.py` and `client/src/lib/elevationGain.ts` count a climb only once the ground reverses by more than the DEM can resolve, so noise is dropped and real climbs are still counted whole. What has *not* happened is the check — `pipeline/check_elevation_gain.py` compares the result against published figures section by section, and `pipeline/reference/published_gain.json` has no sections in it yet, so the check deliberately fails. It needs a full `export_elevation.py` run plus two or three cited section figures; until then the threshold is derived rather than confirmed.
-- **No end-to-end test against real published artifacts** ([#94](https://github.com/OurHike/OurHike/issues/94)). Everything is verified against local files and mocks.
+- **The cumulative-ascent threshold is derived rather than confirmed** ([#133](https://github.com/OurHike/OurHike/issues/133) — the surviving half of closed [#91](https://github.com/OurHike/OurHike/issues/91), which fixed the over-count itself). `pipeline/check_elevation_gain.py` compares the result against published figures section by section, and `pipeline/reference/published_gain.json` has no sections in it yet, so the check deliberately fails. It needs a full `export_elevation.py` run plus two or three cited section figures.
 - **Backend has never run against real Postgres outside CI** ([#95](https://github.com/OurHike/OurHike/issues/95)).
-- **The report form cannot attach a photo** ([#89](https://github.com/OurHike/OurHike/issues/89)) — no longer silently: the picker is disabled and says so, rather than accepting a file and throwing it away. Making it work needs one decision, R2 or Supabase Storage, and then the client half; the backend half is already built.
-- **POIs are never drawn on the map** ([#90](https://github.com/OurHike/OurHike/issues/90)).
 
-Both of the above were found after this list was first written.
+Closed since this list was written, kept here so a reader of an old copy is not chasing ghosts: the photo picker that discarded photos (#89 — report photos ship end to end now), POIs never drawn on the map (#90), the ascent over-count itself (#91), and the missing end-to-end test against real published artifacts (#94 — `smoke_published.py` fetches what a phone fetches, from the bucket it fetches it from).
 
 ## Rough ordering if you want a working map fastest
 

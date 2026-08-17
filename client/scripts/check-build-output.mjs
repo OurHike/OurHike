@@ -36,7 +36,12 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const DIST = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist')
+// Overridable so the checker's own tests (src/test/checkBuildOutput.test.ts,
+// #319) can run the real script against tiny synthetic dist/ trees and prove
+// it fails red on each defect class. `npm run build` never sets it.
+const DIST =
+  process.env.CHECK_BUILD_OUTPUT_DIST ??
+  join(dirname(fileURLToPath(import.meta.url)), '..', 'dist')
 
 /**
  * Where the app's own emitted files live inside the output, and the prefix
@@ -130,8 +135,17 @@ const emittedAssets = [...present]
 
 // Only the text the browser actually executes. Sourcemaps and the precache
 // manifest are read separately or not at all; scanning them here would report
-// references that no runtime ever follows.
-const executable = files.filter((f) => /\.(js|mjs|css|html|webmanifest)$/.test(f))
+// references that no runtime ever follows. The service worker and the workbox
+// runtime are excluded by name for the same reason in the other direction
+// (found by this file's own tests, #319): the precache manifest inside sw.js
+// names every precached asset, so scanning it made anything precached count
+// as "wired up" - and a worker that is emitted and precached but never
+// referenced is exactly the silent blank-map case check 2 exists to catch.
+const executable = files.filter(
+  (f) =>
+    /\.(js|mjs|css|html|webmanifest)$/.test(f) &&
+    !/(^|[\\/])(sw|workbox-[^\\/]*)\.js$/.test(f),
+)
 
 const problems = []
 

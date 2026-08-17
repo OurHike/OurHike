@@ -163,9 +163,14 @@ release. `pages.yml` refuses to deploy a `v*` tag that disagrees with
 1. Open the deployed URL in Chrome.
 2. Menu → **Add to Home screen** / **Install app**.
 3. Open the installed app, go through onboarding, and pick a detail level.
-   Light is 64 MB, Standard 314 MB, Fine 1.18 GB.
-4. On **Downloads**, tap "Download the map" — trail lines and POIs come first,
-   then the raster archive. A dropped connection resumes rather than restarts.
+   The choice is the hiking sheet's own Standard (recommended) or Fine
+   (#277) - the screen shows each level's exact published size. (This step
+   used to quote the USGS raster tiers as the main download; that sheet is
+   the optional full-detail alternative now, configured later from
+   Downloads.)
+4. On **More → Downloads**, tap "Download the map" — trail lines and POIs
+   come first, then the sheet's archives. A dropped connection resumes
+   rather than restarts.
 5. Turn on airplane mode and confirm the map still draws. This is the test that
    matters; everything else can be checked at home.
 

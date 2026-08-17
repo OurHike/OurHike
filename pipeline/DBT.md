@@ -4,7 +4,7 @@ Companion to [../TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md) and [R
 
 ## Why dbt, and why now
 
-The pipeline currently fetches raw ATC/opentrail data to GeoJSON files and processes it ad hoc in Python + DuckDB spatial scripts (`spike_corridor.py`, `spike_raster_mosaic.py`, `export_pmtiles.py`). That's worked for proving the pipeline out, but it doesn't scale as OurHike adds trails beyond the AT (value #7 — built to be inherited by another club, not just NYNJTC/the AT): every new trail would mean more one-off scripts, no shared tested transform layer, and no principled place for `ROADMAP.md`'s currently-open "Unified POI schema" item (joining ATC + opentrail POI data into one schema) to live.
+The pipeline currently fetches raw ATC/opentrail data to GeoJSON files and processes it ad hoc in Python + DuckDB spatial scripts (`spike_corridor.py`, `render_cell_tiles.py`, `assemble_raster.py` — the raster chain that replaced `export_pmtiles.py` in 2026-08). That's worked for proving the pipeline out, but it doesn't scale as OurHike adds trails beyond the AT (value #7 — built to be inherited by another club, not just NYNJTC/the AT): every new trail would mean more one-off scripts, no shared tested transform layer, and no principled place for `ROADMAP.md`'s currently-open "Unified POI schema" item (joining ATC + opentrail POI data into one schema) to live.
 
 dbt adds a real **T** to this pipeline's data flow, turning it into a proper **extract-load-transform (ELT)** architecture:
 
@@ -12,7 +12,7 @@ dbt adds a real **T** to this pipeline's data flow, turning it into a proper **e
 - **Load** — new: a small script loads that already-fetched raw data into DuckDB tables (a `raw` schema) *before* any transformation happens — raw data lands in the warehouse first, untouched, so every transform downstream is reproducible from a known starting point and nothing gets silently reshaped on the way in.
 - **Transform** — new, owned entirely by dbt: staging → intermediate → marts SQL models, tested and documented, turning raw tables into the clean, trusted outputs the rest of the pipeline (and eventually the client) consumes.
 
-**Deliberately excluded: raster pixel data.** USGS topo quad GeoTIFFs (~14GB across ~1,654 files) stay exactly where they are — files on disk, handled by `fetch_topo_quads.py`/`fix_corrupted_quads.py`/`spike_raster_mosaic.py`/`export_pmtiles.py` unchanged. Loading raster bytes into DuckDB would buy nothing dbt needs (dbt's job here is tabular/attribute cleaning, not raster processing) and would work directly against value #8 (boring, low-maintenance — a multi-gigabyte DuckDB file is a much heavier thing to move around and back up than one that holds only attribute/vector data). Only a lightweight *metadata* table (quad URL, local path, last-modified — no pixels) is planned to load, so dbt can document/test *coverage* ("every registered quad has a manifest entry") without the warehouse ever holding raster bytes.
+**Deliberately excluded: raster pixel data.** USGS topo quad GeoTIFFs (~14GB across ~1,654 files) stay exactly where they are — files on disk, handled by `fetch_topo_quads.py`/`fix_corrupted_quads.py`/`render_cell_tiles.py`/`assemble_raster.py` unchanged. Loading raster bytes into DuckDB would buy nothing dbt needs (dbt's job here is tabular/attribute cleaning, not raster processing) and would work directly against value #8 (boring, low-maintenance — a multi-gigabyte DuckDB file is a much heavier thing to move around and back up than one that holds only attribute/vector data). Only a lightweight *metadata* table (quad URL, local path, last-modified — no pixels) is planned to load, so dbt can document/test *coverage* ("every registered quad has a manifest entry") without the warehouse ever holding raster bytes.
 
 ## Project structure
 
@@ -61,7 +61,7 @@ stg_opentrail__waypoints ─┘
 
 `stg_opentrail__waypoints` resolves its raw `icon` code to a `poi_type` via the `poi_type_mapping` seed; the two ATC staging models tag their `poi_type` directly (`'shelter'`/`'campsite'`). `int_pois_unioned` is a plain `union all` into common columns; `dim_pois` adds a stable surrogate key (`dbt_utils.generate_surrogate_key(['source', 'source_id'])`).
 
-**Explicitly not attempted in Phase A:** cross-source deduplication (a shelter appearing in both ATC and opentrail data isn't merged — `dim_pois` stays 1:1 with its inputs, which also keeps the row-count reconciliation tests below meaningful), and wiring `dim_pois` into the actual export step (`export_pmtiles.py`) — the mart lives inside the warehouse for now, export wiring is later work.
+**Explicitly not attempted in Phase A:** cross-source deduplication (a shelter appearing in both ATC and opentrail data isn't merged — `dim_pois` stays 1:1 with its inputs, which also keeps the row-count reconciliation tests below meaningful), and wiring `dim_pois` into the actual export step (`export_poi.py`) — the mart lives inside the warehouse for now, export wiring is later work.
 
 **Honesty note on column names:** this design couldn't reach ArcGIS's live metadata from this environment, so any staging-model column names referenced in Phase A implementation (e.g. illustrative names like `Shelter_Name`, `Trail_Club`) should be treated as placeholders until reconciled against the real fetched data's actual field names via `dbt-codegen` — see Phase B.
 
@@ -90,7 +90,7 @@ A known duplication risk gets a real test, not just a comment: `poi_type_mapping
 
 ## SQL over Python, with a real precedent for the exception
 
-Transform logic is SQL by default. The one documented exception this project already has is worth following as the rule, rather than inventing an abstract one: `export_pmtiles.py` originally tried corridor/tile intersection as one DuckDB query per candidate tile, killed it after 2 minutes with zero output, and fell back to a plain Python/shapely loop that finishes in seconds — a measured, documented failure, not a preference. The same bar applies here: SQL first, Python only when DuckDB genuinely can't do it or a measured attempt shows it's the wrong tool — and any such exception gets documented the same way, not silently reached for.
+Transform logic is SQL by default. The one documented exception this project already has is worth following as the rule, rather than inventing an abstract one: the raster export of the time (`export_pmtiles.py`, since replaced by `lib/raster_tiles.py`'s one-warp chain — the measurement predates the rewrite and stands) originally tried corridor/tile intersection as one DuckDB query per candidate tile, killed it after 2 minutes with zero output, and fell back to a plain Python/shapely loop that finishes in seconds — a measured, documented failure, not a preference. The same bar applies here: SQL first, Python only when DuckDB genuinely can't do it or a measured attempt shows it's the wrong tool — and any such exception gets documented the same way, not silently reached for.
 
 ## Linting
 
@@ -111,6 +111,6 @@ One freshness caveat worth being upfront about: `dbt source freshness` here meas
 
 ## Open scope boundaries worth restating
 
-- Not touched by this design: `spike_corridor.py`, `spike_raster_mosaic.py`, `export_pmtiles.py`, or any raster/export logic. `dim_pois` is a warehouse-internal mart in Phase A; wiring it into the actual GeoJSON/PMTiles export step is future work.
+- Not touched by this design: `spike_corridor.py`, `render_cell_tiles.py`, `assemble_raster.py`, or any raster/export logic. `dim_pois` is a warehouse-internal mart in Phase A; wiring it into the actual GeoJSON/PMTiles export step is future work.
 - Not attempted: cross-source POI deduplication.
 - Not yet updated: `pipeline/README.md`'s and `TESTING.md`'s how-to/testing sections stay describing today's pipeline until Phase A's code actually lands — updating them to describe unbuilt commands would be misleading in the meantime.

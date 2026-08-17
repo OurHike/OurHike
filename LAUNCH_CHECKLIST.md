@@ -4,7 +4,7 @@ Everything in the plan is built and tested. What remains is almost entirely **ac
 
 This is ordered so that each step unblocks the next. Steps 1–3 get a working map in a browser; 4–6 add contributions; 7 ships it.
 
-**Status at time of writing:** pipeline, backend and client all green (pipeline 152 tests, backend 85, client 490). All artifacts built locally. Nothing is published anywhere yet.
+**Status, updated 2026-08-17 (#661):** launched — v1.0.0 shipped 2026-08-16; the bucket has been live since 2026-07-31 and Pages since early August. The suites have roughly tripled since this document was first written (the client suite alone is 3,020 tests, measured 2026-08-17), so this file no longer quotes per-suite counts. Still open from this checklist: hosting the backend (#600), real OAuth end to end (#92), and applying the migration to Supabase's Postgres.
 
 ---
 
@@ -18,7 +18,7 @@ This is ordered so that each step unblocks the next. Steps 1–3 get a working m
 | POIs | water, shelters, campsites, resupply, crossings |
 | Elevation | 139,219 points at 25 m, 0% DEM gaps, 0.87 MB gzipped |
 | Backend | FastAPI + SQLAlchemy, reports/closures/moderation/hikes/preferences/wrong-way, Supabase JWT auth |
-| Client | Every MVP screen, offline outbox, resumable download, 490 tests |
+| Client | Every MVP screen, offline outbox, resumable download |
 
 ---
 
@@ -200,7 +200,7 @@ A pull request from a fork gets no secrets and so gets no preview; the workflow 
 
 Cloudflare now steers new projects toward **Workers static assets** rather than Pages, and that would work here too. Pages was chosen because a preview needs nothing but a directory uploaded to a URL, and Pages does that without a `wrangler.jsonc`, a `main` entry point or a compatibility date to keep current. Worth revisiting if the app ever grows a server-side part.
 
-After setting `DATA_BASE_URL` (step 2), the site needs a **redeploy** to pick it up, since it's baked in at build time. Either push any commit to `main`, or dispatch **"Deploy Pages"** manually (Actions tab → workflow_dispatch) to redeploy with no code change.
+After setting `DATA_BASE_URL` (step 2), the site needs a **redeploy** to pick it up, since it's baked in at build time. Dispatch **"Deploy Pages"** manually (Actions tab → workflow_dispatch). This used to say "push any commit to `main`" — that stopped being true when RELEASING.md §2 landed: a push to `main` now deploys **UA**, and production Pages deploys only from a `v*` tag or a dispatch (#661).
 
 Two things to check after that redeploy:
 - The PWA installs (service worker registers, manifest loads). iOS Web Push **only** works for home-screen installs, which matters for the wrong-way alert later.

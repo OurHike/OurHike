@@ -67,15 +67,16 @@ maintaining club evaluating whether to adopt this, nothing for a volunteer,
 nothing for a journalist, and — most consequentially — nowhere to give money,
 which per FEATURES.md is a thing only this surface is allowed to do.
 
-**1.6 And the app itself has no large-screen layout at all.** `grep -rn "@media"
-client/src client/index.html client/public` returns **zero matches** across 154
-source files. `.map-screen` and `.app__screen` are `height: 100svh` flex columns
-with a bottom tab bar and 44px touch targets. Opened on a 27" monitor, that is a
-phone UI stretched to 2560px. The site is honest about it — *"It runs in a
-desktop browser for a look around, but it's built for a phone"* — which is a
-correct description of the current state and an unacceptable one for a product
-whose MVP list says **"Same core experience on phone and web"**
-(FEATURES.md).
+**1.6 The app's large-screen layout, which this section was written to demand,
+exists now.** When this was written, `grep -rn "@media"` over the client returned
+zero matches and every screen was a phone screen stretched wide; #117 closed that
+on 2026-08-03 (`client/src/desktop.css`, with tests — the grep now hits in five
+files, re-run 2026-08-17, #661). The paragraph is kept because its demand shaped
+§6 and because the *site* half is still true: the landing page remains the
+Downloads screen restyled, and the site's own line — *"It runs in a desktop
+browser for a look around, but it's built for a phone"* — no longer describes the
+app, only the page saying it. FEATURES.md's MVP line — **"Same core experience
+on phone and web"** — is now met by the app and still owed by the site.
 
 ---
 

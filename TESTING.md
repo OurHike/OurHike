@@ -152,7 +152,7 @@ That model is also why this suite is the one place in the repository where paral
 Three invariants from the wireframe handoff live here specifically, since they're only meaningfully enforceable server-side:
 
 - `severity: serious` on a `Report` is only ever set by a user with a moderator role; a self-set attempt is rejected server-side, not just hidden client-side.
-- Any report type intended to stay private (`bad_hikers` today - see [WIREFRAMES.md](WIREFRAMES.md) Known Deviations #2 for the still-open question of exactly what replaces it) has `visibility: internal-only` set on write, and public map/search API queries filter it out at the query level, not just in client rendering.
+- Any report type intended to stay private (`bad_hikers` today - the question of what replaces it was settled by [features/SAYING_THANKS.md](features/SAYING_THANKS.md): `thanks` became the seventh report type and `bad_hikers` stays, internal-only) has `visibility: internal-only` set on write, and public map/search API queries filter it out at the query level, not just in client rendering.
 - Browsing endpoints (map, POIs, elevation, closures, warnings) require no auth token - a signed-out client can fetch all of them.
 
 ## Repository settings

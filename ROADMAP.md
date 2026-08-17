@@ -6,7 +6,7 @@ Companion to [OurHikeValues.md](OurHikeValues.md), [FEATURES.md](FEATURES.md), a
 
 The checklists this file used to carry are gone, for a reason worth recording: by the end of July 2026 this roadmap still showed the entire client and backend as unbuilt, while both were built, tested and passing CI. It also carried an index that omitted four feature docs and listed a fifth twice, and pointed at a resolved question as still open. Nothing was wrong with the plan — the plan just was never the thing being updated.
 
-**Where the project actually is:** pipeline, backend and client are all built and green, and every data artifact has been built locally. Nothing is published anywhere yet, and the remaining work to change that is mostly accounts and credentials rather than code. If you want a working map, [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) is the document to read — it is the ordered runbook, and it is current.
+**Where the project actually is (updated 2026-08-17, #661 — the previous version of this sentence said nothing was published, for weeks after the bucket went live):** v1.0.0 shipped 2026-08-16. The data publishes to R2 as a CI workflow, the app is live at ourhike.org, and the work is v2 — [V2_PLAN.md](V2_PLAN.md) is the document to read. What is *not* real yet: the backend is not hosted anywhere (#600 — so reporting still has nowhere to send), real OAuth is unexercised end to end (#92), and the migration has never been applied to Supabase's Postgres. [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) remains the runbook of record for how v1 got out, and for the ops steps still open.
 
 | Where to look | For |
 |---|---|

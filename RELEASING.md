@@ -522,7 +522,9 @@ How:
 
 A data release and a code release are separate ([DATA_RELEASES.md](pipeline/DATA_RELEASES.md)),
 and they touch at exactly one line: `DATA_RELEASE` in `client/src/lib/dataRelease.ts`,
-the constant naming which published dataset a build reads.
+the constant naming which published dataset a build reads. (Planned, not yet built —
+the file does not exist; today every build reads the bucket root through the
+`DATA_BASE_URL` variable, #661.)
 
 Under this document that constant's promotion is a merge to `main`, which puts the new
 dataset **in UA** — where `verify_release.py` and a real browser can be pointed at it —
@@ -660,7 +662,7 @@ Three notices, and they fail independently rather than duplicating each other:
 | `release-notes.yml` | Generates a notes draft and opens it as a pull request, labelled so it can pass CI |
 | `.github/scripts/release_notes.py` | The generator. Pure half tested in `.github/tests/test_release_notes.py`; the git and API half is a thin seam |
 | `releases/` | Where the notes live, canonically |
-| `.github/expected-settings.yml` | The four `UA_*` settings declared, so the manifest suite can see them |
+| `.github/expected-settings.yml` | The `UA_*` settings declared (six as of 2026-08-17), so the manifest suite can see them |
 
 **Not built, and each one is why the process is not yet enforced rather than merely
 followed:**

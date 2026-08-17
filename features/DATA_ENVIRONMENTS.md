@@ -28,9 +28,10 @@ way to say it meant otherwise.**
 `publish.py` writes `trails.geojson` at the bucket root. So does a dry run somebody re-ran with
 the box ticked. So would a UA build, if UA had a way to publish at all — which is precisely why
 it does not. RELEASING.md §3's table promises UA "the **candidate** `releases/<id>/`" and
-production "the **released** `releases/<id>/`", and that layout does not exist yet
-([DATA_RELEASES.md](../pipeline/DATA_RELEASES.md) §2, unbuilt). What exists is flat mutable keys
-and one place to put them.
+production "the **released** `releases/<id>/`" — a layout that has existed since #500
+([R2_LAYOUT.md](../pipeline/R2_LAYOUT.md): every publish copies its artifacts into
+`releases/<id>/` server-side). The live surface every client reads is still the flat
+mutable root keys, and there is one place to put them.
 
 The consequence is not theoretical, and it is not really about UA. It is that **there is no
 rehearsal**. `.github/workflows/publish-conditions.yml` bakes verified closures out of
@@ -64,7 +65,7 @@ rewritten in place cannot be shared by two writers at all.
 | POI photos — `photos/<digest>.jpg` | `photos/` | **yes** — objects are added *and deleted* | yes | **separate.** Content-addressing makes the bytes safe; the *deletion* is what is not. A withdrawal rehearsed in UA would take the photograph out of production |
 | Photo originals — `originals/<digest>.jpg` | `originals/` | **yes**, same rule | yes | **separate**, same reason |
 | Build intermediates | `_internal/` | **yes** — rewritten per build | yes | **separate.** Two builds diffing against one cell state is a raster leg that reuses the other environment's tiles |
-| Release folders — `releases/<id>/…` | `releases/` | **no** — written once, never overwritten | n/a, unbuilt | **shared, deliberately.** §5 |
+| Release folders — `releases/<id>/…` | `releases/` | **no** — written once, never overwritten | yes, since #500 | **shared, deliberately.** §5 |
 | Postgres — accounts, reports, closures, comments | Supabase | yes | **yes today** | already designed separate: `UA_SUPABASE_URL` / `UA_MIGRATION_DATABASE_URL`, unbuilt account work ([#371](https://github.com/OurHike/OurHike/issues/371)) |
 | The backend API | the backend host | yes | **no** — `UA_API_BASE_URL` has deliberately no fallback | already separate, and the precedent this follows |
 | Upstream ArcGIS / opentrail / USGS | somebody else's servers | read-only to us | yes | **shared, and nothing to decide.** We fetch; we never write |

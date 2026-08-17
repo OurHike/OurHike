@@ -38,6 +38,7 @@ import json
 from pathlib import Path
 
 from lib.arcgis import get_field_coded_domain
+from lib.completeness import fail_if_incomplete
 from lib.feature_id import resolve_feature_id
 from lib.poi_schema import poi_output_name
 from lib.spurs import (
@@ -249,12 +250,17 @@ def main() -> dict:
     centerline_features = load_features(RAW_DIR / "centerline.geojson")
     pois = load_destination_pois()
 
+    # Loud, like fetch_all.py and the other exporters' fail_if_incomplete()
+    # gates - not the quiet `return {}` this used to be (#172), which exited
+    # 0 on missing inputs while every sibling script fails. A run that cannot
+    # read its inputs has nothing true to say, and saying nothing with a
+    # green exit code is how an empty spurs.json ships.
+    missing = []
     if not side_trails:
-        print("No side_trails.geojson - run fetch_all.py first.")
-        return {}
+        missing.append("side_trails.geojson absent or empty - run fetch_all.py first")
     if not centerline_features:
-        print("No centerline.geojson - run fetch_all.py first.")
-        return {}
+        missing.append("centerline.geojson absent or empty - run fetch_all.py first")
+    fail_if_incomplete(missing, label="Missing spur-export inputs")
     if not pois:
         # Not fatal, and not silent. Every spur would resolve to no
         # destination, which looks exactly like a trail network where nothing

@@ -161,6 +161,21 @@ def test_a_line_with_no_two_ends_has_none(coordinates):
     assert line_endpoints(coordinates) is None
 
 
+def test_a_multilinestring_whose_first_part_is_empty_survives():
+    """The crash #172 named: the MultiLineString sniff probed
+    coordinates[0][0] before the empty-part filter ran, so one degenerate
+    feature killed the whole export instead of degrading to a slightly
+    worse endpoint - the same convention
+    test_a_null_geometry_feature_survives_the_run pins for the exporter."""
+    ends = line_endpoints([[], [[-75.0, 40.0], [-75.0, 40.001]]])
+
+    assert ends == ((40.0, -75.0), (40.001, -75.0))
+
+
+def test_a_multilinestring_of_only_empty_parts_has_no_ends():
+    assert line_endpoints([[], []]) is None
+
+
 # --- Orientation -----------------------------------------------------------
 
 

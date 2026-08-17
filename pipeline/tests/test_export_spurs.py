@@ -401,6 +401,27 @@ def test_the_output_is_keyed_by_id_so_the_client_can_look_one_up(tmp_path, monke
     capsys.readouterr()
 
 
+def test_a_run_with_missing_inputs_fails_instead_of_publishing_nothing(tmp_path, monkeypatch, capsys):
+    """The quiet `return {}` #172 named: missing inputs used to exit 0,
+    unlike fetch_all.py and every other exporter's fail_if_incomplete()
+    gate, so an empty run looked exactly like a successful one."""
+    monkeypatch.setattr(export_spurs, "RAW_DIR", tmp_path / "raw")
+    monkeypatch.setattr(export_spurs, "POI_DIR", tmp_path / "poi")
+    monkeypatch.setattr(export_spurs, "OUT_PATH", tmp_path / "spurs.json")
+    monkeypatch.setattr(export_spurs, "MANIFEST_PATH", tmp_path / "spurs_manifest.json")
+    monkeypatch.setattr(export_spurs, "SOURCES_PATH", tmp_path / "sources.json")
+
+    with pytest.raises(SystemExit) as excinfo:
+        export_spurs.main()
+
+    assert excinfo.value.code == 1
+    out = capsys.readouterr().out
+    assert "side_trails.geojson" in out
+    assert "centerline.geojson" in out
+    assert not (tmp_path / "spurs.json").exists()
+    assert not (tmp_path / "spurs_manifest.json").exists()
+
+
 def test_a_run_with_no_published_pois_warns_rather_than_resolving_nothing_quietly(tmp_path, monkeypatch, capsys):
     """Every spur resolving to nothing looks exactly like a trail network
     where nothing leads anywhere, and that is not a thing to publish

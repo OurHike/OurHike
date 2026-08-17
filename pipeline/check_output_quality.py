@@ -21,7 +21,8 @@ documented pipeline run order (see README.md).
 
 FIVE CHECKS, IN PRIORITY ORDER
 -------------------------------
-1. COMPLETENESS CROSS-CHECK (trails_verdict/poi_verdict/elevation_verdict).
+1. COMPLETENESS CROSS-CHECK (trails_verdict/poi_verdict/elevation_verdict/
+   spurs_verdict).
    export_trails.py and export_poi.py already gate themselves on this via
    lib/completeness.py's fail_if_incomplete() before they ever write a
    manifest - but that gate runs INSIDE the exporting script, checking
@@ -156,6 +157,7 @@ MANIFEST_MISSING = "manifest-missing"
 TRAILS_MANIFEST = PROCESSED_DIR / "trails_manifest.json"
 POI_MANIFEST = PROCESSED_DIR / "poi" / "manifest.json"
 ELEVATION_MANIFEST = PROCESSED_DIR / "elevation_manifest.json"
+SPURS_MANIFEST = PROCESSED_DIR / "spurs_manifest.json"
 CENTERLINE_PATH = ROOT / "data" / "raw" / "centerline.geojson"
 TOPO_QUADS_MANIFEST = ROOT / "data" / "raw" / "topo_quads" / "manifest.json"
 BASELINE_PATH = ROOT / "data" / "quality_baseline.json"
@@ -424,6 +426,56 @@ def elevation_verdict(manifest_path: Path | None = None) -> dict:
         "detail": detail,
         "problems": problems,
         "counts": {"elevation": point_count},
+    }
+
+
+def spurs_verdict(manifest_path: Path | None = None) -> dict:
+    """Re-derive a completeness signal for export_spurs.py's output from
+    what is actually on disk right now. Until #172 this was the only
+    published artifact with no verdict here at all - a truncated or empty
+    spurs.json shipped to R2 with every check green, against this module's
+    own thesis that an exporter's self-reported success is not evidence.
+
+    export_spurs.py's manifest is flat like elevation's (path/sha256 at the
+    top level - one output artifact) and counts spurs as `spur_count` rather
+    than `feature_count`. The minimum is the default non-zero one: the AT
+    has side trails, so an artifact honestly derived from real inputs
+    cannot be empty, and "0 spurs" has so far only ever meant a decode or
+    input failure upstream (the int-keyed-domain bug this issue also
+    carried). `resolved_count` is surfaced in the detail but not gated -
+    how many spurs resolve a destination varies with the POI exports, and
+    check #4's baseline comparison is the drop detector for it."""
+    if manifest_path is None:
+        manifest_path = SPURS_MANIFEST
+
+    manifest = read_manifest(manifest_path)
+    if manifest is None:
+        problem = "spurs_manifest.json missing - export_spurs.py may not have run"
+        return {
+            "check": "spurs",
+            "verdict": Verdict.PROBLEM,
+            "detail": problem,
+            "problems": [problem],
+            "counts": {},
+            "reason": MANIFEST_MISSING,
+        }
+
+    problems = artifact_problems("spurs.json", manifest)
+    spur_count = manifest.get("spur_count", 0)
+    problems += count_problems({"spurs": spur_count})
+
+    verdict = Verdict.PROBLEM if problems else Verdict.OK
+    if problems:
+        detail = f"{len(problems)} problem(s)"
+    else:
+        detail = f"{spur_count} spurs, {manifest.get('resolved_count', 0)} with a destination"
+
+    return {
+        "check": "spurs",
+        "verdict": verdict,
+        "detail": detail,
+        "problems": problems,
+        "counts": {"spurs": spur_count},
     }
 
 
@@ -888,10 +940,11 @@ def check_all(
     trails = verdict("trails", trails_verdict)
     poi = verdict("poi", poi_verdict)
     elevation = verdict("elevation", elevation_verdict)
+    spurs = verdict("spurs", spurs_verdict)
     corridor = _safe_verdict("corridor", corridor_verdict)
     topo_quads = _safe_verdict("topo_quads", topo_quads_verdict)
 
-    current_counts = {**trails["counts"], **poi["counts"], **elevation["counts"]}
+    current_counts = {**trails["counts"], **poi["counts"], **elevation["counts"], **spurs["counts"]}
     baseline = _safe_verdict("baseline", lambda: baseline_verdict(current_counts, changed_sources=changed_sources))
     # Deliberately NOT routed through as_optional(). Its excuse is keyed on
     # MANIFEST_MISSING - "this artifact was never built" - and the fetches
@@ -900,7 +953,7 @@ def check_all(
     # --fetched instead.
     fetches = _safe_verdict("fetches", lambda: fetches_verdict(fetched=fetched, root=RECEIPTS_ROOT))
 
-    return [trails, poi, elevation, corridor, topo_quads, baseline, fetches]
+    return [trails, poi, elevation, spurs, corridor, topo_quads, baseline, fetches]
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -930,7 +983,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="append",
         default=[],
         metavar="CHECK",
-        choices=["trails", "poi", "elevation"],
+        choices=["trails", "poi", "elevation", "spurs"],
         dest="optional",
         help=(
             "An artifact this run was not meant to produce, repeatable. Its "

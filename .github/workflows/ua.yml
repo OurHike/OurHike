@@ -65,7 +65,7 @@ jobs:
             echo "deploy=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.can.outputs.deploy == 'true'
 
       - uses: actions/setup-node@v4

@@ -107,7 +107,7 @@ jobs:
       # close failed the cleanup on its way to a comment claiming the previews
       # had been removed (#643). Everything the build needs stays gated on
       # not-closed below; the close needs the repository and nothing else.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.can.outputs.deploy == 'true'
 
       - uses: actions/setup-node@v4

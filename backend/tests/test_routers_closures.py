@@ -467,3 +467,41 @@ def test_an_offset_bearing_date_is_converted_rather_than_truncated(client, db_se
 
     assert response.status_code == 200
     assert response.json()["closed_since"] == "2026-08-02T02:30:00Z"
+
+
+def test_an_explicit_null_clears_the_note(client, db_session):
+    """The edit #255 found foreclosed: a stale note could only be overwritten
+    with more text, never removed. Under the shared PATCH convention
+    (app/schemas/partial.py) `{"note": null}` is a deliberate clear."""
+    closure, maintainer_id = _closure_and_maintainer(db_session)
+    client.patch(
+        f"/closures/{closure.id}",
+        json={"note": "bridge out at the crossing"},
+        headers=auth_headers(maintainer_id),
+    )
+
+    response = client.patch(
+        f"/closures/{closure.id}",
+        json={"note": None},
+        headers=auth_headers(maintainer_id),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["note"] is None
+
+
+def test_an_explicit_null_on_a_non_nullable_field_is_a_422(client, db_session):
+    """`status` and `reason_type` have no null state for a null to mean, so
+    the answer is a validation error naming the field - not the silent drop
+    that used to read as success (#255)."""
+    closure, maintainer_id = _closure_and_maintainer(db_session)
+
+    for field in ("status", "reason_type"):
+        response = client.patch(
+            f"/closures/{closure.id}",
+            json={field: None},
+            headers=auth_headers(maintainer_id),
+        )
+
+        assert response.status_code == 422, field
+        assert field in response.text

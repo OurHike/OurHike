@@ -108,7 +108,8 @@ pushed — the beta landing page (`site/`) at `https://ourhike.org/` and this ap
 at `/app/`, with `site/CNAME` putting the site on that domain (#733). A push to
 `main` deploys to UA instead (`ua.yml`); see
 [RELEASING.md](../RELEASING.md) §2 for why those are two different things.
-Enable Pages once under Settings → Pages → Source → **GitHub Actions**, and set
+Enable Pages once under Settings → Pages → Build and deployment → Source →
+**"Deploy from a branch"**, branch `gh-pages`, folder `/ (root)`, and set
 `DATA_BASE_URL` as a repository _variable_ (not a secret — it is public either
 way, and secrets are unavailable to the build in the form Vite needs).
 

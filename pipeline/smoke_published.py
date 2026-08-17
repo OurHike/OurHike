@@ -292,20 +292,28 @@ def check_range(base: str, key: str, size: int, session: requests.Session | None
     end = start + RANGE_PROBE_BYTES - 1
     getter = (session or requests).get
     try:
-        response = getter(
+        # `with`, because `stream=True` without it leaks the connection on
+        # every path that does not read the body - and the 200 below is
+        # exactly such a path, on a response whose unread body is the whole
+        # 1.18 GB archive. check_hash uses the same form one function down.
+        with getter(
             f"{base}/{key}",
             headers={"Range": f"bytes={start}-{end}"},
             timeout=HTTP_TIMEOUT,
             stream=True,
-        )
-        # decode_content=False is the whole point of the docstring's second
-        # paragraph. Read inside the `try` so a decode or transport failure is
-        # an UNREACHABLE verdict rather than an exception out of check_all.
-        body = response.raw.read(decode_content=False) if response.status_code == 206 else b""
+        ) as response:
+            status = response.status_code
+            content_range = response.headers.get("Content-Range", "")
+            # decode_content=False is the whole point of the docstring's second
+            # paragraph. Read inside the `try` so a decode or transport failure
+            # is an UNREACHABLE verdict rather than an exception out of
+            # check_all, and inside the `with` because after it there is no
+            # connection left to read from.
+            body = response.raw.read(decode_content=False) if status == 206 else b""
     except requests.RequestException as exc:
         return _report("range", key, UNREACHABLE, f"could not ask: {exc.__class__.__name__}")
 
-    if response.status_code == 200:
+    if status == 200:
         return _report(
             "range",
             key,
@@ -313,14 +321,13 @@ def check_range(base: str, key: str, size: int, session: requests.Session | None
             "a mid-file range was answered 200 with the whole body - the server ignored it. "
             "Every resumed download of this artifact restarts from zero.",
         )
-    if response.status_code != 206:
-        return _report("range", key, FAILED, f"a mid-file range answered {response.status_code}")
+    if status != 206:
+        return _report("range", key, FAILED, f"a mid-file range answered {status}")
 
     got = len(body)
     if got != RANGE_PROBE_BYTES:
         return _report("range", key, FAILED, f"asked for {RANGE_PROBE_BYTES} bytes and got {got}")
 
-    content_range = response.headers.get("Content-Range", "")
     expected = f"bytes {start}-{end}/{size}"
     if content_range != expected:
         return _report("range", key, FAILED, f"Content-Range was {content_range!r}, expected {expected!r}")

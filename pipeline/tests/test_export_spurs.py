@@ -28,12 +28,12 @@ only arrangement here in which a disagreement between the two ends fails.
 
 import json
 
-import duckdb
 import pytest
 
 import export_poi
 import export_spurs
 from lib.poi_schema import POI_TYPES, poi_output_name
+from tests.conftest import spatial_connection
 
 TRAIL_LAT, TRAIL_LON = 40.0, -75.0
 TYPE_DOMAIN = {"0": "Access (eg Parking)", "1": "Alternate Route", "3": "Spur (eg View, Camp)"}
@@ -144,8 +144,7 @@ def test_the_real_exporter_writes_what_the_real_reader_looks_for(tmp_path, monke
     of them, and one round trip through DuckDB's GDAL writer is enough to
     prove it while staying cheap.
     """
-    con = duckdb.connect()
-    con.execute("INSTALL spatial; LOAD spatial;")
+    con = spatial_connection()
     poi_dir = tmp_path / "poi"
     poi_dir.mkdir()
     monkeypatch.setattr(export_poi, "OUT_DIR", poi_dir)

@@ -7,12 +7,12 @@ real ATC/opentrail.org data or the full corridor dataset - see TESTING.md.
 import hashlib
 import json
 
-import duckdb
 import pytest
 
 import export_poi
 from lib.photo_store import photo_digest
 from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES
+from tests.conftest import spatial_connection
 from tests.synthetic import write_centerline
 
 SHELTER_DIGEST = photo_digest(b"\xff\xd8 a test shelter photo")
@@ -178,9 +178,7 @@ def _write_fixture_sources(raw_dir):
 
 @pytest.fixture
 def con():
-    c = duckdb.connect()
-    c.execute("INSTALL spatial; LOAD spatial;")
-    return c
+    return spatial_connection()
 
 
 @pytest.fixture(autouse=True)

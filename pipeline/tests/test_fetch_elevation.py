@@ -42,12 +42,11 @@ SMALL_CENTERLINE_COORDS = [(-81.50, 20.00), (-81.49, 20.01)]
 
 def _corridor_bbox_for(path):
     """The corridor's bbox, built fresh from a centerline the way main() does."""
-    import duckdb
 
     from lib.corridor import build_corridor
+    from tests.conftest import spatial_connection
 
-    con = duckdb.connect()
-    con.execute("INSTALL spatial; LOAD spatial;")
+    con = spatial_connection()
     build_corridor(con, path)
     return corridor_bbox(con)
 

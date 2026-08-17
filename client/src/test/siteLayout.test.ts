@@ -1,15 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { readRepoFile } from './repoFile'
 
 // jsdom does not do layout, so this asserts the CSS CONTRACT that was broken:
 // the list items must not be grid containers, because grid promotes every text
 // run and inline element to its own item and shatters a sentence with a link.
-// Resolved from the Vitest root (client/), which vite.config.ts pins
-// explicitly - so this finds site/ on a Linux runner as well as here.
-// import.meta.url does not work: Vitest's transform means it is not a file:
-// URL, and fileURLToPath rejects it.
-const html = readFileSync(resolve(process.cwd(), '../site/index.html'), 'utf8')
+// Read through repoFile.ts, which declares this out-of-tree read so
+// ciScope.test.ts can hold the CI scope list to it (#503).
+const html = readRepoFile('site/index.html')
 
 function ruleFor(selector: string): string {
   const at = html.indexOf(`${selector} {`)

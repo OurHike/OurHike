@@ -1,19 +1,24 @@
 # v2 — the work, grouped so it can be picked up
 
 Companion to [ROADMAP.md](ROADMAP.md), which says what the v2 *features* are and why.
-**This document is about the other question: given 106 open issues all labelled `v2`, what
+**This document is about the other question: given 117 open issues all labelled `v2`, what
 can one session finish in one branch without colliding with another session?**
 
-It groups every open issue into nineteen bodies of work. The grouping is by **conflict
+It groups every open issue into twenty-one bodies of work. The grouping is by **conflict
 surface and dependency**, not by subject — [BRANCHING.md](BRANCHING.md) §2 is emphatic
 about the difference, and the measurement behind it is that twelve of the last
 twenty-seven real conflicts were all in `client/src/App.tsx` between branches whose
 subjects had nothing to do with each other.
 
 **Every open issue appears exactly once below.** That was checked mechanically rather than
-by reading down the list: 106 open, 106 assigned, no duplicates, no omissions, on
+by reading down the list: 117 open, 117 assigned, no duplicates, no omissions, on
 2026-08-17. If you add an issue, add it to a group here or the next person will find it
 by accident.
+
+*Written at 106 issues; groups **T** and **U** were added the same day when
+[HIKE_PLANNING.md](features/HIKE_PLANNING.md)'s and
+[VOLUNTEERING.md](features/VOLUNTEERING.md)'s phases were finally filed — see the note
+under Gaps, which is what prompted filing them.*
 
 ## Before you start anything
 
@@ -401,6 +406,59 @@ produced #750, and #738 records a real If-Range gap (#566) that the client compe
 
 **#438 and #681 are small, real, and good first issues.**
 
+## T. Planning a hike — v2's first feature
+
+**#753 — Publish a mile on every POI, because this codebase measures a mile two different ways and a plan cannot survive that** ·
+**#754 — spike_day_planner.py has never been run against real data, so every number in HIKE_PLANNING.md's Finding 3 is arithmetic rather than measurement** ·
+**#755 — The route builder: drop points on the trail and get distance, gain, loss and an honest ≈time** ·
+**#756 — Multi-day plans: days as Segments, the timeline, zero days and resupply, and food counted in days rather than calories** ·
+**#757 — The auto-generated plan: a shortest path over ~3,000 edges, on the phone, with no backend and no network** ·
+**#758 — The cascade: when today changes, what happens to the rest of the plan**
+
+**Why together:** [features/HIKE_PLANNING.md](features/HIKE_PLANNING.md)'s five-phase build
+order, plus the spike run its own closing line calls "the first thing to close".
+
+**Order is the doc's and it is real: #753 → #755 → #756 → #757 → #758**, with #754
+independent and wanted before #757 is designed.
+
+**#753 is the one to do first and the one to do even if nothing else here happens.** It is
+group **B**'s subject from the other side — the client and the pipeline measure a mile
+differently, and the elevation ribbon already compares the two as though they were one
+measurement. Harmless over a ten-mile window, not harmless summed across a 2,190-mile plan.
+It is also what every mile-range scope in [PHOTO_DOWNLOADS.md](features/PHOTO_DOWNLOADS.md)
+needs, which makes it a prerequisite of group **D** as well.
+
+**The standing trap in this feature:** value #1 forbids prescriptive gamification, and a
+planner is two design decisions from a schedule that scolds. No progress bars against plan,
+no "behind schedule", no streaks. #756 is where that arrives without anyone deciding to add
+it.
+
+## U. Volunteering — v2's second feature
+
+**#759 — The Volunteer tab and the contribution toggle — which is where DATA_NUDGES.md finally ships** ·
+**#760 — Volunteer opportunities on a map, the next fourteen days — the first layer in this app whose data expires** ·
+**#761 — Hours, self-logged, and the private impact record that must not become a scoreboard** ·
+**#762 — In-app signup and club confirmation — an introduction, never an enrolment** ·
+**#763 — Ridge Runner At-Large, and the club-side work-project module**
+
+**Why together:** [features/VOLUNTEERING.md](features/VOLUNTEERING.md)'s five phases, each
+useful alone by design.
+
+**#759 is worth doing whether or not the rest follows** — the doc says so outright. It is
+the piece that touches every hiker rather than the few who attend a workday, and it ships
+[DATA_NUDGES.md](features/DATA_NUDGES.md), designed in July and never built. It is also the
+natural partner of group **Q**'s **#256**, since the field-note roll-up and the contribution
+toggle are the producer and the prompt for the same staleness tiers.
+
+**#763 is `blocked-external`** — the Ridge Runner name needs a conversation with ATC, and
+the doc is explicit that it should happen *before the name reaches a screen, not after*.
+Worth raising alongside the other ATC asks in **#479**.
+
+**Two guardrails that are easy to breach here.** The anti-gamification rule has a stated
+boundary — it targets *comparison and pressure*, not *memory* — and #761 is the phase that
+tests it. And this feature must never become the second thing that sends a notification;
+[HIKER_SAFETY.md](features/HIKER_SAFETY.md)'s wrong-way alert stays the only one.
+
 ---
 
 ## Sequencing, in one paragraph
@@ -427,27 +485,37 @@ in one sitting rather than discovered one at a time.
    advances. #93 gates #308, which gates the app's only notification.
 5. **What are `FRESH_MAX_DAYS` and `AGEING_MAX_DAYS` supposed to be?** (#256, group Q.)
    Currently 14 and 60 with nothing behind them.
-6. **Is `post-mvp` still a meaningful label?** It now sits on ~60 issues that are all also
-   `v2`, and ROADMAP.md describes it as "designed, deliberately not started" — which after
-   this relabelling describes most of the tracker. Retiring it would remove a distinction
-   that no longer distinguishes.
+6. ~~**Is `post-mvp` still a meaningful label?**~~ **Answered 2026-08-17: no, and it has
+   been removed** from all 44 open issues that carried it. It had come to sit on issues
+   that were all also `v2`, so it no longer distinguished anything. Note the label itself
+   still exists and closed issues still carry it — deleting the label is a repo-settings
+   action. ROADMAP.md's `post-mvp` row is now false and is #601's to fix, along with its
+   `v1-mvp` row.
 
 ## Gaps — designed features with no issues filed
 
-Three of ROADMAP.md's named v2 features have **no open issues at all**, so they are invisible
-to anyone reading the tracker rather than the roadmap:
+**Two of the three are now closed.** When this document was first written, three of
+ROADMAP.md's named v2 features had **no open issues at all** — they were invisible to
+anyone reading the tracker rather than the roadmap, which meant "finish every open issue"
+and "build v2" were not the same programme.
 
-- **[features/HIKE_PLANNING.md](features/HIKE_PLANNING.md)** — v2's *first* feature, five
-  designed phases, zero issues. Its Phase A (one canonical mile measurement, and `mile`
-  published on every POI) is also what group B keeps running into and what
-  PHOTO_DOWNLOADS.md needs for every scope it defines.
-- **[features/VOLUNTEERING.md](features/VOLUNTEERING.md)** — v2's second feature, six
-  pieces, zero issues. Its Phase A is DATA_NUDGES.md, designed in July and never built.
-- **[features/FIELD_NOTES.md](features/FIELD_NOTES.md)** — one issue (#256) covering one
-  corner of it.
+- **[features/HIKE_PLANNING.md](features/HIKE_PLANNING.md)** — **filed**, as group **T**
+  (#753–#758): its five phases plus the spike run.
+- **[features/VOLUNTEERING.md](features/VOLUNTEERING.md)** — **filed**, as group **U**
+  (#759–#763): its five phases.
+- **[features/FIELD_NOTES.md](features/FIELD_NOTES.md)** — **still open as a gap.** One
+  issue (**#256 — The POI staleness tiers have no producer and no consumer**) covers one
+  corner of it. The rest of the design — dated observations on a POI, the roll-up that
+  gives staleness a producer, and the disputed pin that files a correction upstream rather
+  than forking ATC's data — has nothing in the tracker.
 
-**This is the largest hole in the plan above, and it is a hole in the tracker rather than
-in this document.** "Finish every open issue" and "build v2" are not the same programme
-while v2's first two features have nothing filed. Filing them is itself a task, and it
-should probably happen before anyone starts group D or E — those are v2's *fourth* feature
-and a prerequisite of it.
+**The lesson is worth keeping even though two of the three are fixed:** a feature that is
+designed and unfiled looks identical, from the issue list, to a feature nobody has thought
+about. The roadmap is not a tracker and was never meant to be one, so the gap is silent by
+construction. Anyone scoping a new feature doc should file its build order at the same
+time.
+
+Two other things ROADMAP.md names that have no issues and are not features:
+**DATA_NUDGES.md** ships inside #759, and **EVENTING.md** is measurement rather than a
+build — the nearest filed thing is **#110 — Feature gating and experimentation
+(self-hosted GrowthBook)** in group R.

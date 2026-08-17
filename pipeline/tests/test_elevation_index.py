@@ -105,13 +105,21 @@ def test_index_is_json_serialisable():
 # --- The sampler reads remote tiles ---------------------------------------
 
 
-def test_sampler_accepts_a_remote_url_as_a_tile_source():
+def test_a_remote_url_rides_the_index_to_the_covering_tile_choice():
     """The whole COG approach rests on this: rasterio.open() treats a
     /vsicurl/ URL exactly like a local path, so no separate remote code
-    path is needed - only a widened type."""
-    sampler = ElevationSampler([("/vsicurl/https://example.org/n35w084.tif", (-84, 34, -83, 35))])
+    path is needed - only a widened type. Proven by the URL surviving to
+    the covering-tile selection (nothing opens a tile until a covered
+    point is actually sampled, so no network is touched), where the old
+    version of this test asserted only `sampler is not None` - which a
+    constructor that dropped the URL on the floor would also pass (#175)."""
+    url = "/vsicurl/https://example.org/n35w084.tif"
+    sampler = ElevationSampler([(url, (-84.0, 34.0, -83.0, 35.0))])
 
-    assert sampler is not None
+    assert list(sampler._covering_tiles(-83.5, 34.5)) == [url]
+    # A point outside the tile's bounds is a coverage gap: None, and no open
+    # attempted - which is why this test can hold a URL nothing serves.
+    assert sampler.sample(-70.0, 20.0) is None
 
 
 def test_sampler_returns_none_outside_every_tile_it_knows_about():

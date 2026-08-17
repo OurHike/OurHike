@@ -188,19 +188,40 @@ describe('useArchiveDownload on mount', () => {
 
 describe('useArchiveDownload running a download', () => {
   it('reports progress while the bytes arrive', async () => {
-    vi.mocked(downloadArchive).mockImplementation(async (_key, _url, options) => {
+    // Held open mid-transfer so the 'downloading' state is observable from
+    // outside: the old version of this test awaited start() to completion
+    // and then asserted only which URL was fetched, so neither the state
+    // transition nor the progress figures were tested anywhere (#175).
+    let finish: () => void = () => {}
+    vi.mocked(downloadArchive).mockImplementation((_key, _url, options) => {
       options?.onProgress?.({ receivedBytes: 50, totalBytes: 200 })
+      return new Promise((resolve) => {
+        finish = () => resolve(undefined as never)
+      })
     })
 
     const { result } = renderHook(() =>
       useArchiveDownload(CORRIDOR_ARCHIVE_KEY, URL_, ARTIFACT),
     )
     await waitFor(() => expect(result.current.status.state).toBe('not-downloaded'))
-    await act(async () => {
-      await result.current.start()
+
+    let started: Promise<unknown> = Promise.resolve()
+    act(() => {
+      started = result.current.start()
     })
 
-    expect(vi.mocked(downloadArchive).mock.calls[0][1]).toBe(URL_)
+    await waitFor(() =>
+      expect(result.current.status).toEqual({
+        state: 'downloading',
+        receivedBytes: 50,
+        totalBytes: 200,
+      }),
+    )
+
+    await act(async () => {
+      finish()
+      await started
+    })
   })
 
   it('ends at downloaded, carrying the finished size', async () => {

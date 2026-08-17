@@ -191,8 +191,8 @@ export function Downloads({ sheets, persistence = null }: DownloadsProps) {
       <p className="downloads__scope">
         {isDesktop ? (
           <>
-            The whole trail, downloaded. This browser has signal, so the map already works
-            without it &mdash; the download is for the phone you&rsquo;ll actually be
+            The whole trail, downloaded. On a desktop the map streams what it needs as you
+            look at it &mdash; the download is for the phone you&rsquo;ll actually be
             carrying.
           </>
         ) : (

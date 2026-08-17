@@ -1763,10 +1763,11 @@ function App() {
       <>
         <div className="app__screen">
           <div>
-            <ErrorBoundary
-              resetKey={activeTab}
-              fallback={() => <ScreenFailed what="This screen" />}
-            >
+            {/* No resetKey: this boundary only renders while activeTab is
+                'more', so leaving the tab unmounts it and clears the error -
+                a resetKey={activeTab} here could never change while mounted
+                (#175). */}
+            <ErrorBoundary fallback={() => <ScreenFailed what="This screen" />}>
               {moderating ? (
                 // Replaces More rather than covering it, for the same reason
                 // HikePicker does: it is reached from here and nowhere else,

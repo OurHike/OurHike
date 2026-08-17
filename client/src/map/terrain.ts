@@ -111,7 +111,6 @@ export const CONTOUR_THRESHOLDS: Record<
     11: [100, 500],
     12: [50, 250],
     13: [10, 50],
-    14: [10, 50],
   },
 }
 

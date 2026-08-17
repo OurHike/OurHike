@@ -17,6 +17,12 @@
 export const THEME_VALUES = ['light', 'dark', 'auto'] as const
 export type Theme = (typeof THEME_VALUES)[number]
 export type UnitSystem = 'imperial' | 'metric'
+// The union above stays a literal because backend/tests/test_preferences_contract.py
+// parses it as text; `satisfies` holds this runtime list to it (#175).
+export const UNIT_SYSTEM_VALUES = [
+  'imperial',
+  'metric',
+] as const satisfies readonly UnitSystem[]
 /**
  * Which of the sheet's palettes the map is drawn in (MAP_STYLE_SPEC.md).
  *
@@ -62,6 +68,11 @@ export const BACKGROUND_SOURCES = ['hiking_topo_live', 'usgs_topo_offline'] as c
 
 export type BackgroundSource = (typeof BACKGROUND_SOURCES)[number]
 export type MaxBackgroundZoom = 11 | 12 | 13
+// Same shape as UNIT_SYSTEM_VALUES above, and the union stays literal for the
+// same reason - the backend contract test reads it as text.
+export const MAX_BACKGROUND_ZOOM_VALUES = [
+  11, 12, 13,
+] as const satisfies readonly MaxBackgroundZoom[]
 export type LayerDetailLevel = 'minimal' | 'standard' | 'full'
 /**
  * The hiking sheet's download level (#276): which basemap cut the default

@@ -16,40 +16,18 @@
 // that is a sidebar with a modal legend in it, for a 60px band nobody would
 // think to test.
 
-import { useEffect, useState } from 'react'
+import { useMediaQuery } from './useMediaQuery'
 
 /** WEBSITE.md §6. Must match the `min-width` in src/desktop.css. */
 export const DESKTOP_MIN_WIDTH = 900
 
 export const DESKTOP_MEDIA_QUERY = `(min-width: ${DESKTOP_MIN_WIDTH}px)`
 
-function matches(): boolean {
-  // Guarded rather than assumed. jsdom has no matchMedia unless a test stubs
-  // one, and the honest default for "cannot tell" is the phone layout: it
-  // works at every width, where the desktop layout at 375px would be a
-  // sidebar eating half the map.
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function')
-    return false
-  return window.matchMedia(DESKTOP_MEDIA_QUERY).matches
-}
-
-/** Whether this viewport gets the desktop layout. Re-evaluates on resize. */
+/** Whether this viewport gets the desktop layout. Re-evaluates on resize.
+ *
+ *  Where the answer cannot be read (jsdom with no matchMedia stub), this is
+ *  false, and false means the phone layout: it works at every width, where
+ *  the desktop layout at 375px would be a sidebar eating half the map. */
 export function useDesktop(): boolean {
-  const [isDesktop, setIsDesktop] = useState(matches)
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
-
-    const query = window.matchMedia(DESKTOP_MEDIA_QUERY)
-    const update = (event: MediaQueryListEvent) => setIsDesktop(event.matches)
-
-    // Re-read on mount as well as on change: the first render used whatever
-    // matches() said before effects ran, and a window resized between the two
-    // would otherwise keep the stale layout until the next resize.
-    setIsDesktop(query.matches)
-    query.addEventListener('change', update)
-    return () => query.removeEventListener('change', update)
-  }, [])
-
-  return isDesktop
+  return useMediaQuery(DESKTOP_MEDIA_QUERY)
 }

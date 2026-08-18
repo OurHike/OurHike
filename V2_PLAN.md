@@ -4,7 +4,7 @@ Companion to [ROADMAP.md](ROADMAP.md), which says what the v2 *features* are and
 **This document is about the other question: given 117 open issues all labelled `v2`, what
 can one session finish in one branch without colliding with another session?**
 
-It groups every open issue into twenty-two bodies of work. The grouping is by **conflict
+It groups every open issue into twenty-three bodies of work. The grouping is by **conflict
 surface and dependency**, not by subject — [BRANCHING.md](BRANCHING.md) §2 is emphatic
 about the difference, and the measurement behind it is that twelve of the last
 twenty-seven real conflicts were all in `client/src/App.tsx` between branches whose
@@ -13,7 +13,8 @@ subjects had nothing to do with each other.
 **Every open issue appears exactly once below.** That was checked mechanically rather than
 by reading down the list: 117 open, 117 assigned, no duplicates, no omissions, on
 2026-08-17. Eight more (#768–#772, #780, #782–#783) were filed 2026-08-18 and added as
-group **V** the same day. If you add an issue, add it to a group here or the next person
+group **V** the same day, and two more (#795–#796) were filed 2026-08-18 and added as
+group **W** the same day. If you add an issue, add it to a group here or the next person
 will find it by accident.
 
 *Written at 106 issues; groups **T** and **U** were added the same day when
@@ -487,6 +488,23 @@ belong — its Phase A is already merged, so do not build a parallel ingestion p
 **#552 — Decide the unit of offline coverage, and write it down** should be answered with
 #771's crossing-density numbers in hand: a network park is not a linear stretch, and the
 spike exists partly to give that decision evidence.
+
+## W. The More tab, reorganized
+
+**#796 — Reorganize the More tab into sections a hiker can navigate, instead of one long scroll** ·
+**#795 — Rename the More tab to Settings, now that it has real sections**
+
+**Why together:** both are [features/MORE_TAB.md](features/MORE_TAB.md), one screen, and
+they touch the same file (`client/src/chrome/tabs.ts`) — not the hot-file conflict
+BRANCHING.md's table tracks (that is `App.tsx`; `tabs.ts` is small and low-traffic), but
+real enough that one branch covers both if that is more convenient than two.
+
+**What you are walking into:** the doc argues the tab name the way
+[VOLUNTEERING.md](features/VOLUNTEERING.md) argued `Volunteer`'s, against three rejected
+alternatives, and lands on `Settings` — a recommendation, not a ruling. It also flags,
+without resolving, two seams for whoever is next in **T** or **U**: `Your hike`'s home once
+the `Plan` tab (group T) is fully built, and how this screen's `Contribute` section reads
+next to **#759**'s condition-nudge surface once group U's first phase ships.
 
 ---
 

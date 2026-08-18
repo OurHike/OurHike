@@ -248,7 +248,10 @@ export function Legend({
   // working switch; no row at all was neither.
   const inView = computeLegendContents(bbox, points, verifiedOnly, drawnCounts)
   const rows = withEveryType(inView, HIDEABLE_TYPES)
-  const dropped = legendDropSummary(inView)
+  // Minus the categories the hiker hid (#777): their absence is the filter's
+  // doing, not the camera's, so they belong in neither half of the fraction -
+  // "zoom in to see the rest" must only promise what zooming in delivers.
+  const dropped = legendDropSummary(inView, hiddenTypes)
   const isEmpty = inView.length === 0 && blazeCounts.length === 0
 
   // What the type picker shows. Not a placeholder: a picker sitting at "Show one

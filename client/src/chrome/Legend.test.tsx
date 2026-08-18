@@ -917,14 +917,18 @@ describe('reporting waypoints that did not fit', () => {
     point('p2', 'privy'),
   ]
 
-  function renderLegend(drawnCounts?: ReadonlyMap<string, number>, belowPoiZoom = false) {
+  function renderLegend(
+    drawnCounts?: ReadonlyMap<string, number>,
+    belowPoiZoom = false,
+    hiddenTypes = new Set<string>(),
+  ) {
     return render(
       <Legend
         open
         bbox={bbox}
         points={points}
         blazeCounts={[]}
-        hiddenTypes={new Set()}
+        hiddenTypes={hiddenTypes}
         onToggleType={() => {}}
         onClose={() => {}}
         drawnCounts={drawnCounts}
@@ -1015,6 +1019,25 @@ describe('reporting waypoints that did not fit', () => {
     )
 
     expect(screen.getByText(/1 of 4 waypoints fit at this zoom/i)).toBeInTheDocument()
+  })
+
+  it('counts only the categories the hiker is showing', () => {
+    // Privy hidden: its two points are in the rectangle but off the map by the
+    // hiker's own filter, and no zoom brings them back - so they belong in
+    // neither half of the fraction. This headline used to read "1 of 4" here,
+    // promising three more waypoints when zooming in delivers one (#777).
+    renderLegend(new Map([['water', 1]]), false, new Set(['privy']))
+
+    expect(screen.getByText(/1 of 2 waypoints fit at this zoom/i)).toBeInTheDocument()
+  })
+
+  it('drops the headline once everything still shown is drawn', () => {
+    // Both springs placed; the only absent waypoints are the privies the hiker
+    // hid. Counting those kept `drawn < present` true at every camera, so this
+    // line sat on screen for as long as a filter was on (#777).
+    renderLegend(new Map([['water', 2]]), false, new Set(['privy']))
+
+    expect(screen.queryByText(/fit at this zoom/i)).not.toBeInTheDocument()
   })
 
   it('reads exactly as it did before when nothing was measured', () => {

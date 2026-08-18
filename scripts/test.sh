@@ -59,7 +59,15 @@ while [ $# -gt 0 ]; do
     --all) run_all=true ;;
     --list) list_only=true ;;
     --coverage) with_coverage=true ;;
-    --since) shift; base_ref="${1:-}" ;;
+    # The missing-value case checked here, not left to `shift` (#660): a
+    # trailing `--since` used to hit the loop's own shift with nothing
+    # left, and `set -e` killed the script with exit 1 and no output - the
+    # silent failure the --since block below promises not to have.
+    --since)
+      shift
+      [ $# -gt 0 ] || { echo "--since needs a ref (try --help)" >&2; exit 2; }
+      base_ref="$1"
+      ;;
     # The header block, however long it happens to be - printed by walking
     # from the shebang to the first line that is not a comment, rather than
     # from a line range that silently starts truncating the help the next time
@@ -92,11 +100,15 @@ fi
 # too - a new test file is exactly the kind of thing that decides a suite.
 changed_files() {
   local base="$1"
+  # --no-renames so a rename reports BOTH paths (#660). With detection on -
+  # git's default - a rename lists only the new path, while CI's
+  # changed-paths action deliberately maps old+new: a file renamed OUT of a
+  # suite's scope would run that suite in CI and not here.
   {
     if [ -n "$base" ]; then
-      git diff --name-only "$base"...HEAD
+      git diff --name-only --no-renames "$base"...HEAD
     fi
-    git diff --name-only HEAD
+    git diff --name-only --no-renames HEAD
     git ls-files --others --exclude-standard
   } | sort -u
 }
@@ -124,54 +136,30 @@ resolve_base() {
 # What each suite covers
 # ---------------------------------------------------------------------------
 
-# The `paths:` handed to .github/actions/changed-paths in a suite's workflow.
-#
-# Parsed out of the YAML rather than grepped for, for the reason
-# backend/tests/test_ci_scope.py gives about the same parse: the word `paths`
-# appears twice in those files, once in the comment explaining why the trigger
-# deliberately has NOT got a paths filter, which is the opposite decision and
-# a confusing thing to match by accident.
-scope_for_workflow() {
-  local workflow="$1"
-  python3 - "$workflow" <<'PY' 2>/dev/null || true
-import sys
-import yaml
-
-with open(sys.argv[1]) as handle:
-    workflow = yaml.safe_load(handle)
-
-for job in workflow["jobs"].values():
-    for step in job.get("steps", []):
-        if ".github/actions/changed-paths" in str(step.get("uses", "")):
-            print(" ".join(str(step["with"]["paths"]).split()))
-            sys.exit(0)
-PY
+# The `paths:` handed to .github/actions/changed-paths in a suite's
+# workflow, read by scripts/suite_scopes.py - the one home for that reading
+# since #660, shared with scripts/threads.sh so the two cannot drift from
+# each other any more than from CI.
+scope_for_suite_workflows() {
+  python3 scripts/suite_scopes.py "$1" 2>/dev/null || true
 }
 
-# The three test workflows carry a machine-readable scope; the settings suite
-# does not, because settings-manifest.yml runs on every pull request by design
-# (TESTING.md, "Repository settings"). Its reach is still exactly one
-# directory - it reads .github/workflows/ and .github/expected-settings.yml and
-# nothing else - so that prefix is written here rather than derived. It is the
-# one hand-written entry in this file, and it is the one that cannot go stale
-# in a way this script would hide: a suite whose whole subject is .github/
-# cannot quietly start depending on something outside it.
-SETTINGS_SCOPE=".github/"
+# The three test workflows carry a machine-readable scope; the settings
+# suite runs on ANY change, mirroring CI, which runs it unfiltered on every
+# pull request by design (TESTING.md, "Repository settings"). This used to
+# be a hand-written ".github/" prefix with a sentence claiming a suite
+# whose subject is .github/ "cannot quietly start depending on something
+# outside it" - which had already happened when the sentence was written
+# down (#660): test_status_page.py reads site/status/index.html,
+# test_privacy_policy.py scans client/src/, and test_no_committed_data.py
+# walks every tracked path. The honest local mirror of "CI runs it on
+# every PR" is "run it whenever anything changed", and the suite is cheap
+# enough to carry that.
 
 suite_names=(client backend pipeline settings)
-suite_workflow_client=".github/workflows/client-tests.yml"
-suite_workflow_backend=".github/workflows/backend-tests.yml"
-suite_workflow_pipeline=".github/workflows/pipeline-tests.yml"
-suite_workflow_settings=""
 
 scope_for_suite() {
-  local suite="$1"
-  if [ "$suite" = "settings" ]; then
-    echo "$SETTINGS_SCOPE"
-    return
-  fi
-  local workflow_var="suite_workflow_${suite}"
-  scope_for_workflow "${!workflow_var}"
+  scope_for_suite_workflows "$1"
 }
 
 # Which of `files` sit under any prefix in `scope`, as literal prefixes.
@@ -209,6 +197,13 @@ else
     reason="nothing changed against $base"
   else
     for suite in "${suite_names[@]}"; do
+      if [ "$suite" = "settings" ]; then
+        # Any change at all selects the settings suite - the local mirror
+        # of CI running it unfiltered on every pull request. See the note
+        # above scope_for_workflow (#660).
+        selected+=("settings")
+        continue
+      fi
       scope="$(scope_for_suite "$suite")"
       if [ -z "$scope" ]; then
         # An unreadable scope is not evidence the suite is unnecessary.

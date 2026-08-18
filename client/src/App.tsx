@@ -155,6 +155,7 @@ import {
 } from './lib/plan'
 import {
   EMPTY_STORE,
+  addHike,
   addTrip,
   loadTrips,
   openTrip,
@@ -165,6 +166,7 @@ import {
   updateTrip,
   type TripStore,
 } from './lib/trips'
+import { hikeFromTrips, recordedPlan } from './lib/hikes'
 import { TripList } from './screens/TripList'
 import { PlanScreen } from './screens/Plan'
 import { PlanTargetSheet } from './screens/PlanTargetSheet'
@@ -1727,6 +1729,49 @@ function App() {
     [applyTripStore],
   )
 
+  /**
+   * Group every kept trip into one hike (#788), over the ground they
+   * already cover. The "I have a history" door: a section hiker with four
+   * trips gets a hike without retyping any of it, and the ends carry the
+   * stops' own references so a relocation moves the hike rather than
+   * silently resizing it.
+   *
+   * Named for the ground rather than asked for: naming is a rename away,
+   * and a dialog before the thing exists is a dialog nobody reads.
+   */
+  /**
+   * Keep the drafted stretch as ground already walked (#789).
+   *
+   * The same two ends the builder just described, said in the past tense -
+   * which is why this door is here rather than behind a second way to name
+   * two places. Every day in the record is walked on arrival, so it feeds
+   * the roll-up and #791's gaps exactly as a walked trip does; `recorded`
+   * marks the provenance, so no screen prints a remembered 300-mile stretch
+   * as if somebody walked it in a day.
+   */
+  const handleRecordWalked = useCallback(() => {
+    if (routeDraft === null || routeDraft.phase !== 'editor') return
+    if (routeDraft.stops.length < 2) return
+    const stops = routeDraft.stops.map(({ mile, name, poiId }) => ({
+      mile,
+      ...(name === undefined ? {} : { name }),
+      ...(poiId === undefined ? {} : { poiId }),
+      resupply: false,
+    }))
+    const plan = recordedPlan(stops)
+    applyTripStore((store) => addTrip(store, plan, undefined, true))
+    setRouteDraft(null)
+    setStopPick(null)
+    setActiveTab('plan')
+  }, [routeDraft, applyTripStore])
+
+  const handleGroupIntoHike = useCallback(() => {
+    applyTripStore((store) => {
+      const hike = hikeFromTrips(store.trips, 'My hike')
+      return hike === null ? store : addHike(store, hike)
+    })
+  }, [applyTripStore])
+
   const targetSheet =
     targetRequest === null ? null : (
       <PlanTargetSheet
@@ -2495,6 +2540,8 @@ function App() {
                         <TripList
                           trips={tripStore.trips}
                           openId={tripStore.openId}
+                          hikes={tripStore.hikes}
+                          pois={pois}
                           elevation={elevation}
                           units={units}
                           onOpen={handleOpenTrip}
@@ -2504,6 +2551,7 @@ function App() {
                             setTripsOpen(false)
                             openRouteBuilder()
                           }}
+                          onGroupIntoHike={handleGroupIntoHike}
                           onClose={() => setTripsOpen(false)}
                         />
                       ),
@@ -2740,6 +2788,7 @@ function App() {
                 onEditStop={handleEditStop}
                 onAddStop={handleAddStop}
                 onBreakIntoDays={handleBreakIntoDays}
+                onRecordWalked={handleRecordWalked}
                 onClose={handleRouteCancel}
               />
             )

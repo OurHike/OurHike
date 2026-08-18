@@ -41,6 +41,9 @@ export interface RouteStopsPanelProps {
   onAddStop: () => void
   /** Carry this route into days - the plan flow (#756/#757). */
   onBreakIntoDays: () => void
+  /** Keep this stretch as ground already walked (#789) - the same two ends,
+   *  said in the past tense. */
+  onRecordWalked: () => void
   /** Leave the builder, discarding the draft. */
   onClose: () => void
 }
@@ -53,6 +56,7 @@ export function RouteStopsPanel({
   onEditStop,
   onAddStop,
   onBreakIntoDays,
+  onRecordWalked,
   onClose,
 }: RouteStopsPanelProps) {
   const totalDistanceMi = legs.reduce((sum, leg) => sum + leg.distanceMi, 0)
@@ -142,6 +146,19 @@ export function RouteStopsPanel({
             onClick={onBreakIntoDays}
           >
             Break into days
+          </button>
+        </div>
+        {/* The same stretch, said in the past tense. A section hiker's own
+            history mostly predates this app, and without a door for it the
+            roll-up opens on somebody who has walked 600 miles and tells
+            them the whole trail is ahead of them (#789). */}
+        <div className="route-stops-bar__row">
+          <button
+            type="button"
+            className="route-stops-bar__recorded"
+            onClick={onRecordWalked}
+          >
+            I already walked this
           </button>
         </div>
       </div>

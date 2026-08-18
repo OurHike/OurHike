@@ -160,7 +160,7 @@ describe('the migration off the single-plan key', () => {
 })
 
 describe('the edits', () => {
-  const base: TripStore = { trips: [], openId: null }
+  const base: TripStore = { trips: [], openId: null, hikes: [] }
 
   it('keeps a plan and opens it', () => {
     const one = addTrip(base, plan())
@@ -224,7 +224,7 @@ describe('the edits', () => {
     const one = addTrip(base, plan())
     expect(openTripOf(one)?.name).toBe('Damascus → Atkins')
     expect(openTripOf(base)).toBeNull()
-    expect(openTripOf({ trips: one.trips, openId: 'gone' })).toBeNull()
+    expect(openTripOf({ trips: one.trips, openId: 'gone', hikes: [] })).toBeNull()
   })
 })
 

@@ -16,8 +16,10 @@
 
 import { useState } from 'react'
 import type { ElevationProfile } from '../lib/elevationProfile'
-import { planDayViews, walkedDayCount, type HikePlan } from '../lib/plan'
+import { hikeFigures, type Hike } from '../lib/hikes'
+import { planDayViews, walkedDayCount } from '../lib/plan'
 import { dayDateLabel } from '../lib/planDisplay'
+import type { StoredPoi } from '../lib/trailData'
 import type { Trip } from '../lib/trips'
 import { formatDistance, type UnitSystem } from '../lib/units'
 import './plan.css'
@@ -29,44 +31,66 @@ export interface TripListProps {
    *  taken so the row summary can gain climb or ≈time without a prop change
    *  when #790 lands. */
   elevation: ElevationProfile | null
+  /** The hikes those trips are grouped into (#788). Their roll-ups are
+   *  derived on render and stored nowhere. */
+  hikes: readonly Hike[]
+  /** The download in hand - what a hike's ends are resolved against, so a
+   *  relocated shelter moves the hike rather than the miles drifting under
+   *  it. */
+  pois: readonly StoredPoi[]
   units: UnitSystem
   onOpen: (id: string) => void
   onRename: (id: string, name: string) => void
   onRemove: (id: string) => void
   /** Start a new trip - the route builder, same door as the empty state. */
   onNew: () => void
+  /** Group every trip here into one hike - the "I already have a history"
+   *  door. Absent nothing to group. */
+  onGroupIntoHike: () => void
   onClose: () => void
 }
 
 /** Distance and days, off the plan. Zeros are days too - they hold a date
  *  and eat a day of food (lib/plan.ts) - so the count is every row the
- *  timeline would draw, not only the walking ones. */
-function summarise(plan: HikePlan, units: UnitSystem): string {
-  const views = planDayViews(plan)
+ *  timeline would draw, not only the walking ones.
+ *
+ *  A RECORDED stretch (#789) prints no day count: its "days" are the
+ *  boundaries a hiker could remember years later, not days anybody walked
+ *  as days, and "1 day" against 300 miles would be the display outrunning
+ *  its source. */
+function summarise(trip: Trip, units: UnitSystem): string {
+  const views = planDayViews(trip.plan)
   const distanceMi = views.reduce(
     (sum, day) => sum + Math.abs(day.end.mile - day.start.mile),
     0,
   )
+  if (trip.recorded === true) return formatDistance(distanceMi, units)
   const days = `${views.length} ${views.length === 1 ? 'day' : 'days'}`
   return `${formatDistance(distanceMi, units)} · ${days}`
 }
 
 /** "walked", "part walked", or nothing at all. A record, never a score:
  *  no percentage, no count of what is left, nothing to fall behind. */
-function walkedNote(plan: HikePlan): string | null {
-  const walked = walkedDayCount(plan)
+function walkedNote(trip: Trip): string | null {
+  // Provenance first: "recorded" says both that it is walked and that
+  // nobody planned it, which "walked" alone would not.
+  if (trip.recorded === true) return 'recorded'
+  const walked = walkedDayCount(trip.plan)
   if (walked === 0) return null
-  return walked === plan.days.length ? 'walked' : 'part walked'
+  return walked === trip.plan.days.length ? 'walked' : 'part walked'
 }
 
 export function TripList({
   trips,
   openId,
+  hikes,
+  pois,
   units,
   onOpen,
   onRename,
   onRemove,
   onNew,
+  onGroupIntoHike,
   onClose,
 }: TripListProps) {
   const [renaming, setRenaming] = useState<string | null>(null)
@@ -83,6 +107,35 @@ export function TripList({
         </button>
       </div>
 
+      {hikes.map((hike) => {
+        const figures = hikeFigures(hike, trips, pois)
+        return (
+          <div className="trip-list__hike" key={hike.id}>
+            <div className="trip-list__hike-head">
+              <span className="trip-list__hike-name">{hike.name}</span>
+              <span className="trip-list__hike-type">{hike.type}</span>
+            </div>
+            {/* Miles and trips. No percentage, no pace, nothing to fall
+                behind - SEGMENTS.md: "a personal record, not a
+                performance." */}
+            <span className="trip-list__hike-figures">
+              {formatDistance(figures.walkedMi, units)} walked ·{' '}
+              {formatDistance(figures.leftMi, units)} to go
+            </span>
+            <span className="trip-list__hike-figures">
+              {figures.tripCount} {figures.tripCount === 1 ? 'trip' : 'trips'} ·{' '}
+              {figures.daysWalked} {figures.daysWalked === 1 ? 'day' : 'days'} walked
+            </span>
+            {figures.uncertain && (
+              <p className="trip-list__hike-note" role="note">
+                One end of this hike points at a place this download doesn&rsquo;t have,
+                so these figures rest on the mile it had when you set it.
+              </p>
+            )}
+          </div>
+        )
+      })}
+
       {trips.length === 0 ? (
         <p className="trip-list__empty">
           Nothing kept yet. A trip is saved the moment you lay days over a route.
@@ -90,7 +143,7 @@ export function TripList({
       ) : (
         <ul className="trip-list__items">
           {trips.map((trip) => {
-            const note = walkedNote(trip.plan)
+            const note = walkedNote(trip)
             const dates = planDayViews(trip.plan)
               .map((day) => day.date)
               .filter((date): date is string => date !== null)
@@ -136,7 +189,7 @@ export function TripList({
                     >
                       <span className="trip-list__name">{trip.name}</span>
                       <span className="trip-list__meta">
-                        {summarise(trip.plan, units)}
+                        {summarise(trip, units)}
                         {dates.length > 0 && ` · from ${dayDateLabel(dates[0])}`}
                       </span>
                     </button>
@@ -177,6 +230,12 @@ export function TripList({
             )
           })}
         </ul>
+      )}
+
+      {hikes.length === 0 && trips.length > 0 && (
+        <button type="button" className="trip-list__group" onClick={onGroupIntoHike}>
+          Group these into one hike
+        </button>
       )}
 
       <button type="button" className="plan__primary" onClick={onNew}>

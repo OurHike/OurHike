@@ -29,6 +29,7 @@
 // if this code is wrong.
 
 import { del, get, set } from 'idb-keyval'
+import { validateHike, type Hike } from './hikes'
 import { stopLabel } from './planDisplay'
 import { loadPlan, validatePlan, type HikePlan } from './plan'
 
@@ -44,6 +45,18 @@ export interface Trip {
    */
   name: string
   plan: HikePlan
+  /**
+   * This trip was RECORDED from memory rather than planned (#789) - a
+   * stretch the hiker walked before they had the app, or without planning
+   * it. Every day in it is already walked; there are no days in the sense
+   * the timeline means, only the boundaries the hiker could remember.
+   *
+   * The flag exists because provenance changes what a screen may say. A
+   * recorded stretch of 300 miles is not a claim that anybody walked 300
+   * miles in a day, and nothing may print it as one - so readers that
+   * would show per-day figures show the stretch instead.
+   */
+  recorded?: boolean
 }
 
 export interface TripStore {
@@ -51,9 +64,19 @@ export interface TripStore {
   /** The trip the Plan tab is showing, or null when none is open. Held here
    *  rather than in its own key so it cannot outlive the trip it names. */
   openId: string | null
+  /**
+   * The hikes those trips are grouped into (#788). In this same document
+   * rather than a key of their own, for the reason the document exists: a
+   * parent in one key and its children in another is two writes that can
+   * half-land, and a `tripIds` list that can outlive the trips it names.
+   *
+   * Absent on a store written by the #787 build, which reads as no hikes -
+   * the trips are all still there, ungrouped, which is exactly true.
+   */
+  hikes: Hike[]
 }
 
-export const EMPTY_STORE: TripStore = { trips: [], openId: null }
+export const EMPTY_STORE: TripStore = { trips: [], openId: null, hikes: [] }
 
 /**
  * A trip's default name, from the route's own ends - "Damascus → Old Orchard
@@ -92,7 +115,12 @@ export function validateTripStore(candidate: unknown): TripStore | null {
     if (typeof trip.name !== 'string') continue
     const plan = validatePlan(trip.plan)
     if (plan === null) continue
-    trips.push({ id: trip.id, name: trip.name, plan })
+    trips.push({
+      id: trip.id,
+      name: trip.name,
+      plan,
+      ...(trip.recorded === true ? { recorded: true as const } : {}),
+    })
   }
 
   // A pointer at a trip that did not survive is not a pointer. Falling back
@@ -104,7 +132,22 @@ export function validateTripStore(candidate: unknown): TripStore | null {
       ? store.openId
       : (trips[0]?.id ?? null)
 
-  return { trips, openId }
+  // Absent is not invalid: a store written before hikes existed has none,
+  // and its trips are unaffected. One unreadable hike is dropped for the
+  // same reason one unreadable trip is - losing the grouping is survivable,
+  // losing the record is not. A hike's `tripIds` are pruned to trips that
+  // actually survived, so no list can name a trip that is gone.
+  const live = new Set(trips.map((trip) => trip.id))
+  const hikes: Hike[] = []
+  if (Array.isArray(store.hikes)) {
+    for (const entry of store.hikes) {
+      const hike = validateHike(entry)
+      if (hike === null) continue
+      hikes.push({ ...hike, tripIds: hike.tripIds.filter((id) => live.has(id)) })
+    }
+  }
+
+  return { trips, openId, hikes }
 }
 
 /**
@@ -126,7 +169,7 @@ export async function loadTrips(): Promise<TripStore> {
   if (legacy === null) return EMPTY_STORE
 
   const trip: Trip = { id: crypto.randomUUID(), name: tripName(legacy), plan: legacy }
-  const migrated: TripStore = { trips: [trip], openId: trip.id }
+  const migrated: TripStore = { trips: [trip], openId: trip.id, hikes: [] }
   await saveTrips(migrated)
   return migrated
 }
@@ -147,13 +190,19 @@ export async function clearTrips(): Promise<void> {
 // to remember which of them mutates.
 
 /** Keep a plan as a new trip, and open it. */
-export function addTrip(store: TripStore, plan: HikePlan, name?: string): TripStore {
+export function addTrip(
+  store: TripStore,
+  plan: HikePlan,
+  name?: string,
+  recorded = false,
+): TripStore {
   const trip: Trip = {
     id: crypto.randomUUID(),
     name: name === undefined || name === '' ? tripName(plan) : name,
     plan,
+    ...(recorded ? { recorded: true as const } : {}),
   }
-  return { trips: [...store.trips, trip], openId: trip.id }
+  return { ...store, trips: [...store.trips, trip], openId: trip.id }
 }
 
 /** Write a plan back to the trip it came from. Unknown id changes nothing -
@@ -188,8 +237,16 @@ export function removeTrip(store: TripStore, id: string): TripStore {
   const trips = store.trips.filter((trip) => trip.id !== id)
   if (trips.length === store.trips.length) return store
   return {
+    ...store,
     trips,
     openId: store.openId === id ? (trips[0]?.id ?? null) : store.openId,
+    // A hike that still named the deleted trip would count miles from a
+    // plan nobody can open.
+    hikes: store.hikes.map((hike) =>
+      hike.tripIds.includes(id)
+        ? { ...hike, tripIds: hike.tripIds.filter((tripId) => tripId !== id) }
+        : hike,
+    ),
   }
 }
 
@@ -203,4 +260,70 @@ export function openTrip(store: TripStore, id: string): TripStore {
 export function openTripOf(store: TripStore): Trip | null {
   if (store.openId === null) return null
   return store.trips.find((trip) => trip.id === store.openId) ?? null
+}
+
+// ---------------------------------------------------------------------------
+// Hikes over those trips (#788). Same convention: a new store out, the
+// argument untouched.
+
+/** Keep a hike. Trips it names stay where they are - a trip belongs to at
+ *  most one hike, so any it claims are released from whichever hike had
+ *  them, rather than being counted twice in two roll-ups. */
+export function addHike(store: TripStore, hike: Hike): TripStore {
+  const claimed = new Set(hike.tripIds)
+  return {
+    ...store,
+    hikes: [
+      ...store.hikes.map((existing) => ({
+        ...existing,
+        tripIds: existing.tripIds.filter((id) => !claimed.has(id)),
+      })),
+      hike,
+    ],
+  }
+}
+
+/** Put a trip in a hike, taking it out of any other. */
+export function assignTrip(store: TripStore, hikeId: string, tripId: string): TripStore {
+  if (!store.hikes.some((hike) => hike.id === hikeId)) return store
+  if (!store.trips.some((trip) => trip.id === tripId)) return store
+  return {
+    ...store,
+    hikes: store.hikes.map((hike) => {
+      const without = hike.tripIds.filter((id) => id !== tripId)
+      return hike.id === hikeId
+        ? { ...hike, tripIds: [...without, tripId] }
+        : { ...hike, tripIds: without }
+    }),
+  }
+}
+
+/** Take a trip out of whatever hike holds it. The trip itself is untouched:
+ *  ungrouping is not deleting, and a hiker who dissolves a hike still has
+ *  every trip they walked. */
+export function unassignTrip(store: TripStore, tripId: string): TripStore {
+  return {
+    ...store,
+    hikes: store.hikes.map((hike) => ({
+      ...hike,
+      tripIds: hike.tripIds.filter((id) => id !== tripId),
+    })),
+  }
+}
+
+/** Forget a hike, keeping its trips. Same reason as above. */
+export function removeHike(store: TripStore, hikeId: string): TripStore {
+  return { ...store, hikes: store.hikes.filter((hike) => hike.id !== hikeId) }
+}
+
+/** Rename a hike; an empty name is refused rather than stored, since a hike
+ *  has no ends-derived fallback the way a trip does. */
+export function renameHike(store: TripStore, hikeId: string, name: string): TripStore {
+  if (name.trim() === '') return store
+  return {
+    ...store,
+    hikes: store.hikes.map((hike) =>
+      hike.id === hikeId ? { ...hike, name: name.trim() } : hike,
+    ),
+  }
 }

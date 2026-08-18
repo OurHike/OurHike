@@ -175,6 +175,11 @@ export const STORED_SHAPES: Readonly<Record<string, unknown>> = deepFreeze({
 
   // Two trips under one key, and which of them the Plan tab has open (#787).
   //
+  // NO `hikes` FIELD, deliberately: this is the shape the #787 build wrote,
+  // and it is a phone in the support window. #788 added hikes to this same
+  // document, so the reader has to treat absent as "none" rather than as
+  // invalid - `storedGroupedTrips` below is that shape's own entry.
+  //
   // The entry ABOVE is what makes this one load-bearing rather than
   // decorative: a phone that stopped at the single-plan build holds
   // `ourhike:plan` and no `ourhike:trips` at all, and `loadTrips()` has to
@@ -407,4 +412,57 @@ export function storedLegacyPartial(): Record<string, unknown> {
 
 /** How many bytes the two finished-archive fixtures hold, so a test can assert
  *  a size without restating the byte table. */
+/**
+ * The trip store as #788 writes it: the same key, one shape later, with the
+ * trips grouped into a hike whose ends are REFERENCES.
+ *
+ * A separate export rather than a second `STORED_SHAPES` entry because an
+ * object cannot hold one key twice - the same reason `storedLegacyArchive`
+ * and `storedSegmentedArchive` sit apart. Both shapes are inside the support
+ * window and both are asserted: the entry above is what a #787 phone holds,
+ * this is what a #788 one does.
+ *
+ * `start` carries a `poiId` and a mile that has since MOVED (the live POI
+ * publishes 471.2), which is the drift the reference exists to survive;
+ * `end` carries a reference this download no longer has, which is the case
+ * the reader must admit to rather than resolve silently.
+ */
+export const STORED_GROUPED_TRIPS: Readonly<Record<string, unknown>> = deepFreeze({
+  'ourhike:trips': {
+    openId: 'trip-0001',
+    trips: [
+      {
+        id: 'trip-0001',
+        name: 'Damascus → Atkins',
+        plan: {
+          target: { walkingHours: 7 },
+          stops: [
+            { mile: 470.8, name: 'Damascus', resupply: false },
+            { mile: 503.3, name: 'Atkins', resupply: true },
+          ],
+          days: [
+            {
+              id: 'day-0001',
+              date: '2026-05-12',
+              pinned: false,
+              generated: true,
+              walked: true,
+            },
+          ],
+        },
+      },
+    ],
+    hikes: [
+      {
+        id: 'hike-0001',
+        name: 'Virginia, over a few years',
+        type: 'section',
+        start: { poiId: 'atc_shelter_0777', name: 'Damascus', mile: 470.8 },
+        end: { poiId: 'atc_shelter_gone', name: 'Retired Shelter', mile: 560.0 },
+        tripIds: ['trip-0001'],
+      },
+    ],
+  },
+})
+
 export const STORED_ARCHIVE_BYTES = SEGMENT_BYTES.flat().length

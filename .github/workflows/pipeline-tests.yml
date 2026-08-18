@@ -115,6 +115,11 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         with:
           python-version: "3.14"
+          # The pip cache every cold-path workflow already uses (#660) - the
+          # two hot-path PR suites were the ones paying the cold install on
+          # every push.
+          cache: pip
+          cache-dependency-path: pipeline/requirements-dev.txt
 
       - name: Install dependencies
         if: steps.scope.outputs.run == 'true'
@@ -167,6 +172,8 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/requirements-dbt.txt
 
       - name: Install dependencies
         if: steps.scope.outputs.run == 'true'

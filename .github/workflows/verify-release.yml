@@ -50,8 +50,12 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    # Check 5 streams every artifact. The default 360 is generous enough that
-    # a slow CDN morning does not read as a broken release.
+    # Check 5 streams every artifact, so this needs real headroom - but a
+    # bounded amount (#660: this comment used to praise the 360-minute
+    # default while sitting directly above the 90 that actually applies).
+    # Ninety minutes gives a slow CDN morning room to not read as a broken
+    # release, while a genuinely hung stream still fails the same morning
+    # it hangs instead of six hours later.
     timeout-minutes: 90
     defaults:
       run:

@@ -210,9 +210,13 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.target == 'production'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # The reviewer gate. Everything above this line can run unattended; this
-    # cannot, and the environment is what makes that structural rather than
-    # a convention someone follows.
+    # The reviewer gate - once it exists. The environment is what COULD make
+    # "only the maintainer ships" structural rather than a convention, and
+    # .github/expected-protections.yml declares the required reviewer it
+    # needs - but that file is also explicit that nothing gates this
+    # environment today (#375), so until the protection is applied this line
+    # buys naming, not enforcement. An operator reading this before a
+    # dispatch should know which of those they are getting (#660).
     environment: production
     # Unused by a migration, required to import anything - see the UA job.
     env:

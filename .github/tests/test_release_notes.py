@@ -41,6 +41,7 @@ from release_notes import (
     pull_request_numbers,
     render_notes,
     slug,
+    unmatched_commits,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -85,6 +86,21 @@ class TestTheGenerator:
 
     def test_ignores_ordinary_commits(self):
         assert pull_request_numbers("Give a report photo somewhere to go\nAnother commit\n") == []
+
+    def test_the_rebase_residue_is_collected_for_the_api_not_dropped(self):
+        """The third spelling of a merged pull request is no spelling at all
+        (#660): a rebase merge replays the branch's commits with their
+        original subjects. Those shas must come back for main() to resolve
+        through the commit->pulls API - silently dropping them is how a
+        rebase-configured merge queue would generate "No merged pull
+        requests in this range." for a fully active release."""
+        log = (
+            "aaa1\tMerge pull request #10 from a/b\n"
+            "bbb2\tGive a report photo somewhere to go\n"
+            "ccc3\tSomething squashed (#7)\n"
+            "ddd4\tAnother rebase-replayed commit\n"
+        )
+        assert unmatched_commits(log) == ["bbb2", "ddd4"]
 
     @pytest.mark.parametrize("word", ["Closes", "closes", "closed", "Fixes", "fixed", "resolve", "Resolves"])
     def test_reads_every_closing_keyword_github_honours(self, word):

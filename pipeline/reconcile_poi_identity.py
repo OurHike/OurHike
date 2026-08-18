@@ -1,0 +1,339 @@
+"""Own every published POI id across upstream refreshes (#671).
+
+features/POI_IDENTITY.md is the design; this is build-order step 1: the
+ledger, tier 1 (the key survived), the teleport guard, and `--check`. The
+problem it closes is #666's: `unify_poi` mints every published id as
+`{source}:{source_feature_id}`, which holds only while upstream's keys hold
+still - and one ATC republish re-mints every GlobalID, orphaning every
+photo, note and capacity line anchored to the old ids, silently.
+
+THE LEDGER. `reference/poi_identity.json`, checked in for the same reason
+`reference/shelter_capacity.json` is: each identity decision is a
+reviewable line in a diff, and a release build never depends on the network
+to know who anyone is. One row per POI ever published, keyed by the OurHike
+id, serialized ONE ROW PER LINE so a refresh's identity outcome reads as a
+per-place diff (and so the file stays under test_no_committed_data.py's
+reference-review ceiling). Three rules, and they are the contract:
+
+  - never re-mint an id for a place that persists, whatever happened to its
+    upstream key, name, position or source;
+  - never reuse an id, however long its row has been retired;
+  - never delete a row - retirement is an event in a place's history.
+
+The id string is a birthmark, not a pointer: minted from where the place
+was FIRST seen, kept verbatim forever. Provenance is the
+`source`/`source_feature_id` properties. Nothing may parse an id to learn
+its source.
+
+TIER 1 ONLY, in this step. A record whose `(source, source_feature_id)`
+matches a live row carries that row's id, and the row's name/position
+update silently - those facts are upstream's to change. Everything else is
+deliberately blunt: an unmatched old row retires (the RECOVERABLE mistake -
+a later override re-unites a tombstone with its successor), an unmatched
+new feature mints a fresh id. Evidence matching, which turns a re-keyed
+feature back into a carried id, is #672 - Evidence matching for re-keyed
+POIs; until it lands, a wholesale upstream re-mint retires-and-creates
+everything, which is exactly the loud, blocked outcome this step exists to
+guarantee (see the retire-share guard below - it refuses to write the
+massacre at all).
+
+HELD FOR REVIEW, not carried, when tier 1's own evidence is suspicious:
+
+  - a surviving key whose feature moved over TELEPORT_MILES - key reuse is
+    rare and conceivable, and a shelter teleporting is evidence of it;
+  - a surviving key whose feature changed poi_type - an id never crosses
+    type;
+  - a new feature whose derived id already belongs to a retired row -
+    minting it would reuse an id, which nothing may do.
+
+A held item makes the run fail (exit 2) writing nothing, so nothing
+publishes until a human looks. The resolution mechanism (an overrides
+file) arrives with #672; until then the human's answer is a reviewed
+manual ledger edit, which the next `--check` holds them to.
+
+--check IS THE CI GATE. The checked-in ledger must be exactly what this
+reconciliation produces from the raw snapshot plus the checked-in ledger
+itself - `build_shelter_capacity.py --check`'s pattern. A refresh that
+changes identity therefore cannot publish until the ledger diff has been
+regenerated, committed and reviewed. Run by publish-vector-data.yml after
+the fetches, before the exports.
+
+    python reconcile_poi_identity.py            update the ledger, print the summary
+    python reconcile_poi_identity.py --check    verify the checked-in ledger, write nothing
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+
+from lib.spurs import distance_m
+
+ROOT = Path(__file__).parent
+LEDGER_PATH = ROOT / "reference" / "poi_identity.json"
+
+METERS_PER_MILE = 1609.344
+
+# The teleport guard's line (features/POI_IDENTITY.md tier 1): "a surviving
+# key whose feature moved implausibly far (over a mile) is held for review
+# rather than carried". The ATC refresh that actually ships moves things "a
+# few feet"; a mile is ~three orders of magnitude past that, far enough
+# that a legitimate correction cannot plausibly reach it.
+TELEPORT_MILES = 1.0
+
+# Refuse to write a run that retires this share of the live ledger: that is
+# the wholesale-re-mint catastrophe, and until evidence matching (#672) can
+# carry those ids, the only safe output is no output. The count floor keeps
+# the guard out of the way of small synthetic ledgers and genuinely small
+# prunings.
+# @unvalidated - both numbers are reasoned (a real ATC year removes a
+# handful of features, not a fifth of the trail), not measured; #675 -
+# Measure the first real ATC refresh is where the measurement lands.
+MAX_RETIRE_SHARE = 0.2
+MIN_RETIRES_FOR_GUARD = 25
+
+_README = [
+    "The POI identity ledger (features/POI_IDENTITY.md, #671): one row per",
+    "POI ever published, keyed by the OurHike id. GENERATED by",
+    "reconcile_poi_identity.py - re-run that script rather than editing rows",
+    "here, and review the diff it produces; CI holds this file to exactly",
+    "what reconciliation reproduces (--check).",
+    "",
+    "Three rules: never re-mint an id for a place that persists, never reuse",
+    "an id, never delete a row. The id string is a birthmark - provenance is",
+    "the source/source_feature_id properties, and nothing may parse an id to",
+    "learn its source.",
+]
+
+
+@dataclass
+class Outcome:
+    """One reconciliation's result: the next ledger, and what happened."""
+
+    pois: dict
+    carried: list[str] = field(default_factory=list)
+    minted: list[str] = field(default_factory=list)
+    retired: list[str] = field(default_factory=list)
+    held: list[str] = field(default_factory=list)
+
+
+def live_rows(pois: dict) -> dict:
+    return {poi_id: row for poi_id, row in pois.items() if "retired" not in row}
+
+
+def reconcile(pois: dict, records: list[dict], release: str) -> Outcome:
+    """Tier 1 over `records` (this snapshot's publishable POIs) against
+    `pois` (the prior ledger's rows). Pure - no I/O - so the tests can hold
+    every branch without a corridor on disk."""
+    next_pois = {poi_id: dict(row) for poi_id, row in pois.items()}
+    by_key = {(row["source"], row["source_feature_id"]): poi_id for poi_id, row in live_rows(pois).items()}
+
+    outcome = Outcome(pois=next_pois)
+    seen_ids: set[str] = set()
+
+    for record in records:
+        key = (record["source"], record["source_feature_id"])
+        poi_id = by_key.get(key)
+
+        if poi_id is not None:
+            if poi_id in seen_ids:
+                outcome.held.append(
+                    f"{poi_id}: two records in ONE snapshot carry the same upstream key - a source is "
+                    "emitting duplicates, and neither can own the id until a human says which is the place"
+                )
+                continue
+            row = next_pois[poi_id]
+            moved_m = distance_m(row["lat"], row["lon"], record["lat"], record["lon"])
+            if moved_m > TELEPORT_MILES * METERS_PER_MILE:
+                outcome.held.append(
+                    f"{poi_id}: key survived but the feature moved {moved_m / METERS_PER_MILE:.1f} mi "
+                    f"({row['name']!r} -> {record.get('name')!r}) - key reuse is the suspicion, review before carrying"
+                )
+                continue
+            if record["poi_type"] != row["poi_type"]:
+                outcome.held.append(
+                    f"{poi_id}: key survived but poi_type changed {row['poi_type']} -> {record['poi_type']} - "
+                    "an id never crosses type; review before carrying"
+                )
+                continue
+            # Carried, silently: name and position are upstream's to change.
+            row["name"] = record.get("name")
+            row["lat"] = record["lat"]
+            row["lon"] = record["lon"]
+            seen_ids.add(poi_id)
+            outcome.carried.append(poi_id)
+            continue
+
+        # New to the ledger. The minted id IS the derived id - the birthmark.
+        minted = record["id"]
+        if minted in seen_ids:
+            outcome.held.append(
+                f"{minted}: two records in ONE snapshot derive the same id - a source is emitting "
+                "duplicate keys, and neither can own the id until a human says which is the place"
+            )
+            continue
+        if minted in next_pois:
+            # A live row would have matched by key above, so this is a
+            # retired id resurfacing - and reusing it is the one thing the
+            # contract forbids outright.
+            outcome.held.append(
+                f"{minted}: upstream re-presents the key of a RETIRED row ({next_pois[minted].get('name')!r}) - "
+                "ids are never reused; if this is the same place returning, review and restore the row by hand"
+            )
+            continue
+        next_pois[minted] = {
+            "poi_type": record["poi_type"],
+            "source": record["source"],
+            "source_feature_id": record["source_feature_id"],
+            "name": record.get("name"),
+            "lat": record["lat"],
+            "lon": record["lon"],
+            "first_seen": release,
+            "history": [],
+        }
+        seen_ids.add(minted)
+        outcome.minted.append(minted)
+
+    for poi_id, row in live_rows(pois).items():
+        if poi_id in seen_ids:
+            continue
+        if any(h.startswith(f"{poi_id}:") for h in outcome.held):
+            # Its fate is the held question; retiring it too would answer it.
+            continue
+        gone = next_pois[poi_id]
+        gone["retired"] = release
+        gone["history"] = [*gone.get("history", []), {"release": release, "event": "retired"}]
+        outcome.retired.append(poi_id)
+
+    return outcome
+
+
+def mass_retirement_refusal(outcome: Outcome, prior: dict) -> str | None:
+    """The sentence that refuses a wholesale re-mint, or None when the run
+    is a refresh-shaped one. See MAX_RETIRE_SHARE."""
+    live = len(live_rows(prior))
+    share = len(outcome.retired) / max(1, live)
+    if len(outcome.retired) < MIN_RETIRES_FOR_GUARD or share <= MAX_RETIRE_SHARE:
+        return None
+    return (
+        f"REFUSED: this run would retire {len(outcome.retired)} of {live} live rows "
+        f"({share:.0%}) - the shape of a wholesale upstream re-mint, not of a refresh. "
+        "Nothing was written; #672's evidence matching is the recovery path, not a mass retirement."
+    )
+
+
+def render(pois: dict) -> str:
+    """The ledger's serialization: one row per line, sorted by id, so a
+    refresh's identity outcome reads as a per-place diff and the file stays
+    reviewable (and under the reference-review ceiling)."""
+    lines = ["{", f'"_README": {json.dumps(_README, indent=2)},', '"pois": {']
+    rows = [f'"{poi_id}": {json.dumps(pois[poi_id], sort_keys=True, separators=(", ", ": "))}' for poi_id in sorted(pois)]
+    lines.append(",\n".join(rows))
+    lines += ["}", "}", ""]
+    return "\n".join(lines)
+
+
+def load_ledger(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))["pois"]
+
+
+def published_records() -> list[dict]:
+    """This snapshot's publishable POIs, id-bearing fields settled - THE SAME
+    STEPS export_poi.main() takes before anything depends on an id, shared
+    rather than reimplemented so the reconciled set and the published set
+    cannot drift (read_sources' own docstring makes the same argument for
+    --check)."""
+    import duckdb
+
+    import export_poi
+
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    try:
+        records = export_poi.read_sources(con)
+        export_poi.attach_sites(records)
+        distances = export_poi.load_water_distances(export_poi.WATER_DISTANCE_PATH)
+        if distances:
+            export_poi.attach_water_distance(records, distances)
+            export_poi.synthesize_csi_water(records)
+    finally:
+        con.close()
+    return records
+
+
+def summarize(outcome: Outcome, seeded: bool) -> str:
+    lines = []
+    if seeded:
+        lines.append(f"Seeded the ledger: {len(outcome.minted)} rows, ids exactly as published today.")
+    else:
+        lines.append(f"carried by key: {len(outcome.carried)}")
+        lines.append(f"new: {len(outcome.minted)}")
+        for poi_id in outcome.minted:
+            row = outcome.pois[poi_id]
+            lines.append(f"  + {poi_id}  {row['poi_type']}  {row.get('name')!r}")
+        lines.append(f"retired: {len(outcome.retired)}")
+        for poi_id in outcome.retired:
+            row = outcome.pois[poi_id]
+            lines.append(f"  - {poi_id}  {row['poi_type']}  {row.get('name')!r}")
+    if outcome.held:
+        lines.append(f"HELD FOR REVIEW: {len(outcome.held)}")
+        for held in outcome.held:
+            lines.append(f"  ! {held}")
+    return "\n".join(lines)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--check", action="store_true", help="verify the checked-in ledger instead of writing it")
+    parser.add_argument(
+        "--release",
+        default=None,
+        help="release id (YYYY-MM-DD) stamped on new and retired rows; defaults to today (UTC)",
+    )
+    args = parser.parse_args(argv)
+
+    release = args.release or datetime.now(timezone.utc).date().isoformat()
+    prior = load_ledger(LEDGER_PATH)
+    seeded = not prior
+    records = published_records()
+    print(f"{len(records)} publishable POIs against {len(live_rows(prior))} live ledger rows.")
+
+    outcome = reconcile(prior, records, release)
+    print(summarize(outcome, seeded))
+
+    if outcome.held:
+        print("Nothing was written - resolve the held items and re-run.", file=sys.stderr)
+        return 2
+
+    refusal = mass_retirement_refusal(outcome, prior)
+    if refusal:
+        print(refusal, file=sys.stderr)
+        return 2
+
+    rendered = render(outcome.pois)
+    if args.check:
+        current = LEDGER_PATH.read_text(encoding="utf-8") if LEDGER_PATH.exists() else ""
+        if current == rendered:
+            print("Ledger is exactly what reconciliation reproduces.")
+            return 0
+        print(
+            f"{LEDGER_PATH} differs from what this snapshot reconciles to - "
+            "run reconcile_poi_identity.py, review the diff, and commit it.",
+            file=sys.stderr,
+        )
+        return 1
+
+    LEDGER_PATH.parent.mkdir(parents=True, exist_ok=True)
+    LEDGER_PATH.write_text(rendered, encoding="utf-8")
+    print(f"Ledger -> {LEDGER_PATH}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

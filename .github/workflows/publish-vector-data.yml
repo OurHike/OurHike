@@ -195,6 +195,16 @@ jobs:
       - name: Check POI sources are exportable
         run: python export_poi.py --check
 
+      # The identity gate (#671, features/POI_IDENTITY.md): the checked-in
+      # ledger must be exactly what reconciliation reproduces from this
+      # snapshot. A refresh that changes identity - new POIs, retired POIs,
+      # or (the catastrophe) a wholesale upstream re-mint - fails here and
+      # publishes nothing until a human regenerates the ledger, reviews the
+      # diff, and commits it. Before the photo fetches, like the preflight
+      # above, so a blocked refresh costs seconds rather than an hour.
+      - name: Check the POI identity ledger is current
+        run: python reconcile_poi_identity.py --check
+
       # Photos live outside the repository - pipeline/.gitignore excludes
       # data/ entirely - so a fresh runner has neither the outcome files nor
       # the image bytes, and without this step export_poi.py takes its

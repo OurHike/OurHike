@@ -173,3 +173,117 @@ describe('the moderation entry (#235)', () => {
     expect(onOpenModeration).toHaveBeenCalled()
   })
 })
+
+// --- Four sections instead of one long scroll (#796, features/MORE_TAB.md) -
+
+describe('the four sections', () => {
+  it('starts on You, where the hike and report entries already lived', () => {
+    render(<More {...PROPS} />)
+
+    expect(screen.getByRole('tab', { name: 'You', selected: true })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'You' })).toBeInTheDocument()
+  })
+
+  it('offers all four sections, in order', () => {
+    render(<More {...PROPS} />)
+
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
+      'You',
+      'Map & Display',
+      'Safety & Privacy',
+      'About',
+    ])
+  })
+
+  it('shows the map preferences only after switching to Map & Display', async () => {
+    const user = userEvent.setup()
+    render(<More {...PROPS} />)
+
+    expect(screen.queryByRole('heading', { name: 'The map' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'Map & Display' }))
+
+    expect(screen.getByRole('heading', { name: 'The map' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Display' })).toBeInTheDocument()
+  })
+
+  it('shows safety and privacy only after switching to that tab', async () => {
+    const user = userEvent.setup()
+    render(<More {...PROPS} />)
+
+    expect(
+      screen.queryByRole('heading', { name: 'Safety & privacy' }),
+    ).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'Safety & Privacy' }))
+
+    expect(screen.getByRole('heading', { name: 'Safety & privacy' })).toBeInTheDocument()
+  })
+
+  it('shows the reference material only after switching to About', async () => {
+    const user = userEvent.setup()
+    render(<More {...PROPS} />)
+
+    await user.click(screen.getByRole('tab', { name: 'About' }))
+
+    expect(screen.getByRole('heading', { name: 'Your data' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'About this build' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Report a bug' })).toBeInTheDocument()
+  })
+})
+
+// #378. About is where somebody goes looking for it, and it is the only tab a
+// hiker can reach that could carry it - so the wiring is worth a test of its
+// own even though screens/AboutBuild.test.tsx covers the rows.
+describe('About this build, from the About tab', () => {
+  it('says which build the app is running, without being passed one', async () => {
+    const user = userEvent.setup()
+    render(<More {...PROPS} />)
+    await user.click(screen.getByRole('tab', { name: 'About' }))
+
+    expect(screen.getByRole('heading', { name: 'About this build' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /copy build details/i }),
+    ).toBeInTheDocument()
+  })
+})
+
+describe('the download link, from the About tab', () => {
+  it('offers the way to the download, since there is no tab to send anyone to', async () => {
+    const user = userEvent.setup()
+    const onOpenDownloads = vi.fn()
+    render(<More {...PROPS} onOpenDownloads={onOpenDownloads} />)
+    await user.click(screen.getByRole('tab', { name: 'About' }))
+
+    await user.click(screen.getByRole('button', { name: /choose what to download/i }))
+
+    expect(onOpenDownloads).toHaveBeenCalledTimes(1)
+  })
+
+  it('admits a download still running with its window shut', async () => {
+    // The other home of the same link, and the screen someone comes back to
+    // an hour later to ask whether the thing they started ever finished.
+    const user = userEvent.setup()
+    render(
+      <More
+        {...PROPS}
+        onOpenDownloads={vi.fn()}
+        downloadActivity={{ kind: 'downloading', doneBytes: 1, totalBytes: 4 }}
+      />,
+    )
+    await user.click(screen.getByRole('tab', { name: 'About' }))
+
+    expect(screen.getByText('Downloading 25%')).toBeVisible()
+  })
+
+  it('puts it at the foot of the About tab, below every group', async () => {
+    // A once-a-season errand, so it is findable by anyone who scrolls looking
+    // for it and out of the way of the rows that get used.
+    const user = userEvent.setup()
+    const { container } = render(<More {...PROPS} onOpenDownloads={vi.fn()} />)
+    await user.click(screen.getByRole('tab', { name: 'About' }))
+
+    const link = screen.getByRole('button', { name: /choose what to download/i })
+    expect(container.querySelector('.settings')?.lastElementChild).toBe(link)
+  })
+})

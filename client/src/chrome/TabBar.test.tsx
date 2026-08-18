@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { TabBar } from './TabBar'
 import { TABS } from './tabs'
 
-// Trail / Plan / More. WIREFRAMES.md §6 drew the MVP pair; Plan is v2's first
+// Trail / Plan / Settings. WIREFRAMES.md §6 drew the MVP pair; Plan is v2's first
 // feature (#756) and the v2 wireframes draw it second on every bar. Downloads
 // was a third tab once and went on 2026-08-05 - one whole-corridor package
 // does not need a permanent target in the thumb zone, where every tab costs
@@ -25,7 +25,7 @@ describe('TabBar', () => {
     expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
       'Trail',
       'Plan',
-      'More',
+      'Settings',
     ])
   })
 
@@ -48,14 +48,14 @@ describe('TabBar', () => {
     const selected = screen.getAllByRole('tab', { selected: true })
 
     expect(selected).toHaveLength(1)
-    expect(selected[0]).toHaveTextContent('More')
+    expect(selected[0]).toHaveTextContent('Settings')
   })
 
   it('reports which tab was chosen', async () => {
     const user = userEvent.setup()
     render(<TabBar {...PROPS} />)
 
-    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(screen.getByRole('tab', { name: 'Settings' }))
 
     expect(PROPS.onSelect).toHaveBeenCalledWith('more')
   })

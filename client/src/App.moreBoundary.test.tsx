@@ -40,7 +40,7 @@ describe('a More screen that throws', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
 
-    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(screen.getByRole('tab', { name: 'Settings' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/stopped working/i)
     expect(screen.getByRole('tab', { name: 'Trail' })).toBeInTheDocument()
@@ -51,7 +51,7 @@ describe('a More screen that throws', () => {
     render(<App />)
     await screen.findByRole('region', { name: /trail map/i })
 
-    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(screen.getByRole('tab', { name: 'Settings' }))
     await screen.findByRole('alert')
     await user.click(screen.getByRole('tab', { name: 'Trail' }))
 

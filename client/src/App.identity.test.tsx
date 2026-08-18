@@ -38,7 +38,7 @@ beforeEach(() => {
 })
 
 async function fileAReport(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('tab', { name: 'More' }))
+  await user.click(screen.getByRole('tab', { name: 'Settings' }))
   await user.click(await screen.findByRole('button', { name: /report a problem/i }))
   await user.click(await screen.findByRole('button', { name: /blow down/i }))
   await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))

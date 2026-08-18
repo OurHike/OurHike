@@ -156,7 +156,7 @@ describe('MapScreen', () => {
     const user = userEvent.setup()
     render(<MapScreen {...PROPS} />)
 
-    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(screen.getByRole('tab', { name: 'Settings' }))
 
     expect(PROPS.onSelectTab).toHaveBeenCalledWith('more')
   })

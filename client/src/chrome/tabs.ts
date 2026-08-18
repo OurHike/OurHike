@@ -22,7 +22,7 @@ export interface Tab {
 export const TABS: Tab[] = [
   { id: 'trail', label: 'Trail' },
   { id: 'plan', label: 'Plan' },
-  { id: 'more', label: 'More' },
+  { id: 'more', label: 'Settings' },
 ]
 
 export type TabId = Tab['id']

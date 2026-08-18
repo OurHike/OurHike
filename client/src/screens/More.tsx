@@ -1,5 +1,15 @@
 // The "More" tab: the way to everything that is neither the map nor the
-// download.
+// download. Labelled "Settings" on the tab bar (chrome/tabs.ts) since
+// features/MORE_TAB.md - the file and the component keep the name "More"
+// because nothing about what this screen IS changed, only its label and its
+// internal navigation.
+//
+// Four sections under Tabs (screens/Tabs.tsx, already built for Onboarding
+// and the download window) rather than one long scroll - features/MORE_TAB.md
+// is the design this follows and carries the reasoning for each grouping.
+// "You" is the default tab: it is what a hiker opens this screen for most
+// often, and it is where "Your hike" and "Contribute" - this screen's own two
+// sections, below - already lived before the split.
 //
 // Reporting is reached from here rather than from the map screen. WIREFRAMES.md
 // §2 says of the map header "Nothing else lives here," and putting a report
@@ -8,7 +18,20 @@
 // into the most valuable strip of screen space.
 
 import { useState } from 'react'
-import { Settings, type SettingsProps } from './Settings'
+import { Tabs, type TabItem } from './Tabs'
+import {
+  YouSettings,
+  MapSettings,
+  DisplaySettings,
+  SafetyPrivacySettings,
+  DataSettings,
+  type SettingsProps,
+} from './Settings'
+import { AboutBuild } from './AboutBuild'
+import { ReportBug } from './ReportBug'
+import { DownloadsLink } from '../chrome/DownloadsLink'
+import type { DownloadActivity } from '../lib/downloadActivity'
+import type { BuildInfo } from '../lib/buildInfo'
 
 /** A report the server refused for good, reduced to what the screen shows. */
 export interface StuckReport {
@@ -47,7 +70,28 @@ export interface MoreProps extends SettingsProps {
   stuckReports?: StuckReport[]
   onRetryReport?: (id: string) => void
   onDiscardReport?: (id: string) => void
+  /** Whether ANY background sheet is on this phone, which words the download
+   *  link in the About tab: choose a download, or change the one you have. */
+  hasDownload?: boolean
+  /** What is downloading right now, if anything - drawn on that same link
+   *  (lib/downloadActivity.ts). */
+  downloadActivity?: DownloadActivity | null
+  /** Opens the download window, from the link in the About tab. Omitted, no
+   *  link is drawn. */
+  onOpenDownloads?: () => void
+  /** Which build this is (#378), for the About tab. Injectable for the same
+   *  reason `now` is - see screens/AboutBuild.tsx. Omitted, the real one is
+   *  shown. */
+  build?: BuildInfo
 }
+
+const TABS: readonly TabItem[] = [
+  { id: 'you', label: 'You' },
+  { id: 'map-display', label: 'Map & Display' },
+  { id: 'safety-privacy', label: 'Safety & Privacy' },
+  { id: 'about', label: 'About' },
+]
+type MoreTabId = (typeof TABS)[number]['id']
 
 export function More({
   onStartReport,
@@ -58,8 +102,14 @@ export function More({
   stuckReports = [],
   onRetryReport,
   onDiscardReport,
+  hasDownload = false,
+  downloadActivity = null,
+  onOpenDownloads,
+  build,
   ...settings
 }: MoreProps) {
+  const [activeTab, setActiveTab] = useState<MoreTabId>('you')
+
   // Deleting a stuck report asks twice. "Try again" and "Delete" sit side by
   // side in the same style, and one of them destroys text someone wrote on a
   // ridge days ago with no way back - the note right below these buttons
@@ -68,108 +118,186 @@ export function More({
   // thumb landed on. Keyed by report id so confirming one never arms another.
   const [confirmingDiscard, setConfirmingDiscard] = useState<string | null>(null)
 
+  let panel
+  if (activeTab === 'you') {
+    panel = (
+      <div className="settings">
+        {onEditHike !== undefined && (
+          <section className="settings__group">
+            <h2 className="settings__heading">Your hike</h2>
+            <button type="button" className="settings__action" onClick={onEditHike}>
+              {hikeSummary ?? 'Say where you are walking'}
+            </button>
+            <p className="settings__note">
+              {hikeSummary === null
+                ? 'Optional. It lets the map say what is ahead of you instead of waiting until you have walked far enough for it to work out which way you are going.'
+                : 'Change or clear this at any time.'}
+            </p>
+          </section>
+        )}
+        <section className="settings__group">
+          <h2 className="settings__heading">Contribute</h2>
+          <button type="button" className="settings__action" onClick={onStartReport}>
+            Report a problem
+          </button>
+          {onOpenModeration !== undefined && (
+            <button type="button" className="settings__action" onClick={onOpenModeration}>
+              Moderation queue
+            </button>
+          )}
+          {queuedReportCount > 0 && (
+            <p className="settings__note" role="status">
+              {queuedReportCount === 1
+                ? '1 report waiting to send.'
+                : `${queuedReportCount} reports waiting to send.`}
+            </p>
+          )}
+          {stuckReports.length > 0 && (
+            // role="alert", not "status": this is the one thing on this screen
+            // that will not resolve itself, and it appears after someone has
+            // already walked away believing the report was on its way.
+            <div className="more__stuck" role="alert">
+              <p className="more__stuck-heading">
+                {stuckReports.length === 1
+                  ? '1 report could not be sent.'
+                  : `${stuckReports.length} reports could not be sent.`}
+              </p>
+              <ul className="more__stuck-list">
+                {stuckReports.map((report) => (
+                  <li key={report.id} className="more__stuck-item">
+                    <span className="more__stuck-reason">{report.reason}</span>
+                    {confirmingDiscard === report.id ? (
+                      <span className="more__stuck-actions">
+                        <span className="more__stuck-confirm">
+                          Delete what you wrote? There is no way back.
+                        </span>
+                        <button
+                          type="button"
+                          className="settings__action"
+                          onClick={() => setConfirmingDiscard(null)}
+                        >
+                          Keep it
+                        </button>
+                        <button
+                          type="button"
+                          className="settings__action"
+                          onClick={() => {
+                            setConfirmingDiscard(null)
+                            onDiscardReport?.(report.id)
+                          }}
+                        >
+                          Yes, delete it
+                        </button>
+                      </span>
+                    ) : (
+                      <span className="more__stuck-actions">
+                        <button
+                          type="button"
+                          className="settings__action"
+                          onClick={() => onRetryReport?.(report.id)}
+                        >
+                          Try again
+                        </button>
+                        <button
+                          type="button"
+                          className="settings__action"
+                          onClick={() => setConfirmingDiscard(report.id)}
+                        >
+                          Delete
+                        </button>
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              {/* Said out loud, because the alternative reading - that the app
+                  threw the report away - is the one that stops someone
+                  reporting anything again. */}
+              <p className="settings__note">
+                Nothing has been lost. What you wrote is still on this phone until you
+                delete it.
+              </p>
+            </div>
+          )}
+        </section>
+        <YouSettings
+          account={settings.account}
+          onSignIn={settings.onSignIn}
+          onSignOut={settings.onSignOut}
+          preferences={settings.preferences}
+          onChange={settings.onChange}
+        />
+      </div>
+    )
+  } else if (activeTab === 'map-display') {
+    panel = (
+      <div className="settings">
+        <MapSettings
+          preferences={settings.preferences}
+          onChange={settings.onChange}
+          onChangeBackground={settings.onChangeBackground}
+          dataSaver={settings.dataSaver}
+          archiveDownloaded={settings.archiveDownloaded}
+        />
+        <DisplaySettings
+          preferences={settings.preferences}
+          onChange={settings.onChange}
+        />
+      </div>
+    )
+  } else if (activeTab === 'safety-privacy') {
+    panel = (
+      <div className="settings">
+        <SafetyPrivacySettings
+          preferences={settings.preferences}
+          onChange={settings.onChange}
+        />
+      </div>
+    )
+  } else {
+    panel = (
+      <div className="settings">
+        <DataSettings
+          lastSyncedAt={settings.lastSyncedAt}
+          onSync={settings.onSync}
+          onExport={settings.onExport}
+          now={settings.now}
+        />
+
+        {/* Below the group above, and above the download link rather than
+            below it - see screens/AboutBuild.tsx for the rest of why. */}
+        <AboutBuild build={build} />
+
+        {/* Immediately after it, because the build is what a bug report has
+            to name and these links carry it (#626). The same `build` reaches
+            both, so the section that displays it and the links that send it
+            can never disagree about which one this is. */}
+        <ReportBug build={build} />
+
+        {/* Last: the only way to the download, and still a once-a-season
+            errand, so it gets the foot of the tab rather than the top. */}
+        {onOpenDownloads !== undefined && (
+          <DownloadsLink
+            onOpen={onOpenDownloads}
+            hasDownload={hasDownload}
+            downloadActivity={downloadActivity}
+          />
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="more">
-      {onEditHike !== undefined && (
-        <section className="settings__group">
-          <h2 className="settings__heading">Your hike</h2>
-          <button type="button" className="settings__action" onClick={onEditHike}>
-            {hikeSummary ?? 'Say where you are walking'}
-          </button>
-          <p className="settings__note">
-            {hikeSummary === null
-              ? 'Optional. It lets the map say what is ahead of you instead of waiting until you have walked far enough for it to work out which way you are going.'
-              : 'Change or clear this at any time.'}
-          </p>
-        </section>
-      )}
-      <section className="settings__group">
-        <h2 className="settings__heading">Contribute</h2>
-        <button type="button" className="settings__action" onClick={onStartReport}>
-          Report a problem
-        </button>
-        {onOpenModeration !== undefined && (
-          <button type="button" className="settings__action" onClick={onOpenModeration}>
-            Moderation queue
-          </button>
-        )}
-        {queuedReportCount > 0 && (
-          <p className="settings__note" role="status">
-            {queuedReportCount === 1
-              ? '1 report waiting to send.'
-              : `${queuedReportCount} reports waiting to send.`}
-          </p>
-        )}
-        {stuckReports.length > 0 && (
-          // role="alert", not "status": this is the one thing on this screen
-          // that will not resolve itself, and it appears after someone has
-          // already walked away believing the report was on its way.
-          <div className="more__stuck" role="alert">
-            <p className="more__stuck-heading">
-              {stuckReports.length === 1
-                ? '1 report could not be sent.'
-                : `${stuckReports.length} reports could not be sent.`}
-            </p>
-            <ul className="more__stuck-list">
-              {stuckReports.map((report) => (
-                <li key={report.id} className="more__stuck-item">
-                  <span className="more__stuck-reason">{report.reason}</span>
-                  {confirmingDiscard === report.id ? (
-                    <span className="more__stuck-actions">
-                      <span className="more__stuck-confirm">
-                        Delete what you wrote? There is no way back.
-                      </span>
-                      <button
-                        type="button"
-                        className="settings__action"
-                        onClick={() => setConfirmingDiscard(null)}
-                      >
-                        Keep it
-                      </button>
-                      <button
-                        type="button"
-                        className="settings__action"
-                        onClick={() => {
-                          setConfirmingDiscard(null)
-                          onDiscardReport?.(report.id)
-                        }}
-                      >
-                        Yes, delete it
-                      </button>
-                    </span>
-                  ) : (
-                    <span className="more__stuck-actions">
-                      <button
-                        type="button"
-                        className="settings__action"
-                        onClick={() => onRetryReport?.(report.id)}
-                      >
-                        Try again
-                      </button>
-                      <button
-                        type="button"
-                        className="settings__action"
-                        onClick={() => setConfirmingDiscard(report.id)}
-                      >
-                        Delete
-                      </button>
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-            {/* Said out loud, because the alternative reading - that the app
-                threw the report away - is the one that stops someone
-                reporting anything again. */}
-            <p className="settings__note">
-              Nothing has been lost. What you wrote is still on this phone until you
-              delete it.
-            </p>
-          </div>
-        )}
-      </section>
-
-      <Settings {...settings} />
+      <Tabs
+        label="Settings sections"
+        tabs={TABS}
+        activeId={activeTab}
+        onSelect={(id) => setActiveTab(id as MoreTabId)}
+        idPrefix="more"
+      >
+        {panel}
+      </Tabs>
     </div>
   )
 }

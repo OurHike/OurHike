@@ -80,7 +80,7 @@ beforeEach(() => app.onboard())
 
 async function openMore(user: ReturnType<typeof userEvent.setup>) {
   render(<App />)
-  await user.click(await screen.findByRole('tab', { name: 'More' }))
+  await user.click(await screen.findByRole('tab', { name: 'Settings' }))
 }
 
 describe('Try again, on a report the server refused', () => {
@@ -131,10 +131,10 @@ describe('Try again, on a report the server refused', () => {
     // have come from the submit itself.
     const user = userEvent.setup()
     render(<App />)
-    await screen.findByRole('tab', { name: 'More' })
+    await screen.findByRole('tab', { name: 'Settings' })
     expect(mockedSend).not.toHaveBeenCalled()
 
-    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(screen.getByRole('tab', { name: 'Settings' }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
     await user.click(await screen.findByRole('button', { name: /^send$/i }))

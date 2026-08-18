@@ -12,6 +12,7 @@ import userEvent from '@testing-library/user-event'
 
 import { PlanScreen } from './Plan'
 import type { Hike } from '../lib/hikes'
+import type { TripGroup } from '../lib/tripGroups'
 import type { Trip } from '../lib/trips'
 import { callItADay } from '../lib/cascade'
 import { buildPlan, insertZeroAfter, toggleResupply, type HikePlan } from '../lib/plan'
@@ -29,6 +30,9 @@ const PROPS = {
   tripCount: 1,
   onOpenTrips: vi.fn(),
   hike: null as Hike | null,
+  hikes: [] as readonly Hike[],
+  groups: [] as readonly TripGroup[],
+  onOpenGroup: vi.fn(),
   trips: [] as readonly Trip[],
   onOpenTrip: vi.fn(),
   onPlanGap: vi.fn(),
@@ -583,5 +587,98 @@ describe('rest days (#798)', () => {
     plan.days[1].rest = true
     const { container } = render(<PlanScreen {...PROPS} plan={plan} />)
     expect(container.textContent).not.toMatch(/%|streak|in a row|rests taken|earned/i)
+  })
+})
+
+describe('the Plan home (#805)', () => {
+  const HIKE: Hike = {
+    id: 'h1',
+    name: 'Virginia, over a few years',
+    type: 'section',
+    start: { name: 'Damascus', mile: 470.8 },
+    end: { name: 'Rockfish Gap', mile: 860 },
+    tripIds: ['t1'],
+  }
+
+  function twoTrips(): Trip[] {
+    const a = smallPlan()
+    const b = buildPlan(
+      [
+        { mile: 600, name: 'Grayson', resupply: false },
+        { mile: 620, name: 'Old Orchard', resupply: false },
+      ],
+      { walkingHours: 7 },
+      '2026-07-04',
+    )
+    return [
+      { id: 't1', name: 'Spring section', plan: a },
+      { id: 't2', name: 'Grayson week', plan: b },
+    ]
+  }
+
+  it('opens on the home once there is something to choose between', () => {
+    render(
+      <PlanScreen {...PROPS} plan={smallPlan()} trips={twoTrips()} openTripId="t1" />,
+    )
+
+    expect(screen.getByText('Carry on with')).toBeInTheDocument()
+    expect(screen.getByText('Recent trips')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Plan a new trip' })).toBeInTheDocument()
+  })
+
+  it('opens straight into a lone trip, as it always did', () => {
+    // The cost of a home, paid only by hikers who have something to choose
+    // between: one trip and no hike lands on the timeline.
+    render(<PlanScreen {...PROPS} plan={smallPlan()} trips={twoTrips().slice(0, 1)} />)
+
+    expect(screen.queryByText('Carry on with')).toBeNull()
+    expect(screen.queryByText('Recent trips')).toBeNull()
+    // The timeline itself, not a menu in front of it.
+    expect(screen.getByRole('button', { name: 'Delete plan' })).toBeInTheDocument()
+  })
+
+  it('prints every trip’s dates, and says when there are none', () => {
+    const trips = twoTrips()
+    render(<PlanScreen {...PROPS} plan={trips[0].plan} trips={trips} openTripId="t1" />)
+
+    expect(screen.getAllByText('12–14 May 2026').length).toBeGreaterThan(0)
+    expect(screen.getByText('4 Jul 2026')).toBeInTheDocument()
+  })
+
+  it('leads into a hike, and back out to the home', async () => {
+    const user = userEvent.setup()
+    const trips = twoTrips()
+    render(
+      <PlanScreen
+        {...PROPS}
+        plan={trips[0].plan}
+        trips={trips}
+        openTripId="t1"
+        hike={HIKE}
+        hikes={[HIKE]}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /Virginia, over a few years/ }))
+    expect(
+      screen.getByRole('heading', { name: 'Virginia, over a few years' }),
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /All your plans/ }))
+    expect(screen.getByText('Carry on with')).toBeInTheDocument()
+  })
+
+  it('never scores anything on the way in', () => {
+    const { container } = render(
+      <PlanScreen
+        {...PROPS}
+        plan={smallPlan()}
+        trips={twoTrips()}
+        openTripId="t1"
+        hike={HIKE}
+        hikes={[HIKE]}
+      />,
+    )
+    expect(container.textContent).not.toMatch(/%|behind|ahead of|on track|streak/i)
   })
 })

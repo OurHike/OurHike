@@ -30,6 +30,7 @@ import {
 } from '../lib/cascade'
 import { ribbonSamples, type ElevationProfile } from '../lib/elevationProfile'
 import type { Hike, HikePiece, PlaceRef } from '../lib/hikes'
+import type { TripGroup } from '../lib/tripGroups'
 import { formatNaismithMinutes } from '../lib/naismith'
 import {
   currentDayIndex,
@@ -55,6 +56,7 @@ import type { StoredPoi } from '../lib/trailData'
 import type { Trip } from '../lib/trips'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
 import { HikeZoom } from './HikeZoom'
+import { PlanHome } from './PlanHome'
 import { WhatsLeft } from './WhatsLeft'
 import './plan.css'
 
@@ -127,6 +129,10 @@ export interface PlanScreenProps {
   /** Every kept trip - the hike zoom's rows. */
   trips: readonly Trip[]
   onOpenTrip: (id: string) => void
+  /** Every hike and group, for the home (#805). */
+  hikes: readonly Hike[]
+  groups: readonly TripGroup[]
+  onOpenGroup: (id: string) => void
   /** Start a route from the beginning of a stretch nobody has walked. */
   onPlanGap: (gap: Extract<HikePiece, { kind: 'gap' }>) => void
   /** Start a route at one end of a gap, walking toward the other (#791).
@@ -158,6 +164,9 @@ export function PlanScreen({
   hike,
   trips,
   onOpenTrip,
+  hikes,
+  groups,
+  onOpenGroup,
   onPlanGap,
   onPlanFrom,
 }: PlanScreenProps) {
@@ -170,6 +179,13 @@ export function PlanScreen({
   const [cascading, setCascading] = useState(false)
   const [zoomWanted, setZoomWanted] = useState<PlanZoom>('days')
   const [whatsLeftOpen, setWhatsLeftOpen] = useState(false)
+  /**
+   * The tab opens on its home when there is something to choose between
+   * (#805) - and straight into the plan when there is not, because a hiker
+   * with one trip should not tap twice to reach the timeline they used to
+   * land on.
+   */
+  const [atHome, setAtHome] = useState(trips.length > 1 || hikes.length > 0)
 
   const views = useMemo(() => (plan === null ? [] : planDayViews(plan)), [plan])
   const sections = useMemo(() => planSections(views), [views])
@@ -206,6 +222,36 @@ export function PlanScreen({
     }
   }, [plan, elevation])
 
+  if (atHome && (trips.length > 1 || hikes.length > 0)) {
+    return (
+      <div className="plan">
+        <PlanHome
+          trips={trips}
+          hikes={hikes}
+          groups={groups}
+          pois={pois}
+          units={units}
+          openTrip={trips.find((trip) => trip.id === openTripId) ?? null}
+          draftLive={draftLive}
+          onOpenTrip={(id) => {
+            onOpenTrip(id)
+            setZoomWanted('days')
+            setAtHome(false)
+          }}
+          onOpenHike={() => {
+            setZoomWanted('hike')
+            setAtHome(false)
+          }}
+          onOpenGroup={onOpenGroup}
+          onAllTrips={onOpenTrips}
+          onNewTrip={onStartOnMap}
+        />
+        {targetSheet}
+        {tripList}
+      </div>
+    )
+  }
+
   // Which depths this hiker actually has. A zoom is offered only when it
   // shows something the one below it does not - no hike means no Hike
   // button, and a plan with one section has nothing for the Trip zoom to
@@ -221,9 +267,17 @@ export function PlanScreen({
     ? zoomWanted
     : (available[0] ?? 'days')
 
+  // The bar carries the way back to the home as well as the zooms, so a
+  // hiker with several trips and only one depth still has one (#805).
+  const canGoHome = trips.length > 1 || hikes.length > 0
   const zoomBar =
-    available.length > 1 ? (
+    available.length > 1 || canGoHome ? (
       <div className="plan__zoombar">
+        {canGoHome && (
+          <button type="button" className="plan__crumb" onClick={() => setAtHome(true)}>
+            <span className="plan__crumb-up">&lsaquo; All your plans</span>
+          </button>
+        )}
         {hike !== null && zoom !== 'hike' && (
           <button
             type="button"
@@ -233,19 +287,21 @@ export function PlanScreen({
             <span className="plan__crumb-up">&lsaquo; {hike.name}</span>
           </button>
         )}
-        <div className="plan__zooms" role="group" aria-label="Zoom">
-          {available.map((level) => (
-            <button
-              key={level}
-              type="button"
-              className={level === zoom ? 'plan__zoom plan__zoom--on' : 'plan__zoom'}
-              aria-pressed={level === zoom}
-              onClick={() => setZoomWanted(level)}
-            >
-              {ZOOM_LABEL[level]}
-            </button>
-          ))}
-        </div>
+        {available.length > 1 && (
+          <div className="plan__zooms" role="group" aria-label="Zoom">
+            {available.map((level) => (
+              <button
+                key={level}
+                type="button"
+                className={level === zoom ? 'plan__zoom plan__zoom--on' : 'plan__zoom'}
+                aria-pressed={level === zoom}
+                onClick={() => setZoomWanted(level)}
+              >
+                {ZOOM_LABEL[level]}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     ) : null
 

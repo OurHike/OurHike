@@ -2751,6 +2751,9 @@ function App() {
                 hike={currentHike}
                 trips={tripStore.trips}
                 onOpenTrip={handleOpenTrip}
+                hikes={tripStore.hikes}
+                groups={tripStore.groups}
+                onOpenGroup={setOpenGroupId}
                 onPlanGap={handlePlanGap}
                 onPlanFrom={handlePlanFrom}
                 onOpenTrips={() => setTripsOpen(true)}

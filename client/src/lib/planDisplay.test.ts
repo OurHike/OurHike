@@ -13,6 +13,7 @@ import {
   TRIP_CHROME_PX,
   TRIP_PX_PER_DAY,
   tripRowHeight,
+  tripDateRange,
 } from './planDisplay'
 
 describe('stopLabel', () => {
@@ -69,5 +70,35 @@ describe('tripRowHeight (#790)', () => {
     // rows underneath it.
     expect(tripRowHeight(400)).toBe(MAX_TRIP_ROW_PX)
     expect(tripRowHeight(10_000)).toBe(MAX_TRIP_ROW_PX)
+  })
+})
+
+describe('tripDateRange (#805)', () => {
+  it('names the month once when a trip stays inside one', () => {
+    expect(tripDateRange(['2026-05-12', '2026-05-13', '2026-05-17'])).toBe(
+      '12–17 May 2026',
+    )
+  })
+
+  it('names both months when it crosses one', () => {
+    // "28–3 Apr" is a range nobody can read.
+    expect(tripDateRange(['2026-04-28', '2026-05-03'])).toBe('28 Apr – 3 May 2026')
+  })
+
+  it('names both years when it crosses one', () => {
+    expect(tripDateRange(['2026-12-29', '2027-01-02'])).toBe('29 Dec 2026 – 2 Jan 2027')
+  })
+
+  it('is a single date for a single day', () => {
+    expect(tripDateRange(['2026-05-12'])).toBe('12 May 2026')
+  })
+
+  it('is null when a trip carries no dates, rather than a made-up one', () => {
+    expect(tripDateRange([null, null])).toBeNull()
+    expect(tripDateRange([])).toBeNull()
+  })
+
+  it('reads in UTC, so it cannot shift with the phone', () => {
+    expect(tripDateRange(['2026-05-12', '2026-05-12'])).toBe('12 May 2026')
   })
 })

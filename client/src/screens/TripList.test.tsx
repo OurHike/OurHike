@@ -63,8 +63,10 @@ describe('the trip switcher', () => {
     // Distance and days come off the plan, not from anything stored beside it.
     expect(screen.getByText(/32\.5 mi · 1 day/)).toBeInTheDocument()
     expect(screen.getByText(/20\.0 mi · 1 day/)).toBeInTheDocument()
-    // A dated trip says when it starts; an undated one claims nothing.
-    expect(screen.getByText(/from TUE 12/)).toBeInTheDocument()
+    // Every trip prints its dates, and an undated one says so rather than
+    // looking like a dated trip with the dates missing (#805).
+    expect(screen.getByText(/12 May 2026/)).toBeInTheDocument()
+    expect(screen.getByText(/no dates yet/)).toBeInTheDocument()
   })
 
   it('marks which trip is open', () => {
@@ -216,7 +218,7 @@ describe('a recorded stretch (#789)', () => {
 
     expect(screen.getByText('recorded')).toBeInTheDocument()
     // 470.8 miles is not "1 day", and must never be shown as one.
-    expect(screen.getByText('470.8 mi')).toBeInTheDocument()
+    expect(screen.getByText(/470\.8 mi/)).toBeInTheDocument()
     expect(screen.queryByText(/1 day/)).toBeNull()
   })
 })

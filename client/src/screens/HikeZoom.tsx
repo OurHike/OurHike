@@ -28,7 +28,7 @@ import {
   type PlaceRef,
 } from '../lib/hikes'
 import { planDayViews } from '../lib/plan'
-import { dayDateLabel, stopLabel, tripRowHeight } from '../lib/planDisplay'
+import { stopLabel, tripDateRange, tripRowHeight } from '../lib/planDisplay'
 import type { StoredPoi } from '../lib/trailData'
 import type { Trip } from '../lib/trips'
 import { formatDistance, type UnitSystem } from '../lib/units'
@@ -183,9 +183,8 @@ function TripRow({
 }) {
   const views = planDayViews(piece.trip.plan)
   const recorded = piece.trip.recorded === true
-  const dates = views
-    .map((day) => day.date)
-    .filter((date): date is string => date !== null)
+  // Every surface that names a trip prints its dates (#805).
+  const dates = tripDateRange(views.map((day) => day.date))
 
   return (
     <button
@@ -204,7 +203,7 @@ function TripRow({
       <span className="hike-zoom__trip-figures">
         {formatDistance(piece.span.to - piece.span.from, units)}
         {!recorded && ` · ${views.length} ${views.length === 1 ? 'day' : 'days'}`}
-        {dates.length > 0 && ` · from ${dayDateLabel(dates[0])}`}
+        {` · ${dates ?? 'no dates yet'}`}
         {open && ' · open'}
       </span>
     </button>

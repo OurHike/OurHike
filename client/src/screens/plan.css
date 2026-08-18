@@ -1572,3 +1572,79 @@
   text-transform: uppercase;
   color: var(--fg-2);
 }
+
+/* ----- the Plan home (#805) ----- */
+
+.plan-home {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+}
+
+.plan-home__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.plan-home__section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.plan-home__title {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.plan-home__all {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--link);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.plan-home__open,
+.plan-home__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  padding: var(--space-3, 12px);
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  background: var(--surface-card);
+  color: var(--fg-1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* The one thing on the screen with somewhere obvious to go back to. */
+.plan-home__open {
+  border: 2px solid var(--accent-blaze-orange);
+}
+
+.plan-home__open-name {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.plan-home__row-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.plan-home__meta {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-2);
+}

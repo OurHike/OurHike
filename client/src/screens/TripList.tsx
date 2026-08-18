@@ -19,7 +19,7 @@ import { useState } from 'react'
 import type { ElevationProfile } from '../lib/elevationProfile'
 import { hikeFigures, type Hike } from '../lib/hikes'
 import { planDayViews, walkedDayCount } from '../lib/plan'
-import { dayDateLabel } from '../lib/planDisplay'
+import { tripDateRange } from '../lib/planDisplay'
 import type { StoredPoi } from '../lib/trailData'
 import { groupFigures, type TripGroup } from '../lib/tripGroups'
 import type { Trip } from '../lib/trips'
@@ -155,9 +155,10 @@ export function TripList({
         <ul className="trip-list__items">
           {trips.map((trip) => {
             const note = walkedNote(trip)
-            const dates = planDayViews(trip.plan)
-              .map((day) => day.date)
-              .filter((date): date is string => date !== null)
+            // Every surface that names a trip prints its dates (#805). An
+            // undated one says so rather than looking like a dated trip
+            // with the dates missing.
+            const dates = tripDateRange(planDayViews(trip.plan).map((day) => day.date))
             return (
               <li
                 key={trip.id}
@@ -201,7 +202,7 @@ export function TripList({
                       <span className="trip-list__name">{trip.name}</span>
                       <span className="trip-list__meta">
                         {summarise(trip, units)}
-                        {dates.length > 0 && ` · from ${dayDateLabel(dates[0])}`}
+                        {` · ${dates ?? 'no dates yet'}`}
                       </span>
                     </button>
                     <div className="trip-list__actions">

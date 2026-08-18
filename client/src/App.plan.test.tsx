@@ -283,11 +283,10 @@ describe('the planning flow', () => {
     render(<App />)
     await user.click(await screen.findByRole('tab', { name: 'Plan' }))
 
-    // The open trip is the one named in the header.
-    expect(await screen.findByText('Autumn section')).toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: 'All 2 trips' }))
-    expect(await screen.findByRole('dialog', { name: 'Your trips' })).toBeInTheDocument()
+    // Two trips, so the tab opens on its home (#805) - the open one under
+    // "carry on with", and both of them listed.
+    expect(await screen.findByText('Carry on with')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /Autumn section/ })).toHaveLength(2)
     await user.click(screen.getByRole('button', { name: /Spring section/ }))
 
     // Switched, and the other trip is still there rather than overwritten.
@@ -336,7 +335,11 @@ describe('the planning flow', () => {
 
     render(<App />)
     await user.click(await screen.findByRole('tab', { name: 'Plan' }))
-    await user.click(await screen.findByRole('button', { name: 'Hike' }))
+    // The Plan tab now opens on its home when there is something to choose
+    // between (#805), so the hike is one tap in rather than a zoom away.
+    await user.click(
+      await screen.findByRole('button', { name: /The whole thing, eventually/ }),
+    )
 
     // The walked trip, and the ground past it that nobody has walked -
     // named at both ends rather than only measured.
@@ -392,7 +395,11 @@ describe('the planning flow', () => {
 
     render(<App />)
     await user.click(await screen.findByRole('tab', { name: 'Plan' }))
-    await user.click(await screen.findByRole('button', { name: 'Hike' }))
+    // The Plan tab now opens on its home when there is something to choose
+    // between (#805), so the hike is one tap in rather than a zoom away.
+    await user.click(
+      await screen.findByRole('button', { name: /The whole thing, eventually/ }),
+    )
     await user.click(screen.getByRole('button', { name: /What’s left/ }))
 
     // One walked stretch, one gap, and both of its ends offered.

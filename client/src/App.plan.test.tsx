@@ -300,6 +300,62 @@ describe('the planning flow', () => {
     expect(store.openId).toBe('trip-2')
   })
 
+  it('zooms out to the hike, and starts a route where a gap begins (#790)', async () => {
+    // The section hiker's loop, end to end: what is walked, what is not,
+    // and one tap from a gap into the builder that fills it.
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    app.store.set(TRIPS_KEY, {
+      openId: 'trip-1',
+      trips: [
+        {
+          id: 'trip-1',
+          name: 'Autumn section',
+          plan: {
+            target: { miles: 8 },
+            stops: [
+              { mile: 3.2, name: 'Front Shelter', poiId: 's3', resupply: false },
+              { mile: 10.2, name: 'Middle Shelter', poiId: 's10', resupply: false },
+            ],
+            days: [{ id: 'day-a', pinned: false, generated: true, walked: true }],
+          },
+        },
+      ],
+      hikes: [
+        {
+          id: 'hike-1',
+          name: 'The whole thing, eventually',
+          type: 'section',
+          start: { poiId: 's3', name: 'Front Shelter', mile: 3.2 },
+          end: { poiId: 's22', name: 'Beyond Shelter', mile: 22.2 },
+          tripIds: ['trip-1'],
+        },
+      ],
+    })
+
+    render(<App />)
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+    await user.click(await screen.findByRole('button', { name: 'Hike' }))
+
+    // The walked trip, and the ground past it that nobody has walked -
+    // named at both ends rather than only measured.
+    expect(
+      await screen.findByRole('heading', { name: 'The whole thing, eventually' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('12.0 mi not walked')).toBeInTheDocument()
+    expect(screen.getByText(/Middle Shelter → Beyond Shelter/)).toBeInTheDocument()
+    expect(screen.getByText('7.0 mi walked · 12.0 mi to go')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Plan this stretch' }))
+
+    // The builder, on the map, already starting where the gap does.
+    expect(
+      await screen.findByRole('dialog', { name: 'Plan a route' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Middle Shelter')).toBeInTheDocument()
+  })
+
   it('places a start through the map door, refusals said out loud, and keeps the draft across tabs', async () => {
     const user = userEvent.setup()
     app.onboard()

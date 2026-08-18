@@ -50,3 +50,29 @@ export function dayRowHeight(walkingMinutes: number): number {
     Math.round((walkingMinutes / 60) * ROW_PX_PER_WALKING_HOUR) + ROW_CHROME_PX,
   )
 }
+
+/**
+ * TRIP ROW HEIGHT = DAYS, the same physical encoding one zoom out (#790).
+ *
+ * A day row is as tall as its walking hours; a trip row is as tall as its
+ * days. So a long summer reads long before a single number has been read,
+ * and the hike zoom and the day zoom teach the same thing about size rather
+ * than two different things.
+ *
+ * The constants are layout, like the day row's: sized so a fortnight sits
+ * near a comfortable card height on a phone. Same touch-target floor, for
+ * the same reason - every row is tappable, and a one-day trip must not be
+ * an untappable sliver. And a CEILING, which the day row does not need: a
+ * recorded stretch can carry a hundred boundaries (#789), and a row taller
+ * than the screen is not an encoding, it is a scroll trap.
+ */
+export const TRIP_PX_PER_DAY = 4
+export const TRIP_CHROME_PX = 34
+export const MAX_TRIP_ROW_PX = 160
+
+export function tripRowHeight(days: number): number {
+  return Math.min(
+    MAX_TRIP_ROW_PX,
+    Math.max(MIN_ROW_PX, Math.round(days * TRIP_PX_PER_DAY) + TRIP_CHROME_PX),
+  )
+}

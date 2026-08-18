@@ -8,13 +8,18 @@ import { describe, expect, it } from 'vitest'
 
 import {
   clipSpans,
+  gapSpans,
+  hikeBounds,
   hikeFigures,
+  hikePieces,
   recordedPlan,
   hikeFromTrips,
   hikeOfTrip,
   mergeSpans,
   resolvePlace,
+  spanFraction,
   spanLength,
+  tripSpan,
   validateHike,
   walkedSpans,
   type Hike,
@@ -352,5 +357,330 @@ describe('recordedPlan - ground already walked (#789)', () => {
 
     expect(figures.walkedMi).toBe(140) // not 180
     expect(figures.leftMi).toBe(60)
+  })
+})
+
+describe('gapSpans - what is left, and where (#790)', () => {
+  function trip(id: string, from: number, to: number, walked: boolean): Trip {
+    const plan: HikePlan = buildPlan(
+      [
+        { mile: from, resupply: false },
+        { mile: to, resupply: false },
+      ],
+      { miles: 15 },
+    )
+    if (walked) plan.days[0].walked = true
+    return { id, name: id, plan }
+  }
+
+  const hike: Hike = {
+    id: 'h1',
+    name: 'Virginia',
+    type: 'section',
+    start: { mile: 0 },
+    end: { mile: 100 },
+    tripIds: ['a', 'b'],
+  }
+
+  it('is the complement of the walked ground, in trail order', () => {
+    const gaps = gapSpans(hike, [trip('a', 10, 30, true), trip('b', 60, 80, true)], POIS)
+
+    expect(gaps).toEqual([
+      { from: 0, to: 10 },
+      { from: 30, to: 60 },
+      { from: 80, to: 100 },
+    ])
+  })
+
+  it('is the whole hike when nothing has been walked', () => {
+    expect(gapSpans(hike, [], POIS)).toEqual([{ from: 0, to: 100 }])
+  })
+
+  it('is nothing at all when the hike is finished', () => {
+    // The only honest way to say "done": no gaps left to draw. Not a
+    // percentage, not a badge - the rows simply run out.
+    expect(gapSpans(hike, [trip('a', 0, 100, true)], POIS)).toEqual([])
+  })
+
+  it('does not let a PLANNED trip close a gap', () => {
+    // The distinction the whole screen turns on: an intention is not a
+    // record, and a hiker looking at what is left must see ground they have
+    // not walked even where they have already booked the shuttle.
+    const gaps = gapSpans(hike, [trip('a', 10, 30, false)], POIS)
+    expect(gaps).toEqual([{ from: 0, to: 100 }])
+  })
+
+  it('does not let a trip past the ends shrink the hike', () => {
+    const gaps = gapSpans(hike, [trip('a', -50, 20, true)], POIS)
+    expect(gaps).toEqual([{ from: 20, to: 100 }])
+  })
+
+  it('drops slivers too short to be anything but arithmetic', () => {
+    // Two trips that meet 0.05 mi apart left a gap nobody skipped.
+    const gaps = gapSpans(
+      hike,
+      [trip('a', 0, 49.95, true), trip('b', 50, 100, true)],
+      POIS,
+    )
+    expect(gaps).toEqual([])
+
+    // A tenth of a mile more and it is a real, if short, piece of trail.
+    expect(
+      gapSpans(hike, [trip('a', 0, 49.5, true), trip('b', 50, 100, true)], POIS),
+    ).toEqual([{ from: 49.5, to: 50 }])
+  })
+
+  it('ignores trips belonging to another hike', () => {
+    const gaps = gapSpans({ ...hike, tripIds: ['a'] }, [trip('b', 0, 100, true)], POIS)
+    expect(gaps).toEqual([{ from: 0, to: 100 }])
+  })
+
+  it('follows the references, so a relocation moves the gap with the hike', () => {
+    const anchored: Hike = {
+      ...hike,
+      start: { poiId: 'damascus', mile: 470.8 },
+      end: { poiId: 'atkins', mile: 503.3 },
+      tripIds: [],
+    }
+    // Damascus publishes at 471.2 today, not the 470.8 that was cached.
+    expect(gapSpans(anchored, [], POIS)).toEqual([{ from: 471.2, to: 503.3 }])
+  })
+})
+
+describe('tripSpan', () => {
+  it('spans the outermost stops, planned or walked', () => {
+    const plan = buildPlan(
+      [
+        { mile: 30, resupply: false },
+        { mile: 10, resupply: false },
+        { mile: 20, resupply: false },
+      ],
+      { miles: 15 },
+    )
+    expect(tripSpan({ id: 't', name: 't', plan })).toEqual({ from: 10, to: 30 })
+  })
+
+  it('is null for a trip covering no ground', () => {
+    const plan = buildPlan(
+      [
+        { mile: 10, resupply: false },
+        { mile: 10, resupply: false },
+      ],
+      { miles: 15 },
+    )
+    expect(tripSpan({ id: 't', name: 't', plan })).toBeNull()
+  })
+})
+
+describe('spanFraction', () => {
+  const bounds = { from: 100, to: 200 }
+
+  it('places a span as a fraction of the hike', () => {
+    expect(spanFraction({ from: 125, to: 150 }, bounds)).toEqual({
+      start: 0.25,
+      length: 0.25,
+    })
+  })
+
+  it('clamps a span that runs past the ends, rather than painting outside', () => {
+    expect(spanFraction({ from: 0, to: 300 }, bounds)).toEqual({ start: 0, length: 1 })
+    expect(spanFraction({ from: 0, to: 50 }, bounds)).toEqual({ start: 0, length: 0 })
+  })
+
+  it('refuses to divide by a hike with no length', () => {
+    expect(spanFraction({ from: 0, to: 10 }, { from: 5, to: 5 })).toEqual({
+      start: 0,
+      length: 0,
+    })
+  })
+})
+
+describe('hikeBounds', () => {
+  it('resolves both ends and orders them low to high', () => {
+    const hike: Hike = {
+      id: 'h',
+      name: 'Backwards',
+      type: 'section',
+      start: { poiId: 'atkins', mile: 503.3 },
+      end: { poiId: 'damascus', mile: 470.8 },
+      tripIds: [],
+    }
+    expect(hikeBounds(hike, POIS)).toEqual({ from: 471.2, to: 503.3 })
+  })
+})
+
+describe('hikePieces - a hike’s contents in trail order (#790)', () => {
+  function trip(id: string, from: number, to: number, walked: boolean): Trip {
+    const plan: HikePlan = buildPlan(
+      [
+        { mile: from, name: `Stop ${from}`, resupply: false },
+        { mile: to, name: `Stop ${to}`, resupply: false },
+      ],
+      { miles: 15 },
+    )
+    if (walked) plan.days[0].walked = true
+    return { id, name: id, plan }
+  }
+
+  const hike: Hike = {
+    id: 'h1',
+    name: 'Virginia',
+    type: 'section',
+    start: { name: 'Damascus', mile: 0 },
+    end: { name: 'Rockfish Gap', mile: 100 },
+    tripIds: ['a', 'b'],
+  }
+
+  it('interleaves trips and gaps, low mile first', () => {
+    const pieces = hikePieces(
+      hike,
+      [trip('b', 60, 80, true), trip('a', 10, 30, true)],
+      POIS,
+    )
+
+    expect(pieces.map((piece) => piece.kind)).toEqual([
+      'gap',
+      'trip',
+      'gap',
+      'trip',
+      'gap',
+    ])
+    expect(pieces.map((piece) => piece.span.from)).toEqual([0, 10, 30, 60, 80])
+  })
+
+  it('names a gap’s ends from what the hike already knows', () => {
+    const pieces = hikePieces(hike, [trip('a', 10, 30, true)], POIS)
+    const gaps = pieces.filter((piece) => piece.kind === 'gap')
+
+    // The hike's own end, then the stop the trip started at - as
+    // references, so "plan this stretch" opens on the place the row named.
+    expect(gaps[0]).toMatchObject({
+      from: { name: 'Damascus', mile: 0 },
+      to: { name: 'Stop 10', mile: 10 },
+    })
+    expect(gaps[1]).toMatchObject({
+      from: { name: 'Stop 30', mile: 30 },
+      to: { name: 'Rockfish Gap', mile: 100 },
+    })
+  })
+
+  it('leaves a boundary nobody named as a bare mile rather than inventing a place', () => {
+    const unnamed: Hike = { ...hike, start: { mile: 0 }, end: { mile: 100 } }
+    const plan = buildPlan(
+      [
+        { mile: 10, resupply: false },
+        { mile: 30, resupply: false },
+      ],
+      { miles: 15 },
+    )
+    plan.days[0].walked = true
+    const pieces = hikePieces(unnamed, [{ id: 'a', name: 'a', plan }], POIS)
+    const gaps = pieces.filter((piece) => piece.kind === 'gap')
+
+    // No name anywhere to take, and none invented: the mile is all it has.
+    expect(gaps[0]).toMatchObject({ from: { mile: 0 }, to: { mile: 10 } })
+    expect(gaps[0].kind === 'gap' && gaps[0].from.name).toBeUndefined()
+  })
+
+  it('gives a planned trip a row of its own, not a gap row over the top of it', () => {
+    // The rows partition the hike; the arithmetic does not. A trip on the
+    // calendar still counts as ground to walk (`gapSpans`, `leftMi`), and
+    // still gets its own row rather than being buried under a gap saying
+    // the same ground twice.
+    const pieces = hikePieces(hike, [trip('a', 10, 30, false)], POIS)
+
+    expect(pieces.map((piece) => piece.kind)).toEqual(['gap', 'trip', 'gap'])
+    expect(pieces.map((piece) => piece.span)).toEqual([
+      { from: 0, to: 10 },
+      { from: 10, to: 30 },
+      { from: 30, to: 100 },
+    ])
+    // ...and the same trip closes none of what is left to walk.
+    expect(spanLength(gapSpans(hike, [trip('a', 10, 30, false)], POIS))).toBe(100)
+  })
+
+  it('says whether a trip is walked, part walked, or only planned', () => {
+    const part = buildPlan(
+      [
+        { mile: 10, resupply: false },
+        { mile: 20, resupply: false },
+        { mile: 30, resupply: false },
+      ],
+      { miles: 15 },
+    )
+    part.days[0].walked = true
+
+    const pieces = hikePieces(
+      { ...hike, tripIds: ['a', 'b', 'c'] },
+      [
+        trip('a', 10, 30, true),
+        trip('b', 60, 80, false),
+        { id: 'c', name: 'c', plan: part },
+      ],
+      POIS,
+    )
+    const states = pieces
+      .filter((piece) => piece.kind === 'trip')
+      .map((piece) => (piece.kind === 'trip' ? piece.state : null))
+
+    // 'a' and 'c' cover the same ground; the walked one sorts first.
+    expect(states).toEqual(['walked', 'part', 'planned'])
+  })
+
+  it('carries the walked parts of a part-walked trip', () => {
+    const part = buildPlan(
+      [
+        { mile: 10, resupply: false },
+        { mile: 20, resupply: false },
+        { mile: 30, resupply: false },
+      ],
+      { miles: 15 },
+    )
+    part.days[1].walked = true
+
+    const pieces = hikePieces(
+      { ...hike, tripIds: ['c'] },
+      [{ id: 'c', name: 'c', plan: part }],
+      POIS,
+    )
+    const only = pieces.find((piece) => piece.kind === 'trip')
+
+    expect(only?.kind === 'trip' && only.walked).toEqual([{ from: 20, to: 30 }])
+  })
+
+  it('clips a trip that wanders past the hike, and drops one entirely outside', () => {
+    const pieces = hikePieces(
+      { ...hike, tripIds: ['a', 'b'] },
+      [trip('a', -20, 30, true), trip('b', 200, 260, true)],
+      POIS,
+    )
+
+    expect(pieces.filter((piece) => piece.kind === 'trip')).toHaveLength(1)
+    expect(pieces[0].span).toEqual({ from: 0, to: 30 })
+  })
+
+  it('drops a trip covering no ground rather than drawing a zero-width piece', () => {
+    const nowhere = buildPlan(
+      [
+        { mile: 10, resupply: false },
+        { mile: 10, resupply: false },
+      ],
+      { miles: 15 },
+    )
+    const pieces = hikePieces(
+      { ...hike, tripIds: ['z'] },
+      [{ id: 'z', name: 'z', plan: nowhere }],
+      POIS,
+    )
+
+    expect(pieces).toEqual([
+      {
+        kind: 'gap',
+        id: 'gap-0-100',
+        span: { from: 0, to: 100 },
+        from: { name: 'Damascus', mile: 0 },
+        to: { name: 'Rockfish Gap', mile: 100 },
+      },
+    ])
   })
 })

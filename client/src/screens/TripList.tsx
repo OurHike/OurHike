@@ -4,11 +4,12 @@
 // trip overwrote the first, and there was nowhere to see that a hiker had a
 // history at all.
 //
-// DELIBERATELY SMALL. This is a switcher, not the hike surface - **#790 —
-// The Plan tab gains three zooms** replaces this chrome with the hike zoom,
-// where trips sit under a hike beside the gaps between them. Everything here
-// is the minimum that stops plans being destroyed: see them, open one,
-// rename it, delete it.
+// DELIBERATELY SMALL. This is a switcher, not the hike surface: the hike
+// zoom (screens/HikeZoom.tsx, #790) is where trips sit in trail order beside
+// the gaps between them, and it is the screen to add to. Everything here is
+// the minimum that stops plans being destroyed: see them, open one, rename
+// it, delete it - plus the roll-up block below, which is how a hiker with no
+// hike yet finds the button that makes one.
 //
 // Every figure comes off the plan itself rather than being stored beside it,
 // the same rule the timeline follows - a trip that says "3 days" and a

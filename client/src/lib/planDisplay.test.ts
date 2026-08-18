@@ -9,6 +9,10 @@ import {
   ROW_CHROME_PX,
   ROW_PX_PER_WALKING_HOUR,
   stopLabel,
+  MAX_TRIP_ROW_PX,
+  TRIP_CHROME_PX,
+  TRIP_PX_PER_DAY,
+  tripRowHeight,
 } from './planDisplay'
 
 describe('stopLabel', () => {
@@ -42,5 +46,28 @@ describe('dayRowHeight', () => {
   it('never drops below the touch-target floor', () => {
     expect(dayRowHeight(0)).toBe(MIN_ROW_PX)
     expect(dayRowHeight(30)).toBe(MIN_ROW_PX)
+  })
+})
+
+describe('tripRowHeight (#790)', () => {
+  it('scales with days, the way a day row scales with hours', () => {
+    // The one thing the two zooms must agree on: bigger means more.
+    const ten = tripRowHeight(10)
+    const eleven = tripRowHeight(11)
+    expect(eleven - ten).toBe(TRIP_PX_PER_DAY)
+    expect(ten).toBe(10 * TRIP_PX_PER_DAY + TRIP_CHROME_PX)
+  })
+
+  it('keeps a one-day trip tappable', () => {
+    expect(tripRowHeight(1)).toBe(MIN_ROW_PX)
+    expect(tripRowHeight(0)).toBe(MIN_ROW_PX)
+  })
+
+  it('stops growing before a row becomes a scroll trap', () => {
+    // A recorded stretch (#789) can carry a hundred boundaries. Proportional
+    // beyond a screen height stops encoding anything and starts hiding the
+    // rows underneath it.
+    expect(tripRowHeight(400)).toBe(MAX_TRIP_ROW_PX)
+    expect(tripRowHeight(10_000)).toBe(MAX_TRIP_ROW_PX)
   })
 })

@@ -355,3 +355,258 @@ export function recordedPlan(stops: PlanStop[], walkedOn?: string): HikePlan {
 
 /** See recordedPlan: a number the shape demands and nothing reads. */
 const PLACEHOLDER_TARGET_MI = 1
+
+// ---------------------------------------------------------------------------
+// The gaps (#790's rows; #791's screen).
+//
+// A gap is DERIVED and never stored: what is left when the walked stretches
+// are subtracted from the hike's own ends. Same discipline that already
+// derives a plan's sections from where resupply happens - and it means a gap
+// cannot go stale against the record it describes.
+
+/**
+ * How short a leftover has to be before it stops being a gap worth showing.
+ *
+ * @unvalidated 0.2 mi is picked, not measured. The problem it answers is
+ * real and named in #791: miles get walked slightly differently than they
+ * get recorded - a stretch recalled from memory years later, a day that
+ * ended a few hundred feet short of the shelter it was planned to - and the
+ * subtraction leaves slivers nobody skipped. Showing them is noise that
+ * makes the screen look broken; hiding them quietly calls a hike finished
+ * that is not.
+ *
+ * What would settle it: the distribution of leftover lengths across real
+ * recorded hikes, once there are any. Until then this is deliberately on
+ * the SMALL side - it hides a rounding artefact and cannot hide a stretch
+ * anybody would notice walking, which is the direction that errs toward
+ * telling a hiker they still owe something rather than that they do not.
+ */
+export const MIN_GAP_MI = 0.2
+
+/**
+ * The stretches of a hike nobody has walked yet, in trail order.
+ *
+ * Planned trips are NOT subtracted: a trip on the calendar closes no gap
+ * until it is walked, which is the same rule the roll-up follows and the
+ * one that keeps "what's left" honest about the difference between an
+ * intention and a record.
+ */
+export function gapSpans(
+  hike: Hike,
+  trips: readonly Trip[],
+  pois: readonly StoredPoi[],
+  minGapMi: number = MIN_GAP_MI,
+): Span[] {
+  const start = resolvePlace(hike.start, pois)
+  const end = resolvePlace(hike.end, pois)
+  const bounds: Span = {
+    from: Math.min(start.mile, end.mile),
+    to: Math.max(start.mile, end.mile),
+  }
+
+  const walked = mergeSpans(
+    clipSpans(
+      trips
+        .filter((trip) => hike.tripIds.includes(trip.id))
+        .flatMap((trip) => walkedSpans(trip.plan)),
+      bounds,
+    ),
+  )
+
+  const gaps: Span[] = []
+  let at = bounds.from
+  for (const span of walked) {
+    if (span.from > at) gaps.push({ from: at, to: span.from })
+    at = Math.max(at, span.to)
+  }
+  if (at < bounds.to) gaps.push({ from: at, to: bounds.to })
+
+  return gaps.filter((gap) => gap.to - gap.from >= minGapMi)
+}
+
+/** The ground one trip covers, walked or not - what a row on the hike zoom
+ *  spans. Null for a trip describing no ground (every stop at one mile). */
+export function tripSpan(trip: Trip): Span | null {
+  const miles = trip.plan.stops.map((stop) => stop.mile)
+  if (miles.length === 0) return null
+  const from = Math.min(...miles)
+  const to = Math.max(...miles)
+  return to > from ? { from, to } : null
+}
+
+/** Where a span sits inside a hike, as fractions from 0 to 1 - what the
+ *  ribbon positions its bands by. Clamped, so a trip wandering past the
+ *  hike's ends paints inside the ribbon rather than outside it. */
+export function spanFraction(
+  span: Span,
+  bounds: Span,
+): { start: number; length: number } {
+  const total = bounds.to - bounds.from
+  if (total <= 0) return { start: 0, length: 0 }
+  const from = Math.min(Math.max(span.from, bounds.from), bounds.to)
+  const to = Math.min(Math.max(span.to, bounds.from), bounds.to)
+  return { start: (from - bounds.from) / total, length: (to - from) / total }
+}
+
+/** A hike's own extent, resolved - the ribbon's and the gaps' frame. */
+export function hikeBounds(hike: Hike, pois: readonly StoredPoi[]): Span {
+  const start = resolvePlace(hike.start, pois)
+  const end = resolvePlace(hike.end, pois)
+  return {
+    from: Math.min(start.mile, end.mile),
+    to: Math.max(start.mile, end.mile),
+  }
+}
+
+/**
+ * A hike's contents in trail order: the trips, and the gaps between them.
+ *
+ * One list rather than two, because a gap is only meaningful in the company
+ * of the pieces on either side of it - and because the hike zoom and the
+ * ribbon must not be able to disagree about what a hike contains.
+ *
+ * A trip covering no ground inside the hike is not here. It has nothing to
+ * draw on a trail-ordered list and no honest place between two neighbours;
+ * it is still in the trip switcher, which is a list of what a hiker kept
+ * rather than a picture of where they walked.
+ */
+export type HikePiece =
+  | {
+      kind: 'trip'
+      id: string
+      trip: Trip
+      /** The trip's ground, clipped to the hike. */
+      span: Span
+      /** The walked parts of it, so the ribbon can ink what happened and
+       *  hatch what is only intended - inside one piece as well as between
+       *  pieces. */
+      walked: Span[]
+      state: 'walked' | 'part' | 'planned'
+    }
+  | { kind: 'gap'; id: string; span: Span; from: PlaceRef; to: PlaceRef }
+
+export function hikePieces(
+  hike: Hike,
+  trips: readonly Trip[],
+  pois: readonly StoredPoi[],
+): HikePiece[] {
+  const bounds = hikeBounds(hike, pois)
+  const mine = hike.tripIds
+    .map((id) => trips.find((trip) => trip.id === id))
+    .filter((trip): trip is Trip => trip !== undefined)
+
+  const pieces: HikePiece[] = []
+
+  for (const trip of mine) {
+    const span = tripSpan(trip)
+    if (span === null) continue
+    const clipped = clipSpans([span], bounds)
+    if (clipped.length === 0) continue
+    const walked = mergeSpans(clipSpans(walkedSpans(trip.plan), bounds))
+    const walkedMi = spanLength(walked)
+    const spanMi = spanLength(clipped)
+    pieces.push({
+      kind: 'trip',
+      id: trip.id,
+      trip,
+      span: clipped[0],
+      walked,
+      // The comparison is against the trip's own ground, so a trip walked
+      // end to end reads walked even where a rounding artefact is left
+      // behind - the same threshold the gaps use, for the same reason.
+      state:
+        walkedMi <= 0 ? 'planned' : spanMi - walkedMi < MIN_GAP_MI ? 'walked' : 'part',
+    })
+  }
+
+  // A GAP ROW IS NOT THE SAME THING AS A GAP.
+  //
+  // `gapSpans` is what is left to WALK, so a trip on the calendar does not
+  // close one - that is the arithmetic behind "70 mi to go" and it stays
+  // that way.
+  //
+  // A row, though, has to be somewhere on a list, and a gap row overlapping
+  // a planned trip's row would put the same ground in two places with two
+  // different labels on it. So the rows partition the hike: ground with a
+  // trip on it gets that trip's row, which already says whether it was
+  // walked; ground with nothing on it at all gets a gap row. The two add up
+  // to the same "to go" the ribbon prints - split into "you have a plan for
+  // this" and "you have nothing here", which is the split a hiker deciding
+  // what to do next is actually making.
+  const covered = mergeSpans(pieces.map((piece) => piece.span))
+  let at = bounds.from
+  const bare: Span[] = []
+  for (const span of covered) {
+    if (span.from > at) bare.push({ from: at, to: span.from })
+    at = Math.max(at, span.to)
+  }
+  if (at < bounds.to) bare.push({ from: at, to: bounds.to })
+
+  for (const span of bare) {
+    if (span.to - span.from < MIN_GAP_MI) continue
+    pieces.push({
+      kind: 'gap',
+      id: `gap-${span.from}-${span.to}`,
+      span,
+      from: refAtMile(span.from, hike, mine, pois),
+      to: refAtMile(span.to, hike, mine, pois),
+    })
+  }
+
+  return pieces.sort((a, b) => a.span.from - b.span.from || a.span.to - b.span.to)
+}
+
+/**
+ * The place a gap begins or ends at.
+ *
+ * Only places the hike already knows are consulted: its own ends, and the
+ * stops of its trips - which is where every gap boundary comes from, since
+ * a gap is exactly the complement of what those trips cover. A reference
+ * rather than a name, so tapping "plan this stretch" hands the route
+ * builder the same place the row named rather than a bare mile that then
+ * has to be recognised again.
+ *
+ * DELIBERATELY NOT a search of the download for whatever POI is nearest.
+ * The nearest POI to a gap's end is not necessarily anywhere a hiker could
+ * start or finish - naming the ends by somewhere you can actually get to is
+ * #791's job, and doing half of it here would put a name on the screen that
+ * looks like an access point and is not. A boundary nobody named stays a
+ * mile marker, which is a real shared reference rather than a guess.
+ */
+function refAtMile(
+  mile: number,
+  hike: Hike,
+  trips: readonly Trip[],
+  pois: readonly StoredPoi[],
+): PlaceRef {
+  // Float noise only - a gap boundary is a stop's mile carried through
+  // Math.min/max and clipping, never arithmetic on it.
+  const EPS = 0.01
+
+  for (const end of [hike.start, hike.end]) {
+    const resolved = resolvePlace(end, pois)
+    if (Math.abs(resolved.mile - mile) < EPS && resolved.name !== undefined) {
+      return {
+        mile,
+        name: resolved.name,
+        ...(end.poiId === undefined ? {} : { poiId: end.poiId }),
+      }
+    }
+  }
+  for (const trip of trips) {
+    for (const stop of trip.plan.stops) {
+      if (
+        Math.abs(stop.mile - mile) < EPS &&
+        stop.name !== undefined &&
+        stop.name !== ''
+      ) {
+        return {
+          mile,
+          name: stop.name,
+          ...(stop.poiId === undefined ? {} : { poiId: stop.poiId }),
+        }
+      }
+    }
+  }
+  return { mile }
+}

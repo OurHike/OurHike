@@ -742,3 +742,287 @@
   color: var(--fg-1);
   cursor: pointer;
 }
+
+/* ----- the three zooms (#790) ----- */
+
+/* Hike | Trip | Days. Only ever rendered with something on the other side
+   of it - a zoom out to a hike that does not exist would be the dead button
+   the route builder's own entrance was reworked to remove. */
+.plan__zoombar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.plan__zooms {
+  display: flex;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.plan__zoom {
+  flex: 1;
+  padding: var(--space-2, 8px) 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg-3);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.plan__zoom--on {
+  background: var(--brand-primary);
+  color: var(--fg-on-brand);
+}
+
+.plan__crumb {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plan__crumb-up {
+  color: var(--link);
+}
+
+/* ----- the ribbon (screens/TrailRibbon.tsx) ----- */
+
+.ribbon {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+}
+
+.ribbon__track {
+  position: relative;
+  height: 20px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.ribbon__band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  /* At roughly seven miles to the pixel a short trip rounds to nothing.
+     A sliver is still drawn, because a band that vanishes says the trip
+     does not exist - and the ROW underneath is the real tap target, which
+     is why a 3px band being hard to hit is not the problem it looks. */
+  min-width: 3px;
+}
+
+.ribbon__band--walked {
+  background: var(--brand-primary);
+}
+
+.ribbon__band--part,
+.ribbon__band--planned {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--accent-blaze-orange) 0 3px,
+    transparent 3px 6px
+  );
+}
+
+/* A gap paints nothing: the track's own surface IS "not walked yet", so the
+   hollow reads as absence rather than as another kind of thing. It stays a
+   button - scrubbing to what is left is the point of the ribbon. */
+.ribbon__band--gap {
+  background: transparent;
+}
+
+.ribbon__band[aria-pressed='true'] {
+  outline: 2px solid var(--fg-1);
+  outline-offset: -2px;
+}
+
+.ribbon__band-walked {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--brand-primary);
+}
+
+.ribbon__here {
+  position: relative;
+  display: block;
+  width: 0;
+  height: 6px;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 6px solid var(--fg-1);
+  transform: translateX(-5px);
+}
+
+.ribbon__ends {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2, 8px);
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.ribbon__figures {
+  color: var(--fg-2);
+}
+
+/* ----- the hike zoom (screens/HikeZoom.tsx) ----- */
+
+.hike-zoom {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+}
+
+.hike-zoom__note,
+.hike-zoom__empty {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+
+.hike-zoom__pieces {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.hike-zoom__row--picked .hike-zoom__trip,
+.hike-zoom__row--picked .hike-zoom__gap {
+  outline: 2px solid var(--fg-1);
+  outline-offset: 2px;
+}
+
+.hike-zoom__trip {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--space-1, 4px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg-sunken);
+  color: var(--fg-1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hike-zoom__trip--planned {
+  border-color: var(--accent-blaze-orange);
+  background: var(--surface-card-alt);
+}
+
+.hike-zoom__trip-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2, 8px);
+}
+
+.hike-zoom__trip-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.hike-zoom__trip-figures,
+.hike-zoom__gap-ends {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-2);
+}
+
+.hike-zoom__badge {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.hike-zoom__gap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border: 1px dashed var(--border-2);
+  border-radius: 10px;
+  background: var(--bg-page);
+}
+
+.hike-zoom__gap-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2, 8px);
+}
+
+.hike-zoom__gap-figure {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-2);
+}
+
+.hike-zoom__gap-plan {
+  align-self: flex-start;
+  padding: var(--space-1, 4px) 0;
+  border: 0;
+  background: none;
+  color: var(--link);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ----- the trip zoom: this trip's sections ----- */
+
+.plan__sections {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.plan__section-row {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--space-1, 4px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface-card);
+  color: var(--fg-1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}

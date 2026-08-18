@@ -11,6 +11,8 @@ import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { PlanScreen } from './Plan'
+import type { Hike } from '../lib/hikes'
+import type { Trip } from '../lib/trips'
 import { callItADay } from '../lib/cascade'
 import { buildPlan, insertZeroAfter, toggleResupply, type HikePlan } from '../lib/plan'
 import type { ElevationProfile } from '../lib/elevationProfile'
@@ -23,8 +25,13 @@ const PROPS = {
   units: 'imperial' as const,
   draftLive: false,
   tripName: null,
+  openTripId: null,
   tripCount: 1,
   onOpenTrips: vi.fn(),
+  hike: null as Hike | null,
+  trips: [] as readonly Trip[],
+  onOpenTrip: vi.fn(),
+  onPlanGap: vi.fn(),
   onStartOnMap: vi.fn(),
   onChangeTarget: vi.fn(),
   onInsertZeroAfter: vi.fn(),
@@ -344,5 +351,110 @@ describe('the cascade (#758)', () => {
 
     expect(container.textContent).not.toMatch(/behind/i)
     expect(container.textContent).not.toMatch(/ahead of/i)
+  })
+})
+
+describe('the three zooms (#790)', () => {
+  const HIKE: Hike = {
+    id: 'h1',
+    name: 'Virginia, over a few years',
+    type: 'section',
+    start: { name: 'Damascus', mile: 470.8 },
+    end: { name: 'Rockfish Gap', mile: 860 },
+    tripIds: ['t1'],
+  }
+
+  function tripOf(plan: HikePlan): Trip {
+    return { id: 't1', name: 'Spring section', plan }
+  }
+
+  it('offers no control at all when there is only one depth', () => {
+    // One trip, one section, no hike: nothing to zoom out to, and a control
+    // whose other segments do nothing is the dead button this app keeps
+    // designing out.
+    render(<PlanScreen {...PROPS} plan={smallPlan()} />)
+
+    expect(screen.queryByRole('group', { name: 'Zoom' })).toBeNull()
+  })
+
+  it('offers the hike once the trip belongs to one, and zooms out to it', async () => {
+    const user = userEvent.setup()
+    const plan = smallPlan()
+    render(
+      <PlanScreen
+        {...PROPS}
+        plan={plan}
+        hike={HIKE}
+        trips={[tripOf(plan)]}
+        openTripId="t1"
+      />,
+    )
+
+    expect(screen.getByRole('group', { name: 'Zoom' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Trip' })).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Hike' }))
+    expect(
+      screen.getByRole('heading', { name: 'Virginia, over a few years' }),
+    ).toBeInTheDocument()
+    // The trip's own row, and the ground past it nobody has walked.
+    expect(screen.getByText(/Spring section/)).toBeInTheDocument()
+    expect(screen.getAllByText(/not walked/).length).toBeGreaterThan(0)
+  })
+
+  it('offers the trip zoom only when there is more than one section', async () => {
+    const user = userEvent.setup()
+    // Resupply in the middle: two sections, so the middle tier has
+    // something to say the day list does not.
+    const plan = toggleResupply(smallPlan(), 2)
+    render(<PlanScreen {...PROPS} plan={plan} />)
+
+    await user.click(screen.getByRole('button', { name: 'Trip' }))
+    expect(screen.getByText('SEC 1/2')).toBeInTheDocument()
+    expect(screen.getByText('SEC 2/2')).toBeInTheDocument()
+  })
+
+  it('shows the hike when the open plan is gone, rather than "no plan yet"', () => {
+    // A deleted plan does not delete the years already walked.
+    render(<PlanScreen {...PROPS} plan={null} hike={HIKE} trips={[]} />)
+
+    expect(screen.queryByText(/No plan yet/)).toBeNull()
+    expect(
+      screen.getByRole('heading', { name: 'Virginia, over a few years' }),
+    ).toBeInTheDocument()
+  })
+
+  it('leads back up to the hike from the days', async () => {
+    const user = userEvent.setup()
+    const plan = smallPlan()
+    render(<PlanScreen {...PROPS} plan={plan} hike={HIKE} trips={[tripOf(plan)]} />)
+
+    await user.click(screen.getByRole('button', { name: /Virginia, over a few years/ }))
+    expect(
+      screen.getByRole('heading', { name: 'Virginia, over a few years' }),
+    ).toBeInTheDocument()
+  })
+
+  it('never scores a hiker at any zoom', async () => {
+    const user = userEvent.setup()
+    const plan = toggleResupply(smallPlan(), 2)
+    const { container } = render(
+      <PlanScreen
+        {...PROPS}
+        plan={plan}
+        hike={HIKE}
+        trips={[tripOf(plan)]}
+        openTripId="t1"
+      />,
+    )
+
+    const forbidden = /%|behind|ahead of|on track|streak|complete/i
+    expect(container.textContent).not.toMatch(forbidden)
+
+    await user.click(screen.getByRole('button', { name: 'Trip' }))
+    expect(container.textContent).not.toMatch(forbidden)
+
+    await user.click(screen.getByRole('button', { name: 'Hike' }))
+    expect(container.textContent).not.toMatch(forbidden)
   })
 })

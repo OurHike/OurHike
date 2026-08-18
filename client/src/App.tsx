@@ -166,7 +166,7 @@ import {
   updateTrip,
   type TripStore,
 } from './lib/trips'
-import { hikeFromTrips, recordedPlan } from './lib/hikes'
+import { hikeFromTrips, hikeOfTrip, recordedPlan, type HikePiece } from './lib/hikes'
 import { TripList } from './screens/TripList'
 import { PlanScreen } from './screens/Plan'
 import { PlanTargetSheet } from './screens/PlanTargetSheet'
@@ -1288,6 +1288,20 @@ function App() {
    * plan in the store, so an edit cannot land on a stale duplicate.
    */
   const currentTrip = useMemo(() => openTripOf(tripStore), [tripStore])
+  /**
+   * The hike the Plan tab can zoom out to (#790).
+   *
+   * The open trip's own hike, or - when it belongs to none - the hike, if
+   * there is exactly one. Two hikes and no trip to disambiguate them is a
+   * choice nobody has been asked to make, so nothing is guessed: the zoom
+   * is simply not offered until a trip says which hike is meant.
+   */
+  const currentHike = useMemo(() => {
+    const owning =
+      currentTrip === null ? null : hikeOfTrip(tripStore.hikes, currentTrip.id)
+    if (owning !== null) return owning
+    return tripStore.hikes.length === 1 ? tripStore.hikes[0] : null
+  }, [currentTrip, tripStore.hikes])
   const plan = currentTrip?.plan ?? null
 
   /** Every POI that can BE a stop: its published pipeline mile is known.
@@ -1496,17 +1510,17 @@ function App() {
   // legend, the search and the waypoint card already keep between them.
   // A draft already in progress reopens where it stood - the entrance is
   // for starting, never a toll gate on the way back to your own route.
-  const openRouteBuilder = useCallback(() => {
+  const openRouteBuilderFrom = useCallback((start: RouteDraftStop | null) => {
     setActiveTab('trail')
     setSelectedPoiId(null)
     setLegendOpen(false)
     setSearchOpen(false)
     setTargetRequest(null)
-    setRouteDraft(
-      (draft) =>
-        draft ?? {
+    setRouteDraft((draft) => {
+      if (draft === null) {
+        return {
           phase: 'entrance',
-          start: null,
+          start,
           // The mockup's own opening answers - a mid-length section, walked
           // the way most of this trail is walked. Both are one drag from
           // anything else.
@@ -1514,9 +1528,42 @@ function App() {
           miles: 45,
           days: 3,
           south: false,
-        },
-    )
+        }
+      }
+      // A suggested start fills an entrance that has none yet, and never
+      // overwrites a route the hiker is already editing: their own draft
+      // outranks a starting point this app proposed.
+      if (start === null || draft.phase !== 'entrance') return draft
+      return { ...draft, start }
+    })
   }, [])
+
+  const openRouteBuilder = useCallback(
+    () => openRouteBuilderFrom(null),
+    [openRouteBuilderFrom],
+  )
+
+  /**
+   * Start a route at the beginning of a stretch nobody has walked (#790's
+   * gap row).
+   *
+   * The gap's low end and nothing else: how far, which way and where it
+   * really ends are the entrance's questions, and answering them from the
+   * gap's own length would put a 554-mile "trip" in front of a hiker who
+   * asked to plan a week. Choosing WHICH gap and how much of it fits the
+   * days somebody has is **#791 - What's left**.
+   */
+  const handlePlanGap = useCallback(
+    (gap: Extract<HikePiece, { kind: 'gap' }>) => {
+      openRouteBuilderFrom({
+        mile: gap.from.mile,
+        clientMile: anchoredClientMile(gap.from.mile, mileAnchors),
+        ...(gap.from.name === undefined ? {} : { name: gap.from.name }),
+        ...(gap.from.poiId === undefined ? {} : { poiId: gap.from.poiId }),
+      })
+    },
+    [openRouteBuilderFrom, mileAnchors],
+  )
 
   /** One field of the entrance changes; everything else stands. */
   const patchEntrance = useCallback(
@@ -2531,7 +2578,12 @@ function App() {
                 onReplacePlan={handleReplacePlan}
                 onDeletePlan={handleDeletePlan}
                 tripName={currentTrip?.name ?? null}
+                openTripId={tripStore.openId}
                 tripCount={tripStore.trips.length}
+                hike={currentHike}
+                trips={tripStore.trips}
+                onOpenTrip={handleOpenTrip}
+                onPlanGap={handlePlanGap}
                 onOpenTrips={() => setTripsOpen(true)}
                 {...(targetSheet === null ? {} : { targetSheet })}
                 {...(tripsOpen

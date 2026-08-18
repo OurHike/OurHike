@@ -70,6 +70,16 @@ FEATURES.md's v1 MVP is deliberately narrow (trail line, water, crossings, shelt
 
 **Update 2026-08-05:** and it is now scheduled - **v2's first feature**, spiked in [HIKE_PLANNING.md](HIKE_PLANNING.md). That spike checked this document's tree against everything a multi-day plan actually needs and concluded it holds without a second model: a **zero day is a Segment whose start and end are the same stop**, needing no `kind` field, and a **section is derived from where resupply happens** rather than hand-built - which answers the persona-driven-templates question below with "generate days from the route and the target, then group them by where supplies come from." It adds three fields to `Segment` (a stop reference, a `pinned` flag and a `generated` flag) and changes nothing here.
 
+**Update 2026-08-18:** the tree now has a screen. The Plan tab carries **three zooms — Hike → Trip → Days** (#790), which is this document's sentence about Segments holding Segments rendered as a control rather than as a second model. The Days zoom is the timeline that already shipped and is unchanged; the Trip zoom is the "optional middle tier … by resupply stretch" named above, derived from where resupply happens rather than stored; the Hike zoom lists a hike's trips **and the gaps between them**, because a zoom that showed only what had been walked would be a list of achievements, which is the thing the "not gamified" section above exists to prevent.
+
+Three things worth carrying rather than rediscovering:
+
+- **Gaps are derived, never stored** — the complement of what the trips cover, recomputed on every read, so a gap cannot go stale against the record it describes. Same discipline as "parent Segments are never marked complete directly".
+- **A gap ROW and "what is left to walk" are not the same set.** A trip on the calendar closes nothing until it is walked, so it stays in the miles-to-go figure; it still gets its own row rather than being buried under a gap row saying the same ground twice. The rows split what is left into "you have a plan for this" and "you have nothing here" — which is the split a hiker deciding what to do next is actually making.
+- **The ribbon above the rows is an orientation, not a measuring device.** A phone-width ribbon carrying 2,197 miles is roughly 7½ miles per pixel, so a three-day trip is eight pixels: every figure stays in the rows underneath, where it can be read. Its job is "where in this hike am I looking", plus scrubbing to somewhere else.
+
+The Plan tab's anti-gamification guard — no rendering of any plan may contain a percentage, "behind", "ahead of", "on track" or a streak — is held by a test, and now covers these surfaces too. They show far more of a plan than the timeline does, which makes them where a score would arrive uninvited.
+
 ## Open questions (for you, not decided here)
 
 - **Naming.** "Hike" and "Segment" are working names, not committed terminology — easy to change before anything's built.

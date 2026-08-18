@@ -827,6 +827,11 @@ describe('App shell', () => {
       poisWithoutAUsableIndex()
       render(<App />)
       await screen.findByRole('region', { name: /trail map/i })
+      // Node reports an unhandled rejection only after the microtask queue
+      // has drained and the promise is still handler-less, so this has to
+      // outlast a macrotask - the same reasoning as rejectionsWhile in
+      // useAppUpdate.test.ts. A deliberate real-clock wait, kept (#323): it
+      // waits for the ABSENCE reporter, not for the app.
       await new Promise((resolve) => setTimeout(resolve, 50))
     } finally {
       process.off('unhandledRejection', onUnhandled)

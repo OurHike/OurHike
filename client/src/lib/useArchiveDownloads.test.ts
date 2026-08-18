@@ -277,7 +277,11 @@ describe('holding several packages at once', () => {
 
     rerender()
     rerender()
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    // A re-keyed mount effect issues its reads in the effect flush the
+    // rerender itself performs; draining the microtask queue lets any async
+    // read chain surface too. Deterministic under load, where the 20 ms
+    // real-clock sleep this replaces was not (#323).
+    await act(async () => {})
 
     expect(vi.mocked(get).mock.calls.length).toBe(afterMount)
   })

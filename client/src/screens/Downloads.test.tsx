@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, within } from '@testing-library/react'
+import { act, render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Downloads, type SheetDownload } from './Downloads'
 import { hikingDetailOptions, rasterDetailOptions } from './DetailPicker'
@@ -376,10 +376,16 @@ describe('room for the download (#190)', () => {
   })
 
   function stubEstimate(quota: number, usage: number) {
+    // Returns the promise the component will await, so an absence assertion
+    // can wait on the estimate itself having landed (#323) - the observable
+    // that proves the sequence completed, where the 20 ms real-clock sleep
+    // this replaces passed on a broken implementation exactly as readily.
+    const estimate = Promise.resolve({ quota, usage })
     vi.stubGlobal('navigator', {
       ...globalThis.navigator,
-      storage: { estimate: () => Promise.resolve({ quota, usage }) },
+      storage: { estimate: () => estimate },
     })
+    return estimate
   }
 
   it('warns before starting when the chosen tier may not fit', async () => {
@@ -418,12 +424,16 @@ describe('room for the download (#190)', () => {
   })
 
   it('stays quiet when there is room', async () => {
-    stubEstimate(10_000_000_000, 1_000_000_000)
+    const estimated = stubEstimate(10_000_000_000, 1_000_000_000)
 
     render(<Downloads sheets={[sheet()]} />)
 
-    // The estimate resolves async; give it a beat before asserting absence.
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    // Once the estimate the component awaited has resolved and act has
+    // flushed the resulting state, an absent warning is evidence rather
+    // than a race won (#323).
+    await act(async () => {
+      await estimated
+    })
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
@@ -456,7 +466,7 @@ describe('room for the download (#190)', () => {
   })
 
   it('stays quiet once it is on the phone', async () => {
-    stubEstimate(1_000_000_000, 900_000_000)
+    const estimated = stubEstimate(1_000_000_000, 900_000_000)
 
     render(
       <Downloads
@@ -472,7 +482,9 @@ describe('room for the download (#190)', () => {
       />,
     )
 
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await act(async () => {
+      await estimated
+    })
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 })

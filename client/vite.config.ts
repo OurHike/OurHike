@@ -209,6 +209,11 @@ export default defineConfig({
   ],
   test: {
     environment: 'jsdom',
+    // Pinned so a date-formatting assertion means the same thing on every
+    // machine (#323): nothing pinned it before, and DownloadCard's formatDay
+    // sets no timeZone, so its tests survived on the fixture dates happening
+    // to fall the same way in CI's zone and a developer's.
+    env: { TZ: 'UTC' },
     setupFiles: ['./src/test/setup.ts'],
     coverage: {
       provider: 'v8',

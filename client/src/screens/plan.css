@@ -550,3 +550,139 @@
   text-align: center;
   color: var(--fg-3);
 }
+
+/* ---------- Your trips (TripList.tsx, #787) ---------- */
+
+/* The plan target sheet's frame: a sheet over the Plan tab rather than a
+   screen of its own, because switching trips is a thing you do on the way to
+   looking at one. #790 replaces this with the hike zoom. */
+.trip-list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  max-height: 80%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  padding: var(--space-4, 16px);
+  background: var(--bg-surface);
+  border-top: 3px solid var(--brand-primary);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+.trip-list__empty {
+  margin: 0;
+  font-size: 14px;
+  color: var(--fg-2);
+}
+
+.trip-list__items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.trip-list__item {
+  border: 1.5px solid var(--border-1);
+  border-radius: 10px;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+}
+
+.trip-list__item--open {
+  border-color: var(--brand-primary);
+  border-width: 2px;
+}
+
+.trip-list__open {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.trip-list__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.trip-list__meta {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+.trip-list__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  flex-wrap: wrap;
+}
+
+.trip-list__badge {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-3);
+}
+
+.trip-list__action {
+  min-height: 32px;
+  padding: 0 var(--space-2, 8px);
+  border: none;
+  background: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--link);
+  cursor: pointer;
+}
+
+.trip-list__action--danger {
+  color: var(--danger);
+}
+
+.trip-list__rename {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+}
+
+.trip-list__rename-input {
+  flex: 1;
+  min-height: 38px;
+  padding: 0 var(--space-2, 8px);
+  border: 1.5px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  font-size: 14px;
+  color: var(--fg-1);
+}
+
+/* The way to the other trips (#787). A quiet link in the header rather than
+   a button competing with the plan: switching trips is navigation, not an
+   action on the plan you are reading. */
+.plan__trips {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-2, 8px);
+  border: none;
+  background: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--link);
+  cursor: pointer;
+}

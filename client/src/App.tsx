@@ -146,16 +146,26 @@ import { RouteStopPicker, type RouteStopChoice } from './chrome/RouteStopPicker'
 import { RouteMapPickBar } from './chrome/RouteMapPickBar'
 import type { RouteDrawing } from './map/routeLayers'
 import {
-  clearPlan,
   insertZeroAfter,
-  loadPlan,
   removeDay,
-  savePlan,
   togglePinned,
   toggleResupply,
   type HikePlan,
   type PlanTarget,
 } from './lib/plan'
+import {
+  EMPTY_STORE,
+  addTrip,
+  loadTrips,
+  openTrip,
+  openTripOf,
+  removeTrip,
+  renameTrip,
+  saveTrips,
+  updateTrip,
+  type TripStore,
+} from './lib/trips'
+import { TripList } from './screens/TripList'
 import { PlanScreen } from './screens/Plan'
 import { PlanTargetSheet } from './screens/PlanTargetSheet'
 import { stopLabel } from './lib/planDisplay'
@@ -415,8 +425,15 @@ function App() {
   const [routeDraft, setRouteDraft] = useState<RouteDraftState | null>(null)
   /** The stop picker over the draft, or null while every field rests. */
   const [stopPick, setStopPick] = useState<StopPickState | null>(null)
-  /** The saved multi-day plan (#756), loaded from IndexedDB below. */
-  const [plan, setPlan] = useState<HikePlan | null>(null)
+  /**
+   * Every trip the hiker has kept, and which one the Plan tab is showing
+   * (#787). This replaced a single `HikePlan` state: the plan below is
+   * DERIVED from the open trip, so every handler that edits a plan keeps
+   * working unchanged and there is exactly one place a trip's plan lives.
+   */
+  const [tripStore, setTripStore] = useState<TripStore>(EMPTY_STORE)
+  /** Whether the trip switcher is showing over the Plan tab. */
+  const [tripsOpen, setTripsOpen] = useState(false)
   /**
    * The target sheet's subject: which route to lay days over - its stops in
    * walk order, destinations included - or null while the sheet is closed.
@@ -428,6 +445,9 @@ function App() {
     route: ViaStop[]
     initialTarget?: PlanTarget
     initialStartDate?: string
+    /** Set when the sheet was opened over an existing trip, so laying out
+     *  re-lays that trip rather than keeping a second copy of it (#787). */
+    tripId?: string
   }>(null)
   /**
    * Whether the identity screen is showing (#233).
@@ -607,10 +627,12 @@ function App() {
     void loadPlannedHike().then(setHike, () => setHike(null))
   }, [])
 
-  // The plan, on the same contract: a rejected or invalid read leaves it
-  // null, which is what "no plan" already means everywhere.
+  // The trips, on the same contract: a rejected or invalid read leaves an
+  // empty store, which is what "no plans" already means everywhere. This is
+  // also where a phone upgrading from the single-plan build has its plan
+  // migrated - see lib/trips.ts.
   useEffect(() => {
-    void loadPlan().then(setPlan, () => setPlan(null))
+    void loadTrips().then(setTripStore, () => setTripStore(EMPTY_STORE))
   }, [])
 
   // Two facts, not one number. A report waiting for signal resolves itself;
@@ -1258,6 +1280,14 @@ function App() {
     return anchoredMile(fix.mile, mileAnchors)
   }, [fix, mileAnchors])
 
+  /**
+   * The trip the Plan tab is showing, and its plan (#787). Everything below
+   * that says `plan` reads this - deriving it keeps one copy of a trip's
+   * plan in the store, so an edit cannot land on a stale duplicate.
+   */
+  const currentTrip = useMemo(() => openTripOf(tripStore), [tripStore])
+  const plan = currentTrip?.plan ?? null
+
   /** Every POI that can BE a stop: its published pipeline mile is known.
    *  Empty on a pre-#753 download - the entrance's cue to refuse. */
   const routeStopChoices: RouteStopChoice[] = useMemo(
@@ -1606,39 +1636,96 @@ function App() {
       ...(plan.days[0]?.date === undefined
         ? {}
         : { initialStartDate: plan.days[0].date }),
+      ...(currentTrip === null ? {} : { tripId: currentTrip.id }),
     })
-  }, [plan])
+  }, [plan, currentTrip])
 
-  const handleLayOut = useCallback((next: HikePlan) => {
-    setPlan(next)
-    void savePlan(next)
-    setTargetRequest(null)
-    setRouteDraft(null)
-    setActiveTab('plan')
-  }, [])
-
-  // Every timeline edit runs through here: apply, persist, keep the
-  // no-plan case inert. Persisted fire-and-forget like the hike - the
-  // in-memory plan is the truth the screen renders either way.
-  const applyPlanEdit = useCallback((edit: (current: HikePlan) => HikePlan) => {
-    setPlan((current) => {
-      if (current === null) return current
+  /**
+   * Every write to the trip store runs through here: apply, persist,
+   * fire-and-forget. The in-memory store is the truth the screens render
+   * either way - the same contract the single plan had.
+   */
+  const applyTripStore = useCallback((edit: (current: TripStore) => TripStore) => {
+    setTripStore((current) => {
       const next = edit(current)
-      if (next !== current) void savePlan(next)
+      if (next !== current) void saveTrips(next)
       return next
     })
   }, [])
 
+  /**
+   * Laying days out either KEEPS A NEW TRIP or re-lays the one already open,
+   * and the difference is which door the sheet came through: the route
+   * builder makes a trip that did not exist, while the timeline's "change
+   * target" re-lays a trip that does. Without the distinction, re-targeting
+   * would silently leave the old version behind as a second trip - which is
+   * the bug this whole issue is about, arriving from the other side.
+   */
+  const handleLayOut = useCallback(
+    (next: HikePlan) => {
+      const tripId = targetRequest?.tripId ?? null
+      applyTripStore((store) =>
+        tripId === null ? addTrip(store, next) : updateTrip(store, tripId, next),
+      )
+      setTargetRequest(null)
+      setRouteDraft(null)
+      setActiveTab('plan')
+    },
+    [targetRequest, applyTripStore],
+  )
+
+  // Every timeline edit runs through here, against whichever trip is open.
+  // Keeps the no-plan case inert exactly as before.
+  const applyPlanEdit = useCallback(
+    (edit: (current: HikePlan) => HikePlan) => {
+      applyTripStore((store) => {
+        const trip = openTripOf(store)
+        if (trip === null) return store
+        const next = edit(trip.plan)
+        return next === trip.plan ? store : updateTrip(store, trip.id, next)
+      })
+    },
+    [applyTripStore],
+  )
+
+  /** Delete the open trip - not every trip. The Plan tab's own button says
+   *  "Delete plan", and a hiker with four kept trips must not lose the other
+   *  three to it. */
   const handleDeletePlan = useCallback(() => {
-    setPlan(null)
-    void clearPlan()
-  }, [])
+    applyTripStore((store) =>
+      store.openId === null ? store : removeTrip(store, store.openId),
+    )
+  }, [applyTripStore])
 
   // The cascade (#758) hands back whole re-planned plans rather than edits.
-  const handleReplacePlan = useCallback((next: HikePlan) => {
-    setPlan(next)
-    void savePlan(next)
-  }, [])
+  const handleReplacePlan = useCallback(
+    (next: HikePlan) => {
+      applyTripStore((store) => {
+        const trip = openTripOf(store)
+        return trip === null ? store : updateTrip(store, trip.id, next)
+      })
+    },
+    [applyTripStore],
+  )
+
+  const handleOpenTrip = useCallback(
+    (id: string) => {
+      applyTripStore((store) => openTrip(store, id))
+      setTripsOpen(false)
+      setActiveTab('plan')
+    },
+    [applyTripStore],
+  )
+
+  const handleRenameTrip = useCallback(
+    (id: string, name: string) => applyTripStore((store) => renameTrip(store, id, name)),
+    [applyTripStore],
+  )
+
+  const handleRemoveTrip = useCallback(
+    (id: string) => applyTripStore((store) => removeTrip(store, id)),
+    [applyTripStore],
+  )
 
   const targetSheet =
     targetRequest === null ? null : (
@@ -2398,7 +2485,30 @@ function App() {
                 }
                 onReplacePlan={handleReplacePlan}
                 onDeletePlan={handleDeletePlan}
+                tripName={currentTrip?.name ?? null}
+                tripCount={tripStore.trips.length}
+                onOpenTrips={() => setTripsOpen(true)}
                 {...(targetSheet === null ? {} : { targetSheet })}
+                {...(tripsOpen
+                  ? {
+                      tripList: (
+                        <TripList
+                          trips={tripStore.trips}
+                          openId={tripStore.openId}
+                          elevation={elevation}
+                          units={units}
+                          onOpen={handleOpenTrip}
+                          onRename={handleRenameTrip}
+                          onRemove={handleRemoveTrip}
+                          onNew={() => {
+                            setTripsOpen(false)
+                            openRouteBuilder()
+                          }}
+                          onClose={() => setTripsOpen(false)}
+                        />
+                      ),
+                    }
+                  : {})}
               />
             </ErrorBoundary>
           </div>

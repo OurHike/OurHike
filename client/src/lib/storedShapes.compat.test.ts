@@ -22,7 +22,8 @@ import { get } from 'idb-keyval'
 import { OUTBOX_KEY, listQueued } from './outbox'
 import { PREFERENCES_KEY, loadPreferences } from './preferences'
 import { PLANNED_HIKE_KEY, loadPlannedHike } from './plannedHike'
-import { loadPlan } from './plan'
+import { PLAN_KEY, loadPlan } from './plan'
+import { TRIPS_KEY, loadTrips } from './trips'
 import { CAMERA_MEMORY_KEY, readCamera } from './cameraMemory'
 import {
   ELEVATION_STORE_KEY,
@@ -179,6 +180,43 @@ describe('a stored phone from the baseline release', () => {
     expect(plan?.days.map((day) => day.date)).toEqual(['2026-05-12', '2026-05-13'])
     expect(plan?.days[0].walked).toBe(true)
     expect(plan?.days[1].walked).toBeUndefined()
+  })
+
+  it('still reads a store of several trips, and which one was open', async () => {
+    const store = await loadTrips()
+
+    expect(store.trips.map((trip) => trip.name)).toEqual([
+      'Damascus → Atkins',
+      'mi 601.0 → mi 620.4',
+    ])
+    expect(store.openId).toBe('trip-0002')
+    expect(store.trips[0].plan.stops[1].resupply).toBe(true)
+    expect(store.trips[1].plan.target).toEqual({ miles: 15 })
+  })
+
+  // THE UPGRADE PATH WITH A PERSON ATTACHED. A phone that stopped at the
+  // single-plan build holds `ourhike:plan` and no trip store at all. The
+  // store's validator refuses a bare plan - correctly, it is not a store -
+  // so without the migration this reads as "no trips" and a hiker opens the
+  // Plan tab to find their plan gone.
+  describe('and upgrading from the single-plan build', () => {
+    beforeEach(() => {
+      const store = phoneStore()
+      delete store[TRIPS_KEY]
+      mockedGet.mockImplementation(async (key: IDBValidKey) => store[key as string])
+    })
+
+    it('migrates the plan already on the phone into a trip', async () => {
+      const store = await loadTrips()
+
+      expect(store.trips).toHaveLength(1)
+      expect(store.trips[0].name).toBe('Damascus → Atkins')
+      expect(store.openId).toBe(store.trips[0].id)
+      // The whole plan comes across, walked record included - a migration
+      // that dropped the past would be worse than one that failed loudly.
+      expect(store.trips[0].plan.days[0].walked).toBe(true)
+      expect(store.trips[0].plan.stops).toHaveLength(3)
+    })
   })
 
   it('still reopens the map where it was left', () => {
@@ -386,6 +424,12 @@ describe('the fixture itself', () => {
       POIS_KEY,
       SPURS_STORE_KEY,
       ELEVATION_STORE_KEY,
+      // Both plan-family keys: the single-plan key a phone may still hold,
+      // and the trip store that replaced it (#787). Neither was in this list
+      // when it was introduced, which is the omission the comment above
+      // predicts - a hand-written array only catches what somebody added.
+      PLAN_KEY,
+      TRIPS_KEY,
       ...packageKeys.flatMap((key) => [progressKeyFor(key), versionKeyFor(key)]),
       sourceKeyFor(CORRIDOR_ARCHIVE_KEY),
       // The archive under the corridor key, in both shapes that are inside the

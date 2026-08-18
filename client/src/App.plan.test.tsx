@@ -21,6 +21,7 @@ import App from './App'
 import { appHarness, latOfMile } from './test/appHarness'
 import { MockMap } from './test/mocks/maplibre-gl'
 import { PLAN_KEY } from './lib/plan'
+import { TRIPS_KEY, type TripStore } from './lib/trips'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
@@ -147,10 +148,13 @@ describe('the planning flow', () => {
     expect(screen.getByText('DAY 2')).toBeInTheDocument()
     expect(screen.getAllByText(/Far Shelter/).length).toBeGreaterThan(0)
 
-    const stored = app.store.get(PLAN_KEY) as {
-      stops: { mile: number; name?: string }[]
-      days: { pinned: boolean }[]
-    }
+    // Kept as a TRIP now (#787), named from its own ends - the plan itself
+    // is unchanged inside it.
+    const store = app.store.get(TRIPS_KEY) as TripStore
+    expect(store.trips).toHaveLength(1)
+    expect(store.trips[0].name).toBe('Front Shelter → Beyond Shelter')
+    expect(store.openId).toBe(store.trips[0].id)
+    const stored = store.trips[0].plan
     expect(stored.stops).toHaveLength(3)
     expect(stored.stops[0].mile).toBe(3.2)
     expect(stored.stops[1].mile).toBe(13.2)
@@ -163,7 +167,7 @@ describe('the planning flow', () => {
     expect(stored.days[1].pinned).toBe(false)
   })
 
-  it('keeps the timeline across a relaunch', async () => {
+  it('keeps the timeline across a relaunch, migrating the single-plan key', async () => {
     const user = userEvent.setup()
     app.onboard()
     app.putTrailData({ pois: POIS })
@@ -186,6 +190,69 @@ describe('the planning flow', () => {
     expect(await screen.findByText('TUE 12')).toBeInTheDocument()
     expect(screen.getByText(/2 days food/)).toBeInTheDocument()
     expect(screen.queryByText(/No plan yet/)).toBeNull()
+
+    // The plan a phone was holding under the old key came across as a trip,
+    // and the old key is left alone rather than destroyed (#787).
+    const store = app.store.get(TRIPS_KEY) as TripStore
+    expect(store.trips).toHaveLength(1)
+    expect(store.trips[0].name).toBe('mi 5.2 → Beyond Shelter')
+    expect(app.store.get(PLAN_KEY)).toBeDefined()
+  })
+
+  it('keeps a second trip instead of overwriting the first', async () => {
+    // The bug this issue was filed for: planning again destroyed the last
+    // plan. Two trips, both kept, and the switcher moves between them.
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    app.store.set(TRIPS_KEY, {
+      openId: 'trip-1',
+      trips: [
+        {
+          id: 'trip-1',
+          name: 'Autumn section',
+          plan: {
+            target: { miles: 8 },
+            stops: [
+              { mile: 3.2, name: 'Front Shelter', resupply: false },
+              { mile: 13.2, name: 'Far Shelter', resupply: false },
+            ],
+            days: [{ id: 'day-a', pinned: false, generated: true }],
+          },
+        },
+        {
+          id: 'trip-2',
+          name: 'Spring section',
+          plan: {
+            target: { miles: 8 },
+            stops: [
+              { mile: 13.2, name: 'Far Shelter', resupply: false },
+              { mile: 22.2, name: 'Beyond Shelter', resupply: false },
+            ],
+            days: [{ id: 'day-b', pinned: false, generated: true }],
+          },
+        },
+      ],
+    })
+
+    render(<App />)
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+
+    // The open trip is the one named in the header.
+    expect(await screen.findByText('Autumn section')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'All 2 trips' }))
+    expect(await screen.findByRole('dialog', { name: 'Your trips' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Spring section/ }))
+
+    // Switched, and the other trip is still there rather than overwritten.
+    expect(await screen.findByText('Spring section')).toBeInTheDocument()
+    const store = app.store.get(TRIPS_KEY) as TripStore
+    expect(store.trips.map((trip) => trip.name)).toEqual([
+      'Autumn section',
+      'Spring section',
+    ])
+    expect(store.openId).toBe('trip-2')
   })
 
   it('places a start through the map door, refusals said out loud, and keeps the draft across tabs', async () => {

@@ -51,6 +51,20 @@ export interface StoredPoi {
   lon: number
   confidence: 'high' | 'low'
   /**
+   * NOBO miles from Springer, projected by the pipeline onto the same
+   * ordered metric centerline the elevation profile is sampled along
+   * (export_poi.attach_miles, #753) - so this and the ribbon's distance_mi
+   * are one measurement by construction. A POSITION, never a heading: a
+   * southbound hiker walks toward smaller numbers, and direction stays the
+   * derived view lib/hikeDirection.ts already provides.
+   *
+   * Optional because a copy downloaded before the field was published has
+   * none - absent means "this data release predates the mile", and a
+   * consumer that needs it (the planner, a mile-range photo scope) says it
+   * needs a newer download rather than deriving a second scale locally.
+   */
+  mile?: number
+  /**
    * Which published source listed this POI - "atc_shelters", "opentrail_at"
    * and the rest of pipeline/lib/poi_schema.py's ids, shown as words by
    * chrome/poiSources.ts.
@@ -208,6 +222,7 @@ interface PoiProperties {
   name?: unknown
   lat?: unknown
   lon?: unknown
+  mile?: unknown
   confidence?: unknown
   source?: unknown
   capacity?: unknown
@@ -397,6 +412,11 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
       // legend's "Verified?" filter takes off the screen. Guessing the other
       // way would vouch for a water source nobody checked.
       confidence: props.confidence === 'high' ? 'high' : 'low',
+      // Absent rather than guessed when the release predates the field or
+      // published null - the same omit-don't-invent rule as capacity.
+      ...(typeof props.mile === 'number' && Number.isFinite(props.mile)
+        ? { mile: props.mile }
+        : {}),
       // Left off entirely when the artifact has none, rather than stored as a
       // placeholder string: the detail sheet decides whether to name a source
       // by whether there is one, and "unknown" is not a source.

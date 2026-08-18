@@ -788,15 +788,26 @@ describe('pushing all of it onto a live map', () => {
     expect(warn).toHaveBeenCalled()
   })
 
-  it('leaves no load listener behind when detached before the style loads', () => {
-    for (const detach of [
+  it('leaves no style listener behind when detached before the style loads', () => {
+    // The seeded layerIds from beforeEach would let every attach succeed
+    // immediately, registering nothing - which is how this test spent weeks
+    // unable to fail (#175). An empty style is what "before the style
+    // loads" actually means, and is what forces the styledata wait this
+    // detach test exists to clean up after.
+    map.layerIds = []
+    const detachers = [
       attachPoiIcons(map as never),
       attachPoiData(map as never, []),
       attachPoiFilter(map as never, new Set()),
-    ]) {
-      detach()
-    }
+    ]
 
+    // Guards the guard: if nothing registered, the assertion below passes
+    // on a detach that does nothing.
+    expect(map.listenerCount('styledata')).toBeGreaterThan(0)
+
+    for (const detach of detachers) detach()
+
+    expect(map.listenerCount('styledata')).toBe(0)
     expect(map.listenerCount('load')).toBe(0)
   })
 })

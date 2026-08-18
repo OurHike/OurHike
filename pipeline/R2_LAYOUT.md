@@ -15,9 +15,11 @@ Every object in this bucket is served publicly, and its key is the URL path. Thr
 things follow, and every rule on this page is one of them:
 
 1. **A published key is permanent.** `publish()` merges manifests additively, so a name
-   that is live stays live. Worse, `DATA_RELEASE` is compiled into the client and
-   app-store builds cannot be forced forward — a phone that shipped in March asks for
-   March's keys until its owner updates. A key cannot be renamed, only joined by a
+   that is live stays live. Worse, app-store builds cannot be forced forward — a phone
+   that shipped in March asks for March's keys until its owner updates. (RELEASING.md
+   §10's `DATA_RELEASE` constant, which would pin a build to a dataset, is planned and
+   not yet built — today every build reads these root keys via `DATA_BASE_URL`, which
+   only sharpens the point.) A key cannot be renamed, only joined by a
    sibling and served alongside the mistake forever.
 2. **The same string is typed in three places** — `publish.py`'s artifact names,
    `client/src/lib/config.ts`, and (once built) `verify_release.py`. A mismatch is not a
@@ -79,8 +81,9 @@ are server-side, so a complete folder costs one `copy_object` per artifact rathe
 second upload of 1.6 GB. `latest.json` gained a `release` field naming the folder that
 holds the same bytes, and is otherwise unchanged: **the root keys stay live and stay the
 thing every client in the field reads.** That is deliberate rather than transitional —
-`DATA_RELEASE` is compiled into app-store builds that cannot be forced forward, so moving
-the flat keys is a change no phone already in the field could survive.
+app-store builds cannot be forced forward (and RELEASING.md §10's planned `DATA_RELEASE`
+constant would pin them harder still), so moving the flat keys is a change no phone
+already in the field could survive.
 
 `_internal/` is still not written by anything. It holds build intermediates keyed by
 release — per-cell mosaics and their state — whose producer is the raster build, and

@@ -1,0 +1,10 @@
+version: 2
+
+models:
+  - name: int_pois_unioned
+    description: >
+      Every staged POI row from every source, one row each, unmerged.
+      Stays 1:1 with its inputs by design - see the model's own comment.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [source, source_id]

@@ -8,8 +8,9 @@ in the ST_Transform/always_xy behavior itself, which any future script using
 this pattern could reintroduce, not just this one file.
 """
 
-import duckdb
 import pytest
+
+from tests.conftest import spatial_connection
 
 PROJECTED_CRS = "EPSG:5070"
 GEOGRAPHIC_CRS = "EPSG:4326"
@@ -17,9 +18,7 @@ GEOGRAPHIC_CRS = "EPSG:4326"
 
 @pytest.fixture
 def con():
-    c = duckdb.connect()
-    c.execute("INSTALL spatial; LOAD spatial;")
-    return c
+    return spatial_connection()
 
 
 def test_transform_without_always_xy_produces_wrong_coordinates(con):

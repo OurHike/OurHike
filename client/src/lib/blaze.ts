@@ -17,11 +17,15 @@ const BLAZE_COLORS: Record<string, string> = {
   Red: '#b2321f',
   Green: '#2f7a44',
   Purple: '#6a4a8f',
-  // Both are real, successful decodes from the pipeline (see
-  // pipeline/lib/blaze.py) - "None" means confirmed unblazed, "Other" is a
-  // real domain value with no dedicated paint style. Neither should warn.
+  // All three are real values from the pipeline (see pipeline/lib/blaze.py) -
+  // "None" means confirmed unblazed, "Other" is a real domain value with no
+  // dedicated paint style, and "Unknown" is what its NEUTRAL_FALLBACK emits
+  // for every undecodable blaze, BY CONTRACT. Warning on a value our own
+  // upstream guarantees will occur was noise dressed as vigilance (#257);
+  // the warning below is kept for genuinely novel values.
   None: NEUTRAL_FALLBACK,
   Other: NEUTRAL_FALLBACK,
+  Unknown: NEUTRAL_FALLBACK,
 }
 
 export function blazePaintColor(blazeColor: string): string {

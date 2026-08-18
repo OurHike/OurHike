@@ -206,11 +206,19 @@ def line_endpoints(coordinates: list) -> tuple[tuple[float, float], tuple[float,
     if not coordinates:
         return None
 
+    # Sniffed on the first NON-EMPTY element: probing coordinates[0][0]
+    # directly crashed on a MultiLineString whose first part is empty -
+    # before the filter below, which exists to tolerate empty parts, ever
+    # ran (#172). One degenerate feature must degrade to "no endpoints for
+    # this spur", never kill the whole export - the same convention
+    # test_a_null_geometry_feature_survives_the_run pins.
+    sample = next((item for item in coordinates if item), None)
+    if sample is None:
+        return None
+
     flat = coordinates
-    if isinstance(coordinates[0][0], (list, tuple)):  # MultiLineString
+    if isinstance(sample[0], (list, tuple)):  # MultiLineString
         parts = [part for part in coordinates if part]
-        if not parts:
-            return None
         first, last = parts[0][0], parts[-1][-1]
     else:
         if len(flat) < 2:

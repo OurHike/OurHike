@@ -41,7 +41,12 @@ import { TRAILS_SOURCE_ID } from './map/style'
 import { OSM_SOURCE_ID } from './map/liveTopo'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
-vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
+vi.mock('idb-keyval', () => ({
+  get: vi.fn(),
+  set: vi.fn(),
+  del: vi.fn(),
+  update: vi.fn(),
+}))
 vi.mock('./map/archiveZooms', () => ({
   readArchiveZooms: () => Promise.resolve({ minZoom: 5, maxZoom: 14 }),
 }))

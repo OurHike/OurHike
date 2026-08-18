@@ -1,0 +1,13 @@
+# The dbt job's own dependency set (pipeline/DBT.md's CI plan), compiled to
+# requirements-dbt.txt with pip-compile on Python 3.12 - the version that job
+# pins deliberately, because dbt tends to lag the newest CPython the pytest
+# job runs. Separate from requirements.in on purpose: the pytest job never
+# needs dbt, and the dbt job never needs rasterio/pillow/pmtiles.
+#
+# duckdb is pinned identically to requirements.in's hand-written pin, and for
+# the same ABI reason - the spatial extension the profiles.yml loads is
+# ABI-locked to the exact DuckDB version. Keep the two pins moving together.
+duckdb==1.5.5
+dbt-duckdb
+sqlfluff
+sqlfluff-templater-dbt

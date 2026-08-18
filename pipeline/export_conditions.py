@@ -43,10 +43,17 @@ shape or the overlay is a conversion. So the closures column list tracks
 `ReportOut.for_viewer` sends an anonymous caller - which is why it has no
 `reporter_id`, `received_at`, `maintainer_id` or `club_id`: those are withheld
 from anonymous responses (#252), so the baseline never holds them at all
-rather than holding them as nulls. `verified_by`/`verified_at` are absent from
+rather than holding them as nulls. `verified_by` is absent from
 the public report schema entirely, and the reader role is not granted
 `profiles`, so this script could not resolve a person even if a future edit
 tried to (#430).
+
+Since #446 the mirror is enforced rather than trusted:
+`backend/tests/test_conditions_publisher_contract.py` reads this file's SQL
+and compares its column lists against the served OpenAPI document, and the
+backend workflow's scope list names this file so an edit here triggers that
+suite. A column renamed on either side now fails the pull request that
+renames it, not the nightly publish.
 
 `photo_url` is deliberately absent from the reports artifact, and that is a
 decision rather than an omission (#436). The live endpoint answers it with a

@@ -19,7 +19,12 @@ import { appHarness } from './test/appHarness'
 import { PREFERENCES_KEY } from './lib/preferences'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
-vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
+vi.mock('idb-keyval', () => ({
+  get: vi.fn(),
+  set: vi.fn(),
+  del: vi.fn(),
+  update: vi.fn(),
+}))
 vi.mock('./lib/useAuth', () => ({
   useAccount: () => ({ email: 'hiker@example.com' }),
 }))

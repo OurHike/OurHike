@@ -5,18 +5,16 @@ centerline fixture throughout (tiny GeoJSON built in test code), never the
 real 3,025-segment centerline.geojson - see TESTING.md.
 """
 
-import duckdb
 import pytest
 
 from lib.corridor import build_corridor
+from tests.conftest import spatial_connection
 from tests.synthetic import write_centerline
 
 
 @pytest.fixture
 def con():
-    c = duckdb.connect()
-    c.execute("INSTALL spatial; LOAD spatial;")
-    return c
+    return spatial_connection()
 
 
 def test_build_corridor_populates_a_single_non_empty_polygon(tmp_path, con):

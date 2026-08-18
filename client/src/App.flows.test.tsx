@@ -30,7 +30,12 @@ function backdropOf(map: MockMap): unknown {
 // ones that only run after a download succeeds.
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
-vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
+vi.mock('idb-keyval', () => ({
+  get: vi.fn(),
+  set: vi.fn(),
+  del: vi.fn(),
+  update: vi.fn(),
+}))
 
 const SHELTER = {
   id: 'atc_shelters:abc',

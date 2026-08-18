@@ -157,11 +157,11 @@ def test_a_null_recorded_atc_marker_rolls_up_as_unknown_not_a_false_fresh(tmp_pa
         json.dumps(
             {
                 "centerline": {
-                    "url": "https://example.com/centerline",
+                    "url": "https://services1.arcgis.com/test/centerline",
                     "data_last_edit_date": 1723739016398,
                 },
                 "shelters": {
-                    "url": "https://example.com/shelters",
+                    "url": "https://services1.arcgis.com/test/shelters",
                     "data_last_edit_date": None,
                 },
             }
@@ -178,7 +178,7 @@ def test_a_null_recorded_atc_marker_rolls_up_as_unknown_not_a_false_fresh(tmp_pa
     monkeypatch.setattr(check_freshness, "upstream_hydrography_marker", lambda: None)
 
     requests_mock.get(
-        "https://example.com/centerline?f=json",
+        "https://services1.arcgis.com/test/centerline?f=json",
         json={"editingInfo": {"dataLastEditDate": 1723739016398}},
     )
     # "shelters" (the null-dated layer) is deliberately left unmocked: a
@@ -464,7 +464,7 @@ def _published_state(**overrides):
     state = {
         "version": freshness_state.STATE_VERSION,
         "captured_at": "2026-07-01T00:00:00+00:00",
-        "atc": {"centerline": {"url": "https://arcgis.test/centerline", "marker": "1"}},
+        "atc": {"centerline": {"url": "https://services1.arcgis.com/test/centerline", "marker": "1"}},
         "opentrail": 'W/"abc"',
     }
     state.update(overrides)
@@ -476,12 +476,46 @@ def test_a_published_state_is_compared_without_any_local_data(tmp_path, monkeypa
     Every local path is pointed at a nonexistent file to prove none is read."""
     for name in ("ATC_MANIFEST", "OPENTRAIL_STATE", "TOPO_MANIFEST", "ELEVATION_INDEX"):
         monkeypatch.setattr(check_freshness, name, tmp_path / "absent.json")
-    requests_mock.get("https://arcgis.test/centerline?f=json", json={"editingInfo": {"dataLastEditDate": 1}})
+    requests_mock.get("https://services1.arcgis.com/test/centerline?f=json", json={"editingInfo": {"dataLastEditDate": 1}})
     requests_mock.head("https://opentrail.org/api/getData?trail=AT", headers={"ETag": 'W/"abc"'})
 
     reports = check_freshness.check_all(_published_state())
 
     assert {r["source"]: r["freshness"] for r in reports}["atc"] is Freshness.FRESH
+
+
+def test_an_atc_url_off_arcgis_is_refused_not_fetched(tmp_path, monkeypatch, requests_mock, capsys):
+    """#173's SSRF half, inside the state: the atc entries' URLs come from a
+    fetched document on the --state path, so a poisoned state must not aim
+    this checker at an arbitrary host. No mock is registered for the rogue
+    URL - a fetch attempt fails loudly as an unmatched request - and the
+    refused layer reports as could-not-check, never as current."""
+    for name in ("ATC_MANIFEST", "OPENTRAIL_STATE", "TOPO_MANIFEST", "ELEVATION_INDEX"):
+        monkeypatch.setattr(check_freshness, name, tmp_path / "absent.json")
+    requests_mock.head("https://opentrail.org/api/getData?trail=AT", headers={"ETag": 'W/"abc"'})
+    state = _published_state(atc={"centerline": {"url": "https://internal.example.net/metadata", "marker": "1"}})
+
+    reports = check_freshness.check_all(state)
+
+    assert {r["source"]: r["freshness"] for r in reports}["atc"] is Freshness.UNKNOWN
+    assert "refusing to check centerline" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("url", "allowed"),
+    [
+        ("https://services1.arcgis.com/abc/FeatureServer/0", True),
+        ("https://services9.arcgis.com/xyz/FeatureServer/18", True),
+        ("http://services1.arcgis.com/abc/FeatureServer/0", False),
+        ("https://internal.example.net/metadata", False),
+        # A host merely CONTAINING the allowed name must not pass - suffix
+        # matching on the registrable domain is the whole check.
+        ("https://services1.arcgis.com.evil.example/abc", False),
+        ("https://notarcgis.com/abc", False),
+    ],
+)
+def test_the_atc_service_allowlist_is_https_plus_the_arcgis_host_family(url, allowed):
+    assert check_freshness._is_atc_service_url(url) is allowed
 
 
 def test_a_source_the_published_state_omits_is_never_asked_about(tmp_path, monkeypatch, requests_mock):
@@ -490,7 +524,7 @@ def test_a_source_the_published_state_omits_is_never_asked_about(tmp_path, monke
     answer would have nothing to be compared against."""
     for name in ("ATC_MANIFEST", "OPENTRAIL_STATE", "TOPO_MANIFEST", "ELEVATION_INDEX"):
         monkeypatch.setattr(check_freshness, name, tmp_path / "absent.json")
-    requests_mock.get("https://arcgis.test/centerline?f=json", json={"editingInfo": {"dataLastEditDate": 1}})
+    requests_mock.get("https://services1.arcgis.com/test/centerline?f=json", json={"editingInfo": {"dataLastEditDate": 1}})
     requests_mock.head("https://opentrail.org/api/getData?trail=AT", headers={"ETag": 'W/"abc"'})
 
     # No mock is registered for TNM or S3: a request to either fails loudly
@@ -535,7 +569,7 @@ def test_exit_zero_reports_staleness_without_failing_the_run(tmp_path, monkeypat
         monkeypatch.setattr(check_freshness, name, tmp_path / "absent.json")
     state = tmp_path / "state.json"
     state.write_text(json.dumps(_published_state()))
-    requests_mock.get("https://arcgis.test/centerline?f=json", json={"editingInfo": {"dataLastEditDate": 999}})
+    requests_mock.get("https://services1.arcgis.com/test/centerline?f=json", json={"editingInfo": {"dataLastEditDate": 999}})
     requests_mock.head("https://opentrail.org/api/getData?trail=AT", headers={"ETag": 'W/"abc"'})
 
     assert check_freshness.main(["--state", str(state)]) == 1
@@ -548,7 +582,7 @@ def test_the_json_verdict_names_which_layers_moved(tmp_path, monkeypatch, reques
     state = tmp_path / "state.json"
     state.write_text(json.dumps(_published_state()))
     out = tmp_path / "verdict.json"
-    requests_mock.get("https://arcgis.test/centerline?f=json", json={"editingInfo": {"dataLastEditDate": 999}})
+    requests_mock.get("https://services1.arcgis.com/test/centerline?f=json", json={"editingInfo": {"dataLastEditDate": 999}})
     requests_mock.head("https://opentrail.org/api/getData?trail=AT", headers={"ETag": 'W/"abc"'})
 
     check_freshness.main(["--state", str(state), "--json", str(out), "--exit-zero"])
@@ -567,7 +601,7 @@ def test_the_json_verdict_records_how_old_the_state_it_trusted_was(tmp_path, mon
     state = tmp_path / "state.json"
     state.write_text(json.dumps(_published_state()))
     out = tmp_path / "verdict.json"
-    requests_mock.get("https://arcgis.test/centerline?f=json", json={"editingInfo": {"dataLastEditDate": 1}})
+    requests_mock.get("https://services1.arcgis.com/test/centerline?f=json", json={"editingInfo": {"dataLastEditDate": 1}})
     requests_mock.head("https://opentrail.org/api/getData?trail=AT", headers={"ETag": 'W/"abc"'})
 
     check_freshness.main(["--state", str(state), "--json", str(out), "--exit-zero"])
@@ -722,7 +756,7 @@ def test_a_resurveyed_corridor_rolls_up_as_stale_through_check_all(tmp_path, mon
     """End to end, because the rollup is where a person reads this."""
     monkeypatch.setattr(check_freshness, "SOURCES_PATH", _registry_at(tmp_path))
     requests_mock.get(PROBE_URL, json=_units("3DHP_NH_01"))
-    requests_mock.get("https://arcgis.test/centerline?f=json", json={"editingInfo": {"dataLastEditDate": 1}})
+    requests_mock.get("https://services1.arcgis.com/test/centerline?f=json", json={"editingInfo": {"dataLastEditDate": 1}})
     requests_mock.head("https://opentrail.org/api/getData?trail=AT", headers={"ETag": 'W/"abc"'})
 
     reports = check_freshness.check_all(_published_state(usgs_3dhp="NHD"))

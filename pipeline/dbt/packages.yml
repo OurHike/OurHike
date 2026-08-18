@@ -1,0 +1,12 @@
+# The three packages DBT.md's design names, pinned to the versions it
+# verified against GitHub tags (the Hub registry itself was unreachable
+# from the design pass's environment; it is reachable from CI and from the
+# current sandbox, and dbt deps resolves transitive pins itself - a git-pin
+# variant collides with the evaluator's own transitive dbt_utils).
+packages:
+  - package: dbt-labs/dbt_utils
+    version: 1.4.1
+  - package: dbt-labs/dbt_project_evaluator
+    version: 1.3.2
+  - package: dbt-labs/codegen
+    version: 0.14.1

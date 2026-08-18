@@ -172,7 +172,10 @@ def test_only_database_url_is_not_enough_and_the_message_says_which():
     result = _run_in({"PATH": os.environ["PATH"], "DATABASE_URL": SESSION_POOLER_URL})
 
     assert result.returncode == 2
-    assert "SUPABASE_URL" in result.stdout and "SUPABASE_ANON_KEY" in result.stdout
+    # SUPABASE_ANON_KEY used to be named here too; it became optional in #257
+    # (nothing in app/ reads it), so SUPABASE_URL is the one required setting
+    # left for this message to name.
+    assert "SUPABASE_URL" in result.stdout
 
 
 def test_a_missing_setting_never_prints_the_connection_string():

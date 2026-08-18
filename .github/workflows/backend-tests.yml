@@ -127,6 +127,7 @@ jobs:
           # It did, when api.ts and closureBanner.ts joined the list.
           paths: >-
             backend/
+            pipeline/export_conditions.py
             client/src/lib/api.ts
             client/src/lib/closureBanner.ts
             client/src/lib/outbox.ts

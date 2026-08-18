@@ -67,6 +67,34 @@ def _worker_database_url(url: str, worker: str) -> str:
     return parsed.set(database=f"{parsed.database}_{worker}").render_as_string(hide_password=False)
 
 
+def _require_disposable_database(url: str) -> None:
+    """Refuse to run unless the database this suite is about to wipe is named `*_test`.
+
+    `_reset_schema` below drops every table in whatever database `url` names,
+    before and after each test. The test database differs from the dev default
+    (app/config.py) by four characters, so one stray `export DATABASE_URL` is
+    the whole distance between "ran the suite" and "dropped every table in
+    `ourhike_dev`" (#320). The naming convention is the only thing that marks
+    a database as disposable, so it is the thing this checks.
+
+    Runs against the URL as configured, before `_worker_database_url` appends
+    any `_gw<N>` suffix - so the rule stays "the database you point the suite
+    at ends in `_test`", for serial and parallel runs alike.
+    """
+    database = make_url(url).database or ""
+    if not database.endswith("_test"):
+        raise RuntimeError(
+            "Refusing to run the backend test suite against database "
+            f"{database!r}: the suite drops every table in the database "
+            "DATABASE_URL names, before and after each test, so it only runs "
+            "against a database whose name ends in '_test'. Set DATABASE_URL "
+            "to a disposable test database, e.g. "
+            "postgresql+psycopg://ourhike:ourhike@localhost:5432/ourhike_test "
+            "(backend/scripts/local-postgres.sh creates that one), or unset it "
+            "to use that default."
+        )
+
+
 def _ensure_database(url: str) -> None:
     """Create `url`'s database if it is not there yet.
 
@@ -96,6 +124,11 @@ def _ensure_database(url: str) -> None:
     finally:
         admin.dispose()
 
+
+# Before anything connects, and before the worker rewrite below - the guard
+# checks the name as configured, and the rewrite only ever appends to a name
+# that has already passed it.
+_require_disposable_database(os.environ["DATABASE_URL"])
 
 # Before `from app.config import settings` below, because that reads
 # DATABASE_URL once at import and every other reader in the codebase - the

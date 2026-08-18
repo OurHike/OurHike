@@ -7,6 +7,9 @@ documenting about what "corrupted" means, instead of relying on an opaque
 checked-in blob. See ../../TESTING.md for the philosophy this follows.
 """
 
+import socket
+
+import duckdb
 import pytest
 
 import export_poi
@@ -58,3 +61,52 @@ def no_real_trail_water(tmp_path, monkeypatch):
     reaches further than its own suite.
     """
     monkeypatch.setattr(export_poi, "TRAIL_WATER_PATH", tmp_path / "no-trail-water.json")
+
+
+def spatial_connection() -> "duckdb.DuckDBPyConnection":
+    """One home for the DuckDB spatial setup six test files used to repeat
+    byte-for-byte (#324). A plain function rather than only a fixture, so the
+    handful of tests that build a connection mid-test (rather than taking one
+    as an argument) share the same line too."""
+    connection = duckdb.connect()
+    connection.execute("INSTALL spatial; LOAD spatial;")
+    return connection
+
+
+@pytest.fixture
+def spatial_con():
+    """A spatial-enabled DuckDB connection, closed after the test."""
+    connection = spatial_connection()
+    yield connection
+    connection.close()
+
+
+@pytest.fixture(autouse=True)
+def no_outside_network(monkeypatch):
+    """Make TESTING.md's "any unmocked request raises" structurally true (#324).
+
+    It used to hold only inside tests that requested `requests_mock` - nothing
+    stopped a new test from quietly reaching the wire. This blocks every
+    Python-level socket connection to a non-loopback address; requests_mock
+    keeps working because it intercepts at the adapter layer, above sockets,
+    and loopback stays open for the tests that stand up a real local server
+    (test_serve_processed.py).
+
+    Deliberately Python-level only: DuckDB's `INSTALL spatial` fetches its
+    extension through native code on a fresh CI machine, below this guard's
+    reach, and that one documented network call is the environment's to
+    manage (see .claude/hooks/session-start.sh and TESTING.md's caveat).
+    """
+    real_connect = socket.socket.connect
+
+    def guarded(self, address, *args, **kwargs):
+        host = address[0] if isinstance(address, tuple) else address
+        if isinstance(host, str) and (host in ("127.0.0.1", "::1", "localhost") or isinstance(address, str)):
+            return real_connect(self, address, *args, **kwargs)
+        raise RuntimeError(
+            f"Test tried to open a real network connection to {address!r}. "
+            "Mock it (requests_mock) instead - TESTING.md: tests never touch "
+            "the network."
+        )
+
+    monkeypatch.setattr(socket.socket, "connect", guarded)

@@ -281,8 +281,9 @@ about related things. Of the 27 real conflicts, **12 were `client/src/App.tsx`**
 | `client/src/map/MapView.tsx` | 3 |
 | `client/src/screens/Onboarding.tsx` | 3 |
 
-`App.tsx` is 1,507 lines, holds 25 `useState` calls and imports about sixty
-modules. It is where every feature is wired in, so every feature branch edits
+`App.tsx` is 2,080 lines, holds 28 `useState` calls and imports about ninety
+modules (measured 2026-08-17 - it was 1,507/25/~60 when this was first
+written, which is the direction the argument predicts). It is where every feature is wired in, so every feature branch edits
 it, so every pair of feature branches conflicts there. The subjects are
 unrelated — a background picker and a download flow — and it makes no
 difference.
@@ -355,8 +356,9 @@ as `.github/actions/changed-paths`, so it agrees with CI by construction), and
 whether it truly conflicts.
 
 Branches sharing no history with `main` are listed separately as leftovers
-rather than counted as threads. There are nineteen; none of them can merge and
-none needs watching.
+rather than counted as threads. None of them can merge and none needs
+watching. (A count used to sit here and drifted from nineteen to twice that
+within a week - the script's output is the number, #661.)
 
 ## Running the checks
 

@@ -1,6 +1,6 @@
 # Versioned data releases — design & rollout plan
 
-Companion to [README.md](README.md), [../TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md) and [../TESTING.md](../TESTING.md). **Status: designed 2026-07-31, not yet built** — this document is the plan, written before the code per this project's usual convention (see [DBT.md](DBT.md), [../FEATURES.md](../FEATURES.md)).
+Companion to [README.md](README.md), [../TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md) and [../TESTING.md](../TESTING.md). **Status: designed 2026-07-31, partly built since** — §1, §3a and §3b below are marked **Built** where they landed, and the `releases/<id>/` folders are written on every publish (R2_LAYOUT.md, #500); the rest is still the plan, written before the code per this project's usual convention (see [DBT.md](DBT.md), [../FEATURES.md](../FEATURES.md)).
 
 Scope is **trail data only** — the artifacts `publish.py` ships to R2. User accounts, condition reports, closures and comments live in Postgres/Supabase behind the FastAPI backend and are untouched by any of this.
 
@@ -118,7 +118,7 @@ A cell is re-mosaicked iff its quad set changed, **or** the corridor changed, **
 
 Two honest caveats:
 
-- **A centerline edit invalidates everything.** `export_pmtiles.py` clips against a corridor built fresh from `centerline.geojson`, so any ATC centerline edit changes every tile's clip mask and forces a full 51-cell rebuild. ATC edits the centerline several times a year, so those weeks cost full price. Phase 5 narrows this by hashing each cell's *own* slice of the corridor (`ST_Intersection(corridor, cell_bbox)`) instead of the whole polygon — an edit in Georgia then rebuilds Georgia's cells, not Maine's. Phase 1 uses the whole-corridor hash: conservative, obviously correct, and never wrong in the dangerous direction.
+- **A centerline edit invalidates everything.** the raster tile chain (`render_cell_tiles.py`, formerly `export_pmtiles.py`) clips against a corridor built fresh from `centerline.geojson`, so any ATC centerline edit changes every tile's clip mask and forces a full 51-cell rebuild. ATC edits the centerline several times a year, so those weeks cost full price. Phase 5 narrows this by hashing each cell's *own* slice of the corridor (`ST_Intersection(corridor, cell_bbox)`) instead of the whole polygon — an edit in Georgia then rebuilds Georgia's cells, not Maine's. Phase 1 uses the whole-corridor hash: conservative, obviously correct, and never wrong in the dangerous direction.
 - **This reuses output tiles, not input quads.** `fetch_and_mosaic_cell.py` still starts each cell from an empty scratch dir with no download resume, exactly as today. A cell that does rebuild costs what it costs now.
 
 **Intermediates are stored per release, on a shorter clock than the releases themselves — 30 days.** They are build inputs, never hiker-facing: their only consumer is the *next* build, which diffs against the most recent release. Keeping a few generations means a recent release can be rebuilt or a bad cell re-cut without re-fetching 14 GB of quads; keeping a year of them would be ~190 GB of data nothing will ever read again. 30 days holds roughly four weekly generations, which is enough for that and no more.
@@ -144,7 +144,7 @@ This inverts today's `check_output_quality.py`-then-`publish.py` order, and that
 **C. PMTiles structure**
 9. Each tier opens; header min/max zoom matches the tier's declared zooms (11 / 12 / 13).
 10. Tile count matches what the build reported.
-11. **Coverage**: every corridor cell has a tile at *every* zoom in the tier's range — the same gate `export_pmtiles.py:218-235` runs at build time, re-run against the published archive by range-reading it, which additionally proves the archive is readable the way MapLibre reads it.
+11. **Coverage**: every corridor cell has a tile at *every* zoom in the tier's range — the same gate the raster build runs at assemble time (`assemble_raster.py`'s coverage check; it lived in `export_pmtiles.py` when this was written), re-run against the published archive by range-reading it, which additionally proves the archive is readable the way MapLibre reads it.
 12. Spot-decode tiles spread across zoom and geography; each must be a valid WebP of the expected dimensions.
 
 **D. Vector content**

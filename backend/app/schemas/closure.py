@@ -2,11 +2,12 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError, field_validator, model_validator
 from pydantic.networks import HttpUrl
 
 from app.core.time import UtcDatetime
 from app.models.closure import ClosureStatus, ModerationStatus, ReasonType
+from app.schemas.partial import reject_explicit_null
 
 # Validates scheme and shape without changing the stored type. `HttpUrl`
 # accepts http and https and nothing else, which is the property that matters:
@@ -32,6 +33,26 @@ class ClosureCreate(BaseModel):
     start_mile_marker: float
     end_mile_marker: float
 
+    @model_validator(mode="after")
+    def _order_the_mile_markers(self) -> "ClosureCreate":
+        """A reversed pair is normalised, not refused (#257).
+
+        The client's own consumers split on this - warningsOnRoute normalises
+        ordering, closureBanner assumes start <= end - and a reversed pair
+        made the inside-the-closure check unsatisfiable and the banner's
+        distance wrong. The fix belongs at the source, and it is a swap
+        rather than a 422 because the reporter's meaning is unambiguous:
+        "the trail is closed between these two miles" says the same thing
+        in either order, and a hiker reporting a closure from a trailhead
+        should not be bounced over which end they named first.
+        """
+        if self.start_mile_marker > self.end_mile_marker:
+            self.start_mile_marker, self.end_mile_marker = (
+                self.end_mile_marker,
+                self.start_mile_marker,
+            )
+        return self
+
 
 class ClosureUpdate(BaseModel):
     """Fields a maintainer/club_admin can change via PATCH.
@@ -39,24 +60,26 @@ class ClosureUpdate(BaseModel):
     All optional so a caller can update just the piece that changed (e.g.
     only `status`, without resending reason/note).
 
-    **Omitted and explicitly null mean different things for the three fields
-    added by #245.** They are the fields whose value legitimately goes back to
-    unknown: a reopening date slips or is withdrawn, a club takes its reroute
-    notice down. With `None` read as "absent" - the rule the older fields keep
-    - there would be no way to express that, and a stale promised date would
-    outlive the promise. So the router consults `model_fields_set`, and
-    `{"expected_reopen": null}` clears while `{}` leaves it alone.
+    **Omitted and explicitly null mean different things** (#245 established
+    it for the three detail fields; #255 made it the convention for every
+    nullable field here). A field's value legitimately goes back to unknown:
+    a reopening date slips or is withdrawn, a club takes its reroute notice
+    down, a stale note is cleared rather than overwritten. With `None` read
+    as "absent" there would be no way to express any of that. So the router
+    consults `model_fields_set`, and `{"note": null}` clears while `{}`
+    leaves it alone.
 
-    `status` and `reason_type` keep the older rule, and not just for
-    compatibility: both are `nullable=False`, so there is no null state for an
-    explicit null to mean. `note` is nullable and could take the newer rule,
-    but changing it would alter the behaviour of an endpoint this issue did
-    not ask about - left as it is, deliberately.
+    `status` and `reason_type` are `nullable=False`, so there is no null
+    state for an explicit null to mean - it is a 422 naming the field, per
+    the shared convention in app/schemas/partial.py (#255). Before that it
+    was silently dropped, which read as success and did nothing.
     """
 
     status: ClosureStatus | None = None
     reason_type: ReasonType | None = None
     note: str | None = None
+
+    _no_explicit_nulls = reject_explicit_null("status", "reason_type")
 
     # When the TRAIL shut - not when this was filed (`reported_at`) or
     # confirmed (`verified_at`). See app/models/closure.py.

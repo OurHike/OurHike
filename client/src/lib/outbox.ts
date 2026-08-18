@@ -25,12 +25,17 @@
 //  4. A report written DURING a flush survives it. Sent items are removed
 //     one at a time rather than by writing back a snapshot taken before the
 //     sending started; that snapshot erased anything enqueued in between.
+//     Since #288 the removal itself is also atomic: every mutator goes
+//     through mutateQueue below, whose get+put share ONE readwrite
+//     transaction, so this property no longer has a sub-millisecond hole
+//     where two overlapping mutators could interleave between a `get` and
+//     its `set` and lose whichever wrote first.
 //
 // What is deliberately NOT here: retrying forever. A report the server will
 // never accept is marked with a `failure` and shown to the hiker on the More
 // screen, because "waiting to send" is a lie once it has stopped being true.
 
-import { get, set } from 'idb-keyval'
+import { get, update } from 'idb-keyval'
 
 import { BUILD_INFO } from './buildInfo'
 
@@ -169,6 +174,21 @@ async function readQueue(): Promise<OutboxItem[]> {
   return (await get(OUTBOX_KEY)) ?? []
 }
 
+/**
+ * Every write to the queue goes through here, and through `update()`
+ * specifically, whose get+put run inside one `readwrite` transaction. The
+ * mutators used to be separate `get` → transform → `set` calls - two
+ * IndexedDB transactions - so two of them overlapping could lose a write:
+ * a report enqueued while a flush's `removeQueued` was between its read and
+ * its write was gone from IndexedDB without ever being sent, and a queued
+ * report is often the only copy of something written with no signal (#288).
+ */
+async function mutateQueue(
+  transform: (queue: OutboxItem[]) => OutboxItem[],
+): Promise<void> {
+  await update<OutboxItem[]>(OUTBOX_KEY, (queue) => transform(queue ?? []))
+}
+
 export async function listQueued(): Promise<OutboxItem[]> {
   return readQueue()
 }
@@ -188,16 +208,12 @@ export async function enqueue(
     ...(photo !== undefined ? { photo } : {}),
   }
 
-  await set(OUTBOX_KEY, [...(await readQueue()), item])
+  await mutateQueue((queue) => [...queue, item])
   return item
 }
 
 export async function removeQueued(id: string): Promise<void> {
-  const queue = await readQueue()
-  await set(
-    OUTBOX_KEY,
-    queue.filter((item) => item.id !== id),
-  )
+  await mutateQueue((queue) => queue.filter((item) => item.id !== id))
 }
 
 /** Clears a permanent failure so the item is eligible to be sent again.
@@ -215,9 +231,7 @@ export async function removeQueued(id: string): Promise<void> {
  *  NEXT one being wrong, and this one becomes acceptable once real time
  *  passes the timestamp it is carrying. */
 export async function retryQueued(id: string): Promise<void> {
-  const queue = await readQueue()
-  await set(
-    OUTBOX_KEY,
+  await mutateQueue((queue) =>
     queue.map((item) => {
       if (item.id !== id) return item
       const { failure: _failure, ...cleared } = item
@@ -281,9 +295,7 @@ export async function flushOutbox(
 }
 
 async function markFailed(id: string, reason: string): Promise<void> {
-  const queue = await readQueue()
-  await set(
-    OUTBOX_KEY,
+  await mutateQueue((queue) =>
     queue.map((item) =>
       item.id === id
         ? {

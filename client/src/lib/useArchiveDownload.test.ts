@@ -28,7 +28,12 @@ function storedBytes(store: Record<string, unknown>): number {
 // is right when the app is closing and wrong when someone has just asked for
 // the space back, which is the race these cover.
 
-vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
+vi.mock('idb-keyval', () => ({
+  get: vi.fn(),
+  set: vi.fn(),
+  del: vi.fn(),
+  update: vi.fn(),
+}))
 
 const URL_ = 'https://cdn.example.org/background.pmtiles'
 const ARTIFACT = 'background.pmtiles'

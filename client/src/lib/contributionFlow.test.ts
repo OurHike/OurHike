@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { get, set } from 'idb-keyval'
+import { get, set, update } from 'idb-keyval'
 import { beginContribution, stepAfterSaving, REPORTER_TYPES } from './contributionFlow'
 import { listQueued } from './outbox'
 
@@ -16,16 +16,20 @@ import { listQueued } from './outbox'
 // TESTING.md item 12 asks for exactly this: the report survives the sign-in
 // detour intact, with the authoring time rather than the send time.
 
-vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn() }))
+vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), update: vi.fn() }))
 
 const mockedGet = vi.mocked(get)
 const mockedSet = vi.mocked(set)
+const mockedUpdate = vi.mocked(update)
 
 function withStore() {
   let stored: unknown[] = []
   mockedGet.mockImplementation(async () => stored)
   mockedSet.mockImplementation(async (_k, v) => {
     stored = v as unknown[]
+  })
+  mockedUpdate.mockImplementation(async (_k, updater) => {
+    stored = updater(stored) as unknown[]
   })
   return () => stored
 }

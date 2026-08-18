@@ -1,0 +1,45 @@
+version: 2
+
+sources:
+  - name: atc
+    description: >
+      ATC's ArcGIS feature layers, fetched by fetch_all.py off sources.json
+      and loaded untouched into the warehouse by load_raw.py. Descriptions
+      below are transcribed from that registry's own metadata
+      (title/discovered_via/discovered_date), not authored here - DBT.md's
+      "nothing invented" rule for docs.
+    schema: raw
+    loaded_at_field: _loaded_at
+    freshness:
+      # Measures "how recently did load_raw.py run", NOT upstream ATC
+      # staleness - the fetchers own real upstream change-detection
+      # (dataLastEditDate, ETags). DBT.md is explicit that this narrower
+      # signal must be labelled as such.
+      warn_after: {count: 7, period: day}
+    tables:
+      - name: raw_atc__shelters
+        description: >
+          A.T. Shelters (sources.json: discovered 2026-07-24 via the ATC
+          Experience Builder app's operational layers). One row per shelter,
+          every upstream column intact - the ANST_Facilities inventory
+          schema: identity (GlobalID/Name), structure inventory
+          (Stories/Year_Built/...), stewardship (Trail_Club/Maintainer),
+          and GPS provenance fields.
+        columns:
+          - name: GlobalID
+            description: ATC's stable feature id - the POI identity anchor.
+            data_tests: [not_null, unique]
+          - name: Name
+            description: The shelter's name as ATC publishes it.
+      - name: raw_atc__campsites
+        description: >
+          A.T. Campsites (sources.json: discovered 2026-07-24 via the ATC
+          Experience Builder app's operational layers). Same ANST_Facilities
+          schema family as shelters, plus campsite-specific inventory
+          (Type/Site_Num/Tent_Pads/...).
+        columns:
+          - name: GlobalID
+            description: ATC's stable feature id - the POI identity anchor.
+            data_tests: [not_null, unique]
+          - name: Name
+            description: The campsite's name as ATC publishes it.

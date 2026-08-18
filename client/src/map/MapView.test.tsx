@@ -324,12 +324,17 @@ describe('MapView', () => {
     expect(map.sourceData.has(TRAILS_SOURCE_ID)).toBe(false)
   })
 
-  it('leaves no load listener behind after unmount', () => {
+  it('leaves no style listeners behind after unmount', () => {
     const { unmount } = render(<MapView {...PROPS} />)
     const [map] = MockMap.live
 
     unmount()
 
+    // 'styledata' is the event production actually listens on
+    // (map/styleReady.ts); this used to assert only 'load', which nothing
+    // has registered since the whenStyleReady migration - a leak test that
+    // could not fail (#175).
+    expect(map.listenerCount('styledata')).toBe(0)
     expect(map.listenerCount('load')).toBe(0)
   })
 
@@ -568,12 +573,14 @@ describe('POI pins', () => {
     expect(map.sourceData.get(CLOSURE_SOURCE_ID)).toEqual(closureFeatureCollection([]))
   })
 
-  it('leaves no load listeners behind after unmount', () => {
+  it('leaves no style listeners behind after unmount', () => {
     const { unmount } = render(<MapView {...PROPS} pois={POIS} />)
     const [map] = MockMap.live
 
     unmount()
 
+    // See the sibling above: 'styledata' is the live event (#175).
+    expect(map.listenerCount('styledata')).toBe(0)
     expect(map.listenerCount('load')).toBe(0)
   })
 

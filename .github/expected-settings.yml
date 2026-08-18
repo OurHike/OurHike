@@ -271,7 +271,10 @@ settings:
       statement problem never arises. Session mode on 5432 is the
       recommendation only because it is simpler to hold in your head.
       THE USERNAME MUST BE TENANT-QUALIFIED - `ourhike_conditions_reader.
-      <project-ref>`, not the bare role name. Supavisor routes on the part
+      <project-ref>`, not the bare role name: the database role goes before
+      the dot and the project ref after it. The `postgres.` opening the two
+      MIGRATION examples is the owner role's *name* in that position, not a
+      pooler keyword (#438). Supavisor routes on the part
       after the dot, so a bare role fails at connect with
       `FATAL: (ENOTFOUND) tenant/user ... not found`, which reads like the
       role was never created rather than like a URL format problem - that is

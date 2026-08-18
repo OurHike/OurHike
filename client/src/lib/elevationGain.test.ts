@@ -19,9 +19,9 @@
 // language without opening the other file. Both suites read one JSON table,
 // so that is a failing test rather than a silent disagreement.
 
-import { existsSync, readFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+
+import { readRepoFile } from '../test/repoFile'
 
 import {
   cumulativeGain,
@@ -143,24 +143,13 @@ describe('shared with the Python implementation', () => {
     expected_gain: number
   }
 
-  // Walked up from the working directory rather than resolved from
-  // import.meta.url: Vitest transforms this module, so its import.meta.url is
-  // not a file: URL and fileURLToPath throws on it. Walking also survives the
-  // suite being run from the repo root instead of client/.
-  const findRepoFile = (relative: string): string => {
-    let dir = process.cwd()
-    for (;;) {
-      const candidate = resolve(dir, relative)
-      if (existsSync(candidate)) return candidate
-      const parent = dirname(dir)
-      if (parent === dir) throw new Error(`${relative} not found above ${process.cwd()}`)
-      dir = parent
-    }
+  // Through test/repoFile.ts, which declares this out-of-tree read so
+  // ciScope.test.ts can hold the CI scope list to it (#503).
+  const vectors = JSON.parse(readRepoFile('pipeline/reference/gain_vectors.json')) as {
+    cases: Vector[]
+    gap_cases: Vector[]
+    boundary_cases: BoundaryVector[]
   }
-
-  const vectors = JSON.parse(
-    readFileSync(findRepoFile('pipeline/reference/gain_vectors.json'), 'utf8'),
-  ) as { cases: Vector[]; gap_cases: Vector[]; boundary_cases: BoundaryVector[] }
 
   it('has vectors to run', () => {
     // A vector file that silently emptied would turn every case below into

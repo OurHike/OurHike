@@ -475,12 +475,26 @@ OURHIKE_DATA_ENV=ua R2_WRITE_ENABLED=true .venv/Scripts/python publish.py
 
 **Where an artifact goes in the bucket, and what it may be called: [R2_LAYOUT.md](R2_LAYOUT.md).** A key is a public URL that deployed clients and app-store builds already request, and `publish.py`'s manifest merge is additive-only, so a name that lands wrong cannot be renamed - only joined by a sibling and served alongside the mistake. `lib/r2_keys.py` checks every key of a run before the first upload; read the layout doc before adding an artifact, not after.
 
-**Where this is going, designed 2026-07-31: [DATA_RELEASES.md](DATA_RELEASES.md).** `publish.py` today overwrites live keys at the bucket root, which means a publish can land on top of a download already in progress and gives a hiker no way to pin a dataset or be told one changed. The plan replaces that with immutable dated release folders, a daily upstream check that only flags, a weekly incremental build, a verification battery run against the published bytes, and release only via a merged code change. Nothing in that plan is built yet - everything described below is still how publishing works.
+**Where this is going, designed 2026-07-31: [DATA_RELEASES.md](DATA_RELEASES.md).** `publish.py` today overwrites live keys at the bucket root, which means a publish can land on top of a download already in progress and gives a hiker no way to pin a dataset or be told one changed. The plan replaces that with immutable dated release folders, a daily upstream check that only flags, a weekly incremental build, a verification battery run against the published bytes, and release only via a merged code change. Much of it is built now - its own body marks the daily upstream check (§1), the standing deployment monitor (§3a) and the published-data smoke test (§3b) **Built**, and `releases/<id>/` folders are written on every publish (R2_LAYOUT.md, #500) - while the root keys below stay the live surface every client reads, exactly as R2_LAYOUT.md says is deliberate.
 
 To serve `data/processed/` locally instead - for testing the client's offline download without publishing anything - use `serve_processed.py`, which answers byte-range requests and sets the CORS headers a cross-origin bucket needs. See [../client/README.md](../client/README.md).
 
+## The dbt transform layer (#100, Phase A)
+
+[DBT.md](DBT.md) is the design; Phase A of it is built. After a fetch:
+
+```
+python load_raw.py          # raw/*.geojson -> data/warehouse.duckdb's `raw` schema
+cd dbt
+dbt deps --profiles-dir .   # once, from the committed package pins
+dbt seed --profiles-dir .
+dbt build --profiles-dir .  # models + all tests; add --exclude package:dbt_project_evaluator to skip the convention lint
+```
+
+What loads is decided by `sources.json`'s registry plus `load_raw.py`'s one hand entry (opentrail), never a glob; a registered-but-unfetched layer is reported and skipped. The first slice lands `dim_pois` in the `marts` schema - shelters + campsites + opentrail waypoints on one unified shape. The mart is warehouse-internal: `export_poi.py` still owns the published artifacts. CI runs the same sequence against synthetic fixtures (`make_dbt_fixtures.py`) in the `dbt` job of `pipeline-tests.yml`; lint with `OURHIKE_WAREHOUSE=data/warehouse.duckdb sqlfluff lint dbt/models dbt/tests` from `pipeline/`.
+
 ## Next steps
 
-Open pipeline work is tracked in [issues](https://github.com/OurHike/OurHike/labels/pipeline) - notably [#99](https://github.com/OurHike/OurHike/issues/99) (the unified POI schema beyond its first slice), [#96](https://github.com/OurHike/OurHike/issues/96) (nothing runs the freshness check on a schedule) and [#100](https://github.com/OurHike/OurHike/issues/100) (the dbt transform layer). Publish now ships as `publish.py`; the release design that supersedes it is [DATA_RELEASES.md](DATA_RELEASES.md).
+Open pipeline work is tracked in [issues](https://github.com/OurHike/OurHike/labels/pipeline) - notably [#99](https://github.com/OurHike/OurHike/issues/99) (the unified POI schema beyond its first slice), [#96](https://github.com/OurHike/OurHike/issues/96) (nothing runs the freshness check on a schedule) and [#100](https://github.com/OurHike/OurHike/issues/100) (the dbt transform layer - Phase A built, see above; B-D open). Publish now ships as `publish.py`; the release design that supersedes it is [DATA_RELEASES.md](DATA_RELEASES.md).
 
 **Chunking granularity decided 2026-07-28: whole corridor, one package** (not per-state/per-section) - see [../ROADMAP.md](../ROADMAP.md) Phase 2 for why, and the zoom-11/12/13 detail choice this Export step supports.

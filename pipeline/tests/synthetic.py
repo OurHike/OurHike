@@ -52,3 +52,37 @@ def write_centerline(path, coords=CENTERLINE_COORDS):
             }
         )
     )
+
+
+def write_half_mile_markers(path, coords=CENTERLINE_COORDS, scale=1.0, interval_mi=0.5):
+    """ATC-shaped half-mile markers along a lon/lat line, in the shape of the
+    real half_mile_points_from_springer.geojson: Point features whose
+    `Measure` is the cumulative mile. The mile axis is calibrated to these
+    since #652, so any fixture whose export reaches attach_miles or
+    build_profile needs them next to its centerline.
+
+    scale=1 makes ATC's scale agree with the line's geometry; another value
+    makes them disagree, which is what the calibration exists to resolve in
+    ATC's favour - a suite proving that passes its own scale."""
+    from rasterio.warp import transform as _warp_transform
+    from shapely.geometry import LineString as _LineString
+
+    meters_per_mile = 1609.344
+    xs, ys = _warp_transform("EPSG:4326", "EPSG:5070", [lon for lon, _ in coords], [lat for _, lat in coords])
+    line_m = _LineString(list(zip(xs, ys)))
+    features = []
+    distance = interval_mi * meters_per_mile
+    measure = interval_mi
+    while distance <= line_m.length:
+        pt = line_m.interpolate(distance)
+        lon, lat = _warp_transform("EPSG:5070", "EPSG:4326", [pt.x], [pt.y])
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [lon[0], lat[0]]},
+                "properties": {"Measure": round(measure * scale, 3)},
+            }
+        )
+        distance += interval_mi * meters_per_mile
+        measure += interval_mi
+    path.write_text(json.dumps({"type": "FeatureCollection", "features": features}))

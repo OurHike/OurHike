@@ -15,7 +15,12 @@ import { appHarness } from './test/appHarness'
 // file-wide - App.test.tsx needs the real one.
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
-vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
+vi.mock('idb-keyval', () => ({
+  get: vi.fn(),
+  set: vi.fn(),
+  del: vi.fn(),
+  update: vi.fn(),
+}))
 vi.mock('./map/archiveZooms', () => ({
   readArchiveZooms: () => Promise.resolve(null),
 }))

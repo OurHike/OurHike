@@ -1,0 +1,34 @@
+# The dbt transform layer - the T of the ELT architecture DBT.md specifies
+# (#100). load_raw.py puts fetched raw layers into data/warehouse.duckdb's
+# `raw` schema; everything from there to a mart is owned by the models here.
+name: ourhike
+version: "1.0.0"
+profile: ourhike
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+
+target-path: target
+clean-targets: [target, dbt_packages]
+
+models:
+  ourhike:
+    staging:
+      # One source() in, light rename/cast only - views, per DBT.md's
+      # conventions. The one sanctioned exception to "no joins in staging"
+      # is stg_opentrail__waypoints's seed lookup, which the design names.
+      +materialized: view
+      +schema: staging
+    intermediate:
+      +materialized: view
+      +schema: intermediate
+    marts:
+      # Final, tested, documented - the only layer materialized as tables.
+      +materialized: table
+      +schema: marts
+
+seeds:
+  ourhike:
+    +schema: seeds

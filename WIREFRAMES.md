@@ -226,7 +226,7 @@ Five groups over one canonical `UserPreferences` model, then an About block that
 not one of them:
 
 - **You** — trail name (Linked / on-this-device), reporter type, account.
-- **The map** — background source (USGS topo downloaded is the default and the only offline-capable one), detail for new downloads, roads & walkability _(Later)_.
+- **The map** — background source (the OSM-schema vector topo sheet has been the default — and offline-capable — since #237; the downloaded USGS quad sheet is the full-detail alternative, not the default this line used to call it), detail for new downloads, roads & walkability _(Later)_.
 - **Display** — theme (Light / Dark / Auto, a segmented control like the background picker above it; Auto is last, after the two concrete choices, so the group reads as a spectrum ending in "let the phone decide"), units (Feet / Metres, the same segmented control; built 2026-08-13, [#619](https://github.com/OurHike/OurHike/issues/619)).
 
   The units row was the standing example of the _(Later)_ treatment for a year and is now the standing example of it being temporary. It is labelled by the unit rather than by the system — a hiker asks "can I get this in metres?", not "is this app imperial?" — and each segment names the distance unit that rides along with it, because choosing metres is also choosing kilometres and finding that out afterwards on the closure banner is a surprise four words prevent. Its description carries the exception under both options: **mile markers stay in miles either way.** The choice reaches every screen and the canvas alike, which is the standard [CONTRIBUTING.md](CONTRIBUTING.md) states and `client/src/test/unitDisplay.test.ts` enforces.
@@ -333,7 +333,7 @@ The wireframe (turns `6d`, `7a`, `7c`, `9c`, `10a`, `10b`) shows a **per-section
 - Fix the onboarding "Map size" screen (`13a`/`13c`) copy to remove "...or take single sections later, in Downloads" — there's no section granularity anywhere in the app.
 - `7a`'s in-progress/failed states likely still apply structurally (a single download can still be mid-transfer or fail partway) — just against one package, not per-section rows.
 
-### 2. Reporting: the "unsafe behaviour" / "say thanks" split isn't in the data model yet (open — needs a decision, not a docs fix)
+### 2. Reporting: the "unsafe behaviour" / "say thanks" split isn't in the data model yet (resolved 2026-07-29 — see the block quote at the end)
 
 [REPORT_A_PROBLEM.md](features/REPORT_A_PROBLEM.md) defines exactly six report types — `blowdown | trash | bad_hikers | flooding | shelter_repair | animals` — and explicitly flags `bad_hikers` handling as **"an open question, not decided [there]."**
 
@@ -359,7 +359,7 @@ Real values live in this repo, not in this file — see [.claude/OurHike Design 
 - **Icons:** Lucide line icons throughout (1.75–2.1px stroke). ⚠ **Known implementation gap:** the built report-type picker (`client/src/screens/ReportTypePicker.tsx`) uses emoji glyphs, not Lucide — a deviation introduced when that screen was first built, before any icon library was added as a dependency. The wireframe names a real Lucide icon per tile (see §6's table). Worth closing as its own change across every screen at once rather than one tile at a time, since a mixed emoji/Lucide picker would look worse than a consistently-emoji one. — `droplet`, `house`, `tent`, `mountain`, `signpost`, `square-parking`, `tree-pine`, `waves`, `trash-2`, `hammer`, `paw-print`, `shield-alert`, `heart-handshake`, `triangle-alert`, `octagon-alert`, `compass`, `locate-fixed`, `list`, `search`, `bell`, `lock`, `clock`, `refresh-cw`, `badge-check`, `shield-check`.
 - **Real logo mark chosen 2026-07-28** — see `.claude/OurHike Design System/` → `components/core/Logo.jsx` (React) and `assets/logo-icon.svg` (standalone, for favicons/app icons). Supersedes every "no logo yet" note elsewhere in this doc and in the design system's own readme.
 - **No photography shipped as app assets** — placeholders only. The one photographic surface is the waypoint card's photo slot, filled from _data_ (per-POI Wikimedia Commons photos with per-photo licences, `features/POI_PHOTOS.md`), not from bundled assets.
-- **Map data:** USGS US Topo (public domain), ATC GIS layers, OpenStreetMap (ODbL — **visible "© OpenStreetMap" attribution required** once the Protomaps context basemap ships), USGS NHD, USGS 3DEP 1m DEM.
+- **Map data:** USGS US Topo (public domain), ATC GIS layers, OpenStreetMap (ODbL — **visible "© OpenStreetMap" attribution required**, and due now rather than later: the OSM-schema vector basemap has shipped OSM data since #237. The Protomaps context extract this clause used to wait on was cancelled, #196), USGS NHD, USGS 3DEP 1m DEM.
 
 ## Screen map
 
@@ -385,7 +385,7 @@ Which repo docs each screen derives from — useful when a frame's intent isn't 
 | Day-hiker map `7e`                           | SEGMENTS.md (day-hike persona), TRIP_PLANNING.md                                                                                                                                                                                    |
 | Web shell `7f`, `2i`                         | FEATURES.md (web-only payments), MAP_OPTIONS.md (web legend panel)                                                                                                                                                                  |
 | About / attribution `9a`, `2g`               | ROADMAP.md (OSM attribution), MAP_OPTIONS.md (settings), HIKER_SAFETY.md (anonymity window)                                                                                                                                         |
-| Off-corridor `9b`, `2h`                      | ROADMAP.md (Protomaps extended-context basemap)                                                                                                                                                                                     |
+| Off-corridor `9b`, `2h`                      | pipeline/BASEMAP.md (context through z9 travels inside every package since #189; the Protomaps extract was cancelled, #196)                                                                                                                                                                                     |
 | Offline outbox `9c`                          | REPORT_A_PROBLEM.md (backend), DATA_NUDGES.md                                                                                                                                                                                       |
 | Sunlight pass `9d`                           | ROADMAP.md Phase 2 outdoor usability pass                                                                                                                                                                                           |
 | Settings `16a`                               | IDENTITY_AND_PRIVACY.md (canonical `UserPreferences`), UX_CUSTOMIZATION.md                                                                                                                                                          |

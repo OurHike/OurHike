@@ -349,6 +349,11 @@ picture of the current camera is not a preference.
   doc asked for rather than a number argued into place. See "The seam" above. What it turned up
   along the way reshaped two things here rather than confirming them: site folding is doing more
   of the work than this doc credited it with, and the dot rank is in practice a vista rank.
+  *(The constant then kept moving after the answer: the corrections recorded in
+  `poiLayers.ts`'s own docstring — z12, then z10, then a floor of 9 with the dot rank drawing
+  the texture below it — leave `POI_PIN_MIN_ZOOM = 9` as the shipped value, checked
+  2026-08-17 (#661). The spike's measurement stands as the answer to the question it was
+  asked; the seam it measured is handled by the dot rank now rather than by the pin floor.)*
 - ~~**Whether the dot rank should extend below the seam.**~~ **Answered 2026-08-15 — yes**, on
   [#603](https://github.com/OurHike/OurHike/issues/603), by the maintainer. `POI_DOT_MIN_ZOOM = 0`
   in `client/src/map/poiLayers.ts`; the pin rank keeps `POI_PIN_MIN_ZOOM`, so the two ranks now

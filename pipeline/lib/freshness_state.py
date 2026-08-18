@@ -48,6 +48,29 @@ STATE_VERSION = 1
 
 HTTP_TIMEOUT = 30
 
+# Where a published state may legitimately live: the public data bucket,
+# behind its custom domain or R2's own dev hostname (the UA bucket has no
+# custom domain). load_state() refuses anything else, so a dispatched run
+# with a crafted state_url - or a workflow variable gone wrong - cannot turn
+# the runner into a GET proxy for an arbitrary host (#173). The check runs
+# in a job holding no secrets, so this is defense in depth, not the only
+# wall; it is also deliberately a list to edit rather than a config knob,
+# because a new legitimate host is a decision worth a diff.
+ALLOWED_STATE_HOSTS = ("data.ourhike.org",)
+ALLOWED_STATE_HOST_SUFFIXES = (".r2.dev",)
+
+
+def _state_url_problem(url: str) -> str | None:
+    """Why `url` may not be fetched as a state source, or None if it may."""
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        return f"state URLs must be https, got {parsed.scheme!r}"
+    host = (parsed.hostname or "").lower()
+    if host in ALLOWED_STATE_HOSTS or any(host.endswith(suffix) for suffix in ALLOWED_STATE_HOST_SUFFIXES):
+        return None
+    allowed = ", ".join((*ALLOWED_STATE_HOSTS, *(f"*{s}" for s in ALLOWED_STATE_HOST_SUFFIXES)))
+    return f"host {host!r} is not a place a published state lives (allowed: {allowed})"
+
 
 class Freshness(str, Enum):
     FRESH = "fresh"
@@ -362,6 +385,9 @@ def load_state(source: str | Path) -> dict:
 def _read_source(source: str | Path) -> str:
     text = str(source)
     if urlparse(text).scheme in {"http", "https"}:
+        problem = _state_url_problem(text)
+        if problem is not None:
+            raise StateUnavailable(f"refusing to fetch {text}: {problem}")
         try:
             response = requests.get(text, timeout=HTTP_TIMEOUT)
             response.raise_for_status()

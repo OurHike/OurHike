@@ -3,7 +3,7 @@ import { get, set } from 'idb-keyval'
 import { loadPreferences, savePreferences, PREFERENCES_KEY } from './preferences'
 import { DEFAULT_PREFERENCES } from './userPreferences'
 
-vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn() }))
+vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), update: vi.fn() }))
 
 const store = new Map<string, unknown>()
 
@@ -114,5 +114,39 @@ describe('preferences', () => {
     store.set(PREFERENCES_KEY, { ...DEFAULT_PREFERENCES, wrong_way_alert_enabled: false })
 
     expect((await loadPreferences()).wrong_way_alert_enabled).toBe(false)
+  })
+
+  // The repair used to be four hand-rolled per-key functions, which is how
+  // these two keys ended up with no guard at all (#175). One case each on the
+  // keys the generalisation newly covers; the per-key cases above prove the
+  // behaviour the table inherited.
+  it('drops a unit system this build does not know, rather than trusting it', async () => {
+    store.set(PREFERENCES_KEY, { ...DEFAULT_PREFERENCES, unit_system: 'furlongs' })
+
+    expect((await loadPreferences()).unit_system).toBe(DEFAULT_PREFERENCES.unit_system)
+  })
+
+  it('drops a background zoom this build does not offer', async () => {
+    store.set(PREFERENCES_KEY, { ...DEFAULT_PREFERENCES, max_background_zoom: 15 })
+
+    expect((await loadPreferences()).max_background_zoom).toBe(
+      DEFAULT_PREFERENCES.max_background_zoom,
+    )
+  })
+
+  it("keeps reporter_type's null - it is an answer, not a corrupt value", async () => {
+    // Null means "hasn't said" (#233), and dropping it to the default would
+    // re-ask a question the hiker declined - or worse, invent an answer.
+    store.set(PREFERENCES_KEY, { ...DEFAULT_PREFERENCES, reporter_type: null })
+
+    expect((await loadPreferences()).reporter_type).toBeNull()
+  })
+
+  it('drops a reporter type outside the four the trail cares about', async () => {
+    store.set(PREFERENCES_KEY, { ...DEFAULT_PREFERENCES, reporter_type: 'influencer' })
+
+    expect((await loadPreferences()).reporter_type).toBe(
+      DEFAULT_PREFERENCES.reporter_type,
+    )
   })
 })

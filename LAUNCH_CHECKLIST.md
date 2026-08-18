@@ -4,7 +4,7 @@ Everything in the plan is built and tested. What remains is almost entirely **ac
 
 This is ordered so that each step unblocks the next. Steps 1–3 get a working map in a browser; 4–6 add contributions; 7 ships it.
 
-**Status at time of writing:** pipeline, backend and client all green (pipeline 152 tests, backend 85, client 490). All artifacts built locally. Nothing is published anywhere yet.
+**Status, updated 2026-08-17 (#661):** launched — v1.0.0 shipped 2026-08-16; the bucket has been live since 2026-07-31 and Pages since early August. The suites have roughly tripled since this document was first written (the client suite alone is 3,020 tests, measured 2026-08-17), so this file no longer quotes per-suite counts. Still open from this checklist: hosting the backend (#600), real OAuth end to end (#92), and applying the migration to Supabase's Postgres.
 
 ---
 
@@ -18,7 +18,7 @@ This is ordered so that each step unblocks the next. Steps 1–3 get a working m
 | POIs | water, shelters, campsites, resupply, crossings |
 | Elevation | 139,219 points at 25 m, 0% DEM gaps, 0.87 MB gzipped |
 | Backend | FastAPI + SQLAlchemy, reports/closures/moderation/hikes/preferences/wrong-way, Supabase JWT auth |
-| Client | Every MVP screen, offline outbox, resumable download, 490 tests |
+| Client | Every MVP screen, offline outbox, resumable download |
 
 ---
 
@@ -200,7 +200,7 @@ A pull request from a fork gets no secrets and so gets no preview; the workflow 
 
 Cloudflare now steers new projects toward **Workers static assets** rather than Pages, and that would work here too. Pages was chosen because a preview needs nothing but a directory uploaded to a URL, and Pages does that without a `wrangler.jsonc`, a `main` entry point or a compatibility date to keep current. Worth revisiting if the app ever grows a server-side part.
 
-After setting `DATA_BASE_URL` (step 2), the site needs a **redeploy** to pick it up, since it's baked in at build time. Either push any commit to `main`, or dispatch **"Deploy Pages"** manually (Actions tab → workflow_dispatch) to redeploy with no code change.
+After setting `DATA_BASE_URL` (step 2), the site needs a **redeploy** to pick it up, since it's baked in at build time. Dispatch **"Deploy Pages"** manually (Actions tab → workflow_dispatch). This used to say "push any commit to `main`" — that stopped being true when RELEASING.md §2 landed: a push to `main` now deploys **UA**, and production Pages deploys only from a `v*` tag or a dispatch (#661).
 
 Two things to check after that redeploy:
 - The PWA installs (service worker registers, manifest loads). iOS Web Push **only** works for home-screen installs, which matters for the wrong-way alert later.
@@ -310,7 +310,7 @@ Settings → Secrets and variables → Actions → **Secrets** tab. Get each one
 **Two edits to make to what the dashboard gives you**, both of which fail confusingly if skipped, and both of which `check_schema_drift.py --url-only` now refuses by name before any migration runs:
 
 - **`postgresql://` → `postgresql+psycopg://`.** `app/config.py` uses `DATABASE_URL` exactly as given, and SQLAlchemy resolves a bare `postgresql://` to psycopg2, which this backend does not install. The failure is an import error naming a driver nobody chose.
-- **Note it is `postgres.<project-ref>` as the username**, not bare `postgres` — the pooler routes by that prefix.
+- **The username's shape is `<database-role>.<project-ref>`** — the role goes before the dot, and the pooler routes on the project ref after it. It reads `postgres.<project-ref>` in the examples above only because a migration connects as the owner role, which happens to be *named* `postgres`; the word is a role name there, not pooler syntax. Every connection string in this repository but one has `postgres` in that position, which makes `postgres.` look like a fixed prefix meaning "Supabase pooler" — it is not, and building the one exception (`PRODUCTION_CONDITIONS_DATABASE_URL`, which connects as `ourhike_conditions_reader`) on that reading cost three dispatches before #438 wrote this down. Get the halves backwards and connect fails with `FATAL: (ENOTFOUND) tenant/user ... not found`; the per-role failure shapes are in [features/CONDITIONS_DELIVERY.md](features/CONDITIONS_DELIVERY.md)'s credential section.
 
 After that: UA follows `main` automatically whenever a revision lands, and production is a **dispatch** — Actions → **Migrate** → Run workflow → target `production`, which runs the UA leg first and then waits on the `production` environment's reviewers. Running `revision --autogenerate` again would produce an empty second migration on top of the existing one; there is nothing to generate.
 
@@ -423,17 +423,16 @@ Confirms all four upstream sources are unchanged since the last fetch. Exits non
 
 ## Things I know are not done, stated plainly
 
-Each of these is now an issue, so that fixing one closes it here too rather than leaving this list to be remembered. The [`v1-mvp`](https://github.com/OurHike/OurHike/labels/v1-mvp) label is the current version of this list.
+Each of these is an issue, so that fixing one closes it here too rather than leaving this list to be remembered — and this list still drifted anyway: reconciled against the tracker 2026-08-17 (#601), four of its seven entries were already closed. The tracker itself ([V2_PLAN.md](V2_PLAN.md), or the [`v2`](https://github.com/OurHike/OurHike/labels/v2) label) is the current version of this list; the `v1-mvp` label this paragraph used to point at now sits only on closed issues.
+
+What is genuinely still not done, of what this list carried:
 
 - **Real OAuth login has never been exercised end to end** ([#92](https://github.com/OurHike/OurHike/issues/92)). The auth code path is fully tested against a mocked Supabase client, but no real Google or Apple sign-in has happened, because that needs credentials only you can create. Expect to find something here.
 - **The wrong-way alert's thresholds (90 ft / 12 min / 25 min) are wireframe placeholders** ([#93](https://github.com/OurHike/OurHike/issues/93)), not validated numbers. `HIKER_SAFETY.md` explicitly declines to guess them pending field testing under tree canopy. The mechanism is tested; the numbers are not trustworthy yet, and this is the one feature where a false alarm costs the most.
-- **Cumulative ascent needs one real validation run** ([#91](https://github.com/OurHike/OurHike/issues/91)). The over-count is fixed in code: `pipeline/lib/elevation_gain.py` and `client/src/lib/elevationGain.ts` count a climb only once the ground reverses by more than the DEM can resolve, so noise is dropped and real climbs are still counted whole. What has *not* happened is the check — `pipeline/check_elevation_gain.py` compares the result against published figures section by section, and `pipeline/reference/published_gain.json` has no sections in it yet, so the check deliberately fails. It needs a full `export_elevation.py` run plus two or three cited section figures; until then the threshold is derived rather than confirmed.
-- **No end-to-end test against real published artifacts** ([#94](https://github.com/OurHike/OurHike/issues/94)). Everything is verified against local files and mocks.
+- **The cumulative-ascent threshold is derived rather than confirmed** ([#133](https://github.com/OurHike/OurHike/issues/133) — the surviving half of closed [#91](https://github.com/OurHike/OurHike/issues/91), which fixed the over-count itself). `pipeline/check_elevation_gain.py` compares the result against published figures section by section, and `pipeline/reference/published_gain.json` has no sections in it yet, so the check deliberately fails. It needs a full `export_elevation.py` run plus two or three cited section figures.
 - **Backend has never run against real Postgres outside CI** ([#95](https://github.com/OurHike/OurHike/issues/95)).
-- **The report form cannot attach a photo** ([#89](https://github.com/OurHike/OurHike/issues/89)) — no longer silently: the picker is disabled and says so, rather than accepting a file and throwing it away. Making it work needs one decision, R2 or Supabase Storage, and then the client half; the backend half is already built.
-- **POIs are never drawn on the map** ([#90](https://github.com/OurHike/OurHike/issues/90)).
 
-Both of the above were found after this list was first written.
+Closed since this list was written, kept here so a reader of an old copy is not chasing ghosts: the photo picker that discarded photos (#89 — report photos ship end to end now), POIs never drawn on the map (#90), the ascent over-count itself (#91), and the missing end-to-end test against real published artifacts (#94 — `smoke_published.py` fetches what a phone fetches, from the bucket it fetches it from).
 
 ## Rough ordering if you want a working map fastest
 

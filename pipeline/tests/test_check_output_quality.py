@@ -378,6 +378,56 @@ def test_elevation_verdict_works_without_null_elevation_pct_for_an_older_manifes
     assert "139219 points" in report["detail"]
 
 
+# --- Check 1: spurs_verdict ----------------------------------------------------
+
+
+def test_spurs_verdict_is_problem_when_manifest_is_missing(tmp_path):
+    """Until #172 spurs.json was the only published artifact with no verdict
+    here at all - a truncated or empty file shipped with every check green."""
+    report = check_output_quality.spurs_verdict(tmp_path / "absent.json")
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert report["reason"] == check_output_quality.MANIFEST_MISSING
+
+
+def test_spurs_verdict_ok_for_a_nonzero_spur_count(tmp_path):
+    entry = _artifact_entry(tmp_path / "spurs.json", "spur bytes", 0)
+    manifest_path = tmp_path / "spurs_manifest.json"
+    manifest_path.write_text(
+        json.dumps({"path": entry["path"], "sha256": entry["sha256"], "spur_count": 62, "resolved_count": 41})
+    )
+
+    report = check_output_quality.spurs_verdict(manifest_path)
+
+    assert report["verdict"] is Verdict.OK
+    assert report["counts"] == {"spurs": 62}
+    assert "41 with a destination" in report["detail"]
+
+
+def test_spurs_verdict_flags_a_zero_spur_count(tmp_path):
+    """An empty spurs.json has so far only ever meant a decode or input
+    failure upstream, so zero fails rather than publishing quietly."""
+    entry = _artifact_entry(tmp_path / "spurs.json", "spur bytes", 0)
+    manifest_path = tmp_path / "spurs_manifest.json"
+    manifest_path.write_text(json.dumps({"path": entry["path"], "sha256": entry["sha256"], "spur_count": 0}))
+
+    report = check_output_quality.spurs_verdict(manifest_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+
+
+def test_spurs_verdict_flags_an_artifact_that_drifted_from_its_manifest(tmp_path):
+    entry = _artifact_entry(tmp_path / "spurs.json", "spur bytes", 0)
+    (tmp_path / "spurs.json").write_text("tampered after hashing")
+    manifest_path = tmp_path / "spurs_manifest.json"
+    manifest_path.write_text(json.dumps({"path": entry["path"], "sha256": entry["sha256"], "spur_count": 62}))
+
+    report = check_output_quality.spurs_verdict(manifest_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert any("sha256 mismatch" in p for p in report["problems"])
+
+
 # --- Check 2: corridor_verdict -------------------------------------------------
 
 
@@ -389,6 +439,19 @@ def test_corridor_verdict_is_problem_when_centerline_is_missing(tmp_path):
 
 
 def test_corridor_verdict_ok_for_a_real_centerline_fixture(tmp_path):
+    spurs_manifest = tmp_path / "spurs_manifest.json"
+    spurs_entry = _artifact_entry(tmp_path / "spurs.json", "spurs bytes", 0)
+    spurs_manifest.write_text(
+        json.dumps(
+            {
+                "path": spurs_entry["path"],
+                "sha256": spurs_entry["sha256"],
+                "spur_count": 62,
+                "resolved_count": 41,
+            }
+        )
+    )
+
     centerline_path = tmp_path / "centerline.geojson"
     write_centerline(centerline_path)
 
@@ -810,7 +873,7 @@ def test_safe_verdict_passes_through_a_normal_result_unchanged():
 
 
 def test_check_all_returns_one_report_per_check(tmp_path, monkeypatch):
-    for attr in ("TRAILS_MANIFEST", "POI_MANIFEST", "ELEVATION_MANIFEST", "TOPO_QUADS_MANIFEST"):
+    for attr in ("TRAILS_MANIFEST", "POI_MANIFEST", "ELEVATION_MANIFEST", "SPURS_MANIFEST", "TOPO_QUADS_MANIFEST"):
         monkeypatch.setattr(check_output_quality, attr, tmp_path / "absent.json")
     monkeypatch.setattr(check_output_quality, "CENTERLINE_PATH", tmp_path / "absent.geojson")
     monkeypatch.setattr(check_output_quality, "BASELINE_PATH", tmp_path / "absent_baseline.json")
@@ -821,6 +884,7 @@ def test_check_all_returns_one_report_per_check(tmp_path, monkeypatch):
         "trails",
         "poi",
         "elevation",
+        "spurs",
         "corridor",
         "topo_quads",
         "baseline",
@@ -829,7 +893,7 @@ def test_check_all_returns_one_report_per_check(tmp_path, monkeypatch):
 
 
 def test_check_all_topo_quads_and_baseline_are_skipped_not_problem_when_nothing_has_run_yet(tmp_path, monkeypatch):
-    for attr in ("TRAILS_MANIFEST", "POI_MANIFEST", "ELEVATION_MANIFEST"):
+    for attr in ("TRAILS_MANIFEST", "POI_MANIFEST", "ELEVATION_MANIFEST", "SPURS_MANIFEST"):
         monkeypatch.setattr(check_output_quality, attr, tmp_path / "absent.json")
     monkeypatch.setattr(check_output_quality, "CENTERLINE_PATH", tmp_path / "absent.geojson")
     monkeypatch.setattr(check_output_quality, "TOPO_QUADS_MANIFEST", tmp_path / "absent_topo.json")
@@ -972,7 +1036,7 @@ def test_the_fetches_check_is_never_excused_by_optional(tmp_path, monkeypatch):
     receipt IS the finding - so it must not be reachable through the same
     door, whatever a caller passes."""
     monkeypatch.setattr(check_output_quality, "RECEIPTS_ROOT", tmp_path)
-    for attr in ("TRAILS_MANIFEST", "POI_MANIFEST", "ELEVATION_MANIFEST"):
+    for attr in ("TRAILS_MANIFEST", "POI_MANIFEST", "ELEVATION_MANIFEST", "SPURS_MANIFEST"):
         monkeypatch.setattr(check_output_quality, attr, tmp_path / "absent.json")
     monkeypatch.setattr(check_output_quality, "CENTERLINE_PATH", tmp_path / "absent.geojson")
     monkeypatch.setattr(check_output_quality, "TOPO_QUADS_MANIFEST", tmp_path / "absent_topo.json")
@@ -1013,9 +1077,9 @@ def test_the_fetched_flag_rejects_a_fetcher_that_is_always_required():
 def passing_pipeline(tmp_path, monkeypatch):
     """A complete, self-consistent, passing set of manifests plus a real
     (tiny, synthetic) centerline - enough for trails_verdict/poi_verdict/
-    elevation_verdict/corridor_verdict to all report OK. topo_quads and
-    baseline are left absent on purpose (SKIPPED, which never gates
-    exit_code) so this fixture stays focused on the four checks that always
+    elevation_verdict/spurs_verdict/corridor_verdict to all report OK.
+    topo_quads and baseline are left absent on purpose (SKIPPED, which never
+    gates exit_code) so this fixture stays focused on the checks that always
     run given this module's documented position in the pipeline."""
     trails_manifest = tmp_path / "trails_manifest.json"
     trails_manifest.write_text(
@@ -1044,6 +1108,19 @@ def passing_pipeline(tmp_path, monkeypatch):
         )
     )
 
+    spurs_manifest = tmp_path / "spurs_manifest.json"
+    spurs_entry = _artifact_entry(tmp_path / "spurs.json", "spurs bytes", 0)
+    spurs_manifest.write_text(
+        json.dumps(
+            {
+                "path": spurs_entry["path"],
+                "sha256": spurs_entry["sha256"],
+                "spur_count": 62,
+                "resolved_count": 41,
+            }
+        )
+    )
+
     centerline_path = tmp_path / "centerline.geojson"
     write_centerline(centerline_path)
 
@@ -1059,6 +1136,7 @@ def passing_pipeline(tmp_path, monkeypatch):
     monkeypatch.setattr(check_output_quality, "TRAILS_MANIFEST", trails_manifest)
     monkeypatch.setattr(check_output_quality, "POI_MANIFEST", poi_manifest)
     monkeypatch.setattr(check_output_quality, "ELEVATION_MANIFEST", elevation_manifest)
+    monkeypatch.setattr(check_output_quality, "SPURS_MANIFEST", spurs_manifest)
     monkeypatch.setattr(check_output_quality, "CENTERLINE_PATH", centerline_path)
     monkeypatch.setattr(check_output_quality, "TOPO_QUADS_MANIFEST", tmp_path / "absent_topo_manifest.json")
     monkeypatch.setattr(check_output_quality, "BASELINE_PATH", tmp_path / "quality_baseline.json")

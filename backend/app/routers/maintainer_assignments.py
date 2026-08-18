@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.assignments import assignments_covering
+from app.core.time import utc_now
 from app.db.session import get_db
 from app.schemas.maintainer_assignment import MaintainerAssignmentOut
 
@@ -44,7 +45,10 @@ def resolve_assignments(
     receiving a thanks and delivering one now ask the same question. This is
     the only caller allowed to default `as_of` to today - see that module.
     """
-    rows = assignments_covering(db, mile, as_of or date.today())
+    # utc_now().date(), never date.today(): every other time entry point here
+    # is UTC by construction, and a server-local "today" resolves "who has
+    # this stretch now" against the wrong date near midnight (#257).
+    rows = assignments_covering(db, mile, as_of or utc_now().date())
 
     return [
         MaintainerAssignmentOut(

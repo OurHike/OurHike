@@ -23,14 +23,24 @@ describe('Badge', () => {
     expect(screen.getByText('Moderate')).toBeInTheDocument()
   })
 
-  it.each(['easy', 'moderate', 'strenuous', 'info', 'neutral'] as const)(
-    'renders the %s tone',
-    (tone) => {
-      render(<Badge tone={tone}>{tone}</Badge>)
+  it('gives every tone its own look - five tones, five backgrounds', () => {
+    // The it.each this replaces asserted only toBeInTheDocument per tone,
+    // which would pass if every tone rendered identically (#175). Distinct
+    // backgrounds is the property the tone prop exists for.
+    const tones = ['easy', 'moderate', 'strenuous', 'info', 'neutral'] as const
+    render(
+      <>
+        {tones.map((tone) => (
+          <Badge key={tone} tone={tone}>
+            {tone}
+          </Badge>
+        ))}
+      </>,
+    )
 
-      expect(screen.getByText(tone)).toBeInTheDocument()
-    },
-  )
+    const backgrounds = tones.map((tone) => screen.getByText(tone).style.background)
+    expect(new Set(backgrounds).size).toBe(tones.length)
+  })
 
   it('falls back to neutral for a tone it does not know', () => {
     // A tone name that has been renamed or mistyped upstream should degrade to
@@ -67,19 +77,41 @@ describe('Button', () => {
     expect(screen.getByRole('button', { name: 'Go' })).toBeDisabled()
   })
 
-  it.each(['primary', 'secondary', 'outline', 'ghost'] as const)(
-    'renders the %s variant',
-    (variant) => {
-      render(<Button variant={variant}>{variant}</Button>)
+  it('gives every variant its own look - four variants, four treatments', () => {
+    // Same repair as Badge's tones (#175): distinct background+border pairs,
+    // not merely presence.
+    const variants = ['primary', 'secondary', 'outline', 'ghost'] as const
+    render(
+      <>
+        {variants.map((variant) => (
+          <Button key={variant} variant={variant}>
+            {variant}
+          </Button>
+        ))}
+      </>,
+    )
 
-      expect(screen.getByRole('button', { name: variant })).toBeInTheDocument()
-    },
-  )
+    const treatments = variants.map((variant) => {
+      const button = screen.getByRole('button', { name: variant })
+      return `${button.style.background}|${button.style.border}`
+    })
+    expect(new Set(treatments).size).toBe(variants.length)
+  })
 
-  it.each(['s', 'm', 'l'] as const)('renders at size %s', (size) => {
-    render(<Button size={size}>{size}</Button>)
+  it('gives every size its own padding - three sizes, three paddings', () => {
+    const sizes = ['s', 'm', 'l'] as const
+    render(
+      <>
+        {sizes.map((size) => (
+          <Button key={size} size={size}>
+            {size}
+          </Button>
+        ))}
+      </>,
+    )
 
-    expect(screen.getByRole('button', { name: size })).toBeInTheDocument()
+    const paddings = sizes.map((size) => screen.getByRole('button', { name: size }).style.padding)
+    expect(new Set(paddings).size).toBe(sizes.length)
   })
 
   it('falls back to the primary variant and medium size for unknown values', () => {
@@ -202,10 +234,19 @@ describe('Callout', () => {
     expect(screen.getByRole('button', { name: 'Act' })).toBeInTheDocument()
   })
 
-  it.each(['brand', 'urgent', 'info'] as const)('renders the %s tone', (tone) => {
-    render(<Callout tone={tone}>{tone}</Callout>)
+  it('gives every tone its own title colour - three tones, three colours', () => {
+    // Same repair as Badge's tones (#175).
+    const tones = ['brand', 'urgent', 'info'] as const
+    render(
+      <>
+        {tones.map((tone) => (
+          <Callout key={tone} tone={tone} title={tone} />
+        ))}
+      </>,
+    )
 
-    expect(screen.getByText(tone)).toBeInTheDocument()
+    const colours = tones.map((tone) => screen.getByText(tone).style.color)
+    expect(new Set(colours).size).toBe(tones.length)
   })
 
   it('falls back to the brand tone for one it does not know', () => {

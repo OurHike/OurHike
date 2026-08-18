@@ -14,7 +14,10 @@ import {
   DEFAULT_PREFERENCES,
   HIKING_DETAIL_LEVEL_VALUES,
   MAP_STYLE_VALUES,
+  MAX_BACKGROUND_ZOOM_VALUES,
+  REPORTER_TYPE_VALUES,
   THEME_VALUES,
+  UNIT_SYSTEM_VALUES,
   type UserPreferences,
 } from './userPreferences'
 import { get, set } from 'idb-keyval'
@@ -25,68 +28,55 @@ export const PREFERENCES_KEY = 'ourhike:preferences'
  * Merging over the defaults fixes a MISSING key, but not a key holding a value
  * this build no longer knows.
  *
- * `background_source` has already been through one such change - it used to
- * offer `usgs_topo_live` and `osm_styled_live`, neither of which was ever
- * built, and both of which could be sitting in IndexedDB on a phone that ran
- * an earlier build. Left alone, that value survives the merge (it is present,
+ * `background_source` was the first through this door - it used to offer
+ * `usgs_topo_live` and `osm_styled_live`, neither of which was ever built,
+ * and both of which could be sitting in IndexedDB on a phone that ran an
+ * earlier build. Left alone, that value survives the merge (it is present,
  * so there is nothing to fill in), reaches buildMapStyle, matches no
  * background, and draws no background - the exact black-map class of bug
- * MAP_OPTIONS.md spent a section on, arriving by a different road.
+ * MAP_OPTIONS.md spent a section on, arriving by a different road. Theme,
+ * map style and the hiking level each then re-derived the same conclusion
+ * as their own hand-rolled function, which is how `unit_system` and
+ * `max_background_zoom` ended up with no guard at all - the argument covers
+ * every enum-typed key, so since #175 the table below does too.
  *
- * So an unrecognised value is treated as absent rather than trusted, and the
+ * An unrecognised value is treated as absent rather than trusted, and the
  * phone falls back to the default it would have had if it had never stored
- * anything.
+ * anything. `null` counts as unrecognised except where the model itself is
+ * nullable - `reporter_type`'s null is an answer ("hasn't said"), not a
+ * corrupt value, and dropping it would re-ask a question the hiker declined.
  */
-function knownBackground(stored: Partial<UserPreferences>): Partial<UserPreferences> {
-  const value = stored.background_source
-  if (value === undefined || BACKGROUND_SOURCES.includes(value)) return stored
-
-  const { background_source: _dropped, ...rest } = stored
-  return rest
+const KNOWN_ENUM_VALUES: {
+  [K in keyof UserPreferences]?: { allowed: readonly unknown[]; nullable?: true }
+} = {
+  theme: { allowed: THEME_VALUES },
+  unit_system: { allowed: UNIT_SYSTEM_VALUES },
+  background_source: { allowed: BACKGROUND_SOURCES },
+  max_background_zoom: { allowed: MAX_BACKGROUND_ZOOM_VALUES },
+  hiking_detail_level: { allowed: HIKING_DETAIL_LEVEL_VALUES },
+  map_style: { allowed: MAP_STYLE_VALUES },
+  reporter_type: { allowed: REPORTER_TYPE_VALUES, nullable: true },
 }
 
-/** The same treatment for the hiking sheet's level (#276): a value this
- *  build does not know would otherwise survive the merge, reach the level
- *  lookup, and throw where a hiker can see it. Absent, it falls back to
- *  Standard like a phone that never stored anything. */
-function knownHikingDetail(stored: Partial<UserPreferences>): Partial<UserPreferences> {
-  const value = stored.hiking_detail_level
-  if (value === undefined || HIKING_DETAIL_LEVEL_VALUES.includes(value)) return stored
-
-  const { hiking_detail_level: _dropped, ...rest } = stored
-  return rest
-}
-
-/** And again for the theme. An unknown stored value would ride the merge into
- *  resolveTheme, come back out unresolved, and reach the map as a backdrop
- *  colour MAP_BACKDROP does not have - `undefined`, which MapLibre draws as
- *  the default black. The same road to the same black map, so it gets the
- *  same guard. */
-function knownTheme(stored: Partial<UserPreferences>): Partial<UserPreferences> {
-  const value = stored.theme
-  if (value === undefined || THEME_VALUES.includes(value)) return stored
-
-  const { theme: _dropped, ...rest } = stored
-  return rest
-}
-
-/** And for the map style, whose list has already grown once (v1 shipped two
- *  of the spec's five) and can shrink again. An unknown stored style would
- *  ride the merge into the palette lookup and come back as no palette at
- *  all - the same road to the same black map. */
-function knownMapStyle(stored: Partial<UserPreferences>): Partial<UserPreferences> {
-  const value = stored.map_style
-  if (value === undefined || MAP_STYLE_VALUES.includes(value)) return stored
-
-  const { map_style: _dropped, ...rest } = stored
-  return rest
+function dropUnknownEnumValues(
+  stored: Partial<UserPreferences>,
+): Partial<UserPreferences> {
+  const repaired = { ...stored }
+  for (const [key, rule] of Object.entries(KNOWN_ENUM_VALUES)) {
+    const value = repaired[key as keyof UserPreferences]
+    if (value === undefined) continue
+    if (value === null && rule.nullable) continue
+    if (rule.allowed.includes(value)) continue
+    delete repaired[key as keyof UserPreferences]
+  }
+  return repaired
 }
 
 export async function loadPreferences(): Promise<UserPreferences> {
   const stored = (await get(PREFERENCES_KEY)) as Partial<UserPreferences> | undefined
   return {
     ...DEFAULT_PREFERENCES,
-    ...knownMapStyle(knownTheme(knownHikingDetail(knownBackground(stored ?? {})))),
+    ...dropUnknownEnumValues(stored ?? {}),
   }
 }
 

@@ -14,7 +14,7 @@
 //     one is not addressed here: it needs the archive's real footprint read
 //     out of the header, which features/MAP_OPTIONS.md §1 tracks separately.
 //
-// The pipeline now exports from z0 (pipeline/export_pmtiles.py), so archives
+// The pipeline now exports from z0 (pipeline/assemble_raster.py), so archives
 // built from here on have no floor worth speaking of. This module exists for
 // the ones already on phones, and because a client that trusts a number
 // compiled into a different language in a different half of the repo is one

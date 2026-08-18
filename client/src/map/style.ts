@@ -707,7 +707,7 @@ export function buildMapStyle({
     layers: [
       {
         // Under everything, because the topo tiles are transparent outside the
-        // corridor (export_pmtiles.py's encode_webp) and a 30-mile ribbon
+        // corridor (lib/raster_tiles.py's encode_webp) and a 30-mile ribbon
         // leaves most of a zoomed-out view uncovered. Without this that ground
         // is empty canvas; with it, it reads as unmapped paper - which is what
         // it honestly is. Paper rather than a neutral grey so the uncovered

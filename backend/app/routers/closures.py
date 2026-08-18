@@ -72,17 +72,18 @@ def update_closure(
     action."""
     closure = get_or_404(db, Closure, closure_id, detail="Closure not found")
 
-    if payload.status is not None:
-        closure.status = payload.status
-    if payload.reason_type is not None:
-        closure.reason_type = payload.reason_type
-    if payload.note is not None:
-        closure.note = payload.note
-
     # `model_fields_set` rather than a None check, so a maintainer can put a
-    # date back to unknown - see ClosureUpdate's docstring for why these three
-    # differ from the fields above.
+    # nullable field back to unknown - a slipped reopening date, a stale note
+    # (#255). For `status` and `reason_type` the two tests are equivalent:
+    # ClosureUpdate rejects an explicit null on them before this runs.
     provided = payload.model_fields_set
+
+    if "status" in provided:
+        closure.status = payload.status
+    if "reason_type" in provided:
+        closure.reason_type = payload.reason_type
+    if "note" in provided:
+        closure.note = payload.note
 
     def settled(field: str, incoming: object) -> object:
         return incoming if field in provided else getattr(closure, field)

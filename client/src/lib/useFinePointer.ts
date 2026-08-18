@@ -15,39 +15,18 @@
 // is still a mouse. Width gets both of those backwards. lib/useDesktop.ts is
 // the width question and is deliberately a separate hook.
 
-import { useEffect, useState } from 'react'
+import { useMediaQuery } from './useMediaQuery'
 
 /** Matches where the primary pointer is precise - a mouse or a stylus. */
 export const FINE_POINTER_MEDIA_QUERY = '(pointer: fine)'
 
-function matches(): boolean {
-  // Guarded rather than assumed, and defaulting the same way lib/useDesktop.ts
-  // does: jsdom has no matchMedia unless a test stubs one, and the honest
-  // answer to "cannot tell" is the touch one. A phone that wrongly gets zoom
-  // buttons loses the thumb zone the wireframe reserves for locate; a desktop
-  // that wrongly loses them still has a scroll wheel.
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function')
-    return false
-  return window.matchMedia(FINE_POINTER_MEDIA_QUERY).matches
-}
-
-/** Whether a precise pointer is driving this session. Re-evaluates when one is
- *  plugged in or unplugged. */
+/** Whether a precise pointer is driving this session. Re-evaluates when one
+ *  is plugged in or unplugged.
+ *
+ *  Where the answer cannot be read (jsdom with no matchMedia stub), this is
+ *  false, and false means the touch affordances: a phone that wrongly gets
+ *  zoom buttons loses the thumb zone the wireframe reserves for locate; a
+ *  desktop that wrongly loses them still has a scroll wheel. */
 export function useFinePointer(): boolean {
-  const [finePointer, setFinePointer] = useState(matches)
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
-
-    const query = window.matchMedia(FINE_POINTER_MEDIA_QUERY)
-    const update = (event: MediaQueryListEvent) => setFinePointer(event.matches)
-
-    // Re-read on mount as well as on change, for the reason useDesktop.ts
-    // gives: the first render used whatever matches() said before effects ran.
-    setFinePointer(query.matches)
-    query.addEventListener('change', update)
-    return () => query.removeEventListener('change', update)
-  }, [])
-
-  return finePointer
+  return useMediaQuery(FINE_POINTER_MEDIA_QUERY)
 }

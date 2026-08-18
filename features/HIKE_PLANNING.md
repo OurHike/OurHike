@@ -74,6 +74,8 @@ Which falls straight out of Finding 1, and is worth stating separately because i
 
 Cost: one more column in an artifact that already exists, and a `mile` field in `pipeline/lib/poi_schema.py`. Old data releases without it degrade the same way `spurs.json` and `elevation_profile.json` already do — the map still draws, the planner says it needs a newer download.
 
+> **Built (#753).** `export_poi.attach_miles` projects every POI onto the profile's own ordered metric centerline with the same carry-across-gaps accumulation, and the client's `StoredPoi` carries the optional `mile` through. Two things settled in the building: the number is a **position** (NOBO miles from Springer, the repo's standing convention — direction stays the consumers' derived view), and it deliberately shares the profile's ordering fault (#652/#559) rather than fixing it privately — one measurement, wrong together where the ordering is wrong, improving together when it improves.
+
 ## Finding 3 — the auto-planner is small enough to run on a phone, instantly
 
 Choosing day boundaries is a shortest-path problem, not a search. Candidate stops are sorted by mile; a day is an edge from one stop to a later one; the cost of an edge is how far that day lands from what the hiker asked for.
@@ -82,16 +84,23 @@ Choosing day boundaries is a shortest-path problem, not a search. Candidate stop
 best[j] = min over reachable i < j of  best[i] + cost(day from i to j)
 ```
 
-The size, from this repository's own figures — 280 shelters + 232 campsites = **512 stops** over ~2,190 miles, so **~4.3 miles of average spacing**:
+The size, **measured 2026-08-18 by `spike_day_planner.py` against the live ATC layers** (fetched the same day: 280 shelters + 232 campsites; 273 and 227 of them within 0.5 mi of the centerline — this table was arithmetic over assumed-even spacing until #754 ran it):
 
-| | |
+| | measured |
 |---|---|
-| candidate stops, whole trail | 512 |
-| stops reachable within a 25-mile cap, from any one stop | ~6 |
-| edges evaluated for a **whole thru-hike** | **~3,000** |
-| edges for a week-long section | ~40 |
+| candidate stops, whole trail | 512 (500 on-corridor) |
+| average spacing, shelters + campsites | 4.3 mi mean · 3.5 median · **10.8 p90 · 21.5 max** |
+| average spacing, shelters only | 7.9 mi mean · 7.2 median · 13.5 p90 · **34.4 max** |
+| stops reachable within a 25-mile cap, from any one stop | 6.4 mean |
+| edges evaluated for a **whole thru-hike** | **3,299** |
 
-Three thousand edge evaluations is nothing — it is less arithmetic than one frame of the map costs. **The auto-planner needs no backend, no network and no precomputation beyond Finding 2**, which is the answer to the only question about it that could have been architectural.
+Three findings the arithmetic could not have produced:
+
+- **The even-spacing assumption was fine for the totals and wrong about the tail.** The mean really is 4.3 mi and the edge count really is ~3,000 — but spacing is lumpy: one shelters-only gap runs **34.4 miles**, which no 25-mile cap survives. **Campsites are load-bearing, not an enrichment**: with them, generated plans at every target from 10 to 20 mi/day schedule **zero** over-cap days, and the worst day is 21.5–24.3 mi.
+- **Real plans hit their targets well enough to ship.** Within ±20% of target: 50% of days at a 10-mile target rising to 86% at 20 — the short-target misses are the trail forcing longer days through sparse stretches, which is a fact about the Appalachians the planner should show a hiker rather than hide.
+- **The axis these miles ride carries #652's fault, now quantified.** Projecting ATC's own 4,395 half-mile markers onto the same ordered metric centerline the profile (and #753's POI miles) use, the published mile disagrees with ATC's own `Measure` field by a **median 7.7 mi (p90 29.5, max 101.8), systematically short** — the uncounted cross-part gaps accumulate ~35 mi by Katahdin and the misordered stretches scatter the rest. Spacing and plan figures above are differences between near neighbours and mostly dodge this; anything comparing a published mile against an ATC-quoted mile (a closure's `start_mile_marker`, a guidebook figure) does not. That comparison is recorded on #652, where the half-mile markers were already named as the candidate fix.
+
+**The auto-planner needs no backend, no network and no precomputation beyond Finding 2** — 3,299 edge evaluations is less arithmetic than one frame of the map costs — and that is now a measurement rather than an assumption.
 
 What the cost function should be:
 

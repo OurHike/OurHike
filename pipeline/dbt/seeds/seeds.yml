@@ -1,0 +1,54 @@
+version: 2
+
+seeds:
+  - name: poi_type_mapping
+    description: >
+      Source-system codes -> the one unified poi_type, transcribed from code
+      this repository already trusts rather than authored here: the opentrail
+      rows' labels are fetch_opentrail.py's ICON_LEGEND verbatim, their
+      poi_type/confidence pairs are export_poi.py's OPENTRAIL_ICON_MAP (an
+      icon that module deliberately does not map has an empty poi_type -
+      see its module docstring for why 'c' and 't' stay unmapped and 's'
+      means water), and the atc rows mirror export_poi.py's ATC_EXPORTS
+      entries for the layers in the Phase A slice.
+      pipeline/tests/test_dbt_seed_sync.py fails CI the moment this file
+      and those Python constants drift apart (DBT.md's duplication-risk
+      note).
+    config:
+      column_types:
+        source_system: varchar
+        code: varchar
+        label: varchar
+        poi_type: varchar
+        confidence: varchar
+    columns:
+      - name: source_system
+        description: Which fetcher's vocabulary the code belongs to.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ["atc", "opentrail"]
+      - name: code
+        description: >
+          The raw value as upstream sends it - an opentrail `icon` letter,
+          or an ATC layer key from sources.json.
+        data_tests:
+          - not_null
+      - name: label
+        description: The documented upstream meaning, transcribed not invented.
+      - name: poi_type
+        description: >
+          The unified poi_type this code maps to. Empty means "deliberately
+          unmapped" - the code is documented so an accepted_values test can
+          hold the raw column to the full legend, but no POI is minted from
+          it (lib/poi_schema.py's omit-don't-guess posture).
+        data_tests:
+          - accepted_values:
+              values: ["shelter", "campsite", "water", "resupply"]
+      - name: confidence
+        description: >
+          lib/poi_schema.py's CONFIDENCE_* tier for POIs minted from this
+          code; empty exactly where poi_type is empty.
+        data_tests:
+          - accepted_values:
+              values: ["high", "low"]

@@ -69,6 +69,14 @@ ALLOWED_DATA_PATHS = (
     # fixture nobody can review, which its own suite will notice first.
     "tests/fixtures/",
     "pipeline/tests/fixtures/",
+    # dbt seeds (#100). The same argument as pipeline/reference/, in dbt's
+    # own vocabulary: a seed is a hand-authored mapping that encodes
+    # judgement, reviewed row by row - poi_type_mapping.csv is eleven lines
+    # transcribed from ICON_LEGEND/OPENTRAIL_ICON_MAP/DIRECT_SOURCES and
+    # held to them by pipeline/tests/test_dbt_seed_sync.py. Fetched or
+    # derived data does not belong here either; load_raw.py's warehouse
+    # under pipeline/data/ is where that goes, gitignored.
+    "pipeline/dbt/seeds/",
 )
 
 #: The one directory of committed data this project keeps on purpose:

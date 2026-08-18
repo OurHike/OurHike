@@ -9,7 +9,7 @@
 //
 // The obvious alternative is to bake contour lines into the pipeline the way
 // the topo raster already is. That was rejected for the same reason
-// export_pmtiles.py's raster is being demoted in the first place: a baked
+// the baked USGS raster (now lib/raster_tiles.py's chain) is demoted in the first place: a baked
 // contour is a picture of one interval at one scale. Generating them here from
 // raw elevation means the interval can follow the zoom, follow the hiker's
 // unit preference (a US topo map is read in feet; the same DEM in metric wants
@@ -111,7 +111,6 @@ export const CONTOUR_THRESHOLDS: Record<
     11: [100, 500],
     12: [50, 250],
     13: [10, 50],
-    14: [10, 50],
   },
 }
 

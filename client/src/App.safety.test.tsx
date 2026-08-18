@@ -27,7 +27,12 @@ import { GeolocateControl } from './test/mocks/maplibre-gl'
 // App.outboxRetry.test.tsx stands alone.
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
-vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
+vi.mock('idb-keyval', () => ({
+  get: vi.fn(),
+  set: vi.fn(),
+  del: vi.fn(),
+  update: vi.fn(),
+}))
 vi.mock('./map/archiveZooms', () => ({ readArchiveZooms: () => Promise.resolve(null) }))
 vi.mock('./lib/api', () => ({
   API_CONFIGURED: true,

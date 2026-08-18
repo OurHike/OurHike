@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { get, set } from 'idb-keyval'
+import { get, set, update } from 'idb-keyval'
 import {
   enqueue,
   listQueued,
@@ -23,17 +23,24 @@ import { BUILD_INFO } from './buildInfo'
 // queued, and a flush that runs twice must not create two reports. Both are
 // the difference between an outbox and a way to lose someone's report.
 
-vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn() }))
+vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), update: vi.fn() }))
 
 const mockedGet = vi.mocked(get)
 const mockedSet = vi.mocked(set)
+const mockedUpdate = vi.mocked(update)
 
-/** Backs the mocked idb-keyval with a real in-memory value. */
+/** Backs the mocked idb-keyval with a real in-memory value. The mocked
+ *  update() applies its updater synchronously against the stored value,
+ *  mirroring the real one's single-transaction semantics: there is no gap
+ *  between the read and the write for another mutator to interleave into. */
 function withStoredQueue(initial: unknown[] = []) {
   let stored = initial
   mockedGet.mockImplementation(async () => stored)
   mockedSet.mockImplementation(async (_key, value) => {
     stored = value as unknown[]
+  })
+  mockedUpdate.mockImplementation(async (_key, updater) => {
+    stored = updater(stored) as unknown[]
   })
   return () => stored
 }
@@ -56,7 +63,7 @@ describe('enqueue', () => {
 
     await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'))
 
-    expect(mockedSet).toHaveBeenCalledWith(OUTBOX_KEY, expect.any(Array))
+    expect(mockedUpdate).toHaveBeenCalledWith(OUTBOX_KEY, expect.any(Function))
     expect(read()).toHaveLength(1)
   })
 
@@ -450,5 +457,50 @@ describe('a report queued with a photo', () => {
 
     const [item] = await listQueued()
     expect(item.photo).toBe(BYTES)
+  })
+})
+
+describe('atomicity of the mutators (#288)', () => {
+  it('every mutator goes through update(), never a separate get-then-set', async () => {
+    // The whole fix: get+put inside ONE readwrite transaction. A mutator
+    // that re-grew its own `get` → transform → `set` would reopen the
+    // sub-millisecond window where two overlapping mutators lose a write -
+    // and a queued report is often the only copy of something written with
+    // no signal. flushOutbox is exercised with a failing-then-classified
+    // send so markFailed's path runs too.
+    const read = withStoredQueue()
+    await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'))
+    await enqueue(DRAFT, new Date('2026-07-27T09:00:00Z'))
+    const [first, second] = read() as Array<{ id: string }>
+
+    mockedGet.mockClear()
+    mockedSet.mockClear()
+
+    await removeQueued(first.id)
+    await retryQueued(second.id)
+    await flushOutbox(
+      vi.fn().mockRejectedValue(new Error('rejected')),
+      () => 'The server will never accept this.',
+    )
+
+    expect(mockedSet).not.toHaveBeenCalled()
+    // flushOutbox legitimately reads the queue once to iterate it; what must
+    // never happen is a WRITE built from that separate read.
+    expect(mockedUpdate).toHaveBeenCalled()
+  })
+
+  it("an item enqueued between a flush's read and its removals survives", async () => {
+    const read = withStoredQueue()
+    await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'))
+
+    // The send resolves only after a new report lands in the queue -
+    // exactly the overlap that used to lose whichever write went first.
+    const send = vi.fn().mockImplementation(async () => {
+      await enqueue(DRAFT, new Date('2026-07-27T09:00:00Z'))
+    })
+    await flushOutbox(send)
+
+    const remaining = read() as Array<{ authoredAt: string }>
+    expect(remaining.map((item) => item.authoredAt)).toEqual(['2026-07-27T09:00:00.000Z'])
   })
 })

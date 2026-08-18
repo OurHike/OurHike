@@ -63,7 +63,13 @@ class Settings(BaseSettings):
     # token arriving with this unset is refused rather than waved through.
     supabase_jwt_secret: str = ""
     supabase_url: str
-    supabase_anon_key: str
+    # Optional because nothing in app/ reads it (#257): the only consumer of
+    # the concept is the standalone check_supabase_config.py, which reads
+    # os.environ directly. Requiring it here made a deployment that set
+    # everything auth actually needs crash at startup for a value the server
+    # never uses. Kept as a setting at all so the name stays documented next
+    # to its siblings.
+    supabase_anon_key: str = ""
 
     # The `aud` claim every Supabase user access token carries. This one DOES
     # have a default, unlike the credentials above, because it is not a secret

@@ -126,5 +126,12 @@ def unify_poi(feature: dict, poi_type: str, source: str, trail_id: str, field_ma
         "name": name,
         "lat": lat,
         "lon": lon,
+        # NOBO miles from Springer - a position along the trail, never a
+        # heading (a SOBO hiker walks toward smaller numbers; direction is
+        # the consumers' derived view). None here because unification cannot
+        # know it: the mile is a projection onto the ordered metric
+        # centerline, attached later by export_poi.attach_miles on the same
+        # axis the elevation profile is sampled along (#753).
+        "mile": None,
         "confidence": confidence,
     }

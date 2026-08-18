@@ -130,7 +130,7 @@ uv pip compile --universal --python-version 3.11 -c pipeline/requirements.txt pi
 
 Compile the runtime file first: the dev file takes it as a constraint, so the two cannot drift onto different versions of a shared package. `--universal` resolves across platforms rather than baking in whichever machine ran the command, and the 3.11 floor keeps one file installable on both CI's 3.14 and the web sandbox's 3.11.
 
-Pinning is not tidiness. Four workflows — `build-basemap`, `build-dem`, `build-raster` and `publish-vector-data` — install these files in a job holding R2 write credentials, so an unpinned resolve means a compromised upstream release executes next to the keys for the bucket hikers download maps from. Dependabot proposes the bumps ([`.github/dependabot.yml`](.github/dependabot.yml)), grouped weekly so the queue stays readable.
+Pinning is not tidiness. Five workflows — `build-basemap`, `build-dem`, `build-raster`, `publish-vector-data` and `publish-conditions` — install these files in a job holding R2 write credentials, so an unpinned resolve means a compromised upstream release executes next to the keys for the bucket hikers download maps from. Dependabot proposes the bumps ([`.github/dependabot.yml`](.github/dependabot.yml)), grouped weekly so the queue stays readable.
 
 The pipeline fetches large amounts of data from ATC, USGS and opentrail.org. Read [pipeline/README.md](pipeline/README.md) before running the fetch scripts — a full topo quad pull is on the order of 14 GB, and the scripts are built to skip work that has not changed upstream. Do not defeat that by clearing manifests.
 

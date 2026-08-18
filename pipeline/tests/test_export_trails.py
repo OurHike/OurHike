@@ -9,10 +9,10 @@ feature ATC data or a live network call - see TESTING.md.
 import hashlib
 import json
 
-import duckdb
 import pytest
 
 import export_trails
+from tests.conftest import spatial_connection
 
 LAYER_URL = "https://services1.arcgis.com/fake/arcgis/rest/services/Fake/FeatureServer/6"
 
@@ -82,9 +82,7 @@ def _side_trails_source():
 
 @pytest.fixture
 def con():
-    c = duckdb.connect()
-    c.execute("INSTALL spatial; LOAD spatial;")
-    return c
+    return spatial_connection()
 
 
 def _run_export(tmp_path, monkeypatch, sources):

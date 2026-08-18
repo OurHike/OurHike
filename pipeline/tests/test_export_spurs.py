@@ -28,12 +28,12 @@ only arrangement here in which a disagreement between the two ends fails.
 
 import json
 
-import duckdb
 import pytest
 
 import export_poi
 import export_spurs
 from lib.poi_schema import POI_TYPES, poi_output_name
+from tests.conftest import spatial_connection
 
 TRAIL_LAT, TRAIL_LON = 40.0, -75.0
 TYPE_DOMAIN = {"0": "Access (eg Parking)", "1": "Alternate Route", "3": "Spur (eg View, Camp)"}
@@ -144,8 +144,7 @@ def test_the_real_exporter_writes_what_the_real_reader_looks_for(tmp_path, monke
     of them, and one round trip through DuckDB's GDAL writer is enough to
     prove it while staying cheap.
     """
-    con = duckdb.connect()
-    con.execute("INSTALL spatial; LOAD spatial;")
+    con = spatial_connection()
     poi_dir = tmp_path / "poi"
     poi_dir.mkdir()
     monkeypatch.setattr(export_poi, "OUT_DIR", poi_dir)
@@ -399,6 +398,27 @@ def test_the_output_is_keyed_by_id_so_the_client_can_look_one_up(tmp_path, monke
     assert manifest["spur_count"] == 1
     assert manifest["resolved_count"] == 1
     capsys.readouterr()
+
+
+def test_a_run_with_missing_inputs_fails_instead_of_publishing_nothing(tmp_path, monkeypatch, capsys):
+    """The quiet `return {}` #172 named: missing inputs used to exit 0,
+    unlike fetch_all.py and every other exporter's fail_if_incomplete()
+    gate, so an empty run looked exactly like a successful one."""
+    monkeypatch.setattr(export_spurs, "RAW_DIR", tmp_path / "raw")
+    monkeypatch.setattr(export_spurs, "POI_DIR", tmp_path / "poi")
+    monkeypatch.setattr(export_spurs, "OUT_PATH", tmp_path / "spurs.json")
+    monkeypatch.setattr(export_spurs, "MANIFEST_PATH", tmp_path / "spurs_manifest.json")
+    monkeypatch.setattr(export_spurs, "SOURCES_PATH", tmp_path / "sources.json")
+
+    with pytest.raises(SystemExit) as excinfo:
+        export_spurs.main()
+
+    assert excinfo.value.code == 1
+    out = capsys.readouterr().out
+    assert "side_trails.geojson" in out
+    assert "centerline.geojson" in out
+    assert not (tmp_path / "spurs.json").exists()
+    assert not (tmp_path / "spurs_manifest.json").exists()
 
 
 def test_a_run_with_no_published_pois_warns_rather_than_resolving_nothing_quietly(tmp_path, monkeypatch, capsys):

@@ -139,6 +139,29 @@ export const STORED_SHAPES: Readonly<Record<string, unknown>> = deepFreeze({
 
   'ourhike:hike': { startMile: 0, endMile: 2189.1 },
 
+  // A two-day plan with a resupply at the far end (#756). Boundary-shaped:
+  // three stops carry two days, and lib/plan.ts refuses the record wholesale
+  // if that arithmetic ever fails - so this fixture is also what pins the
+  // shape a future migration has to keep reading.
+  'ourhike:plan': {
+    target: { walkingHours: 7 },
+    startDate: '2026-05-12',
+    stops: [
+      { mile: 470.8, name: 'Damascus', resupply: false },
+      {
+        mile: 486.2,
+        name: 'Lost Mountain Shelter',
+        poiId: 'atc_shelter_0999',
+        resupply: false,
+      },
+      { mile: 503.3, name: 'Atkins', resupply: true },
+    ],
+    days: [
+      { id: 'day-0001', pinned: false, generated: true },
+      { id: 'day-0002', pinned: true, generated: false },
+    ],
+  },
+
   // sessionStorage rather than IndexedDB, and included anyway - the surface
   // is "stored client data", and a camera that fails to parse reopens the map
   // somewhere the hiker was not.

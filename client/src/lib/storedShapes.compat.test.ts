@@ -22,6 +22,7 @@ import { get } from 'idb-keyval'
 import { OUTBOX_KEY, listQueued } from './outbox'
 import { PREFERENCES_KEY, loadPreferences } from './preferences'
 import { PLANNED_HIKE_KEY, loadPlannedHike } from './plannedHike'
+import { loadPlan } from './plan'
 import { CAMERA_MEMORY_KEY, readCamera } from './cameraMemory'
 import {
   ELEVATION_STORE_KEY,
@@ -161,6 +162,21 @@ describe('a stored phone from the baseline release', () => {
     const hike = await loadPlannedHike()
 
     expect(hike).toEqual({ startMile: 0, endMile: 2189.1 })
+  })
+
+  it('still reads the multi-day plan, pins and resupply flags included', async () => {
+    const plan = await loadPlan()
+
+    expect(plan).not.toBeNull()
+    expect(plan?.stops.map((stop) => stop.name)).toEqual([
+      'Damascus',
+      'Lost Mountain Shelter',
+      'Atkins',
+    ])
+    expect(plan?.stops[2].resupply).toBe(true)
+    expect(plan?.days[1].pinned).toBe(true)
+    expect(plan?.target).toEqual({ walkingHours: 7 })
+    expect(plan?.startDate).toBe('2026-05-12')
   })
 
   it('still reopens the map where it was left', () => {

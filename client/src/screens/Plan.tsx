@@ -29,7 +29,7 @@ import {
   type CalledEnd,
 } from '../lib/cascade'
 import { ribbonSamples, type ElevationProfile } from '../lib/elevationProfile'
-import type { Hike, HikePiece } from '../lib/hikes'
+import type { Hike, HikePiece, PlaceRef } from '../lib/hikes'
 import { formatNaismithMinutes } from '../lib/naismith'
 import {
   currentDayIndex,
@@ -53,6 +53,7 @@ import type { StoredPoi } from '../lib/trailData'
 import type { Trip } from '../lib/trips'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
 import { HikeZoom } from './HikeZoom'
+import { WhatsLeft } from './WhatsLeft'
 import './plan.css'
 
 /**
@@ -126,6 +127,9 @@ export interface PlanScreenProps {
   onOpenTrip: (id: string) => void
   /** Start a route from the beginning of a stretch nobody has walked. */
   onPlanGap: (gap: Extract<HikePiece, { kind: 'gap' }>) => void
+  /** Start a route at one end of a gap, walking toward the other (#791).
+   *  Which end is the start is the hiker's pick; the direction follows. */
+  onPlanFrom: (start: PlaceRef, toward: PlaceRef) => void
 }
 
 export function PlanScreen({
@@ -153,6 +157,7 @@ export function PlanScreen({
   trips,
   onOpenTrip,
   onPlanGap,
+  onPlanFrom,
 }: PlanScreenProps) {
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -162,6 +167,7 @@ export function PlanScreen({
   const [calling, setCalling] = useState<number | null>(null)
   const [cascading, setCascading] = useState(false)
   const [zoomWanted, setZoomWanted] = useState<PlanZoom>('days')
+  const [whatsLeftOpen, setWhatsLeftOpen] = useState(false)
 
   const views = useMemo(() => (plan === null ? [] : planDayViews(plan)), [plan])
   const sections = useMemo(() => planSections(views), [views])
@@ -256,22 +262,37 @@ export function PlanScreen({
           </button>
         </header>
         {zoomBar}
-        <HikeZoom
-          hike={hike}
-          trips={trips}
-          pois={pois}
-          units={units}
-          gpsMile={gpsMile}
-          openTripId={openTripId}
-          onOpenTrip={(id) => {
-            onOpenTrip(id)
-            setZoomWanted('days')
-          }}
-          onPlanGap={onPlanGap}
-        />
-        <button type="button" className="plan__primary" onClick={onStartOnMap}>
-          {draftLive ? 'Back to your route' : 'Plan another trip'}
-        </button>
+        {whatsLeftOpen ? (
+          <WhatsLeft
+            hike={hike}
+            trips={trips}
+            pois={pois}
+            units={units}
+            gpsMile={gpsMile}
+            onPlanFrom={onPlanFrom}
+            onClose={() => setWhatsLeftOpen(false)}
+          />
+        ) : (
+          <>
+            <HikeZoom
+              hike={hike}
+              trips={trips}
+              pois={pois}
+              units={units}
+              gpsMile={gpsMile}
+              openTripId={openTripId}
+              onOpenTrip={(id) => {
+                onOpenTrip(id)
+                setZoomWanted('days')
+              }}
+              onPlanGap={onPlanGap}
+              onWhatsLeft={() => setWhatsLeftOpen(true)}
+            />
+            <button type="button" className="plan__primary" onClick={onStartOnMap}>
+              {draftLive ? 'Back to your route' : 'Plan another trip'}
+            </button>
+          </>
+        )}
         {targetSheet}
         {tripList}
       </div>

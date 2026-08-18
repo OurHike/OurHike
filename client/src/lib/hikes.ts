@@ -489,6 +489,10 @@ export function hikePieces(
   hike: Hike,
   trips: readonly Trip[],
   pois: readonly StoredPoi[],
+  /** Below this, a leftover is arithmetic rather than trail (MIN_GAP_MI).
+   *  Zero asks for every one of them, which is how #791 counts the
+   *  remainder it then says out loud rather than dropping. */
+  minGapMi: number = MIN_GAP_MI,
 ): HikePiece[] {
   const bounds = hikeBounds(hike, pois)
   const mine = hike.tripIds
@@ -543,7 +547,7 @@ export function hikePieces(
   if (at < bounds.to) bare.push({ from: at, to: bounds.to })
 
   for (const span of bare) {
-    if (span.to - span.from < MIN_GAP_MI) continue
+    if (span.to - span.from < minGapMi) continue
     pieces.push({
       kind: 'gap',
       id: `gap-${span.from}-${span.to}`,

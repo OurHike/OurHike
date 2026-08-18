@@ -50,6 +50,10 @@ export interface HikeZoomProps {
    *  handed over, ends and all, so the route builder opens on the place the
    *  row named rather than on a mile it has to recognise again. */
   onPlanGap: (gap: Extract<HikePiece, { kind: 'gap' }>) => void
+  /** Open "What's left" (#791) - the screen that helps choose between the
+   *  gaps rather than only listing them. Offered when there is at least one
+   *  to choose from. */
+  onWhatsLeft: () => void
 }
 
 export function HikeZoom({
@@ -61,10 +65,12 @@ export function HikeZoom({
   openTripId,
   onOpenTrip,
   onPlanGap,
+  onWhatsLeft,
 }: HikeZoomProps) {
   const pieces = hikePieces(hike, trips, pois)
   const figures = hikeFigures(hike, trips, pois)
   const bounds = hikeBounds(hike, pois)
+  const gapCount = pieces.filter((piece) => piece.kind === 'gap').length
 
   // The ribbon scrubs the rows: a tapped band brings its row into view and
   // marks it. State rather than an anchor because the piece list is derived
@@ -137,6 +143,12 @@ export function HikeZoom({
         <p className="hike-zoom__empty">
           Nothing in this hike yet. A trip joins it the moment you group it in.
         </p>
+      )}
+
+      {gapCount > 0 && (
+        <button type="button" className="hike-zoom__whats-left" onClick={onWhatsLeft}>
+          What&rsquo;s left — {gapCount} {gapCount === 1 ? 'piece' : 'pieces'}
+        </button>
       )}
     </div>
   )

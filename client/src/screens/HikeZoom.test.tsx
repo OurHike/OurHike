@@ -57,6 +57,7 @@ const PROPS = {
   openTripId: null,
   onOpenTrip: vi.fn(),
   onPlanGap: vi.fn(),
+  onWhatsLeft: vi.fn(),
 }
 
 afterEach(() => {

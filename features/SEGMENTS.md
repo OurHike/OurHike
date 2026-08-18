@@ -80,6 +80,12 @@ Three things worth carrying rather than rediscovering:
 
 The Plan tab's anti-gamification guard — no rendering of any plan may contain a percentage, "behind", "ahead of", "on track" or a streak — is held by a test, and now covers these surfaces too. They show far more of a plan than the timeline does, which makes them where a score would arrive uninvited.
 
+**Update 2026-08-18, later the same day:** the gaps got their own screen (#791) — **What's left**, reached from the hike zoom. Three decisions in it are worth keeping:
+
+- **Both ends of every gap are start candidates**, offered side by side, and the direction falls out of which one is picked. Nothing new is stored: the route builder already derives which way a route walks from its own ends. Flip-floppers are the design rather than an edge case, so nothing on the screen calls a piece "next", numbers the cards, or draws them as steps — trail order is one *sort*, offered beside "nearest me" and "fits my days".
+- **A sort that cannot be computed honestly is not offered.** No fix, no "nearest me" — rather than a "nearest" that is quietly trail order.
+- **The sliver question is settled the way this document's own instincts point.** Gaps under 0.2 mi (`MIN_GAP_MI`, tagged `@unvalidated`) get no card, because a 0.1-mile card makes the screen look broken — and the remainder is counted and printed anyway: "1 short stretch adding up to 0.1 mi… still trail nobody has walked." Neither extreme chosen silently.
+
 ## Open questions (for you, not decided here)
 
 - **Naming.** "Hike" and "Segment" are working names, not committed terminology — easy to change before anything's built.

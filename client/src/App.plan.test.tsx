@@ -15,7 +15,7 @@
 // and time declared missing, "How long" and the hours target not offered.
 
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
 import { appHarness, latOfMile } from './test/appHarness'
@@ -354,6 +354,63 @@ describe('the planning flow', () => {
       await screen.findByRole('dialog', { name: 'Plan a route' }),
     ).toBeInTheDocument()
     expect(screen.getByText('Middle Shelter')).toBeInTheDocument()
+  })
+
+  it('starts a route from the SOUTH end of a gap, walking that way (#791)', async () => {
+    // The flip-flopper's move, and the reason both ends are offered: the
+    // direction is derived from which end was picked and stored nowhere.
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    app.store.set(TRIPS_KEY, {
+      openId: 'trip-1',
+      trips: [
+        {
+          id: 'trip-1',
+          name: 'Autumn section',
+          plan: {
+            target: { miles: 8 },
+            stops: [
+              { mile: 3.2, name: 'Front Shelter', poiId: 's3', resupply: false },
+              { mile: 10.2, name: 'Middle Shelter', poiId: 's10', resupply: false },
+            ],
+            days: [{ id: 'day-a', pinned: false, generated: true, walked: true }],
+          },
+        },
+      ],
+      hikes: [
+        {
+          id: 'hike-1',
+          name: 'The whole thing, eventually',
+          type: 'section',
+          start: { poiId: 's3', name: 'Front Shelter', mile: 3.2 },
+          end: { poiId: 's22', name: 'Beyond Shelter', mile: 22.2 },
+          tripIds: ['trip-1'],
+        },
+      ],
+    })
+
+    render(<App />)
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+    await user.click(await screen.findByRole('button', { name: 'Hike' }))
+    await user.click(screen.getByRole('button', { name: /What’s left/ }))
+
+    // One walked stretch, one gap, and both of its ends offered.
+    expect(await screen.findByText(/12\.0 mi in 1 piece/)).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /North from Middle Shelter/ }),
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /South from Beyond Shelter/ }))
+
+    const entrance = await screen.findByRole('dialog', { name: 'Plan a route' })
+    expect(within(entrance).getByText('Beyond Shelter')).toBeInTheDocument()
+    // Picked the high end, so the route walks south - nothing was stored to
+    // say so, it fell out of the pair.
+    expect(within(entrance).getByRole('button', { name: 'South' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
   })
 
   it('places a start through the map door, refusals said out loud, and keeps the draft across tabs', async () => {

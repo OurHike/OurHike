@@ -166,7 +166,13 @@ import {
   updateTrip,
   type TripStore,
 } from './lib/trips'
-import { hikeFromTrips, hikeOfTrip, recordedPlan, type HikePiece } from './lib/hikes'
+import {
+  hikeFromTrips,
+  hikeOfTrip,
+  recordedPlan,
+  type HikePiece,
+  type PlaceRef,
+} from './lib/hikes'
 import { TripList } from './screens/TripList'
 import { PlanScreen } from './screens/Plan'
 import { PlanTargetSheet } from './screens/PlanTargetSheet'
@@ -343,6 +349,18 @@ type RouteDraftState =
   | { phase: 'editor'; stops: RouteDraftStop[] }
 
 /** Which slot of the draft a picked stop lands in. */
+/** A place the app already knows, as a stop the route builder can open on.
+ *  The client mile is re-derived from the anchors rather than carried,
+ *  because a PlaceRef only ever holds the pipeline's axis (lib/hikes.ts). */
+function draftStopFor(place: PlaceRef, anchors: readonly MileAnchor[]): RouteDraftStop {
+  return {
+    mile: place.mile,
+    clientMile: anchoredClientMile(place.mile, anchors),
+    ...(place.name === undefined ? {} : { name: place.name }),
+    ...(place.poiId === undefined ? {} : { poiId: place.poiId }),
+  }
+}
+
 type StopSlot = { kind: 'start' } | { kind: 'replace'; index: number } | { kind: 'add' }
 
 /** The stop picker, when it is up: the slot being filled, whether the hiker
@@ -1510,33 +1528,36 @@ function App() {
   // legend, the search and the waypoint card already keep between them.
   // A draft already in progress reopens where it stood - the entrance is
   // for starting, never a toll gate on the way back to your own route.
-  const openRouteBuilderFrom = useCallback((start: RouteDraftStop | null) => {
-    setActiveTab('trail')
-    setSelectedPoiId(null)
-    setLegendOpen(false)
-    setSearchOpen(false)
-    setTargetRequest(null)
-    setRouteDraft((draft) => {
-      if (draft === null) {
-        return {
-          phase: 'entrance',
-          start,
-          // The mockup's own opening answers - a mid-length section, walked
-          // the way most of this trail is walked. Both are one drag from
-          // anything else.
-          ask: 'far',
-          miles: 45,
-          days: 3,
-          south: false,
+  const openRouteBuilderFrom = useCallback(
+    (start: RouteDraftStop | null, south?: boolean) => {
+      setActiveTab('trail')
+      setSelectedPoiId(null)
+      setLegendOpen(false)
+      setSearchOpen(false)
+      setTargetRequest(null)
+      setRouteDraft((draft) => {
+        if (draft === null) {
+          return {
+            phase: 'entrance',
+            start,
+            // The mockup's own opening answers - a mid-length section,
+            // walked the way most of this trail is walked. Both are one
+            // drag from anything else.
+            ask: 'far',
+            miles: 45,
+            days: 3,
+            south: south ?? false,
+          }
         }
-      }
-      // A suggested start fills an entrance that has none yet, and never
-      // overwrites a route the hiker is already editing: their own draft
-      // outranks a starting point this app proposed.
-      if (start === null || draft.phase !== 'entrance') return draft
-      return { ...draft, start }
-    })
-  }, [])
+        // A suggested start fills an entrance that has none yet, and never
+        // overwrites a route the hiker is already editing: their own draft
+        // outranks a starting point this app proposed.
+        if (start === null || draft.phase !== 'entrance') return draft
+        return { ...draft, start, ...(south === undefined ? {} : { south }) }
+      })
+    },
+    [],
+  )
 
   const openRouteBuilder = useCallback(
     () => openRouteBuilderFrom(null),
@@ -1555,12 +1576,25 @@ function App() {
    */
   const handlePlanGap = useCallback(
     (gap: Extract<HikePiece, { kind: 'gap' }>) => {
-      openRouteBuilderFrom({
-        mile: gap.from.mile,
-        clientMile: anchoredClientMile(gap.from.mile, mileAnchors),
-        ...(gap.from.name === undefined ? {} : { name: gap.from.name }),
-        ...(gap.from.poiId === undefined ? {} : { poiId: gap.from.poiId }),
-      })
+      // A gap row starts at its low end, walking on up the trail. "What's
+      // left" (#791) is where BOTH ends are offered, because that is the
+      // screen where choosing between them is the question being asked.
+      openRouteBuilderFrom(draftStopFor(gap.from, mileAnchors), false)
+    },
+    [openRouteBuilderFrom, mileAnchors],
+  )
+
+  /**
+   * Plan from one end of a gap, walking toward the other (#791).
+   *
+   * The direction is DERIVED from the pair rather than stored anywhere: a
+   * hiker who picked the high end is walking south, which is exactly what
+   * the entrance's own toggle means. Nothing new is kept, and a
+   * flip-flopper's third trip going the other way needs no new concept.
+   */
+  const handlePlanFrom = useCallback(
+    (start: PlaceRef, toward: PlaceRef) => {
+      openRouteBuilderFrom(draftStopFor(start, mileAnchors), toward.mile < start.mile)
     },
     [openRouteBuilderFrom, mileAnchors],
   )
@@ -2584,6 +2618,7 @@ function App() {
                 trips={tripStore.trips}
                 onOpenTrip={handleOpenTrip}
                 onPlanGap={handlePlanGap}
+                onPlanFrom={handlePlanFrom}
                 onOpenTrips={() => setTripsOpen(true)}
                 {...(targetSheet === null ? {} : { targetSheet })}
                 {...(tripsOpen

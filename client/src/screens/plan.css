@@ -1026,3 +1026,213 @@
   text-align: left;
   cursor: pointer;
 }
+
+/* ----- what's left (screens/WhatsLeft.tsx, #791) ----- */
+
+.hike-zoom__whats-left {
+  align-self: stretch;
+  padding: var(--space-3, 12px);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--brand-primary);
+  color: var(--fg-on-brand);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.whats-left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+}
+
+.whats-left__back {
+  padding: 0 var(--space-2, 8px) 0 0;
+  border: 0;
+  background: none;
+  color: var(--fg-2);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.whats-left__total {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.whats-left__sorts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+}
+
+.whats-left__sort {
+  padding: var(--space-1, 4px) var(--space-3, 12px);
+  border: 1px solid var(--border-2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg-2);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.whats-left__sort--on {
+  border-color: var(--border-strong);
+  background: var(--fg-1);
+  color: var(--bg-surface);
+}
+
+.whats-left__days {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border-radius: 10px;
+  background: var(--bg-sunken);
+}
+
+.whats-left__days-label {
+  font-size: 14px;
+  color: var(--fg-2);
+}
+
+.whats-left__stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 12px);
+}
+
+.whats-left__step {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.whats-left__step:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.whats-left__days-count {
+  min-width: 72px;
+  text-align: center;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 15px;
+}
+
+.whats-left__pace,
+.whats-left__no-pace,
+.whats-left__slivers,
+.whats-left__empty {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+.whats-left__no-pace {
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border: 1px solid var(--warning);
+  border-radius: 8px;
+  background: var(--surface-warning);
+}
+
+.whats-left__slivers {
+  padding-top: var(--space-2, 8px);
+  border-top: 1px dashed var(--border-1);
+  font-size: 12px;
+  color: var(--fg-3);
+}
+
+.whats-left__gaps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+}
+
+.whats-left__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  padding: var(--space-3, 12px);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface-card);
+}
+
+.whats-left__card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2, 8px);
+}
+
+.whats-left__card-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.whats-left__card-figure {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+
+.whats-left__card-note {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.whats-left__from {
+  margin: var(--space-2, 8px) 0 0;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.whats-left__start {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  background: var(--surface-card-alt);
+  color: var(--fg-1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.whats-left__start-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.whats-left__start-go {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--link);
+}

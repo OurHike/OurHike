@@ -32,6 +32,7 @@ const PROPS = {
   trips: [] as readonly Trip[],
   onOpenTrip: vi.fn(),
   onPlanGap: vi.fn(),
+  onPlanFrom: vi.fn(),
   onStartOnMap: vi.fn(),
   onChangeTarget: vi.fn(),
   onInsertZeroAfter: vi.fn(),
@@ -456,5 +457,37 @@ describe('the three zooms (#790)', () => {
 
     await user.click(screen.getByRole('button', { name: 'Hike' }))
     expect(container.textContent).not.toMatch(forbidden)
+  })
+})
+
+describe('the door to what’s left (#791)', () => {
+  const HIKE: Hike = {
+    id: 'h1',
+    name: 'Virginia, over a few years',
+    type: 'section',
+    start: { name: 'Damascus', mile: 470.8 },
+    end: { name: 'Rockfish Gap', mile: 860 },
+    tripIds: ['t1'],
+  }
+
+  it('opens the gap screen from the hike zoom, and comes back', async () => {
+    const user = userEvent.setup()
+    const plan = smallPlan()
+    const trips: Trip[] = [{ id: 't1', name: 'Spring section', plan }]
+    render(
+      <PlanScreen {...PROPS} plan={plan} hike={HIKE} trips={trips} openTripId="t1" />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Hike' }))
+    await user.click(screen.getByRole('button', { name: /What’s left/ }))
+
+    expect(screen.getByRole('heading', { name: 'What’s left' })).toBeInTheDocument()
+    // Nothing walked on this plan, so the whole hike is one piece.
+    expect(screen.getByText(/389\.2 mi in 1 piece/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Back to the hike' }))
+    expect(
+      screen.getByRole('heading', { name: 'Virginia, over a few years' }),
+    ).toBeInTheDocument()
   })
 })

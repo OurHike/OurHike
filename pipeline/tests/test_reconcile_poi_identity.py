@@ -141,16 +141,35 @@ def test_duplicate_keys_in_one_snapshot_are_held():
     assert "duplicate" in outcome.held[0] or "same" in outcome.held[0]
 
 
-def test_the_mass_retirement_guard_refuses_the_wholesale_re_mint():
-    """The silent catastrophe made loud: every key changes, and instead of
-    writing 3,000 tombstones the run refuses - #672's evidence matching is
-    the recovery, not a massacre nobody decided on."""
+def test_a_wholesale_re_mint_with_intact_evidence_is_carried_not_blocked():
+    """The promotion #672 buys: every upstream key changes, and because the
+    places themselves did not (same names, same spots), tier 2 carries
+    every id and the refresh lands instead of blocking."""
     prior = {}
-    records = [_record(sfid=f"old-{i}", lat=40.0 + i * 0.01) for i in range(30)]
+    records = [_record(sfid=f"old-{i}", name=f"Shelter {i}", lat=40.0 + i * 0.1) for i in range(30)]
     prior = reconcile(prior, records, RELEASE).pois
-    re_minted = [_record(sfid=f"new-{i}", lat=40.0 + i * 0.01) for i in range(30)]
+    re_minted = [_record(sfid=f"new-{i}", name=f"Shelter {i}", lat=40.0 + i * 0.1) for i in range(30)]
 
     outcome = reconcile(prior, re_minted, LATER)
+
+    assert len(outcome.matched) == 30
+    assert outcome.retired == [] and outcome.minted == []
+    assert mass_retirement_refusal(outcome, prior) is None
+    row = outcome.pois["atc_shelters:old-0"]
+    assert row["source_feature_id"] == "new-0", "provenance tells the new truth"
+    assert row["history"][-1]["source_feature_id_was"] == "old-0"
+
+
+def test_the_mass_retirement_guard_refuses_what_evidence_cannot_carry():
+    """The silent catastrophe made loud: every key changes AND nothing
+    matches (new names, new spots), and instead of writing 3,000 tombstones
+    the run refuses - a massacre nobody decided on stays unwritten."""
+    prior = {}
+    records = [_record(sfid=f"old-{i}", name=f"Shelter {i}", lat=40.0 + i * 0.1) for i in range(30)]
+    prior = reconcile(prior, records, RELEASE).pois
+    unrecognizable = [_record(sfid=f"new-{i}", name=f"Different {i}", lat=44.0 + i * 0.1) for i in range(30)]
+
+    outcome = reconcile(prior, unrecognizable, LATER)
     refusal = mass_retirement_refusal(outcome, prior)
 
     assert refusal is not None
@@ -292,3 +311,185 @@ def test_the_real_ledger_stays_under_the_reference_review_ceiling():
         "the ledger is approaching the reference-review ceiling - time to decide its next shelf "
         "(features/POI_IDENTITY.md's open question) rather than trip the committed-data guard cold"
     )
+
+
+# --- tier 2: the evidence, and the three-condition acceptance (#672) ---------
+
+
+def test_a_renamed_rekeyed_shelter_is_carried_by_its_fingerprint():
+    """The design's own example: a renamed, moved-a-few-feet shelter that
+    still says "built 1938, one storey, log" is carrying its own passport."""
+    prior = _seeded({**_record(name="Winturri Shelter"), "fingerprint": {"Year_Built": 1938, "Stories": 1}})
+    successor = {
+        **_record(sfid="rekeyed", name="Wintturi Shelter", lat=41.0001),
+        "fingerprint": {"Year_Built": 1938, "Stories": 1},
+    }
+
+    outcome = reconcile(prior, [successor], LATER)
+
+    assert len(outcome.matched) == 1
+    assert "fingerprint intact" in outcome.matched[0]
+    row = outcome.pois["atc_shelters:glob-1"]
+    assert row["name"] == "Wintturi Shelter"
+    assert row["source_feature_id"] == "rekeyed"
+    assert row["history"][-1]["event"] == "matched"
+    assert row["history"][-1]["name_was"] == "Winturri Shelter"
+
+
+def test_the_hard_ceiling_is_minned_against_everything():
+    """The 903 km lesson: however perfect the name and fingerprint, a pair
+    past the ceiling is not a candidate at all."""
+    prior = _seeded({**_record(name="Generic Campsite"), "fingerprint": {"Year_Built": 1990}})
+    far_twin = {
+        **_record(sfid="far", name="Generic Campsite", lat=44.0),  # ~330 km
+        "fingerprint": {"Year_Built": 1990},
+    }
+
+    outcome = reconcile(prior, [far_twin], LATER)
+
+    assert outcome.matched == []
+    assert outcome.retired == ["atc_shelters:glob-1"]
+    assert outcome.minted == ["atc_shelters:far"]
+
+
+def test_two_candidates_that_reduce_alike_go_to_review_not_to_a_guess():
+    """The Laurel Ridge lesson: near-ties retire-and-create rather than
+    pick a winner - the margin condition, not just the threshold."""
+    prior = _seeded(_record(name="Laurel Ridge Campsite", poi_type="campsite"))
+    twins = [
+        _record(sfid="twin-a", name="Laurel Ridge Campsite", lat=41.0005, poi_type="campsite"),
+        _record(sfid="twin-b", name="Laurel Ridge Campsite", lat=40.9995, poi_type="campsite"),
+    ]
+
+    outcome = reconcile(prior, twins, LATER)
+
+    assert outcome.matched == []
+    assert outcome.retired == ["atc_shelters:glob-1"]
+    assert sorted(outcome.minted) == ["atc_shelters:twin-a", "atc_shelters:twin-b"]
+
+
+def test_a_conflicting_fingerprint_blocks_a_plausible_match():
+    """Upstream does not rebuild a shelter by accident: same name a few
+    feet away, but the inventory says a different structure - the negative
+    evidence outweighs everything positive here."""
+    prior = _seeded({**_record(), "fingerprint": {"Year_Built": 1938, "Stories": 1}})
+    impostor = {
+        **_record(sfid="impostor", lat=41.0001),
+        "fingerprint": {"Year_Built": 2019, "Stories": 2},
+    }
+
+    outcome = reconcile(prior, [impostor], LATER)
+
+    assert outcome.matched == []
+    assert outcome.retired == ["atc_shelters:glob-1"]
+
+
+def test_an_id_never_crosses_poi_type_in_tier_2():
+    prior = _seeded(_record(name="Reclassified Spot"))
+
+    outcome = reconcile(prior, [_record(sfid="as-campsite", name="Reclassified Spot", poi_type="campsite")], LATER)
+
+    assert outcome.matched == []
+    assert outcome.retired == ["atc_shelters:glob-1"]
+
+
+def test_the_along_trail_signal_carries_a_lateral_correction(monkeypatch):
+    """A lateral centerline correction moves lat/lon while the place stays
+    at the same trail mile - the signal that is robust to exactly that."""
+    prior = _seeded(_record(name="Trailside Shelter"))
+    # ~160 m away: name (2.0) alone misses the 2.5 threshold without either
+    # the near-distance or the mile signal.
+    nudged = _record(sfid="corrected", name="Trailside Shelter", lat=41.0015)
+
+    def mile_of(points):
+        return [1407.2 for _ in points]
+
+    outcome = reconcile(prior, [nudged], LATER, mile_of=mile_of)
+
+    assert len(outcome.matched) == 1
+    assert "Δmile" in outcome.matched[0]
+
+
+def test_a_not_same_override_forbids_the_pair():
+    prior = _seeded({**_record(name="Rocky Run Shelter"), "fingerprint": {"Year_Built": 1938, "Stories": 1}})
+    lookalike = {
+        **_record(sfid="lookalike", name="Rocky Run Shelter", lat=41.0001),
+        "fingerprint": {"Year_Built": 1938, "Stories": 1},
+    }
+    overrides = {
+        "not_same": [
+            {
+                "id": "atc_shelters:glob-1",
+                "source": "atc_shelters",
+                "source_feature_id": "lookalike",
+                "reason": "ATC keeps 1 and 2 apart; this is the other one",
+            }
+        ]
+    }
+
+    outcome = reconcile(prior, [lookalike], LATER, overrides=overrides)
+
+    assert outcome.matched == []
+    assert outcome.retired == ["atc_shelters:glob-1"]
+
+
+def test_a_same_override_reunites_a_tombstone_with_its_successor():
+    """Retirement is the recoverable mistake because of exactly this: one
+    reviewed line re-anchors every photo and note the tombstone held."""
+    prior = _seeded(_record(name="Come-Back Shelter"))
+    prior = reconcile(prior, [], LATER).pois  # retired
+    returned = _record(sfid="returned", name="Renamed Beyond Recognition", lat=41.002)
+    overrides = {
+        "same": [
+            {
+                "id": "atc_shelters:glob-1",
+                "source": "atc_shelters",
+                "source_feature_id": "returned",
+                "reason": "rebuilt after the 2027 fire; ATC re-keyed and renamed it",
+            }
+        ]
+    }
+
+    outcome = reconcile(prior, [returned], "2028-09-12", overrides=overrides)
+
+    assert len(outcome.matched) == 1
+    row = outcome.pois["atc_shelters:glob-1"]
+    assert "retired" not in row, "the override is the one door back in"
+    assert row["source_feature_id"] == "returned"
+    assert row["history"][-1]["by"] == "override"
+    assert row["history"][-1]["was_retired"] == LATER
+    assert outcome.minted == []
+
+
+def test_a_stale_same_override_is_held_rather_than_silently_skipped():
+    prior = _seeded(_record())
+    overrides = {
+        "same": [
+            {
+                "id": "atc_shelters:glob-1",
+                "source": "atc_shelters",
+                "source_feature_id": "no-such-key",
+                "reason": "left over from last year's refresh",
+            }
+        ]
+    }
+
+    outcome = reconcile(prior, [_record()], LATER, overrides=overrides)
+
+    assert len(outcome.held) == 1
+    assert "stale" in outcome.held[0]
+
+
+def test_summarize_names_every_evidence_match_with_its_evidence():
+    prior = _seeded({**_record(name="Winturri Shelter"), "fingerprint": {"Year_Built": 1938, "Stories": 1}})
+    successor = {
+        **_record(sfid="rekeyed", name="Wintturi Shelter", lat=41.0001),
+        "fingerprint": {"Year_Built": 1938, "Stories": 1},
+    }
+    outcome = reconcile(prior, [successor], LATER)
+
+    text = summarize(outcome, seeded=False)
+
+    assert "matched by evidence: 1" in text
+    assert "'Winturri Shelter' -> 'Wintturi Shelter'" in text
+    assert "fingerprint intact" in text

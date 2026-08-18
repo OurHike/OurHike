@@ -4,11 +4,12 @@
 // trip overwrote the first, and there was nowhere to see that a hiker had a
 // history at all.
 //
-// DELIBERATELY SMALL. This is a switcher, not the hike surface - **#790 —
-// The Plan tab gains three zooms** replaces this chrome with the hike zoom,
-// where trips sit under a hike beside the gaps between them. Everything here
-// is the minimum that stops plans being destroyed: see them, open one,
-// rename it, delete it.
+// DELIBERATELY SMALL. This is a switcher, not the hike surface: the hike
+// zoom (screens/HikeZoom.tsx, #790) is where trips sit in trail order beside
+// the gaps between them, and it is the screen to add to. Everything here is
+// the minimum that stops plans being destroyed: see them, open one, rename
+// it, delete it - plus the roll-up block below, which is how a hiker with no
+// hike yet finds the button that makes one.
 //
 // Every figure comes off the plan itself rather than being stored beside it,
 // the same rule the timeline follows - a trip that says "3 days" and a
@@ -18,8 +19,9 @@ import { useState } from 'react'
 import type { ElevationProfile } from '../lib/elevationProfile'
 import { hikeFigures, type Hike } from '../lib/hikes'
 import { planDayViews, walkedDayCount } from '../lib/plan'
-import { dayDateLabel } from '../lib/planDisplay'
+import { tripDateRange } from '../lib/planDisplay'
 import type { StoredPoi } from '../lib/trailData'
+import { groupFigures, type TripGroup } from '../lib/tripGroups'
 import type { Trip } from '../lib/trips'
 import { formatDistance, type UnitSystem } from '../lib/units'
 import './plan.css'
@@ -47,6 +49,11 @@ export interface TripListProps {
   /** Group every trip here into one hike - the "I already have a history"
    *  door. Absent nothing to group. */
   onGroupIntoHike: () => void
+  /** The hiker's own buckets (#800). Listed here until the Plan home
+   *  (#805) gives them a place of their own. */
+  groups: readonly TripGroup[]
+  onOpenGroup: (id: string) => void
+  onNewGroup: (name: string) => void
   onClose: () => void
 }
 
@@ -91,11 +98,15 @@ export function TripList({
   onRemove,
   onNew,
   onGroupIntoHike,
+  groups,
+  onOpenGroup,
+  onNewGroup,
   onClose,
 }: TripListProps) {
   const [renaming, setRenaming] = useState<string | null>(null)
   const [draftName, setDraftName] = useState('')
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
+  const [newGroup, setNewGroup] = useState<string | null>(null)
 
   return (
     <div className="trip-list" role="dialog" aria-label="Your trips">
@@ -144,9 +155,10 @@ export function TripList({
         <ul className="trip-list__items">
           {trips.map((trip) => {
             const note = walkedNote(trip)
-            const dates = planDayViews(trip.plan)
-              .map((day) => day.date)
-              .filter((date): date is string => date !== null)
+            // Every surface that names a trip prints its dates (#805). An
+            // undated one says so rather than looking like a dated trip
+            // with the dates missing.
+            const dates = tripDateRange(planDayViews(trip.plan).map((day) => day.date))
             return (
               <li
                 key={trip.id}
@@ -190,7 +202,7 @@ export function TripList({
                       <span className="trip-list__name">{trip.name}</span>
                       <span className="trip-list__meta">
                         {summarise(trip, units)}
-                        {dates.length > 0 && ` · from ${dayDateLabel(dates[0])}`}
+                        {` · ${dates ?? 'no dates yet'}`}
                       </span>
                     </button>
                     <div className="trip-list__actions">
@@ -230,6 +242,66 @@ export function TripList({
             )
           })}
         </ul>
+      )}
+
+      {/* The hiker's own buckets, which a trip can be in several of at once
+          - unlike a hike, of which it has one (#800). */}
+      {(groups.length > 0 || trips.length > 0) && (
+        <div className="trip-list__groups">
+          <span className="trip-list__groups-title">Your groups</span>
+          {groups.length === 0 && (
+            <p className="trip-list__empty">
+              None yet. A group is any set of trips you want kept together — every Sunday,
+              with Dad, this season.
+            </p>
+          )}
+          <div className="trip-list__group-chips">
+            {groups.map((group) => {
+              const figures = groupFigures(group, trips)
+              return (
+                <button
+                  type="button"
+                  className="trip-list__group-chip"
+                  key={group.id}
+                  onClick={() => onOpenGroup(group.id)}
+                >
+                  {group.name} · {figures.tripCount}
+                </button>
+              )
+            })}
+            {newGroup === null ? (
+              <button
+                type="button"
+                className="trip-list__group-chip trip-list__group-chip--new"
+                onClick={() => setNewGroup('')}
+              >
+                + New group
+              </button>
+            ) : (
+              <span className="trip-list__rename">
+                <input
+                  type="text"
+                  className="trip-list__rename-input"
+                  autoFocus
+                  value={newGroup}
+                  placeholder="Every Sunday"
+                  aria-label="Name for the new group"
+                  onChange={(event) => setNewGroup(event.target.value)}
+                />
+                <button
+                  type="button"
+                  className="trip-list__action"
+                  onClick={() => {
+                    if (newGroup.trim() !== '') onNewGroup(newGroup.trim())
+                    setNewGroup(null)
+                  }}
+                >
+                  Save
+                </button>
+              </span>
+            )}
+          </div>
+        </div>
       )}
 
       {hikes.length === 0 && trips.length > 0 && (

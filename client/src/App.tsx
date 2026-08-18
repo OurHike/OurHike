@@ -152,21 +152,35 @@ import {
   toggleResupply,
   type HikePlan,
   type PlanTarget,
+  type RestRhythm,
 } from './lib/plan'
 import {
   EMPTY_STORE,
+  addGroup,
   addHike,
+  addToGroup,
   addTrip,
   loadTrips,
   openTrip,
   openTripOf,
+  removeFromGroup,
+  removeGroup,
   removeTrip,
+  renameGroup,
   renameTrip,
   saveTrips,
   updateTrip,
   type TripStore,
 } from './lib/trips'
-import { hikeFromTrips, recordedPlan } from './lib/hikes'
+import { nearestStop } from './lib/cascade'
+import {
+  hikeFromTrips,
+  hikeOfTrip,
+  recordedPlan,
+  type HikePiece,
+  type PlaceRef,
+} from './lib/hikes'
+import { GroupScreen } from './screens/GroupScreen'
 import { TripList } from './screens/TripList'
 import { PlanScreen } from './screens/Plan'
 import { PlanTargetSheet } from './screens/PlanTargetSheet'
@@ -335,6 +349,9 @@ type RouteDraftState =
   | {
       phase: 'entrance'
       start: RouteDraftStop | null
+      /** The far end when the hiker NAMED one (#804). With both ends fixed
+       *  the entrance stops asking how far and states it. */
+      fixedEnd: RouteDraftStop | null
       ask: 'far' | 'long'
       miles: number
       days: number
@@ -343,7 +360,23 @@ type RouteDraftState =
   | { phase: 'editor'; stops: RouteDraftStop[] }
 
 /** Which slot of the draft a picked stop lands in. */
-type StopSlot = { kind: 'start' } | { kind: 'replace'; index: number } | { kind: 'add' }
+/** A place the app already knows, as a stop the route builder can open on.
+ *  The client mile is re-derived from the anchors rather than carried,
+ *  because a PlaceRef only ever holds the pipeline's axis (lib/hikes.ts). */
+function draftStopFor(place: PlaceRef, anchors: readonly MileAnchor[]): RouteDraftStop {
+  return {
+    mile: place.mile,
+    clientMile: anchoredClientMile(place.mile, anchors),
+    ...(place.name === undefined ? {} : { name: place.name }),
+    ...(place.poiId === undefined ? {} : { poiId: place.poiId }),
+  }
+}
+
+type StopSlot =
+  | { kind: 'start' }
+  | { kind: 'end' }
+  | { kind: 'replace'; index: number }
+  | { kind: 'add' }
 
 /** The stop picker, when it is up: the slot being filled, whether the hiker
  *  went on to the map to fill it, and whether the last map tap was refused
@@ -425,6 +458,9 @@ function App() {
    * - the plan - is what "Break into days" produces from it (#756).
    */
   const [routeDraft, setRouteDraft] = useState<RouteDraftState | null>(null)
+  /** The last trail tap the entrance refused as too far off the corridor -
+   *  cleared by the next accepted one (#801). */
+  const [entranceRefusedTap, setEntranceRefusedTap] = useState(false)
   /** The stop picker over the draft, or null while every field rests. */
   const [stopPick, setStopPick] = useState<StopPickState | null>(null)
   /**
@@ -447,6 +483,7 @@ function App() {
     route: ViaStop[]
     initialTarget?: PlanTarget
     initialStartDate?: string
+    initialRhythm?: RestRhythm
     /** Set when the sheet was opened over an existing trip, so laying out
      *  re-lays that trip rather than keeping a second copy of it (#787). */
     tripId?: string
@@ -1261,6 +1298,21 @@ function App() {
    * Empty on a download that predates #753, which is `anchoredMile`'s cue to
    * refuse - see lib/route.ts for the honest fallback that follows.
    */
+  /**
+   * How long the trail is, on the pipeline's own axis - the far end of the
+   * "how far" slider (#804).
+   *
+   * Read off the published elevation profile's last sample rather than
+   * hardcoded, which keeps it true when the trail is re-measured and keeps
+   * it right for a second trail (value #7: nothing here assumes the AT).
+   * Null on a download with no profile, where the slider falls back and the
+   * typed field still takes anything.
+   */
+  const trailMiles = useMemo(() => {
+    if (elevation === null || elevation.distanceMi.length === 0) return null
+    return elevation.distanceMi[elevation.distanceMi.length - 1]
+  }, [elevation])
+
   const mileAnchors: MileAnchor[] = useMemo(
     () =>
       pois.flatMap((poi, i) => {
@@ -1288,6 +1340,20 @@ function App() {
    * plan in the store, so an edit cannot land on a stale duplicate.
    */
   const currentTrip = useMemo(() => openTripOf(tripStore), [tripStore])
+  /**
+   * The hike the Plan tab can zoom out to (#790).
+   *
+   * The open trip's own hike, or - when it belongs to none - the hike, if
+   * there is exactly one. Two hikes and no trip to disambiguate them is a
+   * choice nobody has been asked to make, so nothing is guessed: the zoom
+   * is simply not offered until a trip says which hike is meant.
+   */
+  const currentHike = useMemo(() => {
+    const owning =
+      currentTrip === null ? null : hikeOfTrip(tripStore.hikes, currentTrip.id)
+    if (owning !== null) return owning
+    return tripStore.hikes.length === 1 ? tripStore.hikes[0] : null
+  }, [currentTrip, tripStore.hikes])
   const plan = currentTrip?.plan ?? null
 
   /** Every POI that can BE a stop: its published pipeline mile is known.
@@ -1297,7 +1363,17 @@ function App() {
       pois.flatMap((poi) =>
         poi.mile === undefined
           ? []
-          : [{ id: poi.id, name: poi.name, type: poi.type, mile: poi.mile }],
+          : [
+              {
+                id: poi.id,
+                name: poi.name,
+                type: poi.type,
+                mile: poi.mile,
+                // Carried so the picker can tell a town from an outfitter,
+                // which are the same poi_type (#802).
+                ...(poi.source === undefined ? {} : { source: poi.source }),
+              },
+            ],
       ),
     [pois],
   )
@@ -1385,6 +1461,9 @@ function App() {
         if (slot.kind === 'start') {
           return draft.phase === 'entrance' ? { ...draft, start: stop } : draft
         }
+        if (slot.kind === 'end') {
+          return draft.phase === 'entrance' ? { ...draft, fixedEnd: stop } : draft
+        }
         if (draft.phase !== 'editor') return draft
         if (slot.kind === 'add') {
           // Trail order IS least-added-distance order on a monotonic route,
@@ -1416,9 +1495,44 @@ function App() {
   // profile at miles that mean what the display says. A tap the index
   // refuses (>3 mi off the corridor) sets a flag the bar explains, rather
   // than silently doing nothing.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- listed below
   const handleStopMapTap = useCallback(
     (at: { lon: number; lat: number }) => {
-      if (stopPick === null || !stopPick.onMap || trailIndex === null) return
+      if (trailIndex === null) return
+      // NO BUTTON FIRST (#801). With the entrance open and no picker over
+      // it, a tap on the trail sets the START - there is nothing else this
+      // screen is choosing, so nothing needs disambiguating, and a start
+      // already set is moved rather than a question being asked.
+      if (stopPick === null) {
+        if (routeDraft === null || routeDraft.phase !== 'entrance') return
+        const located = locateOnTrail(trailIndex, at)
+        if (located === null) {
+          setEntranceRefusedTap(true)
+          return
+        }
+        setEntranceRefusedTap(false)
+        const clientMile = located.mile
+        const snapped = nearestStop(
+          pois,
+          anchoredMile(clientMile, mileAnchors) ?? clientMile,
+        )
+        setRouteDraft((draft) =>
+          draft === null || draft.phase !== 'entrance'
+            ? draft
+            : {
+                ...draft,
+                start: {
+                  mile:
+                    snapped?.mile ?? anchoredMile(clientMile, mileAnchors) ?? clientMile,
+                  clientMile,
+                  ...(snapped?.name === undefined ? {} : { name: snapped.name }),
+                  ...(snapped?.poiId === undefined ? {} : { poiId: snapped.poiId }),
+                },
+              },
+        )
+        return
+      }
+      if (!stopPick.onMap) return
       const located = locateOnTrail(trailIndex, at)
       if (located === null) {
         setStopPick({ ...stopPick, refusedTap: true })
@@ -1432,7 +1546,7 @@ function App() {
         clientMile,
       })
     },
-    [stopPick, trailIndex, mileAnchors, applyPickedStop],
+    [stopPick, trailIndex, mileAnchors, applyPickedStop, routeDraft, pois],
   )
 
   const handleRouteCancel = useCallback(() => {
@@ -1496,27 +1610,77 @@ function App() {
   // legend, the search and the waypoint card already keep between them.
   // A draft already in progress reopens where it stood - the entrance is
   // for starting, never a toll gate on the way back to your own route.
-  const openRouteBuilder = useCallback(() => {
-    setActiveTab('trail')
-    setSelectedPoiId(null)
-    setLegendOpen(false)
-    setSearchOpen(false)
-    setTargetRequest(null)
-    setRouteDraft(
-      (draft) =>
-        draft ?? {
-          phase: 'entrance',
-          start: null,
-          // The mockup's own opening answers - a mid-length section, walked
-          // the way most of this trail is walked. Both are one drag from
-          // anything else.
-          ask: 'far',
-          miles: 45,
-          days: 3,
-          south: false,
-        },
-    )
-  }, [])
+  const openRouteBuilderFrom = useCallback(
+    (start: RouteDraftStop | null, south?: boolean) => {
+      setActiveTab('trail')
+      setSelectedPoiId(null)
+      setLegendOpen(false)
+      setSearchOpen(false)
+      setTargetRequest(null)
+      setRouteDraft((draft) => {
+        if (draft === null) {
+          return {
+            phase: 'entrance',
+            start,
+            fixedEnd: null,
+            // The mockup's own opening answers - a mid-length section,
+            // walked the way most of this trail is walked. Both are one
+            // drag from anything else.
+            ask: 'far',
+            miles: 45,
+            days: 3,
+            south: south ?? false,
+          }
+        }
+        // A suggested start fills an entrance that has none yet, and never
+        // overwrites a route the hiker is already editing: their own draft
+        // outranks a starting point this app proposed.
+        if (start === null || draft.phase !== 'entrance') return draft
+        return { ...draft, start, ...(south === undefined ? {} : { south }) }
+      })
+    },
+    [],
+  )
+
+  const openRouteBuilder = useCallback(
+    () => openRouteBuilderFrom(null),
+    [openRouteBuilderFrom],
+  )
+
+  /**
+   * Start a route at the beginning of a stretch nobody has walked (#790's
+   * gap row).
+   *
+   * The gap's low end and nothing else: how far, which way and where it
+   * really ends are the entrance's questions, and answering them from the
+   * gap's own length would put a 554-mile "trip" in front of a hiker who
+   * asked to plan a week. Choosing WHICH gap and how much of it fits the
+   * days somebody has is **#791 - What's left**.
+   */
+  const handlePlanGap = useCallback(
+    (gap: Extract<HikePiece, { kind: 'gap' }>) => {
+      // A gap row starts at its low end, walking on up the trail. "What's
+      // left" (#791) is where BOTH ends are offered, because that is the
+      // screen where choosing between them is the question being asked.
+      openRouteBuilderFrom(draftStopFor(gap.from, mileAnchors), false)
+    },
+    [openRouteBuilderFrom, mileAnchors],
+  )
+
+  /**
+   * Plan from one end of a gap, walking toward the other (#791).
+   *
+   * The direction is DERIVED from the pair rather than stored anywhere: a
+   * hiker who picked the high end is walking south, which is exactly what
+   * the entrance's own toggle means. Nothing new is kept, and a
+   * flip-flopper's third trip going the other way needs no new concept.
+   */
+  const handlePlanFrom = useCallback(
+    (start: PlaceRef, toward: PlaceRef) => {
+      openRouteBuilderFrom(draftStopFor(start, mileAnchors), toward.mile < start.mile)
+    },
+    [openRouteBuilderFrom, mileAnchors],
+  )
 
   /** One field of the entrance changes; everything else stands. */
   const patchEntrance = useCallback(
@@ -1545,8 +1709,13 @@ function App() {
 
   const handleUseStretch = useCallback(() => {
     if (routeDraft === null || routeDraft.phase !== 'entrance') return
-    if (routeDraft.start === null || entranceEnd === null) return
-    setRouteDraft({ phase: 'editor', stops: [routeDraft.start, entranceEnd.stop] })
+    if (routeDraft.start === null) return
+    // A named end wins over a resolved one: the hiker said where they are
+    // going, so nothing snaps it to whatever the "how far" answer reached
+    // (#804).
+    const end = routeDraft.fixedEnd ?? entranceEnd?.stop ?? null
+    if (end === null) return
+    setRouteDraft({ phase: 'editor', stops: [routeDraft.start, end] })
   }, [routeDraft, entranceEnd])
 
   const handleEditStop = useCallback((index: number) => {
@@ -1577,7 +1746,11 @@ function App() {
    *  lands there instead, same rule either way. */
   const pickPrevious = useMemo(() => {
     if (stopPick === null || routeDraft === null) return null
-    if (stopPick.slot.kind === 'start' || routeDraft.phase !== 'editor') return null
+    // The entrance's own two slots measure from nothing: a start has no
+    // previous stop, and a named end is a destination rather than a
+    // distance from one (#804).
+    if (stopPick.slot.kind === 'start' || stopPick.slot.kind === 'end') return null
+    if (routeDraft.phase !== 'editor') return null
     const stops = routeDraft.stops
     const anchor =
       stopPick.slot.kind === 'add'
@@ -1638,6 +1811,8 @@ function App() {
       ...(plan.days[0]?.date === undefined
         ? {}
         : { initialStartDate: plan.days[0].date }),
+      // A re-lay keeps the rest rhythm rather than dropping it (#798).
+      ...(plan.rhythm === undefined ? {} : { initialRhythm: plan.rhythm }),
       ...(currentTrip === null ? {} : { tripId: currentTrip.id }),
     })
   }, [plan, currentTrip])
@@ -1772,6 +1947,43 @@ function App() {
     })
   }, [applyTripStore])
 
+  // The hiker's own buckets (#800). A trip stays in every other group it is
+  // in - which is the whole difference from a hike, of which it has one.
+  const [openGroupId, setOpenGroupId] = useState<string | null>(null)
+
+  const handleNewGroup = useCallback(
+    (name: string) => applyTripStore((store) => addGroup(store, name)),
+    [applyTripStore],
+  )
+
+  const handleAddToGroup = useCallback(
+    (groupId: string, tripId: string) =>
+      applyTripStore((store) => addToGroup(store, groupId, tripId)),
+    [applyTripStore],
+  )
+
+  const handleRemoveFromGroup = useCallback(
+    (groupId: string, tripId: string) =>
+      applyTripStore((store) => removeFromGroup(store, groupId, tripId)),
+    [applyTripStore],
+  )
+
+  const handleRenameGroup = useCallback(
+    (groupId: string, name: string) =>
+      applyTripStore((store) => renameGroup(store, groupId, name)),
+    [applyTripStore],
+  )
+
+  const handleRemoveGroup = useCallback(
+    (groupId: string) => {
+      applyTripStore((store) => removeGroup(store, groupId))
+      setOpenGroupId(null)
+    },
+    [applyTripStore],
+  )
+
+  const openGroup = tripStore.groups.find((group) => group.id === openGroupId) ?? null
+
   const targetSheet =
     targetRequest === null ? null : (
       <PlanTargetSheet
@@ -1782,6 +1994,9 @@ function App() {
         {...(targetRequest.initialTarget === undefined
           ? {}
           : { initialTarget: targetRequest.initialTarget })}
+        {...(targetRequest.initialRhythm === undefined
+          ? {}
+          : { initialRhythm: targetRequest.initialRhythm })}
         {...(targetRequest.initialStartDate === undefined
           ? {}
           : { initialStartDate: targetRequest.initialStartDate })}
@@ -2531,10 +2746,44 @@ function App() {
                 onReplacePlan={handleReplacePlan}
                 onDeletePlan={handleDeletePlan}
                 tripName={currentTrip?.name ?? null}
+                openTripId={tripStore.openId}
                 tripCount={tripStore.trips.length}
+                hike={currentHike}
+                trips={tripStore.trips}
+                onOpenTrip={handleOpenTrip}
+                hikes={tripStore.hikes}
+                groups={tripStore.groups}
+                onOpenGroup={setOpenGroupId}
+                onPlanGap={handlePlanGap}
+                onPlanFrom={handlePlanFrom}
                 onOpenTrips={() => setTripsOpen(true)}
                 {...(targetSheet === null ? {} : { targetSheet })}
-                {...(tripsOpen
+                {...(openGroup !== null
+                  ? {
+                      // A group replaces the switcher rather than stacking
+                      // over it - one thing open at a time, the rule every
+                      // other sheet in this shell keeps.
+                      tripList: (
+                        <GroupScreen
+                          group={openGroup}
+                          trips={tripStore.trips}
+                          units={units}
+                          onOpenTrip={(id) => {
+                            setOpenGroupId(null)
+                            handleOpenTrip(id)
+                          }}
+                          onAddTrip={(tripId) => handleAddToGroup(openGroup.id, tripId)}
+                          onRemoveTrip={(tripId) =>
+                            handleRemoveFromGroup(openGroup.id, tripId)
+                          }
+                          onRename={(name) => handleRenameGroup(openGroup.id, name)}
+                          onRemove={() => handleRemoveGroup(openGroup.id)}
+                          onClose={() => setOpenGroupId(null)}
+                        />
+                      ),
+                    }
+                  : {})}
+                {...(tripsOpen && openGroup === null
                   ? {
                       tripList: (
                         <TripList
@@ -2552,6 +2801,9 @@ function App() {
                             openRouteBuilder()
                           }}
                           onGroupIntoHike={handleGroupIntoHike}
+                          groups={tripStore.groups}
+                          onOpenGroup={setOpenGroupId}
+                          onNewGroup={handleNewGroup}
                           onClose={() => setTripsOpen(false)}
                         />
                       ),
@@ -2776,6 +3028,19 @@ function App() {
                 onDays={(days) => patchEntrance({ days })}
                 onSouth={(south) => patchEntrance({ south })}
                 onPickStart={handlePickStart}
+                onPickEnd={() =>
+                  setStopPick({ slot: { kind: 'end' }, onMap: false, refusedTap: false })
+                }
+                onClearEnd={() =>
+                  setRouteDraft((draft) =>
+                    draft !== null && draft.phase === 'entrance'
+                      ? { ...draft, fixedEnd: null }
+                      : draft,
+                  )
+                }
+                fixedEnd={routeDraft.fixedEnd}
+                refusedTap={entranceRefusedTap}
+                trailMiles={trailMiles}
                 onUse={handleUseStretch}
                 onClose={handleRouteCancel}
               />

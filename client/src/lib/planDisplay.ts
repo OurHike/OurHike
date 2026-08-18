@@ -50,3 +50,68 @@ export function dayRowHeight(walkingMinutes: number): number {
     Math.round((walkingMinutes / 60) * ROW_PX_PER_WALKING_HOUR) + ROW_CHROME_PX,
   )
 }
+
+/**
+ * TRIP ROW HEIGHT = DAYS, the same physical encoding one zoom out (#790).
+ *
+ * A day row is as tall as its walking hours; a trip row is as tall as its
+ * days. So a long summer reads long before a single number has been read,
+ * and the hike zoom and the day zoom teach the same thing about size rather
+ * than two different things.
+ *
+ * The constants are layout, like the day row's: sized so a fortnight sits
+ * near a comfortable card height on a phone. Same touch-target floor, for
+ * the same reason - every row is tappable, and a one-day trip must not be
+ * an untappable sliver. And a CEILING, which the day row does not need: a
+ * recorded stretch can carry a hundred boundaries (#789), and a row taller
+ * than the screen is not an encoding, it is a scroll trap.
+ */
+export const TRIP_PX_PER_DAY = 4
+export const TRIP_CHROME_PX = 34
+export const MAX_TRIP_ROW_PX = 160
+
+export function tripRowHeight(days: number): number {
+  return Math.min(
+    MAX_TRIP_ROW_PX,
+    Math.max(MIN_ROW_PX, Math.round(days * TRIP_PX_PER_DAY) + TRIP_CHROME_PX),
+  )
+}
+
+/**
+ * A trip's dates as one line - "12–17 May 2026" - or null when it has none
+ * (#805).
+ *
+ * The dates were always there: `buildPlan` writes one onto every day and
+ * the timeline prints them in each row's gutter. Nothing that NAMES a trip
+ * ever printed them, so a list of seven trips read as seven undated
+ * stretches of trail. This is the one function all of those call, so a trip
+ * cannot be dated two ways on two screens.
+ *
+ * UTC throughout, like `dayDateLabel`, so a range cannot shift a day as a
+ * phone crosses a timezone.
+ */
+export function tripDateRange(dates: readonly (string | null)[]): string | null {
+  const dated = dates.filter((date): date is string => date !== null).sort()
+  if (dated.length === 0) return null
+
+  const first = new Date(`${dated[0]}T00:00:00Z`)
+  const last = new Date(`${dated[dated.length - 1]}T00:00:00Z`)
+  const month = (date: Date) =>
+    date.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
+
+  if (first.getTime() === last.getTime()) {
+    return `${first.getUTCDate()} ${month(first)} ${first.getUTCFullYear()}`
+  }
+  // Same month and year: name the month once. Different: name both, because
+  // "28–3 Apr" is a date range nobody can read.
+  if (
+    first.getUTCFullYear() === last.getUTCFullYear() &&
+    first.getUTCMonth() === last.getUTCMonth()
+  ) {
+    return `${first.getUTCDate()}–${last.getUTCDate()} ${month(last)} ${last.getUTCFullYear()}`
+  }
+  if (first.getUTCFullYear() === last.getUTCFullYear()) {
+    return `${first.getUTCDate()} ${month(first)} – ${last.getUTCDate()} ${month(last)} ${last.getUTCFullYear()}`
+  }
+  return `${first.getUTCDate()} ${month(first)} ${first.getUTCFullYear()} – ${last.getUTCDate()} ${month(last)} ${last.getUTCFullYear()}`
+}

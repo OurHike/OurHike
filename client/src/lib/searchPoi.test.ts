@@ -1,5 +1,12 @@
 import { describe, it, expect, vi } from 'vitest'
-import { searchPois, SEARCH_RESULT_LIMIT } from './searchPoi'
+import {
+  isTown,
+  parseMileQuery,
+  searchNearMile,
+  searchPois,
+  SEARCH_RESULT_LIMIT,
+  TOWN_SOURCE,
+} from './searchPoi'
 
 // WIREFRAMES.md Interactions: search is "local GeoJSON only, no network path,
 // and says so on empty results" (`7c`). The no-network part is the whole
@@ -71,5 +78,53 @@ describe('searchPois', () => {
 
     expect(fetchSpy).not.toHaveBeenCalled()
     fetchSpy.mockRestore()
+  })
+})
+
+describe('a mile as a search term (#802)', () => {
+  it('reads every way somebody writes one', () => {
+    expect(parseMileQuery('mi 500')).toBe(500)
+    expect(parseMileQuery('mile 500')).toBe(500)
+    expect(parseMileQuery('MI500')).toBe(500)
+    expect(parseMileQuery('500.4')).toBe(500.4)
+    // A bare number is a mile, because nothing on this trail is named one.
+    expect(parseMileQuery('500')).toBe(500)
+    expect(parseMileQuery(' 500 ')).toBe(500)
+  })
+
+  it('reads a name as a name', () => {
+    expect(parseMileQuery('damascus')).toBeNull()
+    expect(parseMileQuery('mi damascus')).toBeNull()
+    expect(parseMileQuery('shelter 5')).toBeNull()
+    expect(parseMileQuery('')).toBeNull()
+  })
+
+  it('finds what is near a mile, nearest first, on either side', () => {
+    const pois = [
+      { id: 'a', name: 'Far North', type: 'shelter', mile: 512 },
+      { id: 'b', name: 'Just South', type: 'shelter', mile: 499.1 },
+      { id: 'c', name: 'Just North', type: 'campsite', mile: 500.4 },
+      { id: 'd', name: 'No Mile', type: 'shelter' },
+    ]
+    expect(searchNearMile(500, pois).map((poi) => poi.id)).toEqual(['c', 'b', 'a'])
+  })
+
+  it('leaves out what cannot be near a mile at all', () => {
+    // A POI with no mile is not far away - it is unplaceable, and offering
+    // it under "around mile 500" would be a claim nobody can check.
+    const pois = [{ id: 'd', name: 'No Mile', type: 'shelter' }]
+    expect(searchNearMile(500, pois)).toEqual([])
+  })
+})
+
+describe('isTown (#802)', () => {
+  it('is the Communities layer and nothing else', () => {
+    expect(isTown({ type: 'resupply', source: TOWN_SOURCE })).toBe(true)
+    // An outfitter is resupply too, and is not a town.
+    expect(isTown({ type: 'resupply', source: 'opentrail_at' })).toBe(false)
+    expect(isTown({ type: 'shelter', source: TOWN_SOURCE })).toBe(false)
+    // A phone that downloaded before `source` existed reads as not-a-town
+    // rather than as a wrong answer.
+    expect(isTown({ type: 'resupply' })).toBe(false)
   })
 })

@@ -29,9 +29,13 @@ import {
   type CalledEnd,
 } from '../lib/cascade'
 import { ribbonSamples, type ElevationProfile } from '../lib/elevationProfile'
+import type { Hike, HikePiece, PlaceRef } from '../lib/hikes'
+import type { TripGroup } from '../lib/tripGroups'
 import { formatNaismithMinutes } from '../lib/naismith'
 import {
   currentDayIndex,
+  foodCarries,
+  LONG_CARRY_DAYS,
   planDayViews,
   planSections,
   planDirection,
@@ -40,11 +44,40 @@ import {
   type PlanDayView,
   type PlanSection,
 } from '../lib/plan'
-import { dayDateLabel, dayRowHeight, MIN_ROW_PX, stopLabel } from '../lib/planDisplay'
+import {
+  dayDateLabel,
+  dayRowHeight,
+  MIN_ROW_PX,
+  stopLabel,
+  tripRowHeight,
+} from '../lib/planDisplay'
 import { legFigures, type LegFigures } from '../lib/route'
 import type { StoredPoi } from '../lib/trailData'
+import type { Trip } from '../lib/trips'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
+import { HikeZoom } from './HikeZoom'
+import { PlanHome } from './PlanHome'
+import { WhatsLeft } from './WhatsLeft'
 import './plan.css'
+
+/**
+ * The Plan tab's three depths (#790), which are features/SEGMENTS.md's tree
+ * with a control on it: a Hike holds trips, a trip holds sections, a
+ * section holds days.
+ *
+ * The middle one is not invented here - HIKE_PLANNING.md already derives a
+ * section from where resupply happens, and SEGMENTS.md already names "by
+ * resupply stretch" as the optional middle tier a thru-hiker adds when the
+ * day list gets too long to hold. This is that tier, shown rather than
+ * stored.
+ */
+export type PlanZoom = 'hike' | 'trip' | 'days'
+
+const ZOOM_LABEL: Record<PlanZoom, string> = {
+  hike: 'Hike',
+  trip: 'Trip',
+  days: 'Days',
+}
 
 export interface PlanScreenProps {
   plan: HikePlan | null
@@ -77,6 +110,9 @@ export interface PlanScreenProps {
   onDeletePlan: () => void
   /** The open trip's name, or null when nothing is open (#787). */
   tripName: string | null
+  /** Its id, so the hike zoom can mark which of its rows is the one open
+   *  underneath. */
+  openTripId: string | null
   /** How many trips are kept. The switcher is offered whenever a hiker has
    *  anything to switch between - and from the empty state too, so a plan
    *  deleted by accident is one tap from being reopened rather than gone. */
@@ -86,6 +122,22 @@ export interface PlanScreenProps {
   targetSheet?: ReactNode
   /** The trip switcher, when the shell has it open over this screen. */
   tripList?: ReactNode
+  /** The hike the open trip belongs to, or null (#790). Null is the common
+   *  case and not a degraded one: a hiker planning one trip has no hike to
+   *  zoom out to, and the control does not offer them one. */
+  hike: Hike | null
+  /** Every kept trip - the hike zoom's rows. */
+  trips: readonly Trip[]
+  onOpenTrip: (id: string) => void
+  /** Every hike and group, for the home (#805). */
+  hikes: readonly Hike[]
+  groups: readonly TripGroup[]
+  onOpenGroup: (id: string) => void
+  /** Start a route from the beginning of a stretch nobody has walked. */
+  onPlanGap: (gap: Extract<HikePiece, { kind: 'gap' }>) => void
+  /** Start a route at one end of a gap, walking toward the other (#791).
+   *  Which end is the start is the hiker's pick; the direction follows. */
+  onPlanFrom: (start: PlaceRef, toward: PlaceRef) => void
 }
 
 export function PlanScreen({
@@ -104,10 +156,19 @@ export function PlanScreen({
   onReplacePlan,
   onDeletePlan,
   tripName,
+  openTripId,
   tripCount,
   onOpenTrips,
   targetSheet,
   tripList,
+  hike,
+  trips,
+  onOpenTrip,
+  hikes,
+  groups,
+  onOpenGroup,
+  onPlanGap,
+  onPlanFrom,
 }: PlanScreenProps) {
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -116,6 +177,15 @@ export function PlanScreen({
    *  when the recorded end moved something. */
   const [calling, setCalling] = useState<number | null>(null)
   const [cascading, setCascading] = useState(false)
+  const [zoomWanted, setZoomWanted] = useState<PlanZoom>('days')
+  const [whatsLeftOpen, setWhatsLeftOpen] = useState(false)
+  /**
+   * The tab opens on its home when there is something to choose between
+   * (#805) - and straight into the plan when there is not, because a hiker
+   * with one trip should not tap twice to reach the timeline they used to
+   * land on.
+   */
+  const [atHome, setAtHome] = useState(trips.length > 1 || hikes.length > 0)
 
   const views = useMemo(() => (plan === null ? [] : planDayViews(plan)), [plan])
   const sections = useMemo(() => planSections(views), [views])
@@ -151,6 +221,141 @@ export function PlanScreen({
       target: plan.target.walkingHours as number | null,
     }
   }, [plan, elevation])
+
+  if (atHome && (trips.length > 1 || hikes.length > 0)) {
+    return (
+      <div className="plan">
+        <PlanHome
+          trips={trips}
+          hikes={hikes}
+          groups={groups}
+          pois={pois}
+          units={units}
+          openTrip={trips.find((trip) => trip.id === openTripId) ?? null}
+          draftLive={draftLive}
+          onOpenTrip={(id) => {
+            onOpenTrip(id)
+            setZoomWanted('days')
+            setAtHome(false)
+          }}
+          onOpenHike={() => {
+            setZoomWanted('hike')
+            setAtHome(false)
+          }}
+          onOpenGroup={onOpenGroup}
+          onAllTrips={onOpenTrips}
+          onNewTrip={onStartOnMap}
+        />
+        {targetSheet}
+        {tripList}
+      </div>
+    )
+  }
+
+  // Which depths this hiker actually has. A zoom is offered only when it
+  // shows something the one below it does not - no hike means no Hike
+  // button, and a plan with one section has nothing for the Trip zoom to
+  // say that the Days zoom does not. The alternative is a control with dead
+  // segments on it, which the route builder's own entrance was reworked to
+  // get rid of.
+  const available: PlanZoom[] = [
+    ...(hike === null ? [] : (['hike'] as PlanZoom[])),
+    ...(sections.length > 1 ? (['trip'] as PlanZoom[]) : []),
+    ...(plan === null || views.length === 0 ? [] : (['days'] as PlanZoom[])),
+  ]
+  const zoom: PlanZoom = available.includes(zoomWanted)
+    ? zoomWanted
+    : (available[0] ?? 'days')
+
+  // The bar carries the way back to the home as well as the zooms, so a
+  // hiker with several trips and only one depth still has one (#805).
+  const canGoHome = trips.length > 1 || hikes.length > 0
+  const zoomBar =
+    available.length > 1 || canGoHome ? (
+      <div className="plan__zoombar">
+        {canGoHome && (
+          <button type="button" className="plan__crumb" onClick={() => setAtHome(true)}>
+            <span className="plan__crumb-up">&lsaquo; All your plans</span>
+          </button>
+        )}
+        {hike !== null && zoom !== 'hike' && (
+          <button
+            type="button"
+            className="plan__crumb"
+            onClick={() => setZoomWanted('hike')}
+          >
+            <span className="plan__crumb-up">&lsaquo; {hike.name}</span>
+          </button>
+        )}
+        {available.length > 1 && (
+          <div className="plan__zooms" role="group" aria-label="Zoom">
+            {available.map((level) => (
+              <button
+                key={level}
+                type="button"
+                className={level === zoom ? 'plan__zoom plan__zoom--on' : 'plan__zoom'}
+                aria-pressed={level === zoom}
+                onClick={() => setZoomWanted(level)}
+              >
+                {ZOOM_LABEL[level]}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    ) : null
+
+  // The hike, whether or not a trip is open under it. A hiker who deleted
+  // the plan they had open still has years of walked trail and a set of
+  // gaps, and sending them to "No plan yet" would be the screen forgetting
+  // what it knows.
+  if (zoom === 'hike' && hike !== null) {
+    return (
+      <div className="plan">
+        <header className="plan__head">
+          <h1 className="plan__title">{hike.name}</h1>
+          <span className="plan__head-note">{hike.type}</span>
+          <button type="button" className="plan__trips" onClick={onOpenTrips}>
+            {tripCount > 1 ? `All ${tripCount} trips` : 'Your trips'}
+          </button>
+        </header>
+        {zoomBar}
+        {whatsLeftOpen ? (
+          <WhatsLeft
+            hike={hike}
+            trips={trips}
+            pois={pois}
+            units={units}
+            gpsMile={gpsMile}
+            onPlanFrom={onPlanFrom}
+            onClose={() => setWhatsLeftOpen(false)}
+          />
+        ) : (
+          <>
+            <HikeZoom
+              hike={hike}
+              trips={trips}
+              pois={pois}
+              units={units}
+              gpsMile={gpsMile}
+              openTripId={openTripId}
+              onOpenTrip={(id) => {
+                onOpenTrip(id)
+                setZoomWanted('days')
+              }}
+              onPlanGap={onPlanGap}
+              onWhatsLeft={() => setWhatsLeftOpen(true)}
+            />
+            <button type="button" className="plan__primary" onClick={onStartOnMap}>
+              {draftLive ? 'Back to your route' : 'Plan another trip'}
+            </button>
+          </>
+        )}
+        {targetSheet}
+        {tripList}
+      </div>
+    )
+  }
 
   if (plan === null || views.length === 0) {
     return (
@@ -216,61 +421,107 @@ export function PlanScreen({
         </button>
       </header>
 
-      {elevation !== null && (
+      {zoomBar}
+
+      {zoom === 'trip' && (
+        // This trip's sections - where supplies come from, which is the tier
+        // SEGMENTS.md names and HIKE_PLANNING.md already derives. Same
+        // encoding again: a section row is as tall as its days.
+        <ol className="plan__sections">
+          {sections.map((section, sectionIndex) => (
+            <li key={section.days[0].id}>
+              <button
+                type="button"
+                className="plan__section-row"
+                style={{ height: `${tripRowHeight(section.days.length)}px` }}
+                onClick={() => setZoomWanted('days')}
+              >
+                <span className="plan__section-title-row">
+                  <span className="plan__section-title">
+                    {stopLabel(section.days[0].start)} →{' '}
+                    {stopLabel(section.days[section.days.length - 1].end)}
+                  </span>
+                  <span className="plan__section-count">
+                    SEC {sectionIndex + 1}/{sections.length}
+                  </span>
+                </span>
+                <span className="plan__section-stats">
+                  <span>{formatDistance(section.distanceMi, units, 'whole')}</span>
+                  <span>
+                    {section.days.length} {section.days.length === 1 ? 'day' : 'days'}
+                  </span>
+                  {section.days[section.days.length - 1].end.resupply && (
+                    <span className="plan__section-food">
+                      {section.foodDays} days food
+                    </span>
+                  )}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {zoom === 'days' && elevation !== null && (
         <p className="plan__legend">
           <span className="plan__legend-swatch" aria-hidden="true" />
           row height = walking hours
         </p>
       )}
 
-      {sections.map((section, sectionIndex) => (
-        <section className="plan__section" key={section.days[0].id}>
-          <header className="plan__section-head">
-            <div className="plan__section-title-row">
-              <h2 className="plan__section-title">
-                {stopLabel(section.days[0].start)} →{' '}
-                {stopLabel(section.days[section.days.length - 1].end)}
-              </h2>
-              {sections.length > 1 && (
-                <span className="plan__section-count">
-                  SEC {sectionIndex + 1}/{sections.length}
-                </span>
-              )}
-            </div>
-            <p className="plan__section-stats">
-              <span>{formatDistance(section.distanceMi, units, 'whole')}</span>
-              <span>{section.days.length} days</span>
-              {sectionAscent(section, figures) !== null && (
-                <span>
-                  {formatElevation(sectionAscent(section, figures) as number, units)} ↑
-                </span>
-              )}
-              {section.days[section.days.length - 1].end.resupply && (
-                <span className="plan__section-food">{section.foodDays} days food</span>
-              )}
-            </p>
-          </header>
+      {zoom === 'days' &&
+        sections.map((section, sectionIndex) => (
+          <section className="plan__section" key={section.days[0].id}>
+            <header className="plan__section-head">
+              <div className="plan__section-title-row">
+                <h2 className="plan__section-title">
+                  {stopLabel(section.days[0].start)} →{' '}
+                  {stopLabel(section.days[section.days.length - 1].end)}
+                </h2>
+                {sections.length > 1 && (
+                  <span className="plan__section-count">
+                    SEC {sectionIndex + 1}/{sections.length}
+                  </span>
+                )}
+              </div>
+              <p className="plan__section-stats">
+                <span>{formatDistance(section.distanceMi, units, 'whole')}</span>
+                <span>{section.days.length} days</span>
+                {sectionAscent(section, figures) !== null && (
+                  <span>
+                    {formatElevation(sectionAscent(section, figures) as number, units)} ↑
+                  </span>
+                )}
+                {section.days[section.days.length - 1].end.resupply && (
+                  <span className="plan__section-food">{section.foodDays} days food</span>
+                )}
+              </p>
+            </header>
 
-          <ol className="plan__days">
-            {section.days.map((day) => (
-              <li key={day.id}>
-                <DayRow
-                  day={day}
-                  figures={figures.get(day.index)}
-                  carryOut={
-                    day.end.resupply
-                      ? (sections[sectionIndex + 1]?.foodDays ?? null)
-                      : null
-                  }
-                  units={units}
-                  elevation={elevation}
-                  onSelect={() => setSelectedDay(day.index)}
-                />
-              </li>
-            ))}
-          </ol>
-        </section>
-      ))}
+            <ol className="plan__days">
+              {section.days.map((day) => (
+                <li key={day.id}>
+                  <DayRow
+                    day={day}
+                    figures={figures.get(day.index)}
+                    carryOut={
+                      day.end.resupply
+                        ? (sections[sectionIndex + 1]?.foodDays ?? null)
+                        : null
+                    }
+                    units={units}
+                    elevation={elevation}
+                    onSelect={() => setSelectedDay(day.index)}
+                  />
+                </li>
+              ))}
+            </ol>
+          </section>
+        ))}
+
+      {/* Days of food are days in every unit system, so this block takes no
+          units - the one figure on the Plan tab that does not convert. */}
+      {zoom !== 'hike' && <FoodBlock sections={sections} />}
 
       <div className="plan__foot">
         {/* Re-targeting replaces the whole plan, so it retires the moment
@@ -367,6 +618,69 @@ export function PlanScreen({
   )
 }
 
+/**
+ * What each stretch costs in days of food (#799).
+ *
+ * The figures come off `planSections()` - the same derivation the timeline
+ * and the trip zoom read - so the food block and the rows cannot disagree
+ * about a carry. Nothing here suggests where to resupply: picking towns for
+ * somebody is a much larger feature, and the resupply data is not good
+ * enough for it yet.
+ *
+ * THE CASE THAT WAS SILENT BEFORE: a plan with no resupply anywhere never
+ * printed the word food at all, which reads as "no food needed" rather than
+ * "all nine days are on your back".
+ */
+function FoodBlock({ sections }: { sections: PlanSection[] }) {
+  const carries = foodCarries(sections)
+  if (carries.length === 0) return null
+
+  const longest = carries.reduce((worst, carry) =>
+    carry.days > worst.days ? carry : worst,
+  )
+  const nowhereToBuy = carries.length === 1 && !carries[0].restockAtEnd
+
+  return (
+    <section className="plan__food">
+      <h2 className="plan__food-title">Food</h2>
+      <ul className="plan__food-carries">
+        {carries.map((carry) => (
+          <li className="plan__food-carry" key={`${carry.from.mile}-${carry.to.mile}`}>
+            <span className="plan__food-where">
+              {stopLabel(carry.from)} → {stopLabel(carry.to)}
+            </span>
+            <span className="plan__food-days">
+              {carry.days} {carry.days === 1 ? 'day' : 'days'}
+              {carry.restockAtEnd ? '' : ' · nothing bought at the end'}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {nowhereToBuy ? (
+        <p className="plan__food-note" role="note">
+          No resupply on this plan — all {carries[0].days}{' '}
+          {carries[0].days === 1 ? 'day' : 'days'} come out of your pack. Marking a stop
+          as a resupply on the timeline splits the carry.
+        </p>
+      ) : (
+        longest.days >= LONG_CARRY_DAYS && (
+          <p className="plan__food-note" role="note">
+            The longest carry is {longest.days} days, out of {stopLabel(longest.from)} —
+            that is the heaviest your pack gets.
+          </p>
+        )
+      )}
+      {/* Zeros are in these counts. HIKE_PLANNING.md left it open;
+          lib/plan.ts decided it in one place, erring toward carrying enough
+          rather than short - and saying so is the difference between a
+          number and a number you can argue with. */}
+      <p className="plan__food-note plan__food-note--quiet">
+        Zeros and rest days count — they eat a day of food like any other.
+      </p>
+    </section>
+  )
+}
+
 /** The last day's date as "30 Aug", or null on an undated plan. */
 function finishLabel(views: PlanDayView[]): string | null {
   const last = views[views.length - 1]?.date
@@ -440,7 +754,11 @@ function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowPr
         <RowGutter day={day} />
         <button type="button" className="plan__day plan__day--zero" onClick={onSelect}>
           <span>Zero · {stopLabel(day.start)}</span>
-          <span className="plan__day-figure">no walking</span>
+          {/* Terrain, not judgement - and "rest" only where the hiker's own
+              rhythm put it, never as the app's opinion of the day (#798). */}
+          <span className="plan__day-figure">
+            {day.rest ? 'your rest day' : 'no walking'}
+          </span>
         </button>
       </div>
     )
@@ -499,6 +817,7 @@ function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowPr
               was {formatDistance(day.wasDistanceMi, units)}
             </span>
           )}
+          {day.rest && <span className="plan__day-auto">nearo · your rest day</span>}
           {day.generated && <span className="plan__day-auto">auto</span>}
         </span>
       </button>

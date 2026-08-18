@@ -7,10 +7,13 @@
 // it - so the guardrail is held by a test rather than by vigilance.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { PlanScreen } from './Plan'
+import type { Hike } from '../lib/hikes'
+import type { TripGroup } from '../lib/tripGroups'
+import type { Trip } from '../lib/trips'
 import { callItADay } from '../lib/cascade'
 import { buildPlan, insertZeroAfter, toggleResupply, type HikePlan } from '../lib/plan'
 import type { ElevationProfile } from '../lib/elevationProfile'
@@ -23,8 +26,17 @@ const PROPS = {
   units: 'imperial' as const,
   draftLive: false,
   tripName: null,
+  openTripId: null,
   tripCount: 1,
   onOpenTrips: vi.fn(),
+  hike: null as Hike | null,
+  hikes: [] as readonly Hike[],
+  groups: [] as readonly TripGroup[],
+  onOpenGroup: vi.fn(),
+  trips: [] as readonly Trip[],
+  onOpenTrip: vi.fn(),
+  onPlanGap: vi.fn(),
+  onPlanFrom: vi.fn(),
   onStartOnMap: vi.fn(),
   onChangeTarget: vi.fn(),
   onInsertZeroAfter: vi.fn(),
@@ -344,5 +356,329 @@ describe('the cascade (#758)', () => {
 
     expect(container.textContent).not.toMatch(/behind/i)
     expect(container.textContent).not.toMatch(/ahead of/i)
+  })
+})
+
+describe('the three zooms (#790)', () => {
+  const HIKE: Hike = {
+    id: 'h1',
+    name: 'Virginia, over a few years',
+    type: 'section',
+    start: { name: 'Damascus', mile: 470.8 },
+    end: { name: 'Rockfish Gap', mile: 860 },
+    tripIds: ['t1'],
+  }
+
+  function tripOf(plan: HikePlan): Trip {
+    return { id: 't1', name: 'Spring section', plan }
+  }
+
+  it('offers no control at all when there is only one depth', () => {
+    // One trip, one section, no hike: nothing to zoom out to, and a control
+    // whose other segments do nothing is the dead button this app keeps
+    // designing out.
+    render(<PlanScreen {...PROPS} plan={smallPlan()} />)
+
+    expect(screen.queryByRole('group', { name: 'Zoom' })).toBeNull()
+  })
+
+  it('offers the hike once the trip belongs to one, and zooms out to it', async () => {
+    const user = userEvent.setup()
+    const plan = smallPlan()
+    render(
+      <PlanScreen
+        {...PROPS}
+        plan={plan}
+        hike={HIKE}
+        trips={[tripOf(plan)]}
+        openTripId="t1"
+      />,
+    )
+
+    expect(screen.getByRole('group', { name: 'Zoom' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Trip' })).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Hike' }))
+    expect(
+      screen.getByRole('heading', { name: 'Virginia, over a few years' }),
+    ).toBeInTheDocument()
+    // The trip's own row, and the ground past it nobody has walked.
+    expect(screen.getByText(/Spring section/)).toBeInTheDocument()
+    expect(screen.getAllByText(/not walked/).length).toBeGreaterThan(0)
+  })
+
+  it('offers the trip zoom only when there is more than one section', async () => {
+    const user = userEvent.setup()
+    // Resupply in the middle: two sections, so the middle tier has
+    // something to say the day list does not.
+    const plan = toggleResupply(smallPlan(), 2)
+    render(<PlanScreen {...PROPS} plan={plan} />)
+
+    await user.click(screen.getByRole('button', { name: 'Trip' }))
+    expect(screen.getByText('SEC 1/2')).toBeInTheDocument()
+    expect(screen.getByText('SEC 2/2')).toBeInTheDocument()
+  })
+
+  it('shows the hike when the open plan is gone, rather than "no plan yet"', () => {
+    // A deleted plan does not delete the years already walked.
+    render(<PlanScreen {...PROPS} plan={null} hike={HIKE} trips={[]} />)
+
+    expect(screen.queryByText(/No plan yet/)).toBeNull()
+    expect(
+      screen.getByRole('heading', { name: 'Virginia, over a few years' }),
+    ).toBeInTheDocument()
+  })
+
+  it('leads back up to the hike from the days', async () => {
+    const user = userEvent.setup()
+    const plan = smallPlan()
+    render(<PlanScreen {...PROPS} plan={plan} hike={HIKE} trips={[tripOf(plan)]} />)
+
+    await user.click(screen.getByRole('button', { name: /Virginia, over a few years/ }))
+    expect(
+      screen.getByRole('heading', { name: 'Virginia, over a few years' }),
+    ).toBeInTheDocument()
+  })
+
+  it('never scores a hiker at any zoom', async () => {
+    const user = userEvent.setup()
+    const plan = toggleResupply(smallPlan(), 2)
+    const { container } = render(
+      <PlanScreen
+        {...PROPS}
+        plan={plan}
+        hike={HIKE}
+        trips={[tripOf(plan)]}
+        openTripId="t1"
+      />,
+    )
+
+    const forbidden = /%|behind|ahead of|on track|streak|complete/i
+    expect(container.textContent).not.toMatch(forbidden)
+
+    await user.click(screen.getByRole('button', { name: 'Trip' }))
+    expect(container.textContent).not.toMatch(forbidden)
+
+    await user.click(screen.getByRole('button', { name: 'Hike' }))
+    expect(container.textContent).not.toMatch(forbidden)
+  })
+})
+
+describe('the door to what’s left (#791)', () => {
+  const HIKE: Hike = {
+    id: 'h1',
+    name: 'Virginia, over a few years',
+    type: 'section',
+    start: { name: 'Damascus', mile: 470.8 },
+    end: { name: 'Rockfish Gap', mile: 860 },
+    tripIds: ['t1'],
+  }
+
+  it('opens the gap screen from the hike zoom, and comes back', async () => {
+    const user = userEvent.setup()
+    const plan = smallPlan()
+    const trips: Trip[] = [{ id: 't1', name: 'Spring section', plan }]
+    render(
+      <PlanScreen {...PROPS} plan={plan} hike={HIKE} trips={trips} openTripId="t1" />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Hike' }))
+    await user.click(screen.getByRole('button', { name: /What’s left/ }))
+
+    expect(screen.getByRole('heading', { name: 'What’s left' })).toBeInTheDocument()
+    // Nothing walked on this plan, so the whole hike is one piece.
+    expect(screen.getByText(/389\.2 mi in 1 piece/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Back to the hike' }))
+    expect(
+      screen.getByRole('heading', { name: 'Virginia, over a few years' }),
+    ).toBeInTheDocument()
+  })
+})
+
+describe('food (#799)', () => {
+  it('says what each carry costs, and which one buys nothing at its end', () => {
+    // smallPlan resupplies at the last stop only, so the whole thing is one
+    // carry that restocks at the very end of the plan.
+    render(<PlanScreen {...PROPS} plan={smallPlan()} />)
+
+    const food = screen.getByRole('heading', { name: 'Food' })
+      .parentElement as HTMLElement
+    // One carry, ending where the plan does: three days including the zero.
+    expect(within(food).getByText(/Damascus → Atkins/)).toBeInTheDocument()
+    expect(within(food).getByText(/3 days/)).toBeInTheDocument()
+  })
+
+  it('says so when nothing is bought anywhere, instead of saying nothing', () => {
+    // The case that used to be silent: no resupply meant the word food
+    // never appeared, which reads as "no food needed".
+    const plan = buildPlan(
+      [
+        { mile: 470.8, name: 'Damascus', resupply: false },
+        { mile: 486.2, name: 'Lost Mountain Shelter', resupply: false },
+        { mile: 503.3, name: 'Atkins', resupply: false },
+      ],
+      { walkingHours: 7 },
+    )
+    render(<PlanScreen {...PROPS} plan={plan} />)
+
+    expect(screen.getByText(/No resupply on this plan/)).toBeInTheDocument()
+    expect(screen.getByText(/all 2 days come out of your pack/)).toBeInTheDocument()
+  })
+
+  it('says a long carry is heavy without telling anybody off about it', () => {
+    // Two carries - a short one into town, then six days out of it.
+    const plan = toggleResupply(
+      buildPlan(
+        Array.from({ length: 9 }, (_, index) => ({
+          mile: 470 + index * 10,
+          name: `Stop ${index}`,
+          resupply: false,
+        })),
+        { miles: 10 },
+      ),
+      2,
+    )
+    const { container } = render(<PlanScreen {...PROPS} plan={plan} />)
+
+    expect(screen.getByText(/that is the heaviest your pack gets/)).toBeInTheDocument()
+    // A fact about a stretch of trail with no towns on it, not a mistake.
+    expect(container.textContent).not.toMatch(/too (much|long|far)|warning|you should/i)
+  })
+
+  it('says that zeros are in the count, because the answer could be either', () => {
+    render(<PlanScreen {...PROPS} plan={smallPlan()} />)
+    expect(screen.getByText(/Zeros and rest days count/)).toBeInTheDocument()
+  })
+})
+
+describe('rest days (#798)', () => {
+  it('calls a zero the hiker’s own rest, and an ordinary zero neither', () => {
+    const plan = smallPlan() // has a zero at index 1, added by hand
+    render(<PlanScreen {...PROPS} plan={plan} />)
+    expect(screen.getByText('no walking')).toBeInTheDocument()
+
+    cleanup()
+    const rested = {
+      ...plan,
+      days: plan.days.map((day, index) => (index === 1 ? { ...day, rest: true } : day)),
+    }
+    render(<PlanScreen {...PROPS} plan={rested} />)
+    expect(screen.getByText('your rest day')).toBeInTheDocument()
+  })
+
+  it('marks a nearo, which is otherwise just a short day', () => {
+    const plan = buildPlan(
+      [
+        { mile: 470.8, name: 'Damascus', resupply: false },
+        { mile: 474.8, name: 'Four On', resupply: false },
+        { mile: 490.0, name: 'Atkins', resupply: false },
+      ],
+      { miles: 15 },
+    )
+    plan.days[0].rest = true
+    render(<PlanScreen {...PROPS} plan={plan} />)
+
+    expect(screen.getByText(/nearo · your rest day/)).toBeInTheDocument()
+  })
+
+  it('never scores the rests', () => {
+    const plan = smallPlan()
+    plan.days[1].rest = true
+    const { container } = render(<PlanScreen {...PROPS} plan={plan} />)
+    expect(container.textContent).not.toMatch(/%|streak|in a row|rests taken|earned/i)
+  })
+})
+
+describe('the Plan home (#805)', () => {
+  const HIKE: Hike = {
+    id: 'h1',
+    name: 'Virginia, over a few years',
+    type: 'section',
+    start: { name: 'Damascus', mile: 470.8 },
+    end: { name: 'Rockfish Gap', mile: 860 },
+    tripIds: ['t1'],
+  }
+
+  function twoTrips(): Trip[] {
+    const a = smallPlan()
+    const b = buildPlan(
+      [
+        { mile: 600, name: 'Grayson', resupply: false },
+        { mile: 620, name: 'Old Orchard', resupply: false },
+      ],
+      { walkingHours: 7 },
+      '2026-07-04',
+    )
+    return [
+      { id: 't1', name: 'Spring section', plan: a },
+      { id: 't2', name: 'Grayson week', plan: b },
+    ]
+  }
+
+  it('opens on the home once there is something to choose between', () => {
+    render(
+      <PlanScreen {...PROPS} plan={smallPlan()} trips={twoTrips()} openTripId="t1" />,
+    )
+
+    expect(screen.getByText('Carry on with')).toBeInTheDocument()
+    expect(screen.getByText('Recent trips')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Plan a new trip' })).toBeInTheDocument()
+  })
+
+  it('opens straight into a lone trip, as it always did', () => {
+    // The cost of a home, paid only by hikers who have something to choose
+    // between: one trip and no hike lands on the timeline.
+    render(<PlanScreen {...PROPS} plan={smallPlan()} trips={twoTrips().slice(0, 1)} />)
+
+    expect(screen.queryByText('Carry on with')).toBeNull()
+    expect(screen.queryByText('Recent trips')).toBeNull()
+    // The timeline itself, not a menu in front of it.
+    expect(screen.getByRole('button', { name: 'Delete plan' })).toBeInTheDocument()
+  })
+
+  it('prints every trip’s dates, and says when there are none', () => {
+    const trips = twoTrips()
+    render(<PlanScreen {...PROPS} plan={trips[0].plan} trips={trips} openTripId="t1" />)
+
+    expect(screen.getAllByText('12–14 May 2026').length).toBeGreaterThan(0)
+    expect(screen.getByText('4 Jul 2026')).toBeInTheDocument()
+  })
+
+  it('leads into a hike, and back out to the home', async () => {
+    const user = userEvent.setup()
+    const trips = twoTrips()
+    render(
+      <PlanScreen
+        {...PROPS}
+        plan={trips[0].plan}
+        trips={trips}
+        openTripId="t1"
+        hike={HIKE}
+        hikes={[HIKE]}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /Virginia, over a few years/ }))
+    expect(
+      screen.getByRole('heading', { name: 'Virginia, over a few years' }),
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /All your plans/ }))
+    expect(screen.getByText('Carry on with')).toBeInTheDocument()
+  })
+
+  it('never scores anything on the way in', () => {
+    const { container } = render(
+      <PlanScreen
+        {...PROPS}
+        plan={smallPlan()}
+        trips={twoTrips()}
+        openTripId="t1"
+        hike={HIKE}
+        hikes={[HIKE]}
+      />,
+    )
+    expect(container.textContent).not.toMatch(/%|behind|ahead of|on track|streak/i)
   })
 })

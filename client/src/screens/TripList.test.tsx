@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event'
 
 import { TripList } from './TripList'
 import type { Hike } from '../lib/hikes'
+import type { TripGroup } from '../lib/tripGroups'
 import { buildPlan, type HikePlan } from '../lib/plan'
 import type { StoredPoi } from '../lib/trailData'
 import type { Trip } from '../lib/trips'
@@ -42,6 +43,9 @@ const PROPS = {
   onRemove: vi.fn(),
   onNew: vi.fn(),
   onGroupIntoHike: vi.fn(),
+  groups: [] as readonly TripGroup[],
+  onOpenGroup: vi.fn(),
+  onNewGroup: vi.fn(),
   onClose: vi.fn(),
 }
 
@@ -59,8 +63,10 @@ describe('the trip switcher', () => {
     // Distance and days come off the plan, not from anything stored beside it.
     expect(screen.getByText(/32\.5 mi · 1 day/)).toBeInTheDocument()
     expect(screen.getByText(/20\.0 mi · 1 day/)).toBeInTheDocument()
-    // A dated trip says when it starts; an undated one claims nothing.
-    expect(screen.getByText(/from TUE 12/)).toBeInTheDocument()
+    // Every trip prints its dates, and an undated one says so rather than
+    // looking like a dated trip with the dates missing (#805).
+    expect(screen.getByText(/12 May 2026/)).toBeInTheDocument()
+    expect(screen.getByText(/no dates yet/)).toBeInTheDocument()
   })
 
   it('marks which trip is open', () => {
@@ -212,7 +218,36 @@ describe('a recorded stretch (#789)', () => {
 
     expect(screen.getByText('recorded')).toBeInTheDocument()
     // 470.8 miles is not "1 day", and must never be shown as one.
-    expect(screen.getByText('470.8 mi')).toBeInTheDocument()
+    expect(screen.getByText(/470\.8 mi/)).toBeInTheDocument()
     expect(screen.queryByText(/1 day/)).toBeNull()
+  })
+})
+
+describe('the hiker’s own groups (#800)', () => {
+  it('offers to make one, and says what a group is for', async () => {
+    const user = userEvent.setup()
+    render(<TripList {...PROPS} />)
+
+    expect(screen.getByText(/every Sunday, with Dad, this season/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '+ New group' }))
+    await user.type(screen.getByLabelText('Name for the new group'), 'Every Sunday')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(PROPS.onNewGroup).toHaveBeenCalledWith('Every Sunday')
+  })
+
+  it('lists each group with how many trips are in it', async () => {
+    const user = userEvent.setup()
+    const groups: TripGroup[] = [
+      { id: 'g1', name: 'Every Sunday', tripIds: ['a'] },
+      { id: 'g2', name: 'With Dad', tripIds: ['a', 'b'] },
+    ]
+    render(<TripList {...PROPS} groups={groups} />)
+
+    // The same trip is in both, which is the point of groups.
+    expect(screen.getByRole('button', { name: 'Every Sunday · 1' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'With Dad · 2' }))
+    expect(PROPS.onOpenGroup).toHaveBeenCalledWith('g2')
   })
 })

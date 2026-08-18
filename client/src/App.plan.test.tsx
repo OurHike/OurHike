@@ -15,7 +15,7 @@
 // and time declared missing, "How long" and the hours target not offered.
 
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
 import { appHarness, latOfMile } from './test/appHarness'
@@ -94,7 +94,7 @@ describe('the planning flow', () => {
     ).toBeInTheDocument()
 
     // Search door: name first.
-    await user.click(screen.getByRole('button', { name: 'search' }))
+    await user.click(screen.getByRole('button', { name: /Shelter, town, or/ }))
     const picker = await screen.findByRole('dialog', { name: 'Choose a stop' })
     expect(picker).toBeInTheDocument()
     await user.type(screen.getByLabelText('Search for a stop'), 'front')
@@ -178,7 +178,7 @@ describe('the planning flow', () => {
 
     await openEntrance(user)
 
-    await user.click(screen.getByRole('button', { name: 'search' }))
+    await user.click(screen.getByRole('button', { name: /Shelter, town, or/ }))
     await user.type(await screen.findByLabelText('Search for a stop'), 'front')
     await user.click(await screen.findByRole('button', { name: /Front Shelter/ }))
     await user.click(screen.getByRole('button', { name: 'Use this stretch' }))
@@ -283,11 +283,10 @@ describe('the planning flow', () => {
     render(<App />)
     await user.click(await screen.findByRole('tab', { name: 'Plan' }))
 
-    // The open trip is the one named in the header.
-    expect(await screen.findByText('Autumn section')).toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: 'All 2 trips' }))
-    expect(await screen.findByRole('dialog', { name: 'Your trips' })).toBeInTheDocument()
+    // Two trips, so the tab opens on its home (#805) - the open one under
+    // "carry on with", and both of them listed.
+    expect(await screen.findByText('Carry on with')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /Autumn section/ })).toHaveLength(2)
     await user.click(screen.getByRole('button', { name: /Spring section/ }))
 
     // Switched, and the other trip is still there rather than overwritten.
@@ -300,6 +299,127 @@ describe('the planning flow', () => {
     expect(store.openId).toBe('trip-2')
   })
 
+  it('zooms out to the hike, and starts a route where a gap begins (#790)', async () => {
+    // The section hiker's loop, end to end: what is walked, what is not,
+    // and one tap from a gap into the builder that fills it.
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    app.store.set(TRIPS_KEY, {
+      openId: 'trip-1',
+      trips: [
+        {
+          id: 'trip-1',
+          name: 'Autumn section',
+          plan: {
+            target: { miles: 8 },
+            stops: [
+              { mile: 3.2, name: 'Front Shelter', poiId: 's3', resupply: false },
+              { mile: 10.2, name: 'Middle Shelter', poiId: 's10', resupply: false },
+            ],
+            days: [{ id: 'day-a', pinned: false, generated: true, walked: true }],
+          },
+        },
+      ],
+      hikes: [
+        {
+          id: 'hike-1',
+          name: 'The whole thing, eventually',
+          type: 'section',
+          start: { poiId: 's3', name: 'Front Shelter', mile: 3.2 },
+          end: { poiId: 's22', name: 'Beyond Shelter', mile: 22.2 },
+          tripIds: ['trip-1'],
+        },
+      ],
+    })
+
+    render(<App />)
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+    // The Plan tab now opens on its home when there is something to choose
+    // between (#805), so the hike is one tap in rather than a zoom away.
+    await user.click(
+      await screen.findByRole('button', { name: /The whole thing, eventually/ }),
+    )
+
+    // The walked trip, and the ground past it that nobody has walked -
+    // named at both ends rather than only measured.
+    expect(
+      await screen.findByRole('heading', { name: 'The whole thing, eventually' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('12.0 mi not walked')).toBeInTheDocument()
+    expect(screen.getByText(/Middle Shelter → Beyond Shelter/)).toBeInTheDocument()
+    expect(screen.getByText('7.0 mi walked · 12.0 mi to go')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Plan this stretch' }))
+
+    // The builder, on the map, already starting where the gap does.
+    expect(
+      await screen.findByRole('dialog', { name: 'Plan a route' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Middle Shelter')).toBeInTheDocument()
+  })
+
+  it('starts a route from the SOUTH end of a gap, walking that way (#791)', async () => {
+    // The flip-flopper's move, and the reason both ends are offered: the
+    // direction is derived from which end was picked and stored nowhere.
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    app.store.set(TRIPS_KEY, {
+      openId: 'trip-1',
+      trips: [
+        {
+          id: 'trip-1',
+          name: 'Autumn section',
+          plan: {
+            target: { miles: 8 },
+            stops: [
+              { mile: 3.2, name: 'Front Shelter', poiId: 's3', resupply: false },
+              { mile: 10.2, name: 'Middle Shelter', poiId: 's10', resupply: false },
+            ],
+            days: [{ id: 'day-a', pinned: false, generated: true, walked: true }],
+          },
+        },
+      ],
+      hikes: [
+        {
+          id: 'hike-1',
+          name: 'The whole thing, eventually',
+          type: 'section',
+          start: { poiId: 's3', name: 'Front Shelter', mile: 3.2 },
+          end: { poiId: 's22', name: 'Beyond Shelter', mile: 22.2 },
+          tripIds: ['trip-1'],
+        },
+      ],
+    })
+
+    render(<App />)
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+    // The Plan tab now opens on its home when there is something to choose
+    // between (#805), so the hike is one tap in rather than a zoom away.
+    await user.click(
+      await screen.findByRole('button', { name: /The whole thing, eventually/ }),
+    )
+    await user.click(screen.getByRole('button', { name: /What’s left/ }))
+
+    // One walked stretch, one gap, and both of its ends offered.
+    expect(await screen.findByText(/12\.0 mi in 1 piece/)).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /North from Middle Shelter/ }),
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /South from Beyond Shelter/ }))
+
+    const entrance = await screen.findByRole('dialog', { name: 'Plan a route' })
+    expect(within(entrance).getByText('Beyond Shelter')).toBeInTheDocument()
+    // Picked the high end, so the route walks south - nothing was stored to
+    // say so, it fell out of the pair.
+    expect(within(entrance).getByRole('button', { name: 'South' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+  })
+
   it('places a start through the map door, refusals said out loud, and keeps the draft across tabs', async () => {
     const user = userEvent.setup()
     app.onboard()
@@ -307,7 +427,7 @@ describe('the planning flow', () => {
 
     await openEntrance(user)
 
-    await user.click(screen.getByRole('button', { name: 'map' }))
+    await user.click(screen.getByRole('button', { name: 'Pick on the map' }))
     expect(
       await screen.findByText('Tap the trail where this stop goes.'),
     ).toBeInTheDocument()

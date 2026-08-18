@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   formatDistance,
+  formatDistanceRange,
   formatElevation,
   formatShortDistance,
   unitSystemLabel,
@@ -132,5 +133,20 @@ describe('the module as a whole', () => {
     for (const output of outputs) {
       expect(output).toMatch(/^[\d,.]+ (m|km)$/)
     }
+  })
+})
+
+describe('formatDistanceRange', () => {
+  it('rounds outward, so the interval never narrows', () => {
+    // 54.6-79.2 must not become 55-79: an estimate's edges widen.
+    expect(formatDistanceRange(54.6, 79.2, 'imperial')).toBe('54–80 mi')
+  })
+
+  it('converts before rounding, so metric rounds in metric', () => {
+    expect(formatDistanceRange(54.6, 79.2, 'metric')).toBe('87–128 km')
+  })
+
+  it('collapses to one figure when the range rounds to nothing', () => {
+    expect(formatDistanceRange(12, 12, 'imperial')).toBe('12 mi')
   })
 })

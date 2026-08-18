@@ -52,6 +52,7 @@ import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
 import { MAP_PACKAGES } from './packages'
 import {
   STORED_ARCHIVE_BYTES,
+  STORED_GROUPED_AND_RESTED_TRIPS,
   STORED_GROUPED_TRIPS,
   STORED_SHAPES,
   storedElevation,
@@ -221,6 +222,37 @@ describe('a stored phone from the baseline release', () => {
       // that dropped the past would be worse than one that failed loudly.
       expect(store.trips[0].plan.days[0].walked).toBe(true)
       expect(store.trips[0].plan.stops).toHaveLength(3)
+    })
+  })
+
+  // ONE SHAPE LATER AGAIN (#798, #800): the hiker's own buckets, and a plan
+  // carrying a rest rhythm. The load-bearing line is the one asserting a
+  // trip in TWO groups - a reader who "fixes" that to one has changed the
+  // feature into a hike.
+  describe('and with the hiker’s own groups and a rest rhythm', () => {
+    beforeEach(() => {
+      const store = { ...phoneStore(), ...STORED_GROUPED_AND_RESTED_TRIPS }
+      mockedGet.mockImplementation(async (key: IDBValidKey) => store[key as string])
+    })
+
+    it('keeps a trip in every group that names it', async () => {
+      const store = await loadTrips()
+
+      expect(store.groups.map((group) => group.name)).toEqual([
+        'Every Sunday',
+        'With Dad',
+      ])
+      expect(store.groups.every((group) => group.tripIds.includes('trip-0001'))).toBe(
+        true,
+      )
+    })
+
+    it('still reads the rhythm and the rest day it produced', async () => {
+      const store = await loadTrips()
+      const plan = store.trips[0].plan
+
+      expect(plan.rhythm).toEqual({ everyDays: 3, kind: 'nearo' })
+      expect(plan.days[1].rest).toBe(true)
     })
   })
 

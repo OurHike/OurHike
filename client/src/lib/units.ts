@@ -113,6 +113,43 @@ export function formatDistance(
   return `${group(miles, digitsFor(miles, precision))} mi`
 }
 
+/**
+ * A RANGE of distances - "55-80 mi" - with one unit label for the pair.
+ *
+ * ROUNDED OUTWARD in the display's own unit: the low down, the high up.
+ * `formatDistance`'s nearest-rounding is right for a measured distance and
+ * wrong for the edges of an estimate, where narrowing the interval would be
+ * the display claiming precision the samples do not have. Whole units
+ * throughout, because a tenth of a mile on the edge of a 25-mile spread is
+ * noise dressed as a figure.
+ */
+/**
+ * Just the unit a distance is written in - "mi" or "km".
+ *
+ * For the rare control that shows a NUMBER and its unit in separate
+ * elements: the route entrance's typed distance field, where the input has
+ * to hold a bare number so the keyboard and the arrows behave. Every other
+ * caller should use `formatDistance`, which is the reason this returns the
+ * label alone and never a value with it.
+ */
+export function distanceUnitLabel(units: UnitSystem): string {
+  return units === 'metric' ? 'km' : 'mi'
+}
+
+export function formatDistanceRange(
+  lowMi: number,
+  highMi: number,
+  units: UnitSystem,
+): string {
+  const scale = units === 'metric' ? KM_PER_MILE : 1
+  const suffix = units === 'metric' ? 'km' : 'mi'
+  const digits: Digits = { min: 0, max: 0 }
+  const low = Math.floor(lowMi * scale)
+  const high = Math.ceil(highMi * scale)
+  if (low >= high) return `${group(high, digits)} ${suffix}`
+  return `${group(low, digits)}–${group(high, digits)} ${suffix}`
+}
+
 function digitsFor(value: number, precision: DistancePrecision): Digits {
   if (precision === 'whole') return { min: 0, max: 0 }
   if (precision === 'trimmed') return { min: 0, max: 1 }

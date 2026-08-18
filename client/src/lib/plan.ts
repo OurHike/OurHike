@@ -84,6 +84,42 @@ export interface PlanDayMeta {
    * prints it as "was 17.1 mi" and nothing more.
    */
   wasDistanceMi?: number
+  /**
+   * This day is a REST the rhythm asked for (#798), rather than a day that
+   * happens to be short.
+   *
+   * A zero is already recognisable from its boundaries - it starts and ends
+   * at one stop - but a nearo is a walking day of four miles, which is
+   * indistinguishable from a walking day of four miles. The flag is the
+   * only thing that can tell a screen the difference between "the trail
+   * gave you a short day" and "you asked for one".
+   */
+  rest?: boolean
+}
+
+/**
+ * A rest every `everyDays` walking days (#798).
+ *
+ * A hiker who takes a zero every Sunday plans one, and a generator that
+ * only ever emits walking days makes them add seven by hand to a fifty-day
+ * plan and lose them all on the next re-lay. Stored on the plan so a re-lay
+ * reproduces the rhythm instead of forgetting it.
+ *
+ * TWO KINDS, because "a rest day" means two different things to two hikers:
+ * a ZERO walks nothing, and a NEARO walks a few miles into or out of town.
+ * A nearo falls back to a zero where no stop lies inside the window - and
+ * says which it is rather than pretending.
+ *
+ * WHAT THIS IS NOT: an opinion. Nothing suggests a rhythm, warns that seven
+ * days without one is a lot, marks a plan without one as incomplete, or
+ * counts the rests taken. A plan that scores its own rest days is two
+ * decisions from a streak (OurHikeValues.md #1).
+ */
+export interface RestRhythm {
+  /** A rest after this many WALKING days. Zeros and nearos do not count
+   *  toward it - otherwise a rest would trigger the next one. */
+  everyDays: number
+  kind: 'zero' | 'nearo'
 }
 
 /** What the generator aimed at. Two shapes rather than a number and a unit
@@ -95,6 +131,10 @@ export interface HikePlan {
   /** n+1 boundaries carrying n days: days[i] runs stops[i] → stops[i+1]. */
   stops: PlanStop[]
   days: PlanDayMeta[]
+  /** The rest rhythm this plan was laid out with, if any (#798). Kept so a
+   *  re-lay reproduces it; absent on every plan written before it existed,
+   *  and on every plan whose hiker did not ask for one. */
+  rhythm?: RestRhythm
 }
 
 /**
@@ -122,6 +162,7 @@ export function validatePlan(candidate: unknown): HikePlan | null {
     if (typeof day.pinned !== 'boolean' || typeof day.generated !== 'boolean') return null
     if (day.date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(day.date)) return null
     if (day.walked !== undefined && typeof day.walked !== 'boolean') return null
+    if (day.rest !== undefined && typeof day.rest !== 'boolean') return null
     if (day.wasDistanceMi !== undefined && !Number.isFinite(day.wasDistanceMi)) {
       return null
     }
@@ -162,7 +203,29 @@ export function validatePlan(candidate: unknown): HikePlan | null {
       : { miles: targetMiles as number },
     stops: plan.stops as PlanStop[],
     days: plan.days as PlanDayMeta[],
+    ...(validateRhythm(plan.rhythm) === null
+      ? {}
+      : { rhythm: validateRhythm(plan.rhythm) as RestRhythm }),
   }
+}
+
+/**
+ * A rhythm, or null.
+ *
+ * DROPPED rather than refused, which is the opposite of how this file
+ * treats everything else - and deliberately. Every other field here carries
+ * an invariant the arithmetic assumes; the rhythm carries none. It records
+ * what was asked for once, and a plan whose rhythm is unreadable is still a
+ * plan whose days are all there. Losing the days to save the label would be
+ * the wrong trade.
+ */
+function validateRhythm(candidate: unknown): RestRhythm | null {
+  if (typeof candidate !== 'object' || candidate === null) return null
+  const rhythm = candidate as Partial<RestRhythm>
+  if (rhythm.kind !== 'zero' && rhythm.kind !== 'nearo') return null
+  if (typeof rhythm.everyDays !== 'number') return null
+  if (!Number.isInteger(rhythm.everyDays) || rhythm.everyDays < 1) return null
+  return { everyDays: rhythm.everyDays, kind: rhythm.kind }
 }
 
 /** Re-validated on the way out rather than trusted - the same call
@@ -237,6 +300,10 @@ export interface PlanDayView {
   walked: boolean
   /** "was 17.1 mi", or null - see PlanDayMeta.wasDistanceMi. */
   wasDistanceMi: number | null
+  /** A rest the rhythm asked for (#798) - see PlanDayMeta.rest. A zero can
+   *  be a rest or just a zero somebody added; a nearo is only legible as
+   *  one because of this. */
+  rest: boolean
 }
 
 /** `startDate` plus `index` days, in plain date arithmetic - UTC throughout
@@ -266,6 +333,7 @@ export function planDayViews(plan: HikePlan): PlanDayView[] {
       generated: meta.generated,
       walked: meta.walked === true,
       wasDistanceMi: meta.wasDistanceMi ?? null,
+      rest: meta.rest === true,
     }
   })
 }
@@ -285,6 +353,61 @@ export interface PlanSection {
   days: PlanDayView[]
   distanceMi: number
   foodDays: number
+}
+
+/**
+ * How many days of food a carry has to last, above which the weight is the
+ * plan's biggest problem and saying so once is worth a line.
+ *
+ * @unvalidated 6 is picked, not measured. Six days is roughly where a
+ * hiker's pack stops being a day pack with food in it, but nobody here has
+ * checked that against anything. What would settle it: the distribution of
+ * carry lengths across generated plans on this trail, which the planner can
+ * produce as soon as anyone wants to count them.
+ *
+ * It is a NOTE and never a warning: a long carry is a fact about a stretch
+ * of trail with no towns on it, not a mistake the hiker made.
+ */
+export const LONG_CARRY_DAYS = 6
+
+/** One stretch of trail a single load of food has to cover (#799). */
+export interface FoodCarry {
+  from: { mile: number; name?: string }
+  to: { mile: number; name?: string }
+  /** Every day in the span, zeros and rests included - see PlanSection. */
+  days: number
+  /**
+   * Supplies are picked up at the far end. False for the last carry of a
+   * plan that simply runs out, which is the case worth saying out loud:
+   * those days come out of the pack and nothing replaces them.
+   */
+  restockAtEnd: boolean
+}
+
+/**
+ * The food carries a plan implies, one per section.
+ *
+ * Derived from `planSections` rather than counted again, so the food block
+ * and the timeline cannot disagree about a carry - the same rule the rest
+ * of this file follows about storing nothing that can be derived.
+ */
+export function foodCarries(sections: readonly PlanSection[]): FoodCarry[] {
+  return sections.map((section) => {
+    const first = section.days[0]
+    const last = section.days[section.days.length - 1]
+    return {
+      from: {
+        mile: first.start.mile,
+        ...(first.start.name === undefined ? {} : { name: first.start.name }),
+      },
+      to: {
+        mile: last.end.mile,
+        ...(last.end.name === undefined ? {} : { name: last.end.name }),
+      },
+      days: section.foodDays,
+      restockAtEnd: last.end.resupply,
+    }
+  })
 }
 
 export function planSections(views: PlanDayView[]): PlanSection[] {
@@ -344,7 +467,9 @@ export function currentDayIndex(plan: HikePlan): number | null {
 }
 
 /** The same date, `delta` days along - plain UTC arithmetic. */
-function shiftDate(date: string, delta: number): string {
+/** Exported for lib/restRhythm.ts, which inserts days into a dated plan and
+ *  has to move the calendar the same way every other insertion here does. */
+export function shiftDate(date: string, delta: number): string {
   const [year, month, day] = date.split('-').map(Number)
   return new Date(Date.UTC(year, month - 1, day + delta)).toISOString().slice(0, 10)
 }
@@ -368,7 +493,13 @@ export function insertZeroAfter(plan: HikePlan, index: number): HikePlan {
     ...plan,
     stops: [
       ...plan.stops.slice(0, index + 2),
-      { ...boundary },
+      // The duplicate does NOT inherit the resupply flag. Supplies are
+      // picked up once, at the stop the hiker walked into; a second flag on
+      // the same place would read as buying food twice there, and - because
+      // planSections closes a span at every resupply - would cut the zero
+      // out into a one-day carry of its own instead of leaving it inside
+      // the carry it actually eats from (#799).
+      { ...boundary, resupply: false },
       ...plan.stops.slice(index + 2),
     ],
     days: [

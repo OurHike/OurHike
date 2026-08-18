@@ -30,6 +30,7 @@
 
 import { del, get, set } from 'idb-keyval'
 import { validateHike, type Hike } from './hikes'
+import { validateTripGroup, type TripGroup } from './tripGroups'
 import { stopLabel } from './planDisplay'
 import { loadPlan, validatePlan, type HikePlan } from './plan'
 
@@ -74,9 +75,24 @@ export interface TripStore {
    * the trips are all still there, ungrouped, which is exactly true.
    */
   hikes: Hike[]
+  /**
+   * The hiker's own buckets (#800) - "every Sunday", "with Dad". Same
+   * document, same reasoning as `hikes`.
+   *
+   * A trip can be in ANY NUMBER of these, which is what separates them from
+   * hikes: a hike is where a trip sits on the trail and there is one such
+   * place, a group is how the hiker thinks about it and there can be
+   * several. See lib/tripGroups.ts.
+   */
+  groups: TripGroup[]
 }
 
-export const EMPTY_STORE: TripStore = { trips: [], openId: null, hikes: [] }
+export const EMPTY_STORE: TripStore = {
+  trips: [],
+  openId: null,
+  hikes: [],
+  groups: [],
+}
 
 /**
  * A trip's default name, from the route's own ends - "Damascus → Old Orchard
@@ -147,7 +163,19 @@ export function validateTripStore(candidate: unknown): TripStore | null {
     }
   }
 
-  return { trips, openId, hikes }
+  // Groups get the same treatment for the same reasons: absent is not
+  // invalid, one unreadable group is dropped rather than the store, and
+  // every list is pruned to trips that actually survived.
+  const groups: TripGroup[] = []
+  if (Array.isArray(store.groups)) {
+    for (const entry of store.groups) {
+      const group = validateTripGroup(entry)
+      if (group === null) continue
+      groups.push({ ...group, tripIds: group.tripIds.filter((id) => live.has(id)) })
+    }
+  }
+
+  return { trips, openId, hikes, groups }
 }
 
 /**
@@ -169,7 +197,7 @@ export async function loadTrips(): Promise<TripStore> {
   if (legacy === null) return EMPTY_STORE
 
   const trip: Trip = { id: crypto.randomUUID(), name: tripName(legacy), plan: legacy }
-  const migrated: TripStore = { trips: [trip], openId: trip.id, hikes: [] }
+  const migrated: TripStore = { trips: [trip], openId: trip.id, hikes: [], groups: [] }
   await saveTrips(migrated)
   return migrated
 }
@@ -241,11 +269,16 @@ export function removeTrip(store: TripStore, id: string): TripStore {
     trips,
     openId: store.openId === id ? (trips[0]?.id ?? null) : store.openId,
     // A hike that still named the deleted trip would count miles from a
-    // plan nobody can open.
+    // plan nobody can open. Groups, the same (#800).
     hikes: store.hikes.map((hike) =>
       hike.tripIds.includes(id)
         ? { ...hike, tripIds: hike.tripIds.filter((tripId) => tripId !== id) }
         : hike,
+    ),
+    groups: store.groups.map((group) =>
+      group.tripIds.includes(id)
+        ? { ...group, tripIds: group.tripIds.filter((tripId) => tripId !== id) }
+        : group,
     ),
   }
 }
@@ -314,6 +347,74 @@ export function unassignTrip(store: TripStore, tripId: string): TripStore {
 /** Forget a hike, keeping its trips. Same reason as above. */
 export function removeHike(store: TripStore, hikeId: string): TripStore {
   return { ...store, hikes: store.hikes.filter((hike) => hike.id !== hikeId) }
+}
+
+/**
+ * A new, empty group (#800).
+ *
+ * Empty rather than "every trip you have": a bucket the hiker names is a
+ * bucket the hiker fills, and pre-filling one would make "every Sunday"
+ * mean "everything" until they emptied it again.
+ */
+export function addGroup(store: TripStore, name: string): TripStore {
+  return {
+    ...store,
+    groups: [...store.groups, { id: crypto.randomUUID(), name, tripIds: [] }],
+  }
+}
+
+/**
+ * Put a trip in a group, leaving every other group it is in alone.
+ *
+ * The one line that separates this from `assignTrip`, which moves a trip
+ * BETWEEN hikes because a trip has one place on the trail. A trip has as
+ * many ways of being thought about as the hiker has - "the entire AT" and
+ * "my section this year" are both true of the same walk.
+ */
+export function addToGroup(store: TripStore, groupId: string, tripId: string): TripStore {
+  if (!store.trips.some((trip) => trip.id === tripId)) return store
+  return {
+    ...store,
+    groups: store.groups.map((group) =>
+      group.id === groupId && !group.tripIds.includes(tripId)
+        ? { ...group, tripIds: [...group.tripIds, tripId] }
+        : group,
+    ),
+  }
+}
+
+export function removeFromGroup(
+  store: TripStore,
+  groupId: string,
+  tripId: string,
+): TripStore {
+  return {
+    ...store,
+    groups: store.groups.map((group) =>
+      group.id === groupId
+        ? { ...group, tripIds: group.tripIds.filter((id) => id !== tripId) }
+        : group,
+    ),
+  }
+}
+
+/** Forget a group, keeping every trip in it - the same rule `removeHike`
+ *  follows, because a bucket is a way of looking at trips and throwing away
+ *  the bucket must never throw away the walking. */
+export function removeGroup(store: TripStore, groupId: string): TripStore {
+  return { ...store, groups: store.groups.filter((group) => group.id !== groupId) }
+}
+
+/** Rename a group; an empty name is refused rather than stored - a group
+ *  has no route to fall back on for a name the way a trip does. */
+export function renameGroup(store: TripStore, groupId: string, name: string): TripStore {
+  if (name.trim() === '') return store
+  return {
+    ...store,
+    groups: store.groups.map((group) =>
+      group.id === groupId ? { ...group, name: name.trim() } : group,
+    ),
+  }
 }
 
 /** Rename a hike; an empty name is refused rather than stored, since a hike

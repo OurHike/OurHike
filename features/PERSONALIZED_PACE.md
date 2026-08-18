@@ -116,6 +116,17 @@ rather than a lone `≈2h 15m` implying a precision nobody has. A wide range is 
 - **Not a guarantee.** [TRIP_PLANNING.md](TRIP_PLANNING.md) already frames this as *"informational, not prescriptive… a helpful estimate, not a guarantee"*, and personalization does not upgrade it.
 - **Not a reason to track people.** No background location. Observations come from foreground use the app already makes, consistent with [../TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md)'s foreground-GPS-is-sufficient stance.
 
+**Update 2026-08-18:** a first, much cruder instrument now ships — `client/src/lib/dayReach.ts`, built for **#791 — What's left**, which needs to answer "which piece fits the five days I have". It is **not** the model above and must not be mistaken for it: it reads the miles a hiker's own walked days have covered, straight off the trip log, with no moving-time observations, no stop detection, no grade buckets and no recency decay. Those need a GPS observation store that does not exist yet.
+
+What it does take from this document, and holds:
+
+- **A range, never a number** — the middle half of the samples, so one 26-mile push and one 4-mile afternoon do not widen it until it says nothing.
+- **On device, derived on read, stored nowhere.**
+- **Withheld entirely below a floor** — five walked days (`MIN_REACH_DAYS`), which is this document's own "minimum evidence before showing a personalized number at all" open question answered provisionally rather than left to shrinkage. **`@unvalidated`**: five is picked, not measured, and the file says what would settle it.
+- **Nothing comparative and nothing ranked.** No day is measured against another day.
+
+One thing it has to know that this document does not discuss: a **recorded** stretch (#789 — ground a hiker walked before the app existed) is excluded from the samples. Its "days" are the boundaries somebody could remember years later, so a remembered "Springer to Damascus" would otherwise teach the app that this hiker covers 470 miles a day.
+
 ## Open questions (for you, not decided here)
 
 - **Weighted decay vs a hard 7-day window.** Recommended decay above; the hiker asked for 7 days. Worth deciding on how jumpy the estimate feels in practice, not in the abstract.

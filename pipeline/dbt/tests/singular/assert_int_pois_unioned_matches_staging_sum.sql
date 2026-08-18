@@ -7,6 +7,10 @@ with expected as (
     select
         (select count(*) from {{ ref('stg_atc__shelters') }})
         + (select count(*) from {{ ref('stg_atc__campsites') }})
+        + (select count(*) from {{ ref('stg_atc__viewpoints') }})
+        + (select count(*) from {{ ref('stg_atc__parking') }})
+        + (select count(*) from {{ ref('stg_atc__privies') }})
+        + (select count(*) from {{ ref('stg_atc__communities') }})
         + (
             select count(*) from {{ ref('stg_opentrail__waypoints') }}
         ) as row_count

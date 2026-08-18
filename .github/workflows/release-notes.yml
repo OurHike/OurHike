@@ -43,7 +43,7 @@ jobs:
       # Full history, and the tags with it: the generator walks
       # `<previous>..HEAD` and picks the previous tag itself when not told one,
       # so a shallow clone would silently produce notes covering one commit.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

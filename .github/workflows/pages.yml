@@ -94,7 +94,7 @@ jobs:
           echo "::error::Deploy Pages was dispatched on '$GITHUB_REF'. Production deploys from a v* tag - dispatch against the release tag to republish or roll back (RELEASING.md §11b)."
           exit 1
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Gate 12 (RELEASING.md §8): a tag with no notes committed beside it is a
       # release nobody wrote down, and the notes file is canonical rather than
@@ -144,7 +144,7 @@ jobs:
           fi
           echo "Version: $packaged"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: npm
@@ -375,7 +375,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/download-artifact@v4
         with:

@@ -162,7 +162,7 @@ jobs:
       # (features/ATC_TRAIL_UPDATES.md, #460) - no query, no credential - and
       # gating the checkout on a secret that leg never uses would have made
       # the ATC layer wait on Supabase account work it has nothing to do with.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:

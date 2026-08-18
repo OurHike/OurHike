@@ -19,6 +19,7 @@ import gzip
 import hashlib
 import io
 import json
+import random
 import re
 
 import pytest
@@ -129,6 +130,59 @@ def test_content_encoding_is_refused_and_says_what_it_breaks(mock):
     assert report["state"] == FAILED
     assert "Content-Encoding" in report["detail"]
     assert "resume" in report["detail"]
+
+
+def test_gzip_on_a_text_artifact_is_what_publish_intends(mock):
+    """#732. publish.py has gzipped `.json` and `.geojson` on purpose since
+    #717, and refusing that here reported fifteen artifacts red every run -
+    measured against the live bucket 2026-08-17, every text artifact answers
+    `Content-Encoding: gzip` and every archive answers none."""
+    mock.head(f"{BASE}/poi_water.geojson", headers={**GOOD_HEADERS, "Content-Encoding": "gzip"})
+
+    assert check_headers(BASE, "poi_water.geojson")["state"] == OK
+
+
+def test_an_encoding_publish_did_not_apply_still_fails_on_a_text_artifact(mock):
+    """gzip is the one publish.py stores. Anything else means something between
+    the publisher and here re-encoded the object, so what is on the wire is no
+    longer the representation whose hash `latest.json` carries."""
+    mock.head(f"{BASE}/poi_water.geojson", headers={**GOOD_HEADERS, "Content-Encoding": "br"})
+
+    report = check_headers(BASE, "poi_water.geojson")
+
+    assert report["state"] == FAILED
+    assert "re-encoded" in report["detail"]
+
+
+def test_an_unknown_extension_still_refuses_any_encoding(mock):
+    """The default is refusal rather than permission: a new extension nobody
+    has classified is likelier to be a new archive than a new text file, and a
+    false alarm on a file that is fine is the cheap direction to be wrong in."""
+    mock.head(f"{BASE}/terrain.dem", headers={**GOOD_HEADERS, "Content-Encoding": "gzip"})
+
+    assert check_headers(BASE, "terrain.dem")["state"] == FAILED
+
+
+def test_a_text_artifact_served_uncompressed_is_noted_rather_than_failed(mock):
+    """Costs a hiker bandwidth, not correctness - publish.py's own measurement
+    is 21.5 MB of first-launch fetches against 5.3 MB gzipped."""
+    mock.head(f"{BASE}/poi_water.geojson", headers=GOOD_HEADERS)
+
+    report = check_headers(BASE, "poi_water.geojson")
+
+    assert report["state"] == OK
+    assert "uncompressed size" in report["detail"]
+
+
+def test_the_size_in_the_detail_stays_first_and_parseable(mock):
+    """check_all slices the leading integer back out of this string to size its
+    range probe, so a note appended in front of it would break the two checks
+    behind this one rather than this one."""
+    mock.head(f"{BASE}/poi_water.geojson", headers={**GOOD_HEADERS, "Content-Encoding": "gzip"})
+
+    detail = check_headers(BASE, "poi_water.geojson")["detail"]
+
+    assert int(detail.split(" ", 1)[0]) == 1000
 
 
 def test_an_object_that_cannot_be_ranged_fails(mock):
@@ -402,6 +456,48 @@ MANIFEST = {
     },
 }
 
+# Incompressible on purpose, and big enough that the gzipped form still clears
+# check_range's 128 KB floor - otherwise the range probe reports SKIPPED and
+# the regression below would pass without exercising the thing it is about.
+BIG_TEXT = random.Random(0).randbytes(400_000)
+
+
+def _serve_gzipped(mock, key, payload):
+    """Serve `payload` the way R2 serves what publish.py gzipped.
+
+    The stored object is the COMPRESSED bytes and `Content-Encoding: gzip` is
+    stored metadata rather than negotiated, so it comes back on a 206 as well
+    as a 200 - which is exactly the shape that made `.content` raise on a
+    mid-stream slice. Ranges address the stored bytes, so this ranges over the
+    compressed form and reports its length as the total.
+    """
+    stored = gzip.compress(payload)
+
+    def handler(request, context):
+        context.headers["Content-Encoding"] = "gzip"
+        rng = request.headers.get("Range")
+        if not rng:
+            context.status_code = 200
+            return stored
+        start, end = re.match(r"bytes=(\d+)-(\d*)", rng).groups()
+        start = int(start)
+        end = min(int(end) if end else len(stored) - 1, len(stored) - 1)
+        context.status_code = 206
+        context.headers["Content-Range"] = f"bytes {start}-{end}/{len(stored)}"
+        return stored[start : end + 1]
+
+    mock.get(f"{BASE}/{key}", content=handler)
+    mock.head(
+        f"{BASE}/{key}",
+        headers={
+            "Content-Length": str(len(stored)),
+            "Accept-Ranges": "bytes",
+            "Content-Encoding": "gzip",
+            "Content-Type": "application/geo+json",
+        },
+    )
+    return stored
+
 
 def test_every_artifact_the_manifest_names_is_checked(mock):
     """#94's follow-up is emphatic: over the manifest, never a hardcoded list,
@@ -422,6 +518,37 @@ def test_only_pmtiles_get_the_archive_read(mock):
     reports = check_all(BASE, MANIFEST, max_hash_bytes=1_000_000)
 
     assert {r["key"] for r in reports if r["check"] == "pmtiles"} == {"background.pmtiles"}
+
+
+def test_a_gzipped_text_artifact_is_still_hashed_and_ranged(mock):
+    """The regression #732 actually was, and the reason it mattered more than a
+    red square: a headers failure makes check_all `continue`, so refusing gzip
+    meant `trails.geojson`, every `poi_*` and the conditions files were never
+    hashed or ranged at all. The check that exists to catch "the bytes and the
+    manifest disagree" was not running on the artifacts a map is made of."""
+    _serve_gzipped(mock, "poi_water.geojson", BIG_TEXT)
+    manifest = {"artifacts": {"poi_water.geojson": {"sha256": hashlib.sha256(BIG_TEXT).hexdigest()}}}
+
+    reports = check_all(BASE, manifest, max_hash_bytes=1_000_000)
+
+    assert {r["check"] for r in reports} == {"headers", "range", "hash"}
+    assert not [r for r in reports if r["state"] != OK]
+
+
+def test_a_range_into_a_gzipped_object_is_measured_in_stored_bytes(mock):
+    """A mid-file slice of a gzipped object is a deflate fragment with no
+    header, so decoding it fails. Measured against the decoding read, the
+    verdict was UNREACHABLE rather than an exception - which is the worse
+    outcome, because "could not ask" reads as a transport wobble and the
+    workflow counts it separately from a failure. The artifact goes unranged
+    and the report says so in the line nobody treats as a finding."""
+    _serve_gzipped(mock, "poi_water.geojson", BIG_TEXT)
+    stored_size = len(gzip.compress(BIG_TEXT))
+
+    report = check_range(BASE, "poi_water.geojson", stored_size)
+
+    assert report["state"] == OK
+    assert report["detail"] == f"bytes {stored_size // 2}-{stored_size // 2 + 65535}/{stored_size}"
 
 
 def test_a_broken_object_reports_once_rather_than_four_times(mock):

@@ -155,6 +155,7 @@ import {
 } from './lib/plan'
 import {
   EMPTY_STORE,
+  addHike,
   addTrip,
   loadTrips,
   openTrip,
@@ -165,6 +166,7 @@ import {
   updateTrip,
   type TripStore,
 } from './lib/trips'
+import { hikeFromTrips } from './lib/hikes'
 import { TripList } from './screens/TripList'
 import { PlanScreen } from './screens/Plan'
 import { PlanTargetSheet } from './screens/PlanTargetSheet'
@@ -1727,6 +1729,23 @@ function App() {
     [applyTripStore],
   )
 
+  /**
+   * Group every kept trip into one hike (#788), over the ground they
+   * already cover. The "I have a history" door: a section hiker with four
+   * trips gets a hike without retyping any of it, and the ends carry the
+   * stops' own references so a relocation moves the hike rather than
+   * silently resizing it.
+   *
+   * Named for the ground rather than asked for: naming is a rename away,
+   * and a dialog before the thing exists is a dialog nobody reads.
+   */
+  const handleGroupIntoHike = useCallback(() => {
+    applyTripStore((store) => {
+      const hike = hikeFromTrips(store.trips, 'My hike')
+      return hike === null ? store : addHike(store, hike)
+    })
+  }, [applyTripStore])
+
   const targetSheet =
     targetRequest === null ? null : (
       <PlanTargetSheet
@@ -2495,6 +2514,8 @@ function App() {
                         <TripList
                           trips={tripStore.trips}
                           openId={tripStore.openId}
+                          hikes={tripStore.hikes}
+                          pois={pois}
                           elevation={elevation}
                           units={units}
                           onOpen={handleOpenTrip}
@@ -2504,6 +2525,7 @@ function App() {
                             setTripsOpen(false)
                             openRouteBuilder()
                           }}
+                          onGroupIntoHike={handleGroupIntoHike}
                           onClose={() => setTripsOpen(false)}
                         />
                       ),

@@ -16,8 +16,10 @@
 
 import { useState } from 'react'
 import type { ElevationProfile } from '../lib/elevationProfile'
+import { hikeFigures, type Hike } from '../lib/hikes'
 import { planDayViews, walkedDayCount, type HikePlan } from '../lib/plan'
 import { dayDateLabel } from '../lib/planDisplay'
+import type { StoredPoi } from '../lib/trailData'
 import type { Trip } from '../lib/trips'
 import { formatDistance, type UnitSystem } from '../lib/units'
 import './plan.css'
@@ -29,12 +31,22 @@ export interface TripListProps {
    *  taken so the row summary can gain climb or ≈time without a prop change
    *  when #790 lands. */
   elevation: ElevationProfile | null
+  /** The hikes those trips are grouped into (#788). Their roll-ups are
+   *  derived on render and stored nowhere. */
+  hikes: readonly Hike[]
+  /** The download in hand - what a hike's ends are resolved against, so a
+   *  relocated shelter moves the hike rather than the miles drifting under
+   *  it. */
+  pois: readonly StoredPoi[]
   units: UnitSystem
   onOpen: (id: string) => void
   onRename: (id: string, name: string) => void
   onRemove: (id: string) => void
   /** Start a new trip - the route builder, same door as the empty state. */
   onNew: () => void
+  /** Group every trip here into one hike - the "I already have a history"
+   *  door. Absent nothing to group. */
+  onGroupIntoHike: () => void
   onClose: () => void
 }
 
@@ -62,11 +74,14 @@ function walkedNote(plan: HikePlan): string | null {
 export function TripList({
   trips,
   openId,
+  hikes,
+  pois,
   units,
   onOpen,
   onRename,
   onRemove,
   onNew,
+  onGroupIntoHike,
   onClose,
 }: TripListProps) {
   const [renaming, setRenaming] = useState<string | null>(null)
@@ -82,6 +97,35 @@ export function TripList({
           <span aria-hidden="true">×</span>
         </button>
       </div>
+
+      {hikes.map((hike) => {
+        const figures = hikeFigures(hike, trips, pois)
+        return (
+          <div className="trip-list__hike" key={hike.id}>
+            <div className="trip-list__hike-head">
+              <span className="trip-list__hike-name">{hike.name}</span>
+              <span className="trip-list__hike-type">{hike.type}</span>
+            </div>
+            {/* Miles and trips. No percentage, no pace, nothing to fall
+                behind - SEGMENTS.md: "a personal record, not a
+                performance." */}
+            <span className="trip-list__hike-figures">
+              {formatDistance(figures.walkedMi, units)} walked ·{' '}
+              {formatDistance(figures.leftMi, units)} to go
+            </span>
+            <span className="trip-list__hike-figures">
+              {figures.tripCount} {figures.tripCount === 1 ? 'trip' : 'trips'} ·{' '}
+              {figures.daysWalked} {figures.daysWalked === 1 ? 'day' : 'days'} walked
+            </span>
+            {figures.uncertain && (
+              <p className="trip-list__hike-note" role="note">
+                One end of this hike points at a place this download doesn&rsquo;t have,
+                so these figures rest on the mile it had when you set it.
+              </p>
+            )}
+          </div>
+        )
+      })}
 
       {trips.length === 0 ? (
         <p className="trip-list__empty">
@@ -177,6 +221,12 @@ export function TripList({
             )
           })}
         </ul>
+      )}
+
+      {hikes.length === 0 && trips.length > 0 && (
+        <button type="button" className="trip-list__group" onClick={onGroupIntoHike}>
+          Group these into one hike
+        </button>
       )}
 
       <button type="button" className="plan__primary" onClick={onNew}>

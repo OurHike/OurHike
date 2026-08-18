@@ -24,6 +24,7 @@ import { PREFERENCES_KEY, loadPreferences } from './preferences'
 import { PLANNED_HIKE_KEY, loadPlannedHike } from './plannedHike'
 import { PLAN_KEY, loadPlan } from './plan'
 import { TRIPS_KEY, loadTrips } from './trips'
+import { hikeFigures, resolvePlace } from './hikes'
 import { CAMERA_MEMORY_KEY, readCamera } from './cameraMemory'
 import {
   ELEVATION_STORE_KEY,
@@ -51,6 +52,7 @@ import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
 import { MAP_PACKAGES } from './packages'
 import {
   STORED_ARCHIVE_BYTES,
+  STORED_GROUPED_TRIPS,
   STORED_SHAPES,
   storedElevation,
   storedLegacyArchive,
@@ -192,6 +194,9 @@ describe('a stored phone from the baseline release', () => {
     expect(store.openId).toBe('trip-0002')
     expect(store.trips[0].plan.stops[1].resupply).toBe(true)
     expect(store.trips[1].plan.target).toEqual({ miles: 15 })
+    // Written before hikes existed (#788). Absent reads as none, and the
+    // trips are all still there - ungrouped, which is exactly true.
+    expect(store.hikes).toEqual([])
   })
 
   // THE UPGRADE PATH WITH A PERSON ATTACHED. A phone that stopped at the
@@ -216,6 +221,56 @@ describe('a stored phone from the baseline release', () => {
       // that dropped the past would be worse than one that failed loudly.
       expect(store.trips[0].plan.days[0].walked).toBe(true)
       expect(store.trips[0].plan.stops).toHaveLength(3)
+    })
+  })
+
+  // THE SAME KEY, ONE SHAPE LATER (#788): trips grouped into a hike whose
+  // ends are references. Read separately because one object cannot hold a
+  // key twice, and both shapes are inside the support window.
+  describe('and with its trips grouped into a hike', () => {
+    beforeEach(() => {
+      const store = { ...phoneStore(), ...STORED_GROUPED_TRIPS }
+      mockedGet.mockImplementation(async (key: IDBValidKey) => store[key as string])
+    })
+
+    it('still reads the hike, its ends and its trips', async () => {
+      const store = await loadTrips()
+
+      expect(store.hikes).toHaveLength(1)
+      expect(store.hikes[0].name).toBe('Virginia, over a few years')
+      expect(store.hikes[0].type).toBe('section')
+      expect(store.hikes[0].tripIds).toEqual(['trip-0001'])
+    })
+
+    it('resolves a moved reference to where the POI is NOW', async () => {
+      // The whole reason the end is a reference: the stored hint says 470.8
+      // and the download publishes 471.2, so the hike still describes the
+      // same place rather than the same number.
+      const store = await loadTrips()
+      const pois = [
+        {
+          id: 'atc_shelter_0777',
+          type: 'shelter',
+          name: 'Damascus',
+          lat: 0,
+          lon: 0,
+          confidence: 'high' as const,
+          mile: 471.2,
+        },
+      ]
+
+      const resolved = resolvePlace(store.hikes[0].start, pois)
+      expect(resolved.mile).toBe(471.2)
+      expect(resolved.from).toBe('reference')
+      expect(resolved.movedMi).toBeCloseTo(0.4)
+    })
+
+    it('admits when an end’s reference is no longer in the download', async () => {
+      const store = await loadTrips()
+
+      // Nothing in this download carries `atc_shelter_gone`, so the figures
+      // rest on a cached mile - and say so rather than reading as fact.
+      expect(hikeFigures(store.hikes[0], store.trips, []).uncertain).toBe(true)
     })
   })
 

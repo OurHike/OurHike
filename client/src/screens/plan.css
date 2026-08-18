@@ -686,3 +686,59 @@
   color: var(--link);
   cursor: pointer;
 }
+
+/* The hike's roll-up over its trips (#788). #790 gives this its real home;
+   here it is one block above the list it summarises. */
+.trip-list__hike {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3, 12px);
+  border-radius: 10px;
+  background: var(--bg-sunken);
+}
+
+.trip-list__hike-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3, 12px);
+}
+
+.trip-list__hike-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.trip-list__hike-type {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-3);
+}
+
+.trip-list__hike-figures {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-2);
+}
+
+.trip-list__hike-note {
+  margin: var(--space-2, 8px) 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+.trip-list__group {
+  min-height: var(--min-touch-target, 44px);
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius-pill, 999px);
+  background: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-1);
+  cursor: pointer;
+}

@@ -494,11 +494,12 @@ export function MapScreen({
 
   // The same rows the legend builds, from the same arguments, so the canvas count
   // and the panel can never disagree - one arithmetic, two places it is said
-  // (#528). `verifiedOnly` is passed for exactly that reason: with the filter on,
-  // the legend counts fewer points, and a canvas figure computed without it would
-  // contradict the panel it is standing next to.
+  // (#528). `verifiedOnly` and `hiddenTypes` are passed for exactly that reason:
+  // with either filter on, the legend counts fewer points, and a canvas figure
+  // computed without them would contradict the panel it is standing next to.
   const droppedSummary = legendDropSummary(
     computeLegendContents(bbox, viewportPoints, verifiedOnly, drawnCounts),
+    hiddenTypes,
   )
 
   return (

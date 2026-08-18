@@ -101,14 +101,23 @@ class Closure(Base):
     status = Column(Enum(ClosureStatus, native_enum=False, length=20), nullable=False, default=ClosureStatus.closed)
 
     # Whether this closure has been through moderation yet - see module
-    # docstring. Never client-settable on create; only PATCH (role-gated to
-    # maintainer/club_admin) can move it.
+    # docstring. Never client-settable on create; only the verify/dismiss
+    # moderation actions (role-gated to maintainer/club_admin) move it -
+    # PATCH edits the closure's facts, never its moderation state (#658
+    # corrected this comment, which used to name PATCH).
     moderation_status = Column(
         Enum(ModerationStatus, native_enum=False, length=20), nullable=False, default=ModerationStatus.submitted
     )
 
     verified_by = Column(String, ForeignKey("profiles.id"), nullable=True)
     verified_at = Column(DateTime, nullable=True)
+
+    # Who took a closure down, and when (#658, f2c8d4a91e57) - dismissal
+    # recorded no actor at all while verification always had. Latest-wins,
+    # where verified_* preserves the first: "who removed this" means the
+    # operative removal.
+    dismissed_by = Column(String, ForeignKey("profiles.id"), nullable=True)
+    dismissed_at = Column(DateTime, nullable=True)
 
     # The three fields the closure sheet renders that nothing could fill
     # (#245). All maintainer-set through `ClosureUpdate`, never accepted on

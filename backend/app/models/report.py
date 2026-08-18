@@ -195,6 +195,18 @@ class Report(Base):
     verified_by = Column(String, ForeignKey("profiles.id"), nullable=True)
     verified_at = Column(DateTime, nullable=True)
 
+    # The other two thirds of the moderation trail (#658, f2c8d4a91e57).
+    # verified_* records the FIRST escalation and is never overwritten - who
+    # first marked a dangerous-person report serious is the fact an audit
+    # needs. dismissed_* records the LATEST removal - "who took this down"
+    # means the operative decision. resolved_* records who declared the
+    # hazard cleared, which is what finally makes ReportStatus.resolved
+    # reachable rather than a state the vocabulary held open.
+    dismissed_by = Column(String, ForeignKey("profiles.id"), nullable=True)
+    dismissed_at = Column(DateTime, nullable=True)
+    resolved_by = Column(String, ForeignKey("profiles.id"), nullable=True)
+    resolved_at = Column(DateTime, nullable=True)
+
     # Optional attribution for a `thanks` (SAYING_THANKS.md). Both may be
     # empty: "someone cleared forty blowdowns and I have no idea who" is a
     # complete thanks, resolved by location instead of being refused.

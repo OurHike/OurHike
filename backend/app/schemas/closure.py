@@ -148,7 +148,11 @@ class ClosureOut(BaseModel):
     **The columns stay.** This is the wire, not the record - `closures.py`
     still stamps `reported_by` on create and `moderation.py` still stamps
     `verified_by` on verify, so the audit trail is intact in the database and
-    only stops being handed to anonymous HTTP callers.
+    only stops being handed to anonymous HTTP callers. Since #658 that
+    sentence is true rather than aspirational: the moderation surface
+    answers with `ClosureModerationOut` (schemas/moderation.py), which is
+    this shape plus the trail, for exactly the role-gated audience the
+    trail exists for.
 
     If attribution is ever wanted on the closure sheet, the mechanism already
     exists and is not a new field here: `publicly_creditable` plus

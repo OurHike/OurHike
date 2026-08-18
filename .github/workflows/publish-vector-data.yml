@@ -284,6 +284,13 @@ jobs:
       - name: Export spur destinations
         run: python export_spurs.py
 
+      # Reads only fetch_all.py's raw layers (centerline, club polygons,
+      # mileposts), so it can run any time after the fetch. Until #659 no
+      # workflow ran this exporter at all - the published club_sections.json
+      # could only go stale in place while every sibling refreshed.
+      - name: Export club sections
+        run: python export_club_sections.py
+
       # Elevation has its own fetch too, and it is the slow one - it streams
       # USGS 3DEP tiles, which is why the whole leg is opt-in.
       #

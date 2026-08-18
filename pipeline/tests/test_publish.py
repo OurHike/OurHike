@@ -81,6 +81,23 @@ def test_publish_creates_the_first_manifest_when_none_exists_yet_in_the_bucket(s
     assert remote["artifacts"]["trails.geojson"]["sha256"] == local_artifacts["trails.geojson"]["sha256"]
 
 
+def test_publish_refuses_a_file_that_changed_after_its_hash_was_recorded(s3_client, local_artifacts, tmp_path):
+    """#659: most collected hashes are copied from exporter manifests, and
+    nothing between that write and the upload re-checked them. A file
+    rebuilt after its manifest was recorded would upload fresh bytes under
+    a stale hash - which every hash-verifying client then rejects - or
+    skip a changed file whose stale hash still matches the bucket. The
+    publish must fail before the first upload, naming the artifact."""
+    (tmp_path / "trails.geojson").write_text('{"type": "FeatureCollection", "features": [{"id": "rebuilt"}]}')
+
+    with pytest.raises(RuntimeError, match="trails.geojson"):
+        publish.publish(local_artifacts, s3_client=s3_client, bucket=BUCKET)
+
+    # Nothing may have landed - the failed run must not half-publish.
+    listed = s3_client.list_objects_v2(Bucket=BUCKET)
+    assert listed.get("KeyCount", 0) == 0
+
+
 def test_publish_skips_an_artifact_whose_hash_is_unchanged(s3_client, local_artifacts):
     publish.publish(local_artifacts, s3_client=s3_client, bucket=BUCKET)
 

@@ -448,6 +448,31 @@ def collect_artifacts() -> dict[str, dict]:
     return artifacts
 
 
+def _verify_hashes(entries: dict[str, dict]) -> None:
+    """Every collected sha256 must describe the bytes on disk NOW, not the
+    bytes the exporter had when it wrote its manifest (#659). Most entries
+    carry a hash copied from an exporter's manifest file, and nothing
+    between that write and this upload re-checked it - so an artifact
+    rebuilt (or half-written) after its manifest was recorded would either
+    upload fresh bytes under a stale hash (every hash-verifying client
+    rejects the download) or skip a changed file because its stale hash
+    still matches the bucket. Raises before the first upload, naming every
+    mismatch, so a bad state costs a failed run instead of a poisoned
+    manifest."""
+    stale = {
+        name: entry
+        for name, entry in entries.items()
+        if sha256_file(Path(entry["path"])) != entry["sha256"]
+    }
+    if stale:
+        raise RuntimeError(
+            "manifest hash does not match the file on disk for: "
+            + ", ".join(sorted(stale))
+            + " - the artifact changed after its exporter recorded the hash. "
+            "Re-run that exporter (all the way through its gate) before publishing."
+        )
+
+
 def _load_remote_manifest(s3_client, bucket: str, manifest_key: str = MANIFEST_KEY) -> dict | None:
     try:
         body = s3_client.get_object(Bucket=bucket, Key=manifest_key)["Body"].read()
@@ -594,6 +619,11 @@ def publish(
         )
     if bucket is None:
         bucket = os.environ["R2_BUCKET"]
+
+    # Re-hash every artifact and sidecar against its collected hash before
+    # anything is uploaded - see _verify_hashes for why the gap between an
+    # exporter's manifest and this upload cannot be trusted.
+    _verify_hashes({**artifacts, **sidecars})
 
     remote_manifest = _load_remote_manifest(s3_client, bucket, manifest_key)
     remote_artifacts = remote_manifest["artifacts"] if remote_manifest else {}

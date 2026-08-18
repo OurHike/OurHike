@@ -428,6 +428,66 @@ def test_spurs_verdict_flags_an_artifact_that_drifted_from_its_manifest(tmp_path
     assert any("sha256 mismatch" in p for p in report["problems"])
 
 
+# --- manifests_verdict (#659) --------------------------------------------------
+
+
+def test_manifests_verdict_verifies_club_sections_and_present_stretch_manifests(tmp_path):
+    club_manifest = tmp_path / "club_sections_manifest.json"
+    club_entry = _artifact_entry(tmp_path / "club_sections.json", "club bytes", 0)
+    club_manifest.write_text(json.dumps({"path": club_entry["path"], "sha256": club_entry["sha256"]}))
+
+    stretch_entry = _artifact_entry(tmp_path / "at_basemap_stretch_00.pmtiles", "stretch bytes", 0)
+    (tmp_path / "at_basemap_stretches_manifest.json").write_text(
+        json.dumps({"artifacts": {"at_basemap_stretch_00.pmtiles": stretch_entry}})
+    )
+
+    report = check_output_quality.manifests_verdict(club_manifest_path=club_manifest, stretches_dir=tmp_path)
+
+    assert report["verdict"] is Verdict.OK
+    assert report["problems"] == []
+
+
+def test_manifests_verdict_flags_a_stretch_artifact_that_drifted_from_its_manifest(tmp_path):
+    """The audited gap: publish.py trusts these manifests' hashes across the
+    time gap since the cut, and nothing re-verified them (#659)."""
+    club_manifest = tmp_path / "club_sections_manifest.json"
+    club_entry = _artifact_entry(tmp_path / "club_sections.json", "club bytes", 0)
+    club_manifest.write_text(json.dumps({"path": club_entry["path"], "sha256": club_entry["sha256"]}))
+
+    stretch_entry = _artifact_entry(tmp_path / "dem_stretch_03.pmtiles", "original bytes", 0)
+    (tmp_path / "dem_stretches_manifest.json").write_text(
+        json.dumps({"artifacts": {"dem_stretch_03.pmtiles": stretch_entry}})
+    )
+    (tmp_path / "dem_stretch_03.pmtiles").write_text("rebuilt after the manifest recorded its hash")
+
+    report = check_output_quality.manifests_verdict(club_manifest_path=club_manifest, stretches_dir=tmp_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert any("dem_stretch_03" in p for p in report["problems"])
+
+
+def test_manifests_verdict_treats_a_missing_club_manifest_as_an_excusable_problem(tmp_path):
+    report = check_output_quality.manifests_verdict(club_manifest_path=tmp_path / "absent.json", stretches_dir=tmp_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert report["reason"] == check_output_quality.MANIFEST_MISSING, (
+        "missing means never-built, which is exactly what --optional manifests exists to excuse"
+    )
+
+
+def test_manifests_verdict_does_not_fail_a_vector_run_for_having_no_stretches(tmp_path):
+    """Stretch archives exist only after a basemap/dem build; their absence
+    on a vector-only run is normal and must be noted, not failed."""
+    club_manifest = tmp_path / "club_sections_manifest.json"
+    club_entry = _artifact_entry(tmp_path / "club_sections.json", "club bytes", 0)
+    club_manifest.write_text(json.dumps({"path": club_entry["path"], "sha256": club_entry["sha256"]}))
+
+    report = check_output_quality.manifests_verdict(club_manifest_path=club_manifest, stretches_dir=tmp_path)
+
+    assert report["verdict"] is Verdict.OK
+    assert "not built this run" in report["detail"]
+
+
 # --- Check 2: corridor_verdict -------------------------------------------------
 
 
@@ -885,6 +945,7 @@ def test_check_all_returns_one_report_per_check(tmp_path, monkeypatch):
         "poi",
         "elevation",
         "spurs",
+        "manifests",
         "corridor",
         "topo_quads",
         "baseline",
@@ -1132,11 +1193,20 @@ def passing_pipeline(tmp_path, monkeypatch):
     # of what the check is for.
     _write_receipts(tmp_path, ["fetch_all", "fetch_opentrail"])
 
+    # The club sections manifest joined the passing set with #659's
+    # manifests check; stretch manifests stay absent on purpose (noted,
+    # never failed - most vector runs rightly have none).
+    club_manifest = tmp_path / "club_sections_manifest.json"
+    club_entry = _artifact_entry(tmp_path / "club_sections.json", "club bytes", 0)
+    club_manifest.write_text(json.dumps({"path": club_entry["path"], "sha256": club_entry["sha256"]}))
+
     monkeypatch.setattr(check_output_quality, "RECEIPTS_ROOT", tmp_path)
     monkeypatch.setattr(check_output_quality, "TRAILS_MANIFEST", trails_manifest)
     monkeypatch.setattr(check_output_quality, "POI_MANIFEST", poi_manifest)
     monkeypatch.setattr(check_output_quality, "ELEVATION_MANIFEST", elevation_manifest)
     monkeypatch.setattr(check_output_quality, "SPURS_MANIFEST", spurs_manifest)
+    monkeypatch.setattr(check_output_quality, "CLUB_SECTIONS_MANIFEST", club_manifest)
+    monkeypatch.setattr(check_output_quality, "PROCESSED_DIR", tmp_path)
     monkeypatch.setattr(check_output_quality, "CENTERLINE_PATH", centerline_path)
     monkeypatch.setattr(check_output_quality, "TOPO_QUADS_MANIFEST", tmp_path / "absent_topo_manifest.json")
     monkeypatch.setattr(check_output_quality, "BASELINE_PATH", tmp_path / "quality_baseline.json")

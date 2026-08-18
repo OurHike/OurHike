@@ -1375,16 +1375,21 @@ def main() -> dict:
     else:
         print(f"  No {IMAGES_FILENAME} or {ATC_IMAGES_FILENAME} - exporting without photos.")
 
+    # The same gate `--check` ran before any of the fetching, run again on
+    # the fully-attached records - and BEFORE anything is written (#659).
+    # It used to run after the write loop, which meant a red export left
+    # fresh bad artifacts on disk beside the previous run's manifest.json:
+    # exactly the stale-hash-beside-new-bytes pairing a later manual
+    # publish would mis-record. The write loop below derives every file
+    # from the same `clipped` list this gate reads, so gating first gives
+    # up nothing the post-write position actually had.
+    fail_if_any_type_is_empty(poi_counts(clipped), label="Incomplete POI export")
+
     manifest = {}
     for poi_type in POI_TYPES:
         records = [r for r in clipped if r["poi_type"] == poi_type]
         manifest[poi_type] = write_poi_type(con, poi_type, records)
         print(f"  {poi_type}: {len(records)} features -> {OUT_DIR / poi_type}.{{geojson,fgb}}")
-
-    # The same gate `--check` ran before any of the fetching, run again on
-    # what was actually written. Not redundant: the preflight can only speak
-    # for the data as it was read, and this one speaks for the artifacts.
-    fail_if_any_type_is_empty(poi_counts(clipped), label="Incomplete POI export")
 
     manifest_path = OUT_DIR / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2))

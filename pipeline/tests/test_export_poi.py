@@ -1312,6 +1312,29 @@ def test_check_and_the_export_gate_on_the_same_rule(tmp_path, monkeypatch, con):
     assert export_poi.main()["crossing"]["geojson"]["feature_count"] == 0
 
 
+def test_a_red_export_writes_no_artifacts_at_all(tmp_path, monkeypatch, con):
+    """#659: the gate used to run after the write loop, so a failing export
+    left fresh bad .geojson/.fgb files on disk beside the previous run's
+    manifest.json - the stale-hash-beside-new-bytes pairing a later manual
+    publish would mis-record. The gate now runs first: a red export leaves
+    the output directory exactly as it found it."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    _write_fc(raw_dir / "viewpoints.geojson", [])  # a type the gate refuses empty
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+
+    with pytest.raises(SystemExit):
+        export_poi.main()
+
+    assert not out_dir.exists() or not any(out_dir.iterdir()), (
+        "a red export must leave nothing behind for a later publish to mistake for a good run"
+    )
+
+
 def test_an_unknown_flag_is_rejected_rather_than_silently_exporting(monkeypatch, capsys):
     """A typo'd `--check` must not run the full export in a step that asked
     for a preflight - it would write artifacts from unfetched photos."""

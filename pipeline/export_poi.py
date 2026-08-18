@@ -219,10 +219,19 @@ import sys
 from pathlib import Path
 
 import duckdb
+import numpy as np
+from shapely import STRtree
+from shapely import wkt as shapely_wkt
 
+from export_elevation import (
+    METERS_PER_MILE,
+    load_merged_trail_line,
+    ordered_oriented_parts,
+    reproject_lines_to_meters,
+)
 from lib.atc_notes import clean_note
 from lib.completeness import count_problems, fail_if_incomplete
-from lib.corridor import build_corridor
+from lib.corridor import GEOGRAPHIC_CRS, PROJECTED_CRS, build_corridor
 from lib.photo_store import photo_key
 from lib.poi_description import (
     describe_campsite,
@@ -312,6 +321,11 @@ POI_COLUMNS = (
     ("name", "VARCHAR"),
     ("lat", "DOUBLE"),
     ("lon", "DOUBLE"),
+    # NOBO miles from Springer, projected onto the same ordered metric
+    # centerline the elevation profile is sampled along - see attach_miles
+    # (#753). A position, never a heading; three decimals to match
+    # distance_mi.
+    ("mile", "DOUBLE"),
     ("confidence", "VARCHAR"),
     # How many people the shelter sleeps; NULL on every other poi_type and on
     # shelters nobody has published a usable number for.
@@ -1107,6 +1121,71 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _reproject_points_to_meters(con: duckdb.DuckDBPyConnection, records: list[dict]):
+    """Every record's (lon, lat) as an EPSG:5070 shapely Point, in one round
+    trip - the same register-a-relation shape (and the same >1000x measured
+    reason) as export_elevation.reproject_lines_to_meters."""
+    idx = np.arange(len(records))
+    xs = np.array([record["lon"] for record in records])
+    ys = np.array([record["lat"] for record in records])
+    con.register("_poi_points_src", {"idx": idx, "x": xs, "y": ys})
+    try:
+        rows = con.execute(f"""
+            SELECT idx, ST_AsText(ST_Transform(ST_Point(x, y), '{GEOGRAPHIC_CRS}', '{PROJECTED_CRS}', always_xy := true))
+            FROM _poi_points_src ORDER BY idx
+        """).fetchall()
+    finally:
+        con.unregister("_poi_points_src")
+    return [shapely_wkt.loads(wkt) for _, wkt in rows]
+
+
+def attach_miles(con: duckdb.DuckDBPyConnection, records: list[dict], centerline_path: Path) -> int:
+    """Give every POI its position along the trail, on the profile's own scale
+    (#753). Returns how many records got one.
+
+    The number is NOBO miles from Springer - a POSITION, not a heading, the
+    same convention every other "mile" in this repository already uses
+    (closures' start_mile_marker, ReportDraft.mile, the ATC's own updates).
+    A southbound hiker is simply walking toward smaller numbers; direction
+    stays a derived view in the consumers (lib/hikeDirection.ts,
+    core/hike_direction.py), never a second stored scale.
+
+    Computed by projecting each point onto the SAME ordered, merged, metric
+    centerline export_elevation.py samples the elevation profile along -
+    the same chain (load_merged_trail_line -> ordered_oriented_parts ->
+    reproject_lines_to_meters) and the same carry-straight-across-gaps
+    accumulation as sample_points_along_parts. That sameness is the whole
+    point: shelter miles and profile miles become one measurement by
+    construction, so a plan's day distance and that day's gain describe the
+    same stretch of ground. It also means both inherit the ordering fault
+    #652/#559 measured, TOGETHER - a POI in one of the 18 misordered
+    stretches gets the mile the profile would give it, and both improve in
+    lockstep if the ordering ever does. Consistent-but-imperfect is the
+    achievable half of Finding 1; a private better ordering here would
+    reintroduce the two-scales problem this field exists to end.
+    """
+    if not records:
+        return 0
+
+    parts_meters = reproject_lines_to_meters(con, ordered_oriented_parts(load_merged_trail_line(con, centerline_path)))
+
+    offsets = []
+    cumulative = 0.0
+    for part in parts_meters:
+        offsets.append(cumulative)
+        cumulative += part.length
+
+    tree = STRtree(parts_meters)
+    points_meters = _reproject_points_to_meters(con, records)
+    for record, point in zip(records, points_meters):
+        index = int(tree.nearest(point))
+        mile = (offsets[index] + parts_meters[index].project(point)) / METERS_PER_MILE
+        # Three decimals, matching elevation_profile.json's distance_mi - the
+        # axis this is meant to be comparable against digit for digit.
+        record["mile"] = round(mile, 3)
+    return len(records)
+
+
 def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[dict]) -> dict:
     """Write one poi_type's unified+clipped records to GeoJSON + FlatGeobuf
     under OUT_DIR, even when records is empty (e.g. `crossing`, pending NHD
@@ -1136,6 +1215,9 @@ def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[
                     r["name"],
                     r["lat"],
                     r["lon"],
+                    # .get like every attached field below: records arrive
+                    # without one when a caller never ran attach_miles.
+                    r.get("mile"),
                     r["confidence"],
                     # .get for the same reason as the photo fields below: a
                     # POI arrives without one both when nothing matched and
@@ -1294,6 +1376,9 @@ def main() -> dict:
     # fact: a jump in it means ATC's naming moved a member in or out of a site.
     nearby = attach_nearby(clipped)
     print(f"  {nearby} anchors name the parts around them (#625 - the phone writes the sentence).")
+
+    with_miles = attach_miles(con, clipped, RAW_DIR / "centerline.geojson")
+    print(f"  {with_miles} POIs carry a mile, on the elevation profile's own axis (#753).")
 
     commons_photos = load_photo_records(RAW_DIR / IMAGES_FILENAME)
     atc_photos = load_photo_records(RAW_DIR / ATC_IMAGES_FILENAME)

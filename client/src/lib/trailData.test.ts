@@ -1201,3 +1201,39 @@ describe('holding the trail data to its published hash (#197)', () => {
     expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
   })
 })
+
+describe('the published mile (#753)', () => {
+  const shelter = (extra: Record<string, unknown>) => ({
+    id: 'atc_shelters:abc',
+    poi_type: 'shelter',
+    name: 'Chairback Gap Lean-to',
+    lat: 45.45,
+    lon: -69.26,
+    confidence: 'high',
+    ...extra,
+  })
+
+  it('rides the parse when the artifact carries one', async () => {
+    serve(poiCollection([shelter({ mile: 1407.2 })]))
+    await downloadTrailData()
+
+    const pois = store.get(POIS_KEY) as StoredPoi[]
+    expect(pois[0].mile).toBe(1407.2)
+  })
+
+  it('is absent - never guessed - when the release predates the field', async () => {
+    serve(poiCollection([shelter({})]))
+    await downloadTrailData()
+
+    const pois = store.get(POIS_KEY) as StoredPoi[]
+    expect(pois[0]).not.toHaveProperty('mile')
+  })
+
+  it('is absent when the artifact published null', async () => {
+    serve(poiCollection([shelter({ mile: null })]))
+    await downloadTrailData()
+
+    const pois = store.get(POIS_KEY) as StoredPoi[]
+    expect(pois[0]).not.toHaveProperty('mile')
+  })
+})

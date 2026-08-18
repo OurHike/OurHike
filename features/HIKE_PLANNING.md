@@ -74,6 +74,8 @@ Which falls straight out of Finding 1, and is worth stating separately because i
 
 Cost: one more column in an artifact that already exists, and a `mile` field in `pipeline/lib/poi_schema.py`. Old data releases without it degrade the same way `spurs.json` and `elevation_profile.json` already do — the map still draws, the planner says it needs a newer download.
 
+> **Built (#753).** `export_poi.attach_miles` projects every POI onto the profile's own ordered metric centerline with the same carry-across-gaps accumulation, and the client's `StoredPoi` carries the optional `mile` through. Two things settled in the building: the number is a **position** (NOBO miles from Springer, the repo's standing convention — direction stays the consumers' derived view), and it deliberately shares the profile's ordering fault (#652/#559) rather than fixing it privately — one measurement, wrong together where the ordering is wrong, improving together when it improves.
+
 ## Finding 3 — the auto-planner is small enough to run on a phone, instantly
 
 Choosing day boundaries is a shortest-path problem, not a search. Candidate stops are sorted by mile; a day is an edge from one stop to a later one; the cost of an edge is how far that day lands from what the hiker asked for.

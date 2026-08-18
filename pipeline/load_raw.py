@@ -87,7 +87,12 @@ def load_raw(con: duckdb.DuckDBPyConnection, raw_dir: Path) -> tuple[list[str], 
     rows from an older one."""
     con.execute("INSTALL spatial; LOAD spatial;")
     con.execute("CREATE SCHEMA IF NOT EXISTS raw")
-    loaded_at = datetime.now(timezone.utc).isoformat()
+    # Naive UTC rather than TIMESTAMPTZ, deliberately: DuckDB's Python
+    # client needs pytz to hand a TIMESTAMPTZ value back to Python, and the
+    # pytest CI job does not carry that dependency - bitten there
+    # 2026-08-18. The column is always UTC; it just does not say so in its
+    # type.
+    loaded_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     loaded: list[str] = []
     skipped: list[str] = []
@@ -100,7 +105,7 @@ def load_raw(con: duckdb.DuckDBPyConnection, raw_dir: Path) -> tuple[list[str], 
         con.execute(
             f"""
             CREATE OR REPLACE TABLE raw.{table} AS
-            SELECT *, ?::TIMESTAMPTZ AS _loaded_at, ? AS _source_path
+            SELECT *, ?::TIMESTAMP AS _loaded_at, ? AS _source_path
             FROM ST_Read(?)
             """,
             [loaded_at, str(path), path.as_posix()],

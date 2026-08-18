@@ -19,7 +19,9 @@ import { get, set } from 'idb-keyval'
 import {
   buildPlan,
   dateOfDay,
+  foodCarries,
   insertZeroAfter,
+  LONG_CARRY_DAYS,
   loadPlan,
   PLAN_KEY,
   planDayViews,
@@ -252,5 +254,91 @@ describe('planDirection', () => {
     expect(planDirection(wireframePlan())).toBe('NOBO')
     const south = buildPlan([stop(100), stop(90)], { miles: 10 })
     expect(planDirection(south)).toBe('SOBO')
+  })
+})
+
+describe('foodCarries (#799)', () => {
+  /** Ten 10-mile days, resupply at the end of day 3 and day 7. */
+  function withResupplies(): HikePlan {
+    let plan = buildPlan(
+      Array.from({ length: 11 }, (_, index) => ({
+        mile: index * 10,
+        name: `Stop ${index * 10}`,
+        resupply: false,
+      })),
+      { miles: 10 },
+    )
+    plan = toggleResupply(plan, 3)
+    plan = toggleResupply(plan, 7)
+    return plan
+  }
+
+  it('is one carry per section, named at both ends', () => {
+    const carries = foodCarries(planSections(planDayViews(withResupplies())))
+
+    expect(carries).toHaveLength(3)
+    expect(carries[0]).toMatchObject({
+      from: { name: 'Stop 0' },
+      to: { name: 'Stop 30' },
+      days: 3,
+      restockAtEnd: true,
+    })
+    expect(carries[1]).toMatchObject({ days: 4, restockAtEnd: true })
+    // The last stretch buys nothing at its end - the plan simply runs out,
+    // which is the case worth saying out loud.
+    expect(carries[2]).toMatchObject({ days: 3, restockAtEnd: false })
+  })
+
+  it('is one long carry when nothing is bought anywhere', () => {
+    const carries = foodCarries(
+      planSections(
+        planDayViews(
+          buildPlan(
+            [
+              { mile: 0, resupply: false },
+              { mile: 10, resupply: false },
+              { mile: 20, resupply: false },
+            ],
+            { miles: 10 },
+          ),
+        ),
+      ),
+    )
+
+    expect(carries).toHaveLength(1)
+    expect(carries[0].days).toBe(2)
+    expect(carries[0].restockAtEnd).toBe(false)
+  })
+
+  it('counts a zero against the carry it sits in, not as a carry of its own', () => {
+    // The bug this fixes: the zero's duplicated boundary used to inherit
+    // the resupply flag, which closed a second section containing just the
+    // zero - so a rest day in town read as "1 day food" and vanished from
+    // the carry it actually eats from.
+    const plan = insertZeroAfter(
+      toggleResupply(
+        buildPlan(
+          [
+            { mile: 0, resupply: false },
+            { mile: 10, resupply: false },
+            { mile: 20, resupply: false },
+            { mile: 30, resupply: false },
+          ],
+          { miles: 10 },
+        ),
+        1,
+      ),
+      0,
+    )
+
+    const carries = foodCarries(planSections(planDayViews(plan)))
+    expect(carries).toHaveLength(2)
+    expect(carries[0].days).toBe(1) // up to the resupply
+    expect(carries[1].days).toBe(3) // the zero, and the two days after it
+  })
+
+  it('has a stated threshold for when a carry is worth mentioning', () => {
+    // A number, not a rule the screens each invent for themselves.
+    expect(LONG_CARRY_DAYS).toBeGreaterThan(0)
   })
 })

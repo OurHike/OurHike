@@ -186,3 +186,48 @@ describe('a download from before #753', () => {
     expect(screen.queryByRole('button', { name: /Lay out/ })).toBeNull()
   })
 })
+
+describe('the rest rhythm (#798)', () => {
+  it('asks for none by default, and never suggests one', () => {
+    const { container } = render(<PlanTargetSheet {...PROPS} elevation={flatProfile()} />)
+
+    expect(screen.getByText('none')).toBeInTheDocument()
+    // No opinion about whether a rhythm is needed, and nothing marking its
+    // absence as a problem.
+    expect(container.textContent).not.toMatch(
+      /you should|recommended|don’t forget|too many days without/i,
+    )
+  })
+
+  it('lays out rest days when one is asked for, and stores what was asked', async () => {
+    const user = userEvent.setup()
+    render(<PlanTargetSheet {...PROPS} elevation={flatProfile()} />)
+
+    // Every walking day, because this fixture's 30 flat miles lay out as
+    // two days and a rest never lands on the last one.
+    fireEvent.change(screen.getByLabelText('A rest day every how many walking days'), {
+      target: { value: '1' },
+    })
+    expect(screen.getByText('every 1 day')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /^Lay out/ }))
+
+    const plan = PROPS.onLayOut.mock.calls[0][0] as HikePlan
+    expect(plan.rhythm).toEqual({ everyDays: 1, kind: 'zero' })
+    // The rhythm is real days, not just a label: zeros are in the plan.
+    expect(plan.days.filter((day) => day.rest === true).length).toBeGreaterThan(0)
+  })
+
+  it('offers the two kinds of rest, and says what a nearo is', async () => {
+    const user = userEvent.setup()
+    render(<PlanTargetSheet {...PROPS} elevation={flatProfile()} />)
+
+    fireEvent.change(screen.getByLabelText('A rest day every how many walking days'), {
+      target: { value: '3' },
+    })
+    expect(screen.getByText(/eats a day of food/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Nearo' }))
+    expect(screen.getByText(/is a zero where there isn’t one/)).toBeInTheDocument()
+  })
+})

@@ -7,7 +7,7 @@
 // it - so the guardrail is held by a test rather than by vigilance.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { PlanScreen } from './Plan'
@@ -489,5 +489,99 @@ describe('the door to what’s left (#791)', () => {
     expect(
       screen.getByRole('heading', { name: 'Virginia, over a few years' }),
     ).toBeInTheDocument()
+  })
+})
+
+describe('food (#799)', () => {
+  it('says what each carry costs, and which one buys nothing at its end', () => {
+    // smallPlan resupplies at the last stop only, so the whole thing is one
+    // carry that restocks at the very end of the plan.
+    render(<PlanScreen {...PROPS} plan={smallPlan()} />)
+
+    const food = screen.getByRole('heading', { name: 'Food' })
+      .parentElement as HTMLElement
+    // One carry, ending where the plan does: three days including the zero.
+    expect(within(food).getByText(/Damascus → Atkins/)).toBeInTheDocument()
+    expect(within(food).getByText(/3 days/)).toBeInTheDocument()
+  })
+
+  it('says so when nothing is bought anywhere, instead of saying nothing', () => {
+    // The case that used to be silent: no resupply meant the word food
+    // never appeared, which reads as "no food needed".
+    const plan = buildPlan(
+      [
+        { mile: 470.8, name: 'Damascus', resupply: false },
+        { mile: 486.2, name: 'Lost Mountain Shelter', resupply: false },
+        { mile: 503.3, name: 'Atkins', resupply: false },
+      ],
+      { walkingHours: 7 },
+    )
+    render(<PlanScreen {...PROPS} plan={plan} />)
+
+    expect(screen.getByText(/No resupply on this plan/)).toBeInTheDocument()
+    expect(screen.getByText(/all 2 days come out of your pack/)).toBeInTheDocument()
+  })
+
+  it('says a long carry is heavy without telling anybody off about it', () => {
+    // Two carries - a short one into town, then six days out of it.
+    const plan = toggleResupply(
+      buildPlan(
+        Array.from({ length: 9 }, (_, index) => ({
+          mile: 470 + index * 10,
+          name: `Stop ${index}`,
+          resupply: false,
+        })),
+        { miles: 10 },
+      ),
+      2,
+    )
+    const { container } = render(<PlanScreen {...PROPS} plan={plan} />)
+
+    expect(screen.getByText(/that is the heaviest your pack gets/)).toBeInTheDocument()
+    // A fact about a stretch of trail with no towns on it, not a mistake.
+    expect(container.textContent).not.toMatch(/too (much|long|far)|warning|you should/i)
+  })
+
+  it('says that zeros are in the count, because the answer could be either', () => {
+    render(<PlanScreen {...PROPS} plan={smallPlan()} />)
+    expect(screen.getByText(/Zeros and rest days count/)).toBeInTheDocument()
+  })
+})
+
+describe('rest days (#798)', () => {
+  it('calls a zero the hiker’s own rest, and an ordinary zero neither', () => {
+    const plan = smallPlan() // has a zero at index 1, added by hand
+    render(<PlanScreen {...PROPS} plan={plan} />)
+    expect(screen.getByText('no walking')).toBeInTheDocument()
+
+    cleanup()
+    const rested = {
+      ...plan,
+      days: plan.days.map((day, index) => (index === 1 ? { ...day, rest: true } : day)),
+    }
+    render(<PlanScreen {...PROPS} plan={rested} />)
+    expect(screen.getByText('your rest day')).toBeInTheDocument()
+  })
+
+  it('marks a nearo, which is otherwise just a short day', () => {
+    const plan = buildPlan(
+      [
+        { mile: 470.8, name: 'Damascus', resupply: false },
+        { mile: 474.8, name: 'Four On', resupply: false },
+        { mile: 490.0, name: 'Atkins', resupply: false },
+      ],
+      { miles: 15 },
+    )
+    plan.days[0].rest = true
+    render(<PlanScreen {...PROPS} plan={plan} />)
+
+    expect(screen.getByText(/nearo · your rest day/)).toBeInTheDocument()
+  })
+
+  it('never scores the rests', () => {
+    const plan = smallPlan()
+    plan.days[1].rest = true
+    const { container } = render(<PlanScreen {...PROPS} plan={plan} />)
+    expect(container.textContent).not.toMatch(/%|streak|in a row|rests taken|earned/i)
   })
 })

@@ -152,6 +152,7 @@ import {
   toggleResupply,
   type HikePlan,
   type PlanTarget,
+  type RestRhythm,
 } from './lib/plan'
 import {
   EMPTY_STORE,
@@ -465,6 +466,7 @@ function App() {
     route: ViaStop[]
     initialTarget?: PlanTarget
     initialStartDate?: string
+    initialRhythm?: RestRhythm
     /** Set when the sheet was opened over an existing trip, so laying out
      *  re-lays that trip rather than keeping a second copy of it (#787). */
     tripId?: string
@@ -1719,6 +1721,8 @@ function App() {
       ...(plan.days[0]?.date === undefined
         ? {}
         : { initialStartDate: plan.days[0].date }),
+      // A re-lay keeps the rest rhythm rather than dropping it (#798).
+      ...(plan.rhythm === undefined ? {} : { initialRhythm: plan.rhythm }),
       ...(currentTrip === null ? {} : { tripId: currentTrip.id }),
     })
   }, [plan, currentTrip])
@@ -1863,6 +1867,9 @@ function App() {
         {...(targetRequest.initialTarget === undefined
           ? {}
           : { initialTarget: targetRequest.initialTarget })}
+        {...(targetRequest.initialRhythm === undefined
+          ? {}
+          : { initialRhythm: targetRequest.initialRhythm })}
         {...(targetRequest.initialStartDate === undefined
           ? {}
           : { initialStartDate: targetRequest.initialStartDate })}

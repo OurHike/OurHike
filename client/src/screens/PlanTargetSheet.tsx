@@ -28,7 +28,8 @@ import {
   type ViaStop,
 } from '../lib/dayPlanner'
 import type { ElevationProfile } from '../lib/elevationProfile'
-import { buildPlan, type HikePlan, type PlanTarget } from '../lib/plan'
+import { buildPlan, type HikePlan, type PlanTarget, type RestRhythm } from '../lib/plan'
+import { applyRhythm, NEARO_MAX_MI } from '../lib/restRhythm'
 import { legFigures } from '../lib/route'
 import type { StoredPoi } from '../lib/trailData'
 import { formatDistance, type UnitSystem } from '../lib/units'
@@ -45,6 +46,9 @@ export interface PlanTargetSheetProps {
   /** Where the sheet starts when re-targeting an existing plan. */
   initialTarget?: PlanTarget
   initialStartDate?: string
+  /** The rhythm this plan already carries, so re-laying it keeps the rest
+   *  days the hiker asked for rather than quietly dropping them (#798). */
+  initialRhythm?: RestRhythm
   onCancel: () => void
   /** The laid-out plan, built and ready to keep. */
   onLayOut: (plan: HikePlan) => void
@@ -59,6 +63,7 @@ export function PlanTargetSheet({
   units,
   initialTarget,
   initialStartDate,
+  initialRhythm,
   onCancel,
   onLayOut,
 }: PlanTargetSheetProps) {
@@ -76,6 +81,12 @@ export function PlanTargetSheet({
       : DEFAULT_MILES,
   )
   const [startDate, setStartDate] = useState(initialStartDate ?? '')
+  // 0 means no rhythm at all, which is what a plan has unless somebody asks
+  // for one - the app does not suggest rest days (#798).
+  const [restEvery, setRestEvery] = useState(initialRhythm?.everyDays ?? 0)
+  const [restKind, setRestKind] = useState<'zero' | 'nearo'>(
+    initialRhythm?.kind ?? 'zero',
+  )
 
   // Planning by hours without a profile would price every climb at zero and
   // wear an honest ≈ while doing it - so hours are simply not offered then.
@@ -117,7 +128,7 @@ export function PlanTargetSheet({
     // choice. Matched by mile, which is exact - planDaysVia carries the
     // via's own mile value through untouched.
     const viaMiles = new Set(route.slice(1, -1).map((via) => via.mile))
-    onLayOut(
+    const pinned =
       viaMiles.size === 0
         ? plan
         : {
@@ -125,7 +136,17 @@ export function PlanTargetSheet({
             days: plan.days.map((meta, index) =>
               viaMiles.has(plan.stops[index + 1].mile) ? { ...meta, pinned: true } : meta,
             ),
-          },
+          }
+    // The rhythm rides on the plan so a re-lay reproduces it, and is applied
+    // last - rest days are inserted between boundaries the generator has
+    // already chosen, never planned instead of them (#798).
+    onLayOut(
+      restEvery < 1
+        ? pinned
+        : applyRhythm(
+            { ...pinned, rhythm: { everyDays: restEvery, kind: restKind } },
+            pois,
+          ),
     )
   }
 
@@ -220,6 +241,57 @@ export function PlanTargetSheet({
               trail offers no stop inside it
             </span>
           </p>
+
+          {/* A rest every n days (#798). Nothing here suggests one: the
+              default is none, and a plan without rests is not marked
+              incomplete. It plans the rhythm the hiker asked for. */}
+          <div className="plan-target__rest">
+            <div className="plan-target__rest-head">
+              <span>A rest day</span>
+              <span className="plan-target__rest-figure">
+                {restEvery < 1
+                  ? 'none'
+                  : `every ${restEvery} ${restEvery === 1 ? 'day' : 'days'}`}
+              </span>
+            </div>
+            <input
+              type="range"
+              className="plan-target__slider"
+              min={0}
+              max={14}
+              step={1}
+              value={restEvery}
+              aria-label="A rest day every how many walking days"
+              onChange={(event) => setRestEvery(Number(event.target.value))}
+            />
+            {restEvery >= 1 && (
+              <>
+                <div className="plan-target__units" role="group" aria-label="Rest day">
+                  <button
+                    type="button"
+                    className="plan-target__unit"
+                    aria-pressed={restKind === 'zero'}
+                    onClick={() => setRestKind('zero')}
+                  >
+                    Zero
+                  </button>
+                  <button
+                    type="button"
+                    className="plan-target__unit"
+                    aria-pressed={restKind === 'nearo'}
+                    onClick={() => setRestKind('nearo')}
+                  >
+                    Nearo
+                  </button>
+                </div>
+                <p className="plan-target__note" role="note">
+                  {restKind === 'zero'
+                    ? 'A zero walks nothing and still eats a day of food.'
+                    : `A nearo walks up to ${formatDistance(NEARO_MAX_MI, units, 'trimmed')} to the next place to sleep — and is a zero where there isn’t one.`}
+                </p>
+              </>
+            )}
+          </div>
 
           <label className="plan-target__date">
             <span>First day (optional)</span>

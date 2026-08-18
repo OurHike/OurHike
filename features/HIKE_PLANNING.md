@@ -256,6 +256,14 @@ Sync across devices is [AUTHENTICATION.md](AUTHENTICATION.md)'s to give, and it 
 - **Any suggestion that a plan is a target to hit.** Value #1 forbids prescriptive gamification, and a planner is two design decisions from a schedule that scolds. No progress bars against plan, no "behind schedule", no streaks. The plan is a hiker's own paper log with arithmetic attached.
 - **Whether the auto-generated plan is offered on first use or on request.** A generated plan is a strong anchor and it is easy to make it feel like the app's opinion of how someone should hike.
 
+**Update 2026-08-18:** two of this document's gaps are now filled, both from a maintainer walkthrough of the shipped planner.
+
+**A rest rhythm** (#798). The generator planned walking days and nothing else, so a hiker who takes a zero every Sunday had to add seven by hand to a fifty-day plan and lost them on the next re-lay. A plan now carries `rhythm: { everyDays, kind }` and `lib/restRhythm.ts` inserts the rests — a **zero** where you stand, or a **nearo** to the first place to sleep inside `NEARO_MAX_MI` (`@unvalidated`), falling back to a zero and saying so when nothing is inside the window. It does not re-plan the remainder: a rest lands at a boundary the generator already chose, and the day after a nearo is shorter by whatever the nearo walked, which is true and which the timeline prints. It has no opinion — nothing suggests a rhythm, warns about its absence, or counts the rests taken.
+
+**The food carry is now visible** (#799). `foodCarries()` derives one carry per section, so the food block and the timeline read the same `planSections()` and cannot disagree. Two things it says that nothing said before: **a plan with no resupply anywhere** used to never print the word food, which reads as "no food needed" rather than "all nine days are on your back"; and a carry at or past `LONG_CARRY_DAYS` (`@unvalidated`) gets one line saying that is the heaviest the pack gets — a note, never a warning, because a long carry is a fact about a stretch of trail with no towns on it.
+
+That work also fixed a real defect in the zero question this document leaves open. Zeros count against the carry — the answer `lib/plan.ts` picked, erring toward carrying enough — but `insertZeroAfter` duplicated the boundary *including its resupply flag*, which closed a second section holding just the zero. So a zero in town read as its own one-day carry and vanished from the carry it actually eats from. The duplicate no longer inherits the flag: supplies are picked up once, at the stop the hiker walked into.
+
 ## Open questions (for you, not decided here)
 
 - **Whether a zero in town counts against the food carry.** Named above. A day's food on someone's back, and both answers are defensible.

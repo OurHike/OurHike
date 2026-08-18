@@ -33,6 +33,8 @@ import type { Hike, HikePiece, PlaceRef } from '../lib/hikes'
 import { formatNaismithMinutes } from '../lib/naismith'
 import {
   currentDayIndex,
+  foodCarries,
+  LONG_CARRY_DAYS,
   planDayViews,
   planSections,
   planDirection,
@@ -461,6 +463,10 @@ export function PlanScreen({
           </section>
         ))}
 
+      {/* Days of food are days in every unit system, so this block takes no
+          units - the one figure on the Plan tab that does not convert. */}
+      {zoom !== 'hike' && <FoodBlock sections={sections} />}
+
       <div className="plan__foot">
         {/* Re-targeting replaces the whole plan, so it retires the moment
             anything is walked - the past is a record a wholesale re-lay
@@ -556,6 +562,69 @@ export function PlanScreen({
   )
 }
 
+/**
+ * What each stretch costs in days of food (#799).
+ *
+ * The figures come off `planSections()` - the same derivation the timeline
+ * and the trip zoom read - so the food block and the rows cannot disagree
+ * about a carry. Nothing here suggests where to resupply: picking towns for
+ * somebody is a much larger feature, and the resupply data is not good
+ * enough for it yet.
+ *
+ * THE CASE THAT WAS SILENT BEFORE: a plan with no resupply anywhere never
+ * printed the word food at all, which reads as "no food needed" rather than
+ * "all nine days are on your back".
+ */
+function FoodBlock({ sections }: { sections: PlanSection[] }) {
+  const carries = foodCarries(sections)
+  if (carries.length === 0) return null
+
+  const longest = carries.reduce((worst, carry) =>
+    carry.days > worst.days ? carry : worst,
+  )
+  const nowhereToBuy = carries.length === 1 && !carries[0].restockAtEnd
+
+  return (
+    <section className="plan__food">
+      <h2 className="plan__food-title">Food</h2>
+      <ul className="plan__food-carries">
+        {carries.map((carry) => (
+          <li className="plan__food-carry" key={`${carry.from.mile}-${carry.to.mile}`}>
+            <span className="plan__food-where">
+              {stopLabel(carry.from)} → {stopLabel(carry.to)}
+            </span>
+            <span className="plan__food-days">
+              {carry.days} {carry.days === 1 ? 'day' : 'days'}
+              {carry.restockAtEnd ? '' : ' · nothing bought at the end'}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {nowhereToBuy ? (
+        <p className="plan__food-note" role="note">
+          No resupply on this plan — all {carries[0].days}{' '}
+          {carries[0].days === 1 ? 'day' : 'days'} come out of your pack. Marking a stop
+          as a resupply on the timeline splits the carry.
+        </p>
+      ) : (
+        longest.days >= LONG_CARRY_DAYS && (
+          <p className="plan__food-note" role="note">
+            The longest carry is {longest.days} days, out of {stopLabel(longest.from)} —
+            that is the heaviest your pack gets.
+          </p>
+        )
+      )}
+      {/* Zeros are in these counts. HIKE_PLANNING.md left it open;
+          lib/plan.ts decided it in one place, erring toward carrying enough
+          rather than short - and saying so is the difference between a
+          number and a number you can argue with. */}
+      <p className="plan__food-note plan__food-note--quiet">
+        Zeros and rest days count — they eat a day of food like any other.
+      </p>
+    </section>
+  )
+}
+
 /** The last day's date as "30 Aug", or null on an undated plan. */
 function finishLabel(views: PlanDayView[]): string | null {
   const last = views[views.length - 1]?.date
@@ -629,7 +698,11 @@ function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowPr
         <RowGutter day={day} />
         <button type="button" className="plan__day plan__day--zero" onClick={onSelect}>
           <span>Zero · {stopLabel(day.start)}</span>
-          <span className="plan__day-figure">no walking</span>
+          {/* Terrain, not judgement - and "rest" only where the hiker's own
+              rhythm put it, never as the app's opinion of the day (#798). */}
+          <span className="plan__day-figure">
+            {day.rest ? 'your rest day' : 'no walking'}
+          </span>
         </button>
       </div>
     )
@@ -688,6 +761,7 @@ function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowPr
               was {formatDistance(day.wasDistanceMi, units)}
             </span>
           )}
+          {day.rest && <span className="plan__day-auto">nearo · your rest day</span>}
           {day.generated && <span className="plan__day-auto">auto</span>}
         </span>
       </button>

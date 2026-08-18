@@ -1,0 +1,11 @@
+source_system,code,label,poi_type,confidence
+atc,shelters,A.T. Shelters,shelter,high
+atc,campsites,A.T. Campsites,campsite,high
+opentrail,c,campsite,,
+opentrail,s,shelter (some overlap with 'c' observed in the data),water,low
+opentrail,o,other / overlook / miscellaneous,,
+opentrail,j,junction or road crossing,,
+opentrail,w,water source,water,high
+opentrail,t,town,,
+opentrail,r,resupply (store/outfitter/service),resupply,high
+opentrail,a,unknown (single occurrence),,

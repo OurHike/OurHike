@@ -1,0 +1,31 @@
+version: 2
+
+models:
+  - name: stg_atc__shelters
+    description: >
+      ATC shelters, renamed to the unified POI column shape. poi_type
+      'shelter' at confidence 'high' - the same call export_poi.py's
+      ATC_EXPORTS makes, sync-tested via the seed.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+      - name: poi_type
+        data_tests: [not_null]
+  - name: stg_atc__campsites
+    description: >
+      ATC campsites, same shape and reasoning as stg_atc__shelters.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+      - name: poi_type
+        data_tests: [not_null]
+  - name: stg_opentrail__waypoints
+    description: >
+      opentrail waypoints with `icon` resolved to a unified poi_type via
+      the poi_type_mapping seed. poi_type is null on
+      documented-but-deliberately-unmapped icons ('c', 'o', 'j', 't', 'a' -
+      export_poi.py's module docstring says why); the row stays so layers
+      remain 1:1 and reconciliation tests stay meaningful.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]

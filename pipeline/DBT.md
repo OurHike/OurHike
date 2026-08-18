@@ -1,6 +1,6 @@
 # dbt transform layer — design & rollout plan
 
-Companion to [../TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md) and [README.md](README.md). **Status: designed 2026-07-29, not yet built** — this document is the plan (the technical component's design plus a phased rollout), written before the code per this project's usual pattern (see [FEATURES.md](../FEATURES.md)/[ROADMAP.md](../ROADMAP.md)'s design-doc-before-code convention). Phase A below is the first implementation step, not yet started.
+Companion to [../TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md) and [README.md](README.md). **Status: designed 2026-07-29; Phase A built 2026-08-18** (#100) — `load_raw.py`, the `pipeline/dbt/` project, the first vertical slice below, its tests, the seed + sync test, `.sqlfluff`, `requirements-dbt.txt`, and the `dbt` CI job all exist and run. Phases B–D remain the plan. One Phase B item collapsed into Phase A: the staging models were built against the **real fetched layers' field names** (the implementing session had the live data on disk), so the "illustrative column names" honesty note below is history rather than a live caveat — `GlobalID`/`Name` and `dbid`/`title`/`icon` are the real names, verified against a full real-data load (2,352 rows in `dim_pois`, all 37 build tests green).
 
 ## Why dbt, and why now
 
@@ -94,7 +94,7 @@ Transform logic is SQL by default. The one documented exception this project alr
 
 ## Linting
 
-SQLFluff, `dbt` templater, `duckdb` dialect (confirmed available). Config lives at `pipeline/.sqlfluff`. Unlike `ruff`'s deliberately narrowed rule set for the Python side (see `pipeline/pyproject.toml`), SQLFluff's default rule set isn't the same kind of maximalist surprise — Phase A implementation should run it for real against the actual models first and prune noisy rules only if they turn out to be, rather than pre-narrowing blind.
+SQLFluff, `dbt` templater, `duckdb` dialect (confirmed available). Config lives at `pipeline/.sqlfluff`. Unlike `ruff`'s deliberately narrowed rule set for the Python side (see `pipeline/pyproject.toml`), SQLFluff's default rule set isn't the same kind of maximalist surprise. Phase A ran it for real and pruned on that evidence — two prunes, reasons in `.sqlfluff` itself: ST06 (column order), because the staging models feed a positional `union all` and their column order is a semantic contract, and RF04 for `name`/`source` only, because those are `lib/poi_schema.py`'s own unified record keys. Everything else runs at defaults and passes.
 
 ## CI (planned)
 
@@ -104,7 +104,7 @@ One freshness caveat worth being upfront about: `dbt source freshness` here meas
 
 ## Rollout plan
 
-- **Phase A — scaffold + first vertical slice (next implementation step, not started).** `load_raw.py`, the dbt project scaffold, the `stg_atc__{shelters,campsites}` + `stg_opentrail__waypoints` → `int_pois_unioned` → `dim_pois` slice above, its tests, the seed + sync test, `.sqlfluff`, `requirements-dbt.txt`, the new CI job, and `pytest` coverage for `load_raw.py` — all following this project's existing testing conventions (`tmp_path`, synthetic fixtures built in test code, no real network beyond the already-sanctioned one-time DuckDB spatial-extension install).
+- **Phase A — scaffold + first vertical slice (built 2026-08-18, #100).** `load_raw.py`, the dbt project scaffold, the `stg_atc__{shelters,campsites}` + `stg_opentrail__waypoints` → `int_pois_unioned` → `dim_pois` slice above, its tests, the seed + sync test, `.sqlfluff`, `requirements-dbt.txt`, the new CI job, and `pytest` coverage for `load_raw.py` — all following this project's existing testing conventions (`tmp_path`, synthetic fixtures built in test code, no real network beyond the already-sanctioned one-time DuckDB spatial-extension install).
 - **Phase B — reconcile against real data, expand coverage.** Once `fetch_all.py`/`fetch_opentrail.py`/`load_raw.py` have run for real, use `dbt-codegen` against the actual loaded raw tables to correct Phase A's illustrative column names, then add staging models for the remaining ATC sources as each is actually fetched (`parking`, `viewpoints`, `communities`, `trail_club_sections`, `side_trails`, `half_mile_points_from_springer`, `centerline`, `bridges`, `privies`, `at_treadway`). Decide whether/how to deduplicate POIs that appear in both ATC and opentrail data (explicitly deferred, not attempted in Phase A).
 - **Phase C — CI gating.** Once the `dbt` job has run clean for a while, promote both it and `pytest` to required branch-protection checks together — mirroring `pytest`'s own current non-required status rather than jumping ahead of it. Consider publishing `dbt docs generate`'s static output somewhere browsable (not decided).
 - **Phase D — the pattern for a second trail.** This is the growth case the whole design is aimed at. `sources.json` already carries a `provider` field, and the planned `load_raw.py` table naming (`raw_<provider>__<key>`) and staging naming (`stg_<provider>__<key>`) already generalize past AT-only assumptions — a new trail's sources become new rows in a registry and new staging models following the same pattern, not a parallel pipeline. The one thing worth a deliberate check at that point (value #7): revisit any place Phase A hardcoded an AT-only assumption (e.g. `poi_type` literals, the `poi_type_mapping` seed's vocabulary) to confirm nothing quietly baked in "the AT" where "a trail" was meant.
@@ -113,4 +113,4 @@ One freshness caveat worth being upfront about: `dbt source freshness` here meas
 
 - Not touched by this design: `spike_corridor.py`, `render_cell_tiles.py`, `assemble_raster.py`, or any raster/export logic. `dim_pois` is a warehouse-internal mart in Phase A; wiring it into the actual GeoJSON/PMTiles export step is future work.
 - Not attempted: cross-source POI deduplication.
-- Not yet updated: `pipeline/README.md`'s and `TESTING.md`'s how-to/testing sections stay describing today's pipeline until Phase A's code actually lands — updating them to describe unbuilt commands would be misleading in the meantime.
+- `pipeline/README.md` and `TESTING.md` gained their dbt sections when Phase A landed, as this line used to promise.

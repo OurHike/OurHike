@@ -1,0 +1,37 @@
+version: 2
+
+models:
+  - name: dim_pois
+    description: >
+      One row per source POI across every loaded source system, keyed by a
+      surrogate of (source, source_id). 1:1 with int_pois_unioned - held to
+      that by assert_dim_pois_matches_int_pois_unioned. poi_type is null
+      exactly where the source code is documented-but-unmapped.
+    columns:
+      - name: poi_key
+        description: dbt_utils.generate_surrogate_key over (source, source_id).
+        data_tests: [not_null, unique]
+      - name: source
+        data_tests: [not_null]
+      - name: source_id
+        data_tests: [not_null]
+      - name: poi_type
+        description: >
+          Unified type, from lib/poi_schema.py's POI_TYPES vocabulary. The
+          relationships test ties it back to the seed rather than
+          hardcoding the domain twice; nulls pass by dbt's relationships
+          semantics, which is the deliberately-unmapped case.
+        data_tests:
+          - relationships:
+              to: ref('poi_type_mapping')
+              field: poi_type
+      - name: longitude
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: -180
+              max_value: 180
+      - name: latitude
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: -90
+              max_value: 90

@@ -1,0 +1,35 @@
+# SQLFluff over the dbt models (pipeline/DBT.md's linting section). The dbt
+# templater so {{ ref() }}/{{ source() }} lint as what they compile to;
+# duckdb dialect to match the warehouse.
+#
+# Lint from pipeline/ with OURHIKE_WAREHOUSE=data/warehouse.duckdb - the dbt
+# templater compiles against the real profile, whose default path is
+# relative to dbt/ where dbt itself runs.
+#
+# DBT.md's instruction was to run the default rules against the real models
+# first and prune only what proves noisy, with the evidence. Two prunes:
+#
+# - ST06 (column order): off. The staging models feed a positional
+#   `union all`, so column order is a semantic contract shared across
+#   models, not a style choice - mechanically reordering one model's select
+#   is exactly the silent-breakage the reconciliation tests exist to catch.
+# - RF04 for `name` and `source` only: these are lib/poi_schema.py's own
+#   unified record keys, and the models' whole job is to land on that
+#   schema; renaming to appease a keyword list would put a second
+#   vocabulary between the warehouse and the export.
+[sqlfluff]
+dialect = duckdb
+templater = dbt
+sql_file_ext = .sql
+exclude_rules = ST06
+
+[sqlfluff:templater:dbt]
+project_dir = ./dbt
+profiles_dir = ./dbt
+
+[sqlfluff:indentation]
+indented_joins = false
+template_blocks_indent = false
+
+[sqlfluff:rules:references.keywords]
+ignore_words = name,source

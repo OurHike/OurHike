@@ -1,0 +1,17 @@
+# DuckDB file path only - no credentials anywhere in this file, which is
+# what makes committing it safe (DBT.md's project-structure note). The
+# warehouse itself is gitignored with the rest of data/.
+#
+# The spatial extension loads because the raw tables carry real GEOMETRY
+# columns from ST_Read, and staging models read coordinates off them with
+# st_x/st_y. On a sandboxed machine where extensions.duckdb.org is blocked,
+# .claude/hooks/session-start.sh seeds the extension from PyPI first - the
+# same arrangement the pytest suite relies on.
+ourhike:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('OURHIKE_WAREHOUSE', '../data/warehouse.duckdb') }}"
+      extensions:
+        - spatial

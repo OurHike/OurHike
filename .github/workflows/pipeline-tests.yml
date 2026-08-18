@@ -131,3 +131,89 @@ jobs:
       - name: Run tests
         if: steps.scope.outputs.run == 'true'
         run: python -m pytest -v
+
+  # The dbt transform layer (pipeline/DBT.md's CI plan, #100). Its own job
+  # rather than steps on `pytest`: it pins Python 3.12 deliberately - dbt
+  # tends to lag the newest CPython the pytest job runs bleeding-edge - and
+  # its dependency set (requirements-dbt.txt) shares nothing with the
+  # pytest job's beyond duckdb. Same no-`if:`-on-the-job rule as above.
+  dbt:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: scope
+        uses: ./.github/actions/changed-paths
+        with:
+          # Narrower than the pytest job's list: this job builds the dbt
+          # project off load_raw.py's warehouse, and nothing else in
+          # pipeline/ reaches it. sources.json is here because it is
+          # load_raw.py's registry - a row added there changes what loads.
+          paths: >-
+            pipeline/dbt/
+            pipeline/load_raw.py
+            pipeline/make_dbt_fixtures.py
+            pipeline/sources.json
+            pipeline/requirements-dbt.in
+            pipeline/requirements-dbt.txt
+            pipeline/.sqlfluff
+            .github/workflows/pipeline-tests.yml
+            .github/actions/changed-paths/
+
+      - uses: actions/setup-python@v5
+        if: steps.scope.outputs.run == 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        if: steps.scope.outputs.run == 'true'
+        run: pip install -r requirements-dbt.txt
+
+      - name: Generate synthetic raw fixtures
+        if: steps.scope.outputs.run == 'true'
+        run: python make_dbt_fixtures.py
+
+      - name: Load the warehouse
+        if: steps.scope.outputs.run == 'true'
+        run: python load_raw.py
+
+      - name: dbt deps
+        if: steps.scope.outputs.run == 'true'
+        working-directory: pipeline/dbt
+        run: dbt deps --profiles-dir .
+
+      - name: dbt seed
+        if: steps.scope.outputs.run == 'true'
+        working-directory: pipeline/dbt
+        run: dbt seed --profiles-dir .
+
+      - name: sqlfluff lint
+        if: steps.scope.outputs.run == 'true'
+        env:
+          OURHIKE_WAREHOUSE: data/warehouse.duckdb
+        run: sqlfluff lint dbt/models dbt/tests
+
+      - name: dbt build
+        if: steps.scope.outputs.run == 'true'
+        working-directory: pipeline/dbt
+        run: dbt build --profiles-dir . --exclude package:dbt_project_evaluator
+
+      - name: dbt source freshness
+        if: steps.scope.outputs.run == 'true'
+        working-directory: pipeline/dbt
+        run: dbt source freshness --profiles-dir .
+
+      - name: dbt docs generate
+        if: steps.scope.outputs.run == 'true'
+        working-directory: pipeline/dbt
+        run: dbt docs generate --profiles-dir .
+
+      # Separate from the data build so "did my data pass" and "does my
+      # project follow conventions" stay independently readable (DBT.md).
+      - name: dbt project evaluator
+        if: steps.scope.outputs.run == 'true'
+        working-directory: pipeline/dbt
+        run: dbt build -s package:dbt_project_evaluator --profiles-dir .

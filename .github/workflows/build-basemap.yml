@@ -72,7 +72,7 @@ jobs:
       run:
         working-directory: pipeline
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -208,7 +208,7 @@ jobs:
           echo "::error::publish is only for the full corridor build (states empty, z0-14); this run built states='${{ inputs.states }}' at z0-${{ inputs.max_zoom }}"
           exit 1
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:

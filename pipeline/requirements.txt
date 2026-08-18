@@ -4,9 +4,9 @@ affine==2.4.0
     # via rasterio
 attrs==26.1.0
     # via rasterio
-boto3==1.43.67
+boto3==1.43.71
     # via -r requirements.in
-botocore==1.43.67
+botocore==1.43.72
     # via
     #   boto3
     #   s3transfer

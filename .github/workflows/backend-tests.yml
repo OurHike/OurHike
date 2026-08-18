@@ -93,7 +93,7 @@ jobs:
     steps:
       # Checkout is unconditional because the scope action lives in this
       # repository and has to be on disk before it can decide anything.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - id: scope
         uses: ./.github/actions/changed-paths

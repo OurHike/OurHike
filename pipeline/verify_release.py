@@ -348,7 +348,11 @@ def check_cors(base: str, key: str, session=None) -> dict:
     exposed = {
         item.strip().lower() for item in (response.headers.get("Access-Control-Expose-Headers") or "").split(",") if item.strip()
     }
-    missing = [header for header in EXPOSED if header not in exposed]
+    # `Access-Control-Expose-Headers: *` is the spec's everything-readable
+    # wildcard for requests without credentials, not a header name (#659) -
+    # a host answering `*` would otherwise fail this check while every
+    # browser could in fact read all four headers.
+    missing = [] if "*" in exposed else [header for header in EXPOSED if header not in exposed]
     if missing:
         return _report(
             8,

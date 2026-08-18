@@ -190,6 +190,15 @@ class TestCors:
 
         assert check_cors(BASE, "a.pmtiles")["state"] == OK
 
+    def test_a_wildcard_expose_answer_passes_too(self, requests_mock):
+        """#659: `Access-Control-Expose-Headers: *` exposes everything to a
+        request without credentials - a host answering it would otherwise
+        fail this check while every browser could read all four headers,
+        blocking a good release candidate."""
+        requests_mock.get(f"{BASE}/a.pmtiles", headers=_headers(expose="*"), status_code=206)
+
+        assert check_cors(BASE, "a.pmtiles")["state"] == OK
+
 
 class TestVectorContent:
     def _collection(self, features):

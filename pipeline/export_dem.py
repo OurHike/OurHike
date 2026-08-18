@@ -168,7 +168,8 @@ def main(args: argparse.Namespace):
     print(f"{len(tiles)} tiles to fetch (quantize step {args.quantize_step} m, {args.workers} workers)")
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    written = absent = 0
+    written = 0
+    absent: list[list[int]] = []
     session = requests.Session()
 
     def process(zxy: tuple[int, int, int]) -> bytes | None:
@@ -182,7 +183,7 @@ def main(args: argparse.Namespace):
             # without a post-pass.
             for (z, x, y), data in zip(tiles, pool.map(process, tiles)):
                 if data is None:
-                    absent += 1
+                    absent.append([z, x, y])
                     continue
                 writer.write_tile(zxy_to_tileid(z, x, y), data)
                 written += 1
@@ -197,10 +198,15 @@ def main(args: argparse.Namespace):
                 "encoding": "terrarium",
                 "quantize_step_m": args.quantize_step,
                 "attribution": "Elevation: USGS 3DEP via AWS Terrain Tiles",
+                # WHICH tiles the source had no answer for, not just how
+                # many (#659): check_dem_archive.py excuses exactly these
+                # and no others, so an upstream absence this run tolerated
+                # stays distinguishable from a tile lost in transit.
+                "absent_tiles": sorted(absent),
             },
         )
 
-    print(f"{written} tiles written, {absent} absent from source")
+    print(f"{written} tiles written, {len(absent)} absent from source")
     report_archive(args.out)
 
 

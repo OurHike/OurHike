@@ -459,11 +459,7 @@ def _verify_hashes(entries: dict[str, dict]) -> None:
     still matches the bucket. Raises before the first upload, naming every
     mismatch, so a bad state costs a failed run instead of a poisoned
     manifest."""
-    stale = {
-        name: entry
-        for name, entry in entries.items()
-        if sha256_file(Path(entry["path"])) != entry["sha256"]
-    }
+    stale = {name: entry for name, entry in entries.items() if sha256_file(Path(entry["path"])) != entry["sha256"]}
     if stale:
         raise RuntimeError(
             "manifest hash does not match the file on disk for: "

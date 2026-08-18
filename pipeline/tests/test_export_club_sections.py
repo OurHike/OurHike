@@ -34,9 +34,7 @@ def test_the_manifest_path_is_absolute_and_main_returns_the_manifest(tmp_path, m
     returned = export_club_sections.main()
 
     manifest = json.loads(manifest_path.read_text())
-    assert Path(manifest["path"]).is_absolute(), (
-        "a relative manifest path resolves against publish.py's CWD, not pipeline/"
-    )
+    assert Path(manifest["path"]).is_absolute(), "a relative manifest path resolves against publish.py's CWD, not pipeline/"
     assert Path(manifest["path"]).exists(), "the path must reach the artifact from any CWD"
     assert manifest["sha256"] == hashlib.sha256(out_path.read_bytes()).hexdigest()
     assert returned == manifest, "main() answers with the manifest, like every sibling exporter"

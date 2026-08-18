@@ -455,9 +455,7 @@ def test_manifests_verdict_flags_a_stretch_artifact_that_drifted_from_its_manife
     club_manifest.write_text(json.dumps({"path": club_entry["path"], "sha256": club_entry["sha256"]}))
 
     stretch_entry = _artifact_entry(tmp_path / "dem_stretch_03.pmtiles", "original bytes", 0)
-    (tmp_path / "dem_stretches_manifest.json").write_text(
-        json.dumps({"artifacts": {"dem_stretch_03.pmtiles": stretch_entry}})
-    )
+    (tmp_path / "dem_stretches_manifest.json").write_text(json.dumps({"artifacts": {"dem_stretch_03.pmtiles": stretch_entry}}))
     (tmp_path / "dem_stretch_03.pmtiles").write_text("rebuilt after the manifest recorded its hash")
 
     report = check_output_quality.manifests_verdict(club_manifest_path=club_manifest, stretches_dir=tmp_path)

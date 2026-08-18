@@ -300,6 +300,17 @@ def test_a_refusal_no_single_header_explains_is_not_blamed_on_one(mock):
     assert "no single header explains it" in report["detail"]
 
 
+def test_a_wildcard_allow_headers_answer_is_everything_not_nothing(mock):
+    """#659: `Access-Control-Allow-Headers: *` is the spec's wildcard for
+    requests without credentials - which these downloads are. Read
+    literally, `*` matched no requested header and a custom-domain
+    migration fronted by anything answering `*` would daily-alarm a
+    working deployment and block a good release candidate."""
+    mock.options(f"{BASE}/latest.json", headers={"Access-Control-Allow-Headers": "*"})
+
+    assert check_preflight(BASE, PRODUCTION, MANIFEST["request_headers"])["state"] == OK
+
+
 def test_allowed_headers_are_compared_case_insensitively(mock):
     """Header names are case-insensitive, so a bucket answering `If-Range` is
     correct and failing it would be this check inventing a rule."""
@@ -326,6 +337,14 @@ def test_exposed_headers_are_checked_for_readability_not_presence(mock):
 
 def test_all_exposed_headers_present_passes(mock):
     mock.get(f"{BASE}/latest.json", headers=GOOD_CORS)
+
+    assert check_exposed_headers(BASE, PRODUCTION, MANIFEST["expose_headers"])["state"] == OK
+
+
+def test_a_wildcard_expose_headers_answer_means_all_readable(mock):
+    """The same #659 wildcard reading as the preflight's: `*` exposes
+    everything to a non-credentialed request, it is not a header name."""
+    mock.get(f"{BASE}/latest.json", headers={"Access-Control-Expose-Headers": "*"})
 
     assert check_exposed_headers(BASE, PRODUCTION, MANIFEST["expose_headers"])["state"] == OK
 

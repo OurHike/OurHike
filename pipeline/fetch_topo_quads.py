@@ -20,8 +20,9 @@ isn't documented in USGS's own metadata readme) and matches by name with the
 date suffix stripped from both sides. Any quad that genuinely doesn't match
 is reported, not silently skipped.
 
-Scope: only quads whose bbox intersects the 30-mile AT corridor (see
-spike_corridor.py) - not every quad in every state the trail crosses. A
+Scope: only quads whose bbox intersects the 30-mile AT corridor (built
+fresh from the fetched centerline by lib/corridor.py - never read from the
+stale spike output, #659) - not every quad in every state the trail crosses. A
 full-state pull is 1000+ quads per state (~300-500GB across all 14 states);
 the corridor cuts that to ~1,650 quads (~16-17GB), which is what the app
 actually needs (value #8 - keep downloads/hosting small).
@@ -46,9 +47,13 @@ import rasterio
 import requests
 
 from lib.completeness import fail_if_incomplete
+from lib.corridor import build_corridor
 
 ROOT = Path(__file__).parent
-CORRIDOR_PATH = ROOT / "data" / "spike" / "corridor.geojson"
+# The corridor is BUILT from the fetched centerline at run time (#659),
+# never read from data/spike/corridor.geojson - lib/corridor.py's docstring
+# records why that file is stale proof-of-concept output nothing may trust.
+CENTERLINE_PATH = ROOT / "data" / "raw" / "centerline.geojson"
 METADATA_URL = "https://prd-tnm.s3.amazonaws.com/StagedProducts/Maps/Metadata/ustopo_current.zip"
 METADATA_DIR = ROOT / "data" / "raw" / "topo_metadata"
 METADATA_STATE_PATH = METADATA_DIR / "fetch_state.json"
@@ -294,7 +299,7 @@ def main():
 
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
-    con.execute(f"CREATE TABLE corridor AS SELECT * FROM ST_Read('{CORRIDOR_PATH.as_posix()}')")
+    build_corridor(con, CENTERLINE_PATH)
     con.execute(f"CREATE TABLE quads AS SELECT * FROM read_csv_auto('{csv_path.as_posix()}')")
 
     total_quads = con.execute("SELECT COUNT(*) FROM quads").fetchone()[0]

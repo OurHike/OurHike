@@ -591,9 +591,11 @@ class ElevationSampler:
     image - the "lighter scale" mosaic this module's docstring promises.
 
     Returns None for a point no indexed tile covers - a real DEM coverage
-    gap (e.g. a stretch of trail with no 1m LiDAR project flown yet) -
+    gap (a stretch of trail the 1/3 arc-second dataset has no tile for) -
     instead of raising, so a gap in source coverage degrades the profile
-    gracefully rather than crashing the whole export."""
+    gracefully rather than crashing the whole export. (Docstrings here
+    used to say "1m tiles"; this pipeline reads the ~10m dataset - see
+    the module docstring and fetch_elevation.py's DATASET note.)"""
 
     def __init__(self, tile_index: list[tuple[str | Path, tuple[float, float, float, float]]]):
         self._tile_index = tile_index
@@ -619,7 +621,7 @@ class ElevationSampler:
         """Batched point sampling: groups points by whichever tile covers
         them, then does one windowed array read per tile - scoped to the
         bounding box of just that tile's own touched points, not the whole
-        tile (real 1m DEM tiles can be large; a full-tile read per tile
+        tile (real DEM tiles can be large; a full-tile read per tile
         risks real memory pressure across hundreds of them) - instead of one
         WarpedVRT.sample() Python call per point. Measured ~100x faster than
         the naive per-point .sample() loop on synthetic test-scale data,

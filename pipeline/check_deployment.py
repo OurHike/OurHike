@@ -234,7 +234,13 @@ def check_preflight(base: str, origin: dict, request_headers: list[str], session
 
     status, allowed = answer
     if status < 400:
-        missing = sorted({header.lower() for header in request_headers} - allowed)
+        # `Access-Control-Allow-Headers: *` is the spec's wildcard for
+        # requests without credentials - which these downloads are - not a
+        # literal header name (#659). Reading it literally made a
+        # custom-domain migration fronted by anything answering `*` daily-
+        # alarm a working deployment. (The one header `*` does not cover is
+        # Authorization, which nothing here sends.)
+        missing = [] if "*" in allowed else sorted({header.lower() for header in request_headers} - allowed)
         if not missing:
             return {"check": "preflight", "origin": origin["pattern"], "state": OK, "detail": f"may send {asked}"}
         refused, refusal = missing, f"a browser on {probe} may not send {', '.join(missing)}"
@@ -248,7 +254,7 @@ def check_preflight(base: str, origin: dict, request_headers: list[str], session
             if single is None:
                 continue
             single_status, single_allowed = single
-            if single_status >= 400 or header.lower() not in single_allowed:
+            if single_status >= 400 or ("*" not in single_allowed and header.lower() not in single_allowed):
                 refused.append(header.lower())
         refusal = f"the preflight from {probe} was refused outright ({status})" + (
             f", and {', '.join(refused)} is why" if refused else " - no single header explains it"
@@ -297,7 +303,9 @@ def check_exposed_headers(base: str, origin: dict, expose_headers: list[str], se
         }
 
     exposed = _header_list(response.headers.get("Access-Control-Expose-Headers"))
-    missing = sorted({header.lower() for header in expose_headers} - exposed)
+    # `*` is the spec's everything-readable wildcard for non-credentialed
+    # requests, not a header name - see check_preflight (#659).
+    missing = [] if "*" in exposed else sorted({header.lower() for header in expose_headers} - exposed)
     if not missing:
         return {"check": "expose-headers", "origin": origin["pattern"], "state": OK, "detail": "all readable"}
 

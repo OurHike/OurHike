@@ -1156,6 +1156,139 @@
   color: var(--fg-3);
 }
 
+/* ---------- Route builder sheet (RouteSheet.tsx, #755) ---------- */
+
+/* The closure sheet's frame with the brand's top rule instead of the danger
+   one: same dock, same scroll ceiling, but nothing about a route changes what
+   a hiker does next - red stays reserved for the sheets that do. */
+.route-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  max-height: 70%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-4, 16px);
+  background: var(--bg-surface);
+  border-top: 3px solid var(--brand-primary);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+.route-sheet__direction {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.route-sheet__refused {
+  margin: 0;
+  font-size: 13px;
+  color: var(--danger);
+}
+
+.route-sheet__hint {
+  margin: 0;
+  font-size: 14px;
+  color: var(--fg-2);
+}
+
+.route-sheet__legs {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.route-sheet__leg {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3, 12px);
+  padding-bottom: var(--space-2, 8px);
+  border-bottom: 1px dashed var(--border-1);
+}
+
+.route-sheet__leg dt {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-3);
+}
+
+.route-sheet__leg dd {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  color: var(--fg-1);
+  text-align: right;
+}
+
+.route-sheet__leg--total {
+  border-bottom: none;
+  border-top: 2px solid var(--border-strong);
+  padding-top: var(--space-2, 8px);
+  padding-bottom: 0;
+}
+
+.route-sheet__leg--total dd {
+  font-weight: 600;
+}
+
+.route-sheet__limit {
+  margin: 0;
+  padding: var(--space-3, 12px);
+  font-size: 13px;
+  color: var(--fg-2);
+  background: var(--bg-sunken);
+  border-radius: 10px;
+}
+
+.route-sheet__actions {
+  display: flex;
+  gap: var(--space-2, 8px);
+}
+
+.route-sheet__break {
+  flex: 1;
+  min-height: var(--min-touch-target, 44px);
+  border: none;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--brand-primary);
+  color: var(--fg-on-brand);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.route-sheet__break:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.route-sheet__undo {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-4, 16px);
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-pill, 999px);
+  background: none;
+  color: var(--fg-1);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.route-sheet__undo:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* ---------- Every ATC notice (AtcNoticeList.tsx) ---------- */
 
 /* The single-notice sheet's frame, with one difference that is the whole

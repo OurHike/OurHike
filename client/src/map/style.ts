@@ -69,6 +69,7 @@ import { buildClosureLayers } from '../lib/closureStyle'
 import { buildDroughtLayer } from '../lib/droughtStyle'
 import { buildAtcUpdateSource, ATC_UPDATE_SOURCE_ID } from './atcUpdateLayers'
 import { buildClosureSource, CLOSURE_SOURCE_ID } from './closureLayers'
+import { buildRouteLayers, buildRouteSource, ROUTE_SOURCE_ID } from './routeLayers'
 import { buildDroughtSource, DROUGHT_SOURCE_ID } from './droughtLayers'
 import {
   buildPoiDotLayer,
@@ -681,6 +682,10 @@ export function buildMapStyle({
       // over a closure somebody walked up to and photographed would be a false
       // statement about where it came from.
       [CLOSURE_SOURCE_ID]: buildClosureSource(),
+      // The route being built (#755). Empty until the hiker drops points, and
+      // no `attribution`: what it draws is the hiker's own intent, and there
+      // is no third party to credit for a line they chose themselves.
+      [ROUTE_SOURCE_ID]: buildRouteSource(),
       // The drought bands (#720). Empty until the shell fills them, like the
       // two above, and carrying no `attribution` for a third reason again:
       // NDMC's permission asks for a specific four-partner credit sentence,
@@ -814,6 +819,13 @@ export function buildMapStyle({
           'line-width': TRAIL_WIDTH_EXPRESSION as unknown as number,
         },
       },
+      // The route being built, over the blaze it retraces - a route drawn
+      // UNDER the trail line would be invisible along its whole length -
+      // and beneath the closure bands, deliberately: a closure crossing the
+      // stretch a hiker is planning is exactly the thing they are planning
+      // around, and a picture where their own green line covered the barrier
+      // would be a picture of an open trail (#755).
+      ...buildRouteLayers(),
       // Over the blaze, and that ordering is the closure's entire job. A
       // barred red band UNDER the trail line would be a closure the trail is
       // drawn straight through - which is a picture of an open trail. See

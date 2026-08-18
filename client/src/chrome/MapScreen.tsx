@@ -30,6 +30,7 @@ import { MapView } from '../map/MapView'
 import type { DroughtBand } from '../map/droughtLayers'
 import type { ClosureBand } from '../map/closureLayers'
 import type { AtcUpdatePoint } from '../map/atcUpdateLayers'
+import type { RouteDrawing } from '../map/routeLayers'
 import type { WarningPoint } from '../map/warningLayers'
 import type { SourceReport } from '../map/liveSourceHealth'
 import type { BackgroundProblem } from '../lib/backgroundHealth'
@@ -128,6 +129,16 @@ export interface MapScreenProps {
    *  reason `selectedPoi` is: the map draws bands, and the app is what knows
    *  whose notice a band belongs to. */
   atcUpdateSheet?: ReactNode
+  /**
+   * The route being built, in map coordinates, and the builder's own card -
+   * both on the atcUpdateSheet pattern: the map draws a line, the shell is
+   * what knows it is a route (#755). While `onRouteTap` is set the canvas is
+   * in route-building mode and a tap drops a point instead of selecting a
+   * POI - see MapViewProps.onRouteTap for the exclusivity.
+   */
+  routeDrawing?: RouteDrawing | null
+  onRouteTap?: (at: { lon: number; lat: number }) => void
+  routeSheet?: ReactNode
   /**
    * How many ATC notices the app is holding, for the Legend row that opens
    * all of them (#687 - it used to be a permanent button on this screen; see
@@ -406,6 +417,9 @@ export function MapScreen({
   atcUpdatePoints,
   onSelectAtcUpdate,
   atcUpdateSheet,
+  routeDrawing = null,
+  onRouteTap,
+  routeSheet,
   atcNoticeCount = 0,
   onOpenAtcNotices,
   atcNoticeList,
@@ -611,6 +625,8 @@ export function MapScreen({
               atcUpdatePoints={atcUpdatePoints}
               onSelectAtcUpdate={onSelectAtcUpdate}
               warnings={warnings}
+              routeDrawing={routeDrawing}
+              onRouteTap={onRouteTap}
               onSelectPoi={onSelectPoi}
               showZoomButtons={showZoomButtons}
               units={units}
@@ -677,6 +693,10 @@ export function MapScreen({
                 rendered second, so it lands on top; that is the right way
                 round, since the list is what a hiker just asked for. */}
             {atcNoticeList}
+
+            {/* The route builder's card, in the same slot family: it is about
+                a route, which anchors to nothing on the canvas either. */}
+            {routeSheet}
 
             <Search
               open={searchOpen}

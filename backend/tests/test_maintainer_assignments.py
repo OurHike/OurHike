@@ -507,7 +507,12 @@ def test_a_maintainer_of_another_stretch_sees_nothing(client, db_session):
 
 
 def test_the_maintainer_who_did_the_work_keeps_it_after_handing_over(client, db_session):
-    """And the one who took over does not inherit it.
+    """The claim this makes, precisely (#658): Pat is the resolved
+    INDIVIDUAL, and stays it after handing over. It does not claim the
+    successor never sees the thanks - Sam shares the club and receives it
+    as club mail at the endpoint level, which is the club-level default,
+    not a leak. The old headline ("the one who took over does not inherit
+    it") read as the stronger claim and asserted only this one.
 
     Same rule as resolution, from the delivery end: the assignment's own
     dates are checked against when the thanks was WRITTEN.

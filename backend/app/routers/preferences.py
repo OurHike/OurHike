@@ -3,6 +3,7 @@
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
@@ -58,5 +59,19 @@ def put_my_preferences(
         row.data = data
         row.updated_at = now
 
-    row = commit_and_refresh(db, row)
+    try:
+        row = commit_and_refresh(db, row)
+    except IntegrityError:
+        # The upsert is check-then-insert, so two concurrent first syncs
+        # race and the loser used to 500 (#658, the #265 shape). The row the
+        # winner created is the one to replace - a sync is a full overwrite
+        # of the blob by design, so applying this request's data on top of
+        # the winner's row is exactly what a retry would have done.
+        db.rollback()
+        row = db.get(UserPreferences, current_user.id)
+        if row is None:
+            raise
+        row.data = data
+        row.updated_at = now
+        row = commit_and_refresh(db, row)
     return PreferencesOut(**row.data, updated_at=row.updated_at)

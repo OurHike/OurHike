@@ -244,6 +244,21 @@ def check_sections(
         published = section["published_gain_ft"]
         error = None if not published else (measured - published) / published
         inside = [step for step in suspect_steps if section["start_mi"] <= step["from_mi"] and step["to_mi"] <= section["end_mi"]]
+        # A section may carry its own tolerance, wider than the default, for
+        # exactly one reason: cumulative gain is methodology-dependent, and
+        # on rolling low-gain terrain the spread BETWEEN honest published
+        # sources exceeds 10% of the small denominator (#133's Roan finding:
+        # no threshold in the whole sweep reconciles a densely-sampled DEM
+        # sum with the club's smoothed figure, while the same thresholds sit
+        # within ±4% on both pure ascents). An override without a stated
+        # reason is refused - a silently widened gate is a gate that was
+        # quietly turned off.
+        tolerance = section.get("tolerance", SECTION_TOLERANCE)
+        if tolerance != SECTION_TOLERANCE and not section.get("tolerance_reason"):
+            raise ValueError(
+                f"section {section['name']!r} overrides the tolerance to {tolerance} "
+                "without a tolerance_reason. Say why, or use the default."
+            )
         rows.append(
             {
                 "name": section["name"],
@@ -253,7 +268,8 @@ def check_sections(
                 "published_ft": published,
                 "source": section.get("source", ""),
                 "error": error,
-                "within_tolerance": error is not None and abs(error) <= SECTION_TOLERANCE,
+                "tolerance": tolerance,
+                "within_tolerance": error is not None and abs(error) <= tolerance,
                 "contaminated_ft": ascending_total(inside),
                 "contaminated": bool(inside),
             }
@@ -375,9 +391,10 @@ def main(argv: list[str] | None = None) -> int:
             unvalidated.append(row["name"])
             continue
         mark = "ok " if row["within_tolerance"] else "OFF"
+        own_tolerance = f" (±{row['tolerance']:.0%})" if row["tolerance"] != SECTION_TOLERANCE else ""
         print(
             f"  {mark} {row['name']:<28} {row['measured_ft']:>9,.0f} vs {row['published_ft']:>9,.0f} ft  {row['error']:+6.1%}"
-            f"   {row['source']}"
+            f"{own_tolerance}   {row['source']}"
         )
         if not row["within_tolerance"]:
             failed.append(row["name"])
@@ -392,7 +409,7 @@ def main(argv: list[str] | None = None) -> int:
         print("neither a pass nor a failure would mean anything. Fix #559 before citing these.")
 
     if failed:
-        print(f"\n{len(failed)} of {len(rows)} sections outside {SECTION_TOLERANCE:.0%}: {', '.join(failed)}")
+        print(f"\n{len(failed)} of {len(rows)} sections outside their tolerance: {', '.join(failed)}")
         return 1
 
     checked = len(rows) - len(unvalidated)
@@ -401,7 +418,7 @@ def main(argv: list[str] | None = None) -> int:
         print("\nNo section has a published figure to compare against yet.")
         return 1
 
-    print(f"\nAll {checked} sections with published figures within {SECTION_TOLERANCE:.0%} at one threshold.")
+    print(f"\nAll {checked} sections with published figures inside their tolerance at one threshold.")
     return 0
 
 

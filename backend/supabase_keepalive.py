@@ -62,6 +62,12 @@ from check_supabase_config import Report
 # the "few requests" Supabase describes than a single read is, and the RLS
 # half is worth exactly as much as the number of tables it covers.
 KEEPALIVE_TABLES: tuple[str, ...] = (
+    # alembic_version is not in Base.metadata - alembic owns it - which is
+    # exactly how it sat outside both live RLS watchers (#658): this sweep
+    # walked the models' tables, and check_schema_drift.py declines RLS by
+    # deferring to this sweep. e5b2f7c1a903 locked the table; this is what
+    # notices if that lock ever comes undone in a live project.
+    "alembic_version",
     "clubs",
     "closures",
     "hikes",

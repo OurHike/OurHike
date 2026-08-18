@@ -828,3 +828,63 @@ def test_every_conditions_manifest_an_export_writes_is_one_publish_collects():
     assert written <= set(publish.CONDITIONS_MANIFESTS), (
         f"these manifests are written but never published: {sorted(written - set(publish.CONDITIONS_MANIFESTS))}"
     )
+
+
+def test_collect_gathers_the_stretch_units_from_their_manifests(tmp_path, monkeypatch):
+    """#556: each sheet's cut leaves <family>_stretches_manifest.json in
+    PROCESSED_DIR and every artifact it names - stretches, context, the
+    coverage index - publishes like any other."""
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    stretch = tmp_path / "at_basemap_stretch_00.pmtiles"
+    stretch.write_bytes(b"stretch-bytes")
+    index = tmp_path / "at_basemap_stretches.json"
+    index.write_text("{}")
+    (tmp_path / "at_basemap_stretches_manifest.json").write_text(
+        json.dumps(
+            {
+                "artifacts": {
+                    "at_basemap_stretch_00.pmtiles": {"path": str(stretch), "sha256": "a" * 64, "size_bytes": 13},
+                    "at_basemap_stretches.json": {"path": str(index), "sha256": "b" * 64, "size_bytes": 2},
+                },
+                "stats": {"seam_duplication_pct": 1.0},
+            }
+        )
+    )
+
+    artifacts = publish.collect_artifacts()
+
+    assert artifacts["at_basemap_stretch_00.pmtiles"]["sha256"] == "a" * 64
+    assert artifacts["at_basemap_stretches.json"]["sha256"] == "b" * 64
+
+
+def test_collect_publishes_every_artifacts_measured_size(tmp_path, monkeypatch):
+    """#505's third ask, needed for real at stretch scale (#556): size_bytes
+    is measured from the built file, never hand-kept."""
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    path = tmp_path / "background.pmtiles"
+    path.write_bytes(b"0123456789")
+
+    artifacts = publish.collect_artifacts()
+
+    assert artifacts["background.pmtiles"]["size_bytes"] == 10
+
+
+def test_the_manifest_version_carries_size_bytes(tmp_path, s3_client):
+    """The size rides beside the hash in latest.json, so drift between the
+    advertised figure and the served bytes is visible in a manifest diff -
+    and per-stretch download prompts have an honest number to print."""
+    artifact = tmp_path / "background.pmtiles"
+    artifact.write_bytes(b"0123456789")
+
+    result = publish.publish(
+        artifacts={"background.pmtiles": {"path": str(artifact), "sha256": publish.sha256_file(artifact), "size_bytes": 10}},
+        sidecars={},
+        photos={},
+        s3_client=s3_client,
+        bucket=BUCKET,
+    )
+
+    assert result["version_written"] is True
+    body = s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read()
+    manifest = json.loads(body)
+    assert manifest["artifacts"]["background.pmtiles"]["size_bytes"] == 10

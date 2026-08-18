@@ -18,6 +18,8 @@ from datetime import date
 
 from pydantic import BaseModel
 
+from app.schemas.common import FiniteFloat
+
 
 class MaintainerAssignmentOut(BaseModel):
     id: str
@@ -25,7 +27,7 @@ class MaintainerAssignmentOut(BaseModel):
     club_name: str
     # None unless this maintainer opted in to being publicly creditable.
     display_name: str | None
-    start_mile: float
-    end_mile: float
+    start_mile: FiniteFloat
+    end_mile: FiniteFloat
     effective_from: date
     effective_to: date | None

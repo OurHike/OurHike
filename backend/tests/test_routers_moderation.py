@@ -468,3 +468,37 @@ def test_who_confirmed_it_stays_behind(client, db_session):
 
     assert "verified_by" not in body
     assert maintainer_id not in str(body)
+
+
+# --- Missing-closure error paths (#322) ---------------------------------------
+#
+# The report equivalents were tested; the closure ones were not, and they are
+# separate handlers that could regress separately.
+
+
+def test_verify_closure_that_does_not_exist_returns_404(client, db_session):
+    maintainer_id = _make_maintainer(db_session)
+
+    response = client.post(f"/closures/{uuid.uuid4()}/verify", headers=auth_headers(maintainer_id))
+
+    assert response.status_code == 404
+
+
+def test_dismiss_closure_that_does_not_exist_returns_404(client, db_session):
+    maintainer_id = _make_maintainer(db_session)
+
+    response = client.post(f"/closures/{uuid.uuid4()}/dismiss", headers=auth_headers(maintainer_id))
+
+    assert response.status_code == 404
+
+
+def test_patch_closure_that_does_not_exist_returns_404(client, db_session):
+    maintainer_id = _make_maintainer(db_session)
+
+    response = client.patch(
+        f"/closures/{uuid.uuid4()}",
+        json={"note": "does not matter - the id is the point"},
+        headers=auth_headers(maintainer_id),
+    )
+
+    assert response.status_code == 404

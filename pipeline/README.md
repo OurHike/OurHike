@@ -479,6 +479,32 @@ OURHIKE_DATA_ENV=ua R2_WRITE_ENABLED=true .venv/Scripts/python publish.py
 
 To serve `data/processed/` locally instead - for testing the client's offline download without publishing anything - use `serve_processed.py`, which answers byte-range requests and sets the CORS headers a cross-origin bucket needs. See [../client/README.md](../client/README.md).
 
+## The 50-mile stretch units (#556)
+
+The unit of offline coverage is the trail-derived stretch — the maintainer's #552 call
+(2026-08-18): ~50 miles, so a hiker can take the piece of trail they are walking instead
+of a gigabyte. `cut_stretches.py` cuts them from the corridor archives, by tile rather
+than by polygon: each tile's corners and center are projected onto the #652-calibrated
+mile axis and the tile is routed to every stretch whose interval it touches — a
+partition of the corridor, not 44 overlapping corridors (the module docstring says why
+buffered substrings lose). Everything through z9 becomes ONE shared `*_context.pmtiles`
+per sheet instead of riding in every unit (#193's duplication, answered), and
+`<family>_stretches.json` publishes the coverage index — stretch ids, keys, and core
+mile intervals on ATC's own mile scale. `verify_release.py` check 20 fails a release
+whose stretches leave a mile of trail uncovered or name an archive that was never
+published, and `latest.json` now carries a measured `size_bytes` per artifact (#505's
+third ask), so per-unit download prompts never advertise a hand-kept number.
+
+Both build workflows cut after their package/archive step:
+
+```
+python cut_stretches.py data/processed/at_basemap_package.pmtiles --family at_basemap
+python cut_stretches.py data/processed/dem.pmtiles --family dem
+```
+
+The client half — reading several units, the seam banner, the picker — is deferred until
+the new wireframes land (#557/#558).
+
 ## The dbt transform layer (#100, Phase A)
 
 [DBT.md](DBT.md) is the design; Phase A of it is built. After a fetch:

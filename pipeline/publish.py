@@ -134,6 +134,12 @@ OFFLINE_SHEET_ARCHIVES = {
     "dem": "dem.pmtiles",
 }
 
+# The sheets that get 50-mile stretch cuts (#556, cut_stretches.py). Each
+# family's cut leaves `<family>_stretches_manifest.json` in PROCESSED_DIR
+# and collect_artifacts() below reads it; a family added to the cutting
+# workflows and not here would build stretches nothing ever publishes.
+STRETCH_FAMILIES = ("at_basemap", "dem")
+
 
 # Build metadata that travels with a release but is not part of it.
 #
@@ -412,10 +418,32 @@ def collect_artifacts() -> dict[str, dict]:
             for kind, entry in manifest["artifacts"].items():
                 artifacts[f"conditions/{kind}.json"] = {"path": entry["path"], "sha256": entry["sha256"]}
 
+    # The stretch units (#556): each sheet's cut writes one manifest naming
+    # its context, its per-stretch archives, and the coverage index
+    # (cut_stretches.py). Collected per family because the two sheets are
+    # cut by different workflows on different runners - whichever ran
+    # publishes what it has, the same partial-checkout posture as everything
+    # above.
+    for family in STRETCH_FAMILIES:
+        stretches_manifest = PROCESSED_DIR / f"{family}_stretches_manifest.json"
+        if stretches_manifest.exists():
+            manifest = json.loads(stretches_manifest.read_text())
+            for name, entry in manifest["artifacts"].items():
+                artifacts[name] = {"path": entry["path"], "sha256": entry["sha256"]}
+
     for name in (*BACKGROUND_ARCHIVES.values(), *OFFLINE_SHEET_ARCHIVES.values()):
         path = PROCESSED_DIR / name
         if path.exists():
             artifacts[name] = {"path": str(path), "sha256": sha256_file(path)}
+
+    # Every entry carries the byte size of the artifact as built - the
+    # measurement #505 wanted published rather than hand-kept, and the thing
+    # per-stretch download prompts cannot be honest without (#556: advertised
+    # sizes are held to ±0.6% of measured artifacts, per unit). For the
+    # gzip-uploaded text artifacts this is the DECODED size - the bytes a
+    # client's fetch hands to code, the same bytes the sha256 describes.
+    for entry in artifacts.values():
+        entry["size_bytes"] = Path(entry["path"]).stat().st_size
 
     return artifacts
 
@@ -620,7 +648,13 @@ def publish(
         "version": new_version,
         "artifacts": {
             **remote_artifacts,
-            **{name: {"sha256": entry["sha256"]} for name, entry in artifacts.items()},
+            # size_bytes rides beside the hash when this run measured one
+            # (#505/#556); a remote entry from before sizes were published
+            # survives without one rather than gaining a guess.
+            **{
+                name: {"sha256": entry["sha256"], **({"size_bytes": entry["size_bytes"]} if "size_bytes" in entry else {})}
+                for name, entry in artifacts.items()
+            },
         },
     }
     # Recorded so a reader can tell whether the live state describes this

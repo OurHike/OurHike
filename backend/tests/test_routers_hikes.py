@@ -4,6 +4,8 @@ Mirrors tests/test_routers_profiles.py's token-minting pattern - real JWTs
 signed with the same test-only SUPABASE_JWT_SECRET tests/conftest.py sets.
 """
 
+import uuid
+
 from tests.tokens import auth_headers
 
 
@@ -129,3 +131,79 @@ def test_patch_omitting_a_field_leaves_it_alone(client):
     assert body["overall_end_reference"] == 1000.0
     assert body["planned_start_date"] == "2027-03-01"
     assert body["trail_id"] == "AT"
+
+
+# --- The single-hike endpoints (#322) ----------------------------------------
+#
+# GET/PATCH/DELETE /hikes/{id} had no tests at all, including the invariant
+# _get_owned_hike_or_404's docstring states: someone else's hike 404s exactly
+# like a missing one - never 403 - so this endpoint cannot be used to learn
+# whether another user's hike id is valid.
+
+OWNER = "dddddddd-dddd-dddd-dddd-dddddddddddd"
+STRANGER = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
+
+
+def _created_hike_id(client, user_id=OWNER):
+    response = client.post(
+        "/hikes",
+        json={"overall_start_reference": 0.0, "overall_end_reference": 2189.0},
+        headers=auth_headers(user_id),
+    )
+    assert response.status_code == 201
+    return response.json()["id"]
+
+
+def test_get_a_single_hike_returns_the_callers_own(client):
+    hike_id = _created_hike_id(client)
+
+    response = client.get(f"/hikes/{hike_id}", headers=auth_headers(OWNER))
+
+    assert response.status_code == 200
+    assert response.json()["id"] == hike_id
+
+
+def test_someone_elses_hike_404s_exactly_like_a_missing_one(client):
+    """The invariant, asserted through this router rather than only through
+    /wrong-way-events' separate copy of the same check: a 403 would confirm
+    the id exists, and confirming existence is the leak."""
+    hike_id = _created_hike_id(client)
+
+    as_stranger = client.get(f"/hikes/{hike_id}", headers=auth_headers(STRANGER))
+    missing = client.get(f"/hikes/{uuid.uuid4()}", headers=auth_headers(STRANGER))
+
+    assert as_stranger.status_code == 404, "someone else's hike must 404, never 403"
+    assert as_stranger.status_code == missing.status_code
+    assert as_stranger.json() == missing.json(), "the two answers must be indistinguishable"
+
+
+def test_patch_someone_elses_hike_404s_and_changes_nothing(client):
+    hike_id = _created_hike_id(client)
+
+    response = client.patch(
+        f"/hikes/{hike_id}",
+        json={"overall_start_reference": 500.0},
+        headers=auth_headers(STRANGER),
+    )
+
+    assert response.status_code == 404
+    untouched = client.get(f"/hikes/{hike_id}", headers=auth_headers(OWNER))
+    assert untouched.json()["overall_start_reference"] == 0.0
+
+
+def test_delete_removes_the_callers_hike(client):
+    hike_id = _created_hike_id(client)
+
+    response = client.delete(f"/hikes/{hike_id}", headers=auth_headers(OWNER))
+
+    assert response.status_code == 204
+    assert client.get(f"/hikes/{hike_id}", headers=auth_headers(OWNER)).status_code == 404
+
+
+def test_delete_someone_elses_hike_404s_and_the_hike_survives(client):
+    hike_id = _created_hike_id(client)
+
+    response = client.delete(f"/hikes/{hike_id}", headers=auth_headers(STRANGER))
+
+    assert response.status_code == 404
+    assert client.get(f"/hikes/{hike_id}", headers=auth_headers(OWNER)).status_code == 200

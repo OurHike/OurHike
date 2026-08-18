@@ -121,10 +121,24 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           df -h /
 
+      # The DEM's 50-mile stretch units (#556) - and, via the shared context
+      # archive, the context-zoom mechanism #552 notes the DEM never had.
+      # fetch_all.py above supplies the centerline and half-mile markers the
+      # axis calibration reads (#652).
+      - name: Cut the stretch units from the archive
+        run: |
+          python cut_stretches.py data/processed/dem.pmtiles \
+            --family dem
+
       - uses: actions/upload-artifact@v4
         with:
           name: dem-archive
-          path: pipeline/data/processed/dem.pmtiles
+          path: |
+            pipeline/data/processed/dem.pmtiles
+            pipeline/data/processed/dem_stretch_*.pmtiles
+            pipeline/data/processed/dem_context.pmtiles
+            pipeline/data/processed/dem_stretches.json
+            pipeline/data/processed/dem_stretches_manifest.json
           retention-days: 7
           if-no-files-found: error
 

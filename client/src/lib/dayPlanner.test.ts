@@ -12,9 +12,11 @@ import {
   candidateStops,
   dayCost,
   DEFAULT_CAP_MI,
+  nearestStopBeyond,
   OVER_TARGET_WEIGHT,
   planDays,
   planDaysExact,
+  planDaysVia,
   type CandidateStop,
 } from './dayPlanner'
 import type { StoredPoi } from './trailData'
@@ -164,5 +166,92 @@ describe('candidateStops', () => {
     // the caller says "needs a newer download" rather than measuring one
     // locally (HIKE_PLANNING.md Findings 1-2).
     expect(candidateStops([poi('a', 'shelter', undefined)], 0, 20)).toBeNull()
+  })
+})
+
+describe('nearestStopBeyond and planDaysVia', () => {
+  const poi = (
+    id: string,
+    type: string,
+    mile: number | undefined,
+    name = id,
+  ): StoredPoi => ({
+    id,
+    type,
+    name,
+    lat: 0,
+    lon: 0,
+    confidence: 'high',
+    ...(mile === undefined ? {} : { mile }),
+  })
+
+  const POIS = [
+    poi('a', 'shelter', 10, 'Near Shelter'),
+    poi('b', 'campsite', 15, 'Mid Camp'),
+    poi('c', 'shelter', 20, 'Far Shelter'),
+    poi('w', 'water', 13),
+    poi('x', 'shelter', undefined),
+  ]
+
+  it('snaps to the nearest place to sleep, strictly past the start', () => {
+    // Asked for mile 14 from mile 3: the campsite at 15 is nearer than the
+    // shelter at 10. Water never qualifies - it is not a place to sleep.
+    expect(nearestStopBeyond(POIS, 3, 14)?.name).toBe('Mid Camp')
+    // Strictly past: from mile 10 the shelter AT 10 is not an answer.
+    expect(nearestStopBeyond(POIS, 10, 11)?.name).toBe('Mid Camp')
+    // Southbound: only stops below the start count, nearest to the ask
+    // (from 18 toward 14: the camp at 15 beats the shelter at 10).
+    expect(nearestStopBeyond(POIS, 18, 14)?.name).toBe('Mid Camp')
+    expect(nearestStopBeyond(POIS, 12, 5)?.name).toBe('Near Shelter')
+  })
+
+  it('answers with the nearest that way even when it is far - the caller shows the drift', () => {
+    expect(nearestStopBeyond(POIS, 3, 60)?.name).toBe('Far Shelter')
+  })
+
+  it('is null when nothing lies that way, or nothing carries a mile', () => {
+    expect(nearestStopBeyond(POIS, 20, 30)).toBeNull()
+    expect(nearestStopBeyond(POIS, 12, 12)).toBeNull()
+    expect(nearestStopBeyond([poi('x', 'shelter', undefined)], 0, 10)).toBeNull()
+  })
+
+  it('forces every hiker-chosen stop to be a day boundary, names carried', () => {
+    // 0 → 15 (Mid Camp, the hiker's own destination) → 20. At an 18-mile
+    // target one 20-mile day would be cheaper than 15 + 5 - a plain
+    // planDays over [0, 20] proves it - so the boundary at 15 surviving IS
+    // the forcing.
+    const straight = planDays(candidateStops(POIS, 0, 20) as CandidateStop[], 18)
+    expect(miles(straight)).toEqual([0, 20])
+
+    const via = planDaysVia(
+      POIS,
+      [{ mile: 0 }, { mile: 15, name: 'Mid Camp', poiId: 'b' }, { mile: 20 }],
+      18,
+    )
+    expect(via).not.toBeNull()
+    expect(miles(via as CandidateStop[])).toEqual([0, 15, 20])
+    // The hiker's own name rides onto the boundary - candidateStops alone
+    // would have synthesized a bare terminus there.
+    expect((via as CandidateStop[])[1].name).toBe('Mid Camp')
+    expect((via as CandidateStop[])[1].poiId).toBe('b')
+  })
+
+  it('still plans between the forced stops', () => {
+    // 0 → 20 via nothing forced but a 10-mile target: the leg planner picks
+    // the shelter at 10 inside the one leg, exactly as planDays would.
+    const via = planDaysVia(POIS, [{ mile: 0, name: 'Start' }, { mile: 20 }], 10)
+    expect(miles(via as CandidateStop[])).toEqual([0, 10, 20])
+    expect((via as CandidateStop[])[0].name).toBe('Start')
+  })
+
+  it('propagates the pre-#753 refusal', () => {
+    expect(
+      planDaysVia([poi('x', 'shelter', undefined)], [{ mile: 0 }, { mile: 20 }], 10),
+    ).toBeNull()
+  })
+
+  it('hands back an empty plan for a route of fewer than two stops', () => {
+    expect(planDaysVia(POIS, [{ mile: 5 }], 10)).toEqual([])
+    expect(planDaysVia(POIS, [], 10)).toEqual([])
   })
 })

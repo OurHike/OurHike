@@ -51,6 +51,16 @@ export const OVER_TARGET_WEIGHT = 2.25
  */
 export const CAMPSITE_MARGIN = 0.02
 
+/**
+ * The walking-hours target a fresh plan starts from - the wireframes'
+ * proposal (2a frame 2), not a finding: a default the sheet shows first,
+ * with the hiker one drag from any other answer. Shared with the route
+ * entrance, whose "How long" question converts days to trail through this
+ * same number and says so out loud - one constant, so the two surfaces
+ * cannot quietly assume different hikers.
+ */
+export const DEFAULT_WALKING_HOURS = 7
+
 /** A place a generated day may end, in walk order along the route. */
 export interface CandidateStop {
   /** Pipeline-axis mile (#753) - the planner refuses to run on any other
@@ -267,4 +277,96 @@ export function candidateStops(
     ...between,
     { mile: toMile, kind: 'terminus' },
   ]
+}
+
+/**
+ * The nearest place to sleep STRICTLY past `fromMile`, walking toward
+ * `towardMile` - what a distance-derived stop snaps to: the entrance's
+ * "Ends near", the picker's "a distance from the shelter" row. Strictly
+ * past, so a snap can never hand back the start itself; nearest to the
+ * asked-for mile however far, because the caller shows the real mile and
+ * the drift is visible before anything is kept. Null when no shelter or
+ * campsite lies that way at all (or none carries a mile) - the caller
+ * falls back to the bare mile and says so, rather than this function
+ * inventing a stop.
+ */
+export function nearestStopBeyond(
+  pois: readonly StoredPoi[],
+  fromMile: number,
+  towardMile: number,
+): CandidateStop | null {
+  if (towardMile === fromMile) return null
+  const forward = towardMile > fromMile
+
+  let best: CandidateStop | null = null
+  let bestDistance = Infinity
+  for (const poi of pois) {
+    if (poi.mile === undefined) continue
+    if (poi.type !== 'shelter' && poi.type !== 'campsite') continue
+    if (forward ? poi.mile <= fromMile : poi.mile >= fromMile) continue
+    const distance = Math.abs(poi.mile - towardMile)
+    if (distance < bestDistance) {
+      bestDistance = distance
+      best = { mile: poi.mile, name: poi.name, poiId: poi.id, kind: poi.type }
+    }
+  }
+  return best
+}
+
+/** A hiker-chosen point on the route - an end or an added destination - as
+ *  the planner receives it. */
+export interface ViaStop {
+  mile: number
+  name?: string
+  poiId?: string
+}
+
+/**
+ * planDays THROUGH hiker-chosen stops: each consecutive pair is planned as
+ * its own stretch and the results spliced, so every named stop is a day
+ * boundary by construction - "add it and the days plan through it". On a
+ * linear trail that forcing is the entire meaning of adding a destination:
+ * any point between the ends is walked through regardless, so the added
+ * stop is a place the hiker intends to STOP.
+ *
+ * Each leg is priced against the target independently, which is the honest
+ * reading of a forced boundary: the planner may not trade miles across a
+ * stop the hiker fixed. The hiker's own names ride onto the boundaries -
+ * candidateStops synthesizes bare termini from miles alone, and a plan
+ * whose rows say "mi 470.8" where the hiker typed "Damascus" would have
+ * dropped the one fact they gave it.
+ *
+ * Null when candidateStops refuses (a pre-#753 download), for its reasons.
+ */
+export function planDaysVia(
+  pois: readonly StoredPoi[],
+  route: readonly ViaStop[],
+  target: number,
+  options: PlannerOptions = {},
+): CandidateStop[] | null {
+  if (route.length < 2) return []
+
+  const out: CandidateStop[] = []
+  for (let i = 1; i < route.length; i++) {
+    const from = route[i - 1]
+    const to = route[i]
+    const stops = candidateStops(pois, from.mile, to.mile)
+    if (stops === null) return null
+
+    const named = stops.map((stop, j) => {
+      const source = j === 0 ? from : j === stops.length - 1 ? to : null
+      if (source === null) return stop
+      return {
+        ...stop,
+        ...(source.name === undefined ? {} : { name: source.name }),
+        ...(source.poiId === undefined ? {} : { poiId: source.poiId }),
+      }
+    })
+
+    const leg = planDays(named, target, options)
+    // The shared boundary appears as the previous leg's last stop and this
+    // leg's first - keep it once.
+    out.push(...(i === 1 ? leg : leg.slice(1)))
+  }
+  return out
 }

@@ -38,8 +38,7 @@ function flatProfile(): ElevationProfile {
 }
 
 const PROPS = {
-  fromMile: 0,
-  toMile: 30,
+  route: [{ mile: 0 }, { mile: 30 }],
   pois: POIS,
   units: 'imperial' as const,
   onCancel: vi.fn(),
@@ -141,6 +140,35 @@ describe('laying out', () => {
     const after = screen.getByRole('button', { name: /Lay out \d+ days/ }).textContent
 
     expect(after).not.toBe(before)
+  })
+
+  it('plans through an added destination, and the day arriving there is pinned', async () => {
+    // The hiker routed Damascus → the campsite at 15 → 30: the campsite is
+    // a boundary BY CONSTRUCTION however the targets fall, its name rides
+    // into the plan, and the day arriving there is born pinned - a
+    // destination the hiker added is a decision the cascade must go around.
+    const user = userEvent.setup()
+    render(
+      <PlanTargetSheet
+        {...PROPS}
+        route={[
+          { mile: 0 },
+          { mile: 15, name: 'Grassy Camp', poiId: 'c1' },
+          { mile: 30 },
+        ]}
+        elevation={null}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /Lay out \d+ days/ }))
+    const plan = PROPS.onLayOut.mock.calls[0][0] as HikePlan
+
+    const viaIndex = plan.stops.findIndex((stop) => stop.mile === 15)
+    expect(viaIndex).toBeGreaterThan(0)
+    expect(plan.stops[viaIndex].name).toBe('Grassy Camp')
+    expect(plan.days[viaIndex - 1].pinned).toBe(true)
+    // Only that day: the generator's own boundaries stay movable.
+    expect(plan.days.filter((day) => day.pinned)).toHaveLength(1)
   })
 })
 

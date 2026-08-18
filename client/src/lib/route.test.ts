@@ -10,9 +10,11 @@ import { describe, expect, it } from 'vitest'
 import type { ElevationProfile } from './elevationProfile'
 import { naismithMinutes } from './naismith'
 import {
+  anchoredClientMile,
   anchoredMile,
   insertRoutePoint,
   legFigures,
+  mileAtWalkingMinutes,
   routeDirection,
   routeLegs,
   totalFigures,
@@ -172,5 +174,73 @@ describe('anchoredMile', () => {
     // A data release that predates POI miles (#753) offers no honest way
     // onto the pipeline axis. The caller says "needs a newer download".
     expect(anchoredMile(100.0, [])).toBeNull()
+  })
+})
+
+describe('anchoredClientMile', () => {
+  it('is anchoredMile run the other way - the two round-trip', () => {
+    const anchors = [
+      { clientMile: 99.0, mile: 99.4 },
+      { clientMile: 250.0, mile: 251.2 },
+    ]
+    expect(anchoredClientMile(100.4, anchors)).toBeCloseTo(100.0)
+    expect(anchoredClientMile(250.2, anchors)).toBeCloseTo(249.0)
+    // Round trip: a pipeline mile carried to the client scale and back is
+    // itself, as long as both trips picked the same anchor.
+    expect(
+      anchoredMile(anchoredClientMile(100.4, anchors) as number, anchors),
+    ).toBeCloseTo(100.4)
+  })
+
+  it('refuses without anchors, like its inverse', () => {
+    expect(anchoredClientMile(100.4, [])).toBeNull()
+  })
+})
+
+describe('mileAtWalkingMinutes', () => {
+  /** Flat ground from 0 to 40 miles, in quarter-mile steps. */
+  const flat = (): ElevationProfile => {
+    const miles: number[] = []
+    for (let mile = 0; mile <= 40; mile += 0.25) miles.push(mile)
+    return {
+      distanceMi: Float32Array.from(miles),
+      elevationFt: Float32Array.from(miles.map(() => 2000)),
+    }
+  }
+
+  it('reaches the flat-pace distance on flat ground, both directions', () => {
+    const budget = naismithMinutes({ distanceMi: 10, ascentFt: 0 })
+    expect(mileAtWalkingMinutes(flat(), 5, budget, 'NOBO')).toBeCloseTo(15, 1)
+    expect(mileAtWalkingMinutes(flat(), 35, budget, 'SOBO')).toBeCloseTo(25, 1)
+  })
+
+  it('reaches less where the ground climbs - ascent buys no distance', () => {
+    // 200 ft up every quarter mile from mile 10 on: relentless, and enough
+    // for Naismith's ascent term to visibly shorten the reach.
+    const miles: number[] = []
+    const feet: number[] = []
+    for (let mile = 0; mile <= 40; mile += 0.25) {
+      miles.push(mile)
+      feet.push(mile <= 10 ? 2000 : 2000 + (mile - 10) * 800)
+    }
+    const climbing = {
+      distanceMi: Float32Array.from(miles),
+      elevationFt: Float32Array.from(feet),
+    }
+    const budget = naismithMinutes({ distanceMi: 10, ascentFt: 0 })
+    const reached = mileAtWalkingMinutes(climbing, 5, budget, 'NOBO')
+    expect(reached).toBeLessThan(14)
+    // And the answer prices back to the budget through the same arithmetic
+    // the route card uses. The tolerance is one profile sample's worth of
+    // this deliberately relentless climb (200 ft ≈ 6 minutes): the window's
+    // ascent moves in whole-sample steps, so the crossing can sit a step
+    // past the budget - the profile's own resolution, not the search's.
+    expect(Math.abs(legFigures(climbing, 5, reached).minutes - budget)).toBeLessThan(8)
+  })
+
+  it('clamps to the profile end when the budget out-walks the data', () => {
+    const budget = naismithMinutes({ distanceMi: 100, ascentFt: 0 })
+    expect(mileAtWalkingMinutes(flat(), 5, budget, 'NOBO')).toBeCloseTo(40, 5)
+    expect(mileAtWalkingMinutes(flat(), 5, budget, 'SOBO')).toBeCloseTo(0, 5)
   })
 })

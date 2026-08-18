@@ -21,6 +21,7 @@ const PROPS = {
   pois: [] as readonly StoredPoi[],
   gpsMile: null,
   units: 'imperial' as const,
+  draftLive: false,
   onStartOnMap: vi.fn(),
   onChangeTarget: vi.fn(),
   onInsertZeroAfter: vi.fn(),
@@ -77,6 +78,15 @@ describe('with no plan', () => {
 
     await user.click(screen.getByRole('button', { name: 'Start on the map' }))
     expect(PROPS.onStartOnMap).toHaveBeenCalled()
+  })
+
+  it('reads as a way back when a route draft is already in progress', () => {
+    // The entrance is for starting, never a toll gate: openRouteBuilder
+    // reopens a live draft where it stood, and the button says so.
+    render(<PlanScreen {...PROPS} plan={null} draftLive={true} />)
+
+    expect(screen.getByRole('button', { name: 'Back to your route' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Start on the map' })).toBeNull()
   })
 })
 

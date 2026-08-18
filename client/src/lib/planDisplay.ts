@@ -1,16 +1,18 @@
 // Display derivations for the plan timeline (#756), kept out of the screen
 // component so they can be asserted without a render.
 
-import type { PlanStop } from './plan'
-
 /**
  * A stop's one-line name. A named place is its name; a dropped point is its
  * mile marker - "mi 470.8", the reference every guidebook and shuttle
  * driver shares, which is why a mile MARKER never converts to km however
  * the hiker reads distances (lib/units.ts's own rule, and positionLine.ts's
  * existing rendering of the same idea).
+ *
+ * Typed on the two fields it reads rather than on PlanStop, because the
+ * route builder's draft stops are the same naming problem before a plan
+ * exists - one rule, so a stop cannot be called two things on two screens.
  */
-export function stopLabel(stop: PlanStop): string {
+export function stopLabel(stop: { mile: number; name?: string }): string {
   if (stop.name !== undefined && stop.name !== '') return stop.name
   return `mi ${stop.mile.toLocaleString('en-US', {
     minimumFractionDigits: 1,

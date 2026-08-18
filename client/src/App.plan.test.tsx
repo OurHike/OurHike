@@ -1,16 +1,18 @@
-// The planning flow end to end (#755 → #756 → #757): empty Plan tab → route
-// builder on the map → two dropped points → "Break into days" → a target →
-// a laid-out plan on the timeline, persisted.
+// The planning flow end to end (#755 → #756 → #757), through the "route by
+// destination" builder: empty Plan tab → the entrance (where from, how far)
+// → the editable stop surface → a destination added between the ends →
+// "Break into days" → a target → a laid-out plan on the timeline, persisted
+// with the added stop pinned.
 //
 // Its own file because it needs POIs that carry PIPELINE miles offset from
 // the synthetic centerline's own scale - the two-mile-scales problem
 // (HIKE_PLANNING.md Finding 1) reproduced deliberately, so the flow proves
-// the anchor correction end to end: the tap snaps on the client index, the
-// printed leg is the difference of PIPELINE miles.
+// the anchor correction end to end: the map door's tap snaps on the client
+// index, the start field prints the PIPELINE mile.
 //
 // No elevation profile is seeded, on purpose: it exercises the degraded
 // path a pre-profile download is promised - distances still honest, climb
-// and time declared missing, hours target not offered.
+// and time declared missing, "How long" and the hours target not offered.
 
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
@@ -61,7 +63,7 @@ const POIS = [
   shelter(22, 'Beyond Shelter'),
 ]
 
-async function openBuilderAndDropTwoPoints(user: ReturnType<typeof userEvent.setup>) {
+async function openEntrance(user: ReturnType<typeof userEvent.setup>) {
   render(<App />)
 
   await user.click(await screen.findByRole('tab', { name: 'Plan' }))
@@ -70,78 +72,95 @@ async function openBuilderAndDropTwoPoints(user: ReturnType<typeof userEvent.set
   ).toBeInTheDocument()
 
   await user.click(screen.getByRole('button', { name: 'Start on the map' }))
-  expect(await screen.findByRole('dialog', { name: 'Route builder' })).toBeInTheDocument()
-
-  // The builder owns the tap now. The map is rebuilt by the tab switch, so
-  // wait for the new one to be listening before firing anything at it.
-  await waitFor(() => {
-    expect(MockMap.live).toHaveLength(1)
-    expect(MockMap.live[0].listenerCount('click')).toBeGreaterThan(0)
-  })
-  const map = MockMap.live[0]
-
-  await act(async () => {
-    map.emit('click', { lngLat: { lng: -77, lat: latOfMile(5) } })
-  })
-  expect(await screen.findByText('1 point')).toBeInTheDocument()
-
-  await act(async () => {
-    map.emit('click', { lngLat: { lng: -77, lat: latOfMile(20) } })
-  })
-  expect(await screen.findByText('2 points · 1 leg')).toBeInTheDocument()
-
-  return map
+  expect(await screen.findByRole('dialog', { name: 'Plan a route' })).toBeInTheDocument()
+  expect(screen.getByText('Where from?')).toBeInTheDocument()
 }
 
 describe('the planning flow', () => {
-  it('walks from an empty Plan tab to a laid-out, persisted plan', async () => {
+  it('walks entrance → editor → added destination → a laid-out, persisted plan', async () => {
     const user = userEvent.setup()
     app.onboard()
     app.putTrailData({ pois: POIS })
 
-    await openBuilderAndDropTwoPoints(user)
+    await openEntrance(user)
 
-    // The leg is the difference of PIPELINE miles: the taps snapped to
-    // client miles 5 and 20, anchored to 5.2 and 20.2 - fifteen miles even.
-    // A leg computed on the client scale would read the same 15.0 here, but
-    // the plan below gives the anchors away. (Leg row and total row both
-    // print it, hence getAllBy.)
-    expect(screen.getAllByText(/15\.0 mi/).length).toBeGreaterThan(0)
+    // No profile on this download: sizing by days is not offered, and the
+    // sheet says why rather than pricing climbs at zero.
+    expect(screen.getByRole('button', { name: 'How long' })).toBeDisabled()
+    expect(
+      screen.getByText(/Sizing by days needs the elevation profile/),
+    ).toBeInTheDocument()
+
+    // Search door: name first.
+    await user.click(screen.getByRole('button', { name: 'search' }))
+    const picker = await screen.findByRole('dialog', { name: 'Choose a stop' })
+    expect(picker).toBeInTheDocument()
+    await user.type(screen.getByLabelText('Search for a stop'), 'front')
+    await user.click(await screen.findByRole('button', { name: /Front Shelter/ }))
+
+    // The start field carries the PIPELINE mile the plan will run on.
+    expect(await screen.findByText('Front Shelter')).toBeInTheDocument()
+    expect(screen.getByText('mi 3.2')).toBeInTheDocument()
+
+    // 45 miles (the default) from 3.2 reaches for 48.2 - the nearest real
+    // place to sleep is Beyond Shelter at 22.2, and the row says so.
+    expect(screen.getByText('Ends near')).toBeInTheDocument()
+    expect(screen.getByText('Beyond Shelter')).toBeInTheDocument()
+
+    // Slide shorter: 5 miles reaches for 8.2, and the end re-snaps to
+    // Middle Shelter (10.2) - then back out to 15, Beyond Shelter again
+    // (|22.2 - 18.2| = 4 beats |13.2 - 18.2| = 5).
+    fireEvent.change(screen.getByLabelText('Miles of trail'), { target: { value: '5' } })
+    expect(screen.getByText('Middle Shelter')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Miles of trail'), { target: { value: '15' } })
+    expect(screen.getByText('Beyond Shelter')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Use this stretch' }))
+
+    // The editor: both ends as fields, the bar with direction and the
+    // honest distance-only figures (no profile, and it says so).
+    expect(await screen.findByRole('dialog', { name: 'Your route' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Front Shelter/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Beyond Shelter/ })).toBeInTheDocument()
+    expect(screen.getByText('NOBO · 19.0 mi')).toBeInTheDocument()
+    expect(screen.getByText(/No elevation profile in this download/)).toBeInTheDocument()
+
+    // A destination on the way: Far Shelter joins between the ends.
+    await user.click(screen.getByRole('button', { name: /Add a stop on the way/ }))
+    await user.type(await screen.findByLabelText('Search for a stop'), 'far')
+    await user.click(await screen.findByRole('button', { name: /^Far Shelter/ }))
+    expect(await screen.findByRole('dialog', { name: 'Your route' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Far Shelter/ })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Break into days' }))
     expect(
       await screen.findByRole('dialog', { name: 'How long is a day?' }),
     ).toBeInTheDocument()
-
-    // No profile on this download: hours are not offered, and the sheet
-    // says why rather than pricing climbs at zero.
     expect(screen.getByRole('button', { name: 'Walking hours' })).toBeDisabled()
-    expect(screen.getByText(/needs the elevation profile/)).toBeInTheDocument()
 
-    // At 8 mi/day the two shelters inside the route split it into two days.
+    // At 8 mi/day the two legs (3.2→13.2, 13.2→22.2) plan as one day each.
     fireEvent.change(screen.getByLabelText('Miles per day'), { target: { value: '8' } })
     await user.click(screen.getByRole('button', { name: 'Lay out 2 days' }))
 
-    // Landed on the timeline: both days, numbered, ending at the shelters
-    // the generator chose - and the boundary miles are the pipeline's.
+    // Landed on the timeline: both days, and the boundary the hiker chose.
     expect(await screen.findByText('DAY 1')).toBeInTheDocument()
     expect(screen.getByText('DAY 2')).toBeInTheDocument()
-    // The chosen stop names both days that meet it - one row ends there,
-    // the next starts there.
     expect(screen.getAllByText(/Far Shelter/).length).toBeGreaterThan(0)
 
     const stored = app.store.get(PLAN_KEY) as {
       stops: { mile: number; name?: string }[]
+      days: { pinned: boolean }[]
     }
-    // Close-to rather than exact: the synthetic centerline's haversine mile
-    // differs from its vertex index by a thousandth or two, and the anchor
-    // carries that same offset across - which is the correction working,
-    // not error. The 0.2 pipeline offset is what must survive exactly.
     expect(stored.stops).toHaveLength(3)
-    expect(stored.stops[0].mile).toBeCloseTo(5.2, 2)
+    expect(stored.stops[0].mile).toBe(3.2)
     expect(stored.stops[1].mile).toBe(13.2)
-    expect(stored.stops[2].mile).toBeCloseTo(20.2, 2)
+    expect(stored.stops[2].mile).toBe(22.2)
+    expect(stored.stops[0].name).toBe('Front Shelter')
     expect(stored.stops[1].name).toBe('Far Shelter')
+    // The added destination is a decision: its arriving day is born pinned,
+    // the generator's own boundary is not.
+    expect(stored.days[0].pinned).toBe(true)
+    expect(stored.days[1].pinned).toBe(false)
   })
 
   it('keeps the timeline across a relaunch', async () => {
@@ -169,20 +188,50 @@ describe('the planning flow', () => {
     expect(screen.queryByText(/No plan yet/)).toBeNull()
   })
 
-  it('refuses an off-corridor tap out loud and keeps the route unchanged', async () => {
+  it('places a start through the map door, refusals said out loud, and keeps the draft across tabs', async () => {
     const user = userEvent.setup()
     app.onboard()
     app.putTrailData({ pois: POIS })
 
-    const map = await openBuilderAndDropTwoPoints(user)
+    await openEntrance(user)
 
+    await user.click(screen.getByRole('button', { name: 'map' }))
+    expect(
+      await screen.findByText('Tap the trail where this stop goes.'),
+    ).toBeInTheDocument()
+
+    // The map is rebuilt by the tab switch; wait for the live one to be
+    // listening before firing anything at it.
+    await waitFor(() => {
+      expect(MockMap.live).toHaveLength(1)
+      expect(MockMap.live[0].listenerCount('click')).toBeGreaterThan(0)
+    })
+    const map = MockMap.live[0]
+
+    // Four degrees of longitude west of the centerline - far past the
+    // 3-mile gate. Refused out loud, and the door stays open.
     await act(async () => {
-      // Four degrees of longitude west of the centerline - far past the
-      // 3-mile gate.
       map.emit('click', { lngLat: { lng: -81, lat: latOfMile(10) } })
     })
-
     expect(await screen.findByText(/no honest mile/)).toBeInTheDocument()
-    expect(screen.getByText('2 points · 1 leg')).toBeInTheDocument()
+
+    // An on-trail tap at client mile 5 lands as PIPELINE mile 5.2 - the
+    // anchor correction carrying the offset across, end to end.
+    await act(async () => {
+      map.emit('click', { lngLat: { lng: -77, lat: latOfMile(5) } })
+    })
+    expect(
+      await screen.findByRole('dialog', { name: 'Plan a route' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('mi 5.2')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Use this stretch' }))
+    expect(await screen.findByRole('dialog', { name: 'Your route' })).toBeInTheDocument()
+
+    // The draft survives a walk to the Plan tab and back - the entrance is
+    // never a toll gate on the way back to your own route.
+    await user.click(screen.getByRole('tab', { name: 'Plan' }))
+    await user.click(await screen.findByRole('button', { name: 'Back to your route' }))
+    expect(await screen.findByRole('dialog', { name: 'Your route' })).toBeInTheDocument()
   })
 })

@@ -21,10 +21,11 @@
 
 import { useMemo, useState } from 'react'
 import {
-  candidateStops,
   DEFAULT_CAP_MI,
-  planDays,
+  DEFAULT_WALKING_HOURS,
+  planDaysVia,
   type CandidateStop,
+  type ViaStop,
 } from '../lib/dayPlanner'
 import type { ElevationProfile } from '../lib/elevationProfile'
 import { buildPlan, type HikePlan, type PlanTarget } from '../lib/plan'
@@ -34,9 +35,10 @@ import { formatDistance, type UnitSystem } from '../lib/units'
 import './plan.css'
 
 export interface PlanTargetSheetProps {
-  /** The route's ends, on the pipeline's mile axis. */
-  fromMile: number
-  toMile: number
+  /** The route's stops in walk order - the two ends, plus any destinations
+   *  the hiker added between them, on the pipeline's mile axis. Every
+   *  intermediate stop is a forced day boundary (planDaysVia). */
+  route: readonly ViaStop[]
   pois: readonly StoredPoi[]
   elevation: ElevationProfile | null
   units: UnitSystem
@@ -48,12 +50,10 @@ export interface PlanTargetSheetProps {
   onLayOut: (plan: HikePlan) => void
 }
 
-const DEFAULT_WALKING_HOURS = 7
 const DEFAULT_MILES = 15
 
 export function PlanTargetSheet({
-  fromMile,
-  toMile,
+  route,
   pois,
   elevation,
   units,
@@ -77,27 +77,21 @@ export function PlanTargetSheet({
   )
   const [startDate, setStartDate] = useState(initialStartDate ?? '')
 
-  const stops = useMemo(
-    () => candidateStops(pois, fromMile, toMile),
-    [pois, fromMile, toMile],
-  )
-
   // Planning by hours without a profile would price every climb at zero and
   // wear an honest ≈ while doing it - so hours are simply not offered then.
   const hoursAvailable = elevation !== null
   const effectiveUnit = hoursAvailable ? unit : 'miles'
 
   const preview = useMemo(() => {
-    if (stops === null) return null
     if (effectiveUnit === 'hours') {
       const profile = elevation as ElevationProfile
-      return planDays(stops, hours, {
+      return planDaysVia(pois, route, hours, {
         effort: (from: CandidateStop, to: CandidateStop) =>
           legFigures(profile, from.mile, to.mile).minutes / 60,
       })
     }
-    return planDays(stops, miles)
-  }, [stops, effectiveUnit, hours, miles, elevation])
+    return planDaysVia(pois, route, miles)
+  }, [pois, route, effectiveUnit, hours, miles, elevation])
 
   const dayCount = preview === null ? 0 : Math.max(0, preview.length - 1)
 
@@ -115,7 +109,24 @@ export function PlanTargetSheet({
       target,
       startDate === '' ? undefined : startDate,
     )
-    onLayOut(plan)
+    // A destination the hiker added themselves is a decision, not a
+    // suggestion: the day arriving there is born pinned, so the cascade
+    // (#758) re-plans around it rather than through it - unpinning it on
+    // the timeline is one tap if they stop caring. `generated` stays true:
+    // the day's SPAN between the fixed ends is still the generator's
+    // choice. Matched by mile, which is exact - planDaysVia carries the
+    // via's own mile value through untouched.
+    const viaMiles = new Set(route.slice(1, -1).map((via) => via.mile))
+    onLayOut(
+      viaMiles.size === 0
+        ? plan
+        : {
+            ...plan,
+            days: plan.days.map((meta, index) =>
+              viaMiles.has(plan.stops[index + 1].mile) ? { ...meta, pinned: true } : meta,
+            ),
+          },
+    )
   }
 
   return (
@@ -128,7 +139,7 @@ export function PlanTargetSheet({
         </button>
       </div>
 
-      {stops === null ? (
+      {preview === null ? (
         <p className="plan-target__note" role="note">
           This download predates trail miles on waypoints, so days can&rsquo;t be laid out
           along the profile honestly. Newer trail data carries them.

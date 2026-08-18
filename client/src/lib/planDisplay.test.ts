@@ -13,14 +13,14 @@ import {
 
 describe('stopLabel', () => {
   it('prefers the place’s name', () => {
-    expect(stopLabel({ mile: 470.8, name: 'Damascus', resupply: false })).toBe('Damascus')
+    expect(stopLabel({ mile: 470.8, name: 'Damascus' })).toBe('Damascus')
   })
 
   it('falls back to the mile marker, grouped and never converted', () => {
     // A mile MARKER is a shared reference, not a distance - positionLine.ts
     // and units.ts both hold this line, and this label joins them.
-    expect(stopLabel({ mile: 1407.2, resupply: false })).toBe('mi 1,407.2')
-    expect(stopLabel({ mile: 5, name: '', resupply: false })).toBe('mi 5.0')
+    expect(stopLabel({ mile: 1407.2 })).toBe('mi 1,407.2')
+    expect(stopLabel({ mile: 5, name: '' })).toBe('mi 5.0')
   })
 })
 

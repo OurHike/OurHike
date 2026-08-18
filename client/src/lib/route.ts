@@ -208,3 +208,80 @@ export function anchoredMile(
 
   return nearest.mile + (clientMile - nearest.clientMile)
 }
+
+/**
+ * The same carry run the other way: a pipeline-axis mile brought onto the
+ * client index's scale, so a stop that was never tapped can still be DRAWN.
+ * A distance-derived stop ("ends near", "a distance from the shelter") is
+ * born as pipeline-mile arithmetic and has no located point behind it; the
+ * drawing slices the centerline by client miles (trailSlice), and this is
+ * how such a stop gets one. Same nearest-anchor offset, same null when no
+ * anchors exist - the caller leaves the stop undrawn rather than drawing it
+ * on the wrong scale.
+ */
+export function anchoredClientMile(
+  mile: number,
+  anchors: readonly MileAnchor[],
+): number | null {
+  if (anchors.length === 0) return null
+
+  let nearest = anchors[0]
+  let nearestDistance = Math.abs(anchors[0].mile - mile)
+  for (const anchor of anchors) {
+    const distance = Math.abs(anchor.mile - mile)
+    if (distance < nearestDistance) {
+      nearest = anchor
+      nearestDistance = distance
+    }
+  }
+
+  return nearest.clientMile + (mile - nearest.mile)
+}
+
+/**
+ * How far `minutes` of Naismith moving time reaches from `fromMile` - toward
+ * larger miles for NOBO, smaller for SOBO - clamped to the profile's own
+ * coverage. The entrance's "How long" question resolves to a mile through
+ * this ("3 days at your 7h-walking target reaches ≈ 45 mi").
+ *
+ * A binary search over legFigures rather than a second derivation: the mile
+ * this returns is DEFINED by the same arithmetic the route card then prices
+ * the stretch with, so the two cannot disagree. Monotone because both of
+ * Naismith's terms only grow as the window does - distance linearly, ascent
+ * never negatively (no descent credit, naismith.ts's own rule).
+ *
+ * The search window is bounded by the flat-ground reach for the budget
+ * (ascent only ever slows Naismith down, so no honest answer lies past it) -
+ * which keeps the slice a few thousand samples instead of the whole
+ * 141,000-sample profile on every slider step.
+ */
+export function mileAtWalkingMinutes(
+  profile: ElevationProfile,
+  fromMile: number,
+  minutes: number,
+  direction: HikeDirection,
+): number {
+  const first = profile.distanceMi[0]
+  const last = profile.distanceMi[profile.distanceMi.length - 1]
+  const limit =
+    direction === 'NOBO' ? Math.max(fromMile, last) : Math.min(fromMile, first)
+
+  const flatBound = minutes / naismithMinutes({ distanceMi: 1, ascentFt: 0 })
+  const maxSpan = Math.min(Math.abs(limit - fromMile), flatBound)
+  if (maxSpan === 0) return fromMile
+
+  const spanEnd = direction === 'NOBO' ? fromMile + maxSpan : fromMile - maxSpan
+  if (legFigures(profile, fromMile, spanEnd).minutes <= minutes) return spanEnd
+
+  // 0.02 mi ≈ 32 m, under the profile's own 25 m sample spacing - resolving
+  // finer would be precision the data does not have.
+  let low = 0
+  let high = maxSpan
+  while (high - low > 0.02) {
+    const mid = (low + high) / 2
+    const at = direction === 'NOBO' ? fromMile + mid : fromMile - mid
+    if (legFigures(profile, fromMile, at).minutes < minutes) low = mid
+    else high = mid
+  }
+  return direction === 'NOBO' ? fromMile + high : fromMile - high
+}

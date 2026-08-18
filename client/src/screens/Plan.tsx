@@ -59,6 +59,10 @@ export interface PlanScreenProps {
    *  - "call it a day where you are" is only offered when this is known. */
   gpsMile: number | null
   units: UnitSystem
+  /** A route draft is in progress on the map - the empty state's button
+   *  reads as a way back to it rather than a fresh start, because opening
+   *  the builder reopens the draft where it stood. */
+  draftLive: boolean
   /** Open the route builder on the map - the empty state's one action. */
   onStartOnMap: () => void
   /** Reopen the target sheet over this plan's route. */
@@ -81,6 +85,7 @@ export function PlanScreen({
   pois,
   gpsMile,
   units,
+  draftLive,
   onStartOnMap,
   onChangeTarget,
   onInsertZeroAfter,
@@ -154,11 +159,11 @@ export function PlanScreen({
             No plan yet. You could just walk north and find out.
           </p>
           <p className="plan__empty-note">
-            Or drop two points on the map and it&rsquo;ll tell you what&rsquo;s between
-            them.
+            Or say where from and how far, and it&rsquo;ll find the stretch and break it
+            into days.
           </p>
           <button type="button" className="plan__primary" onClick={onStartOnMap}>
-            Start on the map
+            {draftLive ? 'Back to your route' : 'Start on the map'}
           </button>
         </div>
         {targetSheet}
@@ -657,8 +662,7 @@ function CallItADaySheet({
     return `${formatDistance(distanceMi, units)} · ${formatNaismithMinutes(figures.minutes)}`
   }
 
-  const endLabel = (end: CalledEnd) =>
-    end.name ?? stopLabel({ mile: end.mile, resupply: false })
+  const endLabel = (end: CalledEnd) => end.name ?? stopLabel({ mile: end.mile })
 
   return (
     <div className="plan__actions" role="dialog" aria-label="Call it a day">

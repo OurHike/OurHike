@@ -310,19 +310,21 @@ def store_photo(session: requests.Session, photo: dict) -> dict:
 
 
 def cached_photo_missing(record: dict) -> bool:
-    """Whether a prior "found" outcome has lost the bytes it recorded.
+    """Whether a prior "found" outcome fails to VOUCH for its photo.
 
-    A cleared data/ directory leaves the outcomes file claiming photos whose
-    images are gone, and publish.py uploads from those files - so without
-    this the run would carry the record forward and quietly publish a POI
-    pointing at an object nobody ever uploaded. Re-downloading one image is
-    far cheaper than re-querying the API for it."""
+    Until #465 this required the bytes on local disk, which was right when
+    local disk was the only evidence a photo had ever been obtained - and
+    made every cold publish re-crawl a corpus the bucket already held. The
+    digest is the evidence now: photos are content-addressed, so a record
+    that names its digest can be published from directly, and
+    publish.verify_photo_promises() settles every published photo key
+    against the bucket at the moment it matters - a cleared data/ tree
+    publishing a key nobody ever uploaded fails THERE, loudly, instead of
+    being re-downloaded here preemptively. A record with no digest still
+    re-fetches: nothing can be published from it."""
     if record.get("status") != "found":
         return False
-    digest = record.get("photo", {}).get("digest")
-    if digest is None:
-        return True
-    return not local_photo_path(RAW_DIR, digest).exists()
+    return record.get("photo", {}).get("digest") is None
 
 
 def corridor_pois() -> list[dict]:

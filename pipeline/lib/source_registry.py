@@ -70,6 +70,22 @@ GEOFABRIK_EXTRACT = "geofabrik_extract"
 # reports on it so the day the answer changes is a day somebody hears about.
 WATCHED_ONLY = "watched_only"
 
+# An ArcGIS feature layer on another organization's own org, outside the
+# A.T. build - NYS OPRHP's four Parks Explorer layers first (#769, the
+# registration #768's program asked for). Its own kind rather than the
+# default, for two reasons that are both about fetch_all.py's completeness
+# gate. That gate is the A.T. release's ("every registered source produced a
+# non-empty collection"), so folding another organization's layers into it
+# couples the A.T. fetch to that org's uptime - and one of these layers is a
+# TEMPORARY trail-closure layer whose honest feature count in a good week is
+# zero, which that gate can only read as broken. fetch_external_layers.py
+# fetches these instead, change-aware via the same editingInfo marker, into
+# data/raw/external/ - for review and the #771 spike only, until each
+# entry's licence records the org's answer (CONTRIBUTING.md, "A note on data
+# and licences"). load_raw.py's kind filter keeps them out of the warehouse
+# the same way, until #100's staging models take them deliberately.
+EXTERNAL_ARCGIS_LAYER = "external_arcgis_layer"
+
 # A dataset republished on a fixed weekly cadence, where the WEEK is part of
 # the claim rather than metadata about it. The U.S. Drought Monitor is the
 # first (#720): NDMC publishes a dated file every Thursday describing the
@@ -95,6 +111,7 @@ KNOWN_KINDS = frozenset(
         GEOFABRIK_EXTRACT,
         WATCHED_ONLY,
         WEEKLY_POLYGONS,
+        EXTERNAL_ARCGIS_LAYER,
     }
 )
 
@@ -127,6 +144,11 @@ def arcgis_sources(registry: dict) -> list[dict]:
 def club_pdf_sources(registry: dict) -> list[dict]:
     """The entries `fetch_club_pdfs.py` may fetch, in registry order."""
     return [entry for entry in registry.get("sources", []) if source_kind(entry) == CLUB_PDF]
+
+
+def external_arcgis_sources(registry: dict) -> list[dict]:
+    """The entries `fetch_external_layers.py` may fetch, in registry order."""
+    return [entry for entry in registry.get("sources", []) if source_kind(entry) == EXTERNAL_ARCGIS_LAYER]
 
 
 def find_source(registry: dict, key: str) -> dict | None:

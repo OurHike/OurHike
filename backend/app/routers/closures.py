@@ -18,7 +18,7 @@ from app.core.orm import commit_and_refresh, get_or_404
 from app.core.time import to_naive_utc
 from app.db.session import get_db
 from app.models.closure import Closure, ModerationStatus
-from app.models.profile import Profile
+from app.models.profile import MODERATOR_ROLES, Profile
 from app.schemas.closure import ClosureCreate, ClosureOut, ClosureUpdate
 
 router = APIRouter(prefix="/closures", tags=["closures"])
@@ -64,7 +64,7 @@ def list_closures(db: Session = Depends(get_db)) -> list[Closure]:
 def update_closure(
     closure_id: str,
     payload: ClosureUpdate,
-    current_user: Profile = Depends(require_role("maintainer", "club_admin")),
+    current_user: Profile = Depends(require_role(*MODERATOR_ROLES)),
     db: Session = Depends(get_db),
 ) -> Closure:
     """Update a closure's real-world status/reason/note. Role-gated -

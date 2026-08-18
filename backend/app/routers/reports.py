@@ -216,6 +216,19 @@ def _credit_for(db: Session, payload: ReportCreate, authored: datetime) -> tuple
     covering = assignments_covering(db, payload.mile, authored.date())
     maintainers = {assignment.maintainer_id for assignment, _, _ in covering}
     clubs = {assignment.club_id for assignment, _, _ in covering}
+    # When the hiker NAMED the maintainer and that person has a covering
+    # assignment of their own, the club is THAT assignment's club (#658):
+    # resolving the two fields independently credited a named volunteer's
+    # thanks to a stranger's club wherever two clubs' stretches overlap.
+    # When the named person has no covering assignment, the general
+    # resolution below stands - "the half they left blank is still
+    # resolved", the reviewed #249 decision the test suite pins: a thanks
+    # names a person AND lands on a stretch, and the stretch's club is real
+    # information even when it is not the named person's own.
+    if named_maintainer is not None:
+        own_clubs = {assignment.club_id for assignment, _, _ in covering if assignment.maintainer_id == named_maintainer}
+        if own_clubs:
+            clubs = own_clubs
 
     return (
         named_maintainer or (maintainers.pop() if len(maintainers) == 1 else None),
@@ -263,7 +276,13 @@ def create_report(
         settled = _already_filed(db, report_id, current_user)
         if settled is not None:
             response.status_code = status.HTTP_200_OK
-            return settled
+            # Through for_viewer like every other exit (#252/#658): this
+            # returned the bare ORM row, and passed the route-table guard
+            # only because "for_viewer" appeared elsewhere in the handler.
+            # Benign while the caller is the owner - the owner is
+            # privileged - and exactly the line the first viewer-conditional
+            # field would have broken silently.
+            return ReportOut.for_viewer(settled, current_user)
 
     now = utc_now()
     # Stored naive-UTC throughout (see app/models/profile.py), so an aware
@@ -298,7 +317,7 @@ def create_report(
     db.add(report)
     try:
         return ReportOut.for_viewer(commit_and_refresh(db, report), current_user)
-    except IntegrityError:
+    except IntegrityError as exc:
         # The check above and this insert are two statements, so two
         # concurrent sends of the same id both see "not filed yet" and both
         # insert. That is not a rare interleaving to shrug at - it is
@@ -308,7 +327,19 @@ def create_report(
         db.rollback()
         settled = _already_filed(db, report_id, current_user) if report_id is not None else None
         if settled is None:
-            # The conflict was not the id, so it is not ours to interpret.
+            # A thanks naming a profile or club that does not exist is the
+            # caller's error, not a server fault (#658): the FK violation
+            # used to re-raise here as a 500. Named, per field, because
+            # "unprocessable" without a field name is a form nobody can fix.
+            constraint = str(getattr(exc, "orig", exc))
+            for field in ("maintainer_id", "club_id"):
+                if field in constraint:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=f"{field} does not name a known {'profile' if field == 'maintainer_id' else 'club'}",
+                    ) from exc
+            # The conflict was neither the id nor a named credit, so it is
+            # not ours to interpret.
             raise
         response.status_code = status.HTTP_200_OK
         return ReportOut.for_viewer(settled, current_user)
@@ -528,7 +559,6 @@ async def read_capped_body(request: Request, limit: int) -> bytes:
 async def upload_report_photo(
     report_id: str,
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     current_user: Profile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ReportOut:

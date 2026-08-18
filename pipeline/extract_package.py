@@ -181,24 +181,35 @@ def extract(
         # every call, which at package scale (~10^5 tiles) turns minutes into
         # hours. all_tiles() walks each directory exactly once, in tile-id
         # order - which also keeps the output clustered for free.
+        # Written to a temp name and renamed into place only after finalize
+        # (#659): the wrong-region guard below raises inside the writer's
+        # context, and doing that directly on out_path left a truncated
+        # 0-byte package behind - at the real filename, looking exactly like
+        # a map - after destroying whatever good package was there before.
         out_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = out_path.with_name(out_path.name + ".tmp")
         written = 0
         context_written = 0
-        with write(str(out_path)) as writer:
-            for (z, x, y), data in all_tiles(get_bytes):
-                is_context = lo <= z <= context
-                if is_context or (z, x, y) in wanted:
-                    writer.write_tile(zxy_to_tileid(z, x, y), data)
-                    written += 1
-                    context_written += is_context
-            # The guard asks about REGION tiles, not the total: context tiles
-            # come from the source's own footprint and arrive for any region
-            # whatsoever, so a wrong region file with context on would
-            # otherwise ship a low-zoom-only package as if it were a map.
-            region_written = written - context_written
-            if written == 0 or (region_lo <= hi and region_written == 0):
-                raise SystemExit("Region intersects no tiles in the source archive - wrong region file, or wrong source?")
-            writer.finalize(package_header(source_header, region, lo), {**metadata, "name": name})
+        try:
+            with write(str(tmp_path)) as writer:
+                for (z, x, y), data in all_tiles(get_bytes):
+                    is_context = lo <= z <= context
+                    if is_context or (z, x, y) in wanted:
+                        writer.write_tile(zxy_to_tileid(z, x, y), data)
+                        written += 1
+                        context_written += is_context
+                # The guard asks about REGION tiles, not the total: context tiles
+                # come from the source's own footprint and arrive for any region
+                # whatsoever, so a wrong region file with context on would
+                # otherwise ship a low-zoom-only package as if it were a map.
+                region_written = written - context_written
+                if written == 0 or (region_lo <= hi and region_written == 0):
+                    raise SystemExit("Region intersects no tiles in the source archive - wrong region file, or wrong source?")
+                writer.finalize(package_header(source_header, region, lo), {**metadata, "name": name})
+        except BaseException:
+            tmp_path.unlink(missing_ok=True)
+            raise
+        tmp_path.replace(out_path)
 
     # A region tile absent from the source is normal, not an error: the
     # source was itself clipped (ocean, sparse low zooms), and PMTiles has no

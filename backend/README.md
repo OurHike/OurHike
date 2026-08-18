@@ -102,7 +102,7 @@ Without this, `GET /maintainer-assignments` and the thanks resolution both run a
 
 ## Migrations
 
-`alembic/versions/` began as two migrations — `initial_schema`, creating all seven tables (`clubs`, `profiles`, `closures`, `hikes`, `maintainer_assignments`, `reports`, `user_preferences`), and `enable_row_level_security`, which locks them against Supabase's PostgREST front door — and has grown since (six revisions as of 2026-08-17); the directory itself is the current list.
+`alembic/versions/` began as two migrations — `initial_schema`, creating all seven tables (`clubs`, `profiles`, `closures`, `hikes`, `maintainer_assignments`, `reports`, `user_preferences`), and `enable_row_level_security`, which locks them against Supabase's PostgREST front door — and has grown since (eight revisions as of 2026-08-18); the directory itself is the current list.
 
 **Both now run against a real Postgres in the test suite** - `tests/test_migrations.py` applies the chain to the local database, reads the RLS flags back out of `pg_class`, downgrades to base, and runs `alembic check` for drift between the models and the migrations. That is new: while local dev ran on DuckDB, no test had ever executed a migration at all, and the RLS revision was specifically unrunnable there. Review a migration yourself before trusting it against real data all the same - a passing test says the DDL is valid, not that it is what you meant.
 

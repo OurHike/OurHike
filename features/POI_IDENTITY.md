@@ -4,10 +4,19 @@ Companion to [../pipeline/DATA_RELEASES.md](../pipeline/DATA_RELEASES.md) (the r
 this rides), [FIELD_NOTES.md](FIELD_NOTES.md) (whose §7 names the orphaning this design
 removes), [POI_PHOTOS.md](POI_PHOTOS.md), [HIKE_PLANNING.md](HIKE_PLANNING.md),
 [POI_SITES.md](POI_SITES.md) and [`pipeline/lib/poi_schema.py`](../pipeline/lib/poi_schema.py)
-(the id contract as it stands). **Status: designed 2026-08-13, not yet built** — the design doc
-is the first contribution, per [../CONTRIBUTING.md](../CONTRIBUTING.md). Work is
-**#666 — A POI's identity is its upstream key, so one ATC annual refresh can orphan every photo
-and comment**.
+(the id contract as it stands). **Status: designed 2026-08-13; build-order steps 1 and 2 built
+2026-08-18 (#671, #672)** — the ledger is seeded (3,004 rows, ids exactly as published, verified
+a byte-for-byte no-op on the real snapshot; 2,215 rows carry an inventory fingerprint), tiers 1
+and 2 run as `pipeline/reconcile_poi_identity.py` (key-carry with the teleport guard; evidence
+matching over distance, normalised name, fingerprint and along-trail position, accepted only on
+threshold + margin-over-runner-up on both sides + the hard ceiling + mutual-best — constants
+`@unvalidated` pending #675), overrides live hand-owned in
+`reference/poi_identity_overrides.json`, `--check` gates publish-vector-data.yml,
+`verify_release.py` check 21 holds every published id to a live, agreeing ledger row, and
+`export_poi.py` publishes under ledger ids with `reference/shelter_capacity.json` re-keyed onto
+them. Steps 3–5 remain (**#673 — Tombstones and superseded_by**, **#674 — Closures anchor on
+miles alone**, **#675 — Measure the first real ATC refresh**). The umbrella is **#666 — A POI's
+identity is its upstream key, so one ATC annual refresh can orphan every photo and comment**.
 
 **This doc owns one contract:** what a published POI id refers to, for how long, and what
 happens to it when the upstream data it came from is refreshed. It is v2 platform work in the

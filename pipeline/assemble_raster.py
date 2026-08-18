@@ -48,7 +48,7 @@ from lib.raster_tiles import (
     tiles_intersecting_geom,
 )
 from lib.tiling import tile_bounds_merc
-from render_cell_tiles import BAND_METERS, BAND_ZOOM, MAX_ZOOM, load_geom_merc
+from render_cell_tiles import BAND_ZOOM, MAX_ZOOM, band_merc, load_geom_merc
 from spike_raster_mosaic import bounds_intersect
 
 ROOT = Path(__file__).parent
@@ -194,7 +194,7 @@ def build_header(bounds_4326):
 
 def assemble(cells_dir: Path, cells_json: Path, corridor_path: Path, centerline_path: Path, out_dir: Path):
     corridor_merc = load_geom_merc(corridor_path)
-    band_merc = load_geom_merc(centerline_path).buffer(BAND_METERS)
+    band = band_merc(centerline_path)
     corridor_4326 = json.loads(corridor_path.read_text())
     from shapely.geometry import shape
     from shapely.ops import unary_union
@@ -207,7 +207,7 @@ def assemble(cells_dir: Path, cells_json: Path, corridor_path: Path, centerline_
     header_bounds = unary_union(geoms).bounds
 
     receipts = load_receipts(cells_json, cells_dir)
-    verify_receipts(receipts, corridor_merc, band_merc, cells_dir)
+    verify_receipts(receipts, corridor_merc, band, cells_dir)
     print(f"{len(receipts)} receipts verified; ownership tiles the corridor exactly.")
 
     overview_index = index_overviews(cells_dir)

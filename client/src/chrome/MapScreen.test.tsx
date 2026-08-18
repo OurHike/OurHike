@@ -417,6 +417,59 @@ describe('MapScreen', () => {
   })
 })
 
+// --- The count over the canvas (#528) -------------------------------------
+//
+// One arithmetic, two places it is said: this figure and the legend's own
+// headline come from the same function with the same arguments, and what these
+// assert is that this call site passes them - the arithmetic itself is pinned
+// in lib/legendContents.test.ts.
+
+describe('MapScreen dropped-waypoint count', () => {
+  const point = (id: string, type: string) => ({
+    id,
+    type,
+    lat: 39.5,
+    lon: -77.5,
+    confidence: 'high' as const,
+  })
+
+  it('counts only the categories the hiker is showing, as the panel does', () => {
+    // Privy hidden: off the map by the hiker's own filter, not by collision,
+    // so it belongs in neither half. Computed without `hiddenTypes` this read
+    // "1 of 3" beside a panel saying "1 of 2" - the exact disagreement passing
+    // the same arguments to one function exists to prevent (#777).
+    render(
+      <MapScreen
+        {...PROPS}
+        viewportPoints={[
+          point('w1', 'water'),
+          point('w2', 'water'),
+          point('p1', 'privy'),
+        ]}
+        drawnCounts={new Map([['water', 1]])}
+        hiddenTypes={new Set(['privy'])}
+      />,
+    )
+
+    expect(screen.getByText('1 of 2 waypoints fit')).toBeInTheDocument()
+  })
+
+  it('says nothing once everything still shown is drawn', () => {
+    // Counting the hidden privy kept `drawn < present` true at every camera,
+    // parking this line on the map for as long as a filter was on (#777).
+    render(
+      <MapScreen
+        {...PROPS}
+        viewportPoints={[point('w1', 'water'), point('p1', 'privy')]}
+        drawnCounts={new Map([['water', 1]])}
+        hiddenTypes={new Set(['privy'])}
+      />,
+    )
+
+    expect(screen.queryByText(/waypoints fit/)).not.toBeInTheDocument()
+  })
+})
+
 // --- The safety alert strip (#232) ---------------------------------------
 //
 // Above the map, because a hiker who is walking has not opened anything: a

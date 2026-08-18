@@ -259,6 +259,38 @@ class TestTheFaultsThisExistsFor:
         assert by_target["https://not-ourhike.probe.invalid/"] == OK
         assert by_target["https://ourhike.github.io.probe.invalid/"] == FAILED
 
+    def test_a_glob_widened_to_the_shared_parent_domain_is_caught(self, requests_mock):
+        """#659: a paste one token too wide - `https://*.pages.dev/**` -
+        accepts every Pages site anyone can register. The unrelated-host
+        probe shares no suffix with anything declared and the Site-URL
+        lookalike appends to the real host, so both stayed green against
+        exactly this state; the per-origin sibling probe is what sees it."""
+
+        def widened(request, context):
+            target = parse_qs(urlparse(request.url).query).get("redirect_to", [""])[0]
+            host = urlparse(target).netloc
+            accepted = host.endswith(".pages.dev") or target.startswith("https://ourhike.github.io/OurHike/")
+            context.status_code = 303
+            context.headers["Location"] = f"{target if accepted else PROD_SITE}{ERROR_FRAGMENT}"
+            return ""
+
+        requests_mock.get(f"{PROD_BASE}/auth/v1/verify", text=widened)
+
+        reports = [r for r in check_all(MANIFEST, only="production", env=ENV) if r["check"] == "refuses"]
+        by_target = {report["origin"]: report["state"] for report in reports}
+
+        assert by_target["https://not-ourhike.probe.invalid/"] == OK, "the widened glob is invisible to this probe"
+        assert by_target["https://ourhike.github.io.probe.invalid/"] == OK, "and to this one"
+        assert by_target["https://ourhike-allowlist-probe-not-ours.ourhike-preview.pages.dev/"] == FAILED
+
+    def test_sibling_probes_are_deduplicated_across_origins_sharing_a_parent(self, requests_mock):
+        fake_project(requests_mock, PROD_BASE, allowed=PROD_ALLOWED, site=PROD_SITE)
+
+        reports = [r for r in check_all(MANIFEST, only="production", env=ENV) if r["check"] == "refuses"]
+        targets = [report["origin"] for report in reports]
+
+        assert len(targets) == len(set(targets)), "one refusal answers for every origin sharing that parent"
+
 
 class TestWhatMustNotBeCalledAFailure:
     def test_an_unconfigured_project_is_skipped_rather_than_failed(self):

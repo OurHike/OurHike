@@ -5,13 +5,14 @@ from datetime import date
 from pydantic import BaseModel, ConfigDict
 
 from app.core.time import UtcDatetime
+from app.schemas.common import FiniteFloat
 from app.schemas.partial import reject_explicit_null
 
 
 class HikeCreate(BaseModel):
     trail_id: str = "AT"
-    overall_start_reference: float
-    overall_end_reference: float
+    overall_start_reference: FiniteFloat
+    overall_end_reference: FiniteFloat
     planned_start_date: date | None = None
 
 
@@ -29,8 +30,8 @@ class HikeUpdate(BaseModel):
     """
 
     trail_id: str | None = None
-    overall_start_reference: float | None = None
-    overall_end_reference: float | None = None
+    overall_start_reference: FiniteFloat | None = None
+    overall_end_reference: FiniteFloat | None = None
     planned_start_date: date | None = None
 
     _no_explicit_nulls = reject_explicit_null("trail_id", "overall_start_reference", "overall_end_reference")

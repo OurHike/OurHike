@@ -141,6 +141,9 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         with:
           python-version: "3.14"
+          # Same pip cache as the cold-path workflows (#660).
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
 
       - name: Install dependencies
         if: steps.scope.outputs.run == 'true'

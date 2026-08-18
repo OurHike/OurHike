@@ -87,8 +87,8 @@ fetch_topo_quads.py + spike_raster_mosaic.py's own real-data verification
 being a documented manual procedure, not a pytest case.
 """
 
-import hashlib
 import json
+import math
 from pathlib import Path
 from typing import NamedTuple
 
@@ -107,6 +107,7 @@ from lib.elevation_gain import (
     cumulative_gain_over_gaps,
     raw_cumulative_gain,
 )
+from lib.hashing import sha256_file
 
 ROOT = Path(__file__).parent
 CENTERLINE_PATH = ROOT / "data" / "raw" / "centerline.geojson"
@@ -164,14 +165,6 @@ HALF_MILE_MARKER_COUNT = 4395
 # for anything requiring geodetic precision.
 SPRINGER_LONLAT = (-84.1942, 34.6272)
 KATAHDIN_LONLAT = (-68.9214, 45.9044)
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def load_merged_trail_line(con: duckdb.DuckDBPyConnection, centerline_path: Path):
@@ -590,9 +583,11 @@ class ElevationSampler:
     image - the "lighter scale" mosaic this module's docstring promises.
 
     Returns None for a point no indexed tile covers - a real DEM coverage
-    gap (e.g. a stretch of trail with no 1m LiDAR project flown yet) -
+    gap (a stretch of trail the 1/3 arc-second dataset has no tile for) -
     instead of raising, so a gap in source coverage degrades the profile
-    gracefully rather than crashing the whole export."""
+    gracefully rather than crashing the whole export. (Docstrings here
+    used to say "1m tiles"; this pipeline reads the ~10m dataset - see
+    the module docstring and fetch_elevation.py's DATASET note.)"""
 
     def __init__(self, tile_index: list[tuple[str | Path, tuple[float, float, float, float]]]):
         self._tile_index = tile_index
@@ -618,7 +613,7 @@ class ElevationSampler:
         """Batched point sampling: groups points by whichever tile covers
         them, then does one windowed array read per tile - scoped to the
         bounding box of just that tile's own touched points, not the whole
-        tile (real 1m DEM tiles can be large; a full-tile read per tile
+        tile (real DEM tiles can be large; a full-tile read per tile
         risks real memory pressure across hundreds of them) - instead of one
         WarpedVRT.sample() Python call per point. Measured ~100x faster than
         the naive per-point .sample() loop on synthetic test-scale data,
@@ -654,8 +649,16 @@ class ElevationSampler:
             nodata = vrt.nodata
 
             for j, i in enumerate(indices):
-                value = data[rows[j] - row_off, cols[j] - col_off]
-                if nodata is not None and value == nodata:
+                value = float(data[rows[j] - row_off, cols[j] - col_off])
+                # NaN is checked unconditionally, not just when it is the
+                # declared nodata: `value == nodata` is always False for
+                # NaN, so a NaN-nodata tile used to pass its NaNs through
+                # as "real" elevations - and json.dumps then emits a
+                # literal NaN that JSON.parse rejects, taking the whole
+                # profile down client-side on one upstream re-encode
+                # (#659). A NaN sample is never a real elevation, whatever
+                # the tile's metadata says.
+                if math.isnan(value) or (nodata is not None and value == nodata):
                     # This tile covers the point but has no real data there
                     # - fall through to the next covering tile, if any (the
                     # "mosaic if needed" case), instead of leaving it None.
@@ -664,7 +667,7 @@ class ElevationSampler:
                         by_tile.setdefault(next_candidates[0], []).append(i)
                         remaining_candidates[i] = next_candidates[1:]
                     continue
-                results[i] = float(value)
+                results[i] = value
 
         return results
 

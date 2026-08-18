@@ -336,4 +336,35 @@ describe('legendDropSummary', () => {
   it('ignores rows nobody measured rather than counting them as dropped', () => {
     expect(legendDropSummary([row('water', 14, 14), row('privy', 6)])).toBeNull()
   })
+
+  it('leaves a hidden category out of both halves of the fraction', () => {
+    // Off the map by the hiker's own filter, not by collision. The drawn
+    // measurement already reflects the filter (map/drawnPois.ts queries what
+    // MapLibre placed), so counting hidden points as present reported a drop
+    // that zooming in - the remedy this line prescribes - cannot cure: "2 of
+    // 20 fit" with 14 of the missing 18 being the water the hiker hid (#777).
+    expect(
+      legendDropSummary([row('water', 14, 0), row('shelter', 6, 2)], new Set(['water'])),
+    ).toEqual({ present: 6, drawn: 2 })
+  })
+
+  it('says nothing once everything still shown is drawn', () => {
+    // The worst symptom of counting hidden rows: `drawn < present` held at
+    // every camera while a filter was on, so the line never left the screen.
+    expect(
+      legendDropSummary([row('water', 14, 0), row('shelter', 6, 6)], new Set(['water'])),
+    ).toBeNull()
+  })
+
+  it('cannot be quieted about a safety layer by a malformed hidden set', () => {
+    // lib/waypointVisibility.ts can never emit a safety type into the hidden
+    // set, but the guard is NEVER_HIDEABLE here as everywhere - structural
+    // rather than trusted from the caller (#530's rule).
+    const closure = { type: 'closure', count: 2, hideable: false, drawnCount: 0 }
+
+    expect(legendDropSummary([closure], new Set(['closure']))).toEqual({
+      present: 2,
+      drawn: 0,
+    })
+  })
 })

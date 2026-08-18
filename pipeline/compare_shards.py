@@ -291,7 +291,13 @@ def report(control_dir: Path, shard_dirs: list[Path], seam_path: Path | None, pa
     control_hashes = tile_hashes(control_dir / "build.pmtiles")
     sharded_hashes: dict[Tile, str] = {}
     for d in shard_dirs:
-        sharded_hashes.update(tile_hashes(d / "build.pmtiles"))
+        for tile, digest in tile_hashes(d / "build.pmtiles").items():
+            # First-wins, matching merge_shard_stats (#659). The two merges
+            # used to disagree - stats first-wins, hashes last-wins via
+            # dict.update - so on an overlapping tile the stats row and
+            # the hash could come from DIFFERENT shards and the comparison
+            # disagreed with itself. Overlap is already its own finding.
+            sharded_hashes.setdefault(tile, digest)
     byte_differs = compare_hashes(control_hashes, sharded_hashes)
 
     print(f"Control tiles: {len(control_hashes)}   Sharded tiles: {len(sharded_hashes)}")
@@ -363,7 +369,15 @@ if __name__ == "__main__":
     )
     parser.add_argument("--shard", type=Path, action="append", required=True, help="A shard's directory; repeat once per shard")
     parser.add_argument(
-        "--seam", type=Path, default=None, help="GeoJSON polygon whose BOUNDARY is the cut, for the distance histogram"
+        "--seam",
+        type=Path,
+        default=None,
+        help=(
+            "GeoJSON geometry of the cut itself, taken as given (seam_geometry's docstring): a line where "
+            "shards abut, or the thin overlap band where they overlap. NOT a whole shard's region polygon - "
+            "distance-to-seam reads as zero everywhere inside whatever is passed, so a region here quietly "
+            "measures the wrong thing (#659; the old help text invited exactly that)"
+        ),
     )
     parser.add_argument(
         "--padding-tiles",

@@ -47,11 +47,12 @@ the same trap.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
+
+from lib.hashing import sha256_file
 
 #: Where receipts live, under the gitignored data/ tree. Beside data/raw's
 #: own outputs rather than in data/processed, because a receipt describes a
@@ -99,14 +100,6 @@ def receipts_dir(root: Path | None = None) -> Path:
 
 def receipt_path(fetcher: str, root: Path | None = None) -> Path:
     return receipts_dir(root) / f"{fetcher}.json"
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _record_path(path: Path, root: Path) -> str:

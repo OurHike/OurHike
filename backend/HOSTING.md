@@ -16,8 +16,11 @@ Every step of that holds. The premise does not, any more.
 [features/CONDITIONS_DELIVERY.md](../features/CONDITIONS_DELIVERY.md) moved the safety read
 off the backend entirely: verified closures are published to R2 daily and the client reads
 them from there, falling back to a live `GET /closures` only when it can. **Nothing a hiker
-reads on the trail touches this service now.** The cold-start argument was about closures,
-and closures left.
+reads on the trail DEPENDS on this service now** - the live closure refresh still touches
+it when it can reach it, which is what "falling back" means, but the R2 baseline is what
+the safety read stands on and it survives this service being down (#658 tightened this
+sentence, which used to claim nothing touches it). The cold-start argument was about
+closures, and closures left.
 
 That was written into this document's own "Revisit if" clause at the time. This is that
 revisit.

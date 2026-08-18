@@ -7,6 +7,7 @@ from pydantic.networks import HttpUrl
 
 from app.core.time import UtcDatetime
 from app.models.closure import ClosureStatus, ModerationStatus, ReasonType
+from app.schemas.common import FiniteFloat, NoteText
 from app.schemas.partial import reject_explicit_null
 
 # Validates scheme and shape without changing the stored type. `HttpUrl`
@@ -29,9 +30,9 @@ class ClosureCreate(BaseModel):
     """
 
     reason_type: ReasonType
-    note: str | None = None
-    start_mile_marker: float
-    end_mile_marker: float
+    note: NoteText | None = None
+    start_mile_marker: FiniteFloat
+    end_mile_marker: FiniteFloat
 
     @model_validator(mode="after")
     def _order_the_mile_markers(self) -> "ClosureCreate":
@@ -77,7 +78,7 @@ class ClosureUpdate(BaseModel):
 
     status: ClosureStatus | None = None
     reason_type: ReasonType | None = None
-    note: str | None = None
+    note: NoteText | None = None
 
     _no_explicit_nulls = reject_explicit_null("status", "reason_type")
 
@@ -147,7 +148,11 @@ class ClosureOut(BaseModel):
     **The columns stay.** This is the wire, not the record - `closures.py`
     still stamps `reported_by` on create and `moderation.py` still stamps
     `verified_by` on verify, so the audit trail is intact in the database and
-    only stops being handed to anonymous HTTP callers.
+    only stops being handed to anonymous HTTP callers. Since #658 that
+    sentence is true rather than aspirational: the moderation surface
+    answers with `ClosureModerationOut` (schemas/moderation.py), which is
+    this shape plus the trail, for exactly the role-gated audience the
+    trail exists for.
 
     If attribution is ever wanted on the closure sheet, the mechanism already
     exists and is not a new field here: `publicly_creditable` plus

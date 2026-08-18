@@ -200,6 +200,37 @@ Three things it settles:
 - **The decision is a `superseded_by` edge in the identity ledger, not a second ledger.** The resolver, the tombstone, the CI regeneration check and the release-PR review all already exist there; this adds the rules for drawing the edge and nothing else.
 - **The check belongs in the submission.** A hiker adding a spring already on the map can be asked *"there's already a spring 18 m from here — is this it?"* against data the phone already holds, before they type anything. *Yes* becomes a field-note confirmation, which is the better contribution anyway; *no* is testimony from someone standing at the place, which outranks any matcher and is recorded rather than merely used.
 
+## v2 — trails within reach of NYC
+
+**Scoped 2026-08-18 as v2's eighth feature, by a maintainer scope call rather than a doc:
+[#768](https://github.com/OurHike/OurHike/issues/768) — *v2: trails within reach of NYC — the
+AT stops being the only trail on the map*.** The target is the Hudson Highlands core plus the
+Catskills plus everything NYNJTC maintains, and it answers the question V2_PLAN.md had been
+carrying as unanswerable from inside a session — NYNJTC's non-AT network *is* coming, as part
+of something larger.
+
+What made it real is that the data turned out to already exist in the open: NYS OPRHP runs a
+public ArcGIS org (`nysparks.maps.arcgis.com`) whose hosted services are the data plane of the
+State's own Parks Explorer app — 16,641 trail segments with names, blazes, surfaces and
+per-use permissions, plus a live closure layer, measured 2026-08-18 and updated upstream four
+days earlier. The basemap has covered all of New York state since #184's scope call; trail and
+POI data was the gap, and this is that gap's program.
+
+Like planning a hike, it starts as research rather than a build: register the org, survey the
+ring (the Catskills are NYS DEC land — a source this project does not have), spike Harriman's
+~40 crossing trails against the app's one-linear-trail assumptions, then write the design.
+The display decisions were taken the same day, against the spike's measurements and a
+canvas of drawn alternatives, and **[features/NEARBY_TRAILS.md](features/NEARBY_TRAILS.md)
+now holds all of them** ([#772](https://github.com/OurHike/OurHike/issues/772)'s
+deliverable): the chosen-trail centerline with the others ghosted, a view-only sheet on
+tap (switching stays in the picker), safety POIs that ignore the choice, the closure
+treatment reused for long-term-closed trails, the route owner's line wherever two orgs
+draw the same trail, and a governed extension of the blaze palette (the Long Path's aqua
+is real paint). What "the org" means on a jointly-owned route is
+[#780](https://github.com/OurHike/OurHike/issues/780)'s research. The licence posture is
+the project's standing one: the maintainer is talking to OPRHP and NYNJTC directly, and
+until an answer is recorded in `sources.json`, everything here is fetch-and-review only.
+
 ## v2 — knowing whether any of it works
 
 **Scoped 2026-08-09: [features/EVENTING.md](features/EVENTING.md).** Not a fifth feature — the thing the other four are measured with. v1 records nothing at all, which was the right call for a launch and is not a position that survives a second release: four v2 features are about to be built against guesses, and [FEATURE_GATING.md](features/FEATURE_GATING.md) has been recommended as the first post-launch work precisely so that stops being true.

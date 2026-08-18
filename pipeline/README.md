@@ -32,7 +32,7 @@ Not everything in `sources.json` came from the Experience Builder app, though - 
 
 To point the script at a different Experience Builder app (e.g. if the ATC publishes a second public map, or another club/provider uses one), just pass that app's URL and a `--provider` label - nothing else in the script is ATC-specific.
 
-That `--provider` label is as far as this registry currently goes toward being multi-organization: every entry says `"ATC"`, and adding a fourteenth source is still a code change by whoever owns this repository. The thirteenth arrived on 2026-08-12 and is the first that is not an ArcGIS layer — ATC's Trail Updates, read from their website ([../features/ATC_TRAIL_UPDATES.md](../features/ATC_TRAIL_UPDATES.md)). It carries `kind`, `trust`, `steward`, `licence` and `freshness`, so several of the fields below now exist on real data rather than only in the design; `lib/source_registry.py` is what reads `kind`, and `fetch_all.py` fetches only the entries that are feature layers. It is hand-written rather than discovered, which works because `discover_sources.py` keeps entries it did not rediscover — and now keeps hand-added fields on the ones it did. [../features/SOURCE_REGISTRY.md](../features/SOURCE_REGISTRY.md) is the design for letting an outside organization register its own layers and a contact to notify - including the fields this file would gain (`steward`, `kind`, `licence`, `field_map`, `freshness`, `trust`, `state`) and why the registry stays a reviewed file in git rather than becoming a database table.
+That `--provider` label is as far as *discovery* currently goes toward being multi-organization; the registry itself has outgrown it (a sentence here used to say every entry reads `"ATC"`, which stopped being true with GATC, OpenStreetMap contributors, USGS, NDMC — and, since [#769](https://github.com/OurHike/OurHike/issues/769), NYS OPRHP's four `external_arcgis_layer` entries, the first feature layers from an organization that is not the ATC). Adding a source is still a code change by whoever owns this repository. The thirteenth arrived on 2026-08-12 and is the first that is not an ArcGIS layer — ATC's Trail Updates, read from their website ([../features/ATC_TRAIL_UPDATES.md](../features/ATC_TRAIL_UPDATES.md)). It carries `kind`, `trust`, `steward`, `licence` and `freshness`, so several of the fields below now exist on real data rather than only in the design; `lib/source_registry.py` is what reads `kind`, and `fetch_all.py` fetches only the entries that are feature layers. It is hand-written rather than discovered, which works because `discover_sources.py` keeps entries it did not rediscover — and now keeps hand-added fields on the ones it did. [../features/SOURCE_REGISTRY.md](../features/SOURCE_REGISTRY.md) is the design for letting an outside organization register its own layers and a contact to notify - including the fields this file would gain (`steward`, `kind`, `licence`, `field_map`, `freshness`, `trust`, `state`) and why the registry stays a reviewed file in git rather than becoming a database table.
 
 What exists upstream *beyond* the registry - the maintaining clubs, the federal servers, the community datasets, and what each is worth - is surveyed and qualified in [SOURCE_SURVEY.md](SOURCE_SURVEY.md) (snapshot dated 2026-08-09; it also corrects who actually hosts the layers above). The water-source question that survey left open - measured against the shelters for **#529 - 97% of shelters have no water source within 250 m, and the trail is not like that** - has its own dated snapshot in [WATER_SOURCES.md](WATER_SOURCES.md), with the three measurement spikes (`spike_shelter_water.py`, `spike_osm_water_census.py`, `spike_guide_water_check.py`) beside it.
 
@@ -160,6 +160,16 @@ GUIDE_PDF=/path/to/at_guide.pdf .venv/Scripts/python spike_guide_water_check.py
 ```
 
 Change-aware per entry (conditional GET against its own manifest, plus a body-hash check because WordPress does not always honour conditionals), strict on parse (a PDF whose layout changed stops the run and keeps the previous known-good state — `build_shelter_capacity.py`'s posture applied to a fetch), and **review-only by construction: no export reads `data/raw/club_pdfs/`**. Club PDFs state no terms ([SOURCE_SURVEY.md](SOURCE_SURVEY.md) §9), so each registry entry's `licence` field records the ask that has to be answered before anything here reaches a hiker; [WATER_SOURCES.md](WATER_SOURCES.md) §4 sizes GATC's as "a pilot-state candidate after an email". The next club document is one `sources.json` entry and, optionally, one parser — not a new script.
+
+## Fetching external-organization layers (review-only)
+
+`fetch_external_layers.py` downloads the ArcGIS feature layers other organizations host on their own orgs, as `sources.json` registers them (`kind: "external_arcgis_layer"` — [#769 — Register the NYS OPRHP ArcGIS org: the trails, blazes and closures behind the Parks Explorer app](https://github.com/OurHike/OurHike/issues/769)). First registrants: **NYS OPRHP's four Parks Explorer layers** — 16,641 trail segments statewide with names, up to three blaze colours, surfaces, per-use permissions and mileage, plus the temporary-closure polygons, facilities points and park-unit boundaries the State's own app draws (all counts measured 2026-08-18).
+
+```
+.venv/Scripts/python fetch_external_layers.py
+```
+
+Change-aware exactly the way `fetch_all.py` is (each layer's `editingInfo.dataLastEditDate` against its own manifest in `data/raw/external/`, verified live on all four layers 2026-08-18), and deliberately **not** part of `fetch_all.py`: that script's completeness gate is the A.T. release's, so folding these in would couple an A.T. data release to another organization's uptime — and OPRHP's closure layer honestly holds zero polygons in a good week, which a non-empty gate can only read as broken. Entries may declare `may_be_empty: true` for exactly that case; everything else still fails on empty. **Review-only by construction: no export reads `data/raw/external/`**, and the `oprhp_licence` block in `sources.json` records why — OPRHP's terms are unstated and the maintainer's outreach is in progress, so nothing from this directory reaches a published artifact until that block records their answer. The [#771](https://github.com/OurHike/OurHike/issues/771) spike is this data's first consumer.
 
 ## POI descriptions
 
@@ -478,6 +488,32 @@ OURHIKE_DATA_ENV=ua R2_WRITE_ENABLED=true .venv/Scripts/python publish.py
 **Where this is going, designed 2026-07-31: [DATA_RELEASES.md](DATA_RELEASES.md).** `publish.py` today overwrites live keys at the bucket root, which means a publish can land on top of a download already in progress and gives a hiker no way to pin a dataset or be told one changed. The plan replaces that with immutable dated release folders, a daily upstream check that only flags, a weekly incremental build, a verification battery run against the published bytes, and release only via a merged code change. Much of it is built now - its own body marks the daily upstream check (§1), the standing deployment monitor (§3a) and the published-data smoke test (§3b) **Built**, and `releases/<id>/` folders are written on every publish (R2_LAYOUT.md, #500) - while the root keys below stay the live surface every client reads, exactly as R2_LAYOUT.md says is deliberate.
 
 To serve `data/processed/` locally instead - for testing the client's offline download without publishing anything - use `serve_processed.py`, which answers byte-range requests and sets the CORS headers a cross-origin bucket needs. See [../client/README.md](../client/README.md).
+
+## The 50-mile stretch units (#556)
+
+The unit of offline coverage is the trail-derived stretch — the maintainer's #552 call
+(2026-08-18): ~50 miles, so a hiker can take the piece of trail they are walking instead
+of a gigabyte. `cut_stretches.py` cuts them from the corridor archives, by tile rather
+than by polygon: each tile's corners and center are projected onto the #652-calibrated
+mile axis and the tile is routed to every stretch whose interval it touches — a
+partition of the corridor, not 44 overlapping corridors (the module docstring says why
+buffered substrings lose). Everything through z9 becomes ONE shared `*_context.pmtiles`
+per sheet instead of riding in every unit (#193's duplication, answered), and
+`<family>_stretches.json` publishes the coverage index — stretch ids, keys, and core
+mile intervals on ATC's own mile scale. `verify_release.py` check 20 fails a release
+whose stretches leave a mile of trail uncovered or name an archive that was never
+published, and `latest.json` now carries a measured `size_bytes` per artifact (#505's
+third ask), so per-unit download prompts never advertise a hand-kept number.
+
+Both build workflows cut after their package/archive step:
+
+```
+python cut_stretches.py data/processed/at_basemap_package.pmtiles --family at_basemap
+python cut_stretches.py data/processed/dem.pmtiles --family dem
+```
+
+The client half — reading several units, the seam banner, the picker — is deferred until
+the new wireframes land (#557/#558).
 
 ## The dbt transform layer (#100, Phase A)
 

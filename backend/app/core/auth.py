@@ -40,6 +40,7 @@ from functools import lru_cache
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -136,7 +137,17 @@ def _get_or_create_profile(db: Session, user_id: str) -> Profile:
     if profile is None:
         profile = Profile(id=user_id, role=Role.hiker)
         db.add(profile)
-        commit_and_refresh(db, profile)
+        try:
+            commit_and_refresh(db, profile)
+        except IntegrityError:
+            # Check-then-insert, so a user's parallel first requests race
+            # here - the seam every authenticated request crosses - and the
+            # loser used to 500 (#658, the #265 shape). The other request's
+            # row is exactly the row this one wanted.
+            db.rollback()
+            profile = db.get(Profile, user_id)
+            if profile is None:
+                raise
     return profile
 
 

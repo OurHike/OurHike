@@ -162,6 +162,43 @@ def test_extract_refuses_an_empty_intersection(tmp_path):
         extract(source, region_path, tmp_path / "package.pmtiles", min_zoom=1, max_zoom=1, name="empty", context_zoom=None)
 
 
+def test_a_refused_extract_leaves_no_package_behind_and_spares_the_old_one(tmp_path):
+    """#659: the wrong-region guard used to raise inside `with write(out_path)`,
+    which had already truncated out_path - so a refused cut destroyed the
+    existing good package AND left a 0-byte file at its name, looking real.
+    The write now goes to a temp name and only renames over out_path after
+    finalize; a refusal must leave the previous bytes untouched and no temp
+    debris."""
+    source = tmp_path / "source.pmtiles"
+    header = {
+        "tile_type": TileType.MVT,
+        "tile_compression": Compression.GZIP,
+        "min_lon_e7": 0,
+        "min_lat_e7": 0,
+        "max_lon_e7": 0,
+        "max_lat_e7": 0,
+        "center_lon_e7": 0,
+        "center_lat_e7": 0,
+        "center_zoom": 1,
+    }
+    with write(str(source)) as writer:
+        writer.write_tile(zxy_to_tileid(1, 0, 0), b"nw")
+        writer.finalize(header, {"name": "source"})
+
+    region_path = tmp_path / "region.geojson"
+    region_path.write_text(json.dumps(mapping(box(30.0, -70.0, 80.0, -30.0))))
+
+    out_path = tmp_path / "package.pmtiles"
+    good_bytes = b"the previous good package, which a refused cut must not destroy"
+    out_path.write_bytes(good_bytes)
+
+    with pytest.raises(SystemExit, match="no tiles"):
+        extract(source, region_path, out_path, min_zoom=1, max_zoom=1, name="empty", context_zoom=None)
+
+    assert out_path.read_bytes() == good_bytes
+    assert not list(tmp_path.glob("*.tmp")), "the refused write must clean up its temp file"
+
+
 def test_context_zoom_keeps_the_sources_whole_low_zoom_footprint(tmp_path):
     # Issue #189's beyond-the-package ground: through the context zoom the
     # package inherits every source tile, so panning out offline shows the

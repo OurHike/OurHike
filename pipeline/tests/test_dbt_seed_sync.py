@@ -47,14 +47,31 @@ def test_opentrail_poi_type_mapping_is_export_pois_own():
 
 
 def test_atc_rows_mirror_direct_sources():
+    """Mapped atc rows ARE DIRECT_SOURCES; unmapped ones must not be.
+
+    An atc row with a poi_type claims export_poi.py publishes that layer, so
+    the pair must match DIRECT_SOURCES exactly - in both directions, or a
+    layer could be dropped from the export while the seed kept promising it.
+    An atc row with an EMPTY poi_type (bridges) claims the opposite: the
+    layer is registered and POI-shaped but deliberately unpublished (#99
+    records the product call as open), so it must NOT appear in
+    DIRECT_SOURCES, and like the unmapped opentrail icons it carries no
+    confidence either.
+    """
     rows = {r["code"]: r for r in _seed_rows() if r["source_system"] == "atc"}
     direct = {stem: (poi_type, fields.get("confidence")) for stem, poi_type, _src, fields in export_poi.DIRECT_SOURCES}
 
-    for stem, row in rows.items():
-        assert stem in direct, f"seed's atc row {stem!r} names a layer DIRECT_SOURCES does not export"
+    mapped = {stem: row for stem, row in rows.items() if row["poi_type"]}
+    assert set(mapped) == set(direct), "the seed's mapped atc rows and DIRECT_SOURCES must name exactly the same layers"
+    for stem, row in mapped.items():
         poi_type, confidence = direct[stem]
         assert row["poi_type"] == poi_type
         assert row["confidence"] == confidence
+
+    for stem, row in rows.items():
+        if not row["poi_type"]:
+            assert stem not in direct, f"seed marks atc layer {stem!r} deliberately-unmapped, but DIRECT_SOURCES exports it"
+            assert not row["confidence"], f"unmapped atc layer {stem!r} must not carry a confidence"
 
 
 def test_the_seed_stays_inside_the_unified_poi_vocabulary():

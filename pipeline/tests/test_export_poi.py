@@ -471,10 +471,10 @@ def test_export_poi_carries_shelter_capacity_onto_the_shelter_feature(tmp_path, 
     _write_capacity_file(
         capacity_path,
         [
-            {"atc_global_id": "shelter-glob-1", "atc_name": "Test Shelter", "capacity": 8},
+            {"poi_id": "atc_shelters:shelter-glob-1", "atc_name": "Test Shelter", "capacity": 8},
             # A shelter that is not in this corridor: present in the file,
             # absent from the export, and no reason for either to complain.
-            {"atc_global_id": "shelter-glob-absent", "atc_name": "Elsewhere Shelter", "capacity": 12},
+            {"poi_id": "atc_shelters:shelter-glob-absent", "atc_name": "Elsewhere Shelter", "capacity": 12},
         ],
     )
 
@@ -509,7 +509,7 @@ def test_export_poi_publishes_no_capacity_where_the_reference_file_states_none(t
         capacity_path,
         [
             {
-                "atc_global_id": "shelter-glob-1",
+                "poi_id": "atc_shelters:shelter-glob-1",
                 "atc_name": "Test Shelter",
                 "capacity": None,
                 "unresolved": "the source gives 'xxx', which is not a number",
@@ -778,7 +778,7 @@ def test_export_poi_exported_properties_are_exactly_the_declared_columns(tmp_pat
     out_dir = tmp_path / "processed" / "poi"
     _write_fixture_sources(raw_dir)
     capacity_path = tmp_path / "shelter_capacity.json"
-    _write_capacity_file(capacity_path, [{"atc_global_id": "shelter-glob-1", "atc_name": "Test Shelter", "capacity": 8}])
+    _write_capacity_file(capacity_path, [{"poi_id": "atc_shelters:shelter-glob-1", "atc_name": "Test Shelter", "capacity": 8}])
     (raw_dir / "poi_images.json").write_text(
         json.dumps(
             {
@@ -832,7 +832,7 @@ def test_export_poi_composes_a_description_for_shelters_and_campsites(tmp_path, 
     out_dir = tmp_path / "processed" / "poi"
     _write_fixture_sources(raw_dir)
     capacity_path = tmp_path / "shelter_capacity.json"
-    _write_capacity_file(capacity_path, [{"atc_global_id": "shelter-glob-1", "atc_name": "Test Shelter", "capacity": 8}])
+    _write_capacity_file(capacity_path, [{"poi_id": "atc_shelters:shelter-glob-1", "atc_name": "Test Shelter", "capacity": 8}])
 
     monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
     monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
@@ -1312,6 +1312,29 @@ def test_check_and_the_export_gate_on_the_same_rule(tmp_path, monkeypatch, con):
     assert export_poi.main()["crossing"]["geojson"]["feature_count"] == 0
 
 
+def test_a_red_export_writes_no_artifacts_at_all(tmp_path, monkeypatch, con):
+    """#659: the gate used to run after the write loop, so a failing export
+    left fresh bad .geojson/.fgb files on disk beside the previous run's
+    manifest.json - the stale-hash-beside-new-bytes pairing a later manual
+    publish would mis-record. The gate now runs first: a red export leaves
+    the output directory exactly as it found it."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    _write_fc(raw_dir / "viewpoints.geojson", [])  # a type the gate refuses empty
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+
+    with pytest.raises(SystemExit):
+        export_poi.main()
+
+    assert not out_dir.exists() or not any(out_dir.iterdir()), (
+        "a red export must leave nothing behind for a later publish to mistake for a good run"
+    )
+
+
 def test_an_unknown_flag_is_rejected_rather_than_silently_exporting(monkeypatch, capsys):
     """A typo'd `--check` must not run the full export in a step that asked
     for a preflight - it would write artifacts from unfetched photos."""
@@ -1438,7 +1461,7 @@ def test_export_poi_names_a_sites_parts_in_the_anchors_description(tmp_path, mon
         ],
     )
     capacity_path = tmp_path / "shelter_capacity.json"
-    _write_capacity_file(capacity_path, [{"atc_global_id": "shelter-glob-1", "atc_name": "Test Shelter", "capacity": 8}])
+    _write_capacity_file(capacity_path, [{"poi_id": "atc_shelters:shelter-glob-1", "atc_name": "Test Shelter", "capacity": 8}])
 
     monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
     monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)

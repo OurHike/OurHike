@@ -19,6 +19,88 @@ models:
         data_tests: [not_null, unique]
       - name: poi_type
         data_tests: [not_null]
+  - name: stg_atc__viewpoints
+    description: >
+      ATC viewpoints, same POI shape and reasoning as stg_atc__shelters.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+      - name: poi_type
+        data_tests: [not_null]
+  - name: stg_atc__parking
+    description: >
+      ATC parking, same POI shape and reasoning as stg_atc__shelters.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+      - name: poi_type
+        data_tests: [not_null]
+  - name: stg_atc__privies
+    description: >
+      ATC privies, same POI shape and reasoning as stg_atc__shelters.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+      - name: poi_type
+        data_tests: [not_null]
+  - name: stg_atc__communities
+    description: >
+      A.T. Community towns as resupply at confidence 'low' - a designation
+      proxy, not a verified store (export_poi.py's DIRECT_SOURCES row,
+      held by the seed sync test).
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+      - name: poi_type
+        data_tests: [not_null]
+  - name: stg_atc__bridges
+    description: >
+      Bridges staged but NOT unioned into dim_pois - the poi_type_mapping
+      seed records the layer as deliberately-unmapped and #99 records the
+      product call as open. No poi_type column at all, so a future union
+      branch has to be a decision, not an accident.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+  - name: stg_atc__centerline_segments
+    description: >
+      Per-segment centerline attributes (surface, status, club acronyms).
+      Geometry deliberately stays in the Python spatial scripts - DBT.md's
+      scope line.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+  - name: stg_atc__side_trails
+    description: >
+      Side-trail attributes including the raw Blaze vocabulary. No
+      accepted_values on blaze on purpose - TRAIL_BLAZE_COLORS.md documents
+      the dirt (empty values, "Unknown", "Gold"), and staging's job is to
+      surface that domain, not legislate it.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+  - name: stg_atc__club_sections
+    description: >
+      Club maintenance sections, with upstream's ACROYNM spelling corrected
+      to club_acronym at the rename.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+  - name: stg_atc__half_mile_markers
+    description: >
+      ATC's half-mile scale - the calibration authority behind the mile
+      axis (#652). source_id is Point_ID; the layer has no GlobalID.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+      - name: measure_mi
+        data_tests: [not_null]
+  - name: stg_atc__treadway
+    description: >
+      Built treadway segments with construction inventory.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
   - name: stg_opentrail__waypoints
     description: >
       opentrail waypoints with `icon` resolved to a unified poi_type via

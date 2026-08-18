@@ -4,7 +4,7 @@ affine==2.4.0
     # via rasterio
 attrs==26.1.0
     # via rasterio
-boto3==1.43.71
+boto3==1.43.72
     # via
     #   -r requirements.in
     #   moto
@@ -109,6 +109,8 @@ shapely==2.1.2
     # via -r requirements.in
 six==1.17.0
     # via python-dateutil
+typing-extensions==4.16.0
+    # via psycopg
 urllib3==2.7.0
     # via
     #   botocore

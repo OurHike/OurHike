@@ -37,6 +37,10 @@
 # "could not be determined" and moves on. A pull request that correctly closes
 # an issue must never fail this check because a secondary query broke - that
 # would be a gate rejecting good work for a reason unrelated to its rule.
+# (The PRIMARY lookup is different in kind (#660): unanswerable means the rule
+# itself cannot be checked, and green would waive it on a hiccup - so it is
+# retried, and its final failure says "re-run, not a verdict" in words instead
+# of surfacing as a stack trace that reads like a missing issue.)
 #
 # WHAT COUNTS IS THE LINK, NOT THE WORDING. The query below reads
 # `closingIssuesReferences`, which is GitHub's own record of what this PR
@@ -202,18 +206,42 @@ jobs:
               return
             }
 
-            const { repository } = await github.graphql(
-              `query($owner: String!, $repo: String!, $number: Int!) {
-                 repository(owner: $owner, name: $repo) {
-                   pullRequest(number: $number) {
-                     closingIssuesReferences(first: 20) {
-                       nodes { number title url }
+            // The PRIMARY lookup - the one that decides the rule - retried
+            // and then failed IN WORDS rather than left to throw (#660).
+            // Unlike the duplicate lookup below, an unanswerable primary
+            // genuinely cannot pass: green would waive the rule on a
+            // hiccup. But the old unwrapped call turned a GraphQL blip
+            // into a stack trace that read as "no linked issue", against
+            // this file's own header. Three attempts absorb the blip; the
+            // final failure says to re-run and that it is not a verdict.
+            let repository = null
+            for (let attempt = 1; attempt <= 3; attempt++) {
+              try {
+                ;({ repository } = await github.graphql(
+                  `query($owner: String!, $repo: String!, $number: Int!) {
+                     repository(owner: $owner, name: $repo) {
+                       pullRequest(number: $number) {
+                         closingIssuesReferences(first: 20) {
+                           nodes { number title url }
+                         }
+                       }
                      }
-                   }
-                 }
-               }`,
-              { owner, repo, number: pr.number },
-            )
+                   }`,
+                  { owner, repo, number: pr.number },
+                ))
+                break
+              } catch (error) {
+                core.info(`closingIssuesReferences attempt ${attempt}/3 failed: ${error.message}`)
+                if (attempt < 3) await new Promise(resolve => setTimeout(resolve, 2000))
+              }
+            }
+            if (repository === null) {
+              core.setFailed(
+                'Could not read this pull request\'s linked issues after three attempts - ' +
+                  'a GitHub API failure, not a verdict on the pull request. Re-run the check.',
+              )
+              return
+            }
 
             const linked = repository.pullRequest.closingIssuesReferences.nodes
 
@@ -399,9 +427,15 @@ jobs:
       #
       # Same `if:` shape inverted, same reasons, same continue-on-error: a
       # tidy-up that cannot be performed must not fail a pull request either.
+      #
+      # `!cancelled()` displaces the implicit `success()` (#660): without it
+      # the delete only ran on green runs, so the "permanent accusation" the
+      # comment above promises to remove survived exactly when the check
+      # started failing for some unrelated reason.
       - name: Take the duplicate warning down once it is settled
         if: >-
-          (steps.check.outputs.collisions == '' || steps.check.outputs.collisions == '[]')
+          !cancelled()
+          && (steps.check.outputs.collisions == '' || steps.check.outputs.collisions == '[]')
           && github.event.pull_request.head.repo.full_name == github.repository
         continue-on-error: true
         uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5 - same pin as pr-preview.yml; this job carries pull-requests: write (#660)

@@ -69,17 +69,34 @@ def comment_steps(steps: list[dict]) -> list[dict]:
 
 def test_the_duplicate_lookup_is_wrapped_rather_than_left_to_throw(script: str):
     """A pull request that correctly closes an issue must not fail this check
-    because a secondary query broke. The lookup returns null - "could not be
-    determined" - and the summary says so."""
-    assert "try {" in script
-    assert "catch (error)" in script
+    because a secondary query broke. The old assertion held that *a* `try {`
+    existed somewhere (#660) - satisfied by any try in the file while the
+    lookup itself threw. This one pins the wrap to the lookup's own body:
+    the duplicate query's failure path returns null, and the summary says
+    "could not be determined"."""
+    lookup_start = script.index("otherPullRequestsClosing")
+    lookup = script[lookup_start : script.index("if (linked.length", lookup_start)]
+    assert "try {" in lookup
+    assert "catch (error)" in lookup
+    assert "return null" in lookup
     assert "could not be determined" in script
 
 
+def test_the_primary_lookup_fails_in_words_not_as_a_stack_trace(script: str):
+    """#660: the query that decides the rule was unwrapped, so a GraphQL
+    hiccup redded a compliant pull request with a stack trace that read as
+    "no linked issue". Unanswerable is different from unanswered - green
+    would waive the rule on a blip - so the primary retries and its final
+    failure names itself as an API failure and says to re-run."""
+    assert "attempt" in script
+    assert "not a verdict on the pull request" in script
+
+
 def test_the_check_still_fails_a_pull_request_that_closes_no_issue(script: str):
-    """The rule this workflow exists for, unchanged. Everything above is a
-    warning; this is the only `setFailed` and it must stay."""
-    assert script.count("core.setFailed") == 1
+    """The rule this workflow exists for, unchanged. The only OTHER
+    `setFailed` is the primary lookup's could-not-read failure, which names
+    itself as not-a-verdict; nothing else may fail this check."""
+    assert script.count("core.setFailed") == 2
     assert "No linked issue" in script
 
 
@@ -88,9 +105,12 @@ def test_a_collision_warns_and_never_fails(script: str):
     split for review, or a replacement opened while the original stays up. A
     red check would block that case to catch the common one."""
     assert "core.warning" in script
-    # The warning text and the failure text must not be the same call site.
+    # The warning text and the RULE's failure must not be the same call
+    # site. Anchored on the no-linked-issue failure rather than the first
+    # setFailed in the file - the primary lookup's could-not-read failure
+    # (#660) sits earlier and is not the rule.
     warning_index = script.index("core.warning")
-    failure_index = script.index("core.setFailed")
+    failure_index = script.index("No linked issue")
     assert warning_index < failure_index
 
 
@@ -129,6 +149,15 @@ def test_the_warning_is_removed_once_it_stops_being_true(comment_steps: list[dic
 
     assert len(deleting) == 1
     assert deleting[0]["with"]["header"] == STICKY_HEADER
+
+
+def test_the_delete_runs_even_when_the_check_itself_failed(comment_steps: list[dict]):
+    """#660: an `if:` with no status function carries an implicit
+    `success()`, so the delete only ran on green runs - and the permanent
+    accusation survived exactly when the check started failing for some
+    unrelated reason."""
+    deleting = next(step for step in comment_steps if step["with"].get("delete") is True)
+    assert "!cancelled()" in deleting["if"]
 
 
 def test_the_post_and_the_delete_name_the_same_comment(comment_steps: list[dict]):

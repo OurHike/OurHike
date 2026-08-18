@@ -375,7 +375,7 @@ jobs:
           && steps.check.outputs.collisions != '[]'
           && github.event.pull_request.head.repo.full_name == github.repository
         continue-on-error: true
-        uses: marocchino/sticky-pull-request-comment@v3
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5 - same pin as pr-preview.yml; this job carries pull-requests: write (#660)
         with:
           header: pr-issue-link-duplicate
           message: |
@@ -404,7 +404,7 @@ jobs:
           (steps.check.outputs.collisions == '' || steps.check.outputs.collisions == '[]')
           && github.event.pull_request.head.repo.full_name == github.repository
         continue-on-error: true
-        uses: marocchino/sticky-pull-request-comment@v3
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5 - same pin as pr-preview.yml; this job carries pull-requests: write (#660)
         with:
           header: pr-issue-link-duplicate
           delete: true

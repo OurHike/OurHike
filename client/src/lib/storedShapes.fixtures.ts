@@ -173,6 +173,50 @@ export const STORED_SHAPES: Readonly<Record<string, unknown>> = deepFreeze({
     ],
   },
 
+  // Two trips under one key, and which of them the Plan tab has open (#787).
+  //
+  // The entry ABOVE is what makes this one load-bearing rather than
+  // decorative: a phone that stopped at the single-plan build holds
+  // `ourhike:plan` and no `ourhike:trips` at all, and `loadTrips()` has to
+  // turn that into this without losing the plan. The compat test asserts
+  // both directions - the legacy key still migrates, and a store written by
+  // this build still reads.
+  //
+  // A trip nests its whole `HikePlan` rather than spreading it, so the plan
+  // model, its validator and every edit in plan.ts are untouched by having
+  // acquired a name. The second trip carries an unnamed end on purpose:
+  // that is the dropped-point case, whose trip name has to come from a mile
+  // marker rather than from a place.
+  'ourhike:trips': {
+    openId: 'trip-0002',
+    trips: [
+      {
+        id: 'trip-0001',
+        name: 'Damascus → Atkins',
+        plan: {
+          target: { walkingHours: 7 },
+          stops: [
+            { mile: 470.8, name: 'Damascus', resupply: false },
+            { mile: 503.3, name: 'Atkins', resupply: true },
+          ],
+          days: [{ id: 'day-0001', date: '2026-05-12', pinned: false, generated: true }],
+        },
+      },
+      {
+        id: 'trip-0002',
+        name: 'mi 601.0 → mi 620.4',
+        plan: {
+          target: { miles: 15 },
+          stops: [
+            { mile: 601.0, resupply: false },
+            { mile: 620.4, resupply: false },
+          ],
+          days: [{ id: 'day-0002', pinned: false, generated: true }],
+        },
+      },
+    ],
+  },
+
   // sessionStorage rather than IndexedDB, and included anyway - the surface
   // is "stored client data", and a camera that fails to parse reopens the map
   // somewhere the hiker was not.

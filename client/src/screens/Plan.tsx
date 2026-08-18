@@ -75,8 +75,17 @@ export interface PlanScreenProps {
   /** The cascade hands back a whole re-planned plan rather than an edit. */
   onReplacePlan: (plan: HikePlan) => void
   onDeletePlan: () => void
+  /** The open trip's name, or null when nothing is open (#787). */
+  tripName: string | null
+  /** How many trips are kept. The switcher is offered whenever a hiker has
+   *  anything to switch between - and from the empty state too, so a plan
+   *  deleted by accident is one tap from being reopened rather than gone. */
+  tripCount: number
+  onOpenTrips: () => void
   /** The target sheet, when the shell has it open over this screen. */
   targetSheet?: ReactNode
+  /** The trip switcher, when the shell has it open over this screen. */
+  tripList?: ReactNode
 }
 
 export function PlanScreen({
@@ -94,7 +103,11 @@ export function PlanScreen({
   onToggleEndResupply,
   onReplacePlan,
   onDeletePlan,
+  tripName,
+  tripCount,
+  onOpenTrips,
   targetSheet,
+  tripList,
 }: PlanScreenProps) {
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -144,7 +157,13 @@ export function PlanScreen({
       <div className="plan">
         <header className="plan__head">
           <h1 className="plan__title">Plan</h1>
-          <span className="plan__head-note">nothing saved</span>
+          {tripCount > 0 ? (
+            <button type="button" className="plan__trips" onClick={onOpenTrips}>
+              {tripCount} kept
+            </button>
+          ) : (
+            <span className="plan__head-note">nothing saved</span>
+          )}
         </header>
 
         <div className="plan__empty">
@@ -167,6 +186,7 @@ export function PlanScreen({
           </button>
         </div>
         {targetSheet}
+        {tripList}
       </div>
     )
   }
@@ -180,13 +200,20 @@ export function PlanScreen({
     <div className="plan">
       <header className="plan__head">
         <h1 className="plan__title">
-          {stopLabel(views[0].start)} → {stopLabel(views[views.length - 1].end)}
+          {/* The trip's own name once it has one - a hiker who renamed it
+              "Grayson week" should read that back, not have it silently
+              replaced by the ends it was named from. */}
+          {tripName ??
+            `${stopLabel(views[0].start)} → ${stopLabel(views[views.length - 1].end)}`}
         </h1>
         <span className="plan__head-note">
           {direction === null ? '' : `${direction} · `}
           {views.length} days
           {finishLabel(views) === null ? '' : ` · finish ≈ ${finishLabel(views)}`}
         </span>
+        <button type="button" className="plan__trips" onClick={onOpenTrips}>
+          {tripCount > 1 ? `All ${tripCount} trips` : 'Your trips'}
+        </button>
       </header>
 
       {elevation !== null && (
@@ -335,6 +362,7 @@ export function PlanScreen({
         />
       )}
       {targetSheet}
+      {tripList}
     </div>
   )
 }

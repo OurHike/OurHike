@@ -92,7 +92,9 @@ jobs:
       - uses: actions/setup-node@v7
         if: steps.can.outputs.go == 'true'
         with:
-          node-version: "22"
+          # 24, like every other client job (#660) - a check built on a
+          # different Node than the app ships from can disagree with it.
+          node-version: 24
           cache: npm
           cache-dependency-path: client/package-lock.json
 

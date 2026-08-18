@@ -50,12 +50,12 @@ worse than none.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
 
 from lib.atc_updates import file_problems, is_reviewed, published_rows
+from lib.hashing import sha256_file
 
 ROOT = Path(__file__).resolve().parent
 REVIEWED_PATH = ROOT / "reference" / "atc_updates.json"
@@ -74,12 +74,6 @@ MANIFEST_PATH = ROOT / "data" / "processed" / "atc_updates_manifest.json"
 # URL deployed clients already request and can never be renamed
 # (lib/r2_keys.py), so it is spelled once, here.
 PAYLOAD = "atc_updates"
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    digest.update(path.read_bytes())
-    return digest.hexdigest()
 
 
 def _stamp_utc(value: datetime) -> str:

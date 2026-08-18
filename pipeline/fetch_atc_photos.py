@@ -116,6 +116,33 @@ RETRYABLE_STATUSES = (429, 500, 502, 503, 504)
 # of failure worth guarding: too rare to design around, fatal when it lands.
 MISSING_PHOTO_STATUSES = (403, 404, 410)
 
+# The 403 in that tuple cuts both ways (#659): Drive answers 403 for a file
+# whose sharing was revoked AND for rate limiting ("too many users have
+# viewed or downloaded this file"). One dead link is a fact about one slot;
+# a run whose 403s keep mounting is being throttled, and treating every one
+# as "file gone" would let a throttled crawl finish green having silently
+# recorded hundreds of POIs as photo-less. The same 80-link sample above
+# that motivated skipping is what bounds this: genuinely dead links are
+# rare, so a run that crosses this many 403s is almost certainly throttled
+# and must die loudly instead of finishing wrong.
+# @unvalidated - the ceiling is reasoned from that one 80-link sample, not
+# from an observed throttling incident; the first real one will say whether
+# 10 is the right number.
+MAX_FORBIDDEN_SKIPS = 10
+
+# A "none" outcome is re-checked once it is this old (#659): ATC keeps
+# filling Photo1..Photo10, and a carried-forward "none" used to be
+# permanent - a POI checked once on a bad day stayed photo-less forever.
+# @unvalidated - thirty days trades ~a few hundred extra requests a month
+# against how often ATC actually adds photos, which nobody has measured.
+RECHECK_NONE_AFTER_DAYS = 30
+
+# Refuse to overwrite the outcomes file when a re-fetch loses this share of
+# the prior "found" records it re-processed - the same guard, ratio and
+# override (delete the outcomes file deliberately) as fetch_poi_images.py,
+# whose own comment this module cited while not having one (#659).
+MAX_PHOTO_DROP_RATIO = 0.5
+
 USER_AGENT = "OurHike-pipeline/1.0 (https://github.com/OurHike/OurHike; contact via repository issues)"
 
 # A Drive share link carries the file id between /d/ and the next slash, in
@@ -186,18 +213,37 @@ def request_with_retry(session: requests.Session, url: str, **kwargs) -> request
     raise AssertionError("unreachable")
 
 
-def capture_date(session: requests.Session, file_id: str) -> date | None:
-    """The photo's EXIF capture date, read from the first EXIF_HEADER_BYTES of
-    the original rather than the whole file. Drive answers a Range request with
-    206; a server that ignored it would return the entire image, so the slice
-    is applied locally too rather than trusting the status."""
+def probe_original(session: requests.Session, file_id: str) -> tuple[date | None, str | None, int | None]:
+    """(capture date, Last-Modified, total byte size) of the Drive original,
+    all read from one Range request for its first EXIF_HEADER_BYTES.
+
+    The capture date comes from the EXIF in those bytes rather than the whole
+    file - originals run to 6.8 MB and the rest is never transferred. Drive
+    answers a Range request with 206; a server that ignored it would return
+    the entire image, so the slice is applied locally too rather than
+    trusting the status.
+
+    The other two ride the same response for free (#465): `Last-Modified` is
+    a header, and the total size is the figure after "/" in `Content-Range`
+    ("bytes 0-65535/5691832"). Together they are the change signal that lets
+    a --recheck skip re-downloading a rendering whose original demonstrably
+    has not changed - see eligible_photos. Either is None when Drive omits
+    the header, and None never matches, so an absent signal degrades to
+    re-fetching rather than to trusting."""
     resp = request_with_retry(
         session,
         DOWNLOAD_URL,
         params={"export": "download", "id": file_id},
         headers={"Range": f"bytes=0-{EXIF_HEADER_BYTES - 1}"},
     )
-    return parse_exif_date(resp.content[:EXIF_HEADER_BYTES])
+    taken = parse_exif_date(resp.content[:EXIF_HEADER_BYTES])
+    last_modified = resp.headers.get("Last-Modified")
+    size = None
+    content_range = resp.headers.get("Content-Range", "")
+    total = content_range.rpartition("/")[2]
+    if total.isdigit():
+        size = int(total)
+    return taken, last_modified, size
 
 
 def store_rendering(session: requests.Session, file_id: str) -> str:
@@ -261,19 +307,28 @@ def record_photos(record: dict) -> list[dict]:
 
 
 def cached_photo_missing(record: dict) -> bool:
-    """Whether a prior "found" outcome has lost any of the bytes it recorded -
-    a cleared data/ tree leaves the outcomes file pointing at images publish.py
-    would never upload.
+    """Whether a prior "found" outcome fails to VOUCH for its photos.
 
-    Any one missing re-fetches the POI's whole set rather than the single gap:
-    the photos are fetched together, the outcome is recorded together, and a
-    partial repair would leave the record claiming a list it cannot back."""
+    Until #465 this required the bytes on local disk, which was right when
+    local disk was the only evidence a photo had ever been obtained - and
+    made every cold publish re-crawl 489 features for ~15 minutes to
+    re-obtain a corpus the bucket already held. The digest is the evidence
+    now: photos are content-addressed, so a record that names its digests
+    can be published from directly, and publish.verify_photo_promises()
+    settles every published photo key against the bucket at the moment it
+    matters - a cleared data/ tree publishing a key nobody ever uploaded
+    fails THERE, loudly, instead of being re-downloaded here preemptively.
+
+    A record with any digest-less photo still re-fetches the POI's whole
+    set rather than the single gap: the photos are fetched together, the
+    outcome is recorded together, and a partial repair would leave the
+    record claiming a list it cannot back."""
     if record.get("status") != "found":
         return False
     photos = record_photos(record)
     if not photos:
         return True
-    return any(photo.get("digest") is None or not local_photo_path(RAW_DIR, photo["digest"]).exists() for photo in photos)
+    return any(photo.get("digest") is None for photo in photos)
 
 
 def collect_candidates() -> list[dict]:
@@ -287,8 +342,17 @@ def collect_candidates() -> list[dict]:
         for feature in json.loads(path.read_text(encoding="utf-8")).get("features", []):
             properties = feature.get("properties") or {}
             urls = photo_urls(properties)
-            feature_id = properties.get("GlobalID") or feature.get("id")
-            if not urls or not feature_id:
+            # `is None` at each step, not truthiness - the exact chain
+            # lib/poi_schema.unify_poi resolves the export's id with. These
+            # records join the export on that id, and a truthiness fallback
+            # here (#659) repeats the drift lib/feature_id.py documents as
+            # a past bug: a feature with GlobalID "" would take the
+            # feature's own id here while the export published "", and its
+            # photos would silently never attach.
+            feature_id = properties.get("GlobalID")
+            if feature_id is None:
+                feature_id = feature.get("id")
+            if not urls or feature_id is None:
                 continue
             candidates.append({"id": f"{source}:{feature_id}", "name": properties.get("Name"), "urls": urls})
     return candidates
@@ -300,14 +364,26 @@ def eligible_photos(
     cutoff: date,
     credit: dict,
     unresolved: list[str] | None = None,
+    prior_photos: dict[str, dict] | None = None,
 ) -> list[dict]:
     """Every shippable photo for a POI, in ATC's own Photo1..Photo10 order.
 
-    `unresolved`, when given, collects the photo URLs Drive would not serve
-    (see MISSING_PHOTO_STATUSES) so the run can report how much of ATC's
-    column no longer resolves. A list the caller owns rather than a return
-    value, because a slowly rotting corpus is a thing to notice across a whole
-    run and not a fact about any one POI.
+    `unresolved`, when given, collects (url, status) pairs Drive would not
+    serve (see MISSING_PHOTO_STATUSES) so the run can report how much of
+    ATC's column no longer resolves - and, since #659, so the caller can
+    count the 403s among them against MAX_FORBIDDEN_SKIPS. A list the
+    caller owns rather than a return value, because a slowly rotting corpus
+    is a thing to notice across a whole run and not a fact about any one
+    POI.
+
+    `prior_photos`, when given, maps photo URL -> the photo record an earlier
+    run wrote for it (#465). The probe every slot makes anyway carries the
+    original's Last-Modified and size; when both match what that record
+    stored, the rendering cannot have changed, so its digest is carried
+    forward and the thumbnail download is skipped. The reuse is
+    signal-guarded, never assumed: a prior record missing either signal, or
+    missing a digest, re-downloads - so records written before this existed
+    upgrade themselves on their first re-check.
 
     All of them, not the first: 433 of the 489 features carrying a photo carry
     more than one, and taking only the first discarded 812 real photographs of
@@ -327,10 +403,20 @@ def eligible_photos(
         if file_id is None:
             continue
         try:
-            taken = capture_date(session, file_id)
+            taken, last_modified, size = probe_original(session, file_id)
             if taken is None or taken < cutoff:
                 continue
-            digest = store_rendering(session, file_id)
+            prior = (prior_photos or {}).get(url) or {}
+            if (
+                last_modified is not None
+                and size is not None
+                and prior.get("drive_last_modified") == last_modified
+                and prior.get("drive_size") == size
+                and prior.get("digest") is not None
+            ):
+                digest = prior["digest"]
+            else:
+                digest = store_rendering(session, file_id)
         except requests.exceptions.HTTPError as error:
             # Both calls are wrapped, not just the first: a file can answer a
             # Range request and then refuse the rendering, and either way this
@@ -342,7 +428,7 @@ def eligible_photos(
             if status not in MISSING_PHOTO_STATUSES:
                 raise
             if unresolved is not None:
-                unresolved.append(url)
+                unresolved.append((url, status))
             continue
         photos.append(
             {
@@ -353,14 +439,73 @@ def eligible_photos(
                 "license": credit["license"],
                 "taken": taken.isoformat(),
                 "digest": digest,
+                "drive_last_modified": last_modified,
+                "drive_size": size,
             }
         )
     return photos
 
 
-def persist(records: dict[str, dict]) -> None:
-    """Write OUT_PATH atomically - it is the next run's skip input as well as
-    this run's output, so a truncate-and-write killed midway destroys both."""
+def keep_prior(record: dict | None, today: date) -> bool:
+    """Whether an earlier run's outcome for a POI still stands, sparing its
+    API calls. A "found" that lost its cached bytes does not stand (see
+    cached_photo_missing), and neither - since #659 - does a "none" older
+    than RECHECK_NONE_AFTER_DAYS: ATC keeps adding photos, and a POI
+    checked once on a bad day used to stay photo-less forever."""
+    if record is None:
+        return False
+    if cached_photo_missing(record):
+        return False
+    if record.get("status") == "none":
+        checked = record.get("checked")
+        if not checked:
+            return False
+        return (today - date.fromisoformat(checked)).days <= RECHECK_NONE_AFTER_DAYS
+    return True
+
+
+def drop_problems(lost_fresh: int, fresh_prior: int) -> list[str]:
+    """Problem strings when a run loses a suspicious share of the
+    still-fresh photos it re-processed - fetch_poi_images.drop_problems'
+    logic with this module's names (#659: this file's own comment cited
+    "the failure this pipeline's drop guards exist to catch" while having
+    no drop guard). If a big loss is real (ATC pulled the files), deleting
+    the outcomes file and re-running is the deliberate override."""
+    if fresh_prior == 0:
+        return []
+    if lost_fresh >= fresh_prior:
+        return [f"ATC photos fetch lost all {fresh_prior} still-fresh photo records - refusing to overwrite {OUT_PATH}"]
+    if lost_fresh > fresh_prior * MAX_PHOTO_DROP_RATIO:
+        return [
+            f"ATC photos fetch lost {lost_fresh} of {fresh_prior} still-fresh photo records "
+            f"({lost_fresh / fresh_prior:.0%}, over the {MAX_PHOTO_DROP_RATIO:.0%} threshold) "
+            f"- refusing to overwrite {OUT_PATH}"
+        ]
+    return []
+
+
+def persist(records: dict[str, dict], prior: dict[str, dict], cutoff: date) -> None:
+    """Guard, then write OUT_PATH atomically.
+
+    The guard first (#659, mirroring fetch_poi_images.persist): a run that
+    lost a suspicious share of the still-fresh prior "found" records it
+    actually re-processed exits here, leaving OUT_PATH as it was, so the
+    next run still compares against last-known-good. Only prior records
+    present in `records` count - a mid-crawl call guards the processed
+    subset without indicting the remainder. Then the sibling-temp write:
+    OUT_PATH is the crawl's output, the guard's baseline, and the next
+    run's skip input, and a truncate killed midway destroys all three."""
+    cutoff_iso = cutoff.isoformat()
+    fresh_prior_ids = {
+        poi_id
+        for poi_id, record in prior.items()
+        if record.get("status") == "found"
+        and poi_id in records
+        and any(photo.get("taken", "") >= cutoff_iso for photo in record_photos(record))
+    }
+    lost_fresh = sum(1 for poi_id in fresh_prior_ids if records[poi_id].get("status") != "found")
+    fail_if_incomplete(drop_problems(lost_fresh, len(fresh_prior_ids)), label="Refusing to persist ATC photos fetch")
+
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = OUT_PATH.parent / (OUT_PATH.name + ".tmp")
     tmp_path.write_text(json.dumps({"pois": records}, indent=2, sort_keys=True))
@@ -383,27 +528,45 @@ def main(recheck: bool = False) -> None:
     session = requests.Session()
     session.headers["User-Agent"] = USER_AGENT
 
-    today = date.today().isoformat()
+    today_date = date.today()
+    today = today_date.isoformat()
     records: dict[str, dict] = {}
-    unresolved: list[str] = []
+    unresolved: list[tuple[str, int]] = []
     kept = fetched = 0
     for index, candidate in enumerate(candidates, start=1):
         prior_record = prior.get(candidate["id"])
-        if not recheck and prior_record is not None and not cached_photo_missing(prior_record):
+        if not recheck and keep_prior(prior_record, today_date):
             records[candidate["id"]] = prior_record
             kept += 1
         else:
-            photos = eligible_photos(session, candidate, cutoff, credit, unresolved)
+            # Re-fetches still carry the prior record's per-URL photo rows in:
+            # each slot's probe compares Drive's Last-Modified + size against
+            # them and skips the rendering download when nothing changed, so a
+            # --recheck costs one Range request per photo, not two requests
+            # and a re-download (#465).
+            prior_photos = {p["url"]: p for p in record_photos(prior_record or {}) if p.get("url")}
+            photos = eligible_photos(session, candidate, cutoff, credit, unresolved, prior_photos)
             records[candidate["id"]] = (
                 {"status": "none", "checked": today} if not photos else {"status": "found", "checked": today, "photos": photos}
             )
             fetched += 1
+            forbidden = sum(1 for _url, status in unresolved if status == 403)
+            if forbidden > MAX_FORBIDDEN_SKIPS:
+                # Mass 403 is Drive throttling, not a mass deletion - see
+                # MAX_FORBIDDEN_SKIPS. Die before recording another POI as
+                # photo-less; the outcomes already persisted this run heal
+                # on the next one (a "none" is re-checked, see keep_prior).
+                raise SystemExit(
+                    f"{forbidden} photo requests answered 403 this run (ceiling {MAX_FORBIDDEN_SKIPS}) - "
+                    "this is the shape of Drive rate limiting, not of dead links. "
+                    "Re-run later rather than recording throttled POIs as photo-less."
+                )
         if index % 50 == 0:
             found = sum(1 for r in records.values() if r.get("status") == "found")
             print(f"  {index}/{len(candidates)} ({kept} carried forward), {found} POIs with photos")
-            persist(records)
+            persist(records, prior, cutoff)
 
-    persist(records)
+    persist(records, prior, cutoff)
     # OUT_PATH alone, not the photo store beside it. The images are
     # content-addressed bytes whose count publish.py reports separately (the
     # workflow's "How many photos would be published" step); this index is
@@ -417,7 +580,8 @@ def main(recheck: bool = False) -> None:
         # Said out loud rather than swallowed: these are references in ATC's
         # own column that no longer resolve, and a number that grows run over
         # run is worth telling them about.
-        print(f"{len(unresolved)} photo reference(s) Drive would not serve, skipped - e.g. {unresolved[0]}")
+        example_url, example_status = unresolved[0]
+        print(f"{len(unresolved)} photo reference(s) Drive would not serve, skipped - e.g. {example_url} ({example_status})")
 
 
 def run(argv: list[str]) -> None:

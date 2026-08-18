@@ -1,0 +1,24 @@
+{
+  "_README": [
+    "Hand-owned identity decisions (features/POI_IDENTITY.md, #672) -",
+    "reconcile_poi_identity.py READS this file and never writes it, the",
+    "same split sources.json keeps between discovered and hand-added",
+    "entries. Machine-owned ledger, human-owned overrides.",
+    "",
+    "`same`: this ledger id and this upstream key are the same physical",
+    "place - carried before any scoring, and the one door back in for a",
+    "retired row (the tombstone re-unites with its successor and every",
+    "anchored photo and note comes back).",
+    "`not_same`: forbid a pair the evidence matcher would otherwise",
+    "consider - ATC's own data holds lookalikes (Rocky Run Shelters 1 and",
+    "2) that must never merge.",
+    "",
+    "Every row carries: id (the ledger id), source, source_feature_id",
+    "(upstream's CURRENT key), and reason (a sentence a reviewer can",
+    "disagree with). A `same` row whose key the snapshot does not leave",
+    "unmatched is STALE and holds the run - remove it once it has done its",
+    "work; the ledger's history keeps the record."
+  ],
+  "same": [],
+  "not_same": []
+}

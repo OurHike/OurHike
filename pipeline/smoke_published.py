@@ -48,13 +48,13 @@ import argparse
 import hashlib
 import json
 import sys
-from datetime import date
 from pathlib import Path
 
 import requests
 from pmtiles.reader import Reader, traverse
 
 from lib import data_env
+from lib.freshness_state import utc_today
 from publish import COMPRESSIBLE_TYPES
 
 MANIFEST_KEY = "latest.json"
@@ -236,8 +236,10 @@ def check_headers(base: str, key: str, session: requests.Session | None = None) 
         return _report("headers", key, FAILED, f"Content-Length was {length!r}")
 
     # Notes, never failures - each one is something a reader of this report
-    # would otherwise have to work out for themselves. `check_all` parses the
-    # leading integer out of this detail, so the size stays first.
+    # would otherwise have to work out for themselves. The size travels as
+    # its own `size` field (#659) - check_all used to re-parse it out of
+    # this human-readable sentence, which is a wording change away from
+    # breaking every downstream check.
     notes = []
     if encoding:
         # Worth saying plainly: this is the STORED size, which is what a range
@@ -253,7 +255,7 @@ def check_headers(base: str, key: str, session: requests.Session | None = None) 
     detail = f"{int(length)} bytes"
     if notes:
         detail += f" ({'; '.join(notes)})"
-    return _report("headers", key, OK, detail)
+    return {**_report("headers", key, OK, detail), "size": int(length)}
 
 
 def check_range(base: str, key: str, size: int, session: requests.Session | None = None) -> dict:
@@ -492,7 +494,7 @@ def check_all(
             # that explains the rest.
             continue
 
-        size = int(headers["detail"].split(" ", 1)[0])
+        size = headers["size"]
         reports.append(check_range(base, key, size, session))
         reports.append(check_hash(base, key, entry.get("sha256"), size, max_hash_bytes, session))
         if key.endswith(".pmtiles"):
@@ -503,7 +505,7 @@ def check_all(
 
 def verdict_document(base: str, reports: list[dict]) -> dict:
     return {
-        "checked_at": date.today().isoformat(),
+        "checked_at": utc_today().isoformat(),
         "base": base,
         "checks": reports,
         "failed": [r for r in reports if r["state"] == FAILED],

@@ -536,6 +536,15 @@ def compare_state(recorded: dict, upstream: dict) -> list[dict]:
     return reports
 
 
+def utc_today() -> date:
+    """Today on the UTC calendar - the one every captured_at/checked_at
+    stamp in this pipeline lives on. date.today() is the machine's LOCAL
+    date, which near midnight differs from the UTC date by one; comparing
+    the two calendars made a fresh capture read a day old, or a day-old
+    one read fresh, depending on the runner's timezone (#659)."""
+    return datetime.now(timezone.utc).date()
+
+
 def state_age_days(state: dict, today: date | None = None) -> int | None:
     """How long ago the state was captured, or None if it does not say.
 
@@ -552,4 +561,7 @@ def state_age_days(state: dict, today: date | None = None) -> int | None:
         when = datetime.fromisoformat(captured)
     except ValueError:
         return None
-    return ((today or date.today()) - when.date()).days
+    # utc_today, never date.today: `when` is the UTC stamp captured above,
+    # and subtracting it from the runner's LOCAL date skews the age by a
+    # day around midnight (#659).
+    return ((today or utc_today()) - when.date()).days

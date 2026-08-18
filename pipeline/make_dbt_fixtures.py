@@ -30,15 +30,83 @@ def _feature_collection(features):
     return json.dumps({"type": "FeatureCollection", "features": features})
 
 
-def _atc_layer(name_prefix, count):
+def _point(i):
+    return {"type": "Point", "coordinates": [-74.0 + i * 0.01, 41.0 + i * 0.01]}
+
+
+def _line(i):
+    return {
+        "type": "LineString",
+        "coordinates": [[-74.0 + i * 0.01, 41.0 + i * 0.01], [-74.0 + i * 0.01, 41.005 + i * 0.01]],
+    }
+
+
+def _polygon(i):
+    x, y = -74.0 + i * 0.01, 41.0 + i * 0.01
+    return {"type": "Polygon", "coordinates": [[[x, y], [x + 0.005, y], [x + 0.005, y + 0.005], [x, y]]]}
+
+
+def _atc_layer(name_prefix, count, extra=None, geometry=_point):
+    """The ANST_Facilities shape: GlobalID/Name plus whatever per-layer
+    columns the staging model reads, spelled exactly as upstream spells
+    them (verified against the loaded warehouse 2026-08-18)."""
     return _feature_collection(
         [
             {
                 "type": "Feature",
-                "properties": {"GlobalID": f"{name_prefix.lower()}-{i}", "Name": f"{name_prefix} {i}"},
-                "geometry": {"type": "Point", "coordinates": [-74.0 + i * 0.01, 41.0 + i * 0.01]},
+                "properties": {
+                    "GlobalID": f"{name_prefix.lower().replace(' ', '-')}-{i}",
+                    "Name": f"{name_prefix} {i}",
+                    **{k: (v(i) if callable(v) else v) for k, v in (extra or {}).items()},
+                },
+                "geometry": geometry(i),
             }
             for i in range(count)
+        ]
+    )
+
+
+def _communities_layer():
+    # The one facilities-family departure: NAME, not Name.
+    return _feature_collection(
+        [
+            {
+                "type": "Feature",
+                "properties": {"GlobalID": f"community-{i}", "NAME": f"Trail Town {i}"},
+                "geometry": _point(i),
+            }
+            for i in range(2)
+        ]
+    )
+
+
+def _club_sections_layer():
+    return _feature_collection(
+        [
+            {
+                "type": "Feature",
+                "properties": {
+                    "GlobalID": f"club-section-{i}",
+                    "TRAIL_CLUB": f"Test Trail Club {i}",
+                    "ACROYNM": f"TTC{i}",
+                    "REGION": "New England",
+                },
+                "geometry": _polygon(i),
+            }
+            for i in range(2)
+        ]
+    )
+
+
+def _half_mile_layer():
+    return _feature_collection(
+        [
+            {
+                "type": "Feature",
+                "properties": {"Point_ID": i, "Measure": i * 0.5, "MeasureM": i * 804.672},
+                "geometry": _point(i),
+            }
+            for i in range(4)
         ]
     )
 
@@ -60,6 +128,47 @@ def write_fixtures(raw_dir: Path) -> list[str]:
     files = {
         "shelters.geojson": _atc_layer("Shelter", 3),
         "campsites.geojson": _atc_layer("Campsite", 2),
+        "viewpoints.geojson": _atc_layer("Viewpoint", 2),
+        "parking.geojson": _atc_layer("Parking", 2),
+        "privies.geojson": _atc_layer("Privy", 2),
+        "communities.geojson": _communities_layer(),
+        "bridges.geojson": _atc_layer("Bridge", 2, extra={"Status": "Existing", "Type": "Foot Bridge", "Super_Stru": "Timber"}),
+        "centerline.geojson": _atc_layer(
+            "Centerline Segment",
+            2,
+            extra={
+                "Status": "Existing",
+                "Surface": "Native",
+                "Reg_Acro": "NE",
+                "Acronym": "TTC",
+                "Length_Ft": lambda i: 500.0 + i,
+            },
+            geometry=_line,
+        ),
+        "side_trails.geojson": _atc_layer(
+            "Side Trail",
+            2,
+            extra={
+                "Status": "Existing",
+                "Type": "Side Trail",
+                "Blaze": "Blue",
+                "Length_Ft": lambda i: 300.0 + i,
+            },
+            geometry=_line,
+        ),
+        "trail_club_sections.geojson": _club_sections_layer(),
+        "half_mile_points_from_springer.geojson": _half_mile_layer(),
+        "at_treadway.geojson": _atc_layer(
+            "Treadway",
+            2,
+            extra={
+                "Status": "Existing",
+                "Length_Ft": lambda i: 800.0 + i,
+                "Year_Built": 1998,
+                "Comments": "fixture row",
+            },
+            geometry=_line,
+        ),
         "opentrail_at.geojson": _opentrail_layer(),
     }
     existing = [name for name in files if (raw_dir / name).exists()]

@@ -153,8 +153,13 @@ jobs:
           osmium --version | head -1
 
       - name: Fetch the Planetiler jar
+        env:
+          # Same version pin and through-env handling as build-basemap.yml
+          # (#660). A spike ships nothing, but a measurement taken against
+          # whatever "latest" meant that day is not reproducible either.
+          JAR_URL: ${{ inputs.planetiler_jar_url || 'https://github.com/onthegomap/planetiler/releases/download/v0.10.2/planetiler.jar' }}
         run: |
-          curl -sSL -o planetiler.jar "${{ inputs.planetiler_jar_url || 'https://github.com/onthegomap/planetiler/releases/latest/download/planetiler.jar' }}"
+          curl -sSL -o planetiler.jar "$JAR_URL"
           ls -la planetiler.jar
 
       # Planetiler's profile pulls ~1.4 GB from three third parties before it

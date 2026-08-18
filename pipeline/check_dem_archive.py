@@ -9,10 +9,16 @@ phone with no signal, found at the worst possible moment. So the leniency
 lives in the exporter and the strictness lives here, at the moment an
 archive is about to become the thing hikers download:
 
-  coverage    every tile the region walk names, at every zoom, is present.
-              The walk is the same tiles_intersecting() the exporter used,
-              so the check answers "did the build get everything it tried
-              for", not "does this archive resemble a corridor".
+  coverage    every tile the region walk names, at every zoom, is present
+              OR was declared absent-from-source by the exporter itself
+              (metadata `absent_tiles`, #659 - a genuinely missing AWS
+              tile used to make the archive permanently unshippable
+              through this gate). The walk is the same
+              tiles_intersecting() the exporter used, so the check answers
+              "did the build get everything it tried for", not "does this
+              archive resemble a corridor". Declared absences above
+              MAX_ABSENT_SHARE still fail: that is a source outage during
+              the build, not scattered upstream gaps.
   decodes     every tile parses as a 256x256 WebP - the browser's image
               decoder is the only decoder the client has, so bytes PIL
               rejects are bytes MapLibre would render as a hole.
@@ -39,6 +45,16 @@ from export_dem import MAX_ZOOM, MIN_ZOOM, OUT_PATH
 from extract_package import load_region, tiles_intersecting, to_mercator
 
 TILE_SIZE = 256
+
+# The ceiling on how much of the region the exporter may declare absent
+# before this gate stops believing "upstream gap" and starts saying "the
+# source was down during the build". The dataset is global, so genuine
+# absences are rare and scattered; whole percents of a region at once have
+# only one plausible cause.
+# @unvalidated - reasoned from the dataset being global, not from a
+# measured absence rate; the first real build that trips or grazes it will
+# say whether 1% is the right line.
+MAX_ABSENT_SHARE = 0.01
 
 
 def check_archive(archive: Path, region_4326, min_zoom: int, max_zoom: int) -> list[str]:
@@ -83,13 +99,31 @@ def check_archive(archive: Path, region_4326, min_zoom: int, max_zoom: int) -> l
         if bad_tiles > 5:
             problems.append(f"...and {bad_tiles - 5} more tiles that do not decode")
 
-        missing = expected - held
+        metadata = Reader(get_bytes).metadata()
+
+        # Tiles the EXPORTER already reported the source had no answer for
+        # are excused - and only those (#659). export_dem.py deliberately
+        # tolerates upstream absences (the dataset is global; absence is
+        # rare and not worth failing a 20k-tile run over), and this check
+        # used to hard-fail on any of them, making an archive built over
+        # one genuinely-missing AWS tile permanently unshippable. Mass
+        # absence is different: it means the source was down during the
+        # build, and no declaration excuses that.
+        declared_absent = {tuple(t) for t in metadata.get("absent_tiles", [])}
+        if expected and len(declared_absent) > MAX_ABSENT_SHARE * len(expected):
+            problems.append(
+                f"{len(declared_absent)} tiles declared absent from source "
+                f"({len(declared_absent) / len(expected):.1%} of the region, over the {MAX_ABSENT_SHARE:.0%} "
+                "ceiling) - the tile source was likely down during the build; rebuild rather than excuse"
+            )
+
+        missing = expected - held - declared_absent
         if missing:
             worst = sorted(missing)[:5]
             listed = ", ".join(f"{z}/{x}/{y}" for z, x, y in worst)
             problems.append(
-                f"{len(missing)} region tiles missing from the archive (first: {listed}) - "
-                "each is a blank terrain square on a phone with no signal"
+                f"{len(missing)} region tiles missing from the archive with no declared source absence "
+                f"(first: {listed}) - each is a blank terrain square on a phone with no signal"
             )
         # Beyond-region tiles would mean the walk here and the exporter's
         # disagree - not hiker-harming by itself, but proof the check is not
@@ -97,8 +131,6 @@ def check_archive(archive: Path, region_4326, min_zoom: int, max_zoom: int) -> l
         stray = held - expected
         if stray:
             problems.append(f"{len(stray)} tiles outside the region walk - archive and check disagree about the region")
-
-        metadata = Reader(get_bytes).metadata()
         if metadata.get("encoding") != "terrarium":
             problems.append(f"metadata encoding is {metadata.get('encoding')!r}, expected 'terrarium'")
         if "quantize_step_m" not in metadata:

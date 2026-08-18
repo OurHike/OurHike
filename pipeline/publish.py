@@ -42,7 +42,6 @@ have already downloaded.
 from __future__ import annotations
 
 import gzip
-import hashlib
 import json
 import os
 import shutil
@@ -53,6 +52,7 @@ from pathlib import Path
 import boto3
 
 from lib import data_env, releases
+from lib.hashing import sha256_file
 from lib.photo_store import PHOTO_EXTENSION, PHOTOS_DIRNAME, photo_key
 from lib.r2_keys import assert_valid_keys
 
@@ -71,14 +71,6 @@ CONDITIONS_MANIFESTS = (
     "drought_manifest.json",
 )
 WRITE_ENABLED_ENV_VAR = "R2_WRITE_ENABLED"
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 # One background raster archive per download tier the client offers.
@@ -162,7 +154,18 @@ STRETCH_FAMILIES = ("at_basemap", "dem")
 # it. That is precisely the false-fresh failure the whole check exists to
 # prevent, so the state is only ever written together with the bytes it
 # describes.
-SIDECARS = ("build_state.json",)
+# Sidecar name -> the directory its builder writes it in. build_state.json
+# is processed build metadata; the two photo outcome JSONs are fetch
+# products, published (#465) so a cold publish machine can restore them
+# over public HTTPS and skip re-downloading a photo corpus the bucket
+# already holds - ~200 KB standing in for ~30 minutes of throttled
+# re-fetching. Like every sidecar they never cause a version and never
+# describe data that was not published.
+SIDECARS = {
+    "build_state.json": "processed",
+    "poi_images_atc.json": "raw",
+    "poi_images.json": "raw",
+}
 
 
 # What an artifact is served as, by extension.
@@ -269,8 +272,8 @@ def upload_args(name: str, path: str, *, compress: bool = True) -> tuple[str, di
 def collect_sidecars() -> dict[str, dict]:
     """Build metadata to upload beside a new version. See SIDECARS."""
     found: dict[str, dict] = {}
-    for name in SIDECARS:
-        path = PROCESSED_DIR / name
+    for name, shelf in SIDECARS.items():
+        path = (PROCESSED_DIR if shelf == "processed" else RAW_DIR) / name
         if path.exists():
             found[name] = {"path": str(path), "sha256": sha256_file(path)}
     return found
@@ -328,6 +331,58 @@ def upload_photos(s3_client, bucket: str, photos: dict[str, str], prefix: str = 
         s3_client.upload_file(path, bucket, f"{prefix}{key}", ExtraArgs={"ContentType": "image/jpeg"})
         uploaded.append(key)
     return uploaded
+
+
+def referenced_photo_keys(artifacts: dict[str, dict]) -> set[str]:
+    """Every `photos/<digest>.jpg` key the exported poi_*.geojson artifacts
+    reference - the promises this publish is about to make (#465). Read
+    from the artifacts themselves rather than the outcome JSONs, because
+    the artifact is what a hiker's card resolves against."""
+    keys: set[str] = set()
+    for name, entry in artifacts.items():
+        if not (name.startswith("poi_") and name.endswith(".geojson")):
+            continue
+        document = json.loads(Path(entry["path"]).read_text(encoding="utf-8"))
+        for feature in document.get("features", []):
+            properties = feature.get("properties") or {}
+            if properties.get("photo_key"):
+                keys.add(properties["photo_key"])
+            gallery = properties.get("photos")
+            if gallery:
+                items = json.loads(gallery) if isinstance(gallery, str) else gallery
+                keys.update(item["key"] for item in items if item.get("key"))
+    return keys
+
+
+def verify_photo_promises(s3_client, bucket: str, prefix: str, artifacts: dict, photos: dict[str, str]) -> None:
+    """Fail loudly when an exported photo_key has neither a local file nor a
+    bucket object (#465).
+
+    This is the check that let the fetches stop requiring local bytes: a
+    durable outcome record vouches that a photo was obtained ONCE, and this
+    is where that trust is settled against reality - by the one component
+    that already holds credentials and already HEADs every photo key. A
+    cleared data/ tree publishing a photo_key nobody ever uploaded used to
+    be cached_photo_missing()'s job to prevent, at the cost of a ~30-minute
+    re-fetch of a corpus the bucket already held.
+    """
+    missing: list[str] = []
+    for key in sorted(referenced_photo_keys(artifacts)):
+        if key in photos:
+            continue  # in the local store; upload_photos settled it
+        try:
+            s3_client.head_object(Bucket=bucket, Key=f"{prefix}{key}")
+        except Exception as exc:
+            if "404" not in str(exc) and "NoSuchKey" not in str(exc) and "Not Found" not in str(exc):
+                raise
+            missing.append(key)
+    if missing:
+        shown = ", ".join(missing[:5]) + (f" (+{len(missing) - 5} more)" if len(missing) > 5 else "")
+        raise RuntimeError(
+            f"{len(missing)} photo key(s) referenced by the poi artifacts exist neither locally nor in the "
+            f"bucket: {shown}. The outcome records promise photos nobody ever uploaded - re-run the photo "
+            "fetches (delete the stale outcome JSONs first if they are wrong) before publishing."
+        )
 
 
 def collect_artifacts() -> dict[str, dict]:
@@ -446,6 +501,27 @@ def collect_artifacts() -> dict[str, dict]:
         entry["size_bytes"] = Path(entry["path"]).stat().st_size
 
     return artifacts
+
+
+def _verify_hashes(entries: dict[str, dict]) -> None:
+    """Every collected sha256 must describe the bytes on disk NOW, not the
+    bytes the exporter had when it wrote its manifest (#659). Most entries
+    carry a hash copied from an exporter's manifest file, and nothing
+    between that write and this upload re-checked it - so an artifact
+    rebuilt (or half-written) after its manifest was recorded would either
+    upload fresh bytes under a stale hash (every hash-verifying client
+    rejects the download) or skip a changed file because its stale hash
+    still matches the bucket. Raises before the first upload, naming every
+    mismatch, so a bad state costs a failed run instead of a poisoned
+    manifest."""
+    stale = {name: entry for name, entry in entries.items() if sha256_file(Path(entry["path"])) != entry["sha256"]}
+    if stale:
+        raise RuntimeError(
+            "manifest hash does not match the file on disk for: "
+            + ", ".join(sorted(stale))
+            + " - the artifact changed after its exporter recorded the hash. "
+            "Re-run that exporter (all the way through its gate) before publishing."
+        )
 
 
 def _load_remote_manifest(s3_client, bucket: str, manifest_key: str = MANIFEST_KEY) -> dict | None:
@@ -595,6 +671,11 @@ def publish(
     if bucket is None:
         bucket = os.environ["R2_BUCKET"]
 
+    # Re-hash every artifact and sidecar against its collected hash before
+    # anything is uploaded - see _verify_hashes for why the gap between an
+    # exporter's manifest and this upload cannot be trusted.
+    _verify_hashes({**artifacts, **sidecars})
+
     remote_manifest = _load_remote_manifest(s3_client, bucket, manifest_key)
     remote_artifacts = remote_manifest["artifacts"] if remote_manifest else {}
 
@@ -605,6 +686,9 @@ def publish(
     # only thing making that safe, since photos are outside the manifest and
     # so cannot be diffed into the same transaction as the artifacts.
     uploaded_photos = upload_photos(s3_client, bucket, photos, prefix)
+    # And immediately settle every photo promise the artifacts make - the
+    # loud half of #465's trust-the-record design; see verify_photo_promises.
+    verify_photo_promises(s3_client, bucket, prefix, artifacts, photos)
 
     uploaded: list[str] = []
     skipped: list[str] = []

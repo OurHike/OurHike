@@ -213,7 +213,6 @@ cost is louder rather than quieter: a mis-grouped privy is now named on the
 wrong shelter's card, where before it was only a pin that went missing.
 """
 
-import hashlib
 import json
 import sys
 from pathlib import Path
@@ -229,6 +228,7 @@ from export_elevation import (
 from lib.atc_notes import clean_note
 from lib.completeness import count_problems, fail_if_incomplete
 from lib.corridor import GEOGRAPHIC_CRS, PROJECTED_CRS, build_corridor
+from lib.hashing import sha256_file
 from lib.photo_store import photo_key
 from lib.poi_description import (
     describe_campsite,
@@ -252,6 +252,11 @@ OUT_DIR = ROOT / "data" / "processed" / "poi"
 # it is reviewed source rather than a fetch artifact - see that script's
 # docstring for why the join it encodes is checked in.
 CAPACITY_PATH = ROOT / "reference" / "shelter_capacity.json"
+
+# The POI identity ledger (#671, features/POI_IDENTITY.md) - the file that
+# owns every published id. reconcile_poi_identity.py writes it; this export
+# publishes under its ids (see apply_ledger_ids).
+LEDGER_PATH = ROOT / "reference" / "poi_identity.json"
 
 # build_water_distance.py's output, under reference/ for the same reason.
 WATER_DISTANCE_PATH = ROOT / "reference" / "water_distance.json"
@@ -515,8 +520,9 @@ def load_photo_records(path: Path) -> dict[str, list[dict]]:
 
 
 def load_capacities(path: Path) -> dict[str, int]:
-    """shelter_capacity.json's known capacities, keyed by the same unified
-    POI id this export writes.
+    """shelter_capacity.json's known capacities, keyed by the ledger id this
+    export publishes (#671 re-keyed the file from bare GlobalIDs, ending its
+    silent dependency on GlobalID stability).
 
     Only records that state a capacity are returned. The file lists every ATC
     shelter, most of the blanks carrying a reason the source could not be
@@ -529,11 +535,7 @@ def load_capacities(path: Path) -> dict[str, int]:
     if not path.exists():
         return {}
     document = json.loads(path.read_text(encoding="utf-8"))
-    return {
-        f"{SHELTER_SOURCE}:{record['atc_global_id']}": record["capacity"]
-        for record in document.get("shelters", [])
-        if record.get("capacity") is not None
-    }
+    return {record["poi_id"]: record["capacity"] for record in document.get("shelters", []) if record.get("capacity") is not None}
 
 
 def attach_capacity(records: list[dict], capacities: dict[str, int]) -> int:
@@ -1110,14 +1112,6 @@ def clip_to_corridor(con: duckdb.DuckDBPyConnection, unified: list[dict]) -> lis
     return [r for r in unified if r["id"] in kept_ids]
 
 
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def _reproject_points_to_meters(con: duckdb.DuckDBPyConnection, records: list[dict]):
     """Every record's (lon, lat) as an EPSG:5070 shapely Point, in one round
     trip - the same register-a-relation shape (and the same >1000x measured
@@ -1286,6 +1280,35 @@ def read_sources(con: duckdb.DuckDBPyConnection) -> list[dict]:
     return deduped
 
 
+def apply_ledger_ids(records: list[dict], ledger_path: Path | None = None) -> int:
+    """Publish every POI under its ledger id (#671) - the load-bearing line
+    of features/POI_IDENTITY.md, a byte-for-byte no-op on the day the
+    ledger was seeded.
+
+    A record whose `(source, source_feature_id)` has a LIVE ledger row takes
+    that row's id; any other record keeps its derived id - which is exactly
+    the id reconcile_poi_identity.py mints for a new feature (the birthmark),
+    so the two spellings agree by construction until the day an upstream
+    re-key makes them differ, and on that day this line is what keeps a
+    hiker's photos anchored. A missing ledger file is the pre-#671 world and
+    changes nothing. Returns how many ids the ledger changed - a count worth
+    printing, because a nonzero one means upstream re-keyed something and
+    the ledger carried it.
+    """
+    path = LEDGER_PATH if ledger_path is None else ledger_path
+    if not path.exists():
+        return 0
+    pois = json.loads(path.read_text(encoding="utf-8"))["pois"]
+    by_key = {(row["source"], row["source_feature_id"]): poi_id for poi_id, row in pois.items() if "retired" not in row}
+    changed = 0
+    for record in records:
+        ledger_id = by_key.get((record["source"], record["source_feature_id"]))
+        if ledger_id is not None and ledger_id != record["id"]:
+            record["id"] = ledger_id
+            changed += 1
+    return changed
+
+
 def poi_counts(records: list[dict]) -> dict[str, int]:
     """How many records each declared poi_type has, including the zeroes.
 
@@ -1331,6 +1354,14 @@ def main() -> dict:
 
     clipped = read_sources(con)
 
+    # Before attach_sites, which derives site_id from these ids - and again
+    # after synthesize_csi_water below, whose members mint their own.
+    # reconcile_poi_identity.py mirrors this same sequence; a change to the
+    # id-bearing steps here changes what that script must reproduce.
+    recarried = apply_ledger_ids(clipped)
+    if recarried:
+        print(f"  {recarried} POIs publish under a CARRIED ledger id (upstream re-keyed them; #671 held on).")
+
     sites, folded = attach_sites(clipped)
     print(f"  {folded} POIs fold into {sites} sites (a shelter with its privy and campsites - #523).")
 
@@ -1349,6 +1380,9 @@ def main() -> dict:
         print(f"  {attached} shelters and campsites carry a water distance (from {WATER_DISTANCE_PATH.name}).")
         synthesized = synthesize_csi_water(clipped)
         print(f"  {synthesized} water points synthesized onto those sites from the distances (#694).")
+        # The synthesized members mint atc_csi ids of their own; the ledger
+        # owns those too (#671). Idempotent for everything already mapped.
+        apply_ledger_ids(clipped)
     else:
         print(f"  No {WATER_DISTANCE_PATH.name} - exporting without water distances.")
 
@@ -1375,16 +1409,21 @@ def main() -> dict:
     else:
         print(f"  No {IMAGES_FILENAME} or {ATC_IMAGES_FILENAME} - exporting without photos.")
 
+    # The same gate `--check` ran before any of the fetching, run again on
+    # the fully-attached records - and BEFORE anything is written (#659).
+    # It used to run after the write loop, which meant a red export left
+    # fresh bad artifacts on disk beside the previous run's manifest.json:
+    # exactly the stale-hash-beside-new-bytes pairing a later manual
+    # publish would mis-record. The write loop below derives every file
+    # from the same `clipped` list this gate reads, so gating first gives
+    # up nothing the post-write position actually had.
+    fail_if_any_type_is_empty(poi_counts(clipped), label="Incomplete POI export")
+
     manifest = {}
     for poi_type in POI_TYPES:
         records = [r for r in clipped if r["poi_type"] == poi_type]
         manifest[poi_type] = write_poi_type(con, poi_type, records)
         print(f"  {poi_type}: {len(records)} features -> {OUT_DIR / poi_type}.{{geojson,fgb}}")
-
-    # The same gate `--check` ran before any of the fetching, run again on
-    # what was actually written. Not redundant: the preflight can only speak
-    # for the data as it was read, and this one speaks for the artifacts.
-    fail_if_any_type_is_empty(poi_counts(clipped), label="Incomplete POI export")
 
     manifest_path = OUT_DIR / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2))

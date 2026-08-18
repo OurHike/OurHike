@@ -60,8 +60,14 @@ jobs:
         # Before the checkout, so not in backend/ - see migrate.yml's gate for
         # what this cost the first time it was missing.
         working-directory: .
+        env:
+          CONFIGURED_DATABASE_URL: ${{ secrets.UA_MIGRATION_DATABASE_URL }}
+        # The secret reaches bash through env, never interpolated into the
+        # script (#660): a password with a legal `"` in it would otherwise
+        # break this gate's syntax, and a broken UA gate blocks the
+        # production migration for a reason nobody will trace.
         run: |
-          if [ -z "${{ secrets.UA_MIGRATION_DATABASE_URL }}" ]; then
+          if [ -z "$CONFIGURED_DATABASE_URL" ]; then
             echo "::warning::No UA database is configured, so nothing was checked. See LAUNCH_CHECKLIST.md 5 and #371."
             echo "go=false" >> "$GITHUB_OUTPUT"
           else
@@ -104,8 +110,14 @@ jobs:
         id: can
         # Before the checkout, so not in backend/ - see migrate.yml's gate.
         working-directory: .
+        env:
+          CONFIGURED_DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+        # The secret reaches bash through env, never interpolated into the
+        # script (#660): a password with a legal `"` in it would otherwise
+        # break this gate's syntax, and a broken UA gate blocks the
+        # production migration for a reason nobody will trace.
         run: |
-          if [ -z "${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}" ]; then
+          if [ -z "$CONFIGURED_DATABASE_URL" ]; then
             echo "::warning::No production database is configured, so nothing was checked. See LAUNCH_CHECKLIST.md 5."
             echo "go=false" >> "$GITHUB_OUTPUT"
           else

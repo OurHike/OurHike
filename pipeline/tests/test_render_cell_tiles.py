@@ -7,14 +7,16 @@ import json
 
 from pyproj import Transformer
 from rasterio.warp import transform_bounds
-from shapely.geometry import box, mapping
+from shapely.geometry import LineString, Point, box, mapping
 from shapely.ops import transform as shp_transform
 
 from lib.raster_tiles import NATIVE_MIN_ZOOM, owner_index, owns_tile, tiles_intersecting_geom
 from lib.tiling import tile_bounds_merc
 from render_cell_tiles import (
+    BAND_METERS,
     BAND_ZOOM,
     MAX_ZOOM,
+    band_merc,
     load_geom_merc,
     owned_tiles,
     quads_for_tiles,
@@ -118,6 +120,37 @@ def test_border_tiles_pull_the_neighbouring_cells_quads():
     assert "west_quad.tif" in wanted
     assert "east_quad.tif" in wanted, "an owned border tile spans into the east quad"
     assert "far_away.tif" not in wanted
+
+
+def test_the_band_is_five_real_miles_wide_even_at_katahdins_latitude(tmp_path):
+    """#659's mercator-inflation fix. Buffering BAND_METERS on EPSG:3857
+    geometry gives a band whose GROUND width shrinks by cos(lat) - ~3.5
+    real miles at Katahdin, 30% under the designed five. The band is now
+    buffered in an equal-area meters CRS, so a point 90% of BAND_METERS
+    from the centerline (measured on the ground) is inside the band at any
+    latitude, and one at 110% is out. The old code fails the first assert:
+    at 45.9 degrees north its real half-width is ~5,600 m, well under the
+    ~7,240 m probe."""
+    lat = 45.9  # Katahdin's latitude, the north end where the error peaked
+    path = tmp_path / "centerline.geojson"
+    path.write_text(json.dumps(mapping(LineString([(-69.1, lat), (-68.9, lat)]))))
+
+    band = band_merc(path)
+
+    to_albers = Transformer.from_crs(GEO, "EPSG:5070", always_xy=True)
+    albers_to_geo = Transformer.from_crs("EPSG:5070", GEO, always_xy=True)
+    # Probe points built in the same equal-area CRS the band is now
+    # measured in: due "up" from the line's midpoint by a known ground
+    # distance, then carried to mercator for the containment check.
+    mid_albers = to_albers.transform(-69.0, lat)
+    for fraction, expect_inside in ((0.9, True), (1.1, False)):
+        probe_albers = (mid_albers[0], mid_albers[1] + fraction * BAND_METERS)
+        probe_geo = albers_to_geo.transform(*probe_albers)
+        probe = merc(Point(probe_geo))
+        assert band.contains(probe) == expect_inside, (
+            f"a point {fraction:.0%} of BAND_METERS off-trail (ground distance) "
+            f"should be {'inside' if expect_inside else 'outside'} the band"
+        )
 
 
 def test_load_geom_merc_accepts_feature_collections(tmp_path):

@@ -35,7 +35,6 @@ sides' types already match (they do, on live data, since both come from the
 same ArcGIS field).
 """
 
-import hashlib
 import json
 from pathlib import Path
 
@@ -49,6 +48,7 @@ from lib.blaze import normalize_blaze_color
 from lib.completeness import count_problems, fail_if_incomplete
 from lib.corridor import build_corridor
 from lib.feature_id import resolve_feature_id
+from lib.hashing import sha256_file
 
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
@@ -312,14 +312,6 @@ def _has_drawable_geometry(geom) -> bool:
     if geom.geom_type == "LineString":
         return len(geom.coords) >= 2
     return bool(geom.geoms) and all(len(part.coords) >= 2 for part in geom.geoms)
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def write_trails(con: duckdb.DuckDBPyConnection, records: list[dict]) -> dict:

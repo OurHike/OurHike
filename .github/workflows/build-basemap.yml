@@ -43,10 +43,19 @@ on:
         description: "Tile pyramid depth (14 = OpenMapTiles convention)"
         type: string
         default: "14"
+      # Pinned to a versioned release plus its digest, not "latest" (#660):
+      # this jar is EXECUTED to produce bytes hikers download, so poisoning
+      # it needs no credentials at all - only the artifact. Overriding the
+      # URL means overriding the checksum in the same dispatch; a jar that
+      # does not match refuses to build.
       planetiler_jar_url:
         description: "Planetiler release jar to build with"
         type: string
-        default: "https://github.com/onthegomap/planetiler/releases/latest/download/planetiler.jar"
+        default: "https://github.com/onthegomap/planetiler/releases/download/v0.10.2/planetiler.jar"
+      planetiler_jar_sha256:
+        description: "SHA-256 the fetched jar must match (change it with the URL)"
+        type: string
+        default: "f310bd0413e2e4512b27f4046d418664e8e1d3bf31603c2a70e23de06c167e4d"
       publish:
         description: "Upload the AT package to R2. Only full corridor builds (all 14 states, z14) are allowed through."
         type: boolean
@@ -108,8 +117,16 @@ jobs:
         run: python fetch_all.py
 
       - name: Fetch the Planetiler jar
+        env:
+          # Through env, never interpolated into bash (#660) - dispatch
+          # inputs are attacker-shaped text the moment the repo has more
+          # than one pair of hands, and release-notes.yml already models
+          # the rule.
+          JAR_URL: ${{ inputs.planetiler_jar_url }}
+          JAR_SHA256: ${{ inputs.planetiler_jar_sha256 }}
         run: |
-          curl -sSL -o planetiler.jar "${{ inputs.planetiler_jar_url }}"
+          curl -sSL -o planetiler.jar "$JAR_URL"
+          echo "$JAR_SHA256  planetiler.jar" | sha256sum -c -
           ls -la planetiler.jar
 
       - name: Build the basemap

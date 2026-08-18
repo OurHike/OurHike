@@ -130,6 +130,10 @@ HIKER_ORIGIN = "https://ourhike.org"
 # trails.geojson would make check 15 assert that the data agrees with itself.
 CORRIDOR_BBOX = (-85.0, 33.5, -66.5, 46.5)
 
+# Check 21's reviewed side (#672): the identity ledger in THIS checkout,
+# against which every published POI id is verified.
+IDENTITY_LEDGER_PATH = Path(__file__).parent / "reference" / "poi_identity.json"
+
 # How close a tier has to stay to the size the app advertises (check 18).
 # README.md already says a tier drifting far from its advertised size "is a
 # real problem, not a rounding detail"; 2% is DATA_RELEASES.md §3's figure.
@@ -348,7 +352,11 @@ def check_cors(base: str, key: str, session=None) -> dict:
     exposed = {
         item.strip().lower() for item in (response.headers.get("Access-Control-Expose-Headers") or "").split(",") if item.strip()
     }
-    missing = [header for header in EXPOSED if header not in exposed]
+    # `Access-Control-Expose-Headers: *` is the spec's everything-readable
+    # wildcard for requests without credentials, not a header name (#659) -
+    # a host answering `*` would otherwise fail this check while every
+    # browser could in fact read all four headers.
+    missing = [] if "*" in exposed else [header for header in EXPOSED if header not in exposed]
     if missing:
         return _report(
             8,
@@ -901,6 +909,63 @@ def skipped_checks() -> list[dict]:
     ]
 
 
+def check_poi_identity(base: str, manifest: dict, session=None) -> list[dict]:
+    """21. Every published POI id is a promise the identity ledger keeps
+    (#672, features/POI_IDENTITY.md).
+
+    Three assertions, per the design's battery: every id in a published
+    `poi_*.geojson` is a LIVE ledger row; that row's
+    `(source, source_feature_id)` agrees with the published feature; and no
+    id is published twice across the whole set. A retired id appearing live
+    fails the first assertion by construction, since retired rows are not
+    live. Drift between ledger and artifact is caught at the same gate that
+    catches every other kind.
+
+    The ledger is read from THIS checkout - the same posture as the
+    advertised-size check reading packages.ts: verify runs where the
+    reviewed files live, and a release verified against somebody else's
+    ledger would prove nothing about the diff that was reviewed.
+    """
+    if not IDENTITY_LEDGER_PATH.exists():
+        return [_report(21, "poi_*.geojson", SKIPPED, "no identity ledger in this checkout to verify against")]
+    pois = json.loads(IDENTITY_LEDGER_PATH.read_text(encoding="utf-8"))["pois"]
+    live = {poi_id: row for poi_id, row in pois.items() if "retired" not in row}
+
+    reports: list[dict] = []
+    seen: dict[str, str] = {}
+    poi_keys = [key for key in sorted(manifest["artifacts"]) if key.startswith("poi_") and key.endswith(".geojson")]
+    for key in poi_keys:
+        try:
+            features = (session or requests).get(f"{base}/{key}", timeout=HTTP_TIMEOUT).json().get("features", [])
+        except Exception as exc:  # noqa: BLE001 - a broken artifact fails many ways
+            reports.append(_report(21, key, FAILED, f"could not be read: {exc.__class__.__name__}"))
+            continue
+
+        problems: list[str] = []
+        for feature in features:
+            properties = feature.get("properties") or {}
+            poi_id = properties.get("id")
+            row = live.get(poi_id)
+            if row is None:
+                verdict = "a RETIRED ledger row" if poi_id in pois else "no ledger row at all"
+                problems.append(f"{poi_id}: published live against {verdict}")
+            elif (row["source"], row["source_feature_id"]) != (properties.get("source"), properties.get("source_feature_id")):
+                problems.append(
+                    f"{poi_id}: ledger says ({row['source']}, {row['source_feature_id']}), the artifact "
+                    f"says ({properties.get('source')}, {properties.get('source_feature_id')})"
+                )
+            if poi_id in seen:
+                problems.append(f"{poi_id}: also published in {seen[poi_id]} - one id, one place, once")
+            else:
+                seen[poi_id] = key
+        if problems:
+            shown = "; ".join(problems[:3]) + (f" (+{len(problems) - 3} more)" if len(problems) > 3 else "")
+            reports.append(_report(21, key, FAILED, shown))
+        else:
+            reports.append(_report(21, key, OK, f"{len(features)} ids, every one a live ledger row that agrees"))
+    return reports
+
+
 def check_all(base: str, session=None, hash_artifacts: bool = True) -> list[dict]:
     session = session or requests.Session()
     manifest = fetch_manifest(base, session)
@@ -917,7 +982,7 @@ def check_all(base: str, session=None, hash_artifacts: bool = True) -> list[dict
             reports
             + [
                 _report(check, "latest.json", SKIPPED, "the manifest could not be read, so no release could be resolved")
-                for check in (3, 17, 19, 20)
+                for check in (3, 17, 19, 20, 21)
             ]
             + skipped_checks()
         )
@@ -953,6 +1018,7 @@ def check_all(base: str, session=None, hash_artifacts: bool = True) -> list[dict
             reports.append(check_advertised_size(base, key, tier, sizes[tier], session))
 
     reports += check_vector(base, [key for key in sorted(artifacts) if key.endswith(".geojson")], session)
+    reports += check_poi_identity(base, manifest, session)
     reports += check_stretch_coverage(base, manifest, session)
     # Last, because it is the only group that reads a DIFFERENT release than
     # the one every check above is about, and because check 19 is the

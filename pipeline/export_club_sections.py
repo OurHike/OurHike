@@ -159,7 +159,13 @@ def main() -> dict:
     OUT_PATH.write_text(json.dumps(output, indent=2, sort_keys=True) + "\n")
 
     digest = hashlib.sha256(OUT_PATH.read_bytes()).hexdigest()
-    MANIFEST_PATH.write_text(json.dumps({"path": str(OUT_PATH.relative_to(ROOT)), "sha256": digest}, indent=2) + "\n")
+    # ABSOLUTE path, like every sibling manifest (export_trails.py's is the
+    # precedent publish-vector-data.yml cites): publish.py resolves this
+    # string against its own CWD, so the relative path this used to store
+    # crashed any publish not started from pipeline/ - mid-loop, which is
+    # exactly how a partial flat-key state gets made (#659).
+    manifest = {"path": str(OUT_PATH), "sha256": digest}
+    MANIFEST_PATH.write_text(json.dumps(manifest, indent=2) + "\n")
 
     unattributed_miles = sum(r["end_mile"] - r["start_mile"] for r in output["unattributed"])
     print(f"{len(output['clubs'])} clubs -> {OUT_PATH}")
@@ -168,7 +174,10 @@ def main() -> dict:
         stretches = len(club["stretches"])
         suffix = f"  ({stretches} stretches)" if stretches > 1 else ""
         print(f"  {club['acronym']:<8} {club['miles']:>7.1f} mi  {club['name']}{suffix}")
-    return output
+    # The manifest, not the artifact body - the shape every sibling
+    # exporter's main() returns, and the thing a caller chaining into
+    # publish.py actually needs (#659).
+    return manifest
 
 
 if __name__ == "__main__":

@@ -9,8 +9,10 @@ seeds:
       poi_type/confidence pairs are export_poi.py's OPENTRAIL_ICON_MAP (an
       icon that module deliberately does not map has an empty poi_type -
       see its module docstring for why 'c' and 't' stay unmapped and 's'
-      means water), and the atc rows mirror export_poi.py's ATC_EXPORTS
-      entries for the layers in the Phase A slice.
+      means water), and the atc rows mirror export_poi.py's DIRECT_SOURCES
+      - every layer that module publishes, plus bridges with an empty
+      poi_type because the layer is POI-shaped and deliberately unpublished
+      (#99 records the product call as open).
       pipeline/tests/test_dbt_seed_sync.py fails CI the moment this file
       and those Python constants drift apart (DBT.md's duplication-risk
       note).
@@ -43,8 +45,22 @@ seeds:
           hold the raw column to the full legend, but no POI is minted from
           it (lib/poi_schema.py's omit-don't-guess posture).
         data_tests:
+          # lib/poi_schema.py's POI_TYPES verbatim - the full unified
+          # vocabulary, not just the types this seed currently mints, so
+          # a new mapping row only touches this file when the VOCABULARY
+          # grows (which is a lib/poi_schema.py decision first).
+          # tests/test_dbt_seed_sync.py holds the seed inside POI_TYPES
+          # from the Python side.
           - accepted_values:
-              values: ["shelter", "campsite", "water", "resupply"]
+              values:
+                - shelter
+                - campsite
+                - water
+                - resupply
+                - crossing
+                - viewpoint
+                - parking
+                - privy
       - name: confidence
         description: >
           lib/poi_schema.py's CONFIDENCE_* tier for POIs minted from this

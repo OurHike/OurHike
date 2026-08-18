@@ -18,8 +18,26 @@ def test_fixtures_load_through_the_real_loader(tmp_path):
     make_dbt_fixtures.write_fixtures(tmp_path)
     con = duckdb.connect()
     try:
-        loaded, _skipped = load_raw.load_raw(con, tmp_path)
-        assert set(loaded) == {"raw_atc__shelters", "raw_atc__campsites", "raw_opentrail__at"}
+        loaded, skipped = load_raw.load_raw(con, tmp_path)
+        assert set(loaded) == {
+            "raw_atc__shelters",
+            "raw_atc__campsites",
+            "raw_atc__viewpoints",
+            "raw_atc__parking",
+            "raw_atc__privies",
+            "raw_atc__communities",
+            "raw_atc__bridges",
+            "raw_atc__centerline",
+            "raw_atc__side_trails",
+            "raw_atc__trail_club_sections",
+            "raw_atc__half_mile_points_from_springer",
+            "raw_atc__at_treadway",
+            "raw_opentrail__at",
+        }
+        assert skipped == [], (
+            "every registered feature layer needs a fixture, or the CI dbt build "
+            "fails on a staging model whose raw table never loaded"
+        )
         icons = {row[0] for row in con.execute("select icon from raw.raw_opentrail__at").fetchall()}
     finally:
         con.close()

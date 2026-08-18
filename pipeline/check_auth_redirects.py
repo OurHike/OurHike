@@ -55,9 +55,12 @@ THE NEGATIVE PROBES ARE NOT DECORATION
 An allow-list widened to `**` passes every positive assertion here while being
 precisely the thing you do not want - anyone who can get a victim to click a
 link can have the auth code delivered to a host they control. So this also
-asserts that two URLs are REFUSED: an unrelated host, and a lookalike built by
-suffixing the real one, which is what catches an allow-list matching on prefix
-rather than on origin.
+asserts that several URLs are REFUSED: an unrelated host; a lookalike built by
+suffixing the real one, which catches an allow-list matching on prefix rather
+than on origin; and (#659) one sibling per declared origin's parent domain,
+which catches a glob widened one token too far - `https://*.pages.dev/**`
+accepts every Pages site anyone can register, and the first two probes would
+both stay green against it.
 
     python check_auth_redirects.py --project production
     python check_auth_redirects.py --print-redirects
@@ -69,13 +72,13 @@ import argparse
 import json
 import os
 import sys
-from datetime import date
 from pathlib import Path
 from urllib.parse import quote
 
 import requests
 
 from check_deployment import FAILED, OK, UNREACHABLE, load_manifest
+from lib.freshness_state import utc_today
 
 HTTP_TIMEOUT = 30
 
@@ -143,6 +146,29 @@ def site_origin(manifest: dict, project: str) -> str:
         if origin["pattern"] == declared:
             return origin["probe"].rstrip("/")
     raise KeyError(f"{project}'s site_url_origin names {declared}, which is not a declared origin")
+
+
+def sibling_of(probe: str) -> str:
+    """An attacker-registrable SIBLING under a declared origin's parent.
+
+    The probe for a glob widened one token too far (#659): a paste like
+    `https://*.pages.dev/**` accepts every Pages site anyone can register,
+    and neither the unrelated-host probe nor the Site-URL lookalike would
+    say so - the first shares no suffix with anything declared, and the
+    second appends to the real host rather than standing beside it. This
+    replaces the leftmost label of the declared origin's own probe host, so
+    for `pr-123.ourhike-preview.pages.dev` it asks about a different
+    `*.ourhike-preview.pages.dev` name, and a preview glob that matches on
+    the shared suffix rather than the project's own subdomain is caught.
+
+    Safe to name a registrable host: the probe only reads where a
+    junk-token redirect WOULD go (allow_redirects=False) - nothing is ever
+    sent to the sibling."""
+    scheme, _, rest = probe.partition("://")
+    host, _, path = rest.partition("/")
+    labels = host.split(".")
+    labels[0] = "ourhike-allowlist-probe-not-ours"
+    return f"{scheme}://{'.'.join(labels)}/"
 
 
 def lookalike_of(origin: str) -> str:
@@ -285,6 +311,18 @@ def check_project(manifest: dict, project: str, base: str, api_key: str, session
             session,
         )
     )
+    # One sibling probe per declared origin (#659): the widened-glob case
+    # the two probes above cannot see. Deduplicated because several origins
+    # can share a parent domain and one refusal answers for all of them.
+    seen_siblings: set[str] = set()
+    for origin in project_origins(manifest, project):
+        sibling = sibling_of(origin["probe"].rstrip("/"))
+        if sibling in seen_siblings:
+            continue
+        seen_siblings.add(sibling)
+        reports.append(
+            check_refused(base, api_key, sibling, project, f"a sibling under {origin['pattern']}'s parent domain", session)
+        )
     return reports
 
 
@@ -317,7 +355,7 @@ def check_all(manifest: dict, only: str | None = None, env: dict | None = None, 
 
 def verdict_document(reports: list[dict]) -> dict:
     return {
-        "checked_at": date.today().isoformat(),
+        "checked_at": utc_today().isoformat(),
         "checks": reports,
         "failed": [report for report in reports if report["state"] == FAILED],
         "unreachable": [report for report in reports if report["state"] == UNREACHABLE],
@@ -379,7 +417,11 @@ def main(argv: list[str] | None = None) -> int:
     elif document["unreachable"]:
         print(f"\n{len(document['unreachable'])} check(s) could not be made at all - reported, not counted as a refusal.")
     else:
-        print("\nEvery declared origin can complete a sign-in, and nothing else can.")
+        # Says what was probed, not "nothing else can" (#659): the negative
+        # probes cover an unrelated host, a suffix lookalike, and one
+        # sibling per declared origin's parent domain - real refusal
+        # evidence, not proof about every host on the internet.
+        print("\nEvery declared origin can complete a sign-in, and every probed wrong host is refused.")
 
     if args.exit_zero:
         return 0

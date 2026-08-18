@@ -41,6 +41,7 @@ from release_notes import (
     pull_request_numbers,
     render_notes,
     slug,
+    unmatched_commits,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -85,6 +86,21 @@ class TestTheGenerator:
 
     def test_ignores_ordinary_commits(self):
         assert pull_request_numbers("Give a report photo somewhere to go\nAnother commit\n") == []
+
+    def test_the_rebase_residue_is_collected_for_the_api_not_dropped(self):
+        """The third spelling of a merged pull request is no spelling at all
+        (#660): a rebase merge replays the branch's commits with their
+        original subjects. Those shas must come back for main() to resolve
+        through the commit->pulls API - silently dropping them is how a
+        rebase-configured merge queue would generate "No merged pull
+        requests in this range." for a fully active release."""
+        log = (
+            "aaa1\tMerge pull request #10 from a/b\n"
+            "bbb2\tGive a report photo somewhere to go\n"
+            "ccc3\tSomething squashed (#7)\n"
+            "ddd4\tAnother rebase-replayed commit\n"
+        )
+        assert unmatched_commits(log) == ["bbb2", "ddd4"]
 
     @pytest.mark.parametrize("word", ["Closes", "closes", "closed", "Fixes", "fixed", "resolve", "Resolves"])
     def test_reads_every_closing_keyword_github_honours(self, word):
@@ -227,16 +243,39 @@ class TestTheReleaseWorkflows:
     def test_only_the_production_workflow_writes_the_pages_branch(self):
         """UA is a Cloudflare deployment precisely so that it is a different
         origin. Publishing it to `gh-pages` would put it back on production's
-        origin however the paths were arranged."""
-        writers = [path.name for path in WORKFLOW_DIR.glob("*.yml") if "publish-to-pages" in path.read_text(encoding="utf-8")]
+        origin however the paths were arranged.
+
+        The census reads the CAPABILITY - step run/uses/with strings - not
+        the helper action's name in the raw file text (#660): the old grep
+        counted comments as writes (pr-preview.yml explains itself by
+        naming the branch) and a raw `git push` to gh-pages that never
+        mentioned the helper was invisible to it."""
+        writers = []
+        for path in sorted(WORKFLOW_DIR.glob("*.yml")):
+            strings = []
+            for job in (_workflow(path.name).get("jobs") or {}).values():
+                for step in job.get("steps", []):
+                    strings += [str(step.get("run") or ""), str(step.get("uses") or ""), str(step.get("with") or "")]
+            if any("gh-pages" in s or "publish-to-pages" in s for s in strings):
+                writers.append(path.name)
         assert writers == ["pages.yml"]
 
     def test_a_tag_without_notes_does_not_deploy(self):
         """Gate 12. The notes file is canonical (§7a), and the failure it
-        guards is silent in the direction that matters: the site deploys and the
-        release has no record."""
+        guards is silent in the direction that matters: the site deploys and
+        the release has no record.
+
+        Asserted on the gate's BEHAVIOUR, not its step name (#660): the old
+        assertion held any step whose name mentioned "release notes", which
+        an `exit 0` edit satisfied. This one requires a tag-gated step that
+        globs the notes path and fails the run when it matches nothing."""
         steps = _workflow("pages.yml")["jobs"]["build"]["steps"]
-        assert any("release notes" in (step.get("name") or "").lower() for step in steps)
+        gate = next((step for step in steps if 'releases/"$VERSION"-*.md' in (step.get("run") or "")), None)
+        assert gate is not None, "no step checks for the tag's notes file at all"
+        assert "exit 1" in gate["run"], "finding no notes must fail the deploy, not narrate it"
+        assert str(gate.get("if", "")).startswith("startsWith(github.ref, 'refs/tags/')"), (
+            "the gate must run exactly on tag deploys - a dispatch is a republish of something already released"
+        )
 
     def test_the_github_release_is_only_ever_drafted(self):
         """CLAUDE.md and RELEASING.md §12: a workflow may prepare everything and
@@ -284,8 +323,14 @@ class TestTheReleaseWorkflows:
         label is there is what makes "no blockers" mean something."""
         text = _text("release-gate.yml")
 
+        # The lookup, its 404 accounting, and the failure it must produce -
+        # not the explanatory comment the old assertion pinned (#660):
+        # deleting the failure while keeping the prose used to pass.
         assert "getLabel" in text
-        assert "reads exactly like a clean gate" in text
+        assert "if (error.status === 404) missing.push(name)" in text
+        assert "core.setFailed(`Missing label(s):" in text, (
+            "an absent label must FAIL the gate - a query for it returns no issues, which reads exactly like a clean board"
+        )
 
     def test_the_release_gate_fails_rather_than_reports(self):
         """Gate 11 is `hard` in RELEASING.md §8. A job that printed the blockers

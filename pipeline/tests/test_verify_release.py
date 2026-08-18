@@ -279,11 +279,12 @@ class TestTheWholeRun:
         reports = check_all(BASE, hash_artifacts=False)
 
         assert reports[0]["state"] == FAILED
-        # 3, 17 and 19 read a release out of the manifest, so they cannot run
-        # either - and must still APPEAR rather than vanishing, or a reader
-        # counting checks finds a short clean run. 6 and 11 are the standing
-        # skips (#653), present in every run until somebody builds them.
-        assert {r["check"] for r in reports if r["state"] == SKIPPED} == {3, 6, 10, 11, 17, 19}
+        # 3, 17, 19 and 20 read a release out of the manifest, so they cannot
+        # run either - and must still APPEAR rather than vanishing, or a
+        # reader counting checks finds a short clean run. 6 and 11 are the
+        # standing skips (#653), present in every run until somebody builds
+        # them.
+        assert {r["check"] for r in reports if r["state"] == SKIPPED} == {3, 6, 10, 11, 17, 19, 20}
 
 
 # ---------------------------------------------------------------------------
@@ -492,3 +493,122 @@ class TestABucketMidMigration:
         assert by_check[3]["state"] == SKIPPED
         assert by_check[17]["state"] == SKIPPED
         assert by_check[19]["state"] == OK
+
+
+class TestStretchCoverage:
+    """Check 20 (#556): the stretch units tile the trail, and everything the
+    index names is really published."""
+
+    def _manifest(self, extra=None):
+        artifacts = {
+            "at_basemap_stretches.json": {"sha256": "a" * 64},
+            "at_basemap_context.pmtiles": {"sha256": "b" * 64},
+            "at_basemap_stretch_00.pmtiles": {"sha256": "c" * 64},
+            "at_basemap_stretch_01.pmtiles": {"sha256": "d" * 64},
+            **(extra or {}),
+        }
+        return {"artifacts": artifacts}
+
+    def _index(self, stretches, context="at_basemap_context.pmtiles", top=100.0):
+        return {
+            "stretch_miles": 50.0,
+            "axis_top_mile": top,
+            "context": context,
+            "stretches": stretches,
+        }
+
+    def test_a_complete_tiling_passes(self, requests_mock):
+        from verify_release import check_stretch_coverage
+
+        requests_mock.get(
+            f"{BASE}/at_basemap_stretches.json",
+            json=self._index(
+                [
+                    {"id": 0, "key": "at_basemap_stretch_00.pmtiles", "miles": [0.0, 50.0]},
+                    {"id": 1, "key": "at_basemap_stretch_01.pmtiles", "miles": [50.0, 100.0]},
+                ]
+            ),
+        )
+
+        reports = check_stretch_coverage(BASE, self._manifest())
+        by_key = {report["key"]: report for report in reports}
+
+        assert by_key["at_basemap_stretches.json"]["state"] == "ok"
+        assert by_key["dem_stretches.json"]["state"] == "skipped", "no dem index published is a skip, not a pass"
+
+    def test_a_mile_gap_between_stretches_fails(self, requests_mock):
+        """A gap is a slice of trail no unit covers - blank map on a ridge
+        that every per-artifact check would wave through."""
+        from verify_release import check_stretch_coverage
+
+        requests_mock.get(
+            f"{BASE}/at_basemap_stretches.json",
+            json=self._index(
+                [
+                    {"id": 0, "key": "at_basemap_stretch_00.pmtiles", "miles": [0.0, 50.0]},
+                    {"id": 1, "key": "at_basemap_stretch_01.pmtiles", "miles": [60.0, 100.0]},
+                ]
+            ),
+        )
+
+        reports = check_stretch_coverage(BASE, self._manifest())
+        report = next(r for r in reports if r["key"] == "at_basemap_stretches.json")
+
+        assert report["state"] == "failed"
+        assert "gap" in report["detail"]
+
+    def test_a_stretch_named_but_not_published_fails(self, requests_mock):
+        from verify_release import check_stretch_coverage
+
+        requests_mock.get(
+            f"{BASE}/at_basemap_stretches.json",
+            json=self._index(
+                [
+                    {"id": 0, "key": "at_basemap_stretch_00.pmtiles", "miles": [0.0, 50.0]},
+                    {"id": 1, "key": "at_basemap_stretch_99.pmtiles", "miles": [50.0, 100.0]},
+                ]
+            ),
+        )
+
+        reports = check_stretch_coverage(BASE, self._manifest())
+        report = next(r for r in reports if r["key"] == "at_basemap_stretches.json")
+
+        assert report["state"] == "failed"
+        assert "not published" in report["detail"]
+
+    def test_coverage_stopping_short_of_the_axis_top_fails(self, requests_mock):
+        from verify_release import check_stretch_coverage
+
+        requests_mock.get(
+            f"{BASE}/at_basemap_stretches.json",
+            json=self._index(
+                [{"id": 0, "key": "at_basemap_stretch_00.pmtiles", "miles": [0.0, 50.0]}],
+                top=100.0,
+            ),
+        )
+
+        reports = check_stretch_coverage(BASE, self._manifest())
+        report = next(r for r in reports if r["key"] == "at_basemap_stretches.json")
+
+        assert report["state"] == "failed"
+        assert "short of the axis top" in report["detail"]
+
+
+class TestManifestSizes:
+    def test_a_content_length_disagreeing_with_size_bytes_fails(self, requests_mock):
+        """Since #556 the manifest publishes size_bytes, and for the
+        identity-uploaded binaries the served Content-Length must be exactly
+        it - DATA_RELEASES.md §3's check, finally askable."""
+        requests_mock.head(f"{BASE}/a.pmtiles", headers=_headers(length="100"))
+
+        verdict = check_fetchable(BASE, "a.pmtiles", expected_size=90)
+
+        assert verdict["state"] == FAILED
+        assert "size_bytes" in verdict["detail"]
+
+    def test_a_matching_content_length_passes(self, requests_mock):
+        requests_mock.head(f"{BASE}/a.pmtiles", headers=_headers(length="100"))
+
+        verdict = check_fetchable(BASE, "a.pmtiles", expected_size=100)
+
+        assert verdict["state"] == OK

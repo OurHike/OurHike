@@ -257,14 +257,16 @@ def check_client_keys(manifest: dict) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def check_fetchable(base: str, key: str, session=None) -> dict:
+def check_fetchable(base: str, key: str, session=None, expected_size: int | None = None) -> dict:
     """4. HEAD: 200, a Content-Length, `Accept-Ranges: bytes`, an ETag.
 
-    Weaker than DATA_RELEASES.md §3 asks - it wants `Content-Length` compared
-    against the manifest's `size_bytes`, and the manifest does not publish one.
-    Asserted here is what makes an artifact fetchable and resumable at all;
-    that the bytes are the RIGHT bytes is check 5's job, and check 5 is
-    stronger than a size comparison anyway.
+    Since #556 the manifest publishes `size_bytes`, so this is finally the
+    check DATA_RELEASES.md §3 specified: for the range-read binaries
+    (uploaded identity, so Content-Length IS the artifact size) the header
+    is compared against the manifest. Callers pass `expected_size` only for
+    those; the gzip-uploaded text artifacts serve a compressed
+    Content-Length that legitimately differs from their decoded size_bytes,
+    and check 5's hash is the integrity story there anyway.
     """
     try:
         response = (session or requests).head(f"{base}/{key}", timeout=HTTP_TIMEOUT)
@@ -277,6 +279,11 @@ def check_fetchable(base: str, key: str, session=None) -> dict:
     problems = []
     if not response.headers.get("Content-Length"):
         problems.append("no Content-Length")
+    elif expected_size is not None and int(response.headers["Content-Length"]) != expected_size:
+        problems.append(
+            f"Content-Length {response.headers['Content-Length']} != manifest size_bytes {expected_size} - "
+            "the bucket is not serving the bytes the manifest describes"
+        )
     if (response.headers.get("Accept-Ranges") or "").lower() != "bytes":
         problems.append("no `Accept-Ranges: bytes`, so a download cannot resume")
     if not response.headers.get("ETag"):
@@ -788,6 +795,66 @@ def release_checks(base: str, manifest: dict, session=None, hash_artifacts: bool
     ]
 
 
+def check_stretch_coverage(base: str, manifest: dict, session=None) -> list[dict]:
+    """20. The published stretches tile the whole trail, and every one the
+    index names is really in the release (#556).
+
+    A stretch the index promises and the manifest lacks is blank map on a
+    ridge - the same trap check 2 guards for client keys, at the unit
+    level. And a gap between two stretches' mile intervals is a slice of
+    trail no unit covers, which no amount of per-artifact hashing would
+    notice. Reported per sheet family; a family with no published index is
+    a SKIP, not a pass - stretches simply have not shipped for it yet.
+    """
+    artifacts = manifest.get("artifacts") or {}
+    reports = []
+    for family in ("at_basemap", "dem"):
+        index_key = f"{family}_stretches.json"
+        if index_key not in artifacts:
+            reports.append(_report(20, index_key, SKIPPED, "no stretch index published for this sheet yet"))
+            continue
+        try:
+            response = (session or requests).get(f"{base}/{index_key}", timeout=HTTP_TIMEOUT)
+            response.raise_for_status()
+            index = response.json()
+        except (requests.RequestException, ValueError) as exc:
+            reports.append(_report(20, index_key, FAILED, f"index could not be read: {exc.__class__.__name__}"))
+            continue
+
+        problems = []
+        stretches = index.get("stretches") or []
+        if not stretches:
+            problems.append("index lists no stretches")
+        missing = [entry["key"] for entry in stretches if entry["key"] not in artifacts]
+        if missing:
+            problems.append(f"{len(missing)} stretch(es) named but not published: {', '.join(missing[:4])}")
+        if index.get("context") and index["context"] not in artifacts:
+            problems.append(f"context archive {index['context']} named but not published")
+        expected_lo = 0.0
+        for entry in stretches:
+            lo, hi = entry["miles"]
+            if abs(lo - expected_lo) > 1e-6:
+                problems.append(f"gap or overlap at mile {expected_lo}: stretch {entry['id']} starts at {lo}")
+                break
+            expected_lo = hi
+        else:
+            if stretches and abs(expected_lo - index.get("axis_top_mile", expected_lo)) > 1e-6:
+                problems.append(f"coverage ends at mile {expected_lo}, short of the axis top {index['axis_top_mile']}")
+
+        if problems:
+            reports.append(_report(20, index_key, FAILED, "; ".join(problems)))
+        else:
+            reports.append(
+                _report(
+                    20,
+                    index_key,
+                    OK,
+                    f"{len(stretches)} stretches tile miles 0-{index['axis_top_mile']} with no gap, all published",
+                )
+            )
+    return reports
+
+
 def skipped_checks() -> list[dict]:
     """What still cannot run at all, said out loud.
 
@@ -850,7 +917,7 @@ def check_all(base: str, session=None, hash_artifacts: bool = True) -> list[dict
             reports
             + [
                 _report(check, "latest.json", SKIPPED, "the manifest could not be read, so no release could be resolved")
-                for check in (3, 17, 19)
+                for check in (3, 17, 19, 20)
             ]
             + skipped_checks()
         )
@@ -859,7 +926,11 @@ def check_all(base: str, session=None, hash_artifacts: bool = True) -> list[dict
     reports += check_client_keys(manifest)
 
     for key in sorted(artifacts):
-        reports.append(check_fetchable(base, key, session))
+        # size_bytes only for the identity-uploaded binaries - see
+        # check_fetchable's docstring for why text artifacts cannot be
+        # size-compared over HTTP.
+        expected_size = artifacts[key].get("size_bytes") if key.endswith((".pmtiles", ".fgb")) else None
+        reports.append(check_fetchable(base, key, session, expected_size))
         if hash_artifacts:
             reports.append(check_full_hash(base, key, artifacts[key]["sha256"], session))
 
@@ -882,6 +953,7 @@ def check_all(base: str, session=None, hash_artifacts: bool = True) -> list[dict
             reports.append(check_advertised_size(base, key, tier, sizes[tier], session))
 
     reports += check_vector(base, [key for key in sorted(artifacts) if key.endswith(".geojson")], session)
+    reports += check_stretch_coverage(base, manifest, session)
     # Last, because it is the only group that reads a DIFFERENT release than
     # the one every check above is about, and because check 19 is the
     # expensive one when hashing is on.

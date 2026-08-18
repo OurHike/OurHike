@@ -91,8 +91,33 @@ describe('validatePlan', () => {
     })
   })
 
-  it('refuses a start date that is not a date', () => {
-    expect(validatePlan({ ...wireframePlan(), startDate: 'May 12' })).toBeNull()
+  it('refuses a date that is not a date, and a calendar with holes in it', () => {
+    const plan = wireframePlan()
+    const badDate = plan.days.map((day, i) =>
+      i === 0 ? { ...day, date: 'May 12' } : day,
+    )
+    expect(validatePlan({ ...plan, days: badDate })).toBeNull()
+
+    // Half-dated: the plan cannot answer "when do I finish".
+    const halfDated = plan.days.map((day, i) =>
+      i === 2 ? { id: day.id, pinned: day.pinned, generated: day.generated } : day,
+    )
+    expect(validatePlan({ ...plan, days: halfDated })).toBeNull()
+
+    // Backwards: no shift can know which order was meant.
+    const backwards = plan.days.map((day, i) =>
+      i === 1 ? { ...day, date: '2020-01-01' } : day,
+    )
+    expect(validatePlan({ ...plan, days: backwards })).toBeNull()
+  })
+
+  it('refuses a walked day after an unwalked one - days are walked in order', () => {
+    const plan = wireframePlan()
+    const holed = plan.days.map((day, i) => (i === 2 ? { ...day, walked: true } : day))
+    expect(validatePlan({ ...plan, days: holed })).toBeNull()
+
+    const prefix = plan.days.map((day, i) => (i <= 1 ? { ...day, walked: true } : day))
+    expect(validatePlan({ ...plan, days: prefix })).not.toBeNull()
   })
 })
 
@@ -130,7 +155,7 @@ describe('planDayViews', () => {
   })
 
   it('carries no dates when the plan has none - day numbers only', () => {
-    const { startDate: _startDate, ...undated } = wireframePlan()
+    const undated = buildPlan(wireframePlan().stops, { walkingHours: 7 })
     expect(planDayViews(undated).every((day) => day.date === null)).toBe(true)
   })
 })

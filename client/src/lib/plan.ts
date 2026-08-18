@@ -56,12 +56,34 @@ export interface PlanDayMeta {
   /** Stable identity, for React keys today and SEGMENTS.md's completion
    *  model when the cascade arrives (#758). */
   id: string
+  /**
+   * ISO date (yyyy-mm-dd), or absent - thru-hikers plan loosely, and
+   * SEGMENTS.md made the date optional for exactly that reason. Stored on
+   * the DAY rather than derived from one start date, because the cascade
+   * (#758) moves the calendar in pieces: a shift moves every date after
+   * today and none before it, which no single start date can carry. Dated
+   * plans are dated throughout; the validator refuses a mix.
+   */
+  date?: string
   /** This day does not move - a booked hostel, a mail drop with a date on
    *  it. The cascade re-plans between pins and never through one. */
   pinned: boolean
   /** The app chose this day and the hiker has not touched it. Flips false on
    *  the first edit and never back - the timeline's quiet "auto" marker. */
   generated: boolean
+  /**
+   * This day was walked. A record, not a plan any more (SEGMENTS.md's
+   * completion model): its boundaries say where it actually ran, nothing may
+   * edit it, and the cascade only ever touches days after it. Walked days
+   * form a prefix - days are walked in order - and the validator holds that.
+   */
+  walked?: boolean
+  /**
+   * What this day's distance was before a cascade re-planned it, in miles.
+   * A fact about the plan, never a verdict on the hiker - the timeline
+   * prints it as "was 17.1 mi" and nothing more.
+   */
+  wasDistanceMi?: number
 }
 
 /** What the generator aimed at. Two shapes rather than a number and a unit
@@ -70,13 +92,6 @@ export type PlanTarget = { walkingHours: number } | { miles: number }
 
 export interface HikePlan {
   target: PlanTarget
-  /**
-   * ISO date (yyyy-mm-dd) of the first day, or absent - thru-hikers plan
-   * loosely, and SEGMENTS.md made the date optional for exactly that
-   * reason. Every day's date derives from this and its position; a plan
-   * with no start date has day numbers and no calendar.
-   */
-  startDate?: string
   /** n+1 boundaries carrying n days: days[i] runs stops[i] → stops[i+1]. */
   stops: PlanStop[]
   days: PlanDayMeta[]
@@ -105,6 +120,31 @@ export function validatePlan(candidate: unknown): HikePlan | null {
     if (typeof day !== 'object' || day === null) return null
     if (typeof day.id !== 'string' || day.id.length === 0) return null
     if (typeof day.pinned !== 'boolean' || typeof day.generated !== 'boolean') return null
+    if (day.date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(day.date)) return null
+    if (day.walked !== undefined && typeof day.walked !== 'boolean') return null
+    if (day.wasDistanceMi !== undefined && !Number.isFinite(day.wasDistanceMi)) {
+      return null
+    }
+  }
+
+  // Dated throughout or not at all, and forward-only: a plan that is half a
+  // calendar cannot answer "when do I finish", and one whose dates run
+  // backwards cannot be shifted without inventing which of the two orders
+  // was meant.
+  const dated = plan.days.filter((day) => day.date !== undefined)
+  if (dated.length !== 0 && dated.length !== plan.days.length) return null
+  for (let i = 1; i < dated.length; i++) {
+    if ((dated[i].date as string) <= (dated[i - 1].date as string)) return null
+  }
+
+  // Walked days form a prefix - days are walked in order, and a record with
+  // a hole in it is a shape no operation here can produce.
+  const firstUnwalked = plan.days.findIndex((day) => day.walked !== true)
+  if (
+    firstUnwalked !== -1 &&
+    plan.days.slice(firstUnwalked).some((day) => day.walked === true)
+  ) {
+    return null
   }
 
   const target = plan.target as PlanTarget | undefined
@@ -116,15 +156,10 @@ export function validatePlan(candidate: unknown): HikePlan | null {
     typeof targetMiles === 'number' && Number.isFinite(targetMiles) && targetMiles > 0
   if (!validHours && !validMiles) return null
 
-  if (plan.startDate !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(plan.startDate)) {
-    return null
-  }
-
   return {
     target: validHours
       ? { walkingHours: hours as number }
       : { miles: targetMiles as number },
-    ...(plan.startDate === undefined ? {} : { startDate: plan.startDate }),
     stops: plan.stops as PlanStop[],
     days: plan.days as PlanDayMeta[],
   }
@@ -150,7 +185,8 @@ export async function clearPlan(): Promise<void> {
 }
 
 /** A fresh plan over generated day boundaries, every day marked as the
- *  generator's own until the hiker touches it. */
+ *  generator's own until the hiker touches it. With a start date, days are
+ *  dated consecutively from it; without one, day numbers carry the order. */
 export function buildPlan(
   stops: PlanStop[],
   target: PlanTarget,
@@ -158,10 +194,10 @@ export function buildPlan(
 ): HikePlan {
   return {
     target,
-    ...(startDate === undefined ? {} : { startDate }),
     stops,
-    days: Array.from({ length: Math.max(0, stops.length - 1) }, () => ({
+    days: Array.from({ length: Math.max(0, stops.length - 1) }, (_, index) => ({
       id: crypto.randomUUID(),
+      ...(startDate === undefined ? {} : { date: dateOfDay(startDate, index) }),
       pinned: false,
       generated: true,
     })),
@@ -190,13 +226,17 @@ export interface PlanDayView {
    * "DAY 24" on the wireframes counts the walking.
    */
   dayNumber: number | null
-  /** yyyy-mm-dd, or null when the plan has no start date. */
+  /** yyyy-mm-dd, or null on an undated plan. */
   date: string | null
   start: PlanStop
   end: PlanStop
   zero: boolean
   pinned: boolean
   generated: boolean
+  /** A record, not a plan any more - see PlanDayMeta.walked. */
+  walked: boolean
+  /** "was 17.1 mi", or null - see PlanDayMeta.wasDistanceMi. */
+  wasDistanceMi: number | null
 }
 
 /** `startDate` plus `index` days, in plain date arithmetic - UTC throughout
@@ -218,12 +258,14 @@ export function planDayViews(plan: HikePlan): PlanDayView[] {
       id: meta.id,
       index,
       dayNumber: zero ? null : walkingDays,
-      date: plan.startDate === undefined ? null : dateOfDay(plan.startDate, index),
+      date: meta.date ?? null,
       start,
       end,
       zero,
       pinned: meta.pinned,
       generated: meta.generated,
+      walked: meta.walked === true,
+      wasDistanceMi: meta.wasDistanceMi ?? null,
     }
   })
 }
@@ -275,10 +317,36 @@ export function planSections(views: PlanDayView[]): PlanSection[] {
 
 // ---------------------------------------------------------------------------
 // Edits. Each returns a new plan and leaves the argument alone; each marks
-// the days it touched as no longer the generator's.
+// the days it touched as no longer the generator's. Every one of them
+// refuses to alter a walked day - the past is a record, not a plan
+// (SEGMENTS.md's completion model, restated by HIKE_PLANNING.md's cascade),
+// and the refusal lives here so no screen has to remember it.
 
 function touched(meta: PlanDayMeta): PlanDayMeta {
   return meta.generated ? { ...meta, generated: false } : meta
+}
+
+/** How many leading days are walked records. The plan's "now" sits at the
+ *  boundary this many stops in - which is also the first stop an edit may
+ *  touch. */
+export function walkedDayCount(plan: HikePlan): number {
+  let count = 0
+  while (count < plan.days.length && plan.days[count].walked === true) count += 1
+  return count
+}
+
+/** The day being walked next - the first unwalked one - or null when the
+ *  plan is entirely a record. "Today" by progression rather than by the
+ *  calendar: the calendar is a label, where the hiker is is a fact. */
+export function currentDayIndex(plan: HikePlan): number | null {
+  const count = walkedDayCount(plan)
+  return count < plan.days.length ? count : null
+}
+
+/** The same date, `delta` days along - plain UTC arithmetic. */
+function shiftDate(date: string, delta: number): string {
+  const [year, month, day] = date.split('-').map(Number)
+  return new Date(Date.UTC(year, month - 1, day + delta)).toISOString().slice(0, 10)
 }
 
 /**
@@ -286,10 +354,16 @@ function touched(meta: PlanDayMeta): PlanDayMeta {
  * It needs no kind field - a day with a date, a place and no distance, which
  * is the whole reason a zero has to be IN the tree rather than a gap
  * between days: a gap has no date and eats no food (HIKE_PLANNING.md).
+ *
+ * On a dated plan the zero takes the next date and every later day slips a
+ * day - which is what taking a zero does to a calendar.
  */
 export function insertZeroAfter(plan: HikePlan, index: number): HikePlan {
   if (index < 0 || index >= plan.days.length) return plan
+  // After a walked day is fine - tomorrow can be a zero; the record itself
+  // is untouched either way.
   const boundary = plan.stops[index + 1]
+  const anchor = plan.days[index].date
   return {
     ...plan,
     stops: [
@@ -299,8 +373,17 @@ export function insertZeroAfter(plan: HikePlan, index: number): HikePlan {
     ],
     days: [
       ...plan.days.slice(0, index + 1),
-      { id: crypto.randomUUID(), pinned: false, generated: false },
-      ...plan.days.slice(index + 1),
+      {
+        id: crypto.randomUUID(),
+        ...(anchor === undefined ? {} : { date: shiftDate(anchor, 1) }),
+        pinned: false,
+        generated: false,
+      },
+      ...plan.days
+        .slice(index + 1)
+        .map((meta) =>
+          meta.date === undefined ? meta : { ...meta, date: shiftDate(meta.date, 1) },
+        ),
     ],
   }
 }
@@ -311,12 +394,20 @@ export function insertZeroAfter(plan: HikePlan, index: number): HikePlan {
  * folds its miles into the day after it, and removing the last day shortens
  * the route to end where that day began. The day that absorbed the miles is
  * marked touched: it no longer covers the stretch the generator chose.
+ * Later days pull a date earlier - the mirror of what inserting added.
  */
 export function removeDay(plan: HikePlan, index: number): HikePlan {
   if (index < 0 || index >= plan.days.length) return plan
   if (plan.days.length === 1) return plan
+  if (plan.days[index].walked === true) return plan
   const zero = plan.stops[index].mile === plan.stops[index + 1].mile
-  const days = plan.days.filter((_, i) => i !== index)
+  const days = plan.days
+    .filter((_, i) => i !== index)
+    .map((meta, i) =>
+      i >= index && meta.date !== undefined
+        ? { ...meta, date: shiftDate(meta.date, -1) }
+        : meta,
+    )
   const absorber = zero || index >= days.length ? null : index
   return {
     ...plan,
@@ -325,10 +416,15 @@ export function removeDay(plan: HikePlan, index: number): HikePlan {
   }
 }
 
-/** Flip the resupply flag on stop `stopIndex` - one write, because a stop
- *  is stored once however many days meet at it. */
+/**
+ * Flip the resupply flag on stop `stopIndex` - one write, because a stop is
+ * stored once however many days meet at it. Refused behind the plan's
+ * "now": where supplies were bought is part of the record, and the earliest
+ * stop still ahead of the hiker is the boundary their walked prefix ends at.
+ */
 export function toggleResupply(plan: HikePlan, stopIndex: number): HikePlan {
   if (stopIndex < 0 || stopIndex >= plan.stops.length) return plan
+  if (stopIndex < walkedDayCount(plan)) return plan
   return {
     ...plan,
     stops: plan.stops.map((stop, i) =>
@@ -339,6 +435,7 @@ export function toggleResupply(plan: HikePlan, stopIndex: number): HikePlan {
 
 export function togglePinned(plan: HikePlan, index: number): HikePlan {
   if (index < 0 || index >= plan.days.length) return plan
+  if (plan.days[index].walked === true) return plan
   return {
     ...plan,
     days: plan.days.map((meta, i) =>

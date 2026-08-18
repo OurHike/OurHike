@@ -139,13 +139,18 @@ export const STORED_SHAPES: Readonly<Record<string, unknown>> = deepFreeze({
 
   'ourhike:hike': { startMile: 0, endMile: 2189.1 },
 
-  // A two-day plan with a resupply at the far end (#756). Boundary-shaped:
-  // three stops carry two days, and lib/plan.ts refuses the record wholesale
-  // if that arithmetic ever fails - so this fixture is also what pins the
-  // shape a future migration has to keep reading.
+  // A two-day plan with a resupply at the far end and its first day already
+  // walked (#756/#758). Boundary-shaped: three stops carry two days, dates
+  // ride on the days (the cascade moves the calendar in pieces, which one
+  // start date cannot carry), and lib/plan.ts refuses the record wholesale
+  // if any invariant fails - so this fixture is also what pins the shape a
+  // future migration has to keep reading.
+  //
+  // Edited once before any release existed, when #758 moved dates from a
+  // plan-level startDate onto the days in the same unmerged PR that
+  // introduced the key. Nothing shipped ever wrote the earlier shape.
   'ourhike:plan': {
     target: { walkingHours: 7 },
-    startDate: '2026-05-12',
     stops: [
       { mile: 470.8, name: 'Damascus', resupply: false },
       {
@@ -157,8 +162,14 @@ export const STORED_SHAPES: Readonly<Record<string, unknown>> = deepFreeze({
       { mile: 503.3, name: 'Atkins', resupply: true },
     ],
     days: [
-      { id: 'day-0001', pinned: false, generated: true },
-      { id: 'day-0002', pinned: true, generated: false },
+      {
+        id: 'day-0001',
+        date: '2026-05-12',
+        pinned: false,
+        generated: false,
+        walked: true,
+      },
+      { id: 'day-0002', date: '2026-05-13', pinned: true, generated: false },
     ],
   },
 

@@ -1327,15 +1327,20 @@ function App() {
   // Re-targeting an existing plan runs the same sheet over the plan's own
   // ends, seeded with what it aimed at last time. Laying out replaces the
   // whole plan - the sheet's own reassurance line says days can be moved
-  // afterwards, and the cascade (#758) is where selective re-planning
-  // between pins arrives.
+  // afterwards. Refused once anything is walked: the past is a record a
+  // wholesale re-lay would overwrite, and re-planning what remains is the
+  // cascade's job (#758). The screen hides the button in that state; this
+  // guard is the belt to that suspender.
   const handleChangeTarget = useCallback(() => {
     if (plan === null || plan.stops.length < 2) return
+    if (plan.days.some((day) => day.walked === true)) return
     setTargetRequest({
       fromMile: plan.stops[0].mile,
       toMile: plan.stops[plan.stops.length - 1].mile,
       initialTarget: plan.target,
-      ...(plan.startDate === undefined ? {} : { initialStartDate: plan.startDate }),
+      ...(plan.days[0]?.date === undefined
+        ? {}
+        : { initialStartDate: plan.days[0].date }),
     })
   }, [plan])
 
@@ -1363,6 +1368,21 @@ function App() {
     setPlan(null)
     void clearPlan()
   }, [])
+
+  // The cascade (#758) hands back whole re-planned plans rather than edits.
+  const handleReplacePlan = useCallback((next: HikePlan) => {
+    setPlan(next)
+    void savePlan(next)
+  }, [])
+
+  // Where the hiker is on the plan's own mile axis, for "call it a day
+  // where you are". Null without a fix - and null without anchors, because
+  // a client-scale mile compared against pipeline-scale boundaries is the
+  // exact mixed measurement lib/route.ts exists to prevent.
+  const gpsPlanMile = useMemo(() => {
+    if (fix === null) return null
+    return anchoredMile(fix.mile, mileAnchors)
+  }, [fix, mileAnchors])
 
   const targetSheet =
     targetRequest === null ? null : (
@@ -2101,6 +2121,8 @@ function App() {
               <PlanScreen
                 plan={plan}
                 elevation={elevation}
+                pois={pois}
+                gpsMile={gpsPlanMile}
                 units={units}
                 onStartOnMap={openRouteBuilder}
                 onChangeTarget={handleChangeTarget}
@@ -2118,6 +2140,7 @@ function App() {
                 onToggleEndResupply={(index) =>
                   applyPlanEdit((current) => toggleResupply(current, index + 1))
                 }
+                onReplacePlan={handleReplacePlan}
                 onDeletePlan={handleDeletePlan}
                 {...(targetSheet === null ? {} : { targetSheet })}
               />

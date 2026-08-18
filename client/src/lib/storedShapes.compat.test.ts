@@ -164,7 +164,7 @@ describe('a stored phone from the baseline release', () => {
     expect(hike).toEqual({ startMile: 0, endMile: 2189.1 })
   })
 
-  it('still reads the multi-day plan, pins and resupply flags included', async () => {
+  it('still reads the multi-day plan - pins, dates, resupply and the walked record', async () => {
     const plan = await loadPlan()
 
     expect(plan).not.toBeNull()
@@ -176,7 +176,9 @@ describe('a stored phone from the baseline release', () => {
     expect(plan?.stops[2].resupply).toBe(true)
     expect(plan?.days[1].pinned).toBe(true)
     expect(plan?.target).toEqual({ walkingHours: 7 })
-    expect(plan?.startDate).toBe('2026-05-12')
+    expect(plan?.days.map((day) => day.date)).toEqual(['2026-05-12', '2026-05-13'])
+    expect(plan?.days[0].walked).toBe(true)
+    expect(plan?.days[1].walked).toBeUndefined()
   })
 
   it('still reopens the map where it was left', () => {

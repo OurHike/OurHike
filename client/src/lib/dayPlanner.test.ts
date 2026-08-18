@@ -14,6 +14,7 @@ import {
   DEFAULT_CAP_MI,
   OVER_TARGET_WEIGHT,
   planDays,
+  planDaysExact,
   type CandidateStop,
 } from './dayPlanner'
 import type { StoredPoi } from './trailData'
@@ -90,6 +91,29 @@ describe('planDays', () => {
   it('plans a southbound route in walk order', () => {
     const chosen = planDays([terminus(20), shelter(10), terminus(0)], 10)
     expect(miles(chosen)).toEqual([20, 10, 0])
+  })
+})
+
+describe('planDaysExact - the absorb DP (#758)', () => {
+  it('spends exactly the days it was given, balanced', () => {
+    const chosen = planDaysExact(
+      [terminus(0), shelter(8), shelter(15), shelter(23), terminus(30)],
+      2,
+    )
+    expect(chosen).not.toBeNull()
+    expect(miles(chosen as CandidateStop[])).toEqual([0, 15, 30])
+  })
+
+  it('still refuses to cross the cap while a stop inside it exists', () => {
+    const chosen = planDaysExact([terminus(0), shelter(10), shelter(20), terminus(40)], 2)
+    // One 20-20 split exists inside the cap; a 10-30 split does not.
+    expect(miles(chosen as CandidateStop[])).toEqual([0, 20, 40])
+  })
+
+  it('answers null when the count cannot be walked over these stops', () => {
+    // Three days need three boundaries to end at; two stops offer one.
+    expect(planDaysExact([terminus(0), terminus(30)], 3)).toBeNull()
+    expect(planDaysExact([terminus(0), terminus(30)], 0)).toBeNull()
   })
 })
 

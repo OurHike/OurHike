@@ -120,16 +120,17 @@ describe('laying out', () => {
     await user.click(screen.getByRole('button', { name: /Lay out \d+ days/ }))
 
     const plan = PROPS.onLayOut.mock.calls[0][0] as HikePlan
-    expect(plan.startDate).toBe('2026-05-12')
+    expect(plan.days[0].date).toBe('2026-05-12')
+    expect(plan.days[1]?.date).toBe('2026-05-13')
   })
 
-  it('leaves the date off when none was picked - thru-hikers plan loosely', async () => {
+  it('leaves the dates off when none was picked - thru-hikers plan loosely', async () => {
     const user = userEvent.setup()
     render(<PlanTargetSheet {...PROPS} elevation={flatProfile()} />)
 
     await user.click(screen.getByRole('button', { name: /Lay out \d+ days/ }))
     const plan = PROPS.onLayOut.mock.calls[0][0] as HikePlan
-    expect(plan.startDate).toBeUndefined()
+    expect(plan.days.every((day) => day.date === undefined)).toBe(true)
   })
 
   it('re-prices the days as the target moves', () => {

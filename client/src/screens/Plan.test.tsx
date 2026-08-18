@@ -11,11 +11,15 @@ import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { PlanScreen } from './Plan'
+import { callItADay } from '../lib/cascade'
 import { buildPlan, insertZeroAfter, toggleResupply, type HikePlan } from '../lib/plan'
 import type { ElevationProfile } from '../lib/elevationProfile'
+import type { StoredPoi } from '../lib/trailData'
 
 const PROPS = {
   elevation: null,
+  pois: [] as readonly StoredPoi[],
+  gpsMile: null,
   units: 'imperial' as const,
   onStartOnMap: vi.fn(),
   onChangeTarget: vi.fn(),
@@ -23,6 +27,7 @@ const PROPS = {
   onRemoveDay: vi.fn(),
   onTogglePinned: vi.fn(),
   onToggleEndResupply: vi.fn(),
+  onReplacePlan: vi.fn(),
   onDeletePlan: vi.fn(),
 }
 
@@ -193,5 +198,138 @@ describe('the foot of the screen', () => {
 
     await user.click(screen.getByRole('button', { name: 'Tap again to delete the plan' }))
     expect(PROPS.onDeletePlan).toHaveBeenCalled()
+  })
+})
+
+describe('the cascade (#758)', () => {
+  const shelter = (id: string, mile: number, name: string): StoredPoi => ({
+    id,
+    type: 'shelter',
+    name,
+    lat: 0,
+    lon: 0,
+    confidence: 'high',
+    mile,
+  })
+
+  const POIS = [
+    shelter('lost', 486.2, 'Lost Mountain Shelter'),
+    shelter('wise', 490.4, 'Wise Shelter'),
+    shelter('a', 496, 'Shelter A'),
+  ]
+
+  /** Two walking days at a miles target, dated. */
+  function milesPlan(): HikePlan {
+    return buildPlan(
+      [
+        { mile: 470.8, name: 'Damascus', resupply: false },
+        { mile: 486.2, name: 'Lost Mountain Shelter', resupply: false },
+        { mile: 503.3, name: 'Atkins', resupply: false },
+      ],
+      { miles: 15 },
+      '2026-05-12',
+    )
+  }
+
+  it('draws a walked day as a record - grey, plain, and not a button', () => {
+    const walked = callItADay(milesPlan(), 0, { mile: 486.2 })
+    render(<PlanScreen {...PROPS} plan={walked} pois={POIS} />)
+
+    expect(screen.getByText('walked · not a plan any more')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Damascus → Lost Mountain/ })).toBeNull()
+    // And a plan with a record no longer offers a wholesale re-target.
+    expect(screen.queryByRole('button', { name: /Target:/ })).toBeNull()
+  })
+
+  it('offers "call it a day" only on the current day', async () => {
+    const user = userEvent.setup()
+    render(<PlanScreen {...PROPS} plan={milesPlan()} pois={POIS} />)
+
+    await user.click(
+      screen.getByRole('button', { name: /Lost Mountain Shelter → Atkins/ }),
+    )
+    expect(screen.queryByRole('button', { name: /Call it a day/ })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    await user.click(screen.getByRole('button', { name: /Damascus → Lost Mountain/ }))
+    expect(screen.getByRole('button', { name: /Call it a day/ })).toBeInTheDocument()
+  })
+
+  it('records the day where the hiker is, then offers three computed outcomes', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(
+      <PlanScreen {...PROPS} plan={milesPlan()} pois={POIS} gpsMile={490.3} />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /Damascus → Lost Mountain/ }))
+    await user.click(screen.getByRole('button', { name: /Call it a day/ }))
+
+    // The position names its nearest real stop.
+    await user.click(screen.getByRole('button', { name: /Where you are — Wise Shelter/ }))
+
+    expect(PROPS.onReplacePlan).toHaveBeenCalledTimes(1)
+    const called = PROPS.onReplacePlan.mock.calls[0][0] as HikePlan
+    expect(called.days[0].walked).toBe(true)
+    expect(called.stops[1].name).toBe('Wise Shelter')
+
+    // The shell would re-render with the recorded plan; do the same.
+    rerender(<PlanScreen {...PROPS} plan={called} pois={POIS} gpsMile={490.3} />)
+
+    const sheet = screen.getByRole('dialog', { name: 'The rest of the plan' })
+    expect(sheet).toBeInTheDocument()
+    expect(screen.getByText(/Finish ≈ 13 May, unchanged/)).toBeInTheDocument()
+    expect(screen.getByText(/tomorrow: 12\.9 mi/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Absorb/ }))
+    expect(PROPS.onReplacePlan).toHaveBeenCalledTimes(2)
+    const absorbed = PROPS.onReplacePlan.mock.calls[1][0] as HikePlan
+    expect(absorbed.days).toHaveLength(2)
+    expect(absorbed.days.map((day) => day.date)).toEqual(['2026-05-12', '2026-05-13'])
+  })
+
+  it('skips the choice sheet when the day ended exactly as planned', async () => {
+    const user = userEvent.setup()
+    render(<PlanScreen {...PROPS} plan={milesPlan()} pois={POIS} />)
+
+    await user.click(screen.getByRole('button', { name: /Damascus → Lost Mountain/ }))
+    await user.click(screen.getByRole('button', { name: /Call it a day/ }))
+    await user.click(
+      screen.getByRole('button', { name: /At Lost Mountain Shelter, as planned/ }),
+    )
+
+    expect(PROPS.onReplacePlan).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('dialog', { name: 'The rest of the plan' })).toBeNull()
+  })
+
+  it('says why a position past tomorrow’s stop cannot be recorded', async () => {
+    const user = userEvent.setup()
+    render(<PlanScreen {...PROPS} plan={milesPlan()} pois={POIS} gpsMile={510} />)
+
+    await user.click(screen.getByRole('button', { name: /Damascus → Lost Mountain/ }))
+    await user.click(screen.getByRole('button', { name: /Call it a day/ }))
+
+    expect(screen.getByText(/past tomorrow’s stop/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Where you are/ })).toBeNull()
+  })
+
+  it('never says ahead or behind, even mid-cascade', async () => {
+    const user = userEvent.setup()
+    const { container, rerender } = render(
+      <PlanScreen {...PROPS} plan={milesPlan()} pois={POIS} gpsMile={490.3} />,
+    )
+    await user.click(screen.getByRole('button', { name: /Damascus → Lost Mountain/ }))
+    await user.click(screen.getByRole('button', { name: /Call it a day/ }))
+    await user.click(screen.getByRole('button', { name: /Where you are — Wise Shelter/ }))
+    rerender(
+      <PlanScreen
+        {...PROPS}
+        plan={PROPS.onReplacePlan.mock.calls[0][0] as HikePlan}
+        pois={POIS}
+        gpsMile={490.3}
+      />,
+    )
+
+    expect(container.textContent).not.toMatch(/behind/i)
+    expect(container.textContent).not.toMatch(/ahead of/i)
   })
 })

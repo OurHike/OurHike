@@ -149,6 +149,74 @@ function walkMiles(from: CandidateStop, to: CandidateStop): number {
 }
 
 /**
+ * Day boundaries with the DAY COUNT fixed - the cascade's "absorb" (#758),
+ * where the finish date holds and the remaining route re-balances into
+ * exactly the days that are left. Same cost function, same cap, same
+ * campsite nudge; the target each day is priced against is implied by the
+ * count rather than asked for.
+ *
+ * The DP gains one dimension (stop × days used): ~512 stops × a three-digit
+ * day count is still less arithmetic than a map frame. Null when the count
+ * cannot be walked over these stops at all - more days than there are
+ * boundaries to end them at, or no in-cap path with exactly that many.
+ */
+export function planDaysExact(
+  stops: readonly CandidateStop[],
+  dayCount: number,
+  {
+    capMi = DEFAULT_CAP_MI,
+    overWeight = OVER_TARGET_WEIGHT,
+    effort,
+  }: PlannerOptions = {},
+): CandidateStop[] | null {
+  if (stops.length < 2 || dayCount < 1 || dayCount > stops.length - 1) return null
+
+  const size = effort ?? ((from: CandidateStop, to: CandidateStop) => walkMiles(from, to))
+  const target = size(stops[0], stops[stops.length - 1]) / dayCount
+  const nudge = CAMPSITE_MARGIN * target
+  const campsiteCost = nudge * nudge
+
+  // best[j][d]: cheapest way to stand at stop j having walked exactly d days.
+  const best = stops.map(() => new Array<number>(dayCount + 1).fill(Infinity))
+  const previous = stops.map(() => new Array<number>(dayCount + 1).fill(-1))
+  best[0][0] = 0
+
+  for (let j = 1; j < stops.length; j++) {
+    let reachable: number[] = []
+    for (let i = 0; i < j; i++) {
+      if (walkMiles(stops[i], stops[j]) <= capMi) reachable.push(i)
+    }
+    if (reachable.length === 0) reachable = [j - 1]
+
+    for (const i of reachable) {
+      const edge =
+        dayCost(size(stops[i], stops[j]), target, overWeight) +
+        (stops[j].kind === 'campsite' ? campsiteCost : 0)
+      for (let d = 1; d <= dayCount; d++) {
+        const candidate = best[i][d - 1] + edge
+        if (candidate < best[j][d]) {
+          best[j][d] = candidate
+          previous[j][d] = i
+        }
+      }
+    }
+  }
+
+  if (!Number.isFinite(best[stops.length - 1][dayCount])) return null
+
+  const boundaries: number[] = []
+  let at = stops.length - 1
+  for (let d = dayCount; d > 0; d--) {
+    boundaries.push(at)
+    at = previous[at][d]
+  }
+  boundaries.push(0)
+  boundaries.reverse()
+
+  return boundaries.map((index) => stops[index])
+}
+
+/**
  * The candidate stops for a route from `fromMile` to `toMile`, in walk
  * order, with the route's own ends first and last.
  *

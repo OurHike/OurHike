@@ -150,15 +150,14 @@ describe('the planning flow', () => {
     app.putTrailData({ pois: POIS })
     app.store.set(PLAN_KEY, {
       target: { miles: 8 },
-      startDate: '2026-05-12',
       stops: [
         { mile: 5.2, resupply: false },
         { mile: 13.2, name: 'Far Shelter', resupply: false },
         { mile: 20.2, name: 'Beyond Shelter', resupply: true },
       ],
       days: [
-        { id: 'day-a', pinned: false, generated: true },
-        { id: 'day-b', pinned: false, generated: true },
+        { id: 'day-a', date: '2026-05-12', pinned: false, generated: true },
+        { id: 'day-b', date: '2026-05-13', pinned: false, generated: true },
       ],
     })
 

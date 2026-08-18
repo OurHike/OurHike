@@ -11,28 +11,38 @@
 // WHAT IS DELIBERATELY NOT HERE, because this surface is where it would
 // arrive uninvited (V2_PLAN.md group T's standing trap): no progress bar,
 // no "behind schedule", no comparison of any day against the plan, no
-// score. "Was 17.1 mi" territory belongs to the cascade (#758) and even
-// there it is a fact about the plan, not a verdict on the hiker. A zero
-// says "no walking" - terrain, not judgement.
+// score. A walked day greys into a record rather than scoring against its
+// target; "was 17.1 mi" after a cascade is a fact about the plan, never a
+// verdict on the hiker. A zero says "no walking" - terrain, not judgement.
 //
 // A SCREEN, NOT A DIALOG - it replaces the map when its tab is active, so
-// there is nothing behind it to dim (HikePicker.tsx's convention). The two
-// sheets it hosts (a tapped day's actions, the target sheet the shell
-// passes in) dock to the screen's own bottom edge.
+// there is nothing behind it to dim (HikePicker.tsx's convention). The
+// sheets it hosts (a tapped day's actions, call-it-a-day, the cascade, the
+// target sheet the shell passes in) dock to the screen's own bottom edge.
 
 import { useMemo, useState, type ReactNode } from 'react'
+import {
+  callableEnd,
+  callItADay,
+  cascadeChoices,
+  nearestStop,
+  type CalledEnd,
+} from '../lib/cascade'
 import { ribbonSamples, type ElevationProfile } from '../lib/elevationProfile'
 import { formatNaismithMinutes } from '../lib/naismith'
 import {
+  currentDayIndex,
   planDayViews,
   planSections,
   planDirection,
+  walkedDayCount,
   type HikePlan,
   type PlanDayView,
   type PlanSection,
 } from '../lib/plan'
 import { dayDateLabel, dayRowHeight, MIN_ROW_PX, stopLabel } from '../lib/planDisplay'
 import { legFigures, type LegFigures } from '../lib/route'
+import type { StoredPoi } from '../lib/trailData'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
 import './plan.css'
 
@@ -42,6 +52,12 @@ export interface PlanScreenProps {
    *  old download - drops the terrain and the hour-proportional heights
    *  rather than faking either. */
   elevation: ElevationProfile | null
+  /** Every stored POI - the cascade's candidate stops, and how a called
+   *  day's end gets a name. */
+  pois: readonly StoredPoi[]
+  /** Where the hiker is on the pipeline's mile axis, or null without a fix
+   *  - "call it a day where you are" is only offered when this is known. */
+  gpsMile: number | null
   units: UnitSystem
   /** Open the route builder on the map - the empty state's one action. */
   onStartOnMap: () => void
@@ -52,6 +68,8 @@ export interface PlanScreenProps {
   onTogglePinned: (dayIndex: number) => void
   /** Flip resupply on the stop day `dayIndex` ends at. */
   onToggleEndResupply: (dayIndex: number) => void
+  /** The cascade hands back a whole re-planned plan rather than an edit. */
+  onReplacePlan: (plan: HikePlan) => void
   onDeletePlan: () => void
   /** The target sheet, when the shell has it open over this screen. */
   targetSheet?: ReactNode
@@ -60,6 +78,8 @@ export interface PlanScreenProps {
 export function PlanScreen({
   plan,
   elevation,
+  pois,
+  gpsMile,
   units,
   onStartOnMap,
   onChangeTarget,
@@ -67,11 +87,17 @@ export function PlanScreen({
   onRemoveDay,
   onTogglePinned,
   onToggleEndResupply,
+  onReplacePlan,
   onDeletePlan,
   targetSheet,
 }: PlanScreenProps) {
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  /** The day a "call it a day" sheet is open for, and then the day whose
+   *  cascade choice is pending. Two states because the second only exists
+   *  when the recorded end moved something. */
+  const [calling, setCalling] = useState<number | null>(null)
+  const [cascading, setCascading] = useState(false)
 
   const views = useMemo(() => (plan === null ? [] : planDayViews(plan)), [plan])
   const sections = useMemo(() => planSections(views), [views])
@@ -88,6 +114,25 @@ export function PlanScreen({
     }
     return byIndex
   }, [views, elevation])
+
+  // What the cascade can honestly offer. A walking-hours target on a
+  // download with no profile cannot price a shift, so it is not offered -
+  // the target sheet's own refusal, applied here too. Above the empty-state
+  // return because a hook must run on every render.
+  const plannerContext = useMemo(() => {
+    if (plan === null) return { options: {}, target: null as number | null }
+    if (!('walkingHours' in plan.target)) {
+      return { options: {}, target: plan.target.miles as number | null }
+    }
+    if (elevation === null) return { options: {}, target: null as number | null }
+    return {
+      options: {
+        effort: (from: { mile: number }, to: { mile: number }) =>
+          legFigures(elevation, from.mile, to.mile).minutes / 60,
+      },
+      target: plan.target.walkingHours as number | null,
+    }
+  }, [plan, elevation])
 
   if (plan === null || views.length === 0) {
     return (
@@ -123,6 +168,8 @@ export function PlanScreen({
 
   const direction = planDirection(plan)
   const selected = selectedDay === null ? null : (views[selectedDay] ?? null)
+  const current = currentDayIndex(plan)
+  const anythingWalked = walkedDayCount(plan) > 0
 
   return (
     <div className="plan">
@@ -194,9 +241,14 @@ export function PlanScreen({
       ))}
 
       <div className="plan__foot">
-        <button type="button" className="plan__foot-action" onClick={onChangeTarget}>
-          {targetLabel(plan, units)}
-        </button>
+        {/* Re-targeting replaces the whole plan, so it retires the moment
+            anything is walked - the past is a record a wholesale re-lay
+            would overwrite, and re-planning what remains is the cascade's. */}
+        {!anythingWalked && (
+          <button type="button" className="plan__foot-action" onClick={onChangeTarget}>
+            {targetLabel(plan, units)}
+          </button>
+        )}
         <button
           type="button"
           className="plan__foot-action plan__foot-action--danger"
@@ -213,9 +265,14 @@ export function PlanScreen({
         </button>
       </div>
 
-      {selected !== null && (
+      {selected !== null && !cascading && calling === null && (
         <DayActions
           day={selected}
+          isCurrent={selected.index === current}
+          onCallItADay={() => {
+            setCalling(selected.index)
+            setSelectedDay(null)
+          }}
           onInsertZeroAfter={() => {
             onInsertZeroAfter(selected.index)
             setSelectedDay(null)
@@ -233,6 +290,43 @@ export function PlanScreen({
             setSelectedDay(null)
           }}
           onClose={() => setSelectedDay(null)}
+        />
+      )}
+
+      {calling !== null && views[calling] !== undefined && (
+        <CallItADaySheet
+          plan={plan}
+          day={views[calling]}
+          pois={pois}
+          gpsMile={gpsMile}
+          elevation={elevation}
+          units={units}
+          onCall={(end) => {
+            const called = callItADay(plan, calling, end)
+            setCalling(null)
+            if (called === plan) return
+            onReplacePlan(called)
+            // The choice sheet only exists when the recorded end moved
+            // something - ending exactly at the planned stop changes no
+            // later day, and asking would be the "recalculate?" prompt the
+            // design forbids.
+            if (end.mile !== plan.stops[calling + 1].mile) setCascading(true)
+          }}
+          onClose={() => setCalling(null)}
+        />
+      )}
+
+      {cascading && (
+        <CascadeSheet
+          plan={plan}
+          pois={pois}
+          target={plannerContext.target}
+          options={plannerContext.options}
+          units={units}
+          onChoose={(next) => {
+            if (next !== null) onReplacePlan(next)
+            setCascading(false)
+          }}
         />
       )}
       {targetSheet}
@@ -283,6 +377,29 @@ interface DayRowProps {
 
 function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowProps) {
   const resupply = day.end.resupply
+
+  // A walked day is a record, not a plan - grey, immutable, and not a
+  // button: there are no actions to take on the past.
+  if (day.walked) {
+    return (
+      <div className="plan__row">
+        <RowGutter day={day} />
+        <div className="plan__day plan__day--walked">
+          <span className="plan__day-top">
+            <span className="plan__day-title">
+              {stopLabel(day.start)} → {stopLabel(day.end)}
+            </span>
+            <span className="plan__day-figure">
+              {formatDistance(Math.abs(day.end.mile - day.start.mile), units)}
+            </span>
+          </span>
+          <span className="plan__day-carry plan__day-carry--walked">
+            walked · not a plan any more
+          </span>
+        </div>
+      </div>
+    )
+  }
 
   if (day.zero) {
     return (
@@ -340,6 +457,13 @@ function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowPr
             <span className="plan__day-figure">
               {formatNaismithMinutes(figures.minutes)} ·{' '}
               {formatElevation(figures.ascentFt, units)} ↑
+            </span>
+          )}
+          {day.wasDistanceMi !== null && (
+            // What the cascade changed - a fact about the plan, not a
+            // verdict on the hiker.
+            <span className="plan__day-was">
+              was {formatDistance(day.wasDistanceMi, units)}
             </span>
           )}
           {day.generated && <span className="plan__day-auto">auto</span>}
@@ -419,6 +543,10 @@ function DayTerrain({
 
 interface DayActionsProps {
   day: PlanDayView
+  /** Whether this is the day being walked next - the only day that can be
+   *  called (#758). */
+  isCurrent: boolean
+  onCallItADay: () => void
   onInsertZeroAfter: () => void
   onRemoveDay: () => void
   onTogglePinned: () => void
@@ -431,6 +559,8 @@ interface DayActionsProps {
  *  between which neighbours. */
 function DayActions({
   day,
+  isCurrent,
+  onCallItADay,
   onInsertZeroAfter,
   onRemoveDay,
   onTogglePinned,
@@ -444,6 +574,11 @@ function DayActions({
   return (
     <div className="plan__actions" role="dialog" aria-label="Day actions">
       <p className="plan__actions-title">{where}</p>
+      {isCurrent && !day.zero && (
+        <button type="button" className="plan__action" onClick={onCallItADay}>
+          Call it a day&hellip;
+        </button>
+      )}
       <button type="button" className="plan__action" onClick={onInsertZeroAfter}>
         Add a zero day after this
       </button>
@@ -469,4 +604,190 @@ function DayActions({
       </button>
     </div>
   )
+}
+
+interface CallItADaySheetProps {
+  plan: HikePlan
+  day: PlanDayView
+  pois: readonly StoredPoi[]
+  gpsMile: number | null
+  elevation: ElevationProfile | null
+  units: UnitSystem
+  onCall: (end: CalledEnd) => void
+  onClose: () => void
+}
+
+/**
+ * "Call it Day 24?" - the record half of the cascade (#758, wireframe 2b
+ * frame 1), without the background inference: the hiker opens it from the
+ * current day's actions, and it never pushes - the wrong-way alert stays
+ * the only notification OurHike sends.
+ *
+ * Two honest ends are offered: the planned stop, and where the hiker
+ * actually is when a fix exists - named by the nearest real stop when one
+ * is close enough to say so. A position past the boundary after this one
+ * cannot be recorded (lib/cascade.ts's callableEnd): that is a whole
+ * overtaken day, a structural edit the cascade does not attempt, and the
+ * sheet says so instead of offering a dead tap.
+ */
+function CallItADaySheet({
+  plan,
+  day,
+  pois,
+  gpsMile,
+  elevation,
+  units,
+  onCall,
+  onClose,
+}: CallItADaySheetProps) {
+  const plannedEnd: CalledEnd = {
+    mile: day.end.mile,
+    ...(day.end.name === undefined ? {} : { name: day.end.name }),
+    ...(day.end.poiId === undefined ? {} : { poiId: day.end.poiId }),
+  }
+
+  const here: CalledEnd | null =
+    gpsMile === null ? null : (nearestStop(pois, gpsMile) ?? { mile: gpsMile })
+  const hereCallable = here !== null && callableEnd(plan, day.index, here.mile)
+
+  const describe = (end: CalledEnd) => {
+    const distanceMi = Math.abs(end.mile - day.start.mile)
+    if (elevation === null) return formatDistance(distanceMi, units)
+    const figures = legFigures(elevation, day.start.mile, end.mile)
+    return `${formatDistance(distanceMi, units)} · ${formatNaismithMinutes(figures.minutes)}`
+  }
+
+  const endLabel = (end: CalledEnd) =>
+    end.name ?? stopLabel({ mile: end.mile, resupply: false })
+
+  return (
+    <div className="plan__actions" role="dialog" aria-label="Call it a day">
+      <p className="plan__actions-title">
+        {day.dayNumber === null ? 'Call it a day?' : `Call it Day ${day.dayNumber}?`}
+      </p>
+      <button type="button" className="plan__action" onClick={() => onCall(plannedEnd)}>
+        At {endLabel(plannedEnd)}, as planned — I&rsquo;ll write down{' '}
+        {describe(plannedEnd)}
+      </button>
+      {here !== null && hereCallable && here.mile !== plannedEnd.mile && (
+        <button type="button" className="plan__action" onClick={() => onCall(here)}>
+          Where you are — {endLabel(here)} · I&rsquo;ll write down {describe(here)}
+        </button>
+      )}
+      {here !== null && !hereCallable && (
+        <p className="plan__actions-note" role="note">
+          Your position is past tomorrow&rsquo;s stop, which this can&rsquo;t record yet —
+          call the day at the planned stop and re-plan from there.
+        </p>
+      )}
+      <button
+        type="button"
+        className="plan__action plan__action--quiet"
+        onClick={onClose}
+      >
+        Not yet
+      </button>
+    </div>
+  )
+}
+
+interface CascadeSheetProps {
+  plan: HikePlan
+  pois: readonly StoredPoi[]
+  /** The plan's own target in effort units, or null when it cannot be
+   *  priced honestly (hours target, no profile) - shift is not offered
+   *  then. */
+  target: number | null
+  options: Parameters<typeof cascadeChoices>[3]
+  units: UnitSystem
+  /** The chosen plan, or null for "leave it". */
+  onChoose: (next: HikePlan | null) => void
+}
+
+/**
+ * Three outcomes, not one question (#758, wireframe 2b frame 2): every
+ * consequence below is computed from the actual re-planned result, so the
+ * sheet can never promise a finish the generator did not produce. Nowhere
+ * here does "ahead" or "behind" appear - the day changed, and the plan can
+ * follow or not; that is the whole framing.
+ */
+function CascadeSheet({
+  plan,
+  pois,
+  target,
+  options,
+  units,
+  onChoose,
+}: CascadeSheetProps) {
+  const choices = useMemo(
+    () => cascadeChoices(plan, pois, target, options),
+    [plan, pois, target, options],
+  )
+
+  const finish = finishLabel(planDayViews(plan))
+
+  return (
+    <div className="plan__actions" role="dialog" aria-label="The rest of the plan">
+      <p className="plan__actions-title">
+        Today changed. The days after it can follow, or not — your call.
+      </p>
+
+      {choices.absorb !== null && (
+        <button
+          type="button"
+          className="plan__action"
+          onClick={() => onChoose(choices.absorb!.plan)}
+        >
+          <span className="plan__choice-name">Absorb</span>
+          <span className="plan__choice-line">
+            {finish === null ? 'Same number of days' : `Finish ≈ ${finish}, unchanged`} ·
+            the next {choices.absorb.days}{' '}
+            {choices.absorb.days === 1 ? 'day averages' : 'days average'}{' '}
+            {formatDistance(choices.absorb.averageMi, units)}
+          </span>
+        </button>
+      )}
+
+      {choices.shift !== null && (
+        <button
+          type="button"
+          className="plan__action"
+          onClick={() => onChoose(choices.shift!.plan)}
+        >
+          <span className="plan__choice-name">Shift</span>
+          <span className="plan__choice-line">
+            Same day sizes ·{' '}
+            {choices.shift.finishDate === null
+              ? deltaLabel(choices.shift.deltaDays)
+              : `finish ≈ ${finishLabel(planDayViews(choices.shift.plan))}`}
+          </span>
+        </button>
+      )}
+
+      <button type="button" className="plan__action" onClick={() => onChoose(null)}>
+        <span className="plan__choice-name">Leave it</span>
+        <span className="plan__choice-line">
+          {choices.leaveTomorrowMi === null
+            ? 'Nothing after today'
+            : choices.leaveTomorrowMi === 0
+              ? 'Nothing changes · tomorrow is a zero'
+              : `Nothing changes · tomorrow: ${formatDistance(choices.leaveTomorrowMi, units)}`}
+        </span>
+      </button>
+
+      {choices.pinnedAhead > 0 && (
+        <p className="plan__actions-note" role="note">
+          <span aria-hidden="true">📌</span> {choices.pinnedAhead}{' '}
+          {choices.pinnedAhead === 1 ? 'pinned day lies' : 'pinned days lie'} ahead —
+          nothing re-plans through a pin, and shifting a pinned date is off the table.
+        </p>
+      )}
+    </div>
+  )
+}
+
+function deltaLabel(deltaDays: number): string {
+  if (deltaDays === 0) return 'same number of days'
+  if (deltaDays > 0) return `${deltaDays} ${deltaDays === 1 ? 'day' : 'days'} more`
+  return `${-deltaDays} ${deltaDays === -1 ? 'day' : 'days'} fewer`
 }

@@ -21,6 +21,7 @@ import { hikeFigures, type Hike } from '../lib/hikes'
 import { planDayViews, walkedDayCount } from '../lib/plan'
 import { dayDateLabel } from '../lib/planDisplay'
 import type { StoredPoi } from '../lib/trailData'
+import { groupFigures, type TripGroup } from '../lib/tripGroups'
 import type { Trip } from '../lib/trips'
 import { formatDistance, type UnitSystem } from '../lib/units'
 import './plan.css'
@@ -48,6 +49,11 @@ export interface TripListProps {
   /** Group every trip here into one hike - the "I already have a history"
    *  door. Absent nothing to group. */
   onGroupIntoHike: () => void
+  /** The hiker's own buckets (#800). Listed here until the Plan home
+   *  (#805) gives them a place of their own. */
+  groups: readonly TripGroup[]
+  onOpenGroup: (id: string) => void
+  onNewGroup: (name: string) => void
   onClose: () => void
 }
 
@@ -92,11 +98,15 @@ export function TripList({
   onRemove,
   onNew,
   onGroupIntoHike,
+  groups,
+  onOpenGroup,
+  onNewGroup,
   onClose,
 }: TripListProps) {
   const [renaming, setRenaming] = useState<string | null>(null)
   const [draftName, setDraftName] = useState('')
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
+  const [newGroup, setNewGroup] = useState<string | null>(null)
 
   return (
     <div className="trip-list" role="dialog" aria-label="Your trips">
@@ -231,6 +241,66 @@ export function TripList({
             )
           })}
         </ul>
+      )}
+
+      {/* The hiker's own buckets, which a trip can be in several of at once
+          - unlike a hike, of which it has one (#800). */}
+      {(groups.length > 0 || trips.length > 0) && (
+        <div className="trip-list__groups">
+          <span className="trip-list__groups-title">Your groups</span>
+          {groups.length === 0 && (
+            <p className="trip-list__empty">
+              None yet. A group is any set of trips you want kept together — every Sunday,
+              with Dad, this season.
+            </p>
+          )}
+          <div className="trip-list__group-chips">
+            {groups.map((group) => {
+              const figures = groupFigures(group, trips)
+              return (
+                <button
+                  type="button"
+                  className="trip-list__group-chip"
+                  key={group.id}
+                  onClick={() => onOpenGroup(group.id)}
+                >
+                  {group.name} · {figures.tripCount}
+                </button>
+              )
+            })}
+            {newGroup === null ? (
+              <button
+                type="button"
+                className="trip-list__group-chip trip-list__group-chip--new"
+                onClick={() => setNewGroup('')}
+              >
+                + New group
+              </button>
+            ) : (
+              <span className="trip-list__rename">
+                <input
+                  type="text"
+                  className="trip-list__rename-input"
+                  autoFocus
+                  value={newGroup}
+                  placeholder="Every Sunday"
+                  aria-label="Name for the new group"
+                  onChange={(event) => setNewGroup(event.target.value)}
+                />
+                <button
+                  type="button"
+                  className="trip-list__action"
+                  onClick={() => {
+                    if (newGroup.trim() !== '') onNewGroup(newGroup.trim())
+                    setNewGroup(null)
+                  }}
+                >
+                  Save
+                </button>
+              </span>
+            )}
+          </div>
+        </div>
       )}
 
       {hikes.length === 0 && trips.length > 0 && (

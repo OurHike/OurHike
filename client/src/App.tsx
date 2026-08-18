@@ -156,12 +156,17 @@ import {
 } from './lib/plan'
 import {
   EMPTY_STORE,
+  addGroup,
   addHike,
+  addToGroup,
   addTrip,
   loadTrips,
   openTrip,
   openTripOf,
+  removeFromGroup,
+  removeGroup,
   removeTrip,
+  renameGroup,
   renameTrip,
   saveTrips,
   updateTrip,
@@ -174,6 +179,7 @@ import {
   type HikePiece,
   type PlaceRef,
 } from './lib/hikes'
+import { GroupScreen } from './screens/GroupScreen'
 import { TripList } from './screens/TripList'
 import { PlanScreen } from './screens/Plan'
 import { PlanTargetSheet } from './screens/PlanTargetSheet'
@@ -1857,6 +1863,43 @@ function App() {
     })
   }, [applyTripStore])
 
+  // The hiker's own buckets (#800). A trip stays in every other group it is
+  // in - which is the whole difference from a hike, of which it has one.
+  const [openGroupId, setOpenGroupId] = useState<string | null>(null)
+
+  const handleNewGroup = useCallback(
+    (name: string) => applyTripStore((store) => addGroup(store, name)),
+    [applyTripStore],
+  )
+
+  const handleAddToGroup = useCallback(
+    (groupId: string, tripId: string) =>
+      applyTripStore((store) => addToGroup(store, groupId, tripId)),
+    [applyTripStore],
+  )
+
+  const handleRemoveFromGroup = useCallback(
+    (groupId: string, tripId: string) =>
+      applyTripStore((store) => removeFromGroup(store, groupId, tripId)),
+    [applyTripStore],
+  )
+
+  const handleRenameGroup = useCallback(
+    (groupId: string, name: string) =>
+      applyTripStore((store) => renameGroup(store, groupId, name)),
+    [applyTripStore],
+  )
+
+  const handleRemoveGroup = useCallback(
+    (groupId: string) => {
+      applyTripStore((store) => removeGroup(store, groupId))
+      setOpenGroupId(null)
+    },
+    [applyTripStore],
+  )
+
+  const openGroup = tripStore.groups.find((group) => group.id === openGroupId) ?? null
+
   const targetSheet =
     targetRequest === null ? null : (
       <PlanTargetSheet
@@ -2628,7 +2671,32 @@ function App() {
                 onPlanFrom={handlePlanFrom}
                 onOpenTrips={() => setTripsOpen(true)}
                 {...(targetSheet === null ? {} : { targetSheet })}
-                {...(tripsOpen
+                {...(openGroup !== null
+                  ? {
+                      // A group replaces the switcher rather than stacking
+                      // over it - one thing open at a time, the rule every
+                      // other sheet in this shell keeps.
+                      tripList: (
+                        <GroupScreen
+                          group={openGroup}
+                          trips={tripStore.trips}
+                          units={units}
+                          onOpenTrip={(id) => {
+                            setOpenGroupId(null)
+                            handleOpenTrip(id)
+                          }}
+                          onAddTrip={(tripId) => handleAddToGroup(openGroup.id, tripId)}
+                          onRemoveTrip={(tripId) =>
+                            handleRemoveFromGroup(openGroup.id, tripId)
+                          }
+                          onRename={(name) => handleRenameGroup(openGroup.id, name)}
+                          onRemove={() => handleRemoveGroup(openGroup.id)}
+                          onClose={() => setOpenGroupId(null)}
+                        />
+                      ),
+                    }
+                  : {})}
+                {...(tripsOpen && openGroup === null
                   ? {
                       tripList: (
                         <TripList
@@ -2646,6 +2714,9 @@ function App() {
                             openRouteBuilder()
                           }}
                           onGroupIntoHike={handleGroupIntoHike}
+                          groups={tripStore.groups}
+                          onOpenGroup={setOpenGroupId}
+                          onNewGroup={handleNewGroup}
                           onClose={() => setTripsOpen(false)}
                         />
                       ),

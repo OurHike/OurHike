@@ -86,6 +86,12 @@ The Plan tab's anti-gamification guard — no rendering of any plan may contain 
 - **A sort that cannot be computed honestly is not offered.** No fix, no "nearest me" — rather than a "nearest" that is quietly trail order.
 - **The sliver question is settled the way this document's own instincts point.** Gaps under 0.2 mi (`MIN_GAP_MI`, tagged `@unvalidated`) get no card, because a 0.1-mile card makes the screen look broken — and the remainder is counted and printed anyway: "1 short stretch adding up to 0.1 mi… still trail nobody has walked." Neither extreme chosen silently.
 
+**Update 2026-08-18, third:** two things this document did not have a shape for, both from a maintainer walkthrough of the built screens.
+
+**A rest rhythm** (#798). A plan can carry *a zero or a nearo every n walking days*, stored on the plan so a re-lay reproduces it rather than throwing away the seven zeros somebody added by hand. A zero needs nothing new — this document already says a zero is a Segment whose start and end are the same stop — and a **nearo** is a rest that walks to the first place to sleep inside a window, falling back to a zero where there is none and saying which it is. The rhythm has no opinion attached: nothing suggests one, warns about its absence, or counts the rests taken.
+
+**Groups** (#800), which are **not** hikes, and the distinction is worth keeping sharp because the two look alike in a list. A Hike has two ends; that is what makes #790's ribbon and #791's gaps mean anything. A group — "every Sunday", "with Dad", "2026 season" — has none. So a trip has **at most one hike** (its parent in this document's tree) and **any number of groups**, settled by the case that forces it: the same walk is in *the entire AT* and in *my section this year*. A group's screen therefore has no ribbon and no gaps, and says so rather than leaving a hole where they would be.
+
 ## Open questions (for you, not decided here)
 
 - **Naming.** "Hike" and "Segment" are working names, not committed terminology — easy to change before anything's built.

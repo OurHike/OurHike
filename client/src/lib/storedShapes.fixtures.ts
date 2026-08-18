@@ -465,4 +465,51 @@ export const STORED_GROUPED_TRIPS: Readonly<Record<string, unknown>> = deepFreez
   },
 })
 
+/**
+ * The same document once the hiker's own buckets exist (#800), and the one
+ * thing about them a reader has to be able to see at a glance: **the same
+ * trip is in two groups at once**, which is exactly what a hike does not
+ * allow. A reader who "fixes" this to one group has changed the feature.
+ *
+ * The plan also carries a `rhythm` and a `rest` day (#798) - the fields a
+ * phone written by this build will hold, frozen here so a later build
+ * cannot quietly stop reading them.
+ */
+export const STORED_GROUPED_AND_RESTED_TRIPS: Readonly<Record<string, unknown>> =
+  deepFreeze({
+    'ourhike:trips': {
+      openId: 'trip-0001',
+      trips: [
+        {
+          id: 'trip-0001',
+          name: 'Every Sunday: Bear Mountain',
+          plan: {
+            target: { miles: 8 },
+            rhythm: { everyDays: 3, kind: 'nearo' },
+            stops: [
+              { mile: 1407.2, name: 'Bear Mountain', resupply: false },
+              { mile: 1415.4, name: 'Anthony’s Nose', resupply: false },
+              { mile: 1415.4, name: 'Anthony’s Nose', resupply: false },
+            ],
+            days: [
+              { id: 'day-0001', date: '2026-02-15', pinned: false, generated: true },
+              {
+                id: 'day-0002',
+                date: '2026-02-16',
+                pinned: false,
+                generated: false,
+                rest: true,
+              },
+            ],
+          },
+        },
+      ],
+      hikes: [],
+      groups: [
+        { id: 'group-0001', name: 'Every Sunday', tripIds: ['trip-0001'] },
+        { id: 'group-0002', name: 'With Dad', tripIds: ['trip-0001'] },
+      ],
+    },
+  })
+
 export const STORED_ARCHIVE_BYTES = SEGMENT_BYTES.flat().length

@@ -4,7 +4,7 @@ Companion to [ROADMAP.md](ROADMAP.md), which says what the v2 *features* are and
 **This document is about the other question: given 117 open issues all labelled `v2`, what
 can one session finish in one branch without colliding with another session?**
 
-It groups every open issue into twenty-one bodies of work. The grouping is by **conflict
+It groups every open issue into twenty-two bodies of work. The grouping is by **conflict
 surface and dependency**, not by subject — [BRANCHING.md](BRANCHING.md) §2 is emphatic
 about the difference, and the measurement behind it is that twelve of the last
 twenty-seven real conflicts were all in `client/src/App.tsx` between branches whose
@@ -12,7 +12,8 @@ subjects had nothing to do with each other.
 
 **Every open issue appears exactly once below.** That was checked mechanically rather than
 by reading down the list: 117 open, 117 assigned, no duplicates, no omissions, on
-2026-08-17. If you add an issue, add it to a group here or the next person will find it
+2026-08-17. Five more (#768–#772) were filed 2026-08-18 and added as group **V** the same
+day. If you add an issue, add it to a group here or the next person will find it
 by accident.
 
 *Written at 106 issues; groups **T** and **U** were added the same day when
@@ -459,6 +460,28 @@ boundary — it targets *comparison and pressure*, not *memory* — and #761 is 
 tests it. And this feature must never become the second thing that sends a notification;
 [HIKER_SAFETY.md](features/HIKER_SAFETY.md)'s wrong-way alert stays the only one.
 
+## V. Trails within reach of NYC — the second trail system, for real
+
+**#768 — v2: trails within reach of NYC — the AT stops being the only trail on the map** ·
+**#769 — Register the NYS OPRHP ArcGIS org: the trails, blazes and closures behind the Parks Explorer app** ·
+**#770 — Survey the trail sources within a day of NYC: DEC's Catskills, the NJ side, the counties, and what only OSM covers** ·
+**#771 — Spike: Harriman's crossing trails next to the AT — find what a trail network breaks that a linear trail never could** ·
+**#772 — Design the map when trails cross: one chosen centerline, every other trail visible, and safety pins that ignore the choice**
+
+**Why together:** one maintainer scope call (2026-08-18, recorded in #768), and the four
+children are one program: register, survey, spike, design. #769 and #770 are parallel;
+#771 wants #769's fetch but can probe the org directly; #772 consumes #771's findings.
+
+**What you are walking into:** three things, each named in the issues so nobody
+re-discovers them. The licence on every new source here is **pending the maintainer's own
+outreach** to OPRHP and NYNJTC — fetch-and-review only, nothing publishes to hikers, the
+same posture as the club PDFs' registry entries. **#100 — Build the dbt ELT transform
+layer before NYNJTC's own trail network arrives** is where new-source staging models
+belong — its Phase A is already merged, so do not build a parallel ingestion path. And
+**#552 — Decide the unit of offline coverage, and write it down** should be answered with
+#771's crossing-density numbers in hand: a network park is not a linear stretch, and the
+spike exists partly to give that decision evidence.
+
 ---
 
 ## Sequencing, in one paragraph
@@ -479,8 +502,12 @@ in one sitting rather than discovered one at a time.
 2. **#568, #569, #570** — video/GIF, Tramily-scoped sharing, and screening before a photo
    reaches the community. Blocks the sharing half of group D. #570 in particular is either
    in the submission path or it does not exist.
-3. **Is NYNJTC's non-AT network actually coming soon?** #100's priority is entirely a
-   function of this, and nobody in a session can know it.
+3. ~~**Is NYNJTC's non-AT network actually coming soon?**~~ **Answered 2026-08-18: yes,
+   and the scope is wider than NYNJTC** — the maintainer's call recorded in **#768 — v2:
+   trails within reach of NYC — the AT stops being the only trail on the map** targets the
+   Hudson Highlands core plus the Catskills plus everything NYNJTC maintains, with
+   maintainer outreach to OPRHP and NYNJTC in motion. #100's timing question is settled:
+   it rises, and its Phase A is already merged.
 4. **Who is field-testing, and when?** Group K is four issues that no amount of code
    advances. #93 gates #308, which gates the app's only notification.
 5. **What are `FRESH_MAX_DAYS` and `AGEING_MAX_DAYS` supposed to be?** (#256, group Q.)

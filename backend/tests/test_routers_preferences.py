@@ -6,11 +6,11 @@ of it (Map Options: closures are always shown, never hideable) - several
 tests below exist specifically to pin that down at the API boundary.
 """
 
+import uuid
+
 from sqlalchemy import select
 
 from app.models.preferences import UserPreferences
-import uuid
-
 from tests.tokens import auth_headers
 
 

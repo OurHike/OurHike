@@ -109,7 +109,7 @@ def test_a_resolved_report_still_reads_as_fixed_to_the_public(client, db_session
 
 
 def test_resolving_an_unverified_report_is_refused(client, db_session):
-    """"Fixed" implies "was real", and only verify says that - resolving a
+    """ "Fixed" implies "was real", and only verify says that - resolving a
     submitted report would skip the moderation gate."""
     report = _report(db_session)
     moderator = _moderator(db_session)

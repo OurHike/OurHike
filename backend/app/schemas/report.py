@@ -7,7 +7,6 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.core.time import UtcDatetime
-from app.schemas.common import FiniteFloat, NoteText
 from app.models.profile import MODERATOR_ROLES, Profile
 from app.models.report import (
     Report,
@@ -17,6 +16,7 @@ from app.models.report import (
     Severity,
     Visibility,
 )
+from app.schemas.common import FiniteFloat, NoteText
 
 
 class ReportCreate(BaseModel):

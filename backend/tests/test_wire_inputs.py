@@ -22,7 +22,6 @@ the war stories being written before the incident:
 import uuid
 from datetime import date
 
-import pytest
 from sqlalchemy.exc import IntegrityError
 
 from app.core import auth as core_auth
@@ -31,6 +30,7 @@ from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.profile import Profile, Role
 from app.schemas.common import NOTE_MAX_CHARS
 from tests.tokens import auth_headers
+
 
 # Raw bodies carrying the bare NaN/Infinity tokens - the exact bytes a
 # loose JSON emitter produces. httpx's own json= encoder refuses them

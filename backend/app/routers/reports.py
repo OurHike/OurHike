@@ -276,7 +276,13 @@ def create_report(
         settled = _already_filed(db, report_id, current_user)
         if settled is not None:
             response.status_code = status.HTTP_200_OK
-            return settled
+            # Through for_viewer like every other exit (#252/#658): this
+            # returned the bare ORM row, and passed the route-table guard
+            # only because "for_viewer" appeared elsewhere in the handler.
+            # Benign while the caller is the owner - the owner is
+            # privileged - and exactly the line the first viewer-conditional
+            # field would have broken silently.
+            return ReportOut.for_viewer(settled, current_user)
 
     now = utc_now()
     # Stored naive-UTC throughout (see app/models/profile.py), so an aware
@@ -553,7 +559,6 @@ async def read_capped_body(request: Request, limit: int) -> bytes:
 async def upload_report_photo(
     report_id: str,
     request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     current_user: Profile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ReportOut:

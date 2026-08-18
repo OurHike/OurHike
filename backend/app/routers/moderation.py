@@ -26,7 +26,7 @@ from app.db.session import get_db
 from app.models.closure import Closure, ModerationStatus
 from app.models.profile import MODERATOR_ROLES, Profile
 from app.models.report import Report, ReportStatus, ReportType
-from app.schemas.closure import ClosureOut, ClosureVerify
+from app.schemas.closure import ClosureVerify
 from app.schemas.moderation import ClosureModerationOut, ModerationQueue, ReportVerifyRequest
 from app.schemas.report import ReportOut
 

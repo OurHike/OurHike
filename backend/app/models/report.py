@@ -104,7 +104,11 @@ class Report(Base):
     # routers/reports.py possible at all.
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
 
-    reporter_id = Column(String, ForeignKey("profiles.id"), nullable=False)
+    # index=True on the columns every hot query filters on (#658,
+    # a1b7c3d95e04): the public list scans status, "my reports" scans
+    # reporter_id. Cheap while the tables are small, which is exactly
+    # when adding them is a one-line decision instead of an incident.
+    reporter_id = Column(String, ForeignKey("profiles.id"), nullable=False, index=True)
 
     # native_enum=False, matching Profile.role's exact pattern - see
     # profile.py for why a native enum is the harder one to change later,
@@ -164,7 +168,12 @@ class Report(Base):
     # exists now so it can be populated later without a schema rewrite.
     follow_up = Column(JSON, nullable=True)
 
-    status = Column(Enum(ReportStatus, native_enum=False, length=20), nullable=False, default=ReportStatus.submitted)
+    status = Column(
+        Enum(ReportStatus, native_enum=False, length=20),
+        nullable=False,
+        default=ReportStatus.submitted,
+        index=True,
+    )
 
     # Server-controlled from `type` alone - see module docstring. No
     # column-level default: the router always computes and sets this

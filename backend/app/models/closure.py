@@ -106,7 +106,12 @@ class Closure(Base):
     # PATCH edits the closure's facts, never its moderation state (#658
     # corrected this comment, which used to name PATCH).
     moderation_status = Column(
-        Enum(ModerationStatus, native_enum=False, length=20), nullable=False, default=ModerationStatus.submitted
+        Enum(ModerationStatus, native_enum=False, length=20),
+        nullable=False,
+        default=ModerationStatus.submitted,
+        # The public list and the queue both filter on this - see
+        # models/report.py's index note (#658, a1b7c3d95e04).
+        index=True,
     )
 
     verified_by = Column(String, ForeignKey("profiles.id"), nullable=True)

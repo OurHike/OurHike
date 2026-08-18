@@ -16,8 +16,8 @@ from pydantic import ValidationError
 from app.models.profile import Profile, Role
 from app.models.report import Report, ReporterType, ReportStatus, ReportType, Visibility
 from app.schemas.report import ReportCreate
-from tests.factories import make_profile
 from tests import tokens as jwt_tokens
+from tests.factories import make_profile
 from tests.tokens import auth_headers
 
 _VALID_PAYLOAD = {
@@ -1088,3 +1088,25 @@ def test_a_token_signed_with_the_wrong_secret_browses_as_anonymous(client):
 
     assert response.status_code == 200
     assert all(r["id"] != user_id for r in response.json())
+
+
+def test_no_emitting_handler_returns_a_bare_orm_row(client):
+    """The sharper edge of the guard above (#658). "for_viewer appears
+    somewhere in the handler" is a substring test, and `return settled` in
+    create_report's idempotent path passed it for months because the
+    string appeared on a different line - benign only while the caller was
+    the owner, and silently wrong the day the first viewer-conditional
+    field lands. Every return line in an emitting handler must construct
+    its response; a bare `return <name>` is the ORM row escaping."""
+    import re
+
+    offenders = []
+    for route, source in _report_emitting_routes():
+        for line in source.splitlines():
+            if re.match(r"\s*return [a-z_][a-z0-9_]*\s*(#.*)?$", line):
+                offenders.append(f"{route.path} -> {line.strip()}")
+
+    assert offenders == [], (
+        "These return statements hand back a bare object - if it is an ORM "
+        "row, reporter_id ships to whoever called (#252):\n  " + "\n  ".join(offenders)
+    )

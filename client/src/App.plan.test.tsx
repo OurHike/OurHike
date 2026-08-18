@@ -94,7 +94,7 @@ describe('the planning flow', () => {
     ).toBeInTheDocument()
 
     // Search door: name first.
-    await user.click(screen.getByRole('button', { name: 'search' }))
+    await user.click(screen.getByRole('button', { name: /Shelter, town, or/ }))
     const picker = await screen.findByRole('dialog', { name: 'Choose a stop' })
     expect(picker).toBeInTheDocument()
     await user.type(screen.getByLabelText('Search for a stop'), 'front')
@@ -178,7 +178,7 @@ describe('the planning flow', () => {
 
     await openEntrance(user)
 
-    await user.click(screen.getByRole('button', { name: 'search' }))
+    await user.click(screen.getByRole('button', { name: /Shelter, town, or/ }))
     await user.type(await screen.findByLabelText('Search for a stop'), 'front')
     await user.click(await screen.findByRole('button', { name: /Front Shelter/ }))
     await user.click(screen.getByRole('button', { name: 'Use this stretch' }))
@@ -420,7 +420,7 @@ describe('the planning flow', () => {
 
     await openEntrance(user)
 
-    await user.click(screen.getByRole('button', { name: 'map' }))
+    await user.click(screen.getByRole('button', { name: 'Pick on the map' }))
     expect(
       await screen.findByText('Tap the trail where this stop goes.'),
     ).toBeInTheDocument()

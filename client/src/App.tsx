@@ -172,6 +172,7 @@ import {
   updateTrip,
   type TripStore,
 } from './lib/trips'
+import { nearestStop } from './lib/cascade'
 import {
   hikeFromTrips,
   hikeOfTrip,
@@ -348,6 +349,9 @@ type RouteDraftState =
   | {
       phase: 'entrance'
       start: RouteDraftStop | null
+      /** The far end when the hiker NAMED one (#804). With both ends fixed
+       *  the entrance stops asking how far and states it. */
+      fixedEnd: RouteDraftStop | null
       ask: 'far' | 'long'
       miles: number
       days: number
@@ -368,7 +372,11 @@ function draftStopFor(place: PlaceRef, anchors: readonly MileAnchor[]): RouteDra
   }
 }
 
-type StopSlot = { kind: 'start' } | { kind: 'replace'; index: number } | { kind: 'add' }
+type StopSlot =
+  | { kind: 'start' }
+  | { kind: 'end' }
+  | { kind: 'replace'; index: number }
+  | { kind: 'add' }
 
 /** The stop picker, when it is up: the slot being filled, whether the hiker
  *  went on to the map to fill it, and whether the last map tap was refused
@@ -450,6 +458,9 @@ function App() {
    * - the plan - is what "Break into days" produces from it (#756).
    */
   const [routeDraft, setRouteDraft] = useState<RouteDraftState | null>(null)
+  /** The last trail tap the entrance refused as too far off the corridor -
+   *  cleared by the next accepted one (#801). */
+  const [entranceRefusedTap, setEntranceRefusedTap] = useState(false)
   /** The stop picker over the draft, or null while every field rests. */
   const [stopPick, setStopPick] = useState<StopPickState | null>(null)
   /**
@@ -1287,6 +1298,21 @@ function App() {
    * Empty on a download that predates #753, which is `anchoredMile`'s cue to
    * refuse - see lib/route.ts for the honest fallback that follows.
    */
+  /**
+   * How long the trail is, on the pipeline's own axis - the far end of the
+   * "how far" slider (#804).
+   *
+   * Read off the published elevation profile's last sample rather than
+   * hardcoded, which keeps it true when the trail is re-measured and keeps
+   * it right for a second trail (value #7: nothing here assumes the AT).
+   * Null on a download with no profile, where the slider falls back and the
+   * typed field still takes anything.
+   */
+  const trailMiles = useMemo(() => {
+    if (elevation === null || elevation.distanceMi.length === 0) return null
+    return elevation.distanceMi[elevation.distanceMi.length - 1]
+  }, [elevation])
+
   const mileAnchors: MileAnchor[] = useMemo(
     () =>
       pois.flatMap((poi, i) => {
@@ -1337,7 +1363,17 @@ function App() {
       pois.flatMap((poi) =>
         poi.mile === undefined
           ? []
-          : [{ id: poi.id, name: poi.name, type: poi.type, mile: poi.mile }],
+          : [
+              {
+                id: poi.id,
+                name: poi.name,
+                type: poi.type,
+                mile: poi.mile,
+                // Carried so the picker can tell a town from an outfitter,
+                // which are the same poi_type (#802).
+                ...(poi.source === undefined ? {} : { source: poi.source }),
+              },
+            ],
       ),
     [pois],
   )
@@ -1425,6 +1461,9 @@ function App() {
         if (slot.kind === 'start') {
           return draft.phase === 'entrance' ? { ...draft, start: stop } : draft
         }
+        if (slot.kind === 'end') {
+          return draft.phase === 'entrance' ? { ...draft, fixedEnd: stop } : draft
+        }
         if (draft.phase !== 'editor') return draft
         if (slot.kind === 'add') {
           // Trail order IS least-added-distance order on a monotonic route,
@@ -1456,9 +1495,44 @@ function App() {
   // profile at miles that mean what the display says. A tap the index
   // refuses (>3 mi off the corridor) sets a flag the bar explains, rather
   // than silently doing nothing.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- listed below
   const handleStopMapTap = useCallback(
     (at: { lon: number; lat: number }) => {
-      if (stopPick === null || !stopPick.onMap || trailIndex === null) return
+      if (trailIndex === null) return
+      // NO BUTTON FIRST (#801). With the entrance open and no picker over
+      // it, a tap on the trail sets the START - there is nothing else this
+      // screen is choosing, so nothing needs disambiguating, and a start
+      // already set is moved rather than a question being asked.
+      if (stopPick === null) {
+        if (routeDraft === null || routeDraft.phase !== 'entrance') return
+        const located = locateOnTrail(trailIndex, at)
+        if (located === null) {
+          setEntranceRefusedTap(true)
+          return
+        }
+        setEntranceRefusedTap(false)
+        const clientMile = located.mile
+        const snapped = nearestStop(
+          pois,
+          anchoredMile(clientMile, mileAnchors) ?? clientMile,
+        )
+        setRouteDraft((draft) =>
+          draft === null || draft.phase !== 'entrance'
+            ? draft
+            : {
+                ...draft,
+                start: {
+                  mile:
+                    snapped?.mile ?? anchoredMile(clientMile, mileAnchors) ?? clientMile,
+                  clientMile,
+                  ...(snapped?.name === undefined ? {} : { name: snapped.name }),
+                  ...(snapped?.poiId === undefined ? {} : { poiId: snapped.poiId }),
+                },
+              },
+        )
+        return
+      }
+      if (!stopPick.onMap) return
       const located = locateOnTrail(trailIndex, at)
       if (located === null) {
         setStopPick({ ...stopPick, refusedTap: true })
@@ -1472,7 +1546,7 @@ function App() {
         clientMile,
       })
     },
-    [stopPick, trailIndex, mileAnchors, applyPickedStop],
+    [stopPick, trailIndex, mileAnchors, applyPickedStop, routeDraft, pois],
   )
 
   const handleRouteCancel = useCallback(() => {
@@ -1548,6 +1622,7 @@ function App() {
           return {
             phase: 'entrance',
             start,
+            fixedEnd: null,
             // The mockup's own opening answers - a mid-length section,
             // walked the way most of this trail is walked. Both are one
             // drag from anything else.
@@ -1634,8 +1709,13 @@ function App() {
 
   const handleUseStretch = useCallback(() => {
     if (routeDraft === null || routeDraft.phase !== 'entrance') return
-    if (routeDraft.start === null || entranceEnd === null) return
-    setRouteDraft({ phase: 'editor', stops: [routeDraft.start, entranceEnd.stop] })
+    if (routeDraft.start === null) return
+    // A named end wins over a resolved one: the hiker said where they are
+    // going, so nothing snaps it to whatever the "how far" answer reached
+    // (#804).
+    const end = routeDraft.fixedEnd ?? entranceEnd?.stop ?? null
+    if (end === null) return
+    setRouteDraft({ phase: 'editor', stops: [routeDraft.start, end] })
   }, [routeDraft, entranceEnd])
 
   const handleEditStop = useCallback((index: number) => {
@@ -1666,7 +1746,11 @@ function App() {
    *  lands there instead, same rule either way. */
   const pickPrevious = useMemo(() => {
     if (stopPick === null || routeDraft === null) return null
-    if (stopPick.slot.kind === 'start' || routeDraft.phase !== 'editor') return null
+    // The entrance's own two slots measure from nothing: a start has no
+    // previous stop, and a named end is a destination rather than a
+    // distance from one (#804).
+    if (stopPick.slot.kind === 'start' || stopPick.slot.kind === 'end') return null
+    if (routeDraft.phase !== 'editor') return null
     const stops = routeDraft.stops
     const anchor =
       stopPick.slot.kind === 'add'
@@ -2941,6 +3025,19 @@ function App() {
                 onDays={(days) => patchEntrance({ days })}
                 onSouth={(south) => patchEntrance({ south })}
                 onPickStart={handlePickStart}
+                onPickEnd={() =>
+                  setStopPick({ slot: { kind: 'end' }, onMap: false, refusedTap: false })
+                }
+                onClearEnd={() =>
+                  setRouteDraft((draft) =>
+                    draft !== null && draft.phase === 'entrance'
+                      ? { ...draft, fixedEnd: null }
+                      : draft,
+                  )
+                }
+                fixedEnd={routeDraft.fixedEnd}
+                refusedTap={entranceRefusedTap}
+                trailMiles={trailMiles}
                 onUse={handleUseStretch}
                 onClose={handleRouteCancel}
               />

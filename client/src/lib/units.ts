@@ -123,6 +123,19 @@ export function formatDistance(
  * throughout, because a tenth of a mile on the edge of a 25-mile spread is
  * noise dressed as a figure.
  */
+/**
+ * Just the unit a distance is written in - "mi" or "km".
+ *
+ * For the rare control that shows a NUMBER and its unit in separate
+ * elements: the route entrance's typed distance field, where the input has
+ * to hold a bare number so the keyboard and the arrows behave. Every other
+ * caller should use `formatDistance`, which is the reason this returns the
+ * label alone and never a value with it.
+ */
+export function distanceUnitLabel(units: UnitSystem): string {
+  return units === 'metric' ? 'km' : 'mi'
+}
+
 export function formatDistanceRange(
   lowMi: number,
   highMi: number,

@@ -1407,3 +1407,168 @@
   text-align: left;
   cursor: pointer;
 }
+
+/* ----- search filters and mile results (#802) ----- */
+
+.stop-picker__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+  padding: 0 var(--space-4, 16px) var(--space-2, 8px);
+}
+
+.stop-picker__filter {
+  padding: var(--space-1, 4px) var(--space-3, 12px);
+  border: 1px solid var(--border-2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg-2);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.stop-picker__filter--on {
+  border-color: var(--border-strong);
+  background: var(--fg-1);
+  color: var(--bg-surface);
+}
+
+.stop-picker__near-title {
+  margin: 0;
+  padding: var(--space-2, 8px) var(--space-4, 16px) 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--brand-primary);
+}
+
+/* ----- the entrance's doors (#801) and its number fields (#804) ----- */
+
+.route-entrance__label {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.route-entrance__label-note {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.route-entrance__field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  width: 100%;
+  padding: var(--space-3, 12px);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.route-entrance__field--empty {
+  border-style: dashed;
+  border-color: var(--border-2);
+  color: var(--fg-3);
+}
+
+.route-entrance__field-text {
+  flex: 1;
+}
+
+.route-entrance__field-mile {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+.route-entrance__chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1, 4px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border: 1px solid var(--border-2);
+  border-radius: 999px;
+  background: var(--surface-card);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.route-entrance__chip:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.route-entrance__hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+
+.route-entrance__number {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1, 4px);
+  padding: var(--space-1, 4px) var(--space-3, 12px);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+}
+
+.route-entrance__number-input {
+  width: 4.5ch;
+  border: 0;
+  background: transparent;
+  color: var(--fg-1);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 26px;
+  text-align: right;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.route-entrance__number-input::-webkit-outer-spin-button,
+.route-entrance__number-input::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.route-entrance__number-unit {
+  font-size: 13px;
+  color: var(--fg-2);
+}
+
+.route-entrance__fixed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  padding: var(--space-3, 12px);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--bg-sunken);
+}
+
+.route-entrance__fixed-figure {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 22px;
+}
+
+.route-entrance__fixed-note {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}

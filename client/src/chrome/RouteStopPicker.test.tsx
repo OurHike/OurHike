@@ -34,6 +34,22 @@ const CHOICES = [
   { id: 's1', name: 'Old Orchard Shelter', type: 'shelter', mile: 516.1 },
   { id: 'w1', name: 'Old Orchard Spring', type: 'water', mile: 515.8 },
   { id: 'c1', name: 'Orchard Hill Campsite', type: 'campsite', mile: 522.4 },
+  // A designated A.T. Community, and an outfitter. Both are `resupply`;
+  // only the layer that published them tells them apart (#802).
+  {
+    id: 't1',
+    name: 'Damascus, VA',
+    type: 'resupply',
+    mile: 470.8,
+    source: 'atc_communities',
+  },
+  {
+    id: 'r1',
+    name: 'Mount Rogers Outfitters',
+    type: 'resupply',
+    mile: 470.7,
+    source: 'opentrail_at',
+  },
 ]
 
 const PROPS = {
@@ -186,5 +202,53 @@ describe('a distance from the previous stop', () => {
 
     await user.click(screen.getByRole('button', { name: 'Use this stop' }))
     expect(PROPS.onPick).toHaveBeenCalledWith({ mile: 520.1 })
+  })
+})
+
+describe('searching by mile, and telling a town from a shop (#802)', () => {
+  it('answers a mile with what is around it, nearest first, on both sides', async () => {
+    const user = userEvent.setup()
+    render(<RouteStopPicker {...PROPS} />)
+
+    await user.type(screen.getByLabelText('Search for a stop'), 'mi 516')
+
+    expect(screen.getByText('Around mile 516')).toBeInTheDocument()
+    const rows = screen.getAllByRole('listitem').map((row) => row.textContent)
+    expect(rows[0]).toContain('Old Orchard Shelter')
+    expect(rows[0]).toContain('0.1 mi north')
+    expect(rows[1]).toContain('Old Orchard Spring')
+    expect(rows[1]).toContain('0.2 mi south')
+  })
+
+  it('offers the bare mile too, because sometimes that is the answer', async () => {
+    const user = userEvent.setup()
+    render(<RouteStopPicker {...PROPS} />)
+
+    await user.type(screen.getByLabelText('Search for a stop'), '500')
+    await user.click(screen.getByRole('button', { name: /Just mile 500\.0/ }))
+
+    expect(PROPS.onPick).toHaveBeenCalledWith({ mile: 500 })
+  })
+
+  it('calls a town a town, and an outfitter what it is', async () => {
+    const user = userEvent.setup()
+    render(<RouteStopPicker {...PROPS} />)
+
+    await user.type(screen.getByLabelText('Search for a stop'), 'damas')
+    const town = screen.getByRole('button', { name: /Damascus, VA/ })
+    expect(town.textContent).toContain('town')
+  })
+
+  it('filters to towns, which is not a poi_type at all', async () => {
+    const user = userEvent.setup()
+    render(<RouteStopPicker {...PROPS} />)
+
+    await user.click(screen.getByRole('button', { name: 'Towns' }))
+    await user.type(screen.getByLabelText('Search for a stop'), 'o')
+
+    // The outfitter is `resupply` too and is filtered out; the shelter and
+    // the spring are other types entirely.
+    expect(screen.queryByRole('button', { name: /Mount Rogers Outfitters/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Old Orchard Shelter/ })).toBeNull()
   })
 })

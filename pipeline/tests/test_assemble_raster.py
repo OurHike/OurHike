@@ -17,6 +17,7 @@ from shapely.geometry import LineString, box, mapping
 from shapely.ops import transform as shp_transform
 
 import assemble_raster
+import render_cell_tiles
 from assemble_raster import assemble
 from lib.raster_tiles import encode_webp
 from render_cell_tiles import owned_tiles
@@ -76,7 +77,12 @@ def write_inputs(tmp_path):
     cells_json.write_text(json.dumps({"cells": CELLS}))
 
     corridor_merc = shp_transform(to_merc.transform, CORRIDOR_BOX)
-    band_merc = shp_transform(to_merc.transform, CENTERLINE).buffer(assemble_raster.BAND_METERS)
+    # The REAL band function, not a re-derivation: the fixture receipts must
+    # agree with the ownership assemble recomputes, and the one way to
+    # guarantee that is to compute both from the same code (#659's mercator
+    # inflation hid for months precisely because renderer and test both
+    # re-derived the same wrong buffer).
+    band_merc = render_cell_tiles.band_merc(centerline_path)
 
     cells_dir = tmp_path / "raster_cells"
     cells_dir.mkdir()

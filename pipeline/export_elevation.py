@@ -89,6 +89,7 @@ being a documented manual procedure, not a pytest case.
 
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import NamedTuple
 
@@ -654,8 +655,16 @@ class ElevationSampler:
             nodata = vrt.nodata
 
             for j, i in enumerate(indices):
-                value = data[rows[j] - row_off, cols[j] - col_off]
-                if nodata is not None and value == nodata:
+                value = float(data[rows[j] - row_off, cols[j] - col_off])
+                # NaN is checked unconditionally, not just when it is the
+                # declared nodata: `value == nodata` is always False for
+                # NaN, so a NaN-nodata tile used to pass its NaNs through
+                # as "real" elevations - and json.dumps then emits a
+                # literal NaN that JSON.parse rejects, taking the whole
+                # profile down client-side on one upstream re-encode
+                # (#659). A NaN sample is never a real elevation, whatever
+                # the tile's metadata says.
+                if math.isnan(value) or (nodata is not None and value == nodata):
                     # This tile covers the point but has no real data there
                     # - fall through to the next covering tile, if any (the
                     # "mosaic if needed" case), instead of leaving it None.
@@ -664,7 +673,7 @@ class ElevationSampler:
                         by_tile.setdefault(next_candidates[0], []).append(i)
                         remaining_candidates[i] = next_candidates[1:]
                     continue
-                results[i] = float(value)
+                results[i] = value
 
         return results
 

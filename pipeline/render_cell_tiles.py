@@ -81,22 +81,46 @@ BAND_METERS = 5 * 1609.344
 
 MERC_CRS = "EPSG:3857"
 GEO_CRS = "EPSG:4326"
+# Where the band's five miles are actually measured: the same equal-area
+# meters CRS every other buffer in this pipeline uses (lib/corridor.py's
+# reasoning). Buffering BAND_METERS on EPSG:3857 geometry was the audited
+# bug (#659): mercator meters are inflated by 1/cos(lat), so the "5-mile"
+# band was ~4.1 real miles at Springer and ~3.5 at Katahdin - 18-30%
+# narrower than designed, worst at the north end, and shared by renderer
+# and assembler so nothing failed.
+BUFFER_CRS = "EPSG:5070"
 
 
-def load_geom_merc(path: Path):
-    """A GeoJSON file's (unioned) geometry in EPSG:3857. Accepts a bare
+def _load_geom(path: Path):
+    """A GeoJSON file's (unioned) geometry in EPSG:4326. Accepts a bare
     geometry, Feature, or FeatureCollection - the corridor and centerline
     artifacts are FeatureCollections."""
     parsed = json.loads(path.read_text())
     if parsed.get("type") == "FeatureCollection":
         geoms = [shape(f["geometry"]) for f in parsed["features"]]
-        geom = unary_union(geoms)
-    elif parsed.get("type") == "Feature":
-        geom = shape(parsed["geometry"])
-    else:
-        geom = shape(parsed)
+        return unary_union(geoms)
+    if parsed.get("type") == "Feature":
+        return shape(parsed["geometry"])
+    return shape(parsed)
+
+
+def load_geom_merc(path: Path):
+    """A GeoJSON file's (unioned) geometry in EPSG:3857."""
     to_merc = Transformer.from_crs(GEO_CRS, MERC_CRS, always_xy=True)
-    return shp_transform(to_merc.transform, geom)
+    return shp_transform(to_merc.transform, _load_geom(path))
+
+
+def band_merc(centerline_path: Path):
+    """The z14 band in EPSG:3857: five REAL miles either side of the
+    centerline, buffered in BUFFER_CRS where a meter is a ground meter,
+    then carried to mercator for tile intersection. One function shared by
+    renderer and assembler, so the two cannot disagree about where the
+    band ends."""
+    geom = _load_geom(centerline_path)
+    to_albers = Transformer.from_crs(GEO_CRS, BUFFER_CRS, always_xy=True)
+    albers_to_merc = Transformer.from_crs(BUFFER_CRS, MERC_CRS, always_xy=True)
+    buffered = shp_transform(to_albers.transform, geom).buffer(BAND_METERS)
+    return shp_transform(albers_to_merc.transform, buffered)
 
 
 def owned_tiles(cell_index, cell_bboxes, corridor_merc, band_merc):
@@ -180,9 +204,9 @@ def render_cell(
     cell_bboxes = [tuple(c["bbox"]) for c in cells]
 
     corridor_merc = load_geom_merc(corridor_path)
-    band_merc = load_geom_merc(centerline_path).buffer(BAND_METERS)
+    band = band_merc(centerline_path)
 
-    owned = owned_tiles(cell_index, cell_bboxes, corridor_merc, band_merc)
+    owned = owned_tiles(cell_index, cell_bboxes, corridor_merc, band)
     print(f"cell {cell_index}: owns {len(owned)} tiles (z{NATIVE_MIN_ZOOM}-{MAX_ZOOM})")
 
     quad_bounds = load_quad_bounds(corridor_path, metadata_csv)

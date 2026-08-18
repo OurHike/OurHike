@@ -226,6 +226,15 @@ Two detection modes: distance-from-centerline (reuses `ST_LineLocatePoint` snap 
 
 ### 10. Settings (`16a`)
 
+**Amended 2026-08-18 — this screen outgrew one scroll.** Five groups below, plus
+three more added after this wireframe was drawn (`Your hike`, `Contribute`, `Report
+a bug`), are ten sections on one flat page with no sub-navigation, reached from a
+tab still labelled `More`. [features/MORE_TAB.md](features/MORE_TAB.md) is the
+design doc for turning that into sections a hiker can navigate, and for whether
+`More` is still the right word for the tab now that there is enough behind it to
+have an opinion. What follows here is still each control's own spec; that doc is
+about the container, not the controls.
+
 Five groups over one canonical `UserPreferences` model, then an About block that is
 not one of them:
 
@@ -392,7 +401,7 @@ Which repo docs each screen derives from — useful when a frame's intent isn't 
 | Off-corridor `9b`, `2h`                      | pipeline/BASEMAP.md (context through z9 travels inside every package since #189; the Protomaps extract was cancelled, #196)                                                                                                                                                                                     |
 | Offline outbox `9c`                          | REPORT_A_PROBLEM.md (backend), DATA_NUDGES.md                                                                                                                                                                                       |
 | Sunlight pass `9d`                           | ROADMAP.md Phase 2 outdoor usability pass                                                                                                                                                                                           |
-| Settings `16a`                               | IDENTITY_AND_PRIVACY.md (canonical `UserPreferences`), UX_CUSTOMIZATION.md                                                                                                                                                          |
+| Settings `16a`                               | IDENTITY_AND_PRIVACY.md (canonical `UserPreferences`), UX_CUSTOMIZATION.md, MORE_TAB.md (sectioning + tab naming, 2026-08-18)                                                                                                       |
 | Data staleness `16b`                         | DATA_NUDGES.md                                                                                                                                                                                                                      |
 
 ## Not yet wireframed

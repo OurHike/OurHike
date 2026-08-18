@@ -87,7 +87,6 @@ fetch_topo_quads.py + spike_raster_mosaic.py's own real-data verification
 being a documented manual procedure, not a pytest case.
 """
 
-import hashlib
 import json
 import math
 from pathlib import Path
@@ -108,6 +107,7 @@ from lib.elevation_gain import (
     cumulative_gain_over_gaps,
     raw_cumulative_gain,
 )
+from lib.hashing import sha256_file
 
 ROOT = Path(__file__).parent
 CENTERLINE_PATH = ROOT / "data" / "raw" / "centerline.geojson"
@@ -165,14 +165,6 @@ HALF_MILE_MARKER_COUNT = 4395
 # for anything requiring geodetic precision.
 SPRINGER_LONLAT = (-84.1942, 34.6272)
 KATAHDIN_LONLAT = (-68.9214, 45.9044)
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def load_merged_trail_line(con: duckdb.DuckDBPyConnection, centerline_path: Path):

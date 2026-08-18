@@ -75,7 +75,6 @@ import json
 import random
 import re
 import sys
-from datetime import date
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -92,6 +91,7 @@ from lib.freshness_state import (
     load_state,
     state_age_days,
     summarise,
+    utc_today,
 )
 from lib.source_registry import find_source, load_registry
 
@@ -406,7 +406,7 @@ def topo_sample(manifest: dict, size: int | None = None, seed: str | None = None
     if size is None:
         size = TOPO_SAMPLE_SIZE
     if seed is None:
-        seed = date.today().isoformat()
+        seed = utc_today().isoformat()
 
     by_state: dict[str, list[str]] = {}
     for key in manifest:
@@ -622,7 +622,7 @@ def verdict_document(reports: list[dict], state: dict | None) -> dict:
         sources.append(entry)
 
     return {
-        "checked_at": date.today().isoformat(),
+        "checked_at": utc_today().isoformat(),
         "state_captured_at": (state or {}).get("captured_at"),
         "state_age_days": state_age_days(state) if state else None,
         "sources": sources,

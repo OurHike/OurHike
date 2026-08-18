@@ -213,7 +213,6 @@ cost is louder rather than quieter: a mis-grouped privy is now named on the
 wrong shelter's card, where before it was only a pin that went missing.
 """
 
-import hashlib
 import json
 import sys
 from pathlib import Path
@@ -229,6 +228,7 @@ from export_elevation import (
 from lib.atc_notes import clean_note
 from lib.completeness import count_problems, fail_if_incomplete
 from lib.corridor import GEOGRAPHIC_CRS, PROJECTED_CRS, build_corridor
+from lib.hashing import sha256_file
 from lib.photo_store import photo_key
 from lib.poi_description import (
     describe_campsite,
@@ -1108,14 +1108,6 @@ def clip_to_corridor(con: duckdb.DuckDBPyConnection, unified: list[dict]) -> lis
     """).fetchall()
     kept_ids = {row[0] for row in rows}
     return [r for r in unified if r["id"] in kept_ids]
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _reproject_points_to_meters(con: duckdb.DuckDBPyConnection, records: list[dict]):

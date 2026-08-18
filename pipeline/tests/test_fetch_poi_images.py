@@ -486,6 +486,31 @@ def test_the_write_is_atomic_leaving_no_temp_file_behind(tmp_path, monkeypatch, 
     assert not (tmp_path / "poi_images.json.tmp").exists()
 
 
+def test_a_write_killed_between_temp_and_replace_spares_the_previous_outcomes(tmp_path, monkeypatch, requests_mock):
+    """The half of the atomicity claim the test above cannot see (#659: a
+    plain write_text passes it too). Dying at the os.replace boundary must
+    leave the previous outcomes byte-for-byte intact - and an implementation
+    that regressed to writing the target directly never calls os.replace at
+    all, so this test's raise never fires and the regression is caught."""
+    _no_sleep(monkeypatch)
+    _use_pois(monkeypatch, tmp_path, [_poi()])
+    requests_mock.get(fetch_poi_images.API_URL, json=_geosearch())
+    previous = json.dumps({"pois": {"poi:previous": {"status": "none", "checked": "2026-01-01"}}})
+    (tmp_path / "poi_images.json").write_text(previous)
+
+    def killed_here(_src, _dst):
+        raise RuntimeError("simulated death at the replace boundary")
+
+    monkeypatch.setattr(fetch_poi_images.os, "replace", killed_here)
+
+    with pytest.raises(RuntimeError, match="replace boundary"):
+        fetch_poi_images.main()
+
+    assert (tmp_path / "poi_images.json").read_text() == previous, (
+        "the crawl died mid-write and the last known-good outcomes must survive it"
+    )
+
+
 def test_normalized_titles_are_mapped_back_to_the_geosearch_hit(tmp_path, monkeypatch, requests_mock):
     """Real trap: ask imageinfo about "File:Test_Shelter.jpg" (underscores,
     as titles often circulate) and the API answers under the normalized

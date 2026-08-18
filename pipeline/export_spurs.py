@@ -33,13 +33,13 @@ tested directly.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 
 from lib.arcgis import get_field_coded_domain
 from lib.completeness import fail_if_incomplete
 from lib.feature_id import resolve_feature_id
+from lib.hashing import sha256_file
 from lib.poi_schema import poi_output_name
 from lib.spurs import (
     SPUR_TYPE_CODE,
@@ -116,14 +116,6 @@ DESTINATION_POI_TYPES = ("shelter", "water", "campsite", "resupply", "viewpoint"
 # admitting parking here would mostly name a car park at the end of a spur
 # that leads somewhere else.
 NOT_A_DESTINATION_POI_TYPES = ("crossing", "privy", "parking")
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def load_features(path: Path) -> list[dict]:

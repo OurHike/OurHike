@@ -72,13 +72,13 @@ import argparse
 import json
 import os
 import sys
-from datetime import date
 from pathlib import Path
 from urllib.parse import quote
 
 import requests
 
 from check_deployment import FAILED, OK, UNREACHABLE, load_manifest
+from lib.freshness_state import utc_today
 
 HTTP_TIMEOUT = 30
 
@@ -355,7 +355,7 @@ def check_all(manifest: dict, only: str | None = None, env: dict | None = None, 
 
 def verdict_document(reports: list[dict]) -> dict:
     return {
-        "checked_at": date.today().isoformat(),
+        "checked_at": utc_today().isoformat(),
         "checks": reports,
         "failed": [report for report in reports if report["state"] == FAILED],
         "unreachable": [report for report in reports if report["state"] == UNREACHABLE],

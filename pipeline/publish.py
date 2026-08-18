@@ -42,7 +42,6 @@ have already downloaded.
 from __future__ import annotations
 
 import gzip
-import hashlib
 import json
 import os
 import shutil
@@ -53,6 +52,7 @@ from pathlib import Path
 import boto3
 
 from lib import data_env, releases
+from lib.hashing import sha256_file
 from lib.photo_store import PHOTO_EXTENSION, PHOTOS_DIRNAME, photo_key
 from lib.r2_keys import assert_valid_keys
 
@@ -71,14 +71,6 @@ CONDITIONS_MANIFESTS = (
     "drought_manifest.json",
 )
 WRITE_ENABLED_ENV_VAR = "R2_WRITE_ENABLED"
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 # One background raster archive per download tier the client offers.

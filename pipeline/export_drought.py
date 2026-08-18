@@ -57,7 +57,6 @@ and the client draws it as a background wash for the same reason.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 from datetime import date, datetime, timedelta, timezone
@@ -65,6 +64,8 @@ from pathlib import Path
 
 from shapely.geometry import MultiLineString, mapping, shape
 from shapely.ops import unary_union
+
+from lib.hashing import sha256_file
 
 ROOT = Path(__file__).resolve().parent
 RAW_DIR = ROOT / "data" / "raw" / "drought"
@@ -324,12 +325,6 @@ def build_document(
             for level, band in sorted(bands.items())
         ],
     }
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    digest.update(path.read_bytes())
-    return digest.hexdigest()
 
 
 def already_published(stamp: date) -> bool:

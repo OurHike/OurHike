@@ -56,13 +56,13 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import date
 from pathlib import Path
 
 import requests
 import yaml
 
 from lib import data_env, releases
+from lib.freshness_state import utc_today
 
 ROOT = Path(__file__).resolve().parent
 ORIGINS_MANIFEST = ROOT.parent / ".github" / "expected-origins.yml"
@@ -647,7 +647,7 @@ def verdict_document(base: str, reports: list[dict], manifest: dict, published: 
     """The whole answer as plain JSON, for the workflow to render and for the
     status page (#431 tier 2) to read once it exists."""
     return {
-        "checked_at": date.today().isoformat(),
+        "checked_at": utc_today().isoformat(),
         "base": base,
         "published": published,
         # Whether the artifact checks RAN, which is a different claim from

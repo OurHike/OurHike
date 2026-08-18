@@ -130,7 +130,6 @@ exits the process.
 """
 
 import argparse
-import hashlib
 import json
 import sys
 from enum import Enum
@@ -142,6 +141,7 @@ import rasterio
 from lib import fetch_receipts
 from lib.completeness import count_problems
 from lib.corridor import GEOGRAPHIC_CRS, METERS_PER_MILE, PROJECTED_CRS, build_corridor
+from lib.hashing import sha256_file
 from lib.poi_schema import POI_TYPES
 
 ROOT = Path(__file__).parent
@@ -198,14 +198,6 @@ class Verdict(str, Enum):
     OK = "ok"
     PROBLEM = "problem"
     SKIPPED = "skipped"
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def read_manifest(path: Path) -> dict | None:

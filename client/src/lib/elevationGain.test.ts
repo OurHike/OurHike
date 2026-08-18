@@ -27,8 +27,12 @@ import {
   cumulativeGain,
   cumulativeGainOverGaps,
   cumulativeGainOverProfile,
+  cumulativeLossOverGaps,
+  cumulativeLossOverProfile,
   gainBetween,
+  lossBetween,
   rawCumulativeGain,
+  reverseProfileWindow,
   THRESHOLD_FT,
   THRESHOLD_M,
   type ProfileSample,
@@ -178,5 +182,89 @@ describe('shared with the Python implementation', () => {
       partStart: s.part_start === true,
     }))
     expect(cumulativeGainOverProfile(profile, threshold)).toBeCloseTo(expected_gain)
+  })
+
+  // Descent is pinned to the SAME table rather than a second one: loss is
+  // defined as gain on the negated profile, so every shared vector negated
+  // must produce exactly its expected_gain. A separate loss table would be a
+  // second place for an edge case to be fixed in one language only.
+  it.each(vectors.gap_cases)(
+    'negated: $name',
+    ({ elevations, threshold, expected_gain }) => {
+      const negated = elevations.map((v) => (v === null ? null : -v))
+      expect(cumulativeLossOverGaps(negated, threshold)).toBeCloseTo(expected_gain)
+    },
+  )
+
+  it.each(vectors.boundary_cases)(
+    'negated: $name',
+    ({ samples, threshold, expected_gain }) => {
+      const profile = samples.map((s, i) => ({
+        distanceMi: i,
+        elevationFt: s.elevation_ft === null ? null : -s.elevation_ft,
+        partStart: s.part_start === true,
+      }))
+      expect(cumulativeLossOverProfile(profile, threshold)).toBeCloseTo(expected_gain)
+    },
+  )
+})
+
+describe('descent, and walking a window the other way', () => {
+  const T = 3
+
+  it('counts a single descent whole', () => {
+    expect(cumulativeLossOverGaps([400, 300, 200, 100], T)).toBeCloseTo(300)
+  })
+
+  it('ignores jitter below the dead band, exactly as ascent does', () => {
+    expect(cumulativeLossOverGaps([100, 99, 100, 98, 100], T)).toBe(0)
+  })
+
+  const seamed: ProfileSample[] = [
+    { distanceMi: 0.0, elevationFt: 0 },
+    { distanceMi: 0.1, elevationFt: 10 },
+    // A new centerline piece 90 ft above the last one. The step between the
+    // pieces is a seam in the trail, not a slope anybody walks.
+    { distanceMi: 0.2, elevationFt: 100, partStart: true },
+    { distanceMi: 0.3, elevationFt: 110 },
+  ]
+
+  it('lossBetween mirrors gainBetween across a seam', () => {
+    expect(gainBetween(seamed, 0, 0.3, T)).toBeCloseTo(20)
+    expect(lossBetween(seamed, 0, 0.3, T)).toBe(0)
+  })
+
+  it('keeps the seam where the trail breaks when the window is reversed', () => {
+    const reversed = reverseProfileWindow(seamed)
+    // Walked south the runs are [110, 100] and [10, 0]: two descents of 10,
+    // no ascent. A dropped seam flag would join them into one 110 ft
+    // phantom descent - the failure this helper exists to prevent.
+    expect(reversed.map((s) => s.elevationFt)).toEqual([110, 100, 10, 0])
+    expect(cumulativeGainOverProfile(reversed, T)).toBe(0)
+    expect(cumulativeLossOverProfile(reversed, T)).toBeCloseTo(20)
+  })
+
+  it('walks the reversed run, and direction changes the figures', () => {
+    // HIKE_PLANNING.md: "the ordered sample run has to be reversed before
+    // counting, not the totals swapped afterwards." Reversal is what walking
+    // the other way IS, so it is the operation implemented; whether the
+    // hysteresis happens to make a swap coincide is a theorem nobody here
+    // has proven, and nothing downstream is allowed to rely on it. What this
+    // pins is the observable: the same window carries a 100 ft climb walked
+    // south and none walked north.
+    const window: ProfileSample[] = [
+      { distanceMi: 0, elevationFt: 98 },
+      { distanceMi: 0.1, elevationFt: 100 },
+      { distanceMi: 0.2, elevationFt: 0 },
+    ]
+    expect(cumulativeGainOverProfile(reverseProfileWindow(window), T)).toBeCloseTo(100)
+    expect(cumulativeGainOverProfile(window, T)).toBe(0)
+  })
+
+  it('reverses an empty and a one-sample window without inventing samples', () => {
+    expect(reverseProfileWindow([])).toEqual([])
+    expect(reverseProfileWindow([{ distanceMi: 1, elevationFt: 5 }])).toEqual([
+      { distanceMi: 1, elevationFt: 5 },
+    ])
   })
 })

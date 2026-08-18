@@ -1,0 +1,176 @@
+// Tests for route.ts - the route builder's arithmetic (#755).
+//
+// The insertion rule gets the most attention because it is the whole
+// interaction model: no modes, one rule, and the three natural workflows
+// (walk-order tapping, filling in a middle, extending backwards) all have to
+// fall out of it rather than be special-cased.
+
+import { describe, expect, it } from 'vitest'
+
+import type { ElevationProfile } from './elevationProfile'
+import { naismithMinutes } from './naismith'
+import {
+  anchoredMile,
+  insertRoutePoint,
+  legFigures,
+  routeDirection,
+  routeLegs,
+  totalFigures,
+} from './route'
+
+const at = (mile: number) => ({ mile })
+const miles = (points: { mile: number }[]) => points.map((p) => p.mile)
+
+describe('insertRoutePoint', () => {
+  it('makes the first tap the start', () => {
+    expect(miles(insertRoutePoint([], at(470.8)))).toEqual([470.8])
+  })
+
+  it('appends when tapping in walking order', () => {
+    const points = insertRoutePoint(insertRoutePoint([at(470.8)], at(486.2)), at(503.4))
+    expect(miles(points)).toEqual([470.8, 486.2, 503.4])
+  })
+
+  it('inserts between two points when tapping between them', () => {
+    // A point inside a leg adds zero trail distance; anywhere else adds some.
+    const points = insertRoutePoint([at(470.8), at(503.4)], at(486.2))
+    expect(miles(points)).toEqual([470.8, 486.2, 503.4])
+  })
+
+  it('extends the hike backwards when tapping behind the start', () => {
+    const points = insertRoutePoint([at(470.8), at(503.4)], at(460.0))
+    expect(miles(points)).toEqual([460.0, 470.8, 503.4])
+  })
+
+  it('works the same way southbound', () => {
+    const southbound = insertRoutePoint(
+      insertRoutePoint([at(503.4)], at(486.2)),
+      at(470.8),
+    )
+    expect(miles(southbound)).toEqual([503.4, 486.2, 470.8])
+  })
+
+  it('ignores a tap landing exactly on an existing point', () => {
+    // A zero-length leg describes no trail. Re-tapping a dropped point does
+    // not mean "again".
+    const points = [at(470.8), at(503.4)]
+    expect(miles(insertRoutePoint(points, at(470.8)))).toEqual([470.8, 503.4])
+  })
+})
+
+describe('routeLegs and routeDirection', () => {
+  it('pairs consecutive points into legs', () => {
+    const legs = routeLegs([at(1), at(2), at(3)])
+    expect(legs.map((l) => [l.from.mile, l.to.mile])).toEqual([
+      [1, 2],
+      [2, 3],
+    ])
+  })
+
+  it('withholds a direction until two points exist', () => {
+    // One point has no direction, and inventing one would put a
+    // confident-looking NOBO on screen that is wrong for half of everyone -
+    // the same refusal hikeDirection.ts makes for the first quarter mile.
+    expect(routeDirection([])).toBeNull()
+    expect(routeDirection([at(5)])).toBeNull()
+  })
+
+  it('reads direction from the ends alone', () => {
+    expect(routeDirection([at(1), at(9)])).toBe('NOBO')
+    expect(routeDirection([at(9), at(1)])).toBe('SOBO')
+  })
+})
+
+// Miles chosen to be exactly representable in the Float32Array the profile
+// stores distances in - 0.1 is not, and a window bound of 0.5 must not
+// exclude its own last sample over a float32 rounding step.
+function profile(entries: [number, number, boolean?][]): ElevationProfile {
+  return {
+    distanceMi: Float32Array.from(entries.map(([mile]) => mile)),
+    elevationFt: Float32Array.from(entries.map(([, elevation]) => elevation)),
+    partStart: Uint8Array.from(entries.map(([, , seam]) => (seam === true ? 1 : 0))),
+  }
+}
+
+describe('legFigures', () => {
+  const climb = profile([
+    [0, 1000],
+    [0.25, 1400],
+    [0.5, 1200],
+  ])
+
+  it('measures a northbound leg: distance, gain, loss, moving minutes', () => {
+    const figures = legFigures(climb, 0, 0.5)
+    expect(figures.distanceMi).toBeCloseTo(0.5)
+    expect(figures.ascentFt).toBeCloseTo(400)
+    expect(figures.descentFt).toBeCloseTo(200)
+    expect(figures.minutes).toBeCloseTo(
+      naismithMinutes({ distanceMi: 0.5, ascentFt: 400 }),
+    )
+  })
+
+  it('swaps gain and loss for the same stretch walked south, via the reversed run', () => {
+    const figures = legFigures(climb, 0.5, 0)
+    expect(figures.distanceMi).toBeCloseTo(0.5)
+    expect(figures.ascentFt).toBeCloseTo(200)
+    expect(figures.descentFt).toBeCloseTo(400)
+    // Time follows the direction too: less climbing south over this stretch,
+    // so a shorter estimate. Naismith's no-descent-credit rule is untouched -
+    // descent still buys nothing, it just stops being counted as ascent.
+    expect(figures.minutes).toBeCloseTo(
+      naismithMinutes({ distanceMi: 0.5, ascentFt: 200 }),
+    )
+  })
+
+  it('does not count a part seam as a climb in either direction', () => {
+    const seamed = profile([
+      [0, 0],
+      [0.25, 10],
+      [0.5, 100, true],
+      [0.75, 110],
+    ])
+    expect(legFigures(seamed, 0, 0.75).ascentFt).toBeCloseTo(20)
+    expect(legFigures(seamed, 0.75, 0).descentFt).toBeCloseTo(20)
+  })
+})
+
+describe('totalFigures', () => {
+  it('sums legs before any display rounding', () => {
+    const total = totalFigures([
+      { distanceMi: 15.4, ascentFt: 2900, descentFt: 1750, minutes: 425.2 },
+      { distanceMi: 17.2, ascentFt: 4100, descentFt: 2200, minutes: 500.3 },
+    ])
+    expect(total.distanceMi).toBeCloseTo(32.6)
+    expect(total.ascentFt).toBeCloseTo(7000)
+    expect(total.descentFt).toBeCloseTo(3950)
+    expect(total.minutes).toBeCloseTo(925.5)
+  })
+
+  it('rolls an empty route up to zeros', () => {
+    expect(totalFigures([])).toEqual({
+      distanceMi: 0,
+      ascentFt: 0,
+      descentFt: 0,
+      minutes: 0,
+    })
+  })
+})
+
+describe('anchoredMile', () => {
+  it('carries the nearest anchor offset across to the pipeline axis', () => {
+    // The client index reads this spot as 100.0; the nearest POI sits at
+    // client 99.0 and published 99.4, so the tap lands at 100.4.
+    const anchors = [
+      { clientMile: 99.0, mile: 99.4 },
+      { clientMile: 250.0, mile: 251.2 },
+    ]
+    expect(anchoredMile(100.0, anchors)).toBeCloseTo(100.4)
+    expect(anchoredMile(249.0, anchors)).toBeCloseTo(250.2)
+  })
+
+  it('refuses rather than guesses when there are no anchors', () => {
+    // A data release that predates POI miles (#753) offers no honest way
+    // onto the pipeline axis. The caller says "needs a newer download".
+    expect(anchoredMile(100.0, [])).toBeNull()
+  })
+})

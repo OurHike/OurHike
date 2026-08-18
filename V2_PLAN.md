@@ -12,8 +12,8 @@ subjects had nothing to do with each other.
 
 **Every open issue appears exactly once below.** That was checked mechanically rather than
 by reading down the list: 117 open, 117 assigned, no duplicates, no omissions, on
-2026-08-17. Five more (#768–#772) were filed 2026-08-18 and added as group **V** the same
-day. If you add an issue, add it to a group here or the next person will find it
+2026-08-17. Six more (#768–#772, #780) were filed 2026-08-18 and added as group **V** the
+same day. If you add an issue, add it to a group here or the next person will find it
 by accident.
 
 *Written at 106 issues; groups **T** and **U** were added the same day when
@@ -466,11 +466,15 @@ tests it. And this feature must never become the second thing that sends a notif
 **#769 — Register the NYS OPRHP ArcGIS org: the trails, blazes and closures behind the Parks Explorer app** ·
 **#770 — Survey the trail sources within a day of NYC: DEC's Catskills, the NJ side, the counties, and what only OSM covers** ·
 **#771 — Spike: Harriman's crossing trails next to the AT — find what a trail network breaks that a linear trail never could** ·
-**#772 — Design the map when trails cross: one chosen centerline, every other trail visible, and safety pins that ignore the choice**
+**#772 — Design the map when trails cross: one chosen centerline, every other trail visible, and safety pins that ignore the choice** ·
+**#780 — Research route ownership: the AT in NY has thirty owners, a landowner with final say per section, and a maintainer besides**
 
-**Why together:** one maintainer scope call (2026-08-18, recorded in #768), and the four
-children are one program: register, survey, spike, design. #769 and #770 are parallel;
-#771 wants #769's fetch but can probe the org directly; #772 consumes #771's findings.
+**Why together:** one maintainer scope call (2026-08-18, recorded in #768), and the
+children are one program: register, survey, spike, design — plus the ownership research
+the display decisions turned out to need. #769 and #770 are parallel (both done);
+#771 wants #769's fetch but can probe the org directly; #772 consumes #771's findings
+and #780's definition of "the org" — the maintainer's cross-org POI and line-precedence
+decisions of 2026-08-18 are recorded on #772's thread and presume it.
 
 **What you are walking into:** three things, each named in the issues so nobody
 re-discovers them. The licence on every new source here is **pending the maintainer's own

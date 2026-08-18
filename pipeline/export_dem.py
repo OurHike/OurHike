@@ -55,6 +55,7 @@ from pmtiles.writer import write
 
 from export_basemap import load_corridor_4326, report_archive
 from extract_package import load_region, tiles_intersecting, to_mercator
+from lib.http_retry import request_with_retry
 
 ROOT = Path(__file__).parent
 OUT_PATH = ROOT / "data" / "processed" / "dem.pmtiles"
@@ -71,7 +72,12 @@ MAX_ZOOM = 13
 
 QUANTIZE_STEP_M = 0.5
 FETCH_WORKERS = 16
-FETCH_ATTEMPTS = 3
+# The pause ladder between retries of one tile - lib/http_retry's mechanism,
+# shorter than its default because a 20k-tile run cannot afford a 30s pause
+# per flake against a bucket this reliable. The old loop here retried with
+# NO sleep at all (#659), which against a briefly-overloaded server is three
+# instant hits and a dead run.
+FETCH_BACKOFF_SECONDS = (2, 10)
 
 
 def quantize_unit(step_m: float) -> int:
@@ -111,21 +117,20 @@ def encode_tile(png_bytes: bytes, unit: int) -> bytes:
 
 def fetch_tile(session: requests.Session, z: int, x: int, y: int) -> bytes | None:
     """One tile's PNG bytes, or None where the bucket has no tile. Retries
-    transient failures; a 404 is not one - the dataset is global, so absence
-    is unexpected but not worth failing a 20k-tile run over. Absences are
-    counted and reported by main()."""
+    transient faults and 429/5xx over FETCH_BACKOFF_SECONDS via
+    lib/http_retry (#659 - the hand-rolled loop here slept zero seconds
+    between attempts, and retried even statuses that are answers). A 404 is
+    not a fault: the dataset is global, so absence is unexpected but not
+    worth failing a 20k-tile run over - absences are counted and reported
+    by main()."""
     url = DEM_TILE_URL.format(z=z, x=x, y=y)
-    last_error: Exception | None = None
-    for _ in range(FETCH_ATTEMPTS):
-        try:
-            resp = session.get(url, timeout=60)
-            if resp.status_code == 404:
-                return None
-            resp.raise_for_status()
-            return resp.content
-        except requests.RequestException as error:
-            last_error = error
-    raise RuntimeError(f"failed to fetch {url} after {FETCH_ATTEMPTS} attempts") from last_error
+    try:
+        resp = request_with_retry(url, session=session, backoff=FETCH_BACKOFF_SECONDS, label=f"tile {z}/{x}/{y}")
+    except requests.exceptions.HTTPError as error:
+        if error.response is not None and error.response.status_code == 404:
+            return None
+        raise
+    return resp.content
 
 
 def build_header(region_4326, min_zoom: int) -> dict:

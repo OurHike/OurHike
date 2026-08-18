@@ -82,17 +82,27 @@ def test_encode_tile_is_lossless_after_quantization():
     assert np.array_equal(decode_elevations(once), decode_elevations(twice))
 
 
-def test_fetch_tile_returns_none_on_404_and_retries_transient_errors(requests_mock):
+def test_fetch_tile_returns_none_on_404_and_retries_transient_errors(requests_mock, monkeypatch):
     import requests as requests_lib
+
+    from lib import http_retry
+
+    # The retry ladder must PAUSE between attempts (#659: the old loop here
+    # slept zero seconds) - recorded here and skipped so the test doesn't
+    # wait it out.
+    slept: list[float] = []
+    monkeypatch.setattr(http_retry.time, "sleep", slept.append)
 
     session = requests_lib.Session()
     url = export_dem.DEM_TILE_URL.format(z=1, x=0, y=0)
     requests_mock.get(url, status_code=404)
     assert fetch_tile(session, 1, 0, 0) is None
+    assert slept == [], "a 404 is an answer, not a flake - no retry, no pause"
 
     url2 = export_dem.DEM_TILE_URL.format(z=1, x=1, y=0)
     requests_mock.get(url2, [{"status_code": 503}, {"content": b"png-bytes", "status_code": 200}])
     assert fetch_tile(session, 1, 1, 0) == b"png-bytes"
+    assert slept == [export_dem.FETCH_BACKOFF_SECONDS[0]], "one 503 costs one pause from the ladder"
 
 
 def make_args(tmp_path, region_path, **overrides):

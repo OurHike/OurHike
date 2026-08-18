@@ -86,7 +86,7 @@ def request_with_retry(
     retryable_statuses: tuple[int, ...] = DEFAULT_RETRYABLE_STATUSES,
     throttle_seconds: float = 0.0,
     label: str | None = None,
-    sleep=time.sleep,
+    sleep=None,
 ) -> requests.Response:
     """One request, retried over `backoff` on transient faults and statuses.
 
@@ -96,8 +96,13 @@ def request_with_retry(
     wrong rather than absent.
 
     `sleep` is injected so a test can assert the ladder without waiting it
-    out; nothing else should pass it.
+    out; nothing else should pass it. The None sentinel resolves to
+    time.sleep in the body rather than in the signature, so a caller's test
+    can also monkeypatch this module's time.sleep - a default bound at
+    definition time would have captured the real one forever.
     """
+    if sleep is None:
+        sleep = time.sleep
     requester = session or requests
     attempts = len(backoff) + 1
     name = label or url

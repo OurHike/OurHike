@@ -2,12 +2,17 @@
 
 Handles pagination via resultOffset since ArcGIS servers cap how many
 features they'll return per request (maxRecordCount).
+
+Every request goes through lib/http_retry (#659): this module used to do
+bare requests.get, so one transient ATC 5xx failed a whole fetch_all run -
+the exact failure shape http_retry was extracted for (#536), sitting one
+directory away from the module that never called it.
 """
 
 import json
 from pathlib import Path
 
-import requests
+from lib.http_retry import request_with_retry
 
 PAGE_SIZE = 1000
 
@@ -26,8 +31,7 @@ def fetch_layer_geojson(layer_url: str) -> dict:
             "resultOffset": offset,
             "resultRecordCount": PAGE_SIZE,
         }
-        resp = requests.get(query_url, params=params, timeout=60)
-        resp.raise_for_status()
+        resp = request_with_retry(query_url, params=params, timeout=60)
         batch = resp.json().get("features", [])
         if not batch:
             break
@@ -48,8 +52,7 @@ def get_layer_edit_date(layer_url: str) -> int | None:
     """Fetch a layer's dataLastEditDate (epoch ms) - a cheap metadata-only
     request, used to skip re-fetching layers that haven't changed. Returns
     None if the service doesn't expose editingInfo (some don't)."""
-    resp = requests.get(layer_url, params={"f": "json"}, timeout=30)
-    resp.raise_for_status()
+    resp = request_with_retry(layer_url, params={"f": "json"}, timeout=30)
     editing_info = resp.json().get("editingInfo")
     if not editing_info:
         return None
@@ -63,8 +66,7 @@ def get_field_coded_domain(layer_url: str, field_name: str) -> dict[int, str] | 
     hand-copied (see features/TRAIL_BLAZE_COLORS.md). Returns None if the
     field isn't found, has no domain, or has a non-coded domain (e.g. a
     numeric range domain)."""
-    resp = requests.get(layer_url, params={"f": "json"}, timeout=30)
-    resp.raise_for_status()
+    resp = request_with_retry(layer_url, params={"f": "json"}, timeout=30)
     fields = resp.json().get("fields", [])
     for field in fields:
         if field.get("name") == field_name:

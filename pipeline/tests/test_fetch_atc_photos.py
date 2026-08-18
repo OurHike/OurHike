@@ -538,3 +538,107 @@ def test_the_skipped_references_are_reported_rather_than_swallowed(tmp_path, mon
     atc.main()
 
     assert "1 photo reference(s) Drive would not serve" in capsys.readouterr().out
+
+
+# --- #659: the guards this fetch was citing without having ---
+
+
+def test_a_stale_none_is_rechecked_and_a_fresh_none_is_not(tmp_path, monkeypatch, requests_mock):
+    """ATC keeps filling Photo1..Photo10, and a carried-forward "none" used
+    to be permanent - a POI checked once on a throttled afternoon stayed
+    photo-less forever. A "none" older than RECHECK_NONE_AFTER_DAYS is
+    re-fetched; a fresh one still spares its API calls."""
+    _no_sleep(monkeypatch)
+    _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
+    _write_layers(tmp_path, monkeypatch, shelters=[_feature(global_id="sh-1", Photo1=DRIVE_URL)])
+    stale = (date.today() - timedelta(days=atc.RECHECK_NONE_AFTER_DAYS + 1)).isoformat()
+    (tmp_path / "poi_images_atc.json").write_text(
+        json.dumps({"pois": {"atc_shelters:sh-1": {"status": "none", "checked": stale}}})
+    )
+    _serve(requests_mock)
+
+    atc.main()
+
+    assert _saved(tmp_path)["atc_shelters:sh-1"]["status"] == "found", "the stale none must be re-checked"
+
+
+def test_a_fresh_none_is_carried_forward_without_a_request(tmp_path, monkeypatch, requests_mock):
+    _no_sleep(monkeypatch)
+    _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
+    _write_layers(tmp_path, monkeypatch, shelters=[_feature(global_id="sh-1", Photo1=DRIVE_URL)])
+    fresh = date.today().isoformat()
+    (tmp_path / "poi_images_atc.json").write_text(
+        json.dumps({"pois": {"atc_shelters:sh-1": {"status": "none", "checked": fresh}}})
+    )
+
+    atc.main()  # no mocked routes: any request would fail the test
+
+    assert _saved(tmp_path)["atc_shelters:sh-1"] == {"status": "none", "checked": fresh}
+
+
+def test_mounting_403s_kill_the_run_instead_of_recording_the_trail_as_photo_less(tmp_path, monkeypatch, requests_mock):
+    """Drive answers 403 for a revoked file AND for rate limiting. One is a
+    fact about a slot; hundreds are a throttled crawl, and finishing it
+    green would silently strip photos from every POI it touched."""
+    _no_sleep(monkeypatch)
+    _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
+    urls = {f"Photo{i}": f"https://drive.google.com/file/d/aaaaaaaaa{i:02d}/view" for i in range(1, 11)}
+    _write_layers(
+        tmp_path,
+        monkeypatch,
+        shelters=[_feature(global_id="sh-1", **urls), _feature(global_id="sh-2", **urls)],
+    )
+    requests_mock.get(atc.DOWNLOAD_URL, status_code=403)
+
+    with pytest.raises(SystemExit, match="rate limiting"):
+        atc.main()
+
+
+def test_a_run_that_loses_half_the_prior_photos_refuses_to_persist(tmp_path, monkeypatch, requests_mock):
+    """The drop guard this module's own comment cited while not having one.
+    Two prior found POIs whose cached bytes are gone force a re-fetch; the
+    re-fetch comes back photo-less (undated EXIF), and the run must die
+    rather than overwrite the outcomes file with the loss."""
+    _no_sleep(monkeypatch)
+    _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
+    _write_layers(
+        tmp_path,
+        monkeypatch,
+        shelters=[_feature(global_id="sh-1", Photo1=DRIVE_URL), _feature(global_id="sh-2", Photo1=DRIVE_URL)],
+    )
+    taken = (date.today() - timedelta(days=30)).isoformat()
+    prior = {
+        f"atc_shelters:sh-{i}": {
+            "status": "found",
+            "checked": taken,
+            "photos": [{"url": DRIVE_URL, "taken": taken, "digest": f"missing-digest-{i}"}],
+        }
+        for i in (1, 2)
+    }
+    out_path = tmp_path / "poi_images_atc.json"
+    before = json.dumps({"pois": prior})
+    out_path.write_text(before)
+    # EXIF with no parseable date -> every re-fetched slot yields no photo.
+    requests_mock.get(atc.DOWNLOAD_URL, content=b"\xff\xd8\xff\xe1 no date here" + b"\x00" * 600)
+
+    with pytest.raises(SystemExit):
+        atc.main()
+
+    assert out_path.read_text() == before, "a refused persist must leave last-known-good in place"
+
+
+def test_collect_candidates_resolves_ids_the_way_the_export_does(tmp_path, monkeypatch):
+    """The truthiness fallback this replaces was the drift lib/feature_id.py
+    documents: a GlobalID of "" fell through to the feature's own id here
+    while the export published "" - and the photos never attached. The
+    chain is unify_poi's: `is None` at each step."""
+    _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
+    feature = _feature(global_id="", Photo1=DRIVE_URL)
+    feature["id"] = "top-level-id"
+    _write_layers(tmp_path, monkeypatch, shelters=[feature])
+
+    candidates = atc.collect_candidates()
+
+    assert candidates[0]["id"] == "atc_shelters:", (
+        "an empty-string GlobalID is the id the export publishes, so it is the id photos must join on"
+    )

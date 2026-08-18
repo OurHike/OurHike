@@ -996,17 +996,16 @@ def test_a_mile_that_is_not_a_number_is_refused(bad):
     one is absent from every route range instead of misplaced in one - a
     safety warning that exists in the database and on no phone.
 
-    **Tested on the schema rather than over HTTP, because HTTP cannot carry
-    it.** These values only exist in JSON as the bare `NaN`/`Infinity` tokens
-    Python's `json.dumps` emits, and FastAPI's body parser refuses those
-    before any validator runs - as does `JSON.stringify`, which writes
-    `null`. So the wire is already closed, and what this guards is the model
-    itself: pydantic accepts inf and NaN as floats by default
-    (`allow_inf_nan`), so anything constructing a `ReportCreate` in Python -
-    a script, a future non-JSON transport, a test - would otherwise get one
-    through.
+    **The wire is NOT closed** - this test's docstring used to claim
+    FastAPI's parser refuses the bare `NaN`/`Infinity` tokens, and that was
+    empirically false on the pinned stack (tests/test_wire_inputs.py sends
+    them over HTTP and gets the 422). Since #658 the refusal happens at the
+    type (schemas/common.FiniteFloat), which is why the message asserted
+    here is pydantic's finite-number one rather than the field validator's
+    own - the validator stays behind it as defence in depth for anything
+    constructing a `ReportCreate` in Python with validation bypassed.
     """
-    with pytest.raises(ValidationError, match="real number"):
+    with pytest.raises(ValidationError, match="finite number"):
         ReportCreate(type="blowdown", reporter_type="thru", mile=bad)
 
 

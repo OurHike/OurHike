@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.core.time import UtcDatetime
+from app.schemas.common import FiniteFloat, NoteText
 from app.models.profile import MODERATOR_ROLES, Profile
 from app.models.report import (
     Report,
@@ -74,8 +75,8 @@ class ReportCreate(BaseModel):
 
     type: ReportType
     poi_id: str | None = None
-    lat: float | None = None
-    lon: float | None = None
+    lat: FiniteFloat | None = None
+    lon: FiniteFloat | None = None
 
     # Where along the centerline, in miles (#244). The third sanctioned
     # client claim, and it exists for the same reason `authored_at` does:
@@ -87,10 +88,10 @@ class ReportCreate(BaseModel):
     #
     # The form has been computing it all along and dropping it at submit,
     # which is what made this a defect rather than a missing feature.
-    mile: float | None = None
+    mile: FiniteFloat | None = None
 
     reporter_type: ReporterType
-    note: str | None = None
+    note: NoteText | None = None
     photo_url: str | None = None
     authored_at: datetime | None = None
 
@@ -123,15 +124,14 @@ class ReportCreate(BaseModel):
         either way, and it would sort into every route range that starts at
         mile 0.
 
-        NaN and the infinities are refused because a mile has to be
-        comparable at all: every `>=` and `<=` against NaN is false, so a
-        serious warning carrying one is silently absent from every banner
-        rather than wrong in a visible way. **JSON cannot deliver them** -
-        FastAPI's parser refuses the bare `NaN` token and `JSON.stringify`
-        writes `null` - so this guards the model rather than the wire, which
-        matters because pydantic accepts both as floats by default
-        (`allow_inf_nan`) for anything constructing a `ReportCreate` in
-        Python.
+        NaN and the infinities are refused at the type now
+        (schemas/common.FiniteFloat, #658) - this validator's own copy of
+        the check stays as defence in depth for anything constructing a
+        `ReportCreate` in Python with validation bypassed. The old comment
+        here claimed "JSON cannot deliver them"; that was empirically false
+        on the pinned stack (Python's json module emits and accepts the bare
+        `NaN` token), which is why the guard moved to the wire and to every
+        other float field with it.
 
         **No upper bound, deliberately.** The trail's length is a property of
         the published centerline (~2,197 miles today, and it moves every

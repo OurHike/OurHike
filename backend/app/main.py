@@ -1,7 +1,12 @@
 """FastAPI application entrypoint."""
 
-from fastapi import FastAPI
+import math
+
+from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 
 from app.routers import (
     closures,
@@ -30,6 +35,32 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _json_safe(value):
+    """`value` with non-finite floats replaced by their spelling.
+
+    A validation error echoes the offending input back in its detail, and
+    when that input is the NaN or Infinity the finite-float guard (#658,
+    schemas/common.py) just refused, the default 422 rendering crashes on
+    its own payload - json.dumps refuses the very value the error is about,
+    and the caller gets a 500 for sending the thing the 422 exists to name.
+    """
+    if isinstance(value, float) and not math.isfinite(value):
+        return repr(value)
+    if isinstance(value, dict):
+        return {key: _json_safe(inner) for key, inner in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(inner) for inner in value]
+    return value
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_error_survives_its_own_payload(request: Request, exc: RequestValidationError) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": _json_safe(jsonable_encoder(exc.errors()))},
+    )
 
 
 @app.get("/health")

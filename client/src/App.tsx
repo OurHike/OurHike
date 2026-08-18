@@ -120,10 +120,38 @@ import { useAppUpdate, UPDATE_CHECK_MS } from './lib/useAppUpdate'
 import { readCamera, writeCamera } from './lib/cameraMemory'
 import { useGeolocation } from './lib/useGeolocation'
 import { positionLine } from './lib/positionLine'
-import { locateOnTrail, mileOnTrail } from './lib/trailPosition'
+import {
+  locateOnTrail,
+  mileOnTrail,
+  trailPointAtMile,
+  trailSlice,
+} from './lib/trailPosition'
 import type { StoredPoi } from './lib/trailData'
 import { useTrailData } from './lib/useTrailData'
 import { ribbonSamples, ribbonWindow } from './lib/elevationProfile'
+import {
+  anchoredMile,
+  insertRoutePoint,
+  legFigures,
+  routeDirection,
+  routeLegs,
+  type MileAnchor,
+} from './lib/route'
+import { RouteSheet, type RouteLegDisplay } from './chrome/RouteSheet'
+import type { RouteDrawing } from './map/routeLayers'
+import {
+  clearPlan,
+  insertZeroAfter,
+  loadPlan,
+  removeDay,
+  savePlan,
+  togglePinned,
+  toggleResupply,
+  type HikePlan,
+  type PlanTarget,
+} from './lib/plan'
+import { PlanScreen } from './screens/Plan'
+import { PlanTargetSheet } from './screens/PlanTargetSheet'
 import { upcomingClimb } from './lib/upcomingClimb'
 import { startTracking, trackDirection, type DirectionTracker } from './lib/hikeDirection'
 import { beginContribution, stepAfterSaving } from './lib/contributionFlow'
@@ -254,6 +282,32 @@ function cardDetail(poi: StoredPoi, searchable: readonly SearchablePoi[]): PoiDe
 
 type ReportingState = null | { step: 'pick' } | { step: 'form'; type: ReportTypeId }
 
+/**
+ * A dropped route point (#755), on both mile scales at once.
+ *
+ * `mile` is the pipeline's axis - what every figure is computed and printed
+ * on. `clientMile` is the centerline index's own scale, kept solely because
+ * drawing goes through trailSlice/trailPointAtMile, which live there. See
+ * lib/route.ts's header for why the two are never compared.
+ *
+ * `seq` is drop order, for undo: an inserted point lands mid-array, so "the
+ * last point I dropped" and "the last point of the route" are different
+ * points, and undo means the former.
+ */
+interface RouteDraftPoint {
+  mile: number
+  clientMile: number
+  seq: number
+}
+
+type RouteDraftState = {
+  points: RouteDraftPoint[]
+  nextSeq: number
+  /** The most recent tap was refused - off the corridor. Cleared by the next
+   *  accepted point. */
+  refusedTap: boolean
+}
+
 // Sign-in is its own flow rather than another step of the reporting one,
 // because it is reachable from two places that want different things back:
 // finishing a contribution, and the account row in Settings. Conflating them
@@ -323,6 +377,26 @@ function App() {
 
   const [reporting, setReporting] = useState<ReportingState>(null)
   const [authFlow, setAuthFlow] = useState<AuthFlowState>(null)
+  /**
+   * The route being built (#755), or null when the builder is closed. Held
+   * here and not persisted: a draft is a sketch, and the thing worth keeping
+   * - the plan - is what "Break into days" produces from it (#756).
+   */
+  const [routeDraft, setRouteDraft] = useState<RouteDraftState | null>(null)
+  /** The saved multi-day plan (#756), loaded from IndexedDB below. */
+  const [plan, setPlan] = useState<HikePlan | null>(null)
+  /**
+   * The target sheet's subject: which route to lay days over, or null while
+   * the sheet is closed. Opened from the route builder's "Break into days"
+   * and from the timeline's target button - the same sheet, so the two
+   * entrances cannot drift apart.
+   */
+  const [targetRequest, setTargetRequest] = useState<null | {
+    fromMile: number
+    toMile: number
+    initialTarget?: PlanTarget
+    initialStartDate?: string
+  }>(null)
   /**
    * Whether the identity screen is showing (#233).
    *
@@ -499,6 +573,12 @@ function App() {
   // hike" already means everywhere.
   useEffect(() => {
     void loadPlannedHike().then(setHike, () => setHike(null))
+  }, [])
+
+  // The plan, on the same contract: a rejected or invalid read leaves it
+  // null, which is what "no plan" already means everywhere.
+  useEffect(() => {
+    void loadPlan().then(setPlan, () => setPlan(null))
   }, [])
 
   // Two facts, not one number. A report waiting for signal resolves itself;
@@ -1115,6 +1195,193 @@ function App() {
       endMile: ribbon.window.endMile,
     }
   }, [ribbon, searchablePois])
+
+  /**
+   * Every POI whose position is known on BOTH mile scales (#755) - the
+   * published pipeline mile (#753) and the client index's own, which
+   * `searchablePois` has already paid `mileOnTrail` for. Zipped by index:
+   * that memo maps over `pois` one to one.
+   *
+   * Empty on a download that predates #753, which is `anchoredMile`'s cue to
+   * refuse - see lib/route.ts for the honest fallback that follows.
+   */
+  const mileAnchors: MileAnchor[] = useMemo(
+    () =>
+      pois.flatMap((poi, i) => {
+        const clientMile = searchablePois[i]?.mile
+        return poi.mile !== undefined && clientMile !== undefined
+          ? [{ mile: poi.mile, clientMile }]
+          : []
+      }),
+    [pois, searchablePois],
+  )
+
+  // A tap while the route builder is open (#755). Snapped by the centerline
+  // index - the one job locateOnTrail keeps under HIKE_PLANNING.md Finding 2
+  // - then carried onto the pipeline's axis by the nearest anchor, so the
+  // figures below slice the profile at miles that mean what the display
+  // says. A tap the index refuses (>3 mi off the corridor) sets a flag the
+  // card explains, rather than silently doing nothing.
+  const handleRouteTap = useCallback(
+    (at: { lon: number; lat: number }) => {
+      if (trailIndex === null) return
+      const located = locateOnTrail(trailIndex, at)
+      setRouteDraft((draft) => {
+        if (draft === null) return draft
+        if (located === null) return { ...draft, refusedTap: true }
+
+        const clientMile = located.mile
+        const point = {
+          mile: anchoredMile(clientMile, mileAnchors) ?? clientMile,
+          clientMile,
+          seq: draft.nextSeq,
+        }
+        return {
+          points: insertRoutePoint(draft.points, point),
+          nextSeq: draft.nextSeq + 1,
+          refusedTap: false,
+        }
+      })
+    },
+    [trailIndex, mileAnchors],
+  )
+
+  // Undo removes the most recently DROPPED point - by seq, not by position,
+  // because an inserted point lands mid-array and popping the end would
+  // remove a point the hiker placed three taps ago.
+  const handleRouteUndo = useCallback(() => {
+    setRouteDraft((draft) => {
+      if (draft === null || draft.points.length === 0) return draft
+      const lastSeq = Math.max(...draft.points.map((point) => point.seq))
+      return {
+        ...draft,
+        points: draft.points.filter((point) => point.seq !== lastSeq),
+        refusedTap: false,
+      }
+    })
+  }, [])
+
+  const handleRouteCancel = useCallback(() => {
+    setRouteDraft(null)
+  }, [])
+
+  // What the canvas draws for the draft: the centerline's own geometry
+  // between consecutive points (trailSlice never bridges a part gap), and
+  // the points snapped back onto the line. Client miles throughout - this is
+  // the drawing, and the drawing is the one consumer that scale exists for.
+  const routeDrawing: RouteDrawing | null = useMemo(() => {
+    if (routeDraft === null || trailIndex === null) return null
+    const points = routeDraft.points
+    return {
+      legs: points
+        .slice(1)
+        .map((to, i) => trailSlice(trailIndex, points[i].clientMile, to.clientMile)),
+      points: points.flatMap((point, i) => {
+        const at = trailPointAtMile(trailIndex, point.clientMile)
+        if (at === null) return []
+        const role: 'start' | 'via' | 'end' =
+          i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'via'
+        return [{ lon: at[0], lat: at[1], role }]
+      }),
+    }
+  }, [routeDraft, trailIndex])
+
+  // The card's figures, on the pipeline miles. Null climb and time on a
+  // download with no profile: the distance is still a fact, and the card
+  // says why the rest is missing rather than printing a time that quietly
+  // ignored every climb (see RouteLegDisplay).
+  const routeLegDisplays: RouteLegDisplay[] = useMemo(() => {
+    if (routeDraft === null) return []
+    return routeLegs(routeDraft.points).map(({ from, to }) =>
+      elevation === null
+        ? {
+            distanceMi: Math.abs(to.mile - from.mile),
+            ascentFt: null,
+            descentFt: null,
+            minutes: null,
+          }
+        : legFigures(elevation, from.mile, to.mile),
+    )
+  }, [routeDraft, elevation])
+
+  // Opening the builder is a map act: it lands on the trail tab with
+  // everything else closed - the same one-thing-open-at-a-time rule the
+  // legend, the search and the waypoint card already keep between them.
+  const openRouteBuilder = useCallback(() => {
+    setActiveTab('trail')
+    setSelectedPoiId(null)
+    setLegendOpen(false)
+    setSearchOpen(false)
+    setTargetRequest(null)
+    setRouteDraft({ points: [], nextSeq: 0, refusedTap: false })
+  }, [])
+
+  const handleBreakIntoDays = useCallback(() => {
+    if (routeDraft === null || routeDraft.points.length < 2) return
+    setTargetRequest({
+      fromMile: routeDraft.points[0].mile,
+      toMile: routeDraft.points[routeDraft.points.length - 1].mile,
+    })
+  }, [routeDraft])
+
+  // Re-targeting an existing plan runs the same sheet over the plan's own
+  // ends, seeded with what it aimed at last time. Laying out replaces the
+  // whole plan - the sheet's own reassurance line says days can be moved
+  // afterwards, and the cascade (#758) is where selective re-planning
+  // between pins arrives.
+  const handleChangeTarget = useCallback(() => {
+    if (plan === null || plan.stops.length < 2) return
+    setTargetRequest({
+      fromMile: plan.stops[0].mile,
+      toMile: plan.stops[plan.stops.length - 1].mile,
+      initialTarget: plan.target,
+      ...(plan.startDate === undefined ? {} : { initialStartDate: plan.startDate }),
+    })
+  }, [plan])
+
+  const handleLayOut = useCallback((next: HikePlan) => {
+    setPlan(next)
+    void savePlan(next)
+    setTargetRequest(null)
+    setRouteDraft(null)
+    setActiveTab('plan')
+  }, [])
+
+  // Every timeline edit runs through here: apply, persist, keep the
+  // no-plan case inert. Persisted fire-and-forget like the hike - the
+  // in-memory plan is the truth the screen renders either way.
+  const applyPlanEdit = useCallback((edit: (current: HikePlan) => HikePlan) => {
+    setPlan((current) => {
+      if (current === null) return current
+      const next = edit(current)
+      if (next !== current) void savePlan(next)
+      return next
+    })
+  }, [])
+
+  const handleDeletePlan = useCallback(() => {
+    setPlan(null)
+    void clearPlan()
+  }, [])
+
+  const targetSheet =
+    targetRequest === null ? null : (
+      <PlanTargetSheet
+        fromMile={targetRequest.fromMile}
+        toMile={targetRequest.toMile}
+        pois={pois}
+        elevation={elevation}
+        units={units}
+        {...(targetRequest.initialTarget === undefined
+          ? {}
+          : { initialTarget: targetRequest.initialTarget })}
+        {...(targetRequest.initialStartDate === undefined
+          ? {}
+          : { initialStartDate: targetRequest.initialStartDate })}
+        onCancel={() => setTargetRequest(null)}
+        onLayOut={handleLayOut}
+      />
+    )
 
   // Zoomed out past what the download covers (#216).
   //
@@ -1822,6 +2089,47 @@ function App() {
     )
   }
 
+  if (activeTab === 'plan') {
+    return (
+      <>
+        <div className="app__screen">
+          <div>
+            {/* Its own boundary like More's, and for More's reason: a throw
+                in the timeline must not cost the map, and the tab bar
+                underneath is the way back. */}
+            <ErrorBoundary fallback={() => <ScreenFailed what="This screen" />}>
+              <PlanScreen
+                plan={plan}
+                elevation={elevation}
+                units={units}
+                onStartOnMap={openRouteBuilder}
+                onChangeTarget={handleChangeTarget}
+                onInsertZeroAfter={(index) =>
+                  applyPlanEdit((current) => insertZeroAfter(current, index))
+                }
+                onRemoveDay={(index) =>
+                  applyPlanEdit((current) => removeDay(current, index))
+                }
+                onTogglePinned={(index) =>
+                  applyPlanEdit((current) => togglePinned(current, index))
+                }
+                // The stop a day ends at is boundary index + 1 - the plan's
+                // own storage shape (lib/plan.ts).
+                onToggleEndResupply={(index) =>
+                  applyPlanEdit((current) => toggleResupply(current, index + 1))
+                }
+                onDeletePlan={handleDeletePlan}
+                {...(targetSheet === null ? {} : { targetSheet })}
+              />
+            </ErrorBoundary>
+          </div>
+          <TabBar active={activeTab} onSelect={setActiveTab} />
+        </div>
+        {downloadsWindow}
+      </>
+    )
+  }
+
   // The map is both the likeliest thing in this app to throw - WebGL, a GPS
   // watcher, byte-range reads against an archive that can be 1.18 GB, and a
   // pile of MapLibre attach/detach lifecycle - and the worst thing to lose,
@@ -1958,6 +2266,28 @@ function App() {
                 onClose={() => setAtcNoticesOpen(false)}
               />
             ) : null
+          }
+          routeDrawing={routeDrawing}
+          // Taps stop dropping points while the target sheet is up - the
+          // sheet covers the card that would explain them.
+          onRouteTap={
+            routeDraft === null || targetRequest !== null ? undefined : handleRouteTap
+          }
+          routeSheet={
+            targetRequest !== null ? (
+              targetSheet
+            ) : routeDraft === null ? null : (
+              <RouteSheet
+                legs={routeLegDisplays}
+                pointCount={routeDraft.points.length}
+                direction={routeDirection(routeDraft.points)}
+                units={units}
+                refusedTap={routeDraft.refusedTap}
+                onUndo={handleRouteUndo}
+                onCancel={handleRouteCancel}
+                onBreakIntoDays={handleBreakIntoDays}
+              />
+            )
           }
           warnings={warningPins}
           time={now}

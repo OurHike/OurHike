@@ -4,10 +4,12 @@ import userEvent from '@testing-library/user-event'
 import { TabBar } from './TabBar'
 import { TABS } from './tabs'
 
-// WIREFRAMES.md, map screen §6: Trail / More. Downloads was the third of these
-// and went on 2026-08-05 - one whole-corridor package does not need a permanent
-// target in the thumb zone, where every tab costs the others accuracy mid-walk.
-// The download opens as a window from the background picker instead.
+// Trail / Plan / More. WIREFRAMES.md §6 drew the MVP pair; Plan is v2's first
+// feature (#756) and the v2 wireframes draw it second on every bar. Downloads
+// was a third tab once and went on 2026-08-05 - one whole-corridor package
+// does not need a permanent target in the thumb zone, where every tab costs
+// the others accuracy mid-walk. It opens as a window from the background
+// picker instead, and chrome/tabs.ts carries the standard a tab has to meet.
 
 const PROPS = { active: 'trail' as const, onSelect: vi.fn() }
 
@@ -17,11 +19,12 @@ afterEach(() => {
 })
 
 describe('TabBar', () => {
-  it('has exactly the two MVP tabs, in order', () => {
+  it('has exactly the three tabs, in order', () => {
     render(<TabBar {...PROPS} />)
 
     expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
       'Trail',
+      'Plan',
       'More',
     ])
   })

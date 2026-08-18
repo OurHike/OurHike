@@ -19,14 +19,39 @@ export interface NaismithInput {
   ascentFt: number
 }
 
-export function naismithTime({ distanceMi, ascentFt }: NaismithInput): string {
+/**
+ * Naismith's moving time in unrounded minutes.
+ *
+ * The number under `naismithTime`, exported for the places that must add or
+ * compare estimates BEFORE display - a route's total across legs, a day
+ * planner's cost function, a timeline row's height. Rounding each leg to 5
+ * minutes and then summing would let the printed total drift from the printed
+ * legs by up to 5 minutes a leg; arithmetic happens here, display rules
+ * (the 5-minute step, the ≈) happen once, at the end, in naismithTime.
+ *
+ * pipeline/spike_day_planner.py carries a copy of this arithmetic for
+ * measurement and names this file as the one that is right if they disagree.
+ */
+export function naismithMinutes({ distanceMi, ascentFt }: NaismithInput): number {
   const distanceKm = distanceMi * MILES_TO_KM
   const ascentM = ascentFt * FEET_TO_METERS
 
   const distanceMinutes = (distanceKm / KM_PER_HOUR) * 60
   const ascentMinutes = (ascentM / METERS_PER_ASCENT_HOUR) * MINUTES_PER_HOUR_OF_ASCENT
 
-  const totalMinutes = distanceMinutes + ascentMinutes
+  return distanceMinutes + ascentMinutes
+}
+
+export function naismithTime(input: NaismithInput): string {
+  return formatNaismithMinutes(naismithMinutes(input))
+}
+
+/**
+ * The display rule for a moving-time estimate that has already been computed -
+ * same 5-minute rounding, same ≈, same everything as naismithTime, for the
+ * call sites that summed naismithMinutes across legs first.
+ */
+export function formatNaismithMinutes(totalMinutes: number): string {
   const rounded = Math.round(totalMinutes / ROUND_TO_MINUTES) * ROUND_TO_MINUTES
 
   const hours = Math.floor(rounded / 60)

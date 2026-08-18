@@ -1156,6 +1156,485 @@
   color: var(--fg-3);
 }
 
+/* ---------- Route entrance sheet (RouteEntranceSheet.tsx, #755) ---------- */
+
+/* The closure sheet's frame with the brand's top rule instead of the danger
+   one: same dock, same scroll ceiling, but nothing about a route changes what
+   a hiker does next - red stays reserved for the sheets that do. */
+.route-entrance {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  max-height: 70%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  padding: var(--space-4, 16px);
+  background: var(--bg-surface);
+  border-top: 3px solid var(--brand-primary);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+.route-entrance__note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fg-2);
+}
+
+.route-entrance__start {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-3, 12px);
+  border: 1.5px solid var(--border-strong);
+  border-radius: 10px;
+  background: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-1);
+  cursor: pointer;
+  text-align: left;
+}
+
+.route-entrance__start--empty {
+  border-style: dashed;
+  font-weight: 400;
+  color: var(--fg-2);
+}
+
+.route-entrance__start-mile {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--fg-3);
+}
+
+.route-entrance__doors {
+  display: flex;
+  gap: var(--space-2, 8px);
+}
+
+.route-entrance__door {
+  padding: 6px var(--space-3, 12px);
+  border: 1.5px dashed var(--border-1);
+  border-radius: var(--radius-pill, 999px);
+  background: none;
+  font-size: 12px;
+  color: var(--fg-2);
+  cursor: pointer;
+}
+
+.route-entrance__door:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* The one loud row: the days-to-miles conversion, an assumption said in
+   words. Warning tones because it is exactly the kind of number a hiker
+   might otherwise take as measured. */
+.route-entrance__reach {
+  margin: 0;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border: 1.5px solid var(--warning);
+  border-radius: 8px;
+  background: var(--surface-warning);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--fg-1);
+}
+
+.route-entrance__end {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3, 12px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border: 1.5px dashed var(--border-1);
+  border-radius: 8px;
+}
+
+.route-entrance__end-label {
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.route-entrance__end-note {
+  font-size: 12px;
+  color: var(--fg-3);
+}
+
+.route-entrance__end-stop {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.route-entrance__end-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.route-entrance__end-meta {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-3);
+}
+
+/* ---------- Editable route (RouteStopsPanel.tsx, #755) ---------- */
+
+/* Fields over the map, the anatomy every phone knows: stop fields docked to
+   the top edge, one result bar docked to the bottom, the map the hero
+   between them. It sits where the status strip and ribbon live - a stated
+   tradeoff of the chosen design, not an accident. */
+.route-stops {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  max-height: 55%;
+  overflow-y: auto;
+  padding: var(--space-3, 12px) var(--space-4, 16px);
+  background: var(--bg-surface);
+  border-bottom: 2px solid var(--border-strong);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 12%);
+}
+
+.route-stops__close {
+  position: absolute;
+  top: var(--space-2, 8px);
+  right: var(--space-2, 8px);
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  font-size: 16px;
+  color: var(--fg-2);
+  cursor: pointer;
+}
+
+.route-stops__list {
+  display: flex;
+  flex-direction: column;
+}
+
+.route-stops__entry {
+  display: grid;
+  grid-template-columns: 12px 1fr;
+  column-gap: var(--space-2, 8px);
+  align-items: center;
+}
+
+.route-stops__dot {
+  position: relative;
+  justify-self: center;
+  width: 10px;
+  height: 10px;
+  border: 2.5px solid var(--fg-1);
+  border-radius: 50%;
+  background: var(--bg-surface);
+}
+
+.route-stops__dot--end {
+  background: var(--fg-1);
+}
+
+/* The rail between dots, drawn by every entry but the last. */
+.route-stops__entry:not(:last-child) .route-stops__dot::after {
+  content: '';
+  position: absolute;
+  left: 1px;
+  top: 10px;
+  height: 26px;
+  border-left: 2px dotted var(--border-1);
+}
+
+.route-stops__field {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  min-height: 38px;
+  margin: 3px 0;
+  padding: 0 var(--space-3, 12px);
+  border: 1.5px solid var(--border-1);
+  border-radius: 10px;
+  background: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-1);
+  cursor: pointer;
+  text-align: left;
+}
+
+.route-stops__mile {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--fg-3);
+}
+
+.route-stops__leg {
+  grid-column: 2;
+  padding: 1px 0 3px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--fg-2);
+}
+
+.route-stops__add {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  width: calc(100% - 20px);
+  min-height: 38px;
+  margin: var(--space-2, 8px) 0 0 20px;
+  padding: 0 var(--space-3, 12px);
+  border: 1.5px dashed var(--border-1);
+  border-radius: 10px;
+  background: none;
+  font-size: 13px;
+  color: var(--fg-2);
+  cursor: pointer;
+  text-align: left;
+}
+
+.route-stops-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-3, 12px) var(--space-4, 16px);
+  background: var(--bg-surface);
+  border-top: 3px solid var(--brand-primary);
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+.route-stops-bar__note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.route-stops-bar__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3, 12px);
+}
+
+.route-stops-bar__figures {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--fg-1);
+}
+
+.route-stops-bar__break {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-4, 16px);
+  border: none;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--brand-primary);
+  color: var(--fg-on-brand);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ---------- Stop picker (RouteStopPicker.tsx, #755) ---------- */
+
+/* The search overlay's frame (`.search`), worn by the route flow: full
+   cover, so the choosing is the whole screen while it lasts. */
+.stop-picker {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-page);
+}
+
+.stop-picker__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  padding: var(--space-2, 8px) var(--space-4, 16px);
+  border-bottom: 1px solid var(--border-1);
+}
+
+.stop-picker__back {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: none;
+  font-size: 16px;
+  color: var(--fg-2);
+  cursor: pointer;
+}
+
+.stop-picker__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.stop-picker__input {
+  flex: 1;
+  min-height: 40px;
+  padding: 0 var(--space-3, 12px);
+  border: 1.5px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  font-size: 14px;
+  color: var(--fg-1);
+}
+
+.stop-picker__empty {
+  margin: 0;
+  padding: var(--space-4, 16px);
+  font-size: 14px;
+  color: var(--fg-2);
+}
+
+.stop-picker__results {
+  margin: 0;
+  padding: 0 var(--space-4, 16px);
+  list-style: none;
+  overflow-y: auto;
+}
+
+.stop-picker__result {
+  border-bottom: 1px dashed var(--border-1);
+}
+
+.stop-picker__result-button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+  padding: var(--space-2, 8px) 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.stop-picker__result-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.stop-picker__result-meta {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-3);
+}
+
+.stop-picker__doors {
+  margin-top: auto;
+  padding: var(--space-3, 12px) var(--space-4, 16px) var(--space-4, 16px);
+  border-top: 2px solid var(--border-strong);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stop-picker__door {
+  display: flex;
+  align-items: center;
+  min-height: var(--min-touch-target, 44px);
+  border: none;
+  background: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-1);
+  cursor: pointer;
+  text-align: left;
+}
+
+.stop-picker__door--remove {
+  color: var(--danger);
+}
+
+.stop-picker__limit {
+  margin: var(--space-2, 8px) 0 0;
+  padding: var(--space-3, 12px);
+  font-size: 13px;
+  color: var(--fg-2);
+  background: var(--bg-sunken);
+  border-radius: 10px;
+}
+
+.stop-picker__distance {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  padding: var(--space-4, 16px);
+}
+
+/* ---------- Map pick bar (RouteMapPickBar.tsx, #755) ---------- */
+
+.route-map-pick {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  padding: var(--space-3, 12px) var(--space-4, 16px);
+  background: var(--bg-surface);
+  border-top: 3px solid var(--brand-primary);
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+.route-map-pick__hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fg-1);
+}
+
+.route-map-pick__hint [role='status'] {
+  color: var(--danger);
+}
+
+.route-map-pick__cancel {
+  flex: none;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-4, 16px);
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-pill, 999px);
+  background: none;
+  color: var(--fg-1);
+  font-size: 14px;
+  cursor: pointer;
+}
+
 /* ---------- Every ATC notice (AtcNoticeList.tsx) ---------- */
 
 /* The single-notice sheet's frame, with one difference that is the whole

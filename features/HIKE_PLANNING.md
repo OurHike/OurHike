@@ -217,6 +217,20 @@ Three concrete outcomes beat one abstract question. Nobody can answer "should I 
 
 The manual half, which the generator does not replace: a hiker drops points and gets numbers back.
 
+> **Amended 2026-08-18: the entrance changed; the arithmetic did not.** The
+> maintainer redirected the builder to a destination-led flow — "like a Google
+> Maps route that lets you add multiple destinations": look a stop up by name
+> first, with the map and a distance from the previous stop as the other two
+> doors, and *where from + how far / how long* as the opening question
+> (PR #774, from mockups chosen there). Tap-to-drop is no longer the input
+> mechanism. What survives of the bullets below: `locateOnTrail()`'s snap and
+> the 3-mile refusal, behind the picker's "choose on the map" door; the
+> least-added-distance insertion, placing added destinations rather than taps;
+> and every figure and limitation, unchanged. An added destination is also now
+> a *forced day boundary* the generator plans through (`planDaysVia`), pinned
+> in the laid-out plan — on a linear trail, forcing the boundary is the whole
+> meaning of naming a stop.
+
 - **Tap the trail to drop a point.** It snaps to the centerline via `locateOnTrail()`; a tap more than 3 miles off any centerline vertex is refused rather than placed, because there is no honest mile to give it.
 - **The first point is the start, the last is the end, and everything between is intermediate.** No modes, no separate "add waypoint" tool.
 - **A new point is inserted where it adds the least distance** — which makes both natural workflows work without the hiker learning a rule. Tapping in walking order always appends; tapping between two existing points always inserts there; tapping behind the start extends the hike backwards from it.

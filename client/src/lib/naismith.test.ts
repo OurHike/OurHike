@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { naismithTime } from './naismith'
+import { formatNaismithMinutes, naismithMinutes, naismithTime } from './naismith'
 
 describe('naismithTime', () => {
   it('formats the exact WIREFRAMES.md example: 2.6 mi / 640 ft ascent -> ≈1h 10m', () => {
@@ -46,5 +46,40 @@ describe('naismithTime', () => {
     // ~5km/h for exactly 1 hour with no ascent = ~3.107mi
     const result = naismithTime({ distanceMi: 3.107, ascentFt: 0 })
     expect(result).toBe('≈1h')
+  })
+})
+
+describe('naismithMinutes', () => {
+  it('is the unrounded number under naismithTime', () => {
+    // 10 km flat at 5 km/h is exactly 120 minutes.
+    expect(naismithMinutes({ distanceMi: 10 / 1.609344, ascentFt: 0 })).toBeCloseTo(120)
+    // 600 m of ascent alone is exactly 60 minutes.
+    expect(naismithMinutes({ distanceMi: 0, ascentFt: 600 / 0.3048 })).toBeCloseTo(60)
+  })
+
+  it('does not round - rounding is the display rule, not the arithmetic', () => {
+    // A route's total is summed from these BEFORE display. If each leg were
+    // rounded to 5 minutes first, the printed total could drift from the
+    // printed legs by 5 minutes a leg.
+    const oneLeg = naismithMinutes({ distanceMi: 1.3, ascentFt: 100 })
+    expect(oneLeg % 5).not.toBe(0)
+  })
+
+  it('agrees with naismithTime once formatted', () => {
+    const input = { distanceMi: 2.6, ascentFt: 640 }
+    expect(formatNaismithMinutes(naismithMinutes(input))).toBe(naismithTime(input))
+  })
+})
+
+describe('formatNaismithMinutes', () => {
+  it('applies the same 5-minute step and ≈ prefix as naismithTime', () => {
+    expect(formatNaismithMinutes(69.7)).toBe('≈1h 10m')
+    expect(formatNaismithMinutes(60)).toBe('≈1h')
+    expect(formatNaismithMinutes(4)).toBe('≈5m')
+  })
+
+  it('never formats as an arrival clock time', () => {
+    expect(formatNaismithMinutes(500)).not.toMatch(/\d{1,2}:\d{2}/)
+    expect(formatNaismithMinutes(500)).not.toMatch(/am|pm/i)
   })
 })

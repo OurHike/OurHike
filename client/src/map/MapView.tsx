@@ -44,6 +44,7 @@ import { attachClosureData, type ClosureBand } from './closureLayers'
 import { attachDroughtData, setDroughtVisible, type DroughtBand } from './droughtLayers'
 import { attachWarningData, attachWarningIcon, type WarningPoint } from './warningLayers'
 import { attachPoiTaps } from './poiTaps'
+import { attachRouteData, attachRouteTaps, type RouteDrawing } from './routeLayers'
 import type { BoundingBox, MapPoint } from '../lib/legendContents'
 import type {
   BackgroundSource,
@@ -125,6 +126,19 @@ export interface MapViewProps {
    * header of warningLayers.ts.
    */
   warnings?: readonly WarningPoint[]
+  /**
+   * The route being built, already in map coordinates - same division as
+   * `closures`: turning miles into geometry needs the centerline index,
+   * which the shell holds. Null (or absent) clears the drawing.
+   */
+  routeDrawing?: RouteDrawing | null
+  /**
+   * When set, the map is in route-building mode: a tap anywhere reports its
+   * raw coordinate here, and the POI tap handler is NOT attached - one
+   * interpreter per touch (see routeLayers.ts's attachRouteTaps). Must be
+   * stable across renders (useCallback), like `onSelectPoi`.
+   */
+  onRouteTap?: (at: { lon: number; lat: number }) => void
   /** Initial centre only - later camera moves go through the map imperatively. */
   center?: [number, number]
   /** Initial zoom only. */
@@ -269,6 +283,8 @@ export function MapView({
   atcUpdatePoints = NO_ATC_POINTS,
   onSelectAtcUpdate,
   warnings = NO_WARNINGS,
+  routeDrawing = null,
+  onRouteTap,
   onSelectPoi,
   center,
   zoom,
@@ -583,18 +599,41 @@ export function MapView({
     return attachWarningData(map, warnings)
   }, [map, warnings])
 
+  // The route drawing, on the closure pattern: pushed onto the live map, its
+  // own effect so a point dropped mid-build re-serialises a few features and
+  // nothing else.
+  useEffect(() => {
+    if (map === null) return
+    return attachRouteData(map, routeDrawing)
+  }, [map, routeDrawing])
+
   // Taps are their own effect for the same reason: this one re-binds when the
   // shell hands over a different handler, which has nothing to do with the
   // pins themselves and must not re-push the POI source to do it.
+  //
+  // Suppressed entirely while the route builder owns the tap. Two live
+  // handlers would race to interpret one touch - a tap meant to drop a point
+  // would also select whatever POI sat under it - and the ATC handler's
+  // hits-only contract (atcUpdateLayers.ts) only works because bare-ground
+  // taps have exactly one interpreter.
   useEffect(() => {
-    if (map === null || onSelectPoi === undefined) return
+    if (map === null || onSelectPoi === undefined || onRouteTap !== undefined) return
     return attachPoiTaps(map, onSelectPoi)
-  }, [map, onSelectPoi])
+  }, [map, onSelectPoi, onRouteTap])
 
   useEffect(() => {
-    if (map === null || onSelectAtcUpdate === undefined) return
+    if (map === null || onRouteTap === undefined) return
+    return attachRouteTaps(map, onRouteTap)
+  }, [map, onRouteTap])
+
+  // Suppressed in route mode for the same one-interpreter rule as the POI
+  // taps above: a point dropped near an ATC notice must not also open its
+  // sheet over the builder.
+  useEffect(() => {
+    if (map === null || onSelectAtcUpdate === undefined || onRouteTap !== undefined)
+      return
     return attachAtcUpdateTaps(map, onSelectAtcUpdate)
-  }, [map, onSelectAtcUpdate])
+  }, [map, onSelectAtcUpdate, onRouteTap])
 
   useEffect(() => {
     if (map === null || onViewportChange === undefined) return

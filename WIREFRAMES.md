@@ -55,7 +55,11 @@ Where a wireframe _does_ commit to an exact value, it's because the value carrie
    space in the app and a one-off errand had a third of it; the download is
    reached from the background picker instead, which is the control someone is
    already looking at when they want it. It returns as a tab in v2, when there
-   is more than one package to manage.
+   is more than one package to manage. **Amended 2026-08-18: Plan is the middle
+   tab** (#756) — v2's first feature, a surface a hiker stands in every evening
+   of a thru-hike rather than an errand, drawn second on every bar in the v2
+   wireframes. The standard the Downloads removal set is what it was measured
+   against; `client/src/chrome/tabs.ts` carries the argument.
 
 **Interaction rules:** everything tapped mid-walk sits in the lower third; everything read but not touched sits above. Locate is blue while tracking, grey when the fix is lost (`7b`).
 

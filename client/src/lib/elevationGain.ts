@@ -189,3 +189,90 @@ export function gainBetween(
 export function rawCumulativeGain(elevations: (number | null)[]): number {
   return cumulativeGainOverGaps(elevations, 0)
 }
+
+// ---------------------------------------------------------------------------
+// Descent. The same functions on a negated profile - deliberately nothing
+// more, so confirmed descent uses exactly the dead band confirmed ascent does
+// and the two can never drift apart (features/HIKE_PLANNING.md, "The route
+// builder"). A separate descent implementation would be a second place for
+// the threshold to live, which is how the gain/loss pair on one leg ends up
+// measured by two different rules.
+
+/** Total confirmed descent across samples that may contain DEM coverage
+ *  gaps. `cumulativeGainOverGaps` upside down, and nothing else. */
+export function cumulativeLossOverGaps(
+  elevations: (number | null)[],
+  threshold = THRESHOLD_FT,
+): number {
+  return cumulativeGainOverGaps(
+    elevations.map((value) => (value === null ? null : -value)),
+    threshold,
+  )
+}
+
+/** Total confirmed descent over a profile, breaking at DEM gaps and part
+ *  seams exactly as the ascent side does. */
+export function cumulativeLossOverProfile(
+  samples: ProfileSample[],
+  threshold = THRESHOLD_FT,
+): number {
+  return cumulativeGainOverProfile(
+    samples.map((sample) => ({
+      ...sample,
+      elevationFt: sample.elevationFt === null ? null : -sample.elevationFt,
+    })),
+    threshold,
+  )
+}
+
+/** Confirmed descent between two mileposts, in feet. Bounds are inclusive.
+ *  The mirror of `gainBetween`; both describe the window walked low-mile to
+ *  high-mile - see `reverseProfileWindow` for the other direction. */
+export function lossBetween(
+  profile: ProfileSample[],
+  startMi: number,
+  endMi: number,
+  threshold = THRESHOLD_FT,
+): number {
+  const window = profile.filter((s) => s.distanceMi >= startMi && s.distanceMi <= endMi)
+  return cumulativeLossOverProfile(window, threshold)
+}
+
+/**
+ * The same window, walked the other way.
+ *
+ * Gain and loss are direction-aware, and swapping the two totals afterwards
+ * is NOT the same operation (features/HIKE_PLANNING.md, "The route
+ * builder"): the dead-band algorithm is a hysteresis walked sample by
+ * sample, so which end a climb still in progress gets credited at, and where
+ * the direction first establishes itself, both depend on which way the run
+ * is read. Reverse the run, then count.
+ *
+ * `partStart` marks the seam BEFORE a sample - between it and its
+ * predecessor. Reversed, that same physical seam sits before the sample that
+ * used to precede it, so the marker moves one position: reversed[k] carries
+ * the flag original[n-k] had. The first reversed sample carries none, which
+ * is harmless - a break before everything breaks nothing.
+ *
+ * `distanceMi` values are kept as they are - honest positions on the axis,
+ * now in walk order rather than axis order. The counting functions never
+ * read them.
+ */
+export function reverseProfileWindow(samples: ProfileSample[]): ProfileSample[] {
+  const last = samples.length - 1
+  return samples.map((_, k) => {
+    const source = samples[last - k]
+    // The seam original[i].partStart describes sits between i-1 and i. In the
+    // reversed order that same boundary is crossed stepping from reversed[k-1]
+    // (source index last-k+1) into reversed[k] (source index last-k) - so
+    // reversed[k] takes the flag from source index last-k+1.
+    const flag = k === 0 ? undefined : samples[last - k + 1].partStart
+    return flag === undefined
+      ? { distanceMi: source.distanceMi, elevationFt: source.elevationFt }
+      : {
+          distanceMi: source.distanceMi,
+          elevationFt: source.elevationFt,
+          partStart: flag,
+        }
+  })
+}

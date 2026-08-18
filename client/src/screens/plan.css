@@ -1,0 +1,552 @@
+/* The Plan tab (screens/Plan.tsx, #756) and its two sheets. Semantic tokens
+   only - src/test/themeTokens.test.ts fails the build on a base-palette
+   token in an app stylesheet, which is what keeps this screen honest in
+   dark mode without a second copy of its colours. */
+
+.plan {
+  position: relative;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+  padding: var(--space-4, 16px);
+  padding-bottom: var(--space-8, 32px);
+  background: var(--bg-page);
+  color: var(--fg-1);
+}
+
+.plan__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+}
+
+.plan__title {
+  margin: 0;
+  font-family: var(--font-display, serif);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.plan__head-note {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-3);
+}
+
+/* ----- empty state: the app's own voice (wireframe 2c) ----- */
+
+.plan__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4, 16px);
+  padding: var(--space-8, 32px) var(--space-5, 20px);
+  text-align: center;
+}
+
+.plan__blazes {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2, 8px);
+}
+
+.plan__blaze {
+  width: 22px;
+  height: 34px;
+  border-radius: 2px;
+}
+
+.plan__blaze--white {
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border-2);
+}
+
+.plan__blaze--orange {
+  background: var(--accent-blaze-orange);
+}
+
+.plan__blaze--blue {
+  background: var(--accent-blaze-blue);
+}
+
+/* The handwritten voice. The wireframes draw it in Caveat; a cross-origin
+   font import is banned outright (design-system/tokens/typography.css
+   measured why at 12,956 ms), and self-hosting a fourth face is the design
+   system's call to make, not this screen's - so the voice is the display
+   face, italic, and the words carry the warmth. */
+.plan__empty-voice {
+  margin: 0;
+  font-family: var(--font-display, serif);
+  font-style: italic;
+  font-size: 21px;
+  line-height: 1.25;
+  color: var(--fg-1);
+}
+
+.plan__empty-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-2);
+  max-width: 34ch;
+}
+
+.plan__primary {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-6, 24px);
+  border: none;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--brand-primary);
+  color: var(--fg-on-brand);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.plan__primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ----- the timeline ----- */
+
+.plan__legend {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-3);
+}
+
+.plan__legend-swatch {
+  width: 18px;
+  border-top: 1.5px solid var(--border-2);
+}
+
+.plan__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+}
+
+.plan__section-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  padding: var(--space-3, 12px);
+  background: var(--bg-sunken);
+  border-radius: 10px;
+}
+
+.plan__section-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3, 12px);
+}
+
+.plan__section-title {
+  margin: 0;
+  font-family: var(--font-display, serif);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.plan__section-count {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--fg-3);
+  white-space: nowrap;
+}
+
+.plan__section-stats {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3, 12px);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-2);
+}
+
+.plan__section-food {
+  color: var(--warning);
+  font-weight: 500;
+}
+
+.plan__days {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.plan__row {
+  display: flex;
+  gap: var(--space-2, 8px);
+  align-items: stretch;
+}
+
+.plan__gutter {
+  flex: none;
+  width: 46px;
+  padding-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--fg-3);
+  text-align: left;
+}
+
+/* A row is a button - the tap opens its actions - styled as the terrain
+   card. Text resets are deliberate: buttons centre and bolden by default. */
+.plan__day {
+  position: relative;
+  flex: 1;
+  min-height: var(--min-touch-target, 44px);
+  overflow: hidden;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-card);
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: stretch;
+  font: inherit;
+  text-align: left;
+  color: var(--fg-1);
+  cursor: pointer;
+}
+
+.plan__day--zero {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  border-style: dashed;
+  border-color: var(--border-2);
+  background: var(--bg-sunken);
+  color: var(--fg-2);
+  font-size: 13px;
+}
+
+.plan__day--resupply {
+  border-color: var(--accent-blaze-orange);
+  background: var(--surface-warning);
+}
+
+/* A record, not a plan any more: greyed, dashless, and not a button. */
+.plan__day--walked {
+  border-color: var(--border-1);
+  background: var(--bg-sunken);
+  color: var(--fg-2);
+  cursor: default;
+}
+
+.plan__day-carry--walked {
+  color: var(--fg-3);
+}
+
+.plan__day-was {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--fg-3);
+}
+
+.plan__terrain {
+  position: absolute;
+  inset: auto 0 0 0;
+  width: 100%;
+  height: 72%;
+  pointer-events: none;
+}
+
+.plan__terrain-area {
+  fill: var(--brand-secondary);
+  opacity: 0.3;
+}
+
+.plan__terrain-line {
+  stroke: var(--brand-primary);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.plan__day-top,
+.plan__day-bottom {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2, 8px);
+}
+
+.plan__day-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.plan__day-pin {
+  margin-left: 6px;
+  font-size: 12px;
+}
+
+.plan__day-figure {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+
+.plan__day-carry {
+  position: relative;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--warning);
+}
+
+.plan__day-auto {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--fg-3);
+}
+
+.plan__foot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  margin-top: var(--space-2, 8px);
+}
+
+.plan__foot-action {
+  min-height: var(--min-touch-target, 44px);
+  border: 1.5px dashed var(--border-2);
+  border-radius: var(--radius-pill, 999px);
+  background: none;
+  color: var(--fg-2);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.plan__foot-action--danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* ----- the tapped day's actions ----- */
+
+.plan__actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-4, 16px);
+  margin: 0 calc(-1 * var(--space-4, 16px));
+  background: var(--bg-surface);
+  border-top: 3px solid var(--brand-primary);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+.plan__actions-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.plan__action {
+  min-height: var(--min-touch-target, 44px);
+  border: 1.5px solid var(--border-2);
+  border-radius: 10px;
+  background: var(--surface-card);
+  color: var(--fg-1);
+  font-size: 14px;
+  text-align: left;
+  padding: 0 var(--space-3, 12px);
+  cursor: pointer;
+}
+
+.plan__action--quiet {
+  border-style: dashed;
+  color: var(--fg-2);
+  text-align: center;
+}
+
+.plan__actions-note {
+  margin: 0;
+  padding: var(--space-3, 12px);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--fg-2);
+  background: var(--bg-sunken);
+  border-radius: 10px;
+}
+
+/* A cascade choice is a named outcome over its consequence line. */
+.plan__action .plan__choice-name {
+  display: block;
+  font-weight: 700;
+  font-size: 14px;
+  padding-top: var(--space-2, 8px);
+}
+
+.plan__action .plan__choice-line {
+  display: block;
+  font-size: 12.5px;
+  color: var(--fg-2);
+  padding-bottom: var(--space-2, 8px);
+}
+
+/* ----- the target sheet (PlanTargetSheet.tsx) ----- */
+
+.plan-target {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  max-height: 85%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  padding: var(--space-4, 16px);
+  background: var(--bg-surface);
+  border-top: 3px solid var(--brand-primary);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+.plan-target__units {
+  display: flex;
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-pill, 999px);
+  overflow: hidden;
+}
+
+.plan-target__unit {
+  flex: 1;
+  min-height: 38px;
+  border: none;
+  background: none;
+  color: var(--fg-3);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.plan-target__unit[aria-pressed='true'] {
+  background: var(--bg-inverse);
+  color: var(--fg-on-dark);
+}
+
+.plan-target__unit:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.plan-target__value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2, 8px);
+}
+
+.plan-target__figure {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 30px;
+  font-weight: 500;
+}
+
+.plan-target__unit-note {
+  font-size: 12px;
+  color: var(--fg-3);
+}
+
+.plan-target__slider {
+  width: 100%;
+  accent-color: var(--brand-primary);
+}
+
+.plan-target__caveat {
+  margin: 0;
+  padding: var(--space-3, 12px);
+  border: 1.5px solid var(--accent-blaze-yellow);
+  border-radius: 8px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--fg-1);
+  background: var(--surface-warning);
+}
+
+.plan-target__note {
+  margin: 0;
+  padding: var(--space-3, 12px);
+  font-size: 13px;
+  color: var(--fg-2);
+  background: var(--bg-sunken);
+  border-radius: 10px;
+}
+
+.plan-target__ceiling {
+  margin: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3, 12px);
+  font-size: 13px;
+}
+
+.plan-target__ceiling-value {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-2);
+  text-align: right;
+}
+
+.plan-target__date {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  font-size: 13px;
+}
+
+.plan-target__date input {
+  font: inherit;
+  padding: 6px 8px;
+  border: 1.5px solid var(--border-2);
+  border-radius: 8px;
+  background: var(--surface-card);
+  color: var(--fg-1);
+}
+
+.plan-target__reassure {
+  margin: 0;
+  font-family: var(--font-display, serif);
+  font-style: italic;
+  font-size: 14px;
+  text-align: center;
+  color: var(--fg-3);
+}

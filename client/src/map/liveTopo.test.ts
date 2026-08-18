@@ -50,6 +50,11 @@ import {
   ATC_UPDATE_POINT_LAYER_ID,
 } from '../lib/atcUpdateStyle'
 import { CLOSURE_CASING_LAYER_ID, CLOSURE_LAYER_ID } from '../lib/closureStyle'
+import {
+  ROUTE_CASING_LAYER_ID,
+  ROUTE_LINE_LAYER_ID,
+  ROUTE_POINT_LAYER_ID,
+} from './routeLayers'
 import { DROUGHT_LAYER_ID } from '../lib/droughtStyle'
 
 // The live background exists because a raster mosaic of pre-rendered US Topo
@@ -569,6 +574,12 @@ describe('the offline-only background', () => {
       DROUGHT_LAYER_ID,
       'trail-casing',
       'trail-blaze',
+      // The route being built survives the subtraction too (#755): planning
+      // an evening's next stretch at a shelter with no signal is a normal
+      // use of it, not an edge case.
+      ROUTE_CASING_LAYER_ID,
+      ROUTE_LINE_LAYER_ID,
+      ROUTE_POINT_LAYER_ID,
       CLOSURE_CASING_LAYER_ID,
       CLOSURE_LAYER_ID,
       // Both waypoint ranks (#597), dots under pins - a waypoint that wins its

@@ -219,14 +219,17 @@ POI data was the gap, and this is that gap's program.
 Like planning a hike, it starts as research rather than a build: register the org, survey the
 ring (the Catskills are NYS DEC land — a source this project does not have), spike Harriman's
 ~40 crossing trails against the app's one-linear-trail assumptions, then write the design.
-Two decisions are already taken and recorded in #768 — the centerline is always the chosen
-trail, and safety POIs (water, closures, serious warnings) draw for every trail on screen
-while amenity POIs stay with the chosen one. One is deliberately open — whether tapping a
-crossing trail can switch to it — and `features/NEARBY_TRAILS.md`, which **does not exist
-yet**, is where [#772](https://github.com/OurHike/OurHike/issues/772) lands it. The licence
-posture is the project's standing one: the maintainer is talking to OPRHP and NYNJTC
-directly, and until an answer is recorded in `sources.json`, everything here is
-fetch-and-review only.
+The display decisions were taken the same day, against the spike's measurements and a
+canvas of drawn alternatives, and **[features/NEARBY_TRAILS.md](features/NEARBY_TRAILS.md)
+now holds all of them** ([#772](https://github.com/OurHike/OurHike/issues/772)'s
+deliverable): the chosen-trail centerline with the others ghosted, a view-only sheet on
+tap (switching stays in the picker), safety POIs that ignore the choice, the closure
+treatment reused for long-term-closed trails, the route owner's line wherever two orgs
+draw the same trail, and a governed extension of the blaze palette (the Long Path's aqua
+is real paint). What "the org" means on a jointly-owned route is
+[#780](https://github.com/OurHike/OurHike/issues/780)'s research. The licence posture is
+the project's standing one: the maintainer is talking to OPRHP and NYNJTC directly, and
+until an answer is recorded in `sources.json`, everything here is fetch-and-review only.
 
 ## v2 — knowing whether any of it works
 

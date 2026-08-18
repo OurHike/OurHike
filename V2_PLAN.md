@@ -12,9 +12,9 @@ subjects had nothing to do with each other.
 
 **Every open issue appears exactly once below.** That was checked mechanically rather than
 by reading down the list: 117 open, 117 assigned, no duplicates, no omissions, on
-2026-08-17. Six more (#768–#772, #780) were filed 2026-08-18 and added as group **V** the
-same day. If you add an issue, add it to a group here or the next person will find it
-by accident.
+2026-08-17. Eight more (#768–#772, #780, #782–#783) were filed 2026-08-18 and added as
+group **V** the same day. If you add an issue, add it to a group here or the next person
+will find it by accident.
 
 *Written at 106 issues; groups **T** and **U** were added the same day when
 [HIKE_PLANNING.md](features/HIKE_PLANNING.md)'s and
@@ -467,7 +467,9 @@ tests it. And this feature must never become the second thing that sends a notif
 **#770 — Survey the trail sources within a day of NYC: DEC's Catskills, the NJ side, the counties, and what only OSM covers** ·
 **#771 — Spike: Harriman's crossing trails next to the AT — find what a trail network breaks that a linear trail never could** ·
 **#772 — Design the map when trails cross: one chosen centerline, every other trail visible, and safety pins that ignore the choice** ·
-**#780 — Research route ownership: the AT in NY has thirty owners, a landowner with final say per section, and a maintainer besides**
+**#780 — Research route ownership: the AT in NY has thirty owners, a landowner with final say per section, and a maintainer besides** ·
+**#782 — Grow the blaze palette under governance: the Long Path's aqua is real paint, and sprawl stops at a reviewed mapping table** ·
+**#783 — Draw the ghosted network and its view-only sheet: NEARBY_TRAILS.md's map, built**
 
 **Why together:** one maintainer scope call (2026-08-18, recorded in #768), and the
 children are one program: register, survey, spike, design — plus the ownership research

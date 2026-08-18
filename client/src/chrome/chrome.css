@@ -2594,3 +2594,17 @@ a.poi-card__credit::after {
   border: none;
   cursor: pointer;
 }
+
+/* "I already walked this" (#789) - quieter than Break into days, because
+   recording history is the rarer act and must not compete with planning. */
+.route-stops-bar__recorded {
+  flex: 1;
+  min-height: var(--min-touch-target, 44px);
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-pill, 999px);
+  background: none;
+  color: var(--fg-1);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}

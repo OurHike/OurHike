@@ -31,7 +31,7 @@
 // reference itself has gone (`from: 'missing'` below), which is the case
 // the UI is required to say out loud.
 
-import type { HikePlan } from './plan'
+import { buildPlan, type HikePlan, type PlanStop } from './plan'
 import type { StoredPoi } from './trailData'
 import type { Trip } from './trips'
 
@@ -324,3 +324,34 @@ export function hikeFromTrips(
 export function hikeOfTrip(hikes: readonly Hike[], tripId: string): Hike | null {
   return hikes.find((hike) => hike.tripIds.includes(tripId)) ?? null
 }
+
+// ---------------------------------------------------------------------------
+// Recording ground already walked (#789).
+
+/**
+ * A plan describing a stretch the hiker walked BEFORE the app knew about it.
+ *
+ * Every day in it is walked on arrival, and `generated` is false because
+ * nobody generated anything: these boundaries are what the hiker could
+ * remember. One boundary pair is the common case ("Springer to Damascus");
+ * more, when they remember more.
+ *
+ * THE TARGET IS A PLACEHOLDER AND NOT A TARGET. `HikePlan` requires one and
+ * `validatePlan` refuses a plan without it, but nobody aimed at anything
+ * here - the walking already happened. `Trip.recorded` is what tells every
+ * reader to ignore it, and the screens that would print a target are
+ * already inert on a walked plan (re-targeting refuses once anything is
+ * walked). Making `PlanTarget` admit a third "no target" shape would be the
+ * cleaner fix and would widen a validated shape that is already on phones,
+ * so it is named here rather than done in passing.
+ */
+export function recordedPlan(stops: PlanStop[], walkedOn?: string): HikePlan {
+  const plan = buildPlan(stops, { miles: PLACEHOLDER_TARGET_MI }, walkedOn)
+  return {
+    ...plan,
+    days: plan.days.map((day) => ({ ...day, generated: false, walked: true })),
+  }
+}
+
+/** See recordedPlan: a number the shape demands and nothing reads. */
+const PLACEHOLDER_TARGET_MI = 1

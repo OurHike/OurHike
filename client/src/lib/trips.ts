@@ -45,6 +45,18 @@ export interface Trip {
    */
   name: string
   plan: HikePlan
+  /**
+   * This trip was RECORDED from memory rather than planned (#789) - a
+   * stretch the hiker walked before they had the app, or without planning
+   * it. Every day in it is already walked; there are no days in the sense
+   * the timeline means, only the boundaries the hiker could remember.
+   *
+   * The flag exists because provenance changes what a screen may say. A
+   * recorded stretch of 300 miles is not a claim that anybody walked 300
+   * miles in a day, and nothing may print it as one - so readers that
+   * would show per-day figures show the stretch instead.
+   */
+  recorded?: boolean
 }
 
 export interface TripStore {
@@ -103,7 +115,12 @@ export function validateTripStore(candidate: unknown): TripStore | null {
     if (typeof trip.name !== 'string') continue
     const plan = validatePlan(trip.plan)
     if (plan === null) continue
-    trips.push({ id: trip.id, name: trip.name, plan })
+    trips.push({
+      id: trip.id,
+      name: trip.name,
+      plan,
+      ...(trip.recorded === true ? { recorded: true as const } : {}),
+    })
   }
 
   // A pointer at a trip that did not survive is not a pointer. Falling back
@@ -173,11 +190,17 @@ export async function clearTrips(): Promise<void> {
 // to remember which of them mutates.
 
 /** Keep a plan as a new trip, and open it. */
-export function addTrip(store: TripStore, plan: HikePlan, name?: string): TripStore {
+export function addTrip(
+  store: TripStore,
+  plan: HikePlan,
+  name?: string,
+  recorded = false,
+): TripStore {
   const trip: Trip = {
     id: crypto.randomUUID(),
     name: name === undefined || name === '' ? tripName(plan) : name,
     plan,
+    ...(recorded ? { recorded: true as const } : {}),
   }
   return { ...store, trips: [...store.trips, trip], openId: trip.id }
 }

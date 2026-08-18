@@ -187,3 +187,32 @@ describe('the hike over those trips (#788)', () => {
     expect(screen.queryByRole('button', { name: 'Group these into one hike' })).toBeNull()
   })
 })
+
+describe('a recorded stretch (#789)', () => {
+  const recorded: Trip = {
+    id: 'r',
+    name: 'Springer → Damascus',
+    recorded: true,
+    plan: (() => {
+      const built = buildPlan(
+        [
+          { mile: 0, name: 'Springer', resupply: false },
+          { mile: 470.8, name: 'Damascus', resupply: false },
+        ],
+        { miles: 1 },
+      )
+      built.days[0].walked = true
+      built.days[0].generated = false
+      return built
+    })(),
+  }
+
+  it('reads as recorded, and prints no day count against it', () => {
+    render(<TripList {...PROPS} trips={[recorded]} openId="r" />)
+
+    expect(screen.getByText('recorded')).toBeInTheDocument()
+    // 470.8 miles is not "1 day", and must never be shown as one.
+    expect(screen.getByText('470.8 mi')).toBeInTheDocument()
+    expect(screen.queryByText(/1 day/)).toBeNull()
+  })
+})

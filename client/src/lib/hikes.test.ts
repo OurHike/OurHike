@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest'
 import {
   clipSpans,
   hikeFigures,
+  recordedPlan,
   hikeFromTrips,
   hikeOfTrip,
   mergeSpans,
@@ -271,5 +272,85 @@ describe('hikeOfTrip', () => {
     ]
     expect(hikeOfTrip(hikes, 'a')?.id).toBe('h1')
     expect(hikeOfTrip(hikes, 'b')).toBeNull()
+  })
+})
+
+describe('recordedPlan - ground already walked (#789)', () => {
+  it('arrives walked, and nobody generated it', () => {
+    const plan = recordedPlan([
+      { mile: 0, name: 'Springer', resupply: false },
+      { mile: 470.8, name: 'Damascus', resupply: false },
+    ])
+
+    expect(plan.days).toHaveLength(1)
+    expect(plan.days[0].walked).toBe(true)
+    expect(plan.days[0].generated).toBe(false)
+    expect(walkedSpans(plan)).toEqual([{ from: 0, to: 470.8 }])
+  })
+
+  it('keeps every boundary the hiker could remember', () => {
+    // More detail when they have it: three stops record two walked
+    // stretches rather than flattening to one.
+    const plan = recordedPlan([
+      { mile: 0, resupply: false },
+      { mile: 165.7, resupply: false },
+      { mile: 470.8, resupply: false },
+    ])
+
+    expect(walkedSpans(plan)).toEqual([
+      { from: 0, to: 165.7 },
+      { from: 165.7, to: 470.8 },
+    ])
+  })
+
+  it('takes a date when there is one to give', () => {
+    const plan = recordedPlan(
+      [
+        { mile: 0, resupply: false },
+        { mile: 10, resupply: false },
+      ],
+      '2019-06-01',
+    )
+    expect(plan.days[0].date).toBe('2019-06-01')
+  })
+
+  it('counts once where a recorded stretch overlaps a walked trip', () => {
+    // The open question #789 raised, settled by the union rather than by
+    // whichever loop ran first: a hiker who recorded Georgia AND walked
+    // part of it again has not walked more trail than exists.
+    const recorded: Trip = {
+      id: 'r',
+      name: 'From memory',
+      recorded: true,
+      plan: recordedPlan([
+        { mile: 0, resupply: false },
+        { mile: 100, resupply: false },
+      ]),
+    }
+    const walkedAgain: HikePlan = buildPlan(
+      [
+        { mile: 60, resupply: false },
+        { mile: 140, resupply: false },
+      ],
+      { miles: 15 },
+    )
+    walkedAgain.days[0].walked = true
+
+    const hike: Hike = {
+      id: 'h',
+      name: 'Overlapping',
+      type: 'section',
+      start: { mile: 0 },
+      end: { mile: 200 },
+      tripIds: ['r', 'w'],
+    }
+    const figures = hikeFigures(
+      hike,
+      [recorded, { id: 'w', name: 'Again', plan: walkedAgain }],
+      [],
+    )
+
+    expect(figures.walkedMi).toBe(140) // not 180
+    expect(figures.leftMi).toBe(60)
   })
 })

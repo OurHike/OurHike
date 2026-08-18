@@ -166,7 +166,7 @@ import {
   updateTrip,
   type TripStore,
 } from './lib/trips'
-import { hikeFromTrips } from './lib/hikes'
+import { hikeFromTrips, recordedPlan } from './lib/hikes'
 import { TripList } from './screens/TripList'
 import { PlanScreen } from './screens/Plan'
 import { PlanTargetSheet } from './screens/PlanTargetSheet'
@@ -1739,6 +1739,32 @@ function App() {
    * Named for the ground rather than asked for: naming is a rename away,
    * and a dialog before the thing exists is a dialog nobody reads.
    */
+  /**
+   * Keep the drafted stretch as ground already walked (#789).
+   *
+   * The same two ends the builder just described, said in the past tense -
+   * which is why this door is here rather than behind a second way to name
+   * two places. Every day in the record is walked on arrival, so it feeds
+   * the roll-up and #791's gaps exactly as a walked trip does; `recorded`
+   * marks the provenance, so no screen prints a remembered 300-mile stretch
+   * as if somebody walked it in a day.
+   */
+  const handleRecordWalked = useCallback(() => {
+    if (routeDraft === null || routeDraft.phase !== 'editor') return
+    if (routeDraft.stops.length < 2) return
+    const stops = routeDraft.stops.map(({ mile, name, poiId }) => ({
+      mile,
+      ...(name === undefined ? {} : { name }),
+      ...(poiId === undefined ? {} : { poiId }),
+      resupply: false,
+    }))
+    const plan = recordedPlan(stops)
+    applyTripStore((store) => addTrip(store, plan, undefined, true))
+    setRouteDraft(null)
+    setStopPick(null)
+    setActiveTab('plan')
+  }, [routeDraft, applyTripStore])
+
   const handleGroupIntoHike = useCallback(() => {
     applyTripStore((store) => {
       const hike = hikeFromTrips(store.trips, 'My hike')
@@ -2762,6 +2788,7 @@ function App() {
                 onEditStop={handleEditStop}
                 onAddStop={handleAddStop}
                 onBreakIntoDays={handleBreakIntoDays}
+                onRecordWalked={handleRecordWalked}
                 onClose={handleRouteCancel}
               />
             )

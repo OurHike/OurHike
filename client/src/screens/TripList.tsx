@@ -17,7 +17,7 @@
 import { useState } from 'react'
 import type { ElevationProfile } from '../lib/elevationProfile'
 import { hikeFigures, type Hike } from '../lib/hikes'
-import { planDayViews, walkedDayCount, type HikePlan } from '../lib/plan'
+import { planDayViews, walkedDayCount } from '../lib/plan'
 import { dayDateLabel } from '../lib/planDisplay'
 import type { StoredPoi } from '../lib/trailData'
 import type { Trip } from '../lib/trips'
@@ -52,23 +52,32 @@ export interface TripListProps {
 
 /** Distance and days, off the plan. Zeros are days too - they hold a date
  *  and eat a day of food (lib/plan.ts) - so the count is every row the
- *  timeline would draw, not only the walking ones. */
-function summarise(plan: HikePlan, units: UnitSystem): string {
-  const views = planDayViews(plan)
+ *  timeline would draw, not only the walking ones.
+ *
+ *  A RECORDED stretch (#789) prints no day count: its "days" are the
+ *  boundaries a hiker could remember years later, not days anybody walked
+ *  as days, and "1 day" against 300 miles would be the display outrunning
+ *  its source. */
+function summarise(trip: Trip, units: UnitSystem): string {
+  const views = planDayViews(trip.plan)
   const distanceMi = views.reduce(
     (sum, day) => sum + Math.abs(day.end.mile - day.start.mile),
     0,
   )
+  if (trip.recorded === true) return formatDistance(distanceMi, units)
   const days = `${views.length} ${views.length === 1 ? 'day' : 'days'}`
   return `${formatDistance(distanceMi, units)} · ${days}`
 }
 
 /** "walked", "part walked", or nothing at all. A record, never a score:
  *  no percentage, no count of what is left, nothing to fall behind. */
-function walkedNote(plan: HikePlan): string | null {
-  const walked = walkedDayCount(plan)
+function walkedNote(trip: Trip): string | null {
+  // Provenance first: "recorded" says both that it is walked and that
+  // nobody planned it, which "walked" alone would not.
+  if (trip.recorded === true) return 'recorded'
+  const walked = walkedDayCount(trip.plan)
   if (walked === 0) return null
-  return walked === plan.days.length ? 'walked' : 'part walked'
+  return walked === trip.plan.days.length ? 'walked' : 'part walked'
 }
 
 export function TripList({
@@ -134,7 +143,7 @@ export function TripList({
       ) : (
         <ul className="trip-list__items">
           {trips.map((trip) => {
-            const note = walkedNote(trip.plan)
+            const note = walkedNote(trip)
             const dates = planDayViews(trip.plan)
               .map((day) => day.date)
               .filter((date): date is string => date !== null)
@@ -180,7 +189,7 @@ export function TripList({
                     >
                       <span className="trip-list__name">{trip.name}</span>
                       <span className="trip-list__meta">
-                        {summarise(trip.plan, units)}
+                        {summarise(trip, units)}
                         {dates.length > 0 && ` · from ${dayDateLabel(dates[0])}`}
                       </span>
                     </button>

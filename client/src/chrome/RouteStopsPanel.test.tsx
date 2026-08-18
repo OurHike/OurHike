@@ -27,6 +27,7 @@ const PROPS = {
   onEditStop: vi.fn(),
   onAddStop: vi.fn(),
   onBreakIntoDays: vi.fn(),
+  onRecordWalked: vi.fn(),
   onClose: vi.fn(),
 }
 
@@ -87,6 +88,10 @@ describe('the editable route', () => {
 
     await user.click(screen.getByRole('button', { name: 'Break into days' }))
     expect(PROPS.onBreakIntoDays).toHaveBeenCalled()
+
+    // The same stretch in the past tense (#789).
+    await user.click(screen.getByRole('button', { name: 'I already walked this' }))
+    expect(PROPS.onRecordWalked).toHaveBeenCalled()
 
     await user.click(screen.getByRole('button', { name: 'Close the route builder' }))
     expect(PROPS.onClose).toHaveBeenCalled()

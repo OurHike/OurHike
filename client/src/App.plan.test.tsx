@@ -22,6 +22,7 @@ import { appHarness, latOfMile } from './test/appHarness'
 import { MockMap } from './test/mocks/maplibre-gl'
 import { PLAN_KEY } from './lib/plan'
 import { TRIPS_KEY, type TripStore } from './lib/trips'
+import { hikeFigures } from './lib/hikes'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
@@ -165,6 +166,50 @@ describe('the planning flow', () => {
     // the generator's own boundary is not.
     expect(stored.days[0].pinned).toBe(true)
     expect(stored.days[1].pinned).toBe(false)
+  })
+
+  it('records a stretch already walked, and the hike roll-up counts it', async () => {
+    // #789: most of a section hiker's trail predates the app. Without this
+    // door the roll-up opens on somebody who has walked hundreds of miles
+    // and tells them the whole trail is ahead of them.
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+
+    await openEntrance(user)
+
+    await user.click(screen.getByRole('button', { name: 'search' }))
+    await user.type(await screen.findByLabelText('Search for a stop'), 'front')
+    await user.click(await screen.findByRole('button', { name: /Front Shelter/ }))
+    await user.click(screen.getByRole('button', { name: 'Use this stretch' }))
+    expect(await screen.findByRole('dialog', { name: 'Your route' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'I already walked this' }))
+
+    // Kept as a record, not a plan: the Plan tab shows it walked rather
+    // than as a day anybody is about to walk.
+    expect(await screen.findByText(/walked · not a plan any more/)).toBeInTheDocument()
+
+    const store = app.store.get(TRIPS_KEY) as TripStore
+    expect(store.trips).toHaveLength(1)
+    expect(store.trips[0].recorded).toBe(true)
+    expect(store.trips[0].plan.days.every((day) => day.walked === true)).toBe(true)
+
+    // And it is walked ground as far as any roll-up is concerned - which is
+    // the whole reason the door exists.
+    const figures = hikeFigures(
+      {
+        id: 'h',
+        name: 'Test',
+        type: 'section',
+        start: { mile: 0 },
+        end: { mile: 30 },
+        tripIds: store.trips.map((trip) => trip.id),
+      },
+      store.trips,
+      [],
+    )
+    expect(figures.walkedMi).toBeGreaterThan(0)
   })
 
   it('keeps the timeline across a relaunch, migrating the single-plan key', async () => {

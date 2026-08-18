@@ -1,32 +1,27 @@
 # Ordering the centerline pieces
 
-What `export_elevation.py` does to put ATC's centerline in trail order, why it
-is wrong in a measurable way, what the source geometry actually looks like, and
-which fixes have been tried and rejected.
+What `export_elevation.py` does to put ATC's centerline in trail order, what
+the source geometry actually looks like, which fixes failed, and the one that
+closed it.
 
-**This is a record, not a plan.** The ordering is a known-open problem
-(**#652 — The elevation profile's mile axis is out of order in 18 places, by up
-to 46 miles**) and is deliberately not being worked. It is written down because
-the measurements below cost a couple of hours and would otherwise have to be
-re-derived from issue comments by whoever picks it up.
+**Closed by marker calibration (#652 — The elevation profile's mile axis is
+out of order in 18 places, by up to 46 miles).** The graph-walking measurements
+below are kept as the record of why the obvious fixes do not work; the fix that
+does is at the bottom, and `calibrate_parts_to_markers()` in
+`export_elevation.py` is its implementation. #559 was independently fixed by
+marking the seams — see that module's docstring point 4 — and that fix stays
+correct regardless of ordering.
 
-**It is also not a blocker for the gain figures any more.** #559 is fixed by
-marking the seams rather than by ordering them correctly — see
-`export_elevation.py`'s docstring point 4 — and that fix stays correct however
-good the ordering ever gets. What ordering still affects is `distance_mi`: a
-sample's mile is its position in the sorted sequence, so where the sort is
-wrong, the mile axis is wrong.
-
-## What it does today
+## What the straight-axis sort did, and what it cost
 
 `ordered_oriented_parts()` reverses any piece whose own coordinates run
 north-to-south, then sorts every piece by its start point's
 `_trail_axis_projection` — the projection onto a straight Springer→Katahdin
-line. The function's docstring is upfront that this is a geographic
-approximation rather than a reconstruction, since `centerline.geojson` carries
-no trail-sequence field.
+line. It survives as the pre-calibration pass (it still supplies the
+orientation for pieces too small for the markers to orient), but nothing
+downstream reads a mile off its order any more.
 
-## What that costs, measured
+## What that cost, measured
 
 Against the live ATC centerline, 2026-08-13:
 
@@ -103,23 +98,49 @@ Neither was a serious attempt and neither should be read as proving the problem
 unsolvable. They are recorded because both look obviously correct before you
 run them.
 
-## What a real attempt would probably need
+## The fix that worked: calibrate to ATC's own miles, not to the graph
 
-In this order, none of it verified:
+The graph problem above never needed solving, because the source data carries
+a trail-sequence field after all — just not on the centerline.
+`half_mile_points_from_springer` is 4,395 points, each stamped with ATC's own
+NOBO mile in `Measure`, and they sit **on** the centerline: measured
+2026-08-18, the p99 marker→nearest-piece distance is 0.0 m and the maximum is
+3.4 m. `calibrate_parts_to_markers()` snaps each marker to its piece and then
+uses them for everything the projection was guessing at:
 
-1. **Dedupe the overlapping geometry first.** The degree-6 nodes are the
-   blocker, and they are upstream of any walking strategy. Worth finding out
-   whether they are exact duplicate segments, near-duplicates from separate
-   surveys, or genuine multi-way junctions that mean something.
-2. **Walk each component** once its nodes are mostly degree ≤ 2, starting from
-   a degree-1 end. Five components, so five walks.
-3. **Order the five chains geographically** — this is the only step the current
-   straight-axis projection is actually suited to, and with five items instead
-   of 558 its failure modes stop mattering.
-4. **Check it with the numbers above**, which is what makes this tractable to
-   verify: total gap should collapse toward the five real discontinuities, and
-   `check_elevation_gain.py`'s step-plausibility report should stop finding
-   impossible steps anywhere except those five.
+- **Order** comes from each piece's marker miles (the straight-axis sort had
+  143 junctions over 0.1 mi; the markers put every piece where ATC says it
+  is).
+- **Orientation** comes from whether `Measure` rises or falls along the
+  piece — which caught 33 pieces the axis heuristic had backwards, the AT's
+  real north-south switchbacks.
+- **Scale** comes from piecewise-linear interpolation through the markers, so
+  `distance_mi` *is* ATC's mile — the same scale closures'
+  `start_mile_marker` and ATC's updates quote. Between markers the piece's
+  own geometry carries the distance; past a piece's end markers it
+  extrapolates at unit slope.
+- **Duplicate geometry** (the degree-6 nodes) stops being a walking hazard
+  and becomes measurable: overlapping pieces land on overlapping mile ranges,
+  and `build_profile` publishes each mile once (~5 mi clipped on the real
+  data) instead of twice.
+
+Accuracy, measured honestly — each piece calibrated from its even-indexed
+markers, scored on the odd-indexed ones it never saw:
+
+| | uncalibrated axis (2026-08-18) | calibrated, held-out |
+|---|---:|---:|
+| median \|axis − Measure\| | 7.7 mi | **0.003 mi** |
+| p95 | 30.9 mi | 0.055 mi |
+| max | 101.8 mi | 0.497 mi |
+| within 0.5 mi of ATC | 2.5% | 100% |
+
+`measure_marker_agreement()` re-runs that holdout on every export and
+`require_marker_agreement()` refuses to publish if it drifts past thresholds
+set with 4–15x headroom over those figures — a quietly-degraded calibration
+would be worse than the fault it fixed, because this time the code claims to
+be calibrated. Pieces no marker snapped to (182 of 558, totalling 7.5 mi,
+none over 0.43 mi) are anchored from the nearest marker, bounding their error
+by the marker spacing plus their own length.
 
 ## Reproducing any of this
 

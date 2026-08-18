@@ -224,10 +224,7 @@ from shapely import STRtree
 from shapely import wkt as shapely_wkt
 
 from export_elevation import (
-    METERS_PER_MILE,
-    load_merged_trail_line,
-    ordered_oriented_parts,
-    reproject_lines_to_meters,
+    calibrated_trail_axis,
 )
 from lib.atc_notes import clean_note
 from lib.completeness import count_problems, fail_if_incomplete
@@ -1139,7 +1136,7 @@ def _reproject_points_to_meters(con: duckdb.DuckDBPyConnection, records: list[di
     return [shapely_wkt.loads(wkt) for _, wkt in rows]
 
 
-def attach_miles(con: duckdb.DuckDBPyConnection, records: list[dict], centerline_path: Path) -> int:
+def attach_miles(con: duckdb.DuckDBPyConnection, records: list[dict], centerline_path: Path, markers_path: Path) -> int:
     """Give every POI its position along the trail, on the profile's own scale
     (#753). Returns how many records got one.
 
@@ -1150,39 +1147,28 @@ def attach_miles(con: duckdb.DuckDBPyConnection, records: list[dict], centerline
     stays a derived view in the consumers (lib/hikeDirection.ts,
     core/hike_direction.py), never a second stored scale.
 
-    Computed by projecting each point onto the SAME ordered, merged, metric
-    centerline export_elevation.py samples the elevation profile along -
-    the same chain (load_merged_trail_line -> ordered_oriented_parts ->
-    reproject_lines_to_meters) and the same carry-straight-across-gaps
-    accumulation as sample_points_along_parts. That sameness is the whole
-    point: shelter miles and profile miles become one measurement by
-    construction, so a plan's day distance and that day's gain describe the
-    same stretch of ground. It also means both inherit the ordering fault
-    #652/#559 measured, TOGETHER - a POI in one of the 18 misordered
-    stretches gets the mile the profile would give it, and both improve in
-    lockstep if the ordering ever does. Consistent-but-imperfect is the
-    achievable half of Finding 1; a private better ordering here would
-    reintroduce the two-scales problem this field exists to end.
+    Computed by projecting each point onto the SAME marker-calibrated
+    centerline export_elevation.py samples the elevation profile along
+    (calibrated_trail_axis, #652). That sameness is the whole point: shelter
+    miles and profile miles become one measurement by construction, so a
+    plan's day distance and that day's gain describe the same stretch of
+    ground. And because the axis is calibrated to ATC's own half-mile
+    `Measure` field, it is also the scale closures' start_mile_marker and
+    ATC's updates already quote - one number, three surfaces, no offset.
     """
     if not records:
         return 0
 
-    parts_meters = reproject_lines_to_meters(con, ordered_oriented_parts(load_merged_trail_line(con, centerline_path)))
+    calibrated = calibrated_trail_axis(con, centerline_path, markers_path)
 
-    offsets = []
-    cumulative = 0.0
-    for part in parts_meters:
-        offsets.append(cumulative)
-        cumulative += part.length
-
-    tree = STRtree(parts_meters)
+    tree = STRtree([cal.line for cal in calibrated])
     points_meters = _reproject_points_to_meters(con, records)
     for record, point in zip(records, points_meters):
         index = int(tree.nearest(point))
-        mile = (offsets[index] + parts_meters[index].project(point)) / METERS_PER_MILE
+        cal = calibrated[index]
         # Three decimals, matching elevation_profile.json's distance_mi - the
         # axis this is meant to be comparable against digit for digit.
-        record["mile"] = round(mile, 3)
+        record["mile"] = round(cal.mile_at(cal.line.project(point)), 3)
     return len(records)
 
 
@@ -1377,8 +1363,8 @@ def main() -> dict:
     nearby = attach_nearby(clipped)
     print(f"  {nearby} anchors name the parts around them (#625 - the phone writes the sentence).")
 
-    with_miles = attach_miles(con, clipped, RAW_DIR / "centerline.geojson")
-    print(f"  {with_miles} POIs carry a mile, on the elevation profile's own axis (#753).")
+    with_miles = attach_miles(con, clipped, RAW_DIR / "centerline.geojson", RAW_DIR / "half_mile_points_from_springer.geojson")
+    print(f"  {with_miles} POIs carry a mile, on the marker-calibrated axis the profile shares (#753, #652).")
 
     commons_photos = load_photo_records(RAW_DIR / IMAGES_FILENAME)
     atc_photos = load_photo_records(RAW_DIR / ATC_IMAGES_FILENAME)

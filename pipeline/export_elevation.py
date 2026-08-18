@@ -16,11 +16,15 @@ Pipeline, mirroring patterns already established elsewhere in this repo:
    LineString - it merges into 558 separate pieces (114 of them under ~10m
    long), because real segment endpoints don't always touch exactly.
 2. Since centerline.geojson carries no explicit trail-sequence field,
-   ordered_oriented_parts() puts those disconnected pieces into a sensible
-   south-to-north order using a rough Springer->Katahdin axis, reorienting
-   any piece whose own raw coordinate order runs the "wrong" way. This is a
-   real, honestly-documented approximation, not a guaranteed-correct
-   trail-order reconstruction - see that function's docstring.
+   ordered_oriented_parts() first puts those disconnected pieces into a
+   rough south-to-north order using a straight Springer->Katahdin axis, and
+   then - because #652 measured that approximation misplacing 18 stretches
+   by more than ten miles - calibrate_parts_to_markers() re-orders,
+   re-orients and re-scales every piece against ATC's own
+   half_mile_points_from_springer `Measure` field, the one trail-sequence
+   field the source data has. distance_mi is therefore ATC's own NOBO mile
+   scale, held to it by a held-out accuracy gate (require_marker_agreement)
+   on every run. See ORDERING.md for the measurements behind both halves.
 3. Each ordered piece is reprojected to EPSG:5070 (NAD83 / Conus Albers -
    meters, the same CONUS-wide equal-distance choice spike_corridor.py/
    export_poi.py/export_trails.py already use) so shapely's .interpolate()
@@ -50,10 +54,11 @@ Pipeline, mirroring patterns already established elsewhere in this repo:
    markers and is measured as it always was, which is the only honest
    reading of a file that does not say where its seams are.
 
-   The ORDERING of the pieces is a separate, open problem - see
-   ORDERING.md, which records what the source geometry actually looks like
-   and why the obvious fixes do not work. Marking the seams is independent
-   of it and stays correct however the ordering is eventually improved.
+   The ORDERING of the pieces was a separate, open problem (#652) until the
+   marker calibration above closed it - ORDERING.md records what the source
+   geometry actually looks like, why the graph-walking fixes failed, and
+   why calibrating to ATC's markers is the one that worked. Marking the
+   seams is independent of it and stays correct regardless.
 5. Each sample point is reprojected back to lon/lat and looked up against
    the indexed DEM tiles via ElevationSampler, which reprojects each
    tile (see fetch_elevation.py's
@@ -85,6 +90,7 @@ being a documented manual procedure, not a pytest case.
 import hashlib
 import json
 from pathlib import Path
+from typing import NamedTuple
 
 import duckdb
 import numpy as np
@@ -93,6 +99,7 @@ from rasterio.vrt import WarpedVRT
 from rasterio.windows import Window
 from shapely import wkt as shapely_wkt
 from shapely.geometry import LineString, MultiLineString, Point
+from shapely.strtree import STRtree
 
 from lib.elevation_gain import (
     DEFAULT_THRESHOLD_FT,
@@ -103,6 +110,7 @@ from lib.elevation_gain import (
 
 ROOT = Path(__file__).parent
 CENTERLINE_PATH = ROOT / "data" / "raw" / "centerline.geojson"
+MARKERS_PATH = ROOT / "data" / "raw" / "half_mile_points_from_springer.geojson"
 ELEVATION_INDEX_PATH = ROOT / "data" / "raw" / "elevation" / "tile_index.json"
 OUT_PATH = ROOT / "data" / "processed" / "elevation_profile.json"
 MANIFEST_PATH = ROOT / "data" / "processed" / "elevation_manifest.json"
@@ -198,14 +206,14 @@ def ordered_oriented_parts(merged_geom) -> list[LineString]:
     raw coordinates run north-to-south, then all pieces are sorted by their
     (now-consistent) starting point's _trail_axis_projection.
 
-    Real, worth-being-upfront-about limitation: centerline.geojson carries
-    no explicit trail-sequence field, so this is a geographic approximation,
-    not a guaranteed-correct trail-order reconstruction - good enough for
-    the AT's overall SW-to-NE run, but a piece that runs opposite to that
-    axis at a large scale (the AT does have some real north-south
-    switchbacks, e.g. around the Smokies) could still land slightly out of
-    true hiking order. That's a limitation of the source data having no
-    sequence field, not something a smarter heuristic here fully solves."""
+    This is only the pre-calibration pass now: #652 measured this
+    approximation misplacing 18 stretches by more than ten miles (the AT's
+    real north-south switchbacks are exactly what a straight-axis sort
+    cannot see), so calibrate_parts_to_markers() re-orders, re-orients and
+    re-scales its output against ATC's half-mile `Measure` field before
+    anything downstream reads a mile. It is kept because pieces the markers
+    cannot orient (fewer than two markers snapped) keep the orientation
+    this gives them."""
     if isinstance(merged_geom, LineString):
         parts = [merged_geom]
     elif isinstance(merged_geom, MultiLineString):
@@ -248,6 +256,225 @@ def reproject_lines_to_meters(con: duckdb.DuckDBPyConnection, lines: list[LineSt
     finally:
         con.unregister("_parts_src")
     return [shapely_wkt.loads(wkt) for _, wkt in rows]
+
+
+# --- Marker calibration of the mile axis (#652) --------------------------
+#
+# The centerline carries no trail-sequence field, but ATC publishes one in
+# the only form the source data has: half_mile_points_from_springer's
+# `Measure` - 4,395 points, each stamped with ATC's own NOBO mile. Measured
+# 2026-08-18 against the live layers, the markers sit ON the centerline
+# (p99 marker->nearest-piece distance 0.0 m, max 3.4 m), so snapping each
+# marker to its piece is unambiguous, and 100 m is ~30x the worst real
+# offset - wide enough to survive upstream jitter, narrow enough that a
+# marker cannot land on the wrong piece except where two pieces genuinely
+# overlap, where either is as good.
+MARKER_SNAP_MAX_M = 100.0
+
+
+class CalibratedPart(NamedTuple):
+    """One centerline piece, oriented so ATC's mile increases along it, plus
+    the marker control points that map distance-along to ATC's mile scale.
+
+    `alongs_mi`/`miles` are parallel arrays: along-distance (miles) of each
+    snapped marker on `line`, and ATC's `Measure` there. mile_at() linearly
+    interpolates between them and extrapolates past the ends at unit slope -
+    so between markers the piece's own geometric spacing is preserved (the
+    warp is bounded by the geometry-vs-wheel disagreement over one half-mile
+    gap), and a piece's already-correct interior is shifted, never
+    reshaped."""
+
+    line: LineString
+    alongs_mi: np.ndarray
+    miles: np.ndarray
+
+    def mile_at(self, along_m):
+        along_mi = np.asarray(along_m, dtype=float) / METERS_PER_MILE
+        if len(self.alongs_mi) == 1:
+            out = self.miles[0] + (along_mi - self.alongs_mi[0])
+        else:
+            out = np.interp(along_mi, self.alongs_mi, self.miles)
+            lo, hi = self.alongs_mi[0], self.alongs_mi[-1]
+            out = np.where(along_mi < lo, self.miles[0] + (along_mi - lo), out)
+            out = np.where(along_mi > hi, self.miles[-1] + (along_mi - hi), out)
+        return float(out) if np.isscalar(along_m) or np.ndim(along_m) == 0 else out
+
+    @property
+    def start_mile(self) -> float:
+        return self.mile_at(0.0)
+
+
+def load_half_mile_markers(con: duckdb.DuckDBPyConnection, markers_path: Path) -> tuple[list[Point], np.ndarray]:
+    """ATC's half-mile markers as EPSG:5070 points plus their `Measure`
+    miles. Loud when the file is missing or empty rather than degrading to
+    the uncalibrated axis: an axis that silently loses its calibration is
+    #652 coming back with nothing logging that it did."""
+    if not markers_path.exists():
+        raise FileNotFoundError(
+            f"{markers_path} is missing - the mile axis is calibrated against ATC's "
+            "half-mile markers (#652) and cannot be built without them. "
+            "fetch_all.py fetches the layer."
+        )
+    features = json.loads(markers_path.read_text())["features"]
+    if not features:
+        raise ValueError(f"{markers_path} has no features - refusing to build an uncalibrated mile axis (#652).")
+    idx = np.arange(len(features))
+    xs = np.array([f["geometry"]["coordinates"][0] for f in features])
+    ys = np.array([f["geometry"]["coordinates"][1] for f in features])
+    miles = np.array([f["properties"]["Measure"] for f in features], dtype=float)
+    con.register("_markers_src", {"idx": idx, "x": xs, "y": ys})
+    try:
+        rows = con.execute(f"""
+            SELECT idx, ST_X(g), ST_Y(g) FROM (
+                SELECT idx, ST_Transform(ST_Point(x, y), '{GEOGRAPHIC_CRS}', '{PROJECTED_CRS}', always_xy := true) AS g
+                FROM _markers_src
+            ) ORDER BY idx
+        """).fetchall()
+    finally:
+        con.unregister("_markers_src")
+    return [Point(x, y) for _, x, y in rows], miles
+
+
+def _snap_markers_to_parts(
+    parts_meters: list[LineString], marker_points: list[Point], marker_miles: np.ndarray
+) -> dict[int, list[tuple[float, float]]]:
+    """part index -> [(along_m, mile)] for every marker within
+    MARKER_SNAP_MAX_M of that part, along-sorted."""
+    tree = STRtree(parts_meters)
+    snapped: dict[int, list[tuple[float, float]]] = {}
+    for point, mile in zip(marker_points, marker_miles):
+        index = int(tree.nearest(point))
+        part = parts_meters[index]
+        if part.distance(point) <= MARKER_SNAP_MAX_M:
+            snapped.setdefault(index, []).append((part.project(point), mile))
+    for pairs in snapped.values():
+        pairs.sort()
+    return snapped
+
+
+def _calibrated_part(line: LineString, pairs: list[tuple[float, float]]) -> tuple[CalibratedPart, bool]:
+    """Calibrate one piece from its along-sorted (along_m, mile) pairs.
+    Returns the calibrated part and whether the line was reversed.
+
+    With two or more markers the piece is oriented by them - reversed when
+    mile falls as along grows - which is what catches the 33 real switchback
+    pieces the straight-axis heuristic mis-orients (measured 2026-08-18).
+    With one marker the incoming orientation is kept: one point carries no
+    direction. Marker miles are made monotone with a running max before
+    interpolation; the jitter this absorbs is small (anchor-spread p95
+    median 60 m per piece, same measurement)."""
+    alongs = np.array([a for a, _ in pairs], dtype=float)
+    miles = np.array([m for _, m in pairs], dtype=float)
+    reversed_ = len(pairs) >= 2 and np.polyfit(alongs, miles, 1)[0] < 0
+    if reversed_:
+        line = LineString(list(line.coords)[::-1])
+        alongs = line.length - alongs
+        order = np.argsort(alongs)
+        alongs, miles = alongs[order], miles[order]
+    miles = np.maximum.accumulate(miles)
+    return CalibratedPart(line, alongs / METERS_PER_MILE, miles), reversed_
+
+
+def calibrate_parts_to_markers(
+    parts_meters: list[LineString], marker_points: list[Point], marker_miles: np.ndarray
+) -> list[CalibratedPart]:
+    """Order, orient, and scale every piece by ATC's own mile field (#652).
+
+    This replaces the straight Springer->Katahdin projection as the thing
+    that decides trail order. What it changes and what it leaves alone,
+    which is the shape the fix was asked for in: pieces already in the right
+    relative order keep that order and keep their internal geometric
+    spacing - a correct piece's miles change only by the offset that brings
+    them onto ATC's scale. The 18 stretches the projection had more than ten
+    miles out of place land where ATC says they are.
+
+    Pieces no marker snapped to - 182 of 558 on the real data, 7.5 mi in
+    total, none longer than 0.43 mi - are anchored from the nearest marker
+    outright: mile error there is bounded by the marker spacing plus the
+    piece's own length, a fraction of a mile on a fraction of a percent of
+    the trail, against the median 7.7 mi the uncalibrated axis measured."""
+    snapped = _snap_markers_to_parts(parts_meters, marker_points, marker_miles)
+    marker_tree = STRtree(marker_points)
+    calibrated = []
+    for index, line in enumerate(parts_meters):
+        pairs = snapped.get(index)
+        if not pairs:
+            nearest = int(marker_tree.nearest(line))
+            pairs = [(line.project(marker_points[nearest]), float(marker_miles[nearest]))]
+        calibrated.append(_calibrated_part(line, pairs)[0])
+    calibrated.sort(key=lambda cal: cal.start_mile)
+    return calibrated
+
+
+def measure_marker_agreement(parts_meters: list[LineString], marker_points: list[Point], marker_miles: np.ndarray) -> dict:
+    """How accurately the calibrated axis reproduces ATC's miles, measured
+    honestly: each piece is calibrated from its even-indexed markers only
+    and scored on the odd-indexed ones it never saw. Scoring the fit on its
+    own control points would measure nothing - interpolation passes through
+    them by construction.
+
+    Returns holdout count and median/p95/max absolute error in miles.
+    Reference figures from the real data (2026-08-18): median 0.003 mi,
+    p95 0.055 mi, max 0.497 mi over 2,022 held-out markers - against the
+    uncalibrated axis's median 7.7 mi and max 101.8 mi (#652)."""
+    snapped = _snap_markers_to_parts(parts_meters, marker_points, marker_miles)
+    errors = []
+    for index, pairs in snapped.items():
+        if len(pairs) < 4:
+            continue
+        fitted, reversed_ = _calibrated_part(parts_meters[index], pairs[::2])
+        for along_m, mile in pairs[1::2]:
+            oriented_along = fitted.line.length - along_m if reversed_ else along_m
+            errors.append(abs(fitted.mile_at(oriented_along) - mile))
+    errors = np.array(errors) if errors else np.array([0.0])
+    return {
+        "holdout_marker_count": int(len(errors)),
+        "holdout_median_mi": float(np.median(errors)),
+        "holdout_p95_mi": float(np.percentile(errors, 95)),
+        "holdout_max_mi": float(errors.max()),
+    }
+
+
+# The gate on measure_marker_agreement's holdout error. Reasoned from the
+# 2026-08-18 real-data measurement above, with 4-15x headroom over what was
+# observed so upstream data drift does not flap the build - while staying
+# 15x under the smallest error the uncalibrated fault produced at median,
+# so a return of #652 cannot pass.
+MARKER_HOLDOUT_MAX_MEDIAN_MI = 0.05
+MARKER_HOLDOUT_MAX_P95_MI = 0.25
+MARKER_HOLDOUT_MAX_MI = 1.0
+
+
+def require_marker_agreement(agreement: dict) -> None:
+    """The accuracy gate: refuse to publish an axis that stopped agreeing
+    with ATC's own miles. A quietly-degraded calibration is the one failure
+    mode worse than the fault it fixed, because this time the code would
+    claim to be calibrated."""
+    breaches = []
+    if agreement["holdout_median_mi"] > MARKER_HOLDOUT_MAX_MEDIAN_MI:
+        breaches.append(f"median {agreement['holdout_median_mi']:.3f} mi > {MARKER_HOLDOUT_MAX_MEDIAN_MI}")
+    if agreement["holdout_p95_mi"] > MARKER_HOLDOUT_MAX_P95_MI:
+        breaches.append(f"p95 {agreement['holdout_p95_mi']:.3f} mi > {MARKER_HOLDOUT_MAX_P95_MI}")
+    if agreement["holdout_max_mi"] > MARKER_HOLDOUT_MAX_MI:
+        breaches.append(f"max {agreement['holdout_max_mi']:.3f} mi > {MARKER_HOLDOUT_MAX_MI}")
+    if breaches:
+        raise SystemExit(
+            "Mile axis no longer agrees with ATC's half-mile markers on held-out points: "
+            + "; ".join(breaches)
+            + ". Refusing to publish a mis-calibrated axis (#652). Inspect the fetched "
+            "centerline and half_mile_points_from_springer layers for upstream changes."
+        )
+
+
+def calibrated_trail_axis(con: duckdb.DuckDBPyConnection, centerline_path: Path, markers_path: Path) -> list[CalibratedPart]:
+    """The one mile axis everything shares (#652, #753): merge the
+    centerline, orient/order/scale it by ATC's half-mile markers. Both the
+    elevation profile's distance_mi and export_poi's published POI mile come
+    off this function, which is what makes them one measurement."""
+    merged = load_merged_trail_line(con, centerline_path)
+    parts_meters = reproject_lines_to_meters(con, ordered_oriented_parts(merged))
+    marker_points, marker_miles = load_half_mile_markers(con, markers_path)
+    return calibrate_parts_to_markers(parts_meters, marker_points, marker_miles)
 
 
 def sample_points_along_parts(parts_meters: list[LineString], interval_m: float) -> list[tuple[float, Point, int]]:
@@ -468,24 +695,43 @@ def measure_cross_part_gaps(parts_meters: list[LineString]) -> tuple[float, floa
     return total_gap_m, max_gap_m
 
 
-def build_profile(centerline_path: Path, elevation_index_path: Path, interval_m: float) -> tuple[list[dict], tuple[float, float]]:
-    """Orchestrate the full merge -> order -> sample -> DEM-lookup pipeline
-    (see module docstring for the step-by-step rationale). Returns
-    (records, cross_part_gaps):
-    - records: sorted by distance_mi (guaranteed by construction - see
-      sample_points_along_parts), each with a null elevation_ft for any
-      point outside every downloaded DEM tile's coverage.
-    - cross_part_gaps: the (total_gap_m, max_gap_m) tuple from
-      measure_cross_part_gaps() - a diagnostic main() logs, not a value
-      reflected in any record's distance_mi."""
+def build_profile(
+    centerline_path: Path, markers_path: Path, elevation_index_path: Path, interval_m: float
+) -> tuple[list[dict], dict]:
+    """Orchestrate the full merge -> calibrate -> sample -> DEM-lookup
+    pipeline (see module docstring for the step-by-step rationale). Returns
+    (records, diagnostics):
+    - records: sorted by distance_mi (guaranteed by construction: each
+      piece's mile_at is monotone, pieces are emitted in calibrated order,
+      and any sample that would step the axis backwards - overlapping
+      duplicate source geometry, ~5 mi of the real trail - is dropped and
+      counted rather than published twice). Null elevation_ft for any point
+      outside every downloaded DEM tile's coverage.
+    - diagnostics: cross-part gap totals (measure_cross_part_gaps),
+      marker-agreement holdout stats (measure_marker_agreement, already
+      gated by require_marker_agreement before this returns), and the
+      overlap-clip counts."""
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
 
     merged = load_merged_trail_line(con, centerline_path)
-    parts_wgs84 = ordered_oriented_parts(merged)
-    parts_meters = reproject_lines_to_meters(con, parts_wgs84)
-    cross_part_gaps = measure_cross_part_gaps(parts_meters)
-    samples_meters = sample_points_along_parts(parts_meters, interval_m)
+    parts_meters = reproject_lines_to_meters(con, ordered_oriented_parts(merged))
+    marker_points, marker_miles = load_half_mile_markers(con, markers_path)
+
+    agreement = measure_marker_agreement(parts_meters, marker_points, marker_miles)
+    require_marker_agreement(agreement)
+
+    calibrated = calibrate_parts_to_markers(parts_meters, marker_points, marker_miles)
+    lines = [cal.line for cal in calibrated]
+    cross_part_gaps = measure_cross_part_gaps(lines)
+
+    offsets = []
+    cumulative = 0.0
+    for line in lines:
+        offsets.append(cumulative)
+        cumulative += line.length
+
+    samples_meters = sample_points_along_parts(lines, interval_m)
     lonlats = reproject_points_to_wgs84(con, samples_meters)
 
     tile_index = index_elevation_tiles(elevation_index_path)
@@ -497,16 +743,28 @@ def build_profile(centerline_path: Path, elevation_index_path: Path, interval_m:
 
     records = []
     previous_part = None
+    high_water = float("-inf")
+    clipped_count = 0
     for (distance_m, _pt, part), elevation_m in zip(samples_meters, elevations_m):
+        mile = calibrated[part].mile_at(distance_m - offsets[part])
+        # Where two pieces cover the same stretch of trail - duplicate
+        # geometry surviving the merge, see ORDERING.md's degree-6 nodes -
+        # their calibrated mile ranges overlap, and publishing both would
+        # put the same miles on the axis twice (and their phantom gain in
+        # the total, twice). The first piece to reach a mile keeps it.
+        if mile <= high_water:
+            clipped_count += 1
+            continue
+        high_water = mile
         record = {
-            "distance_mi": round(distance_m / METERS_PER_MILE, 3),
+            "distance_mi": round(mile, 3),
             "elevation_ft": round(elevation_m / METERS_PER_FOOT, 1) if elevation_m is not None else None,
         }
-        # Only on the first sample of a piece, and absent everywhere else
-        # (#559). A `part` index on all ~139,000 records would say the same
-        # thing and cost about a megabyte on an artifact hikers download over
-        # a trailhead's signal; the seams are 558 of them. A reader that does
-        # not know the key ignores it, which is what makes this additive.
+        # Only on the first emitted sample of a piece, and absent everywhere
+        # else (#559). A `part` index on all ~139,000 records would say the
+        # same thing and cost about a megabyte on an artifact hikers download
+        # over a trailhead's signal; the seams are 558 of them. A reader that
+        # does not know the key ignores it, which is what makes this additive.
         #
         # Including the very first sample, where breaking a run is a no-op.
         # Uniform is worth more than clever here: a consumer should be able to
@@ -516,12 +774,21 @@ def build_profile(centerline_path: Path, elevation_index_path: Path, interval_m:
             record["part_start"] = True
             previous_part = part
         records.append(record)
-    return records, cross_part_gaps
+
+    diagnostics = {
+        "cross_part_gaps": cross_part_gaps,
+        "marker_agreement": agreement,
+        "clipped_sample_count": clipped_count,
+        "clipped_mi": round(clipped_count * interval_m / METERS_PER_MILE, 2),
+    }
+    return records, diagnostics
 
 
 def main() -> dict:
-    print("Merging + ordering the real centerline...")
-    records, (total_gap_m, max_gap_m) = build_profile(CENTERLINE_PATH, ELEVATION_INDEX_PATH, SAMPLE_INTERVAL_METERS)
+    print("Merging the real centerline + calibrating to ATC's half-mile markers...")
+    records, diagnostics = build_profile(CENTERLINE_PATH, MARKERS_PATH, ELEVATION_INDEX_PATH, SAMPLE_INTERVAL_METERS)
+    total_gap_m, max_gap_m = diagnostics["cross_part_gaps"]
+    agreement = diagnostics["marker_agreement"]
     density = len(records) / (records[-1]["distance_mi"] or 1) if records else 0
     print(
         f"  {len(records)} sample points at {SAMPLE_INTERVAL_METERS}m intervals "
@@ -532,6 +799,15 @@ def main() -> dict:
         f"between disconnected centerline pieces - see module docstring point 4): "
         f"total {total_gap_m:.1f}m ({total_gap_m / METERS_PER_MILE:.3f}mi), "
         f"max single gap {max_gap_m:.1f}m ({max_gap_m / METERS_PER_MILE:.3f}mi)."
+    )
+    print(
+        f"  Marker agreement (held-out): median {agreement['holdout_median_mi']:.3f} mi, "
+        f"p95 {agreement['holdout_p95_mi']:.3f} mi, max {agreement['holdout_max_mi']:.3f} mi "
+        f"over {agreement['holdout_marker_count']} markers (#652)."
+    )
+    print(
+        f"  {diagnostics['clipped_sample_count']} samples on overlapping duplicate geometry "
+        f"clipped (~{diagnostics['clipped_mi']} mi published once instead of twice)."
     )
 
     null_elevation_count = sum(1 for r in records if r["elevation_ft"] is None)
@@ -561,6 +837,15 @@ def main() -> dict:
         "cumulative_gain_ft": round(gain_ft),
         "cumulative_gain_raw_ft": round(raw_gain_ft),
         "cumulative_gain_threshold_m": DEFAULT_THRESHOLD_M,
+        # The axis's own accuracy, run-over-run (#652): held-out agreement
+        # with ATC's half-mile markers, plus how much duplicate geometry was
+        # clipped. In the manifest so a calibration regression shows up in a
+        # diff of published metadata, not only in a log nobody reads.
+        "marker_holdout_median_mi": round(agreement["holdout_median_mi"], 4),
+        "marker_holdout_p95_mi": round(agreement["holdout_p95_mi"], 4),
+        "marker_holdout_max_mi": round(agreement["holdout_max_mi"], 4),
+        "marker_holdout_count": agreement["holdout_marker_count"],
+        "clipped_sample_count": diagnostics["clipped_sample_count"],
     }
     MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
     MANIFEST_PATH.write_text(json.dumps(manifest, indent=2))

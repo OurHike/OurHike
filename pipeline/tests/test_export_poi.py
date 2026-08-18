@@ -13,7 +13,7 @@ import export_poi
 from lib.photo_store import photo_digest
 from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES, unify_poi
 from tests.conftest import spatial_connection
-from tests.synthetic import write_centerline
+from tests.synthetic import write_centerline, write_half_mile_markers
 
 SHELTER_DIGEST = photo_digest(b"\xff\xd8 a test shelter photo")
 
@@ -51,6 +51,9 @@ def _write_fixture_sources(raw_dir):
     ATC/opentrail.org files (GlobalID/Name for ATC, dbid/title/icon for
     opentrail.org)."""
     write_centerline(raw_dir / "centerline.geojson")
+    # attach_miles calibrates its axis to these (#652) and refuses to run
+    # without them, exactly as the real export would.
+    write_half_mile_markers(raw_dir / "half_mile_points_from_springer.geojson")
 
     _write_fc(
         raw_dir / "shelters.geojson",
@@ -1766,31 +1769,36 @@ def test_export_poi_an_absent_trail_water_file_is_a_normal_state(tmp_path, monke
     assert manifest["crossing"]["geojson"]["feature_count"] == 0
 
 
-# --- attach_miles (#753) ------------------------------------------------------
+# --- attach_miles (#753, #652) ------------------------------------------------
 #
 # The mile is NOBO-from-Springer position on the elevation profile's own axis:
-# the same ordered, merged, metric centerline, the same carry-across-gaps
-# accumulation. These prove the projection against a synthetic line whose true
-# lengths are known, and that the value survives to the published artifact.
+# the same merged, metric centerline, calibrated to ATC's half-mile `Measure`
+# field. These prove the projection against a synthetic line whose true lengths
+# are known, that the axis speaks ATC's scale rather than raw geometry when the
+# two disagree, and that the value survives to the published artifact.
 
 
 def _mile_fixture(tmp_path, con):
     """A due-north centerline near the test corridor, one degree of latitude
-    (~69.1 mi), plus three POIs on it at known fractions."""
+    (~69.1 mi), markers on ATC's matching scale, plus three POIs on it at
+    known fractions."""
+    coords = [(-74.0, 40.0), (-74.0, 41.0)]
     centerline = tmp_path / "centerline.geojson"
-    write_centerline(centerline, coords=[(-74.0, 40.0), (-74.0, 41.0)])
+    write_centerline(centerline, coords=coords)
+    markers = tmp_path / "half_mile_points.geojson"
+    write_half_mile_markers(markers, coords)
     records = [
         {"id": "a", "lat": 40.0, "lon": -74.0},
         {"id": "b", "lat": 40.5, "lon": -74.0},
         {"id": "c", "lat": 41.0, "lon": -74.0},
     ]
-    return centerline, records
+    return centerline, markers, records
 
 
 def test_attach_miles_walks_the_line_south_to_north(tmp_path, con):
-    centerline, records = _mile_fixture(tmp_path, con)
+    centerline, markers, records = _mile_fixture(tmp_path, con)
 
-    attached = export_poi.attach_miles(con, records, centerline)
+    attached = export_poi.attach_miles(con, records, centerline, markers)
 
     assert attached == 3
     miles = [record["mile"] for record in records]
@@ -1801,29 +1809,47 @@ def test_attach_miles_walks_the_line_south_to_north(tmp_path, con):
     assert miles == sorted(miles)
 
 
+def test_attach_miles_speaks_atc_scale_when_it_disagrees_with_geometry(tmp_path, con):
+    """The point of the #652 calibration, seen from the POI side: where ATC's
+    wheel measure and the centerline's geometric length disagree, the
+    published mile is ATC's - the scale closures' start_mile_marker and
+    ATC's own updates already quote, so a shelter and the closure past it
+    land on one axis with no offset."""
+    coords = [(-74.0, 40.0), (-74.0, 41.0)]
+    centerline = tmp_path / "centerline.geojson"
+    write_centerline(centerline, coords=coords)
+    markers = tmp_path / "half_mile_points.geojson"
+    write_half_mile_markers(markers, coords, scale=1.1)  # ATC's measure runs 10% long here
+    records = [{"id": "mid", "lat": 40.5, "lon": -74.0}]
+
+    export_poi.attach_miles(con, records, centerline, markers)
+
+    assert records[0]["mile"] == pytest.approx(1.1 * 69.1 / 2, rel=0.02)
+
+
 def test_attach_miles_projects_an_off_trail_point_to_its_nearest_approach(tmp_path, con):
     """A shelter is rarely ON the centerline (72% sit past the off-trail
     threshold, #308) - its mile is where the trail passes closest, which is
     the number a hiker walking the trail experiences."""
-    centerline, _ = _mile_fixture(tmp_path, con)
+    centerline, markers, _ = _mile_fixture(tmp_path, con)
     records = [{"id": "off", "lat": 40.5, "lon": -74.1}]
 
-    export_poi.attach_miles(con, records, centerline)
+    export_poi.attach_miles(con, records, centerline, markers)
 
     assert records[0]["mile"] == pytest.approx(69.1 / 2, rel=0.02)
 
 
 def test_attach_miles_handles_an_empty_run(tmp_path, con):
-    centerline, _ = _mile_fixture(tmp_path, con)
+    centerline, markers, _ = _mile_fixture(tmp_path, con)
 
-    assert export_poi.attach_miles(con, [], centerline) == 0
+    assert export_poi.attach_miles(con, [], centerline, markers) == 0
 
 
 def test_the_published_artifact_carries_the_mile(tmp_path, con, monkeypatch):
     """End to end: the mile attach_miles computed is the one the geojson
     serves - under its own name, not a neighbour's (the column-shift class
     the properties-pinning test above guards)."""
-    centerline, records = _mile_fixture(tmp_path, con)
+    centerline, markers, records = _mile_fixture(tmp_path, con)
     unified = [
         dict(
             record,
@@ -1836,7 +1862,7 @@ def test_the_published_artifact_carries_the_mile(tmp_path, con, monkeypatch):
         )
         for record in records
     ]
-    export_poi.attach_miles(con, unified, centerline)
+    export_poi.attach_miles(con, unified, centerline, markers)
     monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "poi")
 
     export_poi.write_poi_type(con, "shelter", unified)

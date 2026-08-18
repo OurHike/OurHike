@@ -83,12 +83,55 @@ def _write_dem_tile(path, bounds, size=20, elevation=500.0, crs="EPSG:4326", nod
         dst.write(np.full((1, size, size), elevation, dtype="float32"))
 
 
-def _setup(tmp_path, monkeypatch, centerline_coord_groups, dem_tiles):
+def _write_markers(path, coord_groups, interval_mi=0.5):
+    """ATC-shaped half-mile markers for a synthetic centerline: walked along
+    coord_groups in their GIVEN order - the fixture author's intended trail
+    order - with `Measure` set to the true cumulative mile, mirroring the
+    real half_mile_points_from_springer.geojson (#652). The first marker
+    lands at Measure 0.5, like ATC's does."""
+    from rasterio.warp import transform as _warp_transform
+
+    if coord_groups and isinstance(coord_groups[0], tuple):
+        coord_groups = [coord_groups]
+    interval_m = interval_mi * 1609.344
+    features = []
+    pending = interval_m
+    next_measure = interval_mi
+    for coords in coord_groups:
+        xs, ys = _warp_transform("EPSG:4326", "EPSG:5070", [lon for lon, _ in coords], [lat for _, lat in coords])
+        line_m = LineString(list(zip(xs, ys)))
+        d = pending
+        while d <= line_m.length:
+            pt = line_m.interpolate(d)
+            lon, lat = _warp_transform("EPSG:5070", "EPSG:4326", [pt.x], [pt.y])
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [lon[0], lat[0]]},
+                    "properties": {"Measure": next_measure},
+                }
+            )
+            next_measure += interval_mi
+            d += interval_m
+        pending = d - line_m.length
+    path.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
+
+
+def _setup(tmp_path, monkeypatch, centerline_coord_groups, dem_tiles, markers_coord_groups=None):
     """dem_tiles: list of (relative_path_under_elevation_dir, bounds, elevation)
     tuples - written under <elevation_dir>/<relative_path> mirroring
-    fetch_elevation.py's real OUT_DIR/<state>/<file>.tif layout."""
+    fetch_elevation.py's real OUT_DIR/<state>/<file>.tif layout.
+
+    Half-mile markers are generated along the centerline's own coordinate
+    order (the axis is calibrated to them since #652); pass
+    markers_coord_groups to walk the markers along different geometry than
+    the centerline carries - e.g. to leave duplicated geometry out of the
+    mile scale the way ATC's real markers do."""
     centerline_path = tmp_path / "centerline.geojson"
     _write_centerline(centerline_path, centerline_coord_groups)
+
+    markers_path = tmp_path / "half_mile_points.geojson"
+    _write_markers(markers_path, markers_coord_groups or centerline_coord_groups)
 
     elevation_dir = tmp_path / "elevation"
     for rel_path, bounds, elevation in dem_tiles:
@@ -98,6 +141,7 @@ def _setup(tmp_path, monkeypatch, centerline_coord_groups, dem_tiles):
     manifest_path = tmp_path / "elevation_manifest.json"
 
     monkeypatch.setattr(export_elevation, "CENTERLINE_PATH", centerline_path)
+    monkeypatch.setattr(export_elevation, "MARKERS_PATH", markers_path)
     monkeypatch.setattr(export_elevation, "ELEVATION_INDEX_PATH", _index_for_dir(elevation_dir, tmp_path))
     monkeypatch.setattr(export_elevation, "OUT_PATH", out_path)
     monkeypatch.setattr(export_elevation, "MANIFEST_PATH", manifest_path)
@@ -367,3 +411,170 @@ def test_the_very_first_sample_is_marked_too():
     samples = export_elevation.sample_points_along_parts([LineString([(0, 0), (50, 0)])], 25.0)
 
     assert samples[0][2] == 0
+
+
+# --- marker calibration of the mile axis (#652) ------------------------------
+
+
+def test_marker_calibration_orders_pieces_by_atc_measure_not_geography():
+    """The straight-axis sort put 18 stretches more than ten miles out of
+    place because geography is not trail order (#652). ATC's `Measure` field
+    is trail order, so a piece the markers put earlier comes earlier - even
+    when it sits further along any straight geographic axis."""
+    import numpy as np
+    from shapely.geometry import Point
+
+    far_north = LineString([(0, 100000), (0, 110000)])
+    near_springer = LineString([(0, 0), (0, 10000)])
+    marker_points = [Point(0, 105000), Point(0, 5000)]
+    marker_miles = np.array([1.0, 50.0])  # ATC: the northern piece is mile ~1
+
+    calibrated = export_elevation.calibrate_parts_to_markers([near_springer, far_north], marker_points, marker_miles)
+
+    assert calibrated[0].line.equals(far_north), "the piece ATC marks as mile 1 must come first"
+    assert calibrated[1].line.equals(near_springer)
+
+
+def test_marker_calibration_flips_a_piece_whose_coords_run_against_the_miles():
+    """33 real pieces are mis-oriented by the straight-axis heuristic
+    (measured 2026-08-18) - the AT's genuine north-south switchbacks. Two
+    markers whose Measure falls as the coords advance mean the piece is
+    digitized against trail direction, and the calibration must walk it the
+    way the miles run."""
+    import numpy as np
+    from shapely.geometry import Point
+
+    mile_m = 1609.344
+    line = LineString([(0, 0), (10 * mile_m, 0)])
+    marker_points = [Point(1 * mile_m, 0), Point(9 * mile_m, 0)]
+    marker_miles = np.array([9.0, 1.0])  # measure falls as x grows -> reversed piece
+
+    (calibrated,) = export_elevation.calibrate_parts_to_markers([line], marker_points, marker_miles)
+
+    assert calibrated.line.coords[0] == (10 * mile_m, 0.0)
+    assert calibrated.mile_at(0.0) == pytest.approx(0.0)
+    assert calibrated.mile_at(calibrated.line.length) == pytest.approx(10.0)
+
+
+def test_mile_at_interpolates_between_markers_and_extrapolates_at_unit_slope():
+    """Between markers, linear interpolation through ATC's own values - so
+    where geometry and wheel measure disagree, the published mile agrees
+    with the scale closures and ATC updates quote. Past the end markers
+    there is nothing to interpolate toward, so the piece's own geometric
+    distance carries on at unit slope rather than trusting a fitted slope
+    beyond its data."""
+    import numpy as np
+
+    mile_m = 1609.344
+    part = export_elevation.CalibratedPart(
+        LineString([(0, 0), (20 * mile_m, 0)]),
+        alongs_mi=np.array([1.0, 3.0]),
+        miles=np.array([10.0, 14.0]),  # ATC's scale runs 2x this piece's geometry here
+    )
+
+    assert part.mile_at(2.0 * mile_m) == pytest.approx(12.0)  # midway between the markers
+    assert part.mile_at(0.5 * mile_m) == pytest.approx(9.5)  # 0.5 mi before the first marker
+    assert part.mile_at(4.0 * mile_m) == pytest.approx(15.0)  # 1 mi past the last marker
+
+
+def test_a_marker_less_piece_is_anchored_from_the_nearest_marker():
+    """182 real pieces (7.5 mi in total, none over 0.43 mi) have no marker of
+    their own. Anchoring them to the nearest marker bounds their error by the
+    marker spacing plus their own length - against the median 7.7 mi the
+    uncalibrated axis measured."""
+    import numpy as np
+    from shapely.geometry import Point
+
+    mile_m = 1609.344
+    marked = LineString([(0, 0), (10 * mile_m, 0)])
+    tiny = LineString([(10.05 * mile_m, 0), (10.10 * mile_m, 0)])
+    marker_points = [Point(1 * mile_m, 0), Point(9 * mile_m, 0)]
+    marker_miles = np.array([101.0, 109.0])
+
+    calibrated = export_elevation.calibrate_parts_to_markers([marked, tiny], marker_points, marker_miles)
+
+    assert calibrated[0].line.equals(marked)
+    tiny_start = calibrated[1].start_mile
+    assert tiny_start == pytest.approx(109.0, abs=1.5), (
+        "a marker-less piece must land near its nearest marker's measure, not at a geographic guess"
+    )
+
+
+def test_overlapping_duplicate_geometry_is_published_once(tmp_path, monkeypatch):
+    """ORDERING.md's degree-6 nodes: duplicate geometry survives the merge,
+    so two pieces can cover the same stretch of trail. Publishing both would
+    put the same miles on the axis twice - and their phantom climbing in the
+    total twice. The axis keeps the first piece to reach a mile and counts
+    what it clipped."""
+    true_line = [(-74.0, 41.0), (-73.9, 41.0), (-73.8, 41.0)]
+    duplicate_of_east_half = [(-73.9, 41.0003), (-73.8, 41.0003)]  # ~33 m north of the real tread
+    out_path, manifest_path = _setup(
+        tmp_path,
+        monkeypatch,
+        [true_line, duplicate_of_east_half],
+        [("XX/tile.tif", (-74.2, 40.9, -73.6, 41.3), 800.0)],
+        markers_coord_groups=[true_line],  # ATC's markers walk the trail once
+    )
+
+    manifest = export_elevation.main()
+
+    profile = json.loads(out_path.read_text())
+    distances = [p["distance_mi"] for p in profile]
+    assert distances == sorted(distances)
+    assert len(distances) == len(set(distances))
+    assert manifest["clipped_sample_count"] > 100, "the duplicated ~5 mi must be clipped, not published twice"
+    assert distances[-1] < 11.0, "the axis must span the trail once, not the trail plus its duplicate"
+
+
+def test_the_run_refuses_a_missing_markers_file(tmp_path, monkeypatch):
+    """No markers, no axis: silently falling back to the uncalibrated
+    projection would be #652 coming back with nothing logging that it did."""
+    _setup(
+        tmp_path,
+        monkeypatch,
+        [(-74.0, 41.0), (-73.9, 41.05)],
+        [("XX/tile.tif", (-74.1, 40.9, -73.6, 41.3), 700.0)],
+    )
+    monkeypatch.setattr(export_elevation, "MARKERS_PATH", tmp_path / "not_fetched.geojson")
+
+    with pytest.raises(FileNotFoundError, match="half-mile markers"):
+        export_elevation.main()
+
+
+def test_the_accuracy_gate_refuses_a_drifted_axis():
+    """require_marker_agreement is what keeps the calibration honest
+    run-over-run: a quietly-degraded axis is worse than the fault it fixed,
+    because this time the code claims to be calibrated."""
+    good = {
+        "holdout_marker_count": 2000,
+        "holdout_median_mi": 0.003,
+        "holdout_p95_mi": 0.055,
+        "holdout_max_mi": 0.497,
+    }
+    export_elevation.require_marker_agreement(good)  # the real 2026-08-18 figures pass
+
+    drifted = dict(good, holdout_median_mi=7.7)  # the uncalibrated fault's median
+    with pytest.raises(SystemExit, match="mis-calibrated"):
+        export_elevation.require_marker_agreement(drifted)
+
+
+def test_the_manifest_carries_the_marker_agreement(tmp_path, monkeypatch):
+    """A calibration regression must show in a diff of published metadata,
+    not only in a log nobody reads. On a clean synthetic fixture - markers
+    generated from the same geometry - the held-out error is essentially
+    zero, which also pins that the holdout wiring measures the axis that
+    ships rather than some other quantity."""
+    _, manifest_path = _setup(
+        tmp_path,
+        monkeypatch,
+        [(-74.0, 41.0), (-73.8, 41.1)],
+        [("XX/tile.tif", (-74.2, 40.9, -73.6, 41.3), 900.0)],
+    )
+
+    manifest = export_elevation.main()
+
+    assert manifest["marker_holdout_count"] > 0
+    assert manifest["marker_holdout_median_mi"] <= 0.01
+    assert manifest["marker_holdout_max_mi"] <= export_elevation.MARKER_HOLDOUT_MAX_MI
+    on_disk = json.loads(manifest_path.read_text())
+    assert on_disk["marker_holdout_median_mi"] == manifest["marker_holdout_median_mi"]

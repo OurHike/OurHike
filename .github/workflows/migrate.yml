@@ -146,8 +146,14 @@ jobs:
         # infrastructure fault rather than a workflow bug. This was the first
         # run's failure (#407 merged red).
         working-directory: .
+        env:
+          CONFIGURED_DATABASE_URL: ${{ secrets.UA_MIGRATION_DATABASE_URL }}
+        # The secret reaches bash through env, never interpolated into the
+        # script (#660): a password with a legal `"` in it would otherwise
+        # break this gate's syntax, and a broken UA gate blocks the
+        # production migration for a reason nobody will trace.
         run: |
-          if [ -z "${{ secrets.UA_MIGRATION_DATABASE_URL }}" ]; then
+          if [ -z "$CONFIGURED_DATABASE_URL" ]; then
             echo "::warning::No UA database is configured, so nothing was migrated. See LAUNCH_CHECKLIST.md 5 and #371."
             echo "go=false" >> "$GITHUB_OUTPUT"
           else
@@ -224,6 +230,10 @@ jobs:
       - name: Refuse anything this should not do
         # Before the checkout, so not in backend/ - see the UA job's gate.
         working-directory: .
+        env:
+          # Through env, never interpolated - same reasoning as the UA gate
+          # (#660).
+          CONFIGURED_DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
         run: |
           if [ "${{ github.ref }}" != "refs/heads/main" ]; then
             echo "::error::Production migrations run from main only; this dispatch names ${{ github.ref }}."
@@ -233,7 +243,7 @@ jobs:
             echo "::error::UA was not migrated in this run, so this would be the first database to see these revisions. RELEASING.md 3: applied to UA first, always. Configure UA_MIGRATION_DATABASE_URL (#371) and dispatch again."
             exit 1
           fi
-          if [ -z "${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}" ]; then
+          if [ -z "$CONFIGURED_DATABASE_URL" ]; then
             echo "::error::No production database is configured. See LAUNCH_CHECKLIST.md 5."
             exit 1
           fi

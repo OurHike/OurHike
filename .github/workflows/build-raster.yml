@@ -75,7 +75,7 @@ jobs:
       total: ${{ steps.cells.outputs.total }}
       partial: ${{ steps.cells.outputs.partial }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -167,7 +167,7 @@ jobs:
       matrix:
         cell: ${{ fromJSON(needs.compute-cells.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -219,7 +219,7 @@ jobs:
       run:
         working-directory: pipeline
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -288,7 +288,7 @@ jobs:
       run:
         working-directory: pipeline
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:

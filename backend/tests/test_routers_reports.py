@@ -17,6 +17,7 @@ from app.models.profile import Profile, Role
 from app.models.report import Report, ReporterType, ReportStatus, ReportType, Visibility
 from app.schemas.report import ReportCreate
 from tests.factories import make_profile
+from tests import tokens as jwt_tokens
 from tests.tokens import auth_headers
 
 _VALID_PAYLOAD = {
@@ -1036,3 +1037,55 @@ def test_a_resent_report_keeps_the_mile_it_was_filed_with(client):
     body = client.post("/reports", json=resent, headers=auth_headers(user_id)).json()
 
     assert body["mile"] == 1407.2
+
+
+# --- Optional auth degrades to anonymous, never 401 (#322) --------------------
+#
+# TESTING.md's third server-side invariant: browsing needs no account, so a
+# bad credential on a public endpoint must read as "nobody", not as an error.
+# Every earlier test sent either a valid token or none; these exercise the
+# `except HTTPException: return None` branch that actually keeps a
+# signed-out-ish client able to browse.
+
+
+def _file_pending_report(client, user_id):
+    response = client.post("/reports", json=_VALID_PAYLOAD, headers=auth_headers(user_id))
+    assert response.status_code == 201
+    return response.json()["id"]
+
+
+def test_an_expired_token_browses_as_anonymous_not_401(client):
+    user_id = str(uuid.uuid4())
+    report_id = _file_pending_report(client, user_id)
+    expired = jwt_tokens.make_token(user_id, expires_delta=timedelta(hours=-1))
+
+    response = client.get("/reports", headers={"Authorization": f"Bearer {expired}"})
+
+    assert response.status_code == 200, "a stale credential must degrade, never block browsing"
+    # Degraded means degraded: the caller's own pending report is hidden,
+    # exactly as it would be for a stranger. (That this is silent is #658's
+    # re-auth-signal concern - recorded there as a design question, asserted
+    # here as the documented contract.)
+    assert report_id not in [r["id"] for r in response.json()]
+
+    as_owner = client.get("/reports", headers=auth_headers(user_id))
+    assert report_id in [r["id"] for r in as_owner.json()], "sanity: the owner with a live token sees it"
+
+
+def test_a_malformed_token_browses_as_anonymous_not_401(client):
+    _file_pending_report(client, str(uuid.uuid4()))
+
+    response = client.get("/reports", headers={"Authorization": "Bearer not-a-jwt-at-all"})
+
+    assert response.status_code == 200
+
+
+def test_a_token_signed_with_the_wrong_secret_browses_as_anonymous(client):
+    user_id = str(uuid.uuid4())
+    _file_pending_report(client, user_id)
+    forged = jwt_tokens.make_token(user_id, secret="the-wrong-secret-entirely")
+
+    response = client.get("/reports", headers={"Authorization": f"Bearer {forged}"})
+
+    assert response.status_code == 200
+    assert all(r["id"] != user_id for r in response.json())

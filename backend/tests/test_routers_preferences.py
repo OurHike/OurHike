@@ -9,6 +9,8 @@ tests below exist specifically to pin that down at the API boundary.
 from sqlalchemy import select
 
 from app.models.preferences import UserPreferences
+import uuid
+
 from tests.tokens import auth_headers
 
 
@@ -269,3 +271,13 @@ def test_put_preferences_round_trips_night_hike_with_red_light(client):
     get_response = client.get("/preferences/me", headers=auth_headers(user_id))
     assert get_response.json()["map_style"] == "night_hike"
     assert get_response.json()["red_light_enabled"] is True
+
+
+def test_get_before_any_put_is_a_404_naming_the_state(client):
+    """The documented pre-first-PUT state (#322): a hiker who has never
+    synced has no row, and the 404's detail says so - "no preferences yet"
+    and "wrong endpoint" must not be the same blank answer."""
+    response = client.get("/preferences/me", headers=auth_headers(str(uuid.uuid4())))
+
+    assert response.status_code == 404
+    assert "No synced preferences yet" in response.json()["detail"]

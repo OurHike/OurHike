@@ -86,13 +86,14 @@ a real answer about the trail.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
 
 import psycopg
+
+from lib.hashing import sha256_file
 
 ROOT = Path(__file__).resolve().parent
 OUT_DIR = ROOT / "data" / "processed" / "conditions"
@@ -168,12 +169,6 @@ POLICY_PREDICATES = {
     "closures": "moderation_status = 'verified'",
     "reports": "status IN ('verified', 'resolved') AND visibility = 'public'",
 }
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    digest.update(path.read_bytes())
-    return digest.hexdigest()
 
 
 def connection_url() -> str:

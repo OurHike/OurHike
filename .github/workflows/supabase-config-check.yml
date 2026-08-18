@@ -18,6 +18,11 @@ name: Supabase config check
 on:
   workflow_dispatch:
 
+# Same reasoning as r2-credentials-check.yml (#660): a diagnostic needs
+# nothing beyond reading the checkout.
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest

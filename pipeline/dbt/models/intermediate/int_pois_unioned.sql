@@ -6,4 +6,12 @@ select * from {{ ref('stg_atc__shelters') }}
 union all
 select * from {{ ref('stg_atc__campsites') }}
 union all
+select * from {{ ref('stg_atc__viewpoints') }}
+union all
+select * from {{ ref('stg_atc__parking') }}
+union all
+select * from {{ ref('stg_atc__privies') }}
+union all
+select * from {{ ref('stg_atc__communities') }}
+union all
 select * from {{ ref('stg_opentrail__waypoints') }}

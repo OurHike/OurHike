@@ -100,8 +100,17 @@ updates:
   # Every workflow pins its actions by major tag (actions/checkout@v4), which
   # silently absorbs minor releases already. This catches the major bumps
   # that tag will never deliver, and any action that stops being maintained.
+  #
+  # `directories` names the composite actions alongside `/` (#660): the `/`
+  # entry scans only .github/workflows/, so the pins inside
+  # .github/actions/*/action.yml were invisible to Dependabot entirely -
+  # an action could go unmaintained there and nothing would ever say so.
   - package-ecosystem: github-actions
-    directory: /
+    directories:
+      - /
+      - /.github/actions/changed-paths
+      - /.github/actions/delete-pages-previews
+      - /.github/actions/publish-to-pages
     schedule:
       interval: weekly
       day: monday

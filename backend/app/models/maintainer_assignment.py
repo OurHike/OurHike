@@ -38,8 +38,10 @@ class MaintainerAssignment(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
 
-    maintainer_id = Column(String, ForeignKey("profiles.id"), nullable=False)
-    club_id = Column(String, ForeignKey("clubs.id"), nullable=False)
+    # Indexed (#658, a1b7c3d95e04): thanks delivery and the credit
+    # resolution both look assignments up by who holds them.
+    maintainer_id = Column(String, ForeignKey("profiles.id"), nullable=False, index=True)
+    club_id = Column(String, ForeignKey("clubs.id"), nullable=False, index=True)
 
     # Inclusive range along the trail centerline, in miles from the southern
     # terminus - the same origin the pipeline's half-mile markers use.

@@ -25,6 +25,7 @@ index nothing points into. Both are states a real bucket passes through.
 from __future__ import annotations
 
 import hashlib
+import json
 
 import pytest
 import requests
@@ -190,6 +191,15 @@ class TestCors:
 
         assert check_cors(BASE, "a.pmtiles")["state"] == OK
 
+    def test_a_wildcard_expose_answer_passes_too(self, requests_mock):
+        """#659: `Access-Control-Expose-Headers: *` exposes everything to a
+        request without credentials - a host answering it would otherwise
+        fail this check while every browser could read all four headers,
+        blocking a good release candidate."""
+        requests_mock.get(f"{BASE}/a.pmtiles", headers=_headers(expose="*"), status_code=206)
+
+        assert check_cors(BASE, "a.pmtiles")["state"] == OK
+
 
 class TestVectorContent:
     def _collection(self, features):
@@ -279,11 +289,12 @@ class TestTheWholeRun:
         reports = check_all(BASE, hash_artifacts=False)
 
         assert reports[0]["state"] == FAILED
-        # 3, 17 and 19 read a release out of the manifest, so they cannot run
-        # either - and must still APPEAR rather than vanishing, or a reader
-        # counting checks finds a short clean run. 6 and 11 are the standing
-        # skips (#653), present in every run until somebody builds them.
-        assert {r["check"] for r in reports if r["state"] == SKIPPED} == {3, 6, 10, 11, 17, 19}
+        # 3, 17, 19, 20 and 21 read a release out of the manifest, so they
+        # cannot run either - and must still APPEAR rather than vanishing,
+        # or a reader counting checks finds a short clean run. 6 and 11 are
+        # the standing skips (#653), present in every run until somebody
+        # builds them.
+        assert {r["check"] for r in reports if r["state"] == SKIPPED} == {3, 6, 10, 11, 17, 19, 20, 21}
 
 
 # ---------------------------------------------------------------------------
@@ -492,3 +503,219 @@ class TestABucketMidMigration:
         assert by_check[3]["state"] == SKIPPED
         assert by_check[17]["state"] == SKIPPED
         assert by_check[19]["state"] == OK
+
+
+class TestStretchCoverage:
+    """Check 20 (#556): the stretch units tile the trail, and everything the
+    index names is really published."""
+
+    def _manifest(self, extra=None):
+        artifacts = {
+            "at_basemap_stretches.json": {"sha256": "a" * 64},
+            "at_basemap_context.pmtiles": {"sha256": "b" * 64},
+            "at_basemap_stretch_00.pmtiles": {"sha256": "c" * 64},
+            "at_basemap_stretch_01.pmtiles": {"sha256": "d" * 64},
+            **(extra or {}),
+        }
+        return {"artifacts": artifacts}
+
+    def _index(self, stretches, context="at_basemap_context.pmtiles", top=100.0):
+        return {
+            "stretch_miles": 50.0,
+            "axis_top_mile": top,
+            "context": context,
+            "stretches": stretches,
+        }
+
+    def test_a_complete_tiling_passes(self, requests_mock):
+        from verify_release import check_stretch_coverage
+
+        requests_mock.get(
+            f"{BASE}/at_basemap_stretches.json",
+            json=self._index(
+                [
+                    {"id": 0, "key": "at_basemap_stretch_00.pmtiles", "miles": [0.0, 50.0]},
+                    {"id": 1, "key": "at_basemap_stretch_01.pmtiles", "miles": [50.0, 100.0]},
+                ]
+            ),
+        )
+
+        reports = check_stretch_coverage(BASE, self._manifest())
+        by_key = {report["key"]: report for report in reports}
+
+        assert by_key["at_basemap_stretches.json"]["state"] == "ok"
+        assert by_key["dem_stretches.json"]["state"] == "skipped", "no dem index published is a skip, not a pass"
+
+    def test_a_mile_gap_between_stretches_fails(self, requests_mock):
+        """A gap is a slice of trail no unit covers - blank map on a ridge
+        that every per-artifact check would wave through."""
+        from verify_release import check_stretch_coverage
+
+        requests_mock.get(
+            f"{BASE}/at_basemap_stretches.json",
+            json=self._index(
+                [
+                    {"id": 0, "key": "at_basemap_stretch_00.pmtiles", "miles": [0.0, 50.0]},
+                    {"id": 1, "key": "at_basemap_stretch_01.pmtiles", "miles": [60.0, 100.0]},
+                ]
+            ),
+        )
+
+        reports = check_stretch_coverage(BASE, self._manifest())
+        report = next(r for r in reports if r["key"] == "at_basemap_stretches.json")
+
+        assert report["state"] == "failed"
+        assert "gap" in report["detail"]
+
+    def test_a_stretch_named_but_not_published_fails(self, requests_mock):
+        from verify_release import check_stretch_coverage
+
+        requests_mock.get(
+            f"{BASE}/at_basemap_stretches.json",
+            json=self._index(
+                [
+                    {"id": 0, "key": "at_basemap_stretch_00.pmtiles", "miles": [0.0, 50.0]},
+                    {"id": 1, "key": "at_basemap_stretch_99.pmtiles", "miles": [50.0, 100.0]},
+                ]
+            ),
+        )
+
+        reports = check_stretch_coverage(BASE, self._manifest())
+        report = next(r for r in reports if r["key"] == "at_basemap_stretches.json")
+
+        assert report["state"] == "failed"
+        assert "not published" in report["detail"]
+
+    def test_coverage_stopping_short_of_the_axis_top_fails(self, requests_mock):
+        from verify_release import check_stretch_coverage
+
+        requests_mock.get(
+            f"{BASE}/at_basemap_stretches.json",
+            json=self._index(
+                [{"id": 0, "key": "at_basemap_stretch_00.pmtiles", "miles": [0.0, 50.0]}],
+                top=100.0,
+            ),
+        )
+
+        reports = check_stretch_coverage(BASE, self._manifest())
+        report = next(r for r in reports if r["key"] == "at_basemap_stretches.json")
+
+        assert report["state"] == "failed"
+        assert "short of the axis top" in report["detail"]
+
+
+class TestManifestSizes:
+    def test_a_content_length_disagreeing_with_size_bytes_fails(self, requests_mock):
+        """Since #556 the manifest publishes size_bytes, and for the
+        identity-uploaded binaries the served Content-Length must be exactly
+        it - DATA_RELEASES.md §3's check, finally askable."""
+        requests_mock.head(f"{BASE}/a.pmtiles", headers=_headers(length="100"))
+
+        verdict = check_fetchable(BASE, "a.pmtiles", expected_size=90)
+
+        assert verdict["state"] == FAILED
+        assert "size_bytes" in verdict["detail"]
+
+    def test_a_matching_content_length_passes(self, requests_mock):
+        requests_mock.head(f"{BASE}/a.pmtiles", headers=_headers(length="100"))
+
+        verdict = check_fetchable(BASE, "a.pmtiles", expected_size=100)
+
+        assert verdict["state"] == OK
+
+
+class TestPoiIdentity:
+    """Check 21 (#672): every published POI id is a promise the identity
+    ledger keeps - a live row whose provenance agrees, published once."""
+
+    def _ledger(self, tmp_path, monkeypatch, pois):
+        import verify_release
+
+        path = tmp_path / "poi_identity.json"
+        path.write_text(json.dumps({"pois": pois}))
+        monkeypatch.setattr(verify_release, "IDENTITY_LEDGER_PATH", path)
+
+    def _row(self, source="atc_shelters", sfid="glob-1", retired=None):
+        row = {"poi_type": "shelter", "source": source, "source_feature_id": sfid, "name": "S", "lat": 41.0, "lon": -74.0}
+        if retired:
+            row["retired"] = retired
+        return row
+
+    def _feature(self, poi_id="atc_shelters:glob-1", source="atc_shelters", sfid="glob-1"):
+        return {
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [-74.0, 41.0]},
+            "properties": {"id": poi_id, "source": source, "source_feature_id": sfid},
+        }
+
+    def _serve(self, requests_mock, features):
+        requests_mock.get(f"{BASE}/poi_shelter.geojson", json={"type": "FeatureCollection", "features": features})
+
+    def _manifest(self):
+        return {"artifacts": {"poi_shelter.geojson": {"sha256": "a" * 64}}}
+
+    def test_a_kept_promise_passes(self, tmp_path, monkeypatch, requests_mock):
+        from verify_release import check_poi_identity
+
+        self._ledger(tmp_path, monkeypatch, {"atc_shelters:glob-1": self._row()})
+        self._serve(requests_mock, [self._feature()])
+
+        reports = check_poi_identity(BASE, self._manifest())
+
+        assert [r["state"] for r in reports] == [OK]
+
+    def test_an_id_with_no_ledger_row_fails(self, tmp_path, monkeypatch, requests_mock):
+        from verify_release import check_poi_identity
+
+        self._ledger(tmp_path, monkeypatch, {})
+        self._serve(requests_mock, [self._feature()])
+
+        reports = check_poi_identity(BASE, self._manifest())
+
+        assert reports[0]["state"] == FAILED
+        assert "no ledger row" in reports[0]["detail"]
+
+    def test_a_retired_id_published_live_fails(self, tmp_path, monkeypatch, requests_mock):
+        from verify_release import check_poi_identity
+
+        self._ledger(tmp_path, monkeypatch, {"atc_shelters:glob-1": self._row(retired="2027-09-14")})
+        self._serve(requests_mock, [self._feature()])
+
+        reports = check_poi_identity(BASE, self._manifest())
+
+        assert reports[0]["state"] == FAILED
+        assert "RETIRED" in reports[0]["detail"]
+
+    def test_provenance_disagreement_fails(self, tmp_path, monkeypatch, requests_mock):
+        """The ledger carried the id onto a new key; an artifact still
+        publishing the old key is a stale export, not a release."""
+        from verify_release import check_poi_identity
+
+        self._ledger(tmp_path, monkeypatch, {"atc_shelters:glob-1": self._row(sfid="rekeyed")})
+        self._serve(requests_mock, [self._feature(sfid="glob-1")])
+
+        reports = check_poi_identity(BASE, self._manifest())
+
+        assert reports[0]["state"] == FAILED
+        assert "ledger says" in reports[0]["detail"]
+
+    def test_one_id_published_twice_fails(self, tmp_path, monkeypatch, requests_mock):
+        from verify_release import check_poi_identity
+
+        self._ledger(tmp_path, monkeypatch, {"atc_shelters:glob-1": self._row()})
+        self._serve(requests_mock, [self._feature(), self._feature()])
+
+        reports = check_poi_identity(BASE, self._manifest())
+
+        assert reports[0]["state"] == FAILED
+        assert "one id, one place, once" in reports[0]["detail"]
+
+    def test_no_ledger_in_the_checkout_is_a_skip_not_a_pass(self, tmp_path, monkeypatch):
+        import verify_release
+        from verify_release import check_poi_identity
+
+        monkeypatch.setattr(verify_release, "IDENTITY_LEDGER_PATH", tmp_path / "absent.json")
+
+        reports = check_poi_identity(BASE, self._manifest())
+
+        assert [r["state"] for r in reports] == [SKIPPED]

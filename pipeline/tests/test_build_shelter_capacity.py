@@ -173,7 +173,7 @@ def test_resolve_lists_every_atc_shelter_including_the_ones_with_no_row():
 
     assert set(records) == {"Springer Mtn Shelter", "Whiskey Hollow Shelter"}
     assert records["Whiskey Hollow Shelter"] == {
-        "atc_global_id": "glob-1",
+        "poi_id": "atc_shelters:glob-1",
         "atc_name": "Whiskey Hollow Shelter",
         "capacity": None,
         "listed_as": None,
@@ -213,7 +213,9 @@ def test_reference_file_states_a_reason_for_every_blank(reference):
 
 
 def test_reference_file_has_one_record_per_shelter_and_no_repeated_ids(reference):
-    ids = [record["atc_global_id"] for record in reference["shelters"]]
+    # poi_id since #671: the ledger id export_poi.py publishes, not the
+    # bare GlobalID whose stability nobody audited.
+    ids = [record["poi_id"] for record in reference["shelters"]]
     assert len(set(ids)) == len(ids)
     assert reference["counts"]["shelters"] == len(ids)
     assert reference["counts"]["with_capacity"] == sum(1 for r in reference["shelters"] if r["capacity"] is not None)

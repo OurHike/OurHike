@@ -166,14 +166,69 @@ def test_a_missing_reference_file_is_treated_as_an_empty_one(profile, tmp_path, 
     assert "derived, not validated" in capsys.readouterr().out
 
 
-def test_the_committed_reference_file_parses_and_declares_no_sections():
-    """The shipped table is empty on purpose, and this pins that it is empty
-    *deliberately* rather than by a typo that would silently skip the check.
-    Delete this test when real sections are added."""
+def test_the_committed_reference_file_carries_real_cited_sections():
+    """The shipped table gained its first real figures with #133. This pins
+    that every one carries the provenance the file's own _README demands -
+    a source, a source_year, ordered mileposts - and that any section
+    widening the default tolerance says why, since the check refuses a
+    silent widening."""
     reference = json.loads(check_elevation_gain.REFERENCE_PATH.read_text())
 
-    assert reference["sections"] == []
+    assert len(reference["sections"]) >= 3
+    for section in reference["sections"]:
+        assert section["source"], f"{section['name']} cites no source"
+        assert isinstance(section["source_year"], int)
+        assert section["start_mi"] < section["end_mi"]
+        assert section["published_gain_ft"] > 0
+        if "tolerance" in section:
+            assert section["tolerance_reason"], f"{section['name']} widens the tolerance silently"
     assert reference["whole_trail"]["published_gain_ft"] == 510000
+
+
+def test_a_widened_tolerance_without_a_reason_is_refused(profile, reference):
+    """A silently widened gate is a gate that was quietly turned off."""
+    path = reference(
+        {
+            "sections": [
+                {
+                    "name": "quietly widened",
+                    "start_mi": 0.0,
+                    "end_mi": 1.0,
+                    "published_gain_ft": 1000,
+                    "source": "synthetic",
+                    "tolerance": 0.5,
+                }
+            ]
+        }
+    )
+
+    with pytest.raises(ValueError, match="tolerance_reason"):
+        check_elevation_gain.main(["--profile", str(profile), "--reference", str(path)])
+
+
+def test_a_documented_wider_tolerance_gates_at_its_own_width(profile, reference, capsys):
+    """The methodology-spread case (#133's Roan finding): a section may carry
+    a wider tolerance WITH its reason, and then passes or fails against that
+    width rather than the default."""
+    section = {
+        "name": "rolling balds",
+        "start_mi": 0.0,
+        "end_mi": 1.0,
+        # The synthetic climb measures ~1,000 ft; publish 850 so the error
+        # (~+18%) is outside the default 10% but inside 25%.
+        "published_gain_ft": 850,
+        "source": "synthetic club wiki",
+        "tolerance": 0.25,
+        "tolerance_reason": "methodology spread on rolling terrain, measured",
+    }
+    path = reference({"sections": [section]})
+
+    assert check_elevation_gain.main(["--profile", str(profile), "--reference", str(path)]) == 0
+    assert "(±25%)" in capsys.readouterr().out, "the widened gate must be visible in the report, not silent"
+
+    tighter = dict(section, published_gain_ft=700)  # ~+43%: outside even 25%
+    path = reference({"sections": [tighter]})
+    assert check_elevation_gain.main(["--profile", str(profile), "--reference", str(path)]) == 1
 
 
 def test_an_unreadable_profile_reports_rather_than_tracebacks(tmp_path, reference):

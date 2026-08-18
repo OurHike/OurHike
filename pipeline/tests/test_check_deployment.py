@@ -300,6 +300,17 @@ def test_a_refusal_no_single_header_explains_is_not_blamed_on_one(mock):
     assert "no single header explains it" in report["detail"]
 
 
+def test_a_wildcard_allow_headers_answer_is_everything_not_nothing(mock):
+    """#659: `Access-Control-Allow-Headers: *` is the spec's wildcard for
+    requests without credentials - which these downloads are. Read
+    literally, `*` matched no requested header and a custom-domain
+    migration fronted by anything answering `*` would daily-alarm a
+    working deployment and block a good release candidate."""
+    mock.options(f"{BASE}/latest.json", headers={"Access-Control-Allow-Headers": "*"})
+
+    assert check_preflight(BASE, PRODUCTION, MANIFEST["request_headers"])["state"] == OK
+
+
 def test_allowed_headers_are_compared_case_insensitively(mock):
     """Header names are case-insensitive, so a bucket answering `If-Range` is
     correct and failing it would be this check inventing a rule."""
@@ -326,6 +337,14 @@ def test_exposed_headers_are_checked_for_readability_not_presence(mock):
 
 def test_all_exposed_headers_present_passes(mock):
     mock.get(f"{BASE}/latest.json", headers=GOOD_CORS)
+
+    assert check_exposed_headers(BASE, PRODUCTION, MANIFEST["expose_headers"])["state"] == OK
+
+
+def test_a_wildcard_expose_headers_answer_means_all_readable(mock):
+    """The same #659 wildcard reading as the preflight's: `*` exposes
+    everything to a non-credentialed request, it is not a header name."""
+    mock.get(f"{BASE}/latest.json", headers={"Access-Control-Expose-Headers": "*"})
 
     assert check_exposed_headers(BASE, PRODUCTION, MANIFEST["expose_headers"])["state"] == OK
 
@@ -361,9 +380,22 @@ def test_the_range_check_asks_for_one_byte(mock):
     assert mock.last_request.headers["Range"] == "bytes=0-0"
 
 
-def test_a_bucket_that_honours_if_range_passes(mock):
+def if_range_server(mock, current_status, stale_status):
+    """A server that answers by the VALIDATOR each probe actually sent
+    (#659): the sequence mocks these tests used answered by request order,
+    so a check that sent the validators swapped - or the same validator
+    twice - satisfied every test here while asking the wrong question."""
+
+    def respond(request, context):
+        context.status_code = current_status if request.headers.get("If-Range") == HEALTHY_ETAG else stale_status
+        return ""
+
     mock.head(f"{BASE}/background.pmtiles", headers={"ETag": HEALTHY_ETAG})
-    mock.get(f"{BASE}/background.pmtiles", [{"status_code": 206}, {"status_code": 200}])
+    mock.get(f"{BASE}/background.pmtiles", text=respond)
+
+
+def test_a_bucket_that_honours_if_range_passes(mock):
+    if_range_server(mock, current_status=206, stale_status=200)
 
     assert check_if_range(BASE, "background.pmtiles")["state"] == OK
 
@@ -376,8 +408,7 @@ def test_a_bucket_that_ignores_if_range_fails_and_says_what_is_left(mock):
     not overstate what is at risk. `archiveDownload.ts` makes the same
     comparison client-side against the ETag on the 206, so what is missing is
     the server-side half of a defence rather than the whole of one."""
-    mock.head(f"{BASE}/background.pmtiles", headers={"ETag": HEALTHY_ETAG})
-    mock.get(f"{BASE}/background.pmtiles", [{"status_code": 206}, {"status_code": 206}])
+    if_range_server(mock, current_status=206, stale_status=206)
 
     report = check_if_range(BASE, "background.pmtiles")
 
@@ -391,8 +422,7 @@ def test_a_current_etag_refused_is_the_serious_direction(mock):
     """The other way round from the known breakage, and the worse one: a bucket
     that answers 206 to a stale validator merely fails to help, but one that
     will not answer 206 to a CURRENT one has broken resuming outright."""
-    mock.head(f"{BASE}/background.pmtiles", headers={"ETag": HEALTHY_ETAG})
-    mock.get(f"{BASE}/background.pmtiles", [{"status_code": 200}, {"status_code": 200}])
+    if_range_server(mock, current_status=200, stale_status=200)
 
     report = check_if_range(BASE, "background.pmtiles")
 

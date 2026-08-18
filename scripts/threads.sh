@@ -63,26 +63,49 @@ git rev-parse --verify --quiet "$base" >/dev/null || {
 bold=$'\033[1m'; dim=$'\033[2m'; red=$'\033[31m'; green=$'\033[32m'; off=$'\033[0m'
 [ -t 1 ] || { bold=""; dim=""; red=""; green=""; off=""; }
 
-# Which suite each path prefix belongs to, mirroring the `paths:` given to
-# .github/actions/changed-paths in each workflow. Kept in the order
-# CONTRIBUTING.md lists the build commands, so the output reads as a to-run
-# list rather than a set.
+# Which suites a branch's files reach, READ from each workflow's own
+# `paths:` list exactly as scripts/test.sh reads them - never a hand-kept
+# copy (#660). The copy this replaced had drifted: site/,
+# pipeline/reference/, .github/ISSUE_TEMPLATE/ and the named cross-suite
+# contract files (client/src/lib/config.ts and friends) were invisible, so
+# the ledger BRANCHING.md §6 calls "agrees with CI by construction" reported
+# `none (docs only)` for changes CI runs a full suite on - which is how a
+# session stacking onto a branch got its collision check told the branch
+# was `suites: pipeline` right up until the client commit landed (#597/#610,
+# CLAUDE.md's second collision).
+#
+# One call per suite, made once before the loop, through
+# scripts/suite_scopes.py - the same one home scripts/test.sh reads. If the
+# YAML cannot be read the ledger says so per-branch instead of guessing -
+# an unreadable scope is not evidence a suite is unreachable.
+scope_client=$(python3 scripts/suite_scopes.py client 2>/dev/null || true)
+scope_pipeline=$(python3 scripts/suite_scopes.py pipeline 2>/dev/null || true)
+scope_backend=$(python3 scripts/suite_scopes.py backend 2>/dev/null || true)
+
+# Kept in the order CONTRIBUTING.md lists the build commands, so the output
+# reads as a to-run list rather than a set. The settings suite runs on every
+# pull request unfiltered (TESTING.md), so any change at all lists it.
 suites_for() {
-  local files="$1" suites=()
-
-  grep -qE '^client/'   <<<"$files" && suites+=("client")
-  grep -qE '^pipeline/' <<<"$files" && suites+=("pipeline")
-  grep -qE '^backend/'  <<<"$files" && suites+=("backend")
-  grep -qE '^\.github/' <<<"$files" && suites+=("repo-settings")
-
-  # A change to a gate has to prove the suite it gates - which is why each
-  # workflow lists its own file and the shared action in its own paths. Marked
-  # with ? because it is the gate being re-proven, not the suite's own code.
-  if grep -qE '^\.github/(workflows/|actions/changed-paths/)' <<<"$files"; then
-    grep -qE '^client/'   <<<"$files" || suites+=("client?")
-    grep -qE '^pipeline/' <<<"$files" || suites+=("pipeline?")
-    grep -qE '^backend/'  <<<"$files" || suites+=("backend?")
-  fi
+  local files="$1" suites=() suite scope file prefix
+  for suite in client pipeline backend; do
+    local scope_var="scope_${suite}"
+    scope="${!scope_var}"
+    if [ -z "$scope" ]; then
+      suites+=("${suite}?(scope unreadable)")
+      continue
+    fi
+    # Literal prefixes, not patterns - scripts/test.sh says why the leading
+    # dot in .github/ makes grep the wrong tool here.
+    while IFS= read -r file; do
+      [ -n "$file" ] || continue
+      for prefix in $scope; do
+        case "$file" in
+          "$prefix"*) suites+=("$suite"); break 2 ;;
+        esac
+      done
+    done <<<"$files"
+  done
+  [ -n "$files" ] && suites+=("repo-settings")
 
   if [ ${#suites[@]} -eq 0 ]; then echo "none (docs only)"; else echo "${suites[*]}"; fi
 }
@@ -118,13 +141,23 @@ while read -r ref; do
   ahead=$(git rev-list --count "$base..$ref")
   behind=$(git rev-list --count "$ref..$base")
   last=$(git log -1 --format=%cr "$ref")
-  files=$(git diff --name-only "$base...$ref")
+  files=$(git diff --name-only --no-renames "$base...$ref")
   suites=$(suites_for "$files")
 
-  if git merge-tree --write-tree --no-messages "$base" "$ref" >/dev/null 2>&1; then
+  # Exit 0 is clean, 1 is conflicts, and ANYTHING ELSE is merge-tree itself
+  # failing (#660) - which used to be reported as CONFLICTS, sending someone
+  # off to resolve a merge that was never tested. "Could not tell" is its
+  # own answer here, same as the git-version check at the top.
+  merge_rc=0
+  git merge-tree --write-tree --no-messages "$base" "$ref" >/dev/null 2>&1 || merge_rc=$?
+  if [ "$merge_rc" -eq 0 ]; then
     status="${green}clean${off}    "
     action="leave it - merges as-is, main's age is irrelevant"
     clean=$((clean + 1))
+  elif [ "$merge_rc" -gt 1 ]; then
+    status="${red}UNKNOWN${off}  "
+    action="merge-tree failed (exit $merge_rc) - could not test this merge; investigate by hand"
+    conflicted=$((conflicted + 1))
   else
     # Name the files rather than count them. Which file it is decides whether
     # this is thirty seconds or an afternoon.
@@ -148,7 +181,7 @@ while read -r ref; do
   printf '             %s+%s/-%s · %s · suites: %s%s\n' "$dim" "$ahead" "$behind" "$last" "$suites" "$off"
   printf '             → %s\n\n' "$action"
 done < <(git branch -r --no-merged "$base" --sort=-committerdate \
-           | grep -v 'HEAD' | sed 's/^[ *]*//' | grep -v "^${base}$")
+           | sed 's/^[ *]*//' | grep -vE '^origin/HEAD( |$)' | grep -v "^${base}$")
 
 [ "$live" -eq 0 ] && printf '  nothing in flight.\n\n'
 
@@ -162,8 +195,10 @@ if [ "$unrelated_n" -gt 0 ]; then
 fi
 
 if $show_stale; then
+  # The HEAD filter matches the symbolic-ref line exactly (#660): a plain
+  # `grep -v HEAD` also dropped any branch whose NAME contains HEAD.
   merged=$(git branch -r --merged "$base" \
-    | grep -v 'HEAD' | sed 's/^[ *]*//' | grep -vE "^(origin/main|origin/gh-pages)$" \
+    | sed 's/^[ *]*//' | grep -vE '^origin/HEAD( |$)' | grep -vE "^(origin/main|origin/gh-pages)$" \
     | sed 's|^origin/||' || true)
   merged_n=$(printf '%s' "$merged" | grep -c . || true)
   if [ "$merged_n" -gt 0 ]; then

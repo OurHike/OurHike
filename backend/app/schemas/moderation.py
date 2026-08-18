@@ -1,10 +1,32 @@
 """Pydantic request/response models for moderation-queue actions."""
 
+from datetime import datetime
+
 from pydantic import BaseModel
 
 from app.models.report import Severity
 from app.schemas.closure import ClosureOut
 from app.schemas.report import ReportOut
+
+
+class ClosureModerationOut(ClosureOut):
+    """`ClosureOut` plus the audit trail - for moderators only.
+
+    `ClosureOut`'s docstring promises its withheld identity fields "only
+    stop being handed to anonymous HTTP callers", and until #658 that was
+    false: the moderation queue and the verify/dismiss actions answered
+    with plain `ClosureOut` too, so the one audience the audit trail exists
+    for could not see it. Reports never had this gap - `ReportOut.for_viewer`
+    hands a moderator the whole record - and this is closures catching up.
+
+    Only ever returned from `MODERATOR_ROLES`-gated endpoints; the public
+    `/closures` list keeps answering with `ClosureOut`.
+    """
+
+    reported_by: str | None
+    verified_by: str | None
+    dismissed_by: str | None
+    dismissed_at: datetime | None
 
 
 class ReportVerifyRequest(BaseModel):
@@ -51,4 +73,4 @@ class ModerationQueue(BaseModel):
     """
 
     reports: list[ReportOut]
-    closures: list[ClosureOut]
+    closures: list[ClosureModerationOut]

@@ -15,9 +15,11 @@ from pathlib import Path
 
 from lib.source_registry import (
     ARCGIS_FEATURE_LAYER,
+    EXTERNAL_ARCGIS_LAYER,
     KNOWN_KINDS,
     PUBLISHED_NOTICES,
     arcgis_sources,
+    external_arcgis_sources,
     find_source,
     is_arcgis_feature_layer,
     load_registry,
@@ -49,6 +51,24 @@ def test_arcgis_sources_keeps_registry_order_and_drops_the_rest():
     }
 
     assert [entry["key"] for entry in arcgis_sources(registry)] == ["centerline", "shelters"]
+
+
+def test_an_external_layer_is_kept_out_of_the_atc_loop_and_found_by_its_own():
+    """The property #769 rides on, from both sides: an external-organization
+    layer must never land in fetch_all.py's loop (its completeness gate is
+    the A.T. release's, and OPRHP's closures layer is honestly empty in a
+    good week), and fetch_external_layers.py must find exactly the entries
+    that declare themselves."""
+    registry = {
+        "sources": [
+            {"key": "centerline"},
+            {"key": "oprhp_trails", "kind": EXTERNAL_ARCGIS_LAYER},
+        ]
+    }
+
+    assert not is_arcgis_feature_layer({"key": "oprhp_trails", "kind": EXTERNAL_ARCGIS_LAYER})
+    assert [entry["key"] for entry in arcgis_sources(registry)] == ["centerline"]
+    assert [entry["key"] for entry in external_arcgis_sources(registry)] == ["oprhp_trails"]
 
 
 def test_find_source_answers_none_rather_than_raising():
@@ -94,6 +114,50 @@ def test_the_reviewed_input_the_registry_names_is_really_there():
     entry = find_source(load_registry(REAL_REGISTRY), "atc_trail_updates")
 
     assert (REAL_REGISTRY.parent / entry["reviewed_input"]).exists()
+
+
+def test_the_real_registry_registers_the_four_oprhp_layers_as_external():
+    """#769's deliverable, checked as data: the four layers the NY State
+    Parks Explorer app itself draws, each carrying the kind that keeps it
+    out of fetch_all.py, a steward, and a licence pointing at the pending
+    outreach - a licence field nobody filled in is the hole this registry
+    keeps refusing."""
+    registry = load_registry(REAL_REGISTRY)
+    keys = ("oprhp_trails", "oprhp_trail_closures", "oprhp_facilities", "oprhp_park_polygons")
+
+    for key in keys:
+        entry = find_source(registry, key)
+        assert entry is not None, f"sources.json no longer registers {key} (#769)"
+        assert entry["kind"] == EXTERNAL_ARCGIS_LAYER
+        assert entry["trust"] == "authoritative"
+        assert entry["steward"].startswith("New York State Office of Parks")
+        assert entry["licence"].strip()
+        assert entry["url"].startswith("https://services.arcgis.com/1xFZPtKn1wKC6POA/")
+
+
+def test_only_the_closures_layer_may_be_empty():
+    """`may_be_empty` is the per-entry allowance fetch_external_layers.py's
+    gate reads: zero closures is a fact about the parks, zero trails is a
+    broken fetch. A flag that crept onto the other three would quietly
+    disarm the gate for layers where empty always means broken."""
+    registry = load_registry(REAL_REGISTRY)
+
+    flagged = {
+        entry["key"] for entry in registry["sources"] if source_kind(entry) == EXTERNAL_ARCGIS_LAYER and entry.get("may_be_empty")
+    }
+    assert flagged == {"oprhp_trail_closures"}
+
+
+def test_the_registry_records_the_oprhp_licence_block():
+    """The gate #769 exists to hold: OPRHP's terms are unstated and the
+    maintainer's outreach is in progress, so the block must say the licence
+    is pending rather than assert one nobody granted - and it must survive
+    discovery runs the way photo_licence now does."""
+    registry = load_registry(REAL_REGISTRY)
+
+    assert registry["oprhp_licence"]["basis"].startswith("Maintainer outreach in progress")
+    assert registry["oprhp_licence"]["recorded_date"] == "2026-08-18"
+    assert "pending" in registry["oprhp_licence"]["license"].lower()
 
 
 def test_the_registry_still_records_the_photo_licence_block():

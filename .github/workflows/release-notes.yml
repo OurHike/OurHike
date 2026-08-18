@@ -68,11 +68,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          # Through env, as the validation step above already models (#660):
+          # dispatch inputs are free text, and `--name "${{ inputs.name }}"`
+          # hands whatever it holds straight to bash.
+          VERSION: ${{ inputs.version }}
+          RELEASE_NAME: ${{ inputs.name }}
+          PREVIOUS: ${{ inputs.previous }}
         run: |
           python .github/scripts/release_notes.py \
-            --version "${{ inputs.version }}" \
-            --name "${{ inputs.name }}" \
-            ${{ inputs.previous && format('--previous {0}', inputs.previous) || '' }}
+            --version "$VERSION" \
+            --name "$RELEASE_NAME" \
+            ${PREVIOUS:+--previous "$PREVIOUS"}
 
       - name: Open the pull request
         env:

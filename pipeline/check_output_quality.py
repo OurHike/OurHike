@@ -130,7 +130,6 @@ exits the process.
 """
 
 import argparse
-import hashlib
 import json
 import sys
 from enum import Enum
@@ -142,6 +141,7 @@ import rasterio
 from lib import fetch_receipts
 from lib.completeness import count_problems
 from lib.corridor import GEOGRAPHIC_CRS, METERS_PER_MILE, PROJECTED_CRS, build_corridor
+from lib.hashing import sha256_file
 from lib.poi_schema import POI_TYPES
 
 ROOT = Path(__file__).parent
@@ -160,6 +160,7 @@ ELEVATION_MANIFEST = PROCESSED_DIR / "elevation_manifest.json"
 SPURS_MANIFEST = PROCESSED_DIR / "spurs_manifest.json"
 CENTERLINE_PATH = ROOT / "data" / "raw" / "centerline.geojson"
 TOPO_QUADS_MANIFEST = ROOT / "data" / "raw" / "topo_quads" / "manifest.json"
+CLUB_SECTIONS_MANIFEST = PROCESSED_DIR / "club_sections_manifest.json"
 BASELINE_PATH = ROOT / "data" / "quality_baseline.json"
 #: The directory fetch receipts record their output paths relative to - the
 #: pipeline root itself, not a file under it, because a receipt names several
@@ -197,14 +198,6 @@ class Verdict(str, Enum):
     OK = "ok"
     PROBLEM = "problem"
     SKIPPED = "skipped"
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def read_manifest(path: Path) -> dict | None:
@@ -477,6 +470,65 @@ def spurs_verdict(manifest_path: Path | None = None) -> dict:
         "problems": problems,
         "counts": {"spurs": spur_count},
     }
+
+
+def manifests_verdict(club_manifest_path: Path | None = None, stretches_dir: Path | None = None) -> dict:
+    """Re-verify the manifest-backed artifacts publish.py collects that no
+    dedicated verdict covers (#659): club_sections_manifest.json and each
+    stretch family's <family>_stretches_manifest.json. Same thesis as every
+    other check here - the exporter's manifest is a claim, and the claim is
+    only evidence once the file on disk re-hashes to it.
+
+    Asymmetric on absence, deliberately: a missing club_sections manifest
+    is a PROBLEM (reason MANIFEST_MISSING, so --optional manifests can
+    excuse it) because publish-vector-data.yml now always runs that
+    exporter - while a missing stretch-family manifest is only noted, since
+    stretches exist only after a basemap/dem build and most vector runs
+    rightly have none."""
+    if club_manifest_path is None:
+        club_manifest_path = CLUB_SECTIONS_MANIFEST
+    if stretches_dir is None:
+        stretches_dir = PROCESSED_DIR
+
+    problems: list[str] = []
+    details: list[str] = []
+    reason = None
+
+    club_manifest = read_manifest(club_manifest_path)
+    if club_manifest is None:
+        problems.append("club_sections_manifest.json missing - export_club_sections.py may not have run")
+        reason = MANIFEST_MISSING
+    else:
+        problems += artifact_problems("club_sections.json", club_manifest)
+        details.append("club_sections.json verified")
+
+    # publish.py's STRETCH_FAMILIES, imported rather than restated, so a
+    # third family lands here the day it lands there. Imported lazily: this
+    # module runs in contexts that never publish, and should not need
+    # publish.py's boto3 import to answer a local quality question.
+    from publish import STRETCH_FAMILIES
+
+    for family in STRETCH_FAMILIES:
+        manifest = read_manifest(stretches_dir / f"{family}_stretches_manifest.json")
+        if manifest is None:
+            details.append(f"{family} stretches: not built this run")
+            continue
+        entries = manifest.get("artifacts", {})
+        for name, entry in entries.items():
+            problems += artifact_problems(name, entry)
+        details.append(f"{family} stretches: {len(entries)} artifacts verified")
+
+    verdict = Verdict.PROBLEM if problems else Verdict.OK
+    report = {
+        "check": "manifests",
+        "verdict": verdict,
+        "detail": f"{len(problems)} problem(s)" if problems else "; ".join(details),
+        "problems": problems,
+        "counts": {},
+    }
+    if reason is not None:
+        report["reason"] = reason
+    return report
 
 
 # --- Check 2: corridor cross-check ------------------------------------------
@@ -941,6 +993,7 @@ def check_all(
     poi = verdict("poi", poi_verdict)
     elevation = verdict("elevation", elevation_verdict)
     spurs = verdict("spurs", spurs_verdict)
+    manifests = verdict("manifests", manifests_verdict)
     corridor = _safe_verdict("corridor", corridor_verdict)
     topo_quads = _safe_verdict("topo_quads", topo_quads_verdict)
 
@@ -953,7 +1006,7 @@ def check_all(
     # --fetched instead.
     fetches = _safe_verdict("fetches", lambda: fetches_verdict(fetched=fetched, root=RECEIPTS_ROOT))
 
-    return [trails, poi, elevation, spurs, corridor, topo_quads, baseline, fetches]
+    return [trails, poi, elevation, spurs, manifests, corridor, topo_quads, baseline, fetches]
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

@@ -16,9 +16,10 @@ Each upstream exposes a different freshness marker, so this normalises them:
     ATC layers    ArcGIS `editingInfo.dataLastEditDate` (epoch ms)
     Topo quads    S3 `Last-Modified` per quad
     opentrail     HTTP ETag
-    Elevation     the set of edition dates TNM currently publishes, since
-                  3DEP has no per-file timestamp worth trusting but does
-                  embed an edition date in every filename
+    Elevation     S3 `Last-Modified` per tracked corridor cell in the
+                  stable `current/` bucket (#550 - it used to parse
+                  edition dates out of TNM filenames, before the bucket
+                  gave every cell a stable name with a header that moves)
     ATC updates   HTTP ETag on ATC's trail-updates feed, compared against
                   what a human recorded in reference/atc_updates.json when
                   they last reviewed it (#459)
@@ -74,7 +75,6 @@ import json
 import random
 import re
 import sys
-from datetime import date
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -91,6 +91,7 @@ from lib.freshness_state import (
     load_state,
     state_age_days,
     summarise,
+    utc_today,
 )
 from lib.source_registry import find_source, load_registry
 
@@ -405,7 +406,7 @@ def topo_sample(manifest: dict, size: int | None = None, seed: str | None = None
     if size is None:
         size = TOPO_SAMPLE_SIZE
     if seed is None:
-        seed = date.today().isoformat()
+        seed = utc_today().isoformat()
 
     by_state: dict[str, list[str]] = {}
     for key in manifest:
@@ -494,7 +495,13 @@ def upstream_elevation_marker(recorded: str | None = None) -> str | None:
                 continue
             last_modified = fetch_elevation._head(fetch_elevation.cell_url(cell))
             if last_modified is None:
-                continue
+                # One unanswerable cell makes the whole marker unanswerable
+                # (#659). Skipping it built a marker missing that cell's
+                # key, which compared as STALE - and STALE means "refetch a
+                # 25-minute export" where the truth was "one HEAD flaked,
+                # ask again". UNKNOWN is the honest verdict for could-not-
+                # ask, and it is this module's documented posture for it.
+                return None
             keys.add(edition_key(fetch_elevation.cell_url(cell), last_modified))
         return "|".join(sorted(keys)) if keys else None
     except Exception:
@@ -615,7 +622,7 @@ def verdict_document(reports: list[dict], state: dict | None) -> dict:
         sources.append(entry)
 
     return {
-        "checked_at": date.today().isoformat(),
+        "checked_at": utc_today().isoformat(),
         "state_captured_at": (state or {}).get("captured_at"),
         "state_age_days": state_age_days(state) if state else None,
         "sources": sources,

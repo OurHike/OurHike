@@ -43,10 +43,19 @@ on:
         description: "Tile pyramid depth (14 = OpenMapTiles convention)"
         type: string
         default: "14"
+      # Pinned to a versioned release plus its digest, not "latest" (#660):
+      # this jar is EXECUTED to produce bytes hikers download, so poisoning
+      # it needs no credentials at all - only the artifact. Overriding the
+      # URL means overriding the checksum in the same dispatch; a jar that
+      # does not match refuses to build.
       planetiler_jar_url:
         description: "Planetiler release jar to build with"
         type: string
-        default: "https://github.com/onthegomap/planetiler/releases/latest/download/planetiler.jar"
+        default: "https://github.com/onthegomap/planetiler/releases/download/v0.10.2/planetiler.jar"
+      planetiler_jar_sha256:
+        description: "SHA-256 the fetched jar must match (change it with the URL)"
+        type: string
+        default: "f310bd0413e2e4512b27f4046d418664e8e1d3bf31603c2a70e23de06c167e4d"
       publish:
         description: "Upload the AT package to R2. Only full corridor builds (all 14 states, z14) are allowed through."
         type: boolean
@@ -108,8 +117,16 @@ jobs:
         run: python fetch_all.py
 
       - name: Fetch the Planetiler jar
+        env:
+          # Through env, never interpolated into bash (#660) - dispatch
+          # inputs are attacker-shaped text the moment the repo has more
+          # than one pair of hands, and release-notes.yml already models
+          # the rule.
+          JAR_URL: ${{ inputs.planetiler_jar_url }}
+          JAR_SHA256: ${{ inputs.planetiler_jar_sha256 }}
         run: |
-          curl -sSL -o planetiler.jar "${{ inputs.planetiler_jar_url }}"
+          curl -sSL -o planetiler.jar "$JAR_URL"
+          echo "$JAR_SHA256  planetiler.jar" | sha256sum -c -
           ls -la planetiler.jar
 
       - name: Build the basemap
@@ -136,6 +153,17 @@ jobs:
             --max-zoom 13 \
             --out data/processed/at_basemap_package_z13.pmtiles \
             --name "OurHike AT corridor basemap (z13)"
+
+      # The 50-mile stretch units (#556): the corridor package partitioned
+      # by calibrated trail-mile, plus one shared context archive and the
+      # coverage index. Cut from the package rather than the build because
+      # the package is already corridor-clipped - every tile in it belongs
+      # to some stretch. fetch_all.py above supplies the centerline AND the
+      # half-mile markers the axis calibration reads (#652).
+      - name: Cut the stretch units from the package
+        run: |
+          python cut_stretches.py data/processed/at_basemap_package.pmtiles \
+            --family at_basemap
 
       # The whole point of the spike: real numbers where estimates were. To
       # the log AND the summary - a number that exists only in a rendered
@@ -171,13 +199,19 @@ jobs:
           if-no-files-found: error
 
       # The packages ride separately so the publish job downloads the ~0.7 GB
-      # it ships and not the source build beside it.
+      # it ships and not the source build beside it. The stretch units and
+      # their manifest ride here too - publish.py's collect_artifacts reads
+      # at_basemap_stretches_manifest.json out of PROCESSED_DIR (#556).
       - uses: actions/upload-artifact@v4
         with:
           name: basemap-package
           path: |
             pipeline/data/processed/at_basemap_package.pmtiles
             pipeline/data/processed/at_basemap_package_z13.pmtiles
+            pipeline/data/processed/at_basemap_stretch_*.pmtiles
+            pipeline/data/processed/at_basemap_context.pmtiles
+            pipeline/data/processed/at_basemap_stretches.json
+            pipeline/data/processed/at_basemap_stretches_manifest.json
           retention-days: 7
           if-no-files-found: error
 

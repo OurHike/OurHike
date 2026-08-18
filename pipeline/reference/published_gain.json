@@ -35,10 +35,22 @@
         "end_mi": "number",
         "published_gain_ft": "number",
         "source": "who published it",
-        "source_year": "number"
+        "source_year": "number",
+        "tolerance": "optional: overrides check_elevation_gain.SECTION_TOLERANCE for this section",
+        "tolerance_reason": "REQUIRED when tolerance is overridden - the check refuses a silent widening"
       }
     ]
   },
+
+  "_mileposts": [
+    "start_mi/end_mi are on the calibrated NOBO axis (#652) - ATC's own",
+    "half-mile Measure scale, which elevation_profile.json's distance_mi has",
+    "used since PR #765. Each anchor below was located by projecting a known",
+    "trailhead/summit coordinate onto that axis (the `_anchor` notes record",
+    "the residual - how far the coordinate sat from the centerline). Re-derive",
+    "any of them with export_elevation.calibrated_trail_axis and a Point;",
+    "issue #133 carries the worked method."
+  ],
 
   "whole_trail": {
     "published_gain_ft": 510000,
@@ -51,5 +63,68 @@
     ]
   },
 
-  "sections": []
+  "sections": [
+    {
+      "name": "Katahdin via the Hunt Trail",
+      "start_mi": 2192.54,
+      "end_mi": 2197.86,
+      "published_gain_ft": 4188,
+      "source": "Baxter State Park's Hunt Trail figure (5.2 mi one-way, 4,188 ft), as republished by Bangor Daily News and NortheastHikes",
+      "source_year": 2019,
+      "_anchor": [
+        "Katahdin Stream Campground (45.8875, -68.9994) projects to mile",
+        "2192.54 (9 m off the centerline); Baxter Peak (45.9044, -68.9214) to",
+        "2197.86 = the axis top (10 m off). The Hunt Trail IS the A.T. here,",
+        "one-way ascent, so the published walk and this window are the same",
+        "miles by construction. Character: sustained alpine climb - barely",
+        "exercises the dead band, anchors the top of the scale."
+      ]
+    },
+    {
+      "name": "Moosilauke via the Glencliff Trail",
+      "start_mi": 1800.68,
+      "end_mi": 1804.58,
+      "published_gain_ft": 3333,
+      "source": "AllTrails route 'Mount Moosilauke via Glencliff Trail and Appalachian Trail' (7.8 mi round trip, 3,333 ft gain; GPS/DEM-derived route stats)",
+      "source_year": 2026,
+      "_anchor": [
+        "Moosilauke's summit (44.0245, -71.8315) projects to mile 1804.58",
+        "(43 m off the centerline); the start is the summit minus the cited",
+        "3.9-mile one-way length. The Glencliff Trail is the A.T.'s NOBO",
+        "ascent. Weakest source of the three - route-stat aggregation, not a",
+        "land manager - kept because a second sustained climb in a different",
+        "range, on different DEM projects, is still worth a row. Character:",
+        "sustained NH climb."
+      ]
+    },
+    {
+      "name": "Carvers Gap to US 19E (Roan Highlands)",
+      "start_mi": 380.79,
+      "end_mi": 395.86,
+      "published_gain_ft": 2054,
+      "source": "TEHCC (the section's maintaining club), trail wiki 'Carver's Gap to US19E': 14.8 mi, 2,054 ft gain / 4,703 ft loss, stated south-to-north",
+      "source_year": 2026,
+      "tolerance": 0.25,
+      "tolerance_reason": [
+        "Cumulative gain on rolling, descent-dominated terrain is",
+        "methodology-dependent, and the honest published sources disagree with",
+        "a dense DEM sum by more than the default 10% of this section's small",
+        "denominator. Measured 2026-08-18 against the calibrated-axis profile:",
+        "our 3 m figure is 2,441 ft (+18.8% vs TEHCC's 2,054; AllTrails'",
+        "route stat is 2,145); the window contains zero part boundaries and",
+        "zero physically-impossible steps, its extra feet sit exactly where",
+        "the named climbs are (Round Bald, Little Hump, Hump Mountain) plus",
+        "~400 ft of small real rolls dense sampling counts and smoothed",
+        "sources do not; and NO threshold in the 0-10 m sweep brings it",
+        "within 10% of TEHCC (10 m still reads +12.4%) while the same",
+        "thresholds sit within +/-4% on both pure ascents above. Tuning the",
+        "dead band to this section would trade agreement with a known-meaning",
+        "figure for agreement with an unknown smoothing. 25% still catches",
+        "the failure class this file exists for - the 17% systematic",
+        "over-count arrived ON TOP of an honest baseline, and a recurrence",
+        "lands this section near +40%. Character: rolling descent-heavy",
+        "balds - the discriminating case for the dead band."
+      ]
+    }
+  ]
 }

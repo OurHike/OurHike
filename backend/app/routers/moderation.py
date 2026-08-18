@@ -26,8 +26,8 @@ from app.db.session import get_db
 from app.models.closure import Closure, ModerationStatus
 from app.models.profile import MODERATOR_ROLES, Profile
 from app.models.report import Report, ReportStatus, ReportType
-from app.schemas.closure import ClosureOut, ClosureVerify
-from app.schemas.moderation import ModerationQueue, ReportVerifyRequest
+from app.schemas.closure import ClosureVerify
+from app.schemas.moderation import ClosureModerationOut, ModerationQueue, ReportVerifyRequest
 from app.schemas.report import ReportOut
 
 router = APIRouter(tags=["moderation"])
@@ -79,7 +79,7 @@ def read_moderation_queue(
         # why the queue reuses ReportOut rather than a leaner row, and #252
         # does not change that: what it changes is what the PUBLIC sees.
         reports=[ReportOut.for_viewer(report, current_user) for report in reports],
-        closures=[ClosureOut.model_validate(closure) for closure in closures],
+        closures=[ClosureModerationOut.model_validate(closure) for closure in closures],
     )
 
 
@@ -103,6 +103,16 @@ def verify_report(
             detail="A thanks has nothing to verify.",
         )
 
+    # Resolved is terminal for verification: it means "was verified, then
+    # fixed", and re-verifying would quietly re-open a hazard the record
+    # says is cleared. Dismissal below stays available from any state -
+    # abuse removal always is (#658).
+    if report.status is ReportStatus.resolved:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This report is resolved. File a new report for a recurrence.",
+        )
+
     report.status = ReportStatus.verified
     # Only when the moderator actually said something about it. An omitted
     # severity is not a de-escalation - see ReportVerifyRequest (#251).
@@ -115,8 +125,13 @@ def verify_report(
     # answerable for a washed-out footbridge - which made
     # features/REPORT_A_PROBLEM.md's "not building a second review workflow"
     # structurally false at exactly this point.
-    report.verified_by = current_user.id
-    report.verified_at = utc_now()
+    #
+    # Set once, never overwritten (#658): who FIRST escalated a
+    # dangerous-person report is the fact an audit needs, and a re-verify
+    # used to replace it with whoever touched the row last.
+    if report.verified_at is None:
+        report.verified_by = current_user.id
+        report.verified_at = utc_now()
     return ReportOut.for_viewer(commit_and_refresh(db, report), current_user)
 
 
@@ -129,10 +144,52 @@ def dismiss_report(
     report = get_or_404(db, Report, report_id, detail="Report not found")
 
     report.status = ReportStatus.dismissed
+    # Latest-wins, where verified_* preserves the first (#658): "who removed
+    # this bad_hikers report" means the operative removal, and until these
+    # two were recorded it was unanswerable while "who escalated it" was not.
+    report.dismissed_by = current_user.id
+    report.dismissed_at = utc_now()
     return ReportOut.for_viewer(commit_and_refresh(db, report), current_user)
 
 
-@router.post("/closures/{closure_id}/verify", response_model=ClosureOut)
+@router.post("/reports/{report_id}/resolve", response_model=ReportOut)
+def resolve_report(
+    report_id: str,
+    current_user: Profile = Depends(require_role(*MODERATOR_ROLES)),
+    db: Session = Depends(get_db),
+) -> ReportOut:
+    """Mark a verified hazard as fixed - the action that makes
+    `ReportStatus.resolved` reachable (#658).
+
+    The status has been load-bearing and unreachable since #257: the public
+    contract keeps resolved reports visible, the client renders them as
+    "Fixed" (lib/reportStatus.ts), and no endpoint could set it - so a
+    cleared blowdown could only be vanished by dismissal, which reads as
+    "this was never real" rather than "this was real and someone fixed it".
+
+    Only from `verified`. Resolving a `submitted` report would skip the
+    moderation gate ("fixed" implies "was real", and only verify says that);
+    resolving a `dismissed` one would resurrect a report a moderator
+    removed. Resolving an already-resolved report is a no-op 200 - retries
+    are normal and there is nothing further to record.
+    """
+    report = get_or_404(db, Report, report_id, detail="Report not found")
+
+    if report.status is ReportStatus.resolved:
+        return ReportOut.for_viewer(report, current_user)
+    if report.status is not ReportStatus.verified:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only a verified report can be resolved.",
+        )
+
+    report.status = ReportStatus.resolved
+    report.resolved_by = current_user.id
+    report.resolved_at = utc_now()
+    return ReportOut.for_viewer(commit_and_refresh(db, report), current_user)
+
+
+@router.post("/closures/{closure_id}/verify", response_model=ClosureModerationOut)
 def verify_closure(
     closure_id: str,
     payload: ClosureVerify | None = None,
@@ -152,14 +209,16 @@ def verify_closure(
     closure = get_or_404(db, Closure, closure_id, detail="Closure not found")
 
     closure.moderation_status = ModerationStatus.verified
-    closure.verified_by = current_user.id
-    closure.verified_at = utc_now()
+    # Set once, never overwritten - same rule and reason as verify_report.
+    if closure.verified_at is None:
+        closure.verified_by = current_user.id
+        closure.verified_at = utc_now()
     if payload is not None and payload.status is not None:
         closure.status = payload.status
     return commit_and_refresh(db, closure)
 
 
-@router.post("/closures/{closure_id}/dismiss", response_model=ClosureOut)
+@router.post("/closures/{closure_id}/dismiss", response_model=ClosureModerationOut)
 def dismiss_closure(
     closure_id: str,
     current_user: Profile = Depends(require_role(*MODERATOR_ROLES)),
@@ -168,4 +227,7 @@ def dismiss_closure(
     closure = get_or_404(db, Closure, closure_id, detail="Closure not found")
 
     closure.moderation_status = ModerationStatus.dismissed
+    # Latest-wins - same rule and reason as dismiss_report (#658).
+    closure.dismissed_by = current_user.id
+    closure.dismissed_at = utc_now()
     return commit_and_refresh(db, closure)

@@ -224,11 +224,30 @@ export function withEveryType(
  * there anything here I am not being shown" should be answerable without reading
  * every row, and it is deliberately second-order: the rows are where a hiker
  * learns that the missing category is the privies.
+ *
+ * A HIDDEN CATEGORY IS IN NEITHER HALF OF THE FRACTION (#777). Its absence from
+ * the map is the hiker's own filter, not the camera, and the remedy this line
+ * prescribes - zoom in - cannot cure it. Counted as present, "only shelters"
+ * over a busy stretch read "5 of 42 fit" with the 37 the filter removed, and
+ * because the drawn measurement already reflects the filter (map/drawnPois.ts
+ * queries what MapLibre placed), `drawn < present` held at every camera - the
+ * line never left the screen while a filter was on. The per-row fractions are
+ * untouched: a greyed-out row reading `0/14` is that row saying what
+ * re-enabling it would buy.
+ *
+ * @param hiddenTypes The legend's hidden set. Read through NEVER_HIDEABLE like
+ *   every consumer of the preference (lib/waypointVisibility.ts), so no
+ *   caller's set can quiet this summary about a safety layer.
  */
 export function legendDropSummary(
   rows: readonly LegendRow[],
+  hiddenTypes?: ReadonlySet<string>,
 ): { present: number; drawn: number } | null {
-  const measured = rows.filter((row) => row.drawnCount !== undefined)
+  const hidden = (row: LegendRow) =>
+    hiddenTypes !== undefined &&
+    hiddenTypes.has(row.type) &&
+    !NEVER_HIDEABLE.has(row.type)
+  const measured = rows.filter((row) => row.drawnCount !== undefined && !hidden(row))
   if (measured.length === 0) return null
 
   const present = measured.reduce((total, row) => total + row.count, 0)

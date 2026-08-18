@@ -201,4 +201,7 @@ def test_the_sweep_covers_every_table_the_schema_creates():
     #
     # A table missing from here is not a broken keepalive; it is a table whose
     # exposure to the anon key nothing checks.
-    assert set(keepalive.KEEPALIVE_TABLES) == set(Base.metadata.tables)
+    # Plus alembic's own version table, which Base.metadata cannot know
+    # about: e5b2f7c1a903 locked it, and the sweep is what notices if that
+    # lock ever comes undone (#658).
+    assert set(keepalive.KEEPALIVE_TABLES) == set(Base.metadata.tables) | {"alembic_version"}

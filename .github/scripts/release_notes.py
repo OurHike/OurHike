@@ -54,10 +54,17 @@ AREAS = ["client", "backend", "pipeline", "data", "ops", "docs"]
 # release that does not mention what it changed.
 INTERNAL_ONLY = {"docs", "ops", "no-issue"}
 
-# Both spellings of a merged pull request. GitHub writes the first for a merge
-# commit and the second into the subject of a squash, and this repository has
-# used both - so a generator that knew only one would silently produce short
-# notes rather than fail.
+# Two of the three spellings of a merged pull request. GitHub writes the
+# first for a merge commit and the second into the subject of a squash, and
+# this repository has used both - so a generator that knew only one would
+# silently produce short notes rather than fail. The THIRD spelling is no
+# spelling at all (#660): a rebase merge replays the branch's own commits
+# with their original subjects, so nothing in `git log --format=%s` names
+# the pull request. Commits neither regex matches are resolved through the
+# commit->pulls API in main() instead of being silently dropped - a
+# rebase-configured merge queue (BRANCHING.md leaves the method open) would
+# otherwise generate "No merged pull requests in this range." for a fully
+# active release.
 MERGE_SUBJECT = re.compile(r"^Merge pull request #(\d+) from ")
 SQUASH_SUBJECT = re.compile(r"\(#(\d+)\)\s*$")
 
@@ -92,6 +99,22 @@ def pull_request_numbers(log: str) -> list[int]:
             if number not in numbers:
                 numbers.append(number)
     return numbers
+
+
+def unmatched_commits(log_with_shas: str) -> list[str]:
+    """The commit shas whose subject names no pull request - the rebase-merge
+    residue (#660), for main() to resolve through the API. Input is
+    `git log --format=%H%x09%s`, one tab-separated line per commit."""
+    shas: list[str] = []
+    for line in log_with_shas.splitlines():
+        sha, _, subject = line.partition("\t")
+        subject = subject.strip()
+        if not sha or not subject:
+            continue
+        if MERGE_SUBJECT.match(subject) or SQUASH_SUBJECT.search(subject):
+            continue
+        shas.append(sha.strip())
+    return shas
 
 
 def linked_issues(text: str) -> list[int]:
@@ -276,6 +299,18 @@ def _fetch_change(number: int, repo: str, token: str) -> Change | None:
     )
 
 
+def _pulls_for_commit(sha: str, repo: str, token: str) -> list[int]:
+    """The pull requests GitHub associates with one commit - how a
+    rebase-merged change is found when its subject names nothing (#660)."""
+    try:
+        payload = _api(f"/repos/{repo}/commits/{sha}/pulls", token)
+    except urllib.error.HTTPError as error:
+        print(f"::warning::Could not read pull requests for {sha[:10]}: {error}", file=sys.stderr)
+        return []
+    assert isinstance(payload, list)
+    return [int(item["number"]) for item in payload if isinstance(item, dict) and "number" in item]
+
+
 def _fetch_unvalidated(repo: str, token: str) -> list[Change]:
     try:
         payload = _api(f"/repos/{repo}/issues?state=open&labels=needs-field-testing&per_page=100", token)
@@ -322,8 +357,18 @@ def main(argv: list[str] | None = None) -> int:
         previous = tags[0] if tags else None
 
     span = f"{previous}..HEAD" if previous else "HEAD"
-    log = _git("log", "--format=%s", span)
-    numbers = pull_request_numbers(log)
+    log = _git("log", "--format=%H%x09%s", span)
+    subjects = "\n".join(line.partition("\t")[2] for line in log.splitlines())
+    numbers = pull_request_numbers(subjects)
+
+    # Rebase merges leave commits whose subject names no pull request
+    # (#660); the commit->pulls API is the record that still does. Only
+    # numbers not already found by subject are added, in commit order.
+    for sha in unmatched_commits(log):
+        for number in _pulls_for_commit(sha, args.repo, token):
+            if number not in numbers:
+                numbers.append(number)
+
     print(f"{len(numbers)} pull requests in {span}.", file=sys.stderr)
 
     changes = [change for change in (_fetch_change(number, args.repo, token) for number in numbers) if change]

@@ -205,6 +205,67 @@
       "discovered_via": "WATER_CONDITIONS.md's survey for #716 measured it against the centerline: 877.1 of 2,172.0 trail miles at least abnormally dry on 2026-08-11, 205.8 of them in severe drought. Registered by hand - discover_sources.py walks ATC's Experience Builder app and this source is not in it.",
       "discovered_date": "2026-08-15",
       "notes": "Fetched by fetch_drought.py to data/raw/drought/usdm_YYYYMMDD.json, the DATED file rather than usdm_current.json: the polygons carry no date inside them, and a weekly product whose artifact cannot name its week leaves the client with only the bake's clock. A USDM week runs Tuesday to Monday and is released on the Thursday, so the fetcher walks back a week at a time - a midweek 404 is 'not published yet', not a failure. export_drought.py clips to a 10 km corridor (27.6 MB national file to about 10 KB gzipped, losslessly - WATER_CONDITIONS.md §4), un-nests the classes so each published band is disjoint, and publishes conditions/drought.json."
+    },
+    {
+      "key": "oprhp_trails",
+      "title": "NYS Parks Trails (statewide Transportation layer)",
+      "provider": "NYS OPRHP",
+      "kind": "external_arcgis_layer",
+      "url": "https://services.arcgis.com/1xFZPtKn1wKC6POA/arcgis/rest/services/NY_State_Parks_Trails/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "New York State Office of Parks, Recreation and Historic Preservation",
+      "steward_contact": "https://parks.ny.gov/about/contact-us.aspx",
+      "licence": "See oprhp_licence below - unstated by OPRHP (their item's licenseInfo is a no-warranty disclaimer and accessInformation is empty, both read 2026-08-18), maintainer outreach in progress. Fetched for REVIEW AND THE #771 SPIKE ONLY; nothing from this source reaches a published artifact until that block records OPRHP's answer.",
+      "attribution": "New York State Office of Parks, Recreation and Historic Preservation",
+      "discovered_via": "The NY State Parks Explorer mobile app's per-park Web Maps on OPRHP's public AGOL org 'nysparks' (org id 1xFZPtKn1wKC6POA) - read 'Old Croton Parks App' item 36c9404f8fad4dfc9df0e0037e1fb96b's operationalLayers, then probed live 2026-08-18 (#768/#769). Registered by hand - discover_sources.py walks ATC's Experience Builder app and this org is not behind it.",
+      "discovered_date": "2026-08-18",
+      "notes": "16,641 polyline segments statewide, measured 2026-08-18: per-segment Unit/Name/Alt_Name, up to three Blaze colours plus Map_Blaze, Surface, Status, Public_, per-use flags (Foot/Bike/Horse/XC/SS/Snowmb) and Miles. editingInfo.dataLastEditDate verified live 2026-08-18 - then reading 2026-08-17T19:43Z, edited the day before this registration, so the layer is actively maintained. This is the layer the Parks Explorer app syncs its offline data from (capabilities Query,Extract,Sync,ChangeTracking; a literal ParksApp column). What Public_ and Status gate is unmeasured - #771 measures before anything filters on them, and until then the fetch takes every row rather than guessing."
+    },
+    {
+      "key": "oprhp_trail_closures",
+      "title": "NYS Parks Temporary Trail Closures",
+      "provider": "NYS OPRHP",
+      "kind": "external_arcgis_layer",
+      "url": "https://services.arcgis.com/1xFZPtKn1wKC6POA/arcgis/rest/services/NY_State_Parks_Temporary_Trail_Closure/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "New York State Office of Parks, Recreation and Historic Preservation",
+      "steward_contact": "https://parks.ny.gov/about/contact-us.aspx",
+      "licence": "See oprhp_licence below - unstated, maintainer outreach in progress; REVIEW AND SPIKE ONLY until that block records OPRHP's answer.",
+      "attribution": "New York State Office of Parks, Recreation and Historic Preservation",
+      "may_be_empty": true,
+      "discovered_via": "Sibling of oprhp_trails on the same org, surfaced by an AGOL search for the org's trail services, probed live 2026-08-18 (#768/#769). Registered by hand.",
+      "discovered_date": "2026-08-18",
+      "notes": "TEMPORARY closure polygons - 4 features on 2026-08-18, and an honest count of zero is the expected answer in a good week, which is what may_be_empty records and why this layer could never sit behind fetch_all.py's non-empty completeness gate. dataLastEditDate verified live 2026-08-18 (then 2026-06-16). A safety surface: if OPRHP data ever ships, this is the layer whose freshness matters most (CLAUDE.md's closures path)."
+    },
+    {
+      "key": "oprhp_facilities",
+      "title": "NYS Parks Facilities",
+      "provider": "NYS OPRHP",
+      "kind": "external_arcgis_layer",
+      "url": "https://services.arcgis.com/1xFZPtKn1wKC6POA/arcgis/rest/services/NY_State_Park_Facilities/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "New York State Office of Parks, Recreation and Historic Preservation",
+      "steward_contact": "https://parks.ny.gov/about/contact-us.aspx",
+      "licence": "See oprhp_licence below - unstated, maintainer outreach in progress; REVIEW AND SPIKE ONLY until that block records OPRHP's answer.",
+      "attribution": "New York State Office of Parks, Recreation and Historic Preservation",
+      "discovered_via": "Drawn by every per-park 'Parks App' Web Map alongside oprhp_trails (same operationalLayers read, 2026-08-18, #768/#769). Registered by hand.",
+      "discovered_date": "2026-08-18",
+      "notes": "8,823 point features statewide, measured 2026-08-18. The layer's own display name is 'NY State Parks Facilities (Internal)' although the service is public - what that naming implies about the schema's intended audience is unassessed. Whether it carries water sources is UNCHECKED (#769 names this the open question that raises the evidence bar if true - water is one of CLAUDE.md's four ways). dataLastEditDate verified live 2026-08-18 (then 2026-08-12)."
+    },
+    {
+      "key": "oprhp_park_polygons",
+      "title": "NYS Park Polygons (unit boundaries)",
+      "provider": "NYS OPRHP",
+      "kind": "external_arcgis_layer",
+      "url": "https://services.arcgis.com/1xFZPtKn1wKC6POA/arcgis/rest/services/NYS_Park_Polygons/FeatureServer/0",
+      "trust": "authoritative",
+      "steward": "New York State Office of Parks, Recreation and Historic Preservation",
+      "steward_contact": "https://parks.ny.gov/about/contact-us.aspx",
+      "licence": "See oprhp_licence below - unstated, maintainer outreach in progress; REVIEW AND SPIKE ONLY until that block records OPRHP's answer.",
+      "attribution": "New York State Office of Parks, Recreation and Historic Preservation",
+      "discovered_via": "The first layer every per-park 'Parks App' Web Map draws (same operationalLayers read, 2026-08-18, #768/#769). Registered by hand.",
+      "discovered_date": "2026-08-18",
+      "notes": "858 park-unit boundary polygons, measured 2026-08-18 - what the #770 survey's ring proposal and the #771 spike's Harriman clip cut against. dataLastEditDate verified live 2026-08-18 (then 2026-07-30)."
     }
   ],
   "usdm_licence": {
@@ -215,5 +276,13 @@
     "recorded_date": "2026-08-15",
     "attribution": "The U.S. Drought Monitor is jointly produced by the National Drought Mitigation Center at the University of Nebraska-Lincoln, the United States Department of Agriculture, the National Oceanic and Atmospheric Administration and the National Aeronautics and Space Administration. Map courtesy of NDMC.",
     "open_question": "NDMC has not been asked directly whether redistributing the polygons is in scope. The wording above is theirs, verbatim from droughtmonitor.unl.edu/About/Permission.aspx; an email to DroughtMonitor@unl.edu would turn this declaration into a confirmation. Until then this is the maintainer's reading, recorded as such rather than as NDMC's."
+  },
+  "oprhp_licence": {
+    "_comment": "The basis on which the four oprhp_* layers above may be fetched, and the bar their data has to clear before any of it is republished to hikers. OPRHP's own terms are UNSTATED: the trails item's licenseInfo is a no-warranty disclaimer ('no representations or warranties... as to the accuracy, reliability, or completeness of the data') and its accessInformation is empty, both read 2026-08-18 - public and queryable is not a reuse grant (SOURCE_SURVEY.md's rule 3, 'licensed beats good'). The maintainer declared 2026-08-18, in the planning conversation recorded in https://github.com/OurHike/OurHike/issues/768, that they are reaching out to OPRHP directly and expects the answer to be attribution-to-source terms. Until that answer is recorded here, every oprhp_* entry is fetch-and-review only - the same footing as gatc_water_sources - and OPRHP's own accuracy disclaimer is provenance any eventual display must carry rather than outrun.",
+    "author": "New York State Office of Parks, Recreation and Historic Preservation",
+    "license": "Unstated - pending OPRHP's answer to the maintainer's ask",
+    "basis": "Maintainer outreach in progress, declared 2026-08-18",
+    "recorded_date": "2026-08-18",
+    "open_question": "https://github.com/OurHike/OurHike/issues/769 - OPRHP's answer should replace this block's license line with the agreed terms, the way atc_licence's open question reads."
   }
 }

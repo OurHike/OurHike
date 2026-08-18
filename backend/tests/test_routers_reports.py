@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from app.models.profile import Profile, Role
 from app.models.report import Report, ReporterType, ReportStatus, ReportType, Visibility
 from app.schemas.report import ReportCreate
+from tests import tokens as jwt_tokens
 from tests.factories import make_profile
 from tests.tokens import auth_headers
 
@@ -995,17 +996,16 @@ def test_a_mile_that_is_not_a_number_is_refused(bad):
     one is absent from every route range instead of misplaced in one - a
     safety warning that exists in the database and on no phone.
 
-    **Tested on the schema rather than over HTTP, because HTTP cannot carry
-    it.** These values only exist in JSON as the bare `NaN`/`Infinity` tokens
-    Python's `json.dumps` emits, and FastAPI's body parser refuses those
-    before any validator runs - as does `JSON.stringify`, which writes
-    `null`. So the wire is already closed, and what this guards is the model
-    itself: pydantic accepts inf and NaN as floats by default
-    (`allow_inf_nan`), so anything constructing a `ReportCreate` in Python -
-    a script, a future non-JSON transport, a test - would otherwise get one
-    through.
+    **The wire is NOT closed** - this test's docstring used to claim
+    FastAPI's parser refuses the bare `NaN`/`Infinity` tokens, and that was
+    empirically false on the pinned stack (tests/test_wire_inputs.py sends
+    them over HTTP and gets the 422). Since #658 the refusal happens at the
+    type (schemas/common.FiniteFloat), which is why the message asserted
+    here is pydantic's finite-number one rather than the field validator's
+    own - the validator stays behind it as defence in depth for anything
+    constructing a `ReportCreate` in Python with validation bypassed.
     """
-    with pytest.raises(ValidationError, match="real number"):
+    with pytest.raises(ValidationError, match="finite number"):
         ReportCreate(type="blowdown", reporter_type="thru", mile=bad)
 
 
@@ -1036,3 +1036,77 @@ def test_a_resent_report_keeps_the_mile_it_was_filed_with(client):
     body = client.post("/reports", json=resent, headers=auth_headers(user_id)).json()
 
     assert body["mile"] == 1407.2
+
+
+# --- Optional auth degrades to anonymous, never 401 (#322) --------------------
+#
+# TESTING.md's third server-side invariant: browsing needs no account, so a
+# bad credential on a public endpoint must read as "nobody", not as an error.
+# Every earlier test sent either a valid token or none; these exercise the
+# `except HTTPException: return None` branch that actually keeps a
+# signed-out-ish client able to browse.
+
+
+def _file_pending_report(client, user_id):
+    response = client.post("/reports", json=_VALID_PAYLOAD, headers=auth_headers(user_id))
+    assert response.status_code == 201
+    return response.json()["id"]
+
+
+def test_an_expired_token_browses_as_anonymous_not_401(client):
+    user_id = str(uuid.uuid4())
+    report_id = _file_pending_report(client, user_id)
+    expired = jwt_tokens.make_token(user_id, expires_delta=timedelta(hours=-1))
+
+    response = client.get("/reports", headers={"Authorization": f"Bearer {expired}"})
+
+    assert response.status_code == 200, "a stale credential must degrade, never block browsing"
+    # Degraded means degraded: the caller's own pending report is hidden,
+    # exactly as it would be for a stranger. (That this is silent is #658's
+    # re-auth-signal concern - recorded there as a design question, asserted
+    # here as the documented contract.)
+    assert report_id not in [r["id"] for r in response.json()]
+
+    as_owner = client.get("/reports", headers=auth_headers(user_id))
+    assert report_id in [r["id"] for r in as_owner.json()], "sanity: the owner with a live token sees it"
+
+
+def test_a_malformed_token_browses_as_anonymous_not_401(client):
+    _file_pending_report(client, str(uuid.uuid4()))
+
+    response = client.get("/reports", headers={"Authorization": "Bearer not-a-jwt-at-all"})
+
+    assert response.status_code == 200
+
+
+def test_a_token_signed_with_the_wrong_secret_browses_as_anonymous(client):
+    user_id = str(uuid.uuid4())
+    _file_pending_report(client, user_id)
+    forged = jwt_tokens.make_token(user_id, secret="the-wrong-secret-entirely")
+
+    response = client.get("/reports", headers={"Authorization": f"Bearer {forged}"})
+
+    assert response.status_code == 200
+    assert all(r["id"] != user_id for r in response.json())
+
+
+def test_no_emitting_handler_returns_a_bare_orm_row(client):
+    """The sharper edge of the guard above (#658). "for_viewer appears
+    somewhere in the handler" is a substring test, and `return settled` in
+    create_report's idempotent path passed it for months because the
+    string appeared on a different line - benign only while the caller was
+    the owner, and silently wrong the day the first viewer-conditional
+    field lands. Every return line in an emitting handler must construct
+    its response; a bare `return <name>` is the ORM row escaping."""
+    import re
+
+    offenders = []
+    for route, source in _report_emitting_routes():
+        for line in source.splitlines():
+            if re.match(r"\s*return [a-z_][a-z0-9_]*\s*(#.*)?$", line):
+                offenders.append(f"{route.path} -> {line.strip()}")
+
+    assert offenders == [], (
+        "These return statements hand back a bare object - if it is an ORM "
+        "row, reporter_id ships to whoever called (#252):\n  " + "\n  ".join(offenders)
+    )

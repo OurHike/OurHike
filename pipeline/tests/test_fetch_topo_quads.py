@@ -225,10 +225,12 @@ def test_completeness_problems_still_gates_on_corrupted_alongside_unmatched():
 #
 # .github/workflows/build-raster.yml runs `fetch_topo_quads.py --metadata-only`
 # in two separate jobs, and it is the ONLY entry point into this script that is
-# safe on a CI runner: main() reads data/spike/corridor.geojson four lines in, a
-# stale proof-of-concept artifact lib/corridor.py forbids trusting and that no
-# fresh checkout has. So the flag is load-bearing for the whole raster pipeline
-# - which is exactly why it needs a test that a refactor cannot quietly break.
+# safe on a CI runner: main() builds the 30-mile corridor from the fetched
+# centerline four lines in (lib/corridor.py, since #659 - it used to read the
+# stale spike output that module forbids trusting), and a hosted runner has no
+# fetched centerline and could not survive the 16 GB download that follows. So
+# the flag is load-bearing for the whole raster pipeline - which is exactly why
+# it needs a test that a refactor cannot quietly break.
 
 
 def test_metadata_only_fetches_the_inventory_and_stops(monkeypatch):

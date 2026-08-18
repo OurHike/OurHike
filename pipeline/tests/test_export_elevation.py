@@ -338,6 +338,42 @@ def test_export_elevation_samples_correctly_from_a_dem_tile_in_a_non_wgs84_proje
     assert value == pytest.approx(1234.5, abs=1.0)
 
 
+def test_a_nan_sample_is_a_gap_not_an_elevation_whatever_nodata_declares(tmp_path):
+    """#659: `value == nodata` is always False when the value is NaN, so a
+    tile that encodes its gaps as NaN (a legal, real GeoTIFF encoding -
+    one upstream re-encode away) used to pass NaN through as a "real"
+    elevation, and json.dumps then emits a literal NaN that JSON.parse
+    rejects - the whole profile artifact down client-side. A NaN sample
+    must come back None (the honest-gap path) regardless of what the
+    tile's nodata metadata says."""
+    for declared_nodata in (float("nan"), -9999.0):
+        tile_dir = tmp_path / f"case_{declared_nodata}"
+        tile_path = tile_dir / "GA" / "nan_tile.tif"
+        tile_path.parent.mkdir(parents=True)
+        transform = from_bounds(-84.3, 34.5, -84.0, 34.8, 20, 20)
+        profile = {
+            "driver": "GTiff",
+            "height": 20,
+            "width": 20,
+            "count": 1,
+            "dtype": "float32",
+            "crs": "EPSG:4326",
+            "transform": transform,
+            "nodata": declared_nodata,
+        }
+        with rasterio.open(tile_path, "w", **profile) as dst:
+            dst.write(np.full((1, 20, 20), np.nan, dtype="float32"))
+
+        tile_index = export_elevation.index_elevation_tiles(_index_for_dir(tile_dir, tile_dir))
+        sampler = export_elevation.ElevationSampler(tile_index)
+        try:
+            value = sampler.sample(-84.15, 34.65)
+        finally:
+            sampler.close()
+
+        assert value is None, f"NaN pixel with nodata={declared_nodata!r} must read as a gap, not an elevation"
+
+
 # --- manifest / hashing ----------------------------------------------------
 
 

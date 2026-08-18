@@ -213,18 +213,37 @@ def request_with_retry(session: requests.Session, url: str, **kwargs) -> request
     raise AssertionError("unreachable")
 
 
-def capture_date(session: requests.Session, file_id: str) -> date | None:
-    """The photo's EXIF capture date, read from the first EXIF_HEADER_BYTES of
-    the original rather than the whole file. Drive answers a Range request with
-    206; a server that ignored it would return the entire image, so the slice
-    is applied locally too rather than trusting the status."""
+def probe_original(session: requests.Session, file_id: str) -> tuple[date | None, str | None, int | None]:
+    """(capture date, Last-Modified, total byte size) of the Drive original,
+    all read from one Range request for its first EXIF_HEADER_BYTES.
+
+    The capture date comes from the EXIF in those bytes rather than the whole
+    file - originals run to 6.8 MB and the rest is never transferred. Drive
+    answers a Range request with 206; a server that ignored it would return
+    the entire image, so the slice is applied locally too rather than
+    trusting the status.
+
+    The other two ride the same response for free (#465): `Last-Modified` is
+    a header, and the total size is the figure after "/" in `Content-Range`
+    ("bytes 0-65535/5691832"). Together they are the change signal that lets
+    a --recheck skip re-downloading a rendering whose original demonstrably
+    has not changed - see eligible_photos. Either is None when Drive omits
+    the header, and None never matches, so an absent signal degrades to
+    re-fetching rather than to trusting."""
     resp = request_with_retry(
         session,
         DOWNLOAD_URL,
         params={"export": "download", "id": file_id},
         headers={"Range": f"bytes=0-{EXIF_HEADER_BYTES - 1}"},
     )
-    return parse_exif_date(resp.content[:EXIF_HEADER_BYTES])
+    taken = parse_exif_date(resp.content[:EXIF_HEADER_BYTES])
+    last_modified = resp.headers.get("Last-Modified")
+    size = None
+    content_range = resp.headers.get("Content-Range", "")
+    total = content_range.rpartition("/")[2]
+    if total.isdigit():
+        size = int(total)
+    return taken, last_modified, size
 
 
 def store_rendering(session: requests.Session, file_id: str) -> str:
@@ -288,19 +307,28 @@ def record_photos(record: dict) -> list[dict]:
 
 
 def cached_photo_missing(record: dict) -> bool:
-    """Whether a prior "found" outcome has lost any of the bytes it recorded -
-    a cleared data/ tree leaves the outcomes file pointing at images publish.py
-    would never upload.
+    """Whether a prior "found" outcome fails to VOUCH for its photos.
 
-    Any one missing re-fetches the POI's whole set rather than the single gap:
-    the photos are fetched together, the outcome is recorded together, and a
-    partial repair would leave the record claiming a list it cannot back."""
+    Until #465 this required the bytes on local disk, which was right when
+    local disk was the only evidence a photo had ever been obtained - and
+    made every cold publish re-crawl 489 features for ~15 minutes to
+    re-obtain a corpus the bucket already held. The digest is the evidence
+    now: photos are content-addressed, so a record that names its digests
+    can be published from directly, and publish.verify_photo_promises()
+    settles every published photo key against the bucket at the moment it
+    matters - a cleared data/ tree publishing a key nobody ever uploaded
+    fails THERE, loudly, instead of being re-downloaded here preemptively.
+
+    A record with any digest-less photo still re-fetches the POI's whole
+    set rather than the single gap: the photos are fetched together, the
+    outcome is recorded together, and a partial repair would leave the
+    record claiming a list it cannot back."""
     if record.get("status") != "found":
         return False
     photos = record_photos(record)
     if not photos:
         return True
-    return any(photo.get("digest") is None or not local_photo_path(RAW_DIR, photo["digest"]).exists() for photo in photos)
+    return any(photo.get("digest") is None for photo in photos)
 
 
 def collect_candidates() -> list[dict]:
@@ -336,6 +364,7 @@ def eligible_photos(
     cutoff: date,
     credit: dict,
     unresolved: list[str] | None = None,
+    prior_photos: dict[str, dict] | None = None,
 ) -> list[dict]:
     """Every shippable photo for a POI, in ATC's own Photo1..Photo10 order.
 
@@ -346,6 +375,15 @@ def eligible_photos(
     caller owns rather than a return value, because a slowly rotting corpus
     is a thing to notice across a whole run and not a fact about any one
     POI.
+
+    `prior_photos`, when given, maps photo URL -> the photo record an earlier
+    run wrote for it (#465). The probe every slot makes anyway carries the
+    original's Last-Modified and size; when both match what that record
+    stored, the rendering cannot have changed, so its digest is carried
+    forward and the thumbnail download is skipped. The reuse is
+    signal-guarded, never assumed: a prior record missing either signal, or
+    missing a digest, re-downloads - so records written before this existed
+    upgrade themselves on their first re-check.
 
     All of them, not the first: 433 of the 489 features carrying a photo carry
     more than one, and taking only the first discarded 812 real photographs of
@@ -365,10 +403,20 @@ def eligible_photos(
         if file_id is None:
             continue
         try:
-            taken = capture_date(session, file_id)
+            taken, last_modified, size = probe_original(session, file_id)
             if taken is None or taken < cutoff:
                 continue
-            digest = store_rendering(session, file_id)
+            prior = (prior_photos or {}).get(url) or {}
+            if (
+                last_modified is not None
+                and size is not None
+                and prior.get("drive_last_modified") == last_modified
+                and prior.get("drive_size") == size
+                and prior.get("digest") is not None
+            ):
+                digest = prior["digest"]
+            else:
+                digest = store_rendering(session, file_id)
         except requests.exceptions.HTTPError as error:
             # Both calls are wrapped, not just the first: a file can answer a
             # Range request and then refuse the rendering, and either way this
@@ -391,6 +439,8 @@ def eligible_photos(
                 "license": credit["license"],
                 "taken": taken.isoformat(),
                 "digest": digest,
+                "drive_last_modified": last_modified,
+                "drive_size": size,
             }
         )
     return photos
@@ -489,7 +539,13 @@ def main(recheck: bool = False) -> None:
             records[candidate["id"]] = prior_record
             kept += 1
         else:
-            photos = eligible_photos(session, candidate, cutoff, credit, unresolved)
+            # Re-fetches still carry the prior record's per-URL photo rows in:
+            # each slot's probe compares Drive's Last-Modified + size against
+            # them and skips the rendering download when nothing changed, so a
+            # --recheck costs one Range request per photo, not two requests
+            # and a re-download (#465).
+            prior_photos = {p["url"]: p for p in record_photos(prior_record or {}) if p.get("url")}
+            photos = eligible_photos(session, candidate, cutoff, credit, unresolved, prior_photos)
             records[candidate["id"]] = (
                 {"status": "none", "checked": today} if not photos else {"status": "found", "checked": today, "photos": photos}
             )

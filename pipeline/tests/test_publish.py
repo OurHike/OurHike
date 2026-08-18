@@ -418,15 +418,24 @@ def test_build_state_is_recorded_in_the_manifest_but_not_as_an_artifact(s3_clien
     assert "build_state.json" in manifest["sidecars"]
 
 
-def test_collect_sidecars_finds_build_state_where_the_capture_writes_it(tmp_path, monkeypatch):
+def test_collect_sidecars_reads_each_file_from_its_own_shelf(tmp_path, monkeypatch):
+    """build_state.json is processed build metadata; the two photo outcome
+    files are fetch products living in raw/ (#465). A collector that looked
+    on one shelf for the other's file would silently publish nothing."""
+    processed, raw = tmp_path / "processed", tmp_path / "raw"
+    processed.mkdir(), raw.mkdir()
+    monkeypatch.setattr(publish, "PROCESSED_DIR", processed)
+    monkeypatch.setattr(publish, "RAW_DIR", raw)
+    (processed / "build_state.json").write_text("{}")
+    (raw / "poi_images_atc.json").write_text('{"pois": {}}')
+    (raw / "poi_images.json").write_text('{"pois": {}}')
+
+    assert set(publish.collect_sidecars()) == {"build_state.json", "poi_images_atc.json", "poi_images.json"}
+
+
+def test_collect_sidecars_is_empty_when_nothing_was_written(tmp_path, monkeypatch):
     monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
-    (tmp_path / "build_state.json").write_text("{}")
-
-    assert set(publish.collect_sidecars()) == {"build_state.json"}
-
-
-def test_collect_sidecars_is_empty_when_no_capture_ran(tmp_path, monkeypatch):
-    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
 
     assert publish.collect_sidecars() == {}
 
@@ -510,6 +519,79 @@ def test_photos_alone_do_not_write_a_new_version(s3_client, local_artifacts, loc
     assert result["photos_uploaded"]  # they did upload
     assert result["version_written"] is False  # and wrote no version
     assert publish.MANIFEST_KEY not in result["uploaded"]
+
+
+# --- #465: every photo promise is settled against the bucket ---
+#
+# The fetches stopped requiring local bytes (a record with digests vouches for
+# itself), so THIS is now the only thing standing between a stale outcome file
+# and a card resolving to a 404 on a mountain.
+
+
+def _poi_artifact(tmp_path, properties_list):
+    path = tmp_path / "poi_shelters.geojson"
+    features = [{"type": "Feature", "properties": props, "geometry": None} for props in properties_list]
+    path.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
+    return {"poi_shelters.geojson": {"path": str(path), "sha256": publish.sha256_file(path)}}
+
+
+def test_referenced_photo_keys_reads_the_card_key_and_the_gallery(tmp_path):
+    """Both places an artifact promises a photo: the card's photo_key and the
+    gallery's JSON-encoded list. Missing the gallery would let its later
+    slots 404 while the check reported clean."""
+    artifacts = _poi_artifact(
+        tmp_path,
+        [
+            {"photo_key": "photos/aaa.jpg", "photos": json.dumps([{"key": "photos/aaa.jpg"}, {"key": "photos/bbb.jpg"}])},
+            {"name": "no photo here"},
+        ],
+    )
+
+    assert publish.referenced_photo_keys(artifacts) == {"photos/aaa.jpg", "photos/bbb.jpg"}
+
+
+def test_referenced_photo_keys_ignores_artifacts_that_are_not_poi_layers(tmp_path):
+    path = tmp_path / "trails.geojson"
+    path.write_text(json.dumps({"type": "FeatureCollection", "features": [{"properties": {"photo_key": "photos/x.jpg"}}]}))
+
+    keys = publish.referenced_photo_keys({"trails.geojson": {"path": str(path), "sha256": "irrelevant"}})
+
+    assert keys == set()
+
+
+def test_a_promise_backed_by_the_bucket_passes_without_local_bytes(s3_client, local_artifacts, tmp_path):
+    """The whole point of #465: a cold machine whose data/ tree is empty can
+    still publish, because the corpus is already content-addressed in the
+    bucket and a HEAD per referenced key proves it."""
+    s3_client.put_object(Bucket=BUCKET, Key="photos/aaa.jpg", Body=b"\xff\xd8 already there")
+    artifacts = {**local_artifacts, **_poi_artifact(tmp_path, [{"photo_key": "photos/aaa.jpg"}])}
+
+    result = publish.publish(artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    assert result["version_written"] is True
+
+
+def test_a_promise_backed_by_nothing_fails_the_publish_before_any_artifact_lands(s3_client, local_artifacts, tmp_path):
+    """A stale outcome record promising a photo nobody ever uploaded must
+    fail HERE, loudly, before the manifest can make the promise reachable."""
+    artifacts = {**local_artifacts, **_poi_artifact(tmp_path, [{"photo_key": "photos/never-uploaded.jpg"}])}
+
+    with pytest.raises(RuntimeError, match="never-uploaded"):
+        publish.publish(artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    with pytest.raises(s3_client.exceptions.NoSuchKey):
+        s3_client.get_object(Bucket=BUCKET, Key=publish.MANIFEST_KEY)
+
+
+def test_a_promise_backed_by_the_local_store_passes_without_a_head_request(s3_client, local_artifacts, local_photos, tmp_path):
+    """A key in the local store was just settled by upload_photos - HEADing
+    it again would double the request count for the common case."""
+    key = next(iter(local_photos))
+    artifacts = {**local_artifacts, **_poi_artifact(tmp_path, [{"photo_key": key}])}
+
+    result = publish.publish(artifacts, sidecars={}, photos=local_photos, s3_client=s3_client, bucket=BUCKET)
+
+    assert result["version_written"] is True
 
 
 def test_an_illegal_photo_key_fails_the_run_before_anything_uploads(s3_client, local_artifacts, tmp_path):

@@ -239,6 +239,43 @@ jobs:
       # Commons fetch below: this reads the same ATC data the export is built
       # from, so if it is unreachable the release has bigger problems than
       # missing photos.
+      # When the cache above missed (its normal state - see "Do not expect it
+      # to hit"), pull the last published photo OUTCOME files back over public
+      # HTTPS before the fetches run (#465). publish.py uploads both as
+      # sidecars for exactly this restore; with them in place the fetchers
+      # carry forward every still-fresh record instead of re-crawling ~500
+      # features for ~30 minutes, and each re-checked photo costs one Range
+      # probe rather than a re-download. The image bytes themselves are NOT
+      # restored - records no longer require local bytes, and
+      # publish.verify_photo_promises settles every published photo key
+      # against the bucket at upload time.
+      #
+      # `curl -f` with `|| true` on purpose: a 404 here is the first publish
+      # (or a fresh environment prefix), and an absent outcome file just means
+      # a cold crawl - the state this step exists to make rare, not an error.
+      # An empty DATA_BASE_URL variable skips the step entirely.
+      - name: Restore photo outcomes from the published data
+        if: inputs.include_photos
+        env:
+          DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
+        run: |
+          if [ -z "$DATA_BASE_URL" ]; then
+            echo "No DATA_BASE_URL repository variable - photo outcomes start cold."
+            exit 0
+          fi
+          mkdir -p data/raw
+          for name in poi_images_atc.json poi_images.json; do
+            if [ -e "data/raw/$name" ]; then
+              echo "$name already present (cache hit) - keeping the local copy."
+            elif curl -fsS --retry 3 -o "data/raw/$name.download" "${DATA_BASE_URL%/}/$name"; then
+              mv "data/raw/$name.download" "data/raw/$name"
+              echo "Restored $name from the published data."
+            else
+              rm -f "data/raw/$name.download"
+              echo "$name is not published yet - photo outcomes start cold."
+            fi
+          done
+
       - name: Fetch ATC facility photos
         if: inputs.include_photos
         run: python fetch_atc_photos.py

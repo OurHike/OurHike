@@ -263,20 +263,135 @@ def test_a_prior_outcome_is_carried_forward_without_refetching(tmp_path, monkeyp
     assert requests_mock.call_count == 0
 
 
-def test_a_found_photo_whose_bytes_are_gone_is_refetched(tmp_path, monkeypatch, requests_mock):
-    """A cleared data/ tree must not leave the outcomes file promising images
-    publish.py would never upload - a card pointing at a 404."""
+def test_a_found_record_stands_on_its_digests_even_without_local_bytes(tmp_path, monkeypatch, requests_mock):
+    """The #465 inversion: a record that names its digests can be published
+    from directly - publish.verify_photo_promises() settles every published
+    key against the bucket, loudly - so a cleared data/ tree no longer costs
+    a ~15-minute re-crawl of a corpus the bucket already holds."""
     _no_sleep(monkeypatch)
     _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
     _write_layers(tmp_path, monkeypatch, shelters=[_feature(Photo1=DRIVE_URL)])
     (tmp_path / "poi_images_atc.json").write_text(
         json.dumps({"pois": {"atc_shelters:glob-1": {"status": "found", "checked": "2026-08-08", "photo": {"digest": "beef"}}}})
     )
+
+    atc.main()  # no mocked routes: any request would fail the test
+
+    assert requests_mock.call_count == 0
+    assert _saved(tmp_path)["atc_shelters:glob-1"]["photo"]["digest"] == "beef"
+
+
+def test_a_found_record_with_a_digest_less_photo_is_refetched(tmp_path, monkeypatch, requests_mock):
+    """The line trust-the-record stops at: a photo with no digest promises
+    nothing publish.py could settle against the bucket, so the POI's set is
+    re-fetched whole."""
+    _no_sleep(monkeypatch)
+    _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
+    _write_layers(tmp_path, monkeypatch, shelters=[_feature(Photo1=DRIVE_URL)])
+    (tmp_path / "poi_images_atc.json").write_text(
+        json.dumps({"pois": {"atc_shelters:glob-1": {"status": "found", "checked": "2026-08-08", "photo": {"digest": None}}}})
+    )
     _serve(requests_mock)
 
     atc.main()
 
     assert _saved(tmp_path)["atc_shelters:glob-1"]["photos"][0]["digest"] == photo_digest(JPEG_BYTES)
+
+
+# --- #465 layer 2: the probe carries the change signal ---
+
+LAST_MODIFIED = "Wed, 12 Oct 2016 08:00:00 GMT"
+ORIGINAL_SIZE = 5691832
+
+
+def _prior_with_signals(tmp_path, digest="prior-digest", last_modified=LAST_MODIFIED, size=ORIGINAL_SIZE):
+    photo = {
+        "url": DRIVE_URL,
+        "taken": INVENTORY_ERA.isoformat(),
+        "digest": digest,
+        "drive_last_modified": last_modified,
+        "drive_size": size,
+    }
+    (tmp_path / "poi_images_atc.json").write_text(
+        json.dumps({"pois": {"atc_shelters:glob-1": {"status": "found", "checked": "2026-08-01", "photos": [photo]}}})
+    )
+
+
+def _probe_headers(last_modified=LAST_MODIFIED, size=ORIGINAL_SIZE):
+    return {"Last-Modified": last_modified, "Content-Range": f"bytes 0-{atc.EXIF_HEADER_BYTES - 1}/{size}"}
+
+
+def test_an_unchanged_original_reuses_the_prior_digest_without_redownloading(tmp_path, monkeypatch, requests_mock):
+    """Layer 2 of #465: the Range probe every slot makes anyway carries
+    Drive's Last-Modified and the original's size; when both match what the
+    record stored, the rendering cannot have changed, so a --recheck costs
+    one probe per photo instead of a probe plus a re-download."""
+    _no_sleep(monkeypatch)
+    _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
+    _write_layers(tmp_path, monkeypatch, shelters=[_feature(Photo1=DRIVE_URL)])
+    _prior_with_signals(tmp_path)
+    requests_mock.get(atc.DOWNLOAD_URL, content=_exif_header(INVENTORY_ERA), headers=_probe_headers())
+
+    atc.main(recheck=True)
+
+    assert not any(atc.THUMBNAIL_URL in r.url for r in requests_mock.request_history), (
+        "an unchanged original must not cost a rendering download"
+    )
+    assert _saved(tmp_path)["atc_shelters:glob-1"]["photos"][0]["digest"] == "prior-digest"
+
+
+def test_a_changed_original_is_redownloaded(tmp_path, monkeypatch, requests_mock):
+    """The other half of the signal: a size that moved means the file was
+    replaced, and the stored digest names bytes that no longer show it."""
+    _no_sleep(monkeypatch)
+    _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
+    _write_layers(tmp_path, monkeypatch, shelters=[_feature(Photo1=DRIVE_URL)])
+    _prior_with_signals(tmp_path, size=ORIGINAL_SIZE + 1)
+    requests_mock.get(atc.DOWNLOAD_URL, content=_exif_header(INVENTORY_ERA), headers=_probe_headers())
+    requests_mock.get(atc.THUMBNAIL_URL, content=JPEG_BYTES)
+
+    atc.main(recheck=True)
+
+    assert _saved(tmp_path)["atc_shelters:glob-1"]["photos"][0]["digest"] == photo_digest(JPEG_BYTES)
+
+
+def test_a_record_without_change_signals_redownloads_and_upgrades_itself(tmp_path, monkeypatch, requests_mock):
+    """A record written before the signals existed has nothing to match, and
+    an absent signal degrades to re-fetching rather than to trusting - so the
+    first re-check re-downloads once and stores the signals for the next."""
+    _no_sleep(monkeypatch)
+    _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
+    _write_layers(tmp_path, monkeypatch, shelters=[_feature(Photo1=DRIVE_URL)])
+    photo = {"url": DRIVE_URL, "taken": INVENTORY_ERA.isoformat(), "digest": "prior-digest"}
+    (tmp_path / "poi_images_atc.json").write_text(
+        json.dumps({"pois": {"atc_shelters:glob-1": {"status": "found", "checked": "2026-08-01", "photos": [photo]}}})
+    )
+    requests_mock.get(atc.DOWNLOAD_URL, content=_exif_header(INVENTORY_ERA), headers=_probe_headers())
+    requests_mock.get(atc.THUMBNAIL_URL, content=JPEG_BYTES)
+
+    atc.main(recheck=True)
+
+    saved = _saved(tmp_path)["atc_shelters:glob-1"]["photos"][0]
+    assert saved["digest"] == photo_digest(JPEG_BYTES)
+    assert saved["drive_last_modified"] == LAST_MODIFIED
+    assert saved["drive_size"] == ORIGINAL_SIZE
+
+
+def test_a_probe_that_returns_no_headers_still_yields_a_photo(tmp_path, monkeypatch, requests_mock):
+    """A server that omits Last-Modified or Content-Range costs the reuse
+    optimisation, never the photo - the signals are recorded as None and
+    None never matches."""
+    _no_sleep(monkeypatch)
+    _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
+    _write_layers(tmp_path, monkeypatch, shelters=[_feature(Photo1=DRIVE_URL)])
+    _serve(requests_mock)  # no Last-Modified, no Content-Range
+
+    atc.main()
+
+    saved = _saved(tmp_path)["atc_shelters:glob-1"]["photos"][0]
+    assert saved["digest"] == photo_digest(JPEG_BYTES)
+    assert saved["drive_last_modified"] is None
+    assert saved["drive_size"] is None
 
 
 # --- ids, layers, flags ---
@@ -419,18 +534,17 @@ def _saved_after(module, tmp_path):
     return _saved(tmp_path)["atc_shelters:glob-1"]["photos"]
 
 
-def test_every_photos_bytes_must_be_present_or_the_poi_is_refetched(tmp_path, monkeypatch):
-    """A POI's photos are fetched and recorded together, so a half-present set
-    is not a usable outcome - publish.py would upload some of a list the
-    artifact claims in full, and the card's later slots would 404."""
-    monkeypatch.setattr(atc, "RAW_DIR", tmp_path)
-    present = _cache(tmp_path, b"\xff\xd8 here")
-
-    intact = {"status": "found", "photos": [{"digest": present}]}
-    partial = {"status": "found", "photos": [{"digest": present}, {"digest": "absent"}]}
+def test_every_photo_must_carry_a_digest_or_the_poi_is_refetched(tmp_path, monkeypatch):
+    """A POI's photos are fetched and recorded together, so a half-vouched set
+    is not a usable outcome - a partial repair would leave the record claiming
+    a list it cannot back, and the card's later slots would 404."""
+    intact = {"status": "found", "photos": [{"digest": "d1"}, {"digest": "d2"}]}
+    partial = {"status": "found", "photos": [{"digest": "d1"}, {"digest": None}]}
+    empty = {"status": "found", "photos": []}
 
     assert atc.cached_photo_missing(intact) is False
     assert atc.cached_photo_missing(partial) is True
+    assert atc.cached_photo_missing(empty) is True
 
 
 def _cache(tmp_path, content):
@@ -596,8 +710,8 @@ def test_mounting_403s_kill_the_run_instead_of_recording_the_trail_as_photo_less
 
 def test_a_run_that_loses_half_the_prior_photos_refuses_to_persist(tmp_path, monkeypatch, requests_mock):
     """The drop guard this module's own comment cited while not having one.
-    Two prior found POIs whose cached bytes are gone force a re-fetch; the
-    re-fetch comes back photo-less (undated EXIF), and the run must die
+    Two prior found POIs whose records carry no digests force a re-fetch;
+    the re-fetch comes back photo-less (undated EXIF), and the run must die
     rather than overwrite the outcomes file with the loss."""
     _no_sleep(monkeypatch)
     _write_registry(tmp_path, monkeypatch, DEFAULT_CREDIT)
@@ -611,7 +725,7 @@ def test_a_run_that_loses_half_the_prior_photos_refuses_to_persist(tmp_path, mon
         f"atc_shelters:sh-{i}": {
             "status": "found",
             "checked": taken,
-            "photos": [{"url": DRIVE_URL, "taken": taken, "digest": f"missing-digest-{i}"}],
+            "photos": [{"url": DRIVE_URL, "taken": taken, "digest": None}],
         }
         for i in (1, 2)
     }

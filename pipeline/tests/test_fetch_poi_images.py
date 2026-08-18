@@ -221,12 +221,14 @@ def test_a_prior_outcome_is_carried_forward_without_any_api_calls(tmp_path, monk
     assert _saved(tmp_path) == prior["pois"]
 
 
-def test_a_found_photo_whose_cached_bytes_are_gone_is_refetched_without_a_new_search(tmp_path, monkeypatch, requests_mock):
-    """publish.py uploads from the cached files, so an outcomes file claiming
-    photos whose images were cleared would publish POIs pointing at objects
-    nobody ever uploaded - a 404 on a mountain. The recorded answer still
-    stands, though, so only the image is re-fetched, not the geosearch that
-    produced it."""
+def test_a_found_photo_stands_on_its_digest_even_without_local_bytes(tmp_path, monkeypatch, requests_mock):
+    """The #465 inversion of the rule this test used to pin. A record whose
+    digest is known can be published from directly - the bytes are already
+    content-addressed in the bucket, and publish.verify_photo_promises()
+    fails loudly there if they are not - so a cleared data/ tree no longer
+    forces a re-download of a corpus the bucket holds. A record with NO
+    digest still re-fetches (see the drop-guard test), because nothing can
+    be published from it."""
     _no_sleep(monkeypatch)
     poi = _poi()
     _use_pois(monkeypatch, tmp_path, [poi])
@@ -242,15 +244,39 @@ def test_a_found_photo_whose_cached_bytes_are_gone_is_refetched_without_a_new_se
         }
     }
     (tmp_path / "poi_images.json").write_text(json.dumps(prior))
+
+    fetch_poi_images.main()  # no mocked routes needed: the record vouches
+
+    assert requests_mock.call_count == 0
+    assert _saved(tmp_path) == prior["pois"]
+
+
+def test_a_found_record_with_no_digest_is_refetched(tmp_path, monkeypatch, requests_mock):
+    """The line trust-the-record stops at: a record that names no digest
+    promises nothing publish.py could settle against the bucket, so only a
+    re-fetch can stand behind it. The recorded answer still spares the
+    geosearch - one request, for the image."""
+    _no_sleep(monkeypatch)
+    poi = _poi()
+    _use_pois(monkeypatch, tmp_path, [poi])
+    prior = {
+        "pois": {
+            poi["id"]: {
+                "status": "found",
+                "checked": "2026-08-01",
+                "photo": {"url": "https://upload.wikimedia.org/1-640.jpg", "taken": FRESH, "digest": None},
+            }
+        }
+    }
+    (tmp_path / "poi_images.json").write_text(json.dumps(prior))
     _serve_image(requests_mock)
 
     fetch_poi_images.main()
 
-    # One request, and it was for the image rather than the API.
     assert requests_mock.call_count == 1
     assert requests_mock.last_request.url == "https://upload.wikimedia.org/1-640.jpg"
     assert local_photo_path(tmp_path, photo_digest(JPEG_BYTES)).read_bytes() == JPEG_BYTES
-    assert _saved(tmp_path)[poi["id"]]["status"] == "found"
+    assert _saved(tmp_path)[poi["id"]]["photo"]["digest"] == photo_digest(JPEG_BYTES)
 
 
 def test_a_downloaded_photo_is_cached_under_its_own_digest_and_carries_it(tmp_path, monkeypatch, requests_mock):

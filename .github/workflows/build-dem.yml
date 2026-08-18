@@ -63,7 +63,7 @@ jobs:
       run:
         working-directory: pipeline
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -156,7 +156,7 @@ jobs:
           echo "::error::publish is only for the canonical DEM (z0-13, 0.5 m quantize); this run built z0-${{ inputs.max_zoom }} at ${{ inputs.quantize_step }} m"
           exit 1
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:

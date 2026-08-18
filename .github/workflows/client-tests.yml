@@ -54,7 +54,7 @@ jobs:
       #
       # Checkout is unconditional because the scope action lives in this
       # repository and has to be on disk before it can decide anything.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - id: scope
         uses: ./.github/actions/changed-paths
@@ -85,7 +85,7 @@ jobs:
           # breaks the links silently, and this is the run that says so.
           paths: client/ pipeline/reference/ site/ .github/ISSUE_TEMPLATE/ .github/workflows/client-tests.yml .github/actions/changed-paths/
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: steps.scope.outputs.run == 'true'
         with:
           node-version: 24

@@ -746,7 +746,14 @@ def build_profile(
     high_water = float("-inf")
     clipped_count = 0
     for (distance_m, _pt, part), elevation_m in zip(samples_meters, elevations_m):
-        mile = calibrated[part].mile_at(distance_m - offsets[part])
+        # Clipped on the ROUNDED mile - the value the artifact actually
+        # publishes - not the raw one. Two samples from different pieces can
+        # sit closer than the 3-decimal precision at a seam (the real run
+        # that found this had exactly two such pairs in 138,710 samples),
+        # and clipping the raw value would let them through as equal
+        # published neighbours, breaking the strictly-increasing contract by
+        # a rounding artifact.
+        mile = round(calibrated[part].mile_at(distance_m - offsets[part]), 3)
         # Where two pieces cover the same stretch of trail - duplicate
         # geometry surviving the merge, see ORDERING.md's degree-6 nodes -
         # their calibrated mile ranges overlap, and publishing both would
@@ -757,7 +764,7 @@ def build_profile(
             continue
         high_water = mile
         record = {
-            "distance_mi": round(mile, 3),
+            "distance_mi": mile,
             "elevation_ft": round(elevation_m / METERS_PER_FOOT, 1) if elevation_m is not None else None,
         }
         # Only on the first emitted sample of a piece, and absent everywhere

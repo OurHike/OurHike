@@ -221,6 +221,28 @@ Vistas, parking areas and privies compose the same way, and coverage lands at **
 
 Change-aware via real HTTP conditional requests (the API documents `ETag`/`If-None-Match` support) - a 304 response means skip, no re-parsing or re-saving.
 
+### What those tags actually hold, measured (#803, 2026-08-18)
+
+`spike_opentrail_towns.py` re-fetches the feed and reads the titles at scale, because `export_poi.py`'s `ICON_LEGEND` says outright that it is *"best-effort inferred from feature titles/counts - not documented by the API"*. The counts above still hold exactly - 1,840 points, 142 `w`, 103 `t`, 72 `r`. The **meanings do not**.
+
+| tag | n | road-named | service-named | neither |
+|---|---|---|---|---|
+| `t` "town" | 103 | 8 (8%) | 32 (31%) | 62 (60%) |
+| `r` "resupply" | 72 | **57 (79%)** | **0 (0%)** | 15 (21%) |
+| `j` "junction" | 131 | 19 (15%) | 2 (2%) | 110 (84%) |
+| `o` "other" | 513 | 68 (13%) | 6 (1%) | 438 (85%) |
+
+**Not one of the 72 `r` points carries the name of a store, hostel or outfitter.** They are gaps and road crossings — *Hightower Gap*, *Newfound Gap*, *Road crossing*, *dirt road*, *skyline drive* — and the fifteen that are not road-named are overlooks, a cemetery, a pit toilet, train tracks and an underpass. `t`, meanwhile, is where the hostels, groceries and outfitters are (*Standing Bear Farm hostel*, *Bluff Mountain Outfitters*, *Trent's Grocery*), mixed with bare town names (*Damascus*, *Hot Springs*, *Wesser*) and a good deal of noise (*Store*, *Parking*, *wayside*).
+
+So the legend has the two tags that matter close to **backwards**, and the export is built on it: [#806](https://github.com/OurHike/OurHike/issues/806) tracks that `r` publishes road crossings as `resupply` at high confidence today.
+
+**Three further findings on the towns themselves**, which is what #803 asked for:
+
+- **The `t` set overlaps the 59 A.T. Communities barely.** Nine match by name; 27 of 103 have any Community within a kilometre, 6 within 100 m. Publishing them would be mostly additive rather than duplicative — a dedup problem an order of magnitude smaller than the water layers' was.
+- **They sit close to the trail.** Median 0.11 km from the published centreline, 91 of 103 within 500 m, all 103 within 5 km. So a projected mile is a fair description of where you leave the trail for one — the worry that a town *centroid* would land a valley away does not survive contact with this feed, because these are not centroids.
+- **But they are not towns**, which is why #803 closed without publishing them as a `town` type. A layer built from `t` would put *Jack's Hot Dog Stand* and *Parking* on the map as towns.
+
+
 ## Fetching POI photos from Wikimedia Commons
 
 `fetch_poi_images.py` matches openly-licensed photos to corridor POIs for the waypoint card's photo slot (design and sourcing decisions in [features/POI_PHOTOS.md](../features/POI_PHOTOS.md)). Per POI it geosearches Commons' File namespace around the coordinates (per-type radius: 300m shelters/campsites, 120m water, 500m resupply towns), then keeps only files that are JPEGs with an EXIF capture date inside the last four years and a licence OurHike can ship under - public domain, CC0, or CC BY / CC BY-SA at 4.0+, with an author to credit wherever the licence requires one (`lib/commons.py` holds the rules, including why pre-4.0 CC versions are rejected). Nearest eligible file wins. **Three published types are deliberately not crawled here at all** — `viewpoint`, `parking` and `privy` have no entry in `SEARCH_RADIUS_M`, which is what makes "not searched" a decision rather than an oversight: proximity is measurably the wrong matcher for a facility (0 usable photos for 280 shelters), ATC's own inventory covers exactly those three at 37%/58%/95%, and `fetch_atc_photos.py` wins any overlap anyway. **Licensing is per photo, not per source**, so each photo's licence, author, file-page URL and capture date are recorded in `data/raw/poi_images.json` and ride the exported features as `photo_*` properties (see `export_poi.py`), where the client renders them as the card's credit line.

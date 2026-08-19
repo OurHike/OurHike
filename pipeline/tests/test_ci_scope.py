@@ -12,6 +12,11 @@ This suite now has the same exposure in the other direction:
 exists to catch arrives in a pull request that touches only those - which is
 exactly the run a `pipeline/`-only scope would skip.
 
+`test_export_spurs.py` reads `features/SPUR_TRAILS.md` for the same kind of
+reason (#501): the doc and `export_spurs.py` have to agree about which POI
+types are destinations, and the edit that breaks that agreement is a
+docs-only pull request - the exact shape a `pipeline/` scope skips.
+
 WHY THE SCOPE LIST NAMES FILES RATHER THAN `client/src/lib/`
 
 Because the broad prefix is a tax on the commonest pull request in this
@@ -40,6 +45,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import yaml
+from test_export_spurs import SPUR_TRAILS_DOC
 from test_published_key_contract import CLIENT_FILES_READ
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -98,6 +104,25 @@ def test_every_client_file_this_suite_reads_is_in_the_scope_list():
     )
 
 
+def test_the_design_doc_this_suite_reads_is_in_the_scope_list():
+    """The same rule for the one non-client file the suite reads.
+
+    A docs-only pull request is the commonest way `features/SPUR_TRAILS.md`
+    changes, and it is the only kind of change the drift guard in
+    test_export_spurs.py exists to catch. Off the scope list, that guard runs
+    on every pull request except the ones that matter.
+    """
+    prefixes = scope_prefixes()
+    relative = SPUR_TRAILS_DOC.relative_to(REPO_ROOT).as_posix()
+
+    assert any(relative.startswith(prefix) for prefix in prefixes), (
+        f"test_export_spurs.py reads {relative}, which {WORKFLOW.name} does "
+        "not list, so a pull request changing only that doc would skip this "
+        "suite and the destination-partition guard with it.\n\n"
+        f"The list today is: {' '.join(prefixes)}"
+    )
+
+
 def test_the_suite_still_scopes_itself_and_its_own_gate():
     """The three entries that are not about the client.
 
@@ -120,3 +145,4 @@ def test_this_is_actually_reading_a_scope_list():
 
     assert len(prefixes) >= 5
     assert len(CLIENT_FILES_READ) >= 4
+    assert SPUR_TRAILS_DOC.name in {Path(prefix).name for prefix in prefixes}

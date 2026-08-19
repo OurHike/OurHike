@@ -27,6 +27,7 @@ only arrangement here in which a disagreement between the two ends fails.
 """
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -34,6 +35,16 @@ import export_poi
 import export_spurs
 from lib.poi_schema import POI_TYPES, poi_output_name
 from tests.conftest import spatial_connection
+
+# The design doc this suite reads, declared so tests/test_ci_scope.py can hold
+# the workflow's scope list to it - TESTING.md's rule that a suite's scope list
+# includes every file its tests read. Without that entry the guard below would
+# skip the one pull request that could break it: a docs-only edit.
+SPUR_TRAILS_DOC = Path(__file__).resolve().parents[2] / "features" / "SPUR_TRAILS.md"
+
+# The bullet the doc answers the classification in. Matched on its own title
+# rather than by line number, and the assertion says so when it cannot find it.
+DESTINATION_BULLET_TITLE = "Which POI types count as destinations."
 
 TRAIL_LAT, TRAIL_LON = 40.0, -75.0
 TYPE_DOMAIN = {"0": "Access (eg Parking)", "1": "Alternate Route", "3": "Spur (eg View, Camp)"}
@@ -259,6 +270,48 @@ def test_every_poi_type_is_classified_as_a_destination_or_explicitly_not():
         "detail sheet says nothing about where that trail goes.\n"
         f"  published but unclassified: {sorted(published - classified)}\n"
         f"  classified but not published: {sorted(classified - published)}"
+    )
+
+
+def test_the_doc_names_every_type_the_code_classifies():
+    """features/SPUR_TRAILS.md and export_spurs.py, on the same partition.
+
+    #501 is what happens without this: the doc pooled viewpoints, parking and
+    privies while the code's answer included water and resupply, so the
+    recorded reasoning described a decision nobody had made and a reader
+    trusting either one could not reconstruct the other. The doc has since
+    been brought level; this is what stops the two drifting apart again.
+
+    It checks that every classified type is NAMED, not how the sentence reads.
+    A prose doc cannot be pinned to a tuple without making every rewording a
+    failure, and the drift worth catching is a category classified in code
+    that the doc never mentions - which is exactly what a new POI type does.
+    """
+    assert SPUR_TRAILS_DOC.exists(), (
+        f"{SPUR_TRAILS_DOC} is missing, so this test cannot compare anything. "
+        "It fails rather than skips: a guard that quietly stops looking is "
+        "worse than no guard, because the suite still reports green."
+    )
+
+    bullet = next(
+        (line for line in SPUR_TRAILS_DOC.read_text().splitlines() if DESTINATION_BULLET_TITLE in line),
+        None,
+    )
+    assert bullet is not None, (
+        f"No line in {SPUR_TRAILS_DOC.name} contains {DESTINATION_BULLET_TITLE!r}. If that bullet "
+        "was retitled, retitle DESTINATION_BULLET_TITLE with it rather than deleting this test - "
+        "the doc is still the home for why these types were chosen."
+    )
+
+    classified = tuple(export_spurs.DESTINATION_POI_TYPES) + tuple(export_spurs.NOT_A_DESTINATION_POI_TYPES)
+    unmentioned = [poi_type for poi_type in classified if poi_type not in bullet]
+
+    assert not unmentioned, (
+        f"export_spurs.py classifies POI types that {SPUR_TRAILS_DOC.name}'s "
+        "destination bullet does not name, so the doc describes a different "
+        "decision from the one that ships (#501):\n"
+        + "\n".join(f"  - {poi_type}" for poi_type in unmentioned)
+        + "\n\nAdd it to that bullet with the reason it was classified the way it was."
     )
 
 

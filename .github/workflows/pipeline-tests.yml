@@ -102,8 +102,14 @@ jobs:
           # narrow list is only honest while it is complete, so
           # tests/test_ci_scope.py reads this line back and fails if the
           # contract test starts reading a client file that is not on it.
+          #
+          # features/SPUR_TRAILS.md is here for the same rule and a different
+          # test: test_export_spurs.py reads it to hold the doc and
+          # export_spurs.py to the same destination partition (#501), and the
+          # edit that breaks that agreement is a docs-only pull request.
           paths: >-
             pipeline/
+            features/SPUR_TRAILS.md
             client/src/lib/config.ts
             client/src/lib/hikingDetail.ts
             client/src/lib/packages.ts

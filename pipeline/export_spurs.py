@@ -100,8 +100,26 @@ DESTINATION_POI_TYPES = ("shelter", "water", "campsite", "resupply", "viewpoint"
 # `crossing` is here because it is a place the trail crosses water, not a
 # place a spur goes to - it sits ON the centerline, so a blue-blazed side
 # trail leading to one is not the thing a hiker is weighing at a junction.
-# (It is also empty today, but that is a fact about the current export and
-# would be the wrong reason: this list is about what a destination MEANS.)
+#
+# @unvalidated - THAT SENTENCE IS THE FILING AUTHOR'S REASONING RATHER THAN
+# A MEASUREMENT, and #501 says so in as many words: "a guess that reads well
+# […] worth someone confirming or replacing, because it is now the comment a
+# future reader will trust". It is kept because it is still the best argument
+# anybody has made, not because it was checked.
+#
+# It also used to carry "it is also empty today", correctly labelled there as
+# the wrong reason to exclude anything. That clause is gone because it is no
+# longer true: #529 fills `crossing` from NHD and OSM geometry, and
+# pipeline/README.md reports 1,125 of them in the corridor. So the condition
+# #501 named - "the decision starts mattering silently" once the layer is
+# populated - has arrived, and the exclusion now removes real candidates
+# rather than an empty set.
+#
+# What would settle it: measure how many `Type=3` side trails have a
+# `crossing` as their nearest destination candidate, against side_trails and
+# the published crossing layer. If the answer is ~0 the sentence above is
+# safe and untested for a reason; if it is not, a spur that genuinely ends at
+# a trail-stream intersection is being told it leads nowhere.
 #
 # `privy` and `parking` are here for the two reasons the doc gives above,
 # and they survived the layers actually shipping rather than being carried

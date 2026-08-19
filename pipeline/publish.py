@@ -161,10 +161,34 @@ STRETCH_FAMILIES = ("at_basemap", "dem")
 # already holds - ~200 KB standing in for ~30 minutes of throttled
 # re-fetching. Like every sidecar they never cause a version and never
 # describe data that was not published.
+#
+# THE THREE DERIVED WATER FILES ARE HERE FOR A SHARPER REASON THAN THE PHOTO
+# OUTCOMES (#812), and it is worth stating because "skip a re-fetch" undersells
+# it. They were reachable only through the Actions cache: not in the
+# repository, not in the bucket, present on the next runner only if a cache
+# entry survived. GitHub evicts entries unread for 7 days and caps a repository
+# at 10 GB against ~430 MB per run, and DATA_RELEASES.md puts releases a month
+# apart - so the normal case was a miss, and run 32258156317 duly missed,
+# restoring in zero seconds.
+#
+# What a miss costs is not time. `export_poi.read_sources()` reads whatever is
+# on disk, so a run that lost them publishes a map with ~1,100 fewer crossings
+# and every reachable spring gone, silently - water disappearing between
+# releases, which is one of the four ways CLAUDE.md says this app can hurt
+# somebody. And since #825 those rows are LIVE in the identity ledger: 1,247 of
+# 4,230, or 29.5% against a MAX_RETIRE_SHARE of 20%, so the same miss now also
+# trips the mass-retirement refusal and blocks the publish outright.
+#
+# Published here, they are restored over public HTTPS by the workflow step that
+# already does this for the photo outcomes, and the cache goes back to being an
+# optimisation rather than the only copy.
 SIDECARS = {
     "build_state.json": "processed",
     "poi_images_atc.json": "raw",
     "poi_images.json": "raw",
+    "osm_water.geojson": "raw",
+    "osm_water_reach.json": "raw",
+    "trail_water.json": "raw",
 }
 
 

@@ -173,6 +173,55 @@ jobs:
           key: fetch-outputs-${{ github.run_id }}
           restore-keys: fetch-outputs-
 
+      # The other half of #812: the cache is an optimisation again, not the
+      # only copy. These three are DERIVED - fetch_osm_water.py's scan,
+      # build_osm_water_reach.py's verdicts, fetch_trail_water.py's crossings -
+      # and until publish.py started shipping them as sidecars they existed
+      # nowhere else. Not in the repository (data/ is gitignored, and
+      # CONTRIBUTING's "data does not go in commits" is right about that), and
+      # not in the bucket. Only in an Actions cache that GitHub evicts after
+      # 7 days unread, against a release cadence of about a month.
+      #
+      # A miss is silent and it is a hiker's problem, not a build one:
+      # export_poi.read_sources() reads what is on disk, so the run publishes a
+      # map short ~1,100 crossings and every reachable spring, with nothing
+      # saying so. Since #825 it is also a blocked publish, because those rows
+      # are live ledger rows - 1,247 of 4,230, 29.5% against a 20% retirement
+      # ceiling - so losing them trips the mass-retirement refusal too.
+      #
+      # BEFORE THE PREFLIGHT, unlike the photo restore below, and the ordering
+      # is load-bearing in two directions. `export_poi.py --check` refuses when
+      # osm_water.geojson has no osm_water_reach.json beside it (#818), so a
+      # half-filled pair is worse than an empty one - both come back here or
+      # neither is asked for. And the reach build downstream resumes from
+      # osm_water_reach.json rather than re-running its EPQS pass, which only
+      # helps if the file is already there when it starts.
+      #
+      # Cache hit wins, exactly as for the photo outcomes: this fills gaps, it
+      # does not overwrite. `|| true` semantics for a 404 as well - the first
+      # publish after this merges has no sidecars in the bucket yet, and a cold
+      # derive is the state this makes rare rather than an error.
+      - name: Restore derived water data from the published data
+        env:
+          DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
+        run: |
+          if [ -z "$DATA_BASE_URL" ]; then
+            echo "No DATA_BASE_URL repository variable - derived water starts cold."
+            exit 0
+          fi
+          mkdir -p data/raw
+          for name in osm_water.geojson osm_water_reach.json trail_water.json; do
+            if [ -e "data/raw/$name" ]; then
+              echo "$name already present (cache hit) - keeping the local copy."
+            elif curl -fsS --retry 3 -o "data/raw/$name.download" "${DATA_BASE_URL%/}/$name"; then
+              mv "data/raw/$name.download" "data/raw/$name"
+              echo "Restored $name from the published data."
+            else
+              rm -f "data/raw/$name.download"
+              echo "$name is not published yet - it will be derived from cold if this run asks for it."
+            fi
+          done
+
       # fetch_all.py covers the ArcGIS sources only - it drives lib/arcgis.py and
       # iterates sources.json. opentrail.org is a different API with its own
       # script, and export_poi.py reads its output directly

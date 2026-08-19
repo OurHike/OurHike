@@ -13,6 +13,7 @@ from app.routers import (
     hikes,
     maintainer_assignments,
     moderation,
+    poi_photos,
     preferences,
     profiles,
     reports,
@@ -72,6 +73,7 @@ app.include_router(profiles.router)
 app.include_router(hikes.router)
 app.include_router(preferences.router)
 app.include_router(reports.router)
+app.include_router(poi_photos.router)
 app.include_router(closures.router)
 app.include_router(wrong_way.router)
 app.include_router(maintainer_assignments.router)

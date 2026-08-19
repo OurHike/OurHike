@@ -178,6 +178,7 @@ SEAMS = [
     ("ProfileSummary", "/profiles/me", None),
     ("QueuedReport", "/moderation/queue", "reports"),
     ("QueuedClosure", "/moderation/queue", "closures"),
+    ("PoiPhotoSummary", "/waypoints/{poi_id}/photos", None),
 ]
 
 

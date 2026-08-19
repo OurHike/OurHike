@@ -13,6 +13,7 @@ from app.models.closure import Closure, ClosureStatus, ModerationStatus, ReasonT
 from app.models.club import Club
 from app.models.hike import Hike
 from app.models.maintainer_assignment import MaintainerAssignment
+from app.models.poi_photo import PoiPhoto, PoiPhotoStatus
 from app.models.preferences import UserPreferences
 from app.models.profile import Profile, Role
 from app.models.report import (
@@ -32,6 +33,8 @@ __all__ = [
     "Club",
     "Hike",
     "MaintainerAssignment",
+    "PoiPhoto",
+    "PoiPhotoStatus",
     "UserPreferences",
     "Profile",
     "Role",

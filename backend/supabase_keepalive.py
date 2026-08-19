@@ -58,7 +58,7 @@ from check_supabase_config import Report
 # Base.metadata, which is what stops a table added later from quietly falling
 # out of the sweep and out of the RLS assertion with it.
 #
-# All of them rather than one, deliberately. Seven small reads are closer to
+# All of them rather than one, deliberately. A handful of small reads is closer to
 # the "few requests" Supabase describes than a single read is, and the RLS
 # half is worth exactly as much as the number of tables it covers.
 KEEPALIVE_TABLES: tuple[str, ...] = (
@@ -72,6 +72,7 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     "closures",
     "hikes",
     "maintainer_assignments",
+    "poi_photos",
     "profiles",
     "reports",
     "user_preferences",

@@ -610,7 +610,9 @@ def test_corridor_pois_derives_exactly_the_ids_export_poi_will_write(tmp_path, m
         "atc_parking:parking-glob-1",
         "atc_privies:privy-glob-1",
         "opentrail_at:100",
-        "opentrail_at:101",
+        # :101 is the "r" point, which #806 stopped publishing - so no photo
+        # is fetched for it either, which is the whole point of deriving these
+        # ids from export_poi.py's own unify rather than a second list.
         "opentrail_at:102",
     }
 

@@ -408,7 +408,7 @@ What is left is account work, in this order:
 **Legal and licensing, all previously flagged:**
 
 - **OpenStreetMap attribution is required by ODbL** and is already rendered by `MapScreen`. Do not remove it. **This stopped being theoretical on 2026-08-03**: the live topographic background ships OSM vector tiles by default, so the credit is load-bearing now rather than pending the Protomaps context basemap. Two further conditions of use came with it, both already in the rendered string — OpenFreeMap's own terms for the hosting, and AWS Terrain Tiles' attribution requirement for the elevation behind the hillshade and contours.
-- **opentrail.org licensing is unconfirmed** — [#98](https://github.com/OurHike/OurHike/issues/98) tracks contacting the maintainer. Their water and resupply data is in the build. Worth resolving before a public launch, not after.
+- **opentrail.org licensing is unconfirmed** — [#98](https://github.com/OurHike/OurHike/issues/98) tracks contacting the maintainer. Their water data is in the build (their `r` tag was too, until [#806](https://github.com/OurHike/OurHike/issues/806)). Worth resolving before a public launch, not after.
 - USGS topo, USGS 3DEP and PAD-US are all public domain. ATC data is used with attribution.
 
 **Verify before launch:**

@@ -127,10 +127,15 @@ always two real things is false, and it is false in the layer that is 43% of eve
 the map. What separates these from the 35 is not the source and not the distance: it is that
 one name contains the other, at sub-metre separation.
 
-### The cross-source duplicate we already ship is 4.7 km wide
+### The cross-source duplicate we used to ship was 4.7 km wide
 
-`resupply` is the one `poi_type` fed by two sources today — ATC's 59 Community towns and
-opentrail.org's 72 resupply points. Distance from each opentrail point to its nearest ATC
+*Superseded 2026-08-19 by [#806](https://github.com/OurHike/OurHike/issues/806): opentrail's
+`r` points are roads and gaps rather than shops and no longer publish, so `resupply` is fed by
+**one** source again — ATC's 59 Community towns — and this pair no longer exists on the map.
+The measurement is kept because the conclusion under it does not depend on the pair surviving.*
+
+`resupply` was the one `poi_type` fed by two sources — ATC's 59 Community towns and
+opentrail.org's 72 `r` points. Distance from each opentrail point to its nearest ATC
 Community:
 
 | within | 25 m | 100 m | 250 m | 1 km | 5 km |

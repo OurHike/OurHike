@@ -26,9 +26,9 @@ Real plans slip - a zero day, hiking further than planned, weather. The single m
 
 The real planning problem isn't "pick a mileage number" - it's "pick an endpoint that actually has what I need." When a hiker is choosing where a Segment ends, the app should surface what's genuinely nearby using data the pipeline already has:
 
-- **Shelters, water sources, and resupply points within a reasonable window of a candidate endpoint** - all three already exist in the pipeline (ATC shelters/campsites, opentrail.org water/resupply, ATC communities).
+- **Shelters, water sources, and resupply points within a reasonable window of a candidate endpoint** - all three already exist in the pipeline (ATC shelters/campsites, opentrail.org and OSM water, ATC communities — which are the resupply layer entire since [#806](https://github.com/OurHike/OurHike/issues/806) dropped opentrail's `r` tag).
 - **Shelters near reliable water, specifically called out.** A real, common thru-hiker planning heuristic - camping where water is close by beats a shelter with a long water carry. This is a cheap proximity join (shelter-to-nearest-water distance), and worth **precomputing in the pipeline** as an attribute on each shelter feature, not computed live on the client - matches the existing pattern of shipping a lean, pre-joined dataset rather than raw layers.
-- **Carry the existing honesty caveat into planning, not just the live map.** FEATURES.md is already explicit that opentrail.org's water/resupply data is unverified/approximate. A planning tool that says "camp here, water's 200ft away" needs to carry that same "reported, unconfirmed" framing - it'd be worse to be confidently wrong in a planning tool than on the map itself, since a plan gets acted on in advance, away from the actual water source to double-check.
+- **Carry the existing honesty caveat into planning, not just the live map.** FEATURES.md is already explicit that opentrail.org's water data is unverified/approximate. A planning tool that says "camp here, water's 200ft away" needs to carry that same "reported, unconfirmed" framing - it'd be worse to be confidently wrong in a planning tool than on the map itself, since a plan gets acted on in advance, away from the actual water source to double-check.
 
 ## Difficulty: distance, elevation gain *and* loss, and an honest limit
 

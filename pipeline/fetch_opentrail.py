@@ -9,10 +9,15 @@ that informal basis for now, deliberately excluding user comments (personal
 contributions from named individuals - a consent concern separate from and
 in addition to the licensing question).
 
-This targets the two gaps confirmed missing from ATC's own data: water
-sources and resupply-relevant POIs (icon "w" and "r" below), plus "t" (towns)
-as useful resupply context. Icon meanings are inferred from the data, not
-documented by the API - treat as best-effort until cross-checked.
+This targets a gap confirmed missing from ATC's own data - water sources
+(icons "w" and "s" below) - and fetches "t" (towns) besides, which #803 is
+about. It targeted resupply too until #806 measured icon "r" and found roads
+and gaps rather than shops; export_poi.py now maps it to nothing.
+
+That is the standing warning below, arriving: icon meanings here are
+inferred from the data, not documented by the API. Treat every one of them
+as best-effort until cross-checked, and read the "r" entry as what a
+best-effort inference looks like when it turns out to be wrong.
 """
 
 import json
@@ -47,7 +52,16 @@ ICON_LEGEND = {
     "j": "junction or road crossing",
     "w": "water source",
     "t": "town",
-    "r": "resupply (store/outfitter/service)",
+    # NOT resupply, measured. This entry read "resupply
+    # (store/outfitter/service)" until #806 checked it: of the 72 "r" points
+    # in the live feed on 2026-08-18, 0 carry the name of a store, hostel,
+    # outfitter, inn, market, grocery, deli or post office, and 57 carry a
+    # road-shaped name (Woody Gap, Newfound Gap, "dirt road", "FS RD 263").
+    # @unvalidated - "road or gap" is what the names look like, not what
+    # opentrail says it means, and the API documents none of this legend.
+    # Asking opentrail is what would settle it; #98 is already an open thread
+    # with that maintainer. export_poi.py maps it to nothing until then.
+    "r": "NOT resupply - road or gap by the look of the names (#806)",
     "a": "unknown (single occurrence)",
 }
 

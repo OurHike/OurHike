@@ -36,7 +36,7 @@ Worth reading this list before the design below — a surprising amount of the h
 | Confirmed ascent over any window | `client/src/lib/elevationGain.ts` | Gain between two mileposts, with the 3 m dead band that keeps DEM noise out of the number. Loss is the same function on a negated profile and does not exist yet. |
 | The elevation profile itself | `pipeline/export_elevation.py` | ~141,000 samples at 25 m, shipped whole (0.87 MB gzipped) so it works with no signal. |
 | Naismith time | `client/src/lib/naismith.ts` | Distance + ascent → a duration. Deliberately refuses descent. |
-| The stops a day can end at | `pipeline/export_poi.py` | **280 shelters and 232 campsites**, plus opentrail's 72 resupply points and 103 towns (`pipeline/README.md`). |
+| The stops a day can end at | `pipeline/export_poi.py` | **280 shelters and 232 campsites**, plus ATC's 59 Community towns. Opentrail's 72 `r` points were counted here as resupply until [#806](https://github.com/OurHike/OurHike/issues/806) found them to be roads and gaps; its 103 towns are fetched and unpublished ([#803](https://github.com/OurHike/OurHike/issues/803)). |
 | Water near a shelter | [TRIP_PLANNING.md](TRIP_PLANNING.md) | Designed as a precomputed shelter→nearest-water distance. Not built, and the auto-planner is the feature that makes it pay. |
 
 ## The questions, and where each one stands

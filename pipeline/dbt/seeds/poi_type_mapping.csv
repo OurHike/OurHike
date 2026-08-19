@@ -12,5 +12,5 @@ opentrail,o,other / overlook / miscellaneous,,
 opentrail,j,junction or road crossing,,
 opentrail,w,water source,water,high
 opentrail,t,town,,
-opentrail,r,resupply (store/outfitter/service),resupply,high
+opentrail,r,NOT resupply - road or gap by the look of the names (#806),,
 opentrail,a,unknown (single occurrence),,

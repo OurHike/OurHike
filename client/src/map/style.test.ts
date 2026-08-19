@@ -322,17 +322,34 @@ describe('buildMapStyle', () => {
     expect(source.data).toBe(STYLE_OPTIONS.trailsUrl)
   })
 
-  it('never lets the tiler simplify a whole trail segment away', () => {
+  it('never lets the tiler simplify a whole trail segment away, for pre-merge data', () => {
     // geojson-vt's per-zoom tolerance does not only thin vertices - it drops
     // any whole feature shorter than the tolerance for that zoom, ~700 m at
-    // z5 under the default. The centerline is ~3,000 surveyed segments
-    // averaging ~1.2 km, so at corridor zooms runs of consecutive short
-    // segments vanished together and the AT drew with miles-long gaps that
-    // are not in the data (#160). Zero is the one tolerance under which the
-    // drop rule cannot fire, whatever shape a later import arrives in.
+    // z5 under the default. The pre-merge centerline was ~3,000 surveyed
+    // segments averaging ~1.2 km, so at corridor zooms runs of consecutive
+    // short segments vanished together and the AT drew with miles-long gaps
+    // that are not in the data (#160). Zero is the one tolerance under which
+    // the drop rule cannot fire, and it stays the answer for every copy of
+    // the data that predates the chain merge - including when the caller
+    // says nothing, because "cannot tell" must round toward the missing
+    // performance, never toward a missing trail.
     const source = style().sources[TRAILS_SOURCE_ID] as Record<string, unknown>
 
     expect(source.tolerance).toBe(0)
+  })
+
+  it('returns to per-zoom simplification once the stored trails are merged chains', () => {
+    // #161: the export merges the centerline into maximal chains far above
+    // the drop bar at any zoom, so for that shape the default tolerance is
+    // safe - and buys back the vertex thinning `tolerance: 0` disables.
+    // Omitting the property (rather than writing the default's number) is
+    // deliberate: the default lives in geojson-vt, and restating it here
+    // would pin a value this file has no say over.
+    const source = buildMapStyle({ ...STYLE_OPTIONS, trailsMerged: true }).sources[
+      TRAILS_SOURCE_ID
+    ] as Record<string, unknown>
+
+    expect(source).not.toHaveProperty('tolerance')
   })
 
   it('spells OpenStreetMap out in full, which is what ODbL attribution actually requires', () => {

@@ -12,6 +12,11 @@ import {
   type StoredPoi,
 } from './trailData'
 import { dataUrl, ELEVATION_KEY, POI_TYPES, SPURS_KEY, TRAILS_KEY } from './config'
+import {
+  readTrailsMerged,
+  TRAILS_MERGED_STORAGE_KEY,
+  writeTrailsMerged,
+} from './trailShape'
 import type { ElevationProfile } from './elevationProfile'
 import { publishedHashes } from './dataManifest'
 import { sha256Hex } from './sha256'
@@ -51,6 +56,7 @@ function poiCollection(features: Array<Record<string, unknown>>) {
 
 beforeEach(() => {
   store.clear()
+  localStorage.removeItem(TRAILS_MERGED_STORAGE_KEY)
   // No published answer by default, which is what an older release or a
   // field-test server gives - and must leave these downloads behaving
   // exactly as they did before #197.
@@ -80,6 +86,7 @@ function serve(
   pois: string = poiCollection([]),
   spurs: string = '{}',
   elevation: string = '[]',
+  trails: string = '{"type":"FeatureCollection"}',
 ) {
   vi.stubGlobal(
     'fetch',
@@ -97,7 +104,7 @@ function serve(
                   ? spurs
                   : url.includes(ELEVATION_KEY)
                     ? elevation
-                    : '{"type":"FeatureCollection"}',
+                    : trails,
             ),
           ),
         blob: () => Promise.resolve(new Blob(['{"type":"FeatureCollection"}'])),
@@ -178,6 +185,25 @@ describe('trail data', () => {
     // Every POI type, plus the trail lines, plus the spur detail, plus the
     // elevation profile.
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(POI_TYPES.length + 3)
+  })
+
+  it('records the merged-chain shape of the trails it stores, both directions', async () => {
+    // The flag decides the map's tolerance for these exact bytes on every
+    // later launch (lib/trailShape.ts, #161), so it is written from a sniff
+    // of what was committed - and written back DOWN when a re-download
+    // serves the pre-merge shape, e.g. a field-test server on an older
+    // release.
+    const merged = JSON.stringify({
+      type: 'FeatureCollection',
+      features: [{ type: 'Feature', properties: { id: 'centerline:chain:0' } }],
+    })
+    serve(undefined, undefined, undefined, merged)
+    await downloadTrailData()
+    expect(readTrailsMerged()).toBe(true)
+
+    serve()
+    await downloadTrailData()
+    expect(readTrailsMerged()).toBe(false)
   })
 
   it('reads POIs into the shape the map and search both use', async () => {
@@ -806,10 +832,13 @@ describe('trail data', () => {
   it('reclaims both the trail lines and the POIs on delete', async () => {
     serve()
     await downloadTrailData()
+    writeTrailsMerged(true)
     await deleteTrailData()
 
     expect(await loadTrailData()).toBeNull()
     expect(store.has(POIS_KEY)).toBe(false)
+    // No data, no claim about its shape (#161).
+    expect(readTrailsMerged()).toBe(false)
   })
 
   it('stores nothing at all when a POI fetch fails partway', async () => {

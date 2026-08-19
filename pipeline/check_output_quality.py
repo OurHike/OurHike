@@ -299,16 +299,30 @@ def trails_verdict(manifest_path: Path | None = None) -> dict:
         problems.append(f"trails: geojson/fgb feature_count disagree ({kind_counts['geojson']} vs {kind_counts['fgb']})")
 
     feature_count = kind_counts.get("geojson", kind_counts.get("fgb", 0))
-    problems += count_problems({"trails": feature_count})
+    # The count tracked against the baseline is the PRE-MERGE segment count
+    # where the manifest records one (#161). The published feature count
+    # halved-and-more when the centerline segments merged into chains, and a
+    # chain count is a fact about geometry connectivity, not about
+    # completeness - an upstream losing half its segments would still show in
+    # constituent_count, while the merge landing must not read as a broken
+    # export. Falls back to feature_count for a manifest written before the
+    # merge existed.
+    tracked_count = manifest.get("constituent_count", feature_count)
+    problems += count_problems({"trails": tracked_count})
 
     verdict = Verdict.PROBLEM if problems else Verdict.OK
-    detail = f"{len(problems)} problem(s)" if problems else f"{feature_count} features"
+    if problems:
+        detail = f"{len(problems)} problem(s)"
+    elif tracked_count != feature_count:
+        detail = f"{feature_count} features ({tracked_count} constituent segments)"
+    else:
+        detail = f"{feature_count} features"
     return {
         "check": "trails",
         "verdict": verdict,
         "detail": detail,
         "problems": problems,
-        "counts": {"trails": feature_count},
+        "counts": {"trails": tracked_count},
     }
 
 

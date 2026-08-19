@@ -209,6 +209,30 @@ def test_trails_verdict_flags_a_kind_missing_from_an_otherwise_present_manifest(
     assert any("trails.fgb" in p and "missing" in p for p in report["problems"])
 
 
+def test_trails_verdict_tracks_the_pre_merge_segment_count_when_the_manifest_records_one(tmp_path):
+    """#161: ~3,000 centerline segments merged into ~500 chains changed what
+    feature_count means, and the baseline drop-detector comparing chain
+    counts to segment counts would read the merge itself as a broken export.
+    The manifest records `constituent_count` (per-segment, pre-merge), and
+    that is the number completeness and the baseline track - it stays
+    continuous across the merge while still moving when an upstream really
+    loses segments. A manifest from before the merge has no such field and
+    falls back to feature_count, exactly as before."""
+    manifest_path = tmp_path / "trails_manifest.json"
+    manifest = {
+        "geojson": _artifact_entry(tmp_path / "trails.geojson", "geojson bytes", 500),
+        "fgb": _artifact_entry(tmp_path / "trails.fgb", "fgb bytes", 500),
+        "constituent_count": 4224,
+    }
+    manifest_path.write_text(json.dumps(manifest))
+
+    report = check_output_quality.trails_verdict(manifest_path)
+
+    assert report["verdict"] is Verdict.OK
+    assert report["counts"] == {"trails": 4224}
+    assert "500 features (4224 constituent segments)" in report["detail"]
+
+
 def test_trails_verdict_flags_geojson_fgb_feature_count_disagreement(tmp_path):
     manifest_path = tmp_path / "trails_manifest.json"
     manifest = {

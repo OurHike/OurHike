@@ -1,0 +1,440 @@
+"""Decide which of the corridor's OSM water points a hiker could actually
+reach, and write down why for every one of them (#749).
+
+`fetch_osm_water.py` scans fourteen state extracts for OSM's water point
+sources. The only geographic filter between that scan and a hiker's screen was
+`lib/corridor.py`'s `BUFFER_MILES = 30`, so the gate a water pin had to pass was
+*"somewhere within thirty miles of the Appalachian Trail"* - which is most of
+the eastern seaboard's tap water. A pin drawn in the water style says *there is
+water here* in a voice a hiker reads at dusk with an empty bottle, and a
+drinking fountain in a town park eight miles east is a true OSM node and a false
+promise on this map.
+
+This is the gate `export_poi.py` reads instead, in `fetch_trail_water.py`'s
+shape and on its constants:
+
+  1. **Distance** - within `MATCH_RADIUS_FT` of the nearest of the centerline,
+     any side trail, or any shelter or campsite. A union of three, not three
+     rules: a point passes on whichever is closest. The maintainer's decision
+     (2026-08-17).
+  2. **Grade** - `MAX_GRADE` rise-over-run from real USGS EPQS elevations at
+     both ends, measured to whichever feature the point passed on, so the
+     question stays *"can a hiker get from there to the water and back"*.
+  3. **Every rejection keeps its reason and its numbers**, so either gate can be
+     re-argued from this file rather than re-run in the dark - the same promise
+     `fetch_trail_water.py` makes about its own candidates.
+
+WHY THE UNION IS THREE THINGS AND NOT THE CENTERLINE
+
+`trailPosition.ts` measured it against the live ATC layers (#308): the median
+shelter is 197 ft from the centerline and 72% of shelters sit past 90 ft,
+because a shelter is at the end of a side trail, which is what side trails are
+for. A centerline-only gate would delete OSM water for exactly the reason it
+would delete most shelters. **"Any side trail" is ATC's own `side_trails.geojson`
+and never OSM's path network**, which would quietly widen this gate back out
+toward the thing it exists to close.
+
+WHAT THIS COSTS, MEASURED
+
+`spike_osm_water_gate.py` is the census #749 asked for before any threshold was
+written here, and it imports this module's own measurement so the two cannot
+disagree. Against the live ATC layers and a 2026-08-18 OSM scan (7,593 nodes
+across the fourteen states):
+
+    1,576 OSM water points inside the 30-mile corridor
+      146 (9.3%) clear the 100 ft union gate
+    1,344 of the 1,430 removed are further than 0.2 mi from anything a hiker
+          walks - 1,159 of them further than 5 miles
+
+So the clutter really was the far-away points, which was #749's third open
+question and the one it could not assume the answer to.
+
+**THE COST IS THE 86 POINTS BETWEEN 100 FT AND 0.2 MI, AND 55 OF THEM ARE
+SPRINGS.** That band is the contested one: a spring 0.2 mi down a blue-blaze is
+real, guide-listed water, and this gate deletes it. `spike_guide_water_check.py`
+measured (2026-08-14) that springs are the structural gap in our data - a
+crossing cannot find one by construction, and OSM's mapped points are the only
+reason spring coverage against a commercial guide reaches 37% at all. This gate
+takes 176 near-trail springs down to 121.
+
+That is the maintainer's call and a defensible one - a pin nobody can reach is
+worse than no pin - but it is a real cost in the direction CLAUDE.md names as
+one of the four ways this app can hurt somebody, and it is written here rather
+than presented as clean-up. **@unvalidated** - whether those 55 springs are
+water a guidebook lists is exactly the check `spike_guide_water_check.py` runs,
+and it needs the maintainer's own copy of The A.T. Guide, which no other machine
+has. Running it against this file's rejects is what would settle it.
+
+Output: `data/raw/osm_water_reach.json` - gitignored derived geometry, not a
+join somebody reviews row by row, exactly as `fetch_trail_water.py`'s output is
+and for the reason `export_poi.py` records beside `TRAIL_WATER_PATH`.
+
+Run:  python build_osm_water_reach.py            # distance pass, then EPQS
+      python build_osm_water_reach.py --limit N  # cap the EPQS lookups, resumable
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+import duckdb
+
+from fetch_trail_water import M_PER_FT, MATCH_RADIUS_FT, MAX_GRADE, elevation_ft
+from lib import fetch_receipts
+from lib.corridor import GEOGRAPHIC_CRS, PROJECTED_CRS, build_corridor
+
+ROOT = Path(__file__).parent
+RAW_DIR = ROOT / "data" / "raw"
+OUT_PATH = RAW_DIR / "osm_water_reach.json"
+
+# fetch_trail_water.py's radius in metres. Imported rather than restated so a
+# re-tune moves this gate and that one together - they are the same judgement
+# ("somewhere you walk with a bottle") applied to two sources.
+MATCH_RADIUS_M = MATCH_RADIUS_FT * M_PER_FT
+
+# How far out distances are measured before a point is simply "far".
+#
+# NOT a gate - a reporting ceiling, and the range join's prefilter radius. The
+# corridor is 30 miles wide, so a water point can honestly sit 30 miles from the
+# trail; past a few miles the exact figure tells a reviewer nothing the verdict
+# does not. Five miles keeps every band the gate could plausibly be re-tuned to
+# well inside the measured range - the widest bucket the census reports is
+# 1-5 mi, and 73.5% of the corridor's points fall past even that.
+MEASURE_CEILING_M = 5.0 * 1609.344
+
+# What a hiker could be walking from. Two line layers and two point layers, and
+# which one a point passed on is recorded but never changes the gate.
+LINE_SOURCES = {"centerline": "centerline.geojson", "side_trail": "side_trails.geojson"}
+SITE_SOURCES = {"shelter": "shelters.geojson", "campsite": "campsites.geojson"}
+
+TOO_FAR = "the nearest {feature} is {distance_ft:.0f} ft away, past the {radius:.0f} ft a hiker walks for water"
+TOO_STEEP = (
+    "the ground drops {drop_ft:.0f} ft over {distance_ft:.0f} ft - a {grade:.0%} grade, which is a scramble rather than a walk"
+)
+NOTHING_NEAR = "no trail, side trail, shelter or campsite within {ceiling:.0f} miles"
+NO_ELEVATION = "USGS would not give an elevation for one end of the walk, so the ground between is unknown"
+
+# Write guards, in fetch_osm_water.py's shape and for its reason: a well-formed
+# but collapsed result must not overwrite a good file. The floor is far under
+# the 146 the census measured (2026-08-18) because it is here to catch a run
+# that read no trail geometry at all - a corridor clip that silently returned
+# nothing would otherwise publish as "no water is reachable", which is both
+# false and exactly the direction a water gate must never fail in.
+MIN_REACHABLE = 40
+MAX_REACHABLE_DROP_RATIO = 0.5
+
+
+def load_water(con: duckdb.DuckDBPyConnection) -> int:
+    """The OSM water points, clipped to the corridor.
+
+    The same `ST_Intersects` clip `export_poi.py`'s `clip_to_corridor` applies,
+    so this file's population is exactly the population that would otherwise
+    reach the map - the 30-mile corridor is the gate being replaced, and
+    measuring inside it is the point.
+    """
+    water_path = (RAW_DIR / "osm_water.geojson").as_posix()
+    con.execute(f"""
+        CREATE OR REPLACE TABLE water AS
+        SELECT
+            w.osm_id,
+            w.kind,
+            ST_X(w.geom) AS lon,
+            ST_Y(w.geom) AS lat,
+            ST_Transform(w.geom, '{GEOGRAPHIC_CRS}', '{PROJECTED_CRS}', always_xy := true) AS g
+        FROM ST_Read('{water_path}') w, corridor
+        WHERE ST_Intersects(w.geom, corridor.geom)
+    """)
+    return con.execute("SELECT count(*) FROM water").fetchone()[0]
+
+
+def load_lines(con: duckdb.DuckDBPyConnection, table: str, filename: str) -> int:
+    """One line layer, projected to metres, with its bounding box as columns.
+
+    The bbox columns are a prefilter and never a distance: a range join on four
+    doubles picks the handful of lines worth measuring against each point, and
+    `ST_Distance` then runs on the real geometry. Nearest-vertex would be the
+    cheap alternative and is wrong at this frame - the gate binds at 30.5 m and
+    the centerline carries 690,040 vertices, so a vertex approximation could
+    move a point across the gate by a couple of metres.
+    """
+    path = (RAW_DIR / filename).as_posix()
+    con.execute(f"""
+        CREATE OR REPLACE TABLE {table} AS
+        SELECT g, ST_XMin(g) AS xmin, ST_XMax(g) AS xmax, ST_YMin(g) AS ymin, ST_YMax(g) AS ymax
+        FROM (
+            SELECT ST_Transform(geom, '{GEOGRAPHIC_CRS}', '{PROJECTED_CRS}', always_xy := true) AS g
+            FROM ST_Read('{path}')
+        )
+    """)
+    return con.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+
+
+def load_sites(con: duckdb.DuckDBPyConnection) -> int:
+    """Shelters and campsites as one projected point table - the gate's union
+    treats them as one class, and which of the two won is reported only."""
+    selects = [
+        f"""
+            SELECT '{label}' AS site_kind,
+                   ST_Transform(geom, '{GEOGRAPHIC_CRS}', '{PROJECTED_CRS}', always_xy := true) AS g
+            FROM ST_Read('{(RAW_DIR / filename).as_posix()}')
+        """
+        for label, filename in SITE_SOURCES.items()
+    ]
+    con.execute(f"CREATE OR REPLACE TABLE sites AS {' UNION ALL '.join(selects)}")
+    return con.execute("SELECT count(*) FROM sites").fetchone()[0]
+
+
+def nearest_line(con: duckdb.DuckDBPyConnection, table: str) -> dict[str, dict]:
+    """Each water point's distance to the nearest line in `table`, plus the
+    coordinate on that line it is nearest to.
+
+    That coordinate is the OTHER END OF THE WALK and the grade gate needs it:
+    the question is about the ground between the water and the trail a hiker
+    leaves from, not the ground under some vertex nearby.
+    """
+    rows = con.execute(f"""
+        WITH pairs AS (
+            SELECT w.osm_id, ST_Distance(w.g, t.g) AS d, ST_ClosestPoint(t.g, w.g) AS cp
+            FROM water w
+            JOIN {table} t
+              ON t.xmin <= ST_X(w.g) + {MEASURE_CEILING_M}
+             AND t.xmax >= ST_X(w.g) - {MEASURE_CEILING_M}
+             AND t.ymin <= ST_Y(w.g) + {MEASURE_CEILING_M}
+             AND t.ymax >= ST_Y(w.g) - {MEASURE_CEILING_M}
+        )
+        SELECT osm_id,
+               MIN(d) AS d,
+               ST_X(ST_Transform(arg_min(cp, d), '{PROJECTED_CRS}', '{GEOGRAPHIC_CRS}', always_xy := true)) AS lon,
+               ST_Y(ST_Transform(arg_min(cp, d), '{PROJECTED_CRS}', '{GEOGRAPHIC_CRS}', always_xy := true)) AS lat
+        FROM pairs
+        WHERE d <= {MEASURE_CEILING_M}
+        GROUP BY 1
+    """).fetchall()
+    return {r[0]: {"dist_m": r[1], "lon": r[2], "lat": r[3]} for r in rows}
+
+
+def nearest_site(con: duckdb.DuckDBPyConnection) -> dict[str, dict]:
+    """Each water point's distance to the nearest shelter or campsite."""
+    rows = con.execute(f"""
+        WITH pairs AS (
+            SELECT w.osm_id, s.site_kind,
+                   ST_Distance(w.g, s.g) AS d,
+                   ST_X(ST_Transform(s.g, '{PROJECTED_CRS}', '{GEOGRAPHIC_CRS}', always_xy := true)) AS lon,
+                   ST_Y(ST_Transform(s.g, '{PROJECTED_CRS}', '{GEOGRAPHIC_CRS}', always_xy := true)) AS lat
+            FROM water w
+            JOIN sites s
+              ON ST_X(s.g) BETWEEN ST_X(w.g) - {MEASURE_CEILING_M} AND ST_X(w.g) + {MEASURE_CEILING_M}
+             AND ST_Y(s.g) BETWEEN ST_Y(w.g) - {MEASURE_CEILING_M} AND ST_Y(w.g) + {MEASURE_CEILING_M}
+        )
+        SELECT osm_id, MIN(d) AS d, arg_min(lon, d) AS lon, arg_min(lat, d) AS lat, arg_min(site_kind, d) AS site_kind
+        FROM pairs
+        WHERE d <= {MEASURE_CEILING_M}
+        GROUP BY 1
+    """).fetchall()
+    return {r[0]: {"dist_m": r[1], "lon": r[2], "lat": r[3], "site_kind": r[4]} for r in rows}
+
+
+def measure_distances(con: duckdb.DuckDBPyConnection, quiet: bool = False) -> list[dict]:
+    """One record per corridor water point, carrying its distance to each of
+    the three, which one it is nearest to, and whether that clears the gate.
+
+    The grade verdict is NOT filled in here - `apply_grade_gate` does that, and
+    keeping the passes separate is what lets the slow half resume.
+    """
+
+    def say(message: str) -> None:
+        if not quiet:
+            print(message, flush=True)
+
+    say("Building the 30-mile corridor ...")
+    build_corridor(con, RAW_DIR / "centerline.geojson")
+    say(f"  {load_water(con)} OSM water points inside the corridor.")
+    for table, filename in LINE_SOURCES.items():
+        say(f"  {load_lines(con, table, filename)} {table} lines.")
+    say(f"  {load_sites(con)} shelters + campsites.")
+
+    say("Measuring distances ...")
+    per_source = {label: nearest_line(con, label) for label in LINE_SOURCES}
+    per_source["site"] = nearest_site(con)
+
+    records = []
+    for osm_id, kind, lon, lat in con.execute("SELECT osm_id, kind, lon, lat FROM water ORDER BY osm_id").fetchall():
+        found = {label: hit for label, hits in per_source.items() if (hit := hits.get(osm_id)) is not None}
+        record = {
+            "osm_id": osm_id,
+            "kind": kind,
+            "lon": lon,
+            "lat": lat,
+            "distances_m": {label: round(hit["dist_m"], 2) for label, hit in found.items()},
+        }
+        if found:
+            label = min(found, key=lambda k: found[k]["dist_m"])
+            hit = found[label]
+            record["nearest"] = hit["site_kind"] if label == "site" else label
+            record["nearest_m"] = round(hit["dist_m"], 2)
+            record["walk_to"] = {"lon": hit["lon"], "lat": hit["lat"]}
+            record["passes_distance"] = hit["dist_m"] <= MATCH_RADIUS_M
+            if not record["passes_distance"]:
+                record["reason"] = TOO_FAR.format(
+                    feature=record["nearest"].replace("_", " "),
+                    distance_ft=hit["dist_m"] / M_PER_FT,
+                    radius=MATCH_RADIUS_FT,
+                )
+        else:
+            # Nothing within the ceiling. Not an error - the corridor's far edge
+            # is thirty miles from the trail, and 73.5% of its water sits past
+            # five of them.
+            record["nearest"] = None
+            record["nearest_m"] = None
+            record["passes_distance"] = False
+            record["reason"] = NOTHING_NEAR.format(ceiling=MEASURE_CEILING_M / 1609.344)
+        records.append(record)
+    return records
+
+
+def apply_grade_gate(records: list[dict], limit: int | None = None, quiet: bool = False) -> None:
+    """Fill in the grade verdict for every point that cleared the distance gate.
+
+    Mutates in place, checkpointing to disk as it goes: EPQS answers in ~1.9 s
+    and an interrupted run must not throw away the lookups it already paid for.
+    `elevation_ft` is `fetch_trail_water.py`'s own and disk-cached, so a re-run
+    over the same points costs nothing and a tightened `MAX_GRADE` costs no
+    network at all.
+
+    A point EPQS will not answer for is left NOT reachable, with a reason saying
+    so - an unknown is not a pass, and it is also not a rejection this file may
+    blame on terrain.
+    """
+    pending = [r for r in records if r["passes_distance"] and "passes_grade" not in r]
+    if limit is not None:
+        pending = pending[:limit]
+    if not quiet:
+        print(f"Grade gate: {len(pending)} points to look up (2 EPQS calls each) ...", flush=True)
+    for i, record in enumerate(pending, 1):
+        water_elevation = elevation_ft(record["lat"], record["lon"])
+        trail_elevation = elevation_ft(record["walk_to"]["lat"], record["walk_to"]["lon"])
+        if water_elevation is None or trail_elevation is None:
+            record["passes_grade"] = False
+            record["reason"] = NO_ELEVATION
+            continue
+        distance_ft = record["nearest_m"] / M_PER_FT
+        drop_ft = abs(water_elevation - trail_elevation)
+        # Same guard as fetch_trail_water.py's resolve_site: two points a foot
+        # apart are the same place, and a grade computed from that is noise
+        # rather than terrain.
+        grade = drop_ft / max(distance_ft, 1.0)
+        record["drop_ft"] = round(drop_ft, 1)
+        record["grade"] = round(grade, 3)
+        record["passes_grade"] = grade <= MAX_GRADE
+        if not record["passes_grade"]:
+            record["reason"] = TOO_STEEP.format(drop_ft=drop_ft, distance_ft=distance_ft, grade=grade)
+        if i % 25 == 0 and not quiet:
+            print(f"  {i}/{len(pending)}", flush=True)
+            write(records, guard=False)
+    write(records, guard=False)
+
+
+def is_reachable(record: dict) -> bool:
+    """One point's verdict. Both gates, and an ungraded point is not reachable -
+    see apply_grade_gate on why an unknown may not pass."""
+    return bool(record["passes_distance"]) and bool(record.get("passes_grade"))
+
+
+def write(records: list[dict], guard: bool = True, previous: int | None = None) -> None:
+    """Write the verdict file, refusing a collapsed result when asked to guard.
+
+    The guard is off for the checkpoints `apply_grade_gate` takes mid-run, which
+    are deliberately partial - it belongs on the finished file only.
+
+    `previous` is passed in rather than read here, and that is the whole point of
+    the parameter: those mid-run checkpoints have already overwritten OUT_PATH by
+    the time the guarded write happens, so a drop guard that re-read the file
+    would be comparing this run against itself and could never fire. main() reads
+    it once, before anything is written.
+    """
+    # Stamped onto each record rather than left for the reader to recompute.
+    # export_poi.py is the reader, and a consumer that had to re-derive "both
+    # gates, and an unknown is not a pass" from the parts is a second copy of
+    # this file's judgement that could drift from it.
+    for record in records:
+        record["reachable"] = is_reachable(record)
+    reachable = [r for r in records if r["reachable"]]
+    if guard:
+        if len(reachable) < MIN_REACHABLE:
+            raise SystemExit(
+                f"Refusing to write: {len(reachable)} reachable points is below the floor of "
+                f"{MIN_REACHABLE} - see MIN_REACHABLE. Did the trail layers load?"
+            )
+        if previous and len(reachable) < previous * MAX_REACHABLE_DROP_RATIO:
+            raise SystemExit(
+                f"Refusing to overwrite {OUT_PATH.name}: {len(reachable)} reachable against "
+                f"{previous} on disk is past the {MAX_REACHABLE_DROP_RATIO:.0%} drop guard."
+            )
+    payload = {
+        "match_radius_ft": MATCH_RADIUS_FT,
+        "max_grade": MAX_GRADE,
+        "n_corridor": len(records),
+        "n_reachable": len(reachable),
+        "points": records,
+    }
+    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = OUT_PATH.with_suffix(".tmp")
+    tmp.write_text(json.dumps(payload, indent=1), encoding="utf-8")
+    tmp.replace(OUT_PATH)
+
+
+def read_previous_reachable_count() -> int | None:
+    if not OUT_PATH.exists():
+        return None
+    try:
+        return json.loads(OUT_PATH.read_text(encoding="utf-8")).get("n_reachable")
+    except json.JSONDecodeError:
+        return None
+
+
+def summarise(records: list[dict]) -> None:
+    n = len(records)
+    passed = [r for r in records if r["passes_distance"]]
+    graded = [r for r in passed if "passes_grade" in r]
+    steep = [r for r in graded if not r["passes_grade"]]
+    reachable = [r for r in records if is_reachable(r)]
+    print(f"\n{len(passed)}/{n} clear the {MATCH_RADIUS_FT:.0f} ft union gate ({100 * len(passed) / n:.1f}%).")
+    if graded:
+        print(f"{len(steep)}/{len(graded)} of those graded are past the {MAX_GRADE:.0%} grade.")
+    if len(graded) < len(passed):
+        print(f"{len(passed) - len(graded)} still ungraded - re-run to finish the EPQS lookups.")
+    print(f"{len(reachable)} of {n} corridor water points are reachable ({100 * len(reachable) / n:.1f}%).")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--limit", type=int, help="cap this run's EPQS lookups (resumable)")
+    parser.add_argument("--remeasure", action="store_true", help="redo the distance pass, discarding the file on disk")
+    args = parser.parse_args(argv)
+
+    # Read before anything writes: apply_grade_gate checkpoints over OUT_PATH as
+    # it goes, so this is the only moment the count on disk is still the PREVIOUS
+    # run's. See write().
+    previous = read_previous_reachable_count()
+
+    if OUT_PATH.exists() and not args.remeasure:
+        records = json.loads(OUT_PATH.read_text(encoding="utf-8"))["points"]
+        print(f"Resuming from {OUT_PATH.name} ({len(records)} points).")
+    else:
+        con = duckdb.connect()
+        con.execute("INSTALL spatial; LOAD spatial;")
+        records = measure_distances(con)
+
+    apply_grade_gate(records, limit=args.limit)
+    write(records, previous=previous)
+    summarise(records)
+    print(f"Wrote {OUT_PATH}")
+    fetch_receipts.record("build_osm_water_reach", [OUT_PATH])
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

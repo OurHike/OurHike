@@ -422,6 +422,48 @@ and hiker reports as the only eventual answer to "is it flowing".
    radius measured before it was chosen (41 of opentrail's 174 water points
    have a twin inside it; the tail past it is real neighbours). The corridor's
    water layer goes from 174 features to 1,705.
+   *Amended 2026-08-18 (#749): gated on reachability, and the gate is severe.*
+   The 30-mile corridor was the only geographic filter between the scan and a
+   hiker's screen, so the claim a pin made — *there is water here* — was true of
+   a drinking fountain in a town park eight miles east.
+   [build_osm_water_reach.py](build_osm_water_reach.py) now applies option 2's
+   own two gates to this source: within **100 ft** of the nearest of the
+   centerline, any side trail, any shelter or any campsite (a union of three,
+   the maintainer's decision of 2026-08-17), and under a **15% grade** from
+   3DEP elevations at both ends. Measured the same day, against 7,593 nodes
+   across the fourteen states:
+
+   | | |
+   |---|---|
+   | OSM water points inside the corridor | 1,576 |
+   | clear the 100 ft union gate | 146 (9.3%) |
+   | of those, refused by the grade gate | 61 (41.8%) |
+   | **publish** | **85 (5.4%)** |
+
+   **The clutter was the far points, and that was not assumed.** Only 232 of the
+   1,576 are within 0.2 mi of anything a hiker walks; 1,159 are more than five
+   miles away. So 1,344 of the 1,430 removals are points no radius argument
+   would defend, and the contested band is the 86 between 100 ft and 0.2 mi —
+   **55 of them springs**, which is the class §7's own guide comparison found
+   OSM was the only cover for. Near-trail springs go from 176 to 121.
+   `spike_osm_water_gate.py` is the census; every rejected point keeps its
+   distance, drop, grade and reason in `data/raw/osm_water_reach.json`, so
+   either gate can be re-argued from the file.
+
+   **@unvalidated — the grade gate misfires at very short range**, and this is
+   the open question on #749 rather than a settled result. Grade is
+   drop ÷ distance, and where the nearest feature is the trail the spring sits
+   beside, the denominator is a few feet: a spring **0.26 m from a side trail**
+   with a 0.4 ft drop is refused as "a 39% grade, which is a scramble rather
+   than a walk". 12 of the 61 refusals have a total walk under 5 ft.
+   `fetch_trail_water.py` already names this failure — *"two points a foot apart
+   are the same place, and a grade computed from that is noise rather than
+   terrain"* — but its `max(distance_ft, 1.0)` only guards division by zero, and
+   in its own context the nearest point on a stream is rarely a foot from a
+   shelter, so it never bit. The remaining ~49 refusals look defensible (median
+   grade 0.24 over runs of 10–100 ft). What would settle it is a minimum run, or
+   a minimum drop, below which the gate declines to call anything steep — a
+   number nobody has picked, and this session did not invent one.
 2. **The per-shelter nearest-stream sentence from NHD** — *small effort, closes the
    silence for everyone.* A describer entry in `export_poi.py` composing, for every
    shelter, *"Nearest mapped stream: Stony Brook, about 70 m (USGS; mapped as

@@ -9,6 +9,7 @@ segment distance - is pure or monkeypatchable without one (TESTING.md).
 
 import json
 import math
+from pathlib import Path
 
 import fetch_trail_water as trail_water
 from fetch_trail_water import (
@@ -16,19 +17,35 @@ from fetch_trail_water import (
     MATCH_RADIUS_FT,
     MAX_GRADE,
     MIN_GRADE_RUN_FT,
+    NHD_LINEAGE_TAGS,
+    build,
     closest_point_on_paths,
     dedupe_crossings,
     grade_gate,
+    merge_osm_lineage,
     merge_stream_facts,
     nearest_stream,
+    osm_stream_table,
     resolve_site,
+    state_crossings,
+    state_site_candidates,
 )
+from tests.conftest import spatial_connection
+from tests.synthetic import CENTERLINE_COORDS
 
 M_PER_DEG_LAT = 111_132.0
 
 
-def _crossing(source, lat, lon, name=None, flow=None, stream_id="1"):
-    return {"sources": [source], "stream_id": stream_id, "name": name, "flow": flow, "lat": lat, "lon": lon}
+def _crossing(source, lat, lon, name=None, flow=None, stream_id="1", osm_from_nhd=None):
+    return {
+        "sources": [source],
+        "stream_id": stream_id,
+        "name": name,
+        "flow": flow,
+        "osm_from_nhd": osm_from_nhd if source == "osm" else None,
+        "lat": lat,
+        "lon": lon,
+    }
 
 
 def _north(metres):
@@ -350,3 +367,175 @@ def test_the_floor_sits_below_the_runs_the_census_defended():
     the rescued ones under 5 ft. A floor that climbed past 10 ft would start
     passing points that census called defensible."""
     assert 5.0 <= MIN_GRADE_RUN_FT <= 10.0
+
+
+# --- whether "both databases" is two opinions or one (#710) -----------------
+
+
+def test_two_ids_are_not_two_opinions_when_osm_imported_the_line():
+    """The whole subject of #710. Measured 2026-08-14: 77% of Virginia's OSM
+    stream ways carry NHD's tags against 0% of New Hampshire's, so a merged
+    crossing there is NHD agreeing with itself under a second id."""
+    kept = dedupe_crossings(
+        [
+            _crossing("nhd", 41.0, -74.0, flow="perennial", stream_id="usgs-1"),
+            _crossing("osm", 41.0 + _north(30), -74.0, stream_id="osm-1", osm_from_nhd=True),
+        ]
+    )
+
+    (merged,) = kept
+    assert merged["sources"] == ["nhd", "osm"]
+    assert merged["osm_from_nhd"] is True
+
+
+def test_a_line_somebody_drew_is_a_real_second_opinion():
+    kept = dedupe_crossings(
+        [
+            _crossing("nhd", 41.0, -74.0, flow="perennial", stream_id="usgs-1"),
+            _crossing("osm", 41.0 + _north(30), -74.0, stream_id="osm-1", osm_from_nhd=False),
+        ]
+    )
+
+    (merged,) = kept
+    assert merged["osm_from_nhd"] is False
+
+
+def test_a_crossing_no_osm_way_reached_says_nothing_either_way():
+    """None, not False: "nobody from OSM said anything" and "OSM said
+    something of its own" are different claims about the same crossing."""
+    (only_nhd,) = dedupe_crossings([_crossing("nhd", 41.0, -74.0, flow="perennial")])
+
+    assert only_nhd["osm_from_nhd"] is None
+
+
+def test_one_drawn_way_carries_the_corroboration_for_the_pile():
+    """all(), not any(). A stop can fold in several OSM ways; if one of them
+    is a line somebody actually drew, the independent observation is there
+    whatever the imported one beside it descends from."""
+    assert merge_osm_lineage(True, False) is False
+    assert merge_osm_lineage(True, True) is True
+    assert merge_osm_lineage(None, True) is True
+    assert merge_osm_lineage(None, False) is False
+    assert merge_osm_lineage(None, None) is None
+
+
+def test_the_count_splits_what_sources_alone_could_not():
+    """`crossings_from_both` counts two ids and reads as independent
+    confirmation. Only one of these two counts two opinions, and the
+    difference is what a reader would otherwise have concluded wrongly."""
+    crossings = [
+        {**_crossing("nhd", 41.0, -74.0), "sources": ["nhd", "osm"], "osm_from_nhd": True},
+        {**_crossing("nhd", 42.0, -74.0), "sources": ["nhd", "osm"], "osm_from_nhd": False},
+        _crossing("nhd", 43.0, -74.0),
+    ]
+
+    counts = build({}, {}, crossings)["counts"]
+
+    assert counts["crossings_from_both"] == 2
+    assert counts["crossings_corroborated_independently"] == 1
+    assert counts["crossings_from_both_shared_lineage"] == 1
+
+
+def test_the_query_asks_for_every_lineage_tag_the_constant_names():
+    """The constant is the reviewable thing, so the query has to be built from
+    it - a tag added to NHD_LINEAGE_TAGS and not asked for would silently
+    label imported ways as independent."""
+    asked = []
+
+    class _Recorder:
+        def execute(self, sql):
+            asked.append(sql)
+            return self
+
+        def fetchone(self):
+            return (0,)
+
+    osm_stream_table(_Recorder(), Path("nowhere.osm.pbf"))
+
+    ways_query = asked[0]
+    for tag in NHD_LINEAGE_TAGS:
+        assert f"tags['{tag}']" in ways_query
+
+
+def test_gnis_is_not_treated_as_lineage():
+    """#710 lists `gnis:feature_id` with the NHD tags, and this build reads it
+    as a narrower claim: it attests where the NAME came from, not the line. A
+    stream digitised from a walk and labelled from USGS's gazetteer is still
+    an independent opinion about where the water is."""
+    assert not any("gnis" in tag.lower() for tag in NHD_LINEAGE_TAGS)
+
+
+def test_state_crossings_reads_the_column_both_loaders_write():
+    """Run against real DuckDB, because nothing else in this suite does.
+
+    The lineage column is written by two different CREATE TABLE statements
+    (osm_stream_table and nhd_stream_table both build `streams`) and read by
+    two more. Those four only meet on a full run over hundreds of megabytes of
+    extract, so a column named in one and not another would ship. This builds
+    the same table shape by hand and makes the reader prove it.
+    """
+    con = spatial_connection()
+    try:
+        (start_lon, start_lat), (end_lon, end_lat) = CENTERLINE_COORDS
+        mid_lon = (start_lon + end_lon) / 2
+        mid_lat = (start_lat + end_lat) / 2
+        con.execute(
+            f"""
+            CREATE TABLE centerline AS
+            SELECT ST_GeomFromText('LINESTRING({start_lon} {start_lat}, {end_lon} {end_lat})') AS geom
+            """
+        )
+        # Columns and order exactly as the two loaders emit them.
+        con.execute(
+            f"""
+            CREATE TABLE streams AS
+            SELECT 'osm' AS source, 'osm-1' AS id, TRUE AS osm_from_nhd, 'Imported Brook' AS name,
+                   NULL AS flow,
+                   ST_GeomFromText('LINESTRING({mid_lon} {mid_lat - 0.01}, {mid_lon} {mid_lat + 0.01})') AS geom
+            UNION ALL
+            SELECT 'nhd', 'usgs-1', FALSE, 'Surveyed Brook', 'perennial',
+                   ST_GeomFromText('LINESTRING({mid_lon - 0.001} {mid_lat - 0.01}, {mid_lon - 0.001} {mid_lat + 0.01})')
+            """
+        )
+
+        crossings = {crossing["stream_id"]: crossing for crossing in state_crossings(con)}
+    finally:
+        con.close()
+
+    assert crossings["osm-1"]["osm_from_nhd"] is True
+    # NHD is the source rather than an import of it, so the question does not
+    # apply to its own row and the answer is absent, not False.
+    assert crossings["usgs-1"]["osm_from_nhd"] is None
+
+
+def test_site_candidates_read_the_same_column():
+    """The other reader of `streams.osm_from_nhd`, and the one whose unpack
+    would silently shift every field if the column landed in the wrong place -
+    a name arriving where a flow class belongs is not an error DuckDB raises.
+    """
+    con = spatial_connection()
+    try:
+        lon, lat = CENTERLINE_COORDS[0]
+        con.execute(
+            f"""
+            CREATE TABLE sites AS
+            SELECT 'site-1' AS global_id, ST_Point({lon}, {lat}) AS geom
+            """
+        )
+        con.execute(
+            f"""
+            CREATE TABLE streams AS
+            SELECT 'osm' AS source, 'osm-1' AS id, TRUE AS osm_from_nhd, 'Imported Brook' AS name,
+                   'intermittent' AS flow,
+                   ST_GeomFromText('LINESTRING({lon} {lat}, {lon} {lat + 0.0001})') AS geom
+            """
+        )
+
+        candidates = state_site_candidates(con)
+    finally:
+        con.close()
+
+    (candidate,) = candidates["site-1"]
+    assert candidate["name"] == "Imported Brook"
+    assert candidate["flow"] == "intermittent"
+    assert candidate["osm_from_nhd"] is True

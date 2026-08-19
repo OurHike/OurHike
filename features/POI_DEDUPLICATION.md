@@ -228,7 +228,16 @@ Now the part that matters. The winning record is not simply "the highest tier's 
 agreeing looks like independent evidence and frequently is not: the water branch's own note
 records that *opentrail imports OSM*, so an opentrail point and an OSM node at the same spring
 are often one observation arriving twice. Independence between community datasets cannot be
-assumed, so a merge records `corroborated_by` and leaves the dashed pin dashed. Only a tier 1
+assumed, so a merge records `corroborated_by` and leaves the dashed pin dashed.
+
+**It is not only community datasets, and the larger case runs the other way (#710).** OSM's
+stream geometry in the south and mid-Atlantic was bulk-imported from *USGS* — 77% of Virginia's
+stream ways carry `NHD:FCode`, against 0% of New Hampshire's, measured 2026-08-14 — so an OSM
+row agreeing with an NHD row there is frequently NHD agreeing with itself under a second id.
+A tier-1 source on both sides of a merge does not make the merge independent, and the tier
+alone cannot tell. `fetch_trail_water.py` reads the import tags and records `osm_from_nhd` for
+exactly this reason; anything else merging OSM against a government source inherits the
+question. Only a tier 1
 or tier 2 source contributing to the merge moves a POI onto the verified side of
 [WIREFRAMES.md](../WIREFRAMES.md) §11's existence axis.
 

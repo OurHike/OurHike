@@ -149,6 +149,32 @@ CENTERLINE_PATH = RAW_DIR / "centerline.geojson"
 # fetch_osm_water.py's docstring leaves open.
 STREAM_WATERWAYS = ("stream", "river")
 
+# The tags an OSM stream way carries when its geometry was bulk-imported from
+# NHD rather than drawn by somebody who went there (#710).
+#
+# WHY THIS IS READ AT ALL. The argument for merging two hydrographies is that
+# they know different things AND were made by different people. Measured
+# 2026-08-14 against the same Geofabrik extracts this file reads, the second
+# half is substantially false in the south and mid-Atlantic: 71% of Georgia's
+# stream ways carry `NHD:FCode`, 77% of Virginia's, and 0% of New
+# Hampshire's - 56% across all fourteen trail states. In Virginia 41,422 of
+# the 41,585 NHD-tagged intermittent ways carry `NHD:FCode=46003`, which IS
+# NHD's intermittent code. An OSM "intermittent" there is not a second
+# opinion; it is NHD's opinion with an OSM id on it.
+#
+# So a crossing counted as "corroborated by both databases" means something
+# quite different in Virginia than in New Hampshire, and nothing in `sources`
+# could tell the two apart. These tags are what can.
+#
+# `gnis:feature_id` IS DELIBERATELY NOT IN THIS LIST, though #710 names it
+# alongside the others. It attests where the NAME came from - USGS's gazetteer
+# - and not where the line came from. A stream somebody digitised from a walk
+# and then labelled from GNIS is a genuine second opinion about geometry, and
+# folding it in here would call that lineage when it is not. The narrower
+# claim is the true one, and it is also the one the measurement above was
+# taken on.
+NHD_LINEAGE_TAGS = ("NHD:FCode", "NHD:ReachCode", "NHD:ComID")
+
 # USGS's own hydrography, taken in bulk rather than by query. The service
 # 504s under corridor-scale polyline queries; the staged GeoPackages are one
 # ~270 MB download per subregion, read offline and thrown away again.
@@ -336,11 +362,19 @@ def osm_stream_table(con: duckdb.DuckDBPyConnection, pbf: Path) -> int:
     `flow` is NULL unless a mapper tagged `intermittent`, and NULL means
     nobody said - never "year-round". USGS is where a positive flow claim
     comes from, which is the whole reason both sources are read.
+
+    `osm_from_nhd` is that reason examined (#710): where a way carries NHD's
+    own import tags, reading OSM here is not reading a second source. See
+    NHD_LINEAGE_TAGS for how unevenly that holds along the trail.
     """
     waterways = ", ".join(f"'{kind}'" for kind in STREAM_WATERWAYS)
+    # Interpolated from the constant rather than spelled out, so the list a
+    # reviewer argues with is the one the query runs (NHD_LINEAGE_TAGS).
+    lineage = " OR ".join(f"tags['{tag}'] IS NOT NULL" for tag in NHD_LINEAGE_TAGS)
     con.execute(f"""
         CREATE OR REPLACE TABLE ways AS
-        SELECT id, refs, tags['name'] AS name, tags['intermittent'] AS intermittent, tags['seasonal'] AS seasonal
+        SELECT id, refs, tags['name'] AS name, tags['intermittent'] AS intermittent, tags['seasonal'] AS seasonal,
+               ({lineage}) AS osm_from_nhd
         FROM st_readosm('{pbf.as_posix()}')
         WHERE kind = 'way' AND tags IS NOT NULL AND tags['waterway'] IN ({waterways})
     """)
@@ -352,13 +386,14 @@ def osm_stream_table(con: duckdb.DuckDBPyConnection, pbf: Path) -> int:
     con.execute("""
         CREATE OR REPLACE TABLE streams AS
         WITH pairs AS (
-            SELECT id, name, intermittent, seasonal,
+            SELECT id, name, intermittent, seasonal, osm_from_nhd,
                    UNNEST(refs) AS ref,
                    UNNEST(range(1, len(refs) + 1)) AS position
             FROM ways
         )
         SELECT 'osm' AS source,
                CAST(pairs.id AS VARCHAR) AS id,
+               any_value(pairs.osm_from_nhd) AS osm_from_nhd,
                any_value(pairs.name) AS name,
                CASE
                    WHEN lower(any_value(pairs.intermittent)) = 'yes' THEN 'intermittent'
@@ -401,6 +436,11 @@ def nhd_stream_table(con: duckdb.DuckDBPyConnection, gpkg: Path) -> int:
         CREATE OR REPLACE TABLE streams AS
         SELECT 'nhd' AS source,
                permanent_identifier AS id,
+               -- FALSE, not NULL: NHD is the source rather than an import of
+               -- it, and `streams` is one table both loaders write, so the
+               -- column has to exist on both sides for state_crossings to
+               -- read it (#710).
+               FALSE AS osm_from_nhd,
                gnis_name AS name,
                CASE {cases} ELSE NULL END AS flow,
                ST_Transform(ST_Force2D(SHAPE), 'EPSG:4269', 'EPSG:4326', always_xy := true) AS geom
@@ -428,15 +468,27 @@ def state_crossings(con: duckdb.DuckDBPyConnection) -> list[dict]:
                    streams.id AS stream_id,
                    streams.name AS name,
                    streams.flow AS flow,
+                   streams.osm_from_nhd AS osm_from_nhd,
                    UNNEST(ST_Dump(ST_Intersection(centerline.geom, streams.geom))).geom AS point
             FROM streams JOIN centerline ON ST_Intersects(centerline.geom, streams.geom)
         )
-        SELECT source, stream_id, name, flow, ST_X(point) AS lon, ST_Y(point) AS lat
+        SELECT source, stream_id, name, flow, osm_from_nhd, ST_X(point) AS lon, ST_Y(point) AS lat
         FROM hits WHERE ST_GeometryType(point) = 'POINT'
     """).fetchall()
     return [
-        {"sources": [source], "stream_id": str(stream_id), "name": name or None, "flow": flow, "lat": lat, "lon": lon}
-        for source, stream_id, name, flow, lon, lat in rows
+        {
+            "sources": [source],
+            "stream_id": str(stream_id),
+            "name": name or None,
+            "flow": flow,
+            # Only meaningful where OSM contributed, so it is None on an NHD
+            # row rather than False - absent means "not an OSM claim at all",
+            # which is a different thing from "an independent OSM claim".
+            "osm_from_nhd": bool(osm_from_nhd) if source == "osm" else None,
+            "lat": lat,
+            "lon": lon,
+        }
+        for source, stream_id, name, flow, osm_from_nhd, lon, lat in rows
         if lat is not None and lon is not None
     ]
 
@@ -452,15 +504,23 @@ def state_site_candidates(con: duckdb.DuckDBPyConnection) -> dict[str, list[dict
     """
     degrees = (REPORT_RADIUS_FT * M_PER_FT) / (M_PER_DEG_LAT * math.cos(math.radians(45.0)))
     rows = con.execute(f"""
-        SELECT sites.global_id, streams.source, streams.id, streams.name, streams.flow, ST_AsGeoJSON(streams.geom)
+        SELECT sites.global_id, streams.source, streams.id, streams.name, streams.flow,
+               streams.osm_from_nhd, ST_AsGeoJSON(streams.geom)
         FROM streams JOIN sites ON ST_DWithin(streams.geom, sites.geom, {degrees})
     """).fetchall()
     candidates: dict[str, list[dict]] = {}
-    for global_id, source, stream_id, name, flow, geojson in rows:
+    for global_id, source, stream_id, name, flow, osm_from_nhd, geojson in rows:
         geometry = json.loads(geojson)
         paths = [geometry["coordinates"]] if geometry["type"] == "LineString" else geometry["coordinates"]
         candidates.setdefault(global_id, []).append(
-            {"source": source, "stream_id": str(stream_id), "name": name or None, "flow": flow, "paths": paths}
+            {
+                "source": source,
+                "stream_id": str(stream_id),
+                "name": name or None,
+                "flow": flow,
+                "osm_from_nhd": bool(osm_from_nhd) if source == "osm" else None,
+                "paths": paths,
+            }
         )
     return candidates
 
@@ -535,6 +595,24 @@ def fetch_nhd_subregion(huc4: str) -> Path:
     return NHD_TMP_DIR / names[0]
 
 
+def merge_osm_lineage(kept: bool | None, other: bool | None) -> bool | None:
+    """Fold two records' OSM lineage into one, for a merged crossing (#710).
+
+    None means no OSM record contributed, and it is not False: "nobody from
+    OSM said anything" and "OSM said something of its own" are different
+    claims, and only the second is corroboration.
+
+    Where both halves are OSM, the answer is ALL of them rather than any: the
+    question this field exists to answer is *is there an independent OSM
+    observation here*, so one way somebody actually drew is enough to make the
+    corroboration real, even folded together with an imported one.
+    """
+    said = [value for value in (kept, other) if value is not None]
+    if not said:
+        return None
+    return all(said)
+
+
 def merge_stream_facts(kept: dict, other: dict) -> dict:
     """Fold a duplicate's facts into the one being kept.
 
@@ -546,10 +624,15 @@ def merge_stream_facts(kept: dict, other: dict) -> dict:
     each supplied, and says so: `sources` carries both, and `flow_source`
     records who made the flow claim, because "mapped as year-round" is a
     statement somebody is answerable for.
+
+    `osm_from_nhd` rides along for a narrower reason (#710): two sources in
+    `sources` is not two opinions where OSM's line was imported from NHD's,
+    and a merge is exactly where that stops being visible.
     """
     merged = dict(kept)
     merged["sources"] = sorted(set(kept.get("sources", [])) | set(other.get("sources", [])))
     merged["name"] = kept.get("name") or other.get("name")
+    merged["osm_from_nhd"] = merge_osm_lineage(kept.get("osm_from_nhd"), other.get("osm_from_nhd"))
     if not kept.get("flow") and other.get("flow"):
         merged["flow"] = other["flow"]
         merged["flow_source"] = other.get("flow_source") or (other.get("sources") or [None])[0]
@@ -659,6 +742,7 @@ def nearest_stream(lat: float, lon: float, candidates: list[dict]) -> dict | Non
                 "name": candidate["name"],
                 "flow": candidate["flow"],
                 "flow_source": candidate["source"] if candidate["flow"] else None,
+                "osm_from_nhd": candidate.get("osm_from_nhd"),
                 "distance_m": distance,
                 "lat": point_lat,
                 "lon": point_lon,
@@ -852,6 +936,15 @@ README = [
     "(perennial / intermittent), OSM more often has the local name, and a",
     "record deduped across the two keeps whichever half each supplied -",
     "`sources` says who, and `flow_source` says who made the flow claim.",
+    "",
+    "`osm_from_nhd` says whether OSM's half was IMPORTED from NHD rather than",
+    "drawn by somebody who went there - true, false, or absent where OSM did",
+    "not contribute at all. Two sources in `sources` is not two opinions when",
+    "it is true, which is why `crossings_corroborated_independently` is",
+    "counted separately from `crossings_from_both` (#710). The share is not",
+    "uniform along the trail: 77% of Virginia's OSM stream ways carry NHD's",
+    "tags against 0% of New Hampshire's, so the same count means different",
+    "things in different states.",
 ]
 
 
@@ -868,6 +961,15 @@ def build(features_by_layer: dict[str, list[dict]], candidates: dict[str, list[d
         "sites_with_water": len(matched),
         "named_crossings": sum(1 for crossing in crossings if crossing["name"]),
         "crossings_from_both": sum(1 for crossing in crossings if len(crossing["sources"]) > 1),
+        # The split #710 asked for. "From both" counts two ids; only the first
+        # of these counts two OPINIONS, and which one a reader wants depends
+        # entirely on what they were about to conclude from it.
+        "crossings_corroborated_independently": sum(
+            1 for crossing in crossings if len(crossing["sources"]) > 1 and crossing.get("osm_from_nhd") is False
+        ),
+        "crossings_from_both_shared_lineage": sum(
+            1 for crossing in crossings if len(crossing["sources"]) > 1 and crossing.get("osm_from_nhd") is True
+        ),
         "crossings_usgs_only": sum(1 for crossing in crossings if crossing["sources"] == ["nhd"]),
         "crossings_osm_only": sum(1 for crossing in crossings if crossing["sources"] == ["osm"]),
     }

@@ -131,6 +131,22 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: pip install -r requirements-dev.txt
 
+      # Take the spatial extension from PyPI instead of extensions.duckdb.org
+      # (#321). `INSTALL spatial` is a live network fetch, and it is the one
+      # standing exception to TESTING.md's "tests never touch the network" -
+      # so an extension-repo outage reddens this suite for a reason that has
+      # nothing to do with the change under test.
+      #
+      # The version is duckdb's OWN, asked of the interpreter rather than read
+      # back out of the requirements file: extensions are ABI-locked to the
+      # exact build, and the installed one is the only version that has to
+      # match. Same script the web session hook runs, for the same reason.
+      - name: Seed the duckdb spatial extension
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          pip install "duckdb-extension-spatial==$(python -c 'import duckdb; print(duckdb.__version__)')"
+          python seed_spatial_extension.py
+
       - name: Lint
         if: steps.scope.outputs.run == 'true'
         run: python -m ruff check .
@@ -184,6 +200,22 @@ jobs:
       - name: Install dependencies
         if: steps.scope.outputs.run == 'true'
         run: pip install -r requirements-dbt.txt
+
+      # Take the spatial extension from PyPI instead of extensions.duckdb.org
+      # (#321). `INSTALL spatial` is a live network fetch, and it is the one
+      # standing exception to TESTING.md's "tests never touch the network" -
+      # so an extension-repo outage reddens this suite for a reason that has
+      # nothing to do with the change under test.
+      #
+      # The version is duckdb's OWN, asked of the interpreter rather than read
+      # back out of the requirements file: extensions are ABI-locked to the
+      # exact build, and the installed one is the only version that has to
+      # match. Same script the web session hook runs, for the same reason.
+      - name: Seed the duckdb spatial extension
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          pip install "duckdb-extension-spatial==$(python -c 'import duckdb; print(duckdb.__version__)')"
+          python seed_spatial_extension.py
 
       - name: Generate synthetic raw fixtures
         if: steps.scope.outputs.run == 'true'

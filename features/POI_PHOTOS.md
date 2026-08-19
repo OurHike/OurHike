@@ -182,6 +182,8 @@ A photo is private when added. Sharing is a second decision, taken per photo, th
 
 Sharing queues in the existing outbox (`lib/outbox.ts`) like every other write, so tapping it on a ridge is fine — it leaves when there is signal.
 
+**Decided 2026-08-19 by the maintainer, in session, on [#569 — Decide whether a photo can be shared with a Tramily rather than with everyone](https://github.com/OurHike/OurHike/issues/569): sharing is one licence event whatever the audience.** A photo shared with a Tramily is released under CC BY-SA 4.0 exactly as a public share is — the alternative reading, a private revocable surface with no licence event, was put to the maintainer explicitly and declined. Two consequences follow directly, and the share sheet may not soften either: there is no lighter-weight share whose terms differ, so the irrevocability sentence below is said for every audience; and the "what cannot be taken back" half of the sheet applies to a Tramily share in full. What stays with the Tramily build (COMMUNITY_BUILDING.md, post-MVP, unbuilt): whether a Tramily-shared photo counts against the 15, what moderation reaches it, and where it renders — #569's questions 2–4, now constrained by this answer rather than deciding it.
+
 ### The shape of a POI's gallery: 3 pinned, 12 rolling, one per person
 
 **Decided 2026-08-09.** A POI holds **at most 15 shared photos**. The club that maintains the area may pin **3**; the remaining **12** are the most recent community photos. **One photo per person per POI.**
@@ -242,7 +244,10 @@ A shared photo is credited to the photographer's **trail name**, never a real na
 
 This is the same instinct that already governs the pipeline, where `fetch_opentrail.py` drops user comments as "personal contributions from named individuals — a consent concern separate from and in addition to the licensing question." A photo carries more of that than a comment does.
 
-Photos of identifiable people are a moderation matter and a share-sheet warning, not something a client-side check can solve. The queue exists; this is one more thing it looks at.
+**Screening for people and nudity: decided 2026-08-19 by the maintainer, in session, on [#570 — Screen a photo for nudity and faces before it can reach the community](https://github.com/OurHike/OurHike/issues/570): a detector flags for a human, it never decides — nudity included.** This replaces the sentence that used to close the question here ("not something a client-side check can solve" — written before shipping an on-device vision model was ordinary), and it keeps that sentence's underlying point: the check informs, a person judges. The hard-gate alternative was put to the maintainer explicitly and declined — a refusal with no appeal, on a ridge, from a model that will be wrong sometimes, is the app being wrong at somebody who knows better. The posture lands as two builds, split by path because their constraints differ:
+
+- **Fetch time, first** — [#836 — Run a face-and-nudity check over the Commons fetch, where a stranger's self-portrait can become a town's illustration](https://github.com/OurHike/OurHike/issues/836). The Commons rung is the path with live exposure and no human in it (the `David Rudmin` case above), a workstation can carry a heavy model, and a flagged file waits for a human look before export — no hiker is present to be refused, so holding is not gating.
+- **Share time** — [#837 — On-device screening at the share sheet: friction and a queue flag, never a refusal](https://github.com/OurHike/OurHike/issues/837). Plain words at the sheet about what was detected, before anything irrevocable, and a priority flag that sorts the moderation queue; whether a machine-flagged share is held from the rolling 12 until one human glance is that build's design question.
 
 ### Moving images: yes, in exactly one constrained form
 

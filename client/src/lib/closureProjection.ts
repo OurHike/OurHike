@@ -14,6 +14,29 @@
  * index this phone actually has, and fall back to the stored mile when there
  * is no geometry to snap. A closure is never dropped for failing to project —
  * a closure a hiker cannot see is one they walk into.
+ *
+ * **`@unvalidated` — the tolerance this inherits was derived for a different
+ * question.** `mileOnTrail` accepts any point within `MAX_OFF_TRAIL_MILES`
+ * (3) of a centerline vertex and returns that vertex's mile, discarding how
+ * far away it was. That 3 is well argued where it lives, but the argument is
+ * about *a hiker's GPS fix* and about fitting inside the latitude bucket
+ * search — not about re-projecting an endpoint that was itself computed from
+ * a centerline and should therefore land within feet of one. Two consequences
+ * nobody has measured:
+ *
+ * - an endpoint 2.9 miles from any vertex projects, and the band is drawn
+ *   there with no hint that it moved that far;
+ * - where the trail doubles back within three miles — switchbacks, parallel
+ *   ridges — the nearest *vertex* can sit on the wrong lobe, so a closure
+ *   could be drawn on the stretch beside the closed one.
+ *
+ * What would settle it: the distribution of `locateOnTrail(...).offTreadFeet`
+ * for real closure endpoints projected across two real releases. Until a
+ * closure is authored with geometry there is nothing to measure — no client
+ * writes it yet — so this is deliberately left as the loose inherited gate
+ * rather than tightened to a number picked in advance. `locateOnTrail` already
+ * returns that offset, which is where a real threshold, or a note on the sheet
+ * saying how far the stretch moved, would come from.
  */
 
 import { mileOnTrail, type TrailIndex } from './trailPosition'

@@ -1577,6 +1577,20 @@ def _osm_water_feature(osm_id, lon, lat, **tags):
     return _point_feature(None, lon, lat, {"osm_id": str(osm_id), "kind": "spring", **tags})
 
 
+def _write_osm_water_reach(raw_dir, reachable=(), unreachable=()):
+    """build_osm_water_reach.py's verdict file, as export_poi.py reads it (#749).
+
+    Written by every test that writes osm_water.geojson, because the export
+    refuses to run with the points present and the verdicts missing - that
+    refusal is the subject of its own test below.
+    """
+    points = [{"osm_id": str(osm_id), "reachable": True} for osm_id in reachable]
+    points += [{"osm_id": str(osm_id), "reachable": False} for osm_id in unreachable]
+    (raw_dir / export_poi.OSM_WATER_REACH_FILENAME).write_text(
+        json.dumps({"n_corridor": len(points), "n_reachable": len(reachable), "points": points})
+    )
+
+
 def test_export_poi_osm_water_folds_into_water_at_low_confidence(tmp_path, monkeypatch, con):
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()
@@ -1584,6 +1598,7 @@ def test_export_poi_osm_water_folds_into_water_at_low_confidence(tmp_path, monke
     # ~2 km from the opentrail water point at (-73.92, 41.02) - a real
     # neighbour, not a twin.
     _write_fc(raw_dir / "osm_water.geojson", [_osm_water_feature(555, -73.90, 41.03, name="Ridge Spring", intermittent="yes")])
+    _write_osm_water_reach(raw_dir, reachable=[555])
     monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
     monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
 
@@ -1632,6 +1647,7 @@ def test_export_poi_an_osm_twin_of_an_opentrail_point_is_dropped(tmp_path, monke
     # stream access, two facts a hiker wants both of.
     neighbour = _osm_water_feature(557, -73.92, 41.0204)
     _write_fc(raw_dir / "osm_water.geojson", [twin, neighbour])
+    _write_osm_water_reach(raw_dir, reachable=[556, 557])
     monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
     monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
 
@@ -1642,6 +1658,89 @@ def test_export_poi_an_osm_twin_of_an_opentrail_point_is_dropped(tmp_path, monke
     assert "opentrail_at:100" in ids
     assert "osm_water:556" not in ids
     assert "osm_water:557" in ids
+
+
+# --- reachability gate on OSM water (#749, build_osm_water_reach.py) --------
+
+
+def test_export_poi_an_unreachable_osm_water_point_does_not_publish(tmp_path, monkeypatch, con):
+    """The gate #749 exists for: a corridor clip alone let a drinking fountain
+    eight miles east draw a pin saying *there is water here*. The reachable
+    point beside it is what proves the gate is selecting rather than emptying
+    the source."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    reachable = _osm_water_feature(801, -73.90, 41.03)
+    unreachable = _osm_water_feature(802, -73.89, 41.04)
+    _write_fc(raw_dir / "osm_water.geojson", [reachable, unreachable])
+    _write_osm_water_reach(raw_dir, reachable=[801], unreachable=[802])
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
+
+    export_poi.main()
+
+    water = json.loads((tmp_path / "processed" / "poi" / "water.geojson").read_text())
+    ids = {f["properties"]["id"] for f in water["features"]}
+    assert "osm_water:801" in ids
+    assert "osm_water:802" not in ids
+
+
+def test_export_poi_an_osm_water_point_with_no_verdict_does_not_publish(tmp_path, monkeypatch, con):
+    """A node the reach build has never seen is one nobody has checked, which
+    happens whenever osm_water.geojson is re-fetched and grows without the reach
+    build being re-run. Dropping it is the safe direction: publishing it would
+    restore the ungated claim the gate exists to remove."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    _write_fc(raw_dir / "osm_water.geojson", [_osm_water_feature(803, -73.90, 41.03)])
+    # The verdict file exists but predates this node.
+    _write_osm_water_reach(raw_dir, reachable=[801])
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
+
+    export_poi.main()
+
+    water = json.loads((tmp_path / "processed" / "poi" / "water.geojson").read_text())
+    assert {f["properties"]["source"] for f in water["features"]} == {"opentrail_at"}
+
+
+def test_export_poi_refuses_to_export_osm_water_with_no_verdict_file(tmp_path, monkeypatch, con):
+    """The one case that must NOT be tolerated the way an absent
+    osm_water.geojson is. With the points present and no verdicts, exporting
+    them ungated is the bug #749 exists to fix and would be invisible in the
+    output; dropping the source silently would be a different lie. A half-run
+    pipeline stops instead."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    _write_fc(raw_dir / "osm_water.geojson", [_osm_water_feature(804, -73.90, 41.03)])
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
+
+    with pytest.raises(SystemExit, match="build_osm_water_reach"):
+        export_poi.main()
+
+
+def test_export_poi_the_reachability_gate_touches_only_osm_water(tmp_path, monkeypatch, con):
+    """opentrail's water and every other poi_type are outside this gate's
+    remit - it filters one source, and a verdict file that names none of their
+    ids must not be read as a verdict against them."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    _write_fc(raw_dir / "osm_water.geojson", [_osm_water_feature(805, -73.90, 41.03)])
+    _write_osm_water_reach(raw_dir, unreachable=[805])
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
+
+    export_poi.main()
+
+    water = json.loads((tmp_path / "processed" / "poi" / "water.geojson").read_text())
+    assert "opentrail_at:100" in {f["properties"]["id"] for f in water["features"]}
+    shelters = json.loads((tmp_path / "processed" / "poi" / "shelter.geojson").read_text())
+    assert shelters["features"]
 
 
 # --- where the trail meets water (#529, fetch_trail_water.py) ---------------

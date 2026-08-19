@@ -75,6 +75,14 @@ inspection, 2026-07-28):
     dropped - opentrail imports OSM, so the overlap is largely the same
     node arriving twice, and the opentrail id is the one existing Reports
     may already reference.
+    **Gated on reachability before any of that** (#749,
+    build_osm_water_reach.py): a point publishes only if a hiker could walk
+    to it - within 100 ft of the centerline, a side trail, a shelter or a
+    campsite, and under a 15% grade. Measured 2026-08-18, this takes the
+    corridor's 1,576 OSM water points to 85. The corridor clip alone let a
+    town drinking fountain eight miles east draw a pin that says *there is
+    water here*. Unlike the fetch, a MISSING verdict file is not tolerated -
+    read_sources refuses rather than export the ungated set.
   - trail_water.json: the two sources below, and the reason `crossing`
     stopped being an empty-but-present layer after shipping as one since it
     was declared.
@@ -266,6 +274,16 @@ WATER_DISTANCE_PATH = ROOT / "reference" / "water_distance.json"
 # judgement it encodes lives in that script's constants, which are code. Read
 # at call time from this constant so a test redirecting it redirects the read.
 TRAIL_WATER_PATH = RAW_DIR / "trail_water.json"
+
+# build_osm_water_reach.py's output: which OSM water points a hiker could
+# actually walk to (#749). Read as plain JSON rather than by importing that
+# module, so this export keeps its light import surface - the same choice
+# TRAIL_WATER_PATH above already makes about fetch_trail_water.py.
+#
+# A FILENAME resolved against RAW_DIR at call time rather than a frozen path,
+# for the reason IMAGES_FILENAME below records: every test here redirects
+# RAW_DIR, and a module constant built from it at import time would not follow.
+OSM_WATER_REACH_FILENAME = "osm_water_reach.json"
 
 # Metres per foot, for the places the two units meet: a site member's
 # distance is measured in metres (the equirectangular gate that grouped it) and
@@ -1094,6 +1112,53 @@ def dedupe_water(records: list[dict]) -> list[dict]:
     return [record for record in records if not is_twin(record)]
 
 
+def load_osm_water_reach(path: Path | None = None) -> dict[str, bool] | None:
+    """`osm_id -> reachable`, from build_osm_water_reach.py, or None if that
+    step has never run.
+
+    None and an empty dict mean opposite things here and must not be conflated:
+    None is "nobody has computed reachability", which gate_osm_water_reach
+    treats as a broken pipeline; an empty dict would be "nothing is reachable",
+    which is a real answer and an alarming one.
+    """
+    reach_path = (RAW_DIR / OSM_WATER_REACH_FILENAME) if path is None else path
+    if not reach_path.exists():
+        return None
+    payload = json.loads(reach_path.read_text(encoding="utf-8"))
+    return {str(record["osm_id"]): bool(record["reachable"]) for record in payload["points"]}
+
+
+def gate_osm_water_reach(records: list[dict], verdicts: dict[str, bool] | None) -> list[dict]:
+    """Drop every OSM water point a hiker could not walk to (#749).
+
+    Until this gate, the only filter between OSM's fourteen-state scan and a
+    water pin was the 30-mile corridor, so the claim a pin made - *there is
+    water here* - was true of a drinking fountain in a town park eight miles
+    east. build_osm_water_reach.py holds the gate and the evidence; this is only
+    where its verdict is applied.
+
+    A point with NO verdict is dropped, and that is the safe direction rather
+    than an oversight: an OSM node the reach build has never seen is one nobody
+    has checked is reachable, and shipping it would restore exactly the
+    unfiltered claim this gate exists to remove. It happens when osm_water.geojson
+    is re-fetched and grows without the reach build being re-run, which is why
+    the count is printed rather than swallowed.
+
+    An ABSENT verdict file is different and is not this function's to soften -
+    see read_sources, which refuses to run rather than silently exporting the
+    ungated set.
+    """
+    if verdicts is None:
+        return records
+    return [
+        record
+        for record in records
+        if record["poi_type"] != "water"
+        or record["source"] != OSM_WATER_SOURCE
+        or verdicts.get(str(record["source_feature_id"]), False)
+    ]
+
+
 def clip_to_corridor(con: duckdb.DuckDBPyConnection, unified: list[dict]) -> list[dict]:
     """Keep only unified POIs whose point intersects the already-built
     'corridor' table - the same clip spike_corridor.py proved on real
@@ -1274,9 +1339,25 @@ def read_sources(con: duckdb.DuckDBPyConnection) -> list[dict]:
     clipped = clip_to_corridor(con, unified)
     print(f"  {len(clipped)}/{len(unified)} within the corridor.")
 
-    deduped = dedupe_water(clipped)
-    if len(deduped) != len(clipped):
-        print(f"  {len(clipped) - len(deduped)} OSM water twin(s) of opentrail points dropped (<= {WATER_DEDUP_RADIUS_M:.0f} m).")
+    # #749's reachability gate. Refusing is deliberate and is the only safe
+    # direction available: with osm_water.geojson present and no verdicts, the
+    # alternatives are exporting every corridor point ungated - which is the bug
+    # this gate exists to fix, and which would be invisible in the output - or
+    # dropping the whole source silently. A half-run pipeline should stop.
+    reach = load_osm_water_reach()
+    if reach is None and (RAW_DIR / OSM_WATER_FILENAME).exists():
+        raise SystemExit(
+            f"{OSM_WATER_FILENAME} is present but {OSM_WATER_REACH_FILENAME} is not - "
+            "run build_osm_water_reach.py before exporting, or the OSM water points "
+            "publish with no reachability gate at all (#749)."
+        )
+    reached = gate_osm_water_reach(clipped, reach)
+    if len(reached) != len(clipped):
+        print(f"  {len(clipped) - len(reached)} OSM water point(s) dropped as unreachable (#749).")
+
+    deduped = dedupe_water(reached)
+    if len(deduped) != len(reached):
+        print(f"  {len(reached) - len(deduped)} OSM water twin(s) of opentrail points dropped (<= {WATER_DEDUP_RADIUS_M:.0f} m).")
     return deduped
 
 

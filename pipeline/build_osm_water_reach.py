@@ -19,7 +19,9 @@ shape and on its constants:
      (2026-08-17).
   2. **Grade** - `MAX_GRADE` rise-over-run from real USGS EPQS elevations at
      both ends, measured to whichever feature the point passed on, so the
-     question stays *"can a hiker get from there to the water and back"*.
+     question stays *"can a hiker get from there to the water and back"* - and
+     only where the run is at least `MIN_GRADE_RUN_FT`, below which there is no
+     walk for a ratio to be about (#815, and see that constant).
   3. **Every rejection keeps its reason and its numbers**, so either gate can be
      re-argued from this file rather than re-run in the dark - the same promise
      `fetch_trail_water.py` makes about its own candidates.
@@ -65,6 +67,16 @@ water a guidebook lists is exactly the check `spike_guide_water_check.py` runs,
 and it needs the maintainer's own copy of The A.T. Guide, which no other machine
 has. Running it against this file's rejects is what would settle it.
 
+THE GRADE GATE HAD A FLOOR ADDED AFTER THE CENSUS ABOVE WAS TAKEN (#815)
+
+The 61 grade refusals in that run include 12 whose whole walk is under 5 ft -
+springs essentially ON the trail, refused because grade is drop over run and
+this source's run is often the width of the tread. `MIN_GRADE_RUN_FT` is the
+floor that stops it, so the counts above understate what publishes today by up
+to those 12. They are left as measured rather than adjusted by arithmetic: the
+number in this docstring is a number somebody ran, and re-running
+`spike_osm_water_gate.py` is what may replace it.
+
 Output: `data/raw/osm_water_reach.json` - gitignored derived geometry, not a
 join somebody reviews row by row, exactly as `fetch_trail_water.py`'s output is
 and for the reason `export_poi.py` records beside `TRAIL_WATER_PATH`.
@@ -82,7 +94,7 @@ from pathlib import Path
 
 import duckdb
 
-from fetch_trail_water import M_PER_FT, MATCH_RADIUS_FT, MAX_GRADE, elevation_ft
+from fetch_trail_water import M_PER_FT, MATCH_RADIUS_FT, MAX_GRADE, MIN_GRADE_RUN_FT, elevation_ft, grade_gate
 from lib import fetch_receipts
 from lib.corridor import GEOGRAPHIC_CRS, PROJECTED_CRS, build_corridor
 
@@ -322,14 +334,21 @@ def apply_grade_gate(records: list[dict], limit: int | None = None, quiet: bool 
             continue
         distance_ft = record["nearest_m"] / M_PER_FT
         drop_ft = abs(water_elevation - trail_elevation)
-        # Same guard as fetch_trail_water.py's resolve_site: two points a foot
-        # apart are the same place, and a grade computed from that is noise
-        # rather than terrain.
-        grade = drop_ft / max(distance_ft, 1.0)
+        # fetch_trail_water.py's gate, called rather than restated so a re-tune
+        # moves this one and that one together. Below MIN_GRADE_RUN_FT it
+        # declines to have an opinion, which matters far more here than there:
+        # the feature a point passed on is often the trail it sits beside, and
+        # that denominator is what #815 found making the ratio say anything.
+        grade, walkable = grade_gate(drop_ft, distance_ft)
         record["drop_ft"] = round(drop_ft, 1)
         record["grade"] = round(grade, 3)
-        record["passes_grade"] = grade <= MAX_GRADE
-        if not record["passes_grade"]:
+        record["passes_grade"] = walkable
+        if walkable and grade > MAX_GRADE:
+            # Only where the floor CHANGED the verdict. Recorded so the rescued
+            # points stay countable from the file, and so a reader meeting a
+            # grade of 1.48 beside a pass can see which number carried it.
+            record["grade_floored"] = True
+        if not walkable:
             record["reason"] = TOO_STEEP.format(drop_ft=drop_ft, distance_ft=distance_ft, grade=grade)
         if i % 25 == 0 and not quiet:
             print(f"  {i}/{len(pending)}", flush=True)
@@ -376,6 +395,7 @@ def write(records: list[dict], guard: bool = True, previous: int | None = None) 
     payload = {
         "match_radius_ft": MATCH_RADIUS_FT,
         "max_grade": MAX_GRADE,
+        "min_grade_run_ft": MIN_GRADE_RUN_FT,
         "n_corridor": len(records),
         "n_reachable": len(reachable),
         "points": records,
@@ -384,6 +404,37 @@ def write(records: list[dict], guard: bool = True, previous: int | None = None) 
     tmp = OUT_PATH.with_suffix(".tmp")
     tmp.write_text(json.dumps(payload, indent=1), encoding="utf-8")
     tmp.replace(OUT_PATH)
+
+
+def drop_stale_grade_verdicts(records: list[dict], floor_on_disk: float | None) -> int:
+    """Forget grade verdicts taken under a different floor, and say how many.
+
+    `apply_grade_gate` skips anything already carrying `passes_grade`, which is
+    what makes an interrupted run resumable - and what would otherwise make a
+    changed `MIN_GRADE_RUN_FT` INERT against the file on disk. That is not a
+    theoretical path: the publish workflow restores `data/raw/` from the Actions
+    cache on every run (#812), so the file this resumes from will normally be an
+    older run's, carrying older verdicts.
+
+    Only a walk shorter than the wider of the two floors can change its verdict,
+    so the longer walks keep theirs and their EPQS lookups. The rest are
+    re-graded from the disk-cached elevations, which costs network only where
+    that cache is gone too.
+    """
+    if floor_on_disk == MIN_GRADE_RUN_FT:
+        return 0
+    affected_below_ft = max(MIN_GRADE_RUN_FT, floor_on_disk or 0.0)
+    cleared = 0
+    for record in records:
+        if "passes_grade" not in record:
+            continue
+        if record["nearest_m"] / M_PER_FT >= affected_below_ft:
+            continue
+        del record["passes_grade"]
+        record.pop("grade_floored", None)
+        record.pop("reason", None)
+        cleared += 1
+    return cleared
 
 
 def read_previous_reachable_count() -> int | None:
@@ -400,10 +451,16 @@ def summarise(records: list[dict]) -> None:
     passed = [r for r in records if r["passes_distance"]]
     graded = [r for r in passed if "passes_grade" in r]
     steep = [r for r in graded if not r["passes_grade"]]
+    floored = [r for r in graded if r.get("grade_floored")]
     reachable = [r for r in records if is_reachable(r)]
     print(f"\n{len(passed)}/{n} clear the {MATCH_RADIUS_FT:.0f} ft union gate ({100 * len(passed) / n:.1f}%).")
     if graded:
         print(f"{len(steep)}/{len(graded)} of those graded are past the {MAX_GRADE:.0%} grade.")
+    if floored:
+        # Printed because it is the count #815 leaves open: these are the points
+        # the floor rescued, and reading their drops is what would say whether
+        # a minimum run was the right shape.
+        print(f"{len(floored)} passed on the {MIN_GRADE_RUN_FT:.0f} ft floor, their run too short to grade.")
     if len(graded) < len(passed):
         print(f"{len(passed) - len(graded)} still ungraded - re-run to finish the EPQS lookups.")
     print(f"{len(reachable)} of {n} corridor water points are reachable ({100 * len(reachable) / n:.1f}%).")
@@ -421,8 +478,12 @@ def main(argv: list[str] | None = None) -> int:
     previous = read_previous_reachable_count()
 
     if OUT_PATH.exists() and not args.remeasure:
-        records = json.loads(OUT_PATH.read_text(encoding="utf-8"))["points"]
+        payload = json.loads(OUT_PATH.read_text(encoding="utf-8"))
+        records = payload["points"]
         print(f"Resuming from {OUT_PATH.name} ({len(records)} points).")
+        stale = drop_stale_grade_verdicts(records, payload.get("min_grade_run_ft"))
+        if stale:
+            print(f"{stale} verdicts predate the {MIN_GRADE_RUN_FT:.0f} ft floor - re-grading those.")
     else:
         con = duckdb.connect()
         con.execute("INSTALL spatial; LOAD spatial;")

@@ -230,6 +230,49 @@ REPORT_RADIUS_FT = 400.0
 # is deliberately tight (see there).
 MAX_GRADE = 0.15
 
+# The shortest walk this gate will compute a grade for (#815).
+#
+# Grade is drop over run, so a short enough run makes the ratio say anything at
+# all. A spring 0.26 m from the side trail it sits beside, with a 0.4 ft drop,
+# computes to a 39% grade and is refused as "a scramble rather than a walk". It
+# is a spring ON the trail. #815 names three of them and counts 12 whose whole
+# walk is under 5 ft, every one at the trailside - the most useful position a
+# water point can occupy, and *out of water* is one of CLAUDE.md's four ways
+# this app can hurt somebody.
+#
+# THIS IS NOT A NEW JUDGEMENT. The comment above resolve_site's own division has
+# said it since #529 - "two points a foot apart are the same place, and a grade
+# computed from that is noise rather than terrain" - but `max(run, 1.0)` only
+# ever stopped a ZeroDivisionError, which is not that guard. In this file's own
+# context it never bit: the other end of the walk is the nearest point on a
+# stream, which is rarely a foot from a shelter. #749 pointed the same gate at a
+# source whose winning feature is often the trail itself, and that exposed it.
+#
+# WHY 10 FT, AND WHY THE EXACT VALUE DOES NOT MATTER. Measured against #815's
+# recorded census of the 61 points this gate refuses (2026-08-18, from
+# `data/raw/osm_water_reach.json`): 12 have a total walk under 5 ft, and the
+# other ~49 run 10-100 ft at a median grade of 0.24, which is a real bank. The
+# band between 5 ft and 10 ft is EMPTY, so every floor in [5, 10] ft partitions
+# that distribution identically - the same 12 rescued, the same 49 still graded.
+# 10 ft is the top of the band and the maintainer's pick (2026-08-19). A floor
+# that can move 5 ft either way without changing an output is one nobody has to
+# defend to the foot.
+#
+# NOT RE-MEASURED HERE: the session that wrote this had no `data/raw/` to re-run
+# against (gitignored, absent in a fresh clone), so the distribution above is
+# #815's reading of that file and not a second, independent one.
+#
+# @unvalidated - WHAT THIS SHAPE COSTS, which nobody has counted. A minimum run
+# declines to grade a short walk at all, so a water point 3 ft from the trail at
+# the top of a 40 ft bank now passes ungraded - the one case where a short run's
+# ratio was telling the truth. A minimum DROP was the alternative and has no
+# such hole, because a real bank has a real drop and stays graded; the
+# maintainer chose the run on 2026-08-19 with that trade recorded. What would
+# settle the cost is re-running the census with this floor in place and reading
+# the drops of the sub-10-ft runs it rescues: if they are all a foot or two, the
+# hole is theoretical.
+MIN_GRADE_RUN_FT = 10.0
+
 # Two crossings closer than this are one crossing.
 #
 # The frame is A HIKER'S STOP rather than a database's identity: two places
@@ -684,6 +727,29 @@ def _write_elevation_cache(cache: dict[str, float]) -> None:
     tmp.replace(ELEVATION_CACHE_PATH)
 
 
+def grade_gate(drop_ft: float, distance_ft: float) -> tuple[float, bool]:
+    """The grade of a walk to water, and whether it is one a hiker could make.
+
+    Returns the ratio as well as the verdict because both callers record it: a
+    refusal that keeps its numbers can be re-argued from the file rather than
+    re-run in the dark, which is the promise this module and
+    build_osm_water_reach.py both make about their output.
+
+    Shared rather than restated so the two gates cannot drift - they are one
+    judgement ("could somebody walk this with a bottle") applied to two sources,
+    the same way build_osm_water_reach.py imports MATCH_RADIUS_FT instead of
+    naming its own.
+
+    Below MIN_GRADE_RUN_FT the ratio is still returned but the verdict ignores
+    it; see there for why a short run makes the number noise rather than
+    terrain. The `max(.., 1.0)` now only keeps a zero-length walk from raising
+    while it is being recorded - the floor is what does the guarding it used to
+    be mistaken for.
+    """
+    grade = drop_ft / max(distance_ft, 1.0)
+    return grade, distance_ft < MIN_GRADE_RUN_FT or grade <= MAX_GRADE
+
+
 def resolve_site(feature: dict, layer: str, candidates: list[dict]) -> dict:
     """One site's record: the water it can reach, or why it cannot.
 
@@ -724,9 +790,10 @@ def resolve_site(feature: dict, layer: str, candidates: list[dict]) -> dict:
         return record
 
     drop_ft = abs(site_elevation - water_elevation)
-    # Guard the division: two points a foot apart are the same place, and a
-    # grade computed from that is noise rather than terrain.
-    grade = drop_ft / max(distance_ft, 1.0)
+    # Two points a foot apart are the same place, and a grade computed from that
+    # is noise rather than terrain. MIN_GRADE_RUN_FT is where that sentence
+    # stopped being only a comment (#815).
+    grade, walkable = grade_gate(drop_ft, distance_ft)
     record["candidate"].update(
         {
             "site_elevation_ft": round(site_elevation, 1),
@@ -735,7 +802,7 @@ def resolve_site(feature: dict, layer: str, candidates: list[dict]) -> dict:
             "grade": round(grade, 3),
         }
     )
-    if grade > MAX_GRADE:
+    if not walkable:
         record["unresolved"] = TOO_STEEP.format(drop_ft=drop_ft, distance_ft=distance_ft, grade=grade)
         return record
 

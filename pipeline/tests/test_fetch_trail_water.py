@@ -15,8 +15,10 @@ from fetch_trail_water import (
     CROSSING_DEDUPE_M,
     MATCH_RADIUS_FT,
     MAX_GRADE,
+    MIN_GRADE_RUN_FT,
     closest_point_on_paths,
     dedupe_crossings,
+    grade_gate,
     merge_stream_facts,
     nearest_stream,
     resolve_site,
@@ -297,3 +299,54 @@ def test_the_files_own_header_quotes_the_gates_it_was_written_under():
     assert f"{MAX_GRADE:.0%}" in header
     assert "build_trail_water.py" not in header
     assert "fetch_trail_water.py" in header
+
+
+# --- the grade gate itself, shared with build_osm_water_reach.py (#815) ------
+
+
+def test_a_walk_under_the_grade_passes():
+    grade, walkable = grade_gate(drop_ft=10.0, distance_ft=100.0)
+
+    assert grade == 0.1
+    assert walkable is True
+
+
+def test_a_scramble_over_a_run_long_enough_to_mean_it_is_refused():
+    grade, walkable = grade_gate(drop_ft=50.0, distance_ft=100.0)
+
+    assert grade == 0.5
+    assert walkable is False
+
+
+def test_a_run_too_short_to_have_a_grade_is_not_called_steep():
+    """#815: below MIN_GRADE_RUN_FT the ratio is noise, and this module's own
+    comment has said so since #529 - a spring a foot from the trail is not a
+    scramble because the arithmetic divided by a foot."""
+    grade, walkable = grade_gate(drop_ft=1.5, distance_ft=1.0)
+
+    assert grade > MAX_GRADE
+    assert walkable is True
+
+
+def test_the_ratio_is_still_returned_when_the_floor_carries_the_verdict():
+    """Both callers record the number whatever the verdict, because a file that
+    keeps its numbers can be re-argued rather than re-run in the dark."""
+    grade, _ = grade_gate(drop_ft=2.0, distance_ft=2.0)
+
+    assert grade == 1.0
+
+
+def test_a_zero_length_walk_does_not_raise():
+    """A site sitting exactly on its stream. The floor already carries the
+    verdict here; the guard is only so the recorded ratio can be computed."""
+    grade, walkable = grade_gate(drop_ft=3.0, distance_ft=0.0)
+
+    assert grade == 3.0
+    assert walkable is True
+
+
+def test_the_floor_sits_below_the_runs_the_census_defended():
+    """#815 measured the surviving refusals at 10-100 ft runs (2026-08-18) and
+    the rescued ones under 5 ft. A floor that climbed past 10 ft would start
+    passing points that census called defensible."""
+    assert 5.0 <= MIN_GRADE_RUN_FT <= 10.0

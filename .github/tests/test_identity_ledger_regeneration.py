@@ -44,6 +44,23 @@ PREVIOUS run's water while `Export POIs` publishes this one's - so `--check`
 can pass on a snapshot nobody ships, and a regenerated ledger can be stale the
 moment it is uploaded. features/POI_IDENTITY.md §2 always said "after the
 fetches"; the workflow only partly agreed until #816.
+
+AND WHETHER THE ARTIFACT MEANS ANYTHING (#818, #819)
+
+The last two sections are the same lesson arriving twice more in one day, which
+is why they live here rather than in files of their own.
+
+#819: the upload leaned on `if-no-files-found: ignore` to stay quiet when
+reconciliation wrote nothing. `reference/poi_identity.json` is checked in, so
+that case never existed, and a job dying early still shipped the committed file
+labelled as a regenerated one - an empty diff that reads as "nothing changed"
+when the truth is "nothing ran".
+
+#818: `export_poi.read_sources()` refuses to run when `osm_water.geojson` has no
+`osm_water_reach.json` beside it, and no step built one, so every dispatch died
+at the preflight. A gate shipped without the thing that satisfies it - the same
+sentence as #811 above, about a different gate, three PRs later. These tests are
+the cheap way to notice the next one.
 """
 
 from __future__ import annotations
@@ -193,3 +210,74 @@ def test_the_cheap_preflight_stays_cheap(steps):
             "'Check POI sources are exportable' must stay ahead of the expensive fetches - it is "
             "the fast failure the identity gate no longer provides."
         )
+
+
+# --- The artifact must not be a phantom (#819) --------------------------------
+
+
+def test_the_upload_is_gated_on_reconciliation_having_actually_run(steps):
+    """`always()` alone uploads the COMMITTED ledger when reconciliation never
+    ran, and calls it `poi-identity-ledger`.
+
+    `reference/poi_identity.json` is checked in, so it is on disk from the
+    moment `actions/checkout` finishes; `if-no-files-found: ignore` therefore
+    has no case to catch and never fires. Run 32255950280 died at the source
+    preflight (#818), skipped reconciliation, and still produced an artifact
+    byte-identical to the file already in the tree - an empty diff whose
+    natural reading ("reconciliation found no changes") was the exact opposite
+    of the truth.
+    """
+    reconcile = _named(steps, "Reconcile the POI identity ledger")
+    assert reconcile.get("id"), "the upload gates on this step's outcome, so it needs an id"
+
+    upload = _named(steps, "Upload the reconciled ledger")
+    condition = upload.get("if") or ""
+    assert f"steps.{reconcile['id']}.outcome" in condition, (
+        f"'Upload the reconciled ledger for review' is guarded by {condition!r}, which does not "
+        "check whether reconciliation ran. On a job that fails earlier it will upload the "
+        "committed ledger and present it as a regenerated one. See #819."
+    )
+    assert "always()" in condition, (
+        "still needs always(): an exit-2 hold writes no ledger but DOES print the held list, "
+        "which is the entire reason a human was called"
+    )
+
+
+# --- The reachability gate has to be feedable (#818) --------------------------
+
+
+def test_something_builds_the_osm_reachability_verdicts(steps):
+    """`export_poi.read_sources()` refuses to run when `osm_water.geojson` is
+    present without `osm_water_reach.json`. That refusal is correct - the
+    alternatives are publishing every corridor point ungated or dropping the
+    source silently - but it means the workflow has to produce the file, and
+    for a while nothing did: every dispatch died twelve seconds in at the
+    preflight (run 32255950280)."""
+    build = _named(steps, "Build OSM water reachability")
+    assert "build_osm_water_reach.py" in (build.get("run") or "")
+    assert _position(steps, "Build OSM water reachability") > _position(steps, "Fetch OSM water points"), (
+        "the reach build measures the points fetch_osm_water.py writes, so a fresh fetch must land before it"
+    )
+    assert _position(steps, "Build OSM water reachability") < _position(steps, "Export POIs"), (
+        "export_poi.py is the consumer that refuses without the verdicts"
+    )
+
+
+def test_the_reachability_build_is_not_gated_on_the_fetch_input(steps):
+    """The subtlety that made #818 possible in the first place.
+
+    `export_poi.py`'s trigger is *`osm_water.geojson` exists*, not *this run
+    fetched it* - and that file rides `FETCH_OUTPUTS` through the `*.geojson`
+    glob, so a run with `include_osm_water` unticked still restores it from the
+    cache and still needs the verdicts. Gating this step on the input would
+    leave exactly that path broken, and it is the path the failing run was on.
+    """
+    build = _named(steps, "Build OSM water reachability")
+    assert "include_osm_water" not in (build.get("if") or ""), (
+        "gating the reach build on include_osm_water re-breaks the unticked path, where "
+        "osm_water.geojson comes back from the cache and export_poi.py still demands verdicts"
+    )
+    assert "osm_water.geojson" in (build.get("run") or ""), (
+        "the step should test for the file itself - the same predicate export_poi.py applies - "
+        "so the two cannot drift into disagreeing about when the build is required"
+    )

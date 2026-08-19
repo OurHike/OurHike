@@ -104,6 +104,7 @@ jobs:
       FETCH_OUTPUTS: |
         pipeline/data/raw/*.geojson
         pipeline/data/raw/trail_water.json
+        pipeline/data/raw/osm_water_reach.json
         pipeline/data/raw/epqs_elevations.json
         pipeline/data/raw/manifest.json
         pipeline/data/raw/opentrail_state.json
@@ -297,6 +298,37 @@ jobs:
         if: inputs.include_osm_water
         run: python fetch_osm_water.py
 
+      # Which of those points a hiker could actually walk to (#749,
+      # build_osm_water_reach.py). export_poi.read_sources() REFUSES to run
+      # when osm_water.geojson is on disk without this file beside it, and it
+      # is right to: the alternatives are publishing every corridor point
+      # ungated - the bug #749 exists to fix, and invisible in the output - or
+      # dropping the source silently. Until #818 nothing ran the build, so that
+      # refusal fired on every dispatch and the publish died twelve seconds in,
+      # at the preflight (run 32255950280).
+      #
+      # NOT gated on include_osm_water, and that is the whole subtlety. The
+      # export's trigger is `osm_water.geojson exists`, not `this run fetched
+      # it` - and the file rides FETCH_OUTPUTS via the *.geojson glob, so an
+      # unticked run restores it from the cache and needs the verdicts just as
+      # much. Gating this step on the input would leave exactly that path
+      # broken, which is the path run 32255950280 was on. The `[ -f ... ]` test
+      # is therefore the SAME predicate export_poi.py applies, spelled the same
+      # way, so the two cannot drift into disagreeing about when this is
+      # required.
+      #
+      # Cheap on the normal run despite the EPQS lookups: the script resumes
+      # from its own output, which now rides the cache below, so a run whose
+      # OSM points have not moved re-measures nothing and asks USGS nothing.
+      # A cold cache pays the full pass once.
+      - name: Build OSM water reachability
+        run: |
+          if [ -f data/raw/osm_water.geojson ]; then
+            python build_osm_water_reach.py
+          else
+            echo "No osm_water.geojson - nothing to gate, and export_poi.py will not ask for it."
+          fi
+
       # Where the trail meets water, and which sites have water a hiker can
       # reach (#529). Off by default, unlike the OSM points: it downloads
       # ~5.7 GB of USGS subregions on top of reading the extracts, and its
@@ -367,19 +399,39 @@ jobs:
       # human most needs to see fail - and both would have been swallowed as
       # green, uploading a summary describing a ledger it never wrote.
       - name: Reconcile the POI identity ledger for review
+        id: reconcile
         if: inputs.regenerate_identity_ledger
         run: |
           set -o pipefail
           mkdir -p data/identity_review
           python reconcile_poi_identity.py | tee data/identity_review/summary.txt
 
-      # `always()` so a run held for review still hands over its summary: an
-      # exit-2 run writes no ledger, and the held list it printed is the entire
-      # reason a human was called, so losing it to the failure would waste the
-      # run that produced it. `if-no-files-found: ignore` for the same case -
-      # there is no ledger to attach when nothing was written.
+      # `always()` so a run HELD for review still hands over its summary: an
+      # exit-2 run (held items, or the mass-retirement refusal) writes no
+      # ledger, and the held list it printed is the entire reason a human was
+      # called, so losing it to the step's own failure would waste the run that
+      # produced it.
+      #
+      # `steps.reconcile.outcome != 'skipped'` is the other half, and #819 is
+      # why it is not just `always()`. This step originally leaned on
+      # `if-no-files-found: ignore` to stay quiet when nothing had been written.
+      # That never fired: reference/poi_identity.json is CHECKED IN, so it is on
+      # disk from the moment checkout finishes, and there is no
+      # no-files-found case for it to catch.
+      #
+      # What that produced, on run 32255950280: the job died at "Check POI
+      # sources are exportable" (#818), reconciliation was skipped, and this
+      # step cheerfully uploaded the committed ledger under the name
+      # `poi-identity-ledger`, with no summary beside it. A maintainer
+      # downloading that gets a file byte-identical to the one already in their
+      # tree - an empty diff, nothing warning them, and the natural reading
+      # ("reconciliation found no changes") the exact opposite of the truth,
+      # which is that reconciliation never ran.
+      #
+      # A quiet wrong answer, in other words, where the honest output was no
+      # artifact at all.
       - name: Upload the reconciled ledger for review
-        if: ${{ always() && inputs.regenerate_identity_ledger }}
+        if: ${{ always() && inputs.regenerate_identity_ledger && steps.reconcile.outcome != 'skipped' }}
         uses: actions/upload-artifact@v4
         with:
           name: poi-identity-ledger

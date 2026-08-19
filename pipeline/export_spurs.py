@@ -10,7 +10,13 @@ So this writes a small separate artifact keyed by the trail ids already in
 `trails.geojson`:
 
     {"side_trails:1234": {"name": ..., "length_ft": ...,
-                          "destination_poi_id": ..., "destination_distance_m": ...}}
+                          "destination_poi_id": ..., "destination_distance_m": ...,
+                          "junction_mile": ...}}
+
+`junction_mile` (#136) is where the spur joins the AT, in NOBO miles on the
+same marker-calibrated axis every published `mile` uses - see
+attach_junction_miles. Null means the ends could not be told apart, never a
+guess.
 
 Not a new model - features/SPUR_TRAILS.md is explicit that a spur is a side
 trail with `Type=3` and two computed fields, and that introducing a `Spur`
@@ -36,6 +42,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import duckdb
+import numpy as np
+from shapely.geometry import Point
+from shapely.strtree import STRtree
+
+from export_elevation import calibrated_trail_axis
 from lib.arcgis import get_field_coded_domain
 from lib.completeness import fail_if_incomplete
 from lib.feature_id import resolve_feature_id
@@ -46,6 +58,7 @@ from lib.spurs import (
     build_centerline_index,
     build_destination_index,
     decode_type,
+    junction_end,
     resolve_destination,
 )
 
@@ -55,6 +68,7 @@ POI_DIR = ROOT / "data" / "processed" / "poi"
 OUT_PATH = ROOT / "data" / "processed" / "spurs.json"
 MANIFEST_PATH = ROOT / "data" / "processed" / "spurs_manifest.json"
 SOURCES_PATH = ROOT / "sources.json"
+MARKERS_NAME = "half_mile_points_from_springer.geojson"
 
 SIDE_TRAILS_KEY = "side_trails"
 CENTERLINE_KEY = "centerline"
@@ -236,6 +250,7 @@ def build_spur_records(
         geometry = feature.get("geometry") or {}
         resolved = resolve_destination(geometry.get("coordinates") or [], centerline, destinations)
 
+        coordinates = geometry.get("coordinates") or []
         records[f"{SIDE_TRAILS_KEY}:{feature_id}"] = {
             "name": properties.get("Name"),
             # ATC's own GNSS measurement, not recomputed from the geometry.
@@ -243,6 +258,11 @@ def build_spur_records(
             # with more work.
             "length_ft": properties.get("Length_Ft"),
             **resolved,
+            # Working state, not output: attach_junction_miles() pops this and
+            # publishes `junction_mile` in its place. Carried through the
+            # record rather than a parallel dict so the two cannot fall out of
+            # key-step.
+            "junction_end": junction_end(coordinates, centerline),
         }
 
     if undecodable:
@@ -253,6 +273,70 @@ def build_spur_records(
         print(f"WARNING: {undecodable} side trail(s) have an undecodable {TYPE_FIELD} - not treated as spurs")
 
     return records
+
+
+def _reproject_ends_to_meters(con: duckdb.DuckDBPyConnection, ends: list[tuple[float, float]]) -> list[Point]:
+    """(lat, lon) junction ends as EPSG:5070 points, in one round trip.
+
+    The register-a-dict pattern rather than executemany, for the measured
+    >1000x reason export_elevation.reproject_points_to_wgs84 documents."""
+    idx = np.arange(len(ends))
+    xs = np.array([lon for _lat, lon in ends])
+    ys = np.array([lat for lat, _lon in ends])
+    con.register("_junction_ends_src", {"idx": idx, "x": xs, "y": ys})
+    try:
+        rows = con.execute("""
+            SELECT idx, ST_X(g), ST_Y(g) FROM (
+                SELECT idx, ST_Transform(ST_Point(x, y), 'EPSG:4326', 'EPSG:5070', always_xy := true) AS g
+                FROM _junction_ends_src
+            ) ORDER BY idx
+        """).fetchall()
+    finally:
+        con.unregister("_junction_ends_src")
+    return [Point(x, y) for _, x, y in rows]
+
+
+def attach_junction_miles(records: dict[str, dict], centerline_path: Path, markers_path: Path) -> int:
+    """Turn each spur's junction point into a mile on the shared axis (#136).
+    Returns how many records got one.
+
+    The number is NOBO miles from Springer, computed by projecting the
+    junction onto the SAME marker-calibrated centerline the elevation
+    profile is sampled along and every POI's `mile` comes off
+    (calibrated_trail_axis, #652/#753). That sameness is the point: "Joins
+    the AT at mi 1,043.2" on the line-detail sheet has to be the number the
+    shelter card and the ribbon already agree on, not a fourth scale.
+
+    A spur whose ends could not be told apart (junction_end None) publishes
+    `junction_mile: null` - absent means unknown, never a guess at whichever
+    end won by a metre. A missing markers file fails loudly one gate earlier
+    (main()'s fail_if_incomplete), the same stance export_poi.py takes: an
+    axis that silently loses its calibration is #652 coming back.
+    """
+    ends = {key: record.pop("junction_end", None) for key, record in records.items()}
+    for record in records.values():
+        record["junction_mile"] = None
+
+    keyed = [(key, end) for key, end in ends.items() if end is not None]
+    if not keyed:
+        return 0
+
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    try:
+        calibrated = calibrated_trail_axis(con, centerline_path, markers_path)
+        points = _reproject_ends_to_meters(con, [end for _key, end in keyed])
+    finally:
+        con.close()
+
+    tree = STRtree([cal.line for cal in calibrated])
+    for (key, _end), point in zip(keyed, points):
+        cal = calibrated[int(tree.nearest(point))]
+        # Three decimals, matching elevation_profile.json's distance_mi and
+        # export_poi's mile - the scales this is meant to be comparable
+        # against digit for digit.
+        records[key]["junction_mile"] = round(cal.mile_at(cal.line.project(point)), 3)
+    return len(keyed)
 
 
 def main() -> dict:
@@ -270,6 +354,13 @@ def main() -> dict:
         missing.append("side_trails.geojson absent or empty - run fetch_all.py first")
     if not centerline_features:
         missing.append("centerline.geojson absent or empty - run fetch_all.py first")
+    # Required, not optional, for the same reason export_poi.py's
+    # attach_miles hard-requires it: junction miles are calibrated against
+    # ATC's half-mile markers (#652), and publishing spurs on an
+    # uncalibrated axis - or silently without miles - would be the quiet
+    # degradation that rule exists to refuse.
+    if not (RAW_DIR / MARKERS_NAME).exists():
+        missing.append(f"{MARKERS_NAME} absent - run fetch_all.py first")
     fail_if_incomplete(missing, label="Missing spur-export inputs")
     if not pois:
         # Not fatal, and not silent. Every spur would resolve to no
@@ -291,9 +382,12 @@ def main() -> dict:
 
     coded_domain = type_coded_domain(source_url(SIDE_TRAILS_KEY))
     records = build_spur_records(side_trails, centerline_features, pois, coded_domain)
+    with_miles = attach_junction_miles(records, RAW_DIR / "centerline.geojson", RAW_DIR / MARKERS_NAME)
 
     resolved = sum(1 for r in records.values() if r["destination_poi_id"])
     print(f"{len(records)} spurs, {resolved} with a destination ({resolved / len(records):.0%})" if records else "0 spurs")
+    if records:
+        print(f"  {with_miles} carry a junction mile, on the marker-calibrated axis the profile shares (#136, #753, #652).")
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(json.dumps(records, separators=(",", ":"), sort_keys=True))
@@ -303,6 +397,7 @@ def main() -> dict:
         "sha256": sha256_file(OUT_PATH),
         "spur_count": len(records),
         "resolved_count": resolved,
+        "junction_mile_count": with_miles,
     }
     MANIFEST_PATH.write_text(json.dumps(manifest, indent=2))
     print(f"Spurs -> {OUT_PATH}\nManifest -> {MANIFEST_PATH}")

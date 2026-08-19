@@ -31,6 +31,7 @@ from lib.spurs import (
     decode_type,
     distance_m,
     is_spur,
+    junction_end,
     line_endpoints,
     orient,
     resolve_destination,
@@ -213,6 +214,24 @@ def test_a_line_touching_the_trail_at_neither_end_has_no_destination():
     detached = ((north(5000), TRAIL_LON), (north(6000), TRAIL_LON))
 
     assert orient(detached, centerline()) is None
+
+
+def test_the_junction_end_is_the_end_on_the_trail():
+    """#136's half of the orientation: the near end IS the junction, and it
+    holds whichever way the coordinates happen to run."""
+    coords = spur_line([TRAIL_LON, TRAIL_LAT], [TRAIL_LON, north(500)])
+
+    assert junction_end(coords, centerline()) == (TRAIL_LAT, TRAIL_LON)
+    assert junction_end(coords[::-1], centerline()) == (TRAIL_LAT, TRAIL_LON)
+
+
+def test_a_line_whose_ends_cannot_be_told_apart_has_no_junction():
+    """The same three refusals orient() makes, reaching the junction mile:
+    a made-up junction would put a made-up mile on the line-detail sheet."""
+    both_on_trail = spur_line([TRAIL_LON, TRAIL_LAT], [TRAIL_LON + 0.0019, TRAIL_LAT])
+
+    assert junction_end(both_on_trail, centerline()) is None
+    assert junction_end([], centerline()) is None
 
 
 def test_a_spur_shorter_than_the_junction_radius_still_orients():

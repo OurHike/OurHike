@@ -277,6 +277,31 @@ def orient(
     return last, first
 
 
+def junction_end(coordinates: list, centerline: PointIndex) -> tuple[float, float] | None:
+    """Where this spur meets the AT, as (lat, lon) - or None when the ends
+    cannot be told apart.
+
+    The junction is the OTHER half of the orientation resolve_destination
+    already performs and throws away: orient() names both ends and the
+    destination lookup only ever used the far one. #136 needs the near one -
+    it is the point export_spurs.py turns into a junction mile on the
+    marker-calibrated axis - so it is exposed here rather than recomputed
+    from scratch there.
+
+    None exactly when resolve_destination would publish no destination for
+    an orientation reason: an alternate route miscoded as a spur, ends at
+    identical distances, or a line nowhere near the trail. A junction that
+    cannot be told from the destination is not a junction worth a mile.
+    """
+    ends = line_endpoints(coordinates)
+    if ends is None:
+        return None
+    oriented = orient(ends, centerline)
+    if oriented is None:
+        return None
+    return oriented[0]
+
+
 def resolve_destination(
     coordinates: list,
     centerline: PointIndex,

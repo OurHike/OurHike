@@ -224,6 +224,9 @@ import {
   writeAtcAlertSilence,
 } from './lib/atcAlertsBanner'
 import { AtcUpdateSheet } from './chrome/AtcUpdateSheet'
+import { LineSheet } from './chrome/LineSheet'
+import { buildLineDetail, type LineDetail } from './lib/lineDetail'
+import type { TappedLine } from './map/lineTaps'
 import { AtcNoticeList } from './chrome/AtcNoticeList'
 import { HikePicker } from './screens/HikePicker'
 import {
@@ -513,6 +516,10 @@ function App() {
   const [queuedCount, setQueuedCount] = useState(0)
   const [stuckReports, setStuckReports] = useState<StuckReport[]>([])
   const [selectedAtcBandId, setSelectedAtcBandId] = useState<string | null>(null)
+  /** The tapped trail line's published facts, or null (#134). The map
+   *  reports them (map/lineTaps.ts); what they mean - the spur record, the
+   *  destination's name - is resolved here, where the data is. */
+  const [selectedLine, setSelectedLine] = useState<TappedLine | null>(null)
   /**
    * Whether the full list of ATC notices is open.
    *
@@ -581,6 +588,7 @@ function App() {
   const {
     trailIndex,
     pois,
+    spurs,
     elevation,
     trailsUrl,
     haveTrailLines,
@@ -1241,6 +1249,16 @@ function App() {
     if (selectedPoiId === null) return []
     return siteRoster(pois, selectedPoiId).map((part) => cardDetail(part, searchablePois))
   }, [selectedPoiId, pois, searchablePois])
+
+  /**
+   * The tapped line's sheet content (#134), resolved here for the reason
+   * `selectedPoi` is: the map reports what was drawn, and the shell is what
+   * holds the spur records, the POI a spur leads to, and the hiker's units.
+   */
+  const selectedLineDetail: LineDetail | null = useMemo(() => {
+    if (selectedLine === null) return null
+    return buildLineDetail(selectedLine, spurs, pois, units, TRAIL_NAME)
+  }, [selectedLine, spurs, pois, units])
 
   const viewportPoints: MapPoint[] = useMemo(
     () =>
@@ -2263,6 +2281,15 @@ function App() {
     if (id !== null) setLegendOpen(false)
   }, [])
 
+  // The line taps report on every click, nulls included, exactly as the POI
+  // taps do - the null is the tap-elsewhere dismissal, and it also fires
+  // when a tap lands on a pin or an ATC notice (map/lineTaps.ts yields to
+  // both), which is what keeps this sheet from stacking under theirs.
+  const handleSelectLine = useCallback((line: TappedLine | null) => {
+    setSelectedLine(line)
+    if (line !== null) setLegendOpen(false)
+  }, [])
+
   const handleOpenLegend = useCallback(() => {
     setLegendOpen(true)
     setSelectedPoiId(null)
@@ -2956,6 +2983,15 @@ function App() {
                 update={selectedAtcUpdate}
                 reviewedAt={atcReviewedAt}
                 onClose={() => setSelectedAtcBandId(null)}
+              />
+            )
+          }
+          onSelectLine={handleSelectLine}
+          lineSheet={
+            selectedLineDetail === null ? null : (
+              <LineSheet
+                detail={selectedLineDetail}
+                onClose={() => setSelectedLine(null)}
               />
             )
           }

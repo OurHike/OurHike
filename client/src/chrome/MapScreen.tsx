@@ -30,6 +30,7 @@ import { MapView } from '../map/MapView'
 import type { DroughtBand } from '../map/droughtLayers'
 import type { ClosureBand } from '../map/closureLayers'
 import type { AtcUpdatePoint } from '../map/atcUpdateLayers'
+import type { TappedLine } from '../map/lineTaps'
 import type { RouteDrawing } from '../map/routeLayers'
 import type { WarningPoint } from '../map/warningLayers'
 import type { SourceReport } from '../map/liveSourceHealth'
@@ -129,6 +130,14 @@ export interface MapScreenProps {
    *  reason `selectedPoi` is: the map draws bands, and the app is what knows
    *  whose notice a band belongs to. */
   atcUpdateSheet?: ReactNode
+  /** A trail line was tapped, as its published facts - null for a tap that
+   *  landed elsewhere, which is how the sheet dismisses (#134). Stable
+   *  across renders, like `onSelectPoi`. */
+  onSelectLine?: (line: TappedLine | null) => void
+  /** The tapped line's sheet, or null - the atcUpdateSheet pattern: the map
+   *  draws lines, and the shell is what knows a line's spur record and the
+   *  name of the shelter it leads to. */
+  lineSheet?: ReactNode
   /**
    * The route being built, in map coordinates, and the builder's own card -
    * both on the atcUpdateSheet pattern: the map draws a line, the shell is
@@ -417,6 +426,8 @@ export function MapScreen({
   atcUpdatePoints,
   onSelectAtcUpdate,
   atcUpdateSheet,
+  onSelectLine,
+  lineSheet,
   routeDrawing = null,
   onRouteTap,
   routeSheet,
@@ -629,6 +640,7 @@ export function MapScreen({
               routeDrawing={routeDrawing}
               onRouteTap={onRouteTap}
               onSelectPoi={onSelectPoi}
+              onSelectLine={onSelectLine}
               showZoomButtons={showZoomButtons}
               units={units}
               locationEnabled={locationEnabled}
@@ -687,6 +699,13 @@ export function MapScreen({
                 this is about a stretch of trail, so it sits where the search
                 sheet does and needs none of that. */}
             {atcUpdateSheet}
+
+            {/* The line-detail sheet (#134), in the same slot family for the
+                same reason: a trail line anchors to no single point on the
+                canvas. It cannot be open at the same time as the ATC sheet -
+                a tap that hits an ATC notice reports null to the line
+                handler (map/lineTaps.ts), which closes this one. */}
+            {lineSheet}
 
             {/* Beside the single-notice sheet, in the same slot and for the
                 same reason - a list about the whole trail anchors to nothing

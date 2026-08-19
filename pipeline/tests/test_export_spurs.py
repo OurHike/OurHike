@@ -56,12 +56,45 @@ def north(meters):
 
 CENTERLINE = [
     {
+        "type": "Feature",
+        "properties": {},
         "geometry": {
             "type": "LineString",
             "coordinates": [[TRAIL_LON + i * 0.0001, TRAIL_LAT] for i in range(20)],
-        }
+        },
     }
 ]
+
+# ATC's half-mile markers, on the synthetic centerline above, for the runs
+# that attach junction miles (#136). Two points so calibrate_parts_to_markers
+# can orient the piece; the Measure values put the line's west end at ATC
+# mile 100.0. The 0.0019 degrees of longitude between them is ~161 m at this
+# latitude - almost exactly the 0.1 mi their Measures are apart, so the
+# calibrated scale stays ~1:1 with the geometry.
+MARKERS = [
+    {
+        "type": "Feature",
+        "properties": {"Measure": 100.0},
+        "geometry": {"type": "Point", "coordinates": [TRAIL_LON, TRAIL_LAT]},
+    },
+    {
+        "type": "Feature",
+        "properties": {"Measure": 100.1},
+        "geometry": {"type": "Point", "coordinates": [TRAIL_LON + 0.0019, TRAIL_LAT]},
+    },
+]
+
+
+def write_raw_inputs(tmp_path, side_trails):
+    """The three raw files main() requires, as real FeatureCollections -
+    calibrated_trail_axis reads centerline.geojson through GDAL's ST_Read,
+    which wants the full GeoJSON shape rather than the bare {"features": []}
+    the in-process tests get away with."""
+    raw = tmp_path / "raw"
+    raw.mkdir(exist_ok=True)
+    (raw / "side_trails.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": side_trails}))
+    (raw / "centerline.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": CENTERLINE}))
+    (raw / "half_mile_points_from_springer.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": MARKERS}))
 
 
 def side_trail(feature_id, type_code, *, name="Spur Trail", length_ft=385, far=300):
@@ -436,9 +469,7 @@ def test_the_output_is_keyed_by_id_so_the_client_can_look_one_up(tmp_path, monke
     monkeypatch.setattr(export_spurs, "MANIFEST_PATH", tmp_path / "spurs_manifest.json")
     monkeypatch.setattr(export_spurs, "SOURCES_PATH", tmp_path / "sources.json")
 
-    (tmp_path / "raw").mkdir()
-    (tmp_path / "raw" / "side_trails.geojson").write_text(json.dumps({"features": [side_trail("abc", "3")]}))
-    (tmp_path / "raw" / "centerline.geojson").write_text(json.dumps({"features": CENTERLINE}))
+    write_raw_inputs(tmp_path, [side_trail("abc", "3")])
     (tmp_path / "poi").mkdir()
     (tmp_path / "poi" / poi_output_name("shelter")).write_text(
         json.dumps({"features": [{"properties": shelter("shelter:rocky-run")}]})
@@ -451,6 +482,72 @@ def test_the_output_is_keyed_by_id_so_the_client_can_look_one_up(tmp_path, monke
     assert manifest["spur_count"] == 1
     assert manifest["resolved_count"] == 1
     capsys.readouterr()
+
+
+def test_the_junction_mile_is_on_the_marker_calibrated_axis(tmp_path, monkeypatch, capsys):
+    """#136: the spur joins the AT at the fixture's west end, which ATC's
+    markers put at mile 100.0 - so that is the mile the record publishes,
+    on the same axis export_poi's `mile` and the profile's `distance_mi`
+    come off. The working `junction_end` key must not survive into the
+    artifact: it was never the output, only how the mile got computed."""
+    monkeypatch.setattr(export_spurs, "RAW_DIR", tmp_path / "raw")
+    monkeypatch.setattr(export_spurs, "POI_DIR", tmp_path / "poi")
+    monkeypatch.setattr(export_spurs, "OUT_PATH", tmp_path / "spurs.json")
+    monkeypatch.setattr(export_spurs, "MANIFEST_PATH", tmp_path / "spurs_manifest.json")
+    monkeypatch.setattr(export_spurs, "SOURCES_PATH", tmp_path / "sources.json")
+
+    write_raw_inputs(tmp_path, [side_trail("abc", "3")])
+
+    manifest = export_spurs.main()
+
+    published = json.loads((tmp_path / "spurs.json").read_text())
+    assert published["side_trails:abc"]["junction_mile"] == pytest.approx(100.0, abs=0.01)
+    assert "junction_end" not in published["side_trails:abc"]
+    assert manifest["junction_mile_count"] == 1
+    capsys.readouterr()
+
+
+def test_a_spur_whose_ends_cannot_be_told_apart_gets_a_null_junction_mile():
+    """An alternate route miscoded as Type=3 rejoins the AT at both ends, so
+    neither end is THE junction - and a mile picked from whichever end won
+    by a metre would be a made-up number on a safety surface. Null is the
+    honest publish, and attach_junction_miles must produce it without ever
+    needing the calibrated axis."""
+    both_ends_on_trail = side_trail("loop", "3")
+    both_ends_on_trail["geometry"]["coordinates"] = [
+        [TRAIL_LON, TRAIL_LAT],
+        [TRAIL_LON, north(5)],
+        [TRAIL_LON + 0.0005, TRAIL_LAT],
+    ]
+
+    records = export_spurs.build_spur_records([both_ends_on_trail], CENTERLINE, [], TYPE_DOMAIN)
+    attached = export_spurs.attach_junction_miles(records, Path("unused"), Path("unused"))
+
+    assert attached == 0
+    assert records["side_trails:loop"]["junction_mile"] is None
+    assert "junction_end" not in records["side_trails:loop"]
+
+
+def test_a_run_without_the_half_mile_markers_fails_instead_of_publishing_unmiled_spurs(tmp_path, monkeypatch, capsys):
+    """The axis is calibrated against ATC's markers (#652), and a spurs.json
+    quietly published without junction miles - or with miles off an
+    uncalibrated axis - is the silent degradation that rule refuses. Same
+    stance as export_poi.py, which hard-requires the same file."""
+    monkeypatch.setattr(export_spurs, "RAW_DIR", tmp_path / "raw")
+    monkeypatch.setattr(export_spurs, "POI_DIR", tmp_path / "poi")
+    monkeypatch.setattr(export_spurs, "OUT_PATH", tmp_path / "spurs.json")
+    monkeypatch.setattr(export_spurs, "MANIFEST_PATH", tmp_path / "spurs_manifest.json")
+    monkeypatch.setattr(export_spurs, "SOURCES_PATH", tmp_path / "sources.json")
+
+    write_raw_inputs(tmp_path, [side_trail("abc", "3")])
+    (tmp_path / "raw" / "half_mile_points_from_springer.geojson").unlink()
+
+    with pytest.raises(SystemExit) as excinfo:
+        export_spurs.main()
+
+    assert excinfo.value.code == 1
+    assert "half_mile_points_from_springer.geojson" in capsys.readouterr().out
+    assert not (tmp_path / "spurs.json").exists()
 
 
 def test_a_run_with_missing_inputs_fails_instead_of_publishing_nothing(tmp_path, monkeypatch, capsys):
@@ -484,9 +581,7 @@ def test_a_run_with_no_published_pois_warns_rather_than_resolving_nothing_quietl
     monkeypatch.setattr(export_spurs, "MANIFEST_PATH", tmp_path / "spurs_manifest.json")
     monkeypatch.setattr(export_spurs, "SOURCES_PATH", tmp_path / "sources.json")
 
-    (tmp_path / "raw").mkdir()
-    (tmp_path / "raw" / "side_trails.geojson").write_text(json.dumps({"features": [side_trail("abc", "3")]}))
-    (tmp_path / "raw" / "centerline.geojson").write_text(json.dumps({"features": CENTERLINE}))
+    write_raw_inputs(tmp_path, [side_trail("abc", "3")])
 
     export_spurs.main()
 

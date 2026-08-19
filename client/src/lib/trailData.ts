@@ -37,6 +37,7 @@ import type { NearbyPart } from './nearbyClause'
 import type { SpurRecord } from './spurDestination'
 import { publishedHashes, type PublishedHashLookup } from './dataManifest'
 import { sha256Hex } from './sha256'
+import { clearTrailsMerged, sniffMergedChains, writeTrailsMerged } from './trailShape'
 
 export const TRAILS_BLOB_KEY = 'ourhike:trails'
 export const POIS_KEY = 'ourhike:pois'
@@ -788,6 +789,12 @@ export async function downloadTrailData({
   await set(POIS_KEY, pois)
   await set(SPURS_STORE_KEY, spurs)
   await set(ELEVATION_STORE_KEY, elevation)
+  // Recorded beside the bytes it describes, and only here: whether the
+  // trails just stored have the merged-chain shape decides the map's
+  // `tolerance` for them on every later launch (lib/trailShape.ts, #161).
+  // Written on every commit, not just when true - a re-download from an
+  // older release has to take the flag back down with it.
+  writeTrailsMerged(sniffMergedChains(decode(fetchedTrails.bytes)))
   report('Done')
 }
 
@@ -823,4 +830,5 @@ export async function deleteTrailData(): Promise<void> {
   await del(POIS_KEY)
   await del(SPURS_STORE_KEY)
   await del(ELEVATION_STORE_KEY)
+  clearTrailsMerged()
 }

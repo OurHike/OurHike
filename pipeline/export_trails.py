@@ -41,6 +41,8 @@ from pathlib import Path
 import duckdb
 from pyproj import Transformer
 from shapely import wkt as shapely_wkt
+from shapely.geometry import MultiLineString
+from shapely.ops import linemerge
 from shapely.ops import transform as shapely_transform
 
 from lib.arcgis import get_field_coded_domain
@@ -314,6 +316,163 @@ def _has_drawable_geometry(geom) -> bool:
     return bool(geom.geoms) and all(len(part.coords) >= 2 for part in geom.geoms)
 
 
+"""Centerline chain merging (#161).
+
+WHY THIS STEP EXISTS
+--------------------
+MapLibre tiles this GeoJSON through geojson-vt, whose per-zoom simplification
+DROPS WHOLE FEATURES whose projected length falls under its bar - ~1.4 km at
+z4 with the default tolerance. ATC surveys the centerline as ~3,000 segments
+averaging ~1.2 km, so at corridor zooms much of the trail was under the bar,
+consecutive short segments vanished together, and the AT rendered with
+miles-long gaps (#160) - a false statement about where the trail is, on the
+one map that cannot afford one.
+
+The client's fix was `tolerance: 0` on the trails source (map/style.ts),
+which makes the drop rule structurally impossible and also disables the GOOD
+half of geojson-vt's work, vertex thinning - so every low-zoom tile carries
+every exported coordinate (#161 measured ~512k line points across the z4-z6
+corridor tiles, against ~5.5k with simplification on).
+
+The durable fix is in the data shape: merge contiguous centerline segments
+into maximal chains, so every published feature is far above the drop bar at
+any zoom, after which the client can return `tolerance` to its default and
+get correct per-zoom generalization free. The client detects the merged
+shape by the `chain:` ids below (lib/trailShape.ts sniffs for
+`"centerline:chain:`), so a phone still holding a pre-merge download keeps
+`tolerance: 0` - which is why the id spelling here is a published contract,
+pinned by tests on both sides, not a naming preference.
+
+WHAT IS AND IS NOT MERGED
+-------------------------
+Only the sources named in CHAIN_MERGED_SOURCES - today the centerline.
+Spurs stay unmerged: each side trail is its own destination and its own
+line-detail sheet (#134), spurs.json keys off their individual ids, and
+their absence at the zooms the drop rule bites is sub-pixel.
+
+Within a merged source, chains never cross a blaze_color boundary - one
+feature carries one blaze, and merging two would repaint one of them. The
+centerline is uniformly White today (a flat blaze_default), so this is a
+guard rather than a live branch.
+
+WHAT THE MERGE COSTS, SAID PLAINLY
+----------------------------------
+Per-segment identity. A chain's id is synthetic (`centerline:chain:<n>`,
+stable only for identical input) and its name survives only where every
+constituent agreed on one. Audited before this landed (#161's first bullet):
+nothing consumes centerline segment ids or names - the client reads
+trails.geojson only through MapLibre expressions on `blaze_color` and
+`source`, spurs.json keys off side_trails ids only, and the line-detail
+sheet names the through-route from `source` rather than from a per-segment
+name. The .fgb variant is published and fetched by nothing.
+
+The merge runs AFTER simplification, which is safe in both directions:
+Douglas-Peucker preserves endpoints, so segments that touched still touch,
+and simplifying the merged chain instead would produce the same vertices.
+"""
+
+CHAIN_MERGED_SOURCES = ("centerline",)
+
+# geojson-vt's approximate whole-feature drop bar at z4 under MapLibre's
+# default tolerance - the coarsest zoom the corridor is read at, so the bar
+# every published feature has to clear. Reasoned in #160/#161 from the 0.375px
+# default (~1.4 km at z4, halving per zoom), not newly measured here. Used
+# only for the honesty stat main() prints: chains still under it are the
+# fragments that will drop at low zoom, and their total length is the size of
+# that approximation.
+LOW_ZOOM_DROP_BAR_M = 1_400.0
+
+
+def _component_lines(geom) -> list:
+    if geom.geom_type == "LineString":
+        return [geom]
+    return list(geom.geoms)
+
+
+def merge_chain_records(records: list[dict]) -> tuple[list[dict], dict]:
+    """Merge each CHAIN_MERGED_SOURCES source's records into maximal chains.
+
+    Returns (records, stats): the merged sources' chain records followed by
+    every other record untouched and in its original order, and per-source
+    {"constituents", "chains"} counts for the manifest and the run log.
+
+    Ordering note: chains are emitted first, but paint order does not ride on
+    it - WIREFRAMES.md §3's "a through-route is drawn last" is enforced by
+    `line-sort-key` in the client, not by feature order.
+
+    Chain ids are `{source}:chain:{n}` with n assigned in sorted-bounds order,
+    so the same input yields the same ids. They are NOT stable across data
+    releases - an upstream edit can renumber every chain - which is fine for
+    the same audited reason collapsing segment ids was: nothing anchors to a
+    centerline feature id. Anything that ever needs to must anchor to miles,
+    the way closures already do.
+    """
+    merged: list[dict] = []
+    passed_through: list[dict] = []
+    stats: dict[str, dict] = {}
+
+    groups: dict[tuple[str, str], list[dict]] = {}
+    for record in records:
+        if record["source"] in CHAIN_MERGED_SOURCES:
+            groups.setdefault((record["source"], record["blaze_color"]), []).append(record)
+        else:
+            passed_through.append(record)
+
+    counters: dict[str, int] = {}
+    for (source, blaze_color), group in groups.items():
+        lines = [line for record in group for line in _component_lines(shapely_wkt.loads(record["wkt"]))]
+        chains = _component_lines(linemerge(MultiLineString(lines)))
+        # Sorted by geometry rather than left in library order, so a re-run
+        # over identical input cannot renumber the chains.
+        chains.sort(key=lambda chain: chain.bounds)
+
+        # One name only if every constituent that had one agreed - a chain
+        # spanning two named stretches has no honest single name, and null
+        # says so. Nothing reads this field today (see the audit above); it
+        # is carried for whoever inspects the artifact by hand.
+        names = {record["name"] for record in group if record["name"]}
+        name = names.pop() if len(names) == 1 else None
+
+        source_stats = stats.setdefault(source, {"constituents": 0, "chains": 0})
+        source_stats["constituents"] += len(group)
+        source_stats["chains"] += len(chains)
+        for chain in chains:
+            index = counters.get(source, 0)
+            counters[source] = index + 1
+            merged.append(
+                {
+                    "id": f"{source}:chain:{index}",
+                    "source": source,
+                    "name": name,
+                    "blaze_color": blaze_color,
+                    "wkt": chain.wkt,
+                }
+            )
+
+    return merged + passed_through, stats
+
+
+def _chain_drop_bar_report(records: list[dict]) -> str:
+    """How much merged geometry still sits under the low-zoom drop bar.
+
+    The merge's honesty stat: linemerge only joins segments whose endpoints
+    touch exactly, so genuinely disconnected fragments stay short and still
+    drop at low zoom once the client's tolerance reverts. What makes that
+    acceptable is their size, so the size is printed every run rather than
+    asserted once and trusted forever.
+    """
+    short_m = 0.0
+    short_count = 0
+    for record in records:
+        if record["source"] not in CHAIN_MERGED_SOURCES:
+            continue
+        length = shapely_transform(_TO_METRIC, shapely_wkt.loads(record["wkt"])).length
+        if length < LOW_ZOOM_DROP_BAR_M:
+            short_count += 1
+            short_m += length
+    return f"{short_count} chain(s) under the ~{LOW_ZOOM_DROP_BAR_M / 1000:.1f} km z4 drop bar, {short_m / 1000:.1f} km in total"
+
+
 def write_trails(con: duckdb.DuckDBPyConnection, records: list[dict]) -> dict:
     """Write every clipped/normalized trail-line record to one combined
     GeoJSON + FlatGeobuf pair under OUT_DIR. Returns a manifest with a
@@ -406,8 +565,23 @@ def main() -> dict:
         f"{before:,} -> {after:,} coordinates ({100 - after * 100 // max(before, 1)}% smaller)"
     )
 
-    manifest = write_trails(con, simplified)
-    print(f"  trails: {len(simplified)} features -> {OUT_DIR / 'trails'}.{{geojson,fgb}}")
+    # Merge LAST, once the corridor clip and the simplification have both run
+    # on per-segment geometry - see the chain-merging rationale block (#161).
+    merged, chain_stats = merge_chain_records(simplified)
+    for source, source_stats in chain_stats.items():
+        print(f"  {source}: {source_stats['constituents']} segments merged into {source_stats['chains']} chains")
+    if chain_stats:
+        print(f"  {_chain_drop_bar_report(merged)}")
+
+    manifest = write_trails(con, merged)
+    # The published feature count changed meaning with the merge, so the
+    # counts a drop-detector should compare across it are recorded too:
+    # `constituent_count` is what feature_count used to be (per-segment,
+    # pre-merge), and check_output_quality.trails_verdict reads it so ~3,000
+    # segments becoming ~500 chains does not read as a broken export.
+    manifest["constituent_count"] = len(simplified)
+    manifest["chain_counts"] = {source: s["chains"] for source, s in chain_stats.items()}
+    print(f"  trails: {len(merged)} features -> {OUT_DIR / 'trails'}.{{geojson,fgb}}")
 
     manifest_path = OUT_DIR / "trails_manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2))

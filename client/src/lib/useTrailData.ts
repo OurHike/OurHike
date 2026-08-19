@@ -23,6 +23,7 @@ import {
   type StoredPoi,
 } from './trailData'
 import type { ElevationProfile } from './elevationProfile'
+import type { SpurRecord } from './spurDestination'
 
 /**
  * What went wrong fetching the trail's own data, in the shape both fetch paths
@@ -70,6 +71,11 @@ export interface TrailData {
    *  purpose (see below). */
   trailIndex: TrailIndex | null
   pois: StoredPoi[]
+  /** Spur detail keyed by trail id (pipeline/export_spurs.py). Empty until a
+   *  release that publishes it is on the phone - the map draws every spur
+   *  either way, the line-detail sheet (#134) just cannot say where one
+   *  goes. */
+  spurs: Record<string, SpurRecord>
   elevation: ElevationProfile | null
   trailsUrl: string
   /** Whether the map has a real trail line on it, as against the empty
@@ -97,6 +103,7 @@ export interface TrailData {
 export function useTrailData(online: boolean): TrailData {
   const [trailIndex, setTrailIndex] = useState<TrailIndex | null>(null)
   const [pois, setPois] = useState<StoredPoi[]>([])
+  const [spurs, setSpurs] = useState<Record<string, SpurRecord>>({})
   const [elevation, setElevation] = useState<ElevationProfile | null>(null)
   const [trailsUrl, setTrailsUrl] = useState<string>(emptyTrailsUrl)
   const [haveTrailLines, setHaveTrailLines] = useState(false)
@@ -115,6 +122,7 @@ export function useTrailData(online: boolean): TrailData {
     // can hold both and still be drawing no line.
     setHaveTrailLines(true)
     setPois(data.pois)
+    setSpurs(data.spurs)
     setElevation(data.elevation)
 
     // Best-effort, and separate from the POIs above on purpose. A shelter is
@@ -265,5 +273,5 @@ export function useTrailData(online: boolean): TrailData {
     }
   }, [fetchOnce])
 
-  return { trailIndex, pois, elevation, trailsUrl, haveTrailLines, error, ensure }
+  return { trailIndex, pois, spurs, elevation, trailsUrl, haveTrailLines, error, ensure }
 }

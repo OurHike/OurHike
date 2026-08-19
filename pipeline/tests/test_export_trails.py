@@ -213,8 +213,12 @@ def test_export_trails_keeps_a_multilinestring_feature_instead_of_silently_dropp
     export_trails.main()
 
     fc = json.loads((out_dir / "trails.geojson").read_text())
-    names = {f["properties"]["name"] for f in fc["features"]}
-    assert "Split Segment" in names  # not silently dropped
+    # Three disconnected pieces reach the artifact as three chains: the plain
+    # segment plus BOTH parts of the MultiLineString. Its name does not
+    # survive the chain merge (#161 - two named constituents, no honest
+    # single name), so the not-silently-dropped claim is asserted on the
+    # geometry itself, which is the thing whose loss #160 was.
+    assert len(fc["features"]) == 3
 
 
 def test_export_trails_warns_and_skips_a_feature_with_missing_geometry(tmp_path, monkeypatch, con, capsys):
@@ -304,16 +308,16 @@ def test_export_trails_falls_back_to_feature_id_when_global_id_is_explicitly_nul
     on the literal output id f"{key}:None". The fix checks the RESULTING
     VALUE (like lib/poi_schema.py's unify_poi()) and must still fall back to
     the feature's own top-level id here."""
-    raw_dir, out_dir = _run_export(tmp_path, monkeypatch, [_centerline_source()])
-    _write_fc(
-        raw_dir / "centerline.geojson",
-        [_line_feature(CENTERLINE_COORDS, {"GlobalID": None, "Name": "Null GlobalID Segment"}, feature_id="feat-42")],
-    )
+    feature = _line_feature(CENTERLINE_COORDS, {"GlobalID": None, "Name": "Null GlobalID Segment"}, feature_id="feat-42")
 
-    export_trails.main()
+    # At the record level rather than through the published artifact: the
+    # centerline's per-segment ids stop at merge_chain_records now (#161), so
+    # the fallback this test pins is observable only before the merge - and
+    # it still matters there, because spurs.json joins on the same chain for
+    # side_trails.
+    records = export_trails.build_trail_records(_centerline_source(), [{**feature, "_blaze_color": "White"}])
 
-    fc = json.loads((out_dir / "trails.geojson").read_text())
-    assert fc["features"][0]["properties"]["id"] == "centerline:feat-42"
+    assert records[0]["id"] == "centerline:feat-42"
 
 
 def test_export_trails_substitutes_a_synthetic_id_and_warns_when_a_feature_has_no_global_id_or_top_level_id(
@@ -378,3 +382,114 @@ def test_export_trails_warning_names_the_fallback_id_when_a_decode_failure_coinc
     captured = capsys.readouterr()
     assert "feature 'side-fallback' has an undecodable" in captured.out
     assert "feature None has an undecodable" not in captured.out
+
+
+# --- Centerline chain merging (#161) ----------------------------------------
+#
+# geojson-vt's per-zoom simplification drops whole features under a projected
+# length bar, and ATC's ~3,000 short centerline segments sat under it at
+# corridor zooms - the miles-long gaps of #160. Merging contiguous segments
+# into maximal chains puts every published centerline feature far above the
+# bar, which is what lets the client return its trails source's `tolerance`
+# to the default (lib/trailShape.ts sniffs the chain ids below to know it
+# safely can). Spurs are deliberately untouched: each is its own destination
+# and its own sheet, and spurs.json joins on their individual ids.
+
+
+def _chain_record(record_id, coords, *, source="centerline", name=None, blaze="White"):
+    wkt = "LINESTRING (" + ", ".join(f"{lon} {lat}" for lon, lat in coords) + ")"
+    return {"id": record_id, "source": source, "name": name, "blaze_color": blaze, "wkt": wkt}
+
+
+def test_touching_centerline_segments_merge_into_one_chain():
+    records, stats = export_trails.merge_chain_records(
+        [
+            _chain_record("centerline:a", [(-74.0, 41.0), (-73.9, 41.1)]),
+            _chain_record("centerline:b", [(-73.9, 41.1), (-73.8, 41.2)]),
+        ]
+    )
+
+    assert [r["id"] for r in records] == ["centerline:chain:0"]
+    assert stats == {"centerline": {"constituents": 2, "chains": 1}}
+
+
+def test_disconnected_pieces_stay_separate_chains_in_a_stable_order():
+    """linemerge only joins endpoints that touch exactly - the real data
+    merges to 558 pieces, not one - and the chain ids must not depend on
+    library ordering: the same input has to publish the same artifact."""
+    south = _chain_record("centerline:s", [(-74.0, 40.0), (-74.0, 40.1)])
+    north_piece = _chain_record("centerline:n", [(-73.0, 42.0), (-73.0, 42.1)])
+
+    forwards, _ = export_trails.merge_chain_records([south, north_piece])
+    backwards, _ = export_trails.merge_chain_records([north_piece, south])
+
+    assert [r["wkt"] for r in forwards] == [r["wkt"] for r in backwards]
+    assert [r["id"] for r in forwards] == ["centerline:chain:0", "centerline:chain:1"]
+
+
+def test_side_trails_are_never_merged():
+    """Each spur is its own destination and its own line-detail sheet, and
+    spurs.json keys off these exact ids - collapsing them would orphan every
+    record in it."""
+    spur_a = _chain_record("side_trails:a", [(-74.0, 41.0), (-74.0, 41.001)], source="side_trails", blaze="Blue")
+    spur_b = _chain_record("side_trails:b", [(-74.0, 41.001), (-74.0, 41.002)], source="side_trails", blaze="Blue")
+
+    records, stats = export_trails.merge_chain_records([spur_a, spur_b])
+
+    assert [r["id"] for r in records] == ["side_trails:a", "side_trails:b"]
+    assert stats == {}
+
+
+def test_chains_never_cross_a_blaze_boundary():
+    """One feature carries one blaze_color, so merging across a boundary
+    would repaint real trail. The centerline is uniformly White today; this
+    pins the guard for the imported source that is not."""
+    white = _chain_record("centerline:w", [(-74.0, 41.0), (-73.9, 41.1)], blaze="White")
+    blue = _chain_record("centerline:b", [(-73.9, 41.1), (-73.8, 41.2)], blaze="Blue")
+
+    records, _ = export_trails.merge_chain_records([white, blue])
+
+    assert sorted(r["blaze_color"] for r in records) == ["Blue", "White"]
+    assert all(r["id"].startswith("centerline:chain:") for r in records)
+
+
+def test_a_chain_keeps_the_name_only_when_every_constituent_agreed():
+    agreed, _ = export_trails.merge_chain_records(
+        [
+            _chain_record("centerline:a", [(-74.0, 41.0), (-73.9, 41.1)], name="Appalachian National Scenic Trail"),
+            _chain_record("centerline:b", [(-73.9, 41.1), (-73.8, 41.2)], name="Appalachian National Scenic Trail"),
+        ]
+    )
+    disagreed, _ = export_trails.merge_chain_records(
+        [
+            _chain_record("centerline:a", [(-74.0, 41.0), (-73.9, 41.1)], name="Georgia Section"),
+            _chain_record("centerline:b", [(-73.9, 41.1), (-73.8, 41.2)], name="Maine Section"),
+        ]
+    )
+
+    assert agreed[0]["name"] == "Appalachian National Scenic Trail"
+    # Two named stretches have no honest single name - null says so, rather
+    # than picking whichever won by list order.
+    assert disagreed[0]["name"] is None
+
+
+def test_the_manifest_records_the_pre_merge_segment_count(tmp_path, monkeypatch, con):
+    """check_output_quality.trails_verdict tracks completeness on the
+    constituent count, so segments merging into chains does not read as a
+    broken export while an upstream actually losing segments still would."""
+    raw_dir, out_dir = _run_export(tmp_path, monkeypatch, [_centerline_source()])
+    _write_fc(
+        raw_dir / "centerline.geojson",
+        [
+            _line_feature(CENTERLINE_COORDS, {"GlobalID": "c-1", "Name": "A"}, feature_id=1),
+            _line_feature([CENTERLINE_COORDS[-1], (-73.8, 41.2)], {"GlobalID": "c-2", "Name": "B"}, feature_id=2),
+        ],
+    )
+
+    manifest = export_trails.main()
+
+    assert manifest["geojson"]["feature_count"] == 1  # one chain published
+    assert manifest["constituent_count"] == 2  # two surveyed segments behind it
+    assert manifest["chain_counts"] == {"centerline": 1}
+    fc = json.loads((out_dir / "trails.geojson").read_text())
+    assert [f["properties"]["id"] for f in fc["features"]] == ["centerline:chain:0"]

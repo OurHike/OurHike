@@ -26,6 +26,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { registerPMTilesProtocol } from './protocol'
 import { registerBasemapProtocol } from './basemap'
 import { registerMapWorker } from './mapWorker'
+import { readTrailsMerged } from '../lib/trailShape'
 import { attachMapAppearance, attachTrailData, buildMapStyle } from './style'
 import { attachMapDetail } from './mapDetail'
 import { attachContourUnits, registerTerrain } from './contours'
@@ -43,6 +44,7 @@ import {
 import { attachClosureData, type ClosureBand } from './closureLayers'
 import { attachDroughtData, setDroughtVisible, type DroughtBand } from './droughtLayers'
 import { attachWarningData, attachWarningIcon, type WarningPoint } from './warningLayers'
+import { attachLineTaps, type TappedLine } from './lineTaps'
 import { attachPoiTaps } from './poiTaps'
 import { attachRouteData, attachRouteTaps, type RouteDrawing } from './routeLayers'
 import type { BoundingBox, MapPoint } from '../lib/legendContents'
@@ -182,6 +184,14 @@ export interface MapViewProps {
    * app knows about it, and looking a POI up is the shell's job.
    */
   onSelectPoi?: (id: string | null) => void
+  /**
+   * A trail line was tapped, reported as its published facts - or the bare
+   * map was, reported as null so the shell can dismiss the line sheet
+   * (#134). Yields to pins, dots and ATC notices under the same thumb (see
+   * map/lineTaps.ts for the two rules). Must be stable across renders
+   * (useCallback), like `onSelectPoi`.
+   */
+  onSelectLine?: (line: TappedLine | null) => void
   /** Web only; touch platforms rely on pinch (see mapChrome.ts). */
   showZoomButtons?: boolean
   units?: ScaleUnits
@@ -286,6 +296,7 @@ export function MapView({
   routeDrawing = null,
   onRouteTap,
   onSelectPoi,
+  onSelectLine,
   center,
   zoom,
   bounds,
@@ -387,6 +398,12 @@ export function MapView({
         themeChoice,
         mapStyle,
         redLight,
+        // Read here, at creation, rather than passed as a prop: the trails
+        // source's tolerance is fixed when the style is built, and the fact
+        // deciding it is a property of the bytes in storage (recorded
+        // synchronously readable for exactly this moment - lib/trailShape.ts,
+        // #161), not of anything the shell renders from.
+        trailsMerged: readTrailsMerged(),
       }),
       // `bounds` wins where it is given: MapLibre works out the zoom that fits
       // the box on this particular screen, which is the whole point of asking
@@ -625,6 +642,16 @@ export function MapView({
     if (map === null || onRouteTap === undefined) return
     return attachRouteTaps(map, onRouteTap)
   }, [map, onRouteTap])
+
+  // The line taps (#134), suppressed in route mode like every other tap
+  // handler. Attached separately from the POI taps because their yields
+  // differ - lineTaps.ts asks the POI and ATC layers itself and reports
+  // null where they win, so the one-interpreter rule holds without these
+  // two effects knowing about each other.
+  useEffect(() => {
+    if (map === null || onSelectLine === undefined || onRouteTap !== undefined) return
+    return attachLineTaps(map, onSelectLine)
+  }, [map, onSelectLine, onRouteTap])
 
   // Suppressed in route mode for the same one-interpreter rule as the POI
   // taps above: a point dropped near an ATC notice must not also open its

@@ -41,6 +41,12 @@ export interface SpurRecord {
   length_ft?: number | null
   destination_poi_id?: string | null
   destination_distance_m?: number | null
+  /** Where the spur joins the AT, in NOBO miles on the marker-calibrated
+   *  axis every published mile shares (#136, pipeline/export_spurs.py's
+   *  attach_junction_miles). Null when the pipeline could not tell the
+   *  spur's two ends apart; absent when the release predates the field.
+   *  Either way the sheet omits the line rather than guessing. */
+  junction_mile?: number | null
 }
 
 export interface SpurDetail {

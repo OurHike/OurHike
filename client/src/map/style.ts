@@ -556,6 +556,15 @@ export interface MapStyleOptions {
    *  default: it is context, and an unasked-for tint over the whole map is
    *  the opposite of "find information faster". */
   showDrought?: boolean
+  /**
+   * Whether the trails data behind `trailsUrl` has the merged-chain shape
+   * (#161, lib/trailShape.ts) - which decides the trails source's
+   * `tolerance`. False by default and false whenever the caller cannot
+   * tell, because the conservative direction (`tolerance: 0`) only ever
+   * costs worker time, while the optimistic one over pre-merge data
+   * reopens #160's miles-long gaps.
+   */
+  trailsMerged?: boolean
 }
 
 export function buildMapStyle({
@@ -569,6 +578,7 @@ export function buildMapStyle({
   mapStyle = 'field',
   redLight = false,
   showDrought = false,
+  trailsMerged = false,
 }: MapStyleOptions): StyleSpecification {
   const appearance: SheetAppearance = { theme, themeChoice, mapStyle, redLight }
   // Asked for, and that is the whole question. Terrain used to be half of it -
@@ -649,21 +659,25 @@ export function buildMapStyle({
         // projected length falls under that same bar - ~1.4 km at z4,
         // ~700 m at z5, ~350 m at z6 with the 0.375 px default.
         //
-        // The centerline is not one feature. ATC surveys it as ~3,000
-        // segments averaging ~1.2 km, so at corridor zooms much of the
-        // trail is under the bar, consecutive short segments vanish
+        // The pre-merge centerline was not one feature. ATC surveys it as
+        // ~3,000 segments averaging ~1.2 km, so at corridor zooms much of
+        // the trail was under the bar, consecutive short segments vanished
         // TOGETHER, and the AT rendered with miles-long gaps (#160) - on
         // this map, a false statement about where the trail is. Zero is
-        // the only value that makes the drop rule structurally impossible,
-        // for this data and for anything imported later.
+        // the only value that makes the drop rule structurally impossible
+        // for data of that shape.
         //
-        // The cost lands only below ~z8, where the gaps were: low-zoom
-        // tiles keep every vertex the pipeline's own 1 m simplification
-        // left in (measured at this density: ~220 ms of worker time across
-        // the z4-z6 tiles, once per session). #161 is the durable answer -
-        // merge the centerline chains at export, then let this return to
-        // the default - and owns the revert.
-        tolerance: 0,
+        // #161's durable answer is the data's: the export now merges the
+        // centerline into maximal chains, far above the drop bar at every
+        // zoom, and for THAT shape the default tolerance is safe and buys
+        // back the vertex thinning `tolerance: 0` disables (~220 ms of
+        // worker time and 30-50x the displayable geometry across the z4-z6
+        // tiles, measured pre-merge). Which shape THIS phone actually holds
+        // is `trailsMerged` - detected from the stored bytes themselves at
+        // download time (lib/trailShape.ts), never assumed from the app's
+        // build, because a phone that downloaded before the merge keeps the
+        // segmented shape until its next download however new the app is.
+        ...(trailsMerged ? {} : { tolerance: 0 }),
       },
       // Declared empty and filled in later - see buildPoiSource. Attributed
       // like the trails, and for the same reasons: the POIs are ATC and

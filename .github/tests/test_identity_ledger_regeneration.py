@@ -32,6 +32,18 @@ The two modes being mutually exclusive with each other matters for the same
 reason in reverse: a run that both `--check`s and rewrites would be asserting
 and mutating the same file in one job, and which one won would depend on step
 order.
+
+AND WHERE THOSE STEPS SIT (#816)
+
+The second half of this file holds the ordering, which is a separate property
+that the first half quietly depends on. Reconciliation reads
+`data/raw/osm_water.geojson` and `data/raw/trail_water.json`; both are restored
+from the Actions cache at the top of the job and rewritten by fetchers partway
+down. An identity step placed above those fetchers therefore judges the
+PREVIOUS run's water while `Export POIs` publishes this one's - so `--check`
+can pass on a snapshot nobody ships, and a regenerated ledger can be stale the
+moment it is uploaded. features/POI_IDENTITY.md §2 always said "after the
+fetches"; the workflow only partly agreed until #816.
 """
 
 from __future__ import annotations
@@ -119,3 +131,65 @@ def test_the_ledger_is_uploaded_even_when_reconciliation_refuses(steps):
     assert "always()" in condition, "an exit-2 run must still hand over the held-for-review list it printed"
     assert REGENERATE_INPUT in condition, "always() alone would upload on every ordinary publish run too"
     assert step["with"]["if-no-files-found"] == "ignore", "a held run writes no ledger; that is not an upload failure"
+
+
+# --- Ordering: the gate must judge the data the export will publish (#816) ---
+
+
+WATER_FETCH_STEPS = ("Fetch OSM water points", "Derive trail water")
+
+IDENTITY_STEPS = (
+    "Check the POI identity ledger is current",
+    "Reconcile the POI identity ledger for review",
+)
+
+
+def _position(steps: list[dict], name: str) -> int:
+    for index, step in enumerate(steps):
+        if (step.get("name") or "") == name:
+            return index
+    raise AssertionError(f"no step named {name!r} - this test names steps exactly, so a rename must update it")
+
+
+@pytest.mark.parametrize("identity_step", IDENTITY_STEPS)
+@pytest.mark.parametrize("fetch_step", WATER_FETCH_STEPS)
+def test_identity_reconciles_after_the_sources_it_reads(steps, identity_step, fetch_step):
+    """`published_records()` reads `data/raw/osm_water.geojson` and
+    `data/raw/trail_water.json` through `export_poi.read_sources()`. Both are
+    written by the steps below and restored from the Actions cache before them,
+    so an identity step ordered FIRST reconciles the previous run's water while
+    `Export POIs` publishes this run's - the gate passing judgement on a
+    snapshot nobody ships.
+
+    Observed on run 32254119619 before the fix: the ledger artifact was
+    uploaded at 12:46:11, `Fetch OSM water points` ran until 12:51:45, and
+    `Derive trail water` had not started.
+    """
+    assert _position(steps, identity_step) > _position(steps, fetch_step), (
+        f"{identity_step!r} runs before {fetch_step!r}, so it reconciles whatever the cache "
+        "restored rather than what this run derived. See #816."
+    )
+
+
+def test_identity_still_settles_before_anything_is_exported(steps):
+    """The other half of the sandwich: the gate is worth nothing after the
+    artifacts it gates are already written. #659 moved the export's own
+    emptiness check before its write loop for the same reason."""
+    last_identity = max(_position(steps, name) for name in IDENTITY_STEPS)
+    for export_step in ("Export trail lines", "Export POIs"):
+        assert last_identity < _position(steps, export_step), (
+            f"{export_step!r} runs before the identity gate settles - POIs would be written under ids nothing had checked."
+        )
+
+
+def test_the_cheap_preflight_stays_cheap(steps):
+    """Moving identity down must not drag the seconds-long source check with
+    it. `export_poi.py --check` is what still catches an unreadable source
+    before an hour of fetching, and #816 traded away the identity verdict's
+    earliness on the explicit basis that this one keeps its own."""
+    preflight = _position(steps, "Check POI sources are exportable")
+    for fetch_step in WATER_FETCH_STEPS:
+        assert preflight < _position(steps, fetch_step), (
+            "'Check POI sources are exportable' must stay ahead of the expensive fetches - it is "
+            "the fast failure the identity gate no longer provides."
+        )

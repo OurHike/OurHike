@@ -199,58 +199,6 @@ jobs:
       - name: Check POI sources are exportable
         run: python export_poi.py --check
 
-      # The identity gate (#671, features/POI_IDENTITY.md): the checked-in
-      # ledger must be exactly what reconciliation reproduces from this
-      # snapshot. A refresh that changes identity - new POIs, retired POIs,
-      # or (the catastrophe) a wholesale upstream re-mint - fails here and
-      # publishes nothing until a human regenerates the ledger, reviews the
-      # diff, and commits it. Before the photo fetches, like the preflight
-      # above, so a blocked refresh costs seconds rather than an hour.
-      - name: Check the POI identity ledger is current
-        if: ${{ !inputs.regenerate_identity_ledger }}
-        run: python reconcile_poi_identity.py --check
-
-      # The other half of the gate above (#811). `--check` tells a maintainer to
-      # "run reconcile_poi_identity.py, review the diff, and commit it", and
-      # until this step existed nobody could: the script reads its snapshot from
-      # data/raw/, which is gitignored and exists only on a runner mid-job, and
-      # `--check` was the only invocation anywhere in .github/. The one
-      # environment that can produce the regenerated ledger was also the only
-      # one that refused to.
-      #
-      # This is features/POI_IDENTITY.md §2's stated output - "Input: the new raw
-      # snapshot plus the prior ledger. Output: the updated ledger and a
-      # human-readable summary" - which shipped as its gate alone.
-      #
-      # `set -o pipefail` is load-bearing rather than habit: GitHub runs `run:`
-      # under `bash -e`, which does NOT set pipefail, so a bare `| tee` would
-      # report the exit status of tee. reconcile_poi_identity.py exits 2 for
-      # held items and for the mass-retirement refusal - the two outcomes a
-      # human most needs to see fail - and both would have been swallowed as
-      # green, uploading a summary describing a ledger it never wrote.
-      - name: Reconcile the POI identity ledger for review
-        if: inputs.regenerate_identity_ledger
-        run: |
-          set -o pipefail
-          mkdir -p data/identity_review
-          python reconcile_poi_identity.py | tee data/identity_review/summary.txt
-
-      # `always()` so a run held for review still hands over its summary: an
-      # exit-2 run writes no ledger, and the held list it printed is the entire
-      # reason a human was called, so losing it to the failure would waste the
-      # run that produced it. `if-no-files-found: ignore` for the same case -
-      # there is no ledger to attach when nothing was written.
-      - name: Upload the reconciled ledger for review
-        if: ${{ always() && inputs.regenerate_identity_ledger }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: poi-identity-ledger
-          path: |
-            pipeline/reference/poi_identity.json
-            pipeline/data/identity_review/summary.txt
-          retention-days: 14
-          if-no-files-found: ignore
-
       # Photos live outside the repository - pipeline/.gitignore excludes
       # data/ entirely - so a fresh runner has neither the outcome files nor
       # the image bytes, and without this step export_poi.py takes its
@@ -361,6 +309,85 @@ jobs:
       - name: Derive trail water
         if: inputs.include_trail_water
         run: python fetch_trail_water.py
+
+      # The identity gate (#671, features/POI_IDENTITY.md): the checked-in
+      # ledger must be exactly what reconciliation reproduces from this
+      # snapshot. A refresh that changes identity - new POIs, retired POIs,
+      # or (the catastrophe) a wholesale upstream re-mint - fails here and
+      # publishes nothing until a human regenerates the ledger, reviews the
+      # diff, and commits it.
+      #
+      # AFTER THE WATER FETCHES, and this is the whole of #816. It used to sit
+      # up beside the `export_poi.py --check` preflight, with the reasoning
+      # "before the photo fetches, so a blocked refresh costs seconds rather
+      # than an hour". That was true and it was checking the wrong snapshot.
+      #
+      # reconcile_poi_identity.published_records() reads through
+      # export_poi.read_sources(), which reads data/raw/osm_water.geojson and
+      # data/raw/trail_water.json off disk. Up there, those files are whatever
+      # "Restore fetched data" pulled out of the cache; the two steps above
+      # then overwrite them, and "Export POIs" below publishes from the new
+      # ones. So on any run that ticked either water input, the gate passed
+      # judgement on the PREVIOUS run's data and the export shipped this one's.
+      #
+      # Measured on run 32254119619, which is what found this: the ledger
+      # artifact was written at 12:46:09 and uploaded at 12:46:11, while
+      # "Fetch OSM water points" ran 12:46:22-12:51:45 and "Derive trail
+      # water" started after that. Five minutes early, and an entire
+      # derivation short.
+      #
+      # The cost is real and was accepted rather than overlooked: a blocked
+      # refresh now pays the photo fetches (~30 min) and the water fetches
+      # (~35 min with both ticked) before it can fail. A gate that fails
+      # slowly about the right data beats one that fails fast about the wrong
+      # data. The cheap preflight is not gone either - "Check POI sources are
+      # exportable" still runs in seconds up where this used to be, and still
+      # catches an unreadable source before any of it. Only the IDENTITY
+      # verdict has to wait for the data it is a verdict about.
+      - name: Check the POI identity ledger is current
+        if: ${{ !inputs.regenerate_identity_ledger }}
+        run: python reconcile_poi_identity.py --check
+
+      # The other half of the gate above (#811). `--check` tells a maintainer to
+      # "run reconcile_poi_identity.py, review the diff, and commit it", and
+      # until this step existed nobody could: the script reads its snapshot from
+      # data/raw/, which is gitignored and exists only on a runner mid-job, and
+      # `--check` was the only invocation anywhere in .github/. The one
+      # environment that can produce the regenerated ledger was also the only
+      # one that refused to.
+      #
+      # This is features/POI_IDENTITY.md §2's stated output - "Input: the new raw
+      # snapshot plus the prior ledger. Output: the updated ledger and a
+      # human-readable summary" - which shipped as its gate alone.
+      #
+      # `set -o pipefail` is load-bearing rather than habit: GitHub runs `run:`
+      # under `bash -e`, which does NOT set pipefail, so a bare `| tee` would
+      # report the exit status of tee. reconcile_poi_identity.py exits 2 for
+      # held items and for the mass-retirement refusal - the two outcomes a
+      # human most needs to see fail - and both would have been swallowed as
+      # green, uploading a summary describing a ledger it never wrote.
+      - name: Reconcile the POI identity ledger for review
+        if: inputs.regenerate_identity_ledger
+        run: |
+          set -o pipefail
+          mkdir -p data/identity_review
+          python reconcile_poi_identity.py | tee data/identity_review/summary.txt
+
+      # `always()` so a run held for review still hands over its summary: an
+      # exit-2 run writes no ledger, and the held list it printed is the entire
+      # reason a human was called, so losing it to the failure would waste the
+      # run that produced it. `if-no-files-found: ignore` for the same case -
+      # there is no ledger to attach when nothing was written.
+      - name: Upload the reconciled ledger for review
+        if: ${{ always() && inputs.regenerate_identity_ledger }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: poi-identity-ledger
+          path: |
+            pipeline/reference/poi_identity.json
+            pipeline/data/identity_review/summary.txt
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: Export trail lines
         run: python export_trails.py

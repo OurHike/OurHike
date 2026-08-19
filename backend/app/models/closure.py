@@ -72,6 +72,52 @@ class Closure(Base):
     start_mile_marker = Column(Float, nullable=False)
     end_mile_marker = Column(Float, nullable=False)
 
+    # Where the two ends physically ARE (#674, features/POI_IDENTITY.md's
+    # "Miles are a projection, not an anchor").
+    #
+    # A mile is a reading against one particular measurement of the
+    # centerline, and the ATC re-measures. The same physical stretch gets a
+    # slightly different number, so a closure authored against this year's
+    # measurement quietly refers to a different stretch under next year's -
+    # while `reports.mile` and the designed `FieldNote.mile` are safe,
+    # because they already travel with a `lat`/`lon` that does not move.
+    # Closures were the gap: the miles were all they had.
+    #
+    # So the geometry is the anchor and the mile becomes a per-release
+    # PROJECTION of it - CONTRIBUTING.md's store-canonical-convert-at-display
+    # rule, applied to position rather than to units. The stored miles stay
+    # exactly as they are: they are what every existing row and every
+    # existing client has, and they remain correct against the release they
+    # were authored on.
+    #
+    # **Client-supplied and derived, not measured** - the same posture
+    # `reports.mile` documents on its own column, and the mirror image of it.
+    # There the client snaps a GPS fix to the trail index and sends the mile;
+    # here it takes the miles the author picked and sends the points, via
+    # `trailPointAtMile` in client/src/lib/trailPosition.ts. Nothing
+    # server-side can derive either one, and for the reason report.py already
+    # states: this backend holds no centerline geometry.
+    #
+    # **Captured at write time, deliberately.** Converting later would mean
+    # projecting through the centerline of the release the closure was
+    # authored on, and pipeline/DATA_RELEASES.md prunes a release 90 days
+    # after it is superseded - so the conversion stops being possible long
+    # before the closure stops mattering.
+    #
+    # **Nullable, and null is the ordinary state rather than a gap.** Every
+    # closure filed before this column existed has none, and so does every
+    # closure filed until a client learns to send it - there is no closure
+    # authoring form in this app yet (`client/src/lib/api.ts` has fetch,
+    # verify and dismiss, and no create), so on the day this lands the
+    # projection is a no-op on 100% of real rows. A null pair means "project
+    # nothing, show the mile as stored", which is exactly today's behaviour.
+    # Zero is not the default for the reason report.py gives for `mile`: it
+    # is a real place, off the coast of Africa.
+    start_lat = Column(Float, nullable=True)
+    start_lon = Column(Float, nullable=True)
+    end_lat = Column(Float, nullable=True)
+    end_lon = Column(Float, nullable=True)
+
     reason_type = Column(Enum(ReasonType, native_enum=False, length=20), nullable=False)
     note = Column(Text, nullable=True)
 

@@ -113,6 +113,20 @@ READER_ROLE = "ourhike_conditions_reader"
 # repeating it here means a reader of this file does not have to go and look
 # up what the role is allowed to see. If the two ever disagree, the policy
 # wins, silently and correctly, by returning fewer rows.
+#
+# The column list is held to `ClosureOut`'s fields in both directions by
+# backend/tests/test_conditions_publisher_contract.py, which parses this
+# string - so keep it a plain list of column names. An inline `--` comment
+# here reads as part of a column to that parser; explanations go above the
+# constant, which is why this one is here.
+#
+# `start_lat`/`start_lon`/`end_lat`/`end_lon` are the closure's two endpoints
+# (#674). They ride into the offline baseline for the same reason the miles
+# do, and with more urgency: a hiker reading this document is the one
+# furthest from a network and likeliest to be holding a release older than
+# the closure was authored against, which is exactly when a stored mile
+# drifts away from the stretch it named. Null on every row filed before the
+# columns existed, which the client reads as "show the mile as stored".
 PUBLIC_CLOSURES_SQL = """
     SELECT id,
            reported_at,
@@ -126,7 +140,11 @@ PUBLIC_CLOSURES_SQL = """
            verified_at,
            closed_since,
            expected_reopen,
-           reroute_url
+           reroute_url,
+           start_lat,
+           start_lon,
+           end_lat,
+           end_lon
       FROM public.closures
      WHERE moderation_status = 'verified'
      ORDER BY start_mile_marker, id

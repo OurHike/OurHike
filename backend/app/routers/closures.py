@@ -47,6 +47,16 @@ def create_closure(
         note=payload.note,
         start_mile_marker=payload.start_mile_marker,
         end_mile_marker=payload.end_mile_marker,
+        # Stored exactly as sent, after ClosureCreate has normalised the
+        # ordering of both the miles and the points together (#674). Nothing
+        # here derives, checks or repairs a position: this backend holds no
+        # centerline, so it cannot tell a point on the trail from a point in
+        # the sea, and pretending otherwise would be a check that always
+        # passes.
+        start_lat=payload.start_lat,
+        start_lon=payload.start_lon,
+        end_lat=payload.end_lat,
+        end_lon=payload.end_lon,
     )
     db.add(closure)
     return commit_and_refresh(db, closure)

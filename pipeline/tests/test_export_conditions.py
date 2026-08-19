@@ -66,7 +66,11 @@ CLOSURES_DDL = """
         verified_at       TIMESTAMP,
         closed_since      TIMESTAMP,
         expected_reopen   TIMESTAMP,
-        reroute_url       VARCHAR
+        reroute_url       VARCHAR,
+        start_lat         DOUBLE PRECISION,
+        start_lon         DOUBLE PRECISION,
+        end_lat           DOUBLE PRECISION,
+        end_lon           DOUBLE PRECISION
     )
 """
 
@@ -576,6 +580,12 @@ def test_the_catalog_queries_answer_against_a_real_schema(clean_tables):
             "closed_since",
             "expected_reopen",
             "reroute_url",
+            # The closure's two endpoints (#674) - the anchor the miles above
+            # are a per-release projection of.
+            "start_lat",
+            "start_lon",
+            "end_lat",
+            "end_lon",
         ]
 
     with clean_tables.cursor() as cur:

@@ -4,7 +4,12 @@ import userEvent from '@testing-library/user-event'
 import App from './App'
 import { appHarness, centerlineGeoJSON, latOfMile } from './test/appHarness'
 import { PREFERENCES_KEY } from './lib/preferences'
-import { ELEVATION_STORE_KEY, POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
+import {
+  ELEVATION_STORE_KEY,
+  POIS_KEY,
+  SPURS_STORE_KEY,
+  TRAILS_BLOB_KEY,
+} from './lib/trailData'
 import { CORRIDOR_ARCHIVE_KEY } from './map/pmtilesSource'
 import { readArchive, segmentKeyFor } from './lib/archiveStore'
 import { POI_ID_PROPERTY, POI_LAYER_ID } from './map/poiLayers'
@@ -12,7 +17,7 @@ import { archiveUrl } from './lib/config'
 import { MockMap } from './test/mocks/maplibre-gl'
 import { liveMap } from './test/liveMap'
 import { THEME_ATTRIBUTE } from './lib/theme'
-import { BACKDROP_LAYER_ID, MAP_BACKDROP } from './map/style'
+import { BACKDROP_LAYER_ID, BLAZE_LAYER_ID, MAP_BACKDROP } from './map/style'
 import { SHEET_VARIANTS } from './map/liveTopo'
 
 /** The colour the backdrop layer was BUILT with, off the style the mock map
@@ -1409,5 +1414,84 @@ describe('who a report says it is from (#233)', () => {
 
     await waitFor(() => expect(queued()).toHaveLength(1))
     expect(queued()[0].payload.reporter_type).toBe('section')
+  })
+})
+
+describe('tapping a trail line (#134)', () => {
+  /** Touch the canvas where MapLibre would report a line - same arrangement
+   *  as tapPin above, against the blaze layer. */
+  async function tapLine(features: Array<Record<string, unknown>>) {
+    await waitFor(() => {
+      expect(MockMap.live).toHaveLength(1)
+      expect(MockMap.live[0].listenerCount('click')).toBeGreaterThan(0)
+    })
+    const map = MockMap.live[0]
+    map.renderedFeatures.set(BLAZE_LAYER_ID, features)
+    await act(async () => {
+      map.emit('click', { point: { x: 160, y: 300 } })
+    })
+  }
+
+  it('opens the line-detail sheet with the spur’s facts, and a bare tap closes it', async () => {
+    hikerOnTrail()
+    // The published spur record for the line about to be tapped - stored the
+    // way a download commits it, so this exercises the whole read path.
+    store.set(SPURS_STORE_KEY, {
+      'side_trails:abc': {
+        name: 'Rocky Run Spur Trail',
+        length_ft: 1056,
+        destination_poi_id: SHELTER.id,
+        destination_distance_m: 1,
+        junction_mile: 1043.2,
+      },
+    })
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await tapLine([
+      {
+        properties: { id: 'side_trails:abc', source: 'side_trails', blaze_color: 'Blue' },
+      },
+    ])
+
+    const sheet = await screen.findByRole('dialog', { name: /trail line/i })
+    expect(within(sheet).getByRole('heading')).toHaveTextContent('Blue blaze · spur')
+    // The destination's NAME, resolved from the stored POIs - the id alone
+    // would be a link to nowhere a hiker can read.
+    expect(within(sheet).getByText(/To Chairback Gap Lean-to/)).toBeInTheDocument()
+    expect(within(sheet).getByText('Joins the AT at mi 1,043.2')).toBeInTheDocument()
+
+    // Tap-elsewhere-to-dismiss, the gesture every map card teaches.
+    const map = MockMap.live[0]
+    map.renderedFeatures.set(BLAZE_LAYER_ID, [])
+    await act(async () => {
+      map.emit('click', { point: { x: 40, y: 60 } })
+    })
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('dialog', { name: /trail line/i }),
+      ).not.toBeInTheDocument()
+    })
+  })
+
+  it('names the through-route, so the white line is not a dead surface', async () => {
+    hikerOnTrail()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await tapLine([
+      {
+        properties: {
+          id: 'centerline:chain:0',
+          source: 'centerline',
+          blaze_color: 'White',
+        },
+      },
+    ])
+
+    const sheet = await screen.findByRole('dialog', { name: /trail line/i })
+    expect(within(sheet).getByRole('heading')).toHaveTextContent(
+      'White blaze · Appalachian Trail',
+    )
   })
 })

@@ -200,6 +200,16 @@ closure and warning sheets.
 
 **#501 is a five-minute docs fix** and should be taken by whoever is in this file anyway.
 
+**Where this stands, 2026-08-19.** All three remaining issues are built on one branch:
+#136's `junction_mile` publishes on the marker-calibrated axis every other mile shares,
+#134's line-detail sheet renders it with the destination and round trip, and #161's
+centerline merges into chains at export with the client's `tolerance: 0` reverting
+per phone, keyed off the shape of the data actually stored there. What #675-style
+follow-through remains is operational rather than code: the first merged data release
+shows a deliberate trails feature-count drop (the manifest's `constituent_count` is
+what the quality gates now track across it), and phones only pick the faster path up
+on their next trail-data download.
+
 ## H. App store packaging
 
 **#101 — Wrap the PWA with Capacitor** ·

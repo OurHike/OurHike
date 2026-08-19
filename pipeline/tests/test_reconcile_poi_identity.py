@@ -493,3 +493,103 @@ def test_summarize_names_every_evidence_match_with_its_evidence():
     assert "matched by evidence: 1" in text
     assert "'Winturri Shelter' -> 'Wintturi Shelter'" in text
     assert "fingerprint intact" in text
+
+
+# --- main()'s two exit paths, which publish-vector-data.yml now depends on ---
+#
+# Everything above holds reconcile() itself. These hold the CLI wrapper, and
+# they were added when #811 gave `regenerate_identity_ledger` a step in
+# publish-vector-data.yml: that step pipes the write mode to `tee` under
+# `set -o pipefail`, and uploads the ledger on `always()`. Both choices are
+# bets on main()'s exit codes - that 2 means "wrote nothing, a human is
+# needed" and 0 means "the file on disk is the reconciled one" - and until
+# now nothing checked either. A wrapper that exited 0 after refusing to write
+# would have turned the whole gate green while publishing an unreviewed
+# ledger.
+
+
+@pytest.fixture
+def ledger_at(tmp_path, monkeypatch):
+    """Point the module's paths at tmp_path and let a test set the snapshot.
+
+    main() reads its file locations off module constants, so redirecting them
+    is what lets the write path run without a corridor on disk - the same
+    trick export_poi's CAPACITY_PATH tests use."""
+    import reconcile_poi_identity as identity
+
+    path = tmp_path / "poi_identity.json"
+    monkeypatch.setattr(identity, "LEDGER_PATH", path)
+    monkeypatch.setattr(identity, "OVERRIDES_PATH", tmp_path / "absent_overrides.json")
+    monkeypatch.setattr(identity, "real_mile_of", lambda points: [None] * len(points))
+
+    def snapshot(records):
+        monkeypatch.setattr(identity, "published_records", lambda: list(records))
+
+    return path, snapshot
+
+
+def _seed_ledger_file(path, pois):
+    path.write_text(render(pois), encoding="utf-8")
+
+
+def test_the_write_mode_writes_the_ledger_and_exits_zero(ledger_at):
+    from reconcile_poi_identity import main
+
+    path, snapshot = ledger_at
+    snapshot([_record()])
+
+    assert main(["--release", RELEASE]) == 0
+    assert json.loads(path.read_text())["pois"]["atc_shelters:glob-1"]["first_seen"] == RELEASE
+
+
+def test_check_agrees_with_what_the_write_mode_just_wrote(ledger_at):
+    """The gate and the generator must be the same function or the gate is
+    unfollowable - which is exactly the state #811 found."""
+    from reconcile_poi_identity import main
+
+    path, snapshot = ledger_at
+    snapshot([_record()])
+    main(["--release", RELEASE])
+
+    assert main(["--check", "--release", RELEASE]) == 0
+
+
+def test_check_exits_one_when_the_snapshot_moved_on(ledger_at):
+    from reconcile_poi_identity import main
+
+    path, snapshot = ledger_at
+    snapshot([_record()])
+    main(["--release", RELEASE])
+    snapshot([_record(), _record(sfid="glob-2", name="Second Shelter", lat=42.0)])
+
+    assert main(["--check", "--release", LATER]) == 1
+
+
+def test_a_held_item_exits_two_and_writes_nothing(ledger_at):
+    """Exit 2 is what the workflow's `always()` upload exists for: no ledger
+    is written, and the held list it printed is the only reason a human was
+    called."""
+    from reconcile_poi_identity import main
+
+    path, snapshot = ledger_at
+    seeded = reconcile({}, [_record()], RELEASE).pois
+    retired = reconcile(seeded, [], LATER).pois  # the row goes to a tombstone
+    _seed_ledger_file(path, retired)
+    before = path.read_text()
+    snapshot([_record()])  # ... and upstream re-presents its key
+
+    assert main(["--release", LATER]) == 2
+    assert path.read_text() == before, "a held run must not write the ledger it refused to reconcile"
+
+
+def test_the_mass_retirement_refusal_exits_two_and_writes_nothing(ledger_at):
+    from reconcile_poi_identity import main
+
+    path, snapshot = ledger_at
+    seeded = reconcile({}, [_record(sfid=f"old-{i}", name=f"Shelter {i}", lat=40.0 + i * 0.1) for i in range(30)], RELEASE).pois
+    _seed_ledger_file(path, seeded)
+    before = path.read_text()
+    snapshot([_record(sfid=f"new-{i}", name=f"Different {i}", lat=44.0 + i * 0.1) for i in range(30)])
+
+    assert main(["--release", LATER]) == 2
+    assert path.read_text() == before

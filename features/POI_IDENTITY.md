@@ -225,6 +225,15 @@ reviewing every point?** By making the review a diff, on a gate that already exi
   pattern: the checked-in ledger must be exactly what reconciliation produces from the raw
   snapshot plus the prior ledger, so the reviewed file provably describes the data it ships
   with.
+- **The write mode runs in CI too, and had to (#811).** The gate's failure message asks for a
+  regenerated ledger, and the snapshot it must be regenerated from is `pipeline/data/raw/` —
+  gitignored, and populated only on a runner mid-job. For a while `--check` was the only
+  invocation anywhere under `.github/`, so the single environment able to produce the diff was
+  also the only one that refused to, and the instruction could not be followed by anybody.
+  `publish-vector-data.yml`'s `regenerate_identity_ledger` input now runs the write mode in
+  place of the check and uploads the new ledger and its summary as a run artifact to review and
+  commit. Such a run cannot publish: a ledger rewritten this minute is a ledger nobody has read,
+  which is the state the gate exists to keep out of the bucket.
 - `verify_release.py` gains a battery check: every published POI id is a live ledger row whose
   `(source, source_feature_id)` agrees, no id appears twice, no retired id is published live —
   drift between ledger and artifact caught at the same gate that catches every other kind.

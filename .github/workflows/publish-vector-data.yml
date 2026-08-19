@@ -55,6 +55,10 @@ on:
         description: "Derive trail crossings and reachable site water (adds ~5.7 GB of USGS subregions / ~30 min). Untick to reuse the last run's."
         type: boolean
         default: false
+      regenerate_identity_ledger:
+        description: "Reconcile POI identity in WRITE mode and upload the new ledger for review, instead of failing the gate. Never publishes."
+        type: boolean
+        default: false
 
 # One publish at a time. Two concurrent runs would race on latest.json and could
 # interleave uploads, leaving the manifest describing a mixture of two builds.
@@ -203,7 +207,49 @@ jobs:
       # diff, and commits it. Before the photo fetches, like the preflight
       # above, so a blocked refresh costs seconds rather than an hour.
       - name: Check the POI identity ledger is current
+        if: ${{ !inputs.regenerate_identity_ledger }}
         run: python reconcile_poi_identity.py --check
+
+      # The other half of the gate above (#811). `--check` tells a maintainer to
+      # "run reconcile_poi_identity.py, review the diff, and commit it", and
+      # until this step existed nobody could: the script reads its snapshot from
+      # data/raw/, which is gitignored and exists only on a runner mid-job, and
+      # `--check` was the only invocation anywhere in .github/. The one
+      # environment that can produce the regenerated ledger was also the only
+      # one that refused to.
+      #
+      # This is features/POI_IDENTITY.md §2's stated output - "Input: the new raw
+      # snapshot plus the prior ledger. Output: the updated ledger and a
+      # human-readable summary" - which shipped as its gate alone.
+      #
+      # `set -o pipefail` is load-bearing rather than habit: GitHub runs `run:`
+      # under `bash -e`, which does NOT set pipefail, so a bare `| tee` would
+      # report the exit status of tee. reconcile_poi_identity.py exits 2 for
+      # held items and for the mass-retirement refusal - the two outcomes a
+      # human most needs to see fail - and both would have been swallowed as
+      # green, uploading a summary describing a ledger it never wrote.
+      - name: Reconcile the POI identity ledger for review
+        if: inputs.regenerate_identity_ledger
+        run: |
+          set -o pipefail
+          mkdir -p data/identity_review
+          python reconcile_poi_identity.py | tee data/identity_review/summary.txt
+
+      # `always()` so a run held for review still hands over its summary: an
+      # exit-2 run writes no ledger, and the held list it printed is the entire
+      # reason a human was called, so losing it to the failure would waste the
+      # run that produced it. `if-no-files-found: ignore` for the same case -
+      # there is no ledger to attach when nothing was written.
+      - name: Upload the reconciled ledger for review
+        if: ${{ always() && inputs.regenerate_identity_ledger }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: poi-identity-ledger
+          path: |
+            pipeline/reference/poi_identity.json
+            pipeline/data/identity_review/summary.txt
+          retention-days: 14
+          if-no-files-found: ignore
 
       # Photos live outside the repository - pipeline/.gitignore excludes
       # data/ entirely - so a fresh runner has neither the outcome files nor
@@ -522,8 +568,15 @@ jobs:
           retention-days: 3
           if-no-files-found: error
 
+      # `!regenerate_identity_ledger` is the second half of the condition and is
+      # not belt-and-braces: a run that has just rewritten the ledger has
+      # rewritten it to something NOBODY HAS REVIEWED, which is the exact state
+      # the identity gate exists to keep out of the bucket. Publishing from such
+      # a run would publish POIs under ids whose diff no human has read - the
+      # failure #671 built the ledger to make impossible - so the two inputs are
+      # mutually exclusive here rather than merely discouraged in the form.
       - name: Publish to R2
-        if: inputs.publish
+        if: ${{ inputs.publish && !inputs.regenerate_identity_ledger }}
         env:
           # The gate publish.py checks. Set only on this step, so every other
           # step in this workflow is structurally incapable of writing to the
@@ -543,7 +596,12 @@ jobs:
       - name: Say what happened
         if: always()
         run: |
-          if [ "${{ inputs.publish }}" != "true" ]; then
+          if [ "${{ inputs.regenerate_identity_ledger }}" = "true" ]; then
+            echo "Ledger regeneration run - nothing was uploaded to R2, whatever 'publish' said."
+            echo "Download the 'poi-identity-ledger' artifact, review the diff against"
+            echo "pipeline/reference/poi_identity.json, and commit it. Then re-run without"
+            echo "'regenerate_identity_ledger' to publish against the reviewed ledger."
+          elif [ "${{ inputs.publish }}" != "true" ]; then
             echo "Dry run - nothing was uploaded. Re-run with 'publish' ticked to upload."
           elif [ "${{ inputs.data_environment }}" = "production" ]; then
             echo "Published to production. The client needs DATA_BASE_URL set and a Pages redeploy to see it."

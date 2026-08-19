@@ -153,42 +153,11 @@ echo "[session-start] repository-settings test deps"
 pip_install_pinned .github/tests/requirements-dev.txt
 
 echo "[session-start] seeding the duckdb spatial extension"
-"${PY}" - <<'PY'
-"""Copy the PyPI-bundled spatial extension to where INSTALL looks.
-
-DuckDB treats an already-installed extension as satisfying INSTALL, so
-seeding ~/.duckdb/extensions means the tests' `INSTALL spatial; LOAD
-spatial;` never reaches the blocked network.
-"""
-import pathlib
-import shutil
-from importlib.metadata import distribution
-
-import duckdb
-
-dist = distribution("duckdb-extension-spatial")
-src = next(
-    pathlib.Path(dist.locate_file(f))
-    for f in dist.files
-    if f.name == "spatial.duckdb_extension"
-)
-platform = duckdb.connect().execute("PRAGMA platform").fetchone()[0]
-dest = (
-    pathlib.Path.home()
-    / ".duckdb/extensions"
-    / f"v{duckdb.__version__}"
-    / platform
-    / src.name
-)
-if not dest.exists() or dest.stat().st_size != src.stat().st_size:
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(src, dest)
-
-con = duckdb.connect()
-con.execute("INSTALL spatial; LOAD spatial;")
-con.execute("SELECT ST_Point(0, 0)")
-print(f"spatial loads offline for duckdb {duckdb.__version__}")
-PY
+# ONE HOME, shared with pipeline-tests.yml (#321). This was an inline heredoc
+# here until CI needed the same thing; the script says why three copies of it
+# would have drifted on the next duckdb bump. It verifies rather than reports,
+# so a seeding that silently landed in the wrong path fails here.
+"${PY}" pipeline/seed_spatial_extension.py
 
 echo "[session-start] client deps"
 (cd client && npm install --no-audit --no-fund)

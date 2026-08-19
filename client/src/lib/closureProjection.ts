@@ -37,6 +37,21 @@
  * rather than tightened to a number picked in advance. `locateOnTrail` already
  * returns that offset, which is where a real threshold, or a note on the sheet
  * saying how far the stretch moved, would come from.
+ *
+ * **Two consequences of projecting, named rather than left to be discovered.**
+ * Neither is acted on here, because both need a decision this change is not
+ * the place to take:
+ *
+ * - `isBroadAdvisory` (`lib/closureSpan.ts`) gates on `end - start` and
+ *   decides whether a closure is drawn as a band at all. Projection changes
+ *   the span, so a closure sitting near `MAX_BAND_MILES` can cross that line
+ *   in either direction as a side effect of being re-projected — the band
+ *   appearing or vanishing without the closure itself having changed.
+ * - `screens/Moderation.tsx` renders `mi start–end` off `QueuedClosure`,
+ *   which this does not touch. So a moderator reads the stored authoring-datum
+ *   miles while the map and banner read the projected ones, for the same
+ *   closure. That is arguably right — a moderator is judging what the reporter
+ *   filed — but it is a divergence somebody should decide on rather than meet.
  */
 
 import { mileOnTrail, type TrailIndex } from './trailPosition'

@@ -658,9 +658,20 @@ def main(argv: list[str] | None = None) -> int:
         if current == rendered:
             print("Ledger is exactly what reconciliation reproduces.")
             return 0
+        # NAME THE MECHANISM, not just the remedy (#811). This used to say
+        # "run reconcile_poi_identity.py, review the diff, and commit it",
+        # which is the right remedy and was, for a while, impossible to
+        # act on: the write mode needs the raw snapshot, the snapshot lives
+        # in gitignored data/raw/ on a runner mid-job, and no workflow ran
+        # anything but --check. Five dispatches failed on that sentence.
         print(
-            f"{LEDGER_PATH} differs from what this snapshot reconciles to - "
-            "run reconcile_poi_identity.py, review the diff, and commit it.",
+            f"{LEDGER_PATH} differs from what this snapshot reconciles to.\n"
+            "Re-dispatch 'Publish vector data' with 'regenerate_identity_ledger' ticked, using the "
+            "SAME source inputs as this run - it runs the write mode in place of this check and "
+            "uploads the new ledger and summary as the 'poi-identity-ledger' artifact. Review that "
+            "diff, commit it, then publish against the reviewed ledger.\n"
+            "Locally, `python reconcile_poi_identity.py` does the same thing wherever a raw snapshot "
+            "already exists.",
             file=sys.stderr,
         )
         return 1
